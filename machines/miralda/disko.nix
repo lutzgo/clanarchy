@@ -57,11 +57,11 @@
       };
 
       datasets = {
-        root = { mountpoint = "/"; };
-        nix = { mountpoint = "/nix"; };
-        home = { mountpoint = "/home"; };
-        persist = { mountpoint = "/persist"; };
-        tmp = { mountpoint = "/tmp"; };
+        root = { type = "zfs_fs"; mountpoint = "/"; };
+        nix = { type = "zfs_fs"; mountpoint = "/nix"; };
+        home = { type = "zfs_fs"; mountpoint = "/home"; };
+        persist = { type = "zfs_fs"; mountpoint = "/persist"; };
+        tmp = { type = "zfs_fs"; mountpoint = "/tmp"; };
       };
     };
   };
