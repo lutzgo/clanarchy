@@ -59,8 +59,8 @@
       datasets = {
         root = { type = "zfs_fs"; mountpoint = "/"; };
         nix = { type = "zfs_fs"; mountpoint = "/nix"; };
-        home = { type = "zfs_fs"; mountpoint = "/home"; };
-        persist = { type = "zfs_fs"; mountpoint = "/persist"; };
+        home = { type = "zfs_fs"; mountpoint = "/home"; options.mountpoint = "legacy"; };
+        persist = { type = "zfs_fs"; mountpoint = "/persist"; options.mountpoint = "legacy"; };
         tmp = { type = "zfs_fs"; mountpoint = "/tmp"; };
       };
     };

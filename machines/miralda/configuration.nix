@@ -9,9 +9,18 @@
   # Ensure SSH daemon is present (inventory sshd service manages keys/config)
   services.openssh.enable = true;
 
+  # Use systemd-boot (EFI)
+  boot.loader.systemd-boot.enable = true;
+  boot.loader.efi.canTouchEfiVariables = true;
+
   # ZFS in initrd (disko creates pool/datasets, this ensures boot support)
   boot.supportedFilesystems = [ "zfs" ];
   boot.zfs.forceImportRoot = false;
+  boot.initrd.systemd.enable = true;
+
+  # Impermanence requires these to be available early
+  fileSystems."/persist".neededForBoot = true;
+  fileSystems."/home".neededForBoot = true;
 
   # Required
   system.stateVersion = "25.11";
