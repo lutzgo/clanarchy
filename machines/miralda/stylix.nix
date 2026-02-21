@@ -34,19 +34,13 @@ let
         A2="#${c.base0A}"  # typically "yellow"
         A3="#${c.base08}"  # typically "red"
 
-        # Create background
+        # Create background with grain, snowflake emblem, and label
         magick -size ''${W}x''${H} xc:"$BG" \
-          \
-          # Subtle grain (optional, comment out if you want perfectly flat)
           \( +clone -noise 2 -blur 0x1 \) -compose overlay -composite \
-          \
-          # Draw a simple "snowflake" mark in the center using lines and circles.
-          # This is not an exact official logo reproduction, but a clean nix-y emblem.
           -stroke "$A1" -strokewidth 18 -fill none \
           -draw "line $((W/2)),$((H/2-320)) $((W/2)),$((H/2+320))" \
           -draw "line $((W/2-277)),$((H/2-160)) $((W/2+277)),$((H/2+160))" \
           -draw "line $((W/2-277)),$((H/2+160)) $((W/2+277)),$((H/2-160))" \
-          \
           -stroke "$A2" -strokewidth 18 \
           -draw "circle $((W/2)),$((H/2-320)) $((W/2+1)),$((H/2-320))" \
           -draw "circle $((W/2)),$((H/2+320)) $((W/2+1)),$((H/2+320))" \
@@ -54,8 +48,6 @@ let
           -draw "circle $((W/2+277)),$((H/2+160)) $((W/2+278)),$((H/2+160))" \
           -draw "circle $((W/2-277)),$((H/2+160)) $((W/2-276)),$((H/2+160))" \
           -draw "circle $((W/2+277)),$((H/2-160)) $((W/2+278)),$((H/2-160))" \
-          \
-          # Add "clanarchy" label, bottom-right
           -fill "$FG" -stroke none \
           -font "${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans.ttf" \
           -pointsize 44 \
@@ -73,5 +65,8 @@ in
 
     # Declarative wallpaper generation (built by Nix, colored by the selected scheme)
     image = nixWallpaper;
+
+    # Disable KDE/Plasma theming (upstream shellcheck bug)
+    targets.kde.enable = false;
   };
 }
