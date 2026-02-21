@@ -66,7 +66,7 @@ in
     # Declarative wallpaper generation (built by Nix, colored by the selected scheme)
     image = nixWallpaper;
 
-    # Disable KDE/Plasma theming (upstream shellcheck bug)
-    targets.kde.enable = false;
+    # Disable autoEnable so we can selectively enable targets
+    autoEnable = false;
   };
 }
