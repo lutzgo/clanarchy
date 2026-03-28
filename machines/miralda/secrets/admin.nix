@@ -11,4 +11,22 @@
 
     runtimeInputs = [ pkgs.openssh ];
   };
+
+  clan.core.vars.generators.admin-password = {
+    files."hashed-password" = {
+      secret = true;
+      neededForUsers = true;
+    };
+
+    prompts."password" = {
+      description = "Password for the admin user (used for sudo and local console login)";
+      type = "hidden";
+    };
+
+    script = ''
+      ${pkgs.mkpasswd}/bin/mkpasswd -m sha-512 "$(cat "$prompts/password")" > "$out/hashed-password"
+    '';
+
+    runtimeInputs = [ pkgs.mkpasswd ];
+  };
 }

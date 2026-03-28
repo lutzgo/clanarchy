@@ -20,9 +20,9 @@
 
     directories = [
       "/var/lib/nixos"
+      "/var/lib/sops-nix"
       "/var/log"
       "/var/lib/systemd"
-      "/var/lib/sops-nix"
     ];
 
     files = [
