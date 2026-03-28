@@ -15,7 +15,7 @@
   clan.core.vars.generators.admin-password = {
     files."hashed-password" = {
       secret = true;
-      neededForUsers = true;
+      neededFor = "users";
     };
 
     prompts."password" = {
