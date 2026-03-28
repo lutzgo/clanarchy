@@ -25,14 +25,6 @@
   boot.zfs.forceImportRoot = false;
   boot.initrd.systemd.enable = true;
 
-  # EFI System Partition — must be a proper systemd mount so bootctl
-  # can see it inside the isolated mount namespace used by systemd-run
-  fileSystems."/boot" = {
-    device = "/dev/disk/by-label/ESP";
-    fsType = "vfat";
-    options = [ "fmask=0022" "dmask=0022" ];
-  };
-
   # Impermanence requires these to be available early
   fileSystems."/persist".neededForBoot = true;
   fileSystems."/home".neededForBoot = true;
