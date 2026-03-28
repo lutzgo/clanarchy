@@ -1,12 +1,21 @@
-{ ... }:
+{ pkgs, ... }:
 {
   users.mutableUsers = false;
+
+  programs.zsh.enable = true;
 
   users.users.admin = {
     isNormalUser = true;
     extraGroups = [ "wheel" ];
+    shell = pkgs.zsh;
     openssh.authorizedKeys.keys = [
-      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPo4uZn6hVFTnJ0K7eagj1XL0jVn9t6sSU8RAejhWBy+ clanarchy_admin"
+      (builtins.readFile ../clanarchy_admin.pub)
+    ];
+  };
+
+  users.users.root = {
+    openssh.authorizedKeys.keys = [
+      (builtins.readFile ../clanarchy_admin.pub)
     ];
   };
 

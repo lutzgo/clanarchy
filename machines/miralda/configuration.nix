@@ -1,13 +1,20 @@
 { ... }:
 {
   networking.hostName = "miralda";
+  networking.hostId = "ebeed95c";
   time.timeZone = "Europe/Berlin";
 
   # Keep flakes usable on the installed system too
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
   # Ensure SSH daemon is present (inventory sshd service manages keys/config)
-  services.openssh.enable = true;
+  services.openssh = {
+    enable = true;
+    settings = {
+      PasswordAuthentication = false;
+      PermitRootLogin = "prohibit-password";
+    };
+  };
 
   # Use systemd-boot (EFI)
   boot.loader.systemd-boot.enable = true;
