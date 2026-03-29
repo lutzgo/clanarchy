@@ -127,6 +127,8 @@
           ./machines/miralda/users/lgo.nix
           ./machines/miralda/secrets/admin.nix
           ./machines/miralda/secrets/lgo.nix
+          ./machines/miralda/secrets/wifi.nix
+          ./machines/miralda/wifi.nix
         ];
       };
     };
