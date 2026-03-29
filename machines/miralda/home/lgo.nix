@@ -27,8 +27,9 @@
     # Age / clan secret management
     age
     ssh-to-age            # converts SSH pubkey to age recipient format
+    age-plugin-yubikey    # PIV-backed age identity on YubiKey
 
     # Clan management
-    inputs.clan-core.packages.${pkgs.system}.clan-cli
+    inputs.clan-core.packages.${pkgs.stdenv.hostPlatform.system}.clan-cli
   ];
 }

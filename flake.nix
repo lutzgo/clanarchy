@@ -64,6 +64,7 @@
             git
             openssh
             nixos-rebuild
+            age-plugin-yubikey  # needed for sops re-encryption with YubiKey recipients
           ];
 
           # Fast deploy: builds locally, pushes result, switches remotely.
@@ -83,6 +84,17 @@
                 "''${@:2}"
             }
             export -f deploy
+
+            # Push via gh token — works even when ~/.config/git is read-only
+            # (impermanence on local machine). Usage: push [remote] [branch]
+            push() {
+              local remote=''${1:-origin}
+              local branch=''${2:-main}
+              local url
+              url=$(git remote get-url "$remote" | sed 's|https://github.com/|https://'"$(gh auth token)"'@github.com/|')
+              git push "$url" "$branch"
+            }
+            export -f push
           '';
         };
       };

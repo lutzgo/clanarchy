@@ -38,5 +38,16 @@
         "Pictures/Wallpapers"  # Noctalia wallpaper manager
       ];
     };
+
+    users.lgo = {
+      directories = [
+        ".gnupg"       # GPG keyring with YubiKey stubs
+        ".config"
+        ".local/share"
+      ];
+      files = [
+        ".age/yubikey-identity.txt"  # PIV-backed age identity (recipient stored in clan vars)
+      ];
+    };
   };
 }
