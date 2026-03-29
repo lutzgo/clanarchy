@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ pkgs, config, ... }:
 {
   users.mutableUsers = false;
 
@@ -8,6 +8,7 @@
     isNormalUser = true;
     extraGroups = [ "wheel" ];
     shell = pkgs.zsh;
+    hashedPasswordFile = config.clan.core.vars.generators.admin-password.files."hashed-password".path;
     openssh.authorizedKeys.keys = [
       (builtins.readFile ../clanarchy_admin.pub)
     ];

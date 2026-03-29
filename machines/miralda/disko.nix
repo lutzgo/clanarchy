@@ -29,6 +29,8 @@
               type = "filesystem";
               format = "vfat";
               mountpoint = "/boot";
+              extraArgs = [ "-n" "ESP" ];
+              mountOptions = [ "umask=0077" ];
             };
           };
 

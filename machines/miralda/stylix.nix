@@ -1,4 +1,4 @@
-{ pkgs, config, lib, ... }:
+ { pkgs, config, lib, ... }:
 
 let
   # Pick a Base16 Gruvbox Dark scheme from base16-schemes package.
@@ -66,7 +66,20 @@ in
     # Declarative wallpaper generation (built by Nix, colored by the selected scheme)
     image = nixWallpaper;
 
-    # Disable autoEnable so we can selectively enable targets
-    autoEnable = false;
-  };
+    # HiDPI-appropriate font sizes for Framework 13 at 1.5x scale
+    fonts.sizes = {
+      applications = 11;
+      terminal = 13;
+      desktop = 11;
+      popups = 11;
+    };
+
+    # Adwaita cursor — matches XCURSOR_THEME env var set in desktop.nix
+    cursor = {
+      package = pkgs.adwaita-icon-theme;
+      name = "Adwaita";
+      size = 24;
+    };
+
+};
 }

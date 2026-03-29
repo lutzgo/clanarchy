@@ -1,6 +1,24 @@
-{ ... }:
+{ inputs, ... }:
 {
   clan = {
+    # Instantiate pkgs once per system with overlays applied.
+    # nixpkgs.overlays in NixOS modules is ignored when pkgsForSystem is set
+    # (clan-core force-sets nixpkgs.pkgs before NixOS modules run).
+    pkgsForSystem = system: import inputs.nixpkgs {
+      inherit system;
+      config.allowUnfree = true;
+      overlays = [
+        # niri 25.08 test suite hits EMFILE (too many open files) in the Nix sandbox
+        (_: prev: {
+          # niri 25.08 test suite hits EMFILE in the Nix sandbox (150 parallel
+          # tests each creating Wayland sockets). Replace checkPhase with a
+          # no-op so the binary still builds — overrideAttrs doCheck/dontCheck
+          # do not change the drv hash for buildRustPackage.
+          niri = prev.niri.overrideAttrs (_: { checkPhase = ":"; });
+        })
+      ];
+    };
+
     meta.name = "clanarchy";
     meta.domain = "goclan.org";
 

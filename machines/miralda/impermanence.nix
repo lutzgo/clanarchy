@@ -35,6 +35,7 @@
         ".gnupg"
         ".config"
         ".local/share"
+        "Pictures/Wallpapers"  # Noctalia wallpaper manager
       ];
     };
   };
