@@ -4,18 +4,21 @@
   # niri is overridden with doCheck=false via clan.pkgsForSystem in clan.nix
   programs.niri.enable = true;
 
-  # greetd with tuigreet — only show UWSM-managed sessions; remember last choice.
-  # No --cmd: that would add a spurious third "Niri" entry alongside niri.desktop
-  # and niri-uwsm.desktop. --remember-session persists the last selection.
+  # greetd with tuigreet.
+  # --sessions: required on NixOS — greetd's environment lacks XDG_DATA_DIRS so
+  #   tuigreet falls back to /usr/share/wayland-sessions (doesn't exist) and exits.
+  # --remember-session intentionally omitted: impermanence rolls back /var/cache on
+  #   boot, so a stale cache entry causes tuigreet to panic and exit immediately.
   services.greetd = {
     enable = true;
     settings = {
       default_session = {
-        command = "${pkgs.tuigreet}/bin/tuigreet --time --remember-session --default-session niri-uwsm.desktop";
+        command = "${pkgs.tuigreet}/bin/tuigreet --time --sessions /run/current-system/sw/share/wayland-sessions";
         user = "greeter";
       };
     };
   };
+
 
   # UWSM — systemd session manager; registers niri and generates niri-uwsm.desktop.
   # binPath must be niri-session, not niri: niri-session detects when it runs as a

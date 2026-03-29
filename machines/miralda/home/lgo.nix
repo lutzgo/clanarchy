@@ -8,7 +8,7 @@
     enable = true;
     # GPG commit signing via YubiKey
     signing.signByDefault = true;
-    extraConfig.gpg.program = "gpg2";
+    settings.gpg.program = "gpg2";
   };
 
   programs.zsh.enable = true;
@@ -22,7 +22,7 @@
     gnupg
     yubikey-manager       # ykman — YubiKey configuration tool
     yubikey-personalization
-    pcsctools              # pcsc_scan — verify card is seen
+    pcsc-tools             # pcsc_scan — verify card is seen
 
     # Age / clan secret management
     age

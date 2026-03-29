@@ -78,8 +78,7 @@
               nixos-rebuild "$action" \
                 --flake .#miralda \
                 --target-host root@miralda.goclan.org \
-                --build-host localhost \
-                --fast \
+                --no-reexec \
                 -j auto \
                 "''${@:2}"
             }
