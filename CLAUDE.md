@@ -65,7 +65,7 @@ Generated outputs land in `vars/per-machine/miralda/`. Run generators with `clan
 
 **Impermanence**: Root and home roll back to `@blank` ZFS snapshots on boot. Persisted paths include: `/var/lib/sops-nix`, `/var/lib/systemd`, `/var/lib/zerotier-one`, user `.gnupg`, `.config`, `.local/share`.
 
-**greetd/tuigreet**: Must pass `--sessions /run/current-system/sw/share/wayland-sessions`. Never use `--remember-session` (impermanence wipes the cache on boot). Never add TTY systemd overrides to the greetd unit.
+**greetd/tuigreet**: Must pass `--sessions /run/current-system/sw/share/wayland-sessions`. Never use `--remember-session`, `--remember-user-session`, or any other cache-writing flag — tuigreet 0.9.1 panics with a crossterm `reader source not set` error when the cache is absent or stale after ZFS rollback, causing greetd to hit its restart limit. Never add TTY systemd overrides to the greetd unit.
 
 **YubiKey + pcscd**: SSH sessions lack an "active" logind session, so pcscd requires a polkit rule via `security.polkit.extraConfig` (not `extraRules`). The `age-plugin-yubikey` package must be in the devShell for sops re-encryption with YubiKey recipients.
 
