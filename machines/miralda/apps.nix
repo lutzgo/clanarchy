@@ -8,9 +8,16 @@
     keepassxc
     kdePackages.kdeconnect-kde
     helix
+    fzf
+    zellij
+    yazi
+    lazygit
     foot
     libreoffice
     gimp
+    ripgrep
+    fd
+    xdg-utils
     claude-code
   ];
 

@@ -22,7 +22,8 @@
 
       prefer-no-csd = true;
 
-      layout.border.width = 1;
+      layout.border = { enable = true; width = 1; };
+      layout.focus-ring.width = 1;
 
       input = {
         touchpad = {
@@ -57,20 +58,97 @@
           ];
           opacity = 1.0;
         }
+
+        # Floating terminal scratchpad (Mod+Shift+Return → foot -T scratch)
+        {
+          matches = [{ app-id = "^foot$"; title = "^scratch$"; }];
+          open-floating = true;
+          default-column-width = { fixed = 1000; };
+          default-window-height = { fixed = 650; };
+        }
+
+        # KeePassXC — floating scratchpad at a comfortable size
+        {
+          matches = [{ app-id = "^org\\.keepassxc\\.KeePassXC$"; }];
+          open-floating = true;
+          default-column-width = { fixed = 900; };
+          default-window-height = { fixed = 650; };
+        }
+
+        # GIMP — open floating (toolboxes are separate windows)
+        {
+          matches = [{ app-id = "^gimp$"; } { app-id = "^org\\.gimp\\.GIMP$"; }];
+          open-floating = true;
+        }
+
+        # Chromium — open maximized
+        {
+          matches = [{ app-id = "^chromium$"; } { app-id = "^org\\.chromium\\.Chromium$"; }];
+          open-maximized = true;
+        }
+
+        # Lazygit floating terminal (foot -T lazygit -e lazygit)
+        {
+          matches = [{ app-id = "^foot$"; title = "^lazygit$"; }];
+          open-floating = true;
+          default-column-width = { fixed = 1200; };
+          default-window-height = { fixed = 800; };
+        }
       ];
 
       # All app launches prefixed with "uwsm app --" so they run as systemd units
       binds = {
+        # --- Focus navigation ---
+        "Mod+H".action.focus-column-left  = {};
+        "Mod+L".action.focus-column-right = {};
+        "Mod+J".action.focus-window-down  = {};
+        "Mod+K".action.focus-window-up    = {};
+
+        # --- Move windows/columns ---
+        "Mod+Shift+H".action.move-column-left  = {};
+        "Mod+Shift+L".action.move-column-right = {};
+        "Mod+Shift+J".action.move-window-down  = {};
+        "Mod+Shift+K".action.move-window-up    = {};
+
+        # --- Launch ---
         "Mod+Return".action.spawn = [ "uwsm" "app" "--" "foot" ];
-        "Mod+Q".action.close-window = {};
-        "Mod+Space".action.spawn = [ "uwsm" "app" "--" "fuzzel" ];
+        # foot -T scratch → matched by window rule → opens floating
+        "Mod+Shift+Return".action.spawn = [ "uwsm" "app" "--" "foot" "-T" "scratch" ];
+        "Mod+Space".action.spawn        = [ "uwsm" "app" "--" "fuzzel" ];
+        "Mod+E".action.spawn = [ "uwsm" "app" "--" "foot" "-e" "hx" "." ];
+        "Mod+F".action.spawn = [ "uwsm" "app" "--" "foot" "-e" "yazi" ];
+
+        # --- Window management ---
+        "Mod+Q".action.close-window           = {};
+        "Mod+V".action.toggle-window-floating = {};
+        "Mod+M".action.maximize-column        = {};
+        "Mod+F11".action.fullscreen-window    = {};
+        "Mod+Tab".action.focus-window-previous = {};
+
+        # --- Session ---
         "Mod+Shift+E".action.quit = {};
+        # Reload config via spawn (load-config-file is CLI-only, not a keybind action)
+        "Mod+Shift+R".action.spawn = [ "niri" "msg" "action" "load-config-file" ];
+
+        # --- Workspaces 1-9 ---
         "Mod+1".action.focus-workspace = 1;
         "Mod+2".action.focus-workspace = 2;
         "Mod+3".action.focus-workspace = 3;
+        "Mod+4".action.focus-workspace = 4;
+        "Mod+5".action.focus-workspace = 5;
+        "Mod+6".action.focus-workspace = 6;
+        "Mod+7".action.focus-workspace = 7;
+        "Mod+8".action.focus-workspace = 8;
+        "Mod+9".action.focus-workspace = 9;
         "Mod+Shift+1".action.move-window-to-workspace = 1;
         "Mod+Shift+2".action.move-window-to-workspace = 2;
         "Mod+Shift+3".action.move-window-to-workspace = 3;
+        "Mod+Shift+4".action.move-window-to-workspace = 4;
+        "Mod+Shift+5".action.move-window-to-workspace = 5;
+        "Mod+Shift+6".action.move-window-to-workspace = 6;
+        "Mod+Shift+7".action.move-window-to-workspace = 7;
+        "Mod+Shift+8".action.move-window-to-workspace = 8;
+        "Mod+Shift+9".action.move-window-to-workspace = 9;
       };
     };
   };
@@ -87,6 +165,11 @@
     # resolveSchemePath returns an invalid path, schemeReader fails silently, and
     # the Stylix-written colors.json is left intact.
     settings.colorSchemes.predefinedScheme = "";
+    # Suppress startup popups: changelog and setup wizard are shown when
+    # shell-state.json is absent (cache lost after ZFS rollback). Disabling the
+    # changelog here prevents it even on a fresh cache. The setup wizard is
+    # suppressed by persisting ~/.cache/noctalia/ in impermanence.nix.
+    settings.general.showChangelogOnStartup = false;
   };
 
   # Stylix targets — noctalia needs explicit opt-in; KDE has a shellcheck bug so disable it.
@@ -106,7 +189,6 @@
 
   # Foot terminal — Stylix manages colors and font (MonaspiceAr via stylix.fonts.monospace).
   # dpi-aware=no: Niri handles HiDPI scaling at the compositor level; foot must not double-scale.
-  # csd=none: Niri provides server-side decorations (prefer-no-csd=true in niri settings).
   programs.foot = {
     enable = true;
     settings = {
@@ -115,7 +197,6 @@
         pad               = "8x8";
         resize-delay-ms   = 100;
         dpi-aware         = "no";
-        csd               = "none";
       };
       bell       = { urgent = false; notify = false; visual = false; };
       scrollback = { lines = 10000; multiplier = 3.0; };
@@ -135,7 +216,7 @@
         scrollback-up-page   = "Shift+Page_Up";
         scrollback-down-page = "Shift+Page_Down";
         search-start         = "Control+Shift+r";
-        show-urls-launch     = "Control+Shift+u";
+        show-urls-launch     = "Control+Shift+o";
       };
     };
   };
@@ -160,7 +241,7 @@
 
       cmd_duration = {
         min_time = 0;
-        format = "[](bold fg:yellow)[󰪢 $duration](bold bg:yellow fg:black)[](bold fg:yellow)";
+        format = "[](bold fg:yellow)[󰪢 $duration](bold bg:yellow fg:black)[](bold fg:yellow)";
       };
 
       directory = {
@@ -169,12 +250,12 @@
         home_symbol = "  ";
         read_only = " 󰌾";
         style = "fg:black bg:green";
-        format = "[](bold fg:green)[󰉋 $path]($style)[](bold fg:green)";
+        format = "[](bold fg:green)[󰉋 $path]($style)[](bold fg:green)";
       };
 
       git_branch = {
         symbol = "󰘬";
-        format = "󰜥 [](bold fg:cyan)[$symbol $branch(:$remote_branch)](fg:black bg:cyan)[ ](bold fg:cyan)";
+        format = "󰜥 [](bold fg:cyan)[$symbol $branch(:$remote_branch)](fg:black bg:cyan)[ ](bold fg:cyan)";
         truncation_length = 12;
         truncation_symbol = "";
         style = "bg:cyan";
@@ -205,7 +286,7 @@
 
       hostname = {
         ssh_only = false;
-        format = "[•$hostname](bg:cyan bold fg:black)[](bold fg:cyan)";
+        format = "[•$hostname](bg:cyan bold fg:black)[](bold fg:cyan)";
         trim_at = ".local";
         disabled = false;
       };
@@ -213,7 +294,7 @@
       username = {
         style_user = "bold bg:cyan fg:black";
         style_root = "red bold";
-        format = "[](bold fg:cyan)[$user]($style)";
+        format = "[](bold fg:cyan)[$user]($style)";
         disabled = false;
         show_always = true;
       };

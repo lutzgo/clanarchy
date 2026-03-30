@@ -35,6 +35,7 @@
         ".gnupg"
         ".config"
         ".local/share"
+        ".cache/noctalia"      # shell-state.json (version tracking → no wizard/changelog on rollback)
         "Pictures/Wallpapers"  # Noctalia wallpaper manager
       ];
     };
@@ -44,6 +45,7 @@
         ".gnupg"       # GPG keyring with YubiKey stubs
         ".config"
         ".local/share"
+        ".cache/noctalia"      # shell-state.json (version tracking → no wizard/changelog on rollback)
         "Pictures/Wallpapers"  # Noctalia wallpaper manager
       ];
       files = [
