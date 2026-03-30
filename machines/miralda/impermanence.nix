@@ -44,6 +44,7 @@
         ".gnupg"       # GPG keyring with YubiKey stubs
         ".config"
         ".local/share"
+        "Pictures/Wallpapers"  # Noctalia wallpaper manager
       ];
       files = [
         ".age/yubikey-identity.txt"  # PIV-backed age identity (recipient stored in clan vars)

@@ -20,11 +20,6 @@
         scale = 1.5;
       };
 
-      # Launch Noctalia via UWSM on session start (runs as a systemd user unit)
-      spawn-at-startup = [
-        { argv = [ "uwsm" "app" "--" "noctalia-shell" ]; }
-      ];
-
       prefer-no-csd = true;
 
       input = {
@@ -52,7 +47,18 @@
   };
 
   # Noctalia shell — configured declaratively via noctalia HM module
-  programs.noctalia-shell.enable = true;
+  # systemd.enable: creates a user service that starts after graphical-session.target,
+  # replacing the fragile spawn-at-startup approach (which fires too early in the session).
+  programs.noctalia-shell = {
+    enable = true;
+    systemd.enable = true;
+    # Prevent noctalia from regenerating colors.json from its built-in scheme.
+    # AppThemeService calls applyScheme(predefinedScheme) on wallpaper changes —
+    # including startup when the wallpaper dir is empty. With predefinedScheme = "",
+    # resolveSchemePath returns an invalid path, schemeReader fails silently, and
+    # the Stylix-written colors.json is left intact.
+    settings.colorSchemes.predefinedScheme = "";
+  };
 
   # Stylix targets — noctalia needs explicit opt-in; KDE has a shellcheck bug so disable it.
   stylix.targets.noctalia-shell.enable = true;
