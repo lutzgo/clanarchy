@@ -25,6 +25,10 @@
   boot.zfs.forceImportRoot = false;
   boot.initrd.systemd.enable = true;
 
+  # Plymouth splash screen (Stylix generates the theme in stylix.nix)
+  boot.plymouth.enable = true;
+  boot.kernelParams = [ "quiet" "splash" ];
+
   # Impermanence requires these to be available early
   fileSystems."/persist".neededForBoot = true;
   fileSystems."/home".neededForBoot = true;

@@ -4,20 +4,11 @@
   # niri is overridden with doCheck=false via clan.pkgsForSystem in clan.nix
   programs.niri.enable = true;
 
-  # greetd with tuigreet.
-  # --sessions: required on NixOS — greetd's environment lacks XDG_DATA_DIRS so
-  #   tuigreet falls back to /usr/share/wayland-sessions (doesn't exist) and exits.
-  # --remember-session intentionally omitted: impermanence rolls back /var/cache on
-  #   boot, so a stale cache entry causes tuigreet to panic and exit immediately.
-  services.greetd = {
-    enable = true;
-    settings = {
-      default_session = {
-        command = "${pkgs.tuigreet}/bin/tuigreet --time --sessions /run/current-system/sw/share/wayland-sessions";
-        user = "greeter";
-      };
-    };
-  };
+  # ReGreet — GTK4 greeter, runs inside cage (Wayland kiosk compositor).
+  # programs.regreet enables greetd and configures cage + regreet automatically.
+  # Stylix theming is applied via stylix.targets.regreet in stylix.nix.
+  # No state is persisted — /var/lib/regreet resets on ZFS rollback, which is fine.
+  programs.regreet.enable = true;
 
 
   # UWSM — systemd session manager; registers niri and generates niri-uwsm.desktop.

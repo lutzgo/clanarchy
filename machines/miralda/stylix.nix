@@ -81,5 +81,8 @@ in
       size = 24;
     };
 
+    targets.regreet.enable = true;   # GTK4 login screen — themed by Stylix
+    targets.plymouth.enable = true;  # Boot splash — Stylix generates a spinner theme
+
 };
 }
