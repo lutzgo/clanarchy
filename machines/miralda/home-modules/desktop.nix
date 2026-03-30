@@ -30,6 +30,33 @@
         };
       };
 
+      # Global: rounded corners + 90% opacity.
+      # clip-to-geometry clips the window surface itself (not just decorations) to the radius.
+      # Heavy GUI apps stay fully opaque for readability.
+      window-rules = [
+        {
+          geometry-corner-radius = {
+            top-left = 8.0;
+            top-right = 8.0;
+            bottom-right = 8.0;
+            bottom-left = 8.0;
+          };
+          clip-to-geometry = true;
+          opacity = 0.9;
+        }
+        {
+          matches = [
+            { app-id = "^org\\.chromium\\.Chromium$"; }
+            { app-id = "^chromium$"; }
+            { app-id = "^org\\.gimp\\.GIMP$"; }
+            { app-id = "^gimp$"; }
+            { app-id = "^libreoffice"; }
+            { app-id = "^soffice$"; }
+          ];
+          opacity = 1.0;
+        }
+      ];
+
       # All app launches prefixed with "uwsm app --" so they run as systemd units
       binds = {
         "Mod+Return".action.spawn = [ "uwsm" "app" "--" "ghostty" ];
