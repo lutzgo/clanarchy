@@ -1,5 +1,5 @@
 # Shared Home Manager module for any graphical user on miralda.
-{ pkgs, pkgs-unstable, inputs, ... }:
+{ pkgs, pkgs-unstable, inputs, wallpaperSwitchScript, ... }:
 {
   imports = [
     inputs.niri-flake.homeModules.config  # provides programs.niri.settings
@@ -131,11 +131,13 @@
         "Mod+Shift+R".action.spawn = [ "niri" "msg" "action" "load-config-file" ];
 
         # --- Workspaces 1-9 ---
-        "Mod+1".action.focus-workspace = 1;
-        "Mod+2".action.focus-workspace = 2;
-        "Mod+3".action.focus-workspace = 3;
-        "Mod+4".action.focus-workspace = 4;
-        "Mod+5".action.focus-workspace = 5;
+        # Workspaces 1-5: spawn switch script (focuses workspace + sets wallpaper via swww).
+        # Workspaces 6-9: focus only (no wallpaper override).
+        "Mod+1".action.spawn = [ "${wallpaperSwitchScript}" "1" ];
+        "Mod+2".action.spawn = [ "${wallpaperSwitchScript}" "2" ];
+        "Mod+3".action.spawn = [ "${wallpaperSwitchScript}" "3" ];
+        "Mod+4".action.spawn = [ "${wallpaperSwitchScript}" "4" ];
+        "Mod+5".action.spawn = [ "${wallpaperSwitchScript}" "5" ];
         "Mod+6".action.focus-workspace = 6;
         "Mod+7".action.focus-workspace = 7;
         "Mod+8".action.focus-workspace = 8;
@@ -309,6 +311,22 @@
       rust      = { format = "via [⚡ $version](bold orange) "; };
       nodejs    = { format = "via [⬢ $version](bold green) "; };
     };
+  };
+
+  # swww-daemon — wallpaper transition daemon started with the graphical session.
+  # The niri-wallpaper-switch script (wired into Mod+1..5 keybinds) calls
+  # "swww img" which requires this daemon to be running.
+  systemd.user.services.swww-daemon = {
+    Unit = {
+      Description       = "swww wallpaper daemon";
+      PartOf            = [ "graphical-session.target" ];
+      After             = [ "graphical-session.target" ];
+    };
+    Service = {
+      ExecStart = "${pkgs.swww}/bin/swww-daemon";
+      Restart   = "on-failure";
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
   };
 
   # Common graphical packages for all desktop users
