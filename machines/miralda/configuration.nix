@@ -29,6 +29,11 @@
   fileSystems."/persist".neededForBoot = true;
   fileSystems."/home".neededForBoot = true;
 
+  # HM backup extension: when nixos-rebuild finds a regular file where it wants to
+  # create a managed symlink (e.g. niri/config.kdl written by niri itself), back it
+  # up with this suffix rather than failing. Applies to all users.
+  home-manager.backupFileExtension = "bak";
+
   # Required
   system.stateVersion = "25.11";
 }

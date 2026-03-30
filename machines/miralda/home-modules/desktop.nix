@@ -64,6 +64,14 @@
   stylix.targets.noctalia-shell.enable = true;
   stylix.targets.kde.enable = false;
 
+  # force = true: noctalia replaces HM symlinks with regular files at runtime (saves
+  # settings). On next nixos-rebuild HM would fail with "would be clobbered". Force lets
+  # HM overwrite them back to managed symlinks. niri/config.kdl is handled by
+  # home-manager.backupFileExtension in configuration.nix (niri-flake uses a different
+  # internal home.file key, so adding force here would create a conflicting target).
+  xdg.configFile."noctalia/colors.json".force = true;
+  xdg.configFile."noctalia/settings.json".force = true;
+
   # Adopt gtk4 default — stateVersion < 26.05 otherwise inherits gtk3 theme; stylix handles gtk4 theming via css.
   gtk.gtk4.theme = null;
 
