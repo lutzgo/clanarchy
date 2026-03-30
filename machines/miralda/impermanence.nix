@@ -23,7 +23,6 @@
       "/var/lib/sops-nix"
       "/var/log"
       "/var/lib/systemd"
-      "/var/cache/tuigreet"  # remember-user-session: persists last session per user across reboots
     ];
 
     files = [
