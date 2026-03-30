@@ -17,7 +17,7 @@
     settings = {
       # Framework 13 AMD — 2256x1504 panel at 1.5 scale
       outputs."eDP-1" = {
-        scale = 1.5;
+        scale = 1.25;
       };
 
       prefer-no-csd = true;
