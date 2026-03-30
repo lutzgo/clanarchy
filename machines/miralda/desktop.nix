@@ -68,13 +68,20 @@
 
   # Fonts
   fonts.packages = with pkgs; [
-    nerd-fonts.jetbrains-mono
+    nerd-fonts.monaspace      # MonaspiceAr/Ne/Xe/Ra/Rn — terminal, UI, serif
     noto-fonts
     noto-fonts-color-emoji
+    inter                     # clean sans-serif for UI
   ];
-  fonts.fontconfig.defaultFonts = {
-    monospace = [ "JetBrainsMono Nerd Font" ];
-    sansSerif = [ "Noto Sans" ];
+  fonts.fontconfig = {
+    defaultFonts = {
+      monospace = [ "MonaspiceAr Nerd Font Mono" "Noto Sans Mono" ];
+      sansSerif = [ "Inter"                       "Noto Sans"      ];
+      serif     = [ "MonaspiceXe Nerd Font Propo" "Noto Serif"     ];
+      emoji     = [ "Noto Color Emoji" ];
+    };
+    hinting  = { enable = true; style = "slight"; };
+    subpixel = { rgba = "rgb"; lcdfilter = "default"; };
   };
 
   # Shared HM desktop module for all graphical users on this machine

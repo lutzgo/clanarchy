@@ -66,12 +66,17 @@ in
     # Declarative wallpaper generation (built by Nix, colored by the selected scheme)
     image = nixWallpaper;
 
-    # HiDPI-appropriate font sizes for Framework 13 at 1.5x scale
-    fonts.sizes = {
-      applications = 11;
-      terminal = 13;
-      desktop = 11;
-      popups = 11;
+    fonts = {
+      serif     = { package = pkgs.nerd-fonts.monaspace; name = "MonaspiceXe Nerd Font Propo"; };
+      sansSerif = { package = pkgs.nerd-fonts.monaspace; name = "MonaspiceNe Nerd Font Propo"; };
+      monospace = { package = pkgs.nerd-fonts.monaspace; name = "MonaspiceAr Nerd Font Mono";  };
+      emoji     = { package = pkgs.noto-fonts-color-emoji; name = "Noto Color Emoji"; };
+      sizes = {
+        applications = 11;
+        terminal     = 13;
+        desktop      = 11;
+        popups       = 11;
+      };
     };
 
     # Adwaita cursor — matches XCURSOR_THEME env var set in desktop.nix

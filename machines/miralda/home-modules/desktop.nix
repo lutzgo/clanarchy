@@ -59,7 +59,7 @@
 
       # All app launches prefixed with "uwsm app --" so they run as systemd units
       binds = {
-        "Mod+Return".action.spawn = [ "uwsm" "app" "--" "ghostty" ];
+        "Mod+Return".action.spawn = [ "uwsm" "app" "--" "foot" ];
         "Mod+Q".action.close-window = {};
         "Mod+Space".action.spawn = [ "uwsm" "app" "--" "fuzzel" ];
         "Mod+Shift+E".action.quit = {};
@@ -102,9 +102,126 @@
   # Adopt gtk4 default — stateVersion < 26.05 otherwise inherits gtk3 theme; stylix handles gtk4 theming via css.
   gtk.gtk4.theme = null;
 
+  # Foot terminal — Stylix manages colors and font (MonaspiceAr via stylix.fonts.monospace).
+  # dpi-aware=no: Niri handles HiDPI scaling at the compositor level; foot must not double-scale.
+  # csd=none: Niri provides server-side decorations (prefer-no-csd=true in niri settings).
+  programs.foot = {
+    enable = true;
+    settings = {
+      main = {
+        term              = "xterm-256color";
+        pad               = "8x8";
+        resize-delay-ms   = 100;
+        dpi-aware         = "no";
+        csd               = "none";
+      };
+      bell       = { urgent = false; notify = false; visual = false; };
+      scrollback = { lines = 10000; multiplier = 3.0; };
+      url = {
+        launch        = "xdg-open \${url}";
+        label-letters = "sadfjklewcmpgh";
+        osc8-underline = "url-mode";
+      };
+      cursor = { style = "block"; blink = false; };
+      mouse  = { hide-when-typing = true; alternate-scroll-mode = "yes"; };
+      key-bindings = {
+        clipboard-copy       = "Control+Shift+c XF86Copy";
+        clipboard-paste      = "Control+Shift+v XF86Paste";
+        font-increase        = "Control+plus Control+equal Control+KP_Add";
+        font-decrease        = "Control+minus Control+KP_Subtract";
+        font-reset           = "Control+0 Control+KP_0";
+        scrollback-up-page   = "Shift+Page_Up";
+        scrollback-down-page = "Shift+Page_Down";
+        search-start         = "Control+Shift+r";
+        show-urls-launch     = "Control+Shift+u";
+      };
+    };
+  };
+
+  # Starship prompt — ZSH integration auto-added when programs.zsh.enable = true.
+  programs.starship = {
+    enable = true;
+    enableBashIntegration = true;
+    enableZshIntegration  = true;
+    settings = {
+      format = "$username$hostname $cmd_duration \u{f09e5} $directory $git_branch$git_status\n$character";
+      add_newline = false;
+
+      character = {
+        success_symbol = "[\u{e795}  ](bold blue)";
+        error_symbol   = "[\u{e795}  ](bold red)";
+      };
+
+      cmd_duration = {
+        min_time = 0;
+        format   = "[\u{e0b6}](bold fg:yellow)[\u{f09aa} $duration](bold bg:yellow fg:black)[\u{e0b4}](bold fg:yellow)";
+      };
+
+      directory = {
+        truncation_length = 6;
+        truncation_symbol = "\u{2022}\u{2022}/";
+        home_symbol       = "\u{f015}  ";
+        read_only         = " \u{f033e}";
+        style             = "fg:black bg:green";
+        format            = "[\u{e0b6}](bold fg:green)[\u{f0256} $path]($style)[\u{e0b4}](bold fg:green)";
+      };
+
+      git_branch = {
+        symbol            = "\u{f06a2}";
+        format            = "\u{f09e5} [\u{e0b6}](bold fg:cyan)[$symbol $branch(:$remote_branch)](fg:black bg:cyan)[\u{e0b4} ](bold fg:cyan)";
+        truncation_length = 12;
+        truncation_symbol = "";
+        style             = "bg:cyan";
+      };
+
+      git_status = {
+        conflicted = " \U0001f3f3 ";
+        ahead      = " \U0001f3ce\U0001f4a8 ";
+        behind     = " \U0001f630 ";
+        diverged   = " \U0001f635 ";
+        untracked  = " \U0001f937 ";
+        stashed    = " \U0001f4e6 ";
+        modified   = " \U0001f4dd ";
+        staged     = "[++($count)](green)";
+        renamed    = " \u{270d}\u{fe0f} ";
+        deleted    = " \U0001f5d1 ";
+      };
+
+      git_state = {
+        format      = "[(\\($state( $progress_current of $progress_total)\\))]($style) ";
+        cherry_pick = "[\U0001f352 PICKING](bold red)";
+      };
+
+      hostname = {
+        ssh_only = true;
+        format   = "[\u{2022}$hostname](bg:cyan bold fg:black)[\u{e0b4}](bold fg:cyan)";
+        trim_at  = ".local";
+        disabled = false;
+      };
+
+      username = {
+        style_user  = "bold bg:cyan fg:black";
+        style_root  = "red bold";
+        format      = "[\u{e0b6}](bold fg:cyan)[$user]($style)";
+        disabled    = false;
+        show_always = false;
+      };
+
+      package.disabled       = true;
+      memory_usage.disabled  = true;
+      time.disabled          = true;
+      line_break.disabled    = false;
+
+      nix_shell = { format = "via [\u{2744}\u{fe0f} $state( \\($name\\))](bold blue) "; };
+      python    = { format = "via [\U0001f40d $version](bold green) "; };
+      rust      = { format = "via [\u{26a1} $version](bold orange) "; };
+      nodejs    = { format = "via [\u{2b22} $version](bold green) "; };
+    };
+  };
+
   # Common graphical packages for all desktop users
   home.packages = with pkgs; [
-    ghostty
+    ghostty   # secondary terminal (foot is default via Mod+Return)
     fuzzel
     grim
     slurp
