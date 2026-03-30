@@ -140,82 +140,90 @@
     };
   };
 
-  # Starship prompt — ZSH integration auto-added when programs.zsh.enable = true.
-  # Note: Nix strings have no \u escape syntax; all Nerd Font/emoji chars are embedded directly.
+  # Starship prompt — copied verbatim from ~/nixconfig/home-modules/shell/starship.nix.
+  # Uses '' strings to preserve embedded Nerd Font codepoints literally (Nix has no \u escapes).
   programs.starship = {
     enable = true;
     enableBashIntegration = true;
     enableZshIntegration  = true;
     settings = {
-      format = "$username$hostname $cmd_duration 󰧥 $directory $git_branch$git_status\n$character";
+      format = ''
+        $cmd_duration 󰜥 $directory $git_branch
+        $character'';
+
       add_newline = false;
 
       character = {
-        success_symbol = "[  ](bold blue)";
-        error_symbol   = "[  ](bold red)";
+        success_symbol = "[   ](bold blue)";
+        error_symbol = "[   ](bold red)";
       };
 
       cmd_duration = {
         min_time = 0;
-        format   = "[](bold fg:yellow)[󰦪 $duration](bold bg:yellow fg:black)[](bold fg:yellow)";
+        format = "[](bold fg:yellow)[󰪢 $duration](bold bg:yellow fg:black)[](bold fg:yellow)";
       };
 
       directory = {
         truncation_length = 6;
         truncation_symbol = "••/";
-        home_symbol       = "  ";
-        read_only         = " 󰌾";
-        style             = "fg:black bg:green";
-        format            = "[](bold fg:green)[󰉖 $path]($style)[](bold fg:green)";
+        home_symbol = "  ";
+        read_only = " 󰌾";
+        style = "fg:black bg:green";
+        format = "[](bold fg:green)[󰉋 $path]($style)[](bold fg:green)";
       };
 
       git_branch = {
-        symbol            = "󰚢";
-        format            = "󰧥 [](bold fg:cyan)[$symbol $branch(:$remote_branch)](fg:black bg:cyan)[ ](bold fg:cyan)";
+        symbol = "󰘬";
+        format = "󰜥 [](bold fg:cyan)[$symbol $branch(:$remote_branch)](fg:black bg:cyan)[ ](bold fg:cyan)";
         truncation_length = 12;
         truncation_symbol = "";
-        style             = "bg:cyan";
+        style = "bg:cyan";
+      };
+
+      git_commit = {
+        commit_hash_length = 4;
+        tag_symbol = " ";
       };
 
       git_status = {
         conflicted = " 🏳 ";
-        ahead      = " 🏎💨 ";
-        behind     = " 😰 ";
-        diverged   = " 😵 ";
-        untracked  = " 🤷 ";
-        stashed    = " 📦 ";
-        modified   = " 📝 ";
-        staged     = "[++($count)](green)";
-        renamed    = " ✍️ ";
-        deleted    = " 🗑 ";
+        ahead = " 🏎💨 ";
+        behind = " 😰 ";
+        diverged = " 😵 ";
+        untracked = " 🤷‍ ";
+        stashed = " 📦 ";
+        modified = " 📝 ";
+        staged = "[++($count)](green)";
+        renamed = " ✍️ ";
+        deleted = " 🗑 ";
       };
 
       git_state = {
-        format      = "[(\\($state( $progress_current of $progress_total)\\))]($style) ";
+        format = "[\($state( $progress_current of $progress_total)\)]($style) ";
         cherry_pick = "[🍒 PICKING](bold red)";
       };
 
       hostname = {
-        ssh_only = true;
-        format   = "[•$hostname](bg:cyan bold fg:black)[](bold fg:cyan)";
-        trim_at  = ".local";
+        ssh_only = false;
+        format = "[•$hostname](bg:cyan bold fg:black)[](bold fg:cyan)";
+        trim_at = ".local";
         disabled = false;
       };
 
       username = {
-        style_user  = "bold bg:cyan fg:black";
-        style_root  = "red bold";
-        format      = "[](bold fg:cyan)[$user]($style)";
-        disabled    = false;
-        show_always = false;
+        style_user = "bold bg:cyan fg:black";
+        style_root = "red bold";
+        format = "[](bold fg:cyan)[$user]($style)";
+        disabled = false;
+        show_always = true;
       };
 
-      package.disabled       = true;
-      memory_usage.disabled  = true;
-      time.disabled          = true;
-      line_break.disabled    = false;
+      package.disabled = true;
+      memory_usage = { disabled = true; threshold = -1; };
+      time.disabled = true;
+      line_break.disabled = false;
 
-      nix_shell = { format = "via [❄ $state( \\($name\\))](bold blue) "; };
+      nix_shell = { format = "via [❄️ $state( \\($name\\))](bold blue) "; };
       python    = { format = "via [🐍 $version](bold green) "; };
       rust      = { format = "via [⚡ $version](bold orange) "; };
       nodejs    = { format = "via [⬢ $version](bold green) "; };
