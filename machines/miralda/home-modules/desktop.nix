@@ -22,6 +22,8 @@
 
       prefer-no-csd = true;
 
+      layout.border.width = 1;
+
       input = {
         touchpad = {
           tap = true;
@@ -139,62 +141,63 @@
   };
 
   # Starship prompt — ZSH integration auto-added when programs.zsh.enable = true.
+  # Note: Nix strings have no \u escape syntax; all Nerd Font/emoji chars are embedded directly.
   programs.starship = {
     enable = true;
     enableBashIntegration = true;
     enableZshIntegration  = true;
     settings = {
-      format = "$username$hostname $cmd_duration \u{f09e5} $directory $git_branch$git_status\n$character";
+      format = "$username$hostname $cmd_duration 󰧥 $directory $git_branch$git_status\n$character";
       add_newline = false;
 
       character = {
-        success_symbol = "[\u{e795}  ](bold blue)";
-        error_symbol   = "[\u{e795}  ](bold red)";
+        success_symbol = "[  ](bold blue)";
+        error_symbol   = "[  ](bold red)";
       };
 
       cmd_duration = {
         min_time = 0;
-        format   = "[\u{e0b6}](bold fg:yellow)[\u{f09aa} $duration](bold bg:yellow fg:black)[\u{e0b4}](bold fg:yellow)";
+        format   = "[](bold fg:yellow)[󰦪 $duration](bold bg:yellow fg:black)[](bold fg:yellow)";
       };
 
       directory = {
         truncation_length = 6;
-        truncation_symbol = "\u{2022}\u{2022}/";
-        home_symbol       = "\u{f015}  ";
-        read_only         = " \u{f033e}";
+        truncation_symbol = "••/";
+        home_symbol       = "  ";
+        read_only         = " 󰌾";
         style             = "fg:black bg:green";
-        format            = "[\u{e0b6}](bold fg:green)[\u{f0256} $path]($style)[\u{e0b4}](bold fg:green)";
+        format            = "[](bold fg:green)[󰉖 $path]($style)[](bold fg:green)";
       };
 
       git_branch = {
-        symbol            = "\u{f06a2}";
-        format            = "\u{f09e5} [\u{e0b6}](bold fg:cyan)[$symbol $branch(:$remote_branch)](fg:black bg:cyan)[\u{e0b4} ](bold fg:cyan)";
+        symbol            = "󰚢";
+        format            = "󰧥 [](bold fg:cyan)[$symbol $branch(:$remote_branch)](fg:black bg:cyan)[ ](bold fg:cyan)";
         truncation_length = 12;
         truncation_symbol = "";
         style             = "bg:cyan";
       };
 
       git_status = {
-        conflicted = " \U0001f3f3 ";
-        ahead      = " \U0001f3ce\U0001f4a8 ";
-        behind     = " \U0001f630 ";
-        diverged   = " \U0001f635 ";
-        untracked  = " \U0001f937 ";
-        stashed    = " \U0001f4e6 ";
-        modified   = " \U0001f4dd ";
+        conflicted = " 🏳 ";
+        ahead      = " 🏎💨 ";
+        behind     = " 😰 ";
+        diverged   = " 😵 ";
+        untracked  = " 🤷 ";
+        stashed    = " 📦 ";
+        modified   = " 📝 ";
         staged     = "[++($count)](green)";
-        renamed    = " \u{270d}\u{fe0f} ";
-        deleted    = " \U0001f5d1 ";
+        renamed    = " ✍️ ";
+        deleted    = " 🗑 ";
       };
 
       git_state = {
         format      = "[(\\($state( $progress_current of $progress_total)\\))]($style) ";
-        cherry_pick = "[\U0001f352 PICKING](bold red)";
+        cherry_pick = "[🍒 PICKING](bold red)";
       };
 
       hostname = {
         ssh_only = true;
-        format   = "[\u{2022}$hostname](bg:cyan bold fg:black)[\u{e0b4}](bold fg:cyan)";
+        format   = "[•$hostname](bg:cyan bold fg:black)[](bold fg:cyan)";
         trim_at  = ".local";
         disabled = false;
       };
@@ -202,7 +205,7 @@
       username = {
         style_user  = "bold bg:cyan fg:black";
         style_root  = "red bold";
-        format      = "[\u{e0b6}](bold fg:cyan)[$user]($style)";
+        format      = "[](bold fg:cyan)[$user]($style)";
         disabled    = false;
         show_always = false;
       };
@@ -212,10 +215,10 @@
       time.disabled          = true;
       line_break.disabled    = false;
 
-      nix_shell = { format = "via [\u{2744}\u{fe0f} $state( \\($name\\))](bold blue) "; };
-      python    = { format = "via [\U0001f40d $version](bold green) "; };
-      rust      = { format = "via [\u{26a1} $version](bold orange) "; };
-      nodejs    = { format = "via [\u{2b22} $version](bold green) "; };
+      nix_shell = { format = "via [❄ $state( \\($name\\))](bold blue) "; };
+      python    = { format = "via [🐍 $version](bold green) "; };
+      rust      = { format = "via [⚡ $version](bold orange) "; };
+      nodejs    = { format = "via [⬢ $version](bold green) "; };
     };
   };
 
