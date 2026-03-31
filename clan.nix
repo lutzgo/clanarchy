@@ -40,6 +40,21 @@
         roles.controller.machines."miralda" = { };
         roles.peer.tags.all = { };
       };
+
+      # Syncthing — keeps ~/Public in sync across all clan machines.
+      # openDefaultPorts restricts firewall to zt+ (zerotier) interfaces only.
+      # Run `clan vars generate miralda` once to generate the syncthing key/cert/ID.
+      syncthing = {
+        module = { name = "syncthing"; input = "clan-core"; };
+        roles.peer.machines.miralda = {
+          settings = {
+            openDefaultPorts = true;
+            folders.public = {
+              path = "/home/lgo/Public";
+            };
+          };
+        };
+      };
     };
 
     machines = { };

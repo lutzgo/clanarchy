@@ -23,6 +23,7 @@
       "/var/lib/sops-nix"
       "/var/log"
       "/var/lib/systemd"
+      "/var/lib/syncthing"  # syncthing device DB, peer state, and runtime config
     ];
 
     files = [

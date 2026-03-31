@@ -130,6 +130,7 @@
           ./machines/miralda/secrets/wifi.nix
           ./machines/miralda/wifi.nix
           ./machines/miralda/apps.nix
+          ./machines/miralda/syncthing.nix
           ./machines/miralda/wallpapers.nix
         ];
       };
