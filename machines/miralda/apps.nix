@@ -6,7 +6,7 @@
   environment.systemPackages = with pkgs; [
     chromium
     keepassxc
-    kdePackages.kdeconnect-kde
+    valent          # KDE Connect protocol — replaces kdePackages.kdeconnect-kde (lighter deps)
     helix
     fzf
     zellij
@@ -18,10 +18,11 @@
     ripgrep
     fd
     xdg-utils
+    wtype           # Wayland keyboard input injection (xdotool equivalent)
     claude-code
   ];
 
-  # KDE Connect — open required firewall ports
+  # Valent / KDE Connect protocol — ports 1714-1764 TCP+UDP
   networking.firewall = {
     allowedTCPPortRanges = [{ from = 1714; to = 1764; }];
     allowedUDPPortRanges = [{ from = 1714; to = 1764; }];

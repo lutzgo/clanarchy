@@ -33,11 +33,13 @@
         };
       };
 
-      # Global: rounded corners + 90% opacity.
-      # clip-to-geometry clips the window surface itself (not just decorations) to the radius.
-      # Heavy GUI apps stay fully opaque for readability.
+      # Window rules: rounded corners, focus-aware opacity.
+      # Rules are evaluated in order; the last matching rule for each property wins.
+      # Baseline:  focused = 0.90, unfocused = 0.75
+      # Exception: heavy GUI apps (Chromium, GIMP, LibreOffice) stay fully opaque.
       window-rules = [
         {
+          # Global baseline: 8px rounded corners + 90% opacity
           geometry-corner-radius = {
             top-left = 8.0;
             top-right = 8.0;
@@ -48,6 +50,12 @@
           opacity = 0.9;
         }
         {
+          # Unfocused windows dim to 75%
+          matches = [{ is-focused = false; }];
+          opacity = 0.75;
+        }
+        {
+          # Heavy GUI apps: always fully opaque regardless of focus
           matches = [
             { app-id = "^org\\.chromium\\.Chromium$"; }
             { app-id = "^chromium$"; }
@@ -170,6 +178,16 @@
     # changelog here prevents it even on a fresh cache. The setup wizard is
     # suppressed by persisting ~/.cache/noctalia/ in impermanence.nix.
     settings.general.showChangelogOnStartup = false;
+    # Bar: floating style at the top of the screen
+    settings.bar.position = "top";
+    settings.bar.barType  = "floating";
+    # Dock: auto-hides at the top edge of the screen
+    settings.dock.position    = "top";
+    settings.dock.displayMode = "auto_hide";
+    # Wallpaper directory — matches where wallpapers.nix installs our PNGs.
+    # Noctalia scans this directory for its picker; explicit so it survives
+    # any future XDG_PICTURES_DIR changes.
+    settings.wallpaper.directory = "/home/lgo/Pictures/Wallpapers";
   };
 
   # Stylix targets — noctalia needs explicit opt-in; KDE has a shellcheck bug so disable it.
@@ -250,8 +268,9 @@
   # Uses '' strings to preserve embedded Nerd Font codepoints literally (Nix has no \u escapes).
   programs.starship = {
     enable = true;
-    enableBashIntegration = true;
-    enableZshIntegration  = true;
+    enableBashIntegration    = true;
+    enableZshIntegration     = true;
+    enableNushellIntegration = true;
     settings = {
       format = ''
         $cmd_duration 󰜥 $directory $git_branch

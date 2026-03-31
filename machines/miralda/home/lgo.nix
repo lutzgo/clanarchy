@@ -10,7 +10,7 @@
     signing.signByDefault = true;
     settings = {
       user.name  = "Lutz Go";
-      user.email = "lutz@example.com";
+      user.email = "lutz0go@gmail.com";
       gpg.program = "gpg2";
     };
   };
@@ -35,6 +35,16 @@
     setSessionVariables   = true;
   };
 
+  # Nushell — primary login shell.  Zsh stays available for compatibility
+  # (helix :sh, scripts, fallback logins).
+  programs.nushell = {
+    enable = true;
+    # Suppress the startup banner (equivalent to zsh's no MOTD).
+    extraConfig = ''
+      $env.config.show_banner = false
+    '';
+  };
+
   programs.zsh = {
     enable = true;
     # Vi mode — insert mode with Ctrl+e as ergonomic escape
@@ -48,7 +58,8 @@
   # fzf — history search (Ctrl+r), file search (Ctrl+t), cd (Alt+c)
   programs.fzf = {
     enable = true;
-    enableZshIntegration = true;
+    enableZshIntegration    = true;
+    enableNushellIntegration = true;
   };
 
   programs.helix = {
@@ -79,7 +90,7 @@
   # through to the terminal by default; Alt+g unlocks to normal mode.
   xdg.configFile."zellij/config.kdl".text = ''
     default_mode "locked"
-    default_shell "zsh"
+    default_shell "nu"
     pane_frames false
     simplified_ui false
     session_serialization false
