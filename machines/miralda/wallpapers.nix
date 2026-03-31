@@ -6,16 +6,17 @@
 #
 # Each workspace gets a distinct accent color from the Gruvbox palette so workspaces
 # are visually distinct at a glance:
-#   ws1 logo.svg          → base08 red
-#   ws2 logo-blue.svg     → base0D blue/teal
-#   ws3 logo-smash.svg    → base0B green
+#   ws1 logo.svg           → base08 red
+#   ws2 logo-blue.svg      → base0D blue/teal
+#   ws3 logo-smash.svg     → base0B green
 #   ws4 logo-smash-alt.svg → base0E purple
-#   ws5 logo-shirt-v1.svg → base09 orange
+#   ws5 logo-shirt-v1.svg  → base09 orange
 #
-# The wallpaperSwitchScript is passed to Home Manager via extraSpecialArgs so
-# home-modules/desktop.nix can wire it into Niri workspace keybinds.
+# PNGs are symlinked into ~/Pictures/Wallpapers/ so the Noctalia picker finds them.
+# wallpapers.json is overridden (lib.mkForce + force=true) to pin ws1 as the
+# default, superseding the Stylix noctalia target's static image.
 
-{ pkgs, config, ... }:
+{ pkgs, config, lib, ... }:
 
 let
   c = config.lib.stylix.colors;
@@ -88,21 +89,21 @@ let
   wallpapers = {
     ws1 = mkWallpaper {
       name        = "ws1";
-      src         = fetchSvg "logo"          "09q7pgj6bnk5q4pzfd9fbf2l27q2zlknw3h1abqb7yqaabn3yc00";
+      src         = fetchSvg "logo"           "09q7pgj6bnk5q4pzfd9fbf2l27q2zlknw3h1abqb7yqaabn3yc00";
       accent      = c.base08;   # red
       accentShade = c.base01;
       blue        = c.base0D;
     };
     ws2 = mkWallpaper {
       name        = "ws2";
-      src         = fetchSvg "logo-blue"     "18l5ha4xi2mb21vgm7byf8lw3m9xfvdm5rg1ym01vxpb13pfzjc1";
+      src         = fetchSvg "logo-blue"      "18l5ha4xi2mb21vgm7byf8lw3m9xfvdm5rg1ym01vxpb13pfzjc1";
       accent      = c.base0D;   # blue/teal
       accentShade = c.base01;
       blue        = c.base0C;
     };
     ws3 = mkWallpaper {
       name        = "ws3";
-      src         = fetchSvg "logo-smash"    "01wn76hnjr7jga23nm6knkdrq3dqrawn9km24zqvh5jn4yff6m7g";
+      src         = fetchSvg "logo-smash"     "01wn76hnjr7jga23nm6knkdrq3dqrawn9km24zqvh5jn4yff6m7g";
       accent      = c.base0B;   # green
       accentShade = c.base01;
       blue        = c.base0C;
@@ -123,42 +124,31 @@ let
     };
   };
 
-  # ---------------------------------------------------------------------------
-  # Workspace-switch script
-  # Focuses the requested workspace in Niri and transitions swww to the matching
-  # wallpaper.  Workspaces 6-9 switch only (no wallpaper override).
-  # swww-daemon is started by the systemd user service in home-modules/desktop.nix.
-  # ---------------------------------------------------------------------------
-  wallpaperSwitchScript = pkgs.writeShellScript "niri-wallpaper-switch" ''
-    ws=$1
-    case $ws in
-      1) niri msg action focus-workspace 1
-         ${pkgs.swww}/bin/swww img --transition-type fade --transition-duration 0.5 \
-           "${wallpapers.ws1}" 2>/dev/null || true ;;
-      2) niri msg action focus-workspace 2
-         ${pkgs.swww}/bin/swww img --transition-type fade --transition-duration 0.5 \
-           "${wallpapers.ws2}" 2>/dev/null || true ;;
-      3) niri msg action focus-workspace 3
-         ${pkgs.swww}/bin/swww img --transition-type fade --transition-duration 0.5 \
-           "${wallpapers.ws3}" 2>/dev/null || true ;;
-      4) niri msg action focus-workspace 4
-         ${pkgs.swww}/bin/swww img --transition-type fade --transition-duration 0.5 \
-           "${wallpapers.ws4}" 2>/dev/null || true ;;
-      5) niri msg action focus-workspace 5
-         ${pkgs.swww}/bin/swww img --transition-type fade --transition-duration 0.5 \
-           "${wallpapers.ws5}" 2>/dev/null || true ;;
-      *) niri msg action focus-workspace "$ws" ;;
-    esac
-  '';
-
 in {
-  # swww binary available system-wide (daemon runs as user service)
-  environment.systemPackages = [ pkgs.swww ];
+  # ---------------------------------------------------------------------------
+  # Install wallpapers into ~/Pictures/Wallpapers/ for both desktop users.
+  # Noctalia's picker scans that directory.
+  # wallpapers.json is overridden with lib.mkForce to supersede the Stylix
+  # noctalia target, which writes a plain { defaultWallpaper: <stylix-image> }.
+  # force=true lets HM overwrite the file even if Noctalia replaced the symlink
+  # at runtime.
+  # ---------------------------------------------------------------------------
+  home-manager.users.lgo = { lib, ... }: {
+    home.file = {
+      "Pictures/Wallpapers/ws1.png".source = wallpapers.ws1;
+      "Pictures/Wallpapers/ws2.png".source = wallpapers.ws2;
+      "Pictures/Wallpapers/ws3.png".source = wallpapers.ws3;
+      "Pictures/Wallpapers/ws4.png".source = wallpapers.ws4;
+      "Pictures/Wallpapers/ws5.png".source = wallpapers.ws5;
 
-  # Expose to Home Manager: switch script (for Niri keybinds) and initial
-  # wallpaper path (for swww-daemon ExecStartPost).
-  home-manager.extraSpecialArgs = {
-    inherit wallpaperSwitchScript;
-    swwwInitWallpaper = wallpapers.ws1;
+      ".cache/noctalia/wallpapers.json" = lib.mkForce {
+        force = true;
+        text = builtins.toJSON {
+          wallpapers          = { "eDP-1" = "/home/lgo/Pictures/Wallpapers/ws1.png"; };
+          defaultWallpaper    = "/home/lgo/Pictures/Wallpapers/ws1.png";
+          usedRandomWallpapers = {};
+        };
+      };
+    };
   };
 }

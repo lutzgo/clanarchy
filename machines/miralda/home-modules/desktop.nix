@@ -1,5 +1,5 @@
 # Shared Home Manager module for any graphical user on miralda.
-{ pkgs, pkgs-unstable, inputs, wallpaperSwitchScript, swwwInitWallpaper, config, lib, ... }:
+{ pkgs, pkgs-unstable, inputs, config, lib, ... }:
 {
   imports = [
     inputs.niri-flake.homeModules.config  # provides programs.niri.settings
@@ -131,13 +131,11 @@
         "Mod+Shift+R".action.spawn = [ "niri" "msg" "action" "load-config-file" ];
 
         # --- Workspaces 1-9 ---
-        # Workspaces 1-5: spawn switch script (focuses workspace + sets wallpaper via swww).
-        # Workspaces 6-9: focus only (no wallpaper override).
-        "Mod+1".action.spawn = [ "${wallpaperSwitchScript}" "1" ];
-        "Mod+2".action.spawn = [ "${wallpaperSwitchScript}" "2" ];
-        "Mod+3".action.spawn = [ "${wallpaperSwitchScript}" "3" ];
-        "Mod+4".action.spawn = [ "${wallpaperSwitchScript}" "4" ];
-        "Mod+5".action.spawn = [ "${wallpaperSwitchScript}" "5" ];
+        "Mod+1".action.focus-workspace = 1;
+        "Mod+2".action.focus-workspace = 2;
+        "Mod+3".action.focus-workspace = 3;
+        "Mod+4".action.focus-workspace = 4;
+        "Mod+5".action.focus-workspace = 5;
         "Mod+6".action.focus-workspace = 6;
         "Mod+7".action.focus-workspace = 7;
         "Mod+8".action.focus-workspace = 8;
@@ -180,13 +178,13 @@
 
   # Override Noctalia accent colors for a distinctly Gruvbox look.
   # The Stylix target defaults mPrimary=base0D (muted teal) which doesn't read as Gruvbox.
-  # Yellow (base0A) is the iconic Gruvbox highlight; red (base08) as secondary.
+  # Orange (base09) as primary, teal/aqua (base0C) as secondary — both iconic Gruvbox accents.
   # lib.mkForce overrides the Stylix target's default assignments.
   programs.noctalia-shell.colors = lib.mkForce (
     let c = config.lib.stylix.colors; in {
-      mPrimary          = "#${c.base0A}";  # Gruvbox yellow
+      mPrimary          = "#${c.base09}";  # Gruvbox orange
       mOnPrimary        = "#${c.base00}";
-      mSecondary        = "#${c.base08}";  # Gruvbox red
+      mSecondary        = "#${c.base0C}";  # Gruvbox teal/aqua
       mOnSecondary      = "#${c.base00}";
       mTertiary         = "#${c.base0B}";  # Gruvbox green
       mOnTertiary       = "#${c.base00}";
@@ -194,7 +192,7 @@
       mOnError          = "#${c.base00}";
       mSurface          = "#${c.base00}";
       mOnSurface        = "#${c.base05}";
-      mHover            = "#${c.base0A}";
+      mHover            = "#${c.base09}";
       mOnHover          = "#${c.base00}";
       mSurfaceVariant   = "#${c.base01}";
       mOnSurfaceVariant = "#${c.base04}";
@@ -336,23 +334,6 @@
       rust      = { format = "via [⚡ $version](bold orange) "; };
       nodejs    = { format = "via [⬢ $version](bold green) "; };
     };
-  };
-
-  # swww-daemon — wallpaper transition daemon started with the graphical session.
-  # ExecStartPost sets workspace-1 as the initial wallpaper.  The sleep gives
-  # swww-daemon time to create its socket before the first "swww img" call.
-  systemd.user.services.swww-daemon = {
-    Unit = {
-      Description       = "swww wallpaper daemon";
-      PartOf            = [ "graphical-session.target" ];
-      After             = [ "graphical-session.target" ];
-    };
-    Service = {
-      ExecStart     = "${pkgs.swww}/bin/swww-daemon";
-      ExecStartPost = "${pkgs.bash}/bin/bash -c 'sleep 1 && ${pkgs.swww}/bin/swww img \"${swwwInitWallpaper}\"'";
-      Restart       = "on-failure";
-    };
-    Install.WantedBy = [ "graphical-session.target" ];
   };
 
   # Common graphical packages for all desktop users
