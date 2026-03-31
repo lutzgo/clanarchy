@@ -58,8 +58,9 @@
   # fzf — history search (Ctrl+r), file search (Ctrl+t), cd (Alt+c)
   programs.fzf = {
     enable = true;
-    enableZshIntegration    = true;
-    enableNushellIntegration = true;
+    enableZshIntegration = true;
+    # No enableNushellIntegration in this HM version; fzf keybindings are
+    # zsh/bash-specific anyway (Ctrl+r in nushell uses built-in history).
   };
 
   programs.helix = {

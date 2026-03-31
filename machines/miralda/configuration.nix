@@ -38,6 +38,11 @@
   # up with this suffix rather than failing. Applies to all users.
   home-manager.backupFileExtension = "bak";
 
+  # Make zsh available as a valid login shell (/etc/shells) for use as fallback.
+  # nushell is set as lgo's login shell; this lets `chsh -s zsh` work and
+  # keeps existing SSH sessions that start zsh functional.
+  programs.zsh.enable = true;
+
   # Required
   system.stateVersion = "25.11";
 }
