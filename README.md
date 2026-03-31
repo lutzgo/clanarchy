@@ -112,6 +112,27 @@ sops/                      — sops age keys
 
 ---
 
+## Adding a machine to syncthing
+
+Syncthing keeps `~/Public` in sync across all clan machines. When a new machine joins, add it as a peer in `clan.nix`:
+
+```nix
+inventory.instances.syncthing.roles.peer.machines.new-machine = {
+  settings.folders.public.path = "/home/lgo/Public";
+};
+```
+
+Then generate its syncthing vars and redeploy both machines:
+
+```bash
+clan vars generate new-machine
+deploy switch   # on each machine
+```
+
+Machines discover each other automatically via their zerotier IPs stored in clan vars — no manual device ID exchange needed.
+
+---
+
 ## License
 
 GNU General Public License v3.0 — see [LICENSE](LICENSE).
