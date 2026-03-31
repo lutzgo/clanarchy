@@ -122,7 +122,7 @@
         "Mod+Return".action.spawn = [ "uwsm" "app" "--" "foot" ];
         # foot -T scratch → matched by window rule → opens floating
         "Mod+Shift+Return".action.spawn = [ "uwsm" "app" "--" "foot" "-T" "scratch" ];
-        "Mod+Space".action.spawn        = [ "uwsm" "app" "--" "fuzzel" ];
+        "Mod+Space".action.spawn        = [ "qs" "-c" "ipc" "call" "launcher" "toggle" ];
         "Mod+E".action.spawn = [ "uwsm" "app" "--" "foot" "-e" "hx" "." ];
         "Mod+F".action.spawn = [ "uwsm" "app" "--" "foot" "-e" "yazi" ];
 
@@ -358,7 +358,6 @@
   # Common graphical packages for all desktop users
   home.packages = with pkgs; [
     ghostty   # secondary terminal (foot is default via Mod+Return)
-    fuzzel
     grim
     slurp
     wl-clipboard
