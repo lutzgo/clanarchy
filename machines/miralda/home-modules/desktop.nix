@@ -1,5 +1,5 @@
 # Shared Home Manager module for any graphical user on miralda.
-{ pkgs, pkgs-unstable, inputs, wallpaperSwitchScript, ... }:
+{ pkgs, pkgs-unstable, inputs, wallpaperSwitchScript, swwwInitWallpaper, config, lib, ... }:
 {
   imports = [
     inputs.niri-flake.homeModules.config  # provides programs.niri.settings
@@ -178,6 +178,31 @@
   stylix.targets.noctalia-shell.enable = true;
   stylix.targets.kde.enable = false;
 
+  # Override Noctalia accent colors for a distinctly Gruvbox look.
+  # The Stylix target defaults mPrimary=base0D (muted teal) which doesn't read as Gruvbox.
+  # Yellow (base0A) is the iconic Gruvbox highlight; red (base08) as secondary.
+  # lib.mkForce overrides the Stylix target's default assignments.
+  programs.noctalia-shell.colors = lib.mkForce (
+    let c = config.lib.stylix.colors; in {
+      mPrimary          = "#${c.base0A}";  # Gruvbox yellow
+      mOnPrimary        = "#${c.base00}";
+      mSecondary        = "#${c.base08}";  # Gruvbox red
+      mOnSecondary      = "#${c.base00}";
+      mTertiary         = "#${c.base0B}";  # Gruvbox green
+      mOnTertiary       = "#${c.base00}";
+      mError            = "#${c.base08}";
+      mOnError          = "#${c.base00}";
+      mSurface          = "#${c.base00}";
+      mOnSurface        = "#${c.base05}";
+      mHover            = "#${c.base0A}";
+      mOnHover          = "#${c.base00}";
+      mSurfaceVariant   = "#${c.base01}";
+      mOnSurfaceVariant = "#${c.base04}";
+      mOutline          = "#${c.base03}";
+      mShadow           = "#${c.base00}";
+    }
+  );
+
   # force = true: noctalia replaces HM symlinks with regular files at runtime (saves
   # settings). On next nixos-rebuild HM would fail with "would be clobbered". Force lets
   # HM overwrite them back to managed symlinks. niri/config.kdl is handled by
@@ -314,8 +339,8 @@
   };
 
   # swww-daemon — wallpaper transition daemon started with the graphical session.
-  # The niri-wallpaper-switch script (wired into Mod+1..5 keybinds) calls
-  # "swww img" which requires this daemon to be running.
+  # ExecStartPost sets workspace-1 as the initial wallpaper.  The sleep gives
+  # swww-daemon time to create its socket before the first "swww img" call.
   systemd.user.services.swww-daemon = {
     Unit = {
       Description       = "swww wallpaper daemon";
@@ -323,8 +348,9 @@
       After             = [ "graphical-session.target" ];
     };
     Service = {
-      ExecStart = "${pkgs.swww}/bin/swww-daemon";
-      Restart   = "on-failure";
+      ExecStart     = "${pkgs.swww}/bin/swww-daemon";
+      ExecStartPost = "${pkgs.bash}/bin/bash -c 'sleep 1 && ${pkgs.swww}/bin/swww img \"${swwwInitWallpaper}\"'";
+      Restart       = "on-failure";
     };
     Install.WantedBy = [ "graphical-session.target" ];
   };

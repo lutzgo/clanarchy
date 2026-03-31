@@ -8,7 +8,31 @@
     enable = true;
     # GPG commit signing via YubiKey
     signing.signByDefault = true;
-    settings.gpg.program = "gpg2";
+    settings = {
+      user.name  = "Lutz Go";
+      user.email = "lutz@example.com";
+      gpg.program = "gpg2";
+    };
+  };
+
+  # GitHub CLI — auth token stored in ~/.config/gh/ (persisted via impermanence).
+  # Run `gh auth login` once to authenticate; subsequent reboots retain the token.
+  programs.gh = {
+    enable = true;
+    settings = {
+      git_protocol = "https";
+      prompt       = "enabled";
+    };
+  };
+
+  # Standard XDG user directories.  createDirectories = true ensures they exist
+  # after each ZFS rollback (HM recreates them on activation).
+  xdg.userDirs = {
+    enable                = true;
+    createDirectories     = true;
+    # Keep session vars (XDG_DOCUMENTS_DIR etc.) in the environment.
+    # Explicit true silences the stateVersion-based deprecation warning.
+    setSessionVariables   = true;
   };
 
   programs.zsh = {

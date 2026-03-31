@@ -35,18 +35,23 @@
         ".gnupg"
         ".config"
         ".local/share"
-        ".cache/noctalia"      # shell-state.json (version tracking → no wizard/changelog on rollback)
-        "Pictures/Wallpapers"  # Noctalia wallpaper manager
+        ".cache/noctalia"  # shell-state.json (version tracking → no wizard/changelog on rollback)
+        "Pictures"         # Noctalia wallpaper manager (Wallpapers subdirectory lives here)
       ];
     };
 
     users.lgo = {
       directories = [
-        ".gnupg"       # GPG keyring with YubiKey stubs
-        ".config"
+        ".gnupg"           # GPG keyring with YubiKey stubs
+        ".config"          # gh auth token, noctalia/helix/zellij settings, etc.
         ".local/share"
-        ".cache/noctalia"      # shell-state.json (version tracking → no wizard/changelog on rollback)
-        "Pictures/Wallpapers"  # Noctalia wallpaper manager
+        ".cache/noctalia"  # shell-state.json (version tracking → no wizard/changelog on rollback)
+        "Pictures"         # includes Wallpapers/ subdirectory
+        "Documents"
+        "Downloads"
+        "Music"
+        "Videos"
+        "Desktop"
       ];
       files = [
         ".age/yubikey-identity.txt"  # PIV-backed age identity (recipient stored in clan vars)

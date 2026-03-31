@@ -155,7 +155,10 @@ in {
   # swww binary available system-wide (daemon runs as user service)
   environment.systemPackages = [ pkgs.swww ];
 
-  # Expose switch script to Home Manager modules so desktop.nix can wire
-  # it into Niri keybinds.
-  home-manager.extraSpecialArgs = { inherit wallpaperSwitchScript; };
+  # Expose to Home Manager: switch script (for Niri keybinds) and initial
+  # wallpaper path (for swww-daemon ExecStartPost).
+  home-manager.extraSpecialArgs = {
+    inherit wallpaperSwitchScript;
+    swwwInitWallpaper = wallpapers.ws1;
+  };
 }
