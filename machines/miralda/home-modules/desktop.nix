@@ -122,7 +122,7 @@
         "Mod+Return".action.spawn = [ "uwsm" "app" "--" "foot" ];
         # foot -T scratch → matched by window rule → opens floating
         "Mod+Shift+Return".action.spawn = [ "uwsm" "app" "--" "foot" "-T" "scratch" ];
-        "Mod+Space".action.spawn        = [ "qs" "-c" "ipc" "call" "launcher" "toggle" ];
+        "Mod+Space".action.spawn        = [ "qs" "-c" "noctalia-shell" "ipc" "call" "launcher" "toggle" ];
         "Mod+E".action.spawn = [ "uwsm" "app" "--" "foot" "-e" "hx" "." ];
         "Mod+F".action.spawn = [ "uwsm" "app" "--" "foot" "-e" "yazi" ];
 

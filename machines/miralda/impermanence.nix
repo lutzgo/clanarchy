@@ -44,6 +44,7 @@
     users.lgo = {
       directories = [
         ".gnupg"           # GPG keyring with YubiKey stubs
+        ".claude"          # Claude Code credentials + session data
         ".config"          # gh auth token, noctalia/helix/zellij settings, etc.
         ".local/share"
         ".cache/noctalia"  # shell-state.json (version tracking → no wizard/changelog on rollback)

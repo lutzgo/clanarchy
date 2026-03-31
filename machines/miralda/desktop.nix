@@ -35,6 +35,9 @@
   # Power management — power-profiles-daemon (NOT TLP — they conflict on Framework AMD)
   services.power-profiles-daemon.enable = true;
 
+  # Lid close → suspend to RAM (hybrid-sleep requires swap, which this ZFS layout lacks)
+  services.logind.lidSwitch = "suspend";
+
   # Framework-specific hardware support
   services.fprintd.enable = true;  # fingerprint reader
   services.fwupd.enable = true;    # firmware updates via LVFS
