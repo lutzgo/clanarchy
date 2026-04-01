@@ -23,6 +23,7 @@
     krita
     normcap         # OCR screen capture
     obs-studio
+    bat             # cat with syntax highlighting and paging
     ripgrep
     fd
     xdg-utils
