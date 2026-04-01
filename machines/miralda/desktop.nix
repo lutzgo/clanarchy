@@ -42,6 +42,11 @@
   services.fprintd.enable = true;  # fingerprint reader
   services.fwupd.enable = true;    # firmware updates via LVFS
 
+  # Uncomment after enrolling fingerprints with: sudo fprintd-enroll lgo
+  # security.pam.services.login.fprintAuth = true;
+  # security.pam.services.greetd.fprintAuth = true;
+  # security.pam.services.sudo.fprintAuth = true;
+
   # Prevent backpack-wake (bag pressure on lid sensor triggers spurious wake)
   services.udev.extraRules = ''
     SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="LID*", ATTRS{phys}=="PNP0C0D*", TAG-="power-switch"
@@ -85,6 +90,18 @@
     };
     hinting  = { enable = true; style = "slight"; };
     subpixel = { rgba = "rgb"; lcdfilter = "default"; };
+  };
+
+  # Valent — KDE Connect protocol service for phone integration
+  systemd.user.services.valent = {
+    description = "Valent - KDE Connect protocol";
+    wantedBy = [ "graphical-session.target" ];
+    partOf = [ "graphical-session.target" ];
+    serviceConfig = {
+      ExecStart = "${pkgs.valent}/bin/valent --gapplication-service";
+      Restart = "on-failure";
+      RestartSec = 5;
+    };
   };
 
   # Shared HM desktop module for all graphical users on this machine

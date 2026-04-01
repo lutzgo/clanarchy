@@ -32,6 +32,23 @@ deploy [boot|switch]      # default: switch — build locally, push, activate on
 push [remote] [branch]    # default: origin main — push via gh auth token
 ```
 
+### Pushing with `gh`
+
+Impermanence makes `~/.config/git` a read-only bind mount, so `git push` with a credential helper doesn't work. The `push` shell function works around this by reading `gh auth token` at runtime and injecting it into the HTTPS remote URL.
+
+**First-time setup** (run once per machine, persisted by impermanence):
+```bash
+gh auth login            # authenticate with GitHub (browser or token)
+```
+
+**Day-to-day pushing:**
+```bash
+push                     # pushes main to origin
+push origin my-branch    # pushes a specific branch
+```
+
+If you need `gh` for other tasks (PRs, issues, releases), use it directly — authentication is handled via the keyring.
+
 ---
 
 ## Bootstrap (first-time machine setup)
@@ -69,13 +86,15 @@ push [remote] [branch]    # default: origin main — push via gh auth token
 ## Day-to-day workflow
 
 ```bash
-# Edit config, then deploy (switch = immediate activation):
+# 1. Edit config files
+# 2. Deploy (switch = immediate activation):
 deploy
 
-# Stage a boot entry without switching (safe for risky changes):
+# Or stage a boot entry without switching (safe for risky changes):
 deploy boot
 
-# After deploy, push to remote:
+# 3. Commit and push:
+git add -A && git commit
 push
 ```
 
@@ -93,18 +112,20 @@ Then redeploy. Use `clan machines update miralda` if the full inventory evaluati
 flake.nix                  — devShell, machine composition, module injection
 clan.nix                   — clan metadata, nixpkgs overlay (niri sandbox fix)
 machines/miralda/
-  configuration.nix        — hostname, timezone, boot loader, ZFS, Plymouth
+  configuration.nix        — hostname, timezone, boot loader, ZFS, Plymouth, zsh
   disko.nix                — NVMe partitioning (GPT: 1G ESP + ZFS AES-256-GCM)
   impermanence.nix         — ZFS rollback on boot; persisted paths
-  desktop.nix              — Niri, UWSM, ReGreet, Framework hw, Pipewire, fonts
+  desktop.nix              — Niri, UWSM, ReGreet, Framework hw, Pipewire, fonts, Valent service
   stylix.nix               — Gruvbox Dark theme, generated wallpaper, cursor
-  noctalia.nix             — PAM service for Noctalia lockscreen
+  noctalia.nix             — Noctalia PAM, declarative settings + pluginSettings, Stylix colors
   yubikey.nix              — pcscd, GnuPG agent, polkit rule
   wifi.nix                 — NetworkManager profile from clan vars
-  apps.nix                 — GUI apps, Podman, Flatpak
+  apps.nix                 — GUI/CLI apps, unfree allowlist, Podman, Flatpak, firewall
+  syncthing.nix            — Syncthing service configuration
+  wallpapers.nix           — Wallpaper installation for Noctalia
   users/                   — System user declarations
   home/                    — Home Manager per-user configs
-  home-modules/desktop.nix — Shared HM module: Niri settings, Noctalia, packages
+  home-modules/desktop.nix — Shared HM: Niri settings, Noctalia shell, foot, starship, packages
   secrets/                 — Clan vars generators (passwords, WiFi, age identity)
 vars/per-machine/miralda/  — Generated secrets (gitignored sensitive values)
 sops/                      — sops age keys

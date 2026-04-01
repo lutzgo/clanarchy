@@ -2,9 +2,13 @@
 {
   nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [
     "claude-code"
+    "signal-desktop"
   ];
   environment.systemPackages = with pkgs; [
     chromium
+    librewolf
+    firefox
+    signal-desktop
     keepassxc
     valent          # KDE Connect protocol — replaces kdePackages.kdeconnect-kde (lighter deps)
     helix
@@ -15,6 +19,10 @@
     foot
     libreoffice
     gimp
+    darktable
+    krita
+    normcap         # OCR screen capture
+    obs-studio
     ripgrep
     fd
     xdg-utils

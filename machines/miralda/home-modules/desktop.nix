@@ -1177,5 +1177,21 @@
     slurp
     wl-clipboard
     playerctl
+    nextcloud-client
   ];
+
+  # Nextcloud desktop client — syncs files in the background
+  systemd.user.services.nextcloud-client = {
+    Unit = {
+      Description = "Nextcloud Desktop Client";
+      After = [ "graphical-session.target" ];
+      PartOf = [ "graphical-session.target" ];
+    };
+    Service = {
+      ExecStart = "${pkgs.nextcloud-client}/bin/nextcloud --background";
+      Restart = "on-failure";
+      RestartSec = 5;
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
 }
