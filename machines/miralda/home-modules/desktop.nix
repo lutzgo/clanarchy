@@ -118,11 +118,22 @@
         "Mod+Shift+J".action.move-window-down  = {};
         "Mod+Shift+K".action.move-window-up    = {};
 
+        # --- Monitor navigation ---
+        "Mod+Ctrl+H".action.focus-monitor-left  = {};
+        "Mod+Ctrl+L".action.focus-monitor-right = {};
+        "Mod+Ctrl+K".action.focus-monitor-up    = {};
+        "Mod+Ctrl+J".action.focus-monitor-down  = {};
+        "Mod+Shift+Ctrl+H".action.move-column-to-monitor-left  = {};
+        "Mod+Shift+Ctrl+L".action.move-column-to-monitor-right = {};
+        "Mod+Shift+Ctrl+K".action.move-column-to-monitor-up    = {};
+        "Mod+Shift+Ctrl+J".action.move-column-to-monitor-down  = {};
+
         # --- Launch ---
         "Mod+Return".action.spawn = [ "uwsm" "app" "--" "foot" ];
         # foot -T scratch → matched by window rule → opens floating
         "Mod+Shift+Return".action.spawn = [ "uwsm" "app" "--" "foot" "-T" "scratch" ];
-        "Mod+Space".action.spawn        = [ "qs" "-c" "noctalia-shell" "ipc" "call" "launcher" "toggle" ];
+        "Mod+Space".action.spawn        = [ "noctalia-shell" "ipc" "call" "launcher" "toggle" ];
+        "Mod+c".action.spawn = [ "noctalia-shell" "ipc" "call" "plugin:clipper" "toggle" ];
         "Mod+E".action.spawn = [ "uwsm" "app" "--" "foot" "-e" "hx" "." ];
         "Mod+F".action.spawn = [ "uwsm" "app" "--" "foot" "-e" "yazi" ];
 
@@ -133,10 +144,30 @@
         "Mod+F11".action.fullscreen-window    = {};
         "Mod+Tab".action.focus-window-previous = {};
 
+        # --- Layout control ---
+        "Mod+R".action.switch-preset-column-width              = {};
+        "Mod+Shift+C".action.center-column                     = {};
+        "Mod+BracketLeft".action.consume-or-expel-window-left  = {};
+        "Mod+BracketRight".action.consume-or-expel-window-right = {};
+        "Mod+Minus".action.set-column-width  = "-10%";
+        "Mod+Equal".action.set-column-width  = "+10%";
+        "Mod+Shift+Minus".action.set-window-height = "-10%";
+        "Mod+Shift+Equal".action.set-window-height = "+10%";
+
         # --- Session ---
         "Mod+Shift+E".action.quit = {};
         # Reload config via spawn (load-config-file is CLI-only, not a keybind action)
         "Mod+Shift+R".action.spawn = [ "niri" "msg" "action" "load-config-file" ];
+
+        # --- Media / Brightness (Noctalia IPC for OSD) ---
+        "XF86AudioRaiseVolume".action.spawn  = [ "noctalia-shell" "ipc" "call" "volume" "increase" ];
+        "XF86AudioLowerVolume".action.spawn  = [ "noctalia-shell" "ipc" "call" "volume" "decrease" ];
+        "XF86AudioMute".action.spawn         = [ "noctalia-shell" "ipc" "call" "volume" "muteOutput" ];
+        "XF86AudioPlay".action.spawn         = [ "noctalia-shell" "ipc" "call" "media" "playPause" ];
+        "XF86AudioNext".action.spawn         = [ "noctalia-shell" "ipc" "call" "media" "next" ];
+        "XF86AudioPrev".action.spawn         = [ "noctalia-shell" "ipc" "call" "media" "previous" ];
+        "XF86MonBrightnessUp".action.spawn   = [ "noctalia-shell" "ipc" "call" "brightness" "increase" ];
+        "XF86MonBrightnessDown".action.spawn = [ "noctalia-shell" "ipc" "call" "brightness" "decrease" ];
 
         # --- Workspaces 1-9 ---
         "Mod+1".action.focus-workspace = 1;
@@ -161,33 +192,718 @@
     };
   };
 
-  # Noctalia shell — configured declaratively via noctalia HM module
+  # Noctalia shell — configured declaratively via noctalia HM module.
   # systemd.enable: creates a user service that starts after graphical-session.target,
   # replacing the fragile spawn-at-startup approach (which fires too early in the session).
+  #
+  # Full settings ported from live Noctalia IPC dump — survives ZFS rollback (cache wipe).
   programs.noctalia-shell = {
     enable = true;
     systemd.enable = true;
-    # Prevent noctalia from regenerating colors.json from its built-in scheme.
-    # AppThemeService calls applyScheme(predefinedScheme) on wallpaper changes —
-    # including startup when the wallpaper dir is empty. With predefinedScheme = "",
-    # resolveSchemePath returns an invalid path, schemeReader fails silently, and
-    # the Stylix-written colors.json is left intact.
-    settings.colorSchemes.predefinedScheme = "";
-    # Suppress startup popups: changelog and setup wizard are shown when
-    # shell-state.json is absent (cache lost after ZFS rollback). Disabling the
-    # changelog here prevents it even on a fresh cache. The setup wizard is
-    # suppressed by persisting ~/.cache/noctalia/ in impermanence.nix.
-    settings.general.showChangelogOnStartup = false;
-    # Bar: floating style at the top of the screen
-    settings.bar.position = "top";
-    settings.bar.barType  = "floating";
-    # Dock: auto-hides at the top edge of the screen
-    settings.dock.position    = "top";
-    settings.dock.displayMode = "auto_hide";
-    # Wallpaper directory — matches where wallpapers.nix installs our PNGs.
-    # Noctalia scans this directory for its picker; explicit so it survives
-    # any future XDG_PICTURES_DIR changes.
-    settings.wallpaper.directory = "/home/lgo/Pictures/Wallpapers";
+    settings = {
+
+      bar = {
+        barType = "simple";
+        position = "top";
+        monitors = [];
+        density = "default";
+        showOutline = false;
+        showCapsule = true;
+        capsuleOpacity = lib.mkForce 1.0;
+        capsuleColorKey = "none";
+        widgetSpacing = 6;
+        contentPadding = 2;
+        fontScale = 1.0;
+        enableExclusionZoneInset = true;
+        backgroundOpacity = lib.mkForce 1.0;
+        useSeparateOpacity = false;
+        marginVertical = 4;
+        marginHorizontal = 4;
+        frameThickness = 8;
+        frameRadius = 12;
+        outerCorners = true;
+        hideOnOverview = false;
+        displayMode = "always_visible";
+        autoHideDelay = 500;
+        autoShowDelay = 150;
+        showOnWorkspaceSwitch = true;
+        widgets = {
+          left = [
+            {
+              defaultSettings = {
+                ai = {
+                  maxHistoryLength = 100;
+                  model = "gemini-2.5-flash";
+                  openaiBaseUrl = "https://api.openai.com/v1/chat/completions";
+                  openaiLocal = false;
+                  provider = "google";
+                  systemPrompt = "You are a helpful assistant integrated into a Linux desktop shell. Be concise and helpful.";
+                  temperature = 0.7;
+                };
+                maxHistoryLength = 100;
+                panelDetached = true;
+                panelHeightRatio = 0.85;
+                panelPosition = "right";
+                panelWidth = 520;
+                scale = 1.0;
+                translator = {
+                  backend = "google";
+                  deeplApiKey = "";
+                  realTimeTranslation = true;
+                  sourceLanguage = "auto";
+                  targetLanguage = "en";
+                };
+              };
+              id = "plugin:assistant-panel";
+            }
+            {
+              characterCount = 2;
+              colorizeIcons = false;
+              emptyColor = "secondary";
+              enableScrollWheel = true;
+              focusedColor = "primary";
+              followFocusedScreen = false;
+              fontWeight = "bold";
+              groupedBorderOpacity = 1.0;
+              hideUnoccupied = false;
+              iconScale = 0.8;
+              id = "Workspace";
+              labelMode = "index";
+              occupiedColor = "secondary";
+              pillSize = 0.6;
+              showApplications = false;
+              showApplicationsHover = false;
+              showBadge = true;
+              showLabelsOnlyWhenOccupied = true;
+              unfocusedIconsOpacity = 1.0;
+            }
+            {
+              defaultSettings = {
+                debounceMs = 300;
+                enabled = true;
+                language = "auto";
+                maxEventsPerSecond = 20;
+                maxVisible = 4;
+                perWorkspace = false;
+                workspaceMaxVisible = {};
+              };
+              id = "plugin:niri-auto-tile";
+            }
+            {
+              colorizeIcons = false;
+              hideMode = "hidden";
+              id = "ActiveWindow";
+              maxWidth = 145;
+              scrollingMode = "hover";
+              showIcon = true;
+              textColor = "none";
+              useFixedWidth = false;
+            }
+            {
+              id = "Spacer";
+              width = 5;
+            }
+            {
+              compactMode = false;
+              hideMode = "hidden";
+              hideWhenIdle = false;
+              id = "MediaMini";
+              maxWidth = 145;
+              panelShowAlbumArt = true;
+              scrollingMode = "hover";
+              showAlbumArt = true;
+              showArtistFirst = true;
+              showProgressRing = true;
+              showVisualizer = false;
+              textColor = "none";
+              useFixedWidth = false;
+              visualizerType = "linear";
+            }
+          ];
+          center = [
+            {
+              colorizeSystemIcon = "primary";
+              customIconPath = "";
+              enableColorization = true;
+              icon = "rocket";
+              iconColor = "none";
+              id = "Launcher";
+              useDistroLogo = true;
+            }
+            {
+              id = "Spacer";
+              width = 5;
+            }
+            {
+              clockColor = "none";
+              customFont = "";
+              formatHorizontal = "HH:mm ddd, MMM dd";
+              formatVertical = "HH mm - dd MM";
+              id = "Clock";
+              tooltipFormat = "HH:mm ddd, MMM dd";
+              useCustomFont = false;
+            }
+            {
+              compactMode = true;
+              diskPath = "/";
+              iconColor = "none";
+              id = "SystemMonitor";
+              showCpuCores = false;
+              showCpuFreq = false;
+              showCpuTemp = true;
+              showCpuUsage = true;
+              showDiskAvailable = false;
+              showDiskUsage = true;
+              showDiskUsageAsPercent = false;
+              showGpuTemp = false;
+              showLoadAverage = false;
+              showMemoryAsPercent = false;
+              showMemoryUsage = true;
+              showNetworkStats = true;
+              showSwapUsage = false;
+              textColor = "none";
+              useMonospaceFont = true;
+              usePadding = false;
+            }
+            {
+              id = "Spacer";
+              width = 5;
+            }
+            {
+              defaultSettings = {
+                autoHeight = true;
+                cheatsheetData = [];
+                columnCount = 3;
+                detectedCompositor = "";
+                hyprlandConfigPath = "~/.config/hypr/hyprland.conf";
+                modKeyVariable = "$mod";
+                niriConfigPath = "~/.config/niri/config.kdl";
+                windowHeight = 0;
+                windowWidth = 1400;
+              };
+              id = "plugin:keybind-cheatsheet";
+            }
+          ];
+          right = [
+            {
+              defaultSettings = {
+                colorHistory = [];
+                detectedRecorder = "";
+                installedLangs = [ "eng" ];
+                paletteColors = [];
+                selectedOcrLang = "eng";
+                transAvailable = false;
+              };
+              id = "plugin:screen-toolkit";
+            }
+            {
+              defaultSettings = {};
+              id = "plugin:mirror-mirror";
+            }
+            {
+              defaultSettings = {
+                audioCodec = "opus";
+                audioSource = "default_output";
+                colorRange = "limited";
+                copyToClipboard = false;
+                customReplayDuration = "30";
+                directory = "";
+                filenamePattern = "recording_yyyyMMdd_HHmmss";
+                frameRate = "60";
+                hideInactive = false;
+                iconColor = "none";
+                quality = "very_high";
+                replayDuration = "30";
+                replayEnabled = false;
+                replayStorage = "ram";
+                resolution = "original";
+                restorePortalSession = false;
+                showCursor = true;
+                videoCodec = "h264";
+                videoSource = "portal";
+              };
+              id = "plugin:screen-recorder";
+            }
+            {
+              id = "Spacer";
+              width = 5;
+            }
+            {
+              blacklist = [];
+              chevronColor = "none";
+              colorizeIcons = false;
+              drawerEnabled = true;
+              hidePassive = false;
+              id = "Tray";
+              pinned = [];
+            }
+            {
+              hideWhenZero = false;
+              hideWhenZeroUnread = false;
+              iconColor = "none";
+              id = "NotificationHistory";
+              showUnreadBadge = true;
+              unreadBadgeColor = "primary";
+            }
+            {
+              deviceNativePath = "__default__";
+              displayMode = "graphic-clean";
+              hideIfIdle = false;
+              hideIfNotDetected = true;
+              id = "Battery";
+              showNoctaliaPerformance = true;
+              showPowerProfiles = true;
+            }
+            {
+              defaultSettings = {
+                mainDeviceId = "";
+              };
+              id = "plugin:valent-connect";
+            }
+            {
+              colorizeDistroLogo = false;
+              colorizeSystemIcon = "secondary";
+              customIconPath = "";
+              enableColorization = true;
+              icon = "noctalia";
+              id = "ControlCenter";
+              useDistroLogo = false;
+            }
+          ];
+        };
+        mouseWheelAction = "none";
+        reverseScroll = false;
+        mouseWheelWrap = true;
+        middleClickAction = "none";
+        middleClickFollowMouse = false;
+        middleClickCommand = "";
+        rightClickAction = "controlCenter";
+        rightClickFollowMouse = true;
+        rightClickCommand = "";
+        screenOverrides = [];
+      };
+
+      general = {
+        avatarImage = "/home/lgo/.face";
+        dimmerOpacity = 0.2;
+        showScreenCorners = false;
+        forceBlackScreenCorners = false;
+        scaleRatio = 1.0;
+        radiusRatio = 1.0;
+        iRadiusRatio = 1.0;
+        boxRadiusRatio = 1.0;
+        screenRadiusRatio = 1.0;
+        animationSpeed = 1.3;
+        animationDisabled = false;
+        compactLockScreen = false;
+        lockScreenAnimations = true;
+        lockOnSuspend = true;
+        showSessionButtonsOnLockScreen = true;
+        showHibernateOnLockScreen = false;
+        enableLockScreenMediaControls = true;
+        enableShadows = true;
+        enableBlurBehind = true;
+        shadowDirection = "bottom_right";
+        shadowOffsetX = 2;
+        shadowOffsetY = 3;
+        language = "";
+        allowPanelsOnScreenWithoutBar = true;
+        # Suppress startup popups: changelog and setup wizard are shown when
+        # shell-state.json is absent (cache lost after ZFS rollback).
+        showChangelogOnStartup = false;
+        telemetryEnabled = false;
+        enableLockScreenCountdown = true;
+        lockScreenCountdownDuration = 10000;
+        autoStartAuth = true;
+        allowPasswordWithFprintd = true;
+        clockStyle = "custom";
+        clockFormat = "HH:MM dd, yyyy-MM-dd ";
+        passwordChars = true;
+        lockScreenMonitors = [];
+        lockScreenBlur = 0.3;
+        lockScreenTint = 0;
+        keybinds = {
+          keyUp    = [ "Up" "Ctrl+K" ];
+          keyDown  = [ "Down" "Ctrl+J" ];
+          keyLeft  = [ "Left" "Ctrl+H" ];
+          keyRight = [ "Right" "Ctrl+L" ];
+          keyEnter = [ "Return" "Enter" ];
+          keyEscape = [ "Esc" "Ctrl+Q" ];
+          keyRemove = [ "Del" "Ctrl+D" ];
+        };
+        reverseScroll = false;
+        smoothScrollEnabled = true;
+      };
+
+      ui = {
+        fontDefault = lib.mkForce "MonaspiceNe Nerd Font Propo";
+        fontFixed = lib.mkForce "MonaspiceAr Nerd Font Mono";
+        fontDefaultScale = 1.0;
+        fontFixedScale = 1.0;
+        tooltipsEnabled = true;
+        scrollbarAlwaysVisible = true;
+        boxBorderEnabled = false;
+        panelBackgroundOpacity = lib.mkForce 0.9;
+        translucentWidgets = true;
+        panelsAttachedToBar = true;
+        settingsPanelMode = "attached";
+        settingsPanelSideBarCardStyle = false;
+      };
+
+      location = {
+        name = "Duesseldorf";
+        weatherEnabled = true;
+        weatherShowEffects = true;
+        useFahrenheit = false;
+        use12hourFormat = false;
+        showWeekNumberInCalendar = true;
+        showCalendarEvents = true;
+        showCalendarWeather = true;
+        analogClockInCalendar = false;
+        firstDayOfWeek = 1;
+        hideWeatherTimezone = false;
+        hideWeatherCityName = false;
+      };
+
+      calendar = {
+        cards = [
+          { enabled = true; id = "calendar-header-card"; }
+          { enabled = true; id = "calendar-month-card"; }
+          { enabled = true; id = "weather-card"; }
+        ];
+      };
+
+      wallpaper = {
+        enabled = true;
+        overviewEnabled = false;
+        # Matches where wallpapers.nix installs PNGs; explicit so it survives
+        # any future XDG_PICTURES_DIR changes.
+        directory = "/home/lgo/Pictures/Wallpapers";
+        monitorDirectories = [];
+        enableMultiMonitorDirectories = false;
+        showHiddenFiles = false;
+        viewMode = "single";
+        setWallpaperOnAllMonitors = true;
+        fillMode = "crop";
+        fillColor = "#000000";
+        useSolidColor = false;
+        solidColor = "#1a1a2e";
+        automationEnabled = false;
+        wallpaperChangeMode = "random";
+        randomIntervalSec = 300;
+        transitionDuration = 1500;
+        transitionType = [ "fade" "disc" "stripes" "wipe" "pixelate" "honeycomb" ];
+        skipStartupTransition = false;
+        transitionEdgeSmoothness = 0.05;
+        panelPosition = "follow_bar";
+        hideWallpaperFilenames = false;
+        useOriginalImages = false;
+        overviewBlur = 0.4;
+        overviewTint = 0.6;
+        useWallhaven = false;
+        wallhavenQuery = "";
+        wallhavenSorting = "relevance";
+        wallhavenOrder = "desc";
+        wallhavenCategories = "111";
+        wallhavenPurity = "100";
+        wallhavenRatios = "";
+        wallhavenApiKey = "";
+        wallhavenResolutionMode = "atleast";
+        wallhavenResolutionWidth = "";
+        wallhavenResolutionHeight = "";
+        sortOrder = "name";
+        favorites = [];
+      };
+
+      appLauncher = {
+        enableClipboardHistory = true;
+        autoPasteClipboard = false;
+        enableClipPreview = true;
+        clipboardWrapText = true;
+        enableClipboardSmartIcons = true;
+        enableClipboardChips = true;
+        clipboardWatchTextCommand = "wl-paste --type text --watch cliphist store";
+        clipboardWatchImageCommand = "wl-paste --type image --watch cliphist store";
+        position = "center";
+        pinnedApps = [];
+        sortByMostUsed = true;
+        terminalCommand = "foot -e";
+        customLaunchPrefixEnabled = false;
+        customLaunchPrefix = "";
+        viewMode = "list";
+        showCategories = true;
+        iconMode = "native";
+        showIconBackground = false;
+        enableSettingsSearch = true;
+        enableWindowsSearch = true;
+        enableSessionSearch = true;
+        ignoreMouseInput = false;
+        screenshotAnnotationTool = "";
+        overviewLayer = false;
+        density = "compact";
+      };
+
+      controlCenter = {
+        position = "close_to_bar_button";
+        diskPath = "/";
+        shortcuts = {
+          left = [
+            { id = "Network"; }
+            { id = "Bluetooth"; }
+            { id = "NoctaliaPerformance"; }
+            { id = "PowerProfile"; }
+          ];
+          right = [
+            { id = "KeepAwake"; }
+            { id = "NightLight"; }
+            { id = "AirplaneMode"; }
+            {
+              defaultSettings = {
+                enableTodoIntegration = false;
+                notecardsEnabled = true;
+                pincardsEnabled = true;
+                showCloseButton = true;
+              };
+              id = "plugin:clipper";
+            }
+          ];
+        };
+        cards = [
+          { enabled = true; id = "profile-card"; }
+          { enabled = true; id = "shortcuts-card"; }
+          { enabled = true; id = "audio-card"; }
+          { enabled = true; id = "brightness-card"; }
+          { enabled = true; id = "weather-card"; }
+          { enabled = true; id = "media-sysmon-card"; }
+        ];
+      };
+
+      systemMonitor = {
+        cpuWarningThreshold = 80;
+        cpuCriticalThreshold = 90;
+        tempWarningThreshold = 80;
+        tempCriticalThreshold = 90;
+        gpuWarningThreshold = 80;
+        gpuCriticalThreshold = 90;
+        memWarningThreshold = 80;
+        memCriticalThreshold = 90;
+        swapWarningThreshold = 80;
+        swapCriticalThreshold = 90;
+        diskWarningThreshold = 80;
+        diskCriticalThreshold = 90;
+        diskAvailWarningThreshold = 20;
+        diskAvailCriticalThreshold = 10;
+        batteryWarningThreshold = 20;
+        batteryCriticalThreshold = 5;
+        enableDgpuMonitoring = false;
+        useCustomColors = false;
+        warningColor = "";
+        criticalColor = "";
+        externalMonitor = "resources || missioncenter || jdsystemmonitor || corestats || system-monitoring-center || gnome-system-monitor || plasma-systemmonitor || mate-system-monitor || ukui-system-monitor || deepin-system-monitor || pantheon-system-monitor";
+      };
+
+      noctaliaPerformance = {
+        disableWallpaper = true;
+        disableDesktopWidgets = true;
+      };
+
+      dock = {
+        enabled = true;
+        position = "bottom";
+        displayMode = "auto_hide";
+        dockType = "floating";
+        backgroundOpacity = lib.mkForce 0.9;
+        floatingRatio = 1.0;
+        size = 1.0;
+        onlySameOutput = true;
+        monitors = [];
+        pinnedApps = [];
+        colorizeIcons = true;
+        showLauncherIcon = true;
+        launcherPosition = "start";
+        launcherUseDistroLogo = true;
+        launcherIcon = "";
+        launcherIconColor = "primary";
+        pinnedStatic = true;
+        inactiveIndicators = true;
+        groupApps = true;
+        groupContextMenuMode = "extended";
+        groupClickAction = "cycle";
+        groupIndicatorStyle = "dots";
+        deadOpacity = 0.6;
+        animationSpeed = 1.0;
+        sitOnFrame = false;
+        showDockIndicator = true;
+        indicatorThickness = 3;
+        indicatorColor = "primary";
+        indicatorOpacity = 0.6;
+      };
+
+      network = {
+        airplaneModeEnabled = false;
+        bluetoothRssiPollingEnabled = false;
+        bluetoothRssiPollIntervalMs = 60000;
+        networkPanelView = "wifi";
+        wifiDetailsViewMode = "list";
+        bluetoothDetailsViewMode = "grid";
+        bluetoothHideUnnamedDevices = false;
+        disableDiscoverability = false;
+        bluetoothAutoConnect = true;
+      };
+
+      sessionMenu = {
+        enableCountdown = true;
+        countdownDuration = 5000;
+        position = "center";
+        showHeader = true;
+        showKeybinds = true;
+        largeButtonsStyle = false;
+        largeButtonsLayout = "single-row";
+        powerOptions = [
+          { action = "lock";     command = ""; countdownEnabled = true; enabled = true; keybind = "1"; }
+          { action = "suspend";  command = ""; countdownEnabled = true; enabled = true; keybind = "2"; }
+          { action = "hibernate"; command = ""; countdownEnabled = true; enabled = true; keybind = "3"; }
+          { action = "reboot";   command = ""; countdownEnabled = true; enabled = true; keybind = "4"; }
+          { action = "logout";   command = ""; countdownEnabled = true; enabled = true; keybind = "5"; }
+          { action = "shutdown"; command = ""; countdownEnabled = true; enabled = true; keybind = "6"; }
+          { action = "rebootToUefi";     command = ""; countdownEnabled = true; enabled = false; keybind = ""; }
+          { action = "userspaceReboot";  command = ""; countdownEnabled = true; enabled = false; keybind = ""; }
+        ];
+      };
+
+      notifications = {
+        enabled = true;
+        enableMarkdown = true;
+        density = "default";
+        monitors = [];
+        location = "top_right";
+        overlayLayer = true;
+        backgroundOpacity = lib.mkForce 0.8;
+        respectExpireTimeout = false;
+        lowUrgencyDuration = 3;
+        normalUrgencyDuration = 8;
+        criticalUrgencyDuration = 15;
+        clearDismissed = true;
+        saveToHistory = {
+          low = true;
+          normal = true;
+          critical = true;
+        };
+        sounds = {
+          enabled = false;
+          volume = 0.5;
+          separateSounds = false;
+          criticalSoundFile = "";
+          normalSoundFile = "";
+          lowSoundFile = "";
+          excludedApps = "discord,firefox,chrome,chromium,edge";
+        };
+        enableMediaToast = false;
+        enableKeyboardLayoutToast = true;
+        enableBatteryToast = true;
+      };
+
+      osd = {
+        enabled = true;
+        location = "top_right";
+        autoHideMs = 2000;
+        overlayLayer = true;
+        backgroundOpacity = lib.mkForce 0.9;
+        enabledTypes = [ 0 1 2 ];
+        monitors = [];
+      };
+
+      audio = {
+        volumeStep = 5;
+        volumeOverdrive = false;
+        spectrumFrameRate = 30;
+        visualizerType = "linear";
+        spectrumMirrored = true;
+        mprisBlacklist = [];
+        preferredPlayer = "";
+        volumeFeedback = false;
+        volumeFeedbackSoundFile = "";
+      };
+
+      brightness = {
+        brightnessStep = 5;
+        enforceMinimum = true;
+        enableDdcSupport = true;
+        backlightDeviceMappings = [];
+      };
+
+      # predefinedScheme = "" prevents noctalia from regenerating colors.json.
+      # AppThemeService calls applyScheme(predefinedScheme) on wallpaper changes;
+      # with "", resolveSchemePath fails silently, leaving Stylix colors intact.
+      colorSchemes = {
+        useWallpaperColors = false;
+        predefinedScheme = "";
+        darkMode = true;
+        schedulingMode = "off";
+        manualSunrise = "06:30";
+        manualSunset = "18:30";
+        generationMethod = "tonal-spot";
+        monitorForColors = "";
+        syncGsettings = true;
+      };
+
+      templates = {
+        activeTemplates = [];
+        enableUserTheming = false;
+      };
+
+      nightLight = {
+        enabled = false;
+        forced = false;
+        autoSchedule = true;
+        nightTemp = "4000";
+        dayTemp = "6500";
+        manualSunrise = "06:30";
+        manualSunset = "18:30";
+      };
+
+      hooks = {
+        enabled = false;
+        wallpaperChange = "";
+        darkModeChange = "";
+        screenLock = "";
+        screenUnlock = "";
+        performanceModeEnabled = "";
+        performanceModeDisabled = "";
+        startup = "";
+        session = "";
+        colorGeneration = "";
+      };
+
+      plugins = {
+        autoUpdate = false;
+        notifyUpdates = true;
+      };
+
+      idle = {
+        enabled = false;
+        screenOffTimeout = 600;
+        lockTimeout = 660;
+        suspendTimeout = 1800;
+        fadeDuration = 5;
+        screenOffCommand = "";
+        lockCommand = "";
+        suspendCommand = "";
+        resumeScreenOffCommand = "";
+        resumeLockCommand = "";
+        resumeSuspendCommand = "";
+        customCommands = "[]";
+      };
+
+      desktopWidgets = {
+        enabled = false;
+        overviewEnabled = true;
+        gridSnap = false;
+        gridSnapScale = false;
+        monitorWidgets = [];
+      };
+
+    };
   };
 
   # Stylix targets — noctalia needs explicit opt-in; KDE has a shellcheck bug so disable it.
