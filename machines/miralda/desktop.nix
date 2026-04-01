@@ -92,11 +92,15 @@
     subpixel = { rgba = "rgb"; lcdfilter = "default"; };
   };
 
-  # Valent — KDE Connect protocol service for phone integration
+  # Valent — KDE Connect protocol service for phone integration.
+  # Valent stores its TLS cert as plain PEM files (~/.config/valent/private.pem).
+  # Without the environment override, gcr auto-imports the key into gpg-agent,
+  # triggering a pinentry passphrase prompt that blocks the headless service.
   systemd.user.services.valent = {
     description = "Valent - KDE Connect protocol";
     wantedBy = [ "graphical-session.target" ];
     partOf = [ "graphical-session.target" ];
+    environment.GCR_SSH_AGENT_PIPE = "";
     serviceConfig = {
       ExecStart = "${pkgs.valent}/bin/valent --gapplication-service";
       Restart = "on-failure";

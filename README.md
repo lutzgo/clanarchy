@@ -106,6 +106,45 @@ Then redeploy. Use `clan machines update miralda` if the full inventory evaluati
 
 ---
 
+## YubiKey usage
+
+The YubiKey serves two roles: **SSH authentication** (via GnuPG agent) and **age decryption** (PIV-backed identity for sops/clan vars).
+
+### When to plug in the YubiKey
+
+| Task | YubiKey needed? |
+|------|-----------------|
+| `deploy` (local to miralda) | **Yes** — SSH to `root@miralda.goclan.org` uses the GPG auth subkey |
+| `clan vars generate` | **Yes** — decrypts/re-encrypts secrets with age-plugin-yubikey |
+| `clan machines update` | **Yes** — both SSH and secret decryption |
+| Editing config, `nix eval`, building | No |
+| `push` / `gh` operations | No — uses GitHub token, not SSH |
+| `git commit` | No |
+
+### Troubleshooting
+
+If `deploy` fails with `Permission denied (publickey)`:
+
+```bash
+# 1. Check the YubiKey is visible:
+gpg --card-status
+
+# 2. Check GPG agent is serving SSH keys:
+ssh-add -L
+
+# 3. If ssh-add shows nothing, restart the agent:
+gpgconf --kill gpg-agent
+gpg --card-status        # re-triggers agent + card detection
+ssh-add -L               # should now show the key
+```
+
+If `gpg --card-status` fails, the YubiKey isn't plugged in or `pcscd` isn't running:
+```bash
+sudo systemctl status pcscd
+```
+
+---
+
 ## Architecture
 
 ```

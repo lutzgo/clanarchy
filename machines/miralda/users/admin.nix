@@ -11,12 +11,14 @@
     hashedPasswordFile = config.clan.core.vars.generators.admin-password.files."hashed-password".path;
     openssh.authorizedKeys.keys = [
       (builtins.readFile ../clanarchy_admin.pub)
+      (builtins.readFile ../yubikey_rsa.pub)
     ];
   };
 
   users.users.root = {
     openssh.authorizedKeys.keys = [
       (builtins.readFile ../clanarchy_admin.pub)
+      (builtins.readFile ../yubikey_rsa.pub)
     ];
   };
 
