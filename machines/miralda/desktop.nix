@@ -43,9 +43,9 @@
   services.fwupd.enable = true;    # firmware updates via LVFS
 
   # Uncomment after enrolling fingerprints with: sudo fprintd-enroll lgo
-  # security.pam.services.login.fprintAuth = true;
-  # security.pam.services.greetd.fprintAuth = true;
-  # security.pam.services.sudo.fprintAuth = true;
+  security.pam.services.login.fprintAuth = true;
+  security.pam.services.greetd.fprintAuth = true;
+  security.pam.services.sudo.fprintAuth = true;
 
   # Prevent backpack-wake (bag pressure on lid sensor triggers spurious wake)
   services.udev.extraRules = ''
