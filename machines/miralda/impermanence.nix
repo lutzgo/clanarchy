@@ -57,6 +57,7 @@
         "Desktop"
         "Projects"
         "Public"
+        "citizengo"
       ];
       files = [
         ".age/yubikey-identity.txt"  # PIV-backed age identity (recipient stored in clan vars)

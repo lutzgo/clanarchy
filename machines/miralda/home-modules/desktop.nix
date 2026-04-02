@@ -22,6 +22,10 @@
 
       prefer-no-csd = true;
 
+      spawn-at-startup = [
+        { command = [ "keepassxc" "--minimized" ]; }
+      ];
+
       layout.border = { enable = true; width = 1; };
       layout.focus-ring.width = 1;
 
@@ -136,6 +140,10 @@
         "Mod+c".action.spawn = [ "noctalia-shell" "ipc" "call" "plugin:clipper" "toggle" ];
         "Mod+E".action.spawn = [ "uwsm" "app" "--" "foot" "-e" "hx" "." ];
         "Mod+F".action.spawn = [ "uwsm" "app" "--" "foot" "-e" "yazi" ];
+
+        # KeePassXC toggle — show from tray or minimize back to tray.
+        # KeePassXC must have "minimize to tray on close" enabled in its settings.
+        "Mod+P".action.spawn = [ "sh" "-c" "if niri msg --json focused-window 2>/dev/null | grep -q KeePassXC; then niri msg action close-window; else keepassxc; fi" ];
 
         # --- Window management ---
         "Mod+Q".action.close-window           = {};
