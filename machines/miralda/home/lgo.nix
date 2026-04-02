@@ -136,12 +136,42 @@
             bind "Alt 8" { GoToTab 8; }
             bind "Alt 9" { GoToTab 9; }
 
+            // Scroll / search / copy
+            bind "Alt s" { SwitchToMode "Scroll"; }
+
             // Session
             bind "Alt d" { Detach; }
             bind "Alt r" { SwitchToMode "RenameTab"; }
 
             // Return to locked mode
             bind "Alt g" { SwitchToMode "Locked"; }
+        }
+
+        // Scroll mode: vim-style navigation, search, and copy
+        scroll clear-defaults=true {
+            bind "j"      { ScrollDown; }
+            bind "k"      { ScrollUp; }
+            bind "d"      { HalfPageScrollDown; }
+            bind "u"      { HalfPageScrollUp; }
+            bind "/"      { SwitchToMode "EnterSearch"; SearchInput 0; }
+            bind "n"      { SearchNext; }
+            bind "N"      { SearchPrevious; }
+            bind "Esc"    { SwitchToMode "Normal"; }
+            bind "Alt g"  { SwitchToMode "Locked"; }
+        }
+
+        entersearch clear-defaults=true {
+            bind "Enter"  { SwitchToMode "Search"; }
+            bind "Esc"    { SwitchToMode "Scroll"; }
+        }
+
+        search clear-defaults=true {
+            bind "j"      { ScrollDown; }
+            bind "k"      { ScrollUp; }
+            bind "n"      { SearchNext; }
+            bind "N"      { SearchPrevious; }
+            bind "Esc"    { SwitchToMode "Scroll"; }
+            bind "Alt g"  { SwitchToMode "Locked"; }
         }
 
         // Minimal rename-tab mode: confirm with Enter, cancel with Esc
