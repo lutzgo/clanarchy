@@ -4,6 +4,12 @@
   home.homeDirectory = "/home/lgo";
   home.stateVersion = "25.11";
 
+  # Session-level env vars — inherited by Zellij, niri, and all child processes
+  home.sessionVariables = {
+    EDITOR = "hx";
+    VISUAL = "hx";
+  };
+
   programs.git = {
     enable = true;
     # GPG commit signing via YubiKey
@@ -42,8 +48,6 @@
     # Suppress the startup banner (equivalent to zsh's no MOTD).
     extraConfig = ''
       $env.config.show_banner = false
-      $env.EDITOR = "hx"
-      $env.VISUAL = "hx"
     '';
   };
 
@@ -54,8 +58,6 @@
       bindkey -v
       export KEYTIMEOUT=1
       bindkey -M viins 'C-e' vi-cmd-mode
-      export EDITOR=hx
-      export VISUAL=hx
     '';
   };
 
@@ -158,7 +160,7 @@
             bind "d"      { HalfPageScrollDown; }
             bind "u"      { HalfPageScrollUp; }
             bind "/"      { SwitchToMode "EnterSearch"; SearchInput 0; }
-            bind "e"      { EditScrollback; SwitchToMode "Normal"; }
+            bind "e"      { EditScrollback; SwitchToMode "Locked"; }
             bind "Esc"    { SwitchToMode "Normal"; }
             bind "Alt g"  { SwitchToMode "Locked"; }
         }
