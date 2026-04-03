@@ -42,6 +42,8 @@
     # Suppress the startup banner (equivalent to zsh's no MOTD).
     extraConfig = ''
       $env.config.show_banner = false
+      $env.EDITOR = "hx"
+      $env.VISUAL = "hx"
     '';
   };
 
@@ -52,6 +54,8 @@
       bindkey -v
       export KEYTIMEOUT=1
       bindkey -M viins 'C-e' vi-cmd-mode
+      export EDITOR=hx
+      export VISUAL=hx
     '';
   };
 
