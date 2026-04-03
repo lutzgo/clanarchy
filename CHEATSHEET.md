@@ -134,8 +134,16 @@ In scroll mode:
 | `j` / `k` | Scroll down/up |
 | `d` / `u` | Half-page down/up |
 | `/` | Start search |
-| `n` / `N` | Next/previous match |
+| `e` | Edit scrollback in Helix (vim select + yank to copy) |
 | `Esc` | Back to normal mode |
+
+In search mode (after `/` + type + `Enter`):
+
+| Key | Action |
+|-----|--------|
+| `n` / `p` | Next/previous match |
+| `j` / `k` | Scroll down/up |
+| `Esc` | Back to scroll mode |
 
 #### Session
 

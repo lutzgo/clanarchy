@@ -154,8 +154,7 @@
             bind "d"      { HalfPageScrollDown; }
             bind "u"      { HalfPageScrollUp; }
             bind "/"      { SwitchToMode "EnterSearch"; SearchInput 0; }
-            bind "n"      { SearchNext; }
-            bind "N"      { SearchPrevious; }
+            bind "e"      { EditScrollback; SwitchToMode "Normal"; }
             bind "Esc"    { SwitchToMode "Normal"; }
             bind "Alt g"  { SwitchToMode "Locked"; }
         }
@@ -168,8 +167,8 @@
         search clear-defaults=true {
             bind "j"      { ScrollDown; }
             bind "k"      { ScrollUp; }
-            bind "n"      { SearchNext; }
-            bind "N"      { SearchPrevious; }
+            bind "n"      { Search "down"; }
+            bind "p"      { Search "up"; }
             bind "Esc"    { SwitchToMode "Scroll"; }
             bind "Alt g"  { SwitchToMode "Locked"; }
         }
