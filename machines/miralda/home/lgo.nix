@@ -1,4 +1,4 @@
-{ pkgs, inputs, ... }:
+{ pkgs, inputs, config, ... }:
 {
   home.username = "lgo";
   home.homeDirectory = "/home/lgo";
@@ -95,7 +95,10 @@
   # Zellij — multiplexer config written as raw KDL (HM programs.zellij.settings
   # can't express complex keybind trees). default_mode=locked means all keys pass
   # through to the terminal by default; Alt+g unlocks to normal mode.
-  xdg.configFile."zellij/config.kdl".text = ''
+  # Colors injected from Stylix since programs.zellij isn't used.
+  xdg.configFile."zellij/config.kdl".text = let
+    c = config.lib.stylix.colors;
+  in ''
     default_mode "locked"
     default_shell "nu"
     pane_frames false
@@ -103,6 +106,23 @@
     session_serialization false
     show_release_notes false
     default_layout "compact"
+
+    themes {
+        stylix {
+            fg "#${c.base05}"
+            bg "#${c.base00}"
+            black "#${c.base00}"
+            red "#${c.base08}"
+            green "#${c.base0B}"
+            yellow "#${c.base0A}"
+            blue "#${c.base0D}"
+            magenta "#${c.base0E}"
+            cyan "#${c.base0C}"
+            white "#${c.base05}"
+            orange "#${c.base09}"
+        }
+    }
+    theme "stylix"
 
     keybinds {
         // Locked: every key passes through; only Alt+g unlocks
