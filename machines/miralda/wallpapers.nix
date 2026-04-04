@@ -4,8 +4,8 @@
 # with Stylix base16 equivalents using sed, renders to PNG via rsvg-convert, then
 # composites centered on a matching dark 1920×1080 background via ImageMagick.
 #
-# Each workspace gets a distinct accent color from the Gruvbox palette so workspaces
-# are visually distinct at a glance:
+# Each workspace gets a distinct accent color from the active Stylix scheme so
+# workspaces are visually distinct at a glance:
 #   ws1 logo.svg           → base08 red
 #   ws2 logo-blue.svg      → base0D blue/teal
 #   ws3 logo-smash.svg     → base0B green

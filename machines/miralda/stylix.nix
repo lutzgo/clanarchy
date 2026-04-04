@@ -1,8 +1,7 @@
  { pkgs, config, lib, ... }:
 
 let
-  # Pick a Base16 Gruvbox Dark scheme from base16-schemes package.
-  # (You can swap to gruvbox-dark-soft / medium if you prefer, depending on what exists in your nixpkgs.)
+  # Pick a Base16/Base24 from https://tinted-theming.github.io/tinted-gallery/.
   schemePath = "${pkgs.base16-schemes}/share/themes/gruvbox-dark-medium.yaml";
 
   # Helper: read base16 colors from the scheme file
@@ -14,7 +13,7 @@ let
 
   # Generate wallpaper using ImageMagick with scheme colors.
   nixWallpaper =
-    pkgs.runCommand "clanarchy-wallpaper-nix-gruvbox.png"
+    pkgs.runCommand "clanarchy-wallpaper.png"
       {
         nativeBuildInputs = [ pkgs.imagemagick ];
       }
@@ -27,7 +26,7 @@ let
         W=3840
         H=2160
 
-        # Gruvbox-ish background + accents from the active Stylix scheme
+        # Background + accents from the active Stylix scheme
         BG="#${c.base00}"
         FG="#${c.base05}"
         A1="#${c.base0D}"  # typically "blue"
@@ -60,7 +59,7 @@ in
     enable = true;
     polarity = "dark";
 
-    # Declarative scheme selection (Gruvbox Dark)
+    # Declarative scheme selection — change schemePath above to switch themes
     base16Scheme = schemePath;
 
     # Declarative wallpaper generation (built by Nix, colored by the selected scheme)
