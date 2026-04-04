@@ -2,7 +2,7 @@
 
 let
   # Pick a Base16/Base24 from https://tinted-theming.github.io/tinted-gallery/.
-  schemePath = "${pkgs.base16-schemes}/share/themes/gruvbox-dark-medium.yaml";
+  schemePath = "${pkgs.base16-schemes}/share/themes/selenized-dark.yaml";
 
   # Helper: read base16 colors from the scheme file
   # Stylix exposes the resolved colors under config.lib.stylix.colors once enabled.
@@ -72,7 +72,7 @@ in
       emoji     = { package = pkgs.noto-fonts-color-emoji; name = "Noto Color Emoji"; };
       sizes = {
         applications = 11;
-        terminal     = 13;
+        terminal     = 12;
         desktop      = 11;
         popups       = 11;
       };

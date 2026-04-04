@@ -54,6 +54,11 @@
           opacity = 0.9;
         }
         {
+          # Foot terminals: slightly more opaque than the global baseline
+          matches = [{ app-id = "^foot$"; }];
+          opacity = 0.95;
+        }
+        {
           # Unfocused windows dim to 75%
           matches = [{ is-focused = false; }];
           opacity = 0.75;
