@@ -31,8 +31,7 @@ in
 
   programs.git = {
     enable = true;
-    # GPG commit signing via YubiKey
-    signing.signByDefault = true;
+    signing.signByDefault = false;  # disabled until GPG/YubiKey signing is verified working
     settings = {
       user.name  = "Lutz Go";
       user.email = "lutz0go@gmail.com";
@@ -335,6 +334,7 @@ in
     gnupg
     yubikey-manager       # ykman — YubiKey configuration tool
     yubikey-personalization
+    yubioath-flutter      # Yubico Authenticator — GUI for OATH/PIV/FIDO management
     pcsc-tools             # pcsc_scan — verify card is seen
 
     # Age / clan secret management

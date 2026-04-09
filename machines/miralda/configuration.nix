@@ -43,6 +43,12 @@
   # keeps existing SSH sessions that start zsh functional.
   programs.zsh.enable = true;
 
+  # clan vars generate runs as root, leaving shared vars root-owned.
+  # Re-chown after every activation so lgo can enter devShell without sudo.
+  system.activationScripts.clanVarsOwnership.text = ''
+    chown -R lgo:users /home/lgo/Projects/clanarchy/vars/shared/zerotier-controller || true
+  '';
+
   # Required
   system.stateVersion = "25.11";
 }
