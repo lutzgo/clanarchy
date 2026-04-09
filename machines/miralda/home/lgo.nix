@@ -1,4 +1,23 @@
 { pkgs, inputs, config, ... }:
+let
+  c = config.lib.stylix.colors;
+
+  # zjstatus — custom status bar (from flake input)
+  zjstatus-wasm = "${inputs.zjstatus.packages.${pkgs.stdenv.hostPlatform.system}.default}/bin/zjstatus.wasm";
+
+  # zellij-autolock — auto lock/unlock based on running process
+  zellij-autolock = pkgs.fetchurl {
+    url = "https://github.com/fresh2dev/zellij-autolock/releases/download/0.2.2/zellij-autolock.wasm";
+    sha256 = "194fgd421w2j77jbpnq994y2ma03qzdlz932cxfhfznrpw3mdjb9";
+  };
+
+  # fzf-zellij — fzf in floating Zellij panes
+  fzf-zellij-src = pkgs.fetchurl {
+    url = "https://raw.githubusercontent.com/k-kuroguro/fzf-zellij/main/bin/fzf-zellij";
+    sha256 = "00xbfr53czs511151xfim13w8syrgpsqy8kkl7y3cbklggr4ammn";
+  };
+  fzf-zellij = pkgs.writeShellScriptBin "fzf-zellij" (builtins.readFile fzf-zellij-src);
+in
 {
   home.username = "lgo";
   home.homeDirectory = "/home/lgo";
@@ -94,18 +113,37 @@
 
   # Zellij — multiplexer config written as raw KDL (HM programs.zellij.settings
   # can't express complex keybind trees). default_mode=locked means all keys pass
-  # through to the terminal by default; Alt+g unlocks to normal mode.
-  # Colors injected from Stylix since programs.zellij isn't used.
-  xdg.configFile."zellij/config.kdl".text = let
-    c = config.lib.stylix.colors;
-  in ''
+  # through to the terminal by default; autolock plugin handles mode switching
+  # when helix/fzf/yazi run. Colors injected from Stylix.
+  xdg.configFile."zellij/config.kdl".text = ''
     default_mode "locked"
     default_shell "nu"
-    pane_frames false
+    pane_frames true
     simplified_ui false
+    mouse_hover_effects false
     session_serialization false
     show_release_notes false
-    default_layout "compact"
+    show_startup_tips false
+    default_layout "default"
+
+    ui {
+        pane_frames {
+            rounded_corners true
+        }
+    }
+
+    plugins {
+        autolock location="file:~/.config/zellij/plugins/zellij-autolock.wasm" {
+            is_enabled true
+            triggers "hx|nvim|vim|git|fzf|zoxide|yazi"
+            reaction_seconds "0.3"
+            print_to_log false
+        }
+    }
+
+    load_plugins {
+        autolock
+    }
 
     themes {
         stylix {
@@ -125,9 +163,18 @@
     theme "stylix"
 
     keybinds {
-        // Locked: every key passes through; only Alt+g unlocks
+        // Locked: every key passes through
+        // Alt+g = re-enable autolock + unlock (autolock manages modes again)
+        // Alt+z = disable autolock + unlock (stay in normal regardless of triggers)
         locked clear-defaults=true {
-            bind "Alt g" { SwitchToMode "Normal"; }
+            bind "Alt g" {
+                MessagePlugin "autolock" { payload "enable"; };
+                SwitchToMode "Normal";
+            }
+            bind "Alt z" {
+                MessagePlugin "autolock" { payload "disable"; };
+                SwitchToMode "Normal";
+            }
         }
 
         // Normal: Alt owns all Zellij actions; Ctrl+hjkl are NOT bound here
@@ -143,7 +190,7 @@
             bind "Alt n"         { NewPane "Right"; }
             bind "Alt Shift n"   { NewPane "Down"; }
             bind "Alt x"         { CloseFocus; }
-            bind "Alt z"         { ToggleFocusFullscreen; }
+            bind "Alt Shift z"   { ToggleFocusFullscreen; }
             bind "Alt Tab"       { FocusNextPane; }
 
             // Launch programs in a new pane (Run opens pane with given command)
@@ -169,8 +216,17 @@
             bind "Alt d" { Detach; }
             bind "Alt r" { SwitchToMode "RenameTab"; }
 
-            // Return to locked mode
-            bind "Alt g" { SwitchToMode "Locked"; }
+            // Re-trigger autolock check (e.g. after pressing Enter in shell)
+            bind "Enter" {
+                WriteChars "\u{000D}";
+                MessagePlugin "autolock" {};
+            }
+
+            // Return to locked mode (disable autolock so it doesn't immediately unlock)
+            bind "Alt g" {
+                MessagePlugin "autolock" { payload "disable"; };
+                SwitchToMode "Locked";
+            }
         }
 
         // Scroll mode: vim-style navigation, search, and copy
@@ -207,6 +263,44 @@
     }
   '';
 
+  # Zellij plugins — WASM files installed to ~/.config/zellij/plugins/
+  xdg.configFile."zellij/plugins/zjstatus.wasm".source = zjstatus-wasm;
+  xdg.configFile."zellij/plugins/zellij-autolock.wasm".source = zellij-autolock;
+
+  # Zellij layout — zjstatus bar at bottom, replaces compact layout
+  xdg.configFile."zellij/layouts/default.kdl".text = ''
+    layout {
+        default_tab_template {
+            children
+            pane size=1 borderless=true {
+                plugin location="file:~/.config/zellij/plugins/zjstatus.wasm" {
+                    format_left  "{mode}#[fg=#${c.base0D},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base0D},bold] {session} #[fg=#${c.base0D},bg=#${c.base00}]"
+                    format_center "{tabs}"
+                    format_right "#[fg=#${c.base03},bg=#${c.base00}]#[fg=#${c.base05},bg=#${c.base03}] {datetime}"
+                    format_space "#[bg=#${c.base00}]"
+
+                    hide_frame_for_single_pane "true"
+                    border_enabled "false"
+
+                    mode_normal       "#[fg=#${c.base0D},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base0D},bold] NORMAL #[fg=#${c.base0D},bg=#${c.base00}]"
+                    mode_locked       "#[fg=#${c.base0B},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base0B},bold] LOCKED #[fg=#${c.base0B},bg=#${c.base00}]"
+                    mode_scroll       "#[fg=#${c.base0A},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base0A},bold] SCROLL #[fg=#${c.base0A},bg=#${c.base00}]"
+                    mode_search       "#[fg=#${c.base09},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base09},bold] SEARCH #[fg=#${c.base09},bg=#${c.base00}]"
+                    mode_enter_search "#[fg=#${c.base09},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base09},bold] SEARCH #[fg=#${c.base09},bg=#${c.base00}]"
+                    mode_rename_tab   "#[fg=#${c.base0E},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base0E},bold] RENAME #[fg=#${c.base0E},bg=#${c.base00}]"
+
+                    tab_normal "#[fg=#${c.base03},bg=#${c.base00}]#[fg=#${c.base05},bg=#${c.base03}] {index}  {name} #[fg=#${c.base03},bg=#${c.base00}]"
+                    tab_active "#[fg=#${c.base0D},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base0D},bold,italic] {index}  {name} #[fg=#${c.base0D},bg=#${c.base00}]"
+
+                    datetime "#[fg=#${c.base05},bg=#${c.base03},bold] {format} "
+                    datetime_format "%H:%M"
+                    datetime_timezone "Europe/Berlin"
+                }
+            }
+        }
+    }
+  '';
+
   # Yazi — file manager keybindings (prepend so defaults are preserved)
   xdg.configFile."yazi/keymap.toml".text = ''
     [[manager.prepend_keymap]]
@@ -230,7 +324,9 @@
     desc = "Select all"
   '';
 
-  home.packages = with pkgs; [
+  home.packages = [
+    fzf-zellij
+  ] ++ (with pkgs; [
     htop
     ripgrep
     fd
@@ -248,5 +344,5 @@
 
     # Clan management
     inputs.clan-core.packages.${pkgs.stdenv.hostPlatform.system}.clan-cli
-  ];
+  ]);
 }

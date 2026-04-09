@@ -7,7 +7,7 @@ Keybind layers — each level uses a different modifier to avoid conflicts:
 | Layer | Modifier | Unlock |
 |-------|----------|--------|
 | **Niri** (WM) | `Mod` (Super) | Always active |
-| **Zellij** (mux) | `Alt` | `Alt+G` to unlock, `Alt+G` to re-lock |
+| **Zellij** (mux) | `Alt` | Autolock (auto); `Alt+G` lock/unlock; `Alt+Z` disable autolock |
 | **Helix** (editor) | `Ctrl` / vim keys | Normal mode |
 | **Nushell** | Emacs keys | Always active |
 
@@ -85,13 +85,15 @@ Keybind layers — each level uses a different modifier to avoid conflicts:
 
 ## Zellij multiplexer (`Alt`)
 
-Starts in **locked mode** — all keys pass through to the terminal.
+Starts in **locked mode** — all keys pass through to the terminal. The **autolock** plugin automatically switches to locked mode when helix, fzf, yazi, git, or zoxide are running, and back to normal when they exit. The **zjstatus** bar shows mode (colored pill), session name, tabs (bubble style), and time.
 
 ### Mode switching
 
-| Key | Action |
-|-----|--------|
-| `Alt+G` | Toggle locked/normal mode |
+| Key | From | Action |
+|-----|------|--------|
+| `Alt+G` | Normal | Disable autolock + switch to locked (manual passthrough) |
+| `Alt+G` | Locked | Re-enable autolock + switch to normal |
+| `Alt+Z` | Locked | Disable autolock + switch to normal (stay unlocked regardless of triggers) |
 
 ### Normal mode (after `Alt+G`)
 
@@ -103,7 +105,7 @@ Starts in **locked mode** — all keys pass through to the terminal.
 | `Alt+N` | New pane (right) |
 | `Alt+Shift+N` | New pane (down) |
 | `Alt+X` | Close pane |
-| `Alt+Z` | Toggle pane fullscreen |
+| `Alt+Shift+Z` | Toggle pane fullscreen |
 | `Alt+Tab` | Focus next pane |
 | `Alt+T` | New terminal pane |
 
@@ -218,13 +220,6 @@ Nushell uses Emacs-mode keybindings by default.
 | `Ctrl+R` | Reverse search history |
 | `Ctrl+P` / `Up` | Previous history entry |
 | `Ctrl+N` / `Down` | Next history entry |
-
-### Zsh (vi mode)
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+E` | Enter command (vi normal) mode |
-| Standard vi keys | Navigation in normal mode |
 
 ---
 

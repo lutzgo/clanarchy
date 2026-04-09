@@ -72,6 +72,7 @@
             { app-id = "^gimp$"; }
             { app-id = "^libreoffice"; }
             { app-id = "^soffice$"; }
+            { app-id = "^darktable$"; }
           ];
           opacity = 1.0;
         }
@@ -414,6 +415,10 @@
               id = "plugin:mirror-mirror";
             }
             {
+              defaultSettings = {};
+              id = "plugin:screenshot";
+            }
+            {
               defaultSettings = {
                 audioCodec = "opus";
                 audioSource = "default_output";
@@ -449,6 +454,10 @@
               hidePassive = false;
               id = "Tray";
               pinned = [];
+            }
+            {
+              defaultSettings = {};
+              id = "plugin:usb-device-manager";
             }
             {
               hideWhenZero = false;

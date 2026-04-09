@@ -7,9 +7,15 @@
     "signal-desktop"
   ];
   environment.systemPackages = with pkgs; [
-    anytype
+    #anytype
+    argyllcms
+    displaycal
+    calibre
     chromium
     librewolf
+    fastfetch
+    gpu-screen-recorder
+    kdePackages.qtwebsockets
     firefox
     signal-desktop
     keepassxc
@@ -33,6 +39,9 @@
     wtype           # Wayland keyboard input injection (xdotool equivalent)
     claude-code
   ];
+
+  # Color Calibration
+  services.colord.enable = true;
 
   # Valent / KDE Connect protocol — ports 1714-1764 TCP+UDP
   networking.firewall = {

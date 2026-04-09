@@ -154,17 +154,18 @@ machines/miralda/
   configuration.nix        — hostname, timezone, boot loader, ZFS, Plymouth, zsh
   disko.nix                — NVMe partitioning (GPT: 1G ESP + ZFS AES-256-GCM)
   impermanence.nix         — ZFS rollback on boot; persisted paths
-  desktop.nix              — Niri, UWSM, ReGreet, Framework hw, Pipewire, fonts, Valent service
+  desktop.nix              — Niri, UWSM, ReGreet, Framework hw, Pipewire, fonts
   stylix.nix               — Gruvbox Dark theme, generated wallpaper, cursor
-  noctalia.nix             — Noctalia PAM, declarative settings + pluginSettings, Stylix colors
+  noctalia.nix             — Noctalia PAM, declarative settings, Stylix colors
   yubikey.nix              — pcscd, GnuPG agent, polkit rule
   wifi.nix                 — NetworkManager profile from clan vars
-  apps.nix                 — GUI/CLI apps, unfree allowlist, Podman, Flatpak, firewall
+  apps.nix                 — GUI/CLI apps, unfree allowlist, firewall
   syncthing.nix            — Syncthing service configuration
   wallpapers.nix           — Wallpaper installation for Noctalia
+  facter.json              — nixos-facter hardware report
   users/                   — System user declarations
   home/                    — Home Manager per-user configs
-  home-modules/desktop.nix — Shared HM: Niri settings, Noctalia shell, foot, starship, packages
+  home-modules/desktop.nix — Shared HM: Niri keybinds, Noctalia shell, foot, zellij, starship
   secrets/                 — Clan vars generators (passwords, WiFi, age identity)
 vars/per-machine/miralda/  — Generated secrets (gitignored sensitive values)
 sops/                      — sops age keys

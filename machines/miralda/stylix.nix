@@ -2,7 +2,7 @@
 
 let
   # Pick a Base16/Base24 from https://tinted-theming.github.io/tinted-gallery/.
-  schemePath = "${pkgs.base16-schemes}/share/themes/selenized-dark.yaml";
+  schemePath = "${pkgs.base16-schemes}/share/themes/selenized-black.yaml";
 
   # Helper: read base16 colors from the scheme file
   # Stylix exposes the resolved colors under config.lib.stylix.colors once enabled.

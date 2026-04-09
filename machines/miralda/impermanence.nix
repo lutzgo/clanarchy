@@ -38,6 +38,7 @@
         ".config"
         ".local/share"
         ".cache/noctalia"  # shell-state.json (version tracking → no wizard/changelog on rollback)
+        ".cache/zellij"    # compiled WASM + plugin permission cache (avoids "Allow?" prompt on boot)
         "Pictures"         # Noctalia wallpaper manager (Wallpapers subdirectory lives here)
       ];
     };
@@ -49,6 +50,7 @@
         ".config"          # gh auth token, noctalia/helix/zellij settings, etc.
         ".local/share"
         ".cache/noctalia"  # shell-state.json (version tracking → no wizard/changelog on rollback)
+        ".cache/zellij"    # compiled WASM + plugin permission cache (avoids "Allow?" prompt on boot)
         "Pictures"         # includes Wallpapers/ subdirectory
         "Documents"
         "Downloads"

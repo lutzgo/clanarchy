@@ -36,11 +36,29 @@
   services.power-profiles-daemon.enable = true;
 
   # Lid close → suspend to RAM (hybrid-sleep requires swap, which this ZFS layout lacks)
-  services.logind.lidSwitch = "suspend";
+  services.logind.settings.Login = {
+    HandleLidSwitch = "suspend";
+    KillUserProcesses = false;
+  };
 
   # Framework-specific hardware support
   services.fprintd.enable = true;  # fingerprint reader
   services.fwupd.enable = true;    # firmware updates via LVFS
+
+  hardware.graphics.enable = true;
+
+  hardware.graphics.extraPackages = with pkgs; [
+    mesa          # provides Rusticl OpenCL via radeonsi driver
+    rocmPackages.clr.icd  # optional ROCm ICD — not needed for iGPU, skip unless testing
+  ];
+
+  environment.systemPackages = with pkgs; [
+    clinfo        # verify OpenCL is visible
+  ];
+
+  environment.variables = {
+    RUSTICL_ENABLE = "radeonsi";
+  };
 
   # Uncomment after enrolling fingerprints with: sudo fprintd-enroll lgo
   security.pam.services.login.fprintAuth = true;
