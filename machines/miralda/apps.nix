@@ -17,6 +17,7 @@ let
     (crxUrl "cjpalhdlnbpafiamejdnhcphjbkeiagm")  # uBlock Origin
     (crxUrl "oboonakemofpalcgghocfoadofidjkkk")  # KeePassXC-Browser
     (crxUrl "dbepggeogbaibhgnhhndojpepiihcmeb")  # Vimium
+    (crxUrl "efobhjmgoddhfdhaflheioeagkcknoji")  # Vertical Tabs (nicedoc.io)
   ];
 in
 {

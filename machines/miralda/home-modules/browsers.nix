@@ -115,6 +115,13 @@ in
       { id = "dbepggeogbaibhgnhhndojpepiihcmeb"; }
       # SideTab Pro (vertical tabs) — ⚠ ID spec-provided, unverified
       { id = "fehfojhhnbfbclgpffmffigfgngbpnmj"; }
+      # Vertical Tabs (nicedoc.io) — FOSS, ~100K users
+      # github.com/samihaddad/vertical-tabs-chrome-extension
+      # Toggle: Alt+V (configurable at chrome://extensions/shortcuts)
+      # NOTE: rendering bug reported in Chrome 145 (issue #117 on GitHub)
+      # — monitor upstream; extension is on Chrome 146 which fixes the
+      # Chrome-side bug. If sidebar stops rendering, check issue tracker.
+      { id = "efobhjmgoddhfdhaflheioeagkcknoji"; }
       # Linkwarden — ⚠ ID spec-provided, unverified
       { id = "pnidmkljnhbjfffciajlenmpaoemnjlo"; }
     ];
