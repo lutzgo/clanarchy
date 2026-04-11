@@ -48,6 +48,11 @@
       url = "github:dj95/zjstatus";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    nur = {
+      url = "github:nix-community/nur";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs@{ flake-parts, clan-core, ... }:
@@ -135,6 +140,7 @@
           ./machines/miralda/secrets/wifi.nix
           ./machines/miralda/wifi.nix
           ./machines/miralda/apps.nix
+          ./machines/miralda/printer.nix
           ./machines/miralda/syncthing.nix
           ./machines/miralda/wallpapers.nix
         ];
