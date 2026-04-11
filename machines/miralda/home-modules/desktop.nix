@@ -1193,6 +1193,22 @@
     };
   };
 
+  # Idle management: lock after 5 min idle, monitors off after 5.5 min, lock before sleep.
+  # -w: swayidle holds the sleep inhibitor until the before-sleep command exits.
+  # "sleep 2" gives Noctalia time to display its lockscreen before the system suspends.
+  # loginctl lock-session sends the org.freedesktop.login1 Lock signal → Noctalia lockscreen.
+  services.swayidle = {
+    enable = true;
+    extraArgs = [ "-w" ];
+    events = [
+      { event = "before-sleep"; command = "loginctl lock-session; sleep 2"; }
+    ];
+    timeouts = [
+      { timeout = 300; command = "loginctl lock-session"; }
+      { timeout = 330; command = "niri msg action power-off-monitors"; }
+    ];
+  };
+
   # Common graphical packages for all desktop users
   home.packages = with pkgs; [
     ghostty   # secondary terminal (foot is default via Mod+Return)
