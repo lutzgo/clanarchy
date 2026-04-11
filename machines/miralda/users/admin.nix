@@ -2,8 +2,6 @@
 {
   users.mutableUsers = false;
 
-  programs.zsh.enable = true;
-
   users.users.admin = {
     isNormalUser = true;
     extraGroups = [ "wheel" ];

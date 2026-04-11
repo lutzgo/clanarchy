@@ -1,11 +1,7 @@
 { pkgs, lib, ... }:
 let
-  # ── Chromium extension installation via initial_preferences ───────────
-  # The NixOS chromium package patches the binary to read
-  # /etc/chromium/initial_preferences (see chromium-initial-prefs.patch).
-  # first_run_tabs opens CRX URLs on first launch (when First Run is absent).
-  # With --extension-mime-request-handling=always-prompt-for-install (baked
-  # in via clan.nix overlay) each CRX URL shows an install prompt.
+  # CRX install via first_run_tabs: patched chromium reads /etc/chromium/initial_preferences;
+  # --extension-mime-request-handling=always-prompt-for-install (baked in clan.nix overlay).
   crxUrl = id:
     "https://clients2.google.com/service/update2/crx"
     + "?response=redirect&acceptformat=crx2,crx3"
@@ -22,24 +18,19 @@ let
 in
 {
   nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [
-    "anytype"
-    "anytype-heart"
     "claude-code"
     "signal-desktop"
-    "google-chrome"  # work / DRM / SSO fallback (see home-modules/browsers.nix)
+    "google-chrome"  # work / DRM / SSO fallback
   ];
   environment.systemPackages = with pkgs; [
-    #anytype
     argyllcms
     displaycal
     calibre
-    # chromium: removed — managed by programs.chromium (ungoogled-chromium) in home-modules/browsers.nix
     google-chrome   # unfree work/fallback; allowUnfreePredicate above
     librewolf
     fastfetch
     gpu-screen-recorder
     kdePackages.qtwebsockets
-    # firefox: removed — managed by programs.firefox in home-modules/browsers.nix
     signal-desktop
     keepassxc
     valent          # KDE Connect protocol — replaces kdePackages.kdeconnect-kde (lighter deps)
@@ -82,13 +73,8 @@ in
   # Flatpak
   services.flatpak.enable = true;
 
-  # ── Chromium managed policies (system-level, root-owned) ──────────────
-  #
-  # Chromium silently rejects mandatory policy files that are user-owned.
-  # System-level policies at /etc/chromium/policies/managed/ (owned by root
-  # via environment.etc) are the only reliable way to apply managed policies
-  # on Linux.  home.file entries at ~/.config/chromium/policies/managed/ do
-  # not work as mandatory policies even though Chromium creates the directory.
+  # Chromium managed policies — must be root-owned (/etc/); home.file paths
+  # are silently rejected as mandatory policies even if the dir exists.
   environment.etc."chromium/policies/managed/privacy.json".text =
     builtins.toJSON {
 
@@ -155,16 +141,11 @@ in
       ];
     };
 
-  # ── Chromium initial_preferences (extension first-run tabs) ───────────
-  # Patched chromium reads this from /etc/chromium/initial_preferences.
+  # Extension first-run tabs — patched chromium reads /etc/chromium/initial_preferences
   environment.etc."chromium/initial_preferences".text =
     builtins.toJSON { first_run_tabs = chromiumFirstRunTabs; };
 
-  # ── Reset First Run when extension list changes ────────────────────────
-  # Runs at boot; deletes ~/.config/chromium/First Run for all users when
-  # chromiumFirstRunTabs changes (hash mismatch), so install tabs re-open
-  # on the next Chromium launch.  Hash stored in /persist (survives ZFS
-  # rollback; .config/chromium is also persisted so First Run survives).
+  # Reset ~/.config/chromium/First Run on extension list change (hash in /persist)
   systemd.services.chromiumFirstRun = {
     description = "Reset Chromium first-run sentinel on extension config change";
     wantedBy    = [ "multi-user.target" ];

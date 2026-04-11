@@ -1,21 +1,12 @@
 { pkgs, inputs, pkgs-unstable, ... }:
 {
-  # Niri compositor (system-level: binary, capabilities, PAM, etc.)
-  # niri is overridden with doCheck=false via clan.pkgsForSystem in clan.nix
   programs.niri.enable = true;
 
-  # ReGreet — GTK4 greeter, runs inside cage (Wayland kiosk compositor).
-  # programs.regreet enables greetd and configures cage + regreet automatically.
-  # Stylix theming is applied via stylix.targets.regreet in stylix.nix.
-  # No state is persisted — /var/lib/regreet resets on ZFS rollback, which is fine.
+  # ReGreet — GTK4 greeter via cage; Stylix-themed in stylix.nix
   programs.regreet.enable = true;
 
-
-  # UWSM — systemd session manager; registers niri and generates niri-uwsm.desktop.
-  # binPath must be niri-session, not niri: niri-session detects when it runs as a
-  # systemd user service and execs "niri --session", which exports WAYLAND_DISPLAY
-  # and NIRI_SOCKET to the systemd user manager. Without --session, UWSM's waitenv
-  # times out (30s) and sends SIGTERM because WAYLAND_DISPLAY never appears.
+  # UWSM — binPath must be niri-session (not niri): exports WAYLAND_DISPLAY/NIRI_SOCKET
+  # to systemd user manager; without --session, UWSM's waitenv times out (30s).
   programs.uwsm = {
     enable = true;
     waylandCompositors.niri = {
@@ -58,9 +49,11 @@
 
   environment.variables = {
     RUSTICL_ENABLE = "radeonsi";
+    XCURSOR_SIZE = "24";
+    XCURSOR_THEME = "Adwaita";
+    NIXOS_OZONE_WL = "1";
   };
 
-  # Uncomment after enrolling fingerprints with: sudo fprintd-enroll lgo
   security.pam.services.login.fprintAuth = true;
   security.pam.services.greetd.fprintAuth = true;
   security.pam.services.sudo.fprintAuth = true;
@@ -69,13 +62,6 @@
   services.udev.extraRules = ''
     SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="LID*", ATTRS{phys}=="PNP0C0D*", TAG-="power-switch"
   '';
-
-  # HiDPI cursor + Wayland env flags
-  environment.variables = {
-    XCURSOR_SIZE = "24";
-    XCURSOR_THEME = "Adwaita";
-    NIXOS_OZONE_WL = "1";
-  };
 
   # Pipewire audio
   security.rtkit.enable = true;
@@ -110,10 +96,8 @@
     subpixel = { rgba = "rgb"; lcdfilter = "default"; };
   };
 
-  # Valent — KDE Connect protocol service for phone integration.
-  # Valent stores its TLS cert as plain PEM files (~/.config/valent/private.pem).
-  # Without the environment override, gcr auto-imports the key into gpg-agent,
-  # triggering a pinentry passphrase prompt that blocks the headless service.
+  # Valent — GCR_SSH_AGENT_PIPE="" prevents gcr from importing the TLS key into
+  # gpg-agent (which would trigger a blocking pinentry prompt for the headless service).
   systemd.user.services.valent = {
     description = "Valent - KDE Connect protocol";
     wantedBy = [ "graphical-session.target" ];
