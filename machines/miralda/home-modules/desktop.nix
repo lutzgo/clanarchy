@@ -1193,6 +1193,10 @@
     };
   };
 
+  # Point Noctalia's lockscreen at the dedicated PAM service (noctalia.nix).
+  # Without this, Noctalia falls back to the "login" service (LockContext.qml default).
+  systemd.user.sessionVariables.NOCTALIA_PAM_SERVICE = "noctalia";
+
   # Idle management: lock after 5 min idle, monitors off after 5.5 min, lock before sleep.
   # -w: swayidle holds the sleep inhibitor until the before-sleep command exits.
   # "sleep 2" gives Noctalia time to display its lockscreen before the system suspends.
