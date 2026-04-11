@@ -70,8 +70,27 @@ in
     dockerCompat = true;
   };
 
-  # Flatpak
+  # Flatpak + Flathub
+  # XDG_DATA_DIRS must include flatpak export paths so launchers (Noctalia/Quickshell)
+  # see installed apps' .desktop files. NixOS adds these via /etc/profile.d/flatpak.sh
+  # (login-shell only), but UWSM imports env from PAM — sessionVariables writes to
+  # /etc/environment via pam_env, which is read by all PAM sessions including greetd.
   services.flatpak.enable = true;
+  environment.sessionVariables.XDG_DATA_DIRS = [
+    "/var/lib/flatpak/exports/share"
+    "$HOME/.local/share/flatpak/exports/share"
+  ];
+  systemd.services.flatpak-add-flathub = {
+    description = "Add Flathub remote for Flatpak";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network-online.target" ];
+    wants = [ "network-online.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = "${pkgs.flatpak}/bin/flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo";
+    };
+  };
 
   # Chromium managed policies — must be root-owned (/etc/); home.file paths
   # are silently rejected as mandatory policies even if the dir exists.
