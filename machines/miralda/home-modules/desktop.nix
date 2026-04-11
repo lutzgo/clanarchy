@@ -1204,9 +1204,9 @@
   services.swayidle = {
     enable = true;
     extraArgs = [ "-w" ];
-    events = [
-      { event = "before-sleep"; command = "loginctl lock-session; sleep 2"; }
-    ];
+    events = {
+      before-sleep = "loginctl lock-session; sleep 2";
+    };
     timeouts = [
       { timeout = 300; command = "loginctl lock-session"; }
       { timeout = 330; command = "niri msg action power-off-monitors"; }
