@@ -117,16 +117,17 @@
       # All app launches prefixed with "uwsm app --" so they run as systemd units
       binds = {
         # --- Focus navigation ---
-        "Mod+H".action.focus-column-left  = {};
-        "Mod+L".action.focus-column-right = {};
-        "Mod+J".action.focus-window-down  = {};
-        "Mod+K".action.focus-window-up    = {};
+        # h/l = columns (horizontal axis), j/k = workspaces (vertical axis)
+        "Mod+H".action.focus-column-left     = {};
+        "Mod+L".action.focus-column-right    = {};
+        "Mod+J".action.focus-workspace-down  = {};
+        "Mod+K".action.focus-workspace-up    = {};
 
         # --- Move windows/columns ---
-        "Mod+Shift+H".action.move-column-left  = {};
-        "Mod+Shift+L".action.move-column-right = {};
-        "Mod+Shift+J".action.move-window-down  = {};
-        "Mod+Shift+K".action.move-window-up    = {};
+        "Mod+Shift+H".action.move-column-left                  = {};
+        "Mod+Shift+L".action.move-column-right                 = {};
+        "Mod+Shift+J".action.move-window-to-workspace-down     = {};
+        "Mod+Shift+K".action.move-window-to-workspace-up       = {};
 
         # --- Monitor navigation ---
         "Mod+Ctrl+H".action.focus-monitor-left  = {};

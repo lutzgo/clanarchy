@@ -19,6 +19,12 @@ let
   fzf-zellij = pkgs.writeShellScriptBin "fzf-zellij" (builtins.readFile fzf-zellij-src);
 in
 {
+  imports = [
+    # Browser stack: ungoogled-chromium, librewolf config, firefox+arkenfox,
+    # google-chrome, and KeePassXC native messaging for all four browsers.
+    ../home-modules/browsers.nix
+  ];
+
   home.username = "lgo";
   home.homeDirectory = "/home/lgo";
   home.stateVersion = "25.11";

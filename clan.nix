@@ -10,11 +10,19 @@
       overlays = [
         # niri 25.08 test suite hits EMFILE (too many open files) in the Nix sandbox
         (_: prev: {
-          # niri 25.08 test suite hits EMFILE in the Nix sandbox (150 parallel
-          # tests each creating Wayland sockets). Replace checkPhase with a
-          # no-op so the binary still builds — overrideAttrs doCheck/dontCheck
-          # do not change the drv hash for buildRustPackage.
           niri = prev.niri.overrideAttrs (_: { checkPhase = ":"; });
+        })
+        # ungoogled-chromium: bake privacy flags into the binary.
+        # Must be here (pkgsForSystem) — nixpkgs.overlays in NixOS modules is
+        # ignored when pkgsForSystem is set (clan-core pre-sets nixpkgs.pkgs).
+        (_: prev: {
+          ungoogled-chromium = prev.ungoogled-chromium.override {
+            commandLineArgs = [
+              "--no-pings"
+              "--disable-search-engine-collection"
+              "--extension-mime-request-handling=always-prompt-for-install"
+            ];
+          };
         })
       ];
     };

@@ -15,7 +15,7 @@
 #   KEEP   "keepassxc" — system package; do not duplicate here
 #
 # ============================================================
-{ pkgs, lib, ... }:
+{ pkgs, inputs, ... }:
 
 let
   # ── KeePassXC native messaging manifest helpers ──────────────────────
@@ -52,15 +52,11 @@ let
 
 in
 {
-  # ── Unfree allowance scoped to google-chrome ─────────────────────────
-  #
-  # home-manager.useGlobalPkgs is not set in this config, so home-manager
-  # evaluates its own pkgs instance.  This predicate configures that HM-
-  # internal pkgs so that pkgs.google-chrome (below) is buildable.
-  # If useGlobalPkgs were ever set to true, move "google-chrome" into the
-  # allowUnfreePredicate in apps.nix instead (NixOS-level).
-  nixpkgs.config.allowUnfreePredicate = pkg:
-    lib.getName pkg == "google-chrome";
+  # NOTE: google-chrome (unfree) is installed as a system package in apps.nix.
+  # nixpkgs.config.allowUnfreePredicate in a home-manager NixOS module does
+  # not affect the pkgs argument used by home.packages — the pkgs argument
+  # always comes from the system evaluation in this setup.  The allowUnfree
+  # predicate and the google-chrome package entry both live in apps.nix.
 
 
   # ============================================================
@@ -72,6 +68,7 @@ in
     # Replace standard pkgs.chromium (remove it from apps.nix).
     # ungoogled-chromium ships with Google API keys removed and a
     # Chromium-Web-Store patch that restores the extension install UI.
+    # Flags are baked into the binary via the pkgsForSystem overlay in clan.nix.
     package = pkgs.ungoogled-chromium;
 
     # ── Extensions ────────────────────────────────────────────────────
@@ -91,129 +88,59 @@ in
     # lookup at generation time.  If an extension fails to auto-install,
     # open the (bootstrapped) Web Store UI and search by name to find the
     # correct ID, then update this file.
+    # ── Extensions ────────────────────────────────────────────────────
+    #
+    # HM writes ~/.config/chromium/External Extensions/<id>.json per entry.
+    # ungoogled-chromium blocks external extension installation by default;
+    # --extension-mime-request-handling=always-prompt-for-install (in
+    # commandLineArgs below) re-enables the External Extensions mechanism
+    # so that CWS entries auto-install on next launch.
+    #
+    # IDs marked ⚠ were spec-provided and could not be confirmed against the
+    # live Web Store — if one fails to install, open chrome://extensions and
+    # verify the correct ID via the Web Store search.
     extensions = [
-      # chromium-web-store — bootstraps the Web Store UI in ungoogled-chromium
-      # Verified: github.com/NeverDecaf/chromium-web-store releases
+      # chromium-web-store — restores the Web Store UI in ungoogled-chromium
       {
         id        = "cinhimbnkkaeohfgghhklpknlkffjgod";
         updateUrl = "https://github.com/NeverDecaf/chromium-web-store/releases/latest/download/update.xml";
       }
-
       # uBlock Origin — verified CWS: cjpalhdlnbpafiamejdnhcphjbkeiagm
       { id = "cjpalhdlnbpafiamejdnhcphjbkeiagm"; }
-
       # KeePassXC-Browser — verified CWS: oboonakemofpalcgghocfoadofidjkkk
       { id = "oboonakemofpalcgghocfoadofidjkkk"; }
-
       # Vimium — verified CWS: dbepggeogbaibhgnhhndojpepiihcmeb
+      # After first launch: Options → Custom key mappings →
+      #   map <a-b> createTab https://YOUR_LINKWARDEN_INSTANCE/links
       { id = "dbepggeogbaibhgnhhndojpepiihcmeb"; }
-
-      # SideTab Pro (vertical tabs)
-      # ⚠ ID fehfojhhnbfbclgpffmffigfgngbpnmj — spec-provided; could not
-      #   be independently confirmed against the live Web Store.  If this
-      #   fails to install, search the Store for "SideTab Pro" or consider
-      #   "Sidewise Tree Style Tabs" (verified extension) as an alternative.
+      # SideTab Pro (vertical tabs) — ⚠ ID spec-provided, unverified
       { id = "fehfojhhnbfbclgpffmffigfgngbpnmj"; }
-
-      # Linkwarden bookmark manager
-      # ⚠ ID pnidmkljnhbjfffciajlenmpaoemnjlo — spec-provided; could not
-      #   be confirmed against the live Web Store.  Verify by searching
-      #   chromewebstore.google.com for "Linkwarden" before first use.
+      # Linkwarden — ⚠ ID spec-provided, unverified
       { id = "pnidmkljnhbjfffciajlenmpaoemnjlo"; }
     ];
 
-    # ── commandLineArgs (ungoogled-chromium specific) ──────────────────
-    #
-    # Both flags are present in the ungoogled-chromium patch set and in
-    # the Bromite flags.md from which it descends.  Unknown flags are
-    # silently ignored by Chromium, so these are safe to leave even if
-    # a future build drops them.
-    commandLineArgs = [
-      "--no-pings"                         # disable hyperlink auditing (ping= attr)
-      "--disable-search-engine-collection" # prevent automatic search engine detection
-    ];
-
-    # ── extraOpts (Chrome Enterprise managed policy) ───────────────────
-    extraOpts = {
-
-      # ── Telemetry and account features ──────────────────────────
-      MetricsReportingEnabled                     = false;
-      # SafeBrowsingEnabled is deprecated in Chrome 130+ in favour of
-      # SafeBrowsingProtectionLevel.  Both are included for compatibility.
-      SafeBrowsingEnabled                         = false;
-      SafeBrowsingProtectionLevel                 = 0; # 0 = disabled
-      PasswordManagerEnabled                      = false;
-      AutofillAddressEnabled                      = false;
-      AutofillCreditCardEnabled                   = false;
-      UserFeedbackAllowed                         = false;
-      UrlKeyedAnonymizedDataCollectionEnabled      = false;
-
-      # ── Privacy Sandbox — disable all ad-targeting APIs ─────────
-      PrivacySandboxAdMeasurementEnabled          = false;
-      PrivacySandboxAdTopicsEnabled               = false;
-      PrivacySandboxSiteEnabledAdsEnabled         = false;
-
-      # ── Cookies and tracking ─────────────────────────────────────
-      # BlockThirdPartyCookies was deprecated in Chrome 130 (3PC blocking
-      # is now the default).  Kept here for explicitness; harmless on
-      # newer versions.
-      BlockThirdPartyCookies                      = true;
-      DefaultCookiesSetting                       = 1; # 1 = allow first-party
-
-      # ── Network leak prevention ──────────────────────────────────
-      WebRtcIPHandlingPolicy                      = "disable_non_proxied_udp";
-      NetworkPredictionOptions                    = 2; # 2 = disabled
-      SearchSuggestEnabled                        = false;
-
-      # ── Encrypted DNS (DoH — locked to secure mode) ─────────────
-      DnsOverHttpsMode                            = "secure";
-      DnsOverHttpsTemplates                       = "https://dns.quad9.net/dns-query";
-
-      # ── Permission defaults (2 = block) ─────────────────────────
-      DefaultGeolocationSetting                   = 2;
-      DefaultNotificationsSetting                 = 2;
-      DefaultCameraSetting                        = 2;
-      DefaultMicrophoneSetting                    = 2;
-      DefaultPopupsSetting                        = 2;
-      DefaultSensorsSetting                       = 2;
-      DefaultSerialSetting                        = 2;
-      DefaultHidSetting                           = 2;
-      DefaultBluetoothSetting                     = 2;
-      DefaultFileSystemReadGuardSetting           = 2;
-      DefaultFileSystemWriteGuardSetting          = 2;
-
-      # ── JavaScript JIT ───────────────────────────────────────────
-      # Correct policy name is DefaultJavaScriptJitSetting (the spec
-      # listed "JavaScriptJit" which is not a valid Chrome policy key).
-      # Value 2 = block JIT globally; sites can be re-enabled via
-      # JavaScriptJitAllowedForSites without a browser restart, which
-      # is the advantage of the policy approach over a command-line flag.
-      DefaultJavaScriptJitSetting                 = 2;
-      JavaScriptJitAllowedForSites                = [
-        # Add patterns for sites that require JIT, e.g.:
-        # "https://[*.]figma.com"
-        # "https://[*.]google.com"
-      ];
-
-      # ── Search engines ───────────────────────────────────────────
-      DefaultSearchProviderEnabled                = true;
-      DefaultSearchProviderName                   = "DuckDuckGo";
-      DefaultSearchProviderSearchURL              = "https://duckduckgo.com/?q={searchTerms}";
-      DefaultSearchProviderSuggestURL             = "https://duckduckgo.com/ac/?q={searchTerms}&type=list";
-
-      # ManagedSearchEngines: available in Chrome 116+.
-      # nixpkgs 25.11 ships Chromium 131+, so this key should be valid.
-      # If it causes a policy error, comment it out and add Startpage
-      # manually via chrome://settings/searchEngines.
-      ManagedSearchEngines = [
-        {
-          name    = "Startpage";
-          keyword = "sp";
-          url     = "https://www.startpage.com/search?q={searchTerms}";
-        }
-      ];
-    };
   };
+
+  # ── Desktop entries ───────────────────────────────────────────────────
+  # ungoogled-chromium ships both chromium.desktop and chromium-browser.desktop.
+  # Shadow chromium.desktop to ensure a clean single entry; hide chromium-browser.
+  xdg.desktopEntries.chromium = {
+    name        = "Chromium";
+    genericName = "Web Browser";
+    exec        = "chromium %U";
+    icon        = "chromium";
+    categories  = [ "Network" "WebBrowser" ];
+    mimeType    = [ "text/html" "text/xml" "application/xhtml+xml" "x-scheme-handler/http" "x-scheme-handler/https" ];
+  };
+  xdg.desktopEntries.chromium-browser = {
+    name      = "Chromium Browser";
+    exec      = "chromium %U";
+    noDisplay = true;
+  };
+
+  # ── Chromium policies ─────────────────────────────────────────────────
+  # Managed policies are now in apps.nix via environment.etc
+  # (/etc/chromium/policies/managed/privacy.json, root-owned).
 
   # ── KeePassXC native messaging host for Chromium ──────────────────────
   home.file.".config/chromium/NativeMessagingHosts/org.keepassxc.keepassxc_browser.json".text =
@@ -435,46 +362,60 @@ in
         # nixpkgs 25.11 ships Firefox 133+, so this pref is active.
         # Remove if it causes issues on older builds.
         "sidebar.verticalTabs" = true;
+
+        # ── userChrome.css — required to hide the horizontal tab bar ─
+        "toolkit.legacyUserProfileCustomizations.stylesheets" = true;
       };
+
+      # ── Hide horizontal tab bar (vertical tabs active) ───────────────
+      # Firefox does not hide the horizontal tab bar when the vertical
+      # sidebar is enabled — the user must either toggle it in Firefox's
+      # right-click menu on the tab bar, or force it via userChrome.css.
+      # This CSS hides it unconditionally; remove if you want it back.
+      userChrome = ''
+        /* Hide the horizontal tab bar — vertical tabs sidebar is used instead */
+        #TabsToolbar {
+          display: none !important;
+        }
+      '';
 
       # ── Extensions ──────────────────────────────────────────────────
       #
-      # pkgs.firefox-addons is available in nixpkgs 25.11.
-      # If the `packages` subkey is rejected by your home-manager version,
-      # change to the older list syntax:
-      #   extensions = with pkgs.firefox-addons; [ ublock-origin ... ];
-      #
-      # vimium-ff: include it if pkgs.firefox-addons.vimium-ff exists in
-      # your nixpkgs; otherwise install from AMO (URL in LibreWolf section).
-      # Uncomment the line below after confirming the attribute is present.
-      #
-      # Linkwarden: not in pkgs.firefox-addons as of nixpkgs 25.11.
-      # Install manually: https://addons.mozilla.org/firefox/addon/linkwarden/
-      extensions.packages = with pkgs.firefox-addons; [
-        ublock-origin
-        keepassxc-browser
-        # vimium-ff  # uncomment if pkgs.firefox-addons.vimium-ff exists
-      ];
+      # Installed declaratively via NUR (nur.repos.rycee.firefox-addons).
+      # NUR overlay is applied in desktop.nix via home-manager.sharedModules.
+      # Linkwarden is Chrome-only; install from AMO manually if an
+      # official Firefox listing appears.
+      extensions.packages =
+        let nurPkgs = inputs.nur.legacyPackages.${pkgs.stdenv.hostPlatform.system};
+        in with nurPkgs.repos.rycee.firefox-addons; [
+          ublock-origin
+          keepassxc-browser
+          vimium  # AMO slug is "vimium-ff" but NUR rycee attr is "vimium"
+        ];
 
       # ── Search engines ───────────────────────────────────────────────
       search = {
-        default        = "DuckDuckGo";
-        privateDefault = "DuckDuckGo";
+        default        = "ddg";   # home-manager now uses engine IDs, not display names
+        privateDefault = "ddg";
         force          = true; # overwrite profile's search.json.sqlite on activation
         engines = {
           "Startpage" = {
             urls           = [{ template = "https://www.startpage.com/search?q={searchTerms}"; }];
             definedAliases = [ "@sp" ];
           };
-          # Hide noisy default engines
-          "Google".metaData.hidden     = true;
-          "Bing".metaData.hidden       = true;
-          "Amazon.com".metaData.hidden = true;
-          "eBay".metaData.hidden       = true;
+          # Hide noisy default engines (referenced by ID, not display name)
+          "google".metaData.hidden         = true;
+          "bing".metaData.hidden           = true;
+          "amazondotcom-us".metaData.hidden = true;
+          "ebay".metaData.hidden           = true;
         };
       };
     };
   };
+
+  # Stylix Firefox target — must know the profile name to write
+  # userChrome/userContent overrides into the correct profile directory.
+  stylix.targets.firefox.profileNames = [ "hardened" ];
 
   # ── KeePassXC native messaging host for Firefox ───────────────────────
   home.file.".mozilla/native-messaging-hosts/org.keepassxc.keepassxc_browser.json".text =
@@ -489,9 +430,9 @@ in
   # Do NOT use for privacy-sensitive browsing — no hardening applied
   # KeePassXC is wired for convenience (passwords still needed for work sites)
   #
-  # No extensions, no policies, no extraOpts — intentionally minimal.
-
-  home.packages = [ pkgs.google-chrome ];
+  # Package is installed in apps.nix (system level) alongside the
+  # allowUnfreePredicate entry for "google-chrome".
+  # No extensions, no policies — intentionally minimal.
 
   # ── KeePassXC native messaging host for google-chrome ────────────────
   home.file.".config/google-chrome/NativeMessagingHosts/org.keepassxc.keepassxc_browser.json".text =
