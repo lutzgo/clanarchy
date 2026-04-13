@@ -34,6 +34,7 @@ in
     signal-desktop
     keepassxc
     valent          # KDE Connect protocol — replaces kdePackages.kdeconnect-kde (lighter deps)
+    glib            # provides gdbus — needed by Noctalia valent-connect plugin
     helix
     fzf
     zellij
