@@ -18,6 +18,7 @@
   environment.persistence."/persist" = {
     hideMounts = true;
 
+    # System-level paths; user paths are defined in modules/users/{lgo,admin}.nix
     directories = [
       "/var/lib/nixos"
       "/var/lib/sops-nix"
@@ -30,40 +31,5 @@
     files = [
       "/etc/machine-id"
     ];
-
-    users.admin = {
-      directories = [
-        ".ssh"
-        ".gnupg"
-        ".config"
-        ".local/share"
-        ".cache/noctalia"  # shell-state.json (version tracking → no wizard/changelog on rollback)
-        ".cache/zellij"    # compiled WASM + plugin permission cache (avoids "Allow?" prompt on boot)
-        "Pictures"         # Noctalia wallpaper manager (Wallpapers subdirectory lives here)
-      ];
-    };
-
-    users.lgo = {
-      directories = [
-        ".gnupg"           # GPG keyring with YubiKey stubs
-        ".claude"          # Claude Code credentials + session data
-        ".config"          # gh auth token, noctalia/helix/zellij settings, etc.
-        ".local/share"
-        ".cache/noctalia"  # shell-state.json (version tracking → no wizard/changelog on rollback)
-        ".cache/zellij"    # compiled WASM + plugin permission cache (avoids "Allow?" prompt on boot)
-        "Pictures"         # includes Wallpapers/ subdirectory
-        "Documents"
-        "Downloads"
-        "Music"
-        "Videos"
-        "Desktop"
-        "Projects"
-        "Public"
-        "citizengo"
-      ];
-      files = [
-        ".age/yubikey-identity.txt"  # PIV-backed age identity (recipient stored in clan vars)
-      ];
-    };
   };
 }

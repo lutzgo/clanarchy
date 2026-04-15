@@ -1,4 +1,4 @@
-{ pkgs, lib, ... }:
+{ pkgs, lib, inputs, ... }:
 let
   # CRX install via first_run_tabs: patched chromium reads /etc/chromium/initial_preferences;
   # --extension-mime-request-handling=always-prompt-for-install (baked in clan.nix overlay).
@@ -54,6 +54,20 @@ in
     wtype           # Wayland keyboard input injection (xdotool equivalent)
     claude-code
   ];
+
+  # Valent — GCR_SSH_AGENT_PIPE="" prevents gcr from importing the TLS key into
+  # gpg-agent (which would trigger a blocking pinentry prompt for the headless service).
+  systemd.user.services.valent = {
+    description = "Valent - KDE Connect protocol";
+    wantedBy    = [ "graphical-session.target" ];
+    partOf      = [ "graphical-session.target" ];
+    environment.GCR_SSH_AGENT_PIPE = "";
+    serviceConfig = {
+      ExecStart = "${pkgs.valent}/bin/valent --gapplication-service";
+      Restart    = "on-failure";
+      RestartSec = 5;
+    };
+  };
 
   # Color Calibration
   services.colord.enable = true;

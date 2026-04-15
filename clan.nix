@@ -32,6 +32,7 @@
 
     inventory.machines = {
       miralda = { };
+      # homeserver = { };  # uncomment when hardware is ready
     };
 
     inventory.instances = {

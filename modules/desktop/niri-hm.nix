@@ -1,5 +1,6 @@
-# Shared Home Manager module for any graphical user on miralda.
-{ pkgs, pkgs-unstable, inputs, config, lib, ... }:
+# Shared Home Manager module for any graphical user — loaded by modules/desktop/niri.nix
+# via home-manager.sharedModules.  `osConfig` exposes clanarchy.desktop.niri options.
+{ pkgs, pkgs-unstable, inputs, config, lib, osConfig, ... }:
 {
   imports = [
     inputs.niri-flake.homeModules.config  # provides programs.niri.settings
@@ -15,9 +16,8 @@
   programs.niri = {
     package = pkgs.niri;
     settings = {
-      # Framework 13 AMD — 2256x1504 panel at 1.5 scale
       outputs."eDP-1" = {
-        scale = 1.25;
+        scale = osConfig.clanarchy.desktop.niri.display.scale;
       };
 
       prefer-no-csd = true;
@@ -43,7 +43,7 @@
       # Exception: heavy GUI apps (Chromium, GIMP, LibreOffice) stay fully opaque.
       window-rules = [
         {
-          # Global baseline: 8px rounded corners + 90% opacity
+          # Global baseline: 8px rounded corners + focused opacity
           geometry-corner-radius = {
             top-left = 8.0;
             top-right = 8.0;
@@ -51,7 +51,7 @@
             bottom-left = 8.0;
           };
           clip-to-geometry = true;
-          opacity = 0.9;
+          opacity = osConfig.clanarchy.desktop.niri.opacity.focused;
         }
         {
           # Foot terminals: slightly more opaque than the global baseline
@@ -59,9 +59,9 @@
           opacity = 0.95;
         }
         {
-          # Unfocused windows dim to 75%
+          # Unfocused windows dim
           matches = [{ is-focused = false; }];
-          opacity = 0.75;
+          opacity = osConfig.clanarchy.desktop.niri.opacity.unfocused;
         }
         {
           # Heavy GUI apps: always fully opaque regardless of focus

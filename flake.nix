@@ -126,24 +126,49 @@
           inputs.stylix.nixosModules.stylix
           inputs.home-manager.nixosModules.home-manager
 
+          # Reusable modules
+          ./modules/desktop/niri.nix
+          ./modules/roles/laptop.nix
+          ./modules/roles/server.nix
+          ./modules/roles/vm.nix
+          ./modules/roles/rpi.nix
+          ./modules/users/lgo.nix
+          ./modules/users/admin.nix
+          ./modules/users/sgo.nix
+          ./modules/wifi.nix
+
+          # Machine-specific
           ./machines/miralda/configuration.nix
           ./machines/miralda/disko.nix
           ./machines/miralda/impermanence.nix
           ./machines/miralda/stylix.nix
-          ./machines/miralda/desktop.nix
           ./machines/miralda/noctalia.nix
           ./machines/miralda/yubikey.nix
-          ./machines/miralda/users/admin.nix
-          ./machines/miralda/users/lgo.nix
-          ./machines/miralda/secrets/admin.nix
-          ./machines/miralda/secrets/lgo.nix
-          ./machines/miralda/secrets/wifi.nix
-          ./machines/miralda/wifi.nix
           ./machines/miralda/apps.nix
           ./machines/miralda/printer.nix
           ./machines/miralda/syncthing.nix
           ./machines/miralda/wallpapers.nix
         ];
       };
+
+      # homeserver — template ready, uncomment when hardware is available
+      # clan.machines.homeserver = {
+      #   imports = [
+      #     { _module.args = {
+      #         pkgs-unstable = import inputs.nixpkgs-unstable {
+      #           system = "x86_64-linux";
+      #           config.allowUnfree = true;
+      #         };
+      #         inherit inputs;
+      #       };
+      #     }
+      #     inputs.impermanence.nixosModules.impermanence
+      #     inputs.home-manager.nixosModules.home-manager
+      #     ./modules/roles/server.nix
+      #     ./modules/users/admin.nix
+      #     ./modules/wifi.nix
+      #     ./machines/homeserver/configuration.nix
+      #   ];
+      # };
     };
 }
