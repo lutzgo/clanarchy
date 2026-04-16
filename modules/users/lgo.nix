@@ -15,6 +15,7 @@
       hashedPasswordFile = config.clan.core.vars.generators.lgo-password.files."hashed-password".path;
       openssh.authorizedKeys.keys = [
         (builtins.readFile ../../machines/miralda/clanarchy_admin.pub)
+        (builtins.readFile ../../machines/miralda/yubikey_ed25519.pub)
       ];
     };
 
@@ -110,6 +111,19 @@
           settings = {
             git_protocol = "https";
             prompt       = "enabled";
+          };
+        };
+
+        # SSH client config — workaround for gnupg 2.4.x bug:
+        # When the server advertises cert-based host keys, OpenSSH activates the
+        # publickey-hostbound-v00@openssh.com extension. gnupg fails to sign with
+        # card-backed ed25519 keys when this extension is active (no PKSIGN ever sent
+        # to scdaemon). Forcing plain ssh-ed25519 HostKeyAlgorithms bypasses the cert
+        # path and disables publickey-hostbound, making YubiKey SSH signing work.
+        programs.ssh = {
+          enable = true;
+          matchBlocks."miralda.goclan.org" = {
+            extraOptions.HostKeyAlgorithms = "ssh-ed25519";
           };
         };
 

@@ -17,14 +17,14 @@
       hashedPasswordFile = config.clan.core.vars.generators.admin-password.files."hashed-password".path;
       openssh.authorizedKeys.keys = [
         (builtins.readFile ../../machines/miralda/clanarchy_admin.pub)
-        (builtins.readFile ../../machines/miralda/yubikey_rsa.pub)
+        (builtins.readFile ../../machines/miralda/yubikey_ed25519.pub)
       ];
     };
 
     users.users.root = {
       openssh.authorizedKeys.keys = [
         (builtins.readFile ../../machines/miralda/clanarchy_admin.pub)
-        (builtins.readFile ../../machines/miralda/yubikey_rsa.pub)
+        (builtins.readFile ../../machines/miralda/yubikey_ed25519.pub)
       ];
     };
 

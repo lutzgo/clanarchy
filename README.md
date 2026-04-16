@@ -110,6 +110,8 @@ Then redeploy. Use `clan machines update miralda` if the full inventory evaluati
 
 The YubiKey serves two roles: **SSH authentication** (via GnuPG agent) and **age decryption** (PIV-backed identity for sops/clan vars).
 
+For full setup instructions and troubleshooting, see [docs/yubikey-ssh-setup.md](docs/yubikey-ssh-setup.md).
+
 ### When to plug in the YubiKey
 
 | Task | YubiKey needed? |
