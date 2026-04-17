@@ -1020,6 +1020,15 @@
         windowHeight = 850;
         windowWidth = 1400;
       };
+
+      usb-drive-manager = {
+        autoMount = true;
+        fileBrowser = "yazi";
+        terminalCommand = "foot";
+        showNotifications = true;
+        hideWhenEmpty = true;
+        showBadge = true;
+      };
     };
   };
 
@@ -1064,6 +1073,7 @@
   xdg.configFile."noctalia/plugins/screen-recorder/settings.json".force = true;
   xdg.configFile."noctalia/plugins/assistant-panel/settings.json".force = true;
   xdg.configFile."noctalia/plugins/keybind-cheatsheet/settings.json".force = true;
+  xdg.configFile."noctalia/plugins/usb-drive-manager/settings.json".force = true;
 
   # Adopt gtk4 default — stateVersion < 26.05 otherwise inherits gtk3 theme; stylix handles gtk4 theming via css.
   gtk.gtk4.theme = null;

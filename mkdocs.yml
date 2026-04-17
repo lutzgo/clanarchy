@@ -1,0 +1,53 @@
+site_name: Clanarchy
+site_description: NixOS declarative configuration — guides and option reference
+site_url: https://lutzgo.github.io/clanarchy
+repo_url: https://github.com/lutzgo/clanarchy
+repo_name: lutzgo/clanarchy
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep orange
+      accent: orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep orange
+      accent: orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Guides:
+    - YubiKey: guides/yubikey.md
+    - Impermanence: guides/impermanence.md
+  - Reference:
+    - Overview: reference/index.md
+    - Roles: reference/roles.md
+    - Desktop (Niri): reference/desktop.md
+    - WiFi: reference/wifi.md

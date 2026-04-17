@@ -75,6 +75,9 @@
             openssh
             nixos-rebuild
             age-plugin-yubikey  # needed for sops re-encryption with YubiKey recipients
+
+            # Docs
+            python3Packages.mkdocs-material
           ];
 
           # Fast deploy: builds locally, pushes result, switches remotely.
@@ -105,6 +108,14 @@
               git push "$url" "$branch"
             }
             export -f push
+
+            # Generate option reference docs from live NixOS config, then serve locally.
+            # Usage: gendocs       — write docs/reference/*.md
+            #        mkdocs serve  — live-reload preview at http://localhost:8000
+            gendocs() {
+              python3 scripts/gen-options.py
+            }
+            export -f gendocs
           '';
         };
       };
