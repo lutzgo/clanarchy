@@ -26,6 +26,7 @@
       "/var/lib/systemd"
       "/var/lib/syncthing"  # syncthing device DB, peer state, and runtime config
       "/var/lib/fprint"     # enrolled fingerprints must survive ZFS rollback
+      "/var/lib/flatpak"    # installed apps, runtimes, and remotes (flathub)
     ];
 
     files = [
