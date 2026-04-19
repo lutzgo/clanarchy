@@ -38,6 +38,12 @@
       };
     };
 
+    input.pointerSpeed = lib.mkOption {
+      type        = lib.types.float;
+      default     = 0.0;
+      description = "Pointer acceleration speed applied to both touchpad and mouse. Range: -1.0 (slowest) to 1.0 (fastest). 0.0 is libinput's neutral baseline.";
+    };
+
     wallpaper.workspaceColors = lib.mkOption {
       type        = lib.types.listOf lib.types.str;
       default     = [ "red" "blue" "green" "purple" "orange" ];

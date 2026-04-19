@@ -16,4 +16,5 @@ Source: `modules/desktop/niri.nix`
 | `clanarchy.desktop.niri.fprintd.enable` | `boolean` | Whether to enable fingerprint authentication via fprintd. |
 | `clanarchy.desktop.niri.opacity.focused` | `floating point number` | Baseline window opacity for focused windows. |
 | `clanarchy.desktop.niri.opacity.unfocused` | `floating point number` | Window opacity for unfocused windows. |
+| `clanarchy.desktop.niri.input.pointerSpeed` | `floating point number` | Pointer acceleration speed for touchpad and mouse. Range -1.0 to 1.0; 0.0 is libinput's neutral baseline. |
 | `clanarchy.desktop.niri.wallpaper.workspaceColors` | `list of string` | Per-workspace accent colors (5 entries for workspaces 1–5). |

@@ -16,6 +16,7 @@
     clanarchy.desktop.niri.enable = lib.mkDefault true;
     clanarchy.desktop.niri.fprintd.enable =
       lib.mkDefault config.clanarchy.roles.laptop.framework.enable;
+    clanarchy.desktop.niri.input.pointerSpeed = lib.mkDefault 0.4;
 
     # GPU / hardware graphics
     hardware.graphics.enable = true;

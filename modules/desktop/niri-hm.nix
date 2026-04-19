@@ -32,8 +32,14 @@
       input = {
         touchpad = {
           tap = true;
+          tap-button-map = "left-right-middle";  # 1/2/3-finger tap → left/right/middle
           natural-scroll = true;
           dwt = true;  # disable-while-typing
+          accel-speed = osConfig.clanarchy.desktop.niri.input.pointerSpeed;
+        };
+        mouse = {
+          # natural-scroll omitted → defaults false (regular wheel direction)
+          accel-speed = osConfig.clanarchy.desktop.niri.input.pointerSpeed;
         };
       };
 
