@@ -40,9 +40,13 @@
     services.fprintd.enable = lib.mkDefault config.clanarchy.roles.laptop.framework.enable;
     services.fwupd.enable   = lib.mkDefault config.clanarchy.roles.laptop.framework.enable;
 
-    # Prevent backpack-wake: bag pressure on lid sensor triggers spurious wake
+    # Prevent backpack-wake: disable LID ACPI device as a kernel wakeup source.
+    # This stops the lid sensor from generating spurious wakeups when bag pressure
+    # flexes the chassis. The input event path (power-switch tag) is intentionally
+    # preserved so logind can still see lid-close events and trigger HandleLidSwitch.
+    # Trade-off: opening the lid will not wake from suspend by itself; use the power button.
     services.udev.extraRules = lib.mkIf config.clanarchy.roles.laptop.framework.enable ''
-      SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="LID*", ATTRS{phys}=="PNP0C0D*", TAG-="power-switch"
+      ACTION=="add", SUBSYSTEM=="acpi", KERNEL=="PNP0C0D:*", ATTR{power/wakeup}="disabled"
     '';
 
     # Power management — power-profiles-daemon (NOT TLP — conflicts with Framework AMD)
