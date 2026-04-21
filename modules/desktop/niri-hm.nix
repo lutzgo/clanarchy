@@ -144,9 +144,10 @@
         "Mod+Shift+Ctrl+L".action.move-column-to-monitor-right = {};
         "Mod+Shift+Ctrl+K".action.move-column-to-monitor-up    = {};
         "Mod+Shift+Ctrl+J".action.move-column-to-monitor-down  = {};
-        # Cycle DP-5 (Kamvas Pro 24) clockwise: Normal→90°CW→180°→270°CW→Normal
+        # Cycle Kamvas Pro 24 clockwise: Normal→90°CW→180°→270°CW→Normal
+        # Looks up by model name so it works regardless of which DP port the tablet lands on.
         # (niri transforms are CCW, so CW cycle = Normal→270→180→90→Normal)
-        "Mod+Ctrl+R".action.spawn = [ "sh" "-c" "case $(niri msg -j outputs | jq -r '.\"DP-5\".logical.transform') in Normal) niri msg output DP-5 transform 270 ;; 270) niri msg output DP-5 transform 180 ;; 180) niri msg output DP-5 transform 90 ;; *) niri msg output DP-5 transform normal ;; esac" ];
+        "Mod+Ctrl+R".action.spawn = [ "sh" "-c" "O=$(niri msg -j outputs | jq -r 'to_entries[]|select(.value.model==\"Kamvas Pro 24\")|.key'); [ -z \"$O\" ] && exit 0; T=$(niri msg -j outputs | jq -r --arg o \"$O\" '.[$o].logical.transform'); case $T in Normal) niri msg output \"$O\" transform 270;; 270) niri msg output \"$O\" transform 180;; 180) niri msg output \"$O\" transform 90;; *) niri msg output \"$O\" transform normal;; esac" ];
 
         # --- Launch ---
         "Mod+Return".action.spawn = [ "uwsm" "app" "--" "foot" ];
