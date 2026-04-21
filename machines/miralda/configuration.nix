@@ -59,5 +59,8 @@
     chown -R lgo:users /home/lgo/Projects/clanarchy/vars/shared/zerotier-controller || true
   '';
 
+  # OpenTabletDriver — Huion Kamvas Pro 24 (DP-5)
+  hardware.opentabletdriver.enable = true;
+
   system.stateVersion = "25.11";
 }

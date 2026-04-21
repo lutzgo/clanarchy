@@ -144,6 +144,9 @@
         "Mod+Shift+Ctrl+L".action.move-column-to-monitor-right = {};
         "Mod+Shift+Ctrl+K".action.move-column-to-monitor-up    = {};
         "Mod+Shift+Ctrl+J".action.move-column-to-monitor-down  = {};
+        # Cycle DP-5 (Kamvas Pro 24) clockwise: Normal→90°CW→180°→270°CW→Normal
+        # (niri transforms are CCW, so CW cycle = Normal→270→180→90→Normal)
+        "Mod+Ctrl+R".action.spawn = [ "sh" "-c" "case $(niri msg -j outputs | jq -r '.\"DP-5\".logical.transform') in Normal) niri msg output DP-5 transform 270 ;; 270) niri msg output DP-5 transform 180 ;; 180) niri msg output DP-5 transform 90 ;; *) niri msg output DP-5 transform normal ;; esac" ];
 
         # --- Launch ---
         "Mod+Return".action.spawn = [ "uwsm" "app" "--" "foot" ];
@@ -179,6 +182,10 @@
         "Mod+Shift+E".action.quit = {};
         # Reload config via spawn (load-config-file is CLI-only, not a keybind action)
         "Mod+Shift+R".action.spawn = [ "niri" "msg" "action" "load-config-file" ];
+
+        # --- Screenshots (Noctalia plugin:screenshot) ---
+        "Print".action.spawn            = [ "noctalia-shell" "ipc" "call" "plugin:screenshot" "takeScreenshot" "region" ];
+        "Mod+Print".action.spawn        = [ "noctalia-shell" "ipc" "call" "plugin:screenshot" "takeScreenshot" "screen" ];
 
         # --- Media / Brightness (Noctalia IPC for OSD) ---
         "XF86AudioRaiseVolume".action.spawn  = [ "noctalia-shell" "ipc" "call" "volume" "increase" ];
@@ -226,7 +233,7 @@
       bar = {
         barType = "simple";
         position = "top";
-        monitors = [];
+        monitors = [ "eDP-1" ];  # primary screen only; [] would show on all outputs
         density = "default";
         showOutline = false;
         showCapsule = true;

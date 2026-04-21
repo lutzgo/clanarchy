@@ -122,6 +122,7 @@
         # path and disables publickey-hostbound, making YubiKey SSH signing work.
         programs.ssh = {
           enable = true;
+          enableDefaultConfig = false;
           matchBlocks."miralda.goclan.org" = {
             extraOptions.HostKeyAlgorithms = "ssh-ed25519";
           };
