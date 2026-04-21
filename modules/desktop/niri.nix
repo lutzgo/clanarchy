@@ -95,12 +95,11 @@
     # fprintd service (controlled by fprintd option)
     services.fprintd.enable = lib.mkDefault config.clanarchy.desktop.niri.fprintd.enable;
 
-    # Fingerprint PAM auth
-    security.pam.services = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable {
-      login.fprintAuth  = true;
-      greetd.fprintAuth = true;
-      sudo.fprintAuth   = true;
-    };
+    # Fingerprint PAM auth — use per-service sub-attribute form so each service's
+    # other options (unixAuth, etc.) are preserved via normal submodule merging.
+    security.pam.services.login.fprintAuth  = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
+    security.pam.services.greetd.fprintAuth = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
+    security.pam.services.sudo.fprintAuth   = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
 
     # Fonts
     fonts.packages = with pkgs; [
