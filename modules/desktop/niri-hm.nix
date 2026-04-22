@@ -218,6 +218,21 @@
         "Mod+Shift+8".action.move-window-to-workspace = 8;
         "Mod+Shift+9".action.move-window-to-workspace = 9;
       };
+
+      # Lid switch events — only spawn actions are supported.
+      # lid-close: turn off all outputs except the internal display so they don't
+      # receive signal during sleep and resume cleanly.
+      # lid-open: restore them on resume.
+      switch-events = {
+        lid-close.action.spawn = [
+          "sh" "-c"
+          "niri msg -j outputs | ${pkgs.jq}/bin/jq -r 'keys[] | select(. != \"eDP-1\")' | xargs -r -I{} niri msg output {} off"
+        ];
+        lid-open.action.spawn = [
+          "sh" "-c"
+          "niri msg -j outputs | ${pkgs.jq}/bin/jq -r 'keys[] | select(. != \"eDP-1\")' | xargs -r -I{} niri msg output {} on"
+        ];
+      };
     };
   };
 
@@ -1043,6 +1058,25 @@
         hideWhenEmpty = true;
         showBadge = true;
       };
+    };
+  };
+
+  # Lock Noctalia before the system enters sleep — runs as a systemd user pre-sleep service.
+  # UWSM exports WAYLAND_DISPLAY and NIRI_SOCKET to the user manager, so the IPC call works
+  # even when triggered from a sleep.target hook.  TimeoutSec prevents an indefinite stall
+  # if noctalia-shell is unreachable (e.g. the session is already torn down).
+  systemd.user.services.noctalia-lock-before-sleep = {
+    Unit = {
+      Description = "Lock Noctalia screen before system sleep";
+      Before = "sleep.target";
+    };
+    Service = {
+      Type = "oneshot";
+      ExecStart = "${config.programs.noctalia-shell.package}/bin/noctalia-shell ipc call lockScreen lock";
+      TimeoutSec = "5s";
+    };
+    Install = {
+      WantedBy = [ "sleep.target" ];
     };
   };
 
