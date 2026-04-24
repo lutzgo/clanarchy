@@ -1,4 +1,4 @@
-{ ... }:
+{ lib, ... }:
 {
   networking.hostName = "miralda";
   networking.hostId  = "ebeed95c";
@@ -61,6 +61,32 @@
 
   # OpenTabletDriver — Huion Kamvas Pro 24 (DP-5)
   hardware.opentabletdriver.enable = true;
+
+  # The NixOS OTD module sets Restart=on-failure with no delay.  If the daemon
+  # crashes at graphical-session.target activation time (before the session is
+  # fully settled), the default burst limit (5 attempts in 10 s) is exhausted
+  # immediately and the service stays dead.
+  # Fix: restart regardless of exit code (daemon sometimes exits 0 on init
+  # failure), 5 s between attempts, 10 attempts per 2-minute window.
+  systemd.user.services.opentabletdriver = {
+    serviceConfig = {
+      Restart    = lib.mkForce "always";
+      RestartSec = "5s";
+    };
+    unitConfig = {
+      StartLimitBurst        = 10;
+      StartLimitIntervalSec  = 120;
+    };
+  };
+
+  # hid_uclogic conflicts with OTD when the tablet is connected at boot.
+  # boot.blacklistedKernelModules writes to /etc/modprobe.d (main system only);
+  # extraModprobeConfig is also embedded in the initrd so the module is
+  # suppressed before udev processes the USB device.
+  boot.extraModprobeConfig = ''
+    blacklist hid_uclogic
+    blacklist wacom
+  '';
 
   system.stateVersion = "25.11";
 }

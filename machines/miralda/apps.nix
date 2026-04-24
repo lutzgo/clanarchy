@@ -18,11 +18,14 @@ let
 in
 {
   nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [
+    "anytype"
+    "anytype-heart"
     "claude-code"
     "signal-desktop"
     "google-chrome"  # work / DRM / SSO fallback
   ];
   environment.systemPackages = with pkgs; [
+    anytype
     argyllcms
     displaycal
     calibre
