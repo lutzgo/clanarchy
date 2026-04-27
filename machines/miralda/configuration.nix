@@ -2,6 +2,7 @@
 {
   networking.hostName = "miralda";
   networking.hostId  = "ebeed95c";
+  networking.search  = [ "skynet.lan" ];
   time.timeZone      = "Europe/Berlin";
 
   # --- Module activation ---
