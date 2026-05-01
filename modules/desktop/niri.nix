@@ -92,6 +92,9 @@
     # UPower — required by Noctalia battery widget
     services.upower.enable = true;
 
+    # udisks2 — required by Noctalia USB drive manager (D-Bus device detection + auto-mount)
+    services.udisks2.enable = true;
+
     # fprintd service (controlled by fprintd option)
     services.fprintd.enable = lib.mkDefault config.clanarchy.desktop.niri.fprintd.enable;
 
