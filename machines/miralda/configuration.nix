@@ -34,7 +34,7 @@
   boot.loader.efi.canTouchEfiVariables = true;
 
   # ZFS in initrd (disko creates pool/datasets, this ensures boot support)
-  boot.supportedFilesystems  = [ "zfs" ];
+  boot.supportedFilesystems  = [ "zfs" "exfat" "ntfs" "vfat" ];
   boot.zfs.forceImportRoot   = false;
   boot.initrd.systemd.enable = true;
 
