@@ -1,10 +1,17 @@
 # Shared Home Manager module for any graphical user — loaded by modules/desktop/niri.nix
 # via home-manager.sharedModules.  `osConfig` exposes clanarchy.desktop.niri options.
-{ pkgs, pkgs-unstable, inputs, config, lib, osConfig, ... }:
 {
+  pkgs,
+  pkgs-unstable,
+  inputs,
+  config,
+  lib,
+  osConfig,
+  ...
+}: {
   imports = [
-    inputs.niri-flake.homeModules.config  # provides programs.niri.settings
-    inputs.noctalia.homeModules.default   # provides programs.noctalia-shell option
+    inputs.niri-flake.homeModules.config # provides programs.niri.settings
+    inputs.noctalia.homeModules.default # provides programs.noctalia-shell option
   ];
 
   # Niri user config — declarative settings (niri-flake homeModules.config maps to KDL)
@@ -23,18 +30,22 @@
       prefer-no-csd = true;
 
       spawn-at-startup = [
-        { command = [ "keepassxc" "--minimized" ]; }
+        {command = ["uwsm" "app" "--" "noctalia-shell"];}
+        {command = ["keepassxc" "--minimized"];}
       ];
 
-      layout.border = { enable = true; width = 1; };
+      layout.border = {
+        enable = true;
+        width = 1;
+      };
       layout.focus-ring.width = 1;
 
       input = {
         touchpad = {
           tap = true;
-          tap-button-map = "left-right-middle";  # 1/2/3-finger tap → left/right/middle
+          tap-button-map = "left-right-middle"; # 1/2/3-finger tap → left/right/middle
           natural-scroll = true;
-          dwt = true;  # disable-while-typing
+          dwt = true; # disable-while-typing
           accel-speed = osConfig.clanarchy.desktop.niri.input.pointerSpeed;
         };
         mouse = {
@@ -61,62 +72,72 @@
         }
         {
           # Foot terminals: slightly more opaque than the global baseline
-          matches = [{ app-id = "^foot$"; }];
+          matches = [{app-id = "^foot$";}];
           opacity = 0.95;
         }
         {
           # Unfocused windows dim
-          matches = [{ is-focused = false; }];
+          matches = [{is-focused = false;}];
           opacity = osConfig.clanarchy.desktop.niri.opacity.unfocused;
         }
         {
           # Heavy GUI apps: always fully opaque regardless of focus
           matches = [
-            { app-id = "^org\\.chromium\\.Chromium$"; }
-            { app-id = "^chromium$"; }
-            { app-id = "^org\\.gimp\\.GIMP$"; }
-            { app-id = "^gimp$"; }
-            { app-id = "^libreoffice"; }
-            { app-id = "^soffice$"; }
-            { app-id = "^darktable$"; }
+            {app-id = "^org\\.chromium\\.Chromium$";}
+            {app-id = "^chromium$";}
+            {app-id = "^org\\.gimp\\.GIMP$";}
+            {app-id = "^gimp$";}
+            {app-id = "^libreoffice";}
+            {app-id = "^soffice$";}
+            {app-id = "^darktable$";}
           ];
           opacity = 1.0;
         }
 
         # Floating terminal scratchpad (Mod+Shift+Return → foot -T scratch)
         {
-          matches = [{ app-id = "^foot$"; title = "^scratch$"; }];
+          matches = [
+            {
+              app-id = "^foot$";
+              title = "^scratch$";
+            }
+          ];
           open-floating = true;
-          default-column-width = { fixed = 1000; };
-          default-window-height = { fixed = 650; };
+          default-column-width = {fixed = 1000;};
+          default-window-height = {fixed = 650;};
         }
 
         # KeePassXC — floating scratchpad at a comfortable size
         {
-          matches = [{ app-id = "^org\\.keepassxc\\.KeePassXC$"; }];
+          matches = [{app-id = "^org\\.keepassxc\\.KeePassXC$";}];
           open-floating = true;
-          default-column-width = { fixed = 900; };
-          default-window-height = { fixed = 650; };
+          default-column-width = {fixed = 900;};
+          default-window-height = {fixed = 650;};
         }
 
-        # GIMP — open floating (toolboxes are separate windows)
+        # Nextcloud Window disappearing workaround
         {
-          matches = [{ app-id = "^gimp$"; } { app-id = "^org\\.gimp\\.GIMP$"; }];
+          matches = [{app-id = "^nextcloud$";} {app-id = "^org\\.nextcloud\\.NEXTCLOUD$";}];
           open-floating = true;
         }
 
         # Chromium — open maximized
         {
-          matches = [{ app-id = "^chromium$"; } { app-id = "^org\\.chromium\\.Chromium$"; }];
+          matches = [{app-id = "^chromium$";} {app-id = "^org\\.chromium\\.Chromium$";}];
           open-maximized = true;
         }
 
         # Lazygit floating terminal (foot -T lazygit -e lazygit)
         {
-          matches = [{ app-id = "^foot$"; title = "^lazygit$"; }];
+          matches = [
+            {
+              app-id = "^foot$";
+              title = "^lazygit$";
+            }
+          ];
           open-floating = true;
-          default-column-width = { fixed = 1200; };
-          default-window-height = { fixed = 800; };
+          default-column-width = {fixed = 1200;};
+          default-window-height = {fixed = 800;};
         }
       ];
 
@@ -124,79 +145,79 @@
       binds = {
         # --- Focus navigation ---
         # h/l = columns (horizontal axis), j/k = workspaces (vertical axis)
-        "Mod+H".action.focus-column-left     = {};
-        "Mod+L".action.focus-column-right    = {};
-        "Mod+J".action.focus-workspace-down  = {};
-        "Mod+K".action.focus-workspace-up    = {};
+        "Mod+H".action.focus-column-left = {};
+        "Mod+L".action.focus-column-right = {};
+        "Mod+J".action.focus-workspace-down = {};
+        "Mod+K".action.focus-workspace-up = {};
 
         # --- Move windows/columns ---
-        "Mod+Shift+H".action.move-column-left                  = {};
-        "Mod+Shift+L".action.move-column-right                 = {};
-        "Mod+Shift+J".action.move-window-to-workspace-down     = {};
-        "Mod+Shift+K".action.move-window-to-workspace-up       = {};
+        "Mod+Shift+H".action.move-column-left = {};
+        "Mod+Shift+L".action.move-column-right = {};
+        "Mod+Shift+J".action.move-window-to-workspace-down = {};
+        "Mod+Shift+K".action.move-window-to-workspace-up = {};
 
         # --- Monitor navigation ---
-        "Mod+Ctrl+H".action.focus-monitor-left  = {};
+        "Mod+Ctrl+H".action.focus-monitor-left = {};
         "Mod+Ctrl+L".action.focus-monitor-right = {};
-        "Mod+Ctrl+K".action.focus-monitor-up    = {};
-        "Mod+Ctrl+J".action.focus-monitor-down  = {};
-        "Mod+Shift+Ctrl+H".action.move-column-to-monitor-left  = {};
+        "Mod+Ctrl+K".action.focus-monitor-up = {};
+        "Mod+Ctrl+J".action.focus-monitor-down = {};
+        "Mod+Shift+Ctrl+H".action.move-column-to-monitor-left = {};
         "Mod+Shift+Ctrl+L".action.move-column-to-monitor-right = {};
-        "Mod+Shift+Ctrl+K".action.move-column-to-monitor-up    = {};
-        "Mod+Shift+Ctrl+J".action.move-column-to-monitor-down  = {};
+        "Mod+Shift+Ctrl+K".action.move-column-to-monitor-up = {};
+        "Mod+Shift+Ctrl+J".action.move-column-to-monitor-down = {};
         # Cycle Kamvas Pro 24 clockwise: Normal→90°CW→180°→270°CW→Normal
         # Looks up by model name so it works regardless of which DP port the tablet lands on.
         # (niri transforms are CCW, so CW cycle = Normal→270→180→90→Normal)
-        "Mod+Ctrl+R".action.spawn = [ "sh" "-c" "O=$(niri msg -j outputs | jq -r 'to_entries[]|select(.value.model==\"Kamvas Pro 24\")|.key'); [ -z \"$O\" ] && exit 0; T=$(niri msg -j outputs | jq -r --arg o \"$O\" '.[$o].logical.transform'); case $T in Normal) niri msg output \"$O\" transform 270;; 270) niri msg output \"$O\" transform 180;; 180) niri msg output \"$O\" transform 90;; *) niri msg output \"$O\" transform normal;; esac" ];
+        "Mod+Ctrl+R".action.spawn = ["sh" "-c" "O=$(niri msg -j outputs | jq -r 'to_entries[]|select(.value.model==\"Kamvas Pro 24\")|.key'); [ -z \"$O\" ] && exit 0; T=$(niri msg -j outputs | jq -r --arg o \"$O\" '.[$o].logical.transform'); case $T in Normal) niri msg output \"$O\" transform 270;; 270) niri msg output \"$O\" transform 180;; 180) niri msg output \"$O\" transform 90;; *) niri msg output \"$O\" transform normal;; esac"];
 
         # --- Launch ---
-        "Mod+Return".action.spawn = [ "uwsm" "app" "--" "foot" ];
+        "Mod+Return".action.spawn = ["uwsm" "app" "--" "foot"];
         # foot -T scratch → matched by window rule → opens floating
-        "Mod+Shift+Return".action.spawn = [ "uwsm" "app" "--" "foot" "-T" "scratch" ];
-        "Mod+Space".action.spawn        = [ "noctalia-shell" "ipc" "call" "launcher" "toggle" ];
-        "Mod+c".action.spawn = [ "noctalia-shell" "ipc" "call" "plugin:clipper" "toggle" ];
-        "Mod+E".action.spawn = [ "uwsm" "app" "--" "foot" "-e" "hx" "." ];
-        "Mod+F".action.spawn = [ "uwsm" "app" "--" "foot" "-e" "yazi" ];
+        "Mod+Shift+Return".action.spawn = ["uwsm" "app" "--" "foot" "-T" "scratch"];
+        "Mod+Space".action.spawn = ["noctalia-shell" "ipc" "call" "launcher" "toggle"];
+        "Mod+c".action.spawn = ["noctalia-shell" "ipc" "call" "plugin:clipper" "toggle"];
+        "Mod+E".action.spawn = ["uwsm" "app" "--" "foot" "-e" "hx" "."];
+        "Mod+F".action.spawn = ["uwsm" "app" "--" "foot" "-e" "yazi"];
 
         # KeePassXC toggle — show from tray or minimize back to tray.
         # KeePassXC must have "minimize to tray on close" enabled in its settings.
-        "Mod+P".action.spawn = [ "sh" "-c" "if niri msg --json focused-window 2>/dev/null | grep -q KeePassXC; then niri msg action close-window; else keepassxc; fi" ];
+        "Mod+P".action.spawn = ["sh" "-c" "if niri msg --json focused-window 2>/dev/null | grep -q KeePassXC; then niri msg action close-window; else keepassxc; fi"];
 
         # --- Window management ---
-        "Mod+Q".action.close-window           = {};
+        "Mod+Q".action.close-window = {};
         "Mod+V".action.toggle-window-floating = {};
-        "Mod+M".action.maximize-column        = {};
-        "Mod+F11".action.fullscreen-window    = {};
+        "Mod+M".action.maximize-column = {};
+        "Mod+F11".action.fullscreen-window = {};
         "Mod+Tab".action.focus-window-previous = {};
 
         # --- Layout control ---
-        "Mod+R".action.switch-preset-column-width              = {};
-        "Mod+Shift+C".action.center-column                     = {};
-        "Mod+BracketLeft".action.consume-or-expel-window-left  = {};
+        "Mod+R".action.switch-preset-column-width = {};
+        "Mod+Shift+C".action.center-column = {};
+        "Mod+BracketLeft".action.consume-or-expel-window-left = {};
         "Mod+BracketRight".action.consume-or-expel-window-right = {};
-        "Mod+Minus".action.set-column-width  = "-10%";
-        "Mod+Equal".action.set-column-width  = "+10%";
+        "Mod+Minus".action.set-column-width = "-10%";
+        "Mod+Equal".action.set-column-width = "+10%";
         "Mod+Shift+Minus".action.set-window-height = "-10%";
         "Mod+Shift+Equal".action.set-window-height = "+10%";
 
         # --- Session ---
         "Mod+Shift+E".action.quit = {};
         # Reload config via spawn (load-config-file is CLI-only, not a keybind action)
-        "Mod+Shift+R".action.spawn = [ "niri" "msg" "action" "load-config-file" ];
+        "Mod+Shift+R".action.spawn = ["niri" "msg" "action" "load-config-file"];
 
         # --- Screenshots (Noctalia plugin:screenshot) ---
-        "Print".action.spawn            = [ "noctalia-shell" "ipc" "call" "plugin:screenshot" "takeScreenshot" "region" ];
-        "Mod+Print".action.spawn        = [ "noctalia-shell" "ipc" "call" "plugin:screenshot" "takeScreenshot" "screen" ];
+        "Print".action.spawn = ["noctalia-shell" "ipc" "call" "plugin:screenshot" "takeScreenshot" "region"];
+        "Mod+Print".action.spawn = ["noctalia-shell" "ipc" "call" "plugin:screenshot" "takeScreenshot" "screen"];
 
         # --- Media / Brightness (Noctalia IPC for OSD) ---
-        "XF86AudioRaiseVolume".action.spawn  = [ "noctalia-shell" "ipc" "call" "volume" "increase" ];
-        "XF86AudioLowerVolume".action.spawn  = [ "noctalia-shell" "ipc" "call" "volume" "decrease" ];
-        "XF86AudioMute".action.spawn         = [ "noctalia-shell" "ipc" "call" "volume" "muteOutput" ];
-        "XF86AudioPlay".action.spawn         = [ "noctalia-shell" "ipc" "call" "media" "playPause" ];
-        "XF86AudioNext".action.spawn         = [ "noctalia-shell" "ipc" "call" "media" "next" ];
-        "XF86AudioPrev".action.spawn         = [ "noctalia-shell" "ipc" "call" "media" "previous" ];
-        "XF86MonBrightnessUp".action.spawn   = [ "noctalia-shell" "ipc" "call" "brightness" "increase" ];
-        "XF86MonBrightnessDown".action.spawn = [ "noctalia-shell" "ipc" "call" "brightness" "decrease" ];
+        "XF86AudioRaiseVolume".action.spawn = ["noctalia-shell" "ipc" "call" "volume" "increase"];
+        "XF86AudioLowerVolume".action.spawn = ["noctalia-shell" "ipc" "call" "volume" "decrease"];
+        "XF86AudioMute".action.spawn = ["noctalia-shell" "ipc" "call" "volume" "muteOutput"];
+        "XF86AudioPlay".action.spawn = ["noctalia-shell" "ipc" "call" "media" "playPause"];
+        "XF86AudioNext".action.spawn = ["noctalia-shell" "ipc" "call" "media" "next"];
+        "XF86AudioPrev".action.spawn = ["noctalia-shell" "ipc" "call" "media" "previous"];
+        "XF86MonBrightnessUp".action.spawn = ["noctalia-shell" "ipc" "call" "brightness" "increase"];
+        "XF86MonBrightnessDown".action.spawn = ["noctalia-shell" "ipc" "call" "brightness" "decrease"];
 
         # --- Workspaces 1-9 ---
         "Mod+1".action.focus-workspace = 1;
@@ -225,11 +246,13 @@
       # lid-open: restore them on resume.
       switch-events = {
         lid-close.action.spawn = [
-          "sh" "-c"
+          "sh"
+          "-c"
           "niri msg -j outputs | ${pkgs.jq}/bin/jq -r 'keys[] | select(. != \"eDP-1\")' | xargs -r -I{} niri msg output {} off"
         ];
         lid-open.action.spawn = [
-          "sh" "-c"
+          "sh"
+          "-c"
           "niri msg -j outputs | ${pkgs.jq}/bin/jq -r 'keys[] | select(. != \"eDP-1\")' | xargs -r -I{} niri msg output {} on"
         ];
       };
@@ -237,19 +260,18 @@
   };
 
   # Noctalia shell — configured declaratively via noctalia HM module.
-  # systemd.enable: creates a user service that starts after graphical-session.target,
-  # replacing the fragile spawn-at-startup approach (which fires too early in the session).
+  # Launched via spawn-at-startup with UWSM ("uwsm app -- noctalia-shell") so it runs
+  # as a properly tracked systemd unit within the UWSM session.
+  # (The HM module's systemd.enable was deprecated upstream.)
   #
   # Full settings ported from live Noctalia IPC dump — survives ZFS rollback (cache wipe).
   programs.noctalia-shell = {
     enable = true;
-    systemd.enable = true;
     settings = {
-
       bar = {
         barType = "simple";
         position = "top";
-        monitors = [ "eDP-1" ];  # primary screen only; [] would show on all outputs
+        monitors = ["eDP-1"]; # primary screen only; [] would show on all outputs
         density = "default";
         showOutline = false;
         showCapsule = true;
@@ -433,7 +455,7 @@
               defaultSettings = {
                 colorHistory = [];
                 detectedRecorder = "";
-                installedLangs = [ "eng" ];
+                installedLangs = ["eng"];
                 paletteColors = [];
                 selectedOcrLang = "eng";
                 transAvailable = false;
@@ -575,13 +597,13 @@
         lockScreenBlur = 0.3;
         lockScreenTint = 0;
         keybinds = {
-          keyUp    = [ "Up" "Ctrl+K" ];
-          keyDown  = [ "Down" "Ctrl+J" ];
-          keyLeft  = [ "Left" "Ctrl+H" ];
-          keyRight = [ "Right" "Ctrl+L" ];
-          keyEnter = [ "Return" "Enter" ];
-          keyEscape = [ "Esc" "Ctrl+Q" ];
-          keyRemove = [ "Del" "Ctrl+D" ];
+          keyUp = ["Up" "Ctrl+K"];
+          keyDown = ["Down" "Ctrl+J"];
+          keyLeft = ["Left" "Ctrl+H"];
+          keyRight = ["Right" "Ctrl+L"];
+          keyEnter = ["Return" "Enter"];
+          keyEscape = ["Esc" "Ctrl+Q"];
+          keyRemove = ["Del" "Ctrl+D"];
         };
         reverseScroll = false;
         smoothScrollEnabled = true;
@@ -619,9 +641,18 @@
 
       calendar = {
         cards = [
-          { enabled = true; id = "calendar-header-card"; }
-          { enabled = true; id = "calendar-month-card"; }
-          { enabled = true; id = "weather-card"; }
+          {
+            enabled = true;
+            id = "calendar-header-card";
+          }
+          {
+            enabled = true;
+            id = "calendar-month-card";
+          }
+          {
+            enabled = true;
+            id = "weather-card";
+          }
         ];
       };
 
@@ -644,7 +675,7 @@
         wallpaperChangeMode = "random";
         randomIntervalSec = 300;
         transitionDuration = 1500;
-        transitionType = [ "fade" "disc" "stripes" "wipe" "pixelate" "honeycomb" ];
+        transitionType = ["fade" "disc" "stripes" "wipe" "pixelate" "honeycomb"];
         skipStartupTransition = false;
         transitionEdgeSmoothness = 0.05;
         panelPosition = "follow_bar";
@@ -700,15 +731,15 @@
         diskPath = "/";
         shortcuts = {
           left = [
-            { id = "Network"; }
-            { id = "Bluetooth"; }
-            { id = "NoctaliaPerformance"; }
-            { id = "PowerProfile"; }
+            {id = "Network";}
+            {id = "Bluetooth";}
+            {id = "NoctaliaPerformance";}
+            {id = "PowerProfile";}
           ];
           right = [
-            { id = "KeepAwake"; }
-            { id = "NightLight"; }
-            { id = "AirplaneMode"; }
+            {id = "KeepAwake";}
+            {id = "NightLight";}
+            {id = "AirplaneMode";}
             {
               defaultSettings = {
                 enableTodoIntegration = false;
@@ -721,12 +752,30 @@
           ];
         };
         cards = [
-          { enabled = true; id = "profile-card"; }
-          { enabled = true; id = "shortcuts-card"; }
-          { enabled = true; id = "audio-card"; }
-          { enabled = true; id = "brightness-card"; }
-          { enabled = true; id = "weather-card"; }
-          { enabled = true; id = "media-sysmon-card"; }
+          {
+            enabled = true;
+            id = "profile-card";
+          }
+          {
+            enabled = true;
+            id = "shortcuts-card";
+          }
+          {
+            enabled = true;
+            id = "audio-card";
+          }
+          {
+            enabled = true;
+            id = "brightness-card";
+          }
+          {
+            enabled = true;
+            id = "weather-card";
+          }
+          {
+            enabled = true;
+            id = "media-sysmon-card";
+          }
         ];
       };
 
@@ -812,14 +861,62 @@
         largeButtonsStyle = false;
         largeButtonsLayout = "single-row";
         powerOptions = [
-          { action = "lock";     command = ""; countdownEnabled = true; enabled = true; keybind = "1"; }
-          { action = "suspend";  command = ""; countdownEnabled = true; enabled = true; keybind = "2"; }
-          { action = "hibernate"; command = ""; countdownEnabled = true; enabled = true; keybind = "3"; }
-          { action = "reboot";   command = ""; countdownEnabled = true; enabled = true; keybind = "4"; }
-          { action = "logout";   command = ""; countdownEnabled = true; enabled = true; keybind = "5"; }
-          { action = "shutdown"; command = ""; countdownEnabled = true; enabled = true; keybind = "6"; }
-          { action = "rebootToUefi";     command = ""; countdownEnabled = true; enabled = false; keybind = ""; }
-          { action = "userspaceReboot";  command = ""; countdownEnabled = true; enabled = false; keybind = ""; }
+          {
+            action = "lock";
+            command = "";
+            countdownEnabled = true;
+            enabled = true;
+            keybind = "1";
+          }
+          {
+            action = "suspend";
+            command = "";
+            countdownEnabled = true;
+            enabled = true;
+            keybind = "2";
+          }
+          {
+            action = "hibernate";
+            command = "";
+            countdownEnabled = true;
+            enabled = true;
+            keybind = "3";
+          }
+          {
+            action = "reboot";
+            command = "";
+            countdownEnabled = true;
+            enabled = true;
+            keybind = "4";
+          }
+          {
+            action = "logout";
+            command = "";
+            countdownEnabled = true;
+            enabled = true;
+            keybind = "5";
+          }
+          {
+            action = "shutdown";
+            command = "";
+            countdownEnabled = true;
+            enabled = true;
+            keybind = "6";
+          }
+          {
+            action = "rebootToUefi";
+            command = "";
+            countdownEnabled = true;
+            enabled = false;
+            keybind = "";
+          }
+          {
+            action = "userspaceReboot";
+            command = "";
+            countdownEnabled = true;
+            enabled = false;
+            keybind = "";
+          }
         ];
       };
 
@@ -861,7 +958,7 @@
         autoHideMs = 2000;
         overlayLayer = true;
         backgroundOpacity = lib.mkForce 0.9;
-        enabledTypes = [ 0 1 2 ];
+        enabledTypes = [0 1 2];
         monitors = [];
       };
 
@@ -954,7 +1051,6 @@
         gridSnapScale = false;
         monitorWidgets = [];
       };
-
     };
 
     # Per-plugin settings — written to ~/.config/noctalia/plugins/<name>/settings.json.
@@ -972,13 +1068,41 @@
         autoPasteDelay = 300;
         # Card colors use Noctalia theme variables — follows color scheme automatically.
         cardColors = {
-          Text  = { bg = "mOutline";    separator = "mSurface"; fg = "mOnSurface"; };
-          Image = { bg = "mTertiary";   separator = "mSurface"; fg = "mOnTertiary"; };
-          Link  = { bg = "mPrimary";    separator = "mSurface"; fg = "mOnPrimary"; };
-          Code  = { bg = "mSecondary";  separator = "mSurface"; fg = "mOnSecondary"; };
-          Color = { bg = "mSecondary";  separator = "mSurface"; fg = "mOnSecondary"; };
-          Emoji = { bg = "mHover";      separator = "mSurface"; fg = "mOnHover"; };
-          File  = { bg = "mError";      separator = "mSurface"; fg = "mOnError"; };
+          Text = {
+            bg = "mOutline";
+            separator = "mSurface";
+            fg = "mOnSurface";
+          };
+          Image = {
+            bg = "mTertiary";
+            separator = "mSurface";
+            fg = "mOnTertiary";
+          };
+          Link = {
+            bg = "mPrimary";
+            separator = "mSurface";
+            fg = "mOnPrimary";
+          };
+          Code = {
+            bg = "mSecondary";
+            separator = "mSurface";
+            fg = "mOnSecondary";
+          };
+          Color = {
+            bg = "mSecondary";
+            separator = "mSurface";
+            fg = "mOnSecondary";
+          };
+          Emoji = {
+            bg = "mHover";
+            separator = "mSurface";
+            fg = "mOnHover";
+          };
+          File = {
+            bg = "mError";
+            separator = "mSurface";
+            fg = "mOnError";
+          };
         };
       };
 
@@ -1076,7 +1200,7 @@
       TimeoutSec = "5s";
     };
     Install = {
-      WantedBy = [ "sleep.target" ];
+      WantedBy = ["sleep.target"];
     };
   };
 
@@ -1089,23 +1213,25 @@
   # Orange (base09) as primary, teal/aqua (base0C) as secondary — both iconic Gruvbox accents.
   # lib.mkForce overrides the Stylix target's default assignments.
   programs.noctalia-shell.colors = lib.mkForce (
-    let c = config.lib.stylix.colors; in {
-      mPrimary          = "#${c.base09}";  # Gruvbox orange
-      mOnPrimary        = "#${c.base00}";
-      mSecondary        = "#${c.base0C}";  # Gruvbox teal/aqua
-      mOnSecondary      = "#${c.base00}";
-      mTertiary         = "#${c.base0B}";  # Gruvbox green
-      mOnTertiary       = "#${c.base00}";
-      mError            = "#${c.base08}";
-      mOnError          = "#${c.base00}";
-      mSurface          = "#${c.base00}";
-      mOnSurface        = "#${c.base05}";
-      mHover            = "#${c.base09}";
-      mOnHover          = "#${c.base00}";
-      mSurfaceVariant   = "#${c.base01}";
+    let
+      c = config.lib.stylix.colors;
+    in {
+      mPrimary = "#${c.base09}"; # Gruvbox orange
+      mOnPrimary = "#${c.base00}";
+      mSecondary = "#${c.base0C}"; # Gruvbox teal/aqua
+      mOnSecondary = "#${c.base00}";
+      mTertiary = "#${c.base0B}"; # Gruvbox green
+      mOnTertiary = "#${c.base00}";
+      mError = "#${c.base08}";
+      mOnError = "#${c.base00}";
+      mSurface = "#${c.base00}";
+      mOnSurface = "#${c.base05}";
+      mHover = "#${c.base09}";
+      mOnHover = "#${c.base00}";
+      mSurfaceVariant = "#${c.base01}";
       mOnSurfaceVariant = "#${c.base04}";
-      mOutline          = "#${c.base03}";
-      mShadow           = "#${c.base00}";
+      mOutline = "#${c.base03}";
+      mShadow = "#${c.base00}";
     }
   );
 
@@ -1132,30 +1258,43 @@
     enable = true;
     settings = {
       main = {
-        term              = "xterm-256color";
-        pad               = "8x8";
-        resize-delay-ms   = 100;
-        dpi-aware         = "no";
+        term = "xterm-256color";
+        pad = "8x8";
+        resize-delay-ms = 100;
+        dpi-aware = "no";
       };
-      bell       = { urgent = false; notify = false; visual = false; };
-      scrollback = { lines = 10000; multiplier = 3.0; };
+      bell = {
+        urgent = false;
+        notify = false;
+        visual = false;
+      };
+      scrollback = {
+        lines = 10000;
+        multiplier = 3.0;
+      };
       url = {
-        launch        = "xdg-open \${url}";
+        launch = "xdg-open \${url}";
         label-letters = "sadfjklewcmpgh";
         osc8-underline = "url-mode";
       };
-      cursor = { style = "block"; blink = false; };
-      mouse  = { hide-when-typing = true; alternate-scroll-mode = "yes"; };
+      cursor = {
+        style = "block";
+        blink = false;
+      };
+      mouse = {
+        hide-when-typing = true;
+        alternate-scroll-mode = "yes";
+      };
       key-bindings = {
-        clipboard-copy       = "Control+Shift+c XF86Copy";
-        clipboard-paste      = "Control+Shift+v XF86Paste";
-        font-increase        = "Control+plus Control+equal Control+KP_Add";
-        font-decrease        = "Control+minus Control+KP_Subtract";
-        font-reset           = "Control+0 Control+KP_0";
-        scrollback-up-page   = "Shift+Page_Up";
+        clipboard-copy = "Control+Shift+c XF86Copy";
+        clipboard-paste = "Control+Shift+v XF86Paste";
+        font-increase = "Control+plus Control+equal Control+KP_Add";
+        font-decrease = "Control+minus Control+KP_Subtract";
+        font-reset = "Control+0 Control+KP_0";
+        scrollback-up-page = "Shift+Page_Up";
         scrollback-down-page = "Shift+Page_Down";
-        search-start         = "Control+Shift+r";
-        show-urls-launch     = "Control+Shift+o";
+        search-start = "Control+Shift+r";
+        show-urls-launch = "Control+Shift+o";
       };
     };
   };
@@ -1164,8 +1303,8 @@
   # Uses '' strings to preserve embedded Nerd Font codepoints literally (Nix has no \u escapes).
   programs.starship = {
     enable = true;
-    enableBashIntegration    = true;
-    enableZshIntegration     = true;
+    enableBashIntegration = true;
+    enableZshIntegration = true;
     enableNushellIntegration = true;
     settings = {
       format = ''
@@ -1240,14 +1379,17 @@
       };
 
       package.disabled = true;
-      memory_usage = { disabled = true; threshold = -1; };
+      memory_usage = {
+        disabled = true;
+        threshold = -1;
+      };
       time.disabled = true;
       line_break.disabled = false;
 
-      nix_shell = { format = "via [❄️ $state( \\($name\\))](bold blue) "; };
-      python    = { format = "via [🐍 $version](bold green) "; };
-      rust      = { format = "via [⚡ $version](bold orange) "; };
-      nodejs    = { format = "via [⬢ $version](bold green) "; };
+      nix_shell = {format = "via [❄️ $state( \\($name\\))](bold blue) ";};
+      python = {format = "via [🐍 $version](bold green) ";};
+      rust = {format = "via [⚡ $version](bold orange) ";};
+      nodejs = {format = "via [⬢ $version](bold green) ";};
     };
   };
 
@@ -1261,19 +1403,25 @@
   # loginctl lock-session sends the org.freedesktop.login1 Lock signal → Noctalia lockscreen.
   services.swayidle = {
     enable = true;
-    extraArgs = [ "-w" ];
+    extraArgs = ["-w"];
     events = {
       before-sleep = "loginctl lock-session; sleep 2";
     };
     timeouts = [
-      { timeout = 300; command = "loginctl lock-session"; }
-      { timeout = 330; command = "niri msg action power-off-monitors"; }
+      {
+        timeout = 300;
+        command = "loginctl lock-session";
+      }
+      {
+        timeout = 330;
+        command = "niri msg action power-off-monitors";
+      }
     ];
   };
 
   # Common graphical packages for all desktop users
   home.packages = with pkgs; [
-    ghostty   # secondary terminal (foot is default via Mod+Return)
+    ghostty # secondary terminal (foot is default via Mod+Return)
     grim
     slurp
     wl-clipboard
@@ -1285,14 +1433,14 @@
   systemd.user.services.nextcloud-client = {
     Unit = {
       Description = "Nextcloud Desktop Client";
-      After = [ "graphical-session.target" ];
-      PartOf = [ "graphical-session.target" ];
+      After = ["graphical-session.target"];
+      PartOf = ["graphical-session.target"];
     };
     Service = {
       ExecStart = "${pkgs.nextcloud-client}/bin/nextcloud --background";
       Restart = "on-failure";
       RestartSec = 5;
     };
-    Install.WantedBy = [ "graphical-session.target" ];
+    Install.WantedBy = ["graphical-session.target"];
   };
 }

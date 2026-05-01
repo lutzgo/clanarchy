@@ -53,6 +53,12 @@
       url = "github:nix-community/nur";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # COSMIC desktop (for biene)
+    nixos-cosmic = {
+      url = "github:lilyinstarlight/nixos-cosmic";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs@{ flake-parts, clan-core, ... }:
@@ -159,6 +165,41 @@
           ./machines/miralda/printer.nix
           ./machines/miralda/syncthing.nix
           ./machines/miralda/wallpapers.nix
+        ];
+      };
+
+      clan.machines.biene = {
+        imports = [
+          { _module.args = {
+              pkgs-unstable = import inputs.nixpkgs-unstable {
+                system = "x86_64-linux";
+                config.allowUnfree = true;
+              };
+              inherit inputs;
+            };
+          }
+
+          inputs.nixos-cosmic.nixosModules.default
+          inputs.impermanence.nixosModules.impermanence
+          inputs.stylix.nixosModules.stylix
+          inputs.home-manager.nixosModules.home-manager
+
+          # Reusable modules
+          ./modules/desktop/niri.nix     # imported so the option exists (laptop role references it)
+          ./modules/desktop/cosmic.nix
+          ./modules/roles/laptop.nix
+          ./modules/roles/server.nix
+          ./modules/roles/vm.nix
+          ./modules/roles/rpi.nix
+          ./modules/users/admin.nix
+          ./modules/users/sabine.nix
+          ./modules/wifi.nix
+
+          # Machine-specific
+          ./machines/biene/configuration.nix
+          ./machines/biene/disko.nix
+          ./machines/biene/impermanence.nix
+          ./machines/biene/stylix.nix
         ];
       };
 

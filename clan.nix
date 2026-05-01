@@ -32,6 +32,7 @@
 
     inventory.machines = {
       miralda = { };
+      biene   = { };
       # homeserver = { };  # uncomment when hardware is ready
     };
 
@@ -47,7 +48,7 @@
       # Zerotier scaffold (inactive until you choose a controller and deploy it)
       zerotier = {
         roles.controller.machines."miralda" = { };
-        roles.peer.tags.all = { };
+        roles.peer.tags.all = { };  # includes biene automatically via tags
       };
 
       # Syncthing — keeps ~/Public in sync across all clan machines.

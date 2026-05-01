@@ -243,6 +243,7 @@ in
 
   programs.firefox = {
     enable = true;
+    configPath = ".mozilla/firefox"; # silence stateVersion < 26.05 migration warning
 
     profiles.hardened = {
 
