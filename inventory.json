@@ -2,6 +2,9 @@
   "machines": {
     "miralda": {
       "installedAt": 1774705553
+    },
+    "biene": {
+      "installedAt": 1777986219
     }
   }
 }
