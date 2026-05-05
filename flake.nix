@@ -81,6 +81,7 @@
             openssh
             nixos-rebuild
             age-plugin-yubikey  # needed for sops re-encryption with YubiKey recipients
+            sops                # needed for manual key rotation / recipient management
 
             # Docs
             python3Packages.mkdocs-material

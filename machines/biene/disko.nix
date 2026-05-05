@@ -1,5 +1,4 @@
-{ ... }:
-{
+{...}: {
   disko.devices = {
     disk.main = {
       type = "disk";
@@ -16,7 +15,7 @@
       #   /dev/disk/by-id/nvme-Samsung_SSD_980_PRO_1TB_S6XYZ123456
       #
       # DO NOT use /dev/sda or /dev/nvme0n1 directly.
-      device = "/dev/disk/by-id/PLACEHOLDER";
+      device = "/dev/disk/by-id/ata-V7_SSD_1701642006054300";
 
       content = {
         type = "gpt";
@@ -26,16 +25,16 @@
             size = "1G";
             type = "EF00";
             content = {
-              type       = "filesystem";
-              format     = "vfat";
+              type = "filesystem";
+              format = "vfat";
               mountpoint = "/boot";
-              extraArgs  = [ "-n" "ESP" ];
-              mountOptions = [ "umask=0077" ];
+              extraArgs = ["-n" "ESP"];
+              mountOptions = ["umask=0077"];
             };
           };
 
           zfs = {
-            size    = "100%";
+            size = "100%";
             content = {
               type = "zfs";
               pool = "zroot";
@@ -52,15 +51,32 @@
       # No encryption — intentionally unencrypted pool for biene.
       rootFsOptions = {
         compression = "zstd";
-        atime       = "off";
+        atime = "off";
       };
 
       datasets = {
-        root    = { type = "zfs_fs"; mountpoint = "/"; };
-        nix     = { type = "zfs_fs"; mountpoint = "/nix"; };
-        home    = { type = "zfs_fs"; mountpoint = "/home";    options.mountpoint = "legacy"; };
-        persist = { type = "zfs_fs"; mountpoint = "/persist"; options.mountpoint = "legacy"; };
-        tmp     = { type = "zfs_fs"; mountpoint = "/tmp"; };
+        root = {
+          type = "zfs_fs";
+          mountpoint = "/";
+        };
+        nix = {
+          type = "zfs_fs";
+          mountpoint = "/nix";
+        };
+        home = {
+          type = "zfs_fs";
+          mountpoint = "/home";
+          options.mountpoint = "legacy";
+        };
+        persist = {
+          type = "zfs_fs";
+          mountpoint = "/persist";
+          options.mountpoint = "legacy";
+        };
+        tmp = {
+          type = "zfs_fs";
+          mountpoint = "/tmp";
+        };
       };
     };
   };
