@@ -203,24 +203,24 @@
         ];
       };
 
-      # homeserver — template ready, uncomment when hardware is available
-      # clan.machines.homeserver = {
-      #   imports = [
-      #     { _module.args = {
-      #         pkgs-unstable = import inputs.nixpkgs-unstable {
-      #           system = "x86_64-linux";
-      #           config.allowUnfree = true;
-      #         };
-      #         inherit inputs;
-      #       };
-      #     }
-      #     inputs.impermanence.nixosModules.impermanence
-      #     inputs.home-manager.nixosModules.home-manager
-      #     ./modules/roles/server.nix
-      #     ./modules/users/admin.nix
-      #     ./modules/wifi.nix
-      #     ./machines/homeserver/configuration.nix
-      #   ];
-      # };
+      # homeserver — template ready, hardware not yet available
+      clan.machines.homeserver = {
+        imports = [
+          { _module.args = {
+              pkgs-unstable = import inputs.nixpkgs-unstable {
+                system = "x86_64-linux";
+                config.allowUnfree = true;
+              };
+              inherit inputs;
+            };
+          }
+          inputs.impermanence.nixosModules.impermanence
+          inputs.home-manager.nixosModules.home-manager
+          ./modules/roles/server.nix
+          ./modules/users/admin.nix
+          ./modules/wifi.nix
+          ./machines/homeserver/configuration.nix
+        ];
+      };
     };
 }

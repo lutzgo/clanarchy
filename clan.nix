@@ -32,8 +32,8 @@
 
     inventory.machines = {
       miralda = { };
-      biene   = { };
-      # homeserver = { };  # uncomment when hardware is ready
+      biene      = { };
+      homeserver = { };
     };
 
     inventory.instances = {
@@ -42,6 +42,7 @@
         roles.server.tags.all = { };
         roles.server.settings.authorizedKeys = {
           "admin-machine-1" = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPo4uZn6hVFTnJ0K7eagj1XL0jVn9t6sSU8RAejhWBy+ clanarchy_admin";
+          "lgo-yubikey"     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDjwV5tzb5mAhtUqgrfzU1FR35btJrvIjPM+PfxBAz4W openpgp:0x5E293E5A";
         };
       };
 
