@@ -27,6 +27,10 @@
   # Keep flakes usable on the installed system too
   nix.settings.experimental-features = ["nix-command" "flakes"];
 
+  # COSMIC binary cache — avoids building 300+ Rust crates from source
+  nix.settings.substituters = ["https://cosmic.cachix.org"];
+  nix.settings.trusted-public-keys = ["cosmic.cachix.org-1:Dya9IyXD4xdBehWjrkPv6rtxpmMdRel02smYzA85d2Y="];
+
   # SSH daemon
   services.openssh = {
     enable = true;

@@ -55,10 +55,10 @@
     };
 
     # COSMIC desktop (for biene)
-    nixos-cosmic = {
-      url = "github:lilyinstarlight/nixos-cosmic";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    # Do NOT follow nixpkgs — nixos-cosmic pins its own nixpkgs and has a
+    # matching binary cache (cosmic.cachix.org). Overriding breaks the cache
+    # and causes vendor/source hash mismatches across cosmic-* packages.
+    nixos-cosmic.url = "github:lilyinstarlight/nixos-cosmic";
   };
 
   outputs = inputs@{ flake-parts, clan-core, ... }:
