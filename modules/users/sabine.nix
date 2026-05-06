@@ -57,7 +57,7 @@ in
     };
 
     # Home Manager configuration
-    home-manager.users.sabine = { pkgs, ... }: {
+    home-manager.users.sabine = { pkgs, config, ... }: {
       home.username      = "sabine";
       home.homeDirectory = "/home/sabine";
       home.stateVersion  = "25.11";
@@ -79,9 +79,12 @@ in
       programs.zsh.enable = true;
 
       programs.firefox = {
-        enable   = true;
+        enable      = true;
+        configPath  = "${config.xdg.configHome}/mozilla/firefox";
         profiles.default = { };
       };
+
+      stylix.targets.firefox.profileNames = [ "default" ];
 
       home.packages = with pkgs; [
         libreoffice

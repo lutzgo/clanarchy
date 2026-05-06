@@ -80,6 +80,15 @@
 
     # ── Home Manager: declarative GNOME settings via dconf ───────────────────
     home-manager.sharedModules = [{
+      # gtk4 theme default changed in HM 26.05; adopt the new null default.
+      gtk.gtk4.theme = lib.mkDefault null;
+
+      # Stylix's qt target sets platformTheme.name = "gnome" (deprecated) and
+      # uses an unsupported platform value. On GNOME, Qt apps are themed via
+      # adwaita-qt automatically — disable the Stylix qt target entirely.
+      stylix.targets.qt.enable = false;
+      qt.platformTheme.name    = lib.mkDefault "adwaita";
+
       dconf.settings = {
 
         # Interface
