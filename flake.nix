@@ -79,6 +79,7 @@
             sops                # needed for manual key rotation / recipient management
 
             # Docs
+            python3               # needed for gendocs (gen-options.py)
             python3Packages.mkdocs-material
           ];
 

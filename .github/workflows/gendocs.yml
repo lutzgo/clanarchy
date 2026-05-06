@@ -1,0 +1,29 @@
+name: Regenerate option reference docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "modules/**"
+      - "machines/**/configuration.nix"
+      - "scripts/gen-options.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  gendocs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@v14
+
+      - name: Regenerate option reference
+        run: nix run nixpkgs#python3 -- scripts/gen-options.py
+
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: regenerate option reference [skip ci]"
+          file_pattern: "docs/reference/*.md"

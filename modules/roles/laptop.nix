@@ -1,13 +1,15 @@
 { config, lib, pkgs, ... }:
 {
-  options.clanarchy.roles.laptop = {
-    enable = lib.mkEnableOption "laptop role";
-    cpu    = lib.mkOption {
+  options.clanarchy.roles = {
+    cpu = lib.mkOption {
       type        = lib.types.enum [ "amd" "intel" ];
       default     = "amd";
-      description = "CPU/GPU vendor for hardware-specific driver and env var tweaks.";
+      description = "CPU/GPU vendor — selects hardware-specific drivers and env vars (ROCm vs Intel media).";
     };
-    framework.enable = lib.mkEnableOption "Framework-specific hardware (fprintd, fwupd, backpack-wake udev rule)";
+    laptop = {
+      enable           = lib.mkEnableOption "laptop role";
+      framework.enable = lib.mkEnableOption "Framework-specific hardware (fprintd, fwupd, backpack-wake udev rule)";
+    };
   };
 
   config = lib.mkIf config.clanarchy.roles.laptop.enable {
@@ -21,21 +23,21 @@
     # GPU / hardware graphics
     hardware.graphics.enable = true;
     hardware.graphics.extraPackages =
-      lib.optionals (config.clanarchy.roles.laptop.cpu == "amd") (with pkgs; [
+      lib.optionals (config.clanarchy.roles.cpu == "amd") (with pkgs; [
         mesa                    # Rusticl OpenCL via radeonsi driver
         rocmPackages.clr.icd    # ROCm ICD — optional for iGPU testing
       ]) ++
-      lib.optionals (config.clanarchy.roles.laptop.cpu == "intel") (with pkgs; [
+      lib.optionals (config.clanarchy.roles.cpu == "intel") (with pkgs; [
         intel-media-driver
       ]);
 
     environment.variables =
-      lib.mkIf (config.clanarchy.roles.laptop.cpu == "amd") {
+      lib.mkIf (config.clanarchy.roles.cpu == "amd") {
         RUSTICL_ENABLE = "radeonsi";
       };
 
     environment.systemPackages =
-      lib.optionals (config.clanarchy.roles.laptop.cpu == "amd") [ pkgs.clinfo ];
+      lib.optionals (config.clanarchy.roles.cpu == "amd") [ pkgs.clinfo ];
 
     # Framework-specific hardware — only assert opinions when framework.enable is true.
     # Leaving fwupd unset when framework is off lets desktop modules (e.g. plasma6)
