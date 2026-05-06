@@ -6,17 +6,37 @@
 
   config = lib.mkIf config.clanarchy.desktop.gnome.enable {
 
-    # GNOME desktop — Wayland via GDM (default in NixOS ≥25.05)
+    # ── Core GNOME desktop ───────────────────────────────────────────────────
     services.xserver.enable = true;
     services.displayManager.gdm.enable = true;
     services.desktopManager.gnome.enable = true;
 
-    # Drop apps Sabine won't use (Firefox replaces Epiphany; no tour wizard)
+    # Drop apps we replace with better alternatives
     environment.gnome.excludePackages = with pkgs; [
       gnome-tour
       epiphany
       gnome-contacts
       gnome-music
+    ];
+
+    # ── System packages — extensions + management tools ──────────────────────
+    environment.systemPackages = with pkgs; [
+      gnome-tweaks
+      gnome-extension-manager
+
+      # Extensions (installed system-wide; enabled via dconf below)
+      gnomeExtensions.just-perfection
+      gnomeExtensions.applications-menu
+      gnomeExtensions.pano                # Clipboard manager
+      gnomeExtensions.dash-to-panel       # Taskbar — replaces the dash
+      gnomeExtensions.dash-to-dock        # Dock alternative (conflicts with dash-to-panel; pick one)
+      gnomeExtensions.appindicator        # System tray / status icons
+      gnomeExtensions.blur-my-shell
+      gnomeExtensions.emoji-copy
+      gnomeExtensions.tiling-shell        # Modern auto-tiling
+      gnomeExtensions.tilingnome          # Minimalist tiling alternative
+      gnomeExtensions.valent              # KDE Connect integration (GNOME side)
+      valent                              # KDE Connect app itself
     ];
 
     # NetworkManager — GNOME shell integrates it natively
@@ -58,9 +78,7 @@
       NIXOS_OZONE_WL = "1";
     };
 
-    # ── Home Manager: declarative GNOME settings via dconf ──────────────────
-    # All users on this machine share these ergonomic defaults.
-    # Per-user overrides go in the user's own HM config.
+    # ── Home Manager: declarative GNOME settings via dconf ───────────────────
     home-manager.sharedModules = [{
       dconf.settings = {
 
@@ -72,7 +90,6 @@
           cursor-theme       = "Adwaita";
           font-antialiasing  = "rgba";
           font-hinting       = "slight";
-          # Fonts are set by Stylix's GTK target; leave name/size to it.
         };
 
         # Window manager
@@ -83,12 +100,12 @@
 
         # Mutter / compositor
         "org/gnome/mutter" = {
-          dynamic-workspaces        = false;
+          dynamic-workspaces         = false;
           workspaces-only-on-primary = true;
-          edge-tiling               = true;
+          edge-tiling                = true;
         };
 
-        # Touchpad — sensible laptop defaults
+        # Touchpad
         "org/gnome/desktop/peripherals/touchpad" = {
           tap-to-click              = true;
           natural-scroll            = true;
@@ -97,38 +114,90 @@
           disable-while-typing      = true;
         };
 
-        # Power management (laptop)
+        # Power management
         "org/gnome/settings-daemon/plugins/power" = {
           sleep-inactive-battery-type    = "suspend";
-          sleep-inactive-battery-timeout = 600;   # 10 min on battery
+          sleep-inactive-battery-timeout = 600;
           sleep-inactive-ac-type         = "suspend";
-          sleep-inactive-ac-timeout      = 1800;  # 30 min on AC
+          sleep-inactive-ac-timeout      = 1800;
           power-button-action            = "suspend";
         };
 
-        # Night Light (reduce blue light in the evening)
+        # Night Light
         "org/gnome/settings-daemon/plugins/color" = {
-          night-light-enabled     = true;
-          night-light-temperature = 3500;
-          night-light-schedule-automatic = true;
+          night-light-enabled             = true;
+          night-light-temperature         = 3500;
+          night-light-schedule-automatic  = true;
         };
 
-        # Dash / taskbar favourites
+        # Text editor
+        "org/gnome/TextEditor" = {
+          show-line-numbers      = true;
+          highlight-current-line = true;
+          wrap-text              = false;
+        };
+
+        # ── Extensions ───────────────────────────────────────────────────────
+        # Enable all extensions except conflicting pairs (pick one from each):
+        #   Dock:   dash-to-panel OR dash-to-dock   (dash-to-panel enabled by default)
+        #   Tiling: tiling-shell  OR tilingnome      (tiling-shell enabled by default)
         "org/gnome/shell" = {
+          enabled-extensions = [
+            "just-perfection-desktop@just-perfection"
+            "apps-menu@gnome-shell-extensions.gcampax.github.com"
+            "pano@elhan.io"
+            "dash-to-panel@jderose9.github.com"
+            # "dash-to-dock@micxgx.gmail.com"        # conflicts with dash-to-panel
+            "appindicatorsupport@rgcjonas.gmail.com"
+            "blur-my-shell@aunetx"
+            "emoji-copy@felipeftn"
+            "tilingshell@ferrarodomenico.com"
+            # "tilingnome@rliang.github.com"          # alternative tiling
+            "valent@andyholmes.ca"
+          ];
           favorite-apps = [
             "org.gnome.Nautilus.desktop"
             "firefox.desktop"
             "org.gnome.Console.desktop"
             "libreoffice-writer.desktop"
             "thunderbird.desktop"
+            "com.mattjakeman.ExtensionManager.desktop"
           ];
         };
 
-        # Text editor (gedit → gnome-text-editor in GNOME 45+)
-        "org/gnome/TextEditor" = {
-          show-line-numbers = true;
-          highlight-current-line = true;
-          wrap-text = false;
+        # just-perfection — clean up the shell chrome
+        "org/gnome/shell/extensions/just-perfection" = {
+          activities-button     = false;  # hide Activities button
+          app-menu              = false;  # hide app menu in top bar
+          search                = true;
+          workspace-popup       = false;
+          animation             = 2;      # 1=slow 2=default 3=fast 4=off
+        };
+
+        # blur-my-shell
+        "org/gnome/shell/extensions/blur-my-shell" = {
+          sigma      = 30;
+          brightness = 0.6;
+        };
+        "org/gnome/shell/extensions/blur-my-shell/overview" = {
+          blur     = true;
+          pipeline = "pipeline_default";
+        };
+        "org/gnome/shell/extensions/blur-my-shell/panel" = {
+          blur = true;
+        };
+
+        # pano — clipboard manager (super+shift+v to open)
+        "org/gnome/shell/extensions/pano" = {
+          show-indicator       = true;
+          play-audio-on-copy   = false;
+          send-notification-on-copy = false;
+        };
+
+        # tiling-shell — quarter/half tiling with drag
+        "org/gnome/shell/extensions/tilingshell" = {
+          enable-move-keybindings = true;
+          enable-snap-assistant   = true;
         };
       };
     }];
