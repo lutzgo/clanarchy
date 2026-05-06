@@ -20,6 +20,7 @@
 | Machine | Role | Status |
 |---------|------|--------|
 | `miralda` | Framework 13 AMD laptop, daily driver | active |
+| `biene` | Framework 13 Intel laptop, GNOME, sabine | active |
 | `homeserver` | Headless server | planned |
 
 ## Navigation
@@ -33,9 +34,11 @@
 # Enter devShell (direnv or manual)
 nix develop
 
-# Deploy to miralda
-deploy           # nixos-rebuild switch
-deploy boot      # stage for next boot only
+# Deploy
+deploy              # miralda — nixos-rebuild switch
+deploy boot         # miralda — stage for next boot only
+deploy-biene        # biene
+deploy-biene boot   # biene — stage for next boot only
 
 # Regenerate option reference docs
 gendocs

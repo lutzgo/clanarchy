@@ -44,10 +44,12 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Guides:
+    - Updating machines: guides/updating-machines.md
+    - Adding a machine: guides/adding-a-machine.md
     - YubiKey: guides/yubikey.md
     - Impermanence: guides/impermanence.md
   - Reference:
     - Overview: reference/index.md
     - Roles: reference/roles.md
-    - Desktop (Niri): reference/desktop.md
+    - Desktop: reference/desktop.md
     - WiFi: reference/wifi.md
