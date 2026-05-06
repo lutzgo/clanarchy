@@ -14,8 +14,8 @@ in
 
   config = lib.mkIf cfg.enable {
 
-    # KDE Plasma 6 — required for sabine's graphical session
-    clanarchy.desktop.kde.enable = lib.mkDefault true;
+    # GNOME — required for sabine's graphical session
+    clanarchy.desktop.gnome.enable = lib.mkDefault true;
 
     users.users.sabine = {
       isNormalUser = true;

@@ -100,6 +100,17 @@
             }
             export -f deploy
 
+            deploy-biene() {
+              local action=''${1:-switch}
+              nixos-rebuild "$action" \
+                --flake .#biene \
+                --target-host root@biene.skynet.lan \
+                --no-reexec \
+                -j auto \
+                "''${@:2}"
+            }
+            export -f deploy-biene
+
             # Push via gh token — works even when ~/.config/git is read-only
             # (impermanence on local machine). Usage: push [remote] [branch]
             push() {
@@ -181,7 +192,7 @@
 
           # Reusable modules
           ./modules/desktop/niri.nix     # imported so the option exists (laptop role references it)
-          ./modules/desktop/kde.nix
+          ./modules/desktop/gnome.nix
           ./modules/roles/laptop.nix
           ./modules/roles/server.nix
           ./modules/roles/vm.nix

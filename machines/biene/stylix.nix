@@ -82,9 +82,5 @@ in {
     };
 
     targets.plymouth.enable = true; # Boot splash
-
-    # Stylix's KDE target generates `username=admin` (unquoted) in a shellcheck-validated
-    # script, causing a build failure (SC2209). Disable until upstream fixes it.
-    targets.kde.enable = false;
   };
 }

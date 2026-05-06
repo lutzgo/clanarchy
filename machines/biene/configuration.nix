@@ -10,9 +10,9 @@
     cpu = "intel"; # update to "intel" if needed
   };
 
-  # Laptop role defaults niri; override it here so only KDE Plasma 6 runs.
-  clanarchy.desktop.niri.enable = false;
-  clanarchy.desktop.kde.enable = true;
+  # Laptop role defaults niri; override it here so only GNOME runs.
+  clanarchy.desktop.niri.enable  = false;
+  clanarchy.desktop.gnome.enable = true;
 
   clanarchy.users.admin.enable = true;
   clanarchy.users.sabine.enable = true;
@@ -54,6 +54,11 @@
   fileSystems."/home".neededForBoot = true;
 
   home-manager.backupFileExtension = "bak";
+
+  # Stylix auto-enables the KDE target for all HM users; disable it globally
+  # since biene uses GNOME.
+  home-manager.sharedModules = [{ stylix.targets.kde.enable = false; }];
+
 
   programs.zsh.enable = true;
 
