@@ -6,7 +6,7 @@
   time.timeZone      = "Europe/Berlin";
 
   # --- Module activation ---
-  clanarchy.roles.cpu = "amd";
+  clanarchy.hardware.cpu = "amd";
   clanarchy.roles.laptop = {
     enable           = true;
     framework.enable = true;

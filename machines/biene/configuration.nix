@@ -5,7 +5,7 @@
   time.timeZone = "Europe/Berlin";
 
   # --- Module activation ---
-  clanarchy.roles.cpu = "intel";
+  clanarchy.hardware.cpu = "intel";
   clanarchy.roles.laptop.enable = true;
 
   # Laptop role defaults niri; override it here so only GNOME runs.

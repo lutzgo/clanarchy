@@ -46,6 +46,11 @@ NIX_APPLY = textwrap.dedent("""\
 
 # Which option path prefixes go into which output file.
 PAGES: dict[str, dict] = {
+    "hardware": {
+        "title": "Hardware",
+        "intro": "Hardware-specific options. Set these to match the physical machine.",
+        "prefixes": ["clanarchy.hardware."],
+    },
     "roles": {
         "title": "Roles",
         "intro": "Machine role modules. Enable exactly the roles that apply to a machine.",

@@ -152,6 +152,7 @@
           inputs.home-manager.nixosModules.home-manager
 
           # Reusable modules
+          ./modules/hardware/cpu.nix
           ./modules/desktop/niri.nix
           ./modules/roles/laptop.nix
           ./modules/roles/server.nix
@@ -192,6 +193,7 @@
           inputs.home-manager.nixosModules.home-manager
 
           # Reusable modules
+          ./modules/hardware/cpu.nix
           ./modules/desktop/niri.nix     # imported so the option exists (laptop role references it)
           ./modules/desktop/gnome.nix
           ./modules/desktop/kde.nix      # imported so the option exists (Stylix KDE target disabled via sharedModules)

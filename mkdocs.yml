@@ -50,6 +50,7 @@ nav:
     - Impermanence: guides/impermanence.md
   - Reference:
     - Overview: reference/index.md
+    - Hardware: reference/hardware.md
     - Roles: reference/roles.md
     - Desktop: reference/desktop.md
     - WiFi: reference/wifi.md

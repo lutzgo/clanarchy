@@ -7,7 +7,6 @@ Machine role modules. Enable exactly the roles that apply to a machine.
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `clanarchy.roles.cpu` | `one of "amd", "intel"` | CPU/GPU vendor — selects hardware-specific drivers and env vars (ROCm vs Intel media). |
 | `clanarchy.roles.laptop.enable` | `boolean` | Whether to enable laptop role. |
 | `clanarchy.roles.laptop.framework.enable` | `boolean` | Whether to enable Framework-specific hardware (fprintd, fwupd, backpack-wake udev rule). |
 | `clanarchy.roles.rpi.enable` | `boolean` | Whether to enable Raspberry Pi role (headless, no desktop by default). |
