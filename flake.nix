@@ -194,6 +194,7 @@
           # Reusable modules
           ./modules/desktop/niri.nix     # imported so the option exists (laptop role references it)
           ./modules/desktop/gnome.nix
+          ./modules/desktop/kde.nix      # imported so the option exists (Stylix KDE target disabled via sharedModules)
           ./modules/roles/laptop.nix
           ./modules/roles/server.nix
           ./modules/roles/vm.nix
