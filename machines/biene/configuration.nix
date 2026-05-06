@@ -10,9 +10,9 @@
     cpu = "intel"; # update to "intel" if needed
   };
 
-  # Laptop role defaults niri; override it here so only COSMIC runs.
+  # Laptop role defaults niri; override it here so only KDE Plasma 6 runs.
   clanarchy.desktop.niri.enable = false;
-  clanarchy.desktop.cosmic.enable = true;
+  clanarchy.desktop.kde.enable = true;
 
   clanarchy.users.admin.enable = true;
   clanarchy.users.sabine.enable = true;
@@ -26,10 +26,6 @@
 
   # Keep flakes usable on the installed system too
   nix.settings.experimental-features = ["nix-command" "flakes"];
-
-  # COSMIC binary cache — avoids building 300+ Rust crates from source
-  nix.settings.substituters = ["https://cosmic.cachix.org"];
-  nix.settings.trusted-public-keys = ["cosmic.cachix.org-1:Dya9IyXD4xdBehWjrkPv6rtxpmMdRel02smYzA85d2Y="];
 
   # SSH daemon
   services.openssh = {

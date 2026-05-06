@@ -37,9 +37,11 @@
     environment.systemPackages =
       lib.optionals (config.clanarchy.roles.laptop.cpu == "amd") [ pkgs.clinfo ];
 
-    # Framework-specific hardware
-    services.fprintd.enable = lib.mkDefault config.clanarchy.roles.laptop.framework.enable;
-    services.fwupd.enable   = lib.mkDefault config.clanarchy.roles.laptop.framework.enable;
+    # Framework-specific hardware — only assert opinions when framework.enable is true.
+    # Leaving fwupd unset when framework is off lets desktop modules (e.g. plasma6)
+    # set their own mkDefault without a priority conflict.
+    services.fprintd.enable = lib.mkIf config.clanarchy.roles.laptop.framework.enable (lib.mkDefault true);
+    services.fwupd.enable   = lib.mkIf config.clanarchy.roles.laptop.framework.enable (lib.mkDefault true);
 
     # Prevent backpack-wake: disable LID ACPI device as a kernel wakeup source.
     # This stops the lid sensor from generating spurious wakeups when bag pressure

@@ -14,8 +14,8 @@ in
 
   config = lib.mkIf cfg.enable {
 
-    # COSMIC desktop — required for sabine's graphical session
-    clanarchy.desktop.cosmic.enable = lib.mkDefault true;
+    # KDE Plasma 6 — required for sabine's graphical session
+    clanarchy.desktop.kde.enable = lib.mkDefault true;
 
     users.users.sabine = {
       isNormalUser = true;

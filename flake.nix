@@ -54,11 +54,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # COSMIC desktop (for biene)
-    # Do NOT follow nixpkgs — nixos-cosmic pins its own nixpkgs and has a
-    # matching binary cache (cosmic.cachix.org). Overriding breaks the cache
-    # and causes vendor/source hash mismatches across cosmic-* packages.
-    nixos-cosmic.url = "github:lilyinstarlight/nixos-cosmic";
   };
 
   outputs = inputs@{ flake-parts, clan-core, ... }:
@@ -180,14 +175,13 @@
             };
           }
 
-          inputs.nixos-cosmic.nixosModules.default
           inputs.impermanence.nixosModules.impermanence
           inputs.stylix.nixosModules.stylix
           inputs.home-manager.nixosModules.home-manager
 
           # Reusable modules
           ./modules/desktop/niri.nix     # imported so the option exists (laptop role references it)
-          ./modules/desktop/cosmic.nix
+          ./modules/desktop/kde.nix
           ./modules/roles/laptop.nix
           ./modules/roles/server.nix
           ./modules/roles/vm.nix
