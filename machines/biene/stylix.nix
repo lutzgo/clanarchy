@@ -3,7 +3,7 @@
   config,
   ...
 }: let
-  schemePath = "${pkgs.base16-schemes}/share/themes/selenized-bright.yaml";
+  schemePath = "${pkgs.base16-schemes}/share/themes/selenized-light.yaml";
 
   c = config.lib.stylix.colors;
 
