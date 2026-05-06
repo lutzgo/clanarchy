@@ -52,8 +52,8 @@ PAGES: dict[str, dict] = {
         "prefixes": ["clanarchy.roles."],
     },
     "desktop": {
-        "title": "Desktop (Niri)",
-        "intro": "Options for the Niri Wayland compositor and its supporting services.",
+        "title": "Desktop",
+        "intro": "Desktop environment modules (Niri, GNOME, KDE). Enable exactly the one that applies to the machine.",
         "prefixes": ["clanarchy.desktop."],
     },
     "wifi": {
@@ -64,11 +64,11 @@ PAGES: dict[str, dict] = {
 }
 
 
-def fetch_options() -> dict[str, dict]:
-    """Run nix eval and return {option_path: {description, type}}."""
+def fetch_options_for(machine: str) -> dict[str, dict]:
+    """Run nix eval for one machine and return {option_path: {description, type}}."""
     cmd = [
         "nix", "eval", "--json",
-        ".#nixosConfigurations.miralda.options.clanarchy",
+        f".#nixosConfigurations.{machine}.options.clanarchy",
         "--apply", NIX_APPLY,
     ]
     try:
@@ -80,9 +80,18 @@ def fetch_options() -> dict[str, dict]:
             check=True,
         )
     except subprocess.CalledProcessError as e:
-        print("nix eval failed:", e.stderr[-2000:], file=sys.stderr)
+        print(f"nix eval failed for {machine}:", e.stderr[-2000:], file=sys.stderr)
         sys.exit(1)
     return json.loads(result.stdout)
+
+
+def fetch_options() -> dict[str, dict]:
+    """Merge clanarchy options from all machines so every module is represented."""
+    machines = ["miralda", "biene"]
+    merged: dict[str, dict] = {}
+    for m in machines:
+        merged.update(fetch_options_for(m))
+    return merged
 
 
 def render_page(title: str, intro: str, opts: dict[str, dict]) -> str:

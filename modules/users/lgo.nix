@@ -126,6 +126,11 @@
           matchBlocks."miralda.goclan.org" = {
             extraOptions.HostKeyAlgorithms = "ssh-ed25519";
           };
+          # Same fix for biene — publickey-hostbound causes gnupg 2.4.x to
+          # refuse signing with card-backed ed25519 keys.
+          matchBlocks."biene.skynet.lan 10.0.10.105" = {
+            extraOptions.HostKeyAlgorithms = "ssh-ed25519";
+          };
         };
 
         # Standard XDG user directories (recreated after each ZFS rollback by HM activation).
