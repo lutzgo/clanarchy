@@ -3,7 +3,6 @@
   networking.hostName = "miralda";
   networking.hostId  = "ebeed95c";
   networking.search  = [ "skynet.lan" ];
-  networking.hosts."10.0.10.105" = [ "biene" "biene.skynet.lan" ];
   time.timeZone      = "Europe/Berlin";
 
   # --- Module activation ---

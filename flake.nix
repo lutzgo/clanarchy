@@ -103,9 +103,10 @@
 
             deploy-biene() {
               local action=''${1:-switch}
+              local host=''${BIENE_HOST:-biene.local}
               nixos-rebuild "$action" \
                 --flake .#biene \
-                --target-host root@biene.skynet.lan \
+                --target-host "root@$host" \
                 --no-reexec \
                 -j auto \
                 "''${@:2}"
