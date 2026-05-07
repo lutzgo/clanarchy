@@ -152,6 +152,7 @@
           inputs.home-manager.nixosModules.home-manager
 
           # Reusable modules
+          ./modules/networking.nix
           ./modules/hardware/cpu.nix
           ./modules/desktop/niri.nix
           ./modules/roles/laptop.nix
@@ -193,6 +194,7 @@
           inputs.home-manager.nixosModules.home-manager
 
           # Reusable modules
+          ./modules/networking.nix
           ./modules/hardware/cpu.nix
           ./modules/desktop/niri.nix     # imported so the option exists (laptop role references it)
           ./modules/desktop/gnome.nix
@@ -226,6 +228,7 @@
           }
           inputs.impermanence.nixosModules.impermanence
           inputs.home-manager.nixosModules.home-manager
+          ./modules/networking.nix
           ./modules/roles/server.nix
           ./modules/users/admin.nix
           ./modules/wifi.nix

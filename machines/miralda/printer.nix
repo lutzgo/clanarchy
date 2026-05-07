@@ -12,13 +12,6 @@
     extraBackends = [ pkgs.hplip ];
   };
 
-  # ── Avahi — zero-conf network printer/scanner discovery ──────────────────
-  services.avahi = {
-    enable = true;
-    nssmdns4 = true;
-    openFirewall = true;
-  };
-
   # ── User groups ───────────────────────────────────────────────────────────
   users.users.lgo.extraGroups = [ "lp" "scanner" ];
 }
