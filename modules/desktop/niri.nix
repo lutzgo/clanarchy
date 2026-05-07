@@ -95,6 +95,17 @@
     # udisks2 — required by Noctalia USB drive manager (D-Bus device detection + auto-mount)
     services.udisks2.enable = true;
 
+    # V4L2 loopback — virtual camera device used by OBS's "Start Virtual Camera".
+    # UVC input (Sony ILCE, etc.) works via the built-in uvcvideo module; no extra config needed.
+    # exclusive_caps=1 makes apps (Meet, Zoom, …) enumerate the loopback as a capture device.
+    # video_nr=10 avoids collisions with physical cameras at /dev/video0…
+    boot.extraModulePackages = [ config.boot.kernelPackages.v4l2loopback ];
+    boot.kernelModules       = [ "v4l2loopback" ];
+    boot.extraModprobeConfig = lib.mkAfter ''
+      options v4l2loopback devices=1 video_nr=10 card_label="OBS Virtual Camera" exclusive_caps=1
+    '';
+    environment.systemPackages = [ pkgs.v4l-utils ];
+
     # fprintd service (controlled by fprintd option)
     services.fprintd.enable = lib.mkDefault config.clanarchy.desktop.niri.fprintd.enable;
 

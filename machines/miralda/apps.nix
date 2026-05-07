@@ -56,7 +56,6 @@ in {
     darktable
     krita
     normcap # OCR screen capture
-    obs-studio
     bat # cat with syntax highlighting and paging
     ripgrep
     fd
@@ -77,6 +76,15 @@ in {
       Restart = "on-failure";
       RestartSec = 5;
     };
+  };
+
+  # OBS Studio — use NixOS module so plugins are wired into the wrapper
+  programs.obs-studio = {
+    enable  = true;
+    plugins = with pkgs.obs-studio-plugins; [
+      obs-vaapi             # AMD/Intel VAAPI hardware encoding
+      obs-backgroundremoval # AI portrait segmentation — background blur/removal
+    ];
   };
 
   # Color Calibration

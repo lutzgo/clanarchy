@@ -48,6 +48,7 @@ nav:
     - Adding a machine: guides/adding-a-machine.md
     - YubiKey: guides/yubikey.md
     - Impermanence: guides/impermanence.md
+    - OBS / Sony webcam: guides/obs-sony-webcam.md
   - Reference:
     - Overview: reference/index.md
     - Hardware: reference/hardware.md
