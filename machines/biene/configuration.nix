@@ -11,6 +11,7 @@
   # Laptop role defaults niri; override it here so only GNOME runs.
   clanarchy.desktop.niri.enable  = false;
   clanarchy.desktop.gnome.enable = true;
+  clanarchy.desktop.gnome.sabine = true;
 
   clanarchy.users.admin.enable = true;
   clanarchy.users.sabine.enable = true;
