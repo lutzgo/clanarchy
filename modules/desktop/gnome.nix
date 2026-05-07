@@ -222,6 +222,16 @@
       ({ lib, ... }: with lib.hm.gvariant; {
         dconf.settings = {
 
+          # Wallpaper — explicitly wire Stylix's generated image so GNOME picks it
+          # up reliably.  config.stylix.image is captured from the outer NixOS
+          # scope and resolves to the biene-wallpaper.png store path.
+          "org/gnome/desktop/background" = {
+            picture-uri        = lib.mkForce "file://${config.stylix.image}";
+            picture-uri-dark   = lib.mkForce "file://${config.stylix.image}";
+            picture-options    = "zoom";
+            color-shading-type = "solid";
+          };
+
           # Valent (KDE Connect) — advertise device as "biene"
           "ca/andyholmes/valent" = {
             name = "biene";
@@ -396,9 +406,9 @@
             idle-dim                       = false;
             power-button-action            = lib.mkForce "suspend";
             sleep-inactive-ac-timeout      = lib.mkForce 1800;
-            sleep-inactive-ac-type         = lib.mkForce "suspend";
+            sleep-inactive-ac-type         = lib.mkForce "nothing";
             sleep-inactive-battery-timeout = lib.mkForce 600;
-            sleep-inactive-battery-type    = lib.mkForce "suspend";
+            sleep-inactive-battery-type    = lib.mkForce "nothing";
           };
 
           # ── Shell extensions ───────────────────────────────────────────────
