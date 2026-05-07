@@ -39,7 +39,7 @@
       gnomeExtensions.valent              # KDE Connect integration (GNOME side)
       valent                              # KDE Connect app itself
     ] ++ lib.optionals config.clanarchy.desktop.gnome.sabine [
-      gnomeExtensions.user-theme          # Shell theme switcher (Sabine uses Stylix shell theme)
+      gnomeExtensions.user-themes         # Shell theme switcher (Sabine uses Stylix shell theme)
     ];
 
     # NetworkManager — GNOME shell integrates it natively
@@ -495,7 +495,7 @@
           # panel-* keys are keyed by monitor EDID ID (CMN-0x00000000).
           "org/gnome/shell/extensions/dash-to-panel" = {
             animate-appicon-hover                  = true;
-            animate-appicon-hover-animation-extent = { RIPPLE = 4; PLANK = 4; SIMPLE = 1; };
+            animate-appicon-hover-animation-extent = builtins.toJSON { RIPPLE = 4; PLANK = 4; SIMPLE = 1; };
             appicon-margin                         = 0;
             appicon-padding                        = 0;
             context-menu-entries                   = "[{\"title\":\"Terminal\",\"cmd\":\"TERMINALSETTINGS\"},{\"title\":\"System monitor\",\"cmd\":\"gnome-system-monitor\"},{\"title\":\"Files\",\"cmd\":\"nautilus\"}]";
