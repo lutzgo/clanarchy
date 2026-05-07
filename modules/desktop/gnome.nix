@@ -364,9 +364,9 @@
             num-workspaces = lib.mkForce 1;
           };
 
-          # Eye-of-GNOME — light background for image viewer
+          # Eye-of-GNOME — background follows the active GTK/Stylix theme
           "org/gnome/eog/view" = {
-            background-color = "#fbf3db";
+            use-background-color = false;
           };
 
           # System monitor

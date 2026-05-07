@@ -3,7 +3,7 @@
   config,
   ...
 }: let
-  schemePath = "${pkgs.base16-schemes}/share/themes/selenized-light.yaml";
+  schemePath = "${pkgs.base16-schemes}/share/themes/catppuccin-mocha.yaml";
 
   c = config.lib.stylix.colors;
 
@@ -45,7 +45,7 @@
 in {
   stylix = {
     enable = true;
-    polarity = "dark";
+    polarity = "dark"; # Catppuccin Mocha is a dark scheme
 
     base16Scheme = schemePath;
     image = nixWallpaper;
