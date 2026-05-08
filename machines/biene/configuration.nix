@@ -2,15 +2,17 @@
   networking.hostName = "biene";
   networking.hostId = "cd9ef50b";
   networking.search = ["skynet.lan"];
+
+  # clan machines update target — use mDNS so it works before ZeroTier is up
+  clan.core.networking.targetHost = "root@biene.local";
   time.timeZone = "Europe/Berlin";
 
   # --- Module activation ---
   # machine-type (laptop, no Framework hw) and desktop (gnome + sabine dconf)
   # are assigned via inventory.instances in clan.nix.
   # wifi networks are provisioned via the clan wifi service.
-  clanarchy.hardware.cpu         = "intel";
-  clanarchy.users.admin.enable   = true;
-  clanarchy.users.sabine.enable  = true;
+  clanarchy.hardware.cpu       = "intel";
+  clanarchy.users.admin.enable = true;
 
   # Keep flakes usable on the installed system too
   nix.settings.experimental-features = ["nix-command" "flakes"];
