@@ -5,23 +5,12 @@
   time.timeZone = "Europe/Berlin";
 
   # --- Module activation ---
-  clanarchy.hardware.cpu = "intel";
-  clanarchy.roles.laptop.enable = true;
-
-  # Laptop role defaults niri; override it here so only GNOME runs.
-  clanarchy.desktop.niri.enable  = false;
-  clanarchy.desktop.gnome.enable = true;
-  clanarchy.desktop.gnome.sabine = true;
-
-  clanarchy.users.admin.enable = true;
-  clanarchy.users.sabine.enable = true;
-
-  clanarchy.wifi.networks = [
-    {
-      ssid = "skynet";
-      varName = "wifi-home";
-    }
-  ];
+  # machine-type (laptop, no Framework hw) and desktop (gnome + sabine dconf)
+  # are assigned via inventory.instances in clan.nix.
+  # wifi networks are provisioned via the clan wifi service.
+  clanarchy.hardware.cpu         = "intel";
+  clanarchy.users.admin.enable   = true;
+  clanarchy.users.sabine.enable  = true;
 
   # Keep flakes usable on the installed system too
   nix.settings.experimental-features = ["nix-command" "flakes"];

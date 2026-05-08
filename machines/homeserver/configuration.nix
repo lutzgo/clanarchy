@@ -1,6 +1,6 @@
 { ... }:
 {
-  clanarchy.roles.server.enable = true;
+  # Server role applied via inventory.instances.machine-type in clan.nix.
 
   networking.hostName = "homeserver";
   time.timeZone       = "Europe/Berlin";

@@ -30,14 +30,46 @@
     meta.name = "clanarchy";
     meta.domain = "goclan.org";
 
+    # ── Custom clan service modules ──────────────────────────────────────────
+    # Registered here so they can be referenced by module.name in inventory.
+    # Other clans can consume these by adding clanarchy as a flake input and
+    # referencing module.input = "clanarchy".
+    modules."@clanarchy/machine-type" = import ./service-modules/machine-type.nix;
+    modules."@clanarchy/desktop"      = import ./service-modules/desktop.nix;
+
     inventory.machines = {
-      miralda = { };
+      miralda    = { };
       biene      = { };
       homeserver = { };
     };
 
     inventory.instances = {
-      # SSH baseline (recommended in official guide flow)
+
+      # ── Machine archetypes ─────────────────────────────────────────────────
+      # Each machine is assigned to exactly one hardware/role archetype.
+      # This replaces the old pattern of importing all modules/roles/*.nix into
+      # every machine and toggling via clanarchy.roles.*.enable.
+      machine-type = {
+        module.input = "self";
+        module.name  = "@clanarchy/machine-type";
+        roles.laptop.machines.miralda.settings.framework.enable = true;
+        roles.laptop.machines.biene = { };   # no Framework hardware
+        roles.server.machines.homeserver = { };
+      };
+
+      # ── Desktop environments ───────────────────────────────────────────────
+      # Each machine is assigned to exactly one desktop role.
+      # The service imports only the relevant desktop module for that machine.
+      desktop = {
+        module.input = "self";
+        module.name  = "@clanarchy/desktop";
+        # miralda: Niri with Framework 13 display — default settings match hardware
+        roles.niri.machines.miralda = { };
+        # biene: GNOME with Sabine's dconf defaults
+        roles.gnome.machines.biene.settings.sabine = true;
+      };
+
+      # ── SSH baseline ────────────────────────────────────────────────────────
       sshd = {
         roles.server.tags.all = { };
         roles.server.settings.authorizedKeys = {
@@ -46,26 +78,49 @@
         };
       };
 
-      # Zerotier scaffold (inactive until you choose a controller and deploy it)
+      # ── Zerotier VPN ────────────────────────────────────────────────────────
+      # miralda is the controller; all machines are peers.
       zerotier = {
         roles.controller.machines."miralda" = { };
-        roles.peer.tags.all = { };  # includes biene automatically via tags
+        roles.peer.tags.all = { };
       };
 
-      # Syncthing — keeps ~/Public in sync across all clan machines.
-      # openDefaultPorts restricts firewall to zt+ (zerotier) interfaces only.
-      # Run `clan vars generate miralda` once to generate the syncthing key/cert/ID.
+      # ── Syncthing ───────────────────────────────────────────────────────────
+      # Syncs ~/Public across clan laptops.
+      # openDefaultPorts restricts the firewall to zt+ (zerotier) interfaces.
+      # User overrides (run as lgo / sabine) are in machines/*/syncthing.nix.
+      # Run `clan vars generate <machine>` once to generate syncthing key/cert/ID.
       syncthing = {
         module = { name = "syncthing"; input = "clan-core"; };
         roles.peer.machines.miralda = {
           settings = {
             openDefaultPorts = true;
-            folders.public = {
-              path = "/home/lgo/Public";
-            };
+            folders.public.path = "/home/lgo/Public";
+          };
+        };
+        roles.peer.machines.biene = {
+          settings = {
+            openDefaultPorts = true;
+            folders.public.path = "/home/sabine/Public";
           };
         };
       };
+
+      # ── Wi-Fi ───────────────────────────────────────────────────────────────
+      # Official clan wifi service — replaces the bespoke modules/wifi.nix and
+      # the wifi-home vars generator.  The SSID and PSK are prompted at
+      # `clan vars generate <machine>` time (shared across machines via share = true).
+      #
+      # Migration note: run `clan vars generate miralda` and `clan vars generate biene`
+      # after deploying to populate the new vars/shared/wifi.home/ secrets.
+      # The old vars/per-machine/*/wifi-home/ entries can be removed afterwards.
+      wifi = {
+        roles.default.tags.all = { };
+        roles.default.settings.networks = {
+          home = { };   # prompts: SSID "skynet", PSK; keyMgmt defaults to wpa-psk
+        };
+      };
+
     };
 
     machines = { };

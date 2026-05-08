@@ -152,18 +152,12 @@
           inputs.stylix.nixosModules.stylix
           inputs.home-manager.nixosModules.home-manager
 
-          # Reusable modules
+          # Reusable modules (hardware + users; roles/desktop applied via clan services)
           ./modules/networking.nix
           ./modules/hardware/cpu.nix
-          ./modules/desktop/niri.nix
-          ./modules/roles/laptop.nix
-          ./modules/roles/server.nix
-          ./modules/roles/vm.nix
-          ./modules/roles/rpi.nix
           ./modules/users/lgo.nix
           ./modules/users/admin.nix
           ./modules/users/sgo.nix
-          ./modules/wifi.nix
 
           # Machine-specific
           ./machines/miralda/configuration.nix
@@ -194,25 +188,18 @@
           inputs.stylix.nixosModules.stylix
           inputs.home-manager.nixosModules.home-manager
 
-          # Reusable modules
+          # Reusable modules (hardware + users; roles/desktop applied via clan services)
           ./modules/networking.nix
           ./modules/hardware/cpu.nix
-          ./modules/desktop/niri.nix     # imported so the option exists (laptop role references it)
-          ./modules/desktop/gnome.nix
-          ./modules/desktop/kde.nix      # imported so the option exists (Stylix KDE target disabled via sharedModules)
-          ./modules/roles/laptop.nix
-          ./modules/roles/server.nix
-          ./modules/roles/vm.nix
-          ./modules/roles/rpi.nix
           ./modules/users/admin.nix
           ./modules/users/sabine.nix
-          ./modules/wifi.nix
 
           # Machine-specific
           ./machines/biene/configuration.nix
           ./machines/biene/disko.nix
           ./machines/biene/impermanence.nix
           ./machines/biene/stylix.nix
+          ./machines/biene/syncthing.nix
         ];
       };
 
@@ -230,9 +217,7 @@
           inputs.impermanence.nixosModules.impermanence
           inputs.home-manager.nixosModules.home-manager
           ./modules/networking.nix
-          ./modules/roles/server.nix
           ./modules/users/admin.nix
-          ./modules/wifi.nix
           ./machines/homeserver/configuration.nix
         ];
       };

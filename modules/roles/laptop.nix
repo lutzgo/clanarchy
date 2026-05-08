@@ -7,12 +7,6 @@
 
   config = lib.mkIf config.clanarchy.roles.laptop.enable {
 
-    # Activate Niri desktop by default on laptops
-    clanarchy.desktop.niri.enable = lib.mkDefault true;
-    clanarchy.desktop.niri.fprintd.enable =
-      lib.mkDefault config.clanarchy.roles.laptop.framework.enable;
-    clanarchy.desktop.niri.input.pointerSpeed = lib.mkDefault 0.4;
-
     # GPU / hardware graphics
     hardware.graphics.enable = true;
     hardware.graphics.extraPackages =

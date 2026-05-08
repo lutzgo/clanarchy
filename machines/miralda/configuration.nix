@@ -6,16 +6,11 @@
   time.timeZone      = "Europe/Berlin";
 
   # --- Module activation ---
-  clanarchy.hardware.cpu = "amd";
-  clanarchy.roles.laptop = {
-    enable           = true;
-    framework.enable = true;
-  };
-  clanarchy.users.lgo.enable   = true;
-  clanarchy.users.admin.enable = true;
-  clanarchy.wifi.networks = [
-    { ssid = "skynet"; varName = "wifi-home"; }
-  ];
+  # machine-type and desktop roles are assigned via inventory.instances in clan.nix.
+  # wifi networks are provisioned via the clan wifi service (inventory.instances.wifi).
+  clanarchy.hardware.cpu        = "amd";
+  clanarchy.users.lgo.enable    = true;
+  clanarchy.users.admin.enable  = true;
 
   # Keep flakes usable on the installed system too
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
