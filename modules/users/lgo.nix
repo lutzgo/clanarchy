@@ -127,7 +127,7 @@
           };
           # Same fix for biene — publickey-hostbound causes gnupg 2.4.x to
           # refuse signing with card-backed ed25519 keys.
-          matchBlocks."biene.local biene.skynet.lan 10.0.10.105 fdf9:4add:a39b:997d:2199:93da:ef5d:598c" = {
+          matchBlocks."biene.local biene.skynet.lan 10.0.10.105 fdda:106a:123a:d561:1099:93da:ef5d:598c" = {
             extraOptions.HostKeyAlgorithms = "ssh-ed25519";
           };
         };

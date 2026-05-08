@@ -58,7 +58,7 @@ in
     "biene.local" = {
       publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJrXALvNnbJlC+oQCZ8bf7FRFCbL28GjumRkmKcWF09c";
     };
-    "fdf9:4add:a39b:997d:2199:93da:ef5d:598c" = {
+    "fdda:106a:123a:d561:1099:93da:ef5d:598c" = {
       publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJrXALvNnbJlC+oQCZ8bf7FRFCbL28GjumRkmKcWF09c";
     };
   };
