@@ -38,12 +38,29 @@ in
   # YubiKey udev rules (needed for non-root access)
   services.udev.packages = [ pkgs.yubikey-personalization ];
 
-  # Trust miralda's own plain ed25519 host key system-wide.
-  # Needed because the lgo SSH config forces HostKeyAlgorithms=ssh-ed25519 for
-  # miralda.goclan.org to avoid triggering publickey-hostbound-v00@openssh.com,
-  # which causes gnupg 2.4.x to fail signing with card-backed ed25519 keys.
-  programs.ssh.knownHosts."miralda.goclan.org" = {
-    publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBRTHrUg5ftPBfhAgjRUB9N2OUBvFDERLcRgAUu/BHBx";
+  # Trust clan machine host keys system-wide (plain ed25519, no cert chain).
+  # Needed because lgo's SSH config forces HostKeyAlgorithms=ssh-ed25519 to
+  # avoid publickey-hostbound-v00@openssh.com, which causes gnupg 2.4.x to
+  # refuse signing with card-backed ed25519 keys.
+  # ZeroTier IPs are listed alongside the primary hostnames so that
+  # `clan machines update` (which connects via ZeroTier) doesn't prompt
+  # interactively — and so the HostKeyAlgorithms match block in lgo's SSH
+  # config (modules/users/lgo.nix) also covers those addresses.
+  programs.ssh.knownHosts = {
+    "miralda.goclan.org" = {
+      publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBRTHrUg5ftPBfhAgjRUB9N2OUBvFDERLcRgAUu/BHBx";
+    };
+    # miralda ZeroTier IPv6 — same host key, different network path
+    "fdda:106a:123a:d561:1099:93da:106a:123a" = {
+      publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBRTHrUg5ftPBfhAgjRUB9N2OUBvFDERLcRgAUu/BHBx";
+    };
+    # biene — covers clan machines update via ZeroTier
+    "biene.local" = {
+      publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJrXALvNnbJlC+oQCZ8bf7FRFCbL28GjumRkmKcWF09c";
+    };
+    "fdf9:4add:a39b:997d:2199:93da:ef5d:598c" = {
+      publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJrXALvNnbJlC+oQCZ8bf7FRFCbL28GjumRkmKcWF09c";
+    };
   };
 
   # Allow PC/SC access for SSH users — pcscd uses PolicyKit and by default
