@@ -90,6 +90,29 @@ programs.ssh.knownHosts."miralda.goclan.org" = {
 
 The YubiKey PIV applet holds an **age recipient** via `age-plugin-yubikey`. This allows clan vars secrets and sops files to be encrypted to the YubiKey — decryptable only when the key is inserted and the PIN is entered.
 
+### Key identities
+
+| Key | Public key | Location |
+|-----|-----------|----------|
+| lgo regular age key | `age1dja6qmtqlxhul8xdtj3tsgj8qwzc07yasauy767fq9k2knaa2q5sj0wxv8` | `~/.config/sops/age/keys.txt` |
+| lgo YubiKey age key | `age1yubikey1qw86lycmkeart5sh5mrhrpcr7qwfceemu7aw22veqclmeu3m2wsqwnqw7zg` | YubiKey Serial 19345499, Slot 1 |
+| miralda machine key | `age1c2982jjusdhrdzua0wrj5c8q8knxz6gja975kt42j3e8rdstwfusr0wse6` | `sops/machines/miralda/key.json` |
+
+### Recipient policy
+
+**Every admin-readable sops secret must have lgo's regular age key as a co-recipient**, in addition to the YubiKey key. This is the single most important rule — without it, a PIV slot reset locks you out of all secrets.
+
+`sops/users/lgo/key.json` controls which keys clan uses when generating new secrets:
+
+```json
+[
+  { "publickey": "age1dja6...", "type": "age" },
+  { "publickey": "age1yubikey1...", "type": "age" }
+]
+```
+
+Both entries must always be present. Adding the regular key here ensures `clan vars generate` and `clan secrets generate` always include it.
+
 ### devShell requirement
 
 `age-plugin-yubikey` must be in the devShell for any `clan vars generate` or sops re-encryption operation that targets a YubiKey recipient:
@@ -102,6 +125,28 @@ packages = with pkgs; [
 ```
 
 If you run `clan vars generate` without the plugin in `PATH`, the generation succeeds but the secret is not encrypted to the YubiKey recipient.
+
+### Re-provisioning the PIV slot
+
+If the YubiKey PIV slot is reset or a new key is generated:
+
+```bash
+# Generate a new age key on the YubiKey (Slot 1)
+age-plugin-yubikey --generate --slot 1
+
+# Append the new identity stub to keys.txt
+age-plugin-yubikey --identity >> ~/.config/sops/age/keys.txt
+
+# Get the new public key
+age-plugin-yubikey --list
+```
+
+Then update `sops/users/lgo/key.json` with the new `age1yubikey1...` public key and re-encrypt all sops secrets:
+
+```bash
+# For each sops secret file
+nix shell nixpkgs#sops --command sops updatekeys sops/secrets/<machine>-age.key/secret
+```
 
 ### Re-encrypting sops files
 
@@ -145,6 +190,38 @@ systemctl cat pcscd.service | grep WantedBy
 ### PIN prompt doesn't appear (Wayland)
 
 The pinentry wrapper reads `wayland-*` from `/run/user/$uid/`. If the Wayland session hasn't created the socket yet (e.g. prompt fires during greeter), there's nothing to inject. Entering the PIN via the terminal fallback (`pinentry-curses`) is not configured — use the graphical session.
+
+### `clan machines update` fails: "no identity matched any of the recipients"
+
+This happens when the YubiKey PIV slot is empty (reset or not yet provisioned) and a sops secret is encrypted only to the YubiKey age key.
+
+**Recovery** — the machine's age private key is deployed to `/var/lib/sops-nix/key.txt` on the running machine. Use it to re-encrypt the secret with proper recipients:
+
+```bash
+# 1. Get the plaintext from the running machine
+ssh root@miralda.goclan.org "cat /var/lib/sops-nix/key.txt"
+# → AGE-SECRET-KEY-1...
+
+# 2. Write plaintext JSON and re-encrypt with both age keys
+printf '{"data": "AGE-SECRET-KEY-1..."}' > /tmp/plain.json
+nix shell nixpkgs#sops --command sops encrypt \
+  --age age1dja6qmtqlxhul8xdtj3tsgj8qwzc07yasauy767fq9k2knaa2q5sj0wxv8,age1yubikey1qw86lycmkeart5sh5mrhrpcr7qwfceemu7aw22veqclmeu3m2wsqwnqw7zg \
+  --input-type json --output-type json \
+  --output /tmp/enc.json \
+  /tmp/plain.json
+
+# 3. Verify decryption works
+SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt \
+  nix shell nixpkgs#sops --command sops decrypt /tmp/enc.json
+
+# 4. Also verify via clan
+SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt clan secrets get miralda-age.key
+
+# 5. Replace the sops secret
+cp /tmp/enc.json sops/secrets/miralda-age.key/secret
+```
+
+Commit the result. Then provision the PIV slot (see Re-provisioning above) and `sops updatekeys` to restore the YubiKey recipient for future decryptions.
 
 ### sops decrypt fails after ZFS rollback
 
