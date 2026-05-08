@@ -90,6 +90,15 @@
           # Use "clan machines update miralda" when you need secrets/vars to be
           # re-evaluated (e.g. after changing sops or clan vars config).
           shellHook = ''
+            # age/SOPS identity — points to the keys.txt that contains both the
+            # regular age key and the AGE-PLUGIN-YUBIKEY-1... identity stub.
+            # Required for `clan machines update` and any direct `sops` invocation
+            # that needs to decrypt secrets encrypted to the YubiKey recipient.
+            # The file persists across reboots via impermanence (.config is listed
+            # in the persisted paths).  First-time setup on a new machine:
+            #   age-plugin-yubikey --identity >> ~/.config/sops/age/keys.txt
+            export SOPS_AGE_KEY_FILE="''${XDG_CONFIG_HOME:-$HOME/.config}/sops/age/keys.txt"
+
             deploy() {
               local action=''${1:-switch}
               nixos-rebuild "$action" \
