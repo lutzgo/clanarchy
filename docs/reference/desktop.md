@@ -9,8 +9,6 @@ Desktop environment modules (Niri, GNOME, KDE). Enable exactly the one that appl
 |--------|------|-------------|
 | `clanarchy.desktop.gnome.enable` | `boolean` | Whether to enable GNOME desktop environment. |
 | `clanarchy.desktop.gnome.sabine` | `boolean` | Whether to enable Sabine's personal GNOME dconf defaults. |
-| `clanarchy.desktop.kde.enable` | `boolean` | Whether to enable KDE Plasma 6 desktop environment. |
-| `clanarchy.desktop.kde.fprintd.enable` | `boolean` | Whether to enable fingerprint authentication via fprintd. |
 | `clanarchy.desktop.niri.display.resolution.height` | `signed integer` | Vertical resolution of the primary display. |
 | `clanarchy.desktop.niri.display.resolution.width` | `signed integer` | Horizontal resolution of the primary display. |
 | `clanarchy.desktop.niri.display.scale` | `floating point number` | Output scale factor for the primary display (eDP-1). |
