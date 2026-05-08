@@ -200,6 +200,7 @@
           ./modules/networking.nix
           ./modules/hardware/cpu.nix
           ./modules/users/admin.nix
+          ./modules/wifi.nix
 
           # Machine-specific
           ./machines/biene/configuration.nix

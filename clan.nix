@@ -37,6 +37,7 @@
     modules."@clanarchy/machine-type" = import ./service-modules/machine-type.nix;
     modules."@clanarchy/desktop"      = import ./service-modules/desktop.nix;
     modules."@clanarchy/users"        = import ./service-modules/users.nix;
+    modules."@clanarchy/software"     = import ./service-modules/software.nix;
 
     inventory.machines = {
       miralda    = { };
@@ -129,6 +130,18 @@
         roles.default.settings.networks = {
           home = { };   # prompts: SSID "skynet", PSK; keyMgmt defaults to wpa-psk
         };
+      };
+
+      # ── Software: browsers and email clients ─────────────────────────────
+      # biene: LibreWolf + Thunderbird + Geary for sabine.
+      # Firefox is already configured in modules/users/sabine.nix.
+      # Add further roles here as additional machines need them.
+      software = {
+        module.input = "self";
+        module.name  = "@clanarchy/software";
+        roles.librewolf.machines.biene.settings.user   = "sabine";
+        roles.thunderbird.machines.biene.settings.user = "sabine";
+        roles.geary.machines.biene.settings.user       = "sabine";
       };
 
     };

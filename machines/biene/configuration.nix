@@ -10,9 +10,16 @@
   # --- Module activation ---
   # machine-type (laptop, no Framework hw) and desktop (gnome + sabine dconf)
   # are assigned via inventory.instances in clan.nix.
-  # wifi networks are provisioned via the clan wifi service.
+  # Home wifi is provisioned via the clan wifi service (clan.nix).
+  # Fritz!Box is biene-specific — managed via the bespoke modules/wifi.nix.
   clanarchy.hardware.cpu       = "intel";
   clanarchy.users.admin.enable = true;
+
+  # Fritz!Box 7590 MX — biene-specific second wifi network.
+  # Run `clan vars generate biene --generator wifi-fritzbox` to store the PSK.
+  clanarchy.wifi.networks = [
+    { ssid = "Fritz!Box 7590 MX"; varName = "wifi-fritzbox"; }
+  ];
 
   # Keep flakes usable on the installed system too
   nix.settings.experimental-features = ["nix-command" "flakes"];
