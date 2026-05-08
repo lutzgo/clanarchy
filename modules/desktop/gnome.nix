@@ -169,7 +169,7 @@
           ];
           favorite-apps = [
             "org.gnome.Nautilus.desktop"
-            "firefox.desktop"
+            "io.gitlab.librewolf-community.librewolf.desktop"
             "org.gnome.Console.desktop"
             "libreoffice-writer.desktop"
             "thunderbird.desktop"
@@ -432,7 +432,7 @@
               "dash-to-panel@jderose9.github.com"
             ];
             favorite-apps = lib.mkForce [
-              "firefox.desktop"
+              "io.gitlab.librewolf-community.librewolf.desktop"
               "thunderbird.desktop"
               "startcenter.desktop"
               "org.gnome.Nautilus.desktop"

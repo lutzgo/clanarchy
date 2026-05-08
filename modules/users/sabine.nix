@@ -61,14 +61,6 @@ in
 
       programs.zsh.enable = true;
 
-      programs.firefox = {
-        enable      = true;
-        configPath  = "${config.xdg.configHome}/mozilla/firefox";
-        profiles.default = { };
-      };
-
-      stylix.targets.firefox.profileNames = [ "default" ];
-
       home.packages = with pkgs; [
         libreoffice
         thunderbird
