@@ -89,14 +89,17 @@
 
 
   # ── Firefox ───────────────────────────────────────────────────────────────
-  # Default profile, Stylix-themed.  No arkenfox hardening (use roles.librewolf
-  # for a privacy-hardened Gecko browser instead).
+  # Enables Firefox and wires the HM module.  Profile creation and Stylix
+  # theming (stylix.targets.firefox.profileNames) are intentionally left to the
+  # per-machine config (browsers.nix / users/sabine.nix) so that this role can
+  # be added without conflicting with an existing profile setup (e.g. lgo's
+  # "hardened" arkenfox profile on miralda).
   roles.firefox = {
-    description = "Firefox browser with default profile, Stylix-themed.";
+    description = "Firefox browser; profile setup and Stylix theming left to per-machine config.";
     interface.options.user = lib.mkOption {
       type        = lib.types.str;
       default     = "sabine";
-      description = "Home Manager user to configure Firefox for.";
+      description = "Home Manager user to enable Firefox for.";
     };
 
     perInstance = { settings, ... }: {
@@ -106,9 +109,7 @@
             enable     = true;
             # Explicit path silences the stateVersion < 26.05 migration warning.
             configPath = ".mozilla/firefox";
-            profiles.default = { };
           };
-          stylix.targets.firefox.profileNames = [ "default" ];
         };
       };
     };

@@ -184,39 +184,9 @@ in
   #   firefox-settings-attachments.cdn.mozilla.net
   #   content-signature-2.cdn.mozilla.net
 
-  # ── LibreWolf user prefs override ─────────────────────────────────────
-  home.file.".librewolf/librewolf.overrides.cfg".text = ''
-    // librewolf.overrides.cfg
-    // Evaluated after LibreWolf's built-in defaults.  Uses Firefox pref syntax.
-
-    // ── Mozilla push WebSocket ──────────────────────────────────────────
-    // The push WebSocket resolves to Google Cloud infrastructure
-    // (observable via Wireshark / ngrep on port 443 to push.services.mozilla.com).
-    // Disabling it also disables Web Push notifications — re-enable per-origin
-    // via the site permissions panel if a site requires it.
-    user_pref("dom.push.connection.enabled", false);
-    user_pref("dom.push.enabled", false);
-
-    // ── uBlock Origin filter list updates ──────────────────────────────
-    // Intentionally NOT disabled.  These are legitimate functional
-    // connections (filter list downloads), not telemetry.
-
-    // ── Additional telemetry hardening ─────────────────────────────────
-    user_pref("toolkit.telemetry.enabled", false);
-    user_pref("toolkit.telemetry.unified", false);
-    user_pref("datareporting.healthreport.uploadEnabled", false);
-    user_pref("datareporting.policy.dataSubmissionEnabled", false);
-    user_pref("app.shield.optoutstudies.enabled", false);
-    user_pref("app.normandy.enabled", false);
-    user_pref("browser.newtabpage.activity-stream.feeds.telemetry", false);
-    user_pref("browser.newtabpage.activity-stream.telemetry", false);
-    user_pref("browser.ping-centre.telemetry", false);
-    user_pref("breakpad.reportURL", "");
-  '';
-
-  # ── KeePassXC native messaging host for LibreWolf ─────────────────────
-  home.file.".librewolf/native-messaging-hosts/org.keepassxc.keepassxc_browser.json".text =
-    keepassxcFirefoxManifest;
+  # ── LibreWolf user prefs + KeePassXC native messaging ────────────────
+  # Managed by the @clanarchy/software librewolf role (service-modules/software.nix).
+  # lgo is assigned to that role in clan.nix → configs are generated there.
 
   # ── Manual extension install — LibreWolf ──────────────────────────────
   #
@@ -443,6 +413,5 @@ in
   # No extensions, no policies — intentionally minimal.
 
   # ── KeePassXC native messaging host for google-chrome ────────────────
-  home.file.".config/google-chrome/NativeMessagingHosts/org.keepassxc.keepassxc_browser.json".text =
-    keepassxcChromeManifest [ "chrome-extension://oboonakemofpalcgghocfoadofidjkkk/" ];
+  # Managed by the @clanarchy/software chrome role (service-modules/software.nix).
 }

@@ -133,15 +133,26 @@
       };
 
       # ── Software: browsers and email clients ─────────────────────────────
-      # biene: LibreWolf + Thunderbird + Geary for sabine.
-      # Firefox is already configured in modules/users/sabine.nix.
-      # Add further roles here as additional machines need them.
+      # miralda/lgo:  all five browsers, no email.
+      #   librewolf/chrome home.file configs are managed here (removed from
+      #   machines/miralda/home-modules/browsers.nix to avoid duplication).
+      # biene/sabine: librewolf + edge; both email clients.
+      #   Firefox is already configured in modules/users/sabine.nix.
       software = {
         module.input = "self";
         module.name  = "@clanarchy/software";
-        roles.librewolf.machines.biene.settings.user   = "sabine";
-        roles.thunderbird.machines.biene.settings.user = "sabine";
-        roles.geary.machines.biene.settings.user       = "sabine";
+        # browsers — lgo
+        roles.librewolf.machines.miralda.settings.user  = "lgo";
+        roles.firefox.machines.miralda.settings.user    = "lgo";
+        roles.chromium.machines.miralda.settings.user   = "lgo";
+        roles.chrome.machines.miralda.settings.user     = "lgo";
+        roles.edge.machines.miralda                     = { };
+        # browsers — sabine
+        roles.librewolf.machines.biene.settings.user    = "sabine";
+        roles.edge.machines.biene                       = { };
+        # email — sabine
+        roles.thunderbird.machines.biene.settings.user  = "sabine";
+        roles.geary.machines.biene.settings.user        = "sabine";
       };
 
     };
