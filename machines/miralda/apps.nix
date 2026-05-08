@@ -26,7 +26,8 @@ in {
       "anytype-heart"
       "claude-code"
       "signal-desktop"
-      "google-chrome" # work / DRM / SSO fallback
+      "google-chrome"    # work / DRM / SSO fallback
+      "microsoft-edge"   # assigned via @clanarchy/software edge role
     ];
   environment.systemPackages = with pkgs; [
     anytype

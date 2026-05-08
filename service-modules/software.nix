@@ -15,6 +15,7 @@
   _class = "clan.service";
   manifest.name = "@clanarchy/software";
   manifest.description = "Browser and email application profiles (librewolf, firefox, chromium, chrome, edge, thunderbird, geary).";
+  manifest.readme = builtins.readFile ./software.md;
 
 
   # ═══════════════════════════════════════════════════════════════════════════
