@@ -3,8 +3,10 @@
   networking.hostId = "cd9ef50b";
   networking.search = ["skynet.lan"];
 
-  # clan machines update target — use mDNS so it works before ZeroTier is up
-  clan.core.networking.targetHost = "root@biene.local";
+  # clan machines update target — ZeroTier IPv6 (same pattern as miralda).
+  # For initial deploy before ZeroTier is up, use:
+  #   BIENE_HOST=biene.local deploy-biene
+  clan.core.networking.targetHost = "root@fdf9:4add:a39b:997d:2199:93da:ef5d:598c";
   time.timeZone = "Europe/Berlin";
 
   # --- Module activation ---
