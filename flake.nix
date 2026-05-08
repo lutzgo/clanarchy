@@ -161,10 +161,9 @@
           inputs.stylix.nixosModules.stylix
           inputs.home-manager.nixosModules.home-manager
 
-          # Reusable modules (hardware + users; roles/desktop applied via clan services)
+          # Reusable modules (hardware + admin; users/roles/desktop via clan services)
           ./modules/networking.nix
           ./modules/hardware/cpu.nix
-          ./modules/users/lgo.nix
           ./modules/users/admin.nix
           ./modules/users/sgo.nix
 
@@ -197,11 +196,10 @@
           inputs.stylix.nixosModules.stylix
           inputs.home-manager.nixosModules.home-manager
 
-          # Reusable modules (hardware + users; roles/desktop applied via clan services)
+          # Reusable modules (hardware + admin; users/roles/desktop via clan services)
           ./modules/networking.nix
           ./modules/hardware/cpu.nix
           ./modules/users/admin.nix
-          ./modules/users/sabine.nix
 
           # Machine-specific
           ./machines/biene/configuration.nix

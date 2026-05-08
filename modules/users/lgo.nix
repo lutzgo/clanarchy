@@ -5,9 +5,6 @@
 
   config = lib.mkIf config.clanarchy.users.lgo.enable {
 
-    # Niri desktop — required for lgo's HM desktop module
-    clanarchy.desktop.niri.enable = lib.mkDefault true;
-
     users.users.lgo = {
       isNormalUser = true;
       extraGroups  = [ "wheel" "networkmanager" "video" "audio" "input" ];

@@ -36,6 +36,7 @@
     # referencing module.input = "clanarchy".
     modules."@clanarchy/machine-type" = import ./service-modules/machine-type.nix;
     modules."@clanarchy/desktop"      = import ./service-modules/desktop.nix;
+    modules."@clanarchy/users"        = import ./service-modules/users.nix;
 
     inventory.machines = {
       miralda    = { };
@@ -67,6 +68,15 @@
         roles.niri.machines.miralda = { };
         # biene: GNOME with Sabine's dconf defaults
         roles.gnome.machines.biene.settings.sabine = true;
+      };
+
+      # ── Users ───────────────────────────────────────────────────────────────
+      # admin is imported directly in flake.nix (sets system-wide HM options).
+      users = {
+        module.input = "self";
+        module.name  = "@clanarchy/users";
+        roles.lgo.machines.miralda  = { };
+        roles.sabine.machines.biene = { };
       };
 
       # ── SSH baseline ────────────────────────────────────────────────────────

@@ -3,19 +3,10 @@ let
   cfg = config.clanarchy.users.sabine;
 in
 {
-  options.clanarchy.users.sabine = {
-    enable = lib.mkEnableOption "sabine user profile (COSMIC, LibreOffice, Thunderbird, Firefox)";
-
-    git = {
-      name  = lib.mkOption { type = lib.types.str; default = "Sabine"; };
-      email = lib.mkOption { type = lib.types.str; default = ""; };
-    };
-  };
+  options.clanarchy.users.sabine.enable =
+    lib.mkEnableOption "sabine user profile (GNOME, LibreOffice, Thunderbird, Firefox)";
 
   config = lib.mkIf cfg.enable {
-
-    # GNOME — required for sabine's graphical session
-    clanarchy.desktop.gnome.enable = lib.mkDefault true;
 
     users.users.sabine = {
       isNormalUser = true;
@@ -66,14 +57,6 @@ in
         enable              = true;
         createDirectories   = true;
         setSessionVariables = true;
-      };
-
-      programs.git = {
-        enable   = true;
-        settings = {
-          user.name  = cfg.git.name;
-          user.email = cfg.git.email;
-        };
       };
 
       programs.zsh.enable = true;
