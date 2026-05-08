@@ -1,4 +1,4 @@
-{...}: {
+{ lib, ... }: {
   networking.hostName = "biene";
   networking.hostId = "cd9ef50b";
   networking.search = ["skynet.lan"];
@@ -7,6 +7,14 @@
   # For initial deploy or when ZeroTier is unreachable, use:
   #   BIENE_HOST=biene.local deploy-biene
   time.timeZone = "Europe/Berlin";
+
+  # Unfree packages used on biene (microsoft-edge via @clanarchy/software edge role).
+  # pkgsForSystem sets allowUnfree = true but the NixOS nixpkgs.config layer
+  # overrides that back to false unless an explicit predicate is declared here.
+  nixpkgs.config.allowUnfreePredicate = pkg:
+    builtins.elem (lib.getName pkg) [
+      "microsoft-edge"
+    ];
 
   # --- Module activation ---
   # machine-type (laptop, no Framework hw) and desktop (gnome + sabine dconf)
