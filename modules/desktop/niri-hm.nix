@@ -1399,13 +1399,17 @@
 
   # Idle management: lock after 5 min idle, monitors off after 5.5 min, lock before sleep.
   # -w: swayidle holds the sleep inhibitor until the before-sleep command exits.
-  # "sleep 2" gives Noctalia time to display its lockscreen before the system suspends.
-  # loginctl lock-session sends the org.freedesktop.login1 Lock signal → Noctalia lockscreen.
+  # before-sleep: call noctalia IPC directly (loginctl lock-session sends a D-Bus signal
+  # that Noctalia may not receive in time; direct IPC is more reliable).
+  # "sleep 1" gives Noctalia time to paint the lockscreen before the system suspends.
+  # after-resume: re-lock in case before-sleep completed too fast or IPC was missed;
+  # ensures the lockscreen is always visible when the display comes back on.
   services.swayidle = {
     enable = true;
     extraArgs = ["-w"];
     events = {
-      before-sleep = "loginctl lock-session; sleep 2";
+      before-sleep = "${config.programs.noctalia-shell.package}/bin/noctalia-shell ipc call lockScreen lock; sleep 1";
+      after-resume  = "${config.programs.noctalia-shell.package}/bin/noctalia-shell ipc call lockScreen lock";
     };
     timeouts = [
       {
