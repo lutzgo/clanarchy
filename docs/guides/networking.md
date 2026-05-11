@@ -47,7 +47,14 @@ zerotier-cli status
 # Expected: 200 info <node-id> <version> ONLINE
 ```
 
-If you see `OFFLINE` or `DISCONNECTED`, the local ZeroTier daemon is not running or has lost its network membership.
+If you get `missing port and zerotier-one.port not found in /var/lib/zerotier-one`, the daemon is not running:
+
+```bash
+sudo systemctl start zerotier-one
+zerotier-cli status
+```
+
+If you see `OFFLINE` or `DISCONNECTED`, the daemon is running but has lost its network membership.
 Restart it:
 
 ```bash
