@@ -1,5 +1,7 @@
 { config, lib, pkgs, ... }:
 {
+  imports = [ ../icon-theme.nix ];
+
   options.clanarchy.desktop.gnome = {
     enable = lib.mkEnableOption "GNOME desktop environment";
     sabine = lib.mkEnableOption "Sabine's personal GNOME dconf defaults";
@@ -168,8 +170,8 @@
             "valent@andyholmes.ca"
           ];
           favorite-apps = [
-            "org.gnome.Nautilus.desktop"
             "io.gitlab.librewolf-community.librewolf.desktop"
+            "org.gnome.Nautilus.desktop"
             "org.gnome.Console.desktop"
             "libreoffice-writer.desktop"
             "thunderbird.desktop"
@@ -225,11 +227,13 @@
           # Wallpaper — explicitly wire Stylix's generated image so GNOME picks it
           # up reliably.  config.stylix.image is captured from the outer NixOS
           # scope and resolves to the biene-wallpaper.png store path.
+          # All keys use lib.mkForce so Stylix's own GNOME target cannot
+          # override picture-options and revert to a solid-colour background.
           "org/gnome/desktop/background" = {
             picture-uri        = lib.mkForce "file://${config.stylix.image}";
             picture-uri-dark   = lib.mkForce "file://${config.stylix.image}";
-            picture-options    = "zoom";
-            color-shading-type = "solid";
+            picture-options    = lib.mkForce "zoom";
+            color-shading-type = lib.mkForce "solid";
           };
 
           # Valent (KDE Connect) — advertise device as "biene"
@@ -316,7 +320,7 @@
             font-hinting        = lib.mkForce "slight";
             font-name           = "MonaspiceNe Nerd Font Propo 11";
             gtk-theme           = "adw-gtk3";
-            icon-theme          = "breeze";
+            icon-theme          = config.clanarchy.iconTheme.name;
             monospace-font-name = "MonaspiceAr Nerd Font Mono 11";
             scaling-factor      = mkUint32 1;
             text-scaling-factor = 1.0;

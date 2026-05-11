@@ -1,5 +1,7 @@
 { config, lib, pkgs, pkgs-unstable, inputs, ... }:
 {
+  imports = [ ../icon-theme.nix ];
+
   options.clanarchy.desktop.niri = {
     enable = lib.mkEnableOption "Niri Wayland compositor with Noctalia";
 

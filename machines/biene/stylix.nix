@@ -81,6 +81,7 @@ in {
       size = 24;
     };
 
+    targets.gnome.enable    = true; # GNOME Shell theme + GDM background
     targets.plymouth.enable = true; # Boot splash
   };
 }
