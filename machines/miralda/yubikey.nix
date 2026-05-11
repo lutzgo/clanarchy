@@ -1,10 +1,16 @@
 { pkgs, lib, ... }:
 let
   # gpg-agent only forwards DISPLAY (X11) to pinentry, not WAYLAND_DISPLAY.
-  # This wrapper injects the Wayland session env so pinentry-gnome3 can open
-  # a dialog even when called indirectly via the SSH auth flow.
-  pinentryWrapper = pkgs.writeShellScript "pinentry-gnome3-wayland" ''
-    # Inject Wayland/D-Bus env from the systemd user session so pinentry-gnome3
+  # This wrapper injects the Wayland/Qt env so pinentry-qt can open a dialog
+  # even when called indirectly via the SSH auth flow.
+  #
+  # pinentry-gnome3 was rejected: it calls gcr_system_password_finish via
+  # D-Bus (org.gnome.keyring.SystemPrompter) which requires gnome-keyring-daemon.
+  # On Niri there is no GNOME session, so the D-Bus peer is absent and every
+  # PIN prompt silently fails → "agent refused operation".
+  # pinentry-qt draws its own Qt dialog directly on Wayland — no GNOME needed.
+  pinentryWrapper = pkgs.writeShellScript "pinentry-qt-wayland" ''
+    # Inject Wayland/D-Bus/Qt env from the systemd user session so pinentry-qt
     # can open a dialog when invoked indirectly (e.g. via the SSH auth flow).
     uid=$(id -u)
     # Detect Wayland socket by scanning /run/user/<uid>/wayland-*
@@ -12,9 +18,10 @@ let
               | head -1 | xargs basename 2>/dev/null || true)
     if [ -n "$wayland" ]; then
       export WAYLAND_DISPLAY="$wayland"
+      export QT_QPA_PLATFORM="wayland"
     fi
     export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus"
-    exec ${pkgs.pinentry-gnome3}/bin/pinentry-gnome3 "$@"
+    exec ${pkgs.pinentry-qt}/bin/pinentry-qt "$@"
   '';
 in
 {
@@ -28,7 +35,7 @@ in
   programs.gnupg.agent = {
     enable = true;
     enableSSHSupport = true;
-    pinentryPackage = pkgs.pinentry-gnome3;
+    pinentryPackage = pkgs.pinentry-qt;
   };
 
   # Override the pinentry-program to use the wrapper that injects Wayland env
