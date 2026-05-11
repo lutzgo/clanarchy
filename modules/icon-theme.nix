@@ -25,15 +25,17 @@ let
       c = config.lib.stylix.colors;
     in
     pkgs.runCommand "papirus-stylix" {
-      nativeBuildInputs = [ pkgs.python3 pkgs.findutils ];
+      nativeBuildInputs = [ pkgs.python3 pkgs.findutils pkgs.gtk3 ];
     } ''
       set -eu
 
       mkdir -p "$out/share/icons"
 
-      # Copy Papirus-Dark as the starting point
-      cp -r "${pkgs.papirus-icon-theme}/share/icons/Papirus-Dark" \
-            "$out/share/icons/Papirus-Stylix"
+      # papirus-icon-theme stores Papirus-Dark as a symlink to another variant;
+      # cp -r would copy that symlink as-is, leaving us with 0 real icon files.
+      # cp -rL dereferences all symlinks so we get a real writable file tree.
+      cp -rL "${pkgs.papirus-icon-theme}/share/icons/Papirus-Dark" \
+             "$out/share/icons/Papirus-Stylix"
       chmod -R +w "$out/share/icons/Papirus-Stylix"
 
       # Derive a 15 %-darker shade for the folder tab / shadow
@@ -51,12 +53,20 @@ print(f'{int(r*0.85):02x}{int(g*0.85):02x}{int(b*0.85):02x}')
           -e "s/#3a87e5/#${c.base0D}/g" \
           {} +
 
-      # Rename theme and drop the breeze-dark Inherits dependency
+      # Rename theme, drop the breeze-dark Inherits dependency, and remove
+      # FollowsColorScheme=true — that flag makes GNOME look for a
+      # "Papirus-Stylix-Dark" variant which doesn't exist, falling back to
+      # no icons.
       sed -i \
         -e 's/^Name=Papirus-Dark$/Name=Papirus-Stylix/'                       \
         -e 's/^Comment=.*$/Comment=Papirus Dark with Stylix accent folders/'  \
         -e 's/^Inherits=.*/Inherits=hicolor/'                                 \
+        -e '/^FollowsColorScheme=/d'                                           \
         "$out/share/icons/Papirus-Stylix/index.theme"
+
+      # Regenerate the GTK icon cache so GNOME/GTK apps can use the theme
+      # without needing gtk-update-icon-cache to run on the live system.
+      gtk-update-icon-cache -f -t "$out/share/icons/Papirus-Stylix"
     '';
 in
 {
