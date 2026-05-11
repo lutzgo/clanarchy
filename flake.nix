@@ -99,6 +99,13 @@
             #   age-plugin-yubikey --identity >> ~/.config/sops/age/keys.txt
             export SOPS_AGE_KEY_FILE="''${XDG_CONFIG_HOME:-$HOME/.config}/sops/age/keys.txt"
 
+            # Update gpg-agent's pinentry TTY to this shell's TTY.
+            # gpg-agent caches the TTY from the session where it first started;
+            # entering a new shell (nix develop, new terminal) changes the TTY
+            # but the agent doesn't know — pinentry then tries the old TTY, fails
+            # silently, and the agent refuses card-backed SSH signing operations.
+            echo UPDATESTARTUPTTY | gpg-connect-agent > /dev/null 2>&1 || true
+
             deploy() {
               local action=''${1:-switch}
               nixos-rebuild "$action" \
