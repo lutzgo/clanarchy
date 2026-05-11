@@ -1,9 +1,12 @@
 # modules/icon-theme.nix — shared GTK icon theme option
 #
-# Declares clanarchy.iconTheme.{name,package} and applies the theme to all
-# Home Manager users via gtk.iconTheme.  Imported by the desktop modules
+# Declares clanarchy.iconTheme.{name,package} and installs the icon theme
+# package system-wide.  Imported by the desktop modules
 # (modules/desktop/gnome.nix and modules/desktop/niri.nix) so any machine
 # using a graphical desktop gets the option automatically.
+#
+# GNOME wires the theme name via dconf in gnome.nix (icon-theme key).
+# Niri wires gtk.iconTheme in niri-hm.nix via osConfig.
 #
 # Default: a Papirus-Dark variant whose folder icons are recolored to match
 # the active Stylix base0D accent color.  Falls back to plain Papirus-Dark
@@ -80,14 +83,11 @@ in
   };
 
   config = {
-    # Apply icon theme to every Home Manager user on this machine.
-    # Desktop-specific dconf wiring (GNOME's org.gnome.desktop.interface
-    # icon-theme key) is handled in modules/desktop/gnome.nix.
-    home-manager.sharedModules = [{
-      gtk.iconTheme = {
-        name    = config.clanarchy.iconTheme.name;
-        package = config.clanarchy.iconTheme.package;
-      };
-    }];
+    # Install the icon theme package system-wide so GNOME and GTK apps can find it.
+    # GNOME wires the theme name via dconf (in gnome.nix).
+    # Niri wires gtk.iconTheme in niri-hm.nix via osConfig.
+    # Avoid setting gtk.iconTheme in home-manager.sharedModules — doing so conflicts
+    # with Stylix's GTK HM target and breaks the whole HM activation for affected users.
+    environment.systemPackages = [ config.clanarchy.iconTheme.package ];
   };
 }

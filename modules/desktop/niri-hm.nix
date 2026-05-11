@@ -1259,6 +1259,14 @@
   # Adopt gtk4 default — stateVersion < 26.05 otherwise inherits gtk3 theme; stylix handles gtk4 theming via css.
   gtk.gtk4.theme = null;
 
+  # Icon theme — wire the NixOS-level clanarchy.iconTheme option into HM's gtk module.
+  # The package is also installed system-wide (icon-theme.nix) so it is findable even
+  # before the HM activation has run.
+  gtk.iconTheme = {
+    name    = osConfig.clanarchy.iconTheme.name;
+    package = osConfig.clanarchy.iconTheme.package;
+  };
+
   # Foot terminal — Stylix manages colors and font (MonaspiceAr via stylix.fonts.monospace).
   # dpi-aware=no: Niri handles HiDPI scaling at the compositor level; foot must not double-scale.
   programs.foot = {
