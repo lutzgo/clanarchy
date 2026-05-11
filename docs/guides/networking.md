@@ -11,10 +11,10 @@ This guide covers how machines resolve each other, what ZeroTier provides, and h
 | `miralda.goclan.org` | Public DNS | Yes (used by `deploy`) |
 | `biene.skynet.lan` | Local split-horizon DNS | LAN only |
 | `miralda.local` / `biene.local` | mDNS (Avahi) | Yes — via ZeroTier reflector |
-| ZeroTier IP directly | ZeroTier network | Yes |
+| ZeroTier IPv6 directly | ZeroTier network | Yes |
 
 `modules/networking.nix` enables the Avahi mDNS reflector on all clan machines.
-It bridges mDNS multicast between every interface Avahi sees, including ZeroTier (`zt…`), so `<hostname>.local` resolves even when machines are on different LANs.
+It bridges mDNS multicast between every interface Avahi sees, including the ZeroTier interface (`zt…`), so `<hostname>.local` resolves and routes correctly even when machines are on different LANs.
 
 ---
 
@@ -22,7 +22,8 @@ It bridges mDNS multicast between every interface Avahi sees, including ZeroTier
 
 All clan machines are peers on a private ZeroTier network.
 `miralda` is the controller; `biene` and `homeserver` are peers.
-Network ID and per-machine ZeroTier IPs are stored in clan vars (encrypted).
+Each machine gets a ZeroTier IPv6 address in the clan-managed subnet.
+Network ID and per-machine IPs are stored in clan vars (encrypted).
 
 ```
 clan.nix inventory:
@@ -31,85 +32,64 @@ clan.nix inventory:
     roles.peer.tags.all            ← all machines join as peers
 ```
 
-ZeroTier runs as a system service (`services.zerotier`).
+The system service is `zerotierone` (not `zerotier-one`).
 The firewall is opened automatically by the clan zerotier instance.
 
 ---
 
 ## Testing connectivity from a different network
 
-Run these steps in order until something fails — that tells you where the problem is.
+Run these steps in order until something fails — that pinpoints where the problem is.
 
-### 1. ZeroTier status on your local machine
+### 1. Confirm the ZeroTier service is running
 
 ```bash
-zerotier-cli status
-# Expected: 200 info <node-id> <version> ONLINE
+systemctl is-active zerotierone
+# Expected: active
 ```
 
-If you get `missing port and zerotier-one.port not found in /var/lib/zerotier-one`, the daemon is not running:
+If it's not active:
 
 ```bash
-sudo systemctl start zerotier-one
-zerotier-cli status
+sudo systemctl start zerotierone
 ```
 
-If you see `OFFLINE` or `DISCONNECTED`, the daemon is running but has lost its network membership.
-Restart it:
+### 2. Confirm the ZeroTier interface is up
 
 ```bash
-sudo systemctl restart zerotier-one
+ip addr show altname zerotier
 ```
 
-### 2. Check peer visibility
+Expected output includes a `zt…` interface with an `inet6` address in the clan subnet (`fdda:…`).
+If the interface is missing, ZeroTier hasn't joined the network yet — check `journalctl -u zerotierone -n 50`.
+
+### 3. Ping the target machine via mDNS
 
 ```bash
-zerotier-cli peers
-# Look for miralda's node ID — state should be LEAF, latency should be a number (not -)
+ping biene.local      # from miralda
+ping miralda.local    # from biene
 ```
 
-If miralda doesn't appear, or shows `-` latency, ZeroTier has not yet established a path.
-Wait 10–30 s and retry; ZeroTier performs peer discovery asynchronously.
+`ping` resolves `*.local` via Avahi, which reflects mDNS across the ZeroTier interface.
+The reply will come from the machine's ZeroTier IPv6 address — this confirms end-to-end connectivity.
 
-To find miralda's ZeroTier IP:
-
-```bash
-# On miralda itself:
-zerotier-cli listnetworks
-# or read the clan var (requires age decryption):
-cat vars/per-machine/miralda/zerotier/zerotier-ip
-```
-
-### 3. Ping via mDNS
+If mDNS fails but you know the ZeroTier IPv6, ping it directly:
 
 ```bash
-ping miralda.local
-```
-
-This works if:
-
-- ZeroTier has a path to miralda (step 2 passed), and
-- Avahi is running on both machines and its reflector is bridging the ZeroTier interface.
-
-If `miralda.local` doesn't resolve but you know the ZeroTier IP, ping the IP directly:
-
-```bash
-ping <miralda-zt-ip>
+# Read from the clan var on the target machine, or check `ip addr show altname zerotier` there
+ping fdda:106a:123a:d561:1099:93da:xxxx:xxxx
 ```
 
 ### 4. SSH test
 
 ```bash
-ssh lgo@miralda.goclan.org      # via public DNS
-# or
-ssh lgo@miralda.local           # via mDNS + ZeroTier
-# or
-ssh lgo@<miralda-zt-ip>         # via ZeroTier IP directly
+ssh lgo@miralda.goclan.org    # via public DNS (always works if ZT is up)
+ssh lgo@miralda.local         # via mDNS over ZeroTier
 ```
 
 !!! note "YubiKey required for SSH"
     SSH auth uses the YubiKey OpenPGP auth subkey via `gpg-agent`.
-    The key must be inserted and PIN must not be blocked.
+    The key must be inserted and the PIN must not be blocked.
     See [Updating machines — YubiKey SSH signing](updating-machines.md#yubikey-ssh-signing) if auth fails.
 
 ### 5. Deploy connectivity
@@ -126,34 +106,36 @@ ssh root@miralda.goclan.org hostname
 
 ## Troubleshooting
 
-### `miralda.local` not resolving
+### `*.local` not resolving
 
-1. Confirm Avahi is running on your local machine: `systemctl status avahi-daemon`
-2. Confirm the ZeroTier interface is up: `ip link show | grep zt`
-3. Avahi publishes and reflects on all interfaces it sees — if the `zt…` interface came up after Avahi started, a restart may be needed: `sudo systemctl restart avahi-daemon`
+1. Confirm Avahi is running: `systemctl is-active avahi-daemon`
+2. Confirm the ZeroTier interface is up: `ip link show altname zerotier`
+3. If the `zt…` interface came up after Avahi started, Avahi may not have picked it up:
+   ```bash
+   sudo systemctl restart avahi-daemon
+   ```
 
-### ZeroTier peer present but latency is `-`
+### ZeroTier interface is up but no cross-network path
 
-ZeroTier has no direct or relayed path yet.
-Check whether your network blocks UDP (ZeroTier uses UDP by default; TCP relay is a fallback).
-Give it 30–60 s — relayed paths appear before direct ones.
+ZeroTier peer discovery is asynchronous — wait 30–60 s after the service starts.
+If it stays unreachable, check whether UDP is blocked on your current network
+(ZeroTier uses UDP; it falls back to TCP relay automatically, but this takes longer).
 
 ### `biene` not reachable from a different network
 
 `biene.skynet.lan` only resolves on the home LAN.
-Use `biene.local` (mDNS via ZeroTier) or the ZeroTier IP directly:
+Use `biene.local` (mDNS via ZeroTier) instead:
 
 ```bash
-cat vars/per-machine/biene/zerotier/zerotier-ip
 ssh sabine@biene.local
 ```
 
 `deploy-biene` hardcodes `root@biene.skynet.lan`.
-From outside the home network, deploy to biene manually:
+From outside the home network, use the ZeroTier IPv6 directly:
 
 ```bash
 nixos-rebuild switch \
   --flake .#biene \
-  --target-host root@<biene-zt-ip> \
+  --target-host root@fdda:106a:123a:d561:1099:93da:ef5d:598c \
   --no-reexec -j auto
 ```
