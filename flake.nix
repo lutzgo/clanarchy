@@ -162,6 +162,7 @@
           inputs.home-manager.nixosModules.home-manager
 
           # Reusable modules (hardware + admin; users/roles/desktop via clan services)
+          ./modules/locale.nix
           ./modules/networking.nix
           ./modules/hardware/cpu.nix
           ./modules/users/admin.nix
@@ -197,6 +198,7 @@
           inputs.home-manager.nixosModules.home-manager
 
           # Reusable modules (hardware + admin; users/roles/desktop via clan services)
+          ./modules/locale.nix
           ./modules/networking.nix
           ./modules/hardware/cpu.nix
           ./modules/users/admin.nix
@@ -224,6 +226,7 @@
           }
           inputs.impermanence.nixosModules.impermanence
           inputs.home-manager.nixosModules.home-manager
+          ./modules/locale.nix
           ./modules/networking.nix
           ./modules/users/admin.nix
           ./machines/homeserver/configuration.nix

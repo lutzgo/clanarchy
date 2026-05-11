@@ -5,6 +5,15 @@
   networking.search  = [ "skynet.lan" ];
   time.timeZone      = "Europe/Berlin";
 
+  # Locale: English US everywhere (CLI + Noctalia GUI).
+  # compose:ralt → Right Alt becomes Compose key for German Umlauts:
+  #   Compose " a → ä   Compose " o → ö   Compose " u → ü   Compose s s → ß
+  clanarchy.locale = {
+    language         = "en_US";
+    keyboard.layout  = "us";
+    keyboard.options = "compose:ralt";
+  };
+
   # --- Module activation ---
   # machine-type and desktop roles are assigned via inventory.instances in clan.nix.
   # wifi networks are provisioned via the clan wifi service (inventory.instances.wifi).

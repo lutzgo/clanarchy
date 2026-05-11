@@ -8,6 +8,13 @@
   #   BIENE_HOST=biene.local deploy-biene
   time.timeZone = "Europe/Berlin";
 
+  # Locale: German everywhere (CLI + GNOME UI).
+  # de layout for GDM; GNOME input-sources (in gnome.nix) adds us as secondary.
+  clanarchy.locale = {
+    language        = "de_DE";
+    keyboard.layout = "de";
+  };
+
   # Unfree packages used on biene (microsoft-edge via @clanarchy/software edge role).
   # pkgsForSystem sets allowUnfree = true but the NixOS nixpkgs.config layer
   # overrides that back to false unless an explicit predicate is declared here.

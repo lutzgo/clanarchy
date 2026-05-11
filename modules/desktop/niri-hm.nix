@@ -41,6 +41,13 @@
       layout.focus-ring.width = 1;
 
       input = {
+        keyboard.xkb = {
+          layout  = osConfig.clanarchy.locale.keyboard.layout;
+          # niri-flake types these as string, not nullOr string — convert null → ""
+          variant = let v = osConfig.clanarchy.locale.keyboard.variant; in if v != null then v else "";
+          options = let o = osConfig.clanarchy.locale.keyboard.options; in if o != null then o else "";
+        };
+
         touchpad = {
           tap = true;
           tap-button-map = "left-right-middle"; # 1/2/3-finger tap → left/right/middle
