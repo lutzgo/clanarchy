@@ -183,7 +183,9 @@
         "Mod+Shift+Return".action.spawn = ["uwsm" "app" "--" "foot" "-T" "scratch"];
         "Mod+Space".action.spawn = ["noctalia-shell" "ipc" "call" "launcher" "toggle"];
         "Mod+c".action.spawn = ["noctalia-shell" "ipc" "call" "plugin:clipper" "toggle"];
-        "Mod+E".action.spawn = ["uwsm" "app" "--" "foot" "-e" "hx" "."];
+        "Mod+E".action.spawn = ["uwsm" "app" "--" "foot" "-e"
+          (if (osConfig.clanarchy.users.lgo.editor or "govim") == "govim" then "nvim" else "hx")
+          "."];
         "Mod+F".action.spawn = ["uwsm" "app" "--" "foot" "-e" "yazi"];
 
         # KeePassXC toggle — show from tray or minimize back to tray.
