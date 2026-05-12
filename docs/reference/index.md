@@ -7,6 +7,7 @@ All `clanarchy.*` NixOS options defined in `modules/`. These pages are generated
 | [Roles](roles.md) | `clanarchy.roles.*` | `modules/roles/` |
 | [Desktop (Niri)](desktop.md) | `clanarchy.desktop.niri.*` | `modules/desktop/niri.nix` |
 | [WiFi](wifi.md) | `clanarchy.wifi.*` | `modules/wifi.nix` |
+| [Users](users.md) | `clanarchy.users.*` | `modules/users/` |
 
 ## Regenerating
 

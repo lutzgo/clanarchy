@@ -66,6 +66,11 @@ PAGES: dict[str, dict] = {
         "intro": "Declarative NetworkManager profile generation via clan vars.",
         "prefixes": ["clanarchy.wifi."],
     },
+    "users": {
+        "title": "Users",
+        "intro": "Per-user profile options. Enable the relevant user module for each machine.",
+        "prefixes": ["clanarchy.users."],
+    },
 }
 
 
