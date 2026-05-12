@@ -54,6 +54,14 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    govim = {
+      url = "github:lutzgo/govim";
+      # nvf expects nixpkgs-unstable; do not follow clan-core/nixpkgs
+    };
+
+    # nvf — pin to the same revision govim uses so the DAG lib is consistent
+    nvf.follows = "govim/nvf";
+
   };
 
   outputs = inputs@{ flake-parts, clan-core, ... }:

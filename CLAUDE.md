@@ -88,7 +88,7 @@ Shared modules are imported by machines via their desktop/role modules:
 | `icon-theme.nix` | `clanarchy.iconTheme` option: Stylix-recolored Papirus-Dark; imported by both desktop modules |
 | `locale.nix` | `clanarchy.locale` option: language + keyboard layout/variant/options |
 | `users/admin.nix` | admin user: SSH keys, password, impermanence, HM stub |
-| `users/lgo.nix` | lgo power user: SSH config, browsers, devtools, Noctalia |
+| `users/lgo.nix` | lgo power user: SSH config, browsers, devtools, Noctalia; `clanarchy.users.lgo.editor` option (govim \| helix, default govim) |
 | `users/sabine.nix` | sabine user: impermanence, HM config |
 | `wifi.nix` | NetworkManager profile generator (clan var) |
 | `hardware/cpu.nix` | Intel/AMD microcode selection |
@@ -121,3 +121,5 @@ Generated outputs land in `vars/per-machine/miralda/`. Run generators with `clan
 **push function**: Reads gh token at runtime to construct HTTPS remote URL, enabling pushes from a machine where `~/.config/git` is a read-only impermanence bind mount.
 
 **icon-theme.nix**: Declares `clanarchy.iconTheme.{name,package}` and installs the package via `environment.systemPackages`. GNOME wires the theme name via dconf in `gnome.nix`. Niri wires `gtk.iconTheme` in `niri-hm.nix` via `osConfig`. Do **not** set `gtk.iconTheme` in `home-manager.sharedModules` — it conflicts with Stylix's GTK HM target and breaks the entire HM activation for affected users.
+
+**lgo editor option** (`clanarchy.users.lgo.editor`): Selects between `"govim"` (default) and `"helix"`. govim is a flake input (`github:lutzgo/govim`) built on nvf; it's wired via `programs.nvf.settings` (nvf's HM module namespace) with `imports = [common.nix, variants/default.nix]`. Stylix theming uses `vim.theme.enable = false` + `pkgs.vimPlugins.base16-nvim` + `vim.luaConfigRC.stylixTheme` (DAG entry via `inputs.nvf.lib.nvim.dag`). The nvf HM option namespace must be declared at the NixOS level via `home-manager.sharedModules`; per-user imports cannot bootstrap their own option types. `inputs.nvf` is pinned as `nvf.follows = "govim/nvf"` in `flake.nix`. `EDITOR`/`VISUAL`, Zellij `Alt+e`, and Yazi `e` all key off the same `editorBin` variable.

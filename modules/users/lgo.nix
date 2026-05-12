@@ -1,9 +1,25 @@
 { config, lib, pkgs, inputs, pkgs-unstable, ... }:
+let
+  cfg        = config.clanarchy.users.lgo;
+  editorBin  = if cfg.editor == "govim" then "nvim" else "hx";
+  editorDesc = if cfg.editor == "govim" then "Neovim" else "Helix";
+in
 {
-  options.clanarchy.users.lgo.enable =
-    lib.mkEnableOption "lgo power user profile (Niri, browsers, devtools, Noctalia)";
+  options.clanarchy.users.lgo = {
+    enable = lib.mkEnableOption "lgo power user profile (Niri, browsers, devtools, Noctalia)";
+    editor = lib.mkOption {
+      type    = lib.types.enum [ "govim" "helix" ];
+      default = "govim";
+      description = "Default editor: govim (nvf-based Neovim, Stylix-themed) or helix.";
+    };
+  };
 
-  config = lib.mkIf config.clanarchy.users.lgo.enable {
+  config = lib.mkIf cfg.enable {
+
+    # Declare nvf's vim.* option namespace for all HM users on this machine.
+    # Must be at the NixOS level (sharedModules) so the options exist before
+    # any per-user config (common.nix / variants) references them.
+    home-manager.sharedModules = lib.optionals (cfg.editor == "govim") [ inputs.govim.homeManagerModules.nvf ];
 
     users.users.lgo = {
       isNormalUser = true;
@@ -41,6 +57,7 @@
         ".local/share"
         ".cache/noctalia"  # shell-state.json (version tracking → no wizard/changelog on rollback)
         ".cache/zellij"    # compiled WASM + plugin permission cache (avoids "Allow?" prompt on boot)
+        ".local/state/nvim" # undo history, shada, swap — lost on rollback without this
         "Pictures"         # includes Wallpapers/ subdirectory
         "Documents"
         "Downloads"
@@ -88,8 +105,47 @@
         home.stateVersion  = "25.11";
 
         home.sessionVariables = {
-          EDITOR = "hx";
-          VISUAL = "hx";
+          EDITOR = editorBin;
+          VISUAL = editorBin;
+        };
+
+        # govim — configure via programs.nvf.settings (nvf's HM module namespace).
+        # settings accepts the same vim.* options as nvf.lib.neovimConfiguration,
+        # including imports, so we pull in govim's common + default modules directly.
+        # The Stylix base16 override replaces the catppuccin-mocha hardcoded in common.nix.
+        programs.nvf = lib.mkIf (cfg.editor == "govim") {
+          enable = true;
+          settings = {
+            imports = [
+              "${inputs.govim}/modules/common.nix"
+              "${inputs.govim}/modules/variants/default.nix"
+            ];
+
+            # Disable catppuccin from common.nix; apply Stylix palette via nvim-base16.
+            vim.theme = lib.mkForce {
+              enable = false;
+              name = "catppuccin";
+              style = "mocha";
+              transparent = false;
+            };
+            vim.extraPlugins = {
+              base16-nvim = {
+                package = pkgs.vimPlugins.base16-nvim;
+              };
+            };
+            # nvim-base16 expects hex without '#' — Stylix provides exactly that.
+            # DAG helpers from nvf (pinned via govim/nvf in flake.nix).
+            vim.luaConfigRC.stylixTheme = inputs.nvf.lib.nvim.dag.entryAfter [ "basic" ] ''
+              require('base16-colorscheme').setup({
+                base00 = '${c.base00}', base01 = '${c.base01}', base02 = '${c.base02}',
+                base03 = '${c.base03}', base04 = '${c.base04}', base05 = '${c.base05}',
+                base06 = '${c.base06}', base07 = '${c.base07}', base08 = '${c.base08}',
+                base09 = '${c.base09}', base0A = '${c.base0A}', base0B = '${c.base0B}',
+                base0C = '${c.base0C}', base0D = '${c.base0D}', base0E = '${c.base0E}',
+                base0F = '${c.base0F}',
+              })
+            '';
+          };
         };
 
         programs.git = {
@@ -161,7 +217,7 @@
           enableZshIntegration = true;
         };
 
-        programs.helix = {
+        programs.helix = lib.mkIf (cfg.editor == "helix") {
           enable   = true;
           settings = {
             editor.shell = [ "zsh" "-c" ];
@@ -255,7 +311,7 @@
                   bind "Alt Shift z"   { ToggleFocusFullscreen; }
                   bind "Alt Tab"       { FocusNextPane; }
 
-                  bind "Alt e" { Run "hx" "." { close_on_exit true; direction "Right"; }; }
+                  bind "Alt e" { Run "${editorBin}" "." { close_on_exit true; direction "Right"; }; }
                   bind "Alt f" { Run "yazi"   { close_on_exit true; direction "Right"; }; }
                   bind "Alt t" { NewPane "Right"; }
 
@@ -359,8 +415,8 @@
         xdg.configFile."yazi/keymap.toml".text = ''
           [[manager.prepend_keymap]]
           on  = [ "e" ]
-          run = "open --with hx"
-          desc = "Open in Helix"
+          run = "open --with ${editorBin}"
+          desc = "Open in ${editorDesc}"
 
           [[manager.prepend_keymap]]
           on  = [ "s" ]
