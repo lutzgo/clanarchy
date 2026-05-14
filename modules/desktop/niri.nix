@@ -1,60 +1,65 @@
-{ config, lib, pkgs, pkgs-unstable, inputs, ... }:
 {
-  imports = [ ../icon-theme.nix ];
+  config,
+  lib,
+  pkgs,
+  pkgs-unstable,
+  inputs,
+  ...
+}: {
+  imports = [../icon-theme.nix];
 
   options.clanarchy.desktop.niri = {
     enable = lib.mkEnableOption "Niri Wayland compositor with Noctalia";
 
     display = {
       scale = lib.mkOption {
-        type        = lib.types.float;
-        default     = 1.25;
+        type = lib.types.float;
+        default = 1.25;
         description = "Output scale factor for the primary display (eDP-1).";
       };
       resolution = {
         width = lib.mkOption {
-          type        = lib.types.int;
-          default     = 2256;
+          type = lib.types.int;
+          default = 2256;
           description = "Horizontal resolution of the primary display.";
         };
         height = lib.mkOption {
-          type        = lib.types.int;
-          default     = 1504;
+          type = lib.types.int;
+          default = 1504;
           description = "Vertical resolution of the primary display.";
         };
       };
     };
 
-    fprintd.enable = lib.mkEnableOption "fingerprint authentication via fprintd" // { default = true; };
+    fprintd.enable = lib.mkEnableOption "fingerprint authentication via fprintd" // {default = true;};
 
     opacity = {
       focused = lib.mkOption {
-        type        = lib.types.float;
-        default     = 0.9;
+        type = lib.types.float;
+        default = 0.9;
         description = "Baseline window opacity for focused windows.";
       };
       unfocused = lib.mkOption {
-        type        = lib.types.float;
-        default     = 0.75;
+        type = lib.types.float;
+        default = 0.75;
         description = "Window opacity for unfocused windows.";
       };
     };
 
     input.pointerSpeed = lib.mkOption {
-      type        = lib.types.float;
-      default     = 0.0;
+      type = lib.types.float;
+      default = 0.0;
       description = "Pointer acceleration speed applied to both touchpad and mouse. Range: -1.0 (slowest) to 1.0 (fastest). 0.0 is libinput's neutral baseline.";
     };
 
     wallpaper.workspaceColors = lib.mkOption {
-      type        = lib.types.listOf lib.types.str;
-      default     = [ "red" "blue" "green" "purple" "orange" ];
+      type = lib.types.listOf lib.types.str;
+      default = ["red" "blue" "green" "purple" "orange"];
       description = "Per-workspace accent colors (5 entries for workspaces 1-5). Reserved for future Noctalia workspace theming.";
     };
   };
 
   config = lib.mkIf config.clanarchy.desktop.niri.enable {
-
     # Niri compositor
     programs.niri.enable = true;
 
@@ -67,15 +72,15 @@
       enable = true;
       waylandCompositors.niri = {
         prettyName = "Niri";
-        comment    = "Niri compositor managed by UWSM";
-        binPath    = "/run/current-system/sw/bin/niri-session";
+        comment = "Niri compositor managed by UWSM";
+        binPath = "/run/current-system/sw/bin/niri-session";
       };
     };
 
     # XDG portal — gtk portal is the recommended choice for Niri
     xdg.portal = {
-      enable       = true;
-      extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
+      enable = true;
+      extraPortals = [pkgs.xdg-desktop-portal-gtk];
       config.common.default = "gtk";
     };
 
@@ -85,10 +90,10 @@
     # Pipewire audio
     security.rtkit.enable = true;
     services.pipewire = {
-      enable            = true;
-      alsa.enable       = true;
+      enable = true;
+      alsa.enable = true;
       alsa.support32Bit = true;
-      pulse.enable      = true;
+      pulse.enable = true;
     };
 
     # UPower — required by Noctalia battery widget
@@ -101,21 +106,21 @@
     # UVC input (Sony ILCE, etc.) works via the built-in uvcvideo module; no extra config needed.
     # exclusive_caps=1 makes apps (Meet, Zoom, …) enumerate the loopback as a capture device.
     # video_nr=10 avoids collisions with physical cameras at /dev/video0…
-    boot.extraModulePackages = [ config.boot.kernelPackages.v4l2loopback ];
-    boot.kernelModules       = [ "v4l2loopback" ];
+    boot.extraModulePackages = [config.boot.kernelPackages.v4l2loopback];
+    boot.kernelModules = ["v4l2loopback"];
     boot.extraModprobeConfig = lib.mkAfter ''
       options v4l2loopback devices=1 video_nr=10 card_label="OBS Virtual Camera" exclusive_caps=1
     '';
-    environment.systemPackages = [ pkgs.v4l-utils ];
+    environment.systemPackages = [pkgs.v4l-utils];
 
     # fprintd service (controlled by fprintd option)
     services.fprintd.enable = lib.mkDefault config.clanarchy.desktop.niri.fprintd.enable;
 
     # Fingerprint PAM auth — use per-service sub-attribute form so each service's
     # other options (unixAuth, etc.) are preserved via normal submodule merging.
-    security.pam.services.login.fprintAuth  = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
+    security.pam.services.login.fprintAuth = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
     security.pam.services.greetd.fprintAuth = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
-    security.pam.services.sudo.fprintAuth   = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
+    security.pam.services.sudo.fprintAuth = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
 
     # Fonts
     fonts.packages = with pkgs; [
@@ -126,23 +131,29 @@
     ];
     fonts.fontconfig = {
       defaultFonts = {
-        monospace = [ "MonaspiceAr Nerd Font Mono" "Noto Sans Mono" ];
-        sansSerif = [ "Inter"                       "Noto Sans"      ];
-        serif     = [ "MonaspiceXe Nerd Font Propo" "Noto Serif"     ];
-        emoji     = [ "Noto Color Emoji" ];
+        monospace = ["MonaspiceAr Nerd Font Mono" "Noto Sans Mono"];
+        sansSerif = ["Inter" "Noto Sans"];
+        serif = ["MonaspiceXe Nerd Font Propo" "Noto Serif"];
+        emoji = ["Noto Color Emoji"];
       };
-      hinting  = { enable = true; style = "slight"; };
-      subpixel = { rgba = "rgb"; lcdfilter = "default"; };
+      hinting = {
+        enable = true;
+        style = "slight";
+      };
+      subpixel = {
+        rgba = "rgb";
+        lcdfilter = "default";
+      };
     };
 
     environment.variables = {
-      XCURSOR_SIZE   = "24";
-      XCURSOR_THEME  = "Adwaita";
+      XCURSOR_SIZE = "24";
+      XCURSOR_THEME = "Adwaita";
       NIXOS_OZONE_WL = "1";
     };
 
     # Shared HM desktop module for all graphical users
-    home-manager.sharedModules   = [ ./niri-hm.nix ];
+    home-manager.sharedModules = [./niri-hm.nix];
     home-manager.extraSpecialArgs = {
       inherit inputs pkgs-unstable;
     };
