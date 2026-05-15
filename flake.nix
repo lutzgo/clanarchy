@@ -150,7 +150,7 @@
 
             # Generate option reference docs from live NixOS config, then serve locally.
             # Usage: gendocs       — write docs/reference/*.md
-            #        mkdocs serve  — live-reload preview at http://localhost:8000
+            #        properdocs serve  — live-reload preview at http://localhost:8000
             gendocs() {
               python3 scripts/gen-options.py
             }

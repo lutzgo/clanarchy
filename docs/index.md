@@ -44,5 +44,5 @@ deploy-biene boot   # biene — stage for next boot only
 gendocs
 
 # Build docs locally
-mkdocs serve
+properdocs serve
 ```
