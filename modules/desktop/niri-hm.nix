@@ -42,10 +42,20 @@
 
       input = {
         keyboard.xkb = {
-          layout  = osConfig.clanarchy.locale.keyboard.layout;
+          layout = osConfig.clanarchy.locale.keyboard.layout;
           # niri-flake types these as string, not nullOr string — convert null → ""
-          variant = let v = osConfig.clanarchy.locale.keyboard.variant; in if v != null then v else "";
-          options = let o = osConfig.clanarchy.locale.keyboard.options; in if o != null then o else "";
+          variant = let
+            v = osConfig.clanarchy.locale.keyboard.variant;
+          in
+            if v != null
+            then v
+            else "";
+          options = let
+            o = osConfig.clanarchy.locale.keyboard.options;
+          in
+            if o != null
+            then o
+            else "";
         };
 
         touchpad = {
@@ -183,9 +193,19 @@
         "Mod+Shift+Return".action.spawn = ["uwsm" "app" "--" "foot" "-T" "scratch"];
         "Mod+Space".action.spawn = ["noctalia-shell" "ipc" "call" "launcher" "toggle"];
         "Mod+c".action.spawn = ["noctalia-shell" "ipc" "call" "plugin:clipper" "toggle"];
-        "Mod+E".action.spawn = ["uwsm" "app" "--" "foot" "-e"
-          (if (osConfig.clanarchy.users.lgo.editor or "govim") == "govim" then "nvim" else "hx")
-          "."];
+        "Mod+E".action.spawn = [
+          "uwsm"
+          "app"
+          "--"
+          "foot"
+          "-e"
+          (
+            if (osConfig.clanarchy.users.lgo.editor or "govim") == "govim"
+            then "nvim"
+            else "hx"
+          )
+          "."
+        ];
         "Mod+F".action.spawn = ["uwsm" "app" "--" "foot" "-e" "yazi"];
 
         # KeePassXC toggle — show from tray or minimize back to tray.
@@ -1265,7 +1285,7 @@
   # The package is also installed system-wide (icon-theme.nix) so it is findable even
   # before the HM activation has run.
   gtk.iconTheme = {
-    name    = osConfig.clanarchy.iconTheme.name;
+    name = osConfig.clanarchy.iconTheme.name;
     package = osConfig.clanarchy.iconTheme.package;
   };
 
@@ -1426,7 +1446,7 @@
     extraArgs = ["-w"];
     events = {
       before-sleep = "${config.programs.noctalia-shell.package}/bin/noctalia-shell ipc call lockScreen lock; sleep 1";
-      after-resume  = "${config.programs.noctalia-shell.package}/bin/noctalia-shell ipc call lockScreen lock";
+      after-resume = "${config.programs.noctalia-shell.package}/bin/noctalia-shell ipc call lockScreen lock";
     };
     timeouts = [
       {
