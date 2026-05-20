@@ -178,13 +178,15 @@ in
           enableDefaultConfig = false;
           # ZeroTier IPs are included so that `clan machines update` (which
           # connects via ZeroTier) also gets the HostKeyAlgorithms override.
-          matchBlocks."miralda.goclan.org fdda:106a:123a:d561:1099:93da:106a:123a" = {
-            extraOptions.HostKeyAlgorithms = "ssh-ed25519";
-          };
-          # Same fix for biene — publickey-hostbound causes gnupg 2.4.x to
-          # refuse signing with card-backed ed25519 keys.
-          matchBlocks."biene.local biene.skynet.lan 10.0.10.105 fdda:106a:123a:d561:1099:93da:ef5d:598c" = {
-            extraOptions.HostKeyAlgorithms = "ssh-ed25519";
+          # gnupg 2.4.x workaround: force plain ssh-ed25519 to disable
+          # publickey-hostbound-v00@openssh.com, which breaks card-backed signing.
+          settings = {
+            "miralda.goclan.org fdda:106a:123a:d561:1099:93da:106a:123a" = {
+              HostKeyAlgorithms = "ssh-ed25519";
+            };
+            "biene.local biene.skynet.lan 10.0.10.105 fdda:106a:123a:d561:1099:93da:ef5d:598c" = {
+              HostKeyAlgorithms = "ssh-ed25519";
+            };
           };
         };
 
