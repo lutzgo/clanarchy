@@ -5,6 +5,8 @@ let
   editorDesc = if cfg.editor == "govim" then "Neovim" else "Helix";
 in
 {
+  imports = [ ../caldav-sync.nix ];
+
   options.clanarchy.users.lgo = {
     enable = lib.mkEnableOption "lgo power user profile (Niri, browsers, devtools, Noctalia)";
     editor = lib.mkOption {
@@ -15,6 +17,16 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+
+    # CalDAV sync: push org TODOs/habits to Nextcloud as VTODO entries.
+    clanarchy.caldavSync = {
+      enable        = true;
+      nextcloudHost = "citizengo.io";
+      calendarName  = "lgo";
+      username      = "lgo";
+      orgNoteDir    = "citizengo/note";
+      syncFiles     = [ "todo.org" "habits.org" ];
+    };
 
     # Declare nvf's vim.* option namespace for all HM users on this machine.
     # Must be at the NixOS level (sharedModules) so the options exist before
