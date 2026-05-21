@@ -176,23 +176,23 @@ in
       script = ''${pkgs.coreutils}/bin/cat "$prompts/password" > "$out/password"'';
     };
 
-    # Allow lgo to read the CalDAV password secret via sudo -n (no tty needed).
-    # Clan vars places secrets as 0400 root:root; this is the lightest-touch way
-    # to let the vdirsyncer user service fetch it.
-    security.sudo.extraRules = [{
-      users   = [ cfg.username ];
-      commands = [{
-        command = "${pkgs.coreutils}/bin/cat ${passwordPath}";
-        options = [ "NOPASSWD" ];
-      }];
-    }];
+    # sops-install-secrets places every clan var as 0400 root:root with no
+    # per-file owner option exposed.  Run a chown after setupSecretsForUsers
+    # so the user service can read the password without sudo.
+    system.activationScripts.caldav-secret-perms = {
+      deps = [ "setupSecretsForUsers" ];
+      text = ''
+        if [ -f /run/secrets-for-users/vars/caldav-app-password/password ]; then
+          chown ${cfg.username} /run/secrets-for-users/vars/caldav-app-password/password
+        fi
+      '';
+    };
 
     # ── Home Manager config for lgo ───────────────────────────────────────
     home-manager.users.${cfg.username} = { ... }: {
 
       # vdirsyncer config — rendered at build time with all options resolved.
-      # The password is fetched via sudo to work around clan vars' 0400 root:root
-      # permissions on the secret file.
+      # The password is read at runtime from the clan vars file path.
       xdg.configFile."vdirsyncer/config".text = ''
         [general]
         status_path = "${statusDir}"
@@ -212,7 +212,7 @@ in
         type     = "caldav"
         url      = "https://${cfg.nextcloudHost}/remote.php/dav/calendars/${cfg.username}/"
         username = "${cfg.username}"
-        password.fetch = ["command", "sudo", "-n", "${pkgs.coreutils}/bin/cat", "${passwordPath}"]
+        password.fetch = ["command", "cat", "${passwordPath}"]
       '';
 
       # khal config — points at the same vdir org collection.
