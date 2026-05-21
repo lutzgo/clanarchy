@@ -167,12 +167,13 @@ in
 
     # ── Clan var: Nextcloud app password ─────────────────────────────────
     clan.core.vars.generators.caldav-app-password = {
-      files."password" = { secret = true; };
+      files."password"  = { secret = true; neededFor = "users"; };
       prompts."password" = {
         description = "Nextcloud app password for CalDAV (Settings → Security → App passwords)";
         type        = "hidden";
       };
-      script = ''cat "$prompts/password" > "$out/password"'';
+      runtimeInputs = [ pkgs.coreutils ];
+      script = ''${pkgs.coreutils}/bin/cat "$prompts/password" > "$out/password"'';
     };
 
     # ── Home Manager config for lgo ───────────────────────────────────────
@@ -244,7 +245,7 @@ in
       systemd.user.services.vdirsyncer = {
         Unit = {
           Description = "Push org iCalendar entries to Nextcloud CalDAV";
-          After       = [ "network-online.target" ];
+          After       = [ "network.target" ];
         };
         Service = {
           Type = "oneshot";
