@@ -47,7 +47,7 @@ let
             return None
 
     def make_vtodo(node, src):
-        if not node.todo or not node.heading:
+        if not hasattr(node, 'todo') or not node.todo or not node.heading:
             return None
         t = Todo()
         t.add("uid",     uid(src, node.heading))
