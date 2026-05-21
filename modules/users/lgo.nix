@@ -24,7 +24,7 @@ in
       nextcloudHost = "citizengo.io";
       calendarName  = "lgo";
       username      = "lgo";
-      orgNoteDir    = "citizengo/note";
+      orgNoteDir    = "citizengo/notes";
       syncFiles     = [ "todo.org" "habits.org" ];
     };
 
