@@ -26,6 +26,7 @@ in
       username      = "lgo";
       orgNoteDir    = "citizengo/notes";
       syncFiles     = [ "todo.org" "habits.org" ];
+      journalDir    = "citizengo/notes/journal";
     };
 
     # Declare nvf's vim.* option namespace for all HM users on this machine.
