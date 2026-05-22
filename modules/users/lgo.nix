@@ -22,7 +22,7 @@ in
     clanarchy.caldavSync = {
       enable        = true;
       nextcloudHost = "citizengo.io";
-      calendarName  = "lgo";
+      calendarName  = "lgorg";
       username      = "lgo";
       orgNoteDir    = "citizengo/notes";
       syncFiles     = [ "todo.org" "habits.org" ];
