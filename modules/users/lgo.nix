@@ -453,6 +453,14 @@ in
           desc = "Select all"
         '';
 
+        # scdaemon.conf — force scdaemon to use pcscd instead of its built-in CCID driver.
+        # Without disable-ccid, scdaemon tries direct libusb/CCID access first and races
+        # or conflicts with pcscd, producing "No such device" even when the YubiKey is present.
+        home.file.".gnupg/scdaemon.conf" = {
+          force = true; # overwrite if a manual file exists from a previous workaround
+          text = "disable-ccid\n";
+        };
+
         home.packages = [ fzf-zellij ] ++ (with pkgs; [
           htop
           ripgrep
