@@ -70,8 +70,8 @@
         module.name  = "@clanarchy/desktop";
         # miralda: Niri with Framework 13 display — default settings match hardware
         roles.niri.machines.miralda = { };
-        # biene: GNOME with Sabine's dconf defaults
-        roles.gnome.machines.biene.settings.sabine = true;
+        # biene: labwc with Noctalia shell (replaces GNOME/GDM)
+        roles.labwc.machines.biene = { };
       };
 
       # ── Users ───────────────────────────────────────────────────────────────

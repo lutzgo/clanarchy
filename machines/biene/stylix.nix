@@ -42,7 +42,7 @@ in {
       size = 24;
     };
 
-    targets.gnome.enable    = true; # GNOME Shell theme + GDM background
+    targets.regreet.enable  = true; # GTK4 login screen — themed by Stylix
     targets.plymouth.enable = true; # Boot splash
   };
 }

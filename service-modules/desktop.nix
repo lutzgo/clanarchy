@@ -9,13 +9,14 @@
 #
 # Roles:
 #   niri   — Niri Wayland compositor, UWSM, Noctalia, regreet
+#   labwc  — labwc stacking Wayland compositor, UWSM, Noctalia, regreet
 #   gnome  — GNOME desktop with GDM
 #   kde    — KDE Plasma 6 with SDDM
 #
 {
   _class = "clan.service";
   manifest.name = "@clanarchy/desktop";
-  manifest.description = "Assign each machine a desktop environment (niri, gnome, kde).";
+  manifest.description = "Assign each machine a desktop environment (niri, labwc, gnome, kde).";
   manifest.readme = builtins.readFile ./desktop.md;
 
   roles.niri = {
@@ -73,6 +74,35 @@
             imports = [ ../modules/desktop/gnome.nix ];
             clanarchy.desktop.gnome.enable = true;
             clanarchy.desktop.gnome.sabine = settings.sabine;
+          };
+      };
+  };
+
+  roles.labwc = {
+    description = "labwc stacking Wayland compositor with UWSM session management and Noctalia shell.";
+    interface.options = {
+      display.scale = lib.mkOption {
+        type = lib.types.float;
+        default = 1.25;
+        description = "Output scale factor for the primary display (eDP-1).";
+      };
+      input.pointerSpeed = lib.mkOption {
+        type = lib.types.float;
+        default = 0.4;
+        description = "Touchpad/pointer acceleration. Range: -1.0 (slowest) to 1.0 (fastest).";
+      };
+    };
+
+    perInstance =
+      { settings, ... }:
+      {
+        nixosModule =
+          { ... }:
+          {
+            imports = [ ../modules/desktop/labwc.nix ];
+            clanarchy.desktop.labwc.enable = true;
+            clanarchy.desktop.labwc.display.scale = settings.display.scale;
+            clanarchy.desktop.labwc.input.pointerSpeed = settings.input.pointerSpeed;
           };
       };
   };

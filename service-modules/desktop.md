@@ -9,6 +9,7 @@ relevant desktop module. Replaces the previous pattern of importing all
 | Role    | Description |
 |---------|-------------|
 | `niri`  | Niri Wayland compositor, UWSM session management, Noctalia shell, regreet greeter. |
+| `labwc` | labwc stacking Wayland compositor, UWSM, Noctalia shell, regreet greeter. |
 | `gnome` | GNOME desktop with GDM. Optional Sabine dconf defaults (`settings.sabine`). |
 | `kde`   | KDE Plasma 6 with SDDM Wayland session. |
 
@@ -21,6 +22,13 @@ relevant desktop module. Replaces the previous pattern of importing all
 | `display.height` | `1504` | Vertical resolution |
 | `input.pointerSpeed` | `0.4` | Touchpad acceleration (-1.0 to 1.0) |
 
+## labwc settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `display.scale` | `1.25` | Output scale factor for eDP-1 (via kanshi) |
+| `input.pointerSpeed` | `0.4` | Touchpad acceleration (-1.0 to 1.0) |
+
 ## Usage
 
 ```nix
@@ -29,6 +37,6 @@ inventory.instances.desktop = {
   module.input = "self";
   module.name  = "@clanarchy/desktop";
   roles.niri.machines.miralda = {};
-  roles.gnome.machines.biene.settings.sabine = true;
+  roles.labwc.machines.biene = {};
 };
 ```

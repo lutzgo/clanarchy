@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Clanarchy** is a NixOS declarative configuration using **clan-core** to manage two machines:
 - `miralda` — Framework 13 AMD, NixOS 26.05. Niri/UWSM/greetd Wayland desktop, ZFS + impermanence, YubiKey PIV for age encryption, clan vars for secrets.
-- `biene` — Lenovo laptop, NixOS 26.05. GNOME/GDM desktop (Sabine's machine), ZFS + impermanence, clan vars for secrets.
+- `biene` — Lenovo laptop, NixOS 26.05. labwc/UWSM/regreet Wayland desktop (Sabine's machine), ZFS + impermanence, clan vars for secrets.
 
 ## Development Environment
 
@@ -70,11 +70,9 @@ All modules are explicitly imported in `flake.nix` (no auto-discovery):
 
 | File | Purpose |
 |------|---------|
-| `configuration.nix` | Hostname, timezone, ZFS/systemd-boot, SSH daemon, module activation |
+| `configuration.nix` | Hostname, timezone, ZFS/systemd-boot, SSH daemon; Syncthing user override |
 | `disko.nix` | NVMe → GPT (1G ESP + ZFS pool) |
-| `impermanence.nix` | ZFS rollback-on-boot (stage 1); persist paths |
-| `stylix.nix` | Catppuccin Mocha theme + generated anarchy wallpaper |
-| `syncthing.nix` | Syncthing file sync |
+| `stylix.nix` | Catppuccin Mocha theme; `targets.regreet.enable` for greeter theming |
 
 ### Shared Module Layout (`modules/`)
 
@@ -85,7 +83,9 @@ Shared modules are imported by machines via their desktop/role modules:
 | `desktop/gnome.nix` | GNOME desktop: GDM, extensions, shared dconf, Sabine's dconf |
 | `desktop/niri.nix` | Niri compositor: UWSM, regreet, pipewire, fonts |
 | `desktop/niri-hm.nix` | Shared HM module for Niri users: Niri config, Noctalia, keybinds |
-| `icon-theme.nix` | `clanarchy.iconTheme` option: Stylix-recolored Papirus-Dark; imported by both desktop modules |
+| `desktop/labwc.nix` | labwc compositor: UWSM, regreet, pipewire, fonts, wlr XDG portal |
+| `desktop/labwc-hm.nix` | Shared HM module for labwc users: rc.xml keybinds, themerc-override (Stylix colors), kanshi display config, Noctalia |
+| `icon-theme.nix` | `clanarchy.iconTheme` option: Stylix-recolored Papirus-Dark; imported by niri, labwc, and gnome desktop modules |
 | `locale.nix` | `clanarchy.locale` option: language + keyboard layout/variant/options |
 | `users/admin.nix` | admin user: SSH keys, password, impermanence, HM stub |
 | `users/lgo.nix` | lgo power user: SSH config, browsers, devtools, Noctalia; `clanarchy.users.lgo.editor` option (govim \| helix, default govim) |
@@ -112,6 +112,8 @@ Generated outputs land in `vars/per-machine/miralda/`. Run generators with `clan
 
 **YubiKey + pcscd**: SSH sessions lack an "active" logind session, so pcscd requires a polkit rule via `security.polkit.extraConfig` (not `extraRules`). The `age-plugin-yubikey` package must be in the devShell for sops re-encryption with YubiKey recipients.
 
+**scdaemon + pcscd**: `~/.gnupg/scdaemon.conf` must contain `disable-ccid`. Without it, scdaemon defaults to trying the internal CCID/libusb driver first, which races with pcscd and produces "No such device" even when the YubiKey is present. `disable-ccid` forces scdaemon to route all card access through pcscd (socket-activated on demand). This is managed declaratively via `home.file.".gnupg/scdaemon.conf"` in `modules/users/lgo.nix`. If the card is suddenly missing: `gpgconf --kill gpg-agent && gpg --card-status`.
+
 **YubiKey pinentry**: Use `pinentry-qt`, not `pinentry-gnome3`. `pinentry-gnome3` calls `gcr_system_password_finish` via D-Bus (`org.gnome.keyring.SystemPrompter`), which requires `gnome-keyring-daemon` — absent on Niri. Without it every PIN prompt fails silently and gpg-agent returns "agent refused operation" on all card-backed SSH signing. `pinentry-qt` draws its own Qt dialog on Wayland with no GNOME dependency. The wrapper in `yubikey.nix` injects `WAYLAND_DISPLAY` and `QT_QPA_PLATFORM=wayland` so Qt picks the right backend when called from the gpg-agent context.
 
 **Niri overlay**: `clan.nix` overrides niri with `checkPhase = ":"` to bypass an EMFILE sandbox test failure in nixpkgs 25.11.
@@ -120,6 +122,8 @@ Generated outputs land in `vars/per-machine/miralda/`. Run generators with `clan
 
 **push function**: Reads gh token at runtime to construct HTTPS remote URL, enabling pushes from a machine where `~/.config/git` is a read-only impermanence bind mount.
 
-**icon-theme.nix**: Declares `clanarchy.iconTheme.{name,package}` and installs the package via `environment.systemPackages`. GNOME wires the theme name via dconf in `gnome.nix`. Niri wires `gtk.iconTheme` in `niri-hm.nix` via `osConfig`. Do **not** set `gtk.iconTheme` in `home-manager.sharedModules` — it conflicts with Stylix's GTK HM target and breaks the entire HM activation for affected users.
+**icon-theme.nix**: Declares `clanarchy.iconTheme.{name,package}` and installs the package via `environment.systemPackages`. GNOME wires the theme name via dconf in `gnome.nix`. Niri and labwc wire `gtk.iconTheme` in their respective `-hm.nix` modules via `osConfig`. Do **not** set `gtk.iconTheme` in `home-manager.sharedModules` — it conflicts with Stylix's GTK HM target and breaks the entire HM activation for affected users.
+
+**labwc window decorations**: `labwc-hm.nix` generates `~/.config/labwc/themerc-override` from `config.lib.stylix.colors` at build time. This patches the active openbox theme's title bar, border, and button colors to follow the Stylix palette — active border uses `base0D` (accent), active title uses `base01`, inactive recedes to `base00`.
 
 **lgo editor option** (`clanarchy.users.lgo.editor`): Selects between `"govim"` (default) and `"helix"`. govim is a flake input (`github:lutzgo/govim`) built on nvf; it's wired via `programs.nvf.settings` (nvf's HM module namespace) with `imports = [common.nix, variants/default.nix]`. Stylix theming uses `vim.theme.enable = false` + `pkgs.vimPlugins.base16-nvim` + `vim.luaConfigRC.stylixTheme` (DAG entry via `inputs.nvf.lib.nvim.dag`). The nvf HM option namespace must be declared at the NixOS level via `home-manager.sharedModules`; per-user imports cannot bootstrap their own option types. `inputs.nvf` is pinned as `nvf.follows = "govim/nvf"` in `flake.nix`. `EDITOR`/`VISUAL`, Zellij `Alt+e`, and Yazi `e` all key off the same `editorBin` variable.
