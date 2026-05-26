@@ -102,6 +102,12 @@
     # udisks2 — required by Noctalia USB drive manager (D-Bus device detection + auto-mount)
     services.udisks2.enable = true;
 
+    # accounts-daemon — required by regreet ≥ 0.3.0 for user enumeration via the
+    # org.freedesktop.Accounts D-Bus API.  Without it regreet panics on first start
+    # ("The name is not activatable") and leaves cage showing a white screen until
+    # greetd recovers (~44 s later).
+    services.accounts-daemon.enable = true;
+
     # V4L2 loopback — virtual camera device used by OBS's "Start Virtual Camera".
     # UVC input (Sony ILCE, etc.) works via the built-in uvcvideo module; no extra config needed.
     # exclusive_caps=1 makes apps (Meet, Zoom, …) enumerate the loopback as a capture device.

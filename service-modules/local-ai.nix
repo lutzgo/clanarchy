@@ -1,0 +1,103 @@
+{ lib, ... }:
+#
+# @clanarchy/local-ai — local AI inference and coding agent.
+#
+# Roles:
+#   ollama    — NixOS system service: Ollama daemon with ROCm acceleration
+#               tuned for the AMD Radeon 780M iGPU (gfx1103 / Phoenix).
+#   opencode  — User-level OpenCode CLI coding agent pointed at the local
+#               Ollama endpoint (FOSS alternative to Claude Code).
+#
+{
+  _class = "clan.service";
+  manifest.name        = "@clanarchy/local-ai";
+  manifest.description = "Local AI inference (Ollama) and OpenCode coding agent.";
+  manifest.readme      = builtins.readFile ./local-ai.md;
+
+
+  # ── Ollama inference server ────────────────────────────────────────────────
+  roles.ollama = {
+    description = "Ollama daemon with ROCm acceleration (AMD Radeon 780M / gfx1103).";
+
+    interface.options.models = lib.mkOption {
+      type        = lib.types.listOf lib.types.str;
+      default     = [ "qwen3-coder:8b" ];
+      description = "Models to pre-pull when the service starts.";
+    };
+
+    perInstance = { settings, ... }: {
+      nixosModule = { pkgs, ... }: {
+
+        services.ollama = {
+          enable     = true;
+          # pkgs.ollama-rocm replaces the removed `acceleration = "rocm"` option
+          # (nixpkgs dropped that option; the variant packages are the new API).
+          package    = pkgs.ollama-rocm;
+          loadModels = settings.models;
+          environmentVariables = {
+            # The AMD Phoenix iGPU (gfx1103) is absent from stock ROCm kernel
+            # libraries (gfx1100/1101/1102 are present; gfx1103 is not).
+            # Overriding the GFX version to 11.0.3 makes ROCm select the
+            # gfx1100 kernels at runtime, enabling GPU-accelerated inference.
+            HSA_OVERRIDE_GFX_VERSION = "11.0.3";
+            ROCR_VISIBLE_DEVICES     = "0";
+          };
+        };
+
+        # Many ROCm utilities hard-code /opt/rocm/hip.  Create a symlink so
+        # they resolve correctly without patching each binary.
+        systemd.tmpfiles.rules = [
+          "L+ /opt/rocm/hip - - - - ${pkgs.rocmPackages.clr}"
+        ];
+
+        # Ollama stores downloaded models under /var/lib/ollama, but the NixOS
+        # service runs with DynamicUser=true + StateDirectory=ollama, which makes
+        # systemd put the real storage in /var/lib/private/ollama and expose it
+        # as /var/lib/ollama via a symlink/bind.  Persisting /var/lib/ollama
+        # directly conflicts with that mechanism (systemd can't migrate a busy
+        # bind mount).  Persist the actual storage path instead.
+        environment.persistence."/persist".directories = [
+          {
+            directory = "/var/lib/private/ollama";
+            mode      = "0700";
+          }
+        ];
+      };
+    };
+  };
+
+
+  # ── OpenCode coding agent ──────────────────────────────────────────────────
+  roles.opencode = {
+    description = "OpenCode CLI coding agent wired to the local Ollama endpoint.";
+
+    interface.options = {
+      user = lib.mkOption {
+        type        = lib.types.str;
+        default     = "lgo";
+        description = "Home Manager user to install OpenCode for.";
+      };
+      model = lib.mkOption {
+        type        = lib.types.str;
+        default     = "ollama/qwen3-coder:8b";
+        description = "Default model (format: ollama/<name> for local Ollama models).";
+      };
+    };
+
+    perInstance = { settings, ... }: {
+      nixosModule = { pkgs, ... }: {
+        environment.systemPackages = [ pkgs.opencode ];
+
+        home-manager.users.${settings.user} = { lib, ... }: {
+          # Point OpenCode at the local Ollama API.
+          # ~/.config is persisted for lgo (modules/users/lgo.nix), so this
+          # config survives ZFS rollback without an explicit persist entry.
+          xdg.configFile."opencode/config.json".text = builtins.toJSON {
+            model = settings.model;
+            providers.ollama.baseUrl = "http://localhost:11434/v1";
+          };
+        };
+      };
+    };
+  };
+}

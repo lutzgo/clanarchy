@@ -38,6 +38,7 @@
     modules."@clanarchy/desktop"      = import ./service-modules/desktop.nix;
     modules."@clanarchy/users"        = import ./service-modules/users.nix;
     modules."@clanarchy/software"     = import ./service-modules/software.nix;
+    modules."@clanarchy/local-ai"     = import ./service-modules/local-ai.nix;
 
     inventory.machines = {
       miralda    = { };
@@ -130,6 +131,14 @@
         roles.default.settings.networks = {
           home = { };   # prompts: SSID "skynet", PSK; keyMgmt defaults to wpa-psk
         };
+      };
+
+      # ── Local AI: Ollama + OpenCode ───────────────────────────────────────
+      local-ai = {
+        module.input = "self";
+        module.name  = "@clanarchy/local-ai";
+        roles.ollama.machines.miralda.settings.models  = [ "qwen3-coder:8b" ];
+        roles.opencode.machines.miralda.settings.user  = "lgo";
       };
 
       # ── Software: browsers and email clients ─────────────────────────────
