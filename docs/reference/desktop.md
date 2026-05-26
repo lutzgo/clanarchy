@@ -7,8 +7,9 @@ Desktop environment modules (Niri, GNOME, KDE). Enable exactly the one that appl
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `clanarchy.desktop.gnome.enable` | `boolean` | Whether to enable GNOME desktop environment. |
-| `clanarchy.desktop.gnome.sabine` | `boolean` | Whether to enable Sabine's personal GNOME dconf defaults. |
+| `clanarchy.desktop.labwc.display.scale` | `floating point number` | Output scale factor for the primary display (eDP-1). |
+| `clanarchy.desktop.labwc.enable` | `boolean` | Whether to enable labwc Wayland compositor with Noctalia. |
+| `clanarchy.desktop.labwc.input.pointerSpeed` | `floating point number` | Touchpad acceleration speed. Range: -1.0 (slowest) to 1.0 (fastest). |
 | `clanarchy.desktop.niri.display.resolution.height` | `signed integer` | Vertical resolution of the primary display. |
 | `clanarchy.desktop.niri.display.resolution.width` | `signed integer` | Horizontal resolution of the primary display. |
 | `clanarchy.desktop.niri.display.scale` | `floating point number` | Output scale factor for the primary display (eDP-1). |
