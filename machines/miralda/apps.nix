@@ -120,6 +120,8 @@ in {
   # (login-shell only), but UWSM imports env from PAM — sessionVariables writes to
   # /etc/environment via pam_env, which is read by all PAM sessions including greetd.
   services.flatpak.enable = true;
+  # Flatpak app state (installed apps, runtimes, remotes) must survive ZFS rollback.
+  environment.persistence."/persist".directories = [ "/var/lib/flatpak" ];
   environment.sessionVariables.XDG_DATA_DIRS = [
     "/var/lib/flatpak/exports/share"
     "$HOME/.local/share/flatpak/exports/share"

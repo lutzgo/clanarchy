@@ -124,9 +124,11 @@
 
     # Fingerprint PAM auth — use per-service sub-attribute form so each service's
     # other options (unixAuth, etc.) are preserved via normal submodule merging.
-    security.pam.services.login.fprintAuth = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
-    security.pam.services.greetd.fprintAuth = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
-    security.pam.services.sudo.fprintAuth = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
+    security.pam.services.login.fprintAuth   = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
+    security.pam.services.greetd.fprintAuth  = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
+    security.pam.services.sudo.fprintAuth    = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
+    # Noctalia lockscreen — PamContext in QML requires a dedicated PAM service.
+    security.pam.services.noctalia.fprintAuth = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
 
     # Fonts
     fonts.packages = with pkgs; [

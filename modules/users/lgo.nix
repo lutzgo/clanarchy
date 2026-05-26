@@ -111,7 +111,11 @@ in
           # Browser stack: ungoogled-chromium, librewolf config, firefox+arkenfox,
           # google-chrome, and KeePassXC native messaging for all four browsers.
           ../../machines/miralda/home-modules/browsers.nix
+          # Console desktop tools: aerc (TUI email), oama (Gmail OAuth2), w3m (HTML mail).
+          ../../machines/miralda/home-modules/console-desktop.nix
         ];
+
+        clanarchy.consoleDesktop.enable = true;
 
         home.username      = "lgo";
         home.homeDirectory = "/home/lgo";

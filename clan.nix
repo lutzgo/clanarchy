@@ -39,6 +39,8 @@
     modules."@clanarchy/users"        = import ./service-modules/users.nix;
     modules."@clanarchy/software"     = import ./service-modules/software.nix;
     modules."@clanarchy/local-ai"     = import ./service-modules/local-ai.nix;
+    modules."@clanarchy/yubikey"      = import ./service-modules/yubikey.nix;
+    modules."@clanarchy/printing"     = import ./service-modules/printing.nix;
 
     inventory.machines = {
       miralda    = { };
@@ -97,10 +99,24 @@
         roles.peer.tags.all = { };
       };
 
+      # ── YubiKey ────────────────────────────────────────────────────────────
+      yubikey = {
+        module.input = "self";
+        module.name  = "@clanarchy/yubikey";
+        roles.default.machines.miralda = { };
+      };
+
+      # ── Printing ───────────────────────────────────────────────────────────
+      printing = {
+        module.input = "self";
+        module.name  = "@clanarchy/printing";
+        roles.default.machines.miralda = { };
+      };
+
       # ── Syncthing ───────────────────────────────────────────────────────────
       # Syncs ~/Public across clan laptops.
       # openDefaultPorts restricts the firewall to zt+ (zerotier) interfaces.
-      # User overrides (run as lgo / sabine) are in machines/*/syncthing.nix.
+      # User overrides (run as lgo / sabine) are in machines/*/configuration.nix.
       # Run `clan vars generate <machine>` once to generate syncthing key/cert/ID.
       syncthing = {
         module = { name = "syncthing"; input = "clan-core"; };

@@ -106,6 +106,9 @@
         stylix.targets.qt.enable = false;
         qt.platformTheme.name = lib.mkDefault "adwaita";
 
+        # KDE target is irrelevant on GNOME and causes evaluation noise.
+        stylix.targets.kde.enable = false;
+
         dconf.settings = {
           # Interface
           "org/gnome/desktop/interface" = {

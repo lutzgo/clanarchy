@@ -32,6 +32,10 @@
     services.fprintd.enable = lib.mkIf config.clanarchy.roles.laptop.framework.enable (lib.mkDefault true);
     services.fwupd.enable   = lib.mkIf config.clanarchy.roles.laptop.framework.enable (lib.mkDefault true);
 
+    # Enrolled fingerprints must survive ZFS rollback.
+    environment.persistence."/persist".directories =
+      lib.mkIf config.clanarchy.roles.laptop.framework.enable [ "/var/lib/fprint" ];
+
     # Prevent backpack-wake: disable LID ACPI device as a kernel wakeup source.
     # This stops the lid sensor from generating spurious wakeups when bag pressure
     # flexes the chassis. The input event path (power-switch tag) is intentionally

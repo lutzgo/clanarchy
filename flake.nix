@@ -176,6 +176,10 @@
           inputs.stylix.nixosModules.stylix
           inputs.home-manager.nixosModules.home-manager
 
+          # Shared base modules (universal NixOS defaults + ZFS impermanence)
+          ./modules/base.nix
+          ./modules/zfs-impermanence.nix
+
           # Reusable modules (hardware + admin; users/roles/desktop via clan services)
           ./modules/locale.nix
           ./modules/networking.nix
@@ -186,13 +190,8 @@
           # Machine-specific
           ./machines/miralda/configuration.nix
           ./machines/miralda/disko.nix
-          ./machines/miralda/impermanence.nix
           ./machines/miralda/stylix.nix
-          ./machines/miralda/noctalia.nix
-          ./machines/miralda/yubikey.nix
           ./machines/miralda/apps.nix
-          ./machines/miralda/printer.nix
-          ./machines/miralda/syncthing.nix
           ./machines/miralda/wallpapers.nix
         ];
       };
@@ -212,6 +211,10 @@
           inputs.stylix.nixosModules.stylix
           inputs.home-manager.nixosModules.home-manager
 
+          # Shared base modules (universal NixOS defaults + ZFS impermanence)
+          ./modules/base.nix
+          ./modules/zfs-impermanence.nix
+
           # Reusable modules (hardware + admin; users/roles/desktop via clan services)
           ./modules/locale.nix
           ./modules/networking.nix
@@ -222,9 +225,7 @@
           # Machine-specific
           ./machines/biene/configuration.nix
           ./machines/biene/disko.nix
-          ./machines/biene/impermanence.nix
           ./machines/biene/stylix.nix
-          ./machines/biene/syncthing.nix
         ];
       };
 

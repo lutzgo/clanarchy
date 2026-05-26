@@ -6,7 +6,7 @@ This guide covers how the YubiKey is integrated into clanarchy across three dist
 2. **Age encryption** — via `age-plugin-yubikey` for clan vars / sops
 3. **PIV operations** — `ykman` over SSH sessions
 
-Configuration lives in [`machines/miralda/yubikey.nix`](https://github.com/lutzgo/clanarchy/blob/main/machines/miralda/yubikey.nix).
+Configuration lives in [`modules/hardware/yubikey.nix`](https://github.com/lutzgo/clanarchy/blob/main/modules/hardware/yubikey.nix), wired to machines via the `@clanarchy/yubikey` service module in `service-modules/yubikey.nix`.
 
 ---
 
@@ -38,20 +38,23 @@ systemd.services.pcscd.wantedBy = [ "multi-user.target" ];
 programs.gnupg.agent = {
   enable = true;
   enableSSHSupport = true;
-  pinentryPackage = pkgs.pinentry-gnome3;
+  pinentryPackage = pkgs.pinentry-qt;
 };
 ```
 
 ### Pinentry on Wayland
 
-`gpg-agent` only forwards `DISPLAY` (X11) to pinentry, not `WAYLAND_DISPLAY`. When an SSH session triggers a PIN prompt, pinentry-gnome3 can't open a dialog because it has no Wayland socket. A small wrapper script injects the right environment:
+`gpg-agent` only forwards `DISPLAY` (X11) to pinentry, not `WAYLAND_DISPLAY`. `pinentry-gnome3` was explicitly ruled out: it calls `gcr_system_password_finish` via D-Bus (`org.gnome.keyring.SystemPrompter`), which requires `gnome-keyring-daemon` — absent on Niri. Every PIN prompt fails silently, and gpg-agent returns "agent refused operation".
+
+`pinentry-qt` is used instead: it draws its own Qt dialog directly on Wayland with no GNOME dependency. A wrapper script injects `WAYLAND_DISPLAY` and `QT_QPA_PLATFORM=wayland` so Qt picks the right backend even when called from the gpg-agent context (SSH auth flow, devShell):
 
 ```bash
 uid=$(id -u)
 wayland=$(ls /run/user/$uid/wayland-* 2>/dev/null | head -1 | xargs basename)
 export WAYLAND_DISPLAY="$wayland"
+export QT_QPA_PLATFORM="wayland"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus"
-exec pinentry-gnome3 "$@"
+exec pinentry-qt "$@"
 ```
 
 This is set as the `pinentry-program` in `/etc/gnupg/gpg-agent.conf` via `lib.mkForce` (overriding the NixOS module's default).
@@ -187,6 +190,19 @@ pcscd is socket-activated and hasn't fully started before scdaemon connects. Con
 systemctl cat pcscd.service | grep WantedBy
 ```
 
+### "No such device" after pcscd restarts (stale scdaemon state)
+
+pcscd can restart mid-session — e.g., after a `deploy switch` or if the socket was triggered late. scdaemon caches a connection to the old pcscd instance and does not automatically reconnect. `gpg --card-status` then fails with `No such device` even though the card is inserted and pcscd is running.
+
+Fix: kill gpg-agent (which also kills scdaemon), then retry. scdaemon will start fresh and reconnect to the live pcscd:
+
+```bash
+gpgconf --kill gpg-agent
+gpg --card-status
+```
+
+This is the correct first step whenever `gpg --card-status` fails with `No such device` and `systemctl status pcscd` shows the daemon active.
+
 ### PIN prompt doesn't appear (Wayland)
 
 The pinentry wrapper reads `wayland-*` from `/run/user/$uid/`. If the Wayland session hasn't created the socket yet (e.g. prompt fires during greeter), there's nothing to inject. Entering the PIN via the terminal fallback (`pinentry-curses`) is not configured — use the graphical session.
@@ -225,4 +241,4 @@ Commit the result. Then provision the PIV slot (see Re-provisioning above) and `
 
 ### sops decrypt fails after ZFS rollback
 
-After a rollback, the age identity file path referenced in `.sops.yaml` might not exist until impermanence re-creates the bind mounts. Ensure `/var/lib/sops-nix` is in the persisted paths (it is, in `impermanence.nix`).
+After a rollback, the age identity file path referenced in `.sops.yaml` might not exist until impermanence re-creates the bind mounts. Ensure `/var/lib/sops-nix` is in the persisted paths (it is, in `modules/zfs-impermanence.nix`).
