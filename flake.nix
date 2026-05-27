@@ -187,11 +187,13 @@
           ./modules/users/admin.nix
           ./modules/users/sgo.nix
 
+          # App category modules (options default false; enabled in configuration.nix)
+          ./modules/apps
+
           # Machine-specific
           ./machines/miralda/configuration.nix
           ./machines/miralda/disko.nix
           ./machines/miralda/stylix.nix
-          ./machines/miralda/apps.nix
           ./machines/miralda/wallpapers.nix
         ];
       };
@@ -214,6 +216,9 @@
           # Shared base modules (universal NixOS defaults + ZFS impermanence)
           ./modules/base.nix
           ./modules/zfs-impermanence.nix
+
+          # App category modules (options default false; enabled in configuration.nix)
+          ./modules/apps
 
           # Reusable modules (hardware + admin; users/roles/desktop via clan services)
           ./modules/locale.nix

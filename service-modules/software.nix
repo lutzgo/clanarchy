@@ -134,6 +134,65 @@
     perInstance = { ... }: {
       nixosModule = { pkgs, ... }: {
         environment.systemPackages = [ pkgs.ungoogled-chromium ];
+
+        # Chromium managed policies — must be root-owned (/etc/); home.file paths
+        # are silently rejected as mandatory policies even if the dir exists.
+        environment.etc."chromium/policies/managed/privacy.json".text = builtins.toJSON {
+          # ── Telemetry and account features ──────────────────────────
+          MetricsReportingEnabled                        = false;
+          SafeBrowsingEnabled                            = false; # deprecated in 130+
+          SafeBrowsingProtectionLevel                    = 0;     # 0 = disabled
+          PasswordManagerEnabled                         = false;
+          AutofillAddressEnabled                         = false;
+          AutofillCreditCardEnabled                      = false;
+          UserFeedbackAllowed                            = false;
+          UrlKeyedAnonymizedDataCollectionEnabled        = false;
+
+          # ── Privacy Sandbox ──────────────────────────────────────────
+          PrivacySandboxAdMeasurementEnabled             = false;
+          PrivacySandboxAdTopicsEnabled                  = false;
+          PrivacySandboxSiteEnabledAdsEnabled            = false;
+
+          # ── Cookies ──────────────────────────────────────────────────
+          BlockThirdPartyCookies                         = true; # deprecated 130+, harmless
+          DefaultCookiesSetting                          = 1;    # 1 = allow first-party
+
+          # ── Network leaks ────────────────────────────────────────────
+          WebRtcIPHandlingPolicy                         = "disable_non_proxied_udp";
+          NetworkPredictionOptions                       = 2; # 2 = disabled
+          SearchSuggestEnabled                           = false;
+
+          # ── Encrypted DNS (secure mode) ──────────────────────────────
+          DnsOverHttpsMode                               = "secure";
+          DnsOverHttpsTemplates                          = "https://dns.quad9.net/dns-query";
+
+          # ── Permission defaults (2 = block) ─────────────────────────
+          DefaultGeolocationSetting                      = 2;
+          DefaultNotificationsSetting                    = 2;
+          DefaultCameraSetting                           = 2;
+          DefaultMicrophoneSetting                       = 2;
+          DefaultPopupsSetting                           = 2;
+          DefaultSensorsSetting                          = 2;
+          DefaultSerialSetting                           = 2;
+          DefaultHidSetting                              = 2;
+          DefaultBluetoothSetting                        = 2;
+          DefaultFileSystemReadGuardSetting              = 2;
+          DefaultFileSystemWriteGuardSetting             = 2;
+
+          # ── JavaScript JIT ───────────────────────────────────────────
+          DefaultJavaScriptJitSetting                    = 2; # 2 = block globally
+          JavaScriptJitAllowedForSites                   = [];
+
+          # ── Search engines ───────────────────────────────────────────
+          DefaultSearchProviderEnabled                   = true;
+          DefaultSearchProviderName                      = "DuckDuckGo";
+          DefaultSearchProviderSearchURL                 = "https://duckduckgo.com/?q={searchTerms}";
+          DefaultSearchProviderSuggestURL                = "https://duckduckgo.com/ac/?q={searchTerms}&type=list";
+          # ManagedSearchEngines: Chrome 116+. nixpkgs 25.11 = Chromium 131+.
+          ManagedSearchEngines = [
+            { name = "Startpage"; keyword = "sp"; url = "https://www.startpage.com/search?q={searchTerms}"; }
+          ];
+        };
       };
     };
   };

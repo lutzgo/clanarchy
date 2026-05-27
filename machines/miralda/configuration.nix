@@ -20,6 +20,27 @@
   clanarchy.users.lgo.enable   = true;
   clanarchy.users.admin.enable = true;
 
+  # Unfree packages used on miralda.
+  # nixpkgs.config.allowUnfreePredicate is evaluated at the NixOS module level (distinct
+  # from pkgsForSystem's allowUnfree=true which applies in the flake perSystem context).
+  # Without this, unfree packages in environment.systemPackages and home.packages fail.
+  nixpkgs.config.allowUnfreePredicate = pkg:
+    builtins.elem (lib.getName pkg) [
+      # communication.nix
+      "anytype" "anytype-heart" "signal-desktop"
+      # lgo.nix
+      "claude-code"
+      # @clanarchy/software roles (chrome, edge)
+      "google-chrome" "microsoft-edge"
+    ];
+
+  # App categories — package lists and services live in modules/apps/*.nix.
+  clanarchy.apps.media.enable         = true;
+  clanarchy.apps.communication.enable = true;
+  clanarchy.apps.containers.enable    = true;
+  clanarchy.apps.flatpak.enable       = true;
+  clanarchy.apps.desktopTools.enable  = true;
+
   # clan vars generate runs as root, leaving shared vars root-owned.
   # Re-chown after every activation so lgo can enter devShell without sudo.
   system.activationScripts.clanVarsOwnership.text = ''

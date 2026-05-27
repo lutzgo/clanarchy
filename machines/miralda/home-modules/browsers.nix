@@ -8,11 +8,11 @@
 #   3. firefox + arkenfox  — hardened Mozilla-compatible fallback
 #   4. google-chrome       — work / DRM / SSO (unfree, minimal config)
 #
-# CHANGES REQUIRED IN apps.nix (alongside importing this module):
-#   REMOVE "chromium"  — now managed by programs.chromium below
-#   REMOVE "firefox"   — now managed by programs.firefox below
-#   KEEP   "librewolf" — no home-manager module exists for LibreWolf
-#   KEEP   "keepassxc" — system package; do not duplicate here
+# System packages for all four browsers are installed by the
+# @clanarchy/software roles in service-modules/software.nix.
+# Privacy policies for Chromium live in that role too.
+# Extension first-run tabs and the chromiumFirstRun reset service
+# are in modules/users/lgo.nix (lgo-specific extension list).
 #
 # ============================================================
 { pkgs, inputs, ... }:

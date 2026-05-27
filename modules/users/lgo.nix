@@ -3,6 +3,22 @@ let
   cfg        = config.clanarchy.users.lgo;
   editorBin  = if cfg.editor == "govim" then "nvim" else "hx";
   editorDesc = if cfg.editor == "govim" then "Neovim" else "Helix";
+
+  # CRX install via first_run_tabs: patched chromium reads /etc/chromium/initial_preferences;
+  # --extension-mime-request-handling=always-prompt-for-install (baked in clan.nix overlay).
+  crxUrl = id:
+    "https://clients2.google.com/service/update2/crx"
+    + "?response=redirect&acceptformat=crx2,crx3"
+    + "&prodversion=${pkgs.ungoogled-chromium.version}"
+    + "&x=id%3D${id}%26uc";
+
+  chromiumFirstRunTabs = [
+    "https://github.com/NeverDecaf/chromium-web-store/releases/latest/download/Chromium.Web.Store.crx"
+    (crxUrl "cjpalhdlnbpafiamejdnhcphjbkeiagm") # uBlock Origin
+    (crxUrl "oboonakemofpalcgghocfoadofidjkkk") # KeePassXC-Browser
+    (crxUrl "dbepggeogbaibhgnhhndojpepiihcmeb") # Vimium
+    (crxUrl "efobhjmgoddhfdhaflheioeagkcknoji") # Vertical Tabs (nicedoc.io)
+  ];
 in
 {
   imports = [ ../caldav-sync.nix ];
@@ -84,6 +100,38 @@ in
       files = [
         ".age/yubikey-identity.txt"  # PIV-backed age identity (recipient stored in clan vars)
       ];
+    };
+
+    # claude-code is unfree; HM evaluates pkgs independently from pkgsForSystem so
+    # unfree packages must live at the NixOS level (environment.systemPackages uses
+    # the pkgsForSystem pkgs which has allowUnfree=true).
+    environment.systemPackages = [ pkgs.claude-code ];
+
+    # Chromium initial_preferences: prompt to install lgo's extensions on first run.
+    # The privacy policies (managed/privacy.json) live in service-modules/software.nix
+    # (chromium role) — they apply to all users on any machine with Chromium.
+    # The extension list is lgo-specific and lives here.
+    environment.etc."chromium/initial_preferences".text =
+      builtins.toJSON { first_run_tabs = chromiumFirstRunTabs; };
+
+    # Reset ~/.config/chromium/First Run on extension list change (hash in /persist).
+    systemd.services.chromiumFirstRun = {
+      description = "Reset Chromium first-run sentinel on extension config change";
+      wantedBy    = [ "multi-user.target" ];
+      after       = [ "local-fs.target" ];
+      serviceConfig.Type = "oneshot";
+      script = let
+        hash = builtins.hashString "sha256" (builtins.toJSON chromiumFirstRunTabs);
+      in ''
+        HASH_FILE="/persist/chromium-config.hash"
+        EXPECTED="${hash}"
+        if [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE" 2>/dev/null)" != "$EXPECTED" ]; then
+          for d in /home/*; do
+            rm -f "$d/.config/chromium/First Run"
+          done
+          echo "$EXPECTED" > "$HASH_FILE"
+        fi
+      '';
     };
 
     # Home Manager configuration
@@ -465,6 +513,12 @@ in
           htop
           ripgrep
           fd
+
+          # Terminal + shell tools
+          zellij    # terminal multiplexer
+          yazi      # file manager
+          lazygit   # git TUI
+          bat       # cat with syntax highlighting and paging
 
           # GPG / YubiKey
           gnupg
