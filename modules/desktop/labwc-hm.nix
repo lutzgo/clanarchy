@@ -631,7 +631,7 @@
       wallpaper = {
         enabled = true;
         overviewEnabled = false;
-        directory = "/home/sabine/Pictures/Wallpapers";
+        directory = "${config.home.homeDirectory}/Pictures/Wallpapers";
         monitorDirectories = [];
         enableMultiMonitorDirectories = false;
         showHiddenFiles = false;

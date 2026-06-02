@@ -48,7 +48,7 @@ in
     };
 
     # Home Manager configuration
-    home-manager.users.sabine = { pkgs, config, lib, ... }: {
+    home-manager.users.sabine = { pkgs, config, lib, osConfig, ... }: {
       home.username      = "sabine";
       home.homeDirectory = "/home/sabine";
       home.stateVersion  = "25.11";
@@ -67,6 +67,18 @@ in
       };
 
       programs.zsh.enable = true;
+
+      # Populate ~/Pictures/Wallpapers with the Stylix-generated wallpaper so
+      # Noctalia's wallpaper picker has something to display on first login.
+      # The activation hook runs before linkGeneration so the dir exists when
+      # home.file creates the symlink inside it.
+      home.activation.createWallpaperDir = lib.hm.dag.entryBefore ["linkGeneration"] ''
+        mkdir -p "$HOME/Pictures/Wallpapers"
+      '';
+      home.file."Pictures/Wallpapers/clanarchy.png" = {
+        force  = true;
+        source = osConfig.stylix.image;
+      };
 
       home.packages = with pkgs; [
         libreoffice
