@@ -44,14 +44,18 @@ Use this when disko must re-run (new disk layout, new machine). Requires booting
 
 **SSH key**: use the YubiKey ed25519 key already stored at `machines/miralda/yubikey_ed25519.pub`. This is the same key authorised on both machines, so you can SSH into the installer from miralda without extra setup.
 
-From the devShell, with the USB stick identified (e.g. `/dev/sdb` — confirm with `lsblk` first):
+From the devShell, with the USB stick identified (e.g. `/dev/sda` — confirm with `lsblk` first):
 
 ```bash
-clan flash --machine biene --disk /dev/sdb \
-  --ssh-pubkey "$(cat machines/miralda/yubikey_ed25519.pub)"
+clan flash write \
+  --flake https://git.clan.lol/clan/clan-core/archive/25.11.tar.gz \
+  --ssh-pubkey machines/miralda/yubikey_ed25519.pub \
+  --keymap us --language en_US.UTF-8 \
+  --disk main /dev/sda \
+  flash-installer
 ```
 
-> `clan flash` writes a NixOS installer image with your flake pre-loaded and the YubiKey pubkey embedded as the root authorized key. The target machine is specified so clan can embed machine-specific info (hostId etc.) into the installer.
+> `clan flash write` writes a generic NixOS installer with the YubiKey pubkey embedded as the root authorized key. `--ssh-pubkey` takes a **file path**, not key content — pass the path directly. Machine-specific config is applied later by `clan machines install`.
 
 **Warning**: `clan flash` wipes the target USB stick entirely. Double-check the device path.
 
