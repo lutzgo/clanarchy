@@ -73,8 +73,8 @@ in
 
     # Hibernate via clean shutdown (most compatible across firmwares).
     # Only meaningful when hybridSleep.enable = true.
-    systemd.sleep.extraConfig = lib.mkIf cfg.hybridSleep.enable ''
-      HibernateMode=shutdown
-    '';
+    systemd.sleep.settings.Sleep = lib.mkIf cfg.hybridSleep.enable {
+      HibernateMode = "shutdown";
+    };
   };
 }
