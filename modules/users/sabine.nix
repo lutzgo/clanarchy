@@ -48,7 +48,33 @@ in
     };
 
     # Home Manager configuration
-    home-manager.users.sabine = { pkgs, config, lib, osConfig, ... }: {
+    home-manager.users.sabine = { pkgs, config, lib, osConfig, ... }:
+    let
+      # Seed content for plugins.json — written as a writable regular file so
+      # Noctalia can update it at runtime (track download status, installed state).
+      # Unlike xdg.configFile (Nix store symlink), Noctalia can write back to this.
+      initialPluginsJson = pkgs.writeText "noctalia-plugins-seed.json" (builtins.toJSON {
+        sources = [
+          {
+            enabled = true;
+            name    = "Noctalia Plugins";
+            url     = "https://github.com/noctalia-dev/noctalia-plugins";
+          }
+        ];
+        states = {
+          "clipper"             = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "file-search"         = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "keybind-cheatsheet"  = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "network-manager-vpn" = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "screen-toolkit"      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "shell-profiles"      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "usb-drive-manager"   = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "valent-connect"      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+        };
+        version = 2;
+      });
+    in
+    {
       home.username      = "sabine";
       home.homeDirectory = "/home/sabine";
       home.stateVersion  = "25.11";
@@ -103,33 +129,21 @@ in
         fi
       '';
 
-      # Declare which Noctalia plugins are installed/enabled. Plugins
-      # installed via the Noctalia UI survive reboots (impermanence) but are
-      # re-set to this list on each rebuild. Add to the states map whenever
-      # a new plugin should be pinned declaratively.
-      xdg.configFile."noctalia/plugins.json" = {
-        force = true;
-        text = builtins.toJSON {
-          sources = [
-            {
-              enabled   = true;
-              name      = "Noctalia Plugins";
-              url       = "https://github.com/noctalia-dev/noctalia-plugins";
-            }
-          ];
-          states = {
-            "clipper"             = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-            "file-search"         = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-            "keybind-cheatsheet"  = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-            "network-manager-vpn" = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-            "screen-toolkit"      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-            "shell-profiles"      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-            "usb-drive-manager"   = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-            "valent-connect"      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          };
-          version = 2;
-        };
-      };
+      # Seed plugins.json as a writable regular file — Noctalia must be able to
+      # update it at runtime to track which plugin files have been downloaded.
+      # xdg.configFile would create a read-only Nix store symlink, which blocks
+      # the plugin installer and leaves all plugins in the "unconnected" state.
+      # This hook only writes the seed if the file is absent or still a symlink
+      # (i.e. left over from a previous xdg.configFile deployment). Once Noctalia
+      # has written its own state, subsequent rebuilds leave the file untouched.
+      home.activation.seedNoctaliaPlugins = lib.hm.dag.entryAfter ["linkGeneration"] ''
+        _json="$HOME/.config/noctalia/plugins.json"
+        if [ ! -e "$_json" ] || [ -L "$_json" ]; then
+          rm -f "$_json"
+          cp ${initialPluginsJson} "$_json"
+          chmod 644 "$_json"
+        fi
+      '';
     };
   };
 }
