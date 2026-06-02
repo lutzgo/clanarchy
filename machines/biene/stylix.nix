@@ -29,10 +29,10 @@ in {
         name = "Noto Color Emoji";
       };
       sizes = {
-        applications = 11;
-        terminal = 12;
-        desktop = 11;
-        popups = 11;
+        applications = 9;
+        terminal = 10;
+        desktop = 9;
+        popups = 9;
       };
     };
 

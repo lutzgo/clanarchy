@@ -11,7 +11,7 @@ in
     users.users.sabine = {
       isNormalUser = true;
       extraGroups  = [ "wheel" "networkmanager" "video" "audio" ];
-      shell        = pkgs.zsh;
+      shell        = pkgs.nushell;
       hashedPasswordFile = config.clan.core.vars.generators.sabine-password.files."hashed-password".path;
     };
 
@@ -57,6 +57,13 @@ in
         enable              = true;
         createDirectories   = true;
         setSessionVariables = true;
+      };
+
+      programs.nushell = {
+        enable      = true;
+        extraConfig = ''
+          $env.config.show_banner = false
+        '';
       };
 
       programs.zsh.enable = true;
