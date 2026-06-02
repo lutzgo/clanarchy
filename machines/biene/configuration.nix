@@ -1,4 +1,4 @@
-{ lib, ... }:
+{ lib, pkgs, ... }:
 {
   networking.hostName = "biene";
   networking.hostId   = "cd9ef50b";
@@ -37,6 +37,21 @@
 
   # Syncthing — run as sabine so it can write to /home/sabine/Public.
   services.syncthing.user = "sabine";
+
+  # Hybrid-sleep: the swap partition (see disko.nix) must be the resume device
+  # so the kernel can restore memory after hibernation. The GPT partition label
+  # "swap" is set by disko from the partition name in the partitions attrset.
+  boot.resumeDevice = "/dev/disk/by-partlabel/disk-main-swap";
+
+  # GUI applications available to all biene users (file manager, doc viewer,
+  # image viewer). gvfs provides virtual filesystem support for nautilus
+  # (network shares, MTP devices, trash, etc.).
+  environment.systemPackages = with pkgs; [
+    nautilus
+    evince
+    loupe
+  ];
+  services.gvfs.enable = true;
 
   system.stateVersion = "25.11";
 }

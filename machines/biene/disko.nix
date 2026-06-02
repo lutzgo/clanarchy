@@ -33,6 +33,16 @@
             };
           };
 
+          # 8 GB swap — matches biene's RAM, required for hybrid-sleep
+          # (suspend-to-both: RAM state is written to swap so the machine
+          # can hibernate if the battery dies while suspended).
+          swap = {
+            size = "8G";
+            content = {
+              type = "swap";
+            };
+          };
+
           zfs = {
             size = "100%";
             content = {

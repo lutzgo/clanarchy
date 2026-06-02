@@ -70,8 +70,10 @@
         module.name  = "@clanarchy/desktop";
         # miralda: Niri with Framework 13 display — default settings match hardware
         roles.niri.machines.miralda = { };
-        # biene: labwc with Noctalia shell (replaces GNOME/GDM)
-        roles.labwc.machines.biene = { };
+        # biene: labwc with Noctalia shell (replaces GNOME/GDM).
+        # 1366x768 panel — native resolution (1.0) avoids 1.25 default that
+        # shrinks usable logical space to 1093x614 on this low-res screen.
+        roles.labwc.machines.biene.settings.display.scale = 1.0;
       };
 
       # ── Users ───────────────────────────────────────────────────────────────
@@ -177,7 +179,6 @@
         roles.edge.machines.biene                       = { };
         # email — sabine
         roles.thunderbird.machines.biene.settings.user  = "sabine";
-        roles.geary.machines.biene.settings.user        = "sabine";
       };
 
     };

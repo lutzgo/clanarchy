@@ -36,6 +36,69 @@ gpgconf --kill gpg-agent && gpg --card-status
 
 **Important**: Always use `--no-reexec` (not `--fast`) with nixos-rebuild. Never use `--build-host localhost`.
 
+## Installing a Machine from Scratch
+
+Use this when disko must re-run (new disk layout, new machine). Requires booting the target from a Clan installer USB.
+
+### Step 1 — Create the installer USB
+
+**SSH key**: use the YubiKey ed25519 key already stored at `machines/miralda/yubikey_ed25519.pub`. This is the same key authorised on both machines, so you can SSH into the installer from miralda without extra setup.
+
+From the devShell, with the USB stick identified (e.g. `/dev/sdb` — confirm with `lsblk` first):
+
+```bash
+clan flash --machine biene --disk /dev/sdb \
+  --ssh-pubkey "$(cat machines/miralda/yubikey_ed25519.pub)"
+```
+
+> `clan flash` writes a NixOS installer image with your flake pre-loaded and the YubiKey pubkey embedded as the root authorized key. The target machine is specified so clan can embed machine-specific info (hostId etc.) into the installer.
+
+**Warning**: `clan flash` wipes the target USB stick entirely. Double-check the device path.
+
+### Step 2 — Boot the target machine
+
+Insert the USB into biene, boot from it (F12 or BIOS boot menu). The installer brings up a minimal NixOS with SSH on port 22.
+
+Find biene's IP (check your router/Fritz!Box, or use `arp-scan -l` from miralda):
+
+```bash
+ssh root@<biene-installer-ip>   # authenticates via YubiKey
+```
+
+### Step 3 — Install
+
+From the devShell on miralda:
+
+```bash
+clan machines install biene --target-host root@<biene-installer-ip>
+```
+
+This runs disko (partitions and formats the disk) then installs NixOS with all clan vars applied. After the machine reboots into the new system, use the normal deploy workflow:
+
+```bash
+deploy-biene   # or: BIENE_HOST=<ip> deploy-biene
+```
+
+### Post-install: Noctalia profile for Sabine
+
+After first login on biene:
+1. Noctalia starts with the default declarative settings from `labwc-hm.nix`.
+2. Plugins listed in `plugins.json` are declared — Noctalia re-downloads their source files from the plugin store on first run.
+3. Sabine configures her preferred layout via the Noctalia UI.
+4. She saves it: **Settings → Shell Profiles → Save Profile** → name it **"Sabine"**.
+5. Every subsequent `deploy-biene` rebuild auto-restores her profile via the HM activation hook in `modules/users/sabine.nix`.
+
+To pin the profile so it survives future fresh installs:
+```bash
+scp root@biene.local:/home/sabine/.config/noctalia/plugins/shell-profiles/assets/profiles/Sabine/settings.json \
+    modules/users/sabine-noctalia-settings.json
+```
+Then add to `modules/users/sabine.nix` (inside `home-manager.users.sabine`):
+```nix
+xdg.configFile."noctalia/plugins/shell-profiles/assets/profiles/Sabine/settings.json".source =
+  ./sabine-noctalia-settings.json;
+```
+
 ## Architecture
 
 ### Flake Structure

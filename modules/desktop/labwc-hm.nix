@@ -1129,7 +1129,7 @@
       };
 
       usb-drive-manager = {
-        autoMount = true;
+        autoMount = false;
         fileBrowser = "yazi";
         terminalCommand = "foot";
         showNotifications = true;
