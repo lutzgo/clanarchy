@@ -22,6 +22,9 @@
       default = 0.4;
       description = "Touchpad acceleration speed. Range: -1.0 (slowest) to 1.0 (fastest).";
     };
+
+    keepassxc.enable = lib.mkEnableOption "autostart KeePassXC password manager";
+    nextcloud.enable  = lib.mkEnableOption "autostart Nextcloud desktop sync client";
   };
 
   config = lib.mkIf config.clanarchy.desktop.labwc.enable {

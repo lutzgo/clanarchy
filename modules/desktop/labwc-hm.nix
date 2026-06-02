@@ -227,6 +227,7 @@
     force = true;
     text = ''
       uwsm app -- noctalia-shell &
+    '' + lib.optionalString osConfig.clanarchy.desktop.labwc.keepassxc.enable ''
       uwsm app -- keepassxc -- keepassxc --minimized &
     '';
     executable = true;
@@ -1344,11 +1345,10 @@
     slurp
     wl-clipboard
     playerctl
-    nextcloud-client
     wlopm
-  ];
+  ] ++ lib.optional osConfig.clanarchy.desktop.labwc.nextcloud.enable pkgs.nextcloud-client;
 
-  systemd.user.services.nextcloud-client = {
+  systemd.user.services.nextcloud-client = lib.mkIf osConfig.clanarchy.desktop.labwc.nextcloud.enable {
     Unit = {
       Description = "Nextcloud Desktop Client";
       After = ["graphical-session.target"];
