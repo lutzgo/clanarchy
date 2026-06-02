@@ -20,6 +20,10 @@
   clanarchy.users.lgo.enable   = true;
   clanarchy.users.admin.enable = true;
 
+  # Hybrid-sleep disabled until a swap partition is added to disko.nix.
+  # Re-enable (and set boot.resumeDevice) once the swap partition exists.
+  clanarchy.roles.laptop.hybridSleep.enable = false;
+
   # Unfree packages used on miralda.
   # nixpkgs.config.allowUnfreePredicate is evaluated at the NixOS module level (distinct
   # from pkgsForSystem's allowUnfree=true which applies in the flake perSystem context).
