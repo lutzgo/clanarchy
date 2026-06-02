@@ -70,6 +70,7 @@ in
           "shell-profiles"      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
           "usb-drive-manager"   = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
           "valent-connect"      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "todo"                = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
         };
         version = 2;
       });

@@ -1271,6 +1271,44 @@
   # internal home.file key, so adding force here would create a conflicting target).
   xdg.configFile."noctalia/colors.json".force = true;
   xdg.configFile."noctalia/settings.json".force = true;
+
+  # Seed/merge Noctalia plugins.json so the todo plugin (and others) are declared.
+  # If plugins.json is missing or still a Nix store symlink: seed with the full list.
+  # If it's a real file (managed by Noctalia at runtime): merge in any missing entries
+  # so existing plugin state (download status, versions) is preserved.
+  home.activation.seedNoctaliaPlugins =
+    let
+      seed = pkgs.writeText "noctalia-plugins-seed.json" (builtins.toJSON {
+        sources = [{ enabled = true; name = "Noctalia Plugins"; url = "https://github.com/noctalia-dev/noctalia-plugins"; }];
+        states = {
+          assistant-panel    = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          clipper            = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          keybind-cheatsheet = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          mirror-mirror      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          niri-auto-tile     = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          screen-recorder    = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          screenshot         = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          screen-toolkit     = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          usb-drive-manager  = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          valent-connect     = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          todo               = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+        };
+        version = 2;
+      });
+    in
+    lib.hm.dag.entryAfter ["linkGeneration"] ''
+      _json="$HOME/.config/noctalia/plugins.json"
+      if [ ! -e "$_json" ] || [ -L "$_json" ]; then
+        rm -f "$_json"
+        cp ${seed} "$_json"
+        chmod 644 "$_json"
+      else
+        _tmp=$(mktemp)
+        ${pkgs.jq}/bin/jq --slurpfile seed ${seed} \
+          '.states = ($seed[0].states + .states)' \
+          "$_json" > "$_tmp" && mv "$_tmp" "$_json"
+      fi
+    '';
   xdg.configFile."noctalia/plugins/clipper/settings.json".force = true;
   xdg.configFile."noctalia/plugins/niri-auto-tile/settings.json".force = true;
   xdg.configFile."noctalia/plugins/screen-recorder/settings.json".force = true;

@@ -26,8 +26,9 @@
   # are assigned via inventory.instances in clan.nix.
   # Home wifi is provisioned via the clan wifi service (clan.nix).
   # Fritz!Box is biene-specific — managed via the bespoke modules/wifi.nix.
-  clanarchy.hardware.cpu       = "intel";
-  clanarchy.users.admin.enable = true;
+  clanarchy.hardware.cpu              = "intel";
+  clanarchy.users.admin.enable        = true;
+  clanarchy.desktop.labwc.valent.enable = true;
 
   # Fritz!Box 7590 MX — biene-specific second wifi network.
   # Run `clan vars generate biene --generator wifi-fritzbox` to store the PSK.
