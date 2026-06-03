@@ -2,7 +2,7 @@
 let cfg = config.clanarchy.apps.media;
 in {
   options.clanarchy.apps.media.enable =
-    lib.mkEnableOption "media creation apps (OBS Studio, GIMP, darktable, Krita, gpu-screen-recorder, calibre)";
+    lib.mkEnableOption "media apps (OBS Studio, VLC, calibre)";
 
   config = lib.mkIf cfg.enable {
     programs.obs-studio = {
@@ -14,10 +14,7 @@ in {
     };
 
     environment.systemPackages = with pkgs; [
-      gimp
-      darktable
-      krita
-      gpu-screen-recorder
+      vlc
       calibre
     ];
   };

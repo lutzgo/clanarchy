@@ -5,16 +5,10 @@ in {
     lib.mkEnableOption "desktop utility apps (terminal, fastfetch, document tools, color calibration, LibreOffice)";
 
   config = lib.mkIf cfg.enable {
-    services.colord.enable = true;
-
     environment.systemPackages = with pkgs; [
       foot          # Wayland terminal emulator
       fastfetch     # system info
       libreoffice
-
-      # Color calibration
-      argyllcms
-      displaycal
 
       # Document tools
       gnome-decoder # QR code scanner

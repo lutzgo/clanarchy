@@ -44,13 +44,20 @@
   # "swap" is set by disko from the partition name in the partitions attrset.
   boot.resumeDevice = "/dev/disk/by-partlabel/disk-main-swap";
 
-  # GUI applications available to all biene users (file manager, doc viewer,
-  # image viewer). gvfs provides virtual filesystem support for nautilus
+  # App categories — package lists and services live in modules/apps/*.nix.
+  clanarchy.apps.graphics.simple.enable = true;
+  clanarchy.apps.media.enable           = true;
+  clanarchy.apps.gnomeCoreApps.enable   = true;
+  clanarchy.apps.desktopTools.enable    = true;
+  clanarchy.apps.flatpak.enable         = true;
+
+  # GUI applications available to all biene users (file manager, doc viewer).
+  # gvfs provides virtual filesystem support for nautilus
   # (network shares, MTP devices, trash, etc.).
+  # loupe (image viewer) comes from clanarchy.apps.graphics.simple.
   environment.systemPackages = with pkgs; [
     nautilus
     evince
-    loupe
   ];
   services.gvfs.enable = true;
 

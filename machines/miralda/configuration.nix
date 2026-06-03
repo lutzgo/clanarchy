@@ -40,11 +40,13 @@
     ];
 
   # App categories — package lists and services live in modules/apps/*.nix.
-  clanarchy.apps.media.enable         = true;
-  clanarchy.apps.communication.enable = true;
-  clanarchy.apps.containers.enable    = true;
-  clanarchy.apps.flatpak.enable       = true;
-  clanarchy.apps.desktopTools.enable  = true;
+  clanarchy.apps.graphics.simple.enable = true;
+  clanarchy.apps.graphics.power.enable  = true;
+  clanarchy.apps.media.enable           = true;
+  clanarchy.apps.communication.enable   = true;
+  clanarchy.apps.containers.enable      = true;
+  clanarchy.apps.flatpak.enable         = true;
+  clanarchy.apps.desktopTools.enable    = true;
 
   # clan vars generate runs as root, leaving shared vars root-owned.
   # Re-chown after every activation so lgo can enter devShell without sudo.
