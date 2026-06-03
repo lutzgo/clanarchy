@@ -151,10 +151,12 @@ Shared modules are imported by machines via their desktop/role modules:
 | File | Purpose |
 |------|---------|
 | `desktop/gnome.nix` | GNOME desktop: GDM, extensions, shared dconf, Sabine's dconf |
-| `desktop/niri.nix` | Niri compositor: UWSM, regreet, pipewire, fonts |
-| `desktop/niri-hm.nix` | Shared HM module for Niri users: Niri config, Noctalia, keybinds |
-| `desktop/labwc.nix` | labwc compositor: UWSM, regreet, pipewire, fonts, wlr XDG portal |
-| `desktop/labwc-hm.nix` | Shared HM module for labwc users: rc.xml keybinds, themerc-override (Stylix colors), kanshi display config, Noctalia |
+| `desktop/desktop-common.nix` | Shared NixOS config for all Noctalia-based Wayland compositors: regreet, pipewire, fonts, NetworkManager, Mullvad, Noctalia plugin runtime deps |
+| `desktop/noctalia-hm.nix` | Shared HM module for all desktop users: Noctalia settings, starship, swayidle, packages, activation hooks |
+| `desktop/niri.nix` | Niri compositor: UWSM session, XDG portal (gtk), fprintd, V4L2 loopback |
+| `desktop/niri-hm.nix` | Niri-specific HM: full KDL config (outputs, layout, keybinds, rules) |
+| `desktop/labwc.nix` | labwc compositor: UWSM session, XDG portal (wlr+gtk), Valent, PAM service |
+| `desktop/labwc-hm.nix` | labwc-specific HM: rc.xml keybinds, themerc-override (Stylix colors), kanshi display service |
 | `icon-theme.nix` | `clanarchy.iconTheme` option: Stylix-recolored Papirus-Dark; imported by niri, labwc, and gnome desktop modules |
 | `locale.nix` | `clanarchy.locale` option: language + keyboard layout/variant/options |
 | `users/admin.nix` | admin user: SSH keys, password, impermanence, HM stub |
@@ -163,7 +165,7 @@ Shared modules are imported by machines via their desktop/role modules:
 | `wifi.nix` | NetworkManager profile generator (clan var) |
 | `hardware/cpu.nix` | Intel/AMD microcode selection |
 | `networking.nix` | ZeroTier + DNS options |
-| `roles/laptop.nix` | Laptop role: fwupd, power-profiles-daemon, tlp |
+| `roles/laptop.nix` | Laptop role: fwupd (all laptops), thermald (Intel only), power-profiles-daemon, weekly Nix GC (14-day retention) |
 
 ### Clan Vars
 

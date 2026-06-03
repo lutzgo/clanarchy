@@ -20,7 +20,7 @@
 | Machine | Role | Status |
 |---------|------|--------|
 | `miralda` | Framework 13 AMD laptop, daily driver | active |
-| `biene` | Lenovo laptop, GNOME, sabine | active |
+| `biene` | Lenovo laptop, labwc, sabine | active |
 | `homeserver` | Headless server | planned |
 
 ## Navigation
