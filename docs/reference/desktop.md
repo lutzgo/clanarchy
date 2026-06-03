@@ -10,6 +10,9 @@ Desktop environment modules (Niri, GNOME, KDE). Enable exactly the one that appl
 | `clanarchy.desktop.labwc.display.scale` | `floating point number` | Output scale factor for the primary display (eDP-1). |
 | `clanarchy.desktop.labwc.enable` | `boolean` | Whether to enable labwc Wayland compositor with Noctalia. |
 | `clanarchy.desktop.labwc.input.pointerSpeed` | `floating point number` | Touchpad acceleration speed. Range: -1.0 (slowest) to 1.0 (fastest). |
+| `clanarchy.desktop.labwc.keepassxc.enable` | `boolean` | Whether to enable autostart KeePassXC password manager. |
+| `clanarchy.desktop.labwc.nextcloud.enable` | `boolean` | Whether to enable autostart Nextcloud desktop sync client. |
+| `clanarchy.desktop.labwc.valent.enable` | `boolean` | Whether to enable Valent KDE Connect daemon (for Noctalia valent-connect plugin). |
 | `clanarchy.desktop.niri.display.resolution.height` | `signed integer` | Vertical resolution of the primary display. |
 | `clanarchy.desktop.niri.display.resolution.width` | `signed integer` | Horizontal resolution of the primary display. |
 | `clanarchy.desktop.niri.display.scale` | `floating point number` | Output scale factor for the primary display (eDP-1). |
