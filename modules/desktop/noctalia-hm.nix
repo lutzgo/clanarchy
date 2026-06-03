@@ -1019,7 +1019,7 @@ in {
 
       cmd_duration = {
         min_time = 0;
-        format = "[](bold fg:yellow)[󰪢 $duration](bold bg:yellow fg:black)[](bold fg:yellow)";
+        format = "[](bold fg:yellow)[󰪢 $duration](bold bg:yellow fg:black)[](bold fg:yellow)";
       };
 
       directory = {
@@ -1028,12 +1028,12 @@ in {
         home_symbol = "  ";
         read_only = " 󰌾";
         style = "fg:black bg:green";
-        format = "[](bold fg:green)[󰉋 $path]($style)[](bold fg:green)";
+        format = "[](bold fg:green)[󰉋 $path]($style)[](bold fg:green)";
       };
 
       git_branch = {
         symbol = "󰘬";
-        format = "󰜥 [](bold fg:cyan)[$symbol $branch(:$remote_branch)](fg:black bg:cyan)[ ](bold fg:cyan)";
+        format = "󰜥 [](bold fg:cyan)[$symbol $branch(:$remote_branch)](fg:black bg:cyan)[ ](bold fg:cyan)";
         truncation_length = 12;
         truncation_symbol = "";
         style = "bg:cyan";
@@ -1064,7 +1064,7 @@ in {
 
       hostname = {
         ssh_only = false;
-        format = "[•$hostname](bg:cyan bold fg:black)[](bold fg:cyan)";
+        format = "[•$hostname](bg:cyan bold fg:black)[](bold fg:cyan)";
         trim_at = ".local";
         disabled = false;
       };
@@ -1072,7 +1072,7 @@ in {
       username = {
         style_user = "bold bg:cyan fg:black";
         style_root = "red bold";
-        format = "[](bold fg:cyan)[$user]($style)";
+        format = "[](bold fg:cyan)[$user]($style)";
         disabled = false;
         show_always = true;
       };

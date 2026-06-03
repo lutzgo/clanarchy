@@ -91,21 +91,24 @@ in
         bat
       ];
 
-      # Seed the "simple_mouse" native Noctalia profile on fresh installs.
-      # .config is persisted via impermanence, so this only runs when the profile
-      # directory is absent (first boot after clan machines install).
+      # Apply the "simple_mouse" native Noctalia profile on every rebuild.
+      # Runs after deSymlinkNoctalia (which converts noctalia-hm.nix symlinks to
+      # regular files) so the cp -f overwrites the HM-generated settings with the
+      # profile's settings, making simple_mouse the persistently active profile.
       # The profile files are archived in modules/users/sabine-noctalia/simple_mouse/.
-      home.activation.seedNoctaliaProfile = lib.hm.dag.entryAfter ["linkGeneration"] ''
+      home.activation.applyNoctaliaProfile = lib.hm.dag.entryAfter ["deSymlinkNoctalia"] ''
         _profile_dir="$HOME/.config/noctalia/profiles/simple_mouse"
-        if [ ! -d "$_profile_dir" ]; then
-          $DRY_RUN_CMD mkdir -p "$_profile_dir"
-          $DRY_RUN_CMD cp ${./sabine-noctalia/simple_mouse/settings.json}   "$_profile_dir/settings.json"
-          $DRY_RUN_CMD cp ${./sabine-noctalia/simple_mouse/colors.json}     "$_profile_dir/colors.json"
-          $DRY_RUN_CMD cp ${./sabine-noctalia/simple_mouse/plugins.json}    "$_profile_dir/plugins.json"
-          $DRY_RUN_CMD cp ${./sabine-noctalia/simple_mouse/wallpapers.json} "$_profile_dir/wallpapers.json"
-          $DRY_RUN_CMD cp ${./sabine-noctalia/simple_mouse/meta.json}       "$_profile_dir/meta.json"
-          $DRY_RUN_CMD chmod -R 644 "$_profile_dir"/*
-        fi
+        $DRY_RUN_CMD mkdir -p "$_profile_dir"
+        $DRY_RUN_CMD cp -f ${./sabine-noctalia/simple_mouse/settings.json}   "$_profile_dir/settings.json"
+        $DRY_RUN_CMD cp -f ${./sabine-noctalia/simple_mouse/colors.json}     "$_profile_dir/colors.json"
+        $DRY_RUN_CMD cp -f ${./sabine-noctalia/simple_mouse/plugins.json}    "$_profile_dir/plugins.json"
+        $DRY_RUN_CMD cp -f ${./sabine-noctalia/simple_mouse/wallpapers.json} "$_profile_dir/wallpapers.json"
+        $DRY_RUN_CMD cp -f ${./sabine-noctalia/simple_mouse/meta.json}       "$_profile_dir/meta.json"
+        $DRY_RUN_CMD chmod 644 "$_profile_dir"/*
+        # Apply as the active config (deSymlinkNoctalia already converted these to regular files)
+        $DRY_RUN_CMD cp -f ${./sabine-noctalia/simple_mouse/settings.json} "$HOME/.config/noctalia/settings.json"
+        $DRY_RUN_CMD cp -f ${./sabine-noctalia/simple_mouse/colors.json}   "$HOME/.config/noctalia/colors.json"
+        $DRY_RUN_CMD chmod 644 "$HOME/.config/noctalia/settings.json" "$HOME/.config/noctalia/colors.json"
       '';
 
     };
