@@ -1199,6 +1199,7 @@
         chmod 644 "$tmp"
         mv "$tmp" "$f"
       fi
+      rm -f "$f.bak"
     }
     _delink "$HOME/.config/noctalia/colors.json"
     _delink "$HOME/.config/noctalia/settings.json"
