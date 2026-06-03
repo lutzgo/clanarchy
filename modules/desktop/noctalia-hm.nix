@@ -10,8 +10,9 @@
   inputs,
   ...
 }: let
-  isNiri  = osConfig.clanarchy.desktop.niri.enable;
-  isLabwc = osConfig.clanarchy.desktop.labwc.enable;
+  # Safe checks: niri/labwc options only exist when the respective compositor module is imported.
+  isNiri  = (osConfig.clanarchy.desktop ? niri)  && osConfig.clanarchy.desktop.niri.enable;
+  isLabwc = (osConfig.clanarchy.desktop ? labwc) && osConfig.clanarchy.desktop.labwc.enable;
 in {
   imports = [
     inputs.noctalia.homeModules.default  # provides programs.noctalia-shell option
