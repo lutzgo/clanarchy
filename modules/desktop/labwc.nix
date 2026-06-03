@@ -30,7 +30,7 @@
 
   config = lib.mkIf config.clanarchy.desktop.labwc.enable {
     environment.systemPackages = with pkgs;
-      [ labwc wlopm ]
+      [ labwc wlopm swappy satty ]
       ++ lib.optionals config.clanarchy.desktop.labwc.valent.enable
            [ valent glib kdePackages.qtwebsockets ];
 
@@ -38,6 +38,11 @@
     # Must pass --sessions /run/current-system/sw/share/wayland-sessions;
     # never use --remember-session (panics after ZFS rollback wipes cache).
     programs.regreet.enable = true;
+
+    # Persist regreet state so it remembers the last user/session across reboots.
+    # state.toml records last_user and user_to_last_sess — without this the user
+    # must manually pick their name and session after every boot (root rolls back).
+    environment.persistence."/persist".directories = [ "/var/lib/regreet" ];
 
     # UWSM — session management for labwc.
     # Creates a uwsm-labwc.desktop session file picked up by regreet.

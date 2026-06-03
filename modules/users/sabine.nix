@@ -8,6 +8,10 @@ in
 
   config = lib.mkIf cfg.enable {
 
+    # nushell must be in /etc/shells for accounts-daemon to enumerate sabine.
+    # Without this regreet can't pre-select her; she'd have to type the username every login.
+    environment.shells = [ pkgs.nushell ];
+
     users.users.sabine = {
       isNormalUser = true;
       extraGroups  = [ "wheel" "networkmanager" "video" "audio" ];
@@ -66,6 +70,7 @@ in
           "file-search"         = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
           "keybind-cheatsheet"  = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
           "network-manager-vpn" = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "screen-shot-and-record" = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
           "screen-toolkit"      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
           "shell-profiles"      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
           "usb-drive-manager"   = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
@@ -95,18 +100,15 @@ in
 
       programs.zsh.enable = true;
 
-      # Populate ~/Pictures/Wallpapers with a writable copy of the Stylix wallpaper.
-      # home.file would create a read-only Nix store symlink; Noctalia's wallpaper
-      # scanner skips symlinks and never adds it to wallpapers.json, so the picker
-      # shows nothing.  Copying as a regular file lets the scanner find and index it.
-      # Always overwrite so the file stays current after rebuilds that change the design.
-      home.activation.seedWallpaper = lib.hm.dag.entryAfter ["linkGeneration"] ''
-        mkdir -p "$HOME/Pictures/Wallpapers"
-        _wp_tmp="$HOME/Pictures/Wallpapers/clanarchy.png.tmp"
-        cp ${osConfig.stylix.image} "$_wp_tmp"
-        chmod 644 "$_wp_tmp"
-        mv "$_wp_tmp" "$HOME/Pictures/Wallpapers/clanarchy.png"
-      '';
+      xdg.mimeApps = {
+        enable = true;
+        defaultApplications = {
+          "text/html"              = [ "librewolf.desktop" ];
+          "x-scheme-handler/http"  = [ "librewolf.desktop" ];
+          "x-scheme-handler/https" = [ "librewolf.desktop" ];
+          "application/xhtml+xml"  = [ "librewolf.desktop" ];
+        };
+      };
 
       home.packages = with pkgs; [
         libreoffice
@@ -114,20 +116,20 @@ in
         ripgrep
       ];
 
-      # Auto-apply the "Sabine" Noctalia shell profile after each HM activation.
-      # The profile is stored in the persisted shell-profiles plugin directory.
-      # Workflow: Sabine configures her preferred layout in the Noctalia UI →
-      # saves it as "Sabine" via Settings → Shell Profiles → Save Profile.
-      # Every subsequent rebuild then automatically restores her settings.
-      #
-      # To pin a profile in Nix (survive fresh installs), add:
-      #   xdg.configFile."noctalia/plugins/shell-profiles/assets/profiles/Sabine/settings.json".source = ./sabine-noctalia-settings.json;
-      home.activation.applyNoctaliaProfile = lib.hm.dag.entryAfter ["linkGeneration"] ''
-        _profile_dir="$HOME/.config/noctalia/plugins/shell-profiles/assets/profiles/Sabine"
-        _apply_script="$HOME/.config/noctalia/plugins/shell-profiles/assets/scripts/apply-profile.sh"
-        _cfg_dir="$HOME/.config/noctalia/"
-        if [ -d "$_profile_dir" ] && [ -f "$_apply_script" ]; then
-          $DRY_RUN_CMD sh "$_apply_script" "$_profile_dir" "$_cfg_dir"
+      # Seed the "simple_mouse" native Noctalia profile on fresh installs.
+      # .config is persisted via impermanence, so this only runs when the profile
+      # directory is absent (first boot after clan machines install).
+      # The profile files are archived in modules/users/sabine-noctalia/simple_mouse/.
+      home.activation.seedNoctaliaProfile = lib.hm.dag.entryAfter ["linkGeneration"] ''
+        _profile_dir="$HOME/.config/noctalia/profiles/simple_mouse"
+        if [ ! -d "$_profile_dir" ]; then
+          $DRY_RUN_CMD mkdir -p "$_profile_dir"
+          $DRY_RUN_CMD cp ${./sabine-noctalia/simple_mouse/settings.json}   "$_profile_dir/settings.json"
+          $DRY_RUN_CMD cp ${./sabine-noctalia/simple_mouse/colors.json}     "$_profile_dir/colors.json"
+          $DRY_RUN_CMD cp ${./sabine-noctalia/simple_mouse/plugins.json}    "$_profile_dir/plugins.json"
+          $DRY_RUN_CMD cp ${./sabine-noctalia/simple_mouse/wallpapers.json} "$_profile_dir/wallpapers.json"
+          $DRY_RUN_CMD cp ${./sabine-noctalia/simple_mouse/meta.json}       "$_profile_dir/meta.json"
+          $DRY_RUN_CMD chmod -R 644 "$_profile_dir"/*
         fi
       '';
 

@@ -1,0 +1,9 @@
+{
+  "screens": [
+    {
+      "name": "eDP-1",
+      "light": "/home/sabine/Pictures/Wallpapers/clanarchy.png",
+      "dark": "/home/sabine/Pictures/Wallpapers/clanarchy.png"
+    }
+  ]
+}

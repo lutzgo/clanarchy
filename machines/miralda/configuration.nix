@@ -17,6 +17,7 @@
   # machine-type and desktop roles are assigned via inventory.instances in clan.nix.
   # wifi networks are provisioned via the clan wifi service (inventory.instances.wifi).
   clanarchy.hardware.cpu       = "amd";
+  clanarchy.display.scale      = 1.25;
   clanarchy.users.lgo.enable   = true;
   clanarchy.users.admin.enable = true;
 

@@ -184,6 +184,7 @@
           ./modules/locale.nix
           ./modules/networking.nix
           ./modules/hardware/cpu.nix
+          ./modules/hardware/display.nix
           ./modules/users/admin.nix
           ./modules/users/sgo.nix
 
@@ -224,6 +225,7 @@
           ./modules/locale.nix
           ./modules/networking.nix
           ./modules/hardware/cpu.nix
+          ./modules/hardware/display.nix
           ./modules/users/admin.nix
           ./modules/wifi.nix
 
@@ -231,6 +233,7 @@
           ./machines/biene/configuration.nix
           ./machines/biene/disko.nix
           ./machines/biene/stylix.nix
+          ./machines/biene/wallpapers.nix
         ];
       };
 
