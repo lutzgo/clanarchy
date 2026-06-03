@@ -40,11 +40,12 @@ in
     environment.systemPackages =
       lib.optionals (config.clanarchy.hardware.cpu == "amd") [ pkgs.clinfo ];
 
-    # Framework-specific hardware — only assert opinions when framework.enable is true.
-    # Leaving fwupd unset when framework is off lets desktop modules (e.g. plasma6)
-    # set their own mkDefault without a priority conflict.
+    # Framework-specific hardware: fprintd + udev wake rule.
     services.fprintd.enable = lib.mkIf cfg.framework.enable (lib.mkDefault true);
-    services.fwupd.enable   = lib.mkIf cfg.framework.enable (lib.mkDefault true);
+
+    # fwupd — enabled for all laptops (Framework and non-Framework).
+    # Provides firmware updates via LVFS; see docs/guides/firmware-updates.md.
+    services.fwupd.enable = lib.mkDefault true;
 
     # Enrolled fingerprints must survive ZFS rollback.
     environment.persistence."/persist".directories =
@@ -59,8 +60,12 @@ in
       ACTION=="add", SUBSYSTEM=="acpi", KERNEL=="PNP0C0D:*", ATTR{power/wakeup}="disabled"
     '';
 
-    # Power management — power-profiles-daemon (NOT TLP — conflicts with Framework AMD)
+    # Power management — power-profiles-daemon for both AMD and Intel.
+    # AMD: amd_pstate EPP is managed automatically by the kernel + ppd.
+    # Intel: intel_pstate HWP/EPP managed by ppd; thermald adds thermal budget control.
+    # Do NOT enable TLP — it conflicts with power-profiles-daemon on Framework AMD.
     services.power-profiles-daemon.enable = true;
+    services.thermald.enable = config.clanarchy.hardware.cpu == "intel";
 
     # Lid-close behaviour:
     #   hybridSleep.enable=true  → hybrid-sleep on battery, suspend on AC
@@ -76,5 +81,14 @@ in
     systemd.sleep.settings.Sleep = lib.mkIf cfg.hybridSleep.enable {
       HibernateMode = "shutdown";
     };
+
+    # Nix store maintenance — weekly GC (14-day retention) + deduplication.
+    # Server role uses 30-day retention; laptops rebuild more frequently.
+    nix.gc = {
+      automatic = true;
+      dates     = "weekly";
+      options   = "--delete-older-than 14d";
+    };
+    nix.settings.auto-optimise-store = true;
   };
 }
