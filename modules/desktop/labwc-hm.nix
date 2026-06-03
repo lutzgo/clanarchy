@@ -510,6 +510,18 @@
               id = "plugin:valent-connect";
             }
             {
+              defaultSettings = {
+                profilesDir      = "";
+                icon             = "wand";
+                iconColor        = "primary";
+                includeWallpapers = true;
+                lastAppliedProfile = "";
+                backupEnabled    = true;
+                backupCount      = 5;
+              };
+              id = "plugin:shell-profiles";
+            }
+            {
               colorizeDistroLogo = false;
               colorizeSystemIcon = "secondary";
               customIconPath = "";

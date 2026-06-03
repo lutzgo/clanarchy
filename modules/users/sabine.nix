@@ -95,17 +95,18 @@ in
 
       programs.zsh.enable = true;
 
-      # Populate ~/Pictures/Wallpapers with the Stylix-generated wallpaper so
-      # Noctalia's wallpaper picker has something to display on first login.
-      # The activation hook runs before linkGeneration so the dir exists when
-      # home.file creates the symlink inside it.
-      home.activation.createWallpaperDir = lib.hm.dag.entryBefore ["linkGeneration"] ''
+      # Populate ~/Pictures/Wallpapers with a writable copy of the Stylix wallpaper.
+      # home.file would create a read-only Nix store symlink; Noctalia's wallpaper
+      # scanner skips symlinks and never adds it to wallpapers.json, so the picker
+      # shows nothing.  Copying as a regular file lets the scanner find and index it.
+      # Always overwrite so the file stays current after rebuilds that change the design.
+      home.activation.seedWallpaper = lib.hm.dag.entryAfter ["linkGeneration"] ''
         mkdir -p "$HOME/Pictures/Wallpapers"
+        _wp_tmp="$HOME/Pictures/Wallpapers/clanarchy.png.tmp"
+        cp ${osConfig.stylix.image} "$_wp_tmp"
+        chmod 644 "$_wp_tmp"
+        mv "$_wp_tmp" "$HOME/Pictures/Wallpapers/clanarchy.png"
       '';
-      home.file."Pictures/Wallpapers/clanarchy.png" = {
-        force  = true;
-        source = osConfig.stylix.image;
-      };
 
       home.packages = with pkgs; [
         libreoffice
