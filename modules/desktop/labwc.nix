@@ -30,9 +30,23 @@
 
   config = lib.mkIf config.clanarchy.desktop.labwc.enable {
     environment.systemPackages = with pkgs;
-      [ labwc wlopm swappy satty ]
+      [
+        labwc wlopm swappy satty
+        # Noctalia plugin runtime dependencies
+        calibre               # calibre-provider: book library search via >cb launcher
+        obs-studio            # obs-control: recording/streaming control from bar
+        khal                  # khal-agenda-widget: upcoming events for next 7 days
+        evolution-data-server # weekly-calendar: CalendarService.qml backend (D-Bus activated)
+        wlr-randr             # display-settings: live display info and configuration
+        fd                    # file-search: fast file lookup via >file launcher
+        networkmanagerapplet  # network-manager-vpn: nm-connection-editor for VPN profiles
+        kdePackages.qtwebsockets # hassio + obs-control: Qt6 WebSocket support
+      ]
       ++ lib.optionals config.clanarchy.desktop.labwc.valent.enable
-           [ valent glib kdePackages.qtwebsockets ];
+           [ valent glib ];
+
+    # Mullvad VPN — mullvad Noctalia plugin requires the daemon + mullvad CLI.
+    services.mullvad-vpn.enable = true;
 
     # ReGreet — GTK4 greeter via cage; Stylix-themed in stylix.nix.
     # Must pass --sessions /run/current-system/sw/share/wayland-sessions;

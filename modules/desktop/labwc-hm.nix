@@ -10,7 +10,8 @@
   ...
 }: {
   imports = [
-    inputs.noctalia.homeModules.default # provides programs.noctalia-shell option
+    inputs.noctalia.homeModules.default  # provides programs.noctalia-shell option
+    ./foot-hm.nix                        # shared foot terminal config
   ];
 
   # labwc window decoration colors — patches the active openbox theme with Stylix colors.
@@ -1218,51 +1219,7 @@
     package = osConfig.clanarchy.iconTheme.package;
   };
 
-  # Foot terminal
-  programs.foot = {
-    enable = true;
-    settings = {
-      main = {
-        term = "xterm-256color";
-        pad = "8x8";
-        resize-delay-ms = 100;
-        dpi-aware = "no";
-      };
-      bell = {
-        urgent = false;
-        notify = false;
-        visual = false;
-      };
-      scrollback = {
-        lines = 10000;
-        multiplier = 3.0;
-      };
-      url = {
-        launch = "xdg-open \${url}";
-        label-letters = "sadfjklewcmpgh";
-        osc8-underline = "url-mode";
-      };
-      cursor = {
-        style = "block";
-        blink = false;
-      };
-      mouse = {
-        hide-when-typing = true;
-        alternate-scroll-mode = "yes";
-      };
-      key-bindings = {
-        clipboard-copy = "Control+Shift+c XF86Copy";
-        clipboard-paste = "Control+Shift+v XF86Paste";
-        font-increase = "Control+plus Control+equal Control+KP_Add";
-        font-decrease = "Control+minus Control+KP_Subtract";
-        font-reset = "Control+0 Control+KP_0";
-        scrollback-up-page = "Shift+Page_Up";
-        scrollback-down-page = "Shift+Page_Down";
-        search-start = "Control+Shift+r";
-        show-urls-launch = "Control+Shift+o";
-      };
-    };
-  };
+  # Foot terminal — configured via the shared ./foot-hm.nix module (scale-aware font size).
 
   # Starship prompt — uses '' strings to preserve embedded Nerd Font codepoints.
   programs.starship = {

@@ -10,8 +10,9 @@
   ...
 }: {
   imports = [
-    inputs.niri-flake.homeModules.config # provides programs.niri.settings
-    inputs.noctalia.homeModules.default # provides programs.noctalia-shell option
+    inputs.niri-flake.homeModules.config  # provides programs.niri.settings
+    inputs.noctalia.homeModules.default   # provides programs.noctalia-shell option
+    ./foot-hm.nix                         # shared foot terminal config
   ];
 
   # Niri user config — declarative settings (niri-flake homeModules.config maps to KDL)
@@ -1281,17 +1282,28 @@
       seed = pkgs.writeText "noctalia-plugins-seed.json" (builtins.toJSON {
         sources = [{ enabled = true; name = "Noctalia Plugins"; url = "https://github.com/noctalia-dev/noctalia-plugins"; }];
         states = {
-          assistant-panel    = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          clipper            = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          keybind-cheatsheet = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          mirror-mirror      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          niri-auto-tile     = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          screen-recorder    = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          screenshot         = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          screen-toolkit     = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          usb-drive-manager  = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          valent-connect     = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          todo               = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          assistant-panel        = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          calibre-provider       = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          clipper                = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          color-scheme-creator   = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          display-settings       = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          hassio                 = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          khal-agenda-widget     = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          keybind-cheatsheet     = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          mirror-mirror          = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          mullvad                = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          niri-auto-tile         = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          nvim-session-provider  = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          obs-control            = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          polkit-agent           = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          screen-recorder        = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          screen-shot-and-record = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          screenshot             = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          screen-toolkit         = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          todo                   = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          usb-drive-manager      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          valent-connect         = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          weekly-calendar        = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
         };
         version = 2;
       });
@@ -1327,52 +1339,7 @@
     package = osConfig.clanarchy.iconTheme.package;
   };
 
-  # Foot terminal — Stylix manages colors and font (MonaspiceAr via stylix.fonts.monospace).
-  # dpi-aware=no: Niri handles HiDPI scaling at the compositor level; foot must not double-scale.
-  programs.foot = {
-    enable = true;
-    settings = {
-      main = {
-        term = "xterm-256color";
-        pad = "8x8";
-        resize-delay-ms = 100;
-        dpi-aware = "no";
-      };
-      bell = {
-        urgent = false;
-        notify = false;
-        visual = false;
-      };
-      scrollback = {
-        lines = 10000;
-        multiplier = 3.0;
-      };
-      url = {
-        launch = "xdg-open \${url}";
-        label-letters = "sadfjklewcmpgh";
-        osc8-underline = "url-mode";
-      };
-      cursor = {
-        style = "block";
-        blink = false;
-      };
-      mouse = {
-        hide-when-typing = true;
-        alternate-scroll-mode = "yes";
-      };
-      key-bindings = {
-        clipboard-copy = "Control+Shift+c XF86Copy";
-        clipboard-paste = "Control+Shift+v XF86Paste";
-        font-increase = "Control+plus Control+equal Control+KP_Add";
-        font-decrease = "Control+minus Control+KP_Subtract";
-        font-reset = "Control+0 Control+KP_0";
-        scrollback-up-page = "Shift+Page_Up";
-        scrollback-down-page = "Shift+Page_Down";
-        search-start = "Control+Shift+r";
-        show-urls-launch = "Control+Shift+o";
-      };
-    };
-  };
+  # Foot terminal — configured via the shared ./foot-hm.nix module (scale-aware font size).
 
   # Starship prompt — copied verbatim from ~/nixconfig/home-modules/shell/starship.nix.
   # Uses '' strings to preserve embedded Nerd Font codepoints literally (Nix has no \u escapes).

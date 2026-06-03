@@ -117,7 +117,21 @@
     boot.extraModprobeConfig = lib.mkAfter ''
       options v4l2loopback devices=1 video_nr=10 card_label="OBS Virtual Camera" exclusive_caps=1
     '';
-    environment.systemPackages = [pkgs.v4l-utils];
+    environment.systemPackages = with pkgs; [
+      v4l-utils
+      # Noctalia plugin runtime dependencies
+      calibre               # calibre-provider: book library search via >cb launcher
+      obs-studio            # obs-control: recording/streaming control from bar
+      khal                  # khal-agenda-widget: upcoming events for next 7 days
+      evolution-data-server # weekly-calendar: CalendarService.qml backend (D-Bus activated)
+      wlr-randr             # display-settings: live display info and configuration
+      fd                    # file-search: fast file lookup via >file launcher
+      networkmanagerapplet  # network-manager-vpn: nm-connection-editor for VPN profiles
+      kdePackages.qtwebsockets # hassio + obs-control: Qt6 WebSocket support
+    ];
+
+    # Mullvad VPN — mullvad Noctalia plugin requires the daemon + mullvad CLI.
+    services.mullvad-vpn.enable = true;
 
     # fprintd service (controlled by fprintd option)
     services.fprintd.enable = lib.mkDefault config.clanarchy.desktop.niri.fprintd.enable;

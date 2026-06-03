@@ -66,16 +66,25 @@ in
           }
         ];
         states = {
-          "clipper"             = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "file-search"         = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "keybind-cheatsheet"  = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "network-manager-vpn" = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "calibre-provider"       = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "clipper"                = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "color-scheme-creator"   = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "display-settings"       = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "file-search"            = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "hassio"                 = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "khal-agenda-widget"     = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "keybind-cheatsheet"     = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "mullvad"                = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "network-manager-vpn"    = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "obs-control"            = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "polkit-agent"           = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
           "screen-shot-and-record" = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "screen-toolkit"      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "shell-profiles"      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "usb-drive-manager"   = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "valent-connect"      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "todo"                = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "screen-toolkit"         = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "shell-profiles"         = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "todo"                   = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "usb-drive-manager"      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "valent-connect"         = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
+          "weekly-calendar"        = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
         };
         version = 2;
       });
