@@ -37,7 +37,32 @@ The firewall is opened automatically by the clan zerotier instance.
 
 ---
 
-## Testing connectivity from a different network
+## Checking connectivity on a machine (run on the machine itself)
+
+When a machine is on an unfamiliar network (e.g. a mobile hotspot), run these on it to confirm ZeroTier is working before trying to deploy from miralda.
+
+```bash
+# 1. Service running?
+systemctl is-active zerotierone
+# Expected: active
+
+# 2. ZeroTier interface up and assigned an IP?
+ip addr show altname zerotier
+# Expected: a zt… interface with an inet6 address starting with fdda:
+
+# 3. Can reach miralda via mDNS over ZeroTier?
+ping miralda.local
+# Expected: replies from miralda's ZeroTier IPv6 (fdda:…)
+
+# 4. SSH to miralda as a final end-to-end check
+ssh lgo@miralda.local
+```
+
+If step 3 works, `deploy-biene` from miralda will also work — they use the same path.
+
+---
+
+## Testing connectivity from miralda to biene
 
 Run these steps in order until something fails — that pinpoints where the problem is.
 
@@ -63,21 +88,19 @@ ip addr show altname zerotier
 Expected output includes a `zt…` interface with an `inet6` address in the clan subnet (`fdda:…`).
 If the interface is missing, ZeroTier hasn't joined the network yet — check `journalctl -u zerotierone -n 50`.
 
-### 3. Ping the target machine via mDNS
+### 3. Ping biene via mDNS
 
 ```bash
-ping biene.local      # from miralda
-ping miralda.local    # from biene
+ping biene.local
 ```
 
-`ping` resolves `*.local` via Avahi, which reflects mDNS across the ZeroTier interface.
-The reply will come from the machine's ZeroTier IPv6 address — this confirms end-to-end connectivity.
+`ping` resolves `biene.local` via Avahi, which reflects mDNS across the ZeroTier interface.
+The reply will come from biene's ZeroTier IPv6 address — this confirms end-to-end connectivity.
 
-If mDNS fails but you know the ZeroTier IPv6, ping it directly:
+If mDNS fails, ping the ZeroTier IPv6 directly:
 
 ```bash
-# Read from the clan var on the target machine, or check `ip addr show altname zerotier` there
-ping fdda:106a:123a:d561:1099:93da:xxxx:xxxx
+ping fdda:106a:123a:d561:1099:93da:ef5d:598c   # biene's fixed ZeroTier IPv6
 ```
 
 ### 4. SSH test
@@ -85,6 +108,7 @@ ping fdda:106a:123a:d561:1099:93da:xxxx:xxxx
 ```bash
 ssh lgo@miralda.goclan.org    # via public DNS (always works if ZT is up)
 ssh lgo@miralda.local         # via mDNS over ZeroTier
+ssh lgo@biene.local           # biene via mDNS over ZeroTier
 ```
 
 !!! note "YubiKey required for SSH"
@@ -94,12 +118,13 @@ ssh lgo@miralda.local         # via mDNS over ZeroTier
 
 ### 5. Deploy connectivity
 
-`deploy` targets `root@miralda.goclan.org`.
-If DNS resolves and SSH works (step 4), `deploy` will work.
+`deploy` targets `root@miralda.goclan.org` (public DNS — always reachable).
+`deploy-biene` defaults to `root@biene.local` (mDNS over ZeroTier).
 To verify before deploying:
 
 ```bash
 ssh root@miralda.goclan.org hostname
+ssh root@biene.local hostname
 ```
 
 ---
@@ -124,18 +149,17 @@ If it stays unreachable, check whether UDP is blocked on your current network
 ### `biene` not reachable from a different network
 
 `biene.skynet.lan` only resolves on the home LAN.
-Use `biene.local` (mDNS via ZeroTier) instead:
+`deploy-biene` defaults to `biene.local` (mDNS over ZeroTier), so as long as ZeroTier is up it will work from any network.
+
+If `biene.local` doesn't resolve yet (ZeroTier still establishing), override with the ZeroTier IPv6 directly:
 
 ```bash
-ssh sabine@biene.local
+BIENE_HOST=fdda:106a:123a:d561:1099:93da:ef5d:598c deploy-biene
 ```
 
-`deploy-biene` hardcodes `root@biene.skynet.lan`.
-From outside the home network, use the ZeroTier IPv6 directly:
+To SSH manually:
 
 ```bash
-nixos-rebuild switch \
-  --flake .#biene \
-  --target-host root@fdda:106a:123a:d561:1099:93da:ef5d:598c \
-  --no-reexec -j auto
+ssh sabine@biene.local                                        # mDNS over ZeroTier (preferred)
+ssh sabine@fdda:106a:123a:d561:1099:93da:ef5d:598c           # ZeroTier IPv6 directly
 ```
