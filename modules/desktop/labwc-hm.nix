@@ -1170,6 +1170,34 @@
   xdg.configFile."noctalia/plugins/keybind-cheatsheet/settings.json".force = true;
   xdg.configFile."noctalia/plugins/usb-drive-manager/settings.json".force = true;
 
+  # Noctalia settings/plugin files are managed by the noctalia HM module via
+  # xdg.configFile with force=true, which places read-only Nix store symlinks.
+  # Noctalia needs to write back to these files at runtime (saving settings,
+  # tracking plugin state). This hook runs after linkGeneration and converts
+  # every Noctalia-owned symlink to a writable regular file. The Nix-defined
+  # defaults are re-applied on every rebuild (symlink recreated then converted).
+  home.activation.deSymlinkNoctalia = lib.hm.dag.entryAfter ["linkGeneration"] ''
+    _delink() {
+      local f="$1"
+      if [ -L "$f" ]; then
+        local src
+        src=$(readlink "$f")
+        local tmp="${f}.tmp"
+        cp "$src" "$tmp"
+        chmod 644 "$tmp"
+        mv "$tmp" "$f"
+      fi
+    }
+    _delink "$HOME/.config/noctalia/colors.json"
+    _delink "$HOME/.config/noctalia/settings.json"
+    _delink "$HOME/.config/noctalia/plugins/clipper/settings.json"
+    _delink "$HOME/.config/noctalia/plugins/screen-recorder/settings.json"
+    _delink "$HOME/.config/noctalia/plugins/assistant-panel/settings.json"
+    _delink "$HOME/.config/noctalia/plugins/keybind-cheatsheet/settings.json"
+    _delink "$HOME/.config/noctalia/plugins/usb-drive-manager/settings.json"
+    _delink "$HOME/.cache/noctalia/wallpapers.json"
+  '';
+
   gtk.gtk4.theme = null;
 
   gtk.iconTheme = {
