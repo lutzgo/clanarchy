@@ -52,44 +52,7 @@ in
     };
 
     # Home Manager configuration
-    home-manager.users.sabine = { pkgs, config, lib, osConfig, ... }:
-    let
-      # Seed content for plugins.json — written as a writable regular file so
-      # Noctalia can update it at runtime (track download status, installed state).
-      # Unlike xdg.configFile (Nix store symlink), Noctalia can write back to this.
-      initialPluginsJson = pkgs.writeText "noctalia-plugins-seed.json" (builtins.toJSON {
-        sources = [
-          {
-            enabled = true;
-            name    = "Noctalia Plugins";
-            url     = "https://github.com/noctalia-dev/noctalia-plugins";
-          }
-        ];
-        states = {
-          "calibre-provider"       = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "clipper"                = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "color-scheme-creator"   = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "display-settings"       = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "file-search"            = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "hassio"                 = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "khal-agenda-widget"     = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "keybind-cheatsheet"     = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "mullvad"                = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "network-manager-vpn"    = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "obs-control"            = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "polkit-agent"           = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "screen-shot-and-record" = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "screen-toolkit"         = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "shell-profiles"         = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "todo"                   = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "usb-drive-manager"      = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "valent-connect"         = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-          "weekly-calendar"        = { enabled = true; sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins"; };
-        };
-        version = 2;
-      });
-    in
-    {
+    home-manager.users.sabine = { pkgs, config, lib, osConfig, ... }: {
       home.username      = "sabine";
       home.homeDirectory = "/home/sabine";
       home.stateVersion  = "25.11";
@@ -123,6 +86,9 @@ in
         libreoffice
         htop
         ripgrep
+        zellij
+        yazi
+        bat
       ];
 
       # Seed the "simple_mouse" native Noctalia profile on fresh installs.
@@ -142,21 +108,6 @@ in
         fi
       '';
 
-      # Seed plugins.json as a writable regular file — Noctalia must be able to
-      # update it at runtime to track which plugin files have been downloaded.
-      # xdg.configFile would create a read-only Nix store symlink, which blocks
-      # the plugin installer and leaves all plugins in the "unconnected" state.
-      # This hook only writes the seed if the file is absent or still a symlink
-      # (i.e. left over from a previous xdg.configFile deployment). Once Noctalia
-      # has written its own state, subsequent rebuilds leave the file untouched.
-      home.activation.seedNoctaliaPlugins = lib.hm.dag.entryAfter ["linkGeneration"] ''
-        _json="$HOME/.config/noctalia/plugins.json"
-        if [ ! -e "$_json" ] || [ -L "$_json" ]; then
-          rm -f "$_json"
-          cp ${initialPluginsJson} "$_json"
-          chmod 644 "$_json"
-        fi
-      '';
     };
   };
 }
