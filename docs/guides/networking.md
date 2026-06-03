@@ -97,10 +97,14 @@ ping biene.local
 `ping` resolves `biene.local` via Avahi, which reflects mDNS across the ZeroTier interface.
 The reply will come from biene's ZeroTier IPv6 address — this confirms end-to-end connectivity.
 
-If mDNS fails, ping the ZeroTier IPv6 directly:
+If mDNS fails, get biene's ZeroTier IPv6 from biene itself and ping it directly:
 
 ```bash
-ping fdda:106a:123a:d561:1099:93da:ef5d:598c   # biene's fixed ZeroTier IPv6
+# On biene: find the ZeroTier IPv6
+ip -6 addr show altname zerotier
+
+# On miralda: ping that address
+ping <biene-zt-ipv6>
 ```
 
 ### 4. SSH test
@@ -151,15 +155,19 @@ If it stays unreachable, check whether UDP is blocked on your current network
 `biene.skynet.lan` only resolves on the home LAN.
 `deploy-biene` defaults to `biene.local` (mDNS over ZeroTier), so as long as ZeroTier is up it will work from any network.
 
-If `biene.local` doesn't resolve yet (ZeroTier still establishing), override with the ZeroTier IPv6 directly:
+If `biene.local` doesn't resolve yet (ZeroTier still establishing), get biene's ZeroTier IPv6 from biene itself and override:
 
 ```bash
-BIENE_HOST=fdda:106a:123a:d561:1099:93da:ef5d:598c deploy-biene
+# On biene: find the ZeroTier IPv6
+ip -6 addr show altname zerotier
+
+# On miralda: deploy using that address
+BIENE_HOST=<biene-zt-ipv6> deploy-biene
 ```
 
 To SSH manually:
 
 ```bash
-ssh sabine@biene.local                                        # mDNS over ZeroTier (preferred)
-ssh sabine@fdda:106a:123a:d561:1099:93da:ef5d:598c           # ZeroTier IPv6 directly
+ssh sabine@biene.local          # mDNS over ZeroTier (preferred)
+ssh sabine@<biene-zt-ipv6>     # ZeroTier IPv6 directly
 ```

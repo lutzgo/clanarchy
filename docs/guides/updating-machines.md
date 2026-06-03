@@ -36,13 +36,11 @@ Override the target host with `BIENE_HOST`:
 
 ```bash
 # Use the ZeroTier IPv6 if biene.local hasn't resolved yet
-BIENE_HOST=fdda:106a:123a:d561:1099:93da:ef5d:598c deploy-biene
+# (get the address from biene: ip -6 addr show altname zerotier)
+BIENE_HOST=<biene-zt-ipv6> deploy-biene
 
 # Use the LAN hostname when on the home network
 BIENE_HOST=biene.skynet.lan deploy-biene
-
-# Use the LAN IP as a last resort
-BIENE_HOST=10.0.10.105 deploy-biene
 ```
 
 See [Networking — biene not reachable from a different network](networking.md#biene-not-reachable-from-a-different-network) for connectivity checks before deploying.
