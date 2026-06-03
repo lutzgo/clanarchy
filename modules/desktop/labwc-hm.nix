@@ -1180,9 +1180,9 @@
     _delink() {
       local f="$1"
       if [ -L "$f" ]; then
-        local src
+        local src tmp
         src=$(readlink "$f")
-        local tmp="${f}.tmp"
+        tmp="$f.tmp"
         cp "$src" "$tmp"
         chmod 644 "$tmp"
         mv "$tmp" "$f"
