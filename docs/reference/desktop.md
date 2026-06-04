@@ -22,3 +22,5 @@ Desktop environment modules (Niri, GNOME, KDE). Enable exactly the one that appl
 | `clanarchy.desktop.niri.opacity.focused` | `floating point number` | Baseline window opacity for focused windows. |
 | `clanarchy.desktop.niri.opacity.unfocused` | `floating point number` | Window opacity for unfocused windows. |
 | `clanarchy.desktop.niri.wallpaper.workspaceColors` | `list of string` | Per-workspace accent colors (5 entries for workspaces 1-5). Reserved for future Noctalia workspace theming. |
+| `clanarchy.iconTheme.name` | `string` | GTK icon theme name applied to all graphical users. Must match the Name field in the theme package's index.theme.  |
+| `clanarchy.iconTheme.package` | `package` | Icon theme package.  The default builds a Stylix-recolored Papirus-Dark: folder icons are tinted with the Stylix base0D accent color. Set to pkgs.papirus-icon-theme (and name to "Papirus-Dark") to opt out of the color customization.  |
