@@ -49,7 +49,7 @@ PAGES: dict[str, dict] = {
     "hardware": {
         "title": "Hardware",
         "intro": "Hardware-specific options. Set these to match the physical machine.",
-        "prefixes": ["clanarchy.hardware."],
+        "prefixes": ["clanarchy.hardware.", "clanarchy.display.", "clanarchy.locale."],
     },
     "roles": {
         "title": "Roles",
@@ -59,7 +59,7 @@ PAGES: dict[str, dict] = {
     "desktop": {
         "title": "Desktop",
         "intro": "Desktop environment modules (Niri, GNOME, KDE). Enable exactly the one that applies to the machine.",
-        "prefixes": ["clanarchy.desktop."],
+        "prefixes": ["clanarchy.desktop.", "clanarchy.iconTheme."],
     },
     "wifi": {
         "title": "WiFi",
@@ -70,6 +70,11 @@ PAGES: dict[str, dict] = {
         "title": "Users",
         "intro": "Per-user profile options. Enable the relevant user module for each machine.",
         "prefixes": ["clanarchy.users."],
+    },
+    "apps": {
+        "title": "Apps",
+        "intro": "Optional application bundles. Enable the sets that apply to a machine.",
+        "prefixes": ["clanarchy.apps."],
     },
 }
 

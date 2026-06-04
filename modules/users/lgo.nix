@@ -34,6 +34,10 @@ in
 
   config = lib.mkIf cfg.enable {
 
+    # nushell must be in /etc/shells for accounts-daemon to enumerate lgo.
+    # Without this regreet can't pre-select them; they'd have to type the username every login.
+    environment.shells = [ pkgs.nushell ];
+
     # CalDAV sync: push org TODOs/habits to Nextcloud as VTODO entries.
     clanarchy.caldavSync = {
       enable        = true;

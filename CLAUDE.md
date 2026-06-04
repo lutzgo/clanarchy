@@ -164,8 +164,16 @@ Shared modules are imported by machines via their desktop/role modules:
 | `users/sabine.nix` | sabine user: impermanence, HM config |
 | `wifi.nix` | NetworkManager profile generator (clan var) |
 | `hardware/cpu.nix` | Intel/AMD microcode selection |
+| `hardware/display.nix` | `clanarchy.display.scale` option: console font/mode scaling for pre-compositor contexts (boot, TTY) |
 | `networking.nix` | ZeroTier + DNS options |
 | `roles/laptop.nix` | Laptop role: fwupd (all laptops), thermald (Intel only), power-profiles-daemon, weekly Nix GC (14-day retention) |
+| `apps/communication.nix` | `clanarchy.apps.communication`: messaging apps (Valent, etc.) |
+| `apps/containers.nix` | `clanarchy.apps.containers`: Podman / container tooling |
+| `apps/desktop-tools.nix` | `clanarchy.apps.desktopTools`: desktop utilities bundle |
+| `apps/flatpak.nix` | `clanarchy.apps.flatpak`: Flatpak + Flathub remote |
+| `apps/gnome-core.nix` | `clanarchy.apps.gnomeCoreApps`: core GNOME app set |
+| `apps/graphics.nix` | `clanarchy.apps.graphics`: graphics/creative apps (GIMP, Inkscape, etc.) |
+| `apps/media.nix` | `clanarchy.apps.media`: media playback apps |
 
 ### Clan Vars
 
