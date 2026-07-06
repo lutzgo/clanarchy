@@ -30,8 +30,10 @@ Before merging, confirm:
    nix build .#nixosConfigurations.miralda.config.system.build.toplevel --no-link
    nix build .#nixosConfigurations.biene.config.system.build.toplevel   --no-link
    ```
-4. **Deployment is safe.** If the PR changes anything under `machines/*/configuration.nix`, `disko.nix`, `impermanence.nix`, `yubikey.nix`, or `desktop/*.nix`, dry-run a deploy from the branch first:
+4. **Deployment is safe.** If the PR changes anything under `machines/*/configuration.nix`, `disko.nix`, `impermanence.nix`, `yubikey.nix`, or `desktop/*.nix`, either boot the branch in a VM first (fast, no hardware risk — see [testing-a-pr.md](testing-a-pr.md)) or dry-run a deploy from the branch:
    ```bash
+   test-pr <n>          # boot the PR in QEMU (default machine: biene)
+   # — or —
    git switch <branch>
    deploy boot          # miralda — stages for next reboot, does not activate
    deploy-biene boot    # biene
