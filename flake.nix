@@ -335,7 +335,12 @@
             });
           })
 
+          # Stylix's kmscon target still writes services.kmscon.config, which
+          # was restructured in 26.05+. Same workaround as miralda/biene.
+          { disabledModules = [ "${inputs.stylix}/modules/kmscon/nixos.nix" ]; }
+
           inputs.impermanence.nixosModules.impermanence
+          inputs.stylix.nixosModules.stylix
           inputs.home-manager.nixosModules.home-manager
           inputs.jovian-nixos.nixosModules.default
 
@@ -361,6 +366,7 @@
           ./machines/birte/configuration.nix
           ./machines/birte/disko.nix
           ./machines/birte/jovian.nix
+          ./machines/birte/stylix.nix
         ];
       };
 
