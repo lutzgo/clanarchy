@@ -25,19 +25,10 @@
   # Re-enable (and set boot.resumeDevice) once the swap partition exists.
   clanarchy.roles.laptop.hybridSleep.enable = false;
 
-  # Unfree packages used on miralda.
-  # nixpkgs.config.allowUnfreePredicate is evaluated at the NixOS module level (distinct
-  # from pkgsForSystem's allowUnfree=true which applies in the flake perSystem context).
-  # Without this, unfree packages in environment.systemPackages and home.packages fail.
-  nixpkgs.config.allowUnfreePredicate = pkg:
-    builtins.elem (lib.getName pkg) [
-      # communication.nix
-      "anytype" "anytype-heart" "signal-desktop"
-      # lgo.nix
-      "claude-code"
-      # @clanarchy/software roles (chrome, edge)
-      "google-chrome" "microsoft-edge"
-    ];
+  # 26.05: pkgsForSystem's config only reaches clanInternals.machines.<sys>.<name>,
+  # NOT nixosConfigurations.<name> (which clan machines update uses). So we still
+  # have to set allowUnfree at the NixOS module level for the deploy path.
+  nixpkgs.config.allowUnfree = true;
 
   # App categories — package lists and services live in modules/apps/*.nix.
   clanarchy.apps.graphics.simple.enable = true;

@@ -16,11 +16,9 @@
     keyboard.layout = "de";
   };
 
-  # Unfree packages used on biene (microsoft-edge via @clanarchy/software edge role).
-  # pkgsForSystem sets allowUnfree = true but the NixOS nixpkgs.config layer
-  # overrides that back to false unless an explicit predicate is declared here.
-  nixpkgs.config.allowUnfreePredicate = pkg:
-    builtins.elem (lib.getName pkg) [ "microsoft-edge" ];
+  # See miralda: pkgsForSystem's config doesn't propagate to nixosConfigurations,
+  # which is what clan machines update uses.
+  nixpkgs.config.allowUnfree = true;
 
   # machine-type (laptop, no Framework hw) and desktop (gnome + sabine dconf)
   # are assigned via inventory.instances in clan.nix.

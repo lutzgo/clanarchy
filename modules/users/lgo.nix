@@ -56,7 +56,10 @@ in
 
     users.users.lgo = {
       isNormalUser = true;
-      extraGroups  = [ "wheel" "networkmanager" "video" "audio" "input" ];
+      extraGroups  = [ "wheel" "networkmanager" "video" "audio" "input" ]
+        # `podman` grants access to /run/docker.sock when the Docker-compatible
+        # socket is enabled — required for rootless `docker compose`.
+        ++ lib.optional config.clanarchy.apps.containers.enable "podman";
       shell        = pkgs.nushell;
       hashedPasswordFile = config.clan.core.vars.generators.lgo-password.files."hashed-password".path;
       openssh.authorizedKeys.keys = [
@@ -284,8 +287,9 @@ in
         };
 
         programs.fzf = {
-          enable               = true;
-          enableZshIntegration = true;
+          enable                   = true;
+          enableZshIntegration     = true;
+          enableNushellIntegration = false;   # requires fzf ≥ 0.73; nixpkgs 26.05 is older
         };
 
         programs.helix = lib.mkIf (cfg.editor == "helix") {
