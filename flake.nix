@@ -367,6 +367,7 @@
           ./machines/birte/disko.nix
           ./machines/birte/jovian.nix
           ./machines/birte/stylix.nix
+          ./machines/birte/deck.nix
         ];
       };
 
