@@ -36,6 +36,34 @@ gpgconf --kill gpg-agent && gpg --card-status
 
 **Important**: Always use `--no-reexec` (not `--fast`) with nixos-rebuild. Never use `--build-host localhost`.
 
+## Git Workflow
+
+**Never commit directly to `main`.** All changes — even single-file docs edits — go on a named, prefix-tagged branch and land on `main` via a pull request.
+
+Branch naming: `<type>/<short-kebab-slug>`. Use one of these prefixes:
+
+| Prefix | For |
+|--------|-----|
+| `feat/`  | New user-visible feature or module |
+| `fix/`   | Bug fix |
+| `docs/`  | Docs, CLAUDE.md, README, guides |
+| `chore/` | Tooling, deps, flake bumps, refactors with no behaviour change |
+| `vars/`  | Clan-vars regeneration only |
+| `wip/`   | Exploratory work not yet ready for review |
+
+Examples: `feat/ernst-machine`, `fix/greetd-restart-loop`, `docs/git-branch-workflow`, `chore/flake-bump-2026-07`.
+
+Workflow for any change:
+
+1. Start from an up-to-date `main`: `git fetch origin && git switch main && git merge --ff-only origin/main`.
+2. Create the branch: `git switch -c <type>/<slug>`.
+3. Commit only the files this change touches — never `git add -A` when unrelated work is in the working tree.
+4. Push: `push origin <branch>` (the devShell function) or `git push -u origin <branch>`.
+5. Open a PR with `gh pr create`. Title: imperative, ≤70 chars, no prefix. Body: summary + test plan.
+6. Never force-push to `main`. Never merge locally into `main`; merging happens via the PR (see [docs/guides/accepting-pull-requests.md](docs/guides/accepting-pull-requests.md)).
+
+If Claude is asked to make a change while `HEAD` is on `main`, Claude must create a branch first and tell the user which prefix it chose.
+
 ## Installing a Machine from Scratch
 
 Use this when disko must re-run (new disk layout, new machine). Requires booting the target from a Clan installer USB.
