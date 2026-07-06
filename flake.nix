@@ -152,6 +152,30 @@
             }
             export -f deploy-ernst
 
+            # Check out a PR branch and boot it in QEMU. Rebuild the VM (which
+            # applies the machine's virtualisation.vmVariant overrides in
+            # modules/vm-variant.nix) and launch it. The reviewer's working
+            # branch is left on the PR HEAD until they gh pr checkout out.
+            #
+            # Usage: test-pr <PR#> [machine]      machine defaults to biene
+            test-pr() {
+              local pr=''${1?usage: test-pr <PR#> [machine]}
+              local machine=''${2:-biene}
+              gh pr checkout "$pr" || return 1
+              nixos-rebuild build-vm --flake ".#$machine" --no-reexec -j auto || return 1
+              exec ./result/bin/run-"$machine"-vm
+            }
+            export -f test-pr
+
+            # Same as test-pr, but for an already-checked-out branch (or main).
+            # Usage: test-vm [machine]            machine defaults to biene
+            test-vm() {
+              local machine=''${1:-biene}
+              nixos-rebuild build-vm --flake ".#$machine" --no-reexec -j auto || return 1
+              exec ./result/bin/run-"$machine"-vm
+            }
+            export -f test-vm
+
             # Push via gh token — works even when ~/.config/git is read-only
             # (impermanence on local machine). Usage: push [remote] [branch]
             push() {
@@ -197,6 +221,7 @@
           # Shared base modules (universal NixOS defaults + ZFS impermanence)
           ./modules/base.nix
           ./modules/zfs-impermanence.nix
+          ./modules/vm-variant.nix
 
           # Reusable modules (hardware + admin; users/roles/desktop via clan services)
           ./modules/locale.nix
@@ -239,6 +264,7 @@
           # Shared base modules (universal NixOS defaults + ZFS impermanence)
           ./modules/base.nix
           ./modules/zfs-impermanence.nix
+          ./modules/vm-variant.nix
 
           # App category modules (options default false; enabled in configuration.nix)
           ./modules/apps
@@ -279,6 +305,7 @@
           # Shared base modules (universal NixOS defaults + ZFS impermanence)
           ./modules/base.nix
           ./modules/zfs-impermanence.nix
+          ./modules/vm-variant.nix
 
           # Reusable modules
           ./modules/locale.nix
