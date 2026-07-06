@@ -46,6 +46,7 @@ nav:
   - Guides:
     - Updating machines: guides/updating-machines.md
     - Adding a machine: guides/adding-a-machine.md
+    - Accepting pull requests: guides/accepting-pull-requests.md
     - Networking: guides/networking.md
     - YubiKey: guides/yubikey.md
     - Impermanence: guides/impermanence.md
