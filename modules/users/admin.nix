@@ -48,8 +48,10 @@
         description = "Password for the admin user (used for sudo and local console login)";
         type        = "hidden";
       };
+      # Pipe password via stdin so getopt doesn't try to parse passwords that
+      # start with '-' (e.g. "-8…") as command-line flags.
       script = ''
-        ${pkgs.mkpasswd}/bin/mkpasswd -m sha-512 "$(cat "$prompts/password")" > "$out/hashed-password"
+        ${pkgs.mkpasswd}/bin/mkpasswd -m sha-512 -s < "$prompts/password" > "$out/hashed-password"
       '';
       runtimeInputs = [ pkgs.mkpasswd ];
     };

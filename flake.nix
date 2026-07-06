@@ -2,8 +2,8 @@
   description = "Clanarchy Standard v1";
 
   inputs = {
-    # Clan core (25.11)
-    clan-core.url = "https://git.clan.lol/clan/clan-core/archive/main.tar.gz";
+    # Clan core (26.05)
+    clan-core.url = "https://git.clan.lol/clan/clan-core/archive/26.05.tar.gz";
     nixpkgs.follows = "clan-core/nixpkgs";
 
     # flake-parts
@@ -35,7 +35,10 @@
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     noctalia = {
-      url = "github:noctalia-dev/noctalia-shell";
+      # Pin to pre-v5 revision (2026-05-26). Noctalia v5 (July 2026) rewrote the
+      # HM module from typed options to freeform TOML; migrating our ~1150-line
+      # noctalia-hm.nix is a multi-day project — track it separately from 26.05.
+      url = "github:noctalia-dev/noctalia-shell/272cd91408b5ff6e329e6397eed042fe422069e7";
       inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
 
@@ -137,6 +140,18 @@
             }
             export -f deploy-biene
 
+            deploy-ernst() {
+              local action=''${1:-switch}
+              local host=''${ERNST_HOST:-ernst.skynet.lan}
+              nixos-rebuild "$action" \
+                --flake .#ernst \
+                --target-host "root@$host" \
+                --no-reexec \
+                -j auto \
+                "''${@:2}"
+            }
+            export -f deploy-ernst
+
             # Push via gh token — works even when ~/.config/git is read-only
             # (impermanence on local machine). Usage: push [remote] [branch]
             push() {
@@ -170,6 +185,9 @@
               };
               inherit inputs;
             };
+            # nixpkgs 26.05 restructured services.kmscon; stylix's kmscon target
+            # still writes services.kmscon.config which no longer exists.
+            disabledModules = [ "${inputs.stylix}/modules/kmscon/nixos.nix" ];
           }
 
           inputs.impermanence.nixosModules.impermanence
@@ -184,7 +202,9 @@
           ./modules/locale.nix
           ./modules/networking.nix
           ./modules/hardware/cpu.nix
+          ./modules/hardware/gpu.nix
           ./modules/hardware/display.nix
+          ./modules/virtualisation.nix
           ./modules/users/admin.nix
           ./modules/users/sgo.nix
 
@@ -208,6 +228,8 @@
               };
               inherit inputs;
             };
+            # See miralda block — stylix kmscon target incompatible with nixpkgs 26.05.
+            disabledModules = [ "${inputs.stylix}/modules/kmscon/nixos.nix" ];
           }
 
           inputs.impermanence.nixosModules.impermanence
@@ -225,7 +247,9 @@
           ./modules/locale.nix
           ./modules/networking.nix
           ./modules/hardware/cpu.nix
+          ./modules/hardware/gpu.nix
           ./modules/hardware/display.nix
+          ./modules/virtualisation.nix
           ./modules/users/admin.nix
           ./modules/wifi.nix
 
@@ -237,8 +261,8 @@
         ];
       };
 
-      # homeserver — template ready, hardware not yet available
-      clan.machines.homeserver = {
+      # ernst — AM5/X870E homelab server (NAS + VM host + GPU compute).
+      clan.machines.ernst = {
         imports = [
           { _module.args = {
               pkgs-unstable = import inputs.nixpkgs-unstable {
@@ -248,12 +272,26 @@
               inherit inputs;
             };
           }
+
           inputs.impermanence.nixosModules.impermanence
           inputs.home-manager.nixosModules.home-manager
+
+          # Shared base modules (universal NixOS defaults + ZFS impermanence)
+          ./modules/base.nix
+          ./modules/zfs-impermanence.nix
+
+          # Reusable modules
           ./modules/locale.nix
           ./modules/networking.nix
+          ./modules/hardware/cpu.nix
+          ./modules/hardware/gpu.nix
+          ./modules/virtualisation.nix
           ./modules/users/admin.nix
-          ./machines/homeserver/configuration.nix
+
+          # Machine-specific
+          ./machines/ernst/configuration.nix
+          ./machines/ernst/disko.nix
+          ./machines/ernst/hardware-configuration.nix
         ];
       };
     };

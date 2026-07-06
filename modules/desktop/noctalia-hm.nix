@@ -992,7 +992,7 @@ in {
     ''}
   '';
 
-  gtk.gtk4.theme = null;
+  gtk.gtk4.theme = lib.mkForce null;   # newer stylix sets a non-null theme; mkForce keeps Noctalia's no-GTK4-theme intent
 
   gtk.iconTheme = {
     name    = osConfig.clanarchy.iconTheme.name;

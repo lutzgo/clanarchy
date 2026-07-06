@@ -21,24 +21,11 @@ in
 
   config = lib.mkIf cfg.enable {
 
-    # GPU / hardware graphics
-    hardware.graphics.enable = true;
-    hardware.graphics.extraPackages =
-      lib.optionals (config.clanarchy.hardware.cpu == "amd") (with pkgs; [
-        mesa                    # Rusticl OpenCL via radeonsi driver
-        rocmPackages.clr.icd    # ROCm ICD — optional for iGPU testing
-      ]) ++
-      lib.optionals (config.clanarchy.hardware.cpu == "intel") (with pkgs; [
-        intel-media-driver
-      ]);
-
-    environment.variables =
-      lib.mkIf (config.clanarchy.hardware.cpu == "amd") {
-        RUSTICL_ENABLE = "radeonsi";
-      };
-
-    environment.systemPackages =
-      lib.optionals (config.clanarchy.hardware.cpu == "amd") [ pkgs.clinfo ];
+    # GPU / hardware graphics — delegate to shared options
+    # (modules/hardware/gpu.nix).  Laptops get the baseline driver for the
+    # configured CPU vendor; ROCm/iGPU-only flavour ships clr.icd anyway.
+    clanarchy.hardware.gpu.amd.enable   = config.clanarchy.hardware.cpu == "amd";
+    clanarchy.hardware.gpu.intel.enable = config.clanarchy.hardware.cpu == "intel";
 
     # Framework-specific hardware: fprintd + udev wake rule.
     services.fprintd.enable = lib.mkIf cfg.framework.enable (lib.mkDefault true);

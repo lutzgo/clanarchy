@@ -43,9 +43,9 @@
     modules."@clanarchy/printing"     = import ./service-modules/printing.nix;
 
     inventory.machines = {
-      miralda    = { };
-      biene      = { };
-      homeserver = { };
+      miralda = { };
+      biene   = { };
+      ernst   = { };
     };
 
     inventory.instances = {
@@ -59,7 +59,7 @@
         module.name  = "@clanarchy/machine-type";
         roles.laptop.machines.miralda.settings.framework.enable = true;
         roles.laptop.machines.biene = { };   # no Framework hardware
-        roles.server.machines.homeserver = { };
+        roles.server.machines.ernst = { };
       };
 
       # ── Desktop environments ───────────────────────────────────────────────
@@ -145,7 +145,9 @@
       # after deploying to populate the new vars/shared/wifi.home/ secrets.
       # The old vars/per-machine/*/wifi-home/ entries can be removed afterwards.
       wifi = {
-        roles.default.tags.all = { };
+        roles.default.machines.miralda = { };
+        roles.default.machines.biene   = { };
+        # ernst is wired-only — intentionally excluded.
         roles.default.settings.networks = {
           home = { };   # prompts: SSID "skynet", PSK; keyMgmt defaults to wpa-psk
         };

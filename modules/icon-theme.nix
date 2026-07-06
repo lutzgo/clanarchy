@@ -10,7 +10,7 @@
 #
 # Default: a Papirus-Dark variant whose folder icons are recolored to match
 # the active Stylix base0D accent color.  Falls back to plain Papirus-Dark
-# when Stylix is not enabled (e.g. homeserver).
+# when Stylix is not enabled (e.g. a headless server).
 { config, lib, pkgs, ... }:
 let
   # Build a Papirus-Dark copy with the folder blue replaced by base0D.
