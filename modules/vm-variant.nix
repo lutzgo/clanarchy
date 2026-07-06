@@ -30,6 +30,13 @@
     boot.zfs.forceImportRoot          = lib.mkForce false;
     boot.initrd.systemd.services.rollback.enable = lib.mkForce false;
 
+    # biene sets boot.resumeDevice to a /dev/disk/by-partlabel/... path for
+    # hybrid-sleep; in the VM that partition doesn't exist and systemd
+    # sits in a ~90 s timeout waiting on it. Clear swapDevices too as a
+    # safety net in case disko leaks any residuals past enableConfig=false.
+    boot.resumeDevice = lib.mkForce "";
+    swapDevices       = lib.mkForce [];
+
     # Impermanence's `environment.persistence` bind-mounts /persist/* onto
     # the live root. Without a real /persist dataset this fails at
     # activation — clear the persist declarations for the VM.
