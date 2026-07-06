@@ -46,6 +46,7 @@
       miralda = { };
       biene   = { };
       ernst   = { };
+      birte   = { };
     };
 
     inventory.instances = {
@@ -59,6 +60,7 @@
         module.name  = "@clanarchy/machine-type";
         roles.laptop.machines.miralda.settings.framework.enable = true;
         roles.laptop.machines.biene = { };   # no Framework hardware
+        roles.laptop.machines.birte = { };   # Steam Deck OLED — battery-backed handheld
         roles.server.machines.ernst = { };
       };
 
@@ -74,6 +76,11 @@
         # 1366x768 panel — native resolution (1.0) avoids 1.25 default that
         # shrinks usable logical space to 1093x614 on this low-res screen.
         roles.labwc.machines.biene.settings.display.scale = 1.0;
+        # birte: KDE Plasma 6 as the "Switch to Desktop" session (SDDM).
+        # Gaming Mode / Steam Big Picture is provided by Jovian (see
+        # machines/birte/jovian.nix); Plasma is only reached when the user
+        # exits gamescope-session.
+        roles.kde.machines.birte = { };
       };
 
       # ── Users ───────────────────────────────────────────────────────────────
@@ -147,6 +154,7 @@
       wifi = {
         roles.default.machines.miralda = { };
         roles.default.machines.biene   = { };
+        roles.default.machines.birte   = { };   # Steam Deck — wifi only
         # ernst is wired-only — intentionally excluded.
         roles.default.settings.networks = {
           home = { };   # prompts: SSID "skynet", PSK; keyMgmt defaults to wpa-psk

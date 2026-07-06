@@ -65,6 +65,16 @@
     # nvf — pin to the same revision govim uses so the DAG lib is consistent
     nvf.follows = "govim/nvf";
 
+    # Jovian-NixOS — Steam Deck (birte) support.
+    # Jovian officially supports only nixos-unstable, so it follows
+    # nixpkgs-unstable (which this flake already pulls in for Noctalia).
+    # birte is built entirely against nixpkgs-unstable (see clan.machines.birte
+    # below) — miralda / biene / ernst remain on clan-core's 26.05 pin.
+    jovian-nixos = {
+      url = "github:Jovian-Experiments/Jovian-NixOS";
+      inputs.nixpkgs.follows = "nixpkgs-unstable";
+    };
+
   };
 
   outputs = inputs@{ flake-parts, clan-core, ... }:
@@ -151,6 +161,18 @@
                 "''${@:2}"
             }
             export -f deploy-ernst
+
+            deploy-birte() {
+              local action=''${1:-switch}
+              local host=''${BIRTE_HOST:-birte.local}
+              nixos-rebuild "$action" \
+                --flake .#birte \
+                --target-host "root@$host" \
+                --no-reexec \
+                -j auto \
+                "''${@:2}"
+            }
+            export -f deploy-birte
 
             # Check out a PR branch and boot it in QEMU. Rebuild the VM (which
             # applies the machine's virtualisation.vmVariant overrides in
@@ -284,6 +306,61 @@
           ./machines/biene/disko.nix
           ./machines/biene/stylix.nix
           ./machines/biene/wallpapers.nix
+        ];
+      };
+
+      # birte — Steam Deck OLED (Galileo). Boots into Steam Gaming Mode via
+      # Jovian-NixOS; "Switch to Desktop" drops into KDE Plasma 6 (SDDM).
+      #
+      # Nixpkgs pin: birte is built entirely against nixpkgs-unstable because
+      # Jovian only supports unstable. This is a per-machine override — the
+      # rest of the clan stays on clan-core's 26.05 pin.
+      clan.machines.birte = {
+        imports = [
+          ({ lib, ... }: {
+            _module.args = {
+              # Both pkgs and pkgs-unstable point at unstable for this machine
+              # so any module that expects `pkgs-unstable` still works uniformly.
+              pkgs-unstable = import inputs.nixpkgs-unstable {
+                system = "x86_64-linux";
+                config.allowUnfree = true;
+              };
+              inherit inputs;
+            };
+            # Force the system's own nixpkgs to unstable. Overrides the
+            # clan-wide pkgsForSystem (clan.nix) that pins to clan-core/nixpkgs.
+            nixpkgs.pkgs = lib.mkForce (import inputs.nixpkgs-unstable {
+              system = "x86_64-linux";
+              config.allowUnfree = true;
+            });
+          })
+
+          inputs.impermanence.nixosModules.impermanence
+          inputs.home-manager.nixosModules.home-manager
+          inputs.jovian-nixos.nixosModules.default
+
+          # Shared base modules (universal NixOS defaults + ZFS impermanence)
+          ./modules/base.nix
+          ./modules/zfs-impermanence.nix
+          ./modules/vm-variant.nix
+
+          # App category modules (options default false; enabled in configuration.nix)
+          ./modules/apps
+
+          # Reusable modules
+          ./modules/locale.nix
+          ./modules/networking.nix
+          ./modules/hardware/cpu.nix
+          ./modules/hardware/gpu.nix
+          ./modules/hardware/display.nix
+          ./modules/virtualisation.nix
+          ./modules/users/admin.nix
+          ./modules/wifi.nix
+
+          # Machine-specific
+          ./machines/birte/configuration.nix
+          ./machines/birte/disko.nix
+          ./machines/birte/jovian.nix
         ];
       };
 
