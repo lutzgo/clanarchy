@@ -1,14 +1,9 @@
- { pkgs, config, lib, ... }:
-
+{ pkgs, config, ... }:
 let
   # Pick a Base16/Base24 from https://tinted-theming.github.io/tinted-gallery/.
   schemePath = "${pkgs.base16-schemes}/share/themes/selenized-black.yaml";
 
-  # Helper: read base16 colors from the scheme file
   # Stylix exposes the resolved colors under config.lib.stylix.colors once enabled.
-  # We'll generate the image *after* stylix has its colors by using those values.
-  #
-  # Note: this file is a NixOS module, so config is available.
   c = config.lib.stylix.colors;
 
   # Generate wallpaper using ImageMagick with scheme colors.
@@ -55,39 +50,19 @@ let
       '';
 in
 {
+  imports = [ ../../modules/stylix-base.nix ];
+
   stylix = {
-    enable = true;
-    polarity = "dark";
-
-    # Declarative scheme selection — change schemePath above to switch themes
     base16Scheme = schemePath;
-
-    # Declarative wallpaper generation (built by Nix, colored by the selected scheme)
     image = nixWallpaper;
 
-    fonts = {
-      serif     = { package = pkgs.nerd-fonts.monaspace; name = "MonaspiceXe Nerd Font Propo"; };
-      sansSerif = { package = pkgs.nerd-fonts.monaspace; name = "MonaspiceNe Nerd Font Propo"; };
-      monospace = { package = pkgs.nerd-fonts.monaspace; name = "MonaspiceAr Nerd Font Mono";  };
-      emoji     = { package = pkgs.noto-fonts-color-emoji; name = "Noto Color Emoji"; };
-      sizes = {
-        applications = 11;
-        terminal     = 12;
-        desktop      = 11;
-        popups       = 11;
-      };
+    fonts.sizes = {
+      applications = 11;
+      terminal     = 12;
+      desktop      = 11;
+      popups       = 11;
     };
 
-    # Adwaita cursor — matches XCURSOR_THEME env var set in desktop.nix
-    cursor = {
-      package = pkgs.adwaita-icon-theme;
-      name = "Adwaita";
-      size = 24;
-    };
-
-    targets.regreet.enable = true;   # GTK4 login screen — themed by Stylix
-    targets.plymouth.enable = true;  # Boot splash — Stylix generates a spinner theme
-
+    targets.regreet.enable = true;
   };
-
 }

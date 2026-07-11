@@ -1,93 +1,17 @@
-{...}: {
-  disko.devices = {
-    disk.main = {
-      type = "disk";
-      # IMPORTANT:
-      # Boot from the Clan installer USB.
-      # SSH into the installer:
-      #   ssh root@<installer-ip>
-      #
-      # Then determine the stable disk ID with:
-      #   ls -l /dev/disk/by-id/
-      #
-      # Choose the correct disk and replace the value below
-      # with the full path, e.g.:
-      #   /dev/disk/by-id/nvme-Samsung_SSD_980_PRO_1TB_S6XYZ123456
-      #
-      # DO NOT use /dev/sda or /dev/nvme0n1 directly.
-      device = "/dev/disk/by-id/ata-V7_SSD_1701642006054300";
+import ../../modules/disko/base.nix {
+  # See machines/miralda/disko.nix for the disk-ID rationale.
+  device = "/dev/disk/by-id/ata-V7_SSD_1701642006054300";
 
-      content = {
-        type = "gpt";
+  # Unencrypted pool (intentional — this is Sabine's daily driver and
+  # a boot passphrase would block her from turning it on).
+  enableEncryption = false;
 
-        partitions = {
-          ESP = {
-            size = "1G";
-            type = "EF00";
-            content = {
-              type = "filesystem";
-              format = "vfat";
-              mountpoint = "/boot";
-              extraArgs = ["-n" "ESP"];
-              mountOptions = ["umask=0077"];
-            };
-          };
-
-          # 8 GB swap — matches biene's RAM, required for hybrid-sleep
-          # (suspend-to-both: RAM state is written to swap so the machine
-          # can hibernate if the battery dies while suspended).
-          swap = {
-            size = "8G";
-            content = {
-              type = "swap";
-            };
-          };
-
-          zfs = {
-            size = "100%";
-            content = {
-              type = "zfs";
-              pool = "zroot";
-            };
-          };
-        };
-      };
-    };
-
-    zpool.zroot = {
-      type = "zpool";
-      mode = "";
-
-      # No encryption — intentionally unencrypted pool for biene.
-      rootFsOptions = {
-        compression = "zstd";
-        atime = "off";
-      };
-
-      datasets = {
-        root = {
-          type = "zfs_fs";
-          mountpoint = "/";
-        };
-        nix = {
-          type = "zfs_fs";
-          mountpoint = "/nix";
-        };
-        home = {
-          type = "zfs_fs";
-          mountpoint = "/home";
-          options.mountpoint = "legacy";
-        };
-        persist = {
-          type = "zfs_fs";
-          mountpoint = "/persist";
-          options.mountpoint = "legacy";
-        };
-        tmp = {
-          type = "zfs_fs";
-          mountpoint = "/tmp";
-        };
-      };
-    };
-  };
+  # 8 GB swap — matches biene's RAM, required for hybrid-sleep
+  # (suspend-to-both: RAM state is written to swap so the machine can
+  # hibernate if the battery dies while suspended).  Swap is not
+  # randomly-encrypted because the resume image must be readable after
+  # a full power-off.
+  enableSwap = true;
+  swapSize = "8G";
+  encryptSwap = false;
 }

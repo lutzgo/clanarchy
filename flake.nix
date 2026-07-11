@@ -78,6 +78,12 @@
   };
 
   outputs = inputs@{ flake-parts, clan-core, ... }:
+    let
+      # Machine-composition helpers — mkModuleArgs, forceUnstablePkgs,
+      # commonBase, commonHeadful. See lib/mk-machine.nix for details.
+      machineLib = import ./lib/mk-machine.nix { inherit inputs; };
+      inherit (machineLib) mkModuleArgs forceUnstablePkgs commonBase commonHeadful;
+    in
     flake-parts.lib.mkFlake { inherit inputs; } {
 
       systems = [ "x86_64-linux" ];
@@ -220,45 +226,16 @@
         };
       };
 
-      # Machine composition (explicit, standard)
+      # Machine composition.
+      #
+      # Each block reads as a per-machine feature list: module args + shared
+      # imports (via commonBase / commonHeadful from lib/mk-machine.nix) +
+      # machine-specific files.  See lib/mk-machine.nix for what the shared
+      # lists contain and why.
+
       clan.machines.miralda = {
-        imports = [
-          # Inject pkgs-unstable and inputs as module args (Option B — clan-core has no per-machine specialArgs)
-          { _module.args = {
-              pkgs-unstable = import inputs.nixpkgs-unstable {
-                system = "x86_64-linux";
-                config.allowUnfree = true;
-              };
-              inherit inputs;
-            };
-            # nixpkgs 26.05 restructured services.kmscon; stylix's kmscon target
-            # still writes services.kmscon.config which no longer exists.
-            disabledModules = [ "${inputs.stylix}/modules/kmscon/nixos.nix" ];
-          }
-
-          inputs.impermanence.nixosModules.impermanence
-          inputs.stylix.nixosModules.stylix
-          inputs.home-manager.nixosModules.home-manager
-
-          # Shared base modules (universal NixOS defaults + ZFS impermanence)
-          ./modules/base.nix
-          ./modules/zfs-impermanence.nix
-          ./modules/vm-variant.nix
-
-          # Reusable modules (hardware + admin; users/roles/desktop via clan services)
-          ./modules/locale.nix
-          ./modules/networking.nix
-          ./modules/hardware/cpu.nix
-          ./modules/hardware/gpu.nix
-          ./modules/hardware/display.nix
-          ./modules/virtualisation.nix
-          ./modules/users/admin.nix
+        imports = [ (mkModuleArgs { }) ] ++ commonHeadful ++ [
           ./modules/users/sgo.nix
-
-          # App category modules (options default false; enabled in configuration.nix)
-          ./modules/apps
-
-          # Machine-specific
           ./machines/miralda/configuration.nix
           ./machines/miralda/disko.nix
           ./machines/miralda/stylix.nix
@@ -267,41 +244,8 @@
       };
 
       clan.machines.biene = {
-        imports = [
-          { _module.args = {
-              pkgs-unstable = import inputs.nixpkgs-unstable {
-                system = "x86_64-linux";
-                config.allowUnfree = true;
-              };
-              inherit inputs;
-            };
-            # See miralda block — stylix kmscon target incompatible with nixpkgs 26.05.
-            disabledModules = [ "${inputs.stylix}/modules/kmscon/nixos.nix" ];
-          }
-
-          inputs.impermanence.nixosModules.impermanence
-          inputs.stylix.nixosModules.stylix
-          inputs.home-manager.nixosModules.home-manager
-
-          # Shared base modules (universal NixOS defaults + ZFS impermanence)
-          ./modules/base.nix
-          ./modules/zfs-impermanence.nix
-          ./modules/vm-variant.nix
-
-          # App category modules (options default false; enabled in configuration.nix)
-          ./modules/apps
-
-          # Reusable modules (hardware + admin; users/roles/desktop via clan services)
-          ./modules/locale.nix
-          ./modules/networking.nix
-          ./modules/hardware/cpu.nix
-          ./modules/hardware/gpu.nix
-          ./modules/hardware/display.nix
-          ./modules/virtualisation.nix
-          ./modules/users/admin.nix
+        imports = [ (mkModuleArgs { }) ] ++ commonHeadful ++ [
           ./modules/wifi.nix
-
-          # Machine-specific
           ./machines/biene/configuration.nix
           ./machines/biene/disko.nix
           ./machines/biene/stylix.nix
@@ -311,58 +255,12 @@
 
       # birte — Steam Deck OLED (Galileo). Boots into Steam Gaming Mode via
       # Jovian-NixOS; "Switch to Desktop" drops into KDE Plasma 6 (SDDM).
-      #
-      # Nixpkgs pin: birte is built entirely against nixpkgs-unstable because
-      # Jovian only supports unstable. This is a per-machine override — the
-      # rest of the clan stays on clan-core's 26.05 pin.
+      # Built entirely against nixpkgs-unstable (Jovian only supports unstable);
+      # forceUnstablePkgs overrides the clan-wide 26.05 pin from clan.nix.
       clan.machines.birte = {
-        imports = [
-          ({ lib, ... }: {
-            _module.args = {
-              # Both pkgs and pkgs-unstable point at unstable for this machine
-              # so any module that expects `pkgs-unstable` still works uniformly.
-              pkgs-unstable = import inputs.nixpkgs-unstable {
-                system = "x86_64-linux";
-                config.allowUnfree = true;
-              };
-              inherit inputs;
-            };
-            # Force the system's own nixpkgs to unstable. Overrides the
-            # clan-wide pkgsForSystem (clan.nix) that pins to clan-core/nixpkgs.
-            nixpkgs.pkgs = lib.mkForce (import inputs.nixpkgs-unstable {
-              system = "x86_64-linux";
-              config.allowUnfree = true;
-            });
-          })
-
-          # Stylix's kmscon target still writes services.kmscon.config, which
-          # was restructured in 26.05+. Same workaround as miralda/biene.
-          { disabledModules = [ "${inputs.stylix}/modules/kmscon/nixos.nix" ]; }
-
-          inputs.impermanence.nixosModules.impermanence
-          inputs.stylix.nixosModules.stylix
-          inputs.home-manager.nixosModules.home-manager
+        imports = [ (mkModuleArgs { }) forceUnstablePkgs ] ++ commonHeadful ++ [
           inputs.jovian-nixos.nixosModules.default
-
-          # Shared base modules (universal NixOS defaults + ZFS impermanence)
-          ./modules/base.nix
-          ./modules/zfs-impermanence.nix
-          ./modules/vm-variant.nix
-
-          # App category modules (options default false; enabled in configuration.nix)
-          ./modules/apps
-
-          # Reusable modules
-          ./modules/locale.nix
-          ./modules/networking.nix
-          ./modules/hardware/cpu.nix
-          ./modules/hardware/gpu.nix
-          ./modules/hardware/display.nix
-          ./modules/virtualisation.nix
-          ./modules/users/admin.nix
           ./modules/wifi.nix
-
-          # Machine-specific
           ./machines/birte/configuration.nix
           ./machines/birte/disko.nix
           ./machines/birte/jovian.nix
@@ -372,34 +270,9 @@
       };
 
       # ernst — AM5/X870E homelab server (NAS + VM host + GPU compute).
+      # Headless: uses commonBase (no stylix / display / apps).
       clan.machines.ernst = {
-        imports = [
-          { _module.args = {
-              pkgs-unstable = import inputs.nixpkgs-unstable {
-                system = "x86_64-linux";
-                config.allowUnfree = true;
-              };
-              inherit inputs;
-            };
-          }
-
-          inputs.impermanence.nixosModules.impermanence
-          inputs.home-manager.nixosModules.home-manager
-
-          # Shared base modules (universal NixOS defaults + ZFS impermanence)
-          ./modules/base.nix
-          ./modules/zfs-impermanence.nix
-          ./modules/vm-variant.nix
-
-          # Reusable modules
-          ./modules/locale.nix
-          ./modules/networking.nix
-          ./modules/hardware/cpu.nix
-          ./modules/hardware/gpu.nix
-          ./modules/virtualisation.nix
-          ./modules/users/admin.nix
-
-          # Machine-specific
+        imports = [ (mkModuleArgs { }) ] ++ commonBase ++ [
           ./machines/ernst/configuration.nix
           ./machines/ernst/disko.nix
           ./machines/ernst/hardware-configuration.nix

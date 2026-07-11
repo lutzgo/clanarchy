@@ -1,16 +1,12 @@
-{ pkgs, config, lib, ... }:
-#
+{ pkgs, config, ... }:
 # Stylix theming for birte (Steam Deck OLED).
 #
-# Scheme: Catppuccin Mocha (dark) — matches biene, deep blacks look good on
-# the AMOLED panel.
+# Scheme: Catppuccin Mocha (dark) — deep blacks look good on the AMOLED panel.
 # Wallpaper: Nix-Anarchy SVG (logo-blue) recolored to the Mocha palette,
 # rendered at native 1280×800.
-# Targets: plymouth (boot splash). SDDM and Plasma 6 are not NixOS-level
-# stylix targets in the pinned rev — they'd need HM wiring against the
-# `deck` user which Jovian provisions itself, so we leave them at Jovian's
-# defaults for now.
-#
+# Targets: plymouth only (via stylix-base). SDDM and Plasma 6 aren't NixOS-level
+# stylix targets in the pinned rev — they'd need HM wiring against the `deck`
+# user which Jovian provisions itself, so we leave them at Jovian's defaults.
 let
   schemePath = "${pkgs.base16-schemes}/share/themes/catppuccin-mocha.yaml";
 
@@ -60,32 +56,17 @@ let
       '';
 in
 {
+  imports = [ ../../modules/stylix-base.nix ];
+
   stylix = {
-    enable   = true;
-    polarity = "dark";
-
     base16Scheme = schemePath;
-    image        = wallpaper;
+    image = wallpaper;
 
-    fonts = {
-      serif     = { package = pkgs.nerd-fonts.monaspace;    name = "MonaspiceXe Nerd Font Propo"; };
-      sansSerif = { package = pkgs.nerd-fonts.monaspace;    name = "MonaspiceNe Nerd Font Propo"; };
-      monospace = { package = pkgs.nerd-fonts.monaspace;    name = "MonaspiceAr Nerd Font Mono";  };
-      emoji     = { package = pkgs.noto-fonts-color-emoji;  name = "Noto Color Emoji"; };
-      sizes = {
-        applications = 10;
-        terminal     = 11;
-        desktop      = 10;
-        popups       = 10;
-      };
+    fonts.sizes = {
+      applications = 10;
+      terminal     = 11;
+      desktop      = 10;
+      popups       = 10;
     };
-
-    cursor = {
-      package = pkgs.adwaita-icon-theme;
-      name    = "Adwaita";
-      size    = 24;
-    };
-
-    targets.plymouth.enable = true;
   };
 }

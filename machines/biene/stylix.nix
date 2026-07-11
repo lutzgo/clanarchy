@@ -50,45 +50,19 @@ let
       '';
 in
 {
-  stylix = {
-    enable = true;
-    polarity = "dark";
+  imports = [ ../../modules/stylix-base.nix ];
 
+  stylix = {
     base16Scheme = schemePath;
     image = nixWallpaper;
 
-    fonts = {
-      serif = {
-        package = pkgs.nerd-fonts.monaspace;
-        name = "MonaspiceXe Nerd Font Propo";
-      };
-      sansSerif = {
-        package = pkgs.nerd-fonts.monaspace;
-        name = "MonaspiceNe Nerd Font Propo";
-      };
-      monospace = {
-        package = pkgs.nerd-fonts.monaspace;
-        name = "MonaspiceAr Nerd Font Mono";
-      };
-      emoji = {
-        package = pkgs.noto-fonts-color-emoji;
-        name = "Noto Color Emoji";
-      };
-      sizes = {
-        applications = 9;
-        terminal = 10;
-        desktop = 9;
-        popups = 9;
-      };
+    fonts.sizes = {
+      applications = 9;
+      terminal     = 10;
+      desktop      = 9;
+      popups       = 9;
     };
 
-    cursor = {
-      package = pkgs.adwaita-icon-theme;
-      name = "Adwaita";
-      size = 24;
-    };
-
-    targets.regreet.enable  = true;
-    targets.plymouth.enable = true;
+    targets.regreet.enable = true;
   };
 }
