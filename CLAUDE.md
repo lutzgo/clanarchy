@@ -4,9 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Clanarchy** is a NixOS declarative configuration using **clan-core** to manage two machines:
-- `miralda` — Framework 13 AMD, NixOS 26.05. Niri/UWSM/greetd Wayland desktop, ZFS + impermanence, YubiKey PIV for age encryption, clan vars for secrets.
-- `biene` — Lenovo laptop, NixOS 26.05. labwc/UWSM/regreet Wayland desktop (Sabine's machine), ZFS + impermanence, clan vars for secrets.
+**Clanarchy** is a NixOS declarative configuration using **clan-core** to manage four machines:
+
+- `miralda` — Framework 13 AMD, NixOS 26.05. Niri + UWSM + regreet Wayland desktop, ZFS + impermanence, YubiKey PIV for age encryption, clan vars for secrets. Daily driver for `lgo`.
+- `biene` — Lenovo laptop, NixOS 26.05. labwc + UWSM + regreet Wayland desktop with Noctalia shell (Sabine's machine), ZFS + impermanence, clan vars for secrets.
+- `birte` — Steam Deck OLED (Galileo). Jovian-NixOS Steam Gaming Mode by default; "Switch to Desktop" drops into KDE Plasma 6 via SDDM. Built entirely against `nixpkgs-unstable` (Jovian only supports unstable). Lives on branch `feat/birte-steamdeck` until merged.
+- `ernst` — AM5 / X870E homelab server. Headless (no stylix / no compositor / no `modules/apps`). NAS + VM host + GPU compute; encrypted mirrored `zroot` + encrypted `zdata` raidz1.
 
 ## Development Environment
 
@@ -15,20 +18,21 @@ Enter the devShell via direnv (`.envrc` uses `use flake`) or manually with `nix 
 The devShell provides these shell functions:
 
 ```bash
-deploy [boot|switch]          # default: switch
-# nixos-rebuild --flake .#miralda with --no-reexec, targets root@miralda.goclan.org
+deploy       [boot|switch]    # miralda   (root@miralda.goclan.org)
+deploy-biene [boot|switch]    # biene     (root@biene.local;      BIENE_HOST= to override)
+deploy-birte [boot|switch]    # birte     (root@birte.local;      BIRTE_HOST= to override)
+deploy-ernst [boot|switch]    # ernst     (root@ernst.skynet.lan; ERNST_HOST= to override)
 
-deploy-biene [boot|switch]    # default: switch
-# nixos-rebuild --flake .#biene with --no-reexec, targets root@biene.local
-# Override host: BIENE_HOST=biene.skynet.lan deploy-biene
+test-pr <PR#> [machine]       # gh pr checkout + build-vm + run VM  (default machine: biene)
+test-vm [machine]             # build-vm + run VM on the current tree
 
-push [remote] [branch]        # defaults: origin main
-# git push via gh auth token (works with read-only ~/.config/git under impermanence)
+push [remote] [branch]        # git push via gh auth token (read-only ~/.config/git under impermanence)
+gendocs                       # regenerate docs/reference/*.md from live NixOS config
 ```
 
-Key packages in devShell: `clan-cli`, `git`, `openssh`, `nixos-rebuild`, `age-plugin-yubikey`.
+Key packages in devShell: `clan-cli`, `git`, `openssh`, `nixos-rebuild`, `age-plugin-yubikey`, `sops`, `python3` + `python3Packages.mkdocs-material` (for `gendocs` and `properdocs serve`).
 
-**When pinentry is broken** (e.g. after a miralda rebuild that changes `yubikey.nix`): use a local rebuild to avoid the SSH chicken-and-egg problem:
+**When pinentry is broken** (e.g. after a miralda rebuild that changes `modules/hardware/yubikey.nix`): use a local rebuild to avoid the SSH chicken-and-egg problem:
 ```bash
 sudo nixos-rebuild switch --flake .#miralda --no-reexec -j auto
 gpgconf --kill gpg-agent && gpg --card-status
@@ -66,85 +70,26 @@ If Claude is asked to make a change while `HEAD` is on `main`, Claude must creat
 
 ## Installing a Machine from Scratch
 
-Use this when disko must re-run (new disk layout, new machine). Requires booting the target from a Clan installer USB.
+The full walkthrough — `clan flash write` + `clan machines install <name>` — lives in [docs/guides/first-time-install.md](docs/guides/first-time-install.md). Points that always bite:
 
-### Step 1 — Create the installer USB
+- **SSH key**: use the YubiKey ed25519 pubkey at `machines/miralda/yubikey_ed25519.pub`. It's authorised on every clan machine, so `miralda` can SSH into the installer without extra setup.
+- **clan-core rev**: `clan flash write --flake` must match the rev this project's `clan` CLI was built from. Read it from `flake.lock` via `nix flake metadata --json . | jq -r '.locks.nodes["clan-core"].locked.rev'` — mismatch causes `attribute 'vars' missing`.
+- **`clan flash` wipes the USB stick entirely.** Confirm the device path with `lsblk` first.
 
-**SSH key**: use the YubiKey ed25519 key already stored at `machines/miralda/yubikey_ed25519.pub`. This is the same key authorised on both machines, so you can SSH into the installer from miralda without extra setup.
-
-From the devShell, with the USB stick identified (e.g. `/dev/sda` — confirm with `lsblk` first):
-
-```bash
-# Get the exact clan-core rev pinned in this flake:
-CLAN_CORE_REV=$(nix flake metadata --json . | jq -r '.locks.nodes["clan-core"].locked.rev')
-
-clan flash write \
-  --flake "github:clan-lol/clan-core/$CLAN_CORE_REV" \
-  --ssh-pubkey machines/miralda/yubikey_ed25519.pub \
-  --keymap us --language en_US.UTF-8 \
-  --disk main /dev/sda \
-  flash-installer
-```
-
-> `clan flash write` writes a generic NixOS installer with the YubiKey pubkey embedded as the root authorized key. `--ssh-pubkey` takes a **file path**, not key content. The `--flake` must point to the **same clan-core rev** that this project's `clan` CLI was built from — mismatched versions cause `attribute 'vars' missing` errors. Using the rev from `flake.lock` (via `nix flake metadata`) guarantees they match. Machine-specific config is applied later by `clan machines install`.
-
-**Warning**: `clan flash` wipes the target USB stick entirely. Double-check the device path.
-
-### Step 2 — Boot the target machine
-
-Insert the USB into biene, boot from it (F12 or BIOS boot menu). The installer brings up a minimal NixOS with SSH on port 22.
-
-Find biene's IP (check your router/Fritz!Box, or use `arp-scan -l` from miralda):
-
-```bash
-ssh root@<biene-installer-ip>   # authenticates via YubiKey
-```
-
-### Step 3 — Install
-
-From the devShell on miralda:
-
-```bash
-clan machines install biene --target-host root@<biene-installer-ip>
-```
-
-This runs disko (partitions and formats the disk) then installs NixOS with all clan vars applied. After the machine reboots into the new system, use the normal deploy workflow:
-
-```bash
-deploy-biene   # or: BIENE_HOST=<ip> deploy-biene
-```
-
-### Post-install: Noctalia profile for Sabine
-
-After first login on biene:
-1. Noctalia starts with the default declarative settings from `labwc-hm.nix`.
-2. Plugins listed in `plugins.json` are declared — Noctalia re-downloads their source files from the plugin store on first run.
-3. Sabine configures her preferred layout via the Noctalia UI.
-4. She saves it: **Settings → Shell Profiles → Save Profile** → name it **"Sabine"**.
-5. Every subsequent `deploy-biene` rebuild auto-restores her profile via the HM activation hook in `modules/users/sabine.nix`.
-
-To pin the profile so it survives future fresh installs:
-```bash
-scp root@biene.local:/home/sabine/.config/noctalia/plugins/shell-profiles/assets/profiles/Sabine/settings.json \
-    modules/users/sabine-noctalia-settings.json
-```
-Then add to `modules/users/sabine.nix` (inside `home-manager.users.sabine`):
-```nix
-xdg.configFile."noctalia/plugins/shell-profiles/assets/profiles/Sabine/settings.json".source =
-  ./sabine-noctalia-settings.json;
-```
+**Post-install: Noctalia profile for Sabine (`biene`)** — see [docs/guides/noctalia-profiles.md](docs/guides/noctalia-profiles.md). Short version: Sabine saves her layout once as a Shell Profile named `Sabine`; the HM activation hook in `modules/users/sabine.nix` restores it on every subsequent `deploy-biene`. To pin the profile so it survives future fresh installs, `scp` the settings.json out of biene into `modules/users/sabine-noctalia-settings.json` and wire it via `xdg.configFile`.
 
 ## Architecture
 
 ### Flake Structure
 
-- `flake.nix` — top-level, defines devShell, machine composition for both machines, injects `pkgs-unstable` and `inputs` as module args
-- `clan.nix` — clan-core metadata (`name = "clanarchy"`, `domain = "goclan.org"`), nixpkgs overlay (niri sandbox fix), clan instances (sshd, zerotier)
-- `machines/miralda/` — miralda-specific NixOS + Home Manager modules
-- `machines/biene/` — biene-specific NixOS modules
-- `modules/` — shared NixOS modules used by both machines (see below)
-- `vars/per-machine/<machine>/` — generated secrets/configs (clan vars)
-- `sops/` — sops keys and age identity
+- `flake.nix` — inputs, devShell, and `clan.machines.*` composition. Each machine block uses helpers from `lib/mk-machine.nix` to avoid repeating boilerplate.
+- `lib/mk-machine.nix` — `mkModuleArgs`, `forceUnstablePkgs`, `stylixKmsconFix`, `commonBase`, `commonHeadful`. See "Machine Composition Helpers" under Key Design Decisions.
+- `clan.nix` — clan-core metadata (`name = "clanarchy"`, `domain = "goclan.org"`), nixpkgs overlays (niri sandbox fix, ungoogled-chromium flags), clan-service inventory instances (see Service Modules below).
+- `machines/<name>/` — machine-specific NixOS configs (see per-machine tables).
+- `modules/` — shared NixOS modules used by multiple machines (see below).
+- `service-modules/` — custom clan-service modules registered in `clan.nix` (see below).
+- `vars/per-machine/<machine>/` — generated secrets/configs (clan vars).
+- `sops/` — sops keys and age identity.
 
 ### Machine Module Layout (`machines/miralda/`)
 
@@ -152,49 +97,84 @@ All modules are explicitly imported in `flake.nix` (no auto-discovery):
 
 | File | Purpose |
 |------|---------|
-| `configuration.nix` | Hostname, timezone, ZFS/systemd-boot, SSH daemon |
-| `disko.nix` | NVMe → GPT (1G ESP + ZFS pool, AES-256-GCM) |
-| `impermanence.nix` | ZFS rollback-on-boot (stage 1); persist paths |
-| `desktop.nix` | Niri + UWSM + greetd, Framework hw (fprintd, fwupd), pipewire, NetworkManager |
-| `stylix.nix` | Gruvbox Dark Medium theme + generated wallpaper |
-| `yubikey.nix` | pcscd, GnuPG agent (pinentry-qt), polkit rule for SSH sessions |
-| `wifi.nix` | NetworkManager profile from `wifi-home` clan var |
-| `users/admin.nix` + `users/lgo.nix` | System users |
-| `home/admin.nix` + `home/lgo.nix` | Home Manager configurations |
-| `home-modules/desktop.nix` | Shared HM module: Niri settings, Noctalia, touchpad, packages |
-| `secrets/admin.nix` + `secrets/lgo.nix` + `secrets/wifi.nix` | Clan vars generators |
+| `configuration.nix` | Hostname, timezone, ZFS/systemd-boot, SSH daemon, per-user overrides |
+| `disko.nix` | Thin wrapper over `modules/disko/base.nix` — NVMe device path, encryption on |
+| `stylix.nix` | Selenized Black theme; imports `modules/stylix-base.nix` and adds scheme + wallpaper + font sizes + regreet target |
+| `wallpapers.nix` | Per-workspace nix-anarchy SVG wallpapers |
+| `home-modules/browsers.nix` | HM: Chromium/LibreWolf per-user config |
+| `home-modules/console-desktop.nix` | HM: TTY / console-only fallback session for `lgo` |
+| `yubikey_ed25519.pub`, `yubikey_rsa.pub`, `clanarchy_admin.pub` | Committed SSH pubkeys used across the clan |
+| `facter.json` | nixos-facter hardware fingerprint |
 
 ### Machine Module Layout (`machines/biene/`)
 
 | File | Purpose |
 |------|---------|
-| `configuration.nix` | Hostname, timezone, ZFS/systemd-boot, SSH daemon; Syncthing user override |
-| `disko.nix` | NVMe → GPT (1G ESP + ZFS pool) |
-| `stylix.nix` | Catppuccin Mocha theme; `targets.regreet.enable` for greeter theming |
+| `configuration.nix` | Hostname, timezone, ZFS/systemd-boot, SSH daemon, Syncthing user override |
+| `disko.nix` | Thin wrapper over `modules/disko/base.nix` — unencrypted pool, 8G plain swap for hybrid-sleep |
+| `stylix.nix` | Catppuccin Mocha theme; imports `modules/stylix-base.nix` |
+| `wallpapers.nix` | Nix-Anarchy SVG (logo-blue) rendered at native 1366×768; seeds `~/Pictures/Wallpapers/clanarchy.png` + pins `~/.cache/noctalia/wallpapers.json` |
+| `facter.json` | nixos-facter hardware fingerprint |
 
-### Shared Module Layout (`modules/`)
-
-Shared modules are imported by machines via their desktop/role modules:
+### Machine Module Layout (`machines/birte/`)
 
 | File | Purpose |
 |------|---------|
-| `desktop/gnome.nix` | GNOME desktop: GDM, extensions, shared dconf, Sabine's dconf |
-| `desktop/desktop-common.nix` | Shared NixOS config for all Noctalia-based Wayland compositors: regreet, pipewire, fonts, NetworkManager, Mullvad, Noctalia plugin runtime deps |
-| `desktop/noctalia-hm.nix` | Shared HM module for all desktop users: Noctalia settings, starship, swayidle, packages, activation hooks |
-| `desktop/niri.nix` | Niri compositor: UWSM session, XDG portal (gtk), fprintd, V4L2 loopback |
-| `desktop/niri-hm.nix` | Niri-specific HM: full KDL config (outputs, layout, keybinds, rules) |
-| `desktop/labwc.nix` | labwc compositor: UWSM session, XDG portal (wlr+gtk), Valent, PAM service |
-| `desktop/labwc-hm.nix` | labwc-specific HM: rc.xml keybinds, themerc-override (Stylix colors), kanshi display service |
-| `icon-theme.nix` | `clanarchy.iconTheme` option: Stylix-recolored Papirus-Dark; imported by niri, labwc, and gnome desktop modules |
+| `configuration.nix` | Hostname, timezone, ZFS/systemd-boot, SSH daemon; Steam Deck power/hardware tweaks |
+| `disko.nix` | Thin wrapper over `modules/disko/base.nix` — unencrypted pool, no swap (zram only, hybrid-sleep off) |
+| `jovian.nix` | Jovian-NixOS wiring: Steam Gaming Mode enablement, gamescope-session, `deck` user provisioning |
+| `deck.nix` | Deck-specific user config + HM stylix enablement |
+| `stylix.nix` | Catppuccin Mocha theme, SVG-recolored wallpaper at native 1280×800; imports `modules/stylix-base.nix` (no regreet target — SDDM is Jovian-provisioned) |
+
+### Machine Module Layout (`machines/ernst/`)
+
+| File | Purpose |
+|------|---------|
+| `configuration.nix` | Hostname, timezone, ZFS/systemd-boot, SSH daemon |
+| `disko.nix` | Multi-disk hand-written disko: mirrored encrypted `zroot` (2× 960 GB SAS SSD) + raidz1 encrypted `zdata` (6× 15.36 TB SAS SSD). Does NOT use `modules/disko/base.nix` |
+| `hardware-configuration.nix` | Bootloader + kernel modules for the AM5 / X870E board |
+
+### Shared Module Layout (`modules/`)
+
+Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.nix`) or by individual machines / service modules:
+
+| File | Purpose |
+|------|---------|
+| `base.nix` | Universal defaults: EFI boot, Plymouth, flakes, openssh baseline, zsh |
+| `zfs-impermanence.nix` | ZFS rollback-on-boot (stage 1); persist paths |
+| `vm-variant.nix` | QEMU-friendly overrides used by `test-pr` / `test-vm` |
 | `locale.nix` | `clanarchy.locale` option: language + keyboard layout/variant/options |
+| `networking.nix` | ZeroTier + DNS + mDNS options |
+| `virtualisation.nix` | libvirt / qemu / podman shared setup |
+| `wifi.nix` | NetworkManager wifi profile from clan var (imported by biene + birte) |
+| `caldav-sync.nix` | CalDAV sync helpers for shared calendar access |
+| `icon-theme.nix` | `clanarchy.iconTheme` option: Stylix-recolored Papirus-Dark |
+| `stylix-base.nix` | Shared stylix baseline for headful machines: fonts (Monaspace), cursor (Adwaita), `targets.plymouth`, polarity |
+| `disko/base.nix` | Single-disk disko helper: 1G ESP + optional swap + ZFS `zroot`. Parameters: `device`, `enableSwap`, `swapSize`, `encryptSwap`, `enableEncryption` |
+| `hardware/cpu.nix` | Intel/AMD microcode selection |
+| `hardware/gpu.nix` | GPU driver selection (AMD/Intel/NVIDIA) |
+| `hardware/display.nix` | `clanarchy.display.scale` option: console font/mode scaling for boot/TTY |
+| `hardware/printing.nix` | CUPS + hplip + SANE |
+| `hardware/yubikey.nix` | pcscd + GnuPG agent (pinentry-qt wrapper) + polkit rule |
+| `desktop/desktop-common.nix` | Shared NixOS bits for all Noctalia-based Wayland compositors: regreet, pipewire, fonts, NetworkManager, Mullvad, Noctalia plugin runtime deps |
+| `desktop/noctalia-hm.nix` | Shared HM: Noctalia settings, starship, swayidle, packages, activation hooks |
+| `desktop/foot-hm.nix` | Shared HM: foot terminal config (Stylix-themed) |
+| `desktop/niri.nix` | Niri compositor: UWSM session, XDG portal (gtk), fprintd, V4L2 loopback |
+| `desktop/niri-hm.nix` | Niri HM: full KDL config (outputs, layout, keybinds, rules) |
+| `desktop/labwc.nix` | labwc compositor: UWSM session, XDG portal (wlr+gtk), Valent, PAM service |
+| `desktop/labwc-hm.nix` | labwc HM: rc.xml keybinds, themerc-override (Stylix colors), kanshi display service |
+| `desktop/gnome.nix` | GNOME desktop: GDM, extensions, shared dconf (legacy, currently unused) |
+| `desktop/kde.nix` | KDE Plasma 6 desktop: SDDM, Plasma packages (used by birte's "Switch to Desktop" session) |
+| `roles/laptop.nix` | Laptop role: fwupd (all laptops), thermald (Intel only), power-profiles-daemon, weekly Nix GC (14-day retention) |
+| `roles/server.nix` | Server role (headless): no GUI packages, no laptop-only services |
+| `roles/vm.nix` | VM guest role: SPICE agent, QEMU guest tools |
+| `roles/rpi.nix` | Raspberry Pi role (unused; kept for future clan expansion) |
 | `users/admin.nix` | admin user: SSH keys, password, impermanence, HM stub |
 | `users/lgo.nix` | lgo power user: SSH config, browsers, devtools, Noctalia; `clanarchy.users.lgo.editor` option (govim \| helix, default govim) |
-| `users/sabine.nix` | sabine user: impermanence, HM config |
-| `wifi.nix` | NetworkManager profile generator (clan var) |
-| `hardware/cpu.nix` | Intel/AMD microcode selection |
-| `hardware/display.nix` | `clanarchy.display.scale` option: console font/mode scaling for pre-compositor contexts (boot, TTY) |
-| `networking.nix` | ZeroTier + DNS options |
-| `roles/laptop.nix` | Laptop role: fwupd (all laptops), thermald (Intel only), power-profiles-daemon, weekly Nix GC (14-day retention) |
+| `users/sabine.nix` | sabine user: impermanence, HM config, Noctalia plugins declaration |
+| `users/sgo.nix` | sgo alt user (miralda only) |
+| `users/sabine-noctalia/` | Sabine's pinned Noctalia plugin assets (e.g. `simple_mouse`) |
+| `apps/default.nix` | Aggregator; imports each `apps/*.nix` |
 | `apps/communication.nix` | `clanarchy.apps.communication`: messaging apps (Valent, etc.) |
 | `apps/containers.nix` | `clanarchy.apps.containers`: Podman / container tooling |
 | `apps/desktop-tools.nix` | `clanarchy.apps.desktopTools`: desktop utilities bundle |
@@ -203,16 +183,34 @@ Shared modules are imported by machines via their desktop/role modules:
 | `apps/graphics.nix` | `clanarchy.apps.graphics`: graphics/creative apps (GIMP, Inkscape, etc.) |
 | `apps/media.nix` | `clanarchy.apps.media`: media playback apps |
 
+### Service Modules (`service-modules/`)
+
+Custom clan-service modules registered in `clan.nix` under `modules."@clanarchy/<name>"`. Referenced by `module.name = "@clanarchy/<name>"` in `inventory.instances`, which assigns per-machine roles/settings:
+
+| Module | Purpose | Used by (in `clan.nix`) |
+|--------|---------|-------------------------|
+| `@clanarchy/machine-type` | Hardware/role archetype dispatch: `laptop` / `server` (imports the matching `modules/roles/*.nix`) | miralda/biene/birte (laptop), ernst (server) |
+| `@clanarchy/desktop` | Desktop dispatch: `niri` / `labwc` / `kde` (imports the matching `modules/desktop/*.nix`) | miralda (niri), biene (labwc), birte (kde) |
+| `@clanarchy/users` | User dispatch: `lgo` / `sabine` (imports the matching `modules/users/*.nix`) | miralda (lgo), biene (sabine) |
+| `@clanarchy/yubikey` | Imports `modules/hardware/yubikey.nix` on target machines | miralda |
+| `@clanarchy/printing` | Imports `modules/hardware/printing.nix` on target machines | miralda |
+| `@clanarchy/software` | Per-user browser + email software dispatch (librewolf, firefox, chromium, chrome, edge, thunderbird) | miralda (lgo), biene (sabine) |
+| `@clanarchy/local-ai` | Ollama + OpenCode (self-hosted LLM stack) | miralda |
+
+Plus stock clan services used verbatim: `sshd`, `zerotier`, `syncthing`, `wifi`.
+
 ### Clan Vars
 
-Secrets are generated via `clan.core.vars.generators.<name>` modules in `secrets/`. Each generator specifies:
+Secrets are generated via `clan.core.vars.generators.<name>` modules (either inside `service-modules/` or, for clan-stock services, inside clan-core itself). Each generator specifies:
 - `files.<name>` — output file (with `secret` flag, `neededFor` timing)
 - `prompts.<name>` — user input at generation time
 - `script` + `runtimeInputs` — generation logic
 
-Generated outputs land in `vars/per-machine/miralda/`. Run generators with `clan vars generate`.
+Generated outputs land in `vars/per-machine/<machine>/`. Run generators with `clan vars generate <machine>`.
 
 ### Key Design Decisions
+
+**Machine Composition Helpers (`lib/mk-machine.nix`)**: Every clan machine needs the same `_module.args` injection (`pkgs-unstable` + `inputs`), the same stylix kmscon workaround, and the same list of shared modules. Instead of repeating that boilerplate in each `clan.machines.<name>` block, `lib/mk-machine.nix` exports `mkModuleArgs`, `forceUnstablePkgs` (used by birte for its unstable-pkgs override), `stylixKmsconFix` (bundled into `commonHeadful`), plus two shared imports lists: `commonBase` (universal — impermanence, HM, `modules/base.nix`, `zfs-impermanence.nix`, `vm-variant.nix`, `locale.nix`, `networking.nix`, `hardware/cpu.nix`, `hardware/gpu.nix`, `virtualisation.nix`, `users/admin.nix`) and `commonHeadful` (`commonBase` + stylix + `hardware/display.nix` + `modules/apps`). `ernst` uses `commonBase`; the others use `commonHeadful`.
 
 **Impermanence**: Root and home roll back to `@blank` ZFS snapshots on boot. Persisted paths include: `/var/lib/sops-nix`, `/var/lib/systemd`, `/var/lib/zerotier-one`, user `.gnupg`, `.config`, `.local/share`.
 
@@ -222,11 +220,11 @@ Generated outputs land in `vars/per-machine/miralda/`. Run generators with `clan
 
 **scdaemon + pcscd**: `~/.gnupg/scdaemon.conf` must contain `disable-ccid`. Without it, scdaemon defaults to trying the internal CCID/libusb driver first, which races with pcscd and produces "No such device" even when the YubiKey is present. `disable-ccid` forces scdaemon to route all card access through pcscd (socket-activated on demand). This is managed declaratively via `home.file.".gnupg/scdaemon.conf"` in `modules/users/lgo.nix`. If the card is suddenly missing: `gpgconf --kill gpg-agent && gpg --card-status`.
 
-**YubiKey pinentry**: Use `pinentry-qt`, not `pinentry-gnome3`. `pinentry-gnome3` calls `gcr_system_password_finish` via D-Bus (`org.gnome.keyring.SystemPrompter`), which requires `gnome-keyring-daemon` — absent on Niri. Without it every PIN prompt fails silently and gpg-agent returns "agent refused operation" on all card-backed SSH signing. `pinentry-qt` draws its own Qt dialog on Wayland with no GNOME dependency. The wrapper in `yubikey.nix` injects `WAYLAND_DISPLAY` and `QT_QPA_PLATFORM=wayland` so Qt picks the right backend when called from the gpg-agent context.
+**YubiKey pinentry**: Use `pinentry-qt`, not `pinentry-gnome3`. `pinentry-gnome3` calls `gcr_system_password_finish` via D-Bus (`org.gnome.keyring.SystemPrompter`), which requires `gnome-keyring-daemon` — absent on Niri. Without it every PIN prompt fails silently and gpg-agent returns "agent refused operation" on all card-backed SSH signing. `pinentry-qt` draws its own Qt dialog on Wayland with no GNOME dependency. The wrapper in `modules/hardware/yubikey.nix` injects `WAYLAND_DISPLAY` and `QT_QPA_PLATFORM=wayland` so Qt picks the right backend when called from the gpg-agent context.
 
 **Niri overlay**: `clan.nix` overrides niri with `checkPhase = ":"` to bypass an EMFILE sandbox test failure in nixpkgs 25.11.
 
-**pkgs-unstable**: `nixpkgs-unstable` intentionally does NOT follow clan-core's nixpkgs — it's needed for Noctalia/Quickshell. Injected as a module arg via `_module.args`.
+**pkgs-unstable**: `nixpkgs-unstable` intentionally does NOT follow clan-core's nixpkgs — it's needed for Noctalia/Quickshell. Injected as a module arg via `_module.args` (see `mkModuleArgs` in `lib/mk-machine.nix`).
 
 **push function**: Reads gh token at runtime to construct HTTPS remote URL, enabling pushes from a machine where `~/.config/git` is a read-only impermanence bind mount.
 

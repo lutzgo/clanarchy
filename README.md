@@ -1,86 +1,67 @@
 # clanarchy
 
-NixOS configuration for `miralda` (Framework 13 AMD), managed with [clan-core](https://clan.lol).
+NixOS declarative configuration built on [clan-core](https://git.clan.lol/clan/clan-core), managing four machines:
 
-**Stack:** Niri + UWSM + ReGreet · Noctalia shell · ZFS + impermanence · YubiKey PIV age · clan vars
+| Machine | Hardware | Role |
+|---------|----------|------|
+| `miralda` | Framework 13 AMD | daily-driver laptop (Niri, YubiKey, lgo) |
+| `biene` | Lenovo laptop | Sabine's machine (labwc + Noctalia) |
+| `birte` | Steam Deck OLED (Galileo) | Steam Gaming Mode via Jovian-NixOS; KDE Plasma 6 fallback |
+| `ernst` | AM5/X870E homelab | headless server (NAS + VM host + GPU compute) |
+
+**Stack:** ZFS + impermanence · Wayland compositors (Niri, labwc, KDE) · Noctalia shell · YubiKey PIV (age) + GnuPG (SSH) · clan vars for secrets.
+
+Full docs: **[lutzgo.github.io/clanarchy](https://lutzgo.github.io/clanarchy)** (or `properdocs serve` locally).
 
 ---
 
 ## Prerequisites
 
 - Nix with flakes enabled
-- [clan-cli](https://clan.lol/docs/getting-started/) (available in the devShell)
-- A configured YubiKey with a PIV age identity (for secret decryption)
-- SSH access to `root@miralda.goclan.org`
+- [clan-cli](https://clan.lol/docs/getting-started/) (provided by the devShell)
+- A configured YubiKey with a PIV age identity (needed for secret decryption on `miralda`)
 
 ---
 
 ## Development shell
 
 ```bash
-# Enter devShell (direnv picks this up automatically if you use it)
-nix develop
-
-# Or with direnv:
-direnv allow
+nix develop           # or: direnv allow, if you use direnv
 ```
 
-The devShell exposes these shell functions:
+The devShell exposes:
 
 ```bash
-deploy [boot|switch]        # default: switch — build locally, push, activate on miralda
-deploy-biene [boot|switch]  # same, targets biene (override host with BIENE_HOST=...)
-push [remote] [branch]      # default: origin main — push via gh auth token
+deploy [boot|switch]         # miralda   (root@miralda.goclan.org)
+deploy-biene [boot|switch]   # biene     (root@biene.local; BIENE_HOST= to override)
+deploy-birte [boot|switch]   # birte     (root@birte.local; BIRTE_HOST= to override)
+deploy-ernst [boot|switch]   # ernst     (root@ernst.skynet.lan; ERNST_HOST= to override)
+
+test-pr <PR#> [machine]      # gh pr checkout + build-vm + run-vm  (machine defaults to biene)
+test-vm [machine]            # build-vm + run-vm on the current tree
+
+push [remote] [branch]       # push via gh auth token (works with impermanent ~/.config/git)
+gendocs                      # regenerate docs/reference/*.md from live NixOS config
 ```
+
+See [docs/guides/deploy.md](docs/guides/deploy.md) for the full breakdown, including when to use `deploy-X` vs. `clan machines update X` (the latter re-evaluates vars/secrets).
 
 ### Pushing with `gh`
 
-Impermanence makes `~/.config/git` a read-only bind mount, so `git push` with a credential helper doesn't work. The `push` shell function works around this by reading `gh auth token` at runtime and injecting it into the HTTPS remote URL.
+Impermanence makes `~/.config/git` a read-only bind mount, so `git push` with a credential helper doesn't work. The `push` function reads `gh auth token` at runtime and injects it into the HTTPS remote URL.
 
-**First-time setup** (run once per machine, persisted by impermanence):
+First-time setup (once per machine):
 ```bash
-gh auth login            # authenticate with GitHub (browser or token)
+gh auth login
 ```
-
-**Day-to-day pushing:**
-```bash
-push                     # pushes main to origin
-push origin my-branch    # pushes a specific branch
-```
-
-If you need `gh` for other tasks (PRs, issues, releases), use it directly — authentication is handled via the keyring.
 
 ---
 
-## Bootstrap (first-time machine setup)
+## Bootstrap (first-time machine install)
 
-1. **Boot NixOS installer**, partition and format with disko:
-   ```bash
-   nix run github:nix-community/disko -- --mode disko machines/miralda/disko.nix
-   ```
+New machines are installed by booting the Clan installer USB, then running `clan machines install <name>` from an existing clan machine. The installer uses the YubiKey pubkey embedded in `machines/miralda/yubikey_ed25519.pub` so no manual SSH-key setup is needed.
 
-2. **Install NixOS:**
-   ```bash
-   nixos-install --flake .#miralda --no-root-password
-   ```
-
-3. **Create ZFS blank snapshots** (impermanence rollback targets):
-   ```bash
-   zfs snapshot zroot/root@blank
-   zfs snapshot zroot/home@blank
-   ```
-
-4. **Generate clan vars** (WiFi credentials, admin/lgo passwords, age identity):
-   ```bash
-   clan vars generate miralda
-   ```
-   Each generator prompts for the required inputs (passphrases, YubiKey slot, etc.).
-
-5. **Set up YubiKey age identity** on miralda after first login:
-   ```bash
-   age-plugin-yubikey --generate --slot 1 > ~/.age/yubikey-identity.txt
-   ```
-   The recipient stored in `vars/per-machine/miralda/` is used by sops for secret encryption.
+Full walkthrough: **[docs/guides/first-time-install.md](docs/guides/first-time-install.md)**.
 
 ---
 
@@ -88,111 +69,68 @@ If you need `gh` for other tasks (PRs, issues, releases), use it directly — au
 
 ```bash
 # 1. Edit config files
-# 2. Deploy (switch = immediate activation):
+# 2. Deploy (switch = immediate activation, boot = staged for next boot):
 deploy
-
-# Or stage a boot entry without switching (safe for risky changes):
 deploy boot
 
 # 3. Commit and push:
-git add -A && git commit
+git add <files> && git commit
 push
 ```
 
-**Secrets / clan vars:** If you change a `secrets/` generator, re-run:
-```bash
-clan vars generate miralda
-```
-Then redeploy. Use `clan machines update miralda` if the full inventory evaluation is needed (e.g. after sops key changes).
+If a `secrets/` generator or `sops` config changes, run `clan vars generate <machine>` then redeploy. `clan machines update <machine>` also re-evaluates vars — use it when a stripped-down `deploy` isn't enough.
 
 ---
 
 ## YubiKey usage
 
-The YubiKey serves two roles: **SSH authentication** (via GnuPG agent) and **age decryption** (PIV-backed identity for sops/clan vars).
-
-For full setup instructions and troubleshooting, see [docs/guides/yubikey.md](docs/guides/yubikey.md).
+The YubiKey serves two roles on `miralda`: **SSH authentication** (via GnuPG agent) and **age decryption** (PIV-backed identity for sops/clan vars). Full setup + troubleshooting in [docs/guides/yubikey.md](docs/guides/yubikey.md).
 
 ### When to plug in the YubiKey
 
 | Task | YubiKey needed? |
 |------|-----------------|
-| `deploy` (local to miralda) | **Yes** — SSH to `root@miralda.goclan.org` uses the GPG auth subkey |
-| `clan vars generate` | **Yes** — decrypts/re-encrypts secrets with age-plugin-yubikey |
-| `clan machines update` | **Yes** — both SSH and secret decryption |
+| `deploy` (SSH to `root@miralda.goclan.org`) | **Yes** — GPG auth subkey |
+| `clan vars generate` | **Yes** — decrypts/re-encrypts secrets |
+| `clan machines update` | **Yes** — SSH + secret decryption |
 | Editing config, `nix eval`, building | No |
-| `push` / `gh` operations | No — uses GitHub token, not SSH |
+| `push` / `gh` operations | No — uses GitHub token |
 | `git commit` | No |
 
-### Troubleshooting
+`deploy-biene`, `deploy-birte`, and `deploy-ernst` also need SSH access to their targets, but those use the `clanarchy_admin` ed25519 key, not the YubiKey.
 
-If `deploy` fails with `Permission denied (publickey)`:
+### Troubleshooting `Permission denied (publickey)`
 
 ```bash
-# 1. Check the YubiKey is visible:
-gpg --card-status
-
-# 2. Check GPG agent is serving SSH keys:
-ssh-add -L
-
-# 3. If ssh-add shows nothing, restart the agent:
+gpg --card-status        # confirms the YubiKey is visible to pcscd
+ssh-add -L               # should list the GPG auth subkey
+# If ssh-add is empty:
 gpgconf --kill gpg-agent
 gpg --card-status        # re-triggers agent + card detection
-ssh-add -L               # should now show the key
-```
-
-If `gpg --card-status` fails, the YubiKey isn't plugged in or `pcscd` isn't running:
-```bash
-sudo systemctl status pcscd
 ```
 
 ---
 
 ## Architecture
 
-```
-flake.nix                       — devShell, machine composition, module injection
-clan.nix                        — clan metadata, overlays, inventory instances
-modules/
-  base.nix                      — universal NixOS defaults (EFI boot, Plymouth, flakes, openssh, zsh)
-  zfs-impermanence.nix          — ZFS rollback on boot, boot flags, common persist paths
-  hardware/yubikey.nix          — pcscd, GnuPG agent (pinentry-qt Wayland wrapper), polkit
-  hardware/printing.nix         — CUPS + hplip, SANE scanning
-  desktop/niri.nix              — Niri compositor, UWSM, ReGreet, Pipewire, fonts, Noctalia PAM
-  desktop/gnome.nix             — GNOME/GDM, extensions, shared dconf
-  roles/laptop.nix              — GPU drivers, power management, Framework hw (fprintd, fwupd)
-  users/lgo.nix                 — lgo power user: shell, devtools, HM config
-  users/admin.nix               — admin user: SSH keys, impermanence
-  locale.nix, networking.nix    — shared locale/keyboard and ZeroTier/mDNS options
-service-modules/
-  machine-type.nix              — @clanarchy/machine-type (laptop, server, vm, rpi)
-  desktop.nix                   — @clanarchy/desktop (niri, gnome, kde)
-  users.nix                     — @clanarchy/users (lgo, sabine)
-  yubikey.nix                   — @clanarchy/yubikey (pcscd, GnuPG, polkit)
-  printing.nix                  — @clanarchy/printing (CUPS, SANE, hplip)
-  software.nix                  — @clanarchy/software (browsers, email)
-machines/miralda/
-  configuration.nix             — identity (hostname, locale, cpu), tablet hw, stateVersion
-  disko.nix                     — NVMe partitioning (GPT: 1G ESP + ZFS AES-256-GCM)
-  stylix.nix                    — Selenized Black theme, generated wallpaper, cursor
-  apps.nix                      — GUI/CLI apps, unfree allowlist, Flatpak, Podman, OBS
-  wallpapers.nix                — Per-workspace nix-anarchy SVG wallpapers
-  home/                         — Home Manager per-user configs
-  home-modules/                 — HM modules: browsers, console tools
-  secrets/                      — Clan vars generators (passwords, WiFi, age identity)
-machines/biene/
-  configuration.nix             — identity (hostname, locale, cpu), Fritz!Box wifi, stateVersion
-  disko.nix                     — NVMe partitioning (GPT: 1G ESP + ZFS)
-  stylix.nix                    — Catppuccin Mocha theme
-vars/per-machine/               — Generated secrets (gitignored sensitive values)
-sops/                           — sops age keys
-```
+Authoritative source: **[docs/index.md](docs/index.md)** for the overview and **[docs/reference/](docs/reference/)** for the auto-generated `clanarchy.*` option tables.
+
+At a glance:
+
+- `flake.nix` — inputs, devShell, and clan machine composition (uses `lib/mk-machine.nix` helpers).
+- `clan.nix` — clan-core metadata (`name = clanarchy`, `domain = goclan.org`), nixpkgs overlays, and clan-service inventory instances.
+- `lib/mk-machine.nix` — `mkModuleArgs`, `forceUnstablePkgs`, `commonBase`, `commonHeadful` — reusable pieces that keep the per-machine blocks small.
+- `modules/` — reusable NixOS modules (hardware, roles, apps, desktop, users, disko/stylix bases).
+- `service-modules/` — custom clan-service definitions (`@clanarchy/machine-type`, `@clanarchy/desktop`, `@clanarchy/users`, `@clanarchy/yubikey`, `@clanarchy/printing`, `@clanarchy/software`, `@clanarchy/local-ai`).
+- `machines/{miralda,biene,birte,ernst}/` — machine-specific `configuration.nix`, `disko.nix`, `stylix.nix`, plus per-machine extras (wallpapers, Jovian wiring, etc.).
+- `vars/per-machine/` — generated clan vars (secrets committed encrypted, plaintext gitignored).
+- `sops/` — sops age keys.
 
 ---
 
 ## Adding a machine to syncthing
 
-Syncthing keeps `~/Public` in sync across all clan machines. When a new machine joins, add it as a peer in `clan.nix`:
+Syncthing keeps `~/Public` in sync across clan machines. When a new machine joins, add it as a peer in `clan.nix`:
 
 ```nix
 inventory.instances.syncthing.roles.peer.machines.new-machine = {
@@ -207,7 +145,7 @@ clan vars generate new-machine
 deploy switch   # on each machine
 ```
 
-Machines discover each other automatically via their zerotier IPs stored in clan vars — no manual device ID exchange needed.
+Machines discover each other via their zerotier IPs — no manual device ID exchange.
 
 ---
 

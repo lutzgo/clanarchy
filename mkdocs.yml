@@ -44,16 +44,24 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Guides:
+    - First-time install: guides/first-time-install.md
+    - Deploying and testing: guides/deploy.md
     - Updating machines: guides/updating-machines.md
     - Adding a machine: guides/adding-a-machine.md
     - Accepting pull requests: guides/accepting-pull-requests.md
+    - Testing a PR: guides/testing-a-pr.md
     - Networking: guides/networking.md
     - YubiKey: guides/yubikey.md
+    - YubiKey SSH setup: guides/yubikey-ssh-setup.md
     - Impermanence: guides/impermanence.md
+    - Firmware updates: guides/firmware-updates.md
+    - Noctalia profiles: guides/noctalia-profiles.md
     - OBS / Sony webcam: guides/obs-sony-webcam.md
   - Reference:
     - Overview: reference/index.md
     - Hardware: reference/hardware.md
     - Roles: reference/roles.md
     - Desktop: reference/desktop.md
+    - Apps: reference/apps.md
+    - Users: reference/users.md
     - WiFi: reference/wifi.md
