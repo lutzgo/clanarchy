@@ -31,8 +31,19 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Unstable — required for Noctalia/Quickshell (intentionally NOT following clan-core/nixpkgs)
-    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # Unstable — required for Noctalia/Quickshell + Jovian-NixOS (intentionally NOT following clan-core/nixpkgs).
+    #
+    # Pinned to 2026-05-30 (rev 1bc189f) because unstable HEAD removed
+    # `stdenv.hostPlatform.linux-kernel` in June 2026, breaking birte's build:
+    # birte uses `nixpkgs.pkgs = unstablePkgs` (see lib/mk-machine.nix) but
+    # NixOS modules from clan-core's 26.05 nixpkgs pin still read
+    # `pkgs.stdenv.hostPlatform.linux-kernel.target` in top-level.nix.
+    # This is the last pre-removal rev on nixos-unstable that still has
+    # `linux-kernel`, keeps Jovian/Noctalia/Quickshell working, and lags
+    # only ~5 weeks behind current unstable.
+    #
+    # Bump this pin once clan-core moves off 26.05 or ships a compat shim.
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/1bc189f2e14dd7abb750903697b9683d54c0fcee";
 
     noctalia = {
       # Pin to pre-v5 revision (2026-05-26). Noctalia v5 (July 2026) rewrote the
