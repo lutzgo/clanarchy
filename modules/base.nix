@@ -13,6 +13,11 @@
 
   home-manager.backupFileExtension = "bak";
 
+  # Home Manager 26.11 vs Nixpkgs 26.05 — HM is intentionally ahead of the
+  # clan-core-pinned nixpkgs.  Silence the per-profile version-mismatch
+  # warning for every HM user in the clan; we track HM upstream manually.
+  home-manager.sharedModules = [ { home.enableNixpkgsReleaseCheck = false; } ];
+
   # Make zsh available as a valid login shell (/etc/shells) for use as fallback.
   programs.zsh.enable = true;
 

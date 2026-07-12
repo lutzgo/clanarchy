@@ -10,6 +10,11 @@
     enable = true;
     polarity = "dark";
 
+    # Stylix's release version follows a different cadence than NixOS 26.05;
+    # the warning about "different Stylix and NixOS versions" is expected in
+    # this pin and safe to silence — we track upstream stylix manually.
+    enableReleaseChecks = false;
+
     fonts = {
       serif     = { package = pkgs.nerd-fonts.monaspace;   name = "MonaspiceXe Nerd Font Propo"; };
       sansSerif = { package = pkgs.nerd-fonts.monaspace;   name = "MonaspiceNe Nerd Font Propo"; };
