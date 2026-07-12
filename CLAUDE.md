@@ -121,7 +121,7 @@ All modules are explicitly imported in `flake.nix` (no auto-discovery):
 | File | Purpose |
 |------|---------|
 | `configuration.nix` | Hostname, timezone, ZFS/systemd-boot, SSH daemon; Steam Deck power/hardware tweaks |
-| `disko.nix` | Thin wrapper over `modules/disko/base.nix` — unencrypted pool, no swap (zram only, hybrid-sleep off) |
+| `disko.nix` | Thin wrapper over `modules/disko/base.nix` — unencrypted pool, 16G plain swap for hybrid-sleep (standard for laptops/consoles) |
 | `jovian.nix` | Jovian-NixOS wiring: Steam Gaming Mode enablement, gamescope-session, `deck` user provisioning |
 | `deck.nix` | Deck-specific user config + HM stylix enablement |
 | `stylix.nix` | Catppuccin Mocha theme, SVG-recolored wallpaper at native 1280×800; imports `modules/stylix-base.nix` (no regreet target — SDDM is Jovian-provisioned) |

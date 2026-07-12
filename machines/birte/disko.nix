@@ -13,7 +13,13 @@ import ../../modules/disko/base.nix {
   # and encryption would prompt for a passphrase before Gaming Mode.
   enableEncryption = false;
 
-  # No swap — the Deck relies on zram (kernel default) and hybrid-sleep
-  # is disabled in configuration.nix.  Add enableSwap = true here plus
-  # boot.resumeDevice + hybridSleep.enable = true if that changes.
+  # 16 GB swap — matches Steam Deck OLED RAM, needed for hybrid-sleep
+  # (suspend-to-both: RAM state is written to swap so the machine can
+  # hibernate if the battery dies while suspended).  Swap is not
+  # randomly-encrypted because the resume image must be readable after
+  # a full power-off.  Standard for laptops / handheld consoles across
+  # the clan (see clanarchy.roles.laptop.hybridSleep default = true).
+  enableSwap = true;
+  swapSize = "16G";
+  encryptSwap = false;
 }

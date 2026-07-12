@@ -9,7 +9,14 @@
 let
   unstablePkgs = import inputs.nixpkgs-unstable {
     system = "x86_64-linux";
-    config.allowUnfree = true;
+    config = {
+      allowUnfree = true;
+      # birte pulls pnpm-9.15.9 transitively (Jovian / KDE tooling).  Since
+      # birte uses `nixpkgs.pkgs = unstablePkgs` (see forceUnstablePkgs
+      # below), `nixpkgs.config` cannot be layered on at the NixOS level
+      # -- allowed insecure packages must live inside the pkgs instance.
+      permittedInsecurePackages = [ "pnpm-9.15.9" ];
+    };
   };
 in
 rec {

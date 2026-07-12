@@ -19,12 +19,17 @@
   clanarchy.hardware.cpu       = "amd";   # Van Gogh APU (Zen 2 + RDNA 2 iGPU)
   clanarchy.users.admin.enable = true;
 
-  # Deck has zram and no swap partition — keep hybrid-sleep off (matches
-  # laptop role default when there's no disko swap / boot.resumeDevice).
-  clanarchy.roles.laptop.hybridSleep.enable = false;
+  # Hybrid-sleep: the swap partition (see disko.nix) is the resume device.
+  # `clanarchy.roles.laptop.hybridSleep.enable` defaults to true — standard
+  # for laptops and handheld consoles across the clan — so no override here.
+  # "swap" is set by disko from the partition name in the partitions attrset.
+  boot.resumeDevice = "/dev/disk/by-partlabel/disk-main-swap";
 
-  # Steam / Proton are unfree.
-  nixpkgs.config.allowUnfree = true;
+  # (Steam / Proton are unfree — `allowUnfree = true` is already baked into
+  # the pkgs instance built in lib/mk-machine.nix, so we intentionally do
+  # NOT set `nixpkgs.config.allowUnfree` here.  Doing both trips a NixOS
+  # assertion because `nixpkgs.config` cannot be set when `nixpkgs.pkgs`
+  # is an externally created instance.)
 
   # App categories — keep minimal on the Deck. Flatpak is useful in Desktop Mode
   # for GUI apps that don't ship on Steam.
