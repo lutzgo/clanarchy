@@ -98,7 +98,15 @@
     # the GVfs AFC backend Nautilus uses.
     libimobiledevice
     ifuse
+    # PTP/camera fallback for iPhones that won't grant Trust (stuck in the
+    # PTP-only USB configuration): gvfs-gphoto2 exposes the Camera Roll to
+    # Nautilus like a regular digital camera, no Trust dialog required.
+    gphoto2
   ];
+
+  # libgphoto2's udev rules tag Apple/PTP devices with uaccess so the active
+  # logind session user (sabine) gets device access without root or plugdev.
+  services.udev.packages = [ pkgs.libgphoto2 ];
   services.gvfs.enable = true;
 
   system.stateVersion = "25.11";
