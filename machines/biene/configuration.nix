@@ -42,6 +42,11 @@
   # "swap" is set by disko from the partition name in the partitions attrset.
   boot.resumeDevice = "/dev/disk/by-partlabel/disk-main-swap";
 
+  # Removable-media filesystem compatibility (USB sticks, SD cards, externals
+  # handed over from Windows / Android / older Macs). Adds native kernel
+  # drivers; userspace tools are added to systemPackages below.
+  boot.supportedFilesystems = [ "ntfs" "exfat" "vfat" "f2fs" "hfsplus" ];
+
   # App categories — package lists and services live in modules/apps/*.nix.
   clanarchy.apps.graphics.simple.enable = true;
   clanarchy.apps.media.enable           = true;
@@ -56,6 +61,13 @@
   environment.systemPackages = with pkgs; [
     nautilus
     evince
+    # Removable-media filesystem tools (mkfs.*, fsck.*, repair helpers).
+    ntfs3g
+    exfatprogs
+    dosfstools
+    mtools
+    f2fs-tools
+    hfsprogs
   ];
   services.gvfs.enable = true;
 
