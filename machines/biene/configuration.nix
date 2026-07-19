@@ -37,6 +37,13 @@
   # Syncthing — run as sabine so it can write to /home/sabine/Public.
   services.syncthing.user = "sabine";
 
+  # iPhone support (photo backup via Nautilus, music sync via iTunes-in-Wine).
+  # usbmuxd speaks the Apple mobile device protocol over USB; libimobiledevice
+  # + ifuse plug into GVfs so Nautilus can browse the iPhone directly for
+  # photos without needing iTunes. iTunes (installed via Lutris in sabine's
+  # home.packages) is only needed for music sync back to the device.
+  services.usbmuxd.enable = true;
+
   # Lid close → shut down (Sabine's preference), overriding the laptop-role
   # default of hybrid-sleep on battery / suspend on AC. Disabling hybridSleep
   # also drops the now-unused HibernateMode=shutdown sleep setting.
@@ -86,6 +93,11 @@
     mtools
     f2fs-tools
     hfsprogs
+    # iOS device access (paired with services.usbmuxd above). ifuse mounts the
+    # iPhone as a FUSE filesystem; libimobiledevice provides idevice* CLIs +
+    # the GVfs AFC backend Nautilus uses.
+    libimobiledevice
+    ifuse
   ];
   services.gvfs.enable = true;
 
