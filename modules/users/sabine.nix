@@ -48,6 +48,10 @@ in
         "Videos"
         "Desktop"
         "Public"
+        # Lutris's default install directory; Wine prefixes for iTunes and
+        # any iPhone backups it holds live here. Must persist across ZFS
+        # rollback or every reboot wipes the iTunes install.
+        "Games"
       ];
     };
 
@@ -89,6 +93,12 @@ in
         zellij
         yazi
         bat
+        # iTunes-on-Wine for iPhone music sync. Install via Lutris's
+        # community install script ("iTunes" on lutris.net) after first
+        # launch; the script handles Wine version pinning and winetricks
+        # dependencies. iPhone photos can be browsed directly in Nautilus
+        # (GVfs AFC, wired at the system level in biene/configuration.nix).
+        lutris
       ];
 
       # Apply the "simple_mouse" native Noctalia profile on every rebuild.
