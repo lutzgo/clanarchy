@@ -54,6 +54,17 @@
   # drivers; userspace tools are added to systemPackages below.
   boot.supportedFilesystems = [ "ntfs" "exfat" "vfat" "f2fs" "hfsplus" ];
 
+  # Force udisks2 (and every other mount consumer) to route NTFS through
+  # ntfs-3g FUSE instead of the in-kernel ntfs3 driver. ntfs3 refuses to
+  # mount volumes with a dirty $LogFile (common after Windows fast-startup
+  # or an unclean unplug) and udisks2 has no fallback, so Nautilus just
+  # errors out. ntfs-3g replays the journal automatically. Trade-off: FUSE
+  # is slower than the kernel driver on large sequential I/O — unnoticeable
+  # for removable media, worth the graceful recovery.
+  services.udev.extraRules = ''
+    SUBSYSTEM=="block", ENV{ID_FS_TYPE}=="ntfs", ENV{ID_FS_TYPE}="ntfs-3g"
+  '';
+
   # App categories — package lists and services live in modules/apps/*.nix.
   clanarchy.apps.graphics.simple.enable = true;
   clanarchy.apps.media.enable           = true;
