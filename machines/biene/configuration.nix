@@ -37,9 +37,16 @@
   # Syncthing — run as sabine so it can write to /home/sabine/Public.
   services.syncthing.user = "sabine";
 
-  # Hybrid-sleep: the swap partition (see disko.nix) must be the resume device
-  # so the kernel can restore memory after hibernation. The GPT partition label
-  # "swap" is set by disko from the partition name in the partitions attrset.
+  # Lid close → shut down (Sabine's preference), overriding the laptop-role
+  # default of hybrid-sleep on battery / suspend on AC. Disabling hybridSleep
+  # also drops the now-unused HibernateMode=shutdown sleep setting.
+  # Docked behaviour (HandleLidSwitchDocked) keeps the systemd default: ignore.
+  clanarchy.roles.laptop.hybridSleep.enable = false;
+  services.logind.settings.Login.HandleLidSwitch              = lib.mkForce "poweroff";
+  services.logind.settings.Login.HandleLidSwitchExternalPower = lib.mkForce "poweroff";
+
+  # Swap partition is retained for memory pressure only; resumeDevice is left
+  # set so re-enabling hibernation later is a one-line change.
   boot.resumeDevice = "/dev/disk/by-partlabel/disk-main-swap";
 
   # Removable-media filesystem compatibility (USB sticks, SD cards, externals
