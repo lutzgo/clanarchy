@@ -58,6 +58,7 @@ rec {
     ../modules/locale.nix
     ../modules/networking/mdns.nix
     ../modules/networking/resolved.nix
+    ../modules/networking/initrd-ssh.nix
     ../modules/hardware/cpu.nix
     ../modules/hardware/gpu.nix
     ../modules/virtualisation.nix

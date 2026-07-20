@@ -262,6 +262,17 @@ in
             "ernst ernst.local ernst.skynet.lan 10.0.50.10 fdda:106a:123a:d561:1099:933e:4c60:711f" = {
               PubkeyAuthentication = "unbound";
             };
+            # Stage-1 (initrd) sshd for remote zroot unlock.  Different sshd,
+            # different host key from the running system — HostKeyAlias keeps
+            # both entries in ~/.ssh/known_hosts without a "REMOTE HOST
+            # IDENTIFICATION HAS CHANGED" panic on port switch.  Usage:
+            #   ssh ernst-initrd systemd-tty-ask-password-agent --query
+            "ernst-initrd" = {
+              HostName     = "ernst.skynet.lan";
+              Port         = 2222;
+              User         = "root";
+              HostKeyAlias = "ernst-initrd";
+            };
           };
         };
 

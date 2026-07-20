@@ -38,4 +38,18 @@
   # (enp12s0, igc) cannot block boot.  If wait-online is ever re-enabled,
   # add: `systemd.network.wait-online = { anyInterface = true;
   # ignoredInterfaces = [ "enp12s0" ]; };`
+
+  # Stage-1 SSH for remote zroot passphrase entry.  See
+  # modules/networking/initrd-ssh.nix header for one-time host-key setup,
+  # and docs/guides/remote-unlock.md for the operator flow from miralda.
+  clanarchy.initrdSsh = {
+    enable        = true;
+    interface     = "enp13s0";
+    address       = "10.0.50.10/24";   # same as running-system; never up simultaneously
+    gateway       = "10.0.50.1";
+    kernelModules = [ "atlantic" "igc" ];
+    authorizedKeyFiles = [
+      ../miralda/yubikey_ed25519.pub   # mirrors modules/users/admin.nix
+    ];
+  };
 }
