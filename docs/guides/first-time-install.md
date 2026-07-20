@@ -15,19 +15,77 @@ From the devShell, with the USB stick identified via `lsblk` (replace `/dev/sda`
 CLAN_CORE_REV=$(nix flake metadata --json . | jq -r '.locks.nodes["clan-core"].locked.rev')
 
 clan flash write \
-  --flake "github:clan-lol/clan-core/$CLAN_CORE_REV" \
+  --flake "git+https://git.clan.lol/clan/clan-core?rev=$CLAN_CORE_REV" \
   --ssh-pubkey machines/miralda/yubikey_ed25519.pub \
   --keymap us --language en_US.UTF-8 \
   --disk main /dev/sda \
   flash-installer
 ```
 
-- `--flake` **must** point to the same clan-core rev this project's `clan` CLI was built from. A mismatch causes `attribute 'vars' missing` at install time. Reading the rev from `flake.lock` (as above) guarantees they match.
+- `--flake` **must** point to the same clan-core rev this project's `clan` CLI was built from. A mismatch causes `attribute 'vars' missing` at install time. Reading the rev from `flake.lock` (as above) guarantees they match. Note the ref is `git+https://git.clan.lol/...` — clan-core is not on GitHub, so `github:clan-lol/clan-core/<rev>` returns HTTP 404.
 - `--ssh-pubkey` takes a **file path**, not key content.
 - Machine-specific config is applied later by `clan machines install`. The installer itself is generic.
 
 !!! warning
     `clan flash` wipes the target USB stick entirely. Double-check the device path with `lsblk` before running.
+
+### If the USB stick has been used before
+
+`clan flash` / `disko-install` only zeroes the first 440 bytes (MBR boot code) and clears disk-level headers before re-partitioning. Residual filesystem signatures deeper into the stick (e.g. from a previous NixOS ISO or install) can survive the wipe. On the next re-partition, `blkid` matches those stale signatures and disko **skips `mkfs`** on the affected partition — the subsequent mount then fails with `fsconfig() failed: Structure needs cleaning`.
+
+Pre-wipe the stick before flashing:
+
+```bash
+# Unmount any auto-mounts (udisks, GNOME Files, etc.)
+sudo umount /run/media/$USER/* 2>/dev/null || true
+
+# Zero the first 200 MB (kills FS signatures in that range)
+sudo dd if=/dev/zero of=/dev/sda bs=1M count=200 status=progress conv=fsync
+
+# If the stick was previously partitioned by disko, also clear signatures
+# on each existing partition (wipefs on /dev/sda alone only touches disk-level
+# headers, not per-partition superblocks past the 200 MB dd range).
+sudo wipefs -af /dev/sda?* 2>/dev/null || true
+sudo wipefs -af /dev/sda
+
+# Force the kernel to drop its cached partition table
+sudo blockdev --rereadpt /dev/sda
+
+# Confirm no residual signatures
+sudo blkid /dev/sda*   # should print nothing
+```
+
+!!! danger "If `clan flash` fails mid-run, check `/boot` immediately"
+    `disko-install` mounts the target's ESP under `/mnt/disko-install-root/boot` while running `nixos-install`. If the run crashes, this mount can leak into the host namespace and take over the host's `/boot` — a subsequent kernel/bootloader update would then write to the USB stick instead of the host's real ESP, potentially bricking boot on next reboot.
+
+    After any failed `clan flash`, run:
+
+    ```bash
+    findmnt /boot          # must show the host's real ESP (e.g. /dev/nvme0n1p1)
+    ```
+
+    If it shows `/dev/sda*` instead:
+
+    ```bash
+    sudo umount /boot
+    sudo mount /dev/nvme0n1p1 /boot   # or whichever is the host's real ESP
+    findmnt /boot                     # verify
+    ```
+
+    Only after `/boot` is restored, clean up disko's leftover mounts and retry:
+
+    ```bash
+    sudo umount -R /mnt/disko-install-root 2>/dev/null || true
+    sudo rm -rf /mnt/disko-install-root
+    ```
+
+!!! note "`rmdir: Directory not empty` at the end means success"
+    `clan flash` currently returns exit code 1 whenever the final `rmdir /mnt/disko-install-root` fails, even when `disko-install succeeded` and the boot loader installed cleanly. Scroll up in the output — if you see `disko-install succeeded` and `Installation finished. No error reported.`, the stick is good. Clean up the leftover directory afterwards:
+
+    ```bash
+    sudo umount -R /mnt/disko-install-root 2>/dev/null || true
+    sudo rm -rf /mnt/disko-install-root
+    ```
 
 ## Step 2 — Boot the target machine
 
