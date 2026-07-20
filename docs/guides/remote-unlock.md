@@ -56,14 +56,21 @@ ssh_host_ed25519_key` on ernst to verify.
 
 When ernst reboots (planned or unplanned):
 
+The atlantic 10G NIC takes ~10 s to gain link at boot, so poll in a
+loop rather than a single try:
+
 ```bash
-# Wait a few seconds for the NIC to come up and sshd to start.
-# Then answer the pending zroot passphrase prompt in one command:
-ssh ernst-initrd systemd-tty-ask-password-agent --query
-# Passphrase for zroot:
-#   <type it>
-# (Ctrl-D to exit.  Stage-1 sshd is killed automatically when the
-#  initrd hands off to stage 2.)
+# Poll until initrd sshd answers, then feed the pending password prompt.
+# -tt is REQUIRED: systemd-tty-ask-password-agent reads from /dev/tty,
+# which only exists if ssh allocates a pty (which it doesn't inside a
+# `while` loop unless forced).  Without -tt the command silently hangs.
+while ! ssh -tt -o ConnectTimeout=2 ernst-initrd \
+    systemd-tty-ask-password-agent --query; do
+  sleep 1
+done
+# ↑ Prints "Password: " — type the zroot passphrase, press Enter.
+#   Command exits, ernst continues booting.  Stage-1 sshd is killed
+#   automatically as the initrd hands off to stage 2.
 
 # Once ernst is up, verify:
 ssh root@ernst.skynet.lan zpool status         # zroot + zdata both ONLINE
