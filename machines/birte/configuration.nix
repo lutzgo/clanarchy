@@ -3,7 +3,8 @@
   networking.hostName = "birte";
   # Regenerate if cloning: head -c4 /dev/urandom | od -A none -t x4 | tr -d ' '
   networking.hostId   = "fe39bcd8";
-  networking.search   = [ "skynet.lan" ];
+  # DNS: no global `networking.search` — search + routing attach to the
+  # "home" NM profile.  See modules/networking/{resolved,skynet-dns-nm}.nix.
 
   time.timeZone = "Europe/Berlin";
 

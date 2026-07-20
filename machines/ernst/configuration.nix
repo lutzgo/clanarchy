@@ -3,7 +3,9 @@
   networking.hostName = "ernst";
   # Regenerate if cloning: head -c4 /dev/urandom | od -A none -t x4 | tr -d ' '
   networking.hostId   = "e7c97a1f";
-  networking.search   = [ "skynet.lan" ];
+  # DNS: no global `networking.search` — see modules/networking/resolved.nix.
+  # The skynet.lan search suffix + Technitium pin will be attached to the
+  # static enp13s0 networkd unit in Phase 2 (still DHCP as of now).
 
   time.timeZone = "Europe/Berlin";
 

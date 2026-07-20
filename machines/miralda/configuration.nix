@@ -2,7 +2,9 @@
 {
   networking.hostName = "miralda";
   networking.hostId  = "ebeed95c";
-  networking.search  = [ "skynet.lan" ];
+  # DNS: no global `networking.search` — see modules/networking/resolved.nix
+  # for the rationale.  The skynet.lan search suffix + Technitium routing
+  # attach to the "home" wifi NM profile in modules/networking/skynet-dns-nm.nix.
   time.timeZone      = "Europe/Berlin";
 
   # Locale: English US everywhere (CLI + Noctalia GUI).

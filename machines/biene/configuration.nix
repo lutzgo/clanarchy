@@ -2,7 +2,8 @@
 {
   networking.hostName = "biene";
   networking.hostId   = "cd9ef50b";
-  networking.search   = [ "skynet.lan" ];
+  # DNS: no global `networking.search` — search + routing attach to the
+  # "home" NM profile.  See modules/networking/{resolved,skynet-dns-nm}.nix.
 
   # No targetHost set — clan auto-discovers biene via ZeroTier (same as miralda).
   # For initial deploy or when ZeroTier is unreachable, use:
