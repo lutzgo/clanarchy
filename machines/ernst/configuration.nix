@@ -29,5 +29,14 @@
   # it up automatically. zramSwap intentionally left off — 256 GB RAM is plenty.
   zramSwap.enable = false;
 
+  # Auto-import + unlock zdata in stage 2 using a raw keyfile on /persist.
+  # /persist is a zroot dataset (neededForBoot=true, see modules/zfs-impermanence.nix),
+  # so it is mounted before stage 2 systemd starts zfs-import-zdata.service.
+  # requestEncryptionCredentials defaults to true, and any dataset whose
+  # keylocation is a file:// URI has `zfs load-key` invoked non-interactively
+  # by that same service, so no console prompt is needed.
+  # One-time setup: see docs/guides/ (Phase 4 keyfile setup).
+  boot.zfs.extraPools = [ "zdata" ];
+
   system.stateVersion = "26.05";
 }

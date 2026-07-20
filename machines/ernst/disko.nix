@@ -2,8 +2,16 @@
 #   zroot   mirror across 2× PM1643a 960 GB SAS SSDs   (encrypted, system pool)
 #   zdata   raidz1 across  6× PM1643a 15.36 TB SAS SSDs (encrypted, data pool)
 #
-# Both pools use aes-256-gcm with a passphrase at boot.  zroot prompts in
-# stage 1; zdata prompts once the rootfs is mounted (services.zfs.* below).
+# Both pools use aes-256-gcm.  zroot is unlocked with a passphrase prompt in
+# stage 1.  zdata is unlocked in stage 2 by zfs-import-zdata.service, which
+# reads a 32-byte raw key from a keyfile on zroot (/persist/zdata.key) — one
+# interactive prompt per boot, no console needed for the bulk pool.  See
+# `boot.zfs.extraPools` in machines/ernst/configuration.nix and the Phase 4
+# one-time-setup docs.  The `keyformat = "passphrase"` / `keylocation =
+# "prompt"` set on the pool below is the INITIAL install-time value; after
+# `zfs change-key -o keyformat=raw -o keylocation=file:///persist/zdata.key
+# zdata` the on-pool metadata is the source of truth (disko does not manage
+# it after install).
 #
 # Before installing:
 #   ssh root@<installer-ip>
