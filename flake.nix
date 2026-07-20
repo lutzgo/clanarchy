@@ -287,6 +287,7 @@
           ./machines/ernst/configuration.nix
           ./machines/ernst/disko.nix
           ./machines/ernst/hardware-configuration.nix
+          ./machines/ernst/networking.nix
         ];
       };
     };

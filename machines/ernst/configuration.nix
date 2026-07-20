@@ -3,7 +3,9 @@
   networking.hostName = "ernst";
   # Regenerate if cloning: head -c4 /dev/urandom | od -A none -t x4 | tr -d ' '
   networking.hostId   = "e7c97a1f";
-  networking.search   = [ "skynet.lan" ];
+  # DNS: no global `networking.search` — see modules/networking/resolved.nix.
+  # The skynet.lan search suffix + Technitium pin will be attached to the
+  # static enp13s0 networkd unit in Phase 2 (still DHCP as of now).
 
   time.timeZone = "Europe/Berlin";
 
@@ -26,6 +28,15 @@
   # Swap is defined as a partition on system-a in disko.nix; the kernel picks
   # it up automatically. zramSwap intentionally left off — 256 GB RAM is plenty.
   zramSwap.enable = false;
+
+  # Auto-import + unlock zdata in stage 2 using a raw keyfile on /persist.
+  # /persist is a zroot dataset (neededForBoot=true, see modules/zfs-impermanence.nix),
+  # so it is mounted before stage 2 systemd starts zfs-import-zdata.service.
+  # requestEncryptionCredentials defaults to true, and any dataset whose
+  # keylocation is a file:// URI has `zfs load-key` invoked non-interactively
+  # by that same service, so no console prompt is needed.
+  # One-time setup: see docs/guides/ (Phase 4 keyfile setup).
+  boot.zfs.extraPools = [ "zdata" ];
 
   system.stateVersion = "26.05";
 }

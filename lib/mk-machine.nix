@@ -56,19 +56,23 @@ rec {
     ../modules/zfs-impermanence.nix
     ../modules/vm-variant.nix
     ../modules/locale.nix
-    ../modules/networking.nix
+    ../modules/networking/mdns.nix
+    ../modules/networking/resolved.nix
+    ../modules/networking/initrd-ssh.nix
     ../modules/hardware/cpu.nix
     ../modules/hardware/gpu.nix
     ../modules/virtualisation.nix
     ../modules/users/admin.nix
   ];
 
-  # Headful (workstation) machines: adds stylix + display + apps.
-  # Ernst opts out — it's a headless homelab server.
+  # Headful (workstation) machines: adds stylix + display + apps + NM DNS
+  # routing (NM is only enabled on the NM-managed machines — see wifi service).
+  # Ernst opts out — headless homelab server, no stylix / no apps / networkd.
   commonHeadful = commonBase ++ [
     inputs.stylix.nixosModules.stylix
     stylixKmsconFix
     ../modules/hardware/display.nix
+    ../modules/networking/skynet-dns-nm.nix
     ../modules/apps
   ];
 }

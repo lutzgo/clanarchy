@@ -144,7 +144,10 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | `zfs-impermanence.nix` | ZFS rollback-on-boot (stage 1); persist paths |
 | `vm-variant.nix` | QEMU-friendly overrides used by `test-pr` / `test-vm` |
 | `locale.nix` | `clanarchy.locale` option: language + keyboard layout/variant/options |
-| `networking.nix` | ZeroTier + DNS + mDNS options |
+| `networking/mdns.nix` | Avahi / mDNS — `<hostname>.local` across LAN + ZeroTier |
+| `networking/resolved.nix` | systemd-resolved fleet defaults: public FallbackDNS (1.1.1.1 9.9.9.9); no global DNS/search (per-link only, avoids off-LAN breakage on roaming machines) |
+| `networking/skynet-dns-nm.nix` | NM machines only: extends the clan-core-created "home" wifi profile with `dns-search = "~. skynet.lan"` + `dns-priority = -100` so Technitium (10.0.5.3 via DHCP) is the sole resolver whenever the home LAN is active |
+| `networking/initrd-ssh.nix` | Opt-in stage-1 SSH server for remote pool/passphrase unlock. `clanarchy.initrdSsh.{enable,port,hostKey,authorizedKeyFiles,interface,address,gateway,kernelModules}`. Requires `boot.initrd.systemd.enable = true`. See `docs/guides/remote-unlock.md` |
 | `virtualisation.nix` | libvirt / qemu / podman shared setup |
 | `wifi.nix` | NetworkManager wifi profile from clan var (imported by biene + birte) |
 | `caldav-sync.nix` | CalDAV sync helpers for shared calendar access |
@@ -210,7 +213,7 @@ Generated outputs land in `vars/per-machine/<machine>/`. Run generators with `cl
 
 ### Key Design Decisions
 
-**Machine Composition Helpers (`lib/mk-machine.nix`)**: Every clan machine needs the same `_module.args` injection (`pkgs-unstable` + `inputs`), the same stylix kmscon workaround, and the same list of shared modules. Instead of repeating that boilerplate in each `clan.machines.<name>` block, `lib/mk-machine.nix` exports `mkModuleArgs`, `forceUnstablePkgs` (used by birte for its unstable-pkgs override), `stylixKmsconFix` (bundled into `commonHeadful`), plus two shared imports lists: `commonBase` (universal — impermanence, HM, `modules/base.nix`, `zfs-impermanence.nix`, `vm-variant.nix`, `locale.nix`, `networking.nix`, `hardware/cpu.nix`, `hardware/gpu.nix`, `virtualisation.nix`, `users/admin.nix`) and `commonHeadful` (`commonBase` + stylix + `hardware/display.nix` + `modules/apps`). `ernst` uses `commonBase`; the others use `commonHeadful`.
+**Machine Composition Helpers (`lib/mk-machine.nix`)**: Every clan machine needs the same `_module.args` injection (`pkgs-unstable` + `inputs`), the same stylix kmscon workaround, and the same list of shared modules. Instead of repeating that boilerplate in each `clan.machines.<name>` block, `lib/mk-machine.nix` exports `mkModuleArgs`, `forceUnstablePkgs` (used by birte for its unstable-pkgs override), `stylixKmsconFix` (bundled into `commonHeadful`), plus two shared imports lists: `commonBase` (universal — impermanence, HM, `modules/base.nix`, `zfs-impermanence.nix`, `vm-variant.nix`, `locale.nix`, `networking/mdns.nix`, `networking/resolved.nix`, `networking/initrd-ssh.nix`, `hardware/cpu.nix`, `hardware/gpu.nix`, `virtualisation.nix`, `users/admin.nix`) and `commonHeadful` (`commonBase` + stylix + `hardware/display.nix` + `networking/skynet-dns-nm.nix` + `modules/apps`). `ernst` uses `commonBase`; the others use `commonHeadful`.
 
 **Impermanence**: Root and home roll back to `@blank` ZFS snapshots on boot. Persisted paths include: `/var/lib/sops-nix`, `/var/lib/systemd`, `/var/lib/zerotier-one`, user `.gnupg`, `.config`, `.local/share`.
 

@@ -243,21 +243,35 @@ in
         # When the server advertises cert-based host keys, OpenSSH activates the
         # publickey-hostbound-v00@openssh.com extension. gnupg fails to sign with
         # card-backed ed25519 keys when this extension is active (no PKSIGN ever sent
-        # to scdaemon). Forcing plain ssh-ed25519 HostKeyAlgorithms bypasses the cert
-        # path and disables publickey-hostbound, making YubiKey SSH signing work.
+        # to scdaemon). Two per-host overrides bypass this — either forcing plain
+        # ssh-ed25519 HostKeyAlgorithms (drops the cert path so hostbound isn't
+        # negotiated) or PubkeyAuthentication=unbound (opts out of the hostbound
+        # extension while keeping cert host keys). See docs/yubikey-ssh-setup.md.
         programs.ssh = {
           enable = true;
           enableDefaultConfig = false;
           # ZeroTier IPs are included so that `clan machines update` (which
-          # connects via ZeroTier) also gets the HostKeyAlgorithms override.
-          # gnupg 2.4.x workaround: force plain ssh-ed25519 to disable
-          # publickey-hostbound-v00@openssh.com, which breaks card-backed signing.
+          # connects via ZeroTier) also picks up the override.
           settings = {
             "miralda.goclan.org fdda:106a:123a:d561:1099:93da:106a:123a" = {
               HostKeyAlgorithms = "ssh-ed25519";
             };
             "biene.local biene.skynet.lan 10.0.10.105 fdda:106a:123a:d561:1099:93da:ef5d:598c" = {
               HostKeyAlgorithms = "ssh-ed25519";
+            };
+            "ernst ernst.local ernst.skynet.lan 10.0.50.10 fdda:106a:123a:d561:1099:933e:4c60:711f" = {
+              PubkeyAuthentication = "unbound";
+            };
+            # Stage-1 (initrd) sshd for remote zroot unlock.  Different sshd,
+            # different host key from the running system — HostKeyAlias keeps
+            # both entries in ~/.ssh/known_hosts without a "REMOTE HOST
+            # IDENTIFICATION HAS CHANGED" panic on port switch.  Usage:
+            #   ssh ernst-initrd systemd-tty-ask-password-agent --query
+            "ernst-initrd" = {
+              HostName     = "ernst.skynet.lan";
+              Port         = 2222;
+              User         = "root";
+              HostKeyAlias = "ernst-initrd";
             };
           };
         };
