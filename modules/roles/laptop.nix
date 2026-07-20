@@ -34,6 +34,22 @@ in
     # Provides firmware updates via LVFS; see docs/guides/firmware-updates.md.
     services.fwupd.enable = lib.mkDefault true;
 
+    # fwupd-refresh (Type=oneshot, LVFS metadata download) intermittently fails on
+    # transient network/DNS/auth blips — e.g. right after boot or when roaming. The
+    # bare failure surfaces in `switch-to-configuration`'s failed-units summary and
+    # makes `deploy switch` on laptops exit non-zero for no real reason.
+    #
+    # Restart=on-failure keeps the unit out of the terminal "failed" state: it
+    # moves to auto-restart, waits RestartSec, and re-runs. Type=oneshot supports
+    # Restart= in modern systemd. RestartSec=1h avoids hammering LVFS and stays
+    # well under DefaultStartLimitBurst (5 in 10s), so retries continue
+    # indefinitely rather than tripping the start-limit and going to "failed".
+    # Extends the upstream SuccessExitStatus=2 101 (already in the vendor unit).
+    systemd.services.fwupd-refresh.serviceConfig = {
+      Restart = "on-failure";
+      RestartSec = "1h";
+    };
+
     # Enrolled fingerprints must survive ZFS rollback.
     environment.persistence."/persist".directories =
       lib.mkIf cfg.framework.enable [ "/var/lib/fprint" ];
