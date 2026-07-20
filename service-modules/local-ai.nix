@@ -26,7 +26,7 @@
     };
 
     perInstance = { settings, ... }: {
-      nixosModule = { pkgs, ... }: {
+      nixosModule = { pkgs, lib, ... }: {
 
         services.ollama = {
           enable     = true;
@@ -42,6 +42,34 @@
             HSA_OVERRIDE_GFX_VERSION = "11.0.3";
             ROCR_VISIBLE_DEVICES     = "0";
           };
+        };
+
+        # services.ollama.loadModels wires up `ollama-model-loader.service`,
+        # which runs `ollama pull` for each configured model when ollama.service
+        # starts. On cold boot the loader races DNS: NetworkManager may not have
+        # finished associating + DHCP + DNS by the time the pull fires, so it
+        # dies with a name-resolution error.
+        #
+        # Upstream nixpkgs already declares After/Wants=network-online.target on
+        # this unit, but that ordering is only meaningful when a `*-wait-online`
+        # service actually blocks the target.  On this fleet both wait-online
+        # services are masked:
+        #   - systemd-networkd-wait-online — clan-core default (see
+        #     machines/ernst/networking.nix for the reasoning);
+        #   - NetworkManager-wait-online — masked here as well.
+        # Unmasking NM-wait-online would add up-to-30s boot delays whenever the
+        # laptop is away from home wifi — an unacceptable regression for a
+        # roaming Framework 13.  So the ordering is a no-op on this machine and
+        # we lean on retry instead: on failure wait 30s and re-run, by which
+        # time NM is up and DNS resolves.
+        #
+        # Upstream also ships Restart=on-failure with a 1s→exponential ladder;
+        # codify it here (with a saner 30s base — DNS-at-boot doesn't need a 1s
+        # retry) so a future upstream default change doesn't quietly reintroduce
+        # the race. RestartSteps/RestartMaxDelaySec from upstream still apply.
+        systemd.services.ollama-model-loader.serviceConfig = {
+          Restart    = lib.mkForce "on-failure";
+          RestartSec = lib.mkForce "30s";
         };
 
         # Many ROCm utilities hard-code /opt/rocm/hip.  Create a symlink so
