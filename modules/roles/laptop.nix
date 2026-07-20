@@ -35,20 +35,26 @@ in
     services.fwupd.enable = lib.mkDefault true;
 
     # fwupd-refresh (Type=oneshot, LVFS metadata download) intermittently fails on
-    # transient network/DNS/auth blips — e.g. right after boot or when roaming. The
-    # bare failure surfaces in `switch-to-configuration`'s failed-units summary and
-    # makes `deploy switch` on laptops exit non-zero for no real reason.
+    # transient network/DNS/auth blips — e.g. right after boot or when roaming.
+    # The bare failure surfaces in `switch-to-configuration`'s failed-units summary
+    # and makes `deploy switch` on laptops exit non-zero for no real reason.
     #
-    # Restart=on-failure keeps the unit out of the terminal "failed" state: it
-    # moves to auto-restart, waits RestartSec, and re-runs. Type=oneshot supports
-    # Restart= in modern systemd. RestartSec=1h avoids hammering LVFS and stays
-    # well under DefaultStartLimitBurst (5 in 10s), so retries continue
-    # indefinitely rather than tripping the start-limit and going to "failed".
-    # Extends the upstream SuccessExitStatus=2 101 (already in the vendor unit).
-    systemd.services.fwupd-refresh.serviceConfig = {
-      Restart = "on-failure";
-      RestartSec = "1h";
-    };
+    # We can't fix this via Restart=on-failure — switch-to-configuration-ng
+    # explicitly flags units in SubState=auto-restart with ExecMainStatus!=0 as
+    # failed (see switch-to-configuration-ng src/main.rs, the block guarded by
+    # `substate == "auto-restart"`). We also can't narrow SuccessExitStatus:
+    # fwupdmgr uses generic exit 1 for every transient error, so widening it
+    # would mask real failures.
+    #
+    # Instead, prefix ExecStart with `-`. systemd records the exit code in the
+    # journal but treats the run as successful — no auto-restart, no "failed"
+    # state, no propagation to switch-to-configuration. fwupd-refresh.timer
+    # fires daily, so a missed metadata refresh self-heals on the next run.
+    # Persistent LVFS breakage still surfaces via `journalctl -u fwupd-refresh`,
+    # motd (which fwupd-refresh itself updates), and `fwupdmgr get-devices`
+    # showing stale metadata.
+    systemd.services.fwupd-refresh.serviceConfig.ExecStart = lib.mkForce
+      "-${config.services.fwupd.package}/bin/fwupdmgr refresh";
 
     # Enrolled fingerprints must survive ZFS rollback.
     environment.persistence."/persist".directories =
