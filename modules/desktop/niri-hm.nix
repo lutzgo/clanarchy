@@ -287,4 +287,64 @@
       };
     };
   };
+
+  # Blur (niri v26.04+). niri-flake's Nix schema has no `blur { }` or
+  # `background-effect { }` nodes at the current pin, so we take the string
+  # niri-flake generated (`programs.niri.finalConfig`), append raw KDL, and
+  # re-run `niri validate` before installing.
+  xdg.configFile.niri-config.source = lib.mkIf osConfig.clanarchy.desktop.niri.blur.enable (lib.mkForce (
+    pkgs.runCommand "config.kdl" {
+      passAsFile = ["config"];
+      config = config.programs.niri.finalConfig + ''
+
+        // ---- injected by modules/desktop/niri-hm.nix (blur.enable) ----
+
+        // Global blur parameters. Defaults per niri v26.04 wiki.
+        blur {
+            passes 3
+            offset 3.0
+            noise 0.02
+            saturation 1.5
+        }
+
+        // Foot terminal: blur its wallpaper even when focused (opacity 0.95).
+        window-rule {
+            match app-id="^foot$"
+            background-effect {
+                blur true
+            }
+        }
+
+        // Any unfocused window (opacity 0.65 baseline) gets a blurred backdrop.
+        // Fully-opaque apps (Chromium/GIMP/LibreOffice — see window-rules above)
+        // still render blur but it's invisible through their opaque surface;
+        // xray mode makes this cheap so we don't try to exclude them.
+        window-rule {
+            match is-focused=false
+            background-effect {
+                blur true
+            }
+        }
+
+        // Noctalia UI layer surfaces. Only the visible ones — background,
+        // wallpaper, overview, fade-overlay, exclusion, and trigger zones
+        // deliberately do NOT get a rule (they are either invisible or ARE
+        // the backdrop).
+        layer-rule {
+            match namespace="^noctalia-bar-content-"
+            match namespace="^noctalia-dock-"
+            match namespace="^noctalia-launcher-"
+            match namespace="^noctalia-osd-"
+            match namespace="^noctalia-toast-"
+            match namespace="^noctalia-notifications-"
+            background-effect {
+                blur true
+            }
+        }
+      '';
+    } ''
+      ${pkgs.niri}/bin/niri validate -c $configPath
+      cp $configPath $out
+    ''
+  ));
 }
