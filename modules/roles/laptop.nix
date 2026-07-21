@@ -53,8 +53,16 @@ in
     # Persistent LVFS breakage still surfaces via `journalctl -u fwupd-refresh`,
     # motd (which fwupd-refresh itself updates), and `fwupdmgr get-devices`
     # showing stale metadata.
-    systemd.services.fwupd-refresh.serviceConfig.ExecStart = lib.mkForce
-      "-${config.services.fwupd.package}/bin/fwupdmgr refresh";
+    #
+    # ExecStart= in a drop-in is *additive* by default (systemd.service(5)) —
+    # so setting it to a plain string appends a second ExecStart after the
+    # vendor's, and for Type=oneshot the vendor's undashed command runs first,
+    # fails, and short-circuits ours. The empty first list element resets the
+    # list; the dashed command is then the only ExecStart.
+    systemd.services.fwupd-refresh.serviceConfig.ExecStart = lib.mkForce [
+      ""
+      "-${config.services.fwupd.package}/bin/fwupdmgr refresh"
+    ];
 
     # Enrolled fingerprints must survive ZFS rollback.
     environment.persistence."/persist".directories =
