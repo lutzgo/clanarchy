@@ -34,12 +34,12 @@
     opacity = {
       focused = lib.mkOption {
         type = lib.types.float;
-        default = 0.9;
+        default = 0.8;
         description = "Baseline window opacity for focused windows.";
       };
       unfocused = lib.mkOption {
         type = lib.types.float;
-        default = 0.75;
+        default = 0.65;
         description = "Window opacity for unfocused windows.";
       };
     };
@@ -49,6 +49,11 @@
       default = 0.0;
       description = "Pointer acceleration speed applied to both touchpad and mouse. Range: -1.0 (slowest) to 1.0 (fastest). 0.0 is libinput's neutral baseline.";
     };
+
+    # Background blur (niri v26.04+). niri-flake's Nix schema does not yet
+    # expose the `blur { }` block or `background-effect { }` rule child, so
+    # `niri-hm.nix` injects raw KDL into the final config.kdl behind this flag.
+    blur.enable = lib.mkEnableOption "background blur behind translucent windows and Noctalia layer surfaces" // {default = true;};
 
     wallpaper.workspaceColors = lib.mkOption {
       type = lib.types.listOf lib.types.str;
