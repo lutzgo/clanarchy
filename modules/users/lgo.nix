@@ -278,10 +278,19 @@ in
             # or when skynet DNS is unavailable).  HostKeyAlias points at the
             # LAN name so ~/.ssh/known_hosts stays a single entry — ernst's
             # sshd serves the same host key regardless of interface.
+            #
+            # PubkeyAuthentication=unbound repeats the workaround from the
+            # `ernst ernst.local ernst.skynet.lan ...` pattern block above:
+            # the ssh_config Host name here is literally "ernst-zt", so that
+            # pattern list does not match this alias, and without the override
+            # openssh negotiates publickey-hostbound-v00 which makes GnuPG
+            # 2.4.x refuse to sign with the card-backed ed25519 auth key
+            # ("agent refused operation").
             "ernst-zt" = {
-              HostName     = "fdda:106a:123a:d561:1099:933e:4c60:711f";
-              User         = "root";
-              HostKeyAlias = "ernst.skynet.lan";
+              HostName             = "fdda:106a:123a:d561:1099:933e:4c60:711f";
+              User                 = "root";
+              HostKeyAlias         = "ernst.skynet.lan";
+              PubkeyAuthentication = "unbound";
             };
           };
         };
