@@ -273,6 +273,16 @@ in
               User         = "root";
               HostKeyAlias = "ernst-initrd";
             };
+
+            # Reach ernst over the ZeroTier overlay (works away from home LAN,
+            # or when skynet DNS is unavailable).  HostKeyAlias points at the
+            # LAN name so ~/.ssh/known_hosts stays a single entry — ernst's
+            # sshd serves the same host key regardless of interface.
+            "ernst-zt" = {
+              HostName     = "fdda:106a:123a:d561:1099:933e:4c60:711f";
+              User         = "root";
+              HostKeyAlias = "ernst.skynet.lan";
+            };
           };
         };
 
