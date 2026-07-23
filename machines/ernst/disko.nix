@@ -116,7 +116,7 @@
       };
     };
 
-    # ── zdata: raidz1, encrypted, no mountpoints (datasets created later) ────
+    # ── zdata: raidz1, encrypted, bulk-storage datasets ──────────────────────
     zpool.zdata = {
       type = "zpool";
       mode = "raidz1";
@@ -129,6 +129,88 @@
         keylocation = "prompt";
         # Pool is for bulk storage; do not auto-mount at /.
         mountpoint  = "none";
+      };
+
+      # Datasets on the bulk pool.
+      #
+      # These declarations describe the intended layout for a fresh disko
+      # install.  On the already-provisioned pool disko does NOT reconcile
+      # — the datasets must be created once by hand from a matching runbook
+      # (docs/guides/ernst-zdata-datasets.md).  After that the fileSystems
+      # entries disko emits from the block below take over declaratively.
+      #
+      # Design constraint (not to be revisited): the arr suite, qBittorrent,
+      # and every media library share ONE dataset — zdata/media — so that
+      # hardlinks work across downloads/ and library/.  Downloads and library
+      # are plain subdirectories under /srv/media, never sub-datasets.
+      #
+      # Compression + atime are inherited from rootFsOptions.  Encryption is
+      # inherited too (single per-pool raw key on /persist/zdata.key).
+      datasets = {
+        # /srv/media — single hardlink domain for arr + qBittorrent + libraries.
+        # recordsize=1M: finished media files are large and read sequentially
+        #   by Jellyfin/Plex; the sustained sequential-read pattern dominates
+        #   over the in-flight torrent piece writes, and 1M gives ~200 KiB per
+        #   drive on a 6-wide raidz1 (a healthy stripe unit for the SAS SSDs).
+        # exec/setuid/devices=off: media data must never execute or grant
+        #   privilege — a compromised *arr container should not be able to
+        #   stage a payload on the bulk pool and run it.
+        # atime=off: pool-inherited, restated for local clarity.
+        media = {
+          type = "zfs_fs";
+          mountpoint = "/srv/media";
+          options = {
+            mountpoint = "legacy";
+            recordsize = "1M";
+            exec       = "off";
+            setuid     = "off";
+            devices    = "off";
+            atime      = "off";
+          };
+        };
+
+        # /srv/state — per-service config/state (arr *.db, immich thumbs, …).
+        #   Layout below: /srv/state/<service>.
+        # recordsize left at 128K default (not restated): SQLite / config /
+        #   small-file mixes are hurt by 1M — a 4K write becomes a 1M
+        #   read-modify-write.  Default matches the 128K sqlite page pattern.
+        # exec stays ON: some services drop helper scripts inside their state
+        #   dir and invoke them (sonarr custom scripts, etc.); flipping exec
+        #   off here would break that use case.
+        # setuid/devices=off: no service needs either on its state dir.
+        state = {
+          type = "zfs_fs";
+          mountpoint = "/srv/state";
+          options = {
+            mountpoint = "legacy";
+            setuid     = "off";
+            devices    = "off";
+            atime      = "off";
+          };
+        };
+
+        # /srv/games — future Steam library.  Created now so the properties
+        # are set once at dataset birth; some (recordsize) cannot be changed
+        # retroactively for existing data.
+        # exec=on: game binaries MUST execute — this is the entire point of
+        #   the dataset, and it deliberately differs from /srv/media where
+        #   nothing on the pool should be runnable.
+        # setuid/devices=off: nothing under a games library should ever need
+        #   setuid or a device node; disable both defensively.
+        games = {
+          type = "zfs_fs";
+          mountpoint = "/srv/games";
+          options = {
+            mountpoint = "legacy";
+            setuid     = "off";
+            devices    = "off";
+            atime      = "off";
+          };
+        };
+
+        # zdata/backup — reserved.  Not created here; when the backup strategy
+        # is chosen we may want a very different recordsize / compression /
+        # (perhaps) encryption story, so add it deliberately at that point.
       };
     };
   };
