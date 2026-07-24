@@ -272,6 +272,7 @@
         imports = [ (mkModuleArgs { }) forceUnstablePkgs ] ++ commonHeadful ++ [
           inputs.jovian-nixos.nixosModules.default
           ./modules/wifi.nix
+          ./modules/gaming-common.nix
           ./machines/birte/configuration.nix
           ./machines/birte/disko.nix
           ./machines/birte/jovian.nix
