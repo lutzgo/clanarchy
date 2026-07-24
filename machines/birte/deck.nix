@@ -46,14 +46,14 @@
 
   # ZFS rolls back to @blank on every boot (see modules/zfs-impermanence.nix).
   # Without these paths, HM state, Plasma dotfiles, and the Steam library
-  # would vanish on reboot.
+  # would vanish on reboot. The gaming-specific `.steam` entry is added by
+  # modules/gaming-common.nix (clanarchy.gaming.enable in configuration.nix).
   environment.persistence."/persist".users.deck = {
     directories = [
       ".config"           # Plasma / KDE config, HM-managed dotfiles
       ".local/share"      # KDE data, Steam's ~/.local/share/Steam library
       ".local/state"      # HM profile symlinks, systemd user state
       ".cache"            # thumbnails, icon cache
-      ".steam"            # Steam runtime bootstrap
     ];
   };
 

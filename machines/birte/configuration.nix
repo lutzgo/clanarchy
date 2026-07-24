@@ -37,5 +37,12 @@
   clanarchy.apps.flatpak.enable       = true;
   clanarchy.apps.desktopTools.enable  = true;
 
+  # Machine-agnostic gaming bits (Steam + Proton-GE + `.steam` persistence).
+  # Jovian / Deck-hardware wiring lives in jovian.nix and deck.nix.
+  clanarchy.gaming = {
+    enable = true;
+    user   = "deck";
+  };
+
   system.stateVersion = "25.11";
 }

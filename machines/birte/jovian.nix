@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ ... }:
 #
 # Jovian-NixOS wiring for the Steam Deck (OLED / Galileo).
 #
@@ -8,6 +8,7 @@
 #
 # The KDE Plasma 6 stack itself (SDDM, plasma6, pipewire, fonts) is provided
 # by modules/desktop/kde.nix via the inventory `desktop` service (kde role).
+# `programs.steam` + Proton-GE come from modules/gaming-common.nix.
 #
 {
   jovian = {
@@ -25,13 +26,5 @@
 
     # Decky Loader — plugin manager for the Steam overlay.
     decky-loader.enable = true;
-  };
-
-  # Extra Proton compatibility tools available under Steam → Compatibility.
-  programs.steam = {
-    enable = true;
-    extraCompatPackages = with pkgs; [
-      proton-ge-bin
-    ];
   };
 }
