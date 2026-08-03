@@ -1,5 +1,5 @@
 # ernst — storage layout:
-#   zroot   mirror across 2× PM1643a 960 GB SAS SSDs   (encrypted, system pool)
+#   zroot   mirror across 1× PM1643a + 1× PM1653 960 GB SAS SSDs (encrypted, system pool)
 #   zdata   raidz1 across  6× PM1643a 15.36 TB SAS SSDs (encrypted, data pool)
 #
 # Both pools use aes-256-gcm.  zroot is unlocked with a passphrase prompt in
@@ -30,7 +30,7 @@
     # ── System pool: 2× 960 GB SAS SSD, mirrored ─────────────────────────────
     disk.system-a = {
       type = "disk";
-      device = "/dev/disk/by-id/wwn-0x5002538b7263f800"; # PM1643a 960G  S5G1NC0T602213
+      device = "/dev/disk/by-id/wwn-0x50025380a5914360"; # PM1653 960G  S6M1NN0Y901370
       content = {
         type = "gpt";
         partitions = {
