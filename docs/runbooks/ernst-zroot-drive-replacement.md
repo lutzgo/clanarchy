@@ -190,6 +190,16 @@ swapon --show
 swapoff /dev/mapper/disk-<FAILED_ROLE>-swap 2>/dev/null || true
 ```
 
+> **If the running system is already unreachable** — dead getty on every
+> VT (console shows only kernel/service spam, no login prompt) *and* SSH
+> broken — skip this step entirely. After the pool re-import in §4a
+> (Case A), detach the ghost vdev there instead using its GUID from
+> `zpool status`:
+> ```bash
+> zpool detach zroot <GUID>
+> ```
+> The end state is identical: single-vdev pool ready for §4g's attach.
+
 ---
 
 ## 3. Cold swap
@@ -201,6 +211,12 @@ Both cases: shutdown, swap, power on. Only the boot medium differs.
    ```bash
    systemctl poweroff
    ```
+
+   **If getty is dead on every VT and SSH is broken**, don't reinstall or
+   try to bring sshd back up — press **Ctrl+Alt+Del** at the physical
+   console. systemd traps the key combo and performs a clean shutdown
+   even with getty gone. Then power off at POST. The §2 detach step is
+   handled from the installer per that step's fallback note.
 
 2. Wait for full power-off. Verify PSU LED / chassis is quiet.
 
@@ -247,8 +263,15 @@ Case B: the pool is already imported and mounted by the running system.
 Skip this section.
 
 ```bash
-# Import read-write, root-relative to /mnt (installer convention)
+# Import read-write, root-relative to /mnt (installer convention).
+# -f is REQUIRED: the pool was last opened by ernst's hostid; the installer
+# has a different one, so import without -f fails with
+# "pool was previously in use from another system".
 zpool import -f -R /mnt zroot
+
+# If §2's detach was skipped (unreachable running system): drop the ghost
+# vdev now, by GUID (visible in `zpool status zroot`):
+#   zpool detach zroot <GUID>
 
 # Unlock the encrypted pool
 zfs load-key zroot     # prompt: zroot passphrase
@@ -286,6 +309,15 @@ pool's existing 512-byte-logical vdevs.
 
 ```bash
 sg_readcap -l "$NEW_DEV"
+```
+
+`sg3_utils` (which provides `sg_readcap` and `sg_format`) is **not** on
+the clan flash installer image and isn't in ernst's system PATH by
+default. Bring it in ad-hoc via `nix shell` in either case:
+
+```bash
+nix shell nixpkgs#sg3_utils -c sg_readcap -l "$NEW_DEV"
+nix shell nixpkgs#sg3_utils -c sg_format  --format --size=512 "$NEW_DEV"
 ```
 
 Required properties in the output:
@@ -384,9 +416,12 @@ zpool attach zroot \
 `<N>` matches the survivor's zfs-partition number (1 for `system-b`, 3 for
 `system-a` in the current layout).
 
-Resilver kicks off immediately. On mirrored SSDs of moderate used space
-this takes minutes, not hours. Wait for it to finish before rebooting
-(Case A) or proceeding (Case B):
+Resilver kicks off immediately. On mirrored SAS SSDs with only a few GB
+used (zroot typically sits at ~4.5 GB), resilver completes in **seconds**,
+not minutes — the mirror is ONLINE and both halves match by the time you
+switch terminals. It's safe to overlap Case A's §4h bootloader work with
+the resilver window; just re-check `zpool status zroot` before §4i's
+`zpool export`.
 
 ```bash
 watch -n 5 'zpool status zroot | head -20'
@@ -398,20 +433,50 @@ watch -n 5 'zpool status zroot | head -20'
 
 Case B: skip. The surviving disk's ESP already has a valid bootloader.
 
+Run **both** commands in this order — the first primes the ESP with the
+systemd-boot binary; the second wires up the generation entries. Running
+only the second (as an obvious first attempt) crashes with a Python
+traceback from `bootctl status` because efivars aren't visible from
+inside the chroot (`Firmware: n/a`), so the NixOS systemd-boot installer
+bails before writing anything.
+
 ```bash
-nixos-enter --root /mnt
+# 1. Prime the new ESP with systemd-boot (no NVRAM changes — chroot has
+#    no efivars). --no-variables suppresses the efibootmgr call that
+#    would otherwise fail.
+nixos-enter --root /mnt -c \
+  "bootctl --esp-path=/boot install --no-variables"
 
-# Inside the chroot — write systemd-boot to the new ESP
-/run/current-system/bin/switch-to-configuration boot
+# 2. Now run the NixOS bootloader activation. This writes generation
+#    entries (nixos-generation-*.conf), the loader config, and the
+#    initrd/kernel copies.
+nixos-enter --root /mnt -c \
+  "/run/current-system/bin/switch-to-configuration boot"
 
-# Sanity check
-ls /boot/loader/entries
-exit
+# Sanity check — you should see one nixos-generation-*.conf entry.
+ls /mnt/boot/loader/entries
 ```
 
 `switch-to-configuration boot` runs only the bootloader-install step; it
 does **not** run sops or user-secret activation. If sops-nix is broken this
 step still succeeds.
+
+After first successful boot from the running system, register the NVRAM
+entry and tidy the boot order:
+
+```bash
+ssh root@ernst.skynet.lan
+bootctl install   # creates the "Linux Boot Manager" NVRAM entry now
+                  # that efivars are visible
+
+# Inspect current entries and reorder as needed.
+nix shell nixpkgs#efibootmgr -c efibootmgr
+nix shell nixpkgs#efibootmgr -c efibootmgr -o <hex,hex,...>   # new order
+```
+
+The firmware auto-creates a **"UEFI OS"** fallback entry pointing at
+`\EFI\BOOT\BOOTX64.EFI`. Harmless — keep it as a last-resort fallback.
+"Linux Boot Manager" (systemd-boot) should be first in `BootOrder`.
 
 ### 4i. Clean unmount and reboot — Case A only
 
@@ -424,6 +489,13 @@ zpool export zroot
 # Remove USB now, then:
 systemctl reboot
 ```
+
+Stage 1 will prompt for the zroot passphrase. The initrd-ssh host key
+lives on `/persist/etc/secrets/initrd/` — which is on a dataset you never
+touched during this replacement — so remote unlock still works out of the
+box. From miralda:
+[`docs/guides/remote-unlock.md`](../guides/remote-unlock.md). No console
+needed for the passphrase; no re-generation of the initrd host key.
 
 **On first reboot: enter UEFI setup and verify boot order.** Common failure
 mode is "worked in the chroot, won't boot unattended" because the firmware
