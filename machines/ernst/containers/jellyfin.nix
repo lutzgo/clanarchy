@@ -43,19 +43,42 @@ let
   # comparisons/exports painless.
   jellyfinUid = 964;
   jellyfinGid = 964;
+
+  # Shared `media` group.  nspawn maps gids 1:1 here (no user-namespace
+  # remapping), so this gid MUST be identical on the host and inside the
+  # container — otherwise the container sees numeric group 3000 on every
+  # file, has no matching group name, and jellyfin (which is not member of
+  # gid 3000) fails every mode-0640 read.  Files are staged root:media 0640
+  # so that adding another consumer (Nextcloud, an *arr) is a group-add,
+  # not a chown.  3000 is above NixOS's dynamic gid range (which tops out
+  # in the 900s for system users on 26.05) so it cannot collide with a
+  # future auto-allocated group.
+  mediaGid = 3000;
 in
 {
   ##############################################################################
   # Host-side wiring: bind-source dirs, firewall, user shell for the state bind.
   ##############################################################################
 
+  # Host-side group.  Fleet media consumers (jellyfin now; Nextcloud
+  # external storage, *arr suite later) get access via group membership.
+  users.groups.media = { gid = mediaGid; };
+
   # Parent dirs for the bind sources.  The state dir is chowned to the
   # numeric uid/gid the container's jellyfin user will run as (see below).
-  # The library dir is a placeholder — real media lives under it, populated
-  # out-of-band or by the *arr suite once that lands.
+  # The library/movies + library/tvshows dirs are the mountpoints of the
+  # zdata/media/{movies,tvshows} datasets declared in machines/ernst/disko.nix
+  # — tmpfiles here only sets ownership + mode on the (already mounted,
+  # empty) dataset root.  Mode 2750 = setgid + rwxr-x---: new files created
+  # under them inherit gid=media, and the group-write bit is deliberately
+  # OFF (files staged root:media 0640 by the copy job; group members read
+  # only).  Root owns so no unprivileged process can rearrange the library
+  # tree, only append via a helper that runs as root.
   systemd.tmpfiles.rules = [
-    "d /srv/media/library    0755 root       root       -"
-    "d /srv/state/jellyfin   0700 ${toString jellyfinUid} ${toString jellyfinGid} -"
+    "d /srv/media/library            0755 root       root       -"
+    "d /srv/media/library/movies     2750 root       media      -"
+    "d /srv/media/library/tvshows    2750 root       media      -"
+    "d /srv/state/jellyfin           0700 ${toString jellyfinUid} ${toString jellyfinGid} -"
   ];
 
   # Firewall — v1 uses host networking, so this lives on the host.
@@ -88,11 +111,21 @@ in
     ];
 
     bindMounts = {
-      # Media library — read-only.  Bound at the same path inside the container
-      # so log lines and any *arr-emitted absolute paths (once that suite is in)
-      # line up on both sides of the boundary.
-      "/srv/media/library" = {
-        hostPath   = "/srv/media/library";
+      # Media library — read-only.  Two separate binds because the imported
+      # Jellyfin database (from the retired Arch box) records absolute paths
+      # under /media/Server001/{Movies,TV-Shows}; the host tree is laid out
+      # differently (dedicated zdata/media/{movies,tvshows} datasets under
+      # /srv/media/library) so Nextcloud can later expose the same tree as
+      # external storage without inheriting a legacy path scheme.  The bind
+      # is the translation layer: the container sees the paths the DB
+      # expects, the host keeps a clean /srv/media/library/{movies,tvshows}
+      # layout.  RO on both — Jellyfin never writes to library data.
+      "/media/Server001/Movies" = {
+        hostPath   = "/srv/media/library/movies";
+        isReadOnly = true;
+      };
+      "/media/Server001/TV-Shows" = {
+        hostPath   = "/srv/media/library/tvshows";
         isReadOnly = true;
       };
 
@@ -131,15 +164,23 @@ in
         # `render` grants access to /dev/dri/renderD129 (mode 0666 makes this
         # nominally unnecessary, but if a future udev rule tightens the node
         # to 0660, membership keeps VAAPI working without a redeploy).
-        extraGroups  = [ "render" "video" ];
+        # `media` grants read on the library binds — files are staged
+        # root:media 0640 by the copy job, so this membership is what makes
+        # `jellyfin` (uid 964) able to read them at all.  Without it every
+        # library scan finds zero items even though the mounts show up.
+        extraGroups  = [ "render" "video" "media" ];
       };
       users.groups.jellyfin = { gid = jellyfinGid; };
 
-      # Match host GIDs so `render`/`video` membership is meaningful when the
-      # /dev/dri node is bind-mounted in from the host.  These GIDs are the
-      # NixOS defaults on 26.05 (`getent group video render` on ernst).
+      # Match host GIDs so `render`/`video`/`media` membership is meaningful
+      # when host paths (dri render node, library binds) show up inside the
+      # container.  nspawn does not remap gids here, so these MUST match the
+      # host numeric ids exactly — video/render are the NixOS 26.05 defaults
+      # (`getent group video render` on ernst); media is the fixed 3000 set
+      # by the host-side `users.groups.media` above.
       users.groups.video  = { gid = 26;  };
       users.groups.render = { gid = 303; };
+      users.groups.media  = { gid = mediaGid; };
 
       # VAAPI driver stack.  mesa ships the AMD radeonsi VAAPI driver
       # (radeonsi_drv_video.so) that Jellyfin's bundled ffmpeg dlopens when
