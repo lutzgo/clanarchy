@@ -64,22 +64,55 @@ in
   # external storage, *arr suite later) get access via group membership.
   users.groups.media = { gid = mediaGid; };
 
-  # Parent dirs for the bind sources.  The state dir is chowned to the
-  # numeric uid/gid the container's jellyfin user will run as (see below).
-  # The library/movies + library/tvshows dirs are the mountpoints of the
-  # zdata/media/{movies,tvshows} datasets declared in machines/ernst/disko.nix
-  # — tmpfiles here only sets ownership + mode on the (already mounted,
-  # empty) dataset root.  Mode 2750 = setgid + rwxr-x---: new files created
-  # under them inherit gid=media, and the group-write bit is deliberately
-  # OFF (files staged root:media 0640 by the copy job; group members read
-  # only).  Root owns so no unprivileged process can rearrange the library
-  # tree, only append via a helper that runs as root.
+  # Parent dirs for the bind sources.
+  #
+  # The state dir + the library parent are plain subdirectories on already-
+  # mounted datasets (zdata/state and zdata/media respectively), so tmpfiles
+  # handles them fine — its rules apply after those parent-dataset mounts land.
+  #
+  # /srv/media/library/{movies,tvshows} are DIFFERENT: they are the mountpoints
+  # of zdata/media/{movies,tvshows} themselves.  systemd-tmpfiles-setup.service
+  # has no ordering relationship to those mount units, so a tmpfiles rule here
+  # races the mount — the rule applies to the empty underlying directory, the
+  # dataset then mounts over it, and what is visible after boot is what
+  # `zfs create` left behind (drwxr-xr-x root:root, no setgid).  See the
+  # library-perms oneshot below for the ordered fix.
   systemd.tmpfiles.rules = [
     "d /srv/media/library            0755 root       root       -"
-    "d /srv/media/library/movies     2750 root       media      -"
-    "d /srv/media/library/tvshows    2750 root       media      -"
     "d /srv/state/jellyfin           0700 ${toString jellyfinUid} ${toString jellyfinGid} -"
   ];
+
+  # Ownership + setgid on the two library mountpoints, applied AFTER the ZFS
+  # dataset mounts and BEFORE the container starts.  Non-recursive on purpose:
+  # up to 20 TB of media may sit under these paths at any given deploy, and
+  # the copy job (rsync --chown=root:media --chmod=…) already sets per-file
+  # ownership — recursing here would rewrite metadata on ~33k files for no
+  # benefit.  Mode 2750 = setgid + rwxr-x---: new files inherit gid=media,
+  # group members read-only, root owns (only a root-invoked helper can
+  # rearrange the library tree).  Idempotent: chown/chmod on an already-
+  # correct dir is a no-op.
+  #
+  # Any future zdata dataset seeded with tmpfiles rules targeting the
+  # dataset ROOT (as opposed to a subdirectory of an already-mounted dataset)
+  # will hit the same race — the pattern to reach for is this oneshot, not
+  # a fourth tmpfiles line.
+  systemd.services.jellyfin-library-perms = {
+    description = "Set root:media 2750 on Jellyfin library dataset mountpoints";
+    wantedBy    = [ "multi-user.target" ];
+    before      = [ "container@jellyfin.service" ];
+    after       = [ "srv-media-library-movies.mount"
+                    "srv-media-library-tvshows.mount" ];
+    requires    = [ "srv-media-library-movies.mount"
+                    "srv-media-library-tvshows.mount" ];
+    serviceConfig = {
+      Type            = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = [
+        "${pkgs.coreutils}/bin/chown root:media /srv/media/library/movies /srv/media/library/tvshows"
+        "${pkgs.coreutils}/bin/chmod 2750       /srv/media/library/movies /srv/media/library/tvshows"
+      ];
+    };
+  };
 
   # Firewall — v1 uses host networking, so this lives on the host.
   # Only 8096/tcp (HTTP) is exposed.  Explicitly NOT opened:
