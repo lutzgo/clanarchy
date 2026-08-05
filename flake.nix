@@ -111,6 +111,7 @@
             # Clan docs recommend exposing the CLI via devShell
             clan-core.packages.${system}.clan-cli
             git
+            jujutsu             # jj (git-colocated) — available inside `nix develop`
             openssh
             nixos-rebuild
             age-plugin-yubikey  # needed for sops re-encryption with YubiKey recipients
