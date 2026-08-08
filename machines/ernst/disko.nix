@@ -211,42 +211,6 @@
           };
         };
 
-        # /srv/media/library/movies + /srv/media/library/tvshows — sub-datasets
-        # under zdata/media, each carrying the same 1M/exec-off/setuid-off/
-        # atime-off properties.  They exist as their own datasets (rather than
-        # plain subdirectories under /srv/media) so that the old Jellyfin
-        # database — imported wholesale to preserve watch state — can find
-        # every path it recorded under a stable, dedicated dataset boundary,
-        # and so that Nextcloud external-storage exposure of the same tree
-        # later has a clean per-collection dataset it can quota, snapshot,
-        # and audit independently of downloads/ and other bulk-pool tenants.
-        # recordsize=1M / exec/setuid/atime = the same reasons as zdata/media
-        # above (large sequential-read media, no execution or privilege ever).
-        # These MUST be created at dataset birth: recordsize only applies to
-        # new writes and cannot be reset retroactively without send/receive.
-        "media/movies" = {
-          type = "zfs_fs";
-          mountpoint = "/srv/media/library/movies";
-          options = {
-            mountpoint = "legacy";
-            recordsize = "1M";
-            exec       = "off";
-            setuid     = "off";
-            atime      = "off";
-          };
-        };
-        "media/tvshows" = {
-          type = "zfs_fs";
-          mountpoint = "/srv/media/library/tvshows";
-          options = {
-            mountpoint = "legacy";
-            recordsize = "1M";
-            exec       = "off";
-            setuid     = "off";
-            atime      = "off";
-          };
-        };
-
         # /srv/state — per-service config/state (arr *.db, immich thumbs, …).
         #   Layout below: /srv/state/<service>.
         # recordsize left at 128K default (not restated): SQLite / config /

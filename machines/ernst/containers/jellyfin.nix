@@ -66,50 +66,45 @@ in
 
   # Parent dirs for the bind sources.
   #
-  # The state dir + the library parent are plain subdirectories on already-
-  # mounted datasets (zdata/state and zdata/media respectively), so tmpfiles
-  # handles them fine — its rules apply after those parent-dataset mounts land.
-  #
-  # /srv/media/library/{movies,tvshows} are DIFFERENT: they are the mountpoints
-  # of zdata/media/{movies,tvshows} themselves.  systemd-tmpfiles-setup.service
-  # has no ordering relationship to those mount units, so a tmpfiles rule here
-  # races the mount — the rule applies to the empty underlying directory, the
-  # dataset then mounts over it, and what is visible after boot is what
-  # `zfs create` left behind (drwxr-xr-x root:root, no setgid).  See the
-  # library-perms oneshot below for the ordered fix.
+  # All four media subdirs are now plain directories on the already-mounted
+  # zdata/media dataset (see machines/ernst/disko.nix — movies/tvshows sub-
+  # datasets were collapsed so *arr hardlinks work across torrents/ and
+  # library/, which cannot cross ZFS dataset boundaries).  tmpfiles handles
+  # creation fine on plain subdirs of a mounted dataset — no shadow-mount
+  # race — but the setgid mode + group ownership are still applied by the
+  # ordered oneshot below, so nothing depends on tmpfiles winning against
+  # any post-boot mount ordering.
   systemd.tmpfiles.rules = [
     "d /srv/media/library            0755 root       root       -"
+    "d /srv/media/library/movies     0755 root       root       -"
+    "d /srv/media/library/tvshows    0755 root       root       -"
+    "d /srv/media/torrents           0755 root       root       -"
+    "d /srv/media/torrents/movies    0755 root       root       -"
+    "d /srv/media/torrents/tv        0755 root       root       -"
     "d /srv/state/jellyfin           0700 ${toString jellyfinUid} ${toString jellyfinGid} -"
   ];
 
-  # Ownership + setgid on the two library mountpoints, applied AFTER the ZFS
-  # dataset mounts and BEFORE the container starts.  Non-recursive on purpose:
-  # up to 20 TB of media may sit under these paths at any given deploy, and
-  # the copy job (rsync --chown=root:media --chmod=…) already sets per-file
-  # ownership — recursing here would rewrite metadata on ~33k files for no
-  # benefit.  Mode 2750 = setgid + rwxr-x---: new files inherit gid=media,
-  # group members read-only, root owns (only a root-invoked helper can
-  # rearrange the library tree).  Idempotent: chown/chmod on an already-
-  # correct dir is a no-op.
-  #
-  # Any future zdata dataset seeded with tmpfiles rules targeting the
-  # dataset ROOT (as opposed to a subdirectory of an already-mounted dataset)
-  # will hit the same race — the pattern to reach for is this oneshot, not
-  # a fourth tmpfiles line.
+  # Ownership + setgid on the media subdirs, applied AFTER zdata/media is
+  # mounted and BEFORE the container starts.  Non-recursive on purpose:
+  # 8.77 TB is present under these paths, and per-file ownership was set
+  # once during the Arch → ernst migration (rsync --chown=root:media
+  # --chmod=…) — recursing here would rewrite metadata on ~23k files for
+  # no benefit.  Mode 2770 = setgid + rwxrws---: new files inherit
+  # gid=media, group members read+WRITE (Radarr/Sonarr/the download client
+  # need to move and hardlink files across torrents/ and library/), root
+  # owns.  Idempotent: chown/chmod on an already-correct dir is a no-op.
   systemd.services.jellyfin-library-perms = {
-    description = "Set root:media 2750 on Jellyfin library dataset mountpoints";
+    description = "Set root:media 2770 on Jellyfin media subdirectories";
     wantedBy    = [ "multi-user.target" ];
     before      = [ "container@jellyfin.service" ];
-    after       = [ "srv-media-library-movies.mount"
-                    "srv-media-library-tvshows.mount" ];
-    requires    = [ "srv-media-library-movies.mount"
-                    "srv-media-library-tvshows.mount" ];
+    after       = [ "srv-media.mount" ];
+    requires    = [ "srv-media.mount" ];
     serviceConfig = {
       Type            = "oneshot";
       RemainAfterExit = true;
       ExecStart = [
-        "${pkgs.coreutils}/bin/chown root:media /srv/media/library/movies /srv/media/library/tvshows"
-        "${pkgs.coreutils}/bin/chmod 2750       /srv/media/library/movies /srv/media/library/tvshows"
+        "${pkgs.coreutils}/bin/chown root:media /srv/media/library/movies /srv/media/library/tvshows /srv/media/torrents/movies /srv/media/torrents/tv"
+        "${pkgs.coreutils}/bin/chmod 2770       /srv/media/library/movies /srv/media/library/tvshows /srv/media/torrents/movies /srv/media/torrents/tv"
       ];
     };
   };
@@ -147,12 +142,14 @@ in
       # Media library — read-only.  Two separate binds because the imported
       # Jellyfin database (from the retired Arch box) records absolute paths
       # under /media/Server001/{Movies,TV-Shows}; the host tree is laid out
-      # differently (dedicated zdata/media/{movies,tvshows} datasets under
-      # /srv/media/library) so Nextcloud can later expose the same tree as
-      # external storage without inheriting a legacy path scheme.  The bind
-      # is the translation layer: the container sees the paths the DB
-      # expects, the host keeps a clean /srv/media/library/{movies,tvshows}
-      # layout.  RO on both — Jellyfin never writes to library data.
+      # differently (plain subdirectories under /srv/media/library on the
+      # single zdata/media dataset — collapsed from per-collection sub-
+      # datasets so *arr hardlinks work across torrents/ and library/) so
+      # Nextcloud can later expose the same tree as external storage without
+      # inheriting a legacy path scheme.  The bind is the translation layer:
+      # the container sees the paths the DB expects, the host keeps a clean
+      # /srv/media/library/{movies,tvshows} layout.  RO on both — Jellyfin
+      # never writes to library data.
       "/media/Server001/Movies" = {
         hostPath   = "/srv/media/library/movies";
         isReadOnly = true;
