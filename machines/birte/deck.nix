@@ -67,5 +67,7 @@
     home.stateVersion  = "25.11";
 
     stylix.autoEnable = true;
+    # Note: stylix.targets.kde is force-disabled for every HM user on birte
+    # via home-manager.sharedModules in stylix.nix — see the comment there.
   };
 }
