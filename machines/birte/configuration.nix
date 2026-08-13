@@ -44,5 +44,17 @@
     user   = "deck";
   };
 
+  # birte uses `nixpkgs.pkgs = unstablePkgs` (see forceUnstablePkgs in
+  # lib/mk-machine.nix) while the module list comes from clan-core/nixpkgs
+  # 26.05.  The NixOS option-docs generator (lazy-options.json) walks the
+  # module list from 26.05 but sandboxes files from `pkgs.path` — which is
+  # nixpkgs-unstable's May 30 pin (see nixpkgs-unstable comment in flake.nix).
+  # Newer 26.05 module-list entries such as `programs/tack.nix` don't exist
+  # in the older unstable source, causing the docs build to fail.
+  #
+  # Nobody browses `nixos-help` on a Steam Deck — skip the docs build.  Lift
+  # once nixpkgs-unstable can be bumped forward and the two sources agree.
+  documentation.nixos.enable = false;
+
   system.stateVersion = "25.11";
 }

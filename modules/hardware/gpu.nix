@@ -21,10 +21,13 @@ in
     (lib.mkIf cfg.amd.enable {
       boot.initrd.kernelModules = [ "amdgpu" ];
       hardware.graphics.enable = true;
-      hardware.graphics.extraPackages = with pkgs; [
-        mesa
-        rocmPackages.clr.icd
-      ];
+      # `pkgs.mesa` is already the default `hardware.graphics.package` on
+      # stock nixpkgs, so listing it in `extraPackages` was a no-op — until
+      # birte's Jovian setup overrode `package` to `mesa-radeonsi-jupiter`,
+      # at which point both mesa builds landed in the graphics-drivers
+      # buildEnv and collided on `libEGL_mesa.so.0.0.0`.  Only ship the
+      # extras that aren't already covered by `package`.
+      hardware.graphics.extraPackages = [ pkgs.rocmPackages.clr.icd ];
       environment.variables.RUSTICL_ENABLE = "radeonsi";
       environment.systemPackages = [ pkgs.clinfo ];
     })

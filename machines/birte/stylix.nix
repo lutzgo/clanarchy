@@ -69,4 +69,16 @@ in
       popups       = 10;
     };
   };
+
+  # Force-disable stylix's KDE HM target for every user on birte.
+  # stylix generates `stylix-kde-apply-plasma-theme` via
+  # `pkgs.writeShellApplication`, whose runtime-env preamble
+  # (`username=<user>`) now trips shellcheck SC2209 in nixpkgs 26.05 and
+  # fails the build.  KDE only appears on birte in Desktop Mode (Switch to
+  # Desktop); the gaming session doesn't touch it.  The Catppuccin palette
+  # still reaches Plasma via the GTK/Qt/cursor HM targets that autoEnable
+  # leaves on.
+  home-manager.sharedModules = [
+    { stylix.targets.kde.enable = false; }
+  ];
 }

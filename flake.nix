@@ -21,7 +21,15 @@
     };
 
     stylix = {
-      url = "github:nix-community/stylix";
+      # Pin: stylix 9aa6edac (2026-07-29) renamed programs.regreet →
+      # services.displayManager.regreet to match a nixpkgs-unstable rename that
+      # has NOT been backported to 26.05 (nixpkgs 26.05 still defines
+      # programs.regreet at nixos/modules/programs/regreet.nix). Our regreet is
+      # wired in modules/desktop/desktop-common.nix.
+      #
+      # Lift this pin once nixpkgs 26.05 gains services.displayManager.regreet,
+      # or once we move off 26.05.
+      url = "github:nix-community/stylix/4fa830ff900efc842425aaa88c6e41da99f2823d";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -81,8 +89,18 @@
     # nixpkgs-unstable (which this flake already pulls in for Noctalia).
     # birte is built entirely against nixpkgs-unstable (see clan.machines.birte
     # below) — miralda / biene / ernst remain on clan-core's 26.05 pin.
+    #
+    # Pin: Jovian 57773e5c9 (2026-08-08) landed a "horrible hack" (upstream's
+    # words) in mesa-radeonsi-jupiter to build against latest nixpkgs-unstable.
+    # Our nixpkgs-unstable is intentionally pinned back to 2026-05-30 (see
+    # comment above) — the hack + our older unstable produces two conflicting
+    # mesa builds (mesa-26.1.1 vs mesa-radeonsi-jupiter-26.1.2) both claiming
+    # /lib/libEGL_mesa.so.0.0.0 in the graphics-drivers buildEnv.
+    #
+    # Lift this pin once we can bump nixpkgs-unstable (blocked on the
+    # linux-kernel removal — see the nixpkgs-unstable comment above).
     jovian-nixos = {
-      url = "github:Jovian-Experiments/Jovian-NixOS";
+      url = "github:Jovian-Experiments/Jovian-NixOS/db4a6e75522199a0406adb74c1a5e91e53f9296c";
       inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
 
