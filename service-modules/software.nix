@@ -162,9 +162,15 @@
           NetworkPredictionOptions                       = 2; # 2 = disabled
           SearchSuggestEnabled                           = false;
 
-          # ── Encrypted DNS (secure mode) ──────────────────────────────
-          DnsOverHttpsMode                               = "secure";
-          DnsOverHttpsTemplates                          = "https://dns.quad9.net/dns-query";
+          # ── Encrypted DNS (system-resolver mode) ─────────────────────
+          # "automatic" = Chrome's "With your current service provider":
+          # queries go through the OS resolver (systemd-resolved), which
+          # Chrome opportunistically upgrades to DoH if the configured DNS
+          # server is a known DoH endpoint.  Required so internal names
+          # served by our LAN resolver (e.g. *.skynet.lan via Technitium)
+          # resolve — "secure" mode with a public DoH template bypasses
+          # systemd-resolved entirely and NXDOMAINs on private zones.
+          DnsOverHttpsMode                               = "automatic";
 
           # ── Permission defaults (2 = block) ─────────────────────────
           DefaultGeolocationSetting                      = 2;
