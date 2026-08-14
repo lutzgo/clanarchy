@@ -1,26 +1,25 @@
-{ lib, ... }:
-{
+{lib, ...}: {
   networking.hostName = "miralda";
-  networking.hostId  = "ebeed95c";
+  networking.hostId = "ebeed95c";
   # DNS: no global `networking.search` — see modules/networking/resolved.nix
   # for the rationale.  The skynet.lan search suffix + Technitium routing
   # attach to the "home" wifi NM profile in modules/networking/skynet-dns-nm.nix.
-  time.timeZone      = "Europe/Berlin";
+  time.timeZone = "Europe/Berlin";
 
   # Locale: English US everywhere (CLI + Noctalia GUI).
   # compose:ralt → Right Alt becomes Compose key for German Umlauts:
   #   Compose " a → ä   Compose " o → ö   Compose " u → ü   Compose s s → ß
   clanarchy.locale = {
-    language         = "en_US";
-    keyboard.layout  = "us";
+    language = "en_US";
+    keyboard.layout = "us";
     keyboard.options = "compose:ralt";
   };
 
   # machine-type and desktop roles are assigned via inventory.instances in clan.nix.
   # wifi networks are provisioned via the clan wifi service (inventory.instances.wifi).
-  clanarchy.hardware.cpu       = "amd";
-  clanarchy.display.scale      = 1.25;
-  clanarchy.users.lgo.enable   = true;
+  clanarchy.hardware.cpu = "amd";
+  clanarchy.display.scale = 1.25;
+  clanarchy.users.lgo.enable = true;
   clanarchy.users.admin.enable = true;
 
   # Hybrid-sleep disabled until a swap partition is added to disko.nix.
@@ -34,12 +33,15 @@
 
   # App categories — package lists and services live in modules/apps/*.nix.
   clanarchy.apps.graphics.simple.enable = true;
-  clanarchy.apps.graphics.power.enable  = true;
-  clanarchy.apps.media.enable           = true;
-  clanarchy.apps.communication.enable   = true;
-  clanarchy.apps.containers.enable      = true;
-  clanarchy.apps.flatpak.enable         = true;
-  clanarchy.apps.desktopTools.enable    = true;
+  clanarchy.apps.graphics.power.enable = true;
+  clanarchy.apps.media.enable = true;
+  clanarchy.apps.communication.enable = true;
+  clanarchy.apps.containers.enable = true;
+  clanarchy.apps.flatpak.enable = true;
+  clanarchy.apps.desktopTools.enable = true;
+
+  # ZFS pool alerts via ntfy.sh — URL prompted at `clan vars generate miralda` time.
+  clanarchy.zfs.ntfy.enable = true;
 
   # clan vars generate runs as root, leaving shared vars root-owned.
   # Re-chown after every activation so lgo can enter devShell without sudo.
@@ -58,11 +60,11 @@
   # failure), 5 s between attempts, 10 attempts per 2-minute window.
   systemd.user.services.opentabletdriver = {
     serviceConfig = {
-      Restart    = lib.mkForce "always";
+      Restart = lib.mkForce "always";
       RestartSec = "5s";
     };
     unitConfig = {
-      StartLimitBurst       = 10;
+      StartLimitBurst = 10;
       StartLimitIntervalSec = 120;
     };
   };
@@ -79,7 +81,7 @@
   # Syncthing — run as lgo so it can write to /home/lgo/Public.
   services.syncthing.user = "lgo";
   # Syncthing state survives ZFS rollback.
-  environment.persistence."/persist".directories = [ "/var/lib/syncthing" ];
+  environment.persistence."/persist".directories = ["/var/lib/syncthing"];
 
   system.stateVersion = "25.11";
 }
