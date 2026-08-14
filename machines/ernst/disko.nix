@@ -23,6 +23,29 @@
 # later with a second ESP + boot.loader.systemd-boot.mirroredBoots.  Swap is
 # 16 GB and randomly-encrypted at every boot — the key never persists, so
 # hibernation is not supported.
+#
+# ── mirroredBoots preparation (currently commented out) ────────────────────
+# The commented ESP block under `disk.system-b.content.partitions.ESP` below
+# is the future layout: a second 1G ESP on system-b so a slot-12 loss no
+# longer takes /boot with it (see docs/incidents/ernst-slot12-drop-2026-08-11.md).
+#
+# Disko does NOT reconcile partition tables on running systems, so
+# uncommenting alone does nothing — the partition must be created at
+# install time.  Activation procedure, in order:
+#
+#   1. Uncomment the `ESP` block inside `disk.system-b.content.partitions`
+#      below.  Bump its `priority` if system-b's `zfs` partition needs to be
+#      shifted (currently it occupies 100% of the disk, so shrink or
+#      re-provision — see step 3).
+#   2. Uncomment the matching `boot.loader.systemd-boot.mirroredBoots`
+#      block in `machines/ernst/configuration.nix`.
+#   3. Reinstall system-b's disk (or the whole machine if reinstalling
+#      anyway) so disko lays down the new partition table.  Case B of
+#      `docs/runbooks/ernst-zroot-drive-replacement.md` becomes the
+#      relevant flow when only system-b is being reprovisioned.
+#   4. Copy the current ESP contents from system-a to system-b's new ESP
+#      and re-run `nixos-rebuild switch` so systemd-boot writes matching
+#      entries into both.
 { ... }:
 {
   disko.devices = {
@@ -66,9 +89,28 @@
       device = "/dev/disk/by-id/wwn-0x5002538b722787f0"; # PM1643a 960G  S5G1NC0T203063
       content = {
         type = "gpt";
-        partitions.zfs = {
-          size    = "100%";
-          content = { type = "zfs"; pool = "zroot"; };
+        partitions = {
+          # ── mirroredBoots follow-up (see header comment) ────────────
+          # Uncomment this ESP block at next reinstall of system-b to
+          # activate the mirrored /boot layout.  Also uncomment the
+          # matching mirroredBoots wiring in configuration.nix.
+          #
+          # ESP = {
+          #   size = "1G";
+          #   type = "EF00";
+          #   content = {
+          #     type         = "filesystem";
+          #     format       = "vfat";
+          #     mountpoint   = "/boot2";
+          #     extraArgs    = [ "-n" "ESP2" ];
+          #     mountOptions = [ "umask=0077" ];
+          #   };
+          # };
+
+          zfs = {
+            size    = "100%";
+            content = { type = "zfs"; pool = "zroot"; };
+          };
         };
       };
     };
