@@ -53,6 +53,7 @@ rec {
     ../modules/hardware/gpu.nix
     ../modules/virtualisation.nix
     ../modules/users/admin.nix
+    ../modules/observability/zfs-ntfy.nix
   ];
 
   # Headful (workstation) machines: adds stylix + display + apps + NM DNS
