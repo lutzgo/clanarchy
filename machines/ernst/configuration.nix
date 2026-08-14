@@ -29,6 +29,24 @@
   # it up automatically. zramSwap intentionally left off — 256 GB RAM is plenty.
   zramSwap.enable = false;
 
+  # ── mirroredBoots follow-up (currently commented out) ─────────────────────
+  # The default bootloader wiring (modules/base.nix: boot.loader.systemd-boot.enable
+  # + boot.loader.efi.canTouchEfiVariables) installs to a single ESP mounted at
+  # /boot — currently the one on system-a in disko.nix.  A slot-12 loss takes
+  # /boot with it (see docs/incidents/ernst-slot12-drop-2026-08-11.md).
+  #
+  # Uncomment the block below **after** the second ESP on system-b exists (see
+  # the mirroredBoots preparation header in machines/ernst/disko.nix for the
+  # activation procedure).  Uncommenting before the /boot2 partition exists
+  # will break `deploy-ernst switch` — activation depends on the /boot2 mount.
+  #
+  # boot.loader.systemd-boot.mirroredBoots = [
+  #   {
+  #     path    = "/boot2";
+  #     devices = [ "nodev" ];
+  #   }
+  # ];
+
   # Auto-import + unlock zdata in stage 2 using a raw keyfile on /persist.
   # /persist is a zroot dataset (neededForBoot=true, see modules/zfs-impermanence.nix),
   # so it is mounted before stage 2 systemd starts zfs-import-zdata.service.
