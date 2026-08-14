@@ -12,9 +12,10 @@ let
     config = {
       allowUnfree = true;
       # birte pulls pnpm-9.15.9 transitively (Jovian / KDE tooling).  Since
-      # birte uses `nixpkgs.pkgs = unstablePkgs` (see forceUnstablePkgs
-      # below), `nixpkgs.config` cannot be layered on at the NixOS level
-      # -- allowed insecure packages must live inside the pkgs instance.
+      # birte uses `nixpkgs.pkgs = unstablePkgs` (via
+      # `clanarchy.channel = "unstable"` — see modules/channel.nix),
+      # `nixpkgs.config` cannot be layered on at the NixOS level --
+      # allowed insecure packages must live inside the pkgs instance.
       permittedInsecurePackages = [ "pnpm-9.15.9" ];
     };
   };
@@ -29,18 +30,6 @@ rec {
     } // extraArgs;
   };
 
-  # Force `nixpkgs.pkgs` to the unstable channel — used by birte, which must
-  # follow Jovian-NixOS's nixos-unstable pin.  Overrides clan.nix's
-  # pkgsForSystem, which otherwise force-sets nixpkgs to clan-core/nixpkgs.
-  #
-  # Priority note: clan-core's own `machineModules/overridePkgs.nix` sets
-  # `nixpkgs.pkgs = lib.mkForce <clan-pinned pkgs>` on every machine.  Two
-  # `mkForce` definitions collide on a unique option, so we need a stronger
-  # priority than mkForce (50) — mkOverride 25 wins the tie for birte.
-  forceUnstablePkgs = { lib, ... }: {
-    nixpkgs.pkgs = lib.mkOverride 25 unstablePkgs;
-  };
-
   # nixpkgs 26.05 restructured services.kmscon; stylix's kmscon target still
   # writes services.kmscon.config which no longer exists.  Bundled into
   # commonHeadful so machines using stylix don't have to think about it.
@@ -53,6 +42,7 @@ rec {
     inputs.impermanence.nixosModules.impermanence
     inputs.home-manager.nixosModules.home-manager
     ../modules/base.nix
+    ../modules/channel.nix
     ../modules/zfs-impermanence.nix
     ../modules/vm-variant.nix
     ../modules/locale.nix

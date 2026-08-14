@@ -108,10 +108,12 @@
 
   outputs = inputs@{ flake-parts, clan-core, ... }:
     let
-      # Machine-composition helpers — mkModuleArgs, forceUnstablePkgs,
-      # commonBase, commonHeadful. See lib/mk-machine.nix for details.
+      # Machine-composition helpers — mkModuleArgs, commonBase,
+      # commonHeadful. See lib/mk-machine.nix for details. Per-machine
+      # nixpkgs channel selection lives in modules/channel.nix (option
+      # `clanarchy.channel`).
       machineLib = import ./lib/mk-machine.nix { inherit inputs; };
-      inherit (machineLib) mkModuleArgs forceUnstablePkgs commonBase commonHeadful;
+      inherit (machineLib) mkModuleArgs commonBase commonHeadful;
     in
     flake-parts.lib.mkFlake { inherit inputs; } {
 
@@ -285,10 +287,11 @@
 
       # birte — Steam Deck OLED (Galileo). Boots into Steam Gaming Mode via
       # Jovian-NixOS; "Switch to Desktop" drops into KDE Plasma 6 (SDDM).
-      # Built entirely against nixpkgs-unstable (Jovian only supports unstable);
-      # forceUnstablePkgs overrides the clan-wide 26.05 pin from clan.nix.
+      # Built entirely against nixpkgs-unstable (Jovian only supports
+      # unstable); birte opts into it via `clanarchy.channel = "unstable"`
+      # in machines/birte/configuration.nix (see modules/channel.nix).
       clan.machines.birte = {
-        imports = [ (mkModuleArgs { }) forceUnstablePkgs ] ++ commonHeadful ++ [
+        imports = [ (mkModuleArgs { }) ] ++ commonHeadful ++ [
           inputs.jovian-nixos.nixosModules.default
           ./modules/wifi.nix
           ./modules/gaming-common.nix

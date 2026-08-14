@@ -20,6 +20,11 @@
   clanarchy.hardware.cpu       = "amd";   # Van Gogh APU (Zen 2 + RDNA 2 iGPU)
   clanarchy.users.admin.enable = true;
 
+  # Build against nixpkgs-unstable — Jovian-NixOS only supports unstable,
+  # and Noctalia/Quickshell need unstable-flavoured pkgs too.  See
+  # modules/channel.nix for how this swaps the pkgs instance.
+  clanarchy.channel = "unstable";
+
   # Hybrid-sleep: the swap partition (see disko.nix) is the resume device.
   # `clanarchy.roles.laptop.hybridSleep.enable` defaults to true — standard
   # for laptops and handheld consoles across the clan — so no override here.
@@ -44,10 +49,10 @@
     user   = "deck";
   };
 
-  # birte uses `nixpkgs.pkgs = unstablePkgs` (see forceUnstablePkgs in
-  # lib/mk-machine.nix) while the module list comes from clan-core/nixpkgs
-  # 26.05.  The NixOS option-docs generator (lazy-options.json) walks the
-  # module list from 26.05 but sandboxes files from `pkgs.path` — which is
+  # birte uses `nixpkgs.pkgs = unstablePkgs` (via clanarchy.channel = "unstable"
+  # above) while the module list comes from clan-core/nixpkgs 26.05.  The
+  # NixOS option-docs generator (lazy-options.json) walks the module list
+  # from 26.05 but sandboxes files from `pkgs.path` — which is
   # nixpkgs-unstable's May 30 pin (see nixpkgs-unstable comment in flake.nix).
   # Newer 26.05 module-list entries such as `programs/tack.nix` don't exist
   # in the older unstable source, causing the docs build to fail.

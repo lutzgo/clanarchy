@@ -83,7 +83,7 @@ The full walkthrough — `clan flash write` + `clan machines install <name>` —
 ### Flake Structure
 
 - `flake.nix` — inputs, devShell, and `clan.machines.*` composition. Each machine block uses helpers from `lib/mk-machine.nix` to avoid repeating boilerplate.
-- `lib/mk-machine.nix` — `mkModuleArgs`, `forceUnstablePkgs`, `stylixKmsconFix`, `commonBase`, `commonHeadful`. See "Machine Composition Helpers" under Key Design Decisions.
+- `lib/mk-machine.nix` — `mkModuleArgs`, `stylixKmsconFix`, `commonBase`, `commonHeadful`. See "Machine Composition Helpers" under Key Design Decisions. Per-machine nixpkgs channel selection is in `modules/channel.nix` (option `clanarchy.channel = "stable" | "unstable"`).
 - `clan.nix` — clan-core metadata (`name = "clanarchy"`, `domain = "goclan.org"`), nixpkgs overlays (niri sandbox fix, ungoogled-chromium flags), clan-service inventory instances (see Service Modules below).
 - `machines/<name>/` — machine-specific NixOS configs (see per-machine tables).
 - `modules/` — shared NixOS modules used by multiple machines (see below).
@@ -213,7 +213,9 @@ Generated outputs land in `vars/per-machine/<machine>/`. Run generators with `cl
 
 ### Key Design Decisions
 
-**Machine Composition Helpers (`lib/mk-machine.nix`)**: Every clan machine needs the same `_module.args` injection (`pkgs-unstable` + `inputs`), the same stylix kmscon workaround, and the same list of shared modules. Instead of repeating that boilerplate in each `clan.machines.<name>` block, `lib/mk-machine.nix` exports `mkModuleArgs`, `forceUnstablePkgs` (used by birte for its unstable-pkgs override), `stylixKmsconFix` (bundled into `commonHeadful`), plus two shared imports lists: `commonBase` (universal — impermanence, HM, `modules/base.nix`, `zfs-impermanence.nix`, `vm-variant.nix`, `locale.nix`, `networking/mdns.nix`, `networking/resolved.nix`, `networking/initrd-ssh.nix`, `hardware/cpu.nix`, `hardware/gpu.nix`, `virtualisation.nix`, `users/admin.nix`) and `commonHeadful` (`commonBase` + stylix + `hardware/display.nix` + `networking/skynet-dns-nm.nix` + `modules/apps`). `ernst` uses `commonBase`; the others use `commonHeadful`.
+**Machine Composition Helpers (`lib/mk-machine.nix`)**: Every clan machine needs the same `_module.args` injection (`pkgs-unstable` + `inputs`), the same stylix kmscon workaround, and the same list of shared modules. Instead of repeating that boilerplate in each `clan.machines.<name>` block, `lib/mk-machine.nix` exports `mkModuleArgs`, `stylixKmsconFix` (bundled into `commonHeadful`), plus two shared imports lists: `commonBase` (universal — impermanence, HM, `modules/base.nix`, `modules/channel.nix`, `zfs-impermanence.nix`, `vm-variant.nix`, `locale.nix`, `networking/mdns.nix`, `networking/resolved.nix`, `networking/initrd-ssh.nix`, `hardware/cpu.nix`, `hardware/gpu.nix`, `virtualisation.nix`, `users/admin.nix`) and `commonHeadful` (`commonBase` + stylix + `hardware/display.nix` + `networking/skynet-dns-nm.nix` + `modules/apps`). `ernst` uses `commonBase`; the others use `commonHeadful`.
+
+**Per-machine nixpkgs channel (`modules/channel.nix`)**: `clanarchy.channel = "stable"` (default) keeps the clan-core pin; `clanarchy.channel = "unstable"` swaps the machine's `nixpkgs.pkgs` to `nixpkgs-unstable`. Used by birte for Jovian compatibility. The override uses `mkOverride 25` to win against clan-core's `overridePkgs.nix` `mkForce`.
 
 **Impermanence**: Root and home roll back to `@blank` ZFS snapshots on boot. Persisted paths include: `/var/lib/sops-nix`, `/var/lib/systemd`, `/var/lib/zerotier-one`, user `.gnupg`, `.config`, `.local/share`.
 
