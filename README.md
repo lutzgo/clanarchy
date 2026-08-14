@@ -119,7 +119,7 @@ At a glance:
 
 - `flake.nix` — inputs, devShell, and clan machine composition (uses `lib/mk-machine.nix` helpers).
 - `clan.nix` — clan-core metadata (`name = clanarchy`, `domain = goclan.org`), nixpkgs overlays, and clan-service inventory instances.
-- `lib/mk-machine.nix` — `mkModuleArgs`, `forceUnstablePkgs`, `commonBase`, `commonHeadful` — reusable pieces that keep the per-machine blocks small.
+- `lib/mk-machine.nix` — `mkModuleArgs`, `commonBase`, `commonHeadful` — reusable pieces that keep the per-machine blocks small. Per-machine nixpkgs channel selection is in `modules/channel.nix` (`clanarchy.channel = "stable" | "unstable"`).
 - `modules/` — reusable NixOS modules (hardware, roles, apps, desktop, users, disko/stylix bases).
 - `service-modules/` — custom clan-service definitions (`@clanarchy/machine-type`, `@clanarchy/desktop`, `@clanarchy/users`, `@clanarchy/yubikey`, `@clanarchy/printing`, `@clanarchy/software`, `@clanarchy/local-ai`).
 - `machines/{miralda,biene,birte,ernst}/` — machine-specific `configuration.nix`, `disko.nix`, `stylix.nix`, plus per-machine extras (wallpapers, Jovian wiring, etc.).
