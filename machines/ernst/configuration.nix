@@ -24,7 +24,12 @@
   clanarchy.zfs.ntfy.enable = true;
 
   # Bulk-storage diagnostics. smartd pulls in smartmontools.
-  environment.systemPackages = [pkgs.pciutils];
+  # rsync is here (not just for the one-time Arch → ernst media copy) because
+  # ernst is the media server: `roles/server.nix` zeroes
+  # `environment.defaultPackages`, so the NixOS-default rsync is absent, and
+  # every future push/pull from another host lands on ssh's remote shell needing
+  # rsync in root's PATH.
+  environment.systemPackages = [ pkgs.pciutils pkgs.rsync pkgs.zellij ];
   services.smartd.enable = true;
 
   # Swap is defined as a partition on system-a in disko.nix; the kernel picks

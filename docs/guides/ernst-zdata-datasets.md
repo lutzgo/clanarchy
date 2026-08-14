@@ -1,9 +1,10 @@
 # ernst: creating the zdata datasets
 
-`machines/ernst/disko.nix` declares three datasets on `zdata` — `media`,
-`state`, `games` — and disko emits the corresponding NixOS `fileSystems`
-entries so `/srv/media`, `/srv/state`, `/srv/games` mount declaratively
-on every boot.
+`machines/ernst/disko.nix` declares five datasets on `zdata` — `media`,
+`media/movies`, `media/tvshows`, `state`, `games` — and disko emits the
+corresponding NixOS `fileSystems` entries so `/srv/media`,
+`/srv/media/library/movies`, `/srv/media/library/tvshows`, `/srv/state`,
+`/srv/games` mount declaratively on every boot.
 
 Disko itself only runs at first install; on the already-provisioned
 pool the datasets have to be created once by hand. This is that
@@ -36,6 +37,28 @@ zfs create \
   -o devices=off \
   -o atime=off \
   zdata/media
+
+# /srv/media/library/movies + /srv/media/library/tvshows — dedicated
+# sub-datasets so the imported Jellyfin database's absolute paths land
+# on stable per-collection dataset boundaries (and Nextcloud can later
+# quota/snapshot/audit each collection independently). recordsize=1M
+# MUST be set at creation — it only applies to new writes and cannot be
+# reset retroactively. devices=off is inherited from zdata/media.
+zfs create \
+  -o mountpoint=legacy \
+  -o recordsize=1M \
+  -o exec=off \
+  -o setuid=off \
+  -o atime=off \
+  zdata/media/movies
+
+zfs create \
+  -o mountpoint=legacy \
+  -o recordsize=1M \
+  -o exec=off \
+  -o setuid=off \
+  -o atime=off \
+  zdata/media/tvshows
 
 # /srv/state — per-service config and state. Layout below: /srv/state/<svc>.
 # recordsize left at the 128K default (small random writes from SQLite etc.
@@ -72,16 +95,18 @@ Property audit — every value below must match what was requested above:
 ```bash
 zfs get -H -o value \
   mountpoint,recordsize,exec,setuid,devices,atime,compression,encryption \
-  zdata/media zdata/state zdata/games
+  zdata/media zdata/media/movies zdata/media/tvshows zdata/state zdata/games
 ```
 
 Expected:
 
-| Dataset       | mp     | recordsize | exec | setuid | devices | atime | compress | encrypt      |
-| ------------- | ------ | ---------- | ---- | ------ | ------- | ----- | -------- | ------------ |
-| `zdata/media` | legacy | 1M         | off  | off    | off     | off   | zstd     | aes-256-gcm  |
-| `zdata/state` | legacy | 128K       | on   | off    | off     | off   | zstd     | aes-256-gcm  |
-| `zdata/games` | legacy | 128K       | on   | off    | off     | off   | zstd     | aes-256-gcm  |
+| Dataset               | mp     | recordsize | exec | setuid | devices | atime | compress | encrypt      |
+| --------------------- | ------ | ---------- | ---- | ------ | ------- | ----- | -------- | ------------ |
+| `zdata/media`         | legacy | 1M         | off  | off    | off     | off   | zstd     | aes-256-gcm  |
+| `zdata/media/movies`  | legacy | 1M         | off  | off    | off     | off   | zstd     | aes-256-gcm  |
+| `zdata/media/tvshows` | legacy | 1M         | off  | off    | off     | off   | zstd     | aes-256-gcm  |
+| `zdata/state`         | legacy | 128K       | on   | off    | off     | off   | zstd     | aes-256-gcm  |
+| `zdata/games`         | legacy | 128K       | on   | off    | off     | off   | zstd     | aes-256-gcm  |
 
 ## Deploy
 
