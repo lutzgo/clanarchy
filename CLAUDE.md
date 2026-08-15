@@ -121,7 +121,7 @@ All modules are explicitly imported in `flake.nix` (no auto-discovery):
 | File | Purpose |
 |------|---------|
 | `configuration.nix` | Hostname, timezone, btrfs/systemd-boot, SSH daemon; `clanarchy.rootfs = "btrfs"`; Steam Deck power/hardware tweaks |
-| `disko.nix` | Thin wrapper over `modules/disko/btrfs.nix` — btrfs (not ZFS), unencrypted, 16G plain swap for hybrid-sleep, `@games` subvol mounted at deck's Steam library |
+| `disko.nix` | Thin wrapper over `modules/disko/btrfs.nix` — btrfs (not ZFS), unencrypted, 16G plain swap for hybrid-sleep, `@games` subvol at `/games` (symlinked into deck's home) |
 | `jovian.nix` | Jovian-NixOS wiring: Steam Gaming Mode enablement, gamescope-session, `deck` user provisioning |
 | `deck.nix` | Deck-specific user config + HM stylix enablement |
 | `stylix.nix` | Catppuccin Mocha theme, SVG-recolored wallpaper at native 1280×800; imports `modules/stylix-base.nix` (no regreet target — SDDM is Jovian-provisioned) |
@@ -143,7 +143,7 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | `base.nix` | Universal defaults: EFI boot, Plymouth, flakes, openssh baseline, zsh |
 | `rootfs.nix` | `clanarchy.rootfs` option (`zfs` | `btrfs`) + impermanence bits shared by both backends (persist paths, stage-1 mounts) |
 | `zfs-impermanence.nix` | ZFS backend: rollback-on-boot of root + home (stage 1). Active when `clanarchy.rootfs = "zfs"` (default) |
-| `btrfs-impermanence.nix` | btrfs backend: rollback-on-boot of `@root` only — home stays persistent. Active when `clanarchy.rootfs = "btrfs"` (birte) |
+| `btrfs-impermanence.nix` | btrfs backend: rollback-on-boot of `@root` **and** `@home`, seeded automatically on first boot. Active when `clanarchy.rootfs = "btrfs"` (birte) |
 | `vm-variant.nix` | QEMU-friendly overrides used by `test-pr` / `test-vm` |
 | `locale.nix` | `clanarchy.locale` option: language + keyboard layout/variant/options |
 | `networking/mdns.nix` | Avahi / mDNS — `<hostname>.local` across LAN + ZeroTier |
@@ -223,11 +223,13 @@ Generated outputs land in `vars/per-machine/<machine>/`. Run generators with `cl
 **Impermanence**: Two backends, selected per machine by `clanarchy.rootfs` (declared in `modules/rootfs.nix`, which also holds the shared persist paths). Both backends are imported unconditionally by `commonBase` and each guards its own body on the option — the same pattern as `modules/channel.nix`.
 
 - `clanarchy.rootfs = "zfs"` (default; miralda, biene, ernst) — root **and home** roll back to `@blank` ZFS snapshots on boot.
-- `clanarchy.rootfs = "btrfs"` (birte) — only `@root` rolls back, to the `@root-blank` subvolume snapshot. **Home is persistent**: the Deck's `deck` user holds Steam/gamescope state that Gaming Mode expects to survive reboots. Consequently birte declares *no* `environment.persistence.users.deck` entries and sets `clanarchy.gaming.persistenceDirectories = []` — under a persistent home those bind-mounts would shadow the real home with an empty `/persist` tree.
+- `clanarchy.rootfs = "btrfs"` (birte) — `@root` and `@home` both roll back, to `@root-blank` / `@home-blank` subvolume snapshots, seeded automatically on first boot. Behaviourally equivalent to the ZFS backend.
 
 Persisted paths include: `/var/lib/sops-nix`, `/var/lib/systemd`, `/var/lib/zerotier-one`, user `.gnupg`, `.config`, `.local/share`.
 
-**Why birte is btrfs**: out-of-tree OpenZFS gates the kernel. birte tracks `nixpkgs-unstable` and a Valve kernel via Jovian (`clanarchy.channel = "unstable"`), so it can't afford that coupling; btrfs is in-tree and follows whatever kernel Jovian ships. The Steam library lives on its own `@games` subvol mounted straight at `/home/deck/.local/share/Steam` with `nodatacow` (CoW badly fragments large, repeatedly-rewritten game files) — outside the rollback path, and no bind mount needed since home is persistent.
+**Why birte is btrfs**: out-of-tree OpenZFS gates the kernel. birte tracks `nixpkgs-unstable` and a Valve kernel via Jovian (`clanarchy.channel = "unstable"`), so it can't afford that coupling; btrfs is in-tree and follows whatever kernel Jovian ships.
+
+**Game libraries** (birte's `@games` subvol, ernst's `zdata/games` dataset) sit **outside** both the rollback path and the impermanence bind-mounts, and are symlinked into the gaming user's home by a tmpfiles `L+` rule that re-forces the link after every rollback. Two reasons they are not mounted straight at `~/.local/share/Steam`: that path is restored as an impermanence bind-mount, which would shadow anything mounted underneath it; and keeping the library on its own subvol/dataset lets it carry `nodatacow` (CoW badly fragments large, repeatedly-rewritten game files) without imposing that on `@home`. A `d` tmpfiles rule fixes ownership, since a fresh subvolume/dataset is `root:root`.
 
 **greetd/tuigreet**: Must pass `--sessions /run/current-system/sw/share/wayland-sessions`. Never use `--remember-session`, `--remember-user-session`, or any other cache-writing flag — tuigreet 0.9.1 panics with a crossterm `reader source not set` error when the cache is absent or stale after ZFS rollback, causing greetd to hit its restart limit. Never add TTY systemd overrides to the greetd unit.
 

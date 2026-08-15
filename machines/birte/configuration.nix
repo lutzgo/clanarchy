@@ -56,11 +56,10 @@
   clanarchy.gaming = {
     enable = true;
     user   = "deck";
-    # The module's `.steam` default exists to survive ZFS home rollback.
-    # birte's home is persistent under the btrfs backend, so persisting
-    # anything here would bind an empty /persist tree over a home that is
-    # already durable.  See the NOTE in deck.nix.
-    persistenceDirectories = [ ];
+    # persistenceDirectories keeps its default ([ ".steam" ]): birte's home
+    # is rolled back like the rest of the fleet, so the Steam runtime
+    # bootstrap genuinely needs declaring.  The remaining per-user paths are
+    # listed in deck.nix.
   };
 
   # birte uses `nixpkgs.pkgs = unstablePkgs` (via clanarchy.channel = "unstable"

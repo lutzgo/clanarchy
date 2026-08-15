@@ -44,25 +44,32 @@
     runtimeInputs = [ pkgs.mkpasswd ];
   };
 
-  # NOTE: deck's home is NOT rolled back.  birte uses the btrfs
-  # impermanence backend (clanarchy.rootfs = "btrfs"), which blanks only
-  # @root — see modules/btrfs-impermanence.nix for why: Gaming Mode expects
-  # Steam and gamescope state to survive reboots.
-  #
-  # So there are deliberately no `environment.persistence.users.deck`
-  # entries here.  Under the old ZFS layout this block listed .config,
-  # .local/share, .local/state and .cache; with a persistent @home those
-  # bind-mounts would now shadow the real home directory with an empty
-  # /persist/home/deck tree.  The same reasoning is why
-  # `clanarchy.gaming.persistenceDirectories` is emptied in
-  # configuration.nix.
+  # deck's home is rolled back to blank on every boot, same as every other
+  # machine in the fleet (modules/btrfs-impermanence.nix blanks @root and
+  # @home).  Only what is declared here survives, so HM state, Plasma
+  # dotfiles and the Steam client's own data must be listed explicitly.
+  # `.steam` is contributed separately by modules/gaming-common.nix via
+  # clanarchy.gaming.persistenceDirectories.
+  environment.persistence."/persist".users.deck = {
+    directories = [
+      ".config"      # Plasma / KDE config, HM-managed dotfiles
+      ".local/share" # KDE data + Steam client data (library is symlinked out)
+      ".local/state" # HM profile symlinks, systemd user state
+      ".cache"       # shader caches — re-derivable, but recompiling them on
+                     # every boot is exactly the stutter a Deck must avoid
+    ];
+  };
 
-  # The @games subvol is mounted at deck's Steam library directory (see
-  # disko.nix).  A freshly-created btrfs subvolume is root:root 0755, so
-  # without this Steam can't write to its own library on a fresh install.
-  # tmpfiles runs after local-fs.target, i.e. after the subvol is mounted.
+  # The game library lives on the @games subvol mounted at /games (see
+  # disko.nix), outside the rollback path and outside the impermanence
+  # bind-mounts.  A freshly-created btrfs subvolume is root:root 0755, so
+  # without the `d` rule Steam can't write to its own library.
+  #
+  # `L+` forces the symlink each boot, so it is re-established after the
+  # rollback regardless of what the persisted .local/share contains.
   systemd.tmpfiles.rules = [
-    "d /home/deck/.local/share/Steam 0700 deck ${config.users.users.deck.group} -"
+    "d /games 0700 deck ${config.users.users.deck.group} - -"
+    "L+ /home/deck/.local/share/Steam - - - - /games"
   ];
 
   # Home Manager for `deck`. Stylix's HM auto-enable is the default when the

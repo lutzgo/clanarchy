@@ -29,10 +29,13 @@ import ../../modules/disko/btrfs.nix {
   swapSize = "16G";
   encryptSwap = false;
 
-  # Mount the @games subvol straight at Steam's library directory.  birte's
-  # home is persistent (the btrfs impermanence backend only blanks @root),
-  # so the library needs no bind mount — and keeping it on its own subvol
-  # means it carries `nodatacow` while @home doesn't.  Ownership of the
-  # mountpoint is fixed up by a tmpfiles rule in deck.nix.
-  gamesMountpoint = "/home/deck/.local/share/Steam";
+  # @games stays at the neutral default (/games), outside the rollback path,
+  # and is symlinked into deck's home by a tmpfiles rule in deck.nix.
+  #
+  # It deliberately does NOT mount straight at
+  # /home/deck/.local/share/Steam: @home is rolled back on every boot and
+  # .local/share is restored as an impermanence bind-mount, which would
+  # shadow anything mounted underneath it.  Ownership of /games is fixed up
+  # in deck.nix — a fresh subvolume is root:root.
+  gamesMountpoint = "/games";
 }
