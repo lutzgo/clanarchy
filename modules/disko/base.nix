@@ -81,11 +81,43 @@
           keylocation = "prompt";
         };
 
+      # ── auto-snapshot opt-in ──────────────────────────────────────────
+      # clan-core enables `services.zfs.autoSnapshot` for every machine
+      # (nixosModules/clanCore/zfs.nix, vendored from srvos), but
+      # zfs-auto-snapshot only touches datasets carrying the
+      # `com.sun:auto-snapshot` property — see the option description in
+      # nixpkgs' zfs.nix.  disko sets no such property, so out of the box
+      # those five timers (frequent/hourly/daily/weekly/monthly) run and
+      # snapshot nothing.
+      #
+      # Opt in exactly the two datasets whose contents are not disposable.
+      # `root` and `nix` are deliberately excluded: root is rolled back to
+      # @blank on every boot (modules/zfs-impermanence.nix) so snapshots of
+      # it are worthless, and /nix is reproducible from the flake.
+      #
+      # NOTE: disko applies dataset properties at creation time, so this
+      # only affects machines installed after this lands.  On already-
+      # installed machines, apply it once by hand:
+      #   zfs set com.sun:auto-snapshot=true zroot/home zroot/persist
       datasets = {
         root    = { type = "zfs_fs"; mountpoint = "/"; };
         nix     = { type = "zfs_fs"; mountpoint = "/nix"; };
-        home    = { type = "zfs_fs"; mountpoint = "/home";    options.mountpoint = "legacy"; };
-        persist = { type = "zfs_fs"; mountpoint = "/persist"; options.mountpoint = "legacy"; };
+        home    = {
+          type = "zfs_fs";
+          mountpoint = "/home";
+          options = {
+            mountpoint = "legacy";
+            "com.sun:auto-snapshot" = "true";
+          };
+        };
+        persist = {
+          type = "zfs_fs";
+          mountpoint = "/persist";
+          options = {
+            mountpoint = "legacy";
+            "com.sun:auto-snapshot" = "true";
+          };
+        };
         tmp     = { type = "zfs_fs"; mountpoint = "/tmp"; };
       };
     };

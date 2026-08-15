@@ -149,11 +149,31 @@
         keylocation = "prompt";
       };
 
+      # com.sun:auto-snapshot on home/persist only — see the equivalent
+      # comment in modules/disko/base.nix.  clan-core enables
+      # services.zfs.autoSnapshot fleet-wide, but zfs-auto-snapshot only
+      # acts on datasets carrying this property.  root is rolled back to
+      # @blank every boot and /nix is reproducible, so neither is worth
+      # snapshotting.
       datasets = {
         root    = { type = "zfs_fs"; mountpoint = "/"; };
         nix     = { type = "zfs_fs"; mountpoint = "/nix"; };
-        home    = { type = "zfs_fs"; mountpoint = "/home";    options.mountpoint = "legacy"; };
-        persist = { type = "zfs_fs"; mountpoint = "/persist"; options.mountpoint = "legacy"; };
+        home    = {
+          type = "zfs_fs";
+          mountpoint = "/home";
+          options = {
+            mountpoint = "legacy";
+            "com.sun:auto-snapshot" = "true";
+          };
+        };
+        persist = {
+          type = "zfs_fs";
+          mountpoint = "/persist";
+          options = {
+            mountpoint = "legacy";
+            "com.sun:auto-snapshot" = "true";
+          };
+        };
         tmp     = { type = "zfs_fs"; mountpoint = "/tmp"; };
       };
     };
@@ -220,6 +240,11 @@
         #   dir and invoke them (sonarr custom scripts, etc.); flipping exec
         #   off here would break that use case.
         # setuid/devices=off: no service needs either on its state dir.
+        # com.sun:auto-snapshot=true: this is the one bulk dataset whose
+        #   contents are irreplaceable — service databases and config, not
+        #   re-downloadable media.  /srv/media and /srv/games deliberately
+        #   stay opted out: both are large and re-acquirable, and frequent
+        #   snapshots there would pin deleted media forever.
         state = {
           type = "zfs_fs";
           mountpoint = "/srv/state";
@@ -228,6 +253,7 @@
             setuid     = "off";
             devices    = "off";
             atime      = "off";
+            "com.sun:auto-snapshot" = "true";
           };
         };
 
