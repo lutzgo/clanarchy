@@ -44,18 +44,26 @@
     runtimeInputs = [ pkgs.mkpasswd ];
   };
 
-  # ZFS rolls back to @blank on every boot (see modules/zfs-impermanence.nix).
-  # Without these paths, HM state, Plasma dotfiles, and the Steam library
-  # would vanish on reboot. The gaming-specific `.steam` entry is added by
-  # modules/gaming-common.nix (clanarchy.gaming.enable in configuration.nix).
-  environment.persistence."/persist".users.deck = {
-    directories = [
-      ".config"           # Plasma / KDE config, HM-managed dotfiles
-      ".local/share"      # KDE data, Steam's ~/.local/share/Steam library
-      ".local/state"      # HM profile symlinks, systemd user state
-      ".cache"            # thumbnails, icon cache
-    ];
-  };
+  # NOTE: deck's home is NOT rolled back.  birte uses the btrfs
+  # impermanence backend (clanarchy.rootfs = "btrfs"), which blanks only
+  # @root — see modules/btrfs-impermanence.nix for why: Gaming Mode expects
+  # Steam and gamescope state to survive reboots.
+  #
+  # So there are deliberately no `environment.persistence.users.deck`
+  # entries here.  Under the old ZFS layout this block listed .config,
+  # .local/share, .local/state and .cache; with a persistent @home those
+  # bind-mounts would now shadow the real home directory with an empty
+  # /persist/home/deck tree.  The same reasoning is why
+  # `clanarchy.gaming.persistenceDirectories` is emptied in
+  # configuration.nix.
+
+  # The @games subvol is mounted at deck's Steam library directory (see
+  # disko.nix).  A freshly-created btrfs subvolume is root:root 0755, so
+  # without this Steam can't write to its own library on a fresh install.
+  # tmpfiles runs after local-fs.target, i.e. after the subvol is mounted.
+  systemd.tmpfiles.rules = [
+    "d /home/deck/.local/share/Steam 0700 deck ${config.users.users.deck.group} -"
+  ];
 
   # Home Manager for `deck`. Stylix's HM auto-enable is the default when the
   # HM integration imports it (see stylix.nix at the NixOS level); autoEnable

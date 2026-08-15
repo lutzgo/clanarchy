@@ -120,8 +120,8 @@ All modules are explicitly imported in `flake.nix` (no auto-discovery):
 
 | File | Purpose |
 |------|---------|
-| `configuration.nix` | Hostname, timezone, ZFS/systemd-boot, SSH daemon; Steam Deck power/hardware tweaks |
-| `disko.nix` | Thin wrapper over `modules/disko/base.nix` — unencrypted pool, 16G plain swap for hybrid-sleep (standard for laptops/consoles) |
+| `configuration.nix` | Hostname, timezone, btrfs/systemd-boot, SSH daemon; `clanarchy.rootfs = "btrfs"`; Steam Deck power/hardware tweaks |
+| `disko.nix` | Thin wrapper over `modules/disko/btrfs.nix` — btrfs (not ZFS), unencrypted, 16G plain swap for hybrid-sleep, `@games` subvol mounted at deck's Steam library |
 | `jovian.nix` | Jovian-NixOS wiring: Steam Gaming Mode enablement, gamescope-session, `deck` user provisioning |
 | `deck.nix` | Deck-specific user config + HM stylix enablement |
 | `stylix.nix` | Catppuccin Mocha theme, SVG-recolored wallpaper at native 1280×800; imports `modules/stylix-base.nix` (no regreet target — SDDM is Jovian-provisioned) |
@@ -141,7 +141,9 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | File | Purpose |
 |------|---------|
 | `base.nix` | Universal defaults: EFI boot, Plymouth, flakes, openssh baseline, zsh |
-| `zfs-impermanence.nix` | ZFS rollback-on-boot (stage 1); persist paths |
+| `rootfs.nix` | `clanarchy.rootfs` option (`zfs` | `btrfs`) + impermanence bits shared by both backends (persist paths, stage-1 mounts) |
+| `zfs-impermanence.nix` | ZFS backend: rollback-on-boot of root + home (stage 1). Active when `clanarchy.rootfs = "zfs"` (default) |
+| `btrfs-impermanence.nix` | btrfs backend: rollback-on-boot of `@root` only — home stays persistent. Active when `clanarchy.rootfs = "btrfs"` (birte) |
 | `vm-variant.nix` | QEMU-friendly overrides used by `test-pr` / `test-vm` |
 | `locale.nix` | `clanarchy.locale` option: language + keyboard layout/variant/options |
 | `networking/mdns.nix` | Avahi / mDNS — `<hostname>.local` across LAN + ZeroTier |
@@ -154,6 +156,7 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | `icon-theme.nix` | `clanarchy.iconTheme` option: Stylix-recolored Papirus-Dark |
 | `stylix-base.nix` | Shared stylix baseline for headful machines: fonts (Monaspace), cursor (Adwaita), `targets.plymouth`, polarity |
 | `disko/base.nix` | Single-disk disko helper: 1G ESP + optional swap + ZFS `zroot`. Parameters: `device`, `enableSwap`, `swapSize`, `encryptSwap`, `enableEncryption` |
+| `disko/btrfs.nix` | Single-disk btrfs sibling of `base.nix`: 1G ESP + optional swap + `@root`/`@nix`/`@home`/`@persist`/`@games` subvols. No LUKS. Parameters: `device`, `enableSwap`, `swapSize`, `encryptSwap`, `gamesMountpoint` |
 | `hardware/cpu.nix` | Intel/AMD microcode selection |
 | `hardware/gpu.nix` | GPU driver selection (AMD/Intel/NVIDIA) |
 | `hardware/display.nix` | `clanarchy.display.scale` option: console font/mode scaling for boot/TTY |
@@ -213,11 +216,18 @@ Generated outputs land in `vars/per-machine/<machine>/`. Run generators with `cl
 
 ### Key Design Decisions
 
-**Machine Composition Helpers (`lib/mk-machine.nix`)**: Every clan machine needs the same `_module.args` injection (`pkgs-unstable` + `inputs`), the same stylix kmscon workaround, and the same list of shared modules. Instead of repeating that boilerplate in each `clan.machines.<name>` block, `lib/mk-machine.nix` exports `mkModuleArgs`, `stylixKmsconFix` (bundled into `commonHeadful`), plus two shared imports lists: `commonBase` (universal — impermanence, HM, `modules/base.nix`, `modules/channel.nix`, `zfs-impermanence.nix`, `vm-variant.nix`, `locale.nix`, `networking/mdns.nix`, `networking/resolved.nix`, `networking/initrd-ssh.nix`, `hardware/cpu.nix`, `hardware/gpu.nix`, `virtualisation.nix`, `users/admin.nix`) and `commonHeadful` (`commonBase` + stylix + `hardware/display.nix` + `networking/skynet-dns-nm.nix` + `modules/apps`). `ernst` uses `commonBase`; the others use `commonHeadful`.
+**Machine Composition Helpers (`lib/mk-machine.nix`)**: Every clan machine needs the same `_module.args` injection (`pkgs-unstable` + `inputs`), the same stylix kmscon workaround, and the same list of shared modules. Instead of repeating that boilerplate in each `clan.machines.<name>` block, `lib/mk-machine.nix` exports `mkModuleArgs`, `stylixKmsconFix` (bundled into `commonHeadful`), plus two shared imports lists: `commonBase` (universal — impermanence, HM, `modules/base.nix`, `modules/channel.nix`, `rootfs.nix`, `zfs-impermanence.nix`, `btrfs-impermanence.nix`, `vm-variant.nix`, `locale.nix`, `networking/mdns.nix`, `networking/resolved.nix`, `networking/initrd-ssh.nix`, `hardware/cpu.nix`, `hardware/gpu.nix`, `virtualisation.nix`, `users/admin.nix`) and `commonHeadful` (`commonBase` + stylix + `hardware/display.nix` + `networking/skynet-dns-nm.nix` + `modules/apps`). `ernst` uses `commonBase`; the others use `commonHeadful`.
 
 **Per-machine nixpkgs channel (`modules/channel.nix`)**: `clanarchy.channel = "stable"` (default) keeps the clan-core pin; `clanarchy.channel = "unstable"` swaps the machine's `nixpkgs.pkgs` to `nixpkgs-unstable`. Used by birte for Jovian compatibility. The override uses `mkOverride 25` to win against clan-core's `overridePkgs.nix` `mkForce`.
 
-**Impermanence**: Root and home roll back to `@blank` ZFS snapshots on boot. Persisted paths include: `/var/lib/sops-nix`, `/var/lib/systemd`, `/var/lib/zerotier-one`, user `.gnupg`, `.config`, `.local/share`.
+**Impermanence**: Two backends, selected per machine by `clanarchy.rootfs` (declared in `modules/rootfs.nix`, which also holds the shared persist paths). Both backends are imported unconditionally by `commonBase` and each guards its own body on the option — the same pattern as `modules/channel.nix`.
+
+- `clanarchy.rootfs = "zfs"` (default; miralda, biene, ernst) — root **and home** roll back to `@blank` ZFS snapshots on boot.
+- `clanarchy.rootfs = "btrfs"` (birte) — only `@root` rolls back, to the `@root-blank` subvolume snapshot. **Home is persistent**: the Deck's `deck` user holds Steam/gamescope state that Gaming Mode expects to survive reboots. Consequently birte declares *no* `environment.persistence.users.deck` entries and sets `clanarchy.gaming.persistenceDirectories = []` — under a persistent home those bind-mounts would shadow the real home with an empty `/persist` tree.
+
+Persisted paths include: `/var/lib/sops-nix`, `/var/lib/systemd`, `/var/lib/zerotier-one`, user `.gnupg`, `.config`, `.local/share`.
+
+**Why birte is btrfs**: out-of-tree OpenZFS gates the kernel. birte tracks `nixpkgs-unstable` and a Valve kernel via Jovian (`clanarchy.channel = "unstable"`), so it can't afford that coupling; btrfs is in-tree and follows whatever kernel Jovian ships. The Steam library lives on its own `@games` subvol mounted straight at `/home/deck/.local/share/Steam` with `nodatacow` (CoW badly fragments large, repeatedly-rewritten game files) — outside the rollback path, and no bind mount needed since home is persistent.
 
 **greetd/tuigreet**: Must pass `--sessions /run/current-system/sw/share/wayland-sessions`. Never use `--remember-session`, `--remember-user-session`, or any other cache-writing flag — tuigreet 0.9.1 panics with a crossterm `reader source not set` error when the cache is absent or stale after ZFS rollback, causing greetd to hit its restart limit. Never add TTY systemd overrides to the greetd unit.
 

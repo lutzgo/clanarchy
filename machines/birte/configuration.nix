@@ -25,6 +25,15 @@
   # modules/channel.nix for how this swaps the pkgs instance.
   clanarchy.channel = "unstable";
 
+  # btrfs rather than the fleet's ZFS.  Out-of-tree OpenZFS gates the
+  # kernel, which doesn't work on a machine tracking unstable + a Valve
+  # kernel via Jovian (see disko.nix).  This selects the btrfs
+  # impermanence backend — modules/btrfs-impermanence.nix — which blanks
+  # @root on boot but, unlike the ZFS backend, leaves home persistent:
+  # deck's home holds Steam/gamescope state Gaming Mode expects to
+  # survive.  The game library lives on its own @games subvol.
+  clanarchy.rootfs = "btrfs";
+
   # Hybrid-sleep: the swap partition (see disko.nix) is the resume device.
   # `clanarchy.roles.laptop.hybridSleep.enable` defaults to true — standard
   # for laptops and handheld consoles across the clan — so no override here.
@@ -42,11 +51,16 @@
   clanarchy.apps.flatpak.enable       = true;
   clanarchy.apps.desktopTools.enable  = true;
 
-  # Machine-agnostic gaming bits (Steam + Proton-GE + `.steam` persistence).
+  # Machine-agnostic gaming bits (Steam + Proton-GE).
   # Jovian / Deck-hardware wiring lives in jovian.nix and deck.nix.
   clanarchy.gaming = {
     enable = true;
     user   = "deck";
+    # The module's `.steam` default exists to survive ZFS home rollback.
+    # birte's home is persistent under the btrfs backend, so persisting
+    # anything here would bind an empty /persist tree over a home that is
+    # already durable.  See the NOTE in deck.nix.
+    persistenceDirectories = [ ];
   };
 
   # birte uses `nixpkgs.pkgs = unstablePkgs` (via clanarchy.channel = "unstable"
