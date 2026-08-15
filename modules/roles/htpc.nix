@@ -162,13 +162,15 @@ in
     # the desktop module owns the implementation.
     clanarchy.desktop.kde.enable = true;
 
-    # Steam + Proton-GE. Persistence stays empty here: HTPC homes are not
-    # rolled back (the library and Steam config must survive), so per-user
-    # persist entries would shadow a durable home.
+    # Steam + Proton-GE.  `persistenceDirectories` keeps its default
+    # ([ ".steam" ]): HTPC machines are impermanent like the rest of the
+    # fleet — home is rolled back on boot — so the Steam runtime bootstrap
+    # genuinely does need declaring.  The remaining per-user paths
+    # (.config, .local/share, .local/state, .cache) are declared by the
+    # machine's user module, which is also where the library symlink lives.
     clanarchy.gaming = {
       enable = true;
       user = cfg.user;
-      persistenceDirectories = [ ];
     };
 
     # The stock gamescope Steam session from nixpkgs — no Jovian.

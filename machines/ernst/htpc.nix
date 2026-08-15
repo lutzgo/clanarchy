@@ -40,15 +40,32 @@
     runtimeInputs = [ pkgs.mkpasswd ];
   };
 
-  # ernst's root rolls back to @blank each boot, but /home is a separate
-  # dataset that does not — so Steam's library, Plasma config and HM state
-  # under /home/go persist without any impermanence bind-mounts.  This
-  # matches the reasoning in machines/birte/deck.nix.
+  # ernst rolls back BOTH zroot/root and zroot/home to @blank on every boot
+  # (modules/zfs-impermanence.nix), so /home/go is wiped each time and only
+  # what is declared here survives.  This is the fleet's normal posture and
+  # is kept deliberately: the couch account's state stays auditable instead
+  # of accumulating whatever Steam and Plasma happen to drop in $HOME.
   #
-  # The Steam library itself belongs on the bulk pool rather than on zroot:
-  # zdata/games already exists for exactly this (see machines/ernst/disko.nix,
-  # "future Steam library"), and a mirrored 960 GB system pool is the wrong
-  # place for hundreds of GB of games.
+  # Everything Gaming Mode needs to not re-onboard on every reboot:
+  environment.persistence."/persist".users.go = {
+    directories = [
+      ".config"      # Plasma / KDE config, gamescope + Steam client settings
+      ".local/share" # Steam client data (the library itself is symlinked out, below)
+      ".local/state" # systemd user state
+      # ".steam" is contributed by modules/gaming-common.nix via
+      # clanarchy.gaming.persistenceDirectories — not repeated here.
+      ".cache"       # shader caches — re-derivable, but recompiling them on
+                     # every boot is exactly the stutter this box exists to avoid
+    ];
+  };
+
+  # The library itself belongs on the bulk pool, not on zroot: zdata/games
+  # already exists for exactly this (see machines/ernst/disko.nix, "future
+  # Steam library"), and a mirrored 960 GB system pool is the wrong place for
+  # hundreds of GB of games.
+  #
+  # `L+` forces the symlink each boot, so it is re-established after the
+  # rollback regardless of what the persisted .local/share contains.
   systemd.tmpfiles.rules = [
     "d /srv/games/go 0700 go users - -"
     "L+ /home/go/.local/share/Steam - - - - /srv/games/go"
