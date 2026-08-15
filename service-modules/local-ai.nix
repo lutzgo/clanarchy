@@ -25,6 +25,22 @@
       description = "Models to pre-pull when the service starts.";
     };
 
+    interface.options.hsaOverrideGfxVersion = lib.mkOption {
+      type        = lib.types.nullOr lib.types.str;
+      default     = null;
+      example     = "11.0.3";
+      description = ''
+        Value for `HSA_OVERRIDE_GFX_VERSION`, or null to leave it unset.
+
+        Only needed when the GPU's gfx target is absent from stock ROCm
+        kernel libraries, which is the case for AMD APUs — miralda's
+        Phoenix iGPU is gfx1103 and needs "11.0.3".  Discrete cards that
+        ROCm supports natively (ernst's RX 7900 XTX is gfx1100) must leave
+        this null: forcing an override there makes ROCm select the wrong
+        kernels for a card that already has correct ones.
+      '';
+    };
+
     perInstance = { settings, ... }: {
       nixosModule = { pkgs, lib, ... }: {
 
@@ -34,13 +50,13 @@
           # (nixpkgs dropped that option; the variant packages are the new API).
           package    = pkgs.ollama-rocm;
           loadModels = settings.models;
+          # HSA_OVERRIDE_GFX_VERSION is per-machine (see the option's
+          # description): APUs whose gfx target is missing from stock ROCm
+          # need it, natively-supported discrete cards must not have it.
           environmentVariables = {
-            # The AMD Phoenix iGPU (gfx1103) is absent from stock ROCm kernel
-            # libraries (gfx1100/1101/1102 are present; gfx1103 is not).
-            # Overriding the GFX version to 11.0.3 makes ROCm select the
-            # gfx1100 kernels at runtime, enabling GPU-accelerated inference.
-            HSA_OVERRIDE_GFX_VERSION = "11.0.3";
-            ROCR_VISIBLE_DEVICES     = "0";
+            ROCR_VISIBLE_DEVICES = "0";
+          } // lib.optionalAttrs (settings.hsaOverrideGfxVersion != null) {
+            HSA_OVERRIDE_GFX_VERSION = settings.hsaOverrideGfxVersion;
           };
         };
 
