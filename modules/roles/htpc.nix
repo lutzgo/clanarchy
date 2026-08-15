@@ -146,6 +146,29 @@ in
       '';
     };
 
+    mediaClient = {
+      enable =
+        lib.mkEnableOption "a couch media client alongside the gaming session"
+        // { default = true; };
+
+      package = lib.mkOption {
+        type = lib.types.package;
+        default = pkgs.jellyfin-media-player;
+        defaultText = lib.literalExpression "pkgs.jellyfin-media-player";
+        description = ''
+          Media client to install. Defaults to Jellyfin Media Player, which
+          has its own 10-foot TV interface and talks to the Jellyfin server
+          ernst already runs in an nspawn container.
+
+          Plasma Bigscreen would have been the obvious "KDE for TV" answer
+          but is not packaged in 26.05 — the top-level attribute is a
+          throwing alias pointing at `kdePackages.plasma-bigscreen`, which
+          does not exist. So the 10-foot UI is Steam Big Picture, with this
+          client added to it as a launcher entry (see the note below).
+        '';
+      };
+    };
+
     autologin.enable = lib.mkEnableOption ''
       passwordless autologin for the couch user.
 
@@ -211,11 +234,22 @@ in
       user = cfg.user;
     };
 
+    # The media client is installed system-wide (not just into the session)
+    # so it shows up in Plasma's launcher too, and so Steam's "Add a
+    # Non-Steam Game" browser can find it on PATH.
+    #
+    # NOTE — one manual step: Steam stores non-Steam shortcuts in
+    # `shortcuts.vdf`, a *binary* VDF blob inside the user's Steam data dir.
+    # Generating that declaratively is possible but brittle across Steam
+    # versions, so the launcher entry is added once by hand from Big
+    # Picture (Library → Add a Non-Steam Game → Jellyfin Media Player).  It
+    # survives reboots because `.local/share` is persisted for the couch
+    # user — see the machine's user module.
     environment.systemPackages = [
       sessionSelect
       steamosShim
       returnLauncher
-    ];
+    ] ++ lib.optional cfg.mediaClient.enable cfg.mediaClient.package;
 
     # Owned by the couch user so switching needs no privilege escalation.
     systemd.tmpfiles.rules = [

@@ -171,7 +171,7 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | `desktop/kde.nix` | KDE Plasma 6 desktop: SDDM, Plasma packages (used by birte's "Switch to Desktop" session) |
 | `roles/laptop.nix` | Laptop role: fwupd (all laptops), thermald (Intel only), power-profiles-daemon, weekly Nix GC (14-day retention) |
 | `roles/server.nix` | Server role (headless): no GUI packages, no laptop-only services |
-| `roles/htpc.nix` | HTPC role: stock-nixpkgs gamescope Steam session + KDE Plasma behind one wrapper session, switched at runtime via `clanarchy-session-select` (and a `steamos-session-select` shim so Steam's own button works). Options: `user`, `defaultSession`, `autologin.enable` |
+| `roles/htpc.nix` | HTPC role: stock-nixpkgs gamescope Steam session + KDE Plasma behind one wrapper session, switched at runtime via `clanarchy-session-select` (and a `steamos-session-select` shim so Steam's own button works). Installs a couch media client (Jellyfin Media Player by default) — Plasma Bigscreen is not packaged in 26.05. Options: `user`, `defaultSession`, `autologin.enable`, `mediaClient.{enable,package}` |
 | `roles/vm.nix` | VM guest role: SPICE agent, QEMU guest tools |
 | `roles/rpi.nix` | Raspberry Pi role (unused; kept for future clan expansion) |
 | `users/admin.nix` | admin user: SSH keys, password, impermanence, HM stub |
