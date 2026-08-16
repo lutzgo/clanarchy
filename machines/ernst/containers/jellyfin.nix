@@ -20,12 +20,22 @@
 #   the ACL moves onto the UDM-Pro.
 #
 # GPU — iGPU only, XTX reserved for ROCm/gaming.
-#   ernst carries two AMD GPUs (see PR test plan for probe commands):
-#     /dev/dri/renderD128  card1  PCI 03:00.0  Navi 31 (RX 7900 XTX)  — DO NOT bind
-#     /dev/dri/renderD129  card0  PCI 7b:00.0  Granite Ridge iGPU     — this file
-#   Enumeration order can flip on future kernel updates.  If VAAPI stops
-#   working after a bump, re-run the probe from the PR test plan and update
-#   the paths below (and confirm via `vainfo` inside the container).
+#   ernst carries two AMD GPUs:
+#     PCI 03:00.0  Navi 31 (RX 7900 XTX)  — DO NOT bind; ROCm/Ollama + gaming
+#     PCI 7b:00.0  Granite Ridge iGPU     — this file
+#
+#   Addressed by PCI path, not by renderD* number.  renderD12{8,9} is
+#   enumeration order, which can flip on a kernel update — and a flip here is
+#   not a broken-transcode failure, it silently hands the container the 7900
+#   XTX and takes it away from ROCm.  The by-path symlinks udev maintains are
+#   stable across reboots and kernel bumps because they are derived from the
+#   PCI topology:
+#     /dev/dri/by-path/pci-0000:7b:00.0-render -> ../renderD12X
+#
+#   Verify after a kernel bump (should print the iGPU, not Navi 31):
+#     readlink -f /dev/dri/by-path/pci-0000:7b:00.0-render
+#     nixos-container run jellyfin -- vainfo --display drm --device \
+#       /dev/dri/by-path/pci-0000:7b:00.0-render
 #
 # Storage layout on this host (see machines/ernst/disko.nix):
 #   /srv/media   zdata/media   RO into container at /srv/media/library
@@ -33,9 +43,23 @@
 #   Transcode temp is a tmpfs INSIDE the container — never on zdata.
 { config, lib, pkgs, ... }:
 let
-  # AMD iGPU render node on ernst (Granite Ridge, 9950X).  See file header
-  # for the probe procedure and the rationale for pinning by number.
-  iGpuRenderNode = "/dev/dri/renderD129";
+  # AMD iGPU render node on ernst (Granite Ridge, 9950X), addressed by PCI
+  # path so kernel enumeration order cannot repoint it at the 7900 XTX.
+  # See the file header for the rationale and the post-kernel-bump check.
+  #
+  # Used verbatim in all three places that must agree — allowedDevices, the
+  # bind mount, and the VaapiDevice written into encoding.xml — so they
+  # cannot drift apart.
+  #
+  # On allowedDevices specifically: NixOS passes this string straight through
+  # to systemd's DeviceAllow= (nixos-containers.nix:341), and systemd stat()s
+  # the path to derive major:minor for the eBPF device filter. stat() follows
+  # symlinks, so the by-path link resolves correctly and no real node is
+  # needed here. If a future systemd ever refuses the symlink, the fallback is
+  # to put the numeric node in allowedDevices ONLY — derived with
+  # `readlink -f` on the path below — and leave the bind mount and
+  # VaapiDevice on the stable by-path name.
+  iGpuRenderNode = "/dev/dri/by-path/pci-0000:7b:00.0-render";
 
   # Fixed numeric IDs so the RW state bind mount has coherent ownership
   # regardless of NixOS's dynamic allocation.  jellyfinUid matches the
@@ -191,7 +215,7 @@ in
         isSystemUser = true;
         group        = "jellyfin";
         uid          = jellyfinUid;
-        # `render` grants access to /dev/dri/renderD129 (mode 0666 makes this
+        # `render` grants access to the iGPU render node (mode 0666 makes this
         # nominally unnecessary, but if a future udev rule tightens the node
         # to 0660, membership keeps VAAPI working without a redeploy).
         # `media` grants read on the library binds — files are staged
