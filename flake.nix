@@ -13,7 +13,13 @@
     };
 
     # Extras
-    impermanence.url = "github:nix-community/impermanence";
+    impermanence = {
+      url = "github:nix-community/impermanence";
+      # impermanence's nixosModules don't read its own nixpkgs (it's there for
+      # the upstream devShell/checks), so following costs nothing and keeps a
+      # third full nixpkgs out of the lock.
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
 
     home-manager = {
       url = "github:nix-community/home-manager";
@@ -41,17 +47,16 @@
 
     # Unstable — required for Noctalia/Quickshell + Jovian-NixOS (intentionally NOT following clan-core/nixpkgs).
     #
-    # Pinned to 2026-05-30 (rev 1bc189f) because unstable HEAD removed
-    # `stdenv.hostPlatform.linux-kernel` in June 2026, breaking birte's build:
-    # birte uses `nixpkgs.pkgs = unstablePkgs` (see lib/mk-machine.nix) but
-    # NixOS modules from clan-core's 26.05 nixpkgs pin still read
-    # `pkgs.stdenv.hostPlatform.linux-kernel.target` in top-level.nix.
-    # This is the last pre-removal rev on nixos-unstable that still has
-    # `linux-kernel`, keeps Jovian/Noctalia/Quickshell working, and lags
-    # only ~5 weeks behind current unstable.
-    #
-    # Bump this pin once clan-core moves off 26.05 or ships a compat shim.
-    nixpkgs-unstable.url = "github:NixOS/nixpkgs/1bc189f2e14dd7abb750903697b9683d54c0fcee";
+    # Floating again as of 2026-08-15.  This was previously pinned to
+    # 2026-05-30 (rev 1bc189f) because unstable removed
+    # `stdenv.hostPlatform.linux-kernel` in June 2026, which broke birte:
+    # birte runs 26.05's NixOS modules against unstable `pkgs` (see
+    # `clanarchy.channel` in modules/channel.nix), and 26.05's top-level.nix
+    # read that attribute for the `system.boot.loader.kernelFile` default.
+    # modules/channel.nix now defines that option directly, so the removed
+    # attribute is never forced — see the shim comment there for why the
+    # remaining 26.05 readers are inert.
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     noctalia = {
       # Pin to pre-v5 revision (2026-05-26). Noctalia v5 (July 2026) rewrote the
@@ -78,7 +83,10 @@
 
     govim = {
       url = "github:lutzgo/govim";
-      # nvf expects nixpkgs-unstable; do not follow clan-core/nixpkgs
+      # nvf expects nixpkgs-unstable — so point it at *ours* rather than
+      # letting it fetch a second, independently-drifting unstable.
+      # (Still must not follow clan-core/nixpkgs: nvf needs unstable.)
+      inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
 
     # nvf — pin to the same revision govim uses so the DAG lib is consistent
@@ -90,17 +98,16 @@
     # birte is built entirely against nixpkgs-unstable (see clan.machines.birte
     # below) — miralda / biene / ernst remain on clan-core's 26.05 pin.
     #
-    # Pin: Jovian 57773e5c9 (2026-08-08) landed a "horrible hack" (upstream's
-    # words) in mesa-radeonsi-jupiter to build against latest nixpkgs-unstable.
-    # Our nixpkgs-unstable is intentionally pinned back to 2026-05-30 (see
-    # comment above) — the hack + our older unstable produces two conflicting
-    # mesa builds (mesa-26.1.1 vs mesa-radeonsi-jupiter-26.1.2) both claiming
-    # /lib/libEGL_mesa.so.0.0.0 in the graphics-drivers buildEnv.
-    #
-    # Lift this pin once we can bump nixpkgs-unstable (blocked on the
-    # linux-kernel removal — see the nixpkgs-unstable comment above).
+    # Floating again as of 2026-08-15.  This was previously pinned to
+    # db4a6e755 (2026-07-04): Jovian 57773e5c9 (2026-08-08) landed a
+    # "horrible hack" (upstream's words) in mesa-radeonsi-jupiter to build
+    # against then-current nixpkgs-unstable, which conflicted with our
+    # pinned-back 2026-05-30 unstable — two mesa builds (26.1.1 vs
+    # radeonsi-jupiter-26.1.2) both claiming /lib/libEGL_mesa.so.0.0.0 in
+    # the graphics-drivers buildEnv.  Now that nixpkgs-unstable floats
+    # again, Jovian and its mesa are back in step.
     jovian-nixos = {
-      url = "github:Jovian-Experiments/Jovian-NixOS/db4a6e75522199a0406adb74c1a5e91e53f9296c";
+      url = "github:Jovian-Experiments/Jovian-NixOS";
       inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
 
