@@ -2,7 +2,7 @@
 
 Clanarchy uses a simple branch-per-change workflow: nothing lands on `main` except through a pull request. This guide covers reviewing and merging PRs, and the recovery steps when something goes wrong.
 
-Branch naming and PR conventions are described in [CLAUDE.md → Git Workflow](../../CLAUDE.md).
+Branch naming and PR conventions are described in [CLAUDE.md → Git Workflow](https://github.com/lutzgo/clanarchy/blob/main/CLAUDE.md).
 
 ---
 
@@ -103,6 +103,6 @@ Never `git push --force` (or `--force-with-lease`) to `main`. If a bad commit al
 
 When Claude Code creates a PR on your behalf:
 
-- The branch name follows the `<type>/<slug>` convention in [CLAUDE.md → Git Workflow](../../CLAUDE.md).
+- The branch name follows the `<type>/<slug>` convention in [CLAUDE.md → Git Workflow](https://github.com/lutzgo/clanarchy/blob/main/CLAUDE.md).
 - The PR title is imperative and unprefixed; the body contains a summary and a test plan.
 - Claude will not merge the PR itself — merging is always your call. Review, then run `gh pr merge <n> --squash --delete-branch` when ready.
