@@ -18,10 +18,12 @@ Enter the devShell via direnv (`.envrc` uses `use flake`) or manually with `nix 
 The devShell provides these shell functions:
 
 ```bash
-deploy       [boot|switch]    # miralda   (root@miralda.goclan.org)
-deploy-biene [boot|switch]    # biene     (root@biene.local;      BIENE_HOST= to override)
-deploy-birte [boot|switch]    # birte     (root@birte.local;      BIRTE_HOST= to override)
-deploy-ernst [boot|switch]    # ernst     (root@ernst.skynet.lan; ERNST_HOST= to override)
+deploy <machine> [boot|switch] [args...]   # unified; machine is required
+  # miralda -> miralda.goclan.org   MIRALDA_HOST=
+  # biene   -> biene.local          BIENE_HOST=
+  # birte   -> birte.local          BIRTE_HOST=
+  # ernst   -> ernst.skynet.lan     ERNST_HOST=
+deploy-miralda / deploy-biene / deploy-birte / deploy-ernst   # thin aliases
 
 test-pr <PR#> [machine]       # gh pr checkout + build-vm + run VM  (default machine: biene)
 test-vm [machine]             # build-vm + run VM on the current tree

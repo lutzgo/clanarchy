@@ -32,10 +32,11 @@ nix develop           # or: direnv allow, if you use direnv
 The devShell exposes:
 
 ```bash
-deploy [boot|switch]         # miralda   (root@miralda.goclan.org)
-deploy-biene [boot|switch]   # biene     (root@biene.local; BIENE_HOST= to override)
-deploy-birte [boot|switch]   # birte     (root@birte.local; BIRTE_HOST= to override)
-deploy-ernst [boot|switch]   # ernst     (root@ernst.skynet.lan; ERNST_HOST= to override)
+deploy <machine> [boot|switch]   # miralda | biene | birte | ernst
+                                 # hosts: miralda.goclan.org, biene.local,
+                                 #        birte.local, ernst.skynet.lan
+                                 # override with <MACHINE>_HOST=
+deploy-miralda / deploy-biene / deploy-birte / deploy-ernst   # thin aliases
 
 test-pr <PR#> [machine]      # gh pr checkout + build-vm + run-vm  (machine defaults to biene)
 test-vm [machine]            # build-vm + run-vm on the current tree
@@ -70,8 +71,8 @@ Full walkthrough: **[docs/guides/first-time-install.md](docs/guides/first-time-i
 ```bash
 # 1. Edit config files
 # 2. Deploy (switch = immediate activation, boot = staged for next boot):
-deploy
-deploy boot
+deploy miralda
+deploy miralda boot
 
 # 3. Commit and push:
 git add <files> && git commit
@@ -142,7 +143,7 @@ Then generate its syncthing vars and redeploy both machines:
 
 ```bash
 clan vars generate new-machine
-deploy switch   # on each machine
+deploy <machine> switch   # on each machine
 ```
 
 Machines discover each other via their zerotier IPs — no manual device ID exchange.
