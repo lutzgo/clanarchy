@@ -44,18 +44,33 @@
     runtimeInputs = [ pkgs.mkpasswd ];
   };
 
-  # ZFS rolls back to @blank on every boot (see modules/zfs-impermanence.nix).
-  # Without these paths, HM state, Plasma dotfiles, and the Steam library
-  # would vanish on reboot. The gaming-specific `.steam` entry is added by
-  # modules/gaming-common.nix (clanarchy.gaming.enable in configuration.nix).
+  # deck's home is rolled back to blank on every boot, same as every other
+  # machine in the fleet (modules/btrfs-impermanence.nix blanks @root and
+  # @home).  Only what is declared here survives, so HM state, Plasma
+  # dotfiles and the Steam client's own data must be listed explicitly.
+  # `.steam` is contributed separately by modules/gaming-common.nix via
+  # clanarchy.gaming.persistenceDirectories.
   environment.persistence."/persist".users.deck = {
     directories = [
-      ".config"           # Plasma / KDE config, HM-managed dotfiles
-      ".local/share"      # KDE data, Steam's ~/.local/share/Steam library
-      ".local/state"      # HM profile symlinks, systemd user state
-      ".cache"            # thumbnails, icon cache
+      ".config"      # Plasma / KDE config, HM-managed dotfiles
+      ".local/share" # KDE data + Steam client data (library is symlinked out)
+      ".local/state" # HM profile symlinks, systemd user state
+      ".cache"       # shader caches — re-derivable, but recompiling them on
+                     # every boot is exactly the stutter a Deck must avoid
     ];
   };
+
+  # The game library lives on the @games subvol mounted at /games (see
+  # disko.nix), outside the rollback path and outside the impermanence
+  # bind-mounts.  A freshly-created btrfs subvolume is root:root 0755, so
+  # without the `d` rule Steam can't write to its own library.
+  #
+  # `L+` forces the symlink each boot, so it is re-established after the
+  # rollback regardless of what the persisted .local/share contains.
+  systemd.tmpfiles.rules = [
+    "d /games 0700 deck ${config.users.users.deck.group} - -"
+    "L+ /home/deck/.local/share/Steam - - - - /games"
+  ];
 
   # Home Manager for `deck`. Stylix's HM auto-enable is the default when the
   # HM integration imports it (see stylix.nix at the NixOS level); autoEnable

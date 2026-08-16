@@ -43,7 +43,13 @@ rec {
     inputs.home-manager.nixosModules.home-manager
     ../modules/base.nix
     ../modules/channel.nix
+    # Root filesystem strategy: rootfs.nix declares `clanarchy.rootfs` and
+    # holds the shared persist bits; the two backends below each guard
+    # their own body on it, so importing both is inert for the one not
+    # selected.
+    ../modules/rootfs.nix
     ../modules/zfs-impermanence.nix
+    ../modules/btrfs-impermanence.nix
     ../modules/vm-variant.nix
     ../modules/locale.nix
     ../modules/networking/mdns.nix
