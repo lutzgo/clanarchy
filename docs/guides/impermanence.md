@@ -145,3 +145,9 @@ Then add it to `impermanence.nix` and redeploy.
 ### `machine-id` changes after rollback
 
 `/etc/machine-id` must be in the `files` list (not `directories`). A changing machine-id breaks the systemd journal, D-Bus, and services that rely on stable identity.
+
+## Snapshots alongside the rollback
+
+The `@blank` rollback discards everything not declared in `environment.persistence`. Automatic snapshots are the complementary half: they let you recover from a *bad write* to data that survived, rather than from an unwanted write to data that didn't.
+
+clan-core enables `services.zfs.autoSnapshot` fleet-wide, but `zfs-auto-snapshot` only acts on datasets carrying the `com.sun:auto-snapshot` property. Machines installed before [#38](https://github.com/lutzgo/clanarchy/pull/38) do not have it set and need a one-off — see [Runbook: ZFS auto-snapshot opt-in](../runbooks/zfs-auto-snapshot-optin.md).
