@@ -254,6 +254,15 @@
               python3 scripts/gen-options.py
             }
             export -f gendocs
+
+            # Thin wrapper over mkdocs — the site uses mkdocs-material, which
+            # ships the `mkdocs` binary via python3Packages.mkdocs-material in
+            # the devShell.  `properdocs serve` starts a live-reload preview
+            # at http://localhost:8000 ; `properdocs build` writes ./site.
+            properdocs() {
+              mkdocs "$@"
+            }
+            export -f properdocs
           '';
         };
       };
