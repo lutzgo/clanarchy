@@ -59,9 +59,13 @@
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     noctalia = {
-      # Pin to pre-v5 revision (2026-05-26). Noctalia v5 (July 2026) rewrote the
-      # HM module from typed options to freeform TOML; migrating our ~1150-line
-      # noctalia-hm.nix is a multi-day project — track it separately from 26.05.
+      # Pin to pre-v5 revision (2026-05-26). Noctalia v5 rewrote the HM module
+      # from typed options to freeform TOML; migrating our 1150-line
+      # noctalia-hm.nix is a multi-day project, and v5 is still beta upstream
+      # (latest stable tag is v4.7.7).
+      #
+      # Scope, risks and the unpin condition:
+      #   docs/guides/noctalia-v5-migration.md
       url = "github:noctalia-dev/noctalia-shell/272cd91408b5ff6e329e6397eed042fe422069e7";
       inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
