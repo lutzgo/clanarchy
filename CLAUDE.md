@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `miralda` — Framework 13 AMD, NixOS 26.05. Niri + UWSM + regreet Wayland desktop, ZFS + impermanence, YubiKey PIV for age encryption, clan vars for secrets. Daily driver for `lgo`.
 - `biene` — Lenovo laptop, NixOS 26.05. labwc + UWSM + regreet Wayland desktop with Noctalia shell (Sabine's machine), ZFS + impermanence, clan vars for secrets.
 - `birte` — Steam Deck OLED (Galileo). Jovian-NixOS Steam Gaming Mode by default; "Switch to Desktop" drops into KDE Plasma 6 via SDDM. Built entirely against `nixpkgs-unstable` (Jovian only supports unstable). Lives on branch `feat/birte-steamdeck` until merged.
-- `ernst` — AM5 / X870E homelab server. Headless (no stylix / no compositor / no `modules/apps`). NAS + VM host + GPU compute; encrypted mirrored `zroot` + encrypted `zdata` raidz1.
+- `ernst` — AM5 / X870E homelab server. NAS + VM host + GPU compute; encrypted mirrored `zroot` + encrypted `zdata` raidz1. Carries **two** machine-type roles: `server` (headless baseline) plus `htpc` — a living-room Steam Big Picture / KDE Plasma session on the TV, switchable at runtime. Stable channel throughout (the gamescope session is stock nixpkgs, not Jovian).
 
 ## Development Environment
 
@@ -133,6 +133,7 @@ All modules are explicitly imported in `flake.nix` (no auto-discovery):
 | `configuration.nix` | Hostname, timezone, ZFS/systemd-boot, SSH daemon |
 | `disko.nix` | Multi-disk hand-written disko: mirrored encrypted `zroot` (2× 960 GB SAS SSD) + raidz1 encrypted `zdata` (6× 15.36 TB SAS SSD). Does NOT use `modules/disko/base.nix` |
 | `hardware-configuration.nix` | Bootloader + kernel modules for the AM5 / X870E board |
+| `htpc.nix` | `go` user (couch account, deliberately not in `wheel`) + password vars generator; Steam library symlinked onto `zdata/games` |
 
 ### Shared Module Layout (`modules/`)
 
@@ -173,6 +174,7 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | `desktop/kde.nix` | KDE Plasma 6 desktop: SDDM, Plasma packages (used by birte's "Switch to Desktop" session) |
 | `roles/laptop.nix` | Laptop role: fwupd (all laptops), thermald (Intel only), power-profiles-daemon, weekly Nix GC (14-day retention) |
 | `roles/server.nix` | Server role (headless): no GUI packages, no laptop-only services |
+| `roles/htpc.nix` | HTPC role: stock-nixpkgs gamescope Steam session + KDE Plasma behind one wrapper session, switched at runtime via `clanarchy-session-select` (and a `steamos-session-select` shim so Steam's own button works). Installs a couch media client (Jellyfin Media Player by default) — Plasma Bigscreen is not packaged in 26.05. Options: `user`, `defaultSession`, `autologin.enable`, `mediaClient.{enable,package}` |
 | `roles/vm.nix` | VM guest role: SPICE agent, QEMU guest tools |
 | `roles/rpi.nix` | Raspberry Pi role (unused; kept for future clan expansion) |
 | `users/admin.nix` | admin user: SSH keys, password, impermanence, HM stub |
@@ -195,7 +197,7 @@ Custom clan-service modules registered in `clan.nix` under `modules."@clanarchy/
 
 | Module | Purpose | Used by (in `clan.nix`) |
 |--------|---------|-------------------------|
-| `@clanarchy/machine-type` | Hardware/role archetype dispatch: `laptop` / `server` (imports the matching `modules/roles/*.nix`) | miralda/biene/birte (laptop), ernst (server) |
+| `@clanarchy/machine-type` | Hardware/role archetype dispatch: `laptop` / `server` / `htpc` (imports the matching `modules/roles/*.nix`). Roles compose — a machine may hold more than one | miralda/biene/birte (laptop), ernst (server + htpc) |
 | `@clanarchy/desktop` | Desktop dispatch: `niri` / `labwc` / `kde` (imports the matching `modules/desktop/*.nix`) | miralda (niri), biene (labwc), birte (kde) |
 | `@clanarchy/users` | User dispatch: `lgo` / `sabine` (imports the matching `modules/users/*.nix`) | miralda (lgo), biene (sabine) |
 | `@clanarchy/yubikey` | Imports `modules/hardware/yubikey.nix` on target machines | miralda |

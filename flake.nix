@@ -327,6 +327,7 @@
           ./machines/ernst/disko.nix
           ./machines/ernst/hardware-configuration.nix
           ./machines/ernst/networking.nix
+          ./machines/ernst/htpc.nix
           ./machines/ernst/containers/jellyfin.nix
         ];
       };

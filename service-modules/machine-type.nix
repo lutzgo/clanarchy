@@ -51,6 +51,39 @@
       };
   };
 
+  roles.htpc = {
+    description = "Couch machine: Steam Big Picture session + KDE Plasma, switchable at runtime. Stable channel, no Jovian.";
+    interface.options = {
+      user = lib.mkOption {
+        type = lib.types.str;
+        description = "The couch user (owns session state, may restart the display manager).";
+        example = "htpc";
+      };
+      defaultSession = lib.mkOption {
+        type = lib.types.enum [ "gamescope" "plasma" ];
+        default = "gamescope";
+        description = "Session to land in before any choice has been made.";
+      };
+      autologin.enable =
+        lib.mkEnableOption "passwordless autologin for the couch user (see modules/roles/htpc.nix for the tradeoff)";
+    };
+
+    perInstance =
+      { settings, ... }:
+      {
+        nixosModule =
+          { ... }:
+          {
+            imports = [ ../modules/roles/htpc.nix ];
+            clanarchy.roles.htpc = {
+              enable = true;
+              inherit (settings) user defaultSession;
+              autologin.enable = settings.autologin.enable;
+            };
+          };
+      };
+  };
+
   roles.vm = {
     description = "QEMU/KVM guest: server baseline + SPICE/qemu-guest tools.";
     perInstance =

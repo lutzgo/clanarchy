@@ -52,9 +52,10 @@
     inventory.instances = {
 
       # ── Machine archetypes ─────────────────────────────────────────────────
-      # Each machine is assigned to exactly one hardware/role archetype.
-      # This replaces the old pattern of importing all modules/roles/*.nix into
-      # every machine and toggling via clanarchy.roles.*.enable.
+      # Each machine is assigned to a hardware/role archetype.  Most machines
+      # take exactly one; ernst takes two — it stays a headless server (SSH
+      # hardening, GC, store optimisation) and additionally gains the couch
+      # HTPC stack.  The roles are composed, not exclusive.
       machine-type = {
         module.input = "self";
         module.name  = "@clanarchy/machine-type";
@@ -62,6 +63,18 @@
         roles.laptop.machines.biene = { };   # no Framework hardware
         roles.laptop.machines.birte = { };   # Steam Deck OLED — battery-backed handheld
         roles.server.machines.ernst = { };
+        # ernst doubles as the living-room machine: boots into Steam Big
+        # Picture on the TV, switches to Plasma and back.  Stable channel +
+        # ZFS throughout — this is the stock nixpkgs gamescope session, not
+        # Jovian (see modules/roles/htpc.nix for why that distinction holds).
+        roles.htpc.machines.ernst.settings = {
+          user = "go";
+          defaultSession = "gamescope";
+          # Autologin deliberately left off: ernst also fronts the NAS array,
+          # so physical access should still meet a login prompt.  Flip it if
+          # the appliance feel matters more than that.
+          autologin.enable = false;
+        };
       };
 
       # ── Desktop environments ───────────────────────────────────────────────
@@ -165,7 +178,21 @@
       local-ai = {
         module.input = "self";
         module.name  = "@clanarchy/local-ai";
-        roles.ollama.machines.miralda.settings.models  = [ "qwen3-coder:8b" ];
+        # miralda: Phoenix iGPU (gfx1103) is missing from stock ROCm kernel
+        # libraries, hence the override.
+        roles.ollama.machines.miralda.settings = {
+          models = [ "qwen3-coder:8b" ];
+          hsaOverrideGfxVersion = "11.0.3";
+        };
+        # ernst: RX 7900 XTX (gfx1100) is natively supported by ROCm, so no
+        # override — forcing one would select the wrong kernels.  The card is
+        # shared with the HTPC gaming session rather than passed through to a
+        # VM: VFIO would bind it to vfio-pci and take it away from the host,
+        # making Ollama and gaming mutually exclusive.  Sharing means they
+        # merely compete for VRAM, which is a far better failure mode.
+        roles.ollama.machines.ernst.settings = {
+          models = [ "qwen3-coder:8b" ];
+        };
         roles.opencode.machines.miralda.settings.user  = "lgo";
       };
 
