@@ -15,6 +15,10 @@ permissions:
 jobs:
   gendocs:
     runs-on: ubuntu-latest
+    # Guard against this job re-triggering itself: its own commit touches
+    # docs/reference/*.md, which is not in the paths filter above, but the
+    # guard also covers workflow_dispatch and any future filter widening.
+    if: github.actor != 'github-actions[bot]'
     steps:
       - uses: actions/checkout@v4
 
@@ -23,7 +27,11 @@ jobs:
       - name: Regenerate option reference
         run: nix run nixpkgs#python3 -- scripts/gen-options.py
 
+      # NOTE: no "[skip ci]" in the message. It used to be here, and it
+      # suppressed the docs deploy — so the published option reference went
+      # stale while the committed one was current. Loop prevention is the
+      # job-level `if:` above instead.
       - uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "docs: regenerate option reference [skip ci]"
+          commit_message: "docs: regenerate option reference"
           file_pattern: "docs/reference/*.md"

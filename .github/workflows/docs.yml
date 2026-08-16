@@ -6,6 +6,21 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
+  # Deploy after the option reference is regenerated.
+  #
+  # This trigger is load-bearing, not belt-and-braces: git-auto-commit-action
+  # in gendocs.yml pushes with the default GITHUB_TOKEN, and GitHub does not
+  # start new workflow runs from GITHUB_TOKEN pushes. So the bot's commit to
+  # docs/reference/*.md never fires the `push` filter above, no matter what
+  # its commit message says — removing "[skip ci]" alone would not have been
+  # enough. workflow_run keys off the *run*, not the commit, so it fires.
+  #
+  # (The alternative is pushing from a PAT/deploy key so the commit looks
+  # human. That trades a stale docs site for a long-lived credential in
+  # repo secrets; not worth it for generated option tables.)
+  workflow_run:
+    workflows: ["Regenerate option reference docs"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -14,8 +29,18 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # For workflow_run, only deploy if gendocs actually succeeded — otherwise
+    # a failed regeneration would publish the previous state as if it were
+    # fresh. Other triggers are unconditional.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@v4
+        with:
+          # workflow_run checks out the default branch tip by default, which
+          # is what we want (the bot's commit is already on main by then).
+          ref: main
 
       - uses: actions/setup-python@v5
         with:
