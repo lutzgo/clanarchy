@@ -59,9 +59,13 @@
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     noctalia = {
-      # Pin to pre-v5 revision (2026-05-26). Noctalia v5 (July 2026) rewrote the
-      # HM module from typed options to freeform TOML; migrating our ~1150-line
-      # noctalia-hm.nix is a multi-day project — track it separately from 26.05.
+      # Pin to pre-v5 revision (2026-05-26). Noctalia v5 rewrote the HM module
+      # from typed options to freeform TOML; migrating our 1150-line
+      # noctalia-hm.nix is a multi-day project, and v5 is still beta upstream
+      # (latest stable tag is v4.7.7).
+      #
+      # Scope, risks and the unpin condition:
+      #   docs/guides/noctalia-v5-migration.md
       url = "github:noctalia-dev/noctalia-shell/272cd91408b5ff6e329e6397eed042fe422069e7";
       inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
@@ -149,127 +153,13 @@
             python3Packages.mkdocs-material
           ];
 
-          # Fast deploy: builds locally, pushes result, switches remotely.
-          # Avoids clan's full inventory evaluation — use for quick iteration.
-          # Usage: deploy [boot|switch]   (default: switch)
-          #
-          # Use "clan machines update miralda" when you need secrets/vars to be
-          # re-evaluated (e.g. after changing sops or clan vars config).
+          # Shell helpers: deploy, test-pr, test-vm, push, gendocs, docs.
+          # See scripts/devshell.sh for what each does and why.
           shellHook = ''
-            # age/SOPS identity — points to the keys.txt that contains both the
-            # regular age key and the AGE-PLUGIN-YUBIKEY-1... identity stub.
-            # Required for `clan machines update` and any direct `sops` invocation
-            # that needs to decrypt secrets encrypted to the YubiKey recipient.
-            # The file persists across reboots via impermanence (.config is listed
-            # in the persisted paths).  First-time setup on a new machine:
-            #   age-plugin-yubikey --identity >> ~/.config/sops/age/keys.txt
-            export SOPS_AGE_KEY_FILE="''${XDG_CONFIG_HOME:-$HOME/.config}/sops/age/keys.txt"
-
-            # Update gpg-agent's pinentry TTY to this shell's TTY.
-            # gpg-agent caches the TTY from the session where it first started;
-            # entering a new shell (nix develop, new terminal) changes the TTY
-            # but the agent doesn't know — pinentry then tries the old TTY, fails
-            # silently, and the agent refuses card-backed SSH signing operations.
-            echo UPDATESTARTUPTTY | gpg-connect-agent > /dev/null 2>&1 || true
-
-            deploy() {
-              local action=''${1:-switch}
-              nixos-rebuild "$action" \
-                --flake .#miralda \
-                --target-host root@miralda.goclan.org \
-                --no-reexec \
-                -j auto \
-                "''${@:2}"
-            }
-            export -f deploy
-
-            deploy-biene() {
-              local action=''${1:-switch}
-              local host=''${BIENE_HOST:-biene.local}
-              nixos-rebuild "$action" \
-                --flake .#biene \
-                --target-host "root@$host" \
-                --no-reexec \
-                -j auto \
-                "''${@:2}"
-            }
-            export -f deploy-biene
-
-            deploy-ernst() {
-              local action=''${1:-switch}
-              local host=''${ERNST_HOST:-ernst.skynet.lan}
-              nixos-rebuild "$action" \
-                --flake .#ernst \
-                --target-host "root@$host" \
-                --no-reexec \
-                -j auto \
-                "''${@:2}"
-            }
-            export -f deploy-ernst
-
-            deploy-birte() {
-              local action=''${1:-switch}
-              local host=''${BIRTE_HOST:-birte.local}
-              nixos-rebuild "$action" \
-                --flake .#birte \
-                --target-host "root@$host" \
-                --no-reexec \
-                -j auto \
-                "''${@:2}"
-            }
-            export -f deploy-birte
-
-            # Check out a PR branch and boot it in QEMU. Rebuild the VM (which
-            # applies the machine's virtualisation.vmVariant overrides in
-            # modules/vm-variant.nix) and launch it. The reviewer's working
-            # branch is left on the PR HEAD until they gh pr checkout out.
-            #
-            # Usage: test-pr <PR#> [machine]      machine defaults to biene
-            test-pr() {
-              local pr=''${1?usage: test-pr <PR#> [machine]}
-              local machine=''${2:-biene}
-              gh pr checkout "$pr" || return 1
-              nixos-rebuild build-vm --flake ".#$machine" --no-reexec -j auto || return 1
-              exec ./result/bin/run-"$machine"-vm
-            }
-            export -f test-pr
-
-            # Same as test-pr, but for an already-checked-out branch (or main).
-            # Usage: test-vm [machine]            machine defaults to biene
-            test-vm() {
-              local machine=''${1:-biene}
-              nixos-rebuild build-vm --flake ".#$machine" --no-reexec -j auto || return 1
-              exec ./result/bin/run-"$machine"-vm
-            }
-            export -f test-vm
-
-            # Push via gh token — works even when ~/.config/git is read-only
-            # (impermanence on local machine). Usage: push [remote] [branch]
-            push() {
-              local remote=''${1:-origin}
-              local branch=''${2:-main}
-              local url
-              url=$(git remote get-url "$remote" | sed 's|https://github.com/|https://'"$(gh auth token)"'@github.com/|')
-              git push "$url" "$branch"
-            }
-            export -f push
-
-            # Generate option reference docs from live NixOS config, then serve locally.
-            # Usage: gendocs       — write docs/reference/*.md
-            #        properdocs serve  — live-reload preview at http://localhost:8000
-            gendocs() {
-              python3 scripts/gen-options.py
-            }
-            export -f gendocs
-
-            # Thin wrapper over mkdocs — the site uses mkdocs-material, which
-            # ships the `mkdocs` binary via python3Packages.mkdocs-material in
-            # the devShell.  `properdocs serve` starts a live-reload preview
-            # at http://localhost:8000 ; `properdocs build` writes ./site.
-            properdocs() {
-              mkdocs "$@"
-            }
-            export -f properdocs
+            # Helper functions live in scripts/devshell.sh so shellcheck can
+            # lint them — inside this Nix string they were invisible to every
+            # tool, and ''${...} escaping made them awkward to read and edit.
+            source ${./scripts/devshell.sh}
           '';
         };
       };

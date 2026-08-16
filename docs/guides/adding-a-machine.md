@@ -44,7 +44,7 @@ cp -r machines/biene machines/<name>
 
   # Activate the right roles and desktop
   clanarchy.roles.laptop.enable   = true;   # or server / vm / rpi
-  clanarchy.desktop.gnome.enable  = true;   # or niri / kde
+  clanarchy.desktop.niri.enable   = true;   # or labwc / kde
 
   # Users
   clanarchy.users.admin.enable  = true;
@@ -97,7 +97,7 @@ clan.machines.<name> = {
     inputs.home-manager.nixosModules.home-manager
 
     # Reusable modules — import every module whose option you reference
-    ./modules/desktop/gnome.nix     # or niri.nix / kde.nix
+    ./modules/desktop/labwc.nix     # or niri.nix / kde.nix
     ./modules/desktop/niri.nix      # always import so the option exists
     ./modules/roles/laptop.nix      # or server / vm / rpi
     ./modules/roles/server.nix

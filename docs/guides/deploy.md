@@ -1,26 +1,43 @@
 # Deploying and testing
 
-The devShell (from `nix develop` or via `direnv allow`) exposes one function per machine plus a couple of test helpers. All of them shell out to `nixos-rebuild` or `gh` — nothing magical, just less to type.
+The devShell (from `nix develop` or via `direnv allow`) exposes a deploy function plus a couple of test helpers. All of them shell out to `nixos-rebuild` or `gh` — nothing magical, just less to type. They live in [`scripts/devshell.sh`](https://github.com/lutzgo/clanarchy/blob/main/scripts/devshell.sh).
 
-## Per-machine deploy functions
+## Deploying
 
-| Function | Target host | Env override |
-|----------|-------------|--------------|
-| `deploy` | `root@miralda.goclan.org` | (none) |
-| `deploy-biene` | `root@biene.local` | `BIENE_HOST=` |
-| `deploy-birte` | `root@birte.local` | `BIRTE_HOST=` |
-| `deploy-ernst` | `root@ernst.skynet.lan` | `ERNST_HOST=` |
-
-All four take an optional `boot` or `switch` argument (default: `switch`):
+One function takes the machine as its first argument:
 
 ```bash
-deploy              # miralda — nixos-rebuild switch, activates immediately
-deploy boot         # miralda — stage into the next boot entry, don't switch
-deploy-biene boot   # biene   — same, over SSH
-BIENE_HOST=biene.skynet.lan deploy-biene    # override target host at the shell
+deploy <machine> [boot|switch] [extra nixos-rebuild args...]
 ```
 
-Any extra arguments after the action are forwarded to `nixos-rebuild`, so `deploy switch --show-trace` works.
+| Machine | Default target host | Env override |
+|---------|---------------------|--------------|
+| `miralda` | `root@miralda.goclan.org` | `MIRALDA_HOST=` |
+| `biene` | `root@biene.local` | `BIENE_HOST=` |
+| `birte` | `root@birte.local` | `BIRTE_HOST=` |
+| `ernst` | `root@ernst.skynet.lan` | `ERNST_HOST=` |
+
+The action defaults to `switch`:
+
+```bash
+deploy miralda            # nixos-rebuild switch, activates immediately
+deploy miralda boot       # stage into the next boot entry, don't switch
+deploy biene boot         # same, over SSH
+BIENE_HOST=biene.skynet.lan deploy biene    # override target host at the shell
+```
+
+The old per-machine names still work as thin aliases, so existing habits and
+older docs keep functioning:
+
+```bash
+deploy-miralda boot       # identical to: deploy miralda boot
+deploy-biene / deploy-birte / deploy-ernst
+```
+
+Note `deploy` on its own no longer means miralda — it now requires an explicit
+machine and errors out otherwise. Use `deploy miralda` or `deploy-miralda`.
+
+Any extra arguments after the action are forwarded to `nixos-rebuild`, so `deploy miralda switch --show-trace` works.
 
 Under the hood every deploy runs with `--no-reexec -j auto`. Do not use `--fast` or `--build-host localhost` — those bypass sandboxing in ways that have burned this repo before.
 
@@ -70,7 +87,7 @@ gh auth login
 
 ```bash
 gendocs                 # writes docs/reference/*.md from live NixOS config
-properdocs serve        # local preview at http://localhost:8000
+docs serve              # local preview at http://localhost:8000 (runs mkdocs)
 ```
 
 The `docs/reference/*.md` pages are committed to git; run `gendocs` after adding a new `clanarchy.*` option so the reference table stays in sync.

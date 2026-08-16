@@ -11,7 +11,7 @@ NixOS declarative configuration built on [clan-core](https://git.clan.lol/clan/c
 
 **Stack:** ZFS + impermanence · Wayland compositors (Niri, labwc, KDE) · Noctalia shell · YubiKey PIV (age) + GnuPG (SSH) · clan vars for secrets.
 
-Full docs: **[lutzgo.github.io/clanarchy](https://lutzgo.github.io/clanarchy)** (or `properdocs serve` locally).
+Full docs: **[lutzgo.github.io/clanarchy](https://lutzgo.github.io/clanarchy)** (or `docs serve` locally).
 
 ---
 
@@ -32,10 +32,11 @@ nix develop           # or: direnv allow, if you use direnv
 The devShell exposes:
 
 ```bash
-deploy [boot|switch]         # miralda   (root@miralda.goclan.org)
-deploy-biene [boot|switch]   # biene     (root@biene.local; BIENE_HOST= to override)
-deploy-birte [boot|switch]   # birte     (root@birte.local; BIRTE_HOST= to override)
-deploy-ernst [boot|switch]   # ernst     (root@ernst.skynet.lan; ERNST_HOST= to override)
+deploy <machine> [boot|switch]   # miralda | biene | birte | ernst
+                                 # hosts: miralda.goclan.org, biene.local,
+                                 #        birte.local, ernst.skynet.lan
+                                 # override with <MACHINE>_HOST=
+deploy-miralda / deploy-biene / deploy-birte / deploy-ernst   # thin aliases
 
 test-pr <PR#> [machine]      # gh pr checkout + build-vm + run-vm  (machine defaults to biene)
 test-vm [machine]            # build-vm + run-vm on the current tree
@@ -70,8 +71,8 @@ Full walkthrough: **[docs/guides/first-time-install.md](docs/guides/first-time-i
 ```bash
 # 1. Edit config files
 # 2. Deploy (switch = immediate activation, boot = staged for next boot):
-deploy
-deploy boot
+deploy miralda
+deploy miralda boot
 
 # 3. Commit and push:
 git add <files> && git commit
@@ -142,10 +143,18 @@ Then generate its syncthing vars and redeploy both machines:
 
 ```bash
 clan vars generate new-machine
-deploy switch   # on each machine
+deploy <machine> switch   # on each machine
 ```
 
 Machines discover each other via their zerotier IPs — no manual device ID exchange.
+
+---
+
+## Secrets & threat model
+
+This repository is **public**, and sops/clan-vars ciphertexts are committed to it. That is the intended design — the secrets are encrypted to age recipients (machine keys plus a YubiKey PIV identity), and only holders of those keys can decrypt them. Nothing here relies on the repo being hard to find.
+
+What it does mean is that **git history retains every ciphertext forever**. Rewriting history does not help: the repo is public, so any old revision may already have been cloned, forked, or archived. So if a machine's age key is ever compromised, re-encrypting to a new set of recipients is **not sufficient** — an attacker holding the old key can decrypt every historical ciphertext it was ever a recipient of, including versions you have since "removed". Recovery requires rotating the *underlying* secrets themselves: wifi PSKs, user password hashes, syncthing keys, the ntfy topic URLs, and anything else under `vars/`. Treat deleting a secret from the working tree as tidying up, not as revocation.
 
 ---
 

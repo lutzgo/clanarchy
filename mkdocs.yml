@@ -58,6 +58,7 @@ nav:
     - ernst zdata datasets: guides/ernst-zdata-datasets.md
     - Firmware updates: guides/firmware-updates.md
     - Noctalia profiles: guides/noctalia-profiles.md
+    - Noctalia v5 migration: guides/noctalia-v5-migration.md
     - OBS / Sony webcam: guides/obs-sony-webcam.md
   - Runbooks:
     - ZFS auto-snapshot opt-in: runbooks/zfs-auto-snapshot-optin.md

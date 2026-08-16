@@ -10,13 +10,12 @@
 # Roles:
 #   niri   — Niri Wayland compositor, UWSM, Noctalia, regreet
 #   labwc  — labwc stacking Wayland compositor, UWSM, Noctalia, regreet
-#   gnome  — GNOME desktop with GDM
 #   kde    — KDE Plasma 6 with SDDM
 #
 {
   _class = "clan.service";
   manifest.name = "@clanarchy/desktop";
-  manifest.description = "Assign each machine a desktop environment (niri, labwc, gnome, kde).";
+  manifest.description = "Assign each machine a desktop environment (niri, labwc, kde).";
   manifest.readme = builtins.readFile ./desktop.md;
 
   roles.niri = {
@@ -56,24 +55,6 @@
             clanarchy.desktop.niri.display.resolution.width = settings.display.width;
             clanarchy.desktop.niri.display.resolution.height = settings.display.height;
             clanarchy.desktop.niri.input.pointerSpeed = settings.input.pointerSpeed;
-          };
-      };
-  };
-
-  roles.gnome = {
-    description = "GNOME desktop environment with GDM, optional per-user dconf defaults.";
-    interface.options.sabine =
-      lib.mkEnableOption "Sabine's personal GNOME dconf defaults (extensions, keybindings)";
-
-    perInstance =
-      { settings, ... }:
-      {
-        nixosModule =
-          { ... }:
-          {
-            imports = [ ../modules/desktop/gnome.nix ];
-            clanarchy.desktop.gnome.enable = true;
-            clanarchy.desktop.gnome.sabine = settings.sabine;
           };
       };
   };

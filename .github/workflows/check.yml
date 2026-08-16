@@ -1,0 +1,58 @@
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Read-only: this workflow never pushes, comments, or deploys.
+permissions:
+  contents: read
+
+jobs:
+  # Named `eval` so it can be made a required status check later
+  # (Settings -> Branches -> require "Check / eval").
+  eval:
+    name: eval
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@v14
+
+      # Eval is dominated by fetching and evaluating nixpkgs, not by building,
+      # so the cache earns its keep here even though nothing is built: it
+      # persists the evaluated store paths between runs.
+      - uses: DeterminateSystems/magic-nix-cache-action@v8
+
+      # Eval only — deliberately no `nix build`.
+      #
+      # Building four toplevels would pull KDE, Steam and Plasma closures on
+      # every PR and take tens of minutes; evaluating them catches the whole
+      # class of errors that actually reaches a PR here (missing options,
+      # renamed attributes, type mismatches, broken module wiring) in about a
+      # minute. Real builds stay a pre-merge step on a machine with the store
+      # already warm — see docs/guides/accepting-pull-requests.md.
+      #
+      # --no-update-lock-file so a PR cannot silently pass against a lock it
+      # did not commit.
+      - name: Evaluate all machine toplevels
+        run: |
+          set -euo pipefail
+          rc=0
+          for machine in miralda biene birte ernst; do
+            echo "::group::$machine"
+            if nix eval --no-update-lock-file --raw \
+                 ".#nixosConfigurations.$machine.config.system.build.toplevel.drvPath"; then
+              echo ""
+              echo "$machine: OK"
+            else
+              echo ""
+              echo "$machine: FAILED"
+              rc=1
+            fi
+            echo "::endgroup::"
+          done
+          # Evaluate every machine before failing, so one broken machine does
+          # not hide breakage in the other three.
+          exit "$rc"

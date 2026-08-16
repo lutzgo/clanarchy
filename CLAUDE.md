@@ -18,10 +18,12 @@ Enter the devShell via direnv (`.envrc` uses `use flake`) or manually with `nix 
 The devShell provides these shell functions:
 
 ```bash
-deploy       [boot|switch]    # miralda   (root@miralda.goclan.org)
-deploy-biene [boot|switch]    # biene     (root@biene.local;      BIENE_HOST= to override)
-deploy-birte [boot|switch]    # birte     (root@birte.local;      BIRTE_HOST= to override)
-deploy-ernst [boot|switch]    # ernst     (root@ernst.skynet.lan; ERNST_HOST= to override)
+deploy <machine> [boot|switch] [args...]   # unified; machine is required
+  # miralda -> miralda.goclan.org   MIRALDA_HOST=
+  # biene   -> biene.local          BIENE_HOST=
+  # birte   -> birte.local          BIRTE_HOST=
+  # ernst   -> ernst.skynet.lan     ERNST_HOST=
+deploy-miralda / deploy-biene / deploy-birte / deploy-ernst   # thin aliases
 
 test-pr <PR#> [machine]       # gh pr checkout + build-vm + run VM  (default machine: biene)
 test-vm [machine]             # build-vm + run VM on the current tree
@@ -30,7 +32,7 @@ push [remote] [branch]        # git push via gh auth token (read-only ~/.config/
 gendocs                       # regenerate docs/reference/*.md from live NixOS config
 ```
 
-Key packages in devShell: `clan-cli`, `git`, `openssh`, `nixos-rebuild`, `age-plugin-yubikey`, `sops`, `python3` + `python3Packages.mkdocs-material` (for `gendocs` and `properdocs serve`).
+Key packages in devShell: `clan-cli`, `git`, `openssh`, `nixos-rebuild`, `age-plugin-yubikey`, `sops`, `python3` + `python3Packages.mkdocs-material` (for `gendocs` and `docs serve` — note the local preview runs mkdocs; CI publishes with properdocs).
 
 **When pinentry is broken** (e.g. after a miralda rebuild that changes `modules/hardware/yubikey.nix`): use a local rebuild to avoid the SSH chicken-and-egg problem:
 ```bash
@@ -170,7 +172,6 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | `desktop/niri-hm.nix` | Niri HM: full KDL config (outputs, layout, keybinds, rules) |
 | `desktop/labwc.nix` | labwc compositor: UWSM session, XDG portal (wlr+gtk), Valent, PAM service |
 | `desktop/labwc-hm.nix` | labwc HM: rc.xml keybinds, themerc-override (Stylix colors), kanshi display service |
-| `desktop/gnome.nix` | GNOME desktop: GDM, extensions, shared dconf (legacy, currently unused) |
 | `desktop/kde.nix` | KDE Plasma 6 desktop: SDDM, Plasma packages (used by birte's "Switch to Desktop" session) |
 | `roles/laptop.nix` | Laptop role: fwupd (all laptops), thermald (Intel only), power-profiles-daemon, weekly Nix GC (14-day retention) |
 | `roles/server.nix` | Server role (headless): no GUI packages, no laptop-only services |
@@ -187,7 +188,7 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | `apps/containers.nix` | `clanarchy.apps.containers`: Podman / container tooling |
 | `apps/desktop-tools.nix` | `clanarchy.apps.desktopTools`: desktop utilities bundle |
 | `apps/flatpak.nix` | `clanarchy.apps.flatpak`: Flatpak + Flathub remote |
-| `apps/gnome-core.nix` | `clanarchy.apps.gnomeCoreApps`: core GNOME app set |
+| `apps/gnome-core.nix` | `clanarchy.apps.gnomeCoreApps`: a few standalone GTK apps (text editor, calculator, software centre). Consumer: biene. Not the GNOME desktop — that was removed |
 | `apps/graphics.nix` | `clanarchy.apps.graphics`: graphics/creative apps (GIMP, Inkscape, etc.) |
 | `apps/media.nix` | `clanarchy.apps.media`: media playback apps |
 
@@ -249,7 +250,7 @@ The shared system-level persist set lives in `modules/rootfs.nix`: `/var/lib/nix
 
 **push function**: Reads gh token at runtime to construct HTTPS remote URL, enabling pushes from a machine where `~/.config/git` is a read-only impermanence bind mount.
 
-**icon-theme.nix**: Declares `clanarchy.iconTheme.{name,package}` and installs the package via `environment.systemPackages`. GNOME wires the theme name via dconf in `gnome.nix`. Niri and labwc wire `gtk.iconTheme` in their respective `-hm.nix` modules via `osConfig`. Do **not** set `gtk.iconTheme` in `home-manager.sharedModules` — it conflicts with Stylix's GTK HM target and breaks the entire HM activation for affected users.
+**icon-theme.nix**: Declares `clanarchy.iconTheme.{name,package}` and installs the package via `environment.systemPackages`. Niri and labwc wire `gtk.iconTheme` in their respective `-hm.nix` modules via `osConfig`. Do **not** set `gtk.iconTheme` in `home-manager.sharedModules` — it conflicts with Stylix's GTK HM target and breaks the entire HM activation for affected users.
 
 **labwc window decorations**: `labwc-hm.nix` generates `~/.config/labwc/themerc-override` from `config.lib.stylix.colors` at build time. This patches the active openbox theme's title bar, border, and button colors to follow the Stylix palette — active border uses `base0D` (accent), active title uses `base01`, inactive recedes to `base00`.
 

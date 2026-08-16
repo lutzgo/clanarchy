@@ -160,10 +160,6 @@
       # Official clan wifi service — replaces the bespoke modules/wifi.nix and
       # the wifi-home vars generator.  The SSID and PSK are prompted at
       # `clan vars generate <machine>` time (shared across machines via share = true).
-      #
-      # Migration note: run `clan vars generate miralda` and `clan vars generate biene`
-      # after deploying to populate the new vars/shared/wifi.home/ secrets.
-      # The old vars/per-machine/*/wifi-home/ entries can be removed afterwards.
       wifi = {
         roles.default.machines.miralda = { };
         roles.default.machines.biene   = { };

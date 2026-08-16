@@ -1,11 +1,9 @@
 # modules/icon-theme.nix — shared GTK icon theme option
 #
 # Declares clanarchy.iconTheme.{name,package} and installs the icon theme
-# package system-wide.  Imported by the desktop modules
-# (modules/desktop/gnome.nix and modules/desktop/niri.nix) so any machine
+# package system-wide.  Imported by modules/desktop/niri.nix so any machine
 # using a graphical desktop gets the option automatically.
 #
-# GNOME wires the theme name via dconf in gnome.nix (icon-theme key).
 # Niri wires gtk.iconTheme in niri-hm.nix via osConfig.
 #
 # Default: a Papirus-Dark variant whose folder icons are recolored to match
@@ -93,8 +91,7 @@ in
   };
 
   config = {
-    # Install the icon theme package system-wide so GNOME and GTK apps can find it.
-    # GNOME wires the theme name via dconf (in gnome.nix).
+    # Install the icon theme package system-wide so GTK apps can find it.
     # Niri wires gtk.iconTheme in niri-hm.nix via osConfig.
     # Avoid setting gtk.iconTheme in home-manager.sharedModules — doing so conflicts
     # with Stylix's GTK HM target and breaks the whole HM activation for affected users.
