@@ -54,9 +54,16 @@ nav:
     - YubiKey: guides/yubikey.md
     - YubiKey SSH setup: guides/yubikey-ssh-setup.md
     - Impermanence: guides/impermanence.md
+    - Remote unlock: guides/remote-unlock.md
+    - ernst zdata datasets: guides/ernst-zdata-datasets.md
     - Firmware updates: guides/firmware-updates.md
     - Noctalia profiles: guides/noctalia-profiles.md
     - OBS / Sony webcam: guides/obs-sony-webcam.md
+  - Runbooks:
+    - ZFS auto-snapshot opt-in: runbooks/zfs-auto-snapshot-optin.md
+    - ernst zroot drive replacement: runbooks/ernst-zroot-drive-replacement.md
+  - Incidents:
+    - ernst slot-12 drive drop (2026-08-11): incidents/ernst-slot12-drop-2026-08-11.md
   - Reference:
     - Overview: reference/index.md
     - Hardware: reference/hardware.md
