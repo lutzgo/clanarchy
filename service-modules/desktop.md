@@ -10,7 +10,6 @@ relevant desktop module. Replaces the previous pattern of importing all
 |---------|-------------|
 | `niri`  | Niri Wayland compositor, UWSM session management, Noctalia shell, regreet greeter. |
 | `labwc` | labwc stacking Wayland compositor, UWSM, Noctalia shell, regreet greeter. |
-| `gnome` | GNOME desktop with GDM. Optional Sabine dconf defaults (`settings.sabine`). |
 | `kde`   | KDE Plasma 6 with SDDM Wayland session. |
 
 ## Niri settings

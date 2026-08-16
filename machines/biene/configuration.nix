@@ -10,8 +10,8 @@
   #   BIENE_HOST=biene.local deploy-biene
   time.timeZone = "Europe/Berlin";
 
-  # Locale: German everywhere (CLI + GNOME UI).
-  # de layout for GDM; GNOME input-sources (in gnome.nix) adds us as secondary.
+  # Locale: German everywhere (CLI + desktop UI).
+  # de layout for the greeter; us is added as a secondary layout by the compositor.
   clanarchy.locale = {
     language        = "de_DE";
     keyboard.layout = "de";
@@ -21,7 +21,7 @@
   # which is what clan machines update uses.
   nixpkgs.config.allowUnfree = true;
 
-  # machine-type (laptop, no Framework hw) and desktop (gnome + sabine dconf)
+  # machine-type (laptop, no Framework hw) and desktop (labwc + Noctalia)
   # are assigned via inventory.instances in clan.nix.
   # Home wifi is provisioned via the clan wifi service (clan.nix).
   # Fritz!Box is biene-specific — managed via the bespoke modules/wifi.nix.
