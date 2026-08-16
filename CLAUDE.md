@@ -227,7 +227,9 @@ Generated outputs land in `vars/per-machine/<machine>/`. Run generators with `cl
 - `clanarchy.rootfs = "zfs"` (default; miralda, biene, ernst) — root **and home** roll back to `@blank` ZFS snapshots on boot.
 - `clanarchy.rootfs = "btrfs"` (birte) — `@root` and `@home` both roll back, to `@root-blank` / `@home-blank` subvolume snapshots, seeded automatically on first boot. Behaviourally equivalent to the ZFS backend.
 
-Persisted paths include: `/var/lib/sops-nix`, `/var/lib/systemd`, `/var/lib/zerotier-one`, user `.gnupg`, `.config`, `.local/share`.
+The shared system-level persist set lives in `modules/rootfs.nix`: `/var/lib/nixos`, `/var/lib/sops-nix`, `/var/log`, `/var/lib/systemd`, plus `/etc/machine-id`. Modules add their own as needed — e.g. `/var/lib/libvirt` (virtualisation), `/var/lib/private/ollama` (local-ai), `/var/lib/clanarchy-session` (htpc role). Per-user paths (`.gnupg`, `.config`, `.local/share`, …) are declared in `modules/users/*.nix` and the machine's user modules.
+
+`/var/lib/zerotier-one` is deliberately **not** persisted, despite what earlier revisions of this file claimed. clan-core sources each node's ZeroTier identity from a clan var (`zerotier-identity-<machine>.files.identity-secret`), so it is redeployed from sops on every boot and survives rollback without `/var/lib` state. Persisting the directory would add a second, competing source of truth for the node ID.
 
 **Why birte is btrfs**: out-of-tree OpenZFS gates the kernel. birte tracks `nixpkgs-unstable` and a Valve kernel via Jovian (`clanarchy.channel = "unstable"`), so it can't afford that coupling; btrfs is in-tree and follows whatever kernel Jovian ships.
 

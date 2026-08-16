@@ -7,7 +7,7 @@ runs on port 2222 during that window so you can SSH in from miralda and
 answer the prompt — no TV, no serial cable.
 
 `zdata` is a keyfile-on-zroot dataset (see [`feat(ernst): auto-unlock
-zdata via keyfile on zroot`](../../machines/ernst/configuration.nix)),
+zdata via keyfile on zroot`](https://github.com/lutzgo/clanarchy/blob/main/machines/ernst/configuration.nix)),
 so this procedure only ever needs to unlock zroot.
 
 ## One-time host-key generation on ernst
