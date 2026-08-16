@@ -1,6 +1,6 @@
 { config, lib, pkgs, ... }:
 let
-  # Convert a varName like "wifi-home" → env var "WIFI_HOME_PSK"
+  # Convert a varName like "wifi-fritzbox" → env var "WIFI_FRITZBOX_PSK"
   varToEnv = varName: lib.toUpper (lib.replaceStrings [ "-" ] [ "_" ] varName) + "_PSK";
 in
 {
