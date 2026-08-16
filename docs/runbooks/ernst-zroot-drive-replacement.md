@@ -55,7 +55,7 @@ here so you can keep them together on a note pad.
 3. [Cold swap](#3-cold-swap)
 4. [Provision the new drive](#4-provision-the-new-drive)
 5. [Fix sops if needed and redeploy](#5-fix-sops-if-needed-and-redeploy)
-6. [Rollback / troubleshooting](#6-rollback--troubleshooting)
+6. [Rollback / troubleshooting](#6-rollback-troubleshooting)
 7. [Pre-flight checklist](#pre-flight-checklist)
 
 ---
