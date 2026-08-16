@@ -150,6 +150,14 @@ Machines discover each other via their zerotier IPs — no manual device ID exch
 
 ---
 
+## Secrets & threat model
+
+This repository is **public**, and sops/clan-vars ciphertexts are committed to it. That is the intended design — the secrets are encrypted to age recipients (machine keys plus a YubiKey PIV identity), and only holders of those keys can decrypt them. Nothing here relies on the repo being hard to find.
+
+What it does mean is that **git history retains every ciphertext forever**. Rewriting history does not help: the repo is public, so any old revision may already have been cloned, forked, or archived. So if a machine's age key is ever compromised, re-encrypting to a new set of recipients is **not sufficient** — an attacker holding the old key can decrypt every historical ciphertext it was ever a recipient of, including versions you have since "removed". Recovery requires rotating the *underlying* secrets themselves: wifi PSKs, user password hashes, syncthing keys, the ntfy topic URLs, and anything else under `vars/`. Treat deleting a secret from the working tree as tidying up, not as revocation.
+
+---
+
 ## License
 
 GNU General Public License v3.0 — see [LICENSE](LICENSE).
