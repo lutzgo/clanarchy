@@ -29,4 +29,19 @@
       PermitRootLogin        = "prohibit-password";
     };
   };
+
+  # userborn creates users declaratively instead of NixOS's perl activation
+  # script.  It is NOT compatible with impermanence under default settings
+  # (https://github.com/nix-community/impermanence/pull/223), and every
+  # clanarchy machine is impermanent.
+  #
+  # 26.05 leaves it off, so this is currently a no-op — it is here to keep a
+  # future nixpkgs or clan-core default flip from silently breaking user
+  # creation across the whole fleet.  srvos guards the same way, disabling
+  # userborn whenever it detects `options.environment ? persistence`; we can
+  # state it unconditionally because impermanence is universal here.
+  #
+  # If this is ever lifted, it must be paired with impermanence's
+  # userborn-compatible settings — not simply deleted.
+  services.userborn.enable = false;
 }
