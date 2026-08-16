@@ -243,14 +243,39 @@
             }
             export -f test-vm
 
-            # Push via gh token — works even when ~/.config/git is read-only
-            # (impermanence on local machine). Usage: push [remote] [branch]
+            # Push using gh's credentials rather than an ambient git identity.
+            # This exists because ~/.config/git is impermanence-backed: it is
+            # persisted (zroot/persist), but nothing here should assume a
+            # hand-configured credential store is present on a fresh rollback.
+            #
+            # It used to splice $(gh auth token) straight into the remote URL.
+            # That leaked the token two ways: into the process arguments, where
+            # any local user could read it out of `ps`, and into git's own error
+            # output, which echoes the remote URL on failure — so a failed push
+            # could print the token to the terminal or a log.
+            #
+            # The fix is gh's git credential helper: git asks gh for the
+            # credential over the credential protocol on stdin, so the token
+            # never appears in argv or in a URL.
+            #
+            # Note `gh auth setup-git` is NOT used, and cannot be: it writes
+            # `git config --global`, but ~/.config/git/config is a home-manager
+            # symlink into /nix/store, so it fails with "could not lock config
+            # file: Read-only file system". That read-only config is also why
+            # this helper exists at all.
+            #
+            # It is also unnecessary — `programs.gh.enable` in
+            # modules/users/lgo.nix already declares the helper for github.com.
+            # Passing it with `-c` as well makes the function self-contained on
+            # a machine where that HM integration is not active, without
+            # mutating any config.
+            #
+            # Usage: push [remote] [branch]
             push() {
               local remote=''${1:-origin}
               local branch=''${2:-main}
-              local url
-              url=$(git remote get-url "$remote" | sed 's|https://github.com/|https://'"$(gh auth token)"'@github.com/|')
-              git push "$url" "$branch"
+              git -c "credential.https://github.com.helper=!gh auth git-credential" \
+                  push "$remote" "$branch"
             }
             export -f push
 
