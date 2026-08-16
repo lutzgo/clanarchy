@@ -11,7 +11,7 @@ NixOS declarative configuration built on [clan-core](https://git.clan.lol/clan/c
 
 **Stack:** ZFS + impermanence · Wayland compositors (Niri, labwc, KDE) · Noctalia shell · YubiKey PIV (age) + GnuPG (SSH) · clan vars for secrets.
 
-Full docs: **[lutzgo.github.io/clanarchy](https://lutzgo.github.io/clanarchy)** (or `properdocs serve` locally).
+Full docs: **[lutzgo.github.io/clanarchy](https://lutzgo.github.io/clanarchy)** (or `docs serve` locally).
 
 ---
 

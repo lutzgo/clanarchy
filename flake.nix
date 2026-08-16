@@ -255,21 +255,33 @@
             export -f push
 
             # Generate option reference docs from live NixOS config, then serve locally.
-            # Usage: gendocs       — write docs/reference/*.md
-            #        properdocs serve  — live-reload preview at http://localhost:8000
+            # Usage: gendocs      — write docs/reference/*.md
+            #        docs serve   — live-reload preview at http://localhost:8000
             gendocs() {
               python3 scripts/gen-options.py
             }
             export -f gendocs
 
-            # Thin wrapper over mkdocs — the site uses mkdocs-material, which
-            # ships the `mkdocs` binary via python3Packages.mkdocs-material in
-            # the devShell.  `properdocs serve` starts a live-reload preview
-            # at http://localhost:8000 ; `properdocs build` writes ./site.
-            properdocs() {
+            # Local docs preview. This runs *mkdocs*, not properdocs.
+            #
+            # CI (.github/workflows/docs.yml) publishes with properdocs, which
+            # is a different engine. Standardising both sides on properdocs is
+            # the goal, but it is not packaged in nixpkgs — absent from both
+            # top-level and python3Packages as of 26.05 — and pip-installing
+            # into the devShell would defeat the point of having one.
+            #
+            # So the wrapper is named after what it actually runs, rather than
+            # pretending to be the CI toolchain. It was previously called
+            # `properdocs`, which read as though local and CI matched when they
+            # did not. mkdocs-material renders the same site for preview
+            # purposes; treat CI's output as authoritative.
+            #
+            # Lift this once properdocs lands in nixpkgs: add it to `packages`
+            # above and drop this wrapper entirely.
+            docs() {
               mkdocs "$@"
             }
-            export -f properdocs
+            export -f docs
           '';
         };
       };

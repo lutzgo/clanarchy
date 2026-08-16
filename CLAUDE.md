@@ -30,7 +30,7 @@ push [remote] [branch]        # git push via gh auth token (read-only ~/.config/
 gendocs                       # regenerate docs/reference/*.md from live NixOS config
 ```
 
-Key packages in devShell: `clan-cli`, `git`, `openssh`, `nixos-rebuild`, `age-plugin-yubikey`, `sops`, `python3` + `python3Packages.mkdocs-material` (for `gendocs` and `properdocs serve`).
+Key packages in devShell: `clan-cli`, `git`, `openssh`, `nixos-rebuild`, `age-plugin-yubikey`, `sops`, `python3` + `python3Packages.mkdocs-material` (for `gendocs` and `docs serve` — note the local preview runs mkdocs; CI publishes with properdocs).
 
 **When pinentry is broken** (e.g. after a miralda rebuild that changes `modules/hardware/yubikey.nix`): use a local rebuild to avoid the SSH chicken-and-egg problem:
 ```bash

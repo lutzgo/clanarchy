@@ -70,7 +70,7 @@ gh auth login
 
 ```bash
 gendocs                 # writes docs/reference/*.md from live NixOS config
-properdocs serve        # local preview at http://localhost:8000
+docs serve              # local preview at http://localhost:8000 (runs mkdocs)
 ```
 
 The `docs/reference/*.md` pages are committed to git; run `gendocs` after adding a new `clanarchy.*` option so the reference table stays in sync.

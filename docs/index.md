@@ -50,5 +50,5 @@ test-vm [machine]
 gendocs
 
 # Build docs locally
-properdocs serve
+docs serve
 ```

@@ -46,6 +46,9 @@ jobs:
         with:
           python-version: "3.x"
 
-      - run: pip install properdocs mkdocs-material
+      # Pinned deliberately. This job publishes the site, so an unpinned
+      # `pip install` means a silent upstream release can change the
+      # published output with no commit in this repo. Bump these on purpose.
+      - run: pip install properdocs==1.6.7 mkdocs-material==9.7.7
 
       - run: properdocs gh-deploy --force
