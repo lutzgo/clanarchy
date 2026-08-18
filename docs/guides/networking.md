@@ -58,7 +58,7 @@ ping miralda.local
 ssh lgo@miralda.local
 ```
 
-If step 3 works, `deploy-biene` from miralda will also work — they use the same path.
+If step 3 works, `clan machines update biene` from miralda will also work — they use the same path.
 
 ---
 
@@ -123,7 +123,7 @@ ssh lgo@biene.local           # biene via mDNS over ZeroTier
 ### 5. Deploy connectivity
 
 `deploy` targets `root@miralda.goclan.org` (public DNS — always reachable).
-`deploy-biene` defaults to `root@biene.local` (mDNS over ZeroTier).
+Clan resolves biene to `root@biene.local` (mDNS over ZeroTier).
 To verify before deploying:
 
 ```bash
@@ -153,7 +153,7 @@ If it stays unreachable, check whether UDP is blocked on your current network
 ### `biene` not reachable from a different network
 
 `biene.skynet.lan` only resolves on the home LAN.
-`deploy-biene` defaults to `biene.local` (mDNS over ZeroTier), so as long as ZeroTier is up it will work from any network.
+Clan resolves biene to `biene.local` (mDNS over ZeroTier), so as long as ZeroTier is up it works from any network.
 
 If `biene.local` doesn't resolve yet (ZeroTier still establishing), get biene's ZeroTier IPv6 from biene itself and override:
 
@@ -162,7 +162,7 @@ If `biene.local` doesn't resolve yet (ZeroTier still establishing), get biene's 
 ip -6 addr show altname zerotier
 
 # On miralda: deploy using that address
-BIENE_HOST=<biene-zt-ipv6> deploy-biene
+clan machines update biene --target-host root@<biene-zt-ipv6>
 ```
 
 To SSH manually:

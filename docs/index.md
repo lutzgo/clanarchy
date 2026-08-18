@@ -35,16 +35,10 @@
 # Enter devShell (direnv or manual)
 nix develop
 
-# Deploy — one function per machine, all support boot|switch
-deploy              # miralda
-deploy boot         # miralda — stage for next boot only
-deploy-biene        # biene    (BIENE_HOST= to override target)
-deploy-birte        # birte    (BIRTE_HOST= to override target)
-deploy-ernst        # ernst    (ERNST_HOST= to override target)
-
-# Test a PR in a QEMU VM (defaults to biene)
-test-pr <PR#> [machine]
-test-vm [machine]
+# Deploy — the clan CLI, no wrapper
+clan machines update miralda
+clan machines update biene --target-host root@biene.skynet.lan
+clan machines list
 
 # Regenerate option reference docs
 gendocs

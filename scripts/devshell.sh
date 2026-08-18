@@ -27,80 +27,18 @@ export SOPS_AGE_KEY_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/sops/age/keys.txt"
 # silently, and the agent refuses card-backed SSH signing operations.
 echo UPDATESTARTUPTTY | gpg-connect-agent >/dev/null 2>&1 || true
 
-# ── Deploy ──────────────────────────────────────────────────────────────────
+# ── Deploying ───────────────────────────────────────────────────────────────
 #
-# Fast deploy: builds locally, pushes result, switches remotely.
-# Avoids clan's full inventory evaluation — use for quick iteration.
+# There is deliberately no deploy helper here. Deployment is the clan CLI:
 #
-# Use "clan machines update <machine>" when you need secrets/vars to be
-# re-evaluated (e.g. after changing sops or clan vars config).
+#   clan machines update <machine>
 #
-# Usage: deploy <machine> [boot|switch] [extra nixos-rebuild args...]
+# The wrappers this file used to carry (deploy, deploy-<machine>) drove
+# nixos-rebuild directly and skipped clan's inventory evaluation, which meant
+# they could not apply secrets or vars — a second, subtly different way to
+# deploy that quietly did less. Likewise test-pr/test-vm, which booted a
+# machine in QEMU via nixos-rebuild build-vm.
 #
-# The default target host per machine is listed below and can be overridden
-# per invocation with <MACHINE>_HOST, e.g.
-#   BIENE_HOST=192.168.1.50 deploy biene boot
-deploy() {
-  local machine=${1?usage: deploy <machine> [boot|switch] [extra args...]}
-  local action=${2:-switch}
-  local host
-
-  case "$machine" in
-    miralda) host=${MIRALDA_HOST:-miralda.goclan.org} ;;
-    biene)   host=${BIENE_HOST:-biene.local} ;;
-    birte)   host=${BIRTE_HOST:-birte.local} ;;
-    ernst)   host=${ERNST_HOST:-ernst.skynet.lan} ;;
-    *)
-      echo "deploy: unknown machine '$machine' (expected: miralda, biene, birte, ernst)" >&2
-      return 2
-      ;;
-  esac
-
-  # --no-reexec (never --fast); never --build-host localhost. See CLAUDE.md.
-  nixos-rebuild "$action" \
-    --flake ".#$machine" \
-    --target-host "root@$host" \
-    --no-reexec \
-    -j auto \
-    "${@:3}"
-}
-export -f deploy
-
-# Per-machine aliases, kept so existing muscle memory and the docs keep
-# working. `deploy` without arguments used to mean miralda; it now requires an
-# explicit machine, which is why deploy-miralda exists as well.
-deploy-miralda() { deploy miralda "$@"; }
-deploy-biene()   { deploy biene   "$@"; }
-deploy-birte()   { deploy birte   "$@"; }
-deploy-ernst()   { deploy ernst   "$@"; }
-export -f deploy-miralda deploy-biene deploy-birte deploy-ernst
-
-# ── VM testing ──────────────────────────────────────────────────────────────
-
-# Check out a PR branch and boot it in QEMU. Rebuild the VM (which
-# applies the machine's virtualisation.vmVariant overrides in
-# modules/vm-variant.nix) and launch it. The reviewer's working
-# branch is left on the PR HEAD until they gh pr checkout out.
-#
-# Usage: test-pr <PR#> [machine]      machine defaults to biene
-test-pr() {
-  local pr=${1?usage: test-pr <PR#> [machine]}
-  local machine=${2:-biene}
-  gh pr checkout "$pr" || return 1
-  nixos-rebuild build-vm --flake ".#$machine" --no-reexec -j auto || return 1
-  exec ./result/bin/run-"$machine"-vm
-}
-export -f test-pr
-
-# Same as test-pr, but for an already-checked-out branch (or main).
-# Usage: test-vm [machine]            machine defaults to biene
-test-vm() {
-  local machine=${1:-biene}
-  nixos-rebuild build-vm --flake ".#$machine" --no-reexec -j auto || return 1
-  exec ./result/bin/run-"$machine"-vm
-}
-export -f test-vm
-
 # ── Git ─────────────────────────────────────────────────────────────────────
 
 # Push using gh's credentials rather than an ambient git identity.

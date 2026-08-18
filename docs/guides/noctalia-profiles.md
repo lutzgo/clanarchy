@@ -10,7 +10,7 @@ Sabine then customises her layout via the Noctalia UI, and saves it:
 
 **Settings → Shell Profiles → Save Profile → name it "Sabine"**
 
-Every subsequent `deploy-biene` restores that profile automatically via the HM activation hook in `modules/users/sabine.nix`. She only needs to save once.
+Every subsequent `clan machines update biene` restores that profile automatically via the HM activation hook in `modules/users/sabine.nix`. She only needs to save once.
 
 ## Pinning the profile so it survives fresh installs
 
@@ -34,4 +34,4 @@ Commit both files. From that point on, any fresh install of `biene` will boot st
 
 ## Adding new Noctalia plugins
 
-Plugins are declared in `xdg.configFile."noctalia/plugins.json"` inside `modules/users/sabine.nix` with `force = true`. Add a new entry to the `states` map and run `deploy-biene`; Noctalia will pull the plugin from its store on next launch.
+Plugins are declared in `xdg.configFile."noctalia/plugins.json"` inside `modules/users/sabine.nix` with `force = true`. Add a new entry to the `states` map and run `clan machines update biene`; Noctalia will pull the plugin from its store on next launch.

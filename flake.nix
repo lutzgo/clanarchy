@@ -153,7 +153,8 @@
             python3Packages.mkdocs-material
           ];
 
-          # Shell helpers: deploy, test-pr, test-vm, push, gendocs, docs.
+          # Shell helpers: push, gendocs, docs. Deployment is deliberately not
+          # among them — it is `clan machines update <machine>`, typed directly.
           # See scripts/devshell.sh for what each does and why.
           shellHook = ''
             # Helper functions live in scripts/devshell.sh so shellcheck can

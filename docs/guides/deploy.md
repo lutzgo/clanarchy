@@ -1,93 +1,102 @@
-# Deploying and testing
+# Deploying
 
-The devShell (from `nix develop` or via `direnv allow`) exposes a deploy function plus a couple of test helpers. All of them shell out to `nixos-rebuild` or `gh` — nothing magical, just less to type. They live in [`scripts/devshell.sh`](https://github.com/lutzgo/clanarchy/blob/main/scripts/devshell.sh).
-
-## Deploying
-
-One function takes the machine as its first argument:
+Deployment is the clan CLI. There is no wrapper around it in this repo, on
+purpose — see [Why there is no `deploy` helper](#why-there-is-no-deploy-helper).
 
 ```bash
-deploy <machine> [boot|switch] [extra nixos-rebuild args...]
-```
-
-| Machine | Default target host | Env override |
-|---------|---------------------|--------------|
-| `miralda` | `root@miralda.goclan.org` | `MIRALDA_HOST=` |
-| `biene` | `root@biene.local` | `BIENE_HOST=` |
-| `birte` | `root@birte.local` | `BIRTE_HOST=` |
-| `ernst` | `root@ernst.skynet.lan` | `ERNST_HOST=` |
-
-The action defaults to `switch`:
-
-```bash
-deploy miralda            # nixos-rebuild switch, activates immediately
-deploy miralda boot       # stage into the next boot entry, don't switch
-deploy biene boot         # same, over SSH
-BIENE_HOST=biene.skynet.lan deploy biene    # override target host at the shell
-```
-
-The old per-machine names still work as thin aliases, so existing habits and
-older docs keep functioning:
-
-```bash
-deploy-miralda boot       # identical to: deploy miralda boot
-deploy-biene / deploy-birte / deploy-ernst
-```
-
-Note `deploy` on its own no longer means miralda — it now requires an explicit
-machine and errors out otherwise. Use `deploy miralda` or `deploy-miralda`.
-
-Any extra arguments after the action are forwarded to `nixos-rebuild`, so `deploy miralda switch --show-trace` works.
-
-Under the hood every deploy runs with `--no-reexec -j auto`. Do not use `--fast` or `--build-host localhost` — those bypass sandboxing in ways that have burned this repo before.
-
-## `deploy` vs. `clan machines update`
-
-`deploy` builds the closure locally, pushes it, and activates. It skips the full clan inventory evaluation, which is what makes it fast. If you have changed **`sops` recipients**, a **clan var generator**, or anything the inventory needs to re-eval, run:
-
-```bash
+nix develop                      # or let direnv do it
 clan machines update <machine>
 ```
 
-instead — that walks the full clan-core code path and re-evaluates vars/secrets. Otherwise stick with the plain deploy function.
+`<machine>` is one of `miralda`, `biene`, `birte`, `ernst`. Omit it entirely and
+clan attempts every configured machine, which is rarely what you want.
 
-## Testing a PR in a VM
-
-`test-pr` checks out a PR, builds the VM variant, and boots it in QEMU. The reviewer's branch is left on the PR HEAD (they can `gh pr checkout` to switch to it locally).
-
-```bash
-test-pr <PR#>                   # defaults to biene
-test-pr <PR#> miralda           # or any machine
-test-vm                         # build+run VM for the current tree (defaults to biene)
-test-vm ernst                   # ernst VM smoke test (no GUI)
-```
-
-The VM configuration lives in `modules/vm-variant.nix` — it overlays a QEMU-friendly disk setup on top of each machine's real disko config.
-
-The VM image is written into `./result` (Nix build output). Delete `<machine>.qcow2` in the repo root between runs if you want a fresh disk.
-
-## Pushing with `push`
-
-`git push` requires a writable `~/.config/git`. On this repo's `miralda`, that path is a read-only impermanence bind mount, so the credential helper never fires. The `push` function reads `gh auth token` at runtime and inlines the token into the HTTPS remote URL:
+## Everyday use
 
 ```bash
-push                    # git push origin main
-push origin my-branch   # git push origin my-branch
+clan machines update ernst          # build and switch
+clan machines update miralda biene  # several at once
+clan machines list                  # what is managed
+clan machines generations ernst     # what has been deployed
 ```
 
-First-time setup on a new machine (once, persisted by impermanence):
+Clan resolves each machine's target host from its own deployment configuration,
+so nothing has to be passed for the normal case. To override it for one
+invocation:
 
 ```bash
-gh auth login
+clan machines update biene --target-host root@biene.skynet.lan
 ```
 
-`gh pr create`, `gh issue`, etc. work directly — they don't need this workaround.
+Useful flags, all from `clan machines update --help`:
 
-## Regenerating option docs
+| Flag | Use |
+|------|-----|
+| `--target-host HOST` | deploy to a different address than the configured one |
+| `--build-host HOST` | build somewhere other than the target (e.g. build on a fast box, deploy to a slow one) |
+| `--tags TAG...` | select machines by inventory tag instead of by name |
+| `--host-key-check {strict,ask,accept-new,tofu,none}` | SSH host-key policy; `ask` is the default and is what prompts on a first ZeroTier connection |
+| `--no-check` | skip the pre-switch safety checks (switch inhibitors) |
+| `--debug` | full logging when something is wrong |
+
+## Differences from the old `deploy` helper
+
+If you have muscle memory from the removed functions, two things changed:
+
+- **`MIRALDA_HOST=` / `BIENE_HOST=` / `BIRTE_HOST=` / `ERNST_HOST=` are gone.**
+  Use `--target-host` instead.
+- **There is no "stage for the next boot without activating" mode.**
+  `deploy <machine> boot` had one; `clan machines update` does not expose it.
+  Clan runs `switch-to-configuration boot` and then `switch`, so the boot entry
+  is written *and* the change is activated. If you genuinely need to stage
+  without activating, that is a `nixos-rebuild boot --flake .#<machine>
+  --target-host root@<host>` invocation typed deliberately, not something this
+  repo wraps.
+
+## Why there is no `deploy` helper
+
+The devShell used to carry `deploy`, `deploy-miralda`, `deploy-biene`,
+`deploy-birte` and `deploy-ernst`. They drove `nixos-rebuild` directly, which
+made them fast, but it also meant they **skipped clan's inventory evaluation** —
+so they could not apply secrets or clan vars. The result was two ways to deploy
+that looked interchangeable and were not: one of them quietly did less, and the
+difference only showed up later as a machine missing a secret it should have
+had.
+
+`clan machines update` is the interface this repo is built around: the inventory
+in `clan.nix`, the service modules, and every `clan.core.vars.generators.*` all
+assume it. Keeping a second path that bypassed half of that was a bug waiting
+for someone to hit it.
+
+## Regenerating secrets
+
+Deployment does not create vars. When a generator is added or changed:
 
 ```bash
-gendocs                 # writes docs/reference/*.md from live NixOS config
-docs serve              # local preview at http://localhost:8000 (runs mkdocs)
+clan vars generate <machine>     # prompts for any new inputs
+clan machines update <machine>
 ```
 
-The `docs/reference/*.md` pages are committed to git; run `gendocs` after adding a new `clanarchy.*` option so the reference table stays in sync.
+`clan vars generate` commits the encrypted result under
+`vars/per-machine/<machine>/`. It is the only thing that should ever write
+there.
+
+## When a deploy fails
+
+`clan machines update` exits non-zero if any unit failed during activation, and
+prints the failing units at the end. That output is worth reading rather than
+retrying — several real problems on ernst surfaced exactly there, including a
+mount that had been failing on every boot for a month.
+
+A failed *unit* does not mean a failed *deploy*: the new generation is still
+activated. Check with:
+
+```bash
+ssh root@<machine> systemctl --failed
+```
+
+## Related
+
+- [Updating machines](updating-machines.md) — flake input bumps and the update cadence
+- [Accepting pull requests](accepting-pull-requests.md) — review and merge flow
+- [First-time install](first-time-install.md) — `clan flash` / `clan machines install`
