@@ -105,6 +105,28 @@
         # they resolve correctly without patching each binary.
         systemd.tmpfiles.rules = [
           "L+ /opt/rocm/hip - - - - ${pkgs.rocmPackages.clr}"
+
+          # The models directory must exist before ollama.service starts.
+          #
+          # nixpkgs' ollama module puts `cfg.models` (= <home>/models) in
+          # ReadWritePaths, and systemd refuses to set up the unit's mount
+          # namespace when a ReadWritePaths entry is missing:
+          #
+          #   ollama.service: Failed to set up mount namespacing:
+          #     /var/lib/ollama/models: No such file or directory
+          #   status=226/NAMESPACE
+          #
+          # StateDirectory=ollama creates /var/lib/ollama but not the subdir,
+          # and nothing else did either: while the persist bind mount was
+          # broken (see the symlink note above) ollama had been writing into
+          # /var/lib/private/ollama instead, so the persisted directory was
+          # never populated. Repairing the mount exposed that it was empty and
+          # ollama stopped starting — a latent problem, not a new one.
+          #
+          # tmpfiles runs after local-fs.target, so this lands inside the
+          # persist bind mount rather than under it. Mode matches the 0700 the
+          # persist entry declares for the parent.
+          "d /var/lib/ollama/models 0700 ollama ollama -"
         ];
 
         # With DynamicUser off, StateDirectory=ollama manages /var/lib/ollama
