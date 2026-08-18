@@ -70,10 +70,23 @@
         roles.htpc.machines.ernst.settings = {
           user = "go";
           defaultSession = "gamescope";
-          # Autologin deliberately left off: ernst also fronts the NAS array,
-          # so physical access should still meet a login prompt.  Flip it if
-          # the appliance feel matters more than that.
-          autologin.enable = false;
+          # Autologin on: this is a TV appliance and should behave like one —
+          # power on, land in the session, no keyboard required.
+          #
+          # This was previously off, on the reasoning that ernst fronts the NAS
+          # array and physical access should meet a login prompt.  That trade
+          # is being made deliberately, and it is narrower than it looks: `go`
+          # is not in `wheel`, and roles/server.nix sets
+          # `security.sudo.execWheelOnly`, so the couch session cannot sudo at
+          # all.  The array is reachable from it only as far as the filesystem
+          # permissions allow, which is the same exposure a logged-in `go`
+          # already had — autologin changes who can *start* that session, not
+          # what it can do.
+          #
+          # What it does mean: anyone with physical access to the living room
+          # gets that session.  If ernst ever grows a couch-reachable path to
+          # something privileged, revisit this first.
+          autologin.enable = true;
 
           # Plasma Bigscreen, in a container with its own nixpkgs channel.
           #
