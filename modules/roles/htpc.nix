@@ -46,6 +46,25 @@ let
   stateDir = "/var/lib/clanarchy-session";
   stateFile = "${stateDir}/current";
 
+  # Presence of this file means "bigscreen is the active mode".
+  #
+  # It exists so the display manager can be kept from starting *at all* in
+  # that mode, via ConditionPathExists below.  The alternative — letting the
+  # DM start and having the boot dispatcher stop it again — races with
+  # autologin and shows a Plasma session flashing up on the TV before it is
+  # torn down.  A condition is evaluated at unit start, so the DM is simply
+  # skipped instead.
+  flagFile = "${stateDir}/bigscreen-active";
+
+  # Drop-box the Bigscreen container writes into to ask for a session change.
+  #
+  # The container has no route to host systemd, and giving it one (the host
+  # D-Bus socket, or systemctl over the boundary) would hand it far more than
+  # "switch my session".  Instead the only thing that crosses is a short
+  # string in a file on the already-shared state directory; the host reads it,
+  # validates it against the same three names the switcher accepts, and acts.
+  requestFile = "${stateDir}/request";
+
   # The nspawn unit backing the "bigscreen" mode. Named here so the switcher,
   # the boot dispatcher and the polkit rule cannot drift apart.
   bigscreenUnit = "container@${config.clanarchy.desktop.bigscreen.containerName}.service";
@@ -97,7 +116,10 @@ let
   # same binary can back the `steamos-session-select` shim below.
   sessionSelect = pkgs.writeShellApplication {
     name = "clanarchy-session-select";
-    runtimeInputs = [ pkgs.systemd ];
+    # coreutils for touch/rm on the flag file. Not optional: this is also
+    # invoked from clanarchy-session-request.service, whose PATH is systemd's
+    # minimal one rather than a login shell's.
+    runtimeInputs = [ pkgs.systemd pkgs.coreutils ];
     text = ''
       mode="''${1:-}"
       case "$mode" in
@@ -127,12 +149,18 @@ let
       # TV's GPU, so exactly one of them may run.  Whichever we are leaving
       # is stopped first and allowed to release the card before the other is
       # started — hence stop/start rather than a single restart on this path.
+      #
+      # The flag file is what keeps the two apart across reboots: while it
+      # exists the display manager's start condition fails, so nothing else
+      # has to remember to hold it back.
       if [ "$mode" = bigscreen ]; then
+        touch ${flagFile}
         systemctl stop display-manager.service || true
         exec systemctl start ${bigscreenUnit}
       fi
 
       ${lib.optionalString cfg.bigscreen.enable ''
+        rm -f ${flagFile}
         systemctl stop ${bigscreenUnit} || true
       ''}
 
@@ -151,7 +179,19 @@ let
     text = ''
       # Steam passes "plasma" / "plasma-wayland" / "desktop" here; anything
       # we don't recognise falls through to the usage error.
-      exec clanarchy-session-select "''${1:-plasma}"
+      mode="''${1:-desktop}"
+      ${lib.optionalString cfg.bigscreen.enable ''
+        # With the Bigscreen arm built, "leave Gaming Mode" should land on the
+        # TV shell rather than a mouse-and-keyboard Plasma desktop — Steam's
+        # own "Switch to Desktop" button is the only in-UI exit from Big
+        # Picture, and on a couch machine the thing you want on the other side
+        # of it is Bigscreen.  Plain Plasma is still reachable deliberately,
+        # via `clanarchy-session-select plasma`.
+        case "$mode" in
+          plasma|plasma-wayland|plasma-x11|desktop) mode=bigscreen ;;
+        esac
+      ''}
+      exec clanarchy-session-select "$mode"
     '';
   };
 
@@ -398,26 +438,71 @@ in
     systemd.services.clanarchy-htpc-boot = lib.mkIf cfg.bigscreen.enable {
       description = "Apply the persisted HTPC session choice at boot";
       wantedBy = [ "multi-user.target" ];
-      # Ordered *after* the display manager rather than before it.  The DM is
-      # pulled in by graphical.target on its own schedule, and there is no
-      # ordering that reliably prevents a `wantedBy` unit from starting — so
-      # rather than race it for the card, let it start and then stop it.  If
-      # graphical.target is never reached (ernst's current posture), an After=
-      # on a unit that was never queued is simply a no-op and this still runs.
-      after = [ "display-manager.service" ];
+      after = [ "systemd-user-sessions.service" ];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
       };
-      path = [ pkgs.systemd ];
+      path = [ pkgs.systemd pkgs.coreutils ];
+      # Only has to handle the container half now.  The display manager takes
+      # care of itself: its start condition tests the same flag file, so in
+      # bigscreen mode it is skipped rather than started-and-stopped, and this
+      # no longer has to race it.
       script = ''
         mode="$(cat ${stateFile} 2>/dev/null || echo ${cfg.defaultSession})"
+
+        # Reconcile the flag with the recorded mode, so a hand-edited state
+        # file or a first boot with defaultSession = "bigscreen" still lines up.
         if [ "$mode" = bigscreen ]; then
-          systemctl stop display-manager.service || true
+          touch ${flagFile}
           systemctl start ${bigscreenUnit}
         else
+          rm -f ${flagFile}
           systemctl stop ${bigscreenUnit} || true
         fi
+      '';
+    };
+
+    # The display manager must not run while Bigscreen owns the GPU.
+    #
+    # A failed condition is not a failed unit: systemd records
+    # "Condition check resulted in ... being skipped" and moves on, so
+    # graphical.target still completes and nothing shows up in
+    # `systemctl --failed`.
+    systemd.services.display-manager.unitConfig =
+      lib.mkIf cfg.bigscreen.enable { ConditionPathExists = "!${flagFile}"; };
+
+    # Host-side listener for session-change requests from inside the container.
+    #
+    # A path unit rather than a socket: the payload is one short word, the
+    # writer is an unprivileged desktop launcher with no networking, and a
+    # file on a directory both sides already share needs no new plumbing.
+    systemd.paths.clanarchy-session-request = lib.mkIf cfg.bigscreen.enable {
+      description = "Watch for session-change requests from the Bigscreen container";
+      wantedBy = [ "multi-user.target" ];
+      pathConfig = {
+        PathChanged = requestFile;
+        # The request file lives in a directory the couch user owns, so it may
+        # legitimately not exist yet at boot.
+        MakeDirectory = false;
+      };
+    };
+
+    systemd.services.clanarchy-session-request = lib.mkIf cfg.bigscreen.enable {
+      description = "Apply a session-change request from the Bigscreen container";
+      path = [ pkgs.coreutils ];
+      serviceConfig.Type = "oneshot";
+      # Runs as root, so no polkit hop — but it only ever passes the request
+      # through the same switcher the couch user could have called directly,
+      # which rejects anything outside the known session names. The container
+      # gains no capability it did not already have from a host login; it just
+      # gains a way to ask from where it actually is.
+      script = ''
+        req="$(cat ${requestFile} 2>/dev/null || true)"
+        : > ${requestFile} || true
+
+        [ -n "$req" ] || exit 0
+        exec ${sessionSelect}/bin/clanarchy-session-select "$req"
       '';
     };
 
