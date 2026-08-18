@@ -119,6 +119,51 @@
             mode      = "0700";
           }
         ];
+
+        # Clear the DynamicUser-era symlink before the bind mount runs.
+        #
+        # While ollama ran under DynamicUser, systemd owned /var/lib/ollama as
+        # a *symlink* to private/ollama.  Turning DynamicUser off (above) stops
+        # anything from recreating it, but does not remove the one already on
+        # disk — and systemd refuses to mount onto a path that traverses a
+        # symlink:
+        #
+        #   var-lib-ollama.mount: Mount path /var/lib/ollama is not canonical
+        #     (contains a symlink).
+        #   Failed to mount /var/lib/ollama.
+        #
+        # The mount then fails on every single boot and every `nixos-rebuild
+        # switch` exits 4, while ollama quietly writes to the unpersisted
+        # /var/lib/private/ollama instead of the persisted directory.
+        #
+        # On a machine whose root really is rolled back each boot this would
+        # clear itself after one reboot.  ernst's does not — zroot/root@blank
+        # has never been created, so the rollback in
+        # modules/zfs-impermanence.nix is a silent no-op (it ends in `|| true`)
+        # and the stale symlink survives indefinitely.  Hence a unit rather
+        # than a one-off manual `rm`.
+        #
+        # Ordering mirrors the mount unit itself, which impermanence generates
+        # with DefaultDependencies=false and Before=local-fs.target; this has
+        # to be earlier still.  Deliberately narrow: it removes the path only
+        # when it is a symlink, so a real directory — the normal case, and the
+        # one that could hold models — is never touched.
+        systemd.services.ollama-statedir-canonicalize = {
+          description = "Remove stale /var/lib/ollama symlink before its bind mount";
+          wantedBy    = [ "var-lib-ollama.mount" ];
+          before      = [ "var-lib-ollama.mount" ];
+          unitConfig.DefaultDependencies = false;
+          serviceConfig = {
+            Type            = "oneshot";
+            RemainAfterExit = true;
+            ExecStart = pkgs.writeShellScript "ollama-statedir-canonicalize" ''
+              if [ -L /var/lib/ollama ]; then
+                echo "removing stale symlink /var/lib/ollama -> $(readlink /var/lib/ollama)"
+                rm -f /var/lib/ollama
+              fi
+            '';
+          };
+        };
       };
     };
   };
