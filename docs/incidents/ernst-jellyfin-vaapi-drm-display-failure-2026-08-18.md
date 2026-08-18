@@ -1,11 +1,20 @@
-# ernst — jellyfin VAAPI transcoding deferred, 2026-08-18
+# ernst — jellyfin VAAPI DRM display failure, 2026-08-18 — ROOT-CAUSED
 
-Incident/deferral note.  After the successful Jellyfin container
+**Status: root cause found and fixed.**  `/dev/dri` was not present
+inside the container.  libva/mesa re-derives canonical
+`/dev/dri/renderD*` and `/dev/dri/card*` names from the fd and looks
+them up on disk, so radeonsi could never initialise a DRM display no
+matter how the render node was bound.  Fixed by binding `/dev/dri`
+into the container; see §Root cause below.
+
+This was hypothesis 1 in the original §Working hypothesis, and
+follow-up option 2.  The isolation objection recorded against that
+option turned out not to apply — see below.
+
+Original note follows.  After the successful Jellyfin container
 migration on 2026-08-18 (see §History below), attempts to enable AMD
 iGPU VAAPI transcoding failed at the DRM-display initialisation layer.
-Software transcoding (libx264) works and is the current active state.
-This doc captures what we know so the follow-up work can start from
-diagnosis, not from scratch.
+Software transcoding (libx264) worked and was the active state.
 
 ## Current state (post-rollback)
 
@@ -66,7 +75,57 @@ below that, at DRM.
    PR #45 + #46 is in place; `readlink -f /dev/jellyfin-igpu-render`
    → `/dev/dri/renderD129` on both host and inside the container.
 
-## Working hypothesis
+## Root cause (confirmed)
+
+`/dev/dri` does not exist inside the container.  Only the bind-mounted
+alias does:
+
+```
+$ nixos-container run jellyfin -- ls -l /dev/dri/
+ls: cannot access '/dev/dri/': No such file or directory
+```
+
+The alias is enough to *open* the device — confirmed, so neither file
+permissions nor the device cgroup were ever the problem:
+
+```
+$ nixos-container run jellyfin -- sh -c 'exec 3< /dev/jellyfin-igpu-render && echo OPEN_OK'
+OPEN_OK
+```
+
+but it is not enough for mesa to bring up a DRM display.  Reproduced
+A/B in throwaway `systemd-nspawn` containers against the real iGPU:
+
+| Case | Config | Result |
+|------|--------|--------|
+| A | alias only, no `/dev/dri` — *jellyfin's exact setup* | `Failed to a DRM display for the given device` |
+| B | same + `/dev/dri` bound | `va_openDriver() returns 0`, radeonsi loads, full profile list |
+| C | `/dev/dri` bound, `DeviceAllow` on **alias only** | works — no cgroup change needed |
+| D | as C, probing other nodes | `renderD129` OPEN_OK; `renderD128` DENIED; `card1` DENIED |
+
+Case A reproduces the error string in §Failure mode verbatim.
+
+**The isolation objection against follow-up option 2 does not apply.**
+Binding the directory only makes the other nodes *visible*;
+`allowedDevices` still gates opening them and is keyed on major:minor,
+so the 7900 XTX stays unreachable (case D).  The "expose only the iGPU,
+hide the XTX" property is preserved by the cgroup rather than by
+absence of the node — which is the stronger guarantee of the two,
+since it no longer depends on what happens to be bind-mounted.
+
+Fix applied in `machines/ernst/containers/jellyfin.nix`:
+
+```nix
+"/dev/dri" = { hostPath = "/dev/dri"; isReadOnly = false; };
+```
+
+`modules/desktop/bigscreen.nix` carried the identical latent bug and
+was fixed in the same change: it bound only its colon-free aliases,
+while the proof-of-concept that validated it had bound `/dev/dri`
+wholesale — which is why KWin came up there and would not have in the
+deployed module.
+
+## Working hypothesis (original — hypothesis 1 was correct)
 
 `vainfo`'s "Failed to a DRM display" is emitted by libva's
 `va_openDriver()` after `drmGetVersion()` on the fd returns
@@ -83,7 +142,14 @@ DRM handshake even though the file is openable:
 - Missing `LIBVA_DRIVERS_PATH` / `LIBVA_DRIVER_NAME` env vars
   inside the container.  Env dump: no LIBVA vars set.
 
-## Follow-up work — options, roughly in order of expected effort
+## Follow-up work — options as originally written
+
+**Resolved by option 2.**  Option 1 (LIBVA env vars) proved
+unnecessary — driver discovery was never the failure; radeonsi loads
+fine once `/dev/dri` exists.  Option 3 remains optional and is still
+worth doing to stop the encoding.xml warning quoted under §Loose ends.
+Option 4 is unaffected.
+
 
 1. **Set LIBVA env inside the container config.**  Cheap.  In
    `machines/ernst/containers/jellyfin.nix`, container's `config`
