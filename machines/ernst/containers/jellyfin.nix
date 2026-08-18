@@ -104,6 +104,37 @@ in
     SUBSYSTEM=="drm", ENV{ID_PATH}=="pci-0000:7b:00.0", KERNEL=="renderD*", SYMLINK+="jellyfin-igpu-render"
   '';
 
+  # Belt-and-braces: block container start until the symlink exists.
+  # On a normal boot udev fires our SYMLINK+= rule when amdgpu loads and
+  # the symlink appears before any application service starts, so this is
+  # redundant.  Where it earns its keep is the corner case: a runtime
+  # udev-rules reload (nixos-rebuild switch) against already-enumerated
+  # DRM devices does not re-fire "add" events, so the rule doesn't run
+  # and container@jellyfin fails with "Failed to clone
+  # /dev/jellyfin-igpu-render: No such file or directory".
+  #
+  # `udevadm settle --exit-if-exists=<path>` returns as soon as the path
+  # exists or the timeout expires.  We pair it with an explicit trigger of
+  # the drm subsystem so that reload-then-start deploys don't have to wait
+  # for the settle timeout to fail — the trigger fires "add" events for
+  # any drm device already present, our rule runs, symlink appears, settle
+  # returns immediately.  On a normal boot the trigger is a no-op (the
+  # symlink already exists) and the whole service completes in <100 ms.
+  systemd.services.jellyfin-igpu-render-symlink = {
+    description = "Ensure /dev/jellyfin-igpu-render exists for container@jellyfin";
+    wantedBy    = [ "container@jellyfin.service" ];
+    before      = [ "container@jellyfin.service" ];
+    after       = [ "systemd-udevd.service" ];
+    serviceConfig = {
+      Type            = "oneshot";
+      RemainAfterExit = false;
+      ExecStart = [
+        "${pkgs.systemd}/bin/udevadm trigger --subsystem-match=drm --action=add"
+        "${pkgs.systemd}/bin/udevadm settle --exit-if-exists=/dev/jellyfin-igpu-render --timeout=30"
+      ];
+    };
+  };
+
   # Host-side group.  Fleet media consumers (jellyfin now; Nextcloud
   # external storage, *arr suite later) get access via group membership.
   users.groups.media = { gid = mediaGid; };
