@@ -63,5 +63,30 @@
   # One-time setup: see docs/guides/ (Phase 4 keyfile setup).
   boot.zfs.extraPools = ["zdata"];
 
+  # Persist entries added when ernst was made genuinely impermanent.
+  #
+  # ernst had been running with no @blank snapshots at all since install, so
+  # the rollback in modules/zfs-impermanence.nix was a silent no-op and root
+  # simply accumulated.  An audit of the 31 MB that had built up found almost
+  # all of it re-derivable (fwupd metadata cache, /root/.cache, sddm state) —
+  # these two are the exceptions worth carrying across boots.
+  environment.persistence."/persist".directories = [
+    # Container root filesystems.  The declarative parts are rebuilt from the
+    # flake on start, and the data that matters lives on zdata via bindMounts,
+    # so this is not about the containers' *state* — it is about their
+    # journals.  /var/log is persisted for the host, but each nspawn container
+    # keeps its own under here (2.7 MB of Jellyfin's today), and losing that on
+    # every reboot would mean no history for exactly the services that are
+    # hardest to debug live.
+    "/var/lib/nixos-containers"
+
+    # fwupd's device and update history.  Currently inactive on ernst, so this
+    # is cheap insurance rather than a fix: firmware work is rare and
+    # episodic, and it is precisely the kind of thing where the record of what
+    # was flashed last time matters. The pure metadata cache under
+    # /var/cache/fwupd is deliberately NOT persisted — it re-downloads.
+    "/var/lib/fwupd"
+  ];
+
   system.stateVersion = "26.05";
 }

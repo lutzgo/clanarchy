@@ -64,6 +64,7 @@ nav:
   - Runbooks:
     - ZFS auto-snapshot opt-in: runbooks/zfs-auto-snapshot-optin.md
     - ernst zroot drive replacement: runbooks/ernst-zroot-drive-replacement.md
+    - ernst enabling impermanence: runbooks/ernst-enable-impermanence.md
   - Incidents:
     - ernst slot-12 drive drop (2026-08-11): incidents/ernst-slot12-drop-2026-08-11.md
   - Reference:
