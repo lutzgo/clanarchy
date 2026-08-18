@@ -58,31 +58,44 @@
           } // lib.optionalAttrs (settings.hsaOverrideGfxVersion != null) {
             HSA_OVERRIDE_GFX_VERSION = settings.hsaOverrideGfxVersion;
           };
+
+          # Pin ollama to a static system user instead of the nixpkgs default
+          # `DynamicUser = true`.  DynamicUser + impermanence is a permissions
+          # trap: on the fleet's ZFS-rollback machines, impermanence creates
+          # /persist/var/lib/private/ollama as root:root 0700 (its default
+          # ownership when no `user`/`group` is specified on the entry), but
+          # the per-boot dynamic uid systemd allocates for ollama cannot write
+          # there, so the daemon fails to create /var/lib/ollama/models and
+          # every `ollama pull` returns:
+          #
+          #   400 Bad Request: mkdir /var/lib/ollama/models: permission denied
+          #
+          # A static system user lets us set matching ownership on the persist
+          # entry once, and lets the model store survive upgrades without an
+          # activation-time chown against a moving-target uid.
+          user  = "ollama";
+          group = "ollama";
         };
+
+        users.users.ollama = {
+          isSystemUser = true;
+          group        = "ollama";
+          home         = "/var/lib/ollama";
+          createHome   = false;   # StateDirectory creates + owns it
+          description  = "Ollama inference daemon";
+        };
+        users.groups.ollama = { };
+
+        # Belt-and-braces: force DynamicUser off in case a nixpkgs bump ever
+        # decides `user`/`group` alone isn't enough to imply it.
+        systemd.services.ollama.serviceConfig.DynamicUser = lib.mkForce false;
 
         # services.ollama.loadModels wires up `ollama-model-loader.service`,
         # which runs `ollama pull` for each configured model when ollama.service
-        # starts. On cold boot the loader races DNS: NetworkManager may not have
-        # finished associating + DHCP + DNS by the time the pull fires, so it
-        # dies with a name-resolution error.
-        #
-        # Upstream nixpkgs already declares After/Wants=network-online.target on
-        # this unit, but that ordering is only meaningful when a `*-wait-online`
-        # service actually blocks the target.  On this fleet both wait-online
-        # services are masked:
-        #   - systemd-networkd-wait-online — clan-core default (see
-        #     machines/ernst/networking.nix for the reasoning);
-        #   - NetworkManager-wait-online — masked here as well.
-        # Unmasking NM-wait-online would add up-to-30s boot delays whenever the
-        # laptop is away from home wifi — an unacceptable regression for a
-        # roaming Framework 13.  So the ordering is a no-op on this machine and
-        # we lean on retry instead: on failure wait 30s and re-run, by which
-        # time NM is up and DNS resolves.
-        #
-        # Upstream also ships Restart=on-failure with a 1s→exponential ladder;
-        # codify it here (with a saner 30s base — DNS-at-boot doesn't need a 1s
-        # retry) so a future upstream default change doesn't quietly reintroduce
-        # the race. RestartSteps/RestartMaxDelaySec from upstream still apply.
+        # starts.  Upstream ships Restart=on-failure with a 1s→exponential
+        # ladder; a 1s retry buys nothing if the underlying failure is
+        # network / storage related.  Give it 30 s of breathing room so the
+        # journal doesn't fill up while the real cause is being investigated.
         systemd.services.ollama-model-loader.serviceConfig = {
           Restart    = lib.mkForce "on-failure";
           RestartSec = lib.mkForce "30s";
@@ -94,15 +107,15 @@
           "L+ /opt/rocm/hip - - - - ${pkgs.rocmPackages.clr}"
         ];
 
-        # Ollama stores downloaded models under /var/lib/ollama, but the NixOS
-        # service runs with DynamicUser=true + StateDirectory=ollama, which makes
-        # systemd put the real storage in /var/lib/private/ollama and expose it
-        # as /var/lib/ollama via a symlink/bind.  Persisting /var/lib/ollama
-        # directly conflicts with that mechanism (systemd can't migrate a busy
-        # bind mount).  Persist the actual storage path instead.
+        # With DynamicUser off, StateDirectory=ollama manages /var/lib/ollama
+        # directly (no /var/lib/private/ollama indirection).  Persist that
+        # path with matching ownership so impermanence chown's the source
+        # dir at boot before ollama.service tries to write into it.
         environment.persistence."/persist".directories = [
           {
-            directory = "/var/lib/private/ollama";
+            directory = "/var/lib/ollama";
+            user      = "ollama";
+            group     = "ollama";
             mode      = "0700";
           }
         ];
