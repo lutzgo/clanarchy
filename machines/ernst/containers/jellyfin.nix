@@ -248,6 +248,32 @@ in
         hostPath   = iGpuRenderNode;
         isReadOnly = false;
       };
+
+      # The canonical DRM directory.  This is what made VAAPI work; without it
+      # libva fails with "Failed to a DRM display for the given device" even
+      # though the render node above opens fine.
+      #
+      # The alias is enough to *open* the device but not enough for mesa to
+      # bring up a DRM display: it re-derives canonical /dev/dri/renderD* and
+      # /dev/dri/card* names from the fd and looks them up on disk, so a
+      # container where /dev/dri does not exist cannot initialise radeonsi no
+      # matter how the node is bound.  See docs/incidents/
+      # ernst-jellyfin-vaapi-drm-display-failure-2026-08-18.md for the A/B
+      # reproduction.
+      #
+      # This does NOT widen the container's reach to the 7900 XTX.  Binding
+      # the directory only makes the nodes *visible*; DeviceAllow above still
+      # gates opening them, and it is keyed on major:minor.  Verified inside a
+      # container with exactly this config:
+      #     /dev/dri/renderD129 (iGPU)  OPEN_OK
+      #     /dev/dri/renderD128 (dGPU)  DENIED
+      #     /dev/dri/card1      (dGPU)  DENIED
+      # so the "do not hand the XTX to Jellyfin" property in the file header
+      # is preserved by the cgroup rather than by absence of the node.
+      "/dev/dri" = {
+        hostPath   = "/dev/dri";
+        isReadOnly = false;
+      };
     };
 
     ############################################################################

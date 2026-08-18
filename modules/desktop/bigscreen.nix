@@ -55,7 +55,7 @@
 # machines/ernst/containers/jellyfin.nix already documents for `media`.
 # Otherwise the bind-mounted home is owned by a stranger and the device
 # nodes are unopenable.
-{ config, lib, pkgs, pkgs-unstable, ... }:
+{ config, lib, pkgs, pkgs-unstable, utils, ... }:
 let
   cfg = config.clanarchy.desktop.bigscreen;
 
@@ -233,9 +233,36 @@ in
 
     # The couch user's home lives on the host so it survives container
     # rebuilds. Ownership must be the numeric ids the container will use.
+    #
+    # This rule alone is not sufficient, and the ordered service below is not
+    # redundant with it: impermanence bind-mounts /persist/var/lib/<name>-home
+    # over this path, creating the source as root:root 0755, and that mount can
+    # land after systemd-tmpfiles has already run. Observed on ernst after the
+    # first deploy — the rule was present and correct, and the directory was
+    # still root:root 0755.
     systemd.tmpfiles.rules = [
       "d ${cfg.statePath} 0700 ${toString cfg.uid} ${toString cfg.gid} -"
     ];
+
+    # Ownership applied AFTER the persist mount and BEFORE the container
+    # starts — the same shape as jellyfin-library-perms in
+    # machines/ernst/containers/jellyfin.nix, and for the same reason: only
+    # once the bind mount is in place does chown reach the directory the
+    # container will actually see. Idempotent; a no-op when already correct.
+    systemd.services."${containerName}-home-perms" = {
+      description = "Own ${cfg.statePath} as ${toString cfg.uid}:${toString cfg.gid} for container@${containerName}";
+      wantedBy = [ "container@${containerName}.service" ];
+      before = [ "container@${containerName}.service" ];
+      after = [ "${utils.escapeSystemdPath cfg.statePath}.mount" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = [
+          "${pkgs.coreutils}/bin/chown ${toString cfg.uid}:${toString cfg.gid} ${cfg.statePath}"
+          "${pkgs.coreutils}/bin/chmod 0700 ${cfg.statePath}"
+        ];
+      };
+    };
 
     # Impermanence: the fleet rolls root back on boot, so an un-persisted
     # home would mean re-onboarding Plasma on every reboot.
@@ -297,6 +324,25 @@ in
         };
         "/dev/input" = {
           hostPath = "/dev/input";
+          isReadOnly = false;
+        };
+        # The canonical DRM directory. The aliases above are enough to *open*
+        # the nodes, but not enough for mesa to bring up a DRM display: it
+        # re-derives canonical /dev/dri/card* and /dev/dri/renderD* names from
+        # the fd and looks them up on disk. A container without /dev/dri
+        # cannot initialise radeonsi, which surfaces as gbm device creation
+        # failing — the same wall Jellyfin's VAAPI hit, where it appeared as
+        # libva's "Failed to a DRM display for the given device".
+        #
+        # The proof-of-concept for this module bound /dev/dri wholesale, which
+        # is why KWin came up there; binding only the aliases would not have
+        # worked. See machines/ernst/containers/jellyfin.nix for the A/B.
+        #
+        # Visibility is not access: allowedDevices above still gates opening,
+        # keyed on major:minor, so the container sees every card but may only
+        # open the one GPU it was given.
+        "/dev/dri" = {
+          hostPath = "/dev/dri";
           isReadOnly = false;
         };
         "/home/${cfg.user}" = {
