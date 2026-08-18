@@ -69,7 +69,10 @@
         # Jovian (see modules/roles/htpc.nix for why that distinction holds).
         roles.htpc.machines.ernst.settings = {
           user = "go";
-          defaultSession = "gamescope";
+          # Land in the KDE TV shell, not Steam.  Steam is one tile away from
+          # the Bigscreen homescreen, and its own "Switch to Desktop" button
+          # comes back here — see modules/roles/htpc.nix.
+          defaultSession = "bigscreen";
           # Autologin on: this is a TV appliance and should behave like one —
           # power on, land in the session, no keyboard required.
           #
