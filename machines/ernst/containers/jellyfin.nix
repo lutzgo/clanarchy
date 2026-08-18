@@ -29,13 +29,20 @@
 #   not a broken-transcode failure, it silently hands the container the 7900
 #   XTX and takes it away from ROCm.  The by-path symlinks udev maintains are
 #   stable across reboots and kernel bumps because they are derived from the
-#   PCI topology:
-#     /dev/dri/by-path/pci-0000:7b:00.0-render -> ../renderD12X
+#   PCI topology.
+#
+#   The naive path — /dev/dri/by-path/pci-0000:7b:00.0-render — cannot be
+#   used as a systemd-nspawn bind source directly: the --bind=SRC:DST
+#   parser tokenizes on ':' and rejects source paths with extra colons.
+#   Workaround: an udev rule below creates a colon-free stable symlink
+#   /dev/jellyfin-igpu-render pointing at the same physical device, matched
+#   by ID_PATH so the PCI-topology guarantee is preserved.  All three
+#   consumers (allowedDevices, bindMount, VaapiDevice) use that symlink.
 #
 #   Verify after a kernel bump (should print the iGPU, not Navi 31):
-#     readlink -f /dev/dri/by-path/pci-0000:7b:00.0-render
+#     readlink -f /dev/jellyfin-igpu-render
 #     nixos-container run jellyfin -- vainfo --display drm --device \
-#       /dev/dri/by-path/pci-0000:7b:00.0-render
+#       /dev/jellyfin-igpu-render
 #
 # Storage layout on this host (see machines/ernst/disko.nix):
 #   /srv/media   zdata/media   RO into container at /srv/media/library
@@ -43,9 +50,10 @@
 #   Transcode temp is a tmpfs INSIDE the container — never on zdata.
 { config, lib, pkgs, ... }:
 let
-  # AMD iGPU render node on ernst (Granite Ridge, 9950X), addressed by PCI
-  # path so kernel enumeration order cannot repoint it at the 7900 XTX.
-  # See the file header for the rationale and the post-kernel-bump check.
+  # AMD iGPU render node on ernst (Granite Ridge, 9950X), addressed via a
+  # colon-free udev-managed symlink pinned to the PCI address so kernel
+  # enumeration order cannot repoint it at the 7900 XTX.  See the file
+  # header for the rationale and the post-kernel-bump check.
   #
   # Used verbatim in all three places that must agree — allowedDevices, the
   # bind mount, and the VaapiDevice written into encoding.xml — so they
@@ -54,12 +62,12 @@ let
   # On allowedDevices specifically: NixOS passes this string straight through
   # to systemd's DeviceAllow= (nixos-containers.nix:341), and systemd stat()s
   # the path to derive major:minor for the eBPF device filter. stat() follows
-  # symlinks, so the by-path link resolves correctly and no real node is
-  # needed here. If a future systemd ever refuses the symlink, the fallback is
+  # symlinks, so the symlink resolves correctly and no real node is needed
+  # here. If a future systemd ever refuses the symlink, the fallback is
   # to put the numeric node in allowedDevices ONLY — derived with
   # `readlink -f` on the path below — and leave the bind mount and
-  # VaapiDevice on the stable by-path name.
-  iGpuRenderNode = "/dev/dri/by-path/pci-0000:7b:00.0-render";
+  # VaapiDevice on the stable symlink name.
+  iGpuRenderNode = "/dev/jellyfin-igpu-render";
 
   # Fixed numeric IDs so the RW state bind mount has coherent ownership
   # regardless of NixOS's dynamic allocation.  jellyfinUid matches the
@@ -83,6 +91,18 @@ in
   ##############################################################################
   # Host-side wiring: bind-source dirs, firewall, user shell for the state bind.
   ##############################################################################
+
+  # Colon-free stable symlink for the iGPU render node.  See the file
+  # header — systemd-nspawn's --bind=SRC:DST parser rejects paths with
+  # extra colons, so we cannot bind /dev/dri/by-path/pci-0000:7b:00.0-render
+  # directly.  Matching on ENV{ID_PATH} preserves the same PCI-topology
+  # stability guarantee: renderD* enumeration order can flip on a kernel
+  # bump, but ID_PATH is derived from the PCI address and cannot.  The
+  # SYMLINK+= form adds an alias alongside the stock by-path/by-id links,
+  # so nothing else on the host loses its existing render-node names.
+  services.udev.extraRules = ''
+    SUBSYSTEM=="drm", ENV{ID_PATH}=="pci-0000:7b:00.0", KERNEL=="renderD*", SYMLINK+="jellyfin-igpu-render"
+  '';
 
   # Host-side group.  Fleet media consumers (jellyfin now; Nextcloud
   # external storage, *arr suite later) get access via group membership.
