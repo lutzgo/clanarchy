@@ -225,7 +225,7 @@ Generated outputs land in `vars/per-machine/<machine>/`. Run generators with `cl
 
 **Impermanence**: Two backends, selected per machine by `clanarchy.rootfs` (declared in `modules/rootfs.nix`, which also holds the shared persist paths). Both backends are imported unconditionally by `commonBase` and each guards its own body on the option — the same pattern as `modules/channel.nix`.
 
-- `clanarchy.rootfs = "zfs"` (default; miralda, biene, ernst) — root **and home** roll back to `@blank` ZFS snapshots on boot.
+- `clanarchy.rootfs = "zfs"` (default; miralda, biene, ernst) — root **and home** roll back to `@blank` ZFS snapshots on boot. The snapshots are **not** created automatically; a machine missing them silently isn't impermanent at all, which is exactly what happened to ernst for a month. `clanarchy-impermanence-check.service` now fails loudly when they're absent — if a deploy reports it, that machine is accumulating state outside `/persist`. See [docs/runbooks/ernst-enable-impermanence.md](docs/runbooks/ernst-enable-impermanence.md).
 - `clanarchy.rootfs = "btrfs"` (birte) — `@root` and `@home` both roll back, to `@root-blank` / `@home-blank` subvolume snapshots, seeded automatically on first boot. Behaviourally equivalent to the ZFS backend.
 
 The shared system-level persist set lives in `modules/rootfs.nix`: `/var/lib/nixos`, `/var/lib/sops-nix`, `/var/log`, `/var/lib/systemd`, plus `/etc/machine-id`. Modules add their own as needed — e.g. `/var/lib/libvirt` (virtualisation), `/var/lib/private/ollama` (local-ai), `/var/lib/clanarchy-session` (htpc role). Per-user paths (`.gnupg`, `.config`, `.local/share`, …) are declared in `modules/users/*.nix` and the machine's user modules.
