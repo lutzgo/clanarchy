@@ -45,7 +45,7 @@
   # Uncomment the block below **after** the second ESP on system-b exists (see
   # the mirroredBoots preparation header in machines/ernst/disko.nix for the
   # activation procedure).  Uncommenting before the /boot2 partition exists
-  # will break `deploy-ernst switch` — activation depends on the /boot2 mount.
+  # will break `clan machines update ernst` — activation depends on the /boot2 mount.
   #
   # boot.loader.systemd-boot.mirroredBoots = [
   #   {

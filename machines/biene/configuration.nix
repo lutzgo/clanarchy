@@ -7,7 +7,7 @@
 
   # No targetHost set — clan auto-discovers biene via ZeroTier (same as miralda).
   # For initial deploy or when ZeroTier is unreachable, use:
-  #   BIENE_HOST=biene.local deploy-biene
+  #   clan machines update biene --target-host root@biene.local
   time.timeZone = "Europe/Berlin";
 
   # Locale: German everywhere (CLI + desktop UI).

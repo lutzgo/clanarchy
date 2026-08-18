@@ -252,7 +252,7 @@ Common symbols: ✓ `2713` · ✔ `2714` · ✅ `2705` · ☑ `2611`
 ## Deploy workflow
 
 ```bash
-deploy              # nixos-rebuild switch on miralda
-deploy boot         # stage boot entry only
-push                # git push via gh token
+clan machines update miralda    # build + activate
+clan vars generate miralda      # (re)generate secrets first, if they changed
+push                            # git push via gh credential helper
 ```

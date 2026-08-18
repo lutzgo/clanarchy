@@ -49,7 +49,6 @@ nav:
     - Updating machines: guides/updating-machines.md
     - Adding a machine: guides/adding-a-machine.md
     - Accepting pull requests: guides/accepting-pull-requests.md
-    - Testing a PR: guides/testing-a-pr.md
     - Networking: guides/networking.md
     - YubiKey: guides/yubikey.md
     - YubiKey SSH setup: guides/yubikey-ssh-setup.md

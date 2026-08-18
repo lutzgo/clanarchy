@@ -8,7 +8,7 @@ corresponding NixOS `fileSystems` entries so `/srv/media`,
 
 Disko itself only runs at first install; on the already-provisioned
 pool the datasets have to be created once by hand. This is that
-runbook. Do it **before** the first `deploy-ernst switch` that carries
+runbook. Do it **before** the first `clan machines update ernst` that carries
 this change — otherwise activation will try to mount datasets that do
 not exist and the mount units will fail (recoverable, but noisy).
 
@@ -113,7 +113,7 @@ Expected:
 Once the datasets exist:
 
 ```bash
-deploy-ernst switch
+clan machines update ernst
 ```
 
 Confirm the mounts landed:

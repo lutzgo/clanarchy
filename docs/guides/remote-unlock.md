@@ -29,9 +29,13 @@ Then deploy so NixOS reads the key at activation and packs it into
 the initrd cpio (via `boot.initrd.secrets`):
 
 ```bash
-deploy-ernst boot
+clan machines update ernst
 ssh root@ernst.skynet.lan systemctl reboot
 ```
+
+This used to stage with `deploy-ernst boot` and reboot into it.
+`clan machines update` activates as well as writing the boot entry, which is
+harmless here — the initrd is only exercised on the next boot either way.
 
 ## Client-side setup (miralda only, one time)
 

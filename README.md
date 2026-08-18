@@ -29,27 +29,26 @@ Full docs: **[lutzgo.github.io/clanarchy](https://lutzgo.github.io/clanarchy)** 
 nix develop           # or: direnv allow, if you use direnv
 ```
 
-The devShell exposes:
+Deploying is the clan CLI — there is no wrapper:
 
 ```bash
-deploy <machine> [boot|switch]   # miralda | biene | birte | ernst
-                                 # hosts: miralda.goclan.org, biene.local,
-                                 #        birte.local, ernst.skynet.lan
-                                 # override with <MACHINE>_HOST=
-deploy-miralda / deploy-biene / deploy-birte / deploy-ernst   # thin aliases
-
-test-pr <PR#> [machine]      # gh pr checkout + build-vm + run-vm  (machine defaults to biene)
-test-vm [machine]            # build-vm + run-vm on the current tree
-
-push [remote] [branch]       # push via gh auth token (works with impermanent ~/.config/git)
-gendocs                      # regenerate docs/reference/*.md from live NixOS config
+clan machines update <machine>       # miralda | biene | birte | ernst
+clan vars generate <machine>         # (re)generate secrets, then update
 ```
 
-See [docs/guides/deploy.md](docs/guides/deploy.md) for the full breakdown, including when to use `deploy-X` vs. `clan machines update X` (the latter re-evaluates vars/secrets).
+The devShell adds only what clan does not cover:
+
+```bash
+push [remote] [branch]       # push via gh credential helper (works with impermanent ~/.config/git)
+gendocs                      # regenerate docs/reference/*.md from live NixOS config
+docs serve                   # local mkdocs preview
+```
+
+See [docs/guides/deploy.md](docs/guides/deploy.md) for the full breakdown, including `--target-host`/`--build-host` and why the old `deploy` helpers were removed.
 
 ### Pushing with `gh`
 
-Impermanence makes `~/.config/git` a read-only bind mount, so `git push` with a credential helper doesn't work. The `push` function reads `gh auth token` at runtime and injects it into the HTTPS remote URL.
+Impermanence makes `~/.config/git` a read-only bind mount, so `gh auth setup-git` cannot write the global config it wants. The `push` function passes gh's git credential helper with `-c` instead, so the token is never spliced into a URL or into `argv`.
 
 First-time setup (once per machine):
 ```bash
@@ -70,16 +69,15 @@ Full walkthrough: **[docs/guides/first-time-install.md](docs/guides/first-time-i
 
 ```bash
 # 1. Edit config files
-# 2. Deploy (switch = immediate activation, boot = staged for next boot):
-deploy miralda
-deploy miralda boot
+# 2. Deploy (builds, then activates — there is no staged-only mode):
+clan machines update miralda
 
 # 3. Commit and push:
 git add <files> && git commit
 push
 ```
 
-If a `secrets/` generator or `sops` config changes, run `clan vars generate <machine>` then redeploy. `clan machines update <machine>` also re-evaluates vars — use it when a stripped-down `deploy` isn't enough.
+If a `secrets/` generator or `sops` config changes, run `clan vars generate <machine>`, then `clan machines update <machine>` to deploy it.
 
 ---
 
@@ -91,14 +89,14 @@ The YubiKey serves two roles on `miralda`: **SSH authentication** (via GnuPG age
 
 | Task | YubiKey needed? |
 |------|-----------------|
-| `deploy` (SSH to `root@miralda.goclan.org`) | **Yes** — GPG auth subkey |
+| `clan machines update miralda` (SSH to `root@miralda.goclan.org`) | **Yes** — GPG auth subkey |
 | `clan vars generate` | **Yes** — decrypts/re-encrypts secrets |
 | `clan machines update` | **Yes** — SSH + secret decryption |
 | Editing config, `nix eval`, building | No |
 | `push` / `gh` operations | No — uses GitHub token |
 | `git commit` | No |
 
-`deploy-biene`, `deploy-birte`, and `deploy-ernst` also need SSH access to their targets, but those use the `clanarchy_admin` ed25519 key, not the YubiKey.
+Updating `biene`, `birte` and `ernst` also needs SSH access to those targets, but they authenticate with the `clanarchy_admin` ed25519 key rather than the YubiKey.
 
 ### Troubleshooting `Permission denied (publickey)`
 
@@ -143,7 +141,7 @@ Then generate its syncthing vars and redeploy both machines:
 
 ```bash
 clan vars generate new-machine
-deploy <machine> switch   # on each machine
+clan machines update <machine>   # on each machine
 ```
 
 Machines discover each other via their zerotier IPs — no manual device ID exchange.

@@ -116,7 +116,7 @@ only assists the installed system's stage 1, not the installer.
 bootloader install in §4h runs `switch-to-configuration boot`, which writes
 only the bootloader — it does not run the sops activation scripts. In Case B
 nothing touches sops at all until §5c's deploy. If sops is broken, that is
-dealt with in §5a *before* the final `deploy-ernst switch`. Do not chase
+dealt with in §5a *before* the final `clan machines update ernst`. Do not chase
 sops now.
 
 ---
@@ -520,7 +520,7 @@ system; in Case B you never left it.
 
 **Only relevant if the activation error `sops-install-secrets: cannot read
 keyfile '/var/lib/sops-nix/key.txt'` appears on the next
-`deploy-ernst switch`.** If deploys are clean, skip this section.
+`clan machines update ernst`.** If deploys are clean, skip this section.
 
 First diagnose — the key may exist on the persist mount and only the
 impermanence binding be broken:
@@ -594,7 +594,7 @@ gh pr create --title "ernst: replace failed <FAILED_ROLE> SAS SSD" \
 ### 5c. Deploy
 
 ```bash
-deploy-ernst switch
+clan machines update ernst
 ```
 
 Case A: bootloader install writes to the new ESP; services activate.
@@ -655,7 +655,7 @@ halves ONLINE and zero errors, no failed units. Runbook complete.
   order issue: see §4i last paragraph. Enter setup, promote the new "Linux
   Boot Manager" entry, delete stale entries.
 
-- **`deploy-ernst switch` in §5c fails at `setupSecrets`** — sops-nix key
+- **`clan machines update ernst` in §5c fails at `setupSecrets`** — sops-nix key
   issue; go to §5a.
 
 ---

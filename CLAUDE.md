@@ -15,21 +15,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Enter the devShell via direnv (`.envrc` uses `use flake`) or manually with `nix develop`.
 
+**Deployment is the clan CLI — do not add a wrapper for it.**
+
+```bash
+clan machines update <machine>          # miralda | biene | birte | ernst
+clan machines update <m> --target-host root@host   # override the configured address
+clan vars generate <machine>            # (re)generate secrets, then update
+```
+
+The devShell used to carry `deploy`, `deploy-<machine>`, `test-pr` and
+`test-vm`. They are gone, deliberately: they drove `nixos-rebuild` directly and
+so skipped clan's inventory evaluation, which meant they could not apply
+secrets or vars — a second deploy path that quietly did less. Do not reintroduce
+them, in any form, including as a thin alias. See [docs/guides/deploy.md](docs/guides/deploy.md).
+
+Note there is no stage-for-next-boot mode: `clan machines update` runs
+`switch-to-configuration boot` *and* `switch`.
+
 The devShell provides these shell functions:
 
 ```bash
-deploy <machine> [boot|switch] [args...]   # unified; machine is required
-  # miralda -> miralda.goclan.org   MIRALDA_HOST=
-  # biene   -> biene.local          BIENE_HOST=
-  # birte   -> birte.local          BIRTE_HOST=
-  # ernst   -> ernst.skynet.lan     ERNST_HOST=
-deploy-miralda / deploy-biene / deploy-birte / deploy-ernst   # thin aliases
-
-test-pr <PR#> [machine]       # gh pr checkout + build-vm + run VM  (default machine: biene)
-test-vm [machine]             # build-vm + run VM on the current tree
-
-push [remote] [branch]        # git push via gh auth token (read-only ~/.config/git under impermanence)
+push [remote] [branch]        # git push via gh credential helper (read-only ~/.config/git under impermanence)
 gendocs                       # regenerate docs/reference/*.md from live NixOS config
+docs serve                    # local mkdocs preview
 ```
 
 Key packages in devShell: `clan-cli`, `git`, `openssh`, `nixos-rebuild`, `age-plugin-yubikey`, `sops`, `python3` + `python3Packages.mkdocs-material` (for `gendocs` and `docs serve` — note the local preview runs mkdocs; CI publishes with properdocs).
@@ -78,7 +86,7 @@ The full walkthrough — `clan flash write` + `clan machines install <name>` —
 - **clan-core rev**: `clan flash write --flake` must match the rev this project's `clan` CLI was built from. Read it from `flake.lock` via `nix flake metadata --json . | jq -r '.locks.nodes["clan-core"].locked.rev'` — mismatch causes `attribute 'vars' missing`.
 - **`clan flash` wipes the USB stick entirely.** Confirm the device path with `lsblk` first.
 
-**Post-install: Noctalia profile for Sabine (`biene`)** — see [docs/guides/noctalia-profiles.md](docs/guides/noctalia-profiles.md). Short version: Sabine saves her layout once as a Shell Profile named `Sabine`; the HM activation hook in `modules/users/sabine.nix` restores it on every subsequent `deploy-biene`. To pin the profile so it survives future fresh installs, `scp` the settings.json out of biene into `modules/users/sabine-noctalia-settings.json` and wire it via `xdg.configFile`.
+**Post-install: Noctalia profile for Sabine (`biene`)** — see [docs/guides/noctalia-profiles.md](docs/guides/noctalia-profiles.md). Short version: Sabine saves her layout once as a Shell Profile named `Sabine`; the HM activation hook in `modules/users/sabine.nix` restores it on every subsequent `clan machines update biene`. To pin the profile so it survives future fresh installs, `scp` the settings.json out of biene into `modules/users/sabine-noctalia-settings.json` and wire it via `xdg.configFile`.
 
 ## Architecture
 
@@ -147,7 +155,7 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | `rootfs.nix` | `clanarchy.rootfs` option (`zfs` | `btrfs`) + impermanence bits shared by both backends (persist paths, stage-1 mounts) |
 | `zfs-impermanence.nix` | ZFS backend: rollback-on-boot of root + home (stage 1). Active when `clanarchy.rootfs = "zfs"` (default) |
 | `btrfs-impermanence.nix` | btrfs backend: rollback-on-boot of `@root` **and** `@home`, seeded automatically on first boot. Active when `clanarchy.rootfs = "btrfs"` (birte) |
-| `vm-variant.nix` | QEMU-friendly overrides used by `test-pr` / `test-vm` |
+| `vm-variant.nix` | QEMU-friendly overrides for `nixos-rebuild build-vm` (no devShell helper wraps this) |
 | `locale.nix` | `clanarchy.locale` option: language + keyboard layout/variant/options |
 | `networking/mdns.nix` | Avahi / mDNS — `<hostname>.local` across LAN + ZeroTier |
 | `networking/resolved.nix` | systemd-resolved fleet defaults: public FallbackDNS (1.1.1.1 9.9.9.9); no global DNS/search (per-link only, avoids off-LAN breakage on roaming machines) |

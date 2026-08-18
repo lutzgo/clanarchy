@@ -6,82 +6,80 @@ This guide explains how to push a new configuration to an existing machine — b
 
 ## Quick reference
 
-| Command | Where | What it does |
-|---------|-------|-------------|
-| `deploy [boot\|switch]` | devShell | nixos-rebuild → miralda |
-| `deploy-biene [boot\|switch]` | devShell | nixos-rebuild → biene |
-| `clan machines update <name>` | devShell | nixos-rebuild via clan (re-evaluates vars/secrets) |
-| `nixos-rebuild switch --flake .#<name> ...` | anywhere | full manual form |
+| Command | What it does |
+|---------|-------------|
+| `clan machines update <name>` | build and activate on that machine |
+| `clan machines update <name> --target-host root@host` | same, to a different address |
+| `clan vars generate <name>` | (re)generate secrets — run before updating, when they changed |
+| `clan machines generations <name>` | what has been deployed there |
 
 ---
 
-## Inside the devShell
-
-The devShell (enter with `nix develop` or via direnv) exposes shorthand functions:
+## Deploying
 
 ```bash
-# miralda (Framework 13 laptop, root@miralda.goclan.org)
-deploy           # switch — activate immediately
-deploy boot      # stage for next boot only
-
-# biene (Framework 13 laptop, root@biene.skynet.lan)
-deploy-biene
-deploy-biene boot
+nix develop                        # or direnv
+clan machines update miralda
+clan machines update biene
 ```
 
-Both functions pass `--no-reexec` and `-j auto`. Never add `--build-host localhost` or `--fast`.
-
-`deploy-biene` targets `biene.local` by default (mDNS over ZeroTier — works from any network as long as ZeroTier is up).
-Override the target host with `BIENE_HOST`:
+Clan resolves each machine's address from its own deployment configuration, so
+nothing needs passing in the normal case. When the configured name isn't
+resolving — biene on a foreign network before ZeroTier is up, say — override it
+for that invocation:
 
 ```bash
-# Use the ZeroTier IPv6 if biene.local hasn't resolved yet
-# (get the address from biene: ip -6 addr show altname zerotier)
-BIENE_HOST=<biene-zt-ipv6> deploy-biene
+# ZeroTier IPv6 (get it from biene: ip -6 addr show altname zerotier)
+clan machines update biene --target-host root@<biene-zt-ipv6>
 
-# Use the LAN hostname when on the home network
-BIENE_HOST=biene.skynet.lan deploy-biene
+# LAN hostname when on the home network
+clan machines update biene --target-host root@biene.skynet.lan
 ```
 
 See [Networking — biene not reachable from a different network](networking.md#biene-not-reachable-from-a-different-network) for connectivity checks before deploying.
+
+To build somewhere other than where you're deploying — useful for birte, which
+is slow — use `--build-host`.
 
 ---
 
 ## Outside the devShell
 
-Run the full command directly. Nix is available system-wide:
+```bash
+nix develop --command clan machines update miralda
+```
+
+Or drive `nixos-rebuild` yourself, which is what to reach for in the one case
+clan doesn't cover — staging a change for the next boot without activating it:
 
 ```bash
 nix --extra-experimental-features 'nix-command flakes' run \
-  nixpkgs#nixos-rebuild -- switch \
+  nixpkgs#nixos-rebuild -- boot \
   --flake .#miralda \
   --target-host root@miralda.goclan.org \
   --no-reexec -j auto
 ```
 
-Or enter the devShell one-shot:
-
-```bash
-nix develop --command deploy
-nix develop --command deploy-biene
-```
+Never add `--build-host localhost` or `--fast`.
 
 ---
 
-## `deploy` vs `clan machines update`
+## Vars and the health check
 
-Use `deploy` / `deploy-biene` for day-to-day config changes — it's faster because it skips clan's inventory evaluation.
-
-Use `clan machines update <name>` when you change **secrets or clan vars** (e.g. after `clan vars generate`, adding a new var generator, or rotating age keys). clan re-evaluates all var file paths before activating.
+`clan machines update` re-evaluates every var file path before activating, so
+changing a generator means regenerating first:
 
 ```bash
-# After changing sops or vars config:
+clan vars generate miralda
 clan machines update miralda
-clan machines update biene
 ```
 
 !!! warning "clan health check"
-    `clan machines update` runs a health check across **all** machines before proceeding. If any machine has vars that need re-encryption, the update is blocked. Use `clan vars fix <name>` to repair, or fall back to `deploy` to bypass the health check entirely.
+    `clan machines update` runs a health check across **all** machines before
+    proceeding. If any machine has vars needing re-encryption, the update is
+    blocked — repair with `clan vars fix <name>`. This used to be listed as a
+    reason to fall back to the `deploy` helper; that helper is gone, and
+    bypassing the check was never really a fix. Repair the vars.
 
 ---
 

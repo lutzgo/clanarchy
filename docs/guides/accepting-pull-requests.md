@@ -30,14 +30,15 @@ Before merging, confirm:
    nix build .#nixosConfigurations.miralda.config.system.build.toplevel --no-link
    nix build .#nixosConfigurations.biene.config.system.build.toplevel   --no-link
    ```
-4. **Deployment is safe.** If the PR changes anything under `machines/*/configuration.nix`, `disko.nix`, `impermanence.nix`, `yubikey.nix`, or `desktop/*.nix`, either boot the branch in a VM first (fast, no hardware risk — see [testing-a-pr.md](testing-a-pr.md)) or dry-run a deploy from the branch:
+4. **Deployment is safe.** If the PR changes anything under `machines/*/configuration.nix`, `disko.nix`, `impermanence.nix`, `yubikey.nix`, or `desktop/*.nix`, deploy it from the branch to one machine before merging:
    ```bash
-   test-pr <n>          # boot the PR in QEMU (default machine: biene)
-   # — or —
-   git switch <branch>
-   deploy boot          # miralda — stages for next reboot, does not activate
-   deploy-biene boot    # biene
+   gh pr checkout <n>
+   clan machines update <machine>
    ```
+   Prefer the machine the change actually targets. Note this activates — there
+   is no stage-only mode (see [deploy.md](deploy.md)), so for a change that
+   could cost you the machine (bootloader, disko, impermanence), have console
+   or [remote unlock](remote-unlock.md) access to hand before you run it.
 5. **Secrets are not committed.** Anything under `vars/per-machine/*/` should only change if the PR explicitly regenerated a var. Never commit plaintext keys.
 
 ---
