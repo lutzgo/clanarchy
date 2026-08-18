@@ -60,12 +60,35 @@
         example = "htpc";
       };
       defaultSession = lib.mkOption {
-        type = lib.types.enum [ "gamescope" "plasma" ];
+        type = lib.types.enum [ "gamescope" "plasma" "bigscreen" ];
         default = "gamescope";
         description = "Session to land in before any choice has been made.";
       };
       autologin.enable =
         lib.mkEnableOption "passwordless autologin for the couch user (see modules/roles/htpc.nix for the tradeoff)";
+
+      bigscreen = {
+        enable =
+          lib.mkEnableOption "Plasma Bigscreen mode in an nspawn container (see modules/desktop/bigscreen.nix)";
+
+        gpu.pciAddress = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          description = "PCI address of the GPU driving the TV, e.g. \"0000:03:00.0\". Required when bigscreen.enable is set.";
+        };
+
+        uid = lib.mkOption {
+          type = lib.types.int;
+          default = 0;
+          description = "Numeric uid of the couch user; must match the host. Required when bigscreen.enable is set.";
+        };
+
+        gid = lib.mkOption {
+          type = lib.types.int;
+          default = 100;
+          description = "Numeric primary gid of the couch user; must match the host.";
+        };
+      };
     };
 
     perInstance =
@@ -79,6 +102,13 @@
               enable = true;
               inherit (settings) user defaultSession;
               autologin.enable = settings.autologin.enable;
+              bigscreen = {
+                inherit (settings.bigscreen) enable gid;
+              }
+              // lib.optionalAttrs settings.bigscreen.enable {
+                inherit (settings.bigscreen) uid;
+                gpu.pciAddress = settings.bigscreen.gpu.pciAddress;
+              };
             };
           };
       };
