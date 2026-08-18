@@ -74,6 +74,29 @@
           # so physical access should still meet a login prompt.  Flip it if
           # the appliance feel matters more than that.
           autologin.enable = false;
+
+          # Plasma Bigscreen, in a container with its own nixpkgs channel.
+          #
+          # The TV hangs off the dGPU (Navi 31 / RX 7900 XTX at 0000:03:00.0,
+          # card1-HDMI-A-1 — verified connected).  The iGPU at 0000:7b:00.0
+          # stays reserved for the GL.iNet Comet KVM on card0-HDMI-A-2, which
+          # is why the GPU is pinned by PCI address rather than left to kwin's
+          # own choice: card numbering is *inverted* here (the dGPU is card1)
+          # and can flip on a kernel bump, which would put the session on the
+          # KVM's head and take the compute card away from ROCm.
+          #
+          # The same dGPU is Ollama's ROCm card (see roles.ollama below).  A
+          # kwin session and ROCm workloads share a GPU without trouble —
+          # compute goes through the render node, KMS through the card node —
+          # so this is a note for future readers rather than a conflict.
+          bigscreen = {
+            enable = true;
+            gpu.pciAddress = "0000:03:00.0";
+            # `go` on ernst: uid 1001, gid 100 (users).  nspawn does not remap
+            # ids, so these must track machines/ernst/htpc.nix.
+            uid = 1001;
+            gid = 100;
+          };
         };
       };
 

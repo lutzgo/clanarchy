@@ -25,17 +25,38 @@
 # execs either the gamescope Steam session or Plasma.  Switching is then
 # "write the file, restart the display manager" — the same shape as SteamOS.
 #
-#   /var/lib/clanarchy-session/current   "gamescope" | "plasma"
+#   /var/lib/clanarchy-session/current   "gamescope" | "plasma" | "bigscreen"
 #
 # The directory is owned by the couch user so the switch needs no root, and a
 # polkit rule lets that user restart display-manager.service (and nothing
 # else).
+#
+# ── The third mode: bigscreen ─────────────────────────────────────────────
+# "bigscreen" is not a display-manager session.  Plasma Bigscreen only exists
+# on nixpkgs-unstable, and its Plasma generation cannot share a system with
+# the 6.6.6 one this machine runs — see modules/desktop/bigscreen.nix for the
+# full reasoning — so it lives in an nspawn container that owns the TV GPU
+# outright.  Selecting it therefore means "stop the display manager, start
+# the container" rather than "exec a different session binary", and the two
+# arms are mutually exclusive because both want KMS on the same card.
 { config, lib, pkgs, ... }:
 let
   cfg = config.clanarchy.roles.htpc;
 
   stateDir = "/var/lib/clanarchy-session";
   stateFile = "${stateDir}/current";
+
+  # The nspawn unit backing the "bigscreen" mode. Named here so the switcher,
+  # the boot dispatcher and the polkit rule cannot drift apart.
+  bigscreenUnit = "container@${config.clanarchy.desktop.bigscreen.containerName}.service";
+
+  # The exact set of units the couch user may start/stop. Kept as a list so
+  # the polkit rule below is a membership test rather than a growing chain of
+  # string comparisons.
+  manageableUnits = [
+    "display-manager.service"
+  ]
+  ++ lib.optional cfg.bigscreen.enable bigscreenUnit;
 
   # Runtime session dispatcher.  Runs as the logged-in user; only reads.
   #
@@ -50,8 +71,14 @@ let
     set -eu
     mode="$(cat ${stateFile} 2>/dev/null || echo ${cfg.defaultSession})"
     case "$mode" in
-      plasma) exec ${pkgs.kdePackages.plasma-workspace}/bin/startplasma-wayland ;;
-      *)      exec /run/current-system/sw/bin/steam-gamescope ;;
+      # "bigscreen" deliberately lands here too.  If the display manager is
+      # running at all then bigscreen is not the active mode — the boot
+      # dispatcher stops the DM before starting the container — so reaching
+      # this point with mode=bigscreen means something got out of step.
+      # Falling back to Plasma leaves a usable desktop on the TV rather than
+      # a black screen.
+      plasma|bigscreen) exec ${pkgs.kdePackages.plasma-workspace}/bin/startplasma-wayland ;;
+      *)                exec /run/current-system/sw/bin/steam-gamescope ;;
     esac
   '';
 
@@ -76,8 +103,18 @@ let
       case "$mode" in
         gamescope|gamescope-wayland|steamos|gaming) mode=gamescope ;;
         plasma|plasma-wayland|plasma-x11|desktop)   mode=plasma ;;
+        ${
+          # Only accept "bigscreen" when the container was actually built —
+          # otherwise the switcher would happily record a mode whose unit
+          # does not exist and leave the machine with no session at all.
+          lib.optionalString cfg.bigscreen.enable ''
+            bigscreen|tv|mediacenter)                   mode=bigscreen ;;
+          ''
+        }
         *)
-          echo "usage: clanarchy-session-select {gamescope|plasma}" >&2
+          echo "usage: clanarchy-session-select {gamescope|plasma${
+            lib.optionalString cfg.bigscreen.enable "|bigscreen"
+          }}" >&2
           exit 2
           ;;
       esac
@@ -85,6 +122,19 @@ let
       # The state dir is owned by the HTPC user (tmpfiles rule below), so
       # this deliberately does not need root.
       printf '%s\n' "$mode" > ${stateFile}
+
+      # The display manager and the Bigscreen container both want KMS on the
+      # TV's GPU, so exactly one of them may run.  Whichever we are leaving
+      # is stopped first and allowed to release the card before the other is
+      # started — hence stop/start rather than a single restart on this path.
+      if [ "$mode" = bigscreen ]; then
+        systemctl stop display-manager.service || true
+        exec systemctl start ${bigscreenUnit}
+      fi
+
+      ${lib.optionalString cfg.bigscreen.enable ''
+        systemctl stop ${bigscreenUnit} || true
+      ''}
 
       # Restarting the display manager tears down the current session —
       # this is how SteamOS does it too, and why the write happens first.
@@ -119,6 +169,7 @@ in
 {
   imports = [
     ../desktop/kde.nix
+    ../desktop/bigscreen.nix
     ../gaming-common.nix
   ];
 
@@ -136,14 +187,65 @@ in
     };
 
     defaultSession = lib.mkOption {
-      type = lib.types.enum [ "gamescope" "plasma" ];
+      type = lib.types.enum [ "gamescope" "plasma" "bigscreen" ];
       default = "gamescope";
       description = ''
         Which session to land in when no choice has been made yet — i.e.
         first boot, and after `/persist` is reset. Deck-like behaviour is
         `gamescope`; use `plasma` if the machine should feel like a desktop
-        that happens to game.
+        that happens to game, or `bigscreen` for a TV media appliance.
+
+        `bigscreen` requires `bigscreen.enable`.
       '';
+    };
+
+    bigscreen = {
+      enable = lib.mkEnableOption ''
+        the Plasma Bigscreen mode, run from an nspawn container carrying its
+        own nixpkgs channel.
+
+        Off by default because it is a heavier proposition than the other two
+        arms: it builds a second, complete Plasma generation from
+        nixpkgs-unstable (see modules/desktop/bigscreen.nix for why it cannot
+        share the host's), and it takes exclusive KMS ownership of the TV's
+        GPU while active
+      '';
+
+      gpu.pciAddress = lib.mkOption {
+        type = lib.types.str;
+        description = ''
+          PCI address of the GPU driving the TV — passed straight through to
+          `clanarchy.desktop.bigscreen.gpu.pciAddress`, which documents how
+          to find it.
+        '';
+        example = "0000:03:00.0";
+      };
+
+      uid = lib.mkOption {
+        type = lib.types.int;
+        description = ''
+          Numeric uid of the couch user. Must match the host's, since nspawn
+          does not remap ids across the bind-mounted home.
+        '';
+        example = 1001;
+      };
+
+      gid = lib.mkOption {
+        type = lib.types.int;
+        default = 100;
+        description = "Numeric primary gid of the couch user. Same matching requirement as `uid`.";
+      };
+
+      extraPackages = lib.mkOption {
+        type = lib.types.listOf lib.types.package;
+        default = [ ];
+        description = ''
+          Applications to install inside the container. Must come from
+          `pkgs-unstable`, not the host's `pkgs` — see the corresponding
+          option in modules/desktop/bigscreen.nix.
+        '';
+        example = lib.literalExpression "[ pkgs-unstable.jellyfin-media-player ]";
+      };
     };
 
     mediaClient = {
@@ -181,9 +283,33 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = cfg.defaultSession == "bigscreen" -> cfg.bigscreen.enable;
+        message = ''
+          clanarchy.roles.htpc.defaultSession = "bigscreen" requires
+          clanarchy.roles.htpc.bigscreen.enable = true — otherwise the
+          container the boot dispatcher would start does not exist.
+        '';
+      }
+    ];
+
     # KDE Plasma 6 + SDDM + pipewire + fonts. The role owns the decision;
     # the desktop module owns the implementation.
     clanarchy.desktop.kde.enable = true;
+
+    # Bigscreen mode. The role holds the couch-user identity; the desktop
+    # module owns the container and the GPU plumbing.
+    clanarchy.desktop.bigscreen = lib.mkIf cfg.bigscreen.enable {
+      enable = true;
+      user = cfg.user;
+      inherit (cfg.bigscreen)
+        uid
+        gid
+        extraPackages
+        ;
+      gpu.pciAddress = cfg.bigscreen.gpu.pciAddress;
+    };
 
     # Steam + Proton-GE.  `persistenceDirectories` keeps its default
     # ([ ".steam" ]): HTPC machines are impermanent like the rest of the
@@ -260,12 +386,49 @@ in
     # session it was left in.
     environment.persistence."/persist".directories = [ stateDir ];
 
-    # Let the couch user restart *only* the display manager. Narrower than
-    # adding them to wheel or handing out a blanket systemd sudo rule.
+    # Boot dispatcher.
+    #
+    # The other two arms are display-manager sessions, so graphical.target
+    # brings them up on its own.  Bigscreen is a container that must instead
+    # replace the display manager, and `services.displayManager.defaultSession`
+    # is a build-time value that cannot express "no DM at all today".  So the
+    # choice is re-applied once at boot from the same state file the switcher
+    # writes, which also makes the machine come back up in the mode it was
+    # left in after a reboot.
+    systemd.services.clanarchy-htpc-boot = lib.mkIf cfg.bigscreen.enable {
+      description = "Apply the persisted HTPC session choice at boot";
+      wantedBy = [ "multi-user.target" ];
+      # Ordered *after* the display manager rather than before it.  The DM is
+      # pulled in by graphical.target on its own schedule, and there is no
+      # ordering that reliably prevents a `wantedBy` unit from starting — so
+      # rather than race it for the card, let it start and then stop it.  If
+      # graphical.target is never reached (ernst's current posture), an After=
+      # on a unit that was never queued is simply a no-op and this still runs.
+      after = [ "display-manager.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      path = [ pkgs.systemd ];
+      script = ''
+        mode="$(cat ${stateFile} 2>/dev/null || echo ${cfg.defaultSession})"
+        if [ "$mode" = bigscreen ]; then
+          systemctl stop display-manager.service || true
+          systemctl start ${bigscreenUnit}
+        else
+          systemctl stop ${bigscreenUnit} || true
+        fi
+      '';
+    };
+
+    # Let the couch user manage *only* the display manager and, when the
+    # bigscreen arm is built, its container. Narrower than adding them to
+    # wheel or handing out a blanket systemd sudo rule.
     security.polkit.extraConfig = ''
       polkit.addRule(function(action, subject) {
+        var allowed = ${builtins.toJSON manageableUnits};
         if (action.id == "org.freedesktop.systemd1.manage-units" &&
-            action.lookup("unit") == "display-manager.service" &&
+            allowed.indexOf(action.lookup("unit")) !== -1 &&
             subject.user == "${cfg.user}") {
           return polkit.Result.YES;
         }
