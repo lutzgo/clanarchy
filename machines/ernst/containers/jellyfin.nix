@@ -342,6 +342,48 @@ in
           type   = "vaapi";
           device = iGpuRenderNode;    # written into encoding.xml as VaapiDevice
         };
+
+        # NixOS owns encoding.xml from here on.
+        #
+        # Without this, the module writes encoding.xml only when the file is
+        # absent, and otherwise logs "encoding.xml already exists and is
+        # different from the configured settings. transcoding options NOT
+        # applied." That is how HardwareAccelerationType silently drifted to
+        # `none` — set through Jellyfin's dashboard during the 2026-08-18
+        # rollback, then never corrected on deploy, so the settings below were
+        # declared but inert. Enabling hardware encoding under type `none`
+        # does nothing at all, which is a genuinely hard failure to read.
+        #
+        # The trade documented upstream: transcoding settings changed in the
+        # web dashboard are now discarded on the next restart. That is the
+        # intent — this is the machine where "what the repo says" should win.
+        # The module writes a timestamped encoding.xml.backup-* before each
+        # overwrite.
+        #
+        # Note the generated file is *smaller* than what Jellyfin maintains:
+        # the module's template omits ~20 elements (tonemapping algorithm,
+        # deinterlace method, muxing queue size, EnableDecodingColorDepth10*,
+        # …). Those revert to Jellyfin's own defaults, which is where they
+        # already were — checked element by element against the live file
+        # before this was turned on. TranscodingTempPath is likewise absent,
+        # so transcodes land in <cacheDir>/transcodes, i.e. the tmpfs below.
+        forceEncodingConfig = true;
+
+        transcoding = {
+          # The setting the whole VAAPI exercise was about. Verified on ernst
+          # after PR #50: 10-bit HEVC -> h264_vaapi at 9.4x realtime on the
+          # iGPU. Everything else in `transcoding` is left at the module
+          # default, each of which already matches what Jellyfin had.
+          enableHardwareEncoding = true;
+
+          # Decode side. Mirrors what the library actually holds; hevc is the
+          # one that matters most, since much of it is HEVC Main 10.
+          hardwareDecodingCodecs = {
+            h264 = true;
+            hevc = true;
+            vp9  = true;
+          };
+        };
       };
 
       # Transcode temp = tmpfs on the container's own filesystem.  Jellyfin
