@@ -349,6 +349,14 @@ in
           hostPath = cfg.statePath;
           isReadOnly = false;
         };
+        # Shared session state, so the launcher below can ask the host to
+        # switch sessions. Writable: the request file is the whole mechanism.
+        # See modules/roles/htpc.nix for why this is a file drop rather than
+        # host D-Bus or systemctl across the boundary.
+        "/var/lib/clanarchy-session" = {
+          hostPath = "/var/lib/clanarchy-session";
+          isReadOnly = false;
+        };
       }
       // lib.optionalAttrs cfg.audio.enable {
         "/dev/snd" = {
@@ -431,8 +439,31 @@ in
             pulse.enable = true;
           };
 
+          # "Steam Big Picture" tile on the Bigscreen homescreen.
+          #
+          # Bigscreen builds its app grid from .desktop entries, so the way out
+          # of the container is an ordinary launcher. It writes one word to the
+          # shared request file; a path unit on the host picks it up and does
+          # the switch (modules/roles/htpc.nix). Nothing here talks to host
+          # systemd, because nothing here can.
+          #
+          # The trip back is Steam's own "Switch to Desktop" button, which the
+          # steamos-session-select shim redirects to bigscreen while this arm
+          # is built — so the two directions are symmetric without either side
+          # needing a terminal.
           environment.systemPackages =
             [
+              (pkgs.makeDesktopItem {
+                name = "clanarchy-switch-to-steam";
+                desktopName = "Steam Big Picture";
+                comment = "Leave Bigscreen and start the Steam gaming session";
+                icon = "steam";
+                categories = [ "Game" ];
+                exec = "${pkgs.writeShellScript "clanarchy-request-gamescope" ''
+                  printf '%s\n' gamescope > /var/lib/clanarchy-session/request
+                ''}";
+              })
+
               pkgs.kdePackages.plasma-bigscreen
 
               # Required, not optional. The Bigscreen homescreen plasmoid ships
