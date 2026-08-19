@@ -909,6 +909,16 @@ Constraints:
 
 Not sequenced. Each becomes a milestone when it earns one.
 
+**Xbox pad over Bluetooth on ernst — blocked upstream, not by us.** The board's
+MediaTek MT7927 (Filogic 380) Bluetooth half fails at HCI reset: `btmtk` on
+6.18.43 has no case for hardware variant `0x6639`, and the firmware blob
+`BT_RAM_CODE_MT6639_2_1_hdr.bin` is still in a draft linux-firmware MR pending
+MediaTek's redistribution sign-off. The driver fixes are in mainline around
+kernel 7.1, but the firmware is the real gate, so this is not a flake bump away.
+Wired pads and USB dongles both work today — see
+[the controllers guide](guides/htpc-controllers.md), which carries the two
+one-line checks to re-run after a future bump.
+
 **Refresh `docs/guides/ernst-zdata-datasets.md`.** Unchanged since #20 apart from
 the deploy-helper sweep. It still describes five datasets including
 `zdata/media/movies` and `zdata/media/tvshows`, which were deliberately collapsed

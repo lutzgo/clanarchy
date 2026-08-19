@@ -424,6 +424,12 @@ in
         there before. The radio is host hardware and the driver is a kernel
         module, so neither can live in a container — only the *use* of the
         controller does, via /dev/input
+
+        This is the software half only, and it cannot conjure a working
+        radio. ernst's onboard MediaTek MT7927 has no Bluetooth support on
+        the current kernel and no firmware blob published, so a USB dongle
+        (or a cable) is what actually carries a pad there — see
+        docs/guides/htpc-controllers.md
       ''
       // {
         default = true;
