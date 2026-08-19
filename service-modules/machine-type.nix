@@ -67,6 +67,19 @@
       autologin.enable =
         lib.mkEnableOption "passwordless autologin for the couch user (see modules/roles/htpc.nix for the tradeoff)";
 
+      display.gpuPciAddress = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "0000:03:00.0";
+        description = ''
+          PCI address of the GPU the TV hangs off. When set, the session waits
+          for a connected output on that card before starting a compositor —
+          a TV that is off reads as disconnected, and gamescope answers a card
+          with no output by failing its backend and segfaulting. Null skips
+          the wait.
+        '';
+      };
+
       bigscreen = {
         enable =
           lib.mkEnableOption "Plasma Bigscreen mode in an nspawn container (see modules/desktop/bigscreen.nix)";
@@ -102,6 +115,7 @@
               enable = true;
               inherit (settings) user defaultSession;
               autologin.enable = settings.autologin.enable;
+              display.gpuPciAddress = settings.display.gpuPciAddress;
               bigscreen = {
                 inherit (settings.bigscreen) enable gid;
               }

@@ -34,8 +34,9 @@ Verified against the repo on 2026-08-19 (`main` @ `cc2a3f2`).
 | Container journals persisted | **done** | [#54](https://github.com/lutzgo/clanarchy/pull/54) | `/var/lib/nixos-containers` persisted; the `\|\| true` that hid a missing `@blank` removed, `clanarchy-impermanence-check.service` now fails loudly |
 | HTPC role (gamescope + Plasma switching) | **done** | [#39](https://github.com/lutzgo/clanarchy/pull/39), [#53](https://github.com/lutzgo/clanarchy/pull/53), [#57](https://github.com/lutzgo/clanarchy/pull/57) | Stock-nixpkgs `programs.steam.gamescopeSession` behind one wrapper session; `clanarchy-session-select` + `steamos-session-select` shim; couch user `go` (not in `wheel`), autologin on |
 | Wireless Xbox controller support | **done** | [#65](https://github.com/lutzgo/clanarchy/pull/65) | Bluetooth + xpadneo, `/var/lib/bluetooth` persisted |
+| TV session survives a dark TV | **done** | [#68](https://github.com/lutzgo/clanarchy/pull/68) | The couch session waits for a connected output on `display.gpuPciAddress` before starting a compositor (gamescope segfaults on a card with none), and SDDM gets `Relogin=true` so a session that ends is retried instead of parking on the greeter. Same PR set `bigscreen.enable = false` on ernst, applying #64's decision |
 | Headless opt-in gaming | **superseded** | — | Shipped instead as the HTPC role: a real display-manager session on the TV, not a headless opt-in |
-| Plasma Bigscreen in a container | **parked** | [#48](https://github.com/lutzgo/clanarchy/pull/48), [#60](https://github.com/lutzgo/clanarchy/pull/60), [#62](https://github.com/lutzgo/clanarchy/pull/62), [#63](https://github.com/lutzgo/clanarchy/pull/63), **revert [#64](https://github.com/lutzgo/clanarchy/pull/64)** | Structural, not a bug: Plasma 6.7 needs logind (user units), KWin needs logind absent or an active *graphical* seat, and a container cannot supply a seat. Machinery kept — either escape route reuses it. ⚠️ **`clan.nix` still sets `bigscreen.enable = true` for ernst** (see [backlog](#floating-backlog)) |
+| Plasma Bigscreen in a container | **parked** | [#48](https://github.com/lutzgo/clanarchy/pull/48), [#60](https://github.com/lutzgo/clanarchy/pull/60), [#62](https://github.com/lutzgo/clanarchy/pull/62), [#63](https://github.com/lutzgo/clanarchy/pull/63), **revert [#64](https://github.com/lutzgo/clanarchy/pull/64)** | Structural, not a bug: Plasma 6.7 needs logind (user units), KWin needs logind absent or an active *graphical* seat, and a container cannot supply a seat. Machinery kept — either escape route reuses it. Disabled on ernst in [#68](https://github.com/lutzgo/clanarchy/pull/68); the container is no longer built |
 | Ollama on ernst | **done** | [#39](https://github.com/lutzgo/clanarchy/pull/39), [#47](https://github.com/lutzgo/clanarchy/pull/47), [#52](https://github.com/lutzgo/clanarchy/pull/52), [#55](https://github.com/lutzgo/clanarchy/pull/55), [#61](https://github.com/lutzgo/clanarchy/pull/61) | Static `ollama` user (DynamicUser + impermanence is a trap), stale `/var/lib/ollama` symlink cleared, `models/` dir created, `qwen3-coder:30b` on the 7900 XTX. Loader backoff raised to `RestartSec=30s` |
 | ZFS → ntfy alerting | **done** | [#33](https://github.com/lutzgo/clanarchy/pull/33), [#35](https://github.com/lutzgo/clanarchy/pull/35), [#40](https://github.com/lutzgo/clanarchy/pull/40) | `modules/observability/zfs-ntfy.nix`, imported fleet-wide by `commonBase`, gated on `clanarchy.zfs.ntfy.enable`; topic URL is a clan var. **M6 must reuse this, not duplicate it** |
 | `fwupd-refresh` failure tolerance | **done** | — | `modules/roles/laptop.nix` — laptop role only; ernst does not run it |
@@ -907,14 +908,6 @@ Constraints:
 ## Floating / backlog
 
 Not sequenced. Each becomes a milestone when it earns one.
-
-**Turn `bigscreen.enable` off in `clan.nix`.** #64 parked Plasma Bigscreen and
-wrote the reasoning into `modules/desktop/bigscreen.nix` and
-`docs/guides/htpc-bigscreen.md` — but the inventory still sets
-`roles.htpc.machines.ernst.settings.bigscreen.enable = true`, so ernst continues
-to build a second complete Plasma generation from `nixpkgs-unstable` for a mode
-that is documented as non-functional. Small `.nix` change; the docs already
-describe the intended end state.
 
 **Refresh `docs/guides/ernst-zdata-datasets.md`.** Unchanged since #20 apart from
 the deploy-helper sweep. It still describes five datasets including
