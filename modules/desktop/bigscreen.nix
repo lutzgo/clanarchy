@@ -389,6 +389,31 @@ in
           # fails and KWin finds no usable DRM device. Verified failure mode.
           hardware.graphics.enable = true;
 
+          # The full Plasma 6 desktop, inside the container.
+          #
+          # Not optional, and not merely "more packages". startplasma-wayland
+          # does not exec kwin and plasmashell directly — it starts systemd
+          # *user* units by name (plasma-workspace-wayland.target,
+          # plasma-plasmashell.service, plasma-kwin_wayland.service, …). With
+          # only plasma-bigscreen installed, the container had no such units
+          # at all: its user manager knew about dbus, pipewire and wireplumber
+          # and nothing else, so the session could never have started no
+          # matter how many binaries were put on PATH. kwin was not even
+          # present.
+          #
+          # This is precisely what the container exists to make safe. On the
+          # host, registering these units would collide with the identically
+          # named 6.6.6 ones that services.desktopManager.plasma6 already
+          # installs — the collision this whole design was built to avoid.
+          # In here there is no 6.6.6, so the 6.7.4 units are simply the only
+          # ones, and Bigscreen gets the session manager it was written
+          # against.
+          #
+          # No display manager comes with it: SDDM is enabled separately, and
+          # there is no VT in a container for one to run on anyway. The
+          # session is started by plasma-bigscreen.service below.
+          services.desktopManager.plasma6.enable = true;
+
           # Numeric ids pinned to the host's — nspawn does not remap them, so
           # a mismatch means the bind-mounted home belongs to a stranger and
           # the device nodes cannot be opened. Values cross-checked against
@@ -539,6 +564,28 @@ in
             path = [
               pkgs.kdePackages.plasma-bigscreen
               pkgs.kdePackages.plasma-workspace
+
+              # The container's own system profile.
+              #
+              # Naming individual packages here does not converge: the session
+              # is a chain of small shell scripts that each resolve the next
+              # thing from PATH, so every fix reveals one more missing binary.
+              # First plasma-bigscreen-common-env, then (once that was found)
+              # plasma-bigscreen-envmanager, then dbus-run-session from inside
+              # plasma-dbus-run-session-if-needed.
+              #
+              # All of those are already in environment.systemPackages —
+              # dbus included, via services.dbus.enable. They were simply not
+              # on a systemd unit's PATH, which NixOS builds from `path` alone
+              # and which otherwise contains only coreutils, findutils,
+              # gnugrep, gnused and systemd.
+              #
+              # Pointing at the profile also makes the unit agree with itself:
+              # plasma-bigscreen-common-env sources /etc/profile a few lines
+              # in, and NixOS's /etc/profile assigns PATH to exactly this. So
+              # the session had two different PATHs before and after that
+              # line; now it has one.
+              "/run/current-system/sw"
             ];
 
             environment = {
