@@ -1,5 +1,16 @@
 # Plasma Bigscreen on the TV
 
+!!! failure "Bigscreen does not work in the container. It is parked."
+
+    The `bigscreen` mode builds, deploys and starts — and shows nothing. It
+    cannot be made to work inside a container, for a structural reason
+    described under [Why it cannot work](#why-it-cannot-work). Leave
+    `clanarchy.roles.htpc.bigscreen.enable` off; the TV runs the gamescope
+    Steam session with Jellyfin Media Player.
+
+    The container and the session-switching machinery are kept, because both
+    are correct and either escape route reuses most of them.
+
 `ernst` carries the `htpc` role, which offers three living-room modes,
 switchable at runtime:
 
@@ -7,7 +18,7 @@ switchable at runtime:
 |------|------------|---------------|
 | `gamescope` | Steam Big Picture | Host, stock nixpkgs 26.05 |
 | `plasma` | KDE Plasma 6.6.6 desktop | Host, stock nixpkgs 26.05 |
-| `bigscreen` | Plasma Bigscreen 6.7.4 | **nspawn container**, nixpkgs-unstable |
+| `bigscreen` | Plasma Bigscreen 6.7.4 | nspawn container — **does not work, see below** |
 
 Switch between them from the couch account:
 
@@ -17,6 +28,63 @@ clanarchy-session-select bigscreen    # or: gamescope | plasma
 
 The choice is written to `/var/lib/clanarchy-session/current`, persists across
 reboots, and is re-applied at boot by `clanarchy-htpc-boot.service`.
+
+## Why it cannot work
+
+Two requirements are mutually exclusive, and a container can satisfy only one:
+
+**Plasma 6.7 needs logind.** `startplasma-wayland` drives the entire session
+through systemd *user* units — it starts `plasma-workspace-wayland.target` by
+name rather than exec'ing kwin and plasmashell. There is no opt-out; 6.7.4 has
+no `PLASMA_USE_SYSTEMD` / `KDE_NO_SYSTEMD_BOOT` knob (checked in the binary and
+the libraries). `systemctl --user` needs `user@<uid>.service`, which needs
+`user-runtime-dir@<uid>.service`, whose `systemd-user-runtime-dir` asks logind
+for the user record and exits 1 without it.
+
+**KWin needs logind gone.** It has no libseat backend and no seatless DRM path.
+Given logind but no active *graphical* session it logs:
+
+```
+kwin_core: Could not determine the active graphical session
+```
+
+and creates zero outputs, which surfaces in every client as:
+
+```
+qt.qpa.wayland: There are no outputs - creating placeholder screen
+```
+
+A session that runs, holds no display, and draws nothing.
+
+**A container cannot supply the seat.** Seat assignment is done by udev on the
+host, and there is no VT inside a container for a graphical session to occupy.
+So Plasma needs logind present and KWin needs it effectively absent.
+
+### What was tried
+
+Recorded so it isn't repeated:
+
+| Attempt | Result |
+|---|---|
+| Bare nspawn proof-of-concept | KWin **did** create a `DrmOutput` on the TV — with no systemd, so neither logind nor Plasma's user units. This is what made the approach look feasible; it proved the compositor could take the card, not that the session could run. |
+| Unit `PATH` + system profile | Fixed `plasma-bigscreen-common-env`, `envmanager`, `dbus-run-session` resolution. Necessary, not sufficient. |
+| `services.desktopManager.plasma6.enable` in the container | Necessary — without it there were no Plasma user units and no kwin at all. Brought logind with it. |
+| `KWIN_DRM_DEVICES` | Reaches kwin (verified via `/proc/<pid>/environ`). Not the problem. |
+| Real `/dev/dri/card1` instead of the udev alias | No change. |
+| Granting the denied iGPU render node | Cleared that error; output count stayed zero. A red herring. |
+| `PAMName=login` | Creates a logind session, but a `pts` one PAM itself labels *"not a graphical session"*. KWin unmoved. |
+| Suppressing logind | Breaks `user-runtime-dir`, so the session unit never starts. Strictly worse. Reverted. |
+
+### Routes that would work
+
+Neither taken yet:
+
+- **Plasma 6.7.4 on the host**, replacing 6.6.6. A real seat and VT exist there,
+  satisfying both requirements at once. Costs: ernst's desktop tracks floating
+  `nixpkgs-unstable` and diverges from the rest of the fleet.
+- **A VM with the dGPU passed through.** Real seat, real VT, no fighting. Costs:
+  VFIO binds the card exclusively, so ROCm/Ollama loses it whenever the TV
+  session runs — the mutually-exclusive outcome `clan.nix` explicitly rejects.
 
 ## Why Bigscreen is in a container
 
