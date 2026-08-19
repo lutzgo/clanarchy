@@ -21,8 +21,24 @@
 
     interface.options.models = lib.mkOption {
       type        = lib.types.listOf lib.types.str;
-      default     = [ "qwen3-coder:8b" ];
-      description = "Models to pre-pull when the service starts.";
+      default     = [ "qwen2.5-coder:7b" ];
+      description = ''
+        Models to pre-pull when the service starts.
+
+        Tags must exist in ollama's library — a wrong one is not a warning,
+        it fails the pull and leaves ollama-model-loader.service in a restart
+        loop. This defaulted to `qwen3-coder:8b` for a long time, which has
+        never existed (qwen3-coder publishes only 30b and 480b), so the
+        loader had been failing on every machine since it was introduced.
+
+        Check before changing:
+          curl -s -o /dev/null -w '%{http_code}\n' \
+            https://registry.ollama.ai/v2/library/<name>/manifests/<tag>
+
+        The default is deliberately a small model: it is what an unremarkable
+        laptop can run without a dedicated GPU. Machines with VRAM to spare
+        should say so explicitly in their own settings.
+      '';
     };
 
     interface.options.hsaOverrideGfxVersion = lib.mkOption {
@@ -203,8 +219,15 @@
       };
       model = lib.mkOption {
         type        = lib.types.str;
-        default     = "ollama/qwen3-coder:8b";
-        description = "Default model (format: ollama/<name> for local Ollama models).";
+        default     = "ollama/qwen2.5-coder:7b";
+        description = ''
+          Default model (format: `ollama/<name>` for local Ollama models).
+
+          Must name a model the target machine's ollama role actually pulls,
+          or OpenCode asks for something that was never fetched. Kept in step
+          with the `models` default above; opencode currently runs only on
+          miralda, whose ollama role pulls this same tag.
+        '';
       };
     };
 

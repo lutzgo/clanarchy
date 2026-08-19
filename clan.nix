@@ -213,7 +213,11 @@
         # miralda: Phoenix iGPU (gfx1103) is missing from stock ROCm kernel
         # libraries, hence the override.
         roles.ollama.machines.miralda.settings = {
-          models = [ "qwen3-coder:8b" ];
+          # qwen3-coder publishes only 30b/480b — there is no 8b, which is why
+          # ollama-model-loader had been failing since this was configured.
+          # 30b would run here, but only out of shared system RAM on the 780M
+          # iGPU; the smaller dedicated coder model keeps it interactive.
+          models = [ "qwen2.5-coder:7b" ];
           hsaOverrideGfxVersion = "11.0.3";
         };
         # ernst: RX 7900 XTX (gfx1100) is natively supported by ROCm, so no
@@ -223,7 +227,8 @@
         # making Ollama and gaming mutually exclusive.  Sharing means they
         # merely compete for VRAM, which is a far better failure mode.
         roles.ollama.machines.ernst.settings = {
-          models = [ "qwen3-coder:8b" ];
+          # 24 GiB of VRAM on the 7900 XTX fits the 30B MoE comfortably.
+          models = [ "qwen3-coder:30b" ];
         };
         roles.opencode.machines.miralda.settings.user  = "lgo";
       };
