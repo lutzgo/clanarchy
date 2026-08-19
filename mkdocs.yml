@@ -43,6 +43,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Roadmap: roadmap.md
   - Guides:
     - First-time install: guides/first-time-install.md
     - Deploying and testing: guides/deploy.md
@@ -66,6 +67,7 @@ nav:
     - ernst enabling impermanence: runbooks/ernst-enable-impermanence.md
   - Incidents:
     - ernst slot-12 drive drop (2026-08-11): incidents/ernst-slot12-drop-2026-08-11.md
+    - ernst Jellyfin VAAPI DRM display failure (2026-08-18): incidents/ernst-jellyfin-vaapi-drm-display-failure-2026-08-18.md
   - Reference:
     - Overview: reference/index.md
     - Hardware: reference/hardware.md
