@@ -1,12 +1,12 @@
 # Plasma Bigscreen on the TV
 
-!!! failure "Bigscreen does not work in the container. It is parked."
+!!! failure "Bigscreen does not work in the container. It is parked and disabled."
 
     The `bigscreen` mode builds, deploys and starts — and shows nothing. It
     cannot be made to work inside a container, for a structural reason
-    described under [Why it cannot work](#why-it-cannot-work). Leave
-    `clanarchy.roles.htpc.bigscreen.enable` off; the TV runs the gamescope
-    Steam session with Jellyfin Media Player.
+    described under [Why it cannot work](#why-it-cannot-work).
+    `clanarchy.roles.htpc.bigscreen.enable` is **off on ernst** and should stay
+    off; the TV runs the gamescope Steam session with Jellyfin Media Player.
 
     The container and the session-switching machinery are kept, because both
     are correct and either escape route reuses most of them.
@@ -16,18 +16,58 @@ switchable at runtime:
 
 | Mode | What it is | Where it runs |
 |------|------------|---------------|
-| `gamescope` | Steam Big Picture | Host, stock nixpkgs 26.05 |
+| `gamescope` | Steam Big Picture | Host, stock nixpkgs 26.05 — **what ernst runs** |
 | `plasma` | KDE Plasma 6.6.6 desktop | Host, stock nixpkgs 26.05 |
-| `bigscreen` | Plasma Bigscreen 6.7.4 | nspawn container — **does not work, see below** |
+| `bigscreen` | Plasma Bigscreen 6.7.4 | nspawn container — **does not work, not built** |
 
 Switch between them from the couch account:
 
 ```bash
-clanarchy-session-select bigscreen    # or: gamescope | plasma
+clanarchy-session-select gamescope    # or: plasma
 ```
 
 The choice is written to `/var/lib/clanarchy-session/current`, persists across
 reboots, and is re-applied at boot by `clanarchy-htpc-boot.service`.
+
+## The TV must be awake for the session to start
+
+A TV that is switched off, or showing another input, drops HPD — its connector
+reads `disconnected`, exactly like an unplugged cable. gamescope answers a card
+with no connected output by failing backend creation and then segfaulting:
+
+```
+drm: opening DRM node '/dev/dri/card1'
+drm:   HDMI-A-1 (disconnected)
+drm: cannot find any connected connector!
+Error drm: Failed to find a primary plane
+Failed to create backend.
+steam-gamescope: … Segmentation fault (core dumped)
+```
+
+So the session waits for a connected output on the GPU named by
+`clanarchy.roles.htpc.display.gpuPciAddress` before starting a compositor, and
+SDDM is configured with `Relogin=true` so a session that does end is retried
+instead of leaving the greeter on screen. Between them: turn the TV on at any
+point and Big Picture comes up; nothing needs a keyboard.
+
+Check what the machine can see:
+
+```bash
+for c in /sys/class/drm/card*-*/; do
+  printf '%s %s\n' "$(basename "$c")" "$(cat "$c/status")"
+done
+```
+
+On ernst the TV is `card1-HDMI-A-1` (dGPU, `0000:03:00.0`) and the Comet KVM is
+`card0-HDMI-A-2` (iGPU). If the TV shows `disconnected` while it is switched on,
+that is a cable or input-selection problem, not a NixOS one — and the session
+log says so:
+
+```
+clanarchy-session: no connected output on … — waiting for the TV
+```
+
+(in `/home/go/.local/share/sddm/wayland-session.log`).
 
 ## Why it cannot work
 

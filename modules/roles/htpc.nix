@@ -77,6 +77,64 @@ let
   ]
   ++ lib.optional cfg.bigscreen.enable bigscreenUnit;
 
+  # Wait for the TV before handing the card to a compositor.
+  #
+  # gamescope opens the DRM node of the GPU it selects, and if that card has no
+  # connected connector it fails backend creation and then segfaults on the way
+  # out.  Verified on ernst 2026-08-19, three times in a row:
+  #
+  #   drm: opening DRM node '/dev/dri/card1'
+  #   drm:   HDMI-A-1 (disconnected)     [DP-1..3 likewise]
+  #   drm: cannot find any connected connector!
+  #   Error drm: Failed to find a primary plane
+  #   Failed to create backend.
+  #   steam-gamescope: … Segmentation fault (core dumped)
+  #
+  # A TV that is switched off — or showing another input — drops HPD, so the
+  # connector really does read `disconnected`.  That is the ordinary resting
+  # state of a living-room machine, not an edge case, and it must not be what
+  # decides whether the machine has a session.  Without this the session exits
+  # in under a second, SDDM falls back to the greeter, and the TV shows a login
+  # form forever after — the couch user never gets Big Picture at all.
+  #
+  # Waiting holds the VT instead, and Big Picture starts the moment the TV
+  # wakes.  It applies to every arm: Plasma's kwin has no more to do with a
+  # card that has no output than gamescope does.
+  #
+  # The card is resolved from the PCI address at RUNTIME and never from a cardN
+  # name: numbering on this board is inverted (the dGPU is card1) and can flip
+  # on a kernel bump — the same reason machines/ernst/containers/jellyfin.nix
+  # pins the iGPU by PCI path.
+  #
+  # Fail-open when the address resolves to no DRM card: that is a configuration
+  # error rather than a dark TV, and blocking on it would turn a typo into a
+  # machine with neither a session nor a greeter.  Start, fail visibly, and let
+  # the relogin loop below make the failure repeat where it can be read.
+  waitForDisplay = lib.optionalString (cfg.display.gpuPciAddress != null) ''
+    drmDir=/sys/bus/pci/devices/${cfg.display.gpuPciAddress}/drm
+    set -- "$drmDir"/card[0-9]*
+    if [ ! -d "$1" ]; then
+      printf 'clanarchy-session: no DRM card at PCI %s — starting anyway\n' \
+        '${cfg.display.gpuPciAddress}' >&2
+    else
+      card=$1
+      waited=0
+      until [ -n "''${connected:-}" ]; do
+        for statusFile in "$card"/*/status; do
+          [ -e "$statusFile" ] || continue
+          [ "$(< "$statusFile")" = connected ] && connected=yes
+        done
+        [ -n "''${connected:-}" ] && break
+        if [ $(( waited % 60 )) -eq 0 ]; then
+          printf 'clanarchy-session: no connected output on %s — waiting for the TV\n' \
+            "$card" >&2
+        fi
+        ${pkgs.coreutils}/bin/sleep 2
+        waited=$(( waited + 2 ))
+      done
+    fi
+  '';
+
   # Runtime session dispatcher.  Runs as the logged-in user; only reads.
   #
   # `steam-gamescope` is referenced through /run/current-system/sw/bin rather
@@ -89,15 +147,24 @@ let
   sessionRun = pkgs.writeShellScript "clanarchy-session-run" ''
     set -eu
     mode="$(cat ${stateFile} 2>/dev/null || echo ${cfg.defaultSession})"
+    ${waitForDisplay}
     case "$mode" in
-      # "bigscreen" deliberately lands here too.  If the display manager is
-      # running at all then bigscreen is not the active mode — the boot
-      # dispatcher stops the DM before starting the container — so reaching
-      # this point with mode=bigscreen means something got out of step.
-      # Falling back to Plasma leaves a usable desktop on the TV rather than
-      # a black screen.
-      plasma|bigscreen) exec ${pkgs.kdePackages.plasma-workspace}/bin/startplasma-wayland ;;
-      *)                exec /run/current-system/sw/bin/steam-gamescope ;;
+      ${
+        # "bigscreen" lands on Plasma only while that arm is actually built.
+        # If the display manager is running at all then bigscreen is not the
+        # active mode — the boot dispatcher stops the DM before starting the
+        # container — so reaching this point with mode=bigscreen means
+        # something got out of step, and Plasma is a usable desktop rather
+        # than a black screen.
+        #
+        # With the arm not built, a recorded "bigscreen" is stale state from
+        # when it was (the value survives in /persist), and honouring it would
+        # land the couch user in a mouse-and-keyboard desktop on a machine
+        # configured to boot into Big Picture.  Let it fall through to the
+        # default instead.
+        if cfg.bigscreen.enable then "plasma|bigscreen)" else "plasma)"
+      } exec ${pkgs.kdePackages.plasma-workspace}/bin/startplasma-wayland ;;
+      *)      exec /run/current-system/sw/bin/steam-gamescope ;;
     esac
   '';
 
@@ -236,6 +303,37 @@ in
         that happens to game, or `bigscreen` for a TV media appliance.
 
         `bigscreen` requires `bigscreen.enable`.
+      '';
+    };
+
+    display.gpuPciAddress = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "0000:03:00.0";
+      description = ''
+        PCI address of the GPU the TV hangs off.
+
+        When set, the session waits for a connected connector on that card
+        before starting a compositor, instead of starting one against a card
+        with no output — which gamescope answers with a failed backend and a
+        segfault, and which then drops the machine to a login screen it will
+        never leave on its own.
+
+        Find it with `lspci -D | grep VGA`, and confirm which card actually
+        drives the TV with:
+
+        ```
+        for c in /sys/class/drm/card*-*/; do
+          printf '%s %s\n' "$(basename "$c")" "$(cat "$c/status")"
+        done
+        ```
+
+        Deliberately a PCI address and not a `cardN` name: numbering is not
+        stable across kernel bumps, and on a two-GPU box a flip would point
+        this at the wrong head.
+
+        Leave null on a machine with a single GPU and a permanently attached
+        display; the wait is then skipped entirely.
       '';
     };
 
@@ -436,6 +534,22 @@ in
       enable = true;
       user = cfg.user;
     };
+
+    # Autologin again when a session ends, rather than once per display-manager
+    # start.
+    #
+    # SDDM's default (Relogin=false) is right for a desktop: log out, get the
+    # greeter. On an appliance it is a one-way door — any session exit, whether
+    # a crash or Steam's own "Exit" item, parks the TV on a login form that
+    # nobody in the living room has a keyboard for, and it stays there until
+    # someone SSHes in and restarts the display manager. That is exactly what
+    # ernst was found doing on 2026-08-19: autologin had worked, the session
+    # died against a dark TV, and the greeter sat on tty1 for hours.
+    #
+    # Paired with waitForDisplay above, which is what keeps this from becoming
+    # a hot crash-relogin loop while the TV is off — the session blocks instead
+    # of exiting, so there is nothing to relogin.
+    services.displayManager.sddm.autoLogin.relogin = lib.mkIf cfg.autologin.enable true;
 
     # The media client is installed system-wide (not just into the session)
     # so it shows up in Plasma's launcher too, and so Steam's "Add a

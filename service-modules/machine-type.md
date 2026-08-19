@@ -19,8 +19,9 @@ role module rather than importing all modules everywhere.
 |---------|-------------|
 | `user` | The couch user. Owns the session state dir; may restart the display manager. |
 | `defaultSession` | `gamescope` \| `plasma` \| `bigscreen` — where to land before any choice is made. |
-| `autologin.enable` | Passwordless autologin for the couch user. See `modules/roles/htpc.nix` for the tradeoff. |
-| `bigscreen.enable` | Build the Plasma Bigscreen container. Off by default — it pulls a second, complete Plasma generation from nixpkgs-unstable. |
+| `autologin.enable` | Passwordless autologin for the couch user. Also turns on SDDM `Relogin`, so a session that ends is retried instead of leaving a greeter on the TV. |
+| `display.gpuPciAddress` | PCI address of the GPU the TV hangs off. Set it: the session then waits for a connected output there before starting a compositor, instead of segfaulting against a TV that is switched off. |
+| `bigscreen.enable` | Build the Plasma Bigscreen container. Off — it does not work in a container, and it pulls a second, complete Plasma generation from nixpkgs-unstable. |
 | `bigscreen.gpu.pciAddress` | PCI address of the GPU driving the TV, e.g. `"0000:03:00.0"`. |
 | `bigscreen.uid` / `bigscreen.gid` | Numeric ids of the couch user. Must match the host — nspawn does not remap them. |
 

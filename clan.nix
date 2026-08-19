@@ -88,28 +88,41 @@
           # something privileged, revisit this first.
           autologin.enable = true;
 
-          # Plasma Bigscreen, in a container with its own nixpkgs channel.
-          #
           # The TV hangs off the dGPU (Navi 31 / RX 7900 XTX at 0000:03:00.0,
-          # card1-HDMI-A-1 — verified connected).  The iGPU at 0000:7b:00.0
-          # stays reserved for the GL.iNet Comet KVM on card0-HDMI-A-2, which
-          # is why the GPU is pinned by PCI address rather than left to kwin's
-          # own choice: card numbering is *inverted* here (the dGPU is card1)
-          # and can flip on a kernel bump, which would put the session on the
-          # KVM's head and take the compute card away from ROCm.
+          # card1-HDMI-A-1).  The iGPU at 0000:7b:00.0 stays reserved for the
+          # GL.iNet Comet KVM on card0-HDMI-A-2, which is why the GPU is pinned
+          # by PCI address rather than left to the compositor's own choice:
+          # card numbering is *inverted* here (the dGPU is card1) and can flip
+          # on a kernel bump, which would put the session on the KVM's head and
+          # take the compute card away from ROCm.
           #
           # The same dGPU is Ollama's ROCm card (see roles.ollama below).  A
-          # kwin session and ROCm workloads share a GPU without trouble —
-          # compute goes through the render node, KMS through the card node —
-          # so this is a note for future readers rather than a conflict.
-          bigscreen = {
-            enable = true;
-            gpu.pciAddress = "0000:03:00.0";
-            # `go` on ernst: uid 1001, gid 100 (users).  nspawn does not remap
-            # ids, so these must track machines/ernst/htpc.nix.
-            uid = 1001;
-            gid = 100;
-          };
+          # session and ROCm workloads share a GPU without trouble — compute
+          # goes through the render node, KMS through the card node — so this
+          # is a note for future readers rather than a conflict.
+          #
+          # Naming it here also makes the session wait for the TV to be awake
+          # before starting a compositor on that card; a TV that is off reads
+          # as `disconnected`, and gamescope answers a card with no connected
+          # output by segfaulting.  See modules/roles/htpc.nix.
+          display.gpuPciAddress = "0000:03:00.0";
+
+          # Plasma Bigscreen: OFF, and staying off.
+          #
+          # It cannot work in a container — Plasma 6.7 drives its session
+          # through systemd user units and so needs logind, KWin needs logind
+          # absent or an active *graphical* seat, and a container has no seat
+          # to give.  The full account, including the seven things ruled out
+          # along the way, is in modules/desktop/bigscreen.nix and
+          # docs/guides/htpc-bigscreen.md; #64 reverted the last attempt and
+          # parked it.
+          #
+          # It had been left enabled here after that revert, so ernst kept
+          # building a second complete Plasma generation from nixpkgs-unstable
+          # for a mode that shows a black screen — and Steam's own "Switch to
+          # Desktop" button was still being mapped onto it.  The TV runs the
+          # gamescope Steam session with Jellyfin Media Player, which works.
+          bigscreen.enable = false;
         };
       };
 
