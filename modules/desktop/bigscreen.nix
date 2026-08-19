@@ -450,6 +450,33 @@ in
 
           services.dbus.enable = true;
 
+          # No logind in here. This is what lets KWin drive the TV at all.
+          #
+          # KWin has no libseat backend and no seatless DRM path. When logind
+          # is present it asks logind for the device; when it is absent it
+          # falls back to opening the node directly. In a container the first
+          # can never succeed — logind reports a seat0, but seat assignment is
+          # done by udev on the host, so nothing is attached to it and there
+          # is no VT for a graphical session to occupy. KWin then gives up
+          # with:
+          #
+          #   kwin_core: Could not determine the active graphical session
+          #
+          # and creates zero outputs, which reaches clients as
+          #   qt.qpa.wayland: There are no outputs - creating placeholder screen
+          # — a session that runs, holds no display, and shows nothing.
+          #
+          # The proof-of-concept for this module ran in a bare nspawn with no
+          # systemd at all and KWin created a DrmOutput on the TV. Enabling
+          # plasma6 brought logind along with it and re-broke that. Suppressing
+          # it restores the condition the fallback needs.
+          #
+          # Ruled out first, on the machine: PAMName=login does create a
+          # logind session for the couch user, but a `pts` one that PAM itself
+          # labels "not a graphical session" — it does not satisfy KWin.
+          systemd.suppressedSystemUnits = [ "systemd-logind.service" ];
+
+
           fonts.packages = with pkgs; [
             noto-fonts
             noto-fonts-color-emoji
@@ -546,6 +573,12 @@ in
               "dbus.service"
               "user@${toString cfg.uid}.service"
             ];
+            # `linger` is a logind feature, and logind is suppressed above, so
+            # nothing else starts the couch user's systemd instance — while
+            # startplasma-wayland drives the entire session through
+            # `systemctl --user`. Requires= pulls it up explicitly; the
+            # After= above already orders against it.
+            requires = [ "user@${toString cfg.uid}.service" ];
             # plasma-bigscreen-wayland is an unwrapped /bin/sh script that
             # resolves two things from PATH at runtime — the packaging quirk
             # that made this container necessary in the first place:
