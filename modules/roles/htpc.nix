@@ -311,6 +311,26 @@ in
       };
     };
 
+    controller.enable =
+      lib.mkEnableOption ''
+        wireless Xbox controller support — Bluetooth plus the xpadneo driver.
+
+        Wired controllers already work without this: xpad is in-tree and
+        `hardware.steam-hardware.enable` (which programs.steam brings in)
+        ships the udev rules. This is for Xbox One S / Series pads over
+        Bluetooth, which the in-tree driver handles poorly — xpadneo is what
+        gives correct button mapping, rumble and battery reporting.
+
+        Worth a deliberate look on a machine that is also a NAS: it puts a
+        Bluetooth stack on the box, which is attack surface that was not
+        there before. The radio is host hardware and the driver is a kernel
+        module, so neither can live in a container — only the *use* of the
+        controller does, via /dev/input
+      ''
+      // {
+        default = true;
+      };
+
     autologin.enable = lib.mkEnableOption ''
       passwordless autologin for the couch user.
 
@@ -350,6 +370,23 @@ in
         ;
       gpu.pciAddress = cfg.bigscreen.gpu.pciAddress;
     };
+
+    # Wireless controller support.
+    #
+    # xpadneo is a kernel module and the radio is host hardware, so both are
+    # necessarily host-side even though the session that consumes the pad may
+    # be containerised: a container shares the host kernel and cannot load a
+    # driver of its own. What crosses the boundary is the resulting evdev
+    # node — /dev/input is already bound into the Bigscreen container, so a
+    # controller paired here shows up there with no further plumbing.
+    hardware.bluetooth = lib.mkIf cfg.controller.enable {
+      enable = true;
+      # A TV appliance should not need someone to run `bluetoothctl power on`
+      # after every reboot before the pad works.
+      powerOnBoot = true;
+    };
+
+    hardware.xpadneo.enable = lib.mkIf cfg.controller.enable true;
 
     # Steam + Proton-GE.  `persistenceDirectories` keeps its default
     # ([ ".steam" ]): HTPC machines are impermanent like the rest of the
@@ -424,7 +461,14 @@ in
 
     # Survive impermanence rollback, so the machine comes back up in the
     # session it was left in.
-    environment.persistence."/persist".directories = [ stateDir ];
+    environment.persistence."/persist".directories = [
+      stateDir
+    ]
+    # Controller pairings. This machine rolls its root back on every boot, so
+    # without persisting them the pad would have to be re-paired after each
+    # reboot — exactly the papercut impermanence is meant to make you notice
+    # once and then fix for good.
+    ++ lib.optional cfg.controller.enable "/var/lib/bluetooth";
 
     # Boot dispatcher.
     #
