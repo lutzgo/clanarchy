@@ -1,6 +1,59 @@
 # Plasma Bigscreen — KDE's 10-foot TV shell, running inside a declarative
 # systemd-nspawn container that carries its own nixpkgs channel.
 #
+# ── STATUS: does not work. Parked. ────────────────────────────────────────
+# Everything below builds, deploys and starts. The session runs and shows
+# nothing, and cannot be made to show anything in a container, because two
+# requirements are mutually exclusive:
+#
+#   * Plasma 6.7 drives the whole session through systemd *user* units —
+#     startplasma-wayland starts plasma-workspace-wayland.target by name.
+#     There is no opt-out: 6.7.4 has no PLASMA_USE_SYSTEMD / NO_SYSTEMD_BOOT
+#     knob (checked in the binary and the libs). systemctl --user needs
+#     user@<uid>.service, which needs user-runtime-dir@<uid>.service, whose
+#     systemd-user-runtime-dir asks *logind* for the user record and exits 1
+#     without it.
+#
+#   * KWin needs logind absent, or else an active *graphical* logind session
+#     on a seat that owns the DRM device. It has no libseat backend and no
+#     seatless DRM path. With logind present but no such session it logs
+#     "Could not determine the active graphical session" and creates zero
+#     outputs, which reaches clients as "There are no outputs - creating
+#     placeholder screen": a session that runs, holds no display, draws
+#     nothing.
+#
+# A container cannot supply the seat. Seat assignment is done by udev on the
+# host, and there is no VT inside a container to host a graphical session.
+# So Plasma needs logind present and KWin needs it effectively absent.
+#
+# What was actually verified on ernst, in order, so nobody repeats it:
+#   * DRM master crosses the nspawn boundary; KWin created a DrmOutput on the
+#     TV in a *bare* nspawn (no systemd, so no logind and no Plasma units).
+#     That is what made this look feasible — it demonstrated the compositor
+#     could take the card, not that the session could run.
+#   * KWIN_DRM_DEVICES does reach kwin (read from /proc/<pid>/environ).
+#   * Using the real /dev/dri/card1 instead of the udev alias changes
+#     nothing.
+#   * The denied iGPU render node is a red herring; granting it cleared that
+#     error and left the output count at zero.
+#   * PAMName=login does create a logind session, but a pts one that PAM
+#     itself labels "not a graphical session". KWin is no happier.
+#   * Suppressing logind breaks user-runtime-dir, so the session unit never
+#     starts at all — strictly worse. Reverted.
+#
+# The routes that would work, neither taken:
+#   * Plasma 6.7.4 on the host, replacing 6.6.6 fleet-wide. A real seat and
+#     VT exist there, satisfying both requirements at once. Costs: ernst's
+#     desktop tracks floating unstable and diverges from the fleet.
+#   * A VM with the dGPU passed through. Real seat, real VT. Costs: VFIO
+#     binds the card exclusively, so ROCm/Ollama loses it whenever the TV
+#     session runs — the mutually-exclusive outcome clan.nix rejects.
+#
+# Until one of those is chosen, the TV runs the gamescope Steam session and
+# Jellyfin Media Player, and clanarchy.roles.htpc.bigscreen.enable should
+# stay off. The container and the switching machinery are kept because they
+# are correct and because either route above reuses most of this.
+#
 # ── Why a container, and not just a session ───────────────────────────────
 # Plasma Bigscreen is not in nixpkgs 26.05 (the top-level attribute is a
 # throwing alias and `kdePackages.plasma-bigscreen` does not exist).  It
@@ -450,33 +503,6 @@ in
 
           services.dbus.enable = true;
 
-          # No logind in here. This is what lets KWin drive the TV at all.
-          #
-          # KWin has no libseat backend and no seatless DRM path. When logind
-          # is present it asks logind for the device; when it is absent it
-          # falls back to opening the node directly. In a container the first
-          # can never succeed — logind reports a seat0, but seat assignment is
-          # done by udev on the host, so nothing is attached to it and there
-          # is no VT for a graphical session to occupy. KWin then gives up
-          # with:
-          #
-          #   kwin_core: Could not determine the active graphical session
-          #
-          # and creates zero outputs, which reaches clients as
-          #   qt.qpa.wayland: There are no outputs - creating placeholder screen
-          # — a session that runs, holds no display, and shows nothing.
-          #
-          # The proof-of-concept for this module ran in a bare nspawn with no
-          # systemd at all and KWin created a DrmOutput on the TV. Enabling
-          # plasma6 brought logind along with it and re-broke that. Suppressing
-          # it restores the condition the fallback needs.
-          #
-          # Ruled out first, on the machine: PAMName=login does create a
-          # logind session for the couch user, but a `pts` one that PAM itself
-          # labels "not a graphical session" — it does not satisfy KWin.
-          systemd.suppressedSystemUnits = [ "systemd-logind.service" ];
-
-
           fonts.packages = with pkgs; [
             noto-fonts
             noto-fonts-color-emoji
@@ -573,12 +599,6 @@ in
               "dbus.service"
               "user@${toString cfg.uid}.service"
             ];
-            # `linger` is a logind feature, and logind is suppressed above, so
-            # nothing else starts the couch user's systemd instance — while
-            # startplasma-wayland drives the entire session through
-            # `systemctl --user`. Requires= pulls it up explicitly; the
-            # After= above already orders against it.
-            requires = [ "user@${toString cfg.uid}.service" ];
             # plasma-bigscreen-wayland is an unwrapped /bin/sh script that
             # resolves two things from PATH at runtime — the packaging quirk
             # that made this container necessary in the first place:
