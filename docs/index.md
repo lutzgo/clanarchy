@@ -26,6 +26,7 @@
 
 ## Navigation
 
+- **Roadmap** — what is built, what is next, and the session prompt for each open milestone
 - **Guides** — step-by-step explanations for cross-cutting concerns (deploy helpers, first-time install, YubiKey setup, Noctalia profiles, …)
 - **Reference** — auto-generated tables of all `clanarchy.*` NixOS options defined in `modules/`
 
