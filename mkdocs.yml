@@ -66,6 +66,7 @@ nav:
     - ZFS auto-snapshot opt-in: runbooks/zfs-auto-snapshot-optin.md
     - ernst zroot drive replacement: runbooks/ernst-zroot-drive-replacement.md
     - ernst enabling impermanence: runbooks/ernst-enable-impermanence.md
+    - ernst VLAN bridge cutover: runbooks/ernst-vlan-bridge-cutover.md
   - Incidents:
     - ernst slot-12 drive drop (2026-08-11): incidents/ernst-slot12-drop-2026-08-11.md
     - ernst Jellyfin VAAPI DRM display failure (2026-08-18): incidents/ernst-jellyfin-vaapi-drm-display-failure-2026-08-18.md

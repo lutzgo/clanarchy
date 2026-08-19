@@ -44,8 +44,8 @@ Verified against the repo on 2026-08-19 (`main` @ `8bdd162`).
 | CI eval check on PRs | **done** | — | `.github/workflows/check.yml` evaluates all four toplevel `drvPath`s |
 | ernst `@blank` snapshots | **open (operator)** | — | ernst has never been genuinely impermanent — root accumulates. `docs/runbooks/ernst-enable-impermanence.md` is written and unexecuted; step 4 is a one-way door. Not a Claude milestone |
 | M1 — Kvantum linkGeneration drift | **closed — did not reproduce** | — | Four consecutive activations in the retained journal all passed `linkGeneration`. The on-disk shape that looked like drift is Stylix's `recursive = true` working as designed. See [M1](#m1-kvantum-linkgeneration-drift-closed) |
-| M2 — ernst VLAN bridge | **open** | — | [M2](#m2-featernst-vlan-bridge) — high risk, gates M2b/M3/M5 |
-| M2b — Jellyfin on a tap | **open** | — | [M2b](#m2b-featernst-jellyfin-tap) |
+| M2 — ernst VLAN bridge | **done — deployed 2026-08-20** | — | `br0` VLAN-filtering bridge, `enp13s0` as tagged trunk; VLAN 80 (Services) created for M2b/M5. The cutover is lgo's — [runbook](runbooks/ernst-vlan-bridge-cutover.md). See [M2](#m2-ernst-vlan-bridge-built-cutover-pending) |
+| M2b — Jellyfin on its own veth | **open** | — | [M2b](#m2b-featernst-jellyfin-tap) |
 | M3 — VPN microvm + qBittorrent | **open** | — | [M3](#m3-featernst-vpn-microvm) |
 | M4 — arr stack | **open** | — | [M4](#m4-featernst-arr-stack) |
 | M5 — Traefik | **open** | — | [M5](#m5-featernst-traefik) |
@@ -129,10 +129,10 @@ Rows are retired only by the PR that actually removes the rule.
 | # | Shim | Where it lives | Why it exists | Removal trigger | Status |
 |---|---|---|---|---|---|
 | L1 | `Family` VLAN → `ernst:8096/tcp` | UDM-Pro ZBF (off-repo) | Jellyfin is reached directly; there is no reverse proxy yet | **M5** — repoint clients at `jellyfin.<domain>` and replace with the permanent `Family → traefik:443` rule | open |
-| L2 | `skynet-iot` VLAN → `ernst:8096/tcp` | UDM-Pro ZBF (off-repo) | TVs / streaming devices live on the IoT VLAN | **M5** — same as L1 | open |
-| L2a | IoT name resolution for L2 | UDM-Pro DHCP + ZBF (off-repo) | IoT clients could not resolve `jellyfin.skynet.lan` — needed either the IoT DHCP DNS pointed at Technitium (10.0.5.3) plus a `skynet-iot → 10.0.5.3:53` rule, or a per-device DNS override | **M5** — repoint at Traefik; keep whichever DNS path is still required and promote it out of this ledger if it becomes permanent | open — ⚠️ *record the exact form actually applied on the UDM-Pro when M5 starts; it was not captured here* |
-| L3 | `networking.firewall.allowedTCPPorts = [ 8096 ]` on the host | `machines/ernst/containers/jellyfin.nix` | Jellyfin shares the host network namespace (`privateNetwork = false`), so its port is a host port | **M2b** — the tap gives the container its own L2 identity; the host port opening goes away and the ACL moves to the UDM-Pro | open |
-| L4 | arr WebUI ports `9696` / `8989` / `7878`, mgmt-VLAN scoped | M4 (host firewall, v1) | arr v1 runs on host networking like Jellyfin did | **M5** for the routes, plus a tap migration mirroring M2b | not yet created |
+| L2 | `IoT (20)` → `10.0.50.10:8096/tcp` | UDM-Pro ZBF policy `Allow Jellyfin from IoT to Servers` | TVs / streaming devices live on the IoT VLAN | **M5** — same as L1 | open — **created 2026-08-19**; earlier revisions of this table asserted it already existed, and it did not (see note below) |
+| L2a | IoT name resolution for L2 | — | IoT clients could not resolve `jellyfin.skynet.lan` | **M5** — repoint at Traefik | **not needed** — the TV is pointed at `http://10.0.50.10:8096` by IP, so no IoT→DNS path is required. Revisit only if a name is used |
+| L3 | `networking.firewall.allowedTCPPorts = [ 8096 ]` on the host | `machines/ernst/containers/jellyfin.nix` | Jellyfin shares the host network namespace (`privateNetwork = false`), so its port is a host port | **M2b** — the veth on VLAN 80 gives the container its own L2 identity; the host port opening goes away and the ACL moves to the UDM-Pro | open |
+| L4 | arr WebUI ports `9696` / `8989` / `7878`, mgmt-VLAN scoped | M4 (host firewall, v1) | arr v1 runs on host networking like Jellyfin did | **M5** for the routes, plus a veth migration mirroring M2b | not yet created |
 | L5 | Traefik `ipAllowList` on the arr + Grafana routes (mgmt + wg-travel) | M5 (`traefik` container) | There is no identity provider yet | **M7** — replaced by the Authelia forward-auth middleware | not yet created |
 
 ---
@@ -191,123 +191,123 @@ surviving evidence either.
 
 ---
 
-## M2 — `feat/ernst-vlan-bridge`
+## M2 — ernst VLAN bridge (built; cutover pending)
 
-**Goal.** Replace ernst's plain static `enp13s0` with a VLAN-filtering bridge
-`br0`, so containers and guests can each hold their own L2 identity on the right
-VLAN and be firewalled by the UDM-Pro as distinct hosts. `enp13s0` becomes a
-tagged trunk; the host itself stays untagged (PVID) on the current server VLAN
-with its address, gateway and DNS moved to `br0` unchanged. Every milestone after
-this one depends on it.
+**Code landed. The cutover itself is operator work** — see
+[the cutover runbook](runbooks/ernst-vlan-bridge-cutover.md), which is the
+deliverable that matters here. `machines/ernst/networking.nix` now declares a
+VLAN-filtering bridge `br0` with `enp13s0` as a tagged trunk port; the host keeps
+`10.0.50.10/24` untagged on VLAN 50.
 
-**Depends on.** Nothing. **Risk.** **High — remote lockout is possible.** ernst is
-reachable only over the network being reconfigured.
+**VLAN map** (source of truth: UDM-Pro `skynet-udmpro`). The roadmap's earlier
+names map as: "Family" = LAN (1), "skynet-iot" = IoT (20).
 
-**Repo facts the prompt encodes:** `machines/ernst/networking.nix` currently
-declares `50-enp13s0` with `Address 10.0.50.10/24`, `Gateway 10.0.50.1`,
-`DNS 10.0.5.3`, `Domains "~. skynet.lan"`, `MulticastDNS = true`,
-`RequiredForOnline = "yes"`, and a `clanarchy.initrdSsh` block bound to the raw
-`enp13s0`. The `Domains = "~."` catch-all is load-bearing — it is what routes
-every lookup through Technitium.
+| ID | Name | Subnet | On ernst's trunk |
+|---|---|---|---|
+| 1 | LAN | 10.0.10.0/24 | tagged |
+| 5 | DNS-Container | 10.0.5.0/24 | tagged (Technitium 10.0.5.3) |
+| 20 | IoT | 10.0.20.0/24 | tagged |
+| 30 | HA | 10.0.30.0/24 | not carried |
+| 40 | Guest | 10.0.40.0/24 | not carried |
+| **50** | **Servers** | **10.0.50.0/24** | **untagged / PVID — ernst itself** |
+| 60 | Matter | 10.0.60.0/24 | not carried |
+| 70 | Travel (wg) | — | not carried |
+| **80** | **Services** | **10.0.80.0/24** | tagged — **new**, created for M2b/M5 |
 
-!!! warning "There is no boot-only deploy mode"
+VLAN 80 did not exist before this milestone. M2b and M5 both assumed a services
+zone; there wasn't one, so services would have shared the host's firewall zone
+and invariant #3 would have meant nothing. It is tagged on the trunk now, before
+anything uses it, so M2b/M3/M5 never need a switch-port change.
 
-    `clan machines update` runs `switch-to-configuration boot` **and** `switch`
-    (CLAUDE.md). A networkd reconfiguration therefore lands live, mid-session.
-    The runbook must be console-first: have the Comet KVM open on the iGPU head
-    *before* starting, not after.
+Services is **80, not 70** — 70 is already the travel/WireGuard VLAN, the one
+M5's interim `ipAllowList` and M7's wg-travel lockout warning refer to.
+30/40/60/70 are deliberately off the trunk: a VLAN that is not carried cannot be
+reached by a typo in a future container unit, and travel reaches services
+through Traefik rather than by riding ernst's trunk.
 
-````text
-Read CLAUDE.md fully before doing anything.
+### Three findings that contradicted this milestone's own prompt
 
-Work in the clanarchy repo on miralda. Branch: feat/ernst-vlan-bridge.
-THIS IS THE HIGH-RISK MILESTONE: ernst is reachable only over the network
-this change reconfigures. Remote lockout is a realistic outcome of a mistake.
+1. **`99-ethernet-default-dhcp` on ernst was a *matchless* wildcard.** Verified
+   `matchConfig` → `{}`. nixpkgs gates the real unit on `networking.useDHCP`,
+   which is `false` on ernst (NetworkManager, via the htpc role → `kde.nix`,
+   sets it false) — but clan-core writes `networkConfig.MulticastDNS` onto that
+   attribute unconditionally, so the unit survived with an empty `[Match]` that
+   matched **every** link. Harmless while every interface had its own `50-*`
+   unit; not harmless on a bridge host that grows taps and `vb-*` veths a
+   wildcard `.network` can claim and detach from `br0`. The upstream match is
+   restored in `machines/ernst/networking.nix`.
+2. **ernst runs NetworkManager as well as networkd** —
+   `networking.networkmanager.enable` → `true`, from `modules/roles/htpc.nix`
+   importing `modules/desktop/kde.nix`. NM auto-creating a DHCP profile on `br0`
+   mid-cutover is a lockout vector, so the hands-off is now explicit rather than
+   left to udev's `ID_NET_MANAGED_BY` tagging. Container veths are *not* listed:
+   nixpkgs already ships a `v[eb]-*` → `NM_UNMANAGED` udev rule when NM is
+   enabled, and duplicating it would be a second source of truth.
+3. **The verification command in the old prompt did not work.**
+   `nix eval --json '…systemd.network.networks' | jq 'keys'` forces the whole
+   attrset and trips the removed `dhcpConfig` alias assertion. Use
+   `--apply builtins.attrNames`. Any future milestone listing networkd units
+   should copy that form.
 
-GOAL. Convert machines/ernst/networking.nix from a plain static address on
-enp13s0 to a VLAN-filtering bridge:
+### Two attachment patterns, not one
 
-  - br0 is a VLAN-aware bridge (netdev with VLANFiltering=yes).
-  - enp13s0 becomes a tagged trunk port on br0, carrying the VLANs ernst
-    needs to place guests on.
-  - The host keeps its current identity: untagged / PVID on the server VLAN
-    it is on today, with Address=10.0.50.10/24, Gateway=10.0.50.1,
-    DNS=10.0.5.3 moved verbatim onto br0.
-  - Include ONE commented-out worked example of a MAC-pinned per-service tap
-    on br0 (netdev Kind=tap + a bridge-port network + BridgeVLAN tagging),
-    so M2b/M3/M5 have a pattern to copy rather than invent. Pin the MAC
-    explicitly so the UDM-Pro DHCP reservation is stable.
+The old prompt said "MAC-pinned tap" for both nspawn containers and microvm
+guests. That is only correct for microvms: a tap is a single netdev, and handing
+it to an nspawn container moves it out of the host netns and off the bridge.
+nspawn's primitive is a veth pair, whose host side is named **`vb-<name>`** (not
+`ve-`) when `--network-bridge=` is used. `machines/ernst/networking.nix` carries
+both worked examples, commented.
 
-MUST SURVIVE VERBATIM (read the file header before touching it — the
-reasoning is written down there):
-  - Domains = "~. skynet.lan". The "~." catch-all is what forces every
-    lookup through Technitium at 10.0.5.3; losing it silently changes the
-    resolver for the whole machine.
-  - MulticastDNS = true (mDNS across the LAN and ZeroTier).
-  - The wait-online caveat: the unplugged Intel I226-V (enp12s0, igc) must
-    never be able to block boot. wait-online is currently disabled
-    fleet-wide by clan-core; if the bridge work changes that, add
-    `systemd.network.wait-online = { anyInterface = true; ignoredInterfaces
-    = [ "enp12s0" ]; };` and say so.
-  - The 50-* prefix ordering, which is what makes our units win against
-    clan-core's 99-ethernet-default-dhcp wildcard. Keep the new units in the
-    same numeric neighbourhood and check the resulting ordering.
-  - clanarchy.initrdSsh stays bound to the RAW enp13s0. Stage 1 has no
-    bridge, and this is a recovery channel — ernst's zroot is encrypted, so
-    every boot already passes through initrd SSH for the passphrase.
+`containers.<n>.macvlans` — sketched in the header of
+`machines/ernst/containers/jellyfin.nix` — is **wrong for this architecture** and
+M2b must not use it. A macvlan is not a bridge port: on `br0` it rides br0's own
+self VLAN (50, the host VLAN), and on `enp13s0` it rides the trunk's native VLAN,
+also 50. It cannot be placed on VLAN 80, which is the whole point. Correcting
+that file header belongs to M2b, which owns the file.
 
-DELIVERABLE — code plus a cutover runbook in the PR body and, if it is long
-enough to want a permanent home, docs/runbooks/ernst-vlan-bridge-cutover.md.
-The runbook must state:
+### Two UDM-Pro findings from the cutover prep
 
-  - Prerequisite, before anything is deployed: out-of-band console. The
-    GL.iNet Comet KVM watches the iGPU head (card0). Confirm it is reachable
-    and shows a console first. Also confirm the previous boot generation is
-    selectable from the systemd-boot menu — that is the rollback.
-  - That `clan machines update ernst` applies the change LIVE (there is no
-    stage-for-next-boot mode — CLAUDE.md), so the SSH session may drop at
-    the moment networkd reconfigures. Plan for it instead of being surprised
-    by it: run the update from a session you can afford to lose, and have
-    the KVM open.
-  - The UDM-Pro side: which VLANs must be tagged on the switch port feeding
-    ernst's SFP+ before the trunk config is deployed. Getting this wrong is
-    the most likely cause of a dead link.
-  - Verification, in order: `networkctl status br0 enp13s0`,
-    `bridge vlan show`, `bridge link show`, `ip -br addr`, then a ping
-    matrix — ernst -> gateway, ernst -> 10.0.5.3, a mgmt-VLAN host -> ernst,
-    a Family-VLAN host -> ernst:8096 (Jellyfin must still answer; the interim
-    rules L1/L2 in docs/roadmap.md depend on it), and `resolvectl status br0`
-    showing the "~." routing domain.
-  - Recovery: boot-menu rollback to the previous generation via the KVM, and
-    what initrd-SSH can and cannot do (it unlocks zroot; it is not a rescue
-    shell for stage 2).
-  - lgo executes the runbook. Claude does not deploy.
+**A ZBF policy with `Connection State: All` silently never matches.** The new
+`Allow Jellyfin from IoT to Servers` rule sat at ID `10000` — first in evaluation
+order, ahead of `Block IoT to Trusted` — and still logged **zero hits** while the
+TV failed to connect. Every field matched the working `Allow Jellyfin from LAN to
+Servers` rule except Connection State: the working one used `Custom → New`, the
+broken one `All`. Setting it to `Custom → New` fixed it. Note the policy list is
+sorted **alphabetically by name**, not by evaluation order — read the ID column
+instead, and treat a zero hit count as a *matching* problem rather than an
+ordering one.
 
-Constraints:
-- Never commit to main. Branch first, PR via `gh pr create` (title
-  imperative, <=70 chars, no prefix; body = summary + test plan + manual
-  steps + the cutover runbook).
-- No new flake inputs.
-- Minimal diffs; commit only the files this change touches.
-- Verify by evaluation:
-    nix flake check
-    nix eval --no-update-lock-file --raw \
-      '.#nixosConfigurations.ernst.config.system.build.toplevel.drvPath'
-  Also eval the generated networkd units and paste the relevant ones into
-  the PR body:
-    nix eval --json \
-      '.#nixosConfigurations.ernst.config.systemd.network.networks' \
-      | jq 'keys'
-- Claude does not deploy: `clan machines update ernst` is lgo's step.
-- Update docs/roadmap.md's status table in the same PR.
-````
+**VLAN 80 has no gateway, and it is not the trunk's fault.** Tagged frames reach
+ernst on VLAN 80, but `10.0.80.1` never answers ARP and no DHCP server responds.
+The network is configured correctly (Router `skynet-udmpro`, zone `services`,
+`10.0.80.1/24`, DHCP Server on, DNS `10.0.5.3`, Isolate off) and it is *not* a
+"VLAN Only" network. **Force Provision is not offered for the UDM-Pro.** This is
+an open blocker for **M2b** — see the warning box in the cutover runbook for what
+has been ruled out and what to try next.
+
+### Carried forward
+
+- **Pin `br0`'s MAC before M2b.** Not done here: with one port the kernel gives
+  `br0` the burned-in MAC of `enp13s0`, so the cutover does not move ernst's L2
+  identity — which is what you want on the one deploy that can lock you out. A
+  Linux bridge adopts the numerically *lowest* port MAC, so the second port can
+  silently move it. §1.4 of the runbook captures the value.
+- **Avahi reflection.** `modules/networking/mdns.nix` runs with `reflector = true`
+  and no interface pinning. Not a regression here — bridge ports carry no host
+  address, so Avahi skips them and `br0` simply replaces `enp13s0` — but it bites
+  the first time ernst holds an address on a second VLAN.
+- **`ernst-initrd` is DNS-only.** The alias uses `HostName ernst.skynet.lan`,
+  so the recovery channel depends on the thing a bad cutover can break. The
+  IP-literal fallback is now documented in
+  [the remote-unlock guide](guides/remote-unlock.md); pinning the `HostName` is
+  a separate `fix/` branch.
 
 ---
 
 ## M2b — `feat/ernst-jellyfin-tap`
 
 **Goal.** Move the Jellyfin container off the host network namespace onto its own
-MAC-pinned tap on `br0`, giving it a distinct L2 identity the UDM-Pro can
+MAC-pinned veth on `br0` (VLAN 80), giving it a distinct L2 identity the UDM-Pro can
 firewall directly. The migration path is already written into the file header of
 `machines/ernst/containers/jellyfin.nix`; this milestone executes it and retires
 ledger row **L3**.
@@ -323,14 +323,31 @@ Prerequisite: M2 (feat/ernst-vlan-bridge) is merged, deployed, and has been
 stable on ernst for several days.
 
 GOAL. Flip machines/ernst/containers/jellyfin.nix from host networking to a
-private network namespace with a MAC-pinned tap on br0, following the
-migration plan already written in that file's header ("Networking — v1: HOST
-namespace"). Read that header first; it names the intended shape.
+private network namespace with a MAC-pinned veth on br0, on the Services
+VLAN (80).
+
+READ FIRST, and note it is WRONG in two ways: that file's header
+("Networking — v1: HOST namespace") sketches the migration as
+`containers.jellyfin.macvlans = [ "br-services" ]`. A macvlan is not a
+bridge port — on br0 it rides br0's own self VLAN (50, the HOST VLAN) and
+on enp13s0 it rides the trunk's native VLAN, also 50 — so it cannot be
+placed on VLAN 80 at all. And a *tap* is a microvm primitive, not an
+nspawn one. Correct that header in this PR; M2b owns the file.
 
 Scope:
-  - containers.jellyfin.privateNetwork = true, with a tap on br0 on the
-    services VLAN. Pin the MAC (stable DHCP reservation) and copy the pattern
-    from the commented example M2 left in machines/ernst/networking.nix.
+  - containers.jellyfin = { privateNetwork = true; hostBridge = "br0";
+    localMacAddress = "…"; }, plus a networkd unit matching the HOST side
+    of the veth. That side is named vb-jellyfin — the "vb-" prefix, not
+    "ve-", because nspawn uses --network-bridge=. The unit must set
+    KeepMaster = true (nspawn owns the enslavement; Bridge= would make
+    networkd fight it) and carry the [BridgeVLAN] for VLAN 80. Copy
+    worked example B from machines/ernst/networking.nix verbatim.
+  - VERIFY with `bridge vlan show` that the VLAN actually landed: networkd
+    applies [BridgeVLAN] when it observes the link's master, and nspawn
+    sets that master out of band, so the two can race. With
+    DefaultPVID = "none" on br0 a missed application is fail-closed (no
+    connectivity) rather than fail-open onto VLAN 50 — check for it
+    explicitly rather than trusting silence.
   - Give the container its own address. Prefer a DHCP reservation on the
     UDM-Pro over a static address in the container config, so the network's
     source of truth stays in one place — but say which you chose and why.
@@ -350,7 +367,7 @@ Scope:
     with the skynet.lan search domain. Do not leave it dangling.
 
 MANUAL STEPS — list them explicitly in the PR body, they are lgo's:
-  - DHCP reservation for the pinned MAC on the services VLAN.
+  - DHCP reservation for the pinned MAC on the Services VLAN (80).
   - Repoint the Technitium `jellyfin` record at the container's new address
     (it moves again to Traefik in M5 — note that).
   - Retarget the interim ZBF rules L1 (Family -> :8096) and L2 (skynet-iot ->
@@ -410,8 +427,9 @@ already uses gets moved). No other new inputs.
 GUEST: "wg-qbittorrent".
   - Minimal NixOS. No X, no docs, no extra packages beyond what qBittorrent
     (nox) and the network stack need.
-  - MAC-pinned tap on br0, on the VLAN chosen for this guest. Reuse the
-    pattern M2 left commented in machines/ernst/networking.nix.
+  - MAC-pinned tap on br0, on the Services VLAN (80). A tap IS the right
+    primitive here — this is a microvm, not an nspawn container. Copy
+    worked example A from machines/ernst/networking.nix.
   - WireGuard client to the commercial provider, with a REAL killswitch
     implemented as guest-side nftables policy:
       * default-deny on egress from the tap interface;
@@ -509,7 +527,7 @@ containers, do not just do it — argue it in a file-header comment and keep
 the default single-container shape unless the argument is strong.
 
 Networking v1: HOST networking, exactly like Jellyfin's v1, with a
-tap-migration note in the file header mirroring the one Jellyfin carried.
+veth-migration note in the file header mirroring the one Jellyfin carried.
 Ports 9696 (prowlarr) / 8989 (sonarr) / 7878 (radarr) opened on the host and
 scoped to the management VLAN on the UDM-Pro. Add them to the interim-rule
 ledger in docs/roadmap.md as row L4 with the M5 trigger.
@@ -605,9 +623,12 @@ ASK LGO FIRST, before writing any code:
     provider config and which credential the vars generator must prompt for.
 
 SHAPE. A systemd-nspawn container "traefik" in
-machines/ernst/containers/traefik.nix, with its own MAC-pinned tap on br0
-(pattern from M2). That tap's address is the identity every consumer VLAN
-gets its ONE permanent ZBF rule for — the whole point of the milestone.
+machines/ernst/containers/traefik.nix, with its own MAC-pinned veth on br0
+on the Services VLAN (80). NOT a tap — a tap is the microvm primitive; an
+nspawn container gets a veth pair whose host side is named vb-traefik.
+Copy worked example B from machines/ernst/networking.nix. That veth's
+address is the identity every consumer VLAN gets its ONE permanent ZBF
+rule for — the whole point of the milestone.
 
 TLS.
   - ACME DNS-01, wildcard certificate. DNS-01 specifically so nothing has to
@@ -631,7 +652,7 @@ ROUTES.
 
 BACKEND BYPASS HARDENING. Pick exactly ONE mechanism and justify it in the
 file header:
-  (a) backend-side firewall source-restriction to Traefik's tap address, or
+  (a) backend-side firewall source-restriction to Traefik's veth address, or
   (b) a documented UDM-Pro intra-zone ZBF rule.
 Both is not "safer" — it is two sources of truth that will disagree. State
 which one you chose, what it does not cover, and where the other would have
@@ -857,6 +878,32 @@ kernel 7.1, but the firmware is the real gate, so this is not a flake bump away.
 Wired pads and USB dongles both work today — see
 [the controllers guide](guides/htpc-controllers.md), which carries the two
 one-line checks to re-run after a future bump.
+
+**Remove NetworkManager from ernst.** It is enabled unintentionally:
+`modules/roles/htpc.nix` imports `modules/desktop/kde.nix`, which sets
+`networking.networkmanager.enable = true`. Nothing on ernst needs it — clan uses
+networkd and ernst is excluded from the wifi service; the couch user `go` is not
+in the `networkmanager` group; Steam and gamescope do not use it. The intent was
+already recorded in `machines/ernst/htpc.nix`: *"No wheel, no networkmanager
+(ernst is networkd + wired)."*
+
+It is not free, either: `nmcli` reports `enp13s0` as `connected (externally)`, so
+NM is not hands-off, and it is the reason `machines/ernst/networking.nix` carries
+a `networking.networkmanager.unmanaged` list at all.
+
+`networking.networkmanager.enable = lib.mkForce false;` on ernst **evaluates
+cleanly** (verified 2026-08-19), but it has one non-obvious consequence: NM is
+what sets `networking.useDHCP = false`, so removing it flips `useDHCP` back to
+`true` and `99-ethernet-default-dhcp` becomes a **live** unit with `DHCP=yes` on
+physical NICs, instead of the inert one M2 hardened. `enp13s0` is unaffected
+(`50-*` sorts first) and `br0`/veths/taps are excluded by `Kind = "!*"`, but
+`enp12s0` would attempt DHCP if it were ever plugged in.
+
+Deliberately **not** bundled into M2: stacking a NetworkManager removal onto the
+one deploy that can cause remote lockout is exactly what the cutover runbook warns
+against. Do it as its own small PR after the bridge is proven, and decide there
+whether the cleaner shape is an option on the KDE module rather than an
+ernst-local `mkForce`.
 
 **Refresh `docs/guides/ernst-zdata-datasets.md`.** Unchanged since #20 apart from
 the deploy-helper sweep. It still describes five datasets including
