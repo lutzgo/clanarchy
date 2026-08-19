@@ -276,6 +276,70 @@
           };
         };
 
+        # /srv/unsorted — everything worth keeping off the retired Arch server
+        # (tomala-server001) that is not media: photos, documents, ebooks,
+        # audiobooks, per-person folders.  ~485 GB.
+        #
+        # Named "unsorted" deliberately.  It is a holding area, not a final
+        # home: the contents arrived as one 26-directory tree accumulated over
+        # a decade and want triaging into real locations later.  Naming it
+        # after its state rather than its contents keeps that honest.
+        #
+        # recordsize=1M: dominated by audiobooks, photos and video.  ZFS uses
+        #   variable block sizes up to recordsize, so the Documents/EBooks
+        #   small files are not padded out to 1M.
+        # exec/setuid/devices=off: archived user data, never executable — same
+        #   reasoning as /srv/media.
+        # acltype=posix: the source tree carries POSIX ACLs from the old box's
+        #   Nextcloud/Samba setup.  With the ZFS default (acltype=off) rsync
+        #   -A would silently drop them; set at dataset birth so nothing is
+        #   lost in the copy, even though the ACLs reference uids that do not
+        #   exist here and will most likely be flattened during triage.
+        # com.sun:auto-snapshot=true: unlike /srv/media this is NOT
+        #   re-acquirable.  It is the only remaining copy of the family's
+        #   photos and documents once the Arch box is wiped.
+        unsorted = {
+          type = "zfs_fs";
+          mountpoint = "/srv/unsorted";
+          options = {
+            mountpoint = "legacy";
+            recordsize = "1M";
+            exec       = "off";
+            setuid     = "off";
+            devices    = "off";
+            atime      = "off";
+            acltype    = "posix";
+            "com.sun:auto-snapshot" = "true";
+          };
+        };
+
+        # /srv/gardens — SilverBullet knowledge bases, one per user
+        #   (/srv/gardens/lgo, /srv/gardens/go).  Small: ~500 MB.
+        #
+        # Separate from /srv/unsorted because these are not unsorted at all —
+        # they are live, actively edited, and the most irreplaceable thing
+        # that came off the old server.  A future SilverBullet container on
+        # ernst binds them directly.
+        #
+        # recordsize left at the 128K default: thousands of small markdown
+        #   files, written a few KB at a time.  1M here would turn every note
+        #   save into a read-modify-write.
+        # com.sun:auto-snapshot=true: notes are edited continuously and an
+        #   accidental deletion is invisible until much later.
+        gardens = {
+          type = "zfs_fs";
+          mountpoint = "/srv/gardens";
+          options = {
+            mountpoint = "legacy";
+            exec       = "off";
+            setuid     = "off";
+            devices    = "off";
+            atime      = "off";
+            acltype    = "posix";
+            "com.sun:auto-snapshot" = "true";
+          };
+        };
+
         # zdata/backup — reserved.  Not created here; when the backup strategy
         # is chosen we may want a very different recordsize / compression /
         # (perhaps) encryption story, so add it deliberately at that point.
