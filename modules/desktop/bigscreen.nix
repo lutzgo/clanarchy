@@ -466,6 +466,26 @@ in
 
               pkgs.kdePackages.plasma-bigscreen
 
+              # Required at *runtime*, despite already being a dependency of
+              # plasma-bigscreen — because of how the session script resolves
+              # names. plasma-bigscreen-common-env, which the session sources,
+              # starts with:
+              #
+              #   [ -f /etc/profile ] && . /etc/profile
+              #
+              # and NixOS's /etc/profile assigns PATH outright rather than
+              # appending, so the unit's own `path` is discarded at that line.
+              # Everything the script reaches for afterwards —
+              # plasma-bigscreen-envmanager, then startplasma-wayland — has to
+              # be findable in the *system profile*, not merely in the unit
+              # environment.
+              #
+              # plasma-bigscreen is here already, which is why envmanager
+              # resolves; plasma-workspace was not, which is why
+              # startplasma-wayland still would not have, even once the unit
+              # PATH was fixed.
+              pkgs.kdePackages.plasma-workspace
+
               # Required, not optional. The Bigscreen homescreen plasmoid ships
               # indicators/KdeConnect.qml and indicators/PairWindow.qml, both
               # of which `import org.kde.kdeconnect` — but kdeconnect-kde is
@@ -501,6 +521,26 @@ in
               "dbus.service"
               "user@${toString cfg.uid}.service"
             ];
+            # plasma-bigscreen-wayland is an unwrapped /bin/sh script that
+            # resolves two things from PATH at runtime — the packaging quirk
+            # that made this container necessary in the first place:
+            #
+            #   . plasma-bigscreen-common-env      <- plasma-bigscreen/bin
+            #   startplasma-wayland ...            <- plasma-workspace/bin
+            #
+            # Without them on PATH the session dies immediately with
+            #   plasma-bigscreen-wayland: line 9: .: plasma-bigscreen-common-env: file not found
+            # and, because Restart=on-failure, does so several times a second.
+            #
+            # Note this is exactly why the whole thing lives in a container:
+            # here `startplasma-wayland` resolves to plasma-workspace 6.7.4.
+            # On the host the same bare name would find 6.6.6 and hand it
+            # Bigscreen's 6.7.4 shell.
+            path = [
+              pkgs.kdePackages.plasma-bigscreen
+              pkgs.kdePackages.plasma-workspace
+            ];
+
             environment = {
               XDG_RUNTIME_DIR = "/run/user/${toString cfg.uid}";
               KWIN_DRM_DEVICES = cardAlias;
@@ -517,10 +557,30 @@ in
               # /run/user/<uid>. Plasma requires it.
               RuntimeDirectory = "user/${toString cfg.uid}";
               RuntimeDirectoryMode = "0700";
-              ExecStart = "${pkgs.kdePackages.plasma-bigscreen}/bin/plasma-bigscreen-wayland";
+
+              # Launched exactly the way upstream's session .desktop launches
+              # it, rather than by calling the binary directly. The wrapper
+              # starts a session D-Bus if one is not already there, and Plasma
+              # needs one: without it kglobalaccel and plasmashell fail with
+              # "Not connected to D-Bus server" even when the compositor
+              # itself comes up fine.
+              ExecStart = "${pkgs.kdePackages.plasma-workspace}/libexec/plasma-dbus-run-session-if-needed "
+                + "${pkgs.kdePackages.plasma-bigscreen}/bin/plasma-bigscreen-wayland";
+
               Restart = "on-failure";
               RestartSec = 3;
               TTYPath = "/dev/null";
+            };
+
+            # Give up rather than restarting forever. A session that cannot
+            # start will not start on the tenth attempt either, and the
+            # failing loop buries the actual error under thousands of
+            # identical lines — which is precisely what the first attempt at
+            # this did, 34 restarts deep before anyone read the message.
+            # Failing properly also surfaces it in `systemctl --failed`.
+            unitConfig = {
+              StartLimitIntervalSec = 120;
+              StartLimitBurst = 5;
             };
           };
         };
