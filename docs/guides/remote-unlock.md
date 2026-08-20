@@ -88,6 +88,30 @@ If you get "REMOTE HOST IDENTIFICATION HAS CHANGED" for `ernst-initrd`,
 someone regenerated the initrd host key — remove the old entry from
 `~/.ssh/known_hosts` and re-verify the fingerprint.
 
+### When the alias does not resolve
+
+The `ernst-initrd` alias uses `HostName ernst.skynet.lan`, so it depends
+on DNS — and DNS is one of the things a bad network change can break,
+which is exactly when you need this channel most.  ernst's stage-1
+address is static, so fall back to the IP literal:
+
+```bash
+ssh -tt -p 2222 -o HostKeyAlias=ernst-initrd -o ConnectTimeout=2 root@10.0.50.10 systemd-tty-ask-password-agent --query
+```
+
+`HostKeyAlias` is what keeps this pointing at the same known-hosts entry
+as the alias, instead of prompting for a new one.
+
+### The switch port must keep VLAN 50 untagged
+
+Stage 1 brings up the **raw** `enp13s0`, not the `br0` bridge that
+stage 2 uses — see the file header in `machines/ernst/networking.nix`.
+The raw NIC speaks untagged, so ernst's SFP+ port on the UDM-Pro must
+keep `Servers (50)` as its **native/untagged** VLAN.  Converting that
+port to a pure tagged trunk kills this unlock channel and makes every
+future boot a trip to the Comet KVM.  See
+[the VLAN bridge cutover runbook](../runbooks/ernst-vlan-bridge-cutover.md).
+
 ## Rollback / disabling
 
 Set `clanarchy.initrdSsh.enable = false;` in `machines/ernst/
