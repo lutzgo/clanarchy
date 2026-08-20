@@ -52,8 +52,8 @@ Verified against the repo on 2026-08-19 (`main` @ `8bdd162`).
 | M6 — monitoring | **open** | — | [M6](#m6-featmonitoring) |
 | M7 — Authelia | **open** | — | [M7](#m7-featernst-authelia) |
 | M8 — Tvheadend / SAT>IP live TV | **open — operator gate first** | — | Steps 1–3 (patching, UniFi, stream test) are lgo's and must clear before a session starts; the milestone dies if the FRITZ!Box's DVB-C is branding-locked. [M8](#m8-featernst-tvheadend) |
-| M9 — TubeSync | **open — scoped, no prompt yet** | — | Feeds the Jellyfin library directly. First occupant of the **podman** tier (not in nixpkgs — verified), so it builds the tier as well as the service; podman's attachment to `br0` is unsolved here. [M9](#m9-featernst-tubesync) |
-| M10 — Kodi + IR remote | **proposed — placement not settled** | — | Depends on nothing in M2b–M7; could equally be backlog. Closes the gap that Big Picture cannot add non-Steam shortcuts, so there is no controller-navigable media path today. [M10](#m10-featernst-kodi-ir) |
+| M9 — TubeSync | **open** | — | Feeds the Jellyfin library directly. First occupant of the **podman** tier (not in nixpkgs — verified), so it builds the tier as well as the service; podman's attachment to `br0` is unsolved here. [M9](#m9-featernst-tubesync) |
+| M10 — Kodi + IR remote | **open** | — | Depends on nothing in M2b–M7. Closes the gap that Big Picture cannot add non-Steam shortcuts, so there is no controller-navigable media path today. [M10](#m10-featernst-kodi-ir) |
 
 ---
 
@@ -1358,18 +1358,149 @@ real-looking placeholder), and note in the header that M7 replaces it.
   path exist at all.
 - **`v0.18.1`** — verify against upstream before pinning (item 7).
 
-**Not written yet, deliberately.** This entry scopes the decisions; no Nix in
-this PR. The session that picks it up writes `machines/ernst/containers/tubesync.nix`.
+````text
+Read CLAUDE.md fully before doing anything.
+
+Work in the clanarchy repo on miralda. Branch: feat/ernst-tubesync.
+
+READ M9 IN docs/roadmap.md FIRST. Seven decisions are already recorded there
+with their reasoning. Do not re-litigate them. If you overturn one, record
+the argument in the file header rather than changing course silently.
+
+GOAL. TubeSync (github.com/meeb/tubesync) on ernst: subscribe to YouTube
+channels and playlists, download with yt-dlp on a schedule, write straight
+into the tree Jellyfin already scans — no import stage, no second copy.
+
+TIER: podman — and the reason is NOT that TubeSync is small. Invariant #1
+tiers by trust and workload; podman's one job is "upstream ships only an
+image". TubeSync is not in nixpkgs (verify that still holds — it did on
+2026-08-20), so there is nothing to drive from services.*. You are the FIRST
+occupant of this tier: virtualisation.oci-containers appears nowhere in this
+repo, so you are building the tier as well as the service. State in the file
+header what would later move this to nspawn.
+
+DECIDE ROOTLESS VS ROOTFUL EXPLICITLY, and early. It cascades into both the
+networking and the uid mapping below. Do not pick by reflex and then fight it
+in two other places.
+
+FILE: machines/ernst/containers/tubesync.nix, wired into flake.nix next to
+jellyfin.nix. NOT modules/services/ — that directory does not exist, and
+modules/ holds cross-machine modules. modules/apps/containers.nix is the
+workstation podman CLI bundle for lgo; it is not a precedent.
+
+NETWORKING — the hard part, and there is no worked example in this repo.
+  - A tap is the microvm primitive, a vb-* veth the nspawn one, and podman is
+    neither. macvlan is REJECTED for this architecture: on br0 it rides the
+    host self VLAN (50) and cannot be placed on 90. M2 established this — do
+    not re-derive it.
+  - Try in order: a veth pair enslaved to br0 with a [BridgeVLAN] for 90,
+    handed to the container's netns; a netavark bridge network parented on
+    br0; host networking v1 with a migration note in the header.
+  - TAKE THE FALLBACK rather than burning the milestone on research — but say
+    which you took and why.
+  - Whatever lands: MAC-pinned, a DHCP reservation on the UDM-Pro in
+    preference to a static address, and VERIFY with `bridge vlan show` that
+    the VLAN actually applied. networkd and the runtime race over the master,
+    and with DefaultPVID = "none" a miss is fail-closed, not fail-open.
+  - Technitium record. The consumer path is Traefik:443 per invariant #3.
+  - If this lands before M5, add the web UI port to the ledger as row L8,
+    mgmt-scoped. If M5 is already in, create nothing.
+
+AUTH: Authelia forward-auth (M7). The Jellyfin carve-out does not apply —
+Jellyfin is exempt because TV and mobile clients cannot survive the redirect,
+and TubeSync's only ingress is a browser. Its "media servers" feature is an
+OUTBOUND call to Jellyfin, so forward-auth on ingress cannot break it; put
+that in the header so a later session does not "fix" it. If M7 is not in yet,
+use HTTP_USER/HTTP_PASS as the interim, credentials from a clan vars
+generator, and note that M7 replaces it.
+
+STORAGE.
+  - Config (SQLite db, thumbnails, yt-dlp cache) at /srv/state/tubesync per
+    invariant #7, as a BIND MOUNT — not a named podman volume, which would
+    put state in podman's graph root and defeat the point.
+  - Downloads into a PLAIN SUBDIRECTORY under /srv/media. Invariant #2: one
+    dataset, plain subdirectories. Do NOT add zdata/media/youtube.
+  - /srv/media carries com.sun:auto-snapshot=false, so downloads are not
+    snapshotted. Acceptable for re-downloadable content — say so out loud
+    rather than leaving it implied.
+  - Ownership root:media mode 2770 (setgid), applied by a unit ordered
+    after/requires srv-media.mount. A tmpfiles rule alone races the mount;
+    jellyfin.nix explains why.
+
+UID/GID — the one that will bite.
+  - PGID = 3000 (the media group, fixed in jellyfin.nix). PUID = a new static
+    uid, allocated and recorded the way jellyfinUid = 964 is.
+  - nspawn maps gids 1:1, which is why jellyfin.nix can assert the numbers
+    match on both sides. PODMAN DOES NOT. Under a userns — always, when
+    rootless — the in-container PUID/PGID are not what lands on disk. If
+    files appear as nobody:nobody, this is why.
+  - Decide the mapping (--userns=keep-id, an idmap, or rootful with no
+    remapping) and PROVE it: stat a real downloaded file and show a
+    media-group member can read it. Treat this as M3 treats its uid/gid
+    decision — a design decision, not a permissions detail.
+  - TZ = Europe/Berlin, matching the host. It drives scheduling, so a wrong
+    value silently shifts every download window.
+
+JELLYFIN INTEGRATION needs the server URL and an API key. The key is a secret
+-> clan vars generator. Note the ordering: the key is created in Jellyfin's
+UI, so it is an lgo manual step feeding a generator prompt, not something the
+session can produce.
+
+IMAGE PIN. Pin by DIGEST, not tag — image drift is the entire cost of this
+tier, and a tag is mutable. v0.18.1 is the intended version, but that line in
+the roadmap is operator-supplied and was NOT independently verified; confirm
+it against upstream releases before pinning. Record tag and digest, and how a
+bump is performed. SQLite only — do NOT add a MariaDB container.
+
+IMPERMANENCE. ernst has been genuinely impermanent since 2026-08-18 (see
+invariant #7). Anything this service writes to zroot is gone on the next
+boot. REBOOT ONCE after deploying and confirm the service returns with its
+state intact. That is part of this milestone, not an afterthought — no
+previous milestone had to think about it, and this is the first one that
+does.
+
+CONFIGURATION POLICY. Where a setting exists only in the UI (source
+registration, media-server wiring), do NOT fake it — document the intended
+in-UI settings in the PR body as a reproducible checklist, so the state can
+be rebuilt from the repo plus that list.
+
+MANUAL STEPS for the PR body (lgo's):
+  - Create the Jellyfin API key, feeding the vars generator prompt.
+  - Technitium record; DHCP reservation if a veth path was taken.
+  - The ZBF rule, if one is needed at all.
+  - `clan machines update ernst` and `clan vars generate ernst`.
+
+TEST PLAN in the PR body:
+  - The container starts and holds its own address, if it has one.
+  - A subscription downloads a real video.
+  - `stat` proves a media-group member can read it — the uid/gid decision.
+  - Jellyfin picks the file up with NO copy step.
+  - A reboot leaves both config and downloads intact.
+
+Constraints:
+- Never commit to main. Branch first, PR via `gh pr create` (title
+  imperative, <=70 chars, no prefix; body = summary + test plan + manual
+  steps).
+- No new flake inputs.
+- Minimal diffs; commit only the files this change touches.
+- Verify by evaluation:
+    nix flake check
+    nix eval --no-update-lock-file --raw \
+      '.#nixosConfigurations.ernst.config.system.build.toplevel.drvPath'
+- Claude does not deploy: `clan machines update ernst` and
+  `clan vars generate ernst` are lgo's steps.
+- Update docs/roadmap.md's status table and interim-rule ledger in the same
+  PR.
+````
 
 ---
 
 ## M10 — `feat/ernst-kodi-ir`
 
-**Placement is a proposal, not a decision.** M8 and M9 are taken, so this is M10
-if it is numbered at all. It depends on nothing in M2b–M7 and would sit equally
-well in the backlog; what argues for a number is that it has an operator
-purchase, a `/persist` entry, and a user-visible outcome on the TV. Recommend
-numbering it. Settle this before the entry is treated as scheduled.
+**Numbered deliberately** (settled 2026-08-20). It depends on nothing in M2b–M7
+and could have been a backlog entry. What earned it a number: an operator
+purchase, a `/persist` entry, and a user-visible outcome on the TV — none of
+which fit a section that is explicitly *not sequenced*.
 
 **Goal.** Give the TV a media path that a remote can drive. Two pieces, both
 **independent of the Bigscreen question** — whichever of that entry's three
@@ -1413,7 +1544,78 @@ See [the controllers guide](guides/htpc-controllers.md).
 **Manual step (lgo's).** Buy the Flirc, and map the SofaBaton's IR profile to
 keycodes. Everything downstream of that is repo work; nothing upstream of it is.
 
-**No session prompt yet**, consistent with M9 — this is scoped, not scheduled.
+````text
+Read CLAUDE.md fully before doing anything.
+
+Work in the clanarchy repo on miralda. Branch: feat/ernst-kodi-ir.
+
+READ M10 in docs/roadmap.md first for the rationale. Two halves with
+different readiness: SHIP THE KODI HALF EVEN IF THE FLIRC HAS NOT ARRIVED.
+Do not block one on the other, and do not stub the half you cannot test.
+
+GOAL. Give ernst's TV a media path a remote can drive — independent of every
+Bigscreen outcome. Nothing here is invalidated by that entry's three routes,
+whichever wins or if none does.
+
+HALF 1 — KODI. Ships now, needs no hardware.
+  - pkgs.kodi-wayland (21.3 in ernst's pin) plus the Jellyfin for Kodi addon,
+    so the library is native rather than reached through the web client.
+  - DECIDE AND JUSTIFY how it is reached from the couch account. ernst's htpc
+    role already has clanarchy-session-select with gamescope and plasma arms
+    (modules/roles/htpc.nix). Options: a third session arm, a .desktop entry
+    launched from Plasma, or both. State which and why. Do NOT quietly
+    restructure the session switcher to make it fit — if that is the right
+    move, argue it first.
+  - ~/.kodi NEEDS A /persist ENTRY for the couch user `go`. ernst has been
+    genuinely impermanent since 2026-08-18 (invariant #7), so without it
+    every library setting, addon and watch-state is gone on the next boot.
+    This is the single most likely way to ship this milestone broken, because
+    it looks completely fine until the first reboot. Prove it by rebooting.
+  - The Jellyfin addon's configuration is UI state. Follow M4's policy:
+    document the intended in-UI settings in the PR body as a reproducible
+    checklist rather than faking them declaratively.
+
+HALF 2 — FLIRC IR. Gated on hardware lgo has to buy. If it has not arrived,
+say so plainly in the PR body and ship half 1.
+  - The Flirc presents as a plain USB HID keyboard, so there may be little or
+    nothing to configure in NixOS. VERIFY that rather than assuming it — and
+    if it really is zero-config, SAY SO instead of inventing a module to have
+    something to show.
+  - Keybinds must work identically under gamescope and under Kodi. Where Kodi
+    needs a keymap, declare it — do not hand-edit files under ~/.kodi, which
+    the persist entry will then freeze in place.
+  - Do NOT reach for Bluetooth. ernst's on-board MT7927 Bluetooth is dead
+    until MediaTek's firmware redistribution clears (see the backlog entry
+    and docs/guides/htpc-controllers.md). That blocker is the reason this is
+    IR and not BT; an input path that does not depend on Bluetooth is the
+    only one that works on this machine today.
+  - Update docs/guides/htpc-controllers.md with whatever lands.
+
+MANUAL STEPS (lgo's): buy the Flirc; map the SofaBaton X1S's IR profile onto
+the keycodes the repo expects, and record which keycodes those are so the
+mapping is reproducible.
+
+TEST PLAN in the PR body:
+  - Kodi starts from the couch account by the chosen route, on the TV.
+  - The Jellyfin library lists and plays.
+  - REBOOT, then confirm Kodi's configuration survived. The persist entry is
+    the point of this milestone; an untested one is a milestone shipped
+    broken.
+  - With a Flirc present: the remote drives both Kodi and Big Picture.
+
+Constraints:
+- Never commit to main. Branch first, PR via `gh pr create` (title
+  imperative, <=70 chars, no prefix; body = summary + test plan + manual
+  steps).
+- No new flake inputs.
+- Minimal diffs; commit only the files this change touches.
+- Verify by evaluation:
+    nix flake check
+    nix eval --no-update-lock-file --raw \
+      '.#nixosConfigurations.ernst.config.system.build.toplevel.drvPath'
+- Claude does not deploy: `clan machines update ernst` is lgo's step.
+- Update docs/roadmap.md's status table in the same PR.
+````
 
 ---
 
@@ -1586,11 +1788,10 @@ so the attribute does not exist in ernst's pin at all. Everything the third
 route would build *against* does resolve there, which is what makes it worth
 listing rather than dismissing.
 
-**Open question, deliberately not answered here.** If the build succeeds, does
-this graduate to a numbered milestone or stay backlog? Recommend: **stay
-backlog until it renders on the TV**, then graduate. A derivation that does not
-work yet is a package experiment with no fleet consequences and no operator
-steps — nothing for a milestone to sequence. The moment it works it stops being
-that: it changes what the TV runs, needs a session-switcher arm, and touches
-`modules/roles/htpc.nix`, and the roadmap's own rule is that a backlog item
-becomes a milestone when it earns one. The build succeeding is what earns it.
+**Settled 2026-08-20: it stays backlog until it renders on the TV, then
+graduates to a numbered milestone.** A derivation that does not work yet is a
+package experiment with no fleet consequences and no operator steps — nothing
+for a milestone to sequence. The moment it works it stops being that: it changes
+what the TV runs, needs a session-switcher arm, and touches
+`modules/roles/htpc.nix`. This section's own rule is that an item becomes a
+milestone when it earns one, and the build succeeding is what earns it.
