@@ -928,6 +928,51 @@ runbook exists; step 4 is a one-way door. Operator work, not a Claude milestone 
 but every milestone above accumulates state on a machine that is not yet
 impermanent, which is worth knowing.
 
+**Migrate the VCS workflow from git/gh to jj (Jujutsu), git-backed.** Colocated
+(`jj git init --colocate`), so `.git` stays authoritative and `gh` keeps working
+for PRs — nothing about GitHub, CI, or `clan machines update` changes. This is a
+change to how *we* drive the repo, not to what the repo is.
+
+Why it is worth doing here specifically: this repo's workflow is
+branch-per-change with mandatory PRs and frequent small doc/config commits, and
+several of this session's stumbles were git-shaped rather than
+substance-shaped — a `--delete-branch` that pulled the branch out from under an
+in-flight edit and left an amend landing on `main`, a rebase conflict from two
+PRs touching adjacent rows of the same table, and repeated
+`commit --amend` + `push --force-with-lease` cycles to keep one PR tidy. jj's
+model (no index, no detached HEAD, every edit already a revision, first-class
+conflicts that don't block you, trivial history rewriting) removes the class
+rather than the instances.
+
+Scope, which is mostly documentation:
+
+- **`CLAUDE.md` "Git Workflow"** — the single most important file to rewrite.
+  The branch-prefix table stays (it drives PR titles and the roadmap), but the
+  mechanics change: `jj new`, `jj describe`, `jj bookmark set`,
+  `jj git push --bookmark`. Keep the invariants stated as invariants — never
+  land directly on `main`, PR via `gh pr create` — because they survive the tool
+  change.
+- **`docs/guides/accepting-pull-requests.md`** and any runbook step that spells
+  out git commands.
+- **The devShell** (`flake.nix`): add `jj`, and decide what happens to the
+  `push` helper, which exists because `~/.config/git` is a read-only
+  impermanence bind mount and reads the gh token at runtime. jj needs the
+  equivalent, and that is the one genuinely fiddly part.
+- **Impermanence**: `~/.config/jj` needs a persist entry, mirroring
+  `~/.config/git`.
+- **The milestone prompts below**, which name git commands verbatim.
+
+Open questions to settle when it is picked up: whether Claude sessions should
+drive jj or keep using git against the same colocated repo (both work; mixing
+them in one session is where confusion would come from), and whether
+`git config` signing carries over — note commits in this repo already need
+`--no-gpg-sign`.
+
+Not urgent, and deliberately not bundled with any ernst milestone: a VCS
+migration that lands mid-buildout would make every subsequent PR harder to
+review. Best done between milestones, in one pass, with the docs rewritten in
+the same PR.
+
 **clan-core `Domains=skynet.lan` upstream PR.** A separate session in a separate
 repo. Needs a minimal reproduction first — the smallest clan config that shows
 the missing search-domain plumbing — before anything is proposed upstream.
