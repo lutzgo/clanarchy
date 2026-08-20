@@ -147,7 +147,7 @@ Rows are retired only by the PR that actually removes the rule.
 | L2a | IoT name resolution for L2 | — | IoT clients could not resolve `jellyfin.skynet.lan` | **M5** — repoint at Traefik | **obsolete, and it was never true as written** — M2b measured `dig @10.0.5.3 jellyfin.skynet.lan` succeeding from VLAN 20, so IoT has had a working path to Technitium all along. The TV using a bare IP was a client choice, not a constraint. Nothing to retire; nothing to build |
 | — | `Services → DNS-Container` `:53` | UDM-Pro ZBF policy `Allow Jellyfin to DNS`, ID `10000` | The `services` zone is isolated by default, so the container could not resolve at all | **permanent** — not interim, listed here only so it is not mistaken for one | created by M2b. `Services → External` was predicted to be needed too and **was not** — it already passed |
 | L3 | `networking.firewall.allowedTCPPorts = [ 8096 ]` on the host | `machines/ernst/containers/jellyfin.nix` | Jellyfin shares the host network namespace (`privateNetwork = false`), so its port is a host port | **M2b** — the veth on VLAN 90 gives the container its own L2 identity; the host port opening goes away and the ACL moves to the UDM-Pro | **retired in [#82](https://github.com/lutzgo/clanarchy/pull/82)** — the line is deleted from the repo; 8096 is now opened only inside the container's own netns. Effective on the next `clan machines update ernst` |
-| — | `LAN (1) → qBittorrent 10.0.90.11:8080,22/tcp` | UDM-Pro ZBF, M3 | The qBittorrent WebUI (and the guest's SSH) are reachable from the management networks and nowhere else | **permanent** — architecture invariant #4 names this bypass explicitly. It is listed here only so a future milestone does not mistake it for an interim row and "fix" it by adding a Traefik route | created by M3 (not yet applied — deploy pending). `Servers (50)` needs no rule; the `Internal`→`Services` pair from M2b already covers ernst itself |
+| — | `LAN (1) → qBittorrent 10.0.90.11:8080,22/tcp` | UDM-Pro ZBF, M3 | The qBittorrent WebUI (and the guest's SSH) are reachable from the management networks and nowhere else | **permanent** — architecture invariant #4 names this bypass explicitly. It is listed here only so a future milestone does not mistake it for an interim row and "fix" it by adding a Traefik route | created by M3 (not yet applied — deploy pending). Set the source to cover **both** LAN (1) and Servers (50): a rule sourced on the *zone* covers both, one sourced on the LAN *network* does not, and whether ernst itself can reach the Services zone has never been tested — Jellyfin has only ever been reached from LAN and IoT |
 | L4 | arr WebUI ports `9696` / `8989` / `7878`, mgmt-VLAN scoped | M4 (host firewall, v1) | arr v1 runs on host networking like Jellyfin did | **M5** for the routes, plus a veth migration mirroring M2b | not yet created |
 | L5 | Traefik `ipAllowList` on the arr + Grafana routes (mgmt + wg-travel) | M5 (`traefik` container) | There is no identity provider yet | **M7** — replaced by the Authelia forward-auth middleware | not yet created |
 | L6 | Tvheadend ports `9981` / `9982` on the host, mgmt-VLAN scoped | M8 (host firewall, v1) | Only if M8 lands before M2b — Tvheadend v1 would then run on host networking like Jellyfin's and arr's did | **M5** for the web route, plus a veth migration mirroring M2b. Never created at all if M2b lands first | not yet created |
@@ -797,11 +797,15 @@ retire.
    an ordinary lease instead (M2b, the hard way). `10.0.90.11` is the obvious
    choice.
 3. **`clan machines update ernst`**.
-4. **One permanent ZBF rule**: `LAN (1)` → Services `10.0.90.11` `tcp 8080,22`.
+4. **One permanent ZBF rule** → Services `10.0.90.11` `tcp 8080,22`.
    **Tick `Auto Allow Return Traffic`** — without it the SYN is forwarded and
    the SYN-ACK is dropped, which looks exactly like a dead service and logs
-   nothing (M2b's table). `Servers (50)` needs no rule: ernst and the guest are
-   handled by the `Internal`/`Services` zone pair already in place for Jellyfin.
+   nothing (M2b's table). Source it so it covers **both** LAN (1) and Servers
+   (50): a rule sourced on the *zone* covers both, one sourced on the LAN
+   *network* does not. An earlier revision of this list asserted Servers needed
+   no rule because the two share the `Internal` zone — that is an inference, not
+   a measurement, and Jellyfin has only ever been reached from LAN and IoT, so
+   nothing has ever exercised it.
 5. **Optional:** a Technitium `A` record for `qbittorrent.skynet.lan`. It never
    moves to Traefik, so unlike Jellyfin's record this one is permanent.
 
@@ -811,44 +815,35 @@ microvm@wg-qbittorrent` after a re-generate.
 
 ### Test plan
 
-```bash
-# Host: the tap landed on VLAN 90 and is a port on br0.
-bridge vlan show dev tap-vpn            # expect: 90 PVID Egress Untagged
-ip -br link show master br0             # expect: enp13s0 + vb-jellyfin + tap-vpn
-systemctl status microvm@wg-qbittorrent
+The full procedure — prerequisites, ordering, verification and recovery — is
+[the deploy runbook](runbooks/ernst-vpn-microvm-deploy.md). The four checks that
+decide whether the milestone succeeded:
 
-# Guest: the tunnel is up and the exit IP is the PROVIDER's, never the home WAN.
-ssh root@10.0.90.11 wg show
-ssh root@10.0.90.11 curl -s https://ifconfig.co
-curl -s https://ifconfig.co                        # compare: must differ
+1. **Exit IP.** `curl https://ifconfig.co` inside the guest returns IVPN's
+   address; the same command on miralda returns the home WAN. They must differ.
+2. **The killswitch holds.** With `wg-quick-wg0` stopped, `tcpdump -ni tap-vpn`
+   on the host shows nothing but endpoint traffic. `curl` fails rather than
+   falling back, and `getent hosts` fails too — a killswitch that holds packets
+   while leaking names is not one.
+3. **The hardlink chain.** Create the probe **as qBittorrent does** —
+   `runuser -u qbittorrent -- sh -c 'umask 0002; : > …/complete/probe'` — then
+   link it host-side **as a non-root uid in group media**
+   (`setpriv --reuid 3002 --regid 3000 --clear-groups --groups 3000 ln …`).
+   Expect one inode, link count 2. Then `chmod 0644` the source and repeat: it
+   must now fail with `Operation not permitted`. Without that negative control
+   the test cannot distinguish a working chain from root bypassing
+   `fs.protected_hardlinks`, which is exactly what an earlier revision of this
+   plan did — it created the file as root and linked it as root, and would have
+   passed no matter what `UMask` was set to.
+4. **The reboot**, which is part of the milestone rather than an afterthought —
+   invariant #7 names M3 as one of three milestones carrying state that has never
+   met a real rollback. `/var/lib/microvms` must be rebuilt from the store by
+   `install-microvm-wg-qbittorrent.service`, `/srv/state/qbittorrent` must still
+   hold the session, and `clanarchy-impermanence-check` must still be green.
 
-# Killswitch. Drop the tunnel, then watch the host-side tap: nothing may leave
-# but the allowed endpoint traffic — no DNS, no tracker, no peers.
-ssh root@10.0.90.11 systemctl stop wg-quick-wg0
-tcpdump -ni tap-vpn -c 200 'not arp and not (udp port 67 or udp port 68)'
-ssh root@10.0.90.11 curl -m5 https://ifconfig.co   # must FAIL, not fall back
-ssh root@10.0.90.11 getent hosts example.com       # must FAIL — no name leak
-ssh root@10.0.90.11 systemctl start wg-quick-wg0
-
-# Hardlink proof, HOST side. If this fails, M4 cannot work: stop and re-open
-# the uid/gid decision rather than working around it.
-ssh root@10.0.90.11 'install -m0664 /dev/null /srv/media/torrents/complete/probe'
-ls -l /srv/media/torrents/complete/probe           # expect 3001:media, -rw-rw-r--
-ln /srv/media/torrents/complete/probe /srv/media/library/movies/probe
-stat -c '%i %h %U:%G %a' /srv/media/torrents/complete/probe \
-                         /srv/media/library/movies/probe
-                                                   # expect: same inode, links 2
-rm /srv/media/library/movies/probe /srv/media/torrents/complete/probe
-
-# WebUI, from a management network — and refused from anywhere else.
-curl -so /dev/null -w '%{http_code}\n' http://10.0.90.11:8080/    # from miralda
-```
-
-**The reboot is part of the milestone**, not an afterthought — invariant #7 names
-M3 as one of three milestones carrying state that has never met a real rollback.
-Afterwards: `/var/lib/microvms` must have been rebuilt from the store by
-`install-microvm-wg-qbittorrent.service`, `/srv/state/qbittorrent` must still hold
-the session, and `clanarchy-impermanence-check` must still be green.
+Before any of that, and before blaming the UDM-Pro for anything: the guest is
+reachable at L2 from a VLAN-90 netns probe on ernst, with no firewall in the
+path. M2b built that trick; the runbook reuses it as the first checkpoint.
 
 ---
 
