@@ -29,14 +29,25 @@
 #    40  Guest             10.0.40.0/24    NOT carried
 #    50  Servers           10.0.50.0/24    UNTAGGED / PVID  ← ernst itself
 #    60  Matter            10.0.60.0/24    NOT carried
-#    70  Travel (wg)                       NOT carried
-#    80  Services          10.0.80.0/24    tagged   (M2b Jellyfin, M5 Traefik)
+#    70  Travel (wg)       10.0.70.0/24    NOT carried
+#    90  Services          10.0.90.0/24    tagged   (M2b Jellyfin, M5 Traefik)
 #
-#   Services is 80, not 70: 70 is already the travel/WireGuard VLAN — the one
-#   M5's ipAllowList and M7's "wg-travel must not be locked out" note mean.
+#   Services is 90, and the two numbers it is NOT are both deliberate:
+#     not 70 — that is the travel/WireGuard VLAN, the one M5's ipAllowList and
+#              M7's "wg-travel must not be locked out" note refer to;
+#     not 80 — 10.0.80.0/24 is routed to a site-to-site WireGuard peer
+#              (`allowed ips: 10.0.70.2/32, 10.0.80.0/24` on wgsrv1), so a
+#              Services network there was shadowed by the VPN route and its
+#              gateway silently never answered ARP.  See the root-cause box in
+#              docs/runbooks/ernst-vlan-bridge-cutover.md.
 #
-#   80 is tagged now, before anything uses it, so M2b/M3/M5 never need a
-#   switch-port change.  30/40/60/70 are deliberately absent: a VLAN that is
+#   The lesson, because it will happen again: a free VLAN ID does NOT imply a
+#   free subnet.  Check `ip route show` on the UDM-Pro before allocating one —
+#   VPN peers and site-to-site tunnels install routes that shadow a connected
+#   network, and the failure is silent.
+#
+#   90 is tagged now, before anything uses it, so M2b/M3/M5 never need a
+#   switch-port change.  30/40/60/70/80 are deliberately absent: a VLAN that is
 #   not on the trunk cannot be reached by a typo in a future container unit.
 #   Travel reaches services through Traefik (M5), not by riding this trunk.
 #
@@ -68,7 +79,7 @@
 #
 #    br0's own list is 50 ONLY, deliberately.  The bridge master's membership
 #    governs what the HOST terminates, not what the ports forward between
-#    themselves: a future tap on VLAN 80 reaches enp13s0's VLAN 80 without br0
+#    themselves: a future tap on VLAN 90 reaches enp13s0's VLAN 90 without br0
 #    being a member, because ernst does not hold an address there.  Add a VLAN
 #    here only if the host itself needs to speak on it — which would also put
 #    Avahi's unpinned mDNS reflector onto that VLAN (modules/networking/
@@ -174,7 +185,7 @@
       { VLAN = 1;  }   # LAN / "Family"
       { VLAN = 5;  }   # DNS-Container (Technitium 10.0.5.3)
       { VLAN = 20; }   # IoT
-      { VLAN = 80; }   # Services — M2b Jellyfin, M5 Traefik
+      { VLAN = 90; }   # Services — M2b Jellyfin, M5 Traefik
     ];
 
     # "enslaved", not "yes": a bridge port's terminal operational state IS
@@ -240,8 +251,8 @@
   # machines/ernst/containers/jellyfin.nix.  A macvlan is not a bridge port:
   # attached to br0 it rides br0's own "self" VLAN — 50, the HOST VLAN — and
   # attached to enp13s0 it rides the trunk's native VLAN, also 50.  Either way
-  # it cannot be placed on VLAN 80, which is the entire point.  (That sketch
-  # presumes a per-VLAN bridge fed by an enp13s0.80 VLAN netdev: a different
+  # it cannot be placed on VLAN 90, which is the entire point.  (That sketch
+  # presumes a per-VLAN bridge fed by an enp13s0.90 VLAN netdev: a different
   # architecture, rejected here in favour of one VLAN-aware br0.  Correcting
   # that file header belongs to M2b, which owns the file.)
   #
@@ -264,12 +275,12 @@
   #     LinkLocalAddressing = "no";
   #     IPv6AcceptRA        = false;
   #   };
-  #   bridgeVLANs = [ { VLAN = 80; PVID = 80; EgressUntagged = 80; } ];
+  #   bridgeVLANs = [ { VLAN = 90; PVID = 90; EgressUntagged = 90; } ];
   #   linkConfig.RequiredForOnline = "enslaved";
   # };
   # …and in the guest:
   #   microvm.interfaces = [
-  #     { type = "tap"; id = "tap-vpn"; mac = "02:00:00:80:00:03"; }
+  #     { type = "tap"; id = "tap-vpn"; mac = "02:00:00:90:00:03"; }
   #   ];
 
   # ── B. systemd-nspawn container (M2b Jellyfin, M4 arr, M5 Traefik) ───────
@@ -277,7 +288,7 @@
   # containers.jellyfin = {
   #   privateNetwork  = true;
   #   hostBridge      = "br0";                # → nspawn --network-bridge=br0
-  #   localMacAddress = "02:00:00:80:00:02";  # container eth0 → DHCP reservation
+  #   localMacAddress = "02:00:00:90:00:02";  # container eth0 → DHCP reservation
   # };
   #
   # NOTE THE INTERFACE NAME.  With --network-bridge= the host side of the veth
@@ -296,7 +307,7 @@
   #     LinkLocalAddressing = "no";
   #     IPv6AcceptRA        = false;
   #   };
-  #   bridgeVLANs = [ { VLAN = 80; PVID = 80; EgressUntagged = 80; } ];
+  #   bridgeVLANs = [ { VLAN = 90; PVID = 90; EgressUntagged = 90; } ];
   #   linkConfig.RequiredForOnline = "enslaved";
   # };
   #
@@ -304,7 +315,7 @@
   # networkd applies [BridgeVLAN] when it observes the link's master, and nspawn
   # sets that master out of band.  If it races, the fallback is an ExecStartPost
   # on container@jellyfin.service running
-  #   bridge vlan add dev vb-jellyfin vid 80 pvid untagged
+  #   bridge vlan add dev vb-jellyfin vid 90 pvid untagged
   # With DefaultPVID = "none" a missed application is fail-closed (the container
   # simply has no connectivity), not fail-open onto VLAN 50.
 

@@ -44,7 +44,7 @@ Verified against the repo on 2026-08-19 (`main` @ `8bdd162`).
 | CI eval check on PRs | **done** | — | `.github/workflows/check.yml` evaluates all four toplevel `drvPath`s |
 | ernst `@blank` snapshots | **open (operator)** | — | ernst has never been genuinely impermanent — root accumulates. `docs/runbooks/ernst-enable-impermanence.md` is written and unexecuted; step 4 is a one-way door. Not a Claude milestone |
 | M1 — Kvantum linkGeneration drift | **closed — did not reproduce** | — | Four consecutive activations in the retained journal all passed `linkGeneration`. The on-disk shape that looked like drift is Stylix's `recursive = true` working as designed. See [M1](#m1-kvantum-linkgeneration-drift-closed) |
-| M2 — ernst VLAN bridge | **done — deployed 2026-08-20** | [#73](https://github.com/lutzgo/clanarchy/pull/73) | `br0` VLAN-filtering bridge, `enp13s0` as tagged trunk; VLAN 80 (Services) created for M2b/M5. Cutover verified: `br0` holds `10.0.50.10/24`, `enp13s0` enslaved, the `br0 50 PVID Egress Untagged` self entry present, NM now `unmanaged`. [Runbook](runbooks/ernst-vlan-bridge-cutover.md). See [M2](#m2-ernst-vlan-bridge-built-cutover-pending) |
+| M2 — ernst VLAN bridge | **done — deployed 2026-08-20** | [#73](https://github.com/lutzgo/clanarchy/pull/73) | `br0` VLAN-filtering bridge, `enp13s0` as tagged trunk; VLAN 90 (Services) created for M2b/M5. Cutover verified: `br0` holds `10.0.50.10/24`, `enp13s0` enslaved, the `br0 50 PVID Egress Untagged` self entry present, NM now `unmanaged`. [Runbook](runbooks/ernst-vlan-bridge-cutover.md). See [M2](#m2-ernst-vlan-bridge-built-cutover-pending) |
 | M2b — Jellyfin on its own veth | **open** | — | [M2b](#m2b-featernst-jellyfin-tap) |
 | M3 — VPN microvm + qBittorrent | **open** | — | [M3](#m3-featernst-vpn-microvm) |
 | M4 — arr stack | **open** | — | [M4](#m4-featernst-arr-stack) |
@@ -211,18 +211,26 @@ names map as: "Family" = LAN (1), "skynet-iot" = IoT (20).
 | 40 | Guest | 10.0.40.0/24 | not carried |
 | **50** | **Servers** | **10.0.50.0/24** | **untagged / PVID — ernst itself** |
 | 60 | Matter | 10.0.60.0/24 | not carried |
-| 70 | Travel (wg) | — | not carried |
-| **80** | **Services** | **10.0.80.0/24** | tagged — **new**, created for M2b/M5 |
+| 70 | Travel (wg) | 10.0.70.0/24 | not carried |
+| — | *(site-to-site WG peer)* | 10.0.80.0/24 | routed to `wgsrv1` — **not available** |
+| **90** | **Services** | **10.0.90.0/24** | tagged — **new**, created for M2b/M5 |
 
-VLAN 80 did not exist before this milestone. M2b and M5 both assumed a services
+VLAN 90 did not exist before this milestone. M2b and M5 both assumed a services
 zone; there wasn't one, so services would have shared the host's firewall zone
 and invariant #3 would have meant nothing. It is tagged on the trunk now, before
 anything uses it, so M2b/M3/M5 never need a switch-port change.
 
-Services is **80, not 70** — 70 is already the travel/WireGuard VLAN, the one
-M5's interim `ipAllowList` and M7's wg-travel lockout warning refer to.
-30/40/60/70 are deliberately off the trunk: a VLAN that is not carried cannot be
-reached by a typo in a future container unit, and travel reaches services
+Services is **90**, and the two numbers it is not are both deliberate:
+
+- **not 70** — that is the travel/WireGuard VLAN, the one M5's interim
+  `ipAllowList` and M7's wg-travel lockout warning refer to;
+- **not 80** — `10.0.80.0/24` is routed to a live site-to-site WireGuard peer
+  (`allowed ips: 10.0.70.2/32, 10.0.80.0/24` on `wgsrv1`, 16 GiB in / 56 GiB
+  out). Services was originally built there and its gateway silently never
+  answered ARP; see below.
+
+30/40/60/70/80 are deliberately off the trunk: a VLAN that is not carried cannot
+be reached by a typo in a future container unit, and travel reaches services
 through Traefik rather than by riding ernst's trunk.
 
 ### Three findings that contradicted this milestone's own prompt
@@ -262,7 +270,7 @@ both worked examples, commented.
 `machines/ernst/containers/jellyfin.nix` — is **wrong for this architecture** and
 M2b must not use it. A macvlan is not a bridge port: on `br0` it rides br0's own
 self VLAN (50, the host VLAN), and on `enp13s0` it rides the trunk's native VLAN,
-also 50. It cannot be placed on VLAN 80, which is the whole point. Correcting
+also 50. It cannot be placed on VLAN 90, which is the whole point. Correcting
 that file header belongs to M2b, which owns the file.
 
 ### Two UDM-Pro findings from the cutover prep
@@ -290,10 +298,12 @@ empty. **A free VLAN ID does not imply a free subnet** — check new subnets aga
 `ip route show` on the UDM-Pro before creating the network. Full diagnostic
 sequence in the [cutover runbook](runbooks/ernst-vlan-bridge-cutover.md).
 
-Open for **M2b**: either reclaim `10.0.80.0/24` from the VPN config, or renumber
-the Services network (`10.0.90.0/24` on VLAN 90 keeps the 10s convention). The
-first costs no repo change; the second touches the VLAN map in
-`machines/ernst/networking.nix`, this file, the runbook, and USW port 6's tag.
+**Resolved by renumbering.** `wg show` identified the claimant as a live
+site-to-site peer, not a stale entry — 16.02 GiB received / 55.78 GiB sent — so
+reclaiming the subnet would have broken that tunnel's routing. Services moved to
+**VLAN 90 / `10.0.90.0/24`**, verified free first, and `10.0.80.0/24` is the only
+subnet routed to `wgsrv1`. Renumbering keeps the convention that the VLAN ID is
+the third octet, which `10.0.90.0/24` on VLAN 80 would have broken.
 
 ### Carried forward
 
@@ -317,7 +327,7 @@ first costs no repo change; the second touches the VLAN map in
 ## M2b — `feat/ernst-jellyfin-tap`
 
 **Goal.** Move the Jellyfin container off the host network namespace onto its own
-MAC-pinned veth on `br0` (VLAN 80), giving it a distinct L2 identity the UDM-Pro can
+MAC-pinned veth on `br0` (VLAN 90), giving it a distinct L2 identity the UDM-Pro can
 firewall directly. The migration path is already written into the file header of
 `machines/ernst/containers/jellyfin.nix`; this milestone executes it and retires
 ledger row **L3**.
@@ -334,14 +344,14 @@ stable on ernst for several days.
 
 GOAL. Flip machines/ernst/containers/jellyfin.nix from host networking to a
 private network namespace with a MAC-pinned veth on br0, on the Services
-VLAN (80).
+VLAN (90).
 
 READ FIRST, and note it is WRONG in two ways: that file's header
 ("Networking — v1: HOST namespace") sketches the migration as
 `containers.jellyfin.macvlans = [ "br-services" ]`. A macvlan is not a
 bridge port — on br0 it rides br0's own self VLAN (50, the HOST VLAN) and
 on enp13s0 it rides the trunk's native VLAN, also 50 — so it cannot be
-placed on VLAN 80 at all. And a *tap* is a microvm primitive, not an
+placed on VLAN 90 at all. And a *tap* is a microvm primitive, not an
 nspawn one. Correct that header in this PR; M2b owns the file.
 
 Scope:
@@ -350,7 +360,7 @@ Scope:
     of the veth. That side is named vb-jellyfin — the "vb-" prefix, not
     "ve-", because nspawn uses --network-bridge=. The unit must set
     KeepMaster = true (nspawn owns the enslavement; Bridge= would make
-    networkd fight it) and carry the [BridgeVLAN] for VLAN 80. Copy
+    networkd fight it) and carry the [BridgeVLAN] for VLAN 90. Copy
     worked example B from machines/ernst/networking.nix verbatim.
   - VERIFY with `bridge vlan show` that the VLAN actually landed: networkd
     applies [BridgeVLAN] when it observes the link's master, and nspawn
@@ -377,7 +387,7 @@ Scope:
     with the skynet.lan search domain. Do not leave it dangling.
 
 MANUAL STEPS — list them explicitly in the PR body, they are lgo's:
-  - DHCP reservation for the pinned MAC on the Services VLAN (80).
+  - DHCP reservation for the pinned MAC on the Services VLAN (90).
   - Repoint the Technitium `jellyfin` record at the container's new address
     (it moves again to Traefik in M5 — note that).
   - Retarget the interim ZBF rules L1 (Family -> :8096) and L2 (skynet-iot ->
@@ -437,7 +447,7 @@ already uses gets moved). No other new inputs.
 GUEST: "wg-qbittorrent".
   - Minimal NixOS. No X, no docs, no extra packages beyond what qBittorrent
     (nox) and the network stack need.
-  - MAC-pinned tap on br0, on the Services VLAN (80). A tap IS the right
+  - MAC-pinned tap on br0, on the Services VLAN (90). A tap IS the right
     primitive here — this is a microvm, not an nspawn container. Copy
     worked example A from machines/ernst/networking.nix.
   - WireGuard client to the commercial provider, with a REAL killswitch
@@ -634,7 +644,7 @@ ASK LGO FIRST, before writing any code:
 
 SHAPE. A systemd-nspawn container "traefik" in
 machines/ernst/containers/traefik.nix, with its own MAC-pinned veth on br0
-on the Services VLAN (80). NOT a tap — a tap is the microvm primitive; an
+on the Services VLAN (90). NOT a tap — a tap is the microvm primitive; an
 nspawn container gets a veth pair whose host side is named vb-traefik.
 Copy worked example B from machines/ernst/networking.nix. That veth's
 address is the identity every consumer VLAN gets its ONE permanent ZBF

@@ -17,7 +17,7 @@ anything is deployed, and is verified with ernst still untouched.
 |---|---|---|
 | Host address | on `enp13s0` | on `br0` |
 | `enp13s0` | static `10.0.50.10/24` | trunk port, no L3 |
-| VLANs on the wire | untagged only | 50 untagged (PVID) + 1, 5, 20, 80 tagged |
+| VLANs on the wire | untagged only | 50 untagged (PVID) + 1, 5, 20, 90 tagged |
 | DNS routing | `Domains = "~. skynet.lan"` on `enp13s0` | same, on `br0` |
 | Stage-1 initrd SSH | raw `enp13s0` | **unchanged** — raw `enp13s0` |
 
@@ -122,9 +122,9 @@ Settings → Networks → **Create New Network**.
 | Field | Value |
 |---|---|
 | Name | `Services` |
-| VLAN ID | `80` |
-| Gateway / Host Address | `10.0.80.1/24` |
-| DHCP | Server on. UniFi fixes the range at **`10.0.80.6`–`10.0.80.254`** and does not allow narrowing it |
+| VLAN ID | `90` |
+| Gateway / Host Address | `10.0.90.1/24` |
+| DHCP | Server on. UniFi fixes the range at **`10.0.90.6`–`10.0.90.254`** and does not allow narrowing it |
 | Domain Name | `skynet.lan` |
 | DNS Server | **Manual → `10.0.5.3`** so containers inherit Technitium like the host |
 | Device Isolation | **off** — Traefik must reach Jellyfin in M5 |
@@ -133,7 +133,7 @@ Settings → Networks → **Create New Network**.
 is no "static range" to hold back. Give containers **DHCP reservations against
 their pinned MACs** — UniFi assigns a fixed IP inside the pool quite happily, and
 that keeps the network's source of truth on the UDM-Pro, which is what M2b wanted
-anyway. Only `10.0.80.2`–`.5` sit outside the pool, so reserve those for anything
+anyway. Only `10.0.90.2`–`.5` sit outside the pool, so reserve those for anything
 that genuinely must be hard-coded.
 
 ### 2.2 Firewall zone
@@ -189,7 +189,7 @@ Settings → Profiles → Ethernet Port Profiles.
   untagged; a pure tagged trunk kills the unlock channel and makes every future
   boot a KVM trip.
 - **Tagged VLAN Management: Custom** → `LAN (1)`, `DNS-Container (5)`,
-  `IoT (20)`, `Services (80)`.
+  `IoT (20)`, `Services (90)`.
   Not "Allow All" — that would put HA (30), Guest (40) and Matter (60) on the
   trunk, against the decision that a VLAN not on the trunk cannot be reached by
   a typo in a future container unit.
@@ -208,10 +208,10 @@ themselves — the host's own untagged config is never touched.
 involvement:
 
 ```bash
-for v in 1 5 20 80; do ip link add link enp13s0 name vl$v type vlan id $v; ip link set vl$v up; done
+for v in 1 5 20 90; do ip link add link enp13s0 name vl$v type vlan id $v; ip link set vl$v up; done
 sleep 25
-for v in 1 5 20 80; do echo "VLAN $v: $(cat /sys/class/net/vl$v/statistics/rx_packets) pkts"; done
-for v in 1 5 20 80; do ip link del vl$v; done
+for v in 1 5 20 90; do echo "VLAN $v: $(cat /sys/class/net/vl$v/statistics/rx_packets) pkts"; done
+for v in 1 5 20 90; do ip link del vl$v; done
 ```
 
 Busy VLANs (LAN, IoT) should show thousands; quiet ones (DNS-Container,
@@ -223,10 +223,10 @@ apply.
 trap that cost time on 2026-08-19:
 
 ```bash
-ip link add link enp13s0 name vl80 type vlan id 80
-ip addr add 10.0.80.250/24 dev vl80; ip link set vl80 up; sleep 4
-ping -c1 -W2 -I vl80 10.0.80.1 >/dev/null 2>&1; ip neigh show dev vl80
-ip link del vl80
+ip link add link enp13s0 name vl90 type vlan id 90
+ip addr add 10.0.90.250/24 dev vl90; ip link set vl90 up; sleep 4
+ping -c1 -W2 -I vl90 10.0.90.1 >/dev/null 2>&1; ip neigh show dev vl90
+ip link del vl90
 ```
 
 `lladdr … REACHABLE` means a gateway SVI exists. `INCOMPLETE` or `FAILED` means
@@ -234,7 +234,7 @@ ip link del vl80
 Confirm with a DHCP probe that configures nothing:
 
 ```bash
-nix shell nixpkgs#dhcpcd -c dhcpcd -1 -T vl80
+nix shell nixpkgs#dhcpcd -c dhcpcd -1 -T vl90
 ```
 
 Falling back to a `169.254.x` IPv4LL address means no DHCP server answered.
@@ -243,9 +243,21 @@ Use a VLAN you know is routed as the control — VLAN 5 should ARP-resolve
 `10.0.5.1` and ping Technitium at `10.0.5.3`. If the control works and the new
 VLAN does not, the fault is that network's configuration, not the trunk.
 
-!!! danger "Root cause found 2026-08-20: a subnet collision, not a VLAN problem"
+!!! danger "Resolved 2026-08-20 — Services moved to VLAN 90 / `10.0.90.0/24`"
 
-    **`10.0.80.0/24` was already claimed by the `skynet-travel` WireGuard
+    **This is history, kept because the failure mode is worth recognising.** The
+    Services network was originally VLAN 80 on `10.0.80.0/24`, and its gateway
+    never answered. The fix was to renumber, not to repair anything: the subnet
+    was already taken.
+
+    `wg show` on the UDM-Pro identified the claimant as a live site-to-site
+    peer, not a stale entry — `allowed ips: 10.0.70.2/32, 10.0.80.0/24`, with
+    16.02 GiB received / 55.78 GiB sent. Reclaiming the subnet would have broken
+    that tunnel's routing, so Services moved instead. `10.0.90.0/24` was verified
+    free first (`ip route show | grep -E '^10\.0\.'`), and `10.0.80.0/24` is the
+    only subnet routed to `wgsrv1`.
+
+    **`10.0.80.0/24` was claimed by the `skynet-travel` WireGuard
     config**, so the UDM-Pro carried two routes for it and the wrong one won:
 
     ```
@@ -346,7 +358,7 @@ enp13s0   1
           5
           20
           50 PVID Egress Untagged
-          80
+          90
 br0       50 PVID Egress Untagged     ← the "self" entry
 ```
 
