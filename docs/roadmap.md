@@ -21,7 +21,7 @@ Two jobs:
 
 ## Current state
 
-Verified against the repo on 2026-08-19 (`main` @ `8bdd162`).
+Verified against the repo on 2026-08-20 (`main` @ `f9b305e`).
 
 | Milestone / work | Status | Refs | Note |
 |---|---|---|---|
@@ -45,7 +45,7 @@ Verified against the repo on 2026-08-19 (`main` @ `8bdd162`).
 | ernst `@blank` snapshots | **done — executed 2026-08-18** | — | `zroot/root@blank` + `zroot/home@blank` taken 21:35–21:36, all five steps of `docs/runbooks/ernst-enable-impermanence.md` including the one-way door. **Observed, not assumed**: `clanarchy-impermanence-check` failed at 21:33 — the #54 tripwire doing its job — passed at 21:36 once the snapshots existed, and passed again on the 21:37 reboot (`ExecMainStatus=0`). Step 5's checks hold: `/root/.ssh/authorized_keys` gone with SSH still working, `container@jellyfin` active, its journal intact across the reboot |
 | M1 — Kvantum linkGeneration drift | **closed — did not reproduce** | — | Four consecutive activations in the retained journal all passed `linkGeneration`. The on-disk shape that looked like drift is Stylix's `recursive = true` working as designed. See [M1](#m1-kvantum-linkgeneration-drift-closed) |
 | M2 — ernst VLAN bridge | **done — deployed 2026-08-20** | [#73](https://github.com/lutzgo/clanarchy/pull/73) | `br0` VLAN-filtering bridge, `enp13s0` as tagged trunk; VLAN 90 (Services) created for M2b/M5. Cutover verified: `br0` holds `10.0.50.10/24`, `enp13s0` enslaved, the `br0 50 PVID Egress Untagged` self entry present, NM now `unmanaged`. [Runbook](runbooks/ernst-vlan-bridge-cutover.md). See [M2](#m2-ernst-vlan-bridge-built-cutover-pending) |
-| M2b — Jellyfin on its own veth | **open** | — | [M2b](#m2b-featernst-jellyfin-tap) |
+| M2b — Jellyfin on its own veth | **done — deployed 2026-08-20** | [#82](https://github.com/lutzgo/clanarchy/pull/82) | Jellyfin on `10.0.90.10` via MAC-pinned veth `vb-jellyfin`, VLAN 90. **L3 retired.** Survived a reboot: `br0`'s pinned MAC reproduced at first boot-time creation, the VLAN race won by networkd, `/srv/state/jellyfin` intact through the rollback, `clanarchy-impermanence-check` green. The Nix half deployed first try; the [UDM-Pro half took five rounds](#the-udm-pro-half-cost-more-than-the-nix-half) and disproved M2's Connection-State finding. [M2b](#m2b-jellyfin-on-its-own-veth-done-deployed-2026-08-20) |
 | M3 — VPN microvm + qBittorrent | **open** | — | [M3](#m3-featernst-vpn-microvm) |
 | M4 — arr stack | **open** | — | [M4](#m4-featernst-arr-stack) |
 | M5 — Traefik | **open** | — | [M5](#m5-featernst-traefik) |
@@ -53,7 +53,7 @@ Verified against the repo on 2026-08-19 (`main` @ `8bdd162`).
 | M7 — Authelia | **open** | — | [M7](#m7-featernst-authelia) |
 | M8 — Tvheadend / SAT>IP live TV | **open — operator gate first** | — | Steps 1–3 (patching, UniFi, stream test) are lgo's and must clear before a session starts; the milestone dies if the FRITZ!Box's DVB-C is branding-locked. [M8](#m8-featernst-tvheadend) |
 | M9 — TubeSync | **open** | — | Feeds the Jellyfin library directly. First occupant of the **podman** tier (not in nixpkgs — verified), so it builds the tier as well as the service; podman's attachment to `br0` is unsolved here. [M9](#m9-featernst-tubesync) |
-| M10 — Kodi + IR remote | **open** | — | Depends on nothing in M2b–M7. Closes the gap that Big Picture cannot add non-Steam shortcuts, so there is no controller-navigable media path today. [M10](#m10-featernst-kodi-ir) |
+| M10 — Kodi + IR remote | **dropped — 2026-08-20** | — | Dropped by lgo before any code was written: the couch requirement is Plasma Bigscreen plus Steam, and Kodi is a third media UI nobody asked for. The IR-receiver half was orthogonal and survives as a [backlog entry](#floating-backlog) |
 
 ---
 
@@ -142,10 +142,11 @@ Rows are retired only by the PR that actually removes the rule.
 
 | # | Shim | Where it lives | Why it exists | Removal trigger | Status |
 |---|---|---|---|---|---|
-| L1 | `Family` VLAN → `ernst:8096/tcp` | UDM-Pro ZBF (off-repo) | Jellyfin is reached directly; there is no reverse proxy yet | **M5** — repoint clients at `jellyfin.<domain>` and replace with the permanent `Family → traefik:443` rule | open |
-| L2 | `IoT (20)` → `10.0.50.10:8096/tcp` | UDM-Pro ZBF policy `Allow Jellyfin from IoT to Servers` | TVs / streaming devices live on the IoT VLAN | **M5** — same as L1 | open — **created 2026-08-19**; earlier revisions of this table asserted it already existed, and it did not (see note below) |
-| L2a | IoT name resolution for L2 | — | IoT clients could not resolve `jellyfin.skynet.lan` | **M5** — repoint at Traefik | **not needed** — the TV is pointed at `http://10.0.50.10:8096` by IP, so no IoT→DNS path is required. Revisit only if a name is used |
-| L3 | `networking.firewall.allowedTCPPorts = [ 8096 ]` on the host | `machines/ernst/containers/jellyfin.nix` | Jellyfin shares the host network namespace (`privateNetwork = false`), so its port is a host port | **M2b** — the veth on VLAN 80 gives the container its own L2 identity; the host port opening goes away and the ACL moves to the UDM-Pro | open |
+| L1 | `LAN (1)` → Jellyfin `10.0.90.10:8096/tcp` | UDM-Pro ZBF policy `Allow Jellyfin to Services`, ID `10001` | Jellyfin is reached directly; there is no reverse proxy yet | **M5** — repoint clients at `jellyfin.<domain>` and replace with the permanent `LAN → traefik:443` rule | open — **retargeted by M2b** to the container's Services-VLAN address, dst zone `Servers`→`Services`. Verified matching (709 hits). Trigger unchanged |
+| L2 | `IoT (20)` → Jellyfin `10.0.90.10:8096/tcp` | UDM-Pro ZBF policy `Allow Jellyfin to Services`, ID `10000` | TVs / streaming devices live on the IoT VLAN | **M5** — same as L1 | open — created 2026-08-19; earlier revisions of this table asserted it already existed, and it did not. **Retargeted by M2b** as L1, and renamed so it stops naming the `Servers` zone. Verified matching (62 hits), and it sits ahead of `Block IoT to Trusted` (ID `10001`) |
+| L2a | IoT name resolution for L2 | — | IoT clients could not resolve `jellyfin.skynet.lan` | **M5** — repoint at Traefik | **obsolete, and it was never true as written** — M2b measured `dig @10.0.5.3 jellyfin.skynet.lan` succeeding from VLAN 20, so IoT has had a working path to Technitium all along. The TV using a bare IP was a client choice, not a constraint. Nothing to retire; nothing to build |
+| — | `Services → DNS-Container` `:53` | UDM-Pro ZBF policy `Allow Jellyfin to DNS`, ID `10000` | The `services` zone is isolated by default, so the container could not resolve at all | **permanent** — not interim, listed here only so it is not mistaken for one | created by M2b. `Services → External` was predicted to be needed too and **was not** — it already passed |
+| L3 | `networking.firewall.allowedTCPPorts = [ 8096 ]` on the host | `machines/ernst/containers/jellyfin.nix` | Jellyfin shares the host network namespace (`privateNetwork = false`), so its port is a host port | **M2b** — the veth on VLAN 90 gives the container its own L2 identity; the host port opening goes away and the ACL moves to the UDM-Pro | **retired in [#82](https://github.com/lutzgo/clanarchy/pull/82)** — the line is deleted from the repo; 8096 is now opened only inside the container's own netns. Effective on the next `clan machines update ernst` |
 | L4 | arr WebUI ports `9696` / `8989` / `7878`, mgmt-VLAN scoped | M4 (host firewall, v1) | arr v1 runs on host networking like Jellyfin did | **M5** for the routes, plus a veth migration mirroring M2b | not yet created |
 | L5 | Traefik `ipAllowList` on the arr + Grafana routes (mgmt + wg-travel) | M5 (`traefik` container) | There is no identity provider yet | **M7** — replaced by the Authelia forward-auth middleware | not yet created |
 | L6 | Tvheadend ports `9981` / `9982` on the host, mgmt-VLAN scoped | M8 (host firewall, v1) | Only if M8 lands before M2b — Tvheadend v1 would then run on host networking like Jellyfin's and arr's did | **M5** for the web route, plus a veth migration mirroring M2b. Never created at all if M2b lands first | not yet created |
@@ -292,15 +293,26 @@ that file header belongs to M2b, which owns the file.
 
 ### Two UDM-Pro findings from the cutover prep
 
-**A ZBF policy with `Connection State: All` silently never matches.** The new
-`Allow Jellyfin from IoT to Servers` rule sat at ID `10000` — first in evaluation
-order, ahead of `Block IoT to Trusted` — and still logged **zero hits** while the
-TV failed to connect. Every field matched the working `Allow Jellyfin from LAN to
-Servers` rule except Connection State: the working one used `Custom → New`, the
-broken one `All`. Setting it to `Custom → New` fixed it. Note the policy list is
-sorted **alphabetically by name**, not by evaluation order — read the ID column
-instead, and treat a zero hit count as a *matching* problem rather than an
-ordering one.
+**~~A ZBF policy with `Connection State: All` silently never matches.~~
+DISPROVED by M2b — see [that milestone's UDM-Pro section](#the-udm-pro-half-cost-more-than-the-nix-half).**
+The original observation: the new `Allow Jellyfin from IoT to Servers` rule sat
+at ID `10000` — first in evaluation order, ahead of `Block IoT to Trusted` — and
+still logged **zero hits** while the TV failed to connect; every field matched
+the working `Allow Jellyfin from LAN to Servers` rule except Connection State,
+and setting it to `Custom → New` appeared to fix it.
+
+The conclusion drawn from that was wrong twice over. `All` matches fine — M2b
+watched the SYN traverse a rule set to `All`. And the LAN rule this was compared
+against was **not carrying its traffic at all**: LAN and Servers are both in the
+`Internal` zone, and `Internal → Internal` is `Allow All`, so the blanket zone
+rule was doing the work and the Jellyfin rule's settings were never exercised.
+The real variable is **`Auto Allow Return Traffic`**, which is independent of
+Connection State. Do not reach for `Custom → New` on the strength of this
+paragraph; read M2b's table.
+
+What *does* hold from this finding: the policy list is sorted **alphabetically by
+name**, not by evaluation order — read the **ID** column instead — and a zero hit
+count is a *matching* problem rather than an ordering one.
 
 **VLAN 80's gateway was silent because the *subnet* was already taken.**
 `10.0.80.0/24` is claimed by the `skynet-travel` WireGuard config, so the UDM-Pro
@@ -324,11 +336,13 @@ the third octet, which `10.0.90.0/24` on VLAN 80 would have broken.
 
 ### Carried forward
 
-- **Pin `br0`'s MAC before M2b.** Not done here: with one port the kernel gives
-  `br0` the burned-in MAC of `enp13s0`, so the cutover does not move ernst's L2
-  identity — which is what you want on the one deploy that can lock you out. A
-  Linux bridge adopts the numerically *lowest* port MAC, so the second port can
-  silently move it. §1.4 of the runbook captures the value.
+- **Pin `br0`'s MAC before M2b.** ~~Not done here~~ — **done in M2b**
+  ([#82](https://github.com/lutzgo/clanarchy/pull/82)), which is where the
+  second port arrives — but **not to the value this note predicted, and the
+  hazard it named cannot occur.** `br0` never inherited `enp13s0`'s MAC; it
+  carries a networkd-assigned `b2:8b:e1:f2:1e:7c` with
+  `addr_assign_type = 3` (`NET_ADDR_SET`), which makes the kernel skip
+  lowest-port-MAC adoption entirely. See M2b's item 1.
 - **Avahi reflection.** `modules/networking/mdns.nix` runs with `reflector = true`
   and no interface pinning. Not a regression here — bridge ports carry no host
   address, so Avahi skips them and `br0` simply replaces `enp13s0` — but it bites
@@ -341,98 +355,253 @@ the third octet, which `10.0.90.0/24` on VLAN 80 would have broken.
 
 ---
 
-## M2b — `feat/ernst-jellyfin-tap`
+## M2b — Jellyfin on its own veth (done — deployed 2026-08-20)
 
-**Goal.** Move the Jellyfin container off the host network namespace onto its own
-MAC-pinned veth on `br0` (VLAN 90), giving it a distinct L2 identity the UDM-Pro can
-firewall directly. The migration path is already written into the file header of
-`machines/ernst/containers/jellyfin.nix`; this milestone executes it and retires
-ledger row **L3**.
+**Deployed and verified across a reboot.** The repo change applied on the first
+attempt; the UDM-Pro work either side of it took five rounds and is written up
+[below](#the-udm-pro-half-cost-more-than-the-nix-half), because M4, M5 and M8 all
+add rules into the same zone.
 
-**Depends on.** M2, proven stable for at least a few days.
-**Risk.** Medium — Jellyfin is the one service the household notices immediately.
+Jellyfin now runs in its own network namespace on a MAC-pinned veth
+(`02:00:00:90:00:02`), whose host side `vb-jellyfin` is a VLAN-90 port on `br0`.
+That gives it an L2 identity the UDM-Pro firewalls as a distinct client rather
+than as "ernst", which is what retires ledger row **L3**: the host-side
+`allowedTCPPorts = [ 8096 ]` is deleted, and 8096 is opened only inside the
+container's own netns.
 
-````text
-Read CLAUDE.md fully before doing anything.
+**Addressing is DHCP with a reservation**, not a static address in the repo. The
+UDM-Pro already owns the subnet, the pool and every other reservation on it; a
+second copy here would be a source of truth that diverges silently. The
+*resolver* is the opposite call — declared in the container (`DNS=10.0.5.3`,
+`Domains=~. skynet.lan`, `UseDNS=false`) for the same reason note 1 in
+`machines/ernst/networking.nix` declares it on `br0`: a DHCP-supplied resolver
+that quietly changes does not fail loudly.
 
-Work in the clanarchy repo on miralda. Branch: feat/ernst-jellyfin-tap.
-Prerequisite: M2 (feat/ernst-vlan-bridge) is merged, deployed, and has been
-stable on ernst for several days.
+### Four things worth carrying forward
 
-GOAL. Flip machines/ernst/containers/jellyfin.nix from host networking to a
-private network namespace with a MAC-pinned veth on br0, on the Services
-VLAN (90).
+1. **`br0`'s MAC is pinned — but M2's stated reason for it was wrong, and
+   following it would have caused the very outage it warned about.** M2 deferred
+   the pin to M2b on the theory that a Linux bridge adopts the numerically
+   **lowest** port MAC, so the veth added here (random, locally administered,
+   `0x02`/`0x06`/`0x0a` … all below `enp13s0`'s `0xa0`) would silently move
+   ernst's L2 identity. Measured on ernst 2026-08-20, before deploying anything:
 
-READ FIRST, and note it is WRONG in two ways: that file's header
-("Networking — v1: HOST namespace") sketches the migration as
-`containers.jellyfin.macvlans = [ "br-services" ]`. A macvlan is not a
-bridge port — on br0 it rides br0's own self VLAN (50, the HOST VLAN) and
-on enp13s0 it rides the trunk's native VLAN, also 50 — so it cannot be
-placed on VLAN 90 at all. And a *tap* is a microvm primitive, not an
-nspawn one. Correct that header in this PR; M2b owns the file.
+   ```
+   ip -br link show br0                      → b2:8b:e1:f2:1e:7c   (NOT enp13s0's)
+   cat /sys/class/net/br0/addr_assign_type   → 3                   (NET_ADDR_SET)
+   ```
 
-Scope:
-  - containers.jellyfin = { privateNetwork = true; hostBridge = "br0";
-    localMacAddress = "…"; }, plus a networkd unit matching the HOST side
-    of the veth. That side is named vb-jellyfin — the "vb-" prefix, not
-    "ve-", because nspawn uses --network-bridge=. The unit must set
-    KeepMaster = true (nspawn owns the enslavement; Bridge= would make
-    networkd fight it) and carry the [BridgeVLAN] for VLAN 90. Copy
-    worked example B from machines/ernst/networking.nix verbatim.
-  - VERIFY with `bridge vlan show` that the VLAN actually landed: networkd
-    applies [BridgeVLAN] when it observes the link's master, and nspawn
-    sets that master out of band, so the two can race. With
-    DefaultPVID = "none" on br0 a missed application is fail-closed (no
-    connectivity) rather than fail-open onto VLAN 50 — check for it
-    explicitly rather than trusting silence.
-  - Give the container its own address. Prefer a DHCP reservation on the
-    UDM-Pro over a static address in the container config, so the network's
-    source of truth stays in one place — but say which you chose and why.
-  - DELETE the host-side firewall opening
-    `networking.firewall.allowedTCPPorts = [ 8096 ]`. That is ledger row L3
-    in docs/roadmap.md, and it exists only because the container shared the
-    host namespace. The ACL moves onto the UDM-Pro.
-  - Everything else stays: the iGPU udev alias and the /dev/dri directory
-    bind (both load-bearing — see the header and
-    docs/incidents/ernst-jellyfin-vaapi-drm-display-failure-2026-08-18.md),
-    the /srv/media library binds and their legacy /media/Server001/* paths,
-    the /srv/state/jellyfin state bind, the tmpfs transcode cache, the fixed
-    uid/gid 964 and media gid 3000.
-  - networking.useHostResolvConf is currently mkForce true inside the
-    container BECAUSE it shares the host namespace. With a private network
-    that has to become real DNS config pointing at Technitium (10.0.5.3)
-    with the skynet.lan search domain. Do not leave it dangling.
+   systemd-networkd sets a MAC on the netdevs it creates, so
+   `br_stp_recalculate_bridge_id()` returns early rather than adopting a port
+   address. The kernel behaviour is real; it simply cannot fire on a
+   networkd-created bridge. Pinning to §1.4's `a0:ad:9f:1c:9d:74` as instructed
+   would therefore have **changed** `br0`'s MAC on the same deploy that moves
+   Jellyfin, on the interface carrying ernst's only management address — two
+   risks in one deploy, to avert a hazard that does not exist. The observed
+   `b2:8b:e1:f2:1e:7c` is pinned instead, which is a no-op today.
 
-MANUAL STEPS — list them explicitly in the PR body, they are lgo's:
-  - DHCP reservation for the pinned MAC on the Services VLAN (90).
-  - Repoint the Technitium `jellyfin` record at the container's new address
-    (it moves again to Traefik in M5 — note that).
-  - Retarget the interim ZBF rules L1 (Family -> :8096) and L2 (skynet-iot ->
-    :8096) from ernst's host address to the container address. They stay
-    interim; only their target changes.
-  - Update the interim-rule ledger in docs/roadmap.md: L3 retired by this PR,
-    L1/L2 retargeted with their trigger unchanged (M5).
+   The pin still earns its place, for the reason nobody had checked: **`br0` has
+   never survived a reboot.** The current boot began 2026-08-18 21:37; `br0` was
+   created live by the cutover deploy at 2026-08-20 10:11. No boot has ever
+   regenerated it, so nothing has confirmed networkd's value is reproducible.
+   Pinning settles that in the safe direction either way.
 
-TEST PLAN: container starts with its own address (`nixos-container status
-jellyfin`, `ip -br addr` inside), VAAPI still works (`nixos-container run
-jellyfin -- vainfo --display drm --device /dev/jellyfin-igpu-render` shows
-the iGPU, not Navi 31), a transcode runs, DNS resolves inside the container,
-and a Family-VLAN client still reaches the web UI.
+   **The transferable lesson:** §1.4 recorded `enp13s0`'s MAC and *predicted*
+   `br0` would inherit it; nobody re-read `br0` afterwards. Same failure shape as
+   M2's VLAN 80 — a plausible inference recorded as a measurement. Record what
+   you measured.
+2. **`services.jellyfin.openFirewall` is still `false`, for a new reason.** The
+   obvious v2 move is to flip it true now that the container has its own
+   firewall. Upstream's `openFirewall` opens 8096 **and** 8920/tcp **and**
+   1900+7359/udp — exactly the three ports this file has always refused. The
+   container carries an explicit `allowedTCPPorts = [ 8096 ]` instead.
+3. **The VLAN application genuinely races, so it is asserted twice.** networkd
+   applies `[BridgeVLAN]` only once it observes the link's master, and nspawn
+   sets that master out of band from `container@jellyfin.service`. An idempotent
+   `bridge vlan add … vid 90 pvid untagged` runs as `ExecStartPost` (prefixed
+   `-`, so a backstop cannot become a new failure mode). With
+   `DefaultPVID = "none"` a miss is fail-closed — no connectivity — not
+   fail-open onto VLAN 50. `bridge vlan show dev vb-jellyfin` is still the
+   check; do not trust silence from either mechanism.
+4. **`wait-online` inside the container is capped at 20 s, and the number is
+   load-bearing.** `services.jellyfin` is `after`/`wants`
+   `network-online.target`, so wait-online gates it on a DHCP lease. But
+   `container@jellyfin` is `Type=notify` with `TimeoutStartSec=1min`, and the
+   container only notifies READY once its own boot completes — so at the stock
+   120 s timeout a DHCP failure would stall the container past 60 s, the host
+   would kill it, and `Restart=on-failure` would loop it forever with no
+   reachable state to debug. At 20 s the container always finishes booting and
+   leaves one obviously failed unit instead.
 
-Constraints:
-- Never commit to main. Branch first, PR via `gh pr create` (title
-  imperative, <=70 chars, no prefix; body = summary + test plan + manual
-  steps).
-- No new flake inputs.
-- Minimal diffs; commit only the files this change touches.
-- Verify by evaluation:
-    nix flake check
-    nix eval --no-update-lock-file --raw \
-      '.#nixosConfigurations.ernst.config.system.build.toplevel.drvPath'
-- Claude does not deploy: `clan machines update ernst` is lgo's step.
-- Update docs/roadmap.md's status table and interim-rule ledger in the same
-  PR.
-````
+### The UDM-Pro half cost more than the Nix half
+
+The repo change deployed cleanly on the first attempt. Getting clients to reach
+it took five rounds, all of them off-repo, and every one of them was invisible
+from ernst's side — the container answered `HTTP 200` over L2 the whole time.
+Recorded in full because M4, M5 and M8 all add rules into this same zone.
+
+**`Auto Allow Return Traffic` is the load-bearing checkbox, and it is
+independent of Connection State.** The state list governs the *forward*
+direction; the checkbox generates the reverse rule (it appears in the policy
+list as a separate `… (Return)` row with State `Return Traffic`). Measured, with
+tcpdump on both the trunk and the container veth:
+
+| Forward Connection State | Auto Allow Return | Result |
+|---|---|---|
+| `Custom → New` | ✓ | SYN ok, SYN-ACK ok, **client's ACK + HTTP request dropped** |
+| `Custom → New+Est+Related` | ✗ | SYN ok, **SYN-ACK dropped** |
+| `All` | ✗ | SYN ok, **SYN-ACK dropped** |
+| **`All`** | **✓** | **works** |
+
+Both failure modes present as "the service is down". Neither logs anything. The
+tell is a rule with a **non-zero hit count** and a connection that still hangs —
+hits prove the forward rule matched, so the problem is the return leg.
+
+**This also disproves M2's `Connection State: All` finding.** `All` matches
+fine. M2 compared a broken IoT rule against a "working" LAN rule — but LAN and
+Servers are **both in the `Internal` zone**, and `Internal → Internal` is
+`Allow All`, so that LAN rule was never carrying its traffic and its settings
+were never exercised. Moving Jellyfin into the `services` zone removed the
+blanket allow and exposed the flaw for the first time. A rule that appears to
+work because a broader rule is doing the work is worth more suspicion than a
+rule that visibly fails.
+
+**Diagnosing this from ernst, without touching the TV.** A veth on `br0` tagged
+into any VLAN the trunk carries, with its own netns and a DHCP lease, reproduces
+a real client's path exactly — the traffic leaves on the trunk and is routed by
+the UDM-Pro like any other client's. That turned a five-round guessing game with
+a television into a scripted test:
+
+```bash
+ip netns add p20
+ip link add vb-p20 type veth peer name eth0p
+ip link set eth0p netns p20
+ip link set vb-p20 master br0 up
+bridge vlan add dev vb-p20 vid 20 pvid untagged      # 20 = IoT; 1 = LAN
+ip netns exec p20 ip link set eth0p address 02:00:00:20:00:99
+ip netns exec p20 ip link set eth0p up
+ip netns exec p20 dhcpcd -1 -q eth0p
+ip netns exec p20 curl -m5 -o /dev/null -w '%{http_code}\n' http://10.0.90.10:8096/health
+ip link del vb-p20; ip netns del p20                 # leaves nothing behind
+```
+
+Sniffing `enp13s0` while it runs is what localises the drop: a packet the
+UDM-Pro forwards appears **twice** on the trunk (once outbound on the client
+VLAN, once inbound on VLAN 90), a packet it drops appears **once**. That single
+observation replaces all speculation about which matcher is wrong.
+
+**Two smaller findings.**
+
+- A UniFi **fixed IP must sit inside the DHCP pool** to be served. `10.0.90.3`
+  was chosen from the `.2`–`.5` range the cutover runbook set aside — but that
+  range is for addresses *hard-coded on the client*, not for reservations. The
+  container was handed an ordinary pool lease instead, silently. Reserved
+  `10.0.90.10` (in-pool) instead.
+- Only **one** of the two ZBF rules the runbook predicted was actually needed.
+  `Services → DNS-Container` had to be created; `Services → External` already
+  passed. Probing beat predicting, at a cost of about thirty seconds.
+
+**Ordering was never the problem, but check it anyway.** The IoT rule sits at ID
+`10000`, ahead of `Block IoT to Trusted` at `10001`, which is correct and was
+correct throughout. The policy list still displays alphabetically by name — read
+the **ID** column.
+
+### The units live with the service, not with the topology
+
+`60-vb-jellyfin` sits in `machines/ernst/containers/jellyfin.nix`, beside the
+container that creates the veth and the rest of that service's host-side
+footprint (udev alias, tmpfiles, perms oneshot) — not in
+`machines/ernst/networking.nix`. That file describes the topology (bridge, trunk,
+VLAN map, the two attachment patterns) and should not accumulate one unit per
+service as M3/M4/M5 land. The one thing kept central there is the MAC allocation
+table, because a convention nobody can find in one place is not a convention.
+**M4 and M5 should follow the same split.**
+
+### Manual steps — lgo's, and required before the deploy
+
+1. **DHCP reservation** on the Services network (VLAN 90) for MAC
+   `02:00:00:90:00:02` → `10.0.90.10`. It **must be inside the DHCP pool**
+   (`10.0.90.6`–`.254`); UniFi will accept an address from the `.2`–`.5` range
+   the cutover runbook set aside but then silently hand out an ordinary pool
+   lease instead. That range is for addresses hard-coded on the client, not for
+   reservations.
+2. **Two new permanent ZBF rules** the `Services` zone needs in order to function
+   at all — it is isolated by default, which the cutover runbook flagged so their
+   absence would read as expected rather than as a bug:
+   `Services → DNS-Container` (Technitium at 10.0.5.3, or nothing resolves) and
+   `Services → External` (metadata and plugin downloads). Both permanent, so
+   neither goes in the ledger.
+3. **Retarget L1 and L2** from `10.0.50.10:8096` to the container's new address,
+   and from the `Servers` zone to `Services`. They stay interim; only the target
+   changes. Rename the IoT policy so it stops naming the wrong zone. **TICK
+   `Auto Allow Return Traffic`** — without it the SYN is forwarded and the
+   SYN-ACK is dropped, which looks exactly like a dead service. Connection State
+   `All` is fine and is *not* a substitute for the checkbox; see the
+   [UDM-Pro section](#the-udm-pro-half-cost-more-than-the-nix-half).
+4. **Repoint the TV bookmark** at the new address (L2a: it is an IP, not a name,
+   so the bookmark is the only thing that knows).
+5. **Technitium**: repoint the `jellyfin` record at the container address. It
+   moves once more, to Traefik, in M5.
+
+### Test plan
+
+Run after `clan machines update ernst`:
+
+```bash
+# The veth landed on VLAN 90 — the one thing that races.
+bridge vlan show dev vb-jellyfin          # expect: 90 PVID Egress Untagged
+ip -br link show master br0               # expect: enp13s0 + vb-jellyfin
+
+# br0's MAC is unchanged by the second port (it was already NET_ADDR_SET).
+ip -br link show br0                      # expect: b2:8b:e1:f2:1e:7c
+
+# The container has its own address and can resolve.
+nixos-container status jellyfin
+nixos-container run jellyfin -- ip -br addr show eth0
+nixos-container run jellyfin -- resolvectl status eth0
+nixos-container run jellyfin -- getent hosts jellyfin.skynet.lan
+
+# The host no longer listens on 8096.
+ss -lntp | grep 8096 || echo "not on the host — correct"
+
+# VAAPI survived the netns change (it should be untouched, but prove it).
+nixos-container run jellyfin -- vainfo --display drm \
+  --device /dev/jellyfin-igpu-render      # expect the iGPU, NOT Navi 31
+```
+
+### Results, verified across a reboot on 2026-08-20
+
+The reboot was the point. ernst has been genuinely impermanent only since
+2026-08-18 (invariant #7), and M2b is the first of the three milestones the
+invariant names as never having been tested against a real rollback. It was also
+the **first boot at which `br0` was created from config** rather than by a live
+deploy — the open question the MAC pin was written against.
+
+| Check | Result |
+|---|---|
+| `br0` MAC at first boot-time creation | `b2:8b:e1:f2:1e:7c`, `addr_assign_type=3` — **pin reproduced** |
+| `bridge vlan show dev vb-jellyfin` | `90 PVID Egress Untagged` — networkd won the race unaided |
+| Container | `10.0.90.10`, MAC `02:00:00:90:00:02`, DNS `10.0.5.3` / `skynet.lan ~.`, resolves |
+| `systemd-networkd-wait-online` (in container) | `success`, no failed units, system `running` |
+| **`/srv/state/jellyfin` through the rollback** | **intact** — `jellyfin.db` 221 MB and live, `encoding.xml` still `vaapi` + `EnableHardwareEncoding` |
+| `clanarchy-impermanence-check` | `success` / `0`; both `@blank` snapshots present |
+| Host `:8096` | absent — L3 stays retired across boots |
+| VAAPI | `radeonsi … raphael_mendocino` = iGPU, not Navi 31 |
+| `zpool status` | `zroot` **ONLINE**, both mirror legs; `zdata` ONLINE |
+| Clients (veth probes on VLAN 1 and VLAN 20) | `HTTP 200` from both |
+
+Two notes for whoever reads this next:
+
+- **The shutdown was slow and logged "resource or device busy", and POST took
+  long enough to look like a failure to boot.** It was neither — ernst came up
+  normally and asked for the zroot passphrase on the TV. Given
+  `docs/incidents/ernst-slot12-drop-2026-08-11.md` and the fact that the **only
+  ESP lives on `disk.system-a`**, a slow POST on this machine reads as a dead
+  boot disk. It is worth knowing that it is usually just HBA enumeration.
+- **`mirroredBoots` is still not done, and this reboot showed why it matters.**
+  With one ESP, any slot-12 recurrence turns a healthy mirrored pool into an
+  unbootable machine. `machines/ernst/disko.nix` already carries the commented
+  layout and a four-step procedure in its header.
 
 ---
 
@@ -663,9 +832,15 @@ SHAPE. A systemd-nspawn container "traefik" in
 machines/ernst/containers/traefik.nix, with its own MAC-pinned veth on br0
 on the Services VLAN (90). NOT a tap — a tap is the microvm primitive; an
 nspawn container gets a veth pair whose host side is named vb-traefik.
-Copy worked example B from machines/ernst/networking.nix. That veth's
-address is the identity every consumer VLAN gets its ONE permanent ZBF
-rule for — the whole point of the milestone.
+COPY M2b's WORKING VERSION, not the sketch: machines/ernst/containers/
+jellyfin.nix has the veth unit, the KeepMaster/BridgeVLAN wiring, the
+ExecStartPost that settles the VLAN race, and the wait-online cap that keeps
+a DHCP failure from restart-looping the container. Put traefik's unit in
+traefik.nix beside the container, following the same split M2b used (the
+topology file stays topology; only the MAC allocation table is central).
+MAC 02:00:00:90:00:04 is already reserved for it there. That veth's address
+is the identity every consumer VLAN gets its ONE permanent ZBF rule for —
+the whole point of the milestone.
 
 TLS.
   - ACME DNS-01, wildcard certificate. DNS-01 specifically so nothing has to
@@ -978,9 +1153,14 @@ how the 6591 is attached today and what mode it is in.
     RTSP TCP connection**, which keeps the whole ACL to two TCP ports and no
     return-path rule at all. Try interleaved first — the milestone prompt makes
     this a decision to prove, not to assume.
-  - Use `Connection State: Custom → New`, never `All`. A ZBF policy with `All`
-    silently never matches; that cost a session during the M2 cutover prep — see
-    [M2's UDM-Pro findings](#two-udm-pro-findings-from-the-cutover-prep).
+  - On any ZBF rule reaching a container zone, TICK `Auto Allow Return Traffic`.
+    Connection State is NOT a substitute and the two are independent: the state
+    list governs the forward direction, the checkbox creates the reverse rule.
+    Leaving it unticked forwards the SYN and drops the SYN-ACK, which looks like
+    a dead service rather than a firewall problem. Earlier revisions of this file
+    said "use Custom → New, never All" — that advice was wrong and cost most of a
+    session in M2b. See
+    [M2b's UDM-Pro section](#the-udm-pro-half-cost-more-than-the-nix-half).
   - If the FRITZ!Box ends up on the same VLAN as Tvheadend, there is no ACL at
     all. Say so rather than creating a rule that does nothing.
 
@@ -1053,10 +1233,14 @@ NETWORKING — decide by what has landed, and say which branch you took:
   - If M2b (feat/ernst-jellyfin-tap) is merged, this container is BORN on a
     MAC-pinned veth on br0, Services VLAN (90). Do not repeat Jellyfin's
     host-networking detour just because the file next door started that way.
-    Copy worked example B from machines/ernst/networking.nix, host side
-    named vb-tvheadend, KeepMaster = true, [BridgeVLAN] for 90 — and VERIFY
-    with `bridge vlan show` that the VLAN landed, because networkd and
-    nspawn race over the master.
+    Copy M2b's WORKING version from machines/ernst/containers/jellyfin.nix
+    (not the sketch in networking.nix): host side named vb-tvheadend,
+    KeepMaster = true, [BridgeVLAN] for 90, the idempotent ExecStartPost that
+    settles the networkd-vs-nspawn race over the master, and the wait-online
+    cap that keeps a DHCP failure from restart-looping the container. Unit
+    goes in the container's own file, not the topology file. Allocate the
+    next MAC from the table in machines/ernst/networking.nix. VERIFY with
+    `bridge vlan show` regardless.
   - If M2b has NOT landed, ship host networking v1 exactly like Jellyfin's
     and arr's, with ports 9981 (HTTP/web) and 9982 (HTSP) opened on the host
     and scoped to the management VLAN on the UDM-Pro, plus a veth-migration
@@ -1133,7 +1317,7 @@ MANUAL STEPS — list them explicitly in the PR body, they are lgo's:
   - The Phase 0 items, if any remain open.
   - Technitium record for tvheadend.
   - The ZBF rule Tvheadend → FRITZ!Box (TCP 49000 + 554, plus whatever the
-    RTP transport decision requires), Connection State Custom → New.
+    RTP transport decision requires), with `Auto Allow Return Traffic` TICKED.
   - DHCP reservation for the container's MAC, if the veth path was taken.
   - The Jellyfin Live TV configuration checklist.
   - `clan machines update ernst` and `clan vars generate ernst`.
@@ -1495,127 +1679,31 @@ Constraints:
 
 ---
 
-## M10 — `feat/ernst-kodi-ir`
+## M10 — Kodi + IR remote (dropped)
 
-**Numbered deliberately** (settled 2026-08-20). It depends on nothing in M2b–M7
-and could have been a backlog entry. What earned it a number: an operator
-purchase, a `/persist` entry, and a user-visible outcome on the TV — none of
-which fit a section that is explicitly *not sequenced*.
+**Dropped 2026-08-20 by lgo, before any code was written.** The couch
+requirement is **Plasma Bigscreen plus Steam**, and Kodi is a third media UI
+nobody asked for — it would have been a second library front-end to configure,
+persist and keep in sync with Jellyfin's, bought against a gap Bigscreen is
+meant to close directly. Recorded rather than deleted so the numbering stays
+stable and the next reader does not re-derive the idea.
 
-**Goal.** Give the TV a media path that a remote can drive. Two pieces, both
-**independent of the Bigscreen question** — whichever of that entry's three
-routes eventually wins, or none, neither piece is wasted.
+What the entry got right and what it got wrong:
 
-**Depends on.** The HTPC role (done) and Jellyfin (done). Nothing else.
-**Risk.** Low. The two halves have different readiness, which is the only thing
-worth sequencing: Kodi can ship immediately, the Flirc half is gated on hardware
-that has not been bought.
-
-**Kodi as a plain application** — `pkgs.kodi-wayland` (21.3 in ernst's pin) plus
-the Jellyfin for Kodi addon, so the existing library is native rather than
-reached through the web client.
-
-The gap it closes is a real limitation, not a preference: non-Steam shortcuts
-can only be added from the **desktop** Steam client, never from within Big
-Picture. So the gamescope session cannot act as a general launcher, and ernst
-has no controller-navigable path to media today — the couch account can reach
-games or a desktop, and nothing in between. Kodi survives every Bigscreen
-outcome unchanged; if a Bigscreen route later lands, it launches Kodi as a
-`.desktop` entry rather than replacing it.
-
-`~/.kodi` needs a `/persist` entry. That is a new requirement rather than an
-old one — see invariant #7 and the 2026-08-18 row in the
-[status table](#current-state). Before that date this would have worked by
-accident.
-
-**A Flirc USB IR receiver for the SofaBaton X1S.** The remote speaks Bluetooth
-only to its own hub, and its generic BT-keyboard profile is unreliable against
-PCs. Flirc presents as a plain USB HID keyboard, so keybinds work identically
-under gamescope, under Kodi, and under any future shell — nothing configured
-there is thrown away by a shell decision, which is the same property that makes
-the Kodi half safe.
-
-On this machine specifically it is worth more than it would be elsewhere: the
-MT7927 blocker in the backlog below means on-board Bluetooth is dead until
-MediaTek's firmware redistribution clears, so an input path that does not depend
-on Bluetooth at all is not merely tidier, it is the only one that works today.
-See [the controllers guide](guides/htpc-controllers.md).
-
-**Manual step (lgo's).** Buy the Flirc, and map the SofaBaton's IR profile to
-keycodes. Everything downstream of that is repo work; nothing upstream of it is.
-
-````text
-Read CLAUDE.md fully before doing anything.
-
-Work in the clanarchy repo on miralda. Branch: feat/ernst-kodi-ir.
-
-READ M10 in docs/roadmap.md first for the rationale. Two halves with
-different readiness: SHIP THE KODI HALF EVEN IF THE FLIRC HAS NOT ARRIVED.
-Do not block one on the other, and do not stub the half you cannot test.
-
-GOAL. Give ernst's TV a media path a remote can drive — independent of every
-Bigscreen outcome. Nothing here is invalidated by that entry's three routes,
-whichever wins or if none does.
-
-HALF 1 — KODI. Ships now, needs no hardware.
-  - pkgs.kodi-wayland (21.3 in ernst's pin) plus the Jellyfin for Kodi addon,
-    so the library is native rather than reached through the web client.
-  - DECIDE AND JUSTIFY how it is reached from the couch account. ernst's htpc
-    role already has clanarchy-session-select with gamescope and plasma arms
-    (modules/roles/htpc.nix). Options: a third session arm, a .desktop entry
-    launched from Plasma, or both. State which and why. Do NOT quietly
-    restructure the session switcher to make it fit — if that is the right
-    move, argue it first.
-  - ~/.kodi NEEDS A /persist ENTRY for the couch user `go`. ernst has been
-    genuinely impermanent since 2026-08-18 (invariant #7), so without it
-    every library setting, addon and watch-state is gone on the next boot.
-    This is the single most likely way to ship this milestone broken, because
-    it looks completely fine until the first reboot. Prove it by rebooting.
-  - The Jellyfin addon's configuration is UI state. Follow M4's policy:
-    document the intended in-UI settings in the PR body as a reproducible
-    checklist rather than faking them declaratively.
-
-HALF 2 — FLIRC IR. Gated on hardware lgo has to buy. If it has not arrived,
-say so plainly in the PR body and ship half 1.
-  - The Flirc presents as a plain USB HID keyboard, so there may be little or
-    nothing to configure in NixOS. VERIFY that rather than assuming it — and
-    if it really is zero-config, SAY SO instead of inventing a module to have
-    something to show.
-  - Keybinds must work identically under gamescope and under Kodi. Where Kodi
-    needs a keymap, declare it — do not hand-edit files under ~/.kodi, which
-    the persist entry will then freeze in place.
-  - Do NOT reach for Bluetooth. ernst's on-board MT7927 Bluetooth is dead
-    until MediaTek's firmware redistribution clears (see the backlog entry
-    and docs/guides/htpc-controllers.md). That blocker is the reason this is
-    IR and not BT; an input path that does not depend on Bluetooth is the
-    only one that works on this machine today.
-  - Update docs/guides/htpc-controllers.md with whatever lands.
-
-MANUAL STEPS (lgo's): buy the Flirc; map the SofaBaton X1S's IR profile onto
-the keycodes the repo expects, and record which keycodes those are so the
-mapping is reproducible.
-
-TEST PLAN in the PR body:
-  - Kodi starts from the couch account by the chosen route, on the TV.
-  - The Jellyfin library lists and plays.
-  - REBOOT, then confirm Kodi's configuration survived. The persist entry is
-    the point of this milestone; an untested one is a milestone shipped
-    broken.
-  - With a Flirc present: the remote drives both Kodi and Big Picture.
-
-Constraints:
-- Never commit to main. Branch first, PR via `gh pr create` (title
-  imperative, <=70 chars, no prefix; body = summary + test plan + manual
-  steps).
-- No new flake inputs.
-- Minimal diffs; commit only the files this change touches.
-- Verify by evaluation:
-    nix flake check
-    nix eval --no-update-lock-file --raw \
-      '.#nixosConfigurations.ernst.config.system.build.toplevel.drvPath'
-- Claude does not deploy: `clan machines update ernst` is lgo's step.
-- Update docs/roadmap.md's status table in the same PR.
-````
+- **Wrong:** that the Bigscreen question made Kodi *safe* to ship. Being
+  independent of an unresolved decision is not the same as being wanted; it
+  argued Kodi could not be invalidated, never that it was needed.
+- **Right, and kept:** the gap itself. Big Picture cannot add non-Steam
+  shortcuts — only the desktop Steam client can — so the gamescope session
+  still cannot act as a general launcher. That is now squarely
+  [Bigscreen's problem to solve](#floating-backlog), not Kodi's.
+- **Right, and moved to the backlog:** the **Flirc IR receiver**. It was
+  bundled here but is orthogonal to every media UI — the SofaBaton X1S speaks
+  Bluetooth only to its own hub, ernst's on-board MT7927 Bluetooth is dead
+  until MediaTek's firmware redistribution clears, and Flirc presents as a
+  plain USB HID keyboard that works identically under gamescope, Bigscreen and
+  anything else. Dropping Kodi does not make the couch need an input device
+  any less.
 
 ---
 
@@ -1632,6 +1720,24 @@ kernel 7.1, but the firmware is the real gate, so this is not a flake bump away.
 Wired pads and USB dongles both work today — see
 [the controllers guide](guides/htpc-controllers.md), which carries the two
 one-line checks to re-run after a future bump.
+
+**A Flirc USB IR receiver for the SofaBaton X1S.** Demoted here from M10 when
+Kodi was dropped (2026-08-20) — it was bundled with Kodi but is orthogonal to
+every media UI, and the couch still needs something a remote can drive.
+
+The remote speaks Bluetooth only to its own hub, and its generic BT-keyboard
+profile is unreliable against PCs. Flirc presents as a plain **USB HID
+keyboard**, so keybinds work identically under gamescope, under Bigscreen, and
+under any future shell — nothing configured for it is thrown away by a shell
+decision, which is exactly why it outlived the milestone it arrived in. On this
+machine it is worth more than it would be elsewhere: the MT7927 blocker above
+means on-board Bluetooth is dead until MediaTek's firmware redistribution
+clears, so an input path that does not depend on Bluetooth at all is the only
+one that works today.
+
+Gated on hardware lgo has to buy, and it may well be zero-config in NixOS —
+verify that rather than inventing a module to have something to show. Whatever
+lands goes in [the controllers guide](guides/htpc-controllers.md).
 
 **Remove NetworkManager from ernst.** It is enabled unintentionally:
 `modules/roles/htpc.nix` imports `modules/desktop/kde.nix`, which sets

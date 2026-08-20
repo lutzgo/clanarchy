@@ -88,7 +88,7 @@ Do not skip any of these. Each one is a channel you may need.
 
    | | Value |
    |---|---|
-   | `enp13s0` MAC | `a0:ad:9f:1c:9d:74` — **this is the value to pin on `br0` before M2b** |
+   | `enp13s0` MAC | `a0:ad:9f:1c:9d:74` — ~~the value to pin on `br0` before M2b~~. **Wrong prediction, see §6:** `br0` never inherited it. Re-read `br0`'s own MAC after the cutover and pin *that* |
    | Address | `10.0.50.10/24` on `enp13s0` |
    | Default route | `via 10.0.50.1 dev enp13s0` |
    | `bridge link show` | empty |
@@ -472,10 +472,31 @@ never touched. If `.local` names matter, that is a UDM-Pro repeater question.
 
 ## 6. After the cutover
 
-- Pin `br0`'s MAC in `machines/ernst/networking.nix` using the value captured in
-  §1.4 — **required before M2b**, because a Linux bridge adopts the numerically
-  lowest port MAC and the second port would otherwise be able to move the host's
-  identity.
-- M2b, M3 and M5 copy the commented worked examples in that file. Note there are
-  two of them: a tap for microvm guests, a `vb-*` veth for nspawn containers.
-  They are not interchangeable.
+- ~~Pin `br0`'s MAC **using the value captured in §1.4**~~ — **done in M2b, but
+  NOT to that value, and the reasoning above was wrong.** Measured on ernst
+  2026-08-20: `br0` does **not** carry `enp13s0`'s `a0:ad:9f:1c:9d:74`, it
+  carries `b2:8b:e1:f2:1e:7c`, and `/sys/class/net/br0/addr_assign_type` is
+  `3` (`NET_ADDR_SET`). systemd-networkd sets a MAC on the netdevs it creates,
+  so `br_stp_recalculate_bridge_id()` returns early instead of adopting a port
+  address — **the lowest-port-MAC hazard cannot fire on a networkd-created
+  bridge.** Pinning to §1.4's value would therefore have *changed* `br0`'s MAC
+  on the same deploy that moves Jellyfin, on the interface holding ernst's only
+  management address. `machines/ernst/networking.nix` pins the observed
+  `b2:8b:e1:f2:1e:7c` instead, which is a no-op today.
+
+  The pin still earns its place, for a reason nobody had checked: **`br0` has
+  never survived a reboot.** `journalctl --list-boots` shows the current boot
+  began 2026-08-18 21:37 and `br0` was created live by this cutover at
+  2026-08-20 10:11, so no boot has ever regenerated it. Pinning settles that in
+  the safe direction — a no-op freeze if networkd's value is derived from
+  machine-id, and the thing that stops it moving every boot if it is not.
+
+  **General lesson, and it is the same one VLAN 80 taught:** §1.4 recorded
+  `enp13s0`'s MAC and *predicted* `br0` would inherit it. Nobody re-read `br0`
+  after the cutover. Record what you measured, not what you expect to be true.
+- M3 copies worked example A (a tap) from that file. **M4 and M5 should copy
+  M2b's working nspawn veth from `machines/ernst/containers/jellyfin.nix`**
+  rather than example B, which is now only a pattern summary — the real one
+  carries the `ExecStartPost` that settles the networkd-vs-nspawn VLAN race and
+  the `wait-online` cap that keeps a DHCP failure from restart-looping the
+  container. Taps and veths are not interchangeable.
