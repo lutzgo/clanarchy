@@ -955,32 +955,14 @@ in
         };
       };
 
-      # TEMPORARY — remove before merge.
-      #
-      # The guest has no inbound channel until the firewall is proven, and the
-      # serial console is write-only, so there is no way to ask it what its
-      # interfaces are called or what its routing table looks like.  This dumps
-      # that state onto the one writable share, where the host can read it at
-      # /srv/state/qbittorrent/debug.txt.
-      systemd.services.wg-qbittorrent-debug = {
-        description = "TEMPORARY: dump guest network state to the state share";
-        wantedBy = [ "multi-user.target" ];
-        wants    = [ "network-online.target" ];
-        after    = [ "network-online.target" "nftables.service" "wg-quick-wg0.service" "sshd.service" ];
-        serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
-        script = ''
-          exec > /var/lib/qBittorrent/debug.txt 2>&1
-          echo "### date";        date
-          echo "### ip -br link"; ${pkgs.iproute2}/bin/ip -br link
-          echo "### ip -br addr"; ${pkgs.iproute2}/bin/ip -br addr
-          echo "### ip rule";     ${pkgs.iproute2}/bin/ip rule
-          echo "### ip route";    ${pkgs.iproute2}/bin/ip route show table all
-          echo "### listeners";   ${pkgs.iproute2}/bin/ss -lntp
-          echo "### resolv.conf"; cat /etc/resolv.conf
-          echo "### nft ruleset"; ${pkgs.nftables}/bin/nft list ruleset
-          echo "### failed units"; systemctl --failed --no-pager --no-legend
-        '';
-      };
+      # No host keys to generate — the one host key comes from the vars
+      # generator, because the guest's root is a tmpfs and a self-generated key
+      # would be new on every boot.  Without this, sshd-keygen.service is
+      # emitted with an empty ExecStart and systemd refuses it noisily on the
+      # console at every boot: "Service has no ExecStart=. Refusing."  Harmless,
+      # but it is the only red line in an otherwise clean boot log, and a boot
+      # log people learn to ignore is worse than no boot log.
+      systemd.services.sshd-keygen.enable = false;
 
       # Minimal guest.  curl and wireguard-tools are the test plan's
       # instruments (exit-IP check through wg0, `wg show` for the handshake);
