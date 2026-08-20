@@ -686,8 +686,21 @@ guest, `wg-qbittorrent`:
    table. A reply to a client on 10.0.10.0/24 — a different subnet from the
    guest's — matches nothing in main once the default route is suppressed, and
    falls into the tunnel. The service looks dead from exactly the networks
-   allowed to reach it. A networkd `[RoutingPolicyRule]` at priority 100 sends
-   the home supernet to `main`; nftables still governs what may leave.
+   allowed to reach it. A networkd `[RoutingPolicyRule]` at priority 100 per
+   management network sends those replies to `main`; nftables still governs
+   what may leave.
+
+   **Per network, not per supernet — and the first draft got that wrong.** It
+   used a single rule for `10.0.0.0/16`, covering the whole VLAN map in one
+   line. That is a latent breakage for any provider whose in-tunnel resolver
+   lives in the same prefix, and IVPN's does: AntiTracker DNS is `10.0.254.2`
+   (hardcore `10.0.254.3`), which a `/16` carve-out routes at `eth0`, where the
+   killswitch correctly drops it. Symptom: tunnel up, `wg show` perfect, not one
+   name resolves. Caught by reading the provider's documentation before
+   generating vars, not by anything in the repo — the same shape as M2's VLAN 80
+   and M2b's MAC pin, where a plausible generalisation was recorded as if it
+   were a measurement. Enumerating the two subnets that actually need the
+   carve-out removes the class.
 
 5. **`Bridge=`, not `KeepMaster=` — the opposite of `containers/jellyfin.nix`,
    and the VLAN race that file documents cannot happen here.** nspawn enslaves
@@ -745,9 +758,30 @@ retire.
 ### Manual steps — lgo's, and the order matters
 
 1. **`clan vars generate ernst`** — *before* the first deploy (see carry-forward
-   6). Prompts, in order: the WireGuard private key, the provider's public key,
-   the endpoint as `IP:PORT` **with an IP literal**, the tunnel address with its
-   prefix, the in-tunnel DNS server, and a WebUI password for user `admin`.
+   6). Seven prompts, in order: the WireGuard private key, the provider's public
+   key, the endpoint as `IP:PORT` **with an IP literal**, the tunnel address with
+   its prefix, the in-tunnel DNS server, the MTU (**may be left empty** — see
+   below), and a WebUI password for user `admin`.
+
+   Every value except the last comes straight out of the provider's own
+   generated config. **For IVPN** (the provider in use), that is: a key pair
+   made locally with `wg genkey | tee >(wg pubkey)`, the *public* half
+   registered in the Client Area; the assigned `Address` from `172.16.0.0/12`;
+   `DNS = 172.16.0.1`, or `10.0.254.2` / `10.0.254.3` for AntiTracker; and
+   `MTU = 1412` — IVPN's own value, and **lower than the 1420 wg-quick would
+   derive**, which is why the prompt exists. An MTU that is too high does not
+   fail cleanly: the handshake completes, `wg show` looks healthy, and transfers
+   stall on the first full-size packet. IVPN offers UDP 53, 80, 443, 1194, 2049,
+   2050, 30587, 41893, 48574 and 58237; any of them is fine. There is no
+   preshared key and no username/password — WireGuard auth is the registered
+   key.
+
+   **The endpoint is pinned into the killswitch by IP**, so it must be one
+   specific server, and a server that IVPN retires or renumbers takes the tunnel
+   with it — re-run the generator and restart the two units. IVPN discontinued
+   port forwarding entirely in September 2023, so the guest's inbound rule for
+   the torrent port is inert: outgoing peer connections work, incoming ones do
+   not.
 2. **DHCP reservation** on the Services network (VLAN 90) for MAC
    `02:00:00:90:00:03`. It **must be inside the pool** (`10.0.90.6`–`.254`) —
    UniFi accepts an address from the `.2`–`.5` range and then silently hands out

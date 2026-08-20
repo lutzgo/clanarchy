@@ -183,14 +183,15 @@ let
 
   # Management networks allowed to reach the WebUI and SSH.  LAN (1) is where
   # lgo's machines live; Servers (50) is ernst itself, so a port-forward from
-  # the host works without a second hop.  Kept in one place because the guest's
-  # firewall and the UDM-Pro rule have to agree.
+  # the host works without a second hop.
+  #
+  # ONE list, THREE consumers, deliberately: the guest's nftables input chain,
+  # its output chain's established-reply rule, and its routing carve-out.  That
+  # is the correct coupling — the set of networks whose traffic may come IN is
+  # exactly the set whose replies must be allowed to go back OUT rather than
+  # into the tunnel.  The UDM-Pro rule is the fourth consumer and the one that
+  # cannot be derived from here; it has to be kept in step by hand.
   mgmtNets = [ "10.0.10.0/24" "10.0.50.0/24" ];
-
-  # Every private subnet the home LAN uses is inside 10.0.0.0/16 (the VLAN map
-  # in machines/ernst/networking.nix runs 10.0.1…90.0/24).  Used for the one
-  # routing carve-out the WebUI needs; see the routingPolicyRules comment.
-  homeSupernet = "10.0.0.0/16";
 
   # Secrets are staged out of sops into a host tmpfs directory and shared into
   # the guest read-only.  NOT a share of /run/secrets itself: that path is a
@@ -387,7 +388,22 @@ in
       type        = "line";
     };
     prompts."dns" = {
-      description = "In-tunnel DNS server supplied by the provider (e.g. 10.64.0.1)";
+      description = "In-tunnel DNS server supplied by the provider (IVPN standard: 172.16.0.1)";
+      type        = "line";
+    };
+    prompts."mtu" = {
+      # Optional, and the only prompt that accepts an empty answer.
+      #
+      # wg-quick derives an MTU when the config does not set one: the egress
+      # link's MTU minus 80, i.e. 1420 on ethernet.  Several providers ship a
+      # LOWER value — IVPN's own guides say 1412 — and the difference does not
+      # fail cleanly.  The handshake completes, `wg show` looks healthy, small
+      # requests work, and transfers stall on the first full-size packet.  For
+      # a torrent client that is the entire workload.
+      #
+      # Empty answer → no MTU line at all → wg-quick's derivation, which is the
+      # right default for a provider that does not specify one.
+      description = "MTU from the provider's config, or EMPTY for wg-quick's default (IVPN: 1412)";
       type        = "line";
     };
     prompts."webui-password" = {
@@ -405,6 +421,7 @@ in
       endpoint=$(tr -d '[:space:]' < "$prompts/endpoint")
       address=$(tr -d '[:space:]' < "$prompts/address")
       dns=$(tr -d '[:space:]' < "$prompts/dns")
+      mtu=$(tr -d '[:space:]' < "$prompts/mtu")
 
       ep_ip="''${endpoint%:*}"
       ep_port="''${endpoint##*:}"
@@ -422,6 +439,11 @@ in
         exit 1
       fi
 
+      if [ -n "$mtu" ] && ! printf '%s' "$mtu" | grep -Eq '^[0-9]{3,4}$'; then
+        echo "mtu must be a number or empty; got '$mtu'" >&2
+        exit 1
+      fi
+
       # No Table= line, deliberately: wg-quick's automatic policy routing
       # (fwmark + `suppress_prefixlength 0`) is what puts every non-tunnel
       # destination on wg0.  Setting Table= disables it.
@@ -430,6 +452,15 @@ in
       PrivateKey = $priv
       Address = $address
       DNS = $dns
+      EOF
+
+      # Omitted entirely when the prompt was left empty — an "MTU = " line is
+      # not the same thing as no MTU line.
+      if [ -n "$mtu" ]; then
+        printf 'MTU = %s\n' "$mtu" >> "$out/wg0.conf"
+      fi
+
+      cat >> "$out/wg0.conf" <<EOF
 
       [Peer]
       PublicKey = $peer
@@ -583,7 +614,8 @@ in
           UseNTP     = false;
         };
 
-        # The one carve-out wg-quick's policy routing needs.
+        # The carve-out wg-quick's policy routing needs — one rule per
+        # management network, and NOT a supernet.
         #
         # With AllowedIPs = 0.0.0.0/0, wg-quick installs `from all lookup main
         # suppress_prefixlength 0` ahead of `not fwmark … lookup <wg table>`.
@@ -593,21 +625,28 @@ in
         # through into the tunnel.  The WebUI would appear dead from exactly
         # the networks that are allowed to reach it.
         #
-        # Priority 100 puts this ahead of both of wg-quick's rules, so traffic
-        # to the home supernet uses main and leaves via eth0.  It does NOT
-        # widen what may leave: the nftables output chain still drops
-        # everything to those networks except replies on established flows.
+        # Priority 100 puts these ahead of both of wg-quick's rules, so replies
+        # to those two subnets use main and leave via eth0.  Nothing is widened:
+        # the nftables output chain still drops everything to them except
+        # replies on established flows.
         #
-        # HAZARD, if the provider is ever changed: this shadows 10.0.0.0/16
-        # inside the guest.  Providers hand out tunnel addresses in 10.64/10,
-        # 10.2/16 and similar, which are outside it — but a provider using
-        # 10.0.x.x would have its own tunnel address routed out of eth0 and
-        # dropped.  Check the assigned Address= against this prefix.
-        routingPolicyRules = [ {
-          To       = homeSupernet;
+        # THE FIRST DRAFT USED 10.0.0.0/16 — one rule covering the whole VLAN
+        # map — and that was a latent breakage, caught while reading IVPN's
+        # documentation rather than by anything here.  A provider's in-tunnel
+        # resolver can live in 10.0.0.0/16: IVPN's AntiTracker DNS is
+        # 10.0.254.2 (hardcore mode 10.0.254.3), and a /16 carve-out would have
+        # routed every DNS query at eth0, where the killswitch correctly drops
+        # it.  Symptom: the tunnel comes up, `wg show` looks perfect, and not
+        # one name resolves.
+        #
+        # Enumerating the two subnets that actually need this removes the whole
+        # class of collision: any provider address outside them — IVPN assigns
+        # from 172.16.0.0/12 — routes into the tunnel where it belongs.
+        routingPolicyRules = map (net: {
+          To       = net;
           Table    = "main";
           Priority = 100;
-        } ];
+        }) mgmtNets;
 
         linkConfig.RequiredForOnline = "routable";
       };
