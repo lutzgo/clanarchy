@@ -58,6 +58,26 @@
     # remaining 26.05 readers are inert.
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
+    # microvm.nix — the microvm isolation tier (docs/roadmap.md invariant #1).
+    #
+    # Pre-approved by M3 and scoped to it: the VPN/qBittorrent guest is the one
+    # workload on ernst that talks to the open internet on its own behalf, so it
+    # gets its own kernel instead of sharing the host's.  Nothing else in the
+    # fleet imports this.
+    #
+    # nixpkgs.follows = "nixpkgs" — the guest is built from clan-core's 26.05
+    # pin, the same channel as its host (invariant #6).  Upstream's own default
+    # is nixos-unstable, so without the follows we would acquire a third full
+    # nixpkgs in the lock AND an unstable guest under a stable host.
+    #
+    # The lock also gains microvm's `spectrum` input (flake = false, a source
+    # tree it borrows a couple of files from).  It has no nixpkgs of its own,
+    # so there is nothing to make it follow.
+    microvm = {
+      url = "github:microvm-nix/microvm.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     noctalia = {
       # Pin to pre-v5 revision (2026-05-26). Noctalia v5 rewrote the HM module
       # from typed options to freeform TOML; migrating our 1150-line
@@ -220,6 +240,13 @@
           ./machines/ernst/networking.nix
           ./machines/ernst/htpc.nix
           ./machines/ernst/containers/jellyfin.nix
+          # microvm.nix's host module, and the one guest that uses it (M3).
+          # The import lives here rather than inside wg-qbittorrent.nix
+          # because `inputs` reaches a machine module via _module.args, and
+          # reading _module.args from an `imports` list is an infinite
+          # recursion.
+          inputs.microvm.nixosModules.host
+          ./machines/ernst/microvms/wg-qbittorrent.nix
         ];
       };
     };

@@ -288,8 +288,16 @@
   # MAC ALLOCATIONS on 02:00:00:<vlan>:00:<seq> (the whole point of a
   # convention is that it is written down in one place):
   #   02:00:00:90:00:02   jellyfin container eth0   (M2b — allocated)
-  #   02:00:00:90:00:03   wg-qbittorrent guest      (M3  — reserved)
+  #   02:00:00:90:00:03   wg-qbittorrent guest eth0 (M3  — allocated)
   #   02:00:00:90:00:04   traefik container eth0    (M5  — reserved)
+  #
+  # NUMERIC ID ALLOCATIONS across the storage boundary — the sibling
+  # convention, tracked here for the same reason.  virtiofs and nspawn both
+  # pass uids/gids through unmapped, so a number chosen inside a guest is a
+  # number on zdata:
+  #   gid 3000  media        shared read/write group (containers/jellyfin.nix)
+  #   uid  964  jellyfin     (containers/jellyfin.nix)
+  #   uid 3001  qbittorrent  (microvms/wg-qbittorrent.nix — M3)
   #
   # MAC policy for both: locally-administered (02:…) so it cannot collide with
   # a vendor OUI.  Convention below: 02:00:00:<vlan>:00:<seq>.  The MAC the
@@ -299,14 +307,25 @@
 
   # ── A. microvm / QEMU guest (M3: VPN + qBittorrent) ──────────────────────
   #
-  # systemd.network.netdevs."60-tap-vpn" = {
-  #   netdevConfig = { Name = "tap-vpn"; Kind = "tap"; };
-  #   tapConfig    = { User = "microvm"; Group = "kvm"; };   # who may open it
-  # };
+  # NO LONGER HYPOTHETICAL.  M3 implemented this for wg-qbittorrent; the
+  # working version is in machines/ernst/microvms/wg-qbittorrent.nix.  Copy
+  # from there, and note the ONE correction it made to the sketch that used to
+  # live here:
+  #
+  #   THERE IS NO NETDEV.  The sketch declared
+  #     systemd.network.netdevs."60-tap-vpn" = {
+  #       netdevConfig = { Name = "tap-vpn"; Kind = "tap"; };
+  #       tapConfig    = { User = "microvm"; Group = "kvm"; };
+  #     };
+  #   microvm.nix creates the tap itself, from the VM's own bin/tap-up
+  #   (`ip tuntap add … user microvm`), and DELETES + recreates it on every
+  #   start.  A netdev unit races that for the same name.  Declare only the
+  #   .network:
+  #
   # systemd.network.networks."60-tap-vpn" = {
   #   matchConfig.Name = "tap-vpn";
   #   networkConfig = {
-  #     Bridge              = "br0";
+  #     Bridge              = "br0";     # ← Bridge=, unlike pattern B below
   #     LinkLocalAddressing = "no";
   #     IPv6AcceptRA        = false;
   #   };
@@ -317,6 +336,11 @@
   #   microvm.interfaces = [
   #     { type = "tap"; id = "tap-vpn"; mac = "02:00:00:90:00:03"; }
   #   ];
+  #
+  # Bridge= is correct HERE and wrong in pattern B, which is the whole
+  # distinction: nothing else enslaves a microvm tap, so networkd does the
+  # enslavement and the [BridgeVLAN] application in one step — and the VLAN
+  # race that B has to work around cannot occur.
 
   # ── B. systemd-nspawn container (M4 arr, M5 Traefik) ─────────────────────
   #
