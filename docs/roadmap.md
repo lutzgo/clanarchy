@@ -51,6 +51,7 @@ Verified against the repo on 2026-08-19 (`main` @ `8bdd162`).
 | M5 — Traefik | **open** | — | [M5](#m5-featernst-traefik) |
 | M6 — monitoring | **open** | — | [M6](#m6-featmonitoring) |
 | M7 — Authelia | **open** | — | [M7](#m7-featernst-authelia) |
+| M8 — Tvheadend / SAT>IP live TV | **open — operator gate first** | — | Steps 1–3 (patching, UniFi, stream test) are lgo's and must clear before a session starts; the milestone dies if the FRITZ!Box's DVB-C is branding-locked. [M8](#m8-featernst-tvheadend) |
 
 ---
 
@@ -134,6 +135,8 @@ Rows are retired only by the PR that actually removes the rule.
 | L3 | `networking.firewall.allowedTCPPorts = [ 8096 ]` on the host | `machines/ernst/containers/jellyfin.nix` | Jellyfin shares the host network namespace (`privateNetwork = false`), so its port is a host port | **M2b** — the veth on VLAN 80 gives the container its own L2 identity; the host port opening goes away and the ACL moves to the UDM-Pro | open |
 | L4 | arr WebUI ports `9696` / `8989` / `7878`, mgmt-VLAN scoped | M4 (host firewall, v1) | arr v1 runs on host networking like Jellyfin did | **M5** for the routes, plus a veth migration mirroring M2b | not yet created |
 | L5 | Traefik `ipAllowList` on the arr + Grafana routes (mgmt + wg-travel) | M5 (`traefik` container) | There is no identity provider yet | **M7** — replaced by the Authelia forward-auth middleware | not yet created |
+| L6 | Tvheadend ports `9981` / `9982` on the host, mgmt-VLAN scoped | M8 (host firewall, v1) | Only if M8 lands before M2b — Tvheadend v1 would then run on host networking like Jellyfin's and arr's did | **M5** for the web route, plus a veth migration mirroring M2b. Never created at all if M2b lands first | not yet created |
+| L7 | FRITZ!Box → Tvheadend on the ephemeral **UDP** range | UDM-Pro ZBF (off-repo), M8 | SAT>IP media is unicast RTP on a return flow the RTSP rule does not cover | Proving RTP **interleaved over the RTSP TCP connection**, which reduces the whole ACL to TCP 49000 + 554 | not yet created — **avoid**; take the interleaved-TCP path if M8's Phase 0 shows it works |
 
 ---
 
@@ -881,6 +884,273 @@ Constraints:
   `clan vars generate ernst` are lgo's steps.
 - Update docs/roadmap.md's status table and interim-rule ledger in the same
   PR — this milestone closes L5.
+````
+
+---
+
+## M8 — `feat/ernst-tvheadend`
+
+**Goal.** Live TV and a PVR backend in Jellyfin, fed by the four DVB-C tuners
+already sitting in the FRITZ!Box 6591 Cable. The 6591 does **not** emit raw
+multicast IPTV — it publishes its tuners as a **SAT>IP server**: RTSP for control,
+**unicast** RTP for media. That single fact decides the shape of this milestone.
+Unicast is routable, so this needs no IGMP snooping, no multicast relay, and none
+of the multicast-relay machinery elsewhere in the stack; it is an ordinary
+inter-VLAN flow the UDM-Pro can firewall like any other. The chain is:
+
+```
+FRITZ!Box 6591 (SAT>IP server, 4× DVB-C)
+  → Tvheadend (SAT>IP client + PVR/EPG backend, nspawn on ernst)
+    → Jellyfin Live TV (M3U tuner + XMLTV EPG)
+```
+
+**Its own milestone, not sub-tasks under Jellyfin.** M2b is a networking
+migration of a service that already runs; this is a new service, a new isolation
+unit, a new hardware dependency, and a chunk of off-repo validation that has to
+happen *before* any Nix is written. Folding it into M2b would mean one session
+holding two unrelated failure modes.
+
+**Depends on.** Jellyfin (done) and M2 (done). Independent of M3–M7 — it can be
+taken whenever [Phase 0](#phase-0-operator-gate-lgo) clears. Its container shape
+follows whichever of M2b has landed by then (see the prompt).
+**Risk.** Low-to-medium in the repo. The real risk is entirely outside it: if
+this 6591 is a provider-branded unit with DVB-C/SAT>IP stripped from the
+firmware, the milestone is dead and no amount of Nix fixes it. Phase 0 exists to
+find that out for the price of a `curl`.
+
+### Phase 0 — operator gate (lgo)
+
+Steps 1–3 are physical, UniFi, and browser work. **Do them before opening a
+session** and paste the evidence into it; a Claude session cannot patch a cable
+or click a ZBF rule, and building a container against an unverified stream source
+is how a milestone ends up debugging the wrong layer.
+
+**0.1 — Physical wiring.** *Pre-check first, before touching a cable:* determine
+how the 6591 is attached today and what mode it is in.
+
+- Is it WAN-only into the UDM-Pro, or does it already have a LAN leg patched into
+  the USW? If a leg already exists, 0.1 is a no-op and 0.2 is just VLAN
+  assignment. **TODO — confirm.**
+- Is it in **router mode** or **bridge/modem mode** (`Kabelmodem`-Betrieb)?
+  **TODO — confirm.** This is not a detail: in bridge mode a LAN port may be a
+  pure L2 path to the cable WAN, and patching it into the USW would bridge the
+  provider's segment into skynet. In bridge mode SAT>IP is also typically gone,
+  which folds this question into 0.3 anyway.
+- If a leg is needed: patch a free LAN port on the 6591 into the USW. Note that
+  the 6591 in router mode **runs its own DHCP server** on that LAN side. A second
+  DHCP server on a production VLAN is a rogue-DHCP incident waiting to happen —
+  either disable it on the FRITZ!Box, or land the leg on a VLAN where it cannot
+  reach a client that would listen. Decide this deliberately in 0.2.
+
+**0.2 — UniFi wiring.**
+
+- Assign the FRITZ!Box's switch port to the target VLAN. **TODO — which VLAN?**
+  The candidates are IoT (20), a dedicated appliance VLAN, or Services (90). It
+  should *not* be Servers (50): the 6591 is provider-managed customer premises
+  equipment, not a machine we administer. Whatever is chosen, record it here and
+  in the container's file header — the ACL below and the ledger rows both
+  key off it.
+- Give it a stable address: a DHCP reservation on the UDM-Pro, or a static
+  address on the FRITZ!Box itself. Prefer the reservation, for the same reason
+  M2b prefers it — the network's source of truth stays in one place.
+- Add the ZBF rule allowing the future Tvheadend host to reach the FRITZ!Box:
+  - **TCP 49000** — the SAT>IP/TR-064 description endpoint (`satipdesc.xml`).
+  - **TCP 554** — RTSP session setup and control.
+  - **Media transport.** RTP is a *separate* unicast UDP flow the server opens
+    back toward the client on client-chosen ports, so a stateful rule for 554
+    does not cover it. Two ways out, and they are not equal: either allow
+    FRITZ!Box → Tvheadend on the ephemeral UDP range (broad, ugly, and it is why
+    ledger row **L7** exists below), or run RTP **interleaved over the existing
+    RTSP TCP connection**, which keeps the whole ACL to two TCP ports and no
+    return-path rule at all. Try interleaved first — the milestone prompt makes
+    this a decision to prove, not to assume.
+  - Use `Connection State: Custom → New`, never `All`. A ZBF policy with `All`
+    silently never matches; that cost a session during the M2 cutover prep — see
+    [M2's UDM-Pro findings](#two-udm-pro-findings-from-the-cutover-prep).
+  - If the FRITZ!Box ends up on the same VLAN as Tvheadend, there is no ACL at
+    all. Say so rather than creating a rule that does nothing.
+
+**0.3 — Stream test, before any infrastructure exists.** This is the gate.
+
+1. Confirm DVB-C / SAT>IP is actually enabled and present in the web UI
+   (`Heimnetz → Mediaserver`, TV/SAT>IP section). **TODO — check for a
+   provider/Vodafone branding lock**; branded firmware images have shipped with
+   the tuner features removed, and the UI simply lacks the section rather than
+   telling you why.
+2. Fetch the description document — no client, no container, just:
+   ```
+   curl -s http://<fritzbox-ip>:49000/satipdesc.xml
+   ```
+   It must return a `<root>` with a `<satip:X_SATIPCAP>` advertising DVB-C
+   frontends (expect `DVBC-4` or equivalent). Nothing returned, or a document
+   with no SAT>IP capability line, means stop — the rest of the milestone has no
+   source.
+3. Play one channel end-to-end before trusting the description document, since a
+   tuner can be advertised and still be unusable:
+   ```
+   ffprobe -rtsp_transport tcp \
+     "rtsp://<fritzbox-ip>/?src=1&freq=<MHz>&msys=dvbc&mtype=256qam&sr=6900&pids=all"
+   ```
+   (or the same URL opened in VLC). Frequency, modulation and symbol rate are
+   provider-specific — take them from an existing cable receiver or the
+   provider's channel list. `-rtsp_transport tcp` is deliberate: if this works, it
+   is also the evidence that the interleaved-TCP path in 0.2 is available.
+
+Paste the `satipdesc.xml` capability line and the `ffprobe` stream summary into
+the session. They are the prompt's prerequisite.
+
+### Open questions carried into the session
+
+- **FRITZ!Box branding lock** — is DVB-C/SAT>IP present in this unit's firmware
+  at all? Gate for the entire milestone (0.3).
+- **Operating mode** — router vs bridge/modem, which decides whether a LAN leg is
+  even safe to patch (0.1).
+- **Target VLAN for the FRITZ!Box** — unresolved, and it determines the ACL, the
+  DHCP question, and the ledger rows (0.2).
+- **RTP transport** — interleaved over RTSP TCP (preferred) vs a UDP return-path
+  rule (row L7). Settled by 0.3's `-rtsp_transport tcp` result plus what
+  Tvheadend's SAT>IP client actually supports.
+
+````text
+Read CLAUDE.md fully before doing anything.
+
+Work in the clanarchy repo on miralda. Branch: feat/ernst-tvheadend.
+
+PREREQUISITE — Phase 0 of M8 in docs/roadmap.md is CLEARED, and the evidence
+is in this session: the FRITZ!Box's satipdesc.xml capability line, and an
+ffprobe/VLC summary of one channel actually playing over an RTSP SAT>IP URL.
+If that evidence is not here, STOP and say so. Do not build a container
+against an unverified stream source, and do not "temporarily" scaffold one to
+be filled in later — the whole point of the gate is that the failure mode
+this milestone is most likely to hit lives outside the repo.
+
+GOAL. Tvheadend on ernst as a SAT>IP client against the FRITZ!Box 6591's four
+DVB-C tuners, publishing an M3U playlist and an XMLTV guide that Jellyfin
+consumes as a Live TV tuner + EPG source.
+
+SHAPE. One systemd-nspawn container named "tvheadend", in
+machines/ernst/containers/tvheadend.nix, wired into flake.nix next to the
+jellyfin container. nspawn is the right tier per invariant #1: trusted,
+storage-heavy, and it talks to one appliance on the LAN — not to the
+internet on its own behalf. Not a microvm, not podman (tvheadend is in
+nixpkgs; no image escape hatch is needed).
+
+NETWORKING — decide by what has landed, and say which branch you took:
+  - If M2b (feat/ernst-jellyfin-tap) is merged, this container is BORN on a
+    MAC-pinned veth on br0, Services VLAN (90). Do not repeat Jellyfin's
+    host-networking detour just because the file next door started that way.
+    Copy worked example B from machines/ernst/networking.nix, host side
+    named vb-tvheadend, KeepMaster = true, [BridgeVLAN] for 90 — and VERIFY
+    with `bridge vlan show` that the VLAN landed, because networkd and
+    nspawn race over the master.
+  - If M2b has NOT landed, ship host networking v1 exactly like Jellyfin's
+    and arr's, with ports 9981 (HTTP/web) and 9982 (HTSP) opened on the host
+    and scoped to the management VLAN on the UDM-Pro, plus a veth-migration
+    note in the file header mirroring the one arr.nix carries. Add the host
+    port opening to the interim-rule ledger as row L6.
+
+SAT>IP CLIENT — the one configuration detail that decides whether this works:
+  - Point Tvheadend at the STATIC description URL,
+    http://<fritzbox-ip>:49000/satipdesc.xml. Do NOT rely on SSDP discovery.
+    SSDP is multicast to 239.255.255.250:1900 and the UDM-Pro does not carry
+    it between VLANs — and the fix for that is emphatically NOT to enable an
+    SSDP/mDNS relay across a firewall boundary to save one config field.
+    Static URL, one direction, done.
+  - The NixOS module is `services.tvheadend` (httpPort 9981 / htspPort 9982).
+    CHECK what it actually exposes for extra arguments rather than assuming
+    an `extraArgs` option exists. If there is none, override ExecStart in
+    LIST FORM WITH AN EMPTY FIRST ELEMENT ([ "" "…" ]) — a NixOS systemd
+    drop-in is ADDITIVE, and `lib.mkForce` on a plain string appends a second
+    ExecStart instead of replacing the first.
+  - Record the FRITZ!Box's address and VLAN in the file header, with a note
+    that it is provider CPE we do not administer — its firmware can change
+    under us.
+
+TUNER CEILING — a real constraint, not a footnote. The 6591 has FOUR DVB-C
+frontends, and SAT>IP maps one RTSP session to one frontend: two clients on
+the same mux still burn two tuners, unlike a locally attached card where
+Tvheadend demuxes several services from one frontend. EPG grabbing and DVR
+recordings consume from the same pool, and so does anything the FRITZ!Box
+itself is doing. Set the SAT>IP network's max input streams to 4, decide and
+document how much headroom the DVR gets versus live viewing, and put the
+whole ceiling in the file header so the first "why did my recording fail"
+has an answer in the repo.
+
+STORAGE.
+  - State at /srv/state/tvheadend, bound to the upstream default state path
+    inside the container so the packaged unit needs no overrides — the same
+    trick jellyfin.nix uses for /var/lib/jellyfin.
+  - DVR recordings into /srv/media, as a PLAIN SUBDIRECTORY (invariant #2 —
+    one hardlink domain; do not add a dataset under /srv/media). Pick the
+    path so Jellyfin can present the recordings as a library, and note that
+    /srv/media carries no snapshots.
+  - Static uid/gid, member of the media group (gid 3000, fixed on the host in
+    machines/ernst/containers/jellyfin.nix). nspawn does not remap gids here;
+    numeric ids must match on both sides.
+
+EPG. Prefer the over-the-air EIT grabber off the DVB-C stream — it needs no
+external grabber, no new flake input, and no internet dependency. If you
+conclude an external XMLTV grabber is needed, argue it in the file header
+rather than adding one silently. Either way Tvheadend is what serves XMLTV
+downstream.
+
+OUTPUTS for Jellyfin: the M3U playlist and XMLTV endpoints Tvheadend serves
+over HTTP. Verify the exact paths against the packaged version rather than
+quoting them from memory, and put the resulting URLs in the PR body.
+
+CREDENTIALS. Tvheadend's ACL/user database is UI state, not a Nix option.
+Follow M4's configuration policy: create a dedicated, streaming-only
+Tvheadend user for Jellyfin, and document the in-UI settings as a
+reproducible checklist in the PR body so the state can be rebuilt from the
+repo plus that list. The superuser credentials come from a clan vars
+generator (clan.core.vars.generators.*), seeded into the state directory —
+no plaintext in the repo, no placeholder that looks real. Document
+`clan vars generate ernst` in the PR body.
+
+JELLYFIN WIRING is a checklist, not code — Live TV configuration lives in
+Jellyfin's own database. In the PR body, spell out: add Tvheadend's M3U
+playlist as an M3U Tuner, add its XMLTV feed as the guide source, map
+channels, and where the recordings library points. Note as a watch-item (not
+a claim) that SD MPEG-2 channels may fall back to software decode on the
+Granite Ridge iGPU while H.264/HEVC HD channels transcode in hardware —
+verify with a live transcode, do not assume either way.
+
+MANUAL STEPS — list them explicitly in the PR body, they are lgo's:
+  - The Phase 0 items, if any remain open.
+  - Technitium record for tvheadend.
+  - The ZBF rule Tvheadend → FRITZ!Box (TCP 49000 + 554, plus whatever the
+    RTP transport decision requires), Connection State Custom → New.
+  - DHCP reservation for the container's MAC, if the veth path was taken.
+  - The Jellyfin Live TV configuration checklist.
+  - `clan machines update ernst` and `clan vars generate ernst`.
+
+TEST PLAN in the PR body:
+  - Tvheadend sees the SAT>IP server via the static XML URL and enumerates
+    four DVB-C frontends.
+  - A mux scan finds services; channels are mapped.
+  - `curl` of the M3U and XMLTV endpoints FROM THE JELLYFIN SIDE returns
+    real content — that is the flow that has to work, not a curl from the
+    host.
+  - Guide data populates in Jellyfin and a channel plays end-to-end on a
+    real client (TV on the IoT VLAN, not just a browser on the mgmt VLAN).
+  - The tuner ceiling is exercised deliberately: a fifth concurrent stream
+    must fail cleanly, and the PR body says what "cleanly" looked like.
+  - RTP transport: state which mode is in use and show the evidence.
+
+Constraints:
+- Never commit to main. Branch first, PR via `gh pr create` (title
+  imperative, <=70 chars, no prefix; body = summary + test plan + manual
+  steps).
+- No new flake inputs.
+- Minimal diffs; commit only the files this change touches.
+- Verify by evaluation:
+    nix flake check
+    nix eval --no-update-lock-file --raw \
+      '.#nixosConfigurations.ernst.config.system.build.toplevel.drvPath'
+- Claude does not deploy: `clan machines update ernst` and
+  `clan vars generate ernst` are lgo's steps.
+- Update docs/roadmap.md's status table and interim-rule ledger in the same
+  PR.
 ````
 
 ---
