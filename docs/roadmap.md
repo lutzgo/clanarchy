@@ -52,6 +52,7 @@ Verified against the repo on 2026-08-19 (`main` @ `8bdd162`).
 | M6 — monitoring | **open** | — | [M6](#m6-featmonitoring) |
 | M7 — Authelia | **open** | — | [M7](#m7-featernst-authelia) |
 | M8 — Tvheadend / SAT>IP live TV | **open — operator gate first** | — | Steps 1–3 (patching, UniFi, stream test) are lgo's and must clear before a session starts; the milestone dies if the FRITZ!Box's DVB-C is branding-locked. [M8](#m8-featernst-tvheadend) |
+| M9 — TubeSync | **open — scoped, no prompt yet** | — | Feeds the Jellyfin library directly. First occupant of the **podman** tier (not in nixpkgs — verified), so it builds the tier as well as the service; podman's attachment to `br0` is unsolved here. [M9](#m9-featernst-tubesync) |
 
 ---
 
@@ -137,6 +138,7 @@ Rows are retired only by the PR that actually removes the rule.
 | L5 | Traefik `ipAllowList` on the arr + Grafana routes (mgmt + wg-travel) | M5 (`traefik` container) | There is no identity provider yet | **M7** — replaced by the Authelia forward-auth middleware | not yet created |
 | L6 | Tvheadend ports `9981` / `9982` on the host, mgmt-VLAN scoped | M8 (host firewall, v1) | Only if M8 lands before M2b — Tvheadend v1 would then run on host networking like Jellyfin's and arr's did | **M5** for the web route, plus a veth migration mirroring M2b. Never created at all if M2b lands first | not yet created |
 | L7 | FRITZ!Box → Tvheadend on the ephemeral **UDP** range | UDM-Pro ZBF (off-repo), M8 | SAT>IP media is unicast RTP on a return flow the RTSP rule does not cover | Proving RTP **interleaved over the RTSP TCP connection**, which reduces the whole ACL to TCP 49000 + 554 | not yet created — **avoid**; take the interleaved-TCP path if M8's Phase 0 shows it works |
+| L8 | TubeSync web UI port, mgmt-VLAN scoped | M9 (host/container firewall, v1) | Only if M9 lands before M5 — an admin UI with no proxy in front of it yet. Mgmt-scoped, so invariant #3 does not cover it | **M5** — replace with the Traefik route. Never created at all if M5 lands first | not yet created |
 
 ---
 
@@ -1152,6 +1154,200 @@ Constraints:
 - Update docs/roadmap.md's status table and interim-rule ledger in the same
   PR.
 ````
+
+---
+
+## M9 — `feat/ernst-tubesync`
+
+**Goal.** TubeSync ([meeb/tubesync](https://github.com/meeb/tubesync)) on ernst:
+subscribe to YouTube channels/playlists, download with yt-dlp on a schedule, and
+write the results straight into the tree Jellyfin already scans — so new content
+appears in the library with no second copy step and no import stage.
+
+**Depends on.** Jellyfin (done). The auth and routing decisions below reference
+M5 (Traefik) and M7 (Authelia); the milestone can land before either, but then it
+carries an interim ledger row (**L8**) it would not otherwise need.
+**Risk.** Medium, and *not* where it looks. TubeSync itself is a small service.
+The risk is that this is the **first occupant of the podman tier** — invariant #1
+lists podman as an escape hatch with "nothing yet" in it, and
+`virtualisation.oci-containers` appears nowhere in this repo. This milestone
+builds the tier as much as it deploys the service, and the networking question
+below has no worked example anywhere in `machines/ernst/networking.nix`.
+
+### Decisions to make in the session
+
+**1 — Isolation tier: podman. Right answer, and the reason matters.**
+
+Podman qualifies, but *not* because TubeSync is lightweight and SQLite-backed.
+Invariant #1 tiers by **trust and workload**, not by footprint — Jellyfin is
+lightweight too and it is nspawn; the arr stack is three services in one nspawn
+container. The tier table gives podman exactly one job: *"escape hatch — upstream
+ships only an image."*
+
+TubeSync meets that test on the facts. **Verified 2026-08-20: there is no
+`tubesync` attribute in nixpkgs.** Upstream ships a Docker image and a Django
+app; there is no NixOS module and no package to drive from `services.*`. So the
+nspawn argument that carries Jellyfin — "a real NixOS system view, upstream
+hardening as-is, no OCI image drift" — has nothing to stand on here.
+
+Two consequences to write into the file header rather than discover later:
+
+- The tier's cost is the thing the invariant is warning about: an opaque image,
+  a package tree we do not control, and drift we absorb rather than evaluate.
+  Accept it explicitly, and state what would move this to nspawn later (someone
+  packaging TubeSync, or a Django-app-from-source derivation).
+- **Decide whether to run it rootless or rootful**, and say why. Rootless is the
+  better default for an escape-hatch tier, but it interacts directly with the
+  networking and PUID/PGID decisions below — do not pick it by reflex and then
+  fight it in items 3 and 6.
+
+**2 — Module path: `machines/ernst/containers/tubesync.nix`.**
+
+Not `modules/services/tubesync.nix` — **there is no `modules/services/`
+directory in this repo**, and `modules/` holds *cross-machine* shared modules
+(`modules/desktop`, `modules/roles`, `modules/hardware`, …). A service that runs
+on exactly one machine lives under that machine. The only existing service
+container is `machines/ernst/containers/jellyfin.nix`, and M4 and M8 both add
+siblings to it. Wire it into `flake.nix` next to them.
+
+`modules/apps/containers.nix` is **not** a precedent to follow: it is the
+workstation developer bundle (`clanarchy.apps.containers`, podman CLI +
+docker-compat socket for `lgo`), pulled in via `modules/apps` — which is part of
+`commonHeadful`, and ernst uses `commonBase`. It has never run a service.
+
+Note in the PR body that `containers/` now holds one podman unit alongside two
+nspawn ones, and either accept the name as generic or say why it stays.
+
+**3 — Networking: the open problem. There is no worked example for this.**
+
+"VLAN tap + MAC pin per the existing bridge convention" does not carry over —
+M2 established that there are **two** attachment patterns and this is a third
+case:
+
+- a **tap** is a microvm primitive (M3's guest);
+- a **veth**, host side `vb-<name>`, is the nspawn primitive (M2b, M4, M8);
+- **podman is neither.** Its netavark backend does bridge/macvlan/ipvlan, and
+  **macvlan is explicitly rejected for this architecture**: on `br0` it rides
+  br0's own self VLAN (50, the *host* VLAN) and on `enp13s0` it rides the trunk's
+  native VLAN, also 50. It cannot be placed on VLAN 90 at all. That finding is
+  what M2b had to correct in Jellyfin's file header — do not re-derive it.
+
+So the session must **choose and justify an attachment**, and this is its
+hardest decision. Candidates, in the order worth trying:
+
+- a manually created veth pair enslaved to `br0` with a `[BridgeVLAN]` for 90,
+  handed to the container's netns — closest to worked example B, at the cost of
+  wiring podman to a netns it did not create;
+- a netavark bridge network parented on `br0` with the VLAN set on the port;
+- host networking v1 with a documented migration note, exactly as Jellyfin and
+  arr started — the honest fallback if the above turn into a research project.
+
+Take the fallback rather than burning the milestone on it, but **say which and
+why**. Whatever lands: MAC-pinned, a DHCP reservation on the UDM-Pro over a
+static address, and **verify with `bridge vlan show`** that the VLAN actually
+applied — networkd and the container runtime race over the master, and with
+`DefaultPVID = "none"` a missed application is fail-closed.
+
+Then a Technitium `tubesync` record, and per invariant #3 the consumer-facing
+path is Traefik:443 — one route, no second permanent rule.
+
+**Interim direct-port ZBF rule — probably not needed, unlike Jellyfin's.**
+L1/L2 exist because Jellyfin is a *household* service on consumer VLANs with no
+proxy yet. TubeSync is an **admin UI**: mgmt-VLAN scoped, which invariant #3
+explicitly does not cover. If M9 lands after M5, point it at Traefik and create
+nothing. If it lands before, add the host/container port as ledger row **L8**
+with the M5 trigger — mgmt-scoped, not a consumer-zone rule.
+
+**4 — Auth: Authelia SSO (M7), not `HTTP_USER`/`HTTP_PASS`.**
+
+The Jellyfin carve-out does not apply, and the reason is worth stating precisely:
+Jellyfin is exempt because TV and mobile clients cannot survive a forward-auth
+redirect. TubeSync has no such client — the browser UI is the only ingress.
+
+The integration in item 6 does **not** change this: TubeSync's "media servers"
+feature is an **outbound** call from TubeSync to Jellyfin (a library-rescan
+trigger). Forward-auth sits on TubeSync's *ingress*; it cannot break an egress
+call. That is what makes SSO safe here, and it should be the recorded reason.
+
+Tradeoff to record rather than skip: `HTTP_USER`/`HTTP_PASS` is one env pair and
+works today with no dependency, but it is a second credential store outside
+Authelia, no TOTP, and a per-service password that never gets rotated. SSO costs
+a dependency on M7. **If M9 lands before M7**, use basic auth as the interim,
+put the credentials in a clan vars generator (never plaintext, never a
+real-looking placeholder), and note in the header that M7 replaces it.
+
+**5 — Storage: config on `/srv/state`, downloads inside the media pool.**
+
+- **Config** (SQLite db + thumbnails + yt-dlp cache) → `/srv/state/tubesync`,
+  per invariant #7. Not `zroot`, which rolls back. A **bind mount, not a named
+  podman volume** — a named volume puts state in podman's graph root and defeats
+  the point of `/srv/state` being the one place state lives.
+- **Downloads → a plain subdirectory under `/srv/media`.** Yes to the premise:
+  same pool, same dataset, so Jellyfin picks it up with no copy step. Invariant
+  #2 governs — `/srv/media` is **one** dataset with plain subdirectories, so do
+  **not** add `zdata/media/youtube` or similar. Pick the path to sit alongside
+  `library/movies` and `library/tvshows` and decide whether Jellyfin sees it as
+  its own library or as another folder in an existing one.
+- Two properties of that dataset to carry into the decision: `/srv/media` has
+  **`com.sun:auto-snapshot=false`** (unlike `/srv/unsorted` and `/srv/gardens`),
+  so downloads are not snapshotted — acceptable for re-downloadable content, but
+  say so out loud. And it is a hardlink domain shared with the *arr import path;
+  TubeSync does not hardlink, but it must not disturb the layout that does.
+- Follow the ownership pattern already in `jellyfin.nix`: `root:media` with mode
+  **2770** (setgid, so new files inherit gid `media`), applied by a unit ordered
+  `after`/`requires` `srv-media.mount` — a tmpfiles rule alone races the mount.
+
+**6 — Env vars to pin, and the one that will bite.**
+
+- **`PGID` = 3000** — the `media` group, fixed on the host in
+  `jellyfin.nix` and deliberately above NixOS's dynamic gid range. **`PUID`** =
+  a new static uid, allocated and recorded like `jellyfinUid = 964` is.
+- **The trap:** nspawn maps gids 1:1, which is why `jellyfin.nix` can say "these
+  numbers MUST be identical on both sides." **Podman does not** — with a userns
+  (and rootless always has one), the in-container `PUID`/`PGID` are *not* the
+  uid/gid that land on disk. If files show up as `nobody:nobody` or as some
+  sub-uid, this is why. Decide the mapping explicitly — `--userns=keep-id`, an
+  idmap, or rootful with no remapping — and **verify with `stat` on a real
+  downloaded file** that a `media`-group member can read it. Treat this exactly
+  as M3 treats its uid/gid decision: a first-class design decision, not a
+  permissions detail.
+- **`TZ`** = `Europe/Berlin`, matching the host. It drives scheduling, so a
+  wrong value silently shifts every download window.
+- **Media-server connection**: TubeSync's Jellyfin integration needs the
+  server URL and an **API key**. The key is a secret → clan vars generator,
+  `neededFor` set if activation depends on it. Note the ordering dependency: the
+  key is created *in Jellyfin's UI*, so it is an lgo manual step feeding a
+  generator prompt, not something the session can produce.
+
+**7 — Version pin and database.**
+
+- **`v0.18.1`** is the version to pin as of Aug 2026 — **operator-supplied and
+  not independently verified here** (it postdates this assistant's knowledge
+  cutoff). Confirm against upstream releases at pin time rather than trusting
+  this line.
+- Pin by **image digest**, not by tag. A tag is mutable, and the entire cost of
+  the podman tier is image drift we cannot evaluate — a digest is what converts
+  that from "whatever the registry serves today" into something reproducible.
+  Record the tag *and* the digest, and note how a bump is done.
+- **MariaDB is not required.** TubeSync defaults to SQLite and supports
+  MariaDB/PostgreSQL optionally; at a single-user, single-instance scale with no
+  HA requirement, SQLite is correct — the same reasoning M7 uses for Authelia's
+  storage. Do not add a database container. One note for the header: the SQLite
+  file lives on ZFS, so if lock contention or checkpoint stalls ever show up,
+  the first thing to check is the dataset's `recordsize`, not the schema.
+
+### Open questions for the session that picks this up
+
+- **Podman attachment to a VLAN-filtering bridge** — genuinely unsolved in this
+  repo, and the milestone's real work (item 3).
+- **Rootless vs rootful**, which cascades into the userns/PUID mapping (items 1
+  and 6).
+- **Ordering against M5 and M7** — decides whether L8 and the interim basic-auth
+  path exist at all.
+- **`v0.18.1`** — verify against upstream before pinning (item 7).
+
+**Not written yet, deliberately.** This entry scopes the decisions; no Nix in
+this PR. The session that picks it up writes `machines/ernst/containers/tubesync.nix`.
 
 ---
 
