@@ -758,10 +758,19 @@ retire.
 ### Manual steps — lgo's, and the order matters
 
 1. **`clan vars generate ernst`** — *before* the first deploy (see carry-forward
-   6). Seven prompts, in order: the WireGuard private key, the provider's public
-   key, the endpoint as `IP:PORT` **with an IP literal**, the tunnel address with
-   its prefix, the in-tunnel DNS server, the MTU (**may be left empty** — see
-   below), and a WebUI password for user `admin`.
+   6). Seven prompts. clan asks them in **alphabetical order of prompt name**,
+   not declaration order (`Prompt.from_nix(p) for p in gen_data["prompts"].values()`
+   over a Nix attrset, which serialises sorted), so what you will actually see is:
+
+   | Prompt | Value |
+   |---|---|
+   | `address` | tunnel address **with prefix** |
+   | `dns` | in-tunnel resolver |
+   | `endpoint` | `IP:PORT`, **IP literal** |
+   | `mtu` | provider's MTU, or **empty** |
+   | `peer-public-key` | the server's public key |
+   | `private-key` | this peer's private key |
+   | `webui-password` | qBittorrent WebUI, user `admin` |
 
    Every value except the last comes straight out of the provider's own
    generated config. **For IVPN** (the provider in use), that is: a key pair
