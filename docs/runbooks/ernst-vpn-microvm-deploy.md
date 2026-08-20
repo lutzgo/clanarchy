@@ -163,6 +163,13 @@ console to type into, which is why the guest runs sshd.
 
 Then, from inside VLAN 90:
 
+**Two differences from M2b's version of this probe, both learned the hard way
+on the first run.** ernst has no `dhcpcd` — `roles/server.nix` zeroes
+`environment.defaultPackages` — so the probe takes a static address from the
+`.2`–`.5` range the cutover runbook set aside for exactly that. And unlike
+Jellyfin, **this guest firewalls by source address**, so almost everything the
+probe tries is *supposed* to fail. Read the ARP table, not the ping.
+
 ```bash
 ip netns add p90
 ip link add vb-p90 type veth peer name eth0p
@@ -170,21 +177,44 @@ ip link set eth0p netns p90
 ip link set vb-p90 master br0 up
 bridge vlan add dev vb-p90 vid 90 pvid untagged
 ip netns exec p90 ip link set eth0p address 02:00:00:90:00:99
+ip netns exec p90 ip addr add 10.0.90.5/24 dev eth0p
 ip netns exec p90 ip link set eth0p up
-ip netns exec p90 dhcpcd -1 -q eth0p
+sleep 2
 
-# The guest answered DHCP and got its reservation:
-ip netns exec p90 ping -c2 10.0.90.11
-# The WebUI is listening (401 = up, and demanding the password — correct):
-ip netns exec p90 curl -sm5 -o /dev/null -w '%{http_code}\n' http://10.0.90.11:8080/
-# sshd is listening:
-ip netns exec p90 nc -zv 10.0.90.11 22
+ip netns exec p90 ping -c2 -W2 10.0.90.11        # expect: 100% loss — correct
+ip netns exec p90 ip neigh                       # THIS is the check
 
-ip link del vb-p90; ip netns del p90      # leaves nothing behind
+ip link del vb-p90; ip netns del p90             # leaves nothing behind
 ```
 
-If those answer, the guest is healthy and anything still unreachable from your
-desk is the UDM-Pro's doing. If they do not, stay on ernst — the problem is in
+The line that matters:
+
+```
+10.0.90.11 dev eth0p lladdr 02:00:00:90:00:03 REACHABLE
+```
+
+That single line proves three things at once: the DHCP reservation took (the
+guest holds `.11`), the guest is alive and answering at L2, and the reservation
+is bound to the right MAC. ARP is answered because `arp` is a separate netfilter
+family that `table inet killswitch` does not touch.
+
+**Everything else failing is the correct result.** `10.0.90.5` is not in
+`mgmt_nets`, so the guest's input chain drops the ICMP, the WebUI and SSH — which
+is exactly what should happen to a stranger on the Services VLAN. A probe that
+*could* reach port 8080 from here would mean the firewall was wrong.
+
+To watch the tunnel itself, sniff the host side of the tap — no login required:
+
+```bash
+timeout 20 tcpdump -ni tap-vpn -c 8 'udp port <endpoint-port>'
+```
+
+A healthy tunnel shows a 148-byte handshake initiation out, a 92-byte response
+back, a 32-byte keepalive, and then transport traffic in both directions. If you
+see only outbound packets, the handshake is failing — check the keys and the
+endpoint.
+
+If the ARP entry is absent, stay on ernst: the problem is in
 `journalctl -u microvm@wg-qbittorrent`, not in the firewall.
 
 ---
