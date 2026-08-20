@@ -423,24 +423,87 @@ in
       dns=$(tr -d '[:space:]' < "$prompts/dns")
       mtu=$(tr -d '[:space:]' < "$prompts/mtu")
 
-      ep_ip="''${endpoint%:*}"
-      ep_port="''${endpoint##*:}"
+      ##########################################################################
+      # Validate EVERYTHING before doing any work, and report every problem in
+      # one pass.
+      #
+      # clan collects all seven prompts and only then runs this script, so an
+      # `exit 1` on the first bad value costs the operator every other answer
+      # too.  The first version did exactly that and charged six correct
+      # answers for one mistyped separator.  Accumulating the errors means one
+      # re-run fixes everything, however many things are wrong.
+      #
+      # Validating here at all is the point of the exercise: every one of these
+      # values fails LATE and QUIETLY otherwise — a bad key is "the handshake
+      # never completes", a v6 address is "wg-quick aborts at every boot", a
+      # hostname endpoint is "unresolvable, because the resolver is inside the
+      # tunnel it is needed to build".  A human is watching exactly once.
+      ##########################################################################
+      fail=0
+      err() { echo "  ✗ $*" >&2; fail=1; }
 
-      # Reject a hostname endpoint HERE, where a human is watching, rather than
-      # at every boot of a guest whose only resolver is inside the tunnel the
-      # endpoint is needed to establish.  See the file header.
-      if ! printf '%s' "$ep_ip" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; then
-        echo "endpoint must be IP:PORT with an IPv4 LITERAL; got '$endpoint'" >&2
-        echo "resolve the provider's hostname yourself and paste the address." >&2
-        exit 1
-      fi
-      if ! printf '%s' "$ep_port" | grep -Eq '^[0-9]{1,5}$'; then
-        echo "endpoint must be IP:PORT; got '$endpoint'" >&2
-        exit 1
-      fi
+      # 32 bytes of base64 — every WireGuard key is 43 chars plus one '='.
+      # Catches the truncated paste, which otherwise presents as a tunnel that
+      # comes up and never handshakes.
+      wgkey='^[A-Za-z0-9+/]{43}=$'
 
-      if [ -n "$mtu" ] && ! printf '%s' "$mtu" | grep -Eq '^[0-9]{3,4}$'; then
-        echo "mtu must be a number or empty; got '$mtu'" >&2
+      valid_ipv4() {
+        local ip="$1" octet
+        printf '%s' "$ip" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$' || return 1
+        for octet in ''${ip//./ }; do
+          [ "$octet" -le 255 ] || return 1
+        done
+      }
+
+      # ── endpoint ────────────────────────────────────────────────────────────
+      case "$endpoint" in
+        *:*)
+          ep_ip="''${endpoint%:*}"
+          ep_port="''${endpoint##*:}"
+          valid_ipv4 "$ep_ip" || err \
+            "endpoint host '$ep_ip' is not an IPv4 literal. Resolve the provider's hostname yourself (dig +short <host>) and paste an address — the guest's only resolver is inside the tunnel this endpoint builds."
+          printf '%s' "$ep_port" | grep -Eq '^[0-9]{1,5}$' || err \
+            "endpoint port '$ep_port' is not a number."
+          ;;
+        *)
+          ep_ip=""; ep_port=""
+          err "endpoint '$endpoint' has no ':' before the port."
+          err "  A dot instead of a colon is the usual slip: 1.2.3.4.51820 should be 1.2.3.4:51820."
+          ;;
+      esac
+
+      # ── address ─────────────────────────────────────────────────────────────
+      # IPv4 only, prefix optional (ip(8) assumes /32 for a bare IPv4).  A v6
+      # component is rejected rather than carried: the guest sets
+      # net.ipv6.conf.all.disable_ipv6, so wg-quick's `ip -6 address add` would
+      # fail, and wg-quick runs under `set -e` — the tunnel would never come up,
+      # at every boot, for a reason nothing states out loud.
+      case "$address" in
+        *,*|*:*)
+          err "address '$address' looks dual-stack. Paste ONLY the IPv4 part: the guest has IPv6 disabled, and wg-quick aborts when 'ip -6 address add' fails."
+          ;;
+        */*)
+          valid_ipv4 "''${address%/*}" || err "address '$address' is not an IPv4 address with a prefix."
+          printf '%s' "''${address##*/}" | grep -Eq '^[0-9]{1,2}$' || err "address '$address' has a malformed prefix."
+          ;;
+        *)
+          valid_ipv4 "$address" || err "address '$address' is not an IPv4 address."
+          ;;
+      esac
+
+      # ── the rest ────────────────────────────────────────────────────────────
+      valid_ipv4 "$dns" || err \
+        "dns '$dns' is not an IPv4 address. IVPN: 172.16.0.1 plain, or one of the 10.0.254.x AntiTracker resolvers."
+      printf '%s' "$peer" | grep -Eq "$wgkey" || err \
+        "peer-public-key is not a 44-character WireGuard key — check for a truncated paste."
+      printf '%s' "$priv" | grep -Eq "$wgkey" || err \
+        "private-key is not a 44-character WireGuard key — check for a truncated paste."
+      [ -z "$mtu" ] || printf '%s' "$mtu" | grep -Eq '^[0-9]{3,4}$' || err \
+        "mtu '$mtu' is not a number (and may be left empty)."
+
+      if [ "$fail" -ne 0 ]; then
+        echo "" >&2
+        echo "Nothing was written. Fix the above and re-run: clan vars generate ernst" >&2
         exit 1
       fi
 
