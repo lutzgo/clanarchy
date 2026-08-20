@@ -203,8 +203,8 @@ let
   gen = config.clan.core.vars.generators.wg-qbittorrent;
 
   # qBittorrent.conf, with the WebUI password hash left as a placeholder that
-  # the guest substitutes at start.  See the renderConf comment for why the
-  # whole file is declarative and what that costs.
+  # the guest substitutes at start.  The ExecStartPre that renders it carries
+  # the reasoning: why the whole file is declarative, and what that costs.
   qbtConfTemplate = pkgs.writeText "qBittorrent.conf" ''
     [LegalNotice]
     Accepted=true
@@ -262,7 +262,14 @@ in
   # The guest cannot run sops-nix: it has no persistent state and no age key of
   # its own, and giving it one would put a fleet secret inside the machine whose
   # entire job is to face the internet.  So the host decrypts, and hands over
-  # exactly four files.
+  # five files.
+  #
+  # `install -d` on the directory is not redundant.  microvm.nixosModules.host
+  # emits a tmpfiles line for every share source, so this path would otherwise
+  # be created 0775 microvm:kvm — and unlike the /srv paths above, there is no
+  # 00-nixos.conf rule of ours to win the duplicate.  install -d applies mode
+  # and ownership to an existing directory too, and it runs immediately before
+  # virtiofsd, so the correction always lands.
   #
   # Modes are the interesting part:
   #   0400 root:root   wg0.conf, ssh_host_ed25519_key, endpoint-{ip,port}
