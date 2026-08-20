@@ -42,7 +42,7 @@ Verified against the repo on 2026-08-19 (`main` @ `8bdd162`).
 | `fwupd-refresh` failure tolerance | **done** | — | `modules/roles/laptop.nix` — laptop role only; ernst does not run it |
 | Deploy interface = clan CLI | **done** | [#59](https://github.com/lutzgo/clanarchy/pull/59) | `deploy`, `deploy-<machine>`, `test-pr`, `test-vm` removed. Every runbook and milestone prompt below uses `clan machines update` |
 | CI eval check on PRs | **done** | — | `.github/workflows/check.yml` evaluates all four toplevel `drvPath`s |
-| ernst `@blank` snapshots | **open (operator)** | — | ernst has never been genuinely impermanent — root accumulates. `docs/runbooks/ernst-enable-impermanence.md` is written and unexecuted; step 4 is a one-way door. Not a Claude milestone |
+| ernst `@blank` snapshots | **done — executed 2026-08-18** | — | `zroot/root@blank` + `zroot/home@blank` taken 21:35–21:36, all five steps of `docs/runbooks/ernst-enable-impermanence.md` including the one-way door. **Observed, not assumed**: `clanarchy-impermanence-check` failed at 21:33 — the #54 tripwire doing its job — passed at 21:36 once the snapshots existed, and passed again on the 21:37 reboot (`ExecMainStatus=0`). Step 5's checks hold: `/root/.ssh/authorized_keys` gone with SSH still working, `container@jellyfin` active, its journal intact across the reboot |
 | M1 — Kvantum linkGeneration drift | **closed — did not reproduce** | — | Four consecutive activations in the retained journal all passed `linkGeneration`. The on-disk shape that looked like drift is Stylix's `recursive = true` working as designed. See [M1](#m1-kvantum-linkgeneration-drift-closed) |
 | M2 — ernst VLAN bridge | **done — deployed 2026-08-20** | [#73](https://github.com/lutzgo/clanarchy/pull/73) | `br0` VLAN-filtering bridge, `enp13s0` as tagged trunk; VLAN 90 (Services) created for M2b/M5. Cutover verified: `br0` holds `10.0.50.10/24`, `enp13s0` enslaved, the `br0 50 PVID Egress Untagged` self entry present, NM now `unmanaged`. [Runbook](runbooks/ernst-vlan-bridge-cutover.md). See [M2](#m2-ernst-vlan-bridge-built-cutover-pending) |
 | M2b — Jellyfin on its own veth | **open** | — | [M2b](#m2b-featernst-jellyfin-tap) |
@@ -53,6 +53,7 @@ Verified against the repo on 2026-08-19 (`main` @ `8bdd162`).
 | M7 — Authelia | **open** | — | [M7](#m7-featernst-authelia) |
 | M8 — Tvheadend / SAT>IP live TV | **open — operator gate first** | — | Steps 1–3 (patching, UniFi, stream test) are lgo's and must clear before a session starts; the milestone dies if the FRITZ!Box's DVB-C is branding-locked. [M8](#m8-featernst-tvheadend) |
 | M9 — TubeSync | **open — scoped, no prompt yet** | — | Feeds the Jellyfin library directly. First occupant of the **podman** tier (not in nixpkgs — verified), so it builds the tier as well as the service; podman's attachment to `br0` is unsolved here. [M9](#m9-featernst-tubesync) |
+| M10 — Kodi + IR remote | **proposed — placement not settled** | — | Depends on nothing in M2b–M7; could equally be backlog. Closes the gap that Big Picture cannot add non-Steam shortcuts, so there is no controller-navigable media path today. [M10](#m10-featernst-kodi-ir) |
 
 ---
 
@@ -112,6 +113,17 @@ two are mutually exclusive by construction.
 which rolls back. Container media is read-only where the service does not write.
 Anything a service needs across a reboot is either a `/persist` entry or a
 `/srv/state` bind — never an accident.
+
+Since **2026-08-18** this is enforced rather than aspirational. ernst had no
+`@blank` snapshots until then, so its rollback was a silent no-op and *no
+milestone to date has had to think about `/persist`* — state survived because
+nothing reset it, not because anything was declared correctly. That is over.
+Anything written to `zroot` now disappears on the next boot unless it is
+declared. M2b, M3 and M4 each carry service state that has never once been
+tested against a real rollback, so for those three the first reboot after deploy
+is part of the milestone, not an afterthought. `clanarchy-impermanence-check`
+(#54) is the tripwire: it now passes on ernst, and a milestone that makes it
+fail has broken something.
 
 **8 — Secrets come from clan vars generators.** No plaintext in the repo, no
 placeholder secrets committed, `neededFor` set where activation depends on it.
@@ -1351,6 +1363,60 @@ this PR. The session that picks it up writes `machines/ernst/containers/tubesync
 
 ---
 
+## M10 — `feat/ernst-kodi-ir`
+
+**Placement is a proposal, not a decision.** M8 and M9 are taken, so this is M10
+if it is numbered at all. It depends on nothing in M2b–M7 and would sit equally
+well in the backlog; what argues for a number is that it has an operator
+purchase, a `/persist` entry, and a user-visible outcome on the TV. Recommend
+numbering it. Settle this before the entry is treated as scheduled.
+
+**Goal.** Give the TV a media path that a remote can drive. Two pieces, both
+**independent of the Bigscreen question** — whichever of that entry's three
+routes eventually wins, or none, neither piece is wasted.
+
+**Depends on.** The HTPC role (done) and Jellyfin (done). Nothing else.
+**Risk.** Low. The two halves have different readiness, which is the only thing
+worth sequencing: Kodi can ship immediately, the Flirc half is gated on hardware
+that has not been bought.
+
+**Kodi as a plain application** — `pkgs.kodi-wayland` (21.3 in ernst's pin) plus
+the Jellyfin for Kodi addon, so the existing library is native rather than
+reached through the web client.
+
+The gap it closes is a real limitation, not a preference: non-Steam shortcuts
+can only be added from the **desktop** Steam client, never from within Big
+Picture. So the gamescope session cannot act as a general launcher, and ernst
+has no controller-navigable path to media today — the couch account can reach
+games or a desktop, and nothing in between. Kodi survives every Bigscreen
+outcome unchanged; if a Bigscreen route later lands, it launches Kodi as a
+`.desktop` entry rather than replacing it.
+
+`~/.kodi` needs a `/persist` entry. That is a new requirement rather than an
+old one — see invariant #7 and the 2026-08-18 row in the
+[status table](#current-state). Before that date this would have worked by
+accident.
+
+**A Flirc USB IR receiver for the SofaBaton X1S.** The remote speaks Bluetooth
+only to its own hub, and its generic BT-keyboard profile is unreliable against
+PCs. Flirc presents as a plain USB HID keyboard, so keybinds work identically
+under gamescope, under Kodi, and under any future shell — nothing configured
+there is thrown away by a shell decision, which is the same property that makes
+the Kodi half safe.
+
+On this machine specifically it is worth more than it would be elsewhere: the
+MT7927 blocker in the backlog below means on-board Bluetooth is dead until
+MediaTek's firmware redistribution clears, so an input path that does not depend
+on Bluetooth at all is not merely tidier, it is the only one that works today.
+See [the controllers guide](guides/htpc-controllers.md).
+
+**Manual step (lgo's).** Buy the Flirc, and map the SofaBaton's IR profile to
+keycodes. Everything downstream of that is repo work; nothing upstream of it is.
+
+**No session prompt yet**, consistent with M9 — this is scoped, not scheduled.
+
+---
+
 ## Floating / backlog
 
 Not sequenced. Each becomes a milestone when it earns one.
@@ -1397,12 +1463,6 @@ the deploy-helper sweep. It still describes five datasets including
 into plain subdirectories so *arr hardlinks work — and it predates `/srv/unsorted`
 and `/srv/gardens` (#66). A guide that describes a layout the repo rejects is
 worse than no guide.
-
-**Execute `docs/runbooks/ernst-enable-impermanence.md`.** ernst has never had
-`@blank` snapshots, so its rollback has been a silent no-op since install. The
-runbook exists; step 4 is a one-way door. Operator work, not a Claude milestone —
-but every milestone above accumulates state on a machine that is not yet
-impermanent, which is worth knowing.
 
 **Migrate the VCS workflow from git/gh to jj (Jujutsu), git-backed.** Colocated
 (`jj git init --colocate`), so `.git` stays authoritative and `gh` keeps working
@@ -1474,9 +1534,63 @@ runs as a host service today because ROCm wants the card directly. Putting it
 behind Traefik means deciding whether it stays native with a route pointed at the
 host, or moves into a container with GPU access plumbed through.
 
-**Un-parking Bigscreen.** Only if one of the two routes #64 identified becomes
-acceptable: Plasma 6.7.4 on the host (ernst's desktop then tracks floating
-unstable and diverges from the fleet), or a VM with the dGPU passed through (VFIO
-binds the card exclusively, taking it from ROCm/Ollama — the outcome `clan.nix`
-rejects). Neither is attractive today, which is why it is parked rather than
-scheduled.
+**Un-parking Bigscreen.** Three routes now, and only the third does not require
+conceding an invariant. The container diagnosis is settled and recorded in the
+[status table](#current-state) — logind user units, KWin needing an active
+graphical seat, a container unable to supply one — and #64's machinery is kept
+because every route below reuses it. Do not re-derive it.
+
+*Plasma 6.7.4 on the host.* Real seat, real VT, both requirements satisfied at
+once. Costs ernst's desktop tracking floating unstable and diverging from the
+fleet, which invariant #6 exists to prevent.
+
+*A VM with the dGPU passed through.* Real seat, no fighting. VFIO binds the card
+exclusively, taking it from ROCm/Ollama whenever the TV session runs — the
+mutually-exclusive outcome invariant #5 and `clan.nix` explicitly reject.
+
+*Build only the shell, out-of-tree, against the stable KDE scope.*
+`pkgs/plasma-bigscreen.nix`, called via `kdePackages.callPackage` so
+`mkKdeDerivation`, `plasma-workspace`, `plasma-nano`, `milou` and `kscreen` all
+resolve to the 6.6.6 set already on the machine. Packaging reference:
+[NixOS/nixpkgs#428353](https://github.com/NixOS/nixpkgs/pull/428353). Nothing
+floats, nothing is VFIO-bound, and it needs **no new flake input** — the source
+is a `fetchurl`, not an input. That is the whole argument for it: the other two
+routes each buy a working Bigscreen by giving up an invariant, and this one does
+not.
+
+What it costs is honesty about version skew. KDE hard-asserts that the shell's
+Plasma version matches the workspace it runs against, so the build has to
+rewrite `PROJECT_VERSION` — a 6.7-era shell on a 6.6.6 workspace. Patching the
+version string gets past the assert; it does not make the API compatible.
+Expect to bisect. There is no binary cache for it, so it recompiles locally on
+every KDE bump, and it is out-of-tree code we own until 26.11 ships
+`kdePackages.plasma-bigscreen` in-tree — at which point the file is deleted.
+
+The fallback if that skew bites: pre-release Bigscreen snapshots from
+Feb–Mar 2026 carry `PROJECT_VERSION` `6.5.80`, the 6.6 beta, so they target 6.6
+natively and have **zero** skew against 6.6.6 — a less polished shell with a far
+smaller compatibility surface. Try the 6.7.x release first and drop back to a
+snapshot on QML import errors rather than fighting them.
+
+The gap that makes any of this necessary, verified 2026-08-20 by eval against
+ernst's own package set:
+
+```
+system.nixos.release            -> 26.05
+kdePackages.plasma-workspace    -> 6.6.6
+kdePackages ? plasma-bigscreen  -> false
+```
+
+Bigscreen shipped with Plasma 6.7, released 2026-06-16 — after 26.05 branched —
+so the attribute does not exist in ernst's pin at all. Everything the third
+route would build *against* does resolve there, which is what makes it worth
+listing rather than dismissing.
+
+**Open question, deliberately not answered here.** If the build succeeds, does
+this graduate to a numbered milestone or stay backlog? Recommend: **stay
+backlog until it renders on the TV**, then graduate. A derivation that does not
+work yet is a package experiment with no fleet consequences and no operator
+steps — nothing for a milestone to sequence. The moment it works it stops being
+that: it changes what the TV runs, needs a session-switcher arm, and touches
+`modules/roles/htpc.nix`, and the roadmap's own rule is that a backlog item
+becomes a milestone when it earns one. The build succeeding is what earns it.

@@ -9,7 +9,8 @@
     off; the TV runs the gamescope Steam session with Jellyfin Media Player.
 
     The container and the session-switching machinery are kept, because both
-    are correct and either escape route reuses most of them.
+    are correct and every escape route reuses most of them. There are three,
+    listed under [Routes that would work](#routes-that-would-work).
 
 `ernst` carries the `htpc` role, which offers three living-room modes,
 switchable at runtime:
@@ -117,14 +118,23 @@ Recorded so it isn't repeated:
 
 ### Routes that would work
 
-Neither taken yet:
+Three, none taken yet. The trade-offs are argued in
+[the roadmap's *Un-parking Bigscreen* entry](../roadmap.md#floating-backlog),
+which is the tracking record — this table is the short form.
 
-- **Plasma 6.7.4 on the host**, replacing 6.6.6. A real seat and VT exist there,
-  satisfying both requirements at once. Costs: ernst's desktop tracks floating
-  `nixpkgs-unstable` and diverges from the rest of the fleet.
-- **A VM with the dGPU passed through.** Real seat, real VT, no fighting. Costs:
-  VFIO binds the card exclusively, so ROCm/Ollama loses it whenever the TV
-  session runs — the mutually-exclusive outcome `clan.nix` explicitly rejects.
+| Route | What it buys | What it costs |
+|---|---|---|
+| **Plasma 6.7.4 on the host**, replacing 6.6.6 | A real seat and VT, satisfying both requirements at once | ernst's desktop tracks floating `nixpkgs-unstable` and diverges from the fleet |
+| **A VM with the dGPU passed through** | Real seat, real VT, no fighting | VFIO binds the card exclusively, so ROCm/Ollama loses it whenever the TV session runs — the outcome `clan.nix` rejects |
+| **Build only the shell out-of-tree**, against the stable KDE scope | Concedes nothing: nothing floats, nothing is VFIO-bound, no new flake input | Version skew — a 6.7-era shell patched to run on a 6.6.6 workspace — plus local compiles and out-of-tree code we own until 26.11 |
+
+The third is the one to try first, because it is the only one that does not
+require giving up an invariant. `pkgs/plasma-bigscreen.nix`, called via
+`kdePackages.callPackage` so the whole 6.6.6 KDE scope already on the machine
+resolves. Note what that route does **not** change: everything below about the
+container, the GPU and the QML dependency still describes how a *container*
+session works, and the third route does not use one — it puts the shell on the
+host alongside the existing Plasma.
 
 ## Why Bigscreen is in a container
 
