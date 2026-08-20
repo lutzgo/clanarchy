@@ -1731,6 +1731,66 @@ dies with them.
 **recyclarr.** Evaluate after M4 has settled and the quality profiles have been
 touched by hand at least once — otherwise there is nothing to codify.
 
+**MediathekViewDL needs a writable path.** Jellyfin's two library binds are both
+`isReadOnly = true`, and `machines/ernst/containers/jellyfin.nix` states the
+reason as a fact about the service: *"RO on both — Jellyfin never writes to
+library data."* The plugin makes that false. It needs a third bind, RW, mapped
+to something like `/media/Server001/Mediathek` so it fits the legacy path scheme
+the imported database already uses — and **the header claim has to be corrected
+in the same PR**, not left standing next to a bind that contradicts it.
+
+*On the location, one correction.* A plain subdirectory under `/srv/media` is
+not a problem to be avoided — it is exactly what invariant #2 prescribes. What
+that invariant forbids is a **sub-dataset**, because hardlinks cannot cross a
+dataset boundary; plain subdirectories are the prescribed shape, and `library/`
+and `torrents/` already are ones. Nothing is "entering the *arr hardlink domain"
+by sitting there: the domain is a property the single dataset provides, and
+content nothing hardlinks simply never uses it. So `/srv/media/mediathek` as a
+sibling of `library/` is compliant, and no invariant argues against it.
+
+*The real question is snapshots, and it is not the one it looks like.*
+`/srv/media` carries `com.sun:auto-snapshot=false`. For M9's YouTube downloads
+that is fine and the entry says so — the content is re-downloadable. **Mediathek
+content is not.** German public-broadcaster material has a legally mandated
+availability window and is depublished when it expires, which is the entire
+reason anyone downloads it. So the two options are not equivalent:
+
+- `/srv/media/mediathek`, plain subdirectory. One bind, no disko change,
+  invariant-compliant, **no snapshots**.
+- `/srv/mediathek`, its own dataset with `com.sun:auto-snapshot=true`, matching
+  the `/srv/unsorted` + `/srv/gardens` precedent from #66. Genuinely outside
+  `/srv/media`. Costs a disko change and a dataset created on a live pool.
+
+Recommend the first, and settle it **when this is picked up rather than later** —
+the two paths are on different datasets, so changing your mind afterwards is a
+full copy of the data, not a rename.
+
+*Ownership: `root:media` 2770, and the existing config already decides this.*
+The container's `jellyfin` user is **already** a member of `media` (gid 3000,
+numerically identical host-side and in-container, since nspawn does not remap
+gids), so the setgid pattern used for the *arr-managed subdirs works with no
+additional plumbing, and new files inherit `gid=media` and stay group-writable.
+Owning the directory `964:964` instead would work today and buy nothing, at the
+cost of a second ownership scheme in one tree and a directory the fleet media
+consumers `jellyfin.nix` already anticipates — Nextcloud external storage, the
+*arr suite — cannot read.
+
+*Library layout: a separate Jellyfin section, not a scan folder bolted onto the
+existing ones.* Broadcast titles match TMDB poorly, so pointing the curated
+library at this path pollutes it with mismatched metadata; a separate section
+gets its own content type, metadata providers and scan schedule, and keeps the
+one RW path visibly distinct from the two RO ones.
+
+Two implementation notes for whoever picks it up: the new directory must be
+added to **both** the `systemd.tmpfiles.rules` list and the explicit path lists
+in `jellyfin-library-perms`, which enumerates directories rather than globbing;
+and this is the first RW media bind, so it is worth checking nothing else in the
+file reasons from the RO assumption.
+
+Small enough that it does not need a number. Either fold it into whichever
+Jellyfin-adjacent milestone is being worked when it comes up — M2b touches this
+file already — or take it as a standalone `fix/` PR.
+
 **Expose Ollama via Traefik.** Reopens the native-vs-container decision: Ollama
 runs as a host service today because ROCm wants the card directly. Putting it
 behind Traefik means deciding whether it stays native with a route pointed at the
