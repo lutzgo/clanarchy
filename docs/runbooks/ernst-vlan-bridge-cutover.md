@@ -472,10 +472,16 @@ never touched. If `.local` names matter, that is a UDM-Pro repeater question.
 
 ## 6. After the cutover
 
-- Pin `br0`'s MAC in `machines/ernst/networking.nix` using the value captured in
-  §1.4 — **required before M2b**, because a Linux bridge adopts the numerically
-  lowest port MAC and the second port would otherwise be able to move the host's
-  identity.
-- M2b, M3 and M5 copy the commented worked examples in that file. Note there are
-  two of them: a tap for microvm guests, a `vb-*` veth for nspawn containers.
-  They are not interchangeable.
+- ~~Pin `br0`'s MAC~~ — **done in M2b**, which is the PR that adds the second
+  port. `machines/ernst/networking.nix` now carries
+  `MACAddress = "a0:ad:9f:1c:9d:74"`, the value captured in §1.4. It had to
+  happen there: a Linux bridge adopts the numerically lowest port MAC, and the
+  kernel gives a veth a random locally-administered address (`0x02`, `0x06`,
+  `0x0a`, …) well below `0xa0`, so the first container start would otherwise
+  have moved the host's identity mid-deploy.
+- M3 copies worked example A (a tap) from that file. **M4 and M5 should copy
+  M2b's working nspawn veth from `machines/ernst/containers/jellyfin.nix`**
+  rather than example B, which is now only a pattern summary — the real one
+  carries the `ExecStartPost` that settles the networkd-vs-nspawn VLAN race and
+  the `wait-online` cap that keeps a DHCP failure from restart-looping the
+  container. Taps and veths are not interchangeable.

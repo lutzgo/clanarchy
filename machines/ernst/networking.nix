@@ -118,17 +118,22 @@
     netdevConfig = {
       Name = "br0";
       Kind = "bridge";
-      # MACAddress is deliberately NOT pinned here.  With exactly one port the
-      # kernel gives br0 enp13s0's burned-in MAC, so ernst's L2 identity on
-      # VLAN 50 is unchanged by the cutover — which is what we want on the one
-      # deploy that can lock us out.
+      # enp13s0's burned-in MAC, captured in §1.4 of the cutover runbook.
       #
-      # BEFORE M2b adds a second port this MUST be pinned: a Linux bridge
-      # adopts the numerically LOWEST port MAC, so a veth or tap appearing
-      # later can silently move the host's MAC and invalidate the UDM-Pro's
-      # client tracking.  §1 of the cutover runbook captures the value:
-      #   ip -br link show enp13s0
-      # MACAddress = "xx:xx:xx:xx:xx:xx";
+      # During M2 this was deliberately left unpinned: with exactly one port
+      # the kernel gives br0 that same MAC anyway, so ernst's L2 identity on
+      # VLAN 50 was unchanged by the one deploy that could lock us out.
+      #
+      # M2b adds the second port (vb-jellyfin) and that reprieve ends here.  A
+      # Linux bridge adopts the numerically LOWEST port MAC, and the kernel
+      # gives a veth a random LOCALLY-ADMINISTERED address — first octet 0x02,
+      # 0x06, 0x0a … all well below 0xa0.  So the very first container start
+      # would silently move the host's MAC, invalidating the UDM-Pro's client
+      # tracking and ernst's DHCP identity mid-deploy.  Pinning is what makes
+      # br0's address independent of which ports exist.
+      #
+      # This is not a change of address — it is today's value, made permanent.
+      MACAddress = "a0:ad:9f:1c:9d:74";
     };
     bridgeConfig = {
       VLANFiltering = true;
@@ -247,14 +252,28 @@
   # out of the host netns and off the bridge.  nspawn's primitive is a veth
   # PAIR.  Use A for microvms, B for nspawn containers.
   #
-  # Do NOT use `containers.<n>.macvlans`, as sketched in the header of
-  # machines/ernst/containers/jellyfin.nix.  A macvlan is not a bridge port:
+  # Do NOT use `containers.<n>.macvlans`.  A macvlan is not a bridge port:
   # attached to br0 it rides br0's own "self" VLAN — 50, the HOST VLAN — and
   # attached to enp13s0 it rides the trunk's native VLAN, also 50.  Either way
-  # it cannot be placed on VLAN 90, which is the entire point.  (That sketch
-  # presumes a per-VLAN bridge fed by an enp13s0.90 VLAN netdev: a different
-  # architecture, rejected here in favour of one VLAN-aware br0.  Correcting
-  # that file header belongs to M2b, which owns the file.)
+  # it cannot be placed on VLAN 90, which is the entire point.  (The sketch
+  # that suggested it presumed a per-VLAN bridge fed by an enp13s0.90 VLAN
+  # netdev: a different architecture, rejected here in favour of one
+  # VLAN-aware br0.  It has been corrected in the header of
+  # machines/ernst/containers/jellyfin.nix, which M2b owns.)
+  #
+  # WHERE THE REAL UNITS LIVE.  Not here.  M2b's vb-jellyfin unit sits in
+  # machines/ernst/containers/jellyfin.nix, beside the container that creates
+  # the veth and the rest of that service's host-side footprint (udev alias,
+  # tmpfiles, perms oneshot).  Follow that convention: this file describes the
+  # TOPOLOGY — bridge, trunk, VLAN map, the two attachment patterns — and does
+  # not accumulate one unit per service as M3/M4/M5 land.  The MAC allocations
+  # are the exception worth tracking centrally; see the table below.
+  #
+  # MAC ALLOCATIONS on 02:00:00:<vlan>:00:<seq> (the whole point of a
+  # convention is that it is written down in one place):
+  #   02:00:00:90:00:02   jellyfin container eth0   (M2b — allocated)
+  #   02:00:00:90:00:03   wg-qbittorrent guest      (M3  — reserved)
+  #   02:00:00:90:00:04   traefik container eth0    (M5  — reserved)
   #
   # MAC policy for both: locally-administered (02:…) so it cannot collide with
   # a vendor OUI.  Convention below: 02:00:00:<vlan>:00:<seq>.  The MAC the
@@ -283,41 +302,33 @@
   #     { type = "tap"; id = "tap-vpn"; mac = "02:00:00:90:00:03"; }
   #   ];
 
-  # ── B. systemd-nspawn container (M2b Jellyfin, M4 arr, M5 Traefik) ───────
+  # ── B. systemd-nspawn container (M4 arr, M5 Traefik) ─────────────────────
   #
-  # containers.jellyfin = {
-  #   privateNetwork  = true;
-  #   hostBridge      = "br0";                # → nspawn --network-bridge=br0
-  #   localMacAddress = "02:00:00:90:00:02";  # container eth0 → DHCP reservation
-  # };
+  # NO LONGER HYPOTHETICAL.  M2b implemented this pattern for Jellyfin; read
+  # machines/ernst/containers/jellyfin.nix ("Networking — v2") for the working
+  # version with its full rationale, and copy from there rather than from the
+  # sketch below.  The three things that bite:
   #
-  # NOTE THE INTERFACE NAME.  With --network-bridge= the host side of the veth
-  # uses the "vb-" prefix, not "ve-" (nixos-containers.nix deletes vb-$INSTANCE
-  # on stop).  So the unit must match vb-jellyfin.
-  #
-  # nspawn creates AND enslaves that veth itself, so this unit must NOT set
-  # Bridge= — that would make networkd fight nspawn over the master — but MUST
-  # set KeepMaster so networkd leaves the enslavement alone while still
-  # applying the [BridgeVLAN].
-  #
-  # systemd.network.networks."60-vb-jellyfin" = {
-  #   matchConfig.Name = "vb-jellyfin";
-  #   networkConfig = {
-  #     KeepMaster          = true;   # do not detach it from nspawn's br0
-  #     LinkLocalAddressing = "no";
-  #     IPv6AcceptRA        = false;
+  #   containers.<n> = {
+  #     privateNetwork  = true;
+  #     hostBridge      = "br0";                # → nspawn --network-bridge=br0
+  #     localMacAddress = "02:00:00:90:00:0X";  # container eth0 → DHCP reservation
   #   };
-  #   bridgeVLANs = [ { VLAN = 90; PVID = 90; EgressUntagged = 90; } ];
-  #   linkConfig.RequiredForOnline = "enslaved";
-  # };
   #
-  # M2b must VERIFY with `bridge vlan show` that the VLAN actually landed:
-  # networkd applies [BridgeVLAN] when it observes the link's master, and nspawn
-  # sets that master out of band.  If it races, the fallback is an ExecStartPost
-  # on container@jellyfin.service running
-  #   bridge vlan add dev vb-jellyfin vid 90 pvid untagged
-  # With DefaultPVID = "none" a missed application is fail-closed (the container
-  # simply has no connectivity), not fail-open onto VLAN 50.
+  # 1. THE INTERFACE NAME.  With --network-bridge= the host side of the veth
+  #    uses the "vb-" prefix, not "ve-" (nixos-containers.nix deletes
+  #    vb-$INSTANCE on stop).  The unit must match vb-<name>.
+  # 2. NOT Bridge=, but KeepMaster=true.  nspawn creates AND enslaves the veth
+  #    itself; Bridge= would make networkd fight it over the master.
+  #    KeepMaster leaves the enslavement alone while still applying
+  #    [BridgeVLAN].
+  # 3. THE VLAN CAN RACE.  networkd applies [BridgeVLAN] when it observes the
+  #    link's master, and nspawn sets that master out of band.  jellyfin.nix
+  #    pairs the unit with an idempotent ExecStartPost that re-asserts the
+  #    membership; do the same.  With DefaultPVID = "none" a missed
+  #    application is fail-closed (no connectivity at all), not fail-open onto
+  #    VLAN 50 — but verify it with `bridge vlan show` rather than trusting
+  #    silence.
 
   ###########################################################################
   # Stage-1 SSH for remote zroot passphrase entry — UNCHANGED, and it must
