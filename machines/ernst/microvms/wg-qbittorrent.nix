@@ -677,38 +677,55 @@ in
           UseNTP     = false;
         };
 
-        # The carve-out wg-quick's policy routing needs — one rule per
-        # management network, and NOT a supernet.
+        # The carve-out that keeps replies to management clients out of the
+        # tunnel.  ROUTES, not routing policy rules — and the difference is the
+        # whole point.
         #
-        # With AllowedIPs = 0.0.0.0/0, wg-quick installs `from all lookup main
-        # suppress_prefixlength 0` ahead of `not fwmark … lookup <wg table>`.
-        # Main is consulted first but its DEFAULT route is suppressed, so a
-        # reply to a management-network client — 10.0.10.0/24, a different
-        # subnet from the guest's own — matches nothing in main and falls
-        # through into the tunnel.  The WebUI would appear dead from exactly
-        # the networks that are allowed to reach it.
+        # With AllowedIPs = 0.0.0.0/0, wg-quick installs two rules:
         #
-        # Priority 100 puts these ahead of both of wg-quick's rules, so replies
-        # to those two subnets use main and leave via eth0.  Nothing is widened:
-        # the nftables output chain still drops everything to them except
+        #   from all lookup main suppress_prefixlength 0
+        #   not from all fwmark 0xca6c lookup <wg table>
+        #
+        # Main is consulted first, but its DEFAULT route is suppressed, so a
+        # reply to a client on 10.0.10.0/24 — a different subnet from the
+        # guest's own — matches nothing in main, falls to the second rule, and
+        # is routed into the tunnel.  The WebUI and SSH appear dead from exactly
+        # the networks that are allowed to reach them.
+        #
+        # THE OBVIOUS FIX DOES NOT WORK, and it was tried first: a
+        # [RoutingPolicyRule] per management network at priority 100.  wg-quick
+        # runs AFTER networkd and adds its rules without an explicit priority,
+        # and the kernel's fib_default_rule_pref() assigns "one less than the
+        # second rule in the list" — so it landed at 99 and 98, ahead of ours,
+        # *because* ours were at 100.  Measured on the running guest:
+        #
+        #   98:  from all lookup main suppress_prefixlength 0
+        #   99:  not from all fwmark 0xca6c lookup 51820
+        #   100: from all to 10.0.10.0/24 lookup main      ← never consulted
+        #
+        # Picking a lower number cannot win: wg-quick would take one lower
+        # still.  Anything that competes on rule priority loses to a program
+        # that chooses its priority at run time relative to whatever it finds.
+        #
+        # So compete on route specificity instead.  `suppress_prefixlength 0`
+        # rejects only prefix length 0 — the default route — so an explicit
+        # /24 in main is found by wg-quick's OWN first rule and wins there,
+        # whatever the priorities end up being.  Nothing is widened: the
+        # nftables output chain still drops everything to these networks except
         # replies on established flows.
         #
-        # THE FIRST DRAFT USED 10.0.0.0/16 — one rule covering the whole VLAN
-        # map — and that was a latent breakage, caught while reading IVPN's
-        # documentation rather than by anything here.  A provider's in-tunnel
-        # resolver can live in 10.0.0.0/16: IVPN's AntiTracker DNS is
-        # 10.0.254.2 (hardcore mode 10.0.254.3), and a /16 carve-out would have
-        # routed every DNS query at eth0, where the killswitch correctly drops
-        # it.  Symptom: the tunnel comes up, `wg show` looks perfect, and not
-        # one name resolves.
+        # Gateway = _dhcp4 rather than a literal 10.0.90.1: the UDM-Pro owns
+        # this subnet's gateway and a second copy here would be a fact that can
+        # silently diverge — the same call M2b made about the address itself.
         #
-        # Enumerating the two subnets that actually need this removes the whole
-        # class of collision: any provider address outside them — IVPN assigns
-        # from 172.16.0.0/12 — routes into the tunnel where it belongs.
-        routingPolicyRules = map (net: {
-          To       = net;
-          Table    = "main";
-          Priority = 100;
+        # Per network, never a supernet.  A provider's in-tunnel resolver can
+        # live inside 10.0.0.0/16 — IVPN's AntiTracker DNS is 10.0.254.2/.3,
+        # and the one actually in use here is 10.0.254.4 — and a /16 carve-out
+        # would route every DNS query at eth0, where the killswitch correctly
+        # drops it.  Tunnel up, `wg show` perfect, not one name resolving.
+        routes = map (net: {
+          Destination = net;
+          Gateway     = "_dhcp4";
         }) mgmtNets;
 
         linkConfig.RequiredForOnline = "routable";
