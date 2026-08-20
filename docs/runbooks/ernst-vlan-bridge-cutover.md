@@ -243,25 +243,52 @@ Use a VLAN you know is routed as the control — VLAN 5 should ARP-resolve
 `10.0.5.1` and ping Technitium at `10.0.5.3`. If the control works and the new
 VLAN does not, the fault is that network's configuration, not the trunk.
 
-!!! warning "Open issue as of 2026-08-19: VLAN 80 has no gateway"
+!!! danger "Root cause found 2026-08-20: a subnet collision, not a VLAN problem"
 
-    On this UDM-Pro the Services network is configured **correctly** — Router
-    `skynet-udmpro`, zone `services`, IPv4 `10.0.80.1/24`, DHCP Server on with
-    DNS `10.0.5.3`, VLAN ID 80, Isolate Network off — and VLAN 80 frames *do*
-    reach ernst. But `10.0.80.1` never answers ARP and no DHCP server responds
-    (dhcpcd falls back to a `169.254.x` IPv4LL address).
+    **`10.0.80.0/24` was already claimed by the `skynet-travel` WireGuard
+    config**, so the UDM-Pro carried two routes for it and the wrong one won:
 
-    Ruled out: it is **not** a "VLAN Only" network (an early hypothesis here that
-    the settings disproved), and it is not provisioning lag — it persisted across
-    a long interval. **Force Provision is not offered for the UDM-Pro**, so the
-    usual remedy is unavailable.
+    ```
+    10.0.80.0/24 dev wgsrv1 proto VPN scope link          ← wins
+    10.0.80.0/24 dev br80   proto kernel scope link src 10.0.80.1
 
-    Still to try, in order: reboot the UDM-Pro; check whether the UDM-Pro↔USW
-    uplink port restricts tagged VLANs to a custom list that predates VLAN 80;
-    recreate the network.
+    ip route get 10.0.80.250 → dev wgsrv1 src 10.0.70.1   ❌
+    ip route get 10.0.20.250 → dev br20   src 10.0.20.1   ✅
+    ```
 
-    **This blocks M2b, not M2.** The bridge cutover needs only VLAN 50 untagged
-    for the host.
+    The UDM-Pro sets `arp_filter = 1` on its bridges, which answers an ARP
+    request **only if the kernel would route back to the sender out of that same
+    interface**. It would have routed to `10.0.80.250` via `wgsrv1`, so it
+    silently declined to reply on `br80` — no filter, no log, no error.
+
+    This is why every component tested correct in isolation: interfaces `UP`,
+    `eth10.80`/`switch0.80` properly enslaved to `br80`, address present,
+    requests visibly arriving (`tcpdump -i br80 -n -e arp` showed ernst's
+    `a0:ad:9f:1c:9d:74`), sysctls identical to the working `br20`, and ebtables
+    empty. The fault was one routing-table row.
+
+    **Diagnostic sequence that found it** — reuse this shape for any "VLAN is
+    tagged but the gateway is silent" case:
+
+    1. `ip link show master br<N>` — are the VLAN subinterfaces enslaved?
+    2. `tcpdump -i br<N> -n -e arp` — do the requests actually arrive?
+    3. `sysctl …arp_ignore …arp_filter …rp_filter` — diff against a *working*
+       bridge, not against expectations.
+    4. **`ip route get <sender-ip>`** — the decisive one. With `arp_filter = 1`,
+       an ARP reply is a routing decision.
+
+    Wrong hypotheses discarded on the way: "VLAN Only" network (settings
+    disproved it), provisioning lag (persisted for hours), and the UDM↔USW
+    uplink not trunking VLAN 80 (frames demonstrably arrived).
+
+    **Lesson for future VLANs: check the subnet against `ip route show` on the
+    UDM-Pro before creating the network.** A free VLAN ID does not imply a free
+    subnet — VPN peers, WireGuard `AllowedIPs` and site-to-site tunnels all
+    install routes that shadow a connected network.
+
+    **This never blocked M2** — the bridge cutover needs only VLAN 50 untagged
+    for the host. It gates **M2b**, where Jellyfin first needs an address on the
+    services VLAN.
 
 ### 2.5 Verify with ernst unchanged
 
