@@ -44,7 +44,7 @@ Verified against the repo on 2026-08-19 (`main` @ `8bdd162`).
 | CI eval check on PRs | **done** | — | `.github/workflows/check.yml` evaluates all four toplevel `drvPath`s |
 | ernst `@blank` snapshots | **open (operator)** | — | ernst has never been genuinely impermanent — root accumulates. `docs/runbooks/ernst-enable-impermanence.md` is written and unexecuted; step 4 is a one-way door. Not a Claude milestone |
 | M1 — Kvantum linkGeneration drift | **closed — did not reproduce** | — | Four consecutive activations in the retained journal all passed `linkGeneration`. The on-disk shape that looked like drift is Stylix's `recursive = true` working as designed. See [M1](#m1-kvantum-linkgeneration-drift-closed) |
-| M2 — ernst VLAN bridge | **done — deployed 2026-08-20** | — | `br0` VLAN-filtering bridge, `enp13s0` as tagged trunk; VLAN 80 (Services) created for M2b/M5. The cutover is lgo's — [runbook](runbooks/ernst-vlan-bridge-cutover.md). See [M2](#m2-ernst-vlan-bridge-built-cutover-pending) |
+| M2 — ernst VLAN bridge | **done — deployed 2026-08-20** | [#73](https://github.com/lutzgo/clanarchy/pull/73) | `br0` VLAN-filtering bridge, `enp13s0` as tagged trunk; VLAN 80 (Services) created for M2b/M5. Cutover verified: `br0` holds `10.0.50.10/24`, `enp13s0` enslaved, the `br0 50 PVID Egress Untagged` self entry present, NM now `unmanaged`. [Runbook](runbooks/ernst-vlan-bridge-cutover.md). See [M2](#m2-ernst-vlan-bridge-built-cutover-pending) |
 | M2b — Jellyfin on its own veth | **open** | — | [M2b](#m2b-featernst-jellyfin-tap) |
 | M3 — VPN microvm + qBittorrent | **open** | — | [M3](#m3-featernst-vpn-microvm) |
 | M4 — arr stack | **open** | — | [M4](#m4-featernst-arr-stack) |
@@ -277,13 +277,23 @@ sorted **alphabetically by name**, not by evaluation order — read the ID colum
 instead, and treat a zero hit count as a *matching* problem rather than an
 ordering one.
 
-**VLAN 80 has no gateway, and it is not the trunk's fault.** Tagged frames reach
-ernst on VLAN 80, but `10.0.80.1` never answers ARP and no DHCP server responds.
-The network is configured correctly (Router `skynet-udmpro`, zone `services`,
-`10.0.80.1/24`, DHCP Server on, DNS `10.0.5.3`, Isolate off) and it is *not* a
-"VLAN Only" network. **Force Provision is not offered for the UDM-Pro.** This is
-an open blocker for **M2b** — see the warning box in the cutover runbook for what
-has been ruled out and what to try next.
+**VLAN 80's gateway was silent because the *subnet* was already taken.**
+`10.0.80.0/24` is claimed by the `skynet-travel` WireGuard config, so the UDM-Pro
+held two routes for it and `10.0.80.0/24 dev wgsrv1 proto VPN` shadowed the
+connected `dev br80`. With `arp_filter = 1` on the UDM's bridges, an ARP reply is
+conditional on the kernel routing back to the sender out of the same interface —
+it would have used `wgsrv1`, so it silently declined to answer on `br80`.
+
+Everything else tested correct: bridge members enslaved, address present,
+requests visibly arriving, sysctls identical to the working `br20`, ebtables
+empty. **A free VLAN ID does not imply a free subnet** — check new subnets against
+`ip route show` on the UDM-Pro before creating the network. Full diagnostic
+sequence in the [cutover runbook](runbooks/ernst-vlan-bridge-cutover.md).
+
+Open for **M2b**: either reclaim `10.0.80.0/24` from the VPN config, or renumber
+the Services network (`10.0.90.0/24` on VLAN 90 keeps the 10s convention). The
+first costs no repo change; the second touches the VLAN map in
+`machines/ernst/networking.nix`, this file, the runbook, and USW port 6's tag.
 
 ### Carried forward
 
