@@ -46,7 +46,7 @@ Verified against the repo on 2026-08-20 (`main` @ `f9b305e`).
 | M1 — Kvantum linkGeneration drift | **closed — did not reproduce** | — | Four consecutive activations in the retained journal all passed `linkGeneration`. The on-disk shape that looked like drift is Stylix's `recursive = true` working as designed. See [M1](#m1-kvantum-linkgeneration-drift-closed) |
 | M2 — ernst VLAN bridge | **done — deployed 2026-08-20** | [#73](https://github.com/lutzgo/clanarchy/pull/73) | `br0` VLAN-filtering bridge, `enp13s0` as tagged trunk; VLAN 90 (Services) created for M2b/M5. Cutover verified: `br0` holds `10.0.50.10/24`, `enp13s0` enslaved, the `br0 50 PVID Egress Untagged` self entry present, NM now `unmanaged`. [Runbook](runbooks/ernst-vlan-bridge-cutover.md). See [M2](#m2-ernst-vlan-bridge-built-cutover-pending) |
 | M2b — Jellyfin on its own veth | **done — deployed 2026-08-20** | [#82](https://github.com/lutzgo/clanarchy/pull/82) | Jellyfin on `10.0.90.10` via MAC-pinned veth `vb-jellyfin`, VLAN 90. **L3 retired.** Survived a reboot: `br0`'s pinned MAC reproduced at first boot-time creation, the VLAN race won by networkd, `/srv/state/jellyfin` intact through the rollback, `clanarchy-impermanence-check` green. The Nix half deployed first try; the [UDM-Pro half took five rounds](#the-udm-pro-half-cost-more-than-the-nix-half) and disproved M2's Connection-State finding. [M2b](#m2b-jellyfin-on-its-own-veth-done-deployed-2026-08-20) |
-| M3 — VPN microvm + qBittorrent | **open** | — | [M3](#m3-featernst-vpn-microvm) |
+| M3 — VPN microvm + qBittorrent | **done — deployed 2026-08-20** | [#83](https://github.com/lutzgo/clanarchy/pull/83) | `wg-qbittorrent` on the microvm tier: tap on VLAN 90, IVPN wg-quick tunnel, guest-side nftables killswitch. **Killswitch proven**: with wg0 down the guest emitted zero packets and DNS failed rather than leaking. **Hardlink chain proven**, with a negative control — `UMask=0002` is what M4 depends on. Three things had to be fixed after the first deploy: wg-quick wins any routing-rule priority race, a tmpfiles/oneshot contradiction in `jellyfin.nix` had been silently resetting the media directory modes since M2b, and the UDM-Pro policy editor has two Port sections. [M3](#m3-featernst-vpn-microvm-done--deployed-2026-08-20) |
 | M4 — arr stack | **open** | — | [M4](#m4-featernst-arr-stack) |
 | M5 — Traefik | **open** | — | [M5](#m5-featernst-traefik) |
 | M6 — monitoring | **open** | — | [M6](#m6-featmonitoring) |
@@ -119,11 +119,14 @@ Since **2026-08-18** this is enforced rather than aspirational. ernst had no
 milestone to date has had to think about `/persist`* — state survived because
 nothing reset it, not because anything was declared correctly. That is over.
 Anything written to `zroot` now disappears on the next boot unless it is
-declared. M2b, M3 and M4 each carry service state that has never once been
+declared. M2b, M3 and M4 each carry service state that had never once been
 tested against a real rollback, so for those three the first reboot after deploy
-is part of the milestone, not an afterthought. `clanarchy-impermanence-check`
-(#54) is the tripwire: it now passes on ernst, and a milestone that makes it
-fail has broken something.
+is part of the milestone, not an afterthought. **M2b and M3 have now passed
+that reboot** — M3's `/srv/state/qbittorrent` survived intact while
+`/var/lib/microvms` was correctly rebuilt from the store, which is the
+distinction the invariant is about. M4 remains untested against it.
+`clanarchy-impermanence-check` (#54) is the tripwire: it passes on ernst, and a
+milestone that makes it fail has broken something.
 
 **8 — Secrets come from clan vars generators.** No plaintext in the repo, no
 placeholder secrets committed, `neededFor` set where activation depends on it.
@@ -147,6 +150,7 @@ Rows are retired only by the PR that actually removes the rule.
 | L2a | IoT name resolution for L2 | — | IoT clients could not resolve `jellyfin.skynet.lan` | **M5** — repoint at Traefik | **obsolete, and it was never true as written** — M2b measured `dig @10.0.5.3 jellyfin.skynet.lan` succeeding from VLAN 20, so IoT has had a working path to Technitium all along. The TV using a bare IP was a client choice, not a constraint. Nothing to retire; nothing to build |
 | — | `Services → DNS-Container` `:53` | UDM-Pro ZBF policy `Allow Jellyfin to DNS`, ID `10000` | The `services` zone is isolated by default, so the container could not resolve at all | **permanent** — not interim, listed here only so it is not mistaken for one | created by M2b. `Services → External` was predicted to be needed too and **was not** — it already passed |
 | L3 | `networking.firewall.allowedTCPPorts = [ 8096 ]` on the host | `machines/ernst/containers/jellyfin.nix` | Jellyfin shares the host network namespace (`privateNetwork = false`), so its port is a host port | **M2b** — the veth on VLAN 90 gives the container its own L2 identity; the host port opening goes away and the ACL moves to the UDM-Pro | **retired in [#82](https://github.com/lutzgo/clanarchy/pull/82)** — the line is deleted from the repo; 8096 is now opened only inside the container's own netns. Effective on the next `clan machines update ernst` |
+| — | `LAN (1) → qBittorrent 10.0.90.11:8080,22/tcp` | UDM-Pro ZBF, M3 | The qBittorrent WebUI (and the guest's SSH) are reachable from the management networks and nowhere else | **permanent** — architecture invariant #4 names this bypass explicitly. It is listed here only so a future milestone does not mistake it for an interim row and "fix" it by adding a Traefik route | **created and verified 2026-08-20.** Source zone `Internal`, narrowed to the `LAN` + `Servers` networks; destination `10.0.90.11` tcp `8080,22`; `Auto Allow Return Traffic` ticked. Servers (50) does need to be listed — with it, `ssh` from ernst itself works. **The port belongs in the Destination card**: the editor has a Port section in *both* zone cards and the source one is the one you see first, which matches only traffic *from* 8080/22, i.e. never |
 | L4 | arr WebUI ports `9696` / `8989` / `7878`, mgmt-VLAN scoped | M4 (host firewall, v1) | arr v1 runs on host networking like Jellyfin did | **M5** for the routes, plus a veth migration mirroring M2b | not yet created |
 | L5 | Traefik `ipAllowList` on the arr + Grafana routes (mgmt + wg-travel) | M5 (`traefik` container) | There is no identity provider yet | **M7** — replaced by the Authelia forward-auth middleware | not yet created |
 | L6 | Tvheadend ports `9981` / `9982` on the host, mgmt-VLAN scoped | M8 (host firewall, v1) | Only if M8 lands before M2b — Tvheadend v1 would then run on host networking like Jellyfin's and arr's did | **M5** for the web route, plus a veth migration mirroring M2b. Never created at all if M2b lands first | not yet created |
@@ -605,7 +609,7 @@ Two notes for whoever reads this next:
 
 ---
 
-## M3 — `feat/ernst-vpn-microvm`
+## M3 — `feat/ernst-vpn-microvm` (done — deployed 2026-08-20)
 
 **Goal.** Put qBittorrent behind a VPN in a microvm with a real killswitch —
 default-deny egress inside the guest, so a VPN failure means no traffic rather
@@ -618,93 +622,214 @@ later.
 and the uid/gid decision here is the single most common integration failure in
 this kind of stack.
 
-````text
-Read CLAUDE.md fully before doing anything.
+**Deployed and verified across a reboot.** The repo half needed three rounds
+after the first deploy; every one of them is written up below, because two were
+in code this milestone did not write and one is a trap M4 and M5 will hit in the
+same form. Operator procedure:
+[the deploy runbook](runbooks/ernst-vpn-microvm-deploy.md).
 
-Work in the clanarchy repo on miralda. Branch: feat/ernst-vpn-microvm.
-Prerequisite: M2 (br0) merged and deployed.
+### What shipped
 
-FLAKE INPUT. Adding microvm.nix is PRE-APPROVED for this milestone (the only
-one). Add it to flake.nix with `inputs.nixpkgs.follows = "nixpkgs"` so it
-tracks the stable channel the rest of ernst is on, and report the flake.lock
-impact in the PR body (what new nodes appear, and whether anything the fleet
-already uses gets moved). No other new inputs.
+`microvm.nix` as a flake input (`nixpkgs.follows = "nixpkgs"`, so the guest is
+26.05 like its host), its `nixosModules.host` on ernst, and one
+fully-declarative guest, `wg-qbittorrent`:
 
-GUEST: "wg-qbittorrent".
-  - Minimal NixOS. No X, no docs, no extra packages beyond what qBittorrent
-    (nox) and the network stack need.
-  - MAC-pinned tap on br0, on the Services VLAN (90). A tap IS the right
-    primitive here — this is a microvm, not an nspawn container. Copy
-    worked example A from machines/ernst/networking.nix.
-  - WireGuard client to the commercial provider, with a REAL killswitch
-    implemented as guest-side nftables policy:
-      * default-deny on egress from the tap interface;
-      * allow ONLY the VPN endpoint IP:port out of the tap;
-      * everything else routes via wg0;
-      * DNS resolves in-tunnel — no host or LAN resolver, or the killswitch
-        leaks names even when it holds packets;
-      * INBOUND WebUI on 8080/tcp over the tap is allowed, and
-        established/related replies must not be broken by the egress policy.
-        The killswitch is an egress policy; a WebUI that cannot answer a
-        mgmt-VLAN request is a bug, not extra security.
-      * qBittorrent is ADDITIONALLY bound to wg0 at the application level
-        (Connection -> Network interface). Belt and braces: nftables is the
-        guarantee, the interface binding is the second line.
-  - Secrets via clan vars generators (clan.core.vars.generators.*): the
-    WireGuard private key, and the provider's endpoint/peer material.
-    PROMPT LGO for the provider and credentials at generation time; commit
-    NO placeholder secrets and no example keys that look real. Document
-    `clan vars generate ernst` in the PR body.
+- **Tap on br0, Services VLAN 90**, MAC `02:00:00:90:00:03`, `10.0.90.11` by
+  DHCP reservation — the M2b pattern, one tier up.
+- **wg-quick tunnel to IVPN** whose entire config is a single clan-vars file.
+  Nothing about the provider is in the repo, not even the endpoint.
+- **A killswitch that is nftables, not routing.** Output `policy drop`, three
+  exceptions on the LAN interface: the tunnel to the endpoint, DHCPv4, and
+  replies to management-network connections.
+- **virtiofs shares at identical paths**: `/srv/media/torrents` read-write,
+  `/srv/state/qbittorrent` → `/var/lib/qBittorrent`, a read-only secrets
+  staging directory, and the host's `/nix/store`.
+- **A stateless guest**: tmpfs root, no volume, nothing persisted.
 
-STORAGE — this is the part that decides whether M4 works at all.
-  - Share /srv/media/downloads into the guest at the IDENTICAL path. Same
-    path on both sides is what makes hardlinks and *arr path mapping sane.
-  - Evaluate virtiofs vs 9p and JUSTIFY the choice in a comment: performance,
-    whether hardlinks are preserved across the boundary, and how ownership is
-    presented. Hardlink preservation is the deciding criterion, not
-    throughput.
-  - Choose the uid/gid mapping so a HOST-side process (the future arr stack,
-    running as its own user in a member of the `media` group, gid 3000 — see
-    machines/ernst/containers/jellyfin.nix) can hardlink files the guest
-    wrote. Document the mapping in a file-header comment with the reasoning.
-    THIS IS THE #1 INTEGRATION FAILURE MODE of the whole stack; treat it as
-    a first-class design decision, not a permissions detail.
-  - Respect the invariant: /srv/media is ONE hardlink domain, plain
-    subdirectories only. Do not add a dataset under it.
+### What actually broke, and what it teaches
 
-EXPOSURE.
-  - WebUI reachable from the management VLAN only.
-  - NO Traefik route, ever. This is a deliberate, permanent bypass of the
-    "everything behind Traefik" rule — record it as such in the PR body and
-    in the module header, so a future milestone does not "fix" it.
+**1 — wg-quick wins any routing-rule priority race, by construction.** This was
+the one that made the milestone look dead: SSH and the WebUI hung, the SYN
+reached the guest, and nothing came back.
 
-TEST PLAN in the PR body:
-  - VPN exit-IP check from inside the guest (curl an IP-echo service through
-    wg0; it must show the provider, never the home WAN address).
-  - Killswitch proof: stop wg0 (or blackhole the endpoint) and show with
-    tcpdump on the host tap that the guest emits nothing but the allowed
-    endpoint traffic — no DNS, no tracker, no peer traffic.
-  - Hardlink proof from the HOST side: create a file via the guest, then
-    `ln` it host-side across /srv/media and show `stat` link count 2 with
-    matching inode. If this fails, M4 cannot work — stop and re-open the
-    uid/gid decision.
+The carve-out that keeps replies to management clients out of the tunnel was a
+`[RoutingPolicyRule]` per management network at priority 100. wg-quick runs
+*after* networkd and adds its two rules **without an explicit priority**; the
+kernel's `fib_default_rule_pref()` returns "one less than the second rule in the
+list", so it landed at 99 and 98 — ahead of ours, **because** ours were at 100.
+Measured on the running guest:
 
-Constraints:
-- Never commit to main. Branch first, PR via `gh pr create` (title
-  imperative, <=70 chars, no prefix; body = summary + test plan + manual
-  steps).
-- No new flake inputs beyond the pre-approved microvm.nix.
-- Minimal diffs; commit only the files this change touches.
-- Verify by evaluation:
-    nix flake check
-    nix eval --no-update-lock-file --raw \
-      '.#nixosConfigurations.ernst.config.system.build.toplevel.drvPath'
-  plus an eval of the microvm guest's own toplevel, and paste the attribute
-  path you used.
-- Claude does not deploy: `clan machines update ernst` and
-  `clan vars generate ernst` are lgo's steps.
-- Update docs/roadmap.md's status table in the same PR.
-````
+```
+98:  from all lookup main suppress_prefixlength 0     ← wg-quick
+99:  not from all fwmark 0xca6c lookup 51820          ← wg-quick
+100: from all to 10.0.10.0/24 lookup main             ← never consulted
+```
+
+Lowering the number cannot win; wg-quick would take one lower still. **Anything
+that competes on rule priority loses to a program that picks its priority at run
+time relative to what it finds.**
+
+The fix competes on route specificity instead. `suppress_prefixlength 0` rejects
+only prefix length 0 — the default route — so an explicit `/24` in `main` is
+found by *wg-quick's own first rule* whatever the priorities settle at. The
+management networks are plain routes with `Gateway=_dhcp4`. Removing our rules
+also put wg-quick back at its documented 32764/32765, which is the confirmation:
+it had been dragged down by ours.
+
+**2 — a two-year-old contradiction in `containers/jellyfin.nix`, surfaced
+because M3 is the first thing to WRITE to the media tree.** The hardlink test
+failed with `EACCES`, and the cause was that
+`/srv/media/library/movies` was `root:root 0755`, not the `root:media 2770` that
+file intends.
+
+It declared those four directories **twice, with different values**: `0755 root
+root` in `systemd.tmpfiles.rules`, and `root:media 2770` in
+`jellyfin-library-perms.service`. tmpfiles **enforces mode and ownership on
+every run**, not only at creation, and runs on every deploy; the oneshot is
+`RemainAfterExit` and runs once per boot. So the oneshot won at boot and
+tmpfiles took it back at the next `clan machines update`.
+
+Invisible for as long as Jellyfin was the only consumer — it never writes, 0755
+grants the traversal it needs, and the files themselves are `root:media 0640`.
+It would have surfaced in M4 as the silent copy-instead-of-hardlink that
+milestone exists to catch. **The tmpfiles rules now carry the intended values**
+and the oneshot is a redundant backstop that agrees with them. The general
+lesson: where tmpfiles and a service both describe a path, tmpfiles wins on
+every deploy, so tmpfiles is where the truth belongs.
+
+**3 — `UMask=0002` is the milestone, and it is now measured rather than
+argued.** virtiofsd runs without id translation, so guest uid 3001 *is* host uid
+3001; the download directories are setgid `root:media`. But at systemd's default
+umask the files land `0644` — group-**read** — and `fs.protected_hardlinks`
+refuses `link()` on a file you do not own unless you have read **and write** on
+it. Verified on ernst:
+
+```
+file created by qbittorrent (uid 3001, umask 0002) → 0664
+  link as uid 3002, group media   → rc=0, one inode, links=2
+  same file chmod 0644, same link → EPERM, "Operation not permitted"
+```
+
+The negative control is the point: without it the test cannot distinguish a
+working chain from root bypassing the check, which is exactly what an earlier
+revision of this plan did — it created the file as root and linked it as root,
+and would have passed whatever `UMask` was set to.
+
+**4 — the endpoint must be an IP literal, and validating one input is not
+enough.** wg-quick resolves a hostname endpoint using the guest's resolver,
+which is in-tunnel, which does not exist until the handshake that needs the
+endpoint. The generator rejects a non-IPv4 endpoint — and on the first real run
+it did exactly that, on `95.211.95.9.2049`, a dot typed instead of a colon.
+
+But clan collects **all** prompts and only then runs the script, so exiting on
+the first bad value charged six correct answers for one typo, and the message
+blamed a hostname because that was the only failure the author had imagined.
+The generator now validates every input, accumulates the errors, and reports
+them together; the checks cover the address (rejecting a dual-stack line, since
+the guest disables IPv6 and wg-quick would abort under `set -e`), the DNS, both
+keys (43 base64 chars + `=`, catching a truncated paste) and the MTU.
+
+**5 — IVPN specifics that shaped the design.** The in-tunnel resolvers live at
+`10.0.254.x` — AntiTracker, with `.2`/`.3` the classic pair and a wider range
+beyond it; the one in use here is `10.0.254.4` (Basic filtering). **That is
+inside `10.0.0.0/16`**, which is why the management carve-out is per-subnet and
+never a supernet: a `/16` version, which is what the first draft had, would have
+routed every DNS query at `eth0` where the killswitch correctly drops it —
+tunnel up, `wg show` perfect, not one name resolving. IVPN also specifies
+**MTU 1412**, lower than the 1420 wg-quick derives, and too-high does not fail
+cleanly: the handshake completes and transfers stall on the first full-size
+packet. Port forwarding was removed service-wide in September 2023, so the
+guest's inbound rule for the torrent port is inert by design.
+
+**6 — the L2 probe needs a different success criterion than M2b's.** Jellyfin
+accepted 8096 from anywhere inside its netns; this guest firewalls by source
+address, so a probe on `10.0.90.5` is *correctly* dropped for ICMP, the WebUI
+and SSH. The check is the ARP entry, which resolves anyway because `arp` is a
+netfilter family `table inet` does not touch:
+
+```
+10.0.90.11 dev eth0p lladdr 02:00:00:90:00:03 REACHABLE
+```
+
+That single line proves the reservation took, the guest is alive at L2, and it
+is bound to the right MAC — while everything else failing proves the input chain
+works. ernst also has no `dhcpcd` (`roles/server.nix` zeroes
+`environment.defaultPackages`), so the probe takes a static address from the
+`.2`–`.5` range the cutover runbook set aside.
+
+**7 — the UDM-Pro policy editor has two Port sections**, one inside the Source
+Zone card and one inside the Destination Zone card, and the source one is the
+one you see first. A service port entered there matches only traffic *from*
+8080/22, i.e. never. Symptom: a hanging connection with a **zero hit count** —
+M2b's "zero hits means the matcher is wrong, non-zero with a hang means the
+return leg" split, in its first real use. The filled-in field table is in the
+runbook; M4, M5, M8 and M9 all add rules to this same zone.
+
+**8 — two upstream facts.** microvm.nix warns that qemu hangs when a guest has
+*exactly* 2 GB (microvm-nix/microvm.nix#171), so the guest has 4 GB. And the
+qemu runner implements no notify socket, so `microvm@` is `Type=simple`: a guest
+that fails to finish booting leaves a running service and a readable console log
+in ernst's journal rather than being killed at `TimeoutSec` and restart-looped
+out of reach.
+
+### Decisions that departed from this milestone's own prompt
+
+- **`/srv/media/torrents`, not `/srv/media/downloads`.** The prompt named
+  `downloads`; the deployed tree does not have one.
+  `containers/jellyfin.nix` already creates `torrents/{movies,tv}` beside
+  `library/{movies,tvshows}`, and those are the directories M4 imports *from*.
+  Only `torrents/incomplete` and `torrents/complete` were added, both inside the
+  one hardlink domain.
+- **The guest runs sshd.** The prompt asked for a minimal guest, and this is the
+  one addition. M3's own test plan requires running commands *inside* the guest,
+  and the qemu runner wires the serial console to the service's stdout — good
+  for reading a boot, useless for typing into. Key-only, root-only, management
+  networks only, host key from the vars generator (the guest's root is a tmpfs,
+  so a self-generated key would be new every boot). It earned its place during
+  the debugging above several times over.
+- **The WebUI password is a clan var too.** Forced by the configuration model:
+  qBittorrent's config is rendered declaratively on every start, so a
+  UI-set password would be discarded at the next deploy. The generator emits
+  qBittorrent's PBKDF2 format directly, so only the hash reaches the guest.
+
+**No interim ledger rows.** The WebUI's management-only exposure is a
+*permanent* bypass, named as such in architecture invariant #4, and is listed in
+the ledger as a `—` row so nobody later mistakes it for something to retire.
+
+### Results, verified across a reboot on 2026-08-20
+
+The reboot was the point: invariant #7 names M3 as one of three milestones
+carrying state that had never met a real rollback, and this was the first boot
+at which the tap and the microvm state directory were built from config rather
+than by a live deploy.
+
+| Check | Result |
+|---|---|
+| Exit IP, in-guest vs miralda | `95.211.172.88` (IVPN) vs `78.94.91.74` (home WAN) — different |
+| Tunnel | handshake re-established after boot with no intervention |
+| DNS | resolves in-tunnel via `10.0.254.4`; nothing reaches a LAN resolver |
+| **Killswitch, wg0 stopped** | **guest emitted ZERO packets on `tap-vpn`**; `curl` rc=6 (no resolution), `getent` rc=2, raw-IP `curl` rc=28 (timeout — dropped, not rejected) |
+| **Hardlink chain** | **one inode, `links=2`**, linked by uid 3002 in group media; the 0644 control refused `EPERM` |
+| `/srv/state/qbittorrent` through the rollback | intact — `qBittorrent.conf`, `qBittorrent-data.conf`, `categories.json` |
+| `/var/lib/microvms/wg-qbittorrent` | rebuilt from the store at boot, as designed — deliberately not persisted |
+| `bridge vlan show dev tap-vpn` | `90 PVID Egress Untagged` — networkd won unaided, no backstop needed |
+| `br0` MAC | `b2:8b:e1:f2:1e:7c` — M2b's pin reproduced |
+| Media directory modes after a real boot | `2770 root:media` on all six |
+| `clanarchy-impermanence-check` | `success` / `0`; both `@blank` snapshots present |
+| Host `:8080` | absent |
+| Guest failed units | none |
+| `zpool status -x` | all pools healthy |
+
+### Left for later
+
+- **`warning: user activation for go failed`** on every ernst deploy, with
+  `activation returned 4 — retrying` and success on the retry. The couch user's
+  session dbus; it predates M3 and nothing here touches it. A
+  [backlog entry](#floating-backlog), not a milestone.
+- **The `sshd-keygen` refusal** in the guest's boot log is fixed
+  (`services.sshd-keygen.enable = false` — there are no host keys to generate,
+  by design), but it is worth knowing that an empty `hostKeys` list produces a
+  unit systemd refuses noisily.
 
 ---
 
@@ -1710,6 +1835,17 @@ What the entry got right and what it got wrong:
 ## Floating / backlog
 
 Not sequenced. Each becomes a milestone when it earns one.
+
+**`user activation for go failed` on every ernst deploy.** Activation reports
+`Failed to start user unit basic.target … Did not receive a reply`, five times,
+then `activation returned 4 — retrying`, and the retry succeeds. So every deploy
+prints a wall of red and then works. It is the couch user's session dbus, not
+its system units, and it predates M3 (visible in M2b-era deploys too). Worth
+fixing because a deploy that always prints errors is a deploy nobody reads: the
+next real failure will scroll past unnoticed. Start with whether `go` has a
+lingering user manager at all (`loginctl user-status go`) — the account is
+autologged into a gamescope session, so its bus may simply not be there when
+activation reaches for it.
 
 **Xbox pad over Bluetooth on ernst — blocked upstream, not by us.** The board's
 MediaTek MT7927 (Filogic 380) Bluetooth half fails at HCI reset: `btmtk` on

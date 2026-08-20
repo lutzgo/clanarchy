@@ -168,18 +168,43 @@ in
   # race — but the setgid mode + group ownership are still applied by the
   # ordered oneshot below, so nothing depends on tmpfiles winning against
   # any post-boot mount ordering.
+  # THE MODES HERE ARE AUTHORITATIVE, and until M3 they disagreed with the
+  # oneshot below — which tmpfiles then silently undid on every deploy.
+  #
+  # The four content directories were declared `0755 root root` here and
+  # chowned to `root:media 2770` by jellyfin-library-perms.service. tmpfiles
+  # ENFORCES mode and ownership every time it runs, not just at creation, and
+  # it runs on every `clan machines update`; the oneshot is RemainAfterExit and
+  # runs once per boot. So the oneshot won at boot and tmpfiles took it back at
+  # the next deploy, leaving `0755 root:root`.
+  #
+  # That was invisible for as long as Jellyfin was the only consumer: it never
+  # writes, and 0755 grants the traversal it needs while the files themselves
+  # are `root:media 0640`. M3 is the first thing to WRITE here, and the failure
+  # it produced was `EACCES` on `ln` into library/movies — i.e. exactly the
+  # silent copy-instead-of-hardlink that M4 is written to catch, arriving one
+  # milestone early. Measured on ernst 2026-08-20.
+  #
+  # 2770 = setgid + rwxrws---: new files inherit gid media, group members read
+  # AND write (qBittorrent writes, the *arr moves and hardlinks), root owns.
   systemd.tmpfiles.rules = [
     "d /srv/media/library            0755 root       root       -"
-    "d /srv/media/library/movies     0755 root       root       -"
-    "d /srv/media/library/tvshows    0755 root       root       -"
+    "d /srv/media/library/movies     2770 root       media      -"
+    "d /srv/media/library/tvshows    2770 root       media      -"
     "d /srv/media/torrents           0755 root       root       -"
-    "d /srv/media/torrents/movies    0755 root       root       -"
-    "d /srv/media/torrents/tv        0755 root       root       -"
+    "d /srv/media/torrents/movies    2770 root       media      -"
+    "d /srv/media/torrents/tv        2770 root       media      -"
     "d /srv/state/jellyfin           0700 ${toString jellyfinUid} ${toString jellyfinGid} -"
   ];
 
-  # Ownership + setgid on the media subdirs, applied AFTER zdata/media is
-  # mounted and BEFORE the container starts.  Non-recursive on purpose:
+  # Ownership + setgid on the media subdirs — now a REDUNDANT BACKSTOP that
+  # merely agrees with the tmpfiles rules above.  It is kept because it is
+  # ordered explicitly after srv-media.mount, which tmpfiles is only implicitly
+  # (via local-fs.target); it must never be edited to disagree with them again.
+  # If it is ever removed, the tmpfiles rules are the thing that matters.
+  #
+  # Applied AFTER zdata/media is mounted and BEFORE the container starts.
+  # Non-recursive on purpose:
   # 8.77 TB is present under these paths, and per-file ownership was set
   # once during the Arch → ernst migration (rsync --chown=root:media
   # --chmod=…) — recursing here would rewrite metadata on ~23k files for
