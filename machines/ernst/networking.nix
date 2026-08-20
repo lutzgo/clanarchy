@@ -118,22 +118,38 @@
     netdevConfig = {
       Name = "br0";
       Kind = "bridge";
-      # enp13s0's burned-in MAC, captured in §1.4 of the cutover runbook.
+      # br0's CURRENT live MAC, pinned so it stays that on the next boot.
       #
-      # During M2 this was deliberately left unpinned: with exactly one port
-      # the kernel gives br0 that same MAC anyway, so ernst's L2 identity on
-      # VLAN 50 was unchanged by the one deploy that could lock us out.
+      # M2 deferred this to M2b on the theory that a Linux bridge adopts the
+      # numerically LOWEST port MAC, so the veth M2b adds (random, locally
+      # administered, 0x02/0x06/0x0a… — all below enp13s0's 0xa0) would
+      # silently move the host's L2 identity.  MEASURED ON ernst 2026-08-20,
+      # that is not what happens here:
       #
-      # M2b adds the second port (vb-jellyfin) and that reprieve ends here.  A
-      # Linux bridge adopts the numerically LOWEST port MAC, and the kernel
-      # gives a veth a random LOCALLY-ADMINISTERED address — first octet 0x02,
-      # 0x06, 0x0a … all well below 0xa0.  So the very first container start
-      # would silently move the host's MAC, invalidating the UDM-Pro's client
-      # tracking and ernst's DHCP identity mid-deploy.  Pinning is what makes
-      # br0's address independent of which ports exist.
+      #   ip -br link show br0            → b2:8b:e1:f2:1e:7c   (NOT enp13s0's)
+      #   cat /sys/class/net/br0/addr_assign_type → 3            (NET_ADDR_SET)
       #
-      # This is not a change of address — it is today's value, made permanent.
-      MACAddress = "a0:ad:9f:1c:9d:74";
+      # systemd-networkd sets a MAC on the netdevs it creates, so br0 is
+      # NET_ADDR_SET and br_stp_recalculate_bridge_id() returns early rather
+      # than adopting a port address.  The kernel behaviour is real; it just
+      # cannot fire on a networkd-created bridge.  So M2b's veth was never a
+      # threat to ernst's MAC, and pinning to enp13s0's a0:ad:9f:1c:9d:74 —
+      # as M2 and the cutover runbook both instructed — would have CHANGED
+      # br0's address on the same deploy that moves Jellyfin, on the interface
+      # carrying ernst's only management address.  Two risks, one deploy, for
+      # a hazard that does not exist.
+      #
+      # The pin is still worth having, for the reason nobody had checked:
+      # br0 has NEVER survived a reboot.  `journalctl --list-boots` shows the
+      # current boot began 2026-08-18 21:37, and br0 was created live by the
+      # cutover deploy at 2026-08-20 10:11 — so no boot has ever regenerated
+      # it, and nothing has confirmed networkd's generated value is
+      # reproducible.  Pinning makes that question moot in the safe direction:
+      # if the value is derived (machine-id + netdev name), this is a no-op
+      # freeze; if it is random, this is what stops it moving every boot.
+      #
+      # Either way it is a NO-OP on the M2b deploy: it is what br0 already has.
+      MACAddress = "b2:8b:e1:f2:1e:7c";
     };
     bridgeConfig = {
       VLANFiltering = true;

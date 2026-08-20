@@ -326,11 +326,11 @@ the third octet, which `10.0.90.0/24` on VLAN 80 would have broken.
 
 - **Pin `br0`'s MAC before M2b.** ~~Not done here~~ — **done in M2b**
   ([#82](https://github.com/lutzgo/clanarchy/pull/82)), which is where the
-  second port arrives. Deliberately not done during the cutover: with one port
-  the kernel gives `br0` the burned-in MAC of `enp13s0`, so the cutover did not
-  move ernst's L2 identity, which is what you want on the one deploy that can
-  lock you out. A Linux bridge adopts the numerically *lowest* port MAC, so the
-  second port could silently move it. §1.4 of the runbook captured the value.
+  second port arrives — but **not to the value this note predicted, and the
+  hazard it named cannot occur.** `br0` never inherited `enp13s0`'s MAC; it
+  carries a networkd-assigned `b2:8b:e1:f2:1e:7c` with
+  `addr_assign_type = 3` (`NET_ADDR_SET`), which makes the kernel skip
+  lowest-port-MAC adoption entirely. See M2b's item 1.
 - **Avahi reflection.** `modules/networking/mdns.nix` runs with `reflector = true`
   and no interface pinning. Not a regression here — bridge ports carry no host
   address, so Avahi skips them and `br0` simply replaces `enp13s0` — but it bites
@@ -367,15 +367,37 @@ that quietly changes does not fail loudly.
 
 ### Four things worth carrying forward
 
-1. **`br0`'s MAC is pinned in this PR, and it had to be.** M2 left it unpinned
-   deliberately — with one port the kernel hands `br0` `enp13s0`'s burned-in
-   address anyway, so the cutover did not move ernst's L2 identity. M2b adds the
-   second port and ends that. A Linux bridge adopts the numerically **lowest**
-   port MAC, and the kernel gives a veth a random *locally-administered* address
-   — first octet `0x02`, `0x06`, `0x0a` … all below `enp13s0`'s `0xa0`. So the
-   very first container start would have moved the host's MAC mid-deploy. Pinned
-   to today's value (`a0:ad:9f:1c:9d:74`, captured in §1.4 of the cutover
-   runbook), so it is a freeze rather than a change.
+1. **`br0`'s MAC is pinned — but M2's stated reason for it was wrong, and
+   following it would have caused the very outage it warned about.** M2 deferred
+   the pin to M2b on the theory that a Linux bridge adopts the numerically
+   **lowest** port MAC, so the veth added here (random, locally administered,
+   `0x02`/`0x06`/`0x0a` … all below `enp13s0`'s `0xa0`) would silently move
+   ernst's L2 identity. Measured on ernst 2026-08-20, before deploying anything:
+
+   ```
+   ip -br link show br0                      → b2:8b:e1:f2:1e:7c   (NOT enp13s0's)
+   cat /sys/class/net/br0/addr_assign_type   → 3                   (NET_ADDR_SET)
+   ```
+
+   systemd-networkd sets a MAC on the netdevs it creates, so
+   `br_stp_recalculate_bridge_id()` returns early rather than adopting a port
+   address. The kernel behaviour is real; it simply cannot fire on a
+   networkd-created bridge. Pinning to §1.4's `a0:ad:9f:1c:9d:74` as instructed
+   would therefore have **changed** `br0`'s MAC on the same deploy that moves
+   Jellyfin, on the interface carrying ernst's only management address — two
+   risks in one deploy, to avert a hazard that does not exist. The observed
+   `b2:8b:e1:f2:1e:7c` is pinned instead, which is a no-op today.
+
+   The pin still earns its place, for the reason nobody had checked: **`br0` has
+   never survived a reboot.** The current boot began 2026-08-18 21:37; `br0` was
+   created live by the cutover deploy at 2026-08-20 10:11. No boot has ever
+   regenerated it, so nothing has confirmed networkd's value is reproducible.
+   Pinning settles that in the safe direction either way.
+
+   **The transferable lesson:** §1.4 recorded `enp13s0`'s MAC and *predicted*
+   `br0` would inherit it; nobody re-read `br0` afterwards. Same failure shape as
+   M2's VLAN 80 — a plausible inference recorded as a measurement. Record what
+   you measured.
 2. **`services.jellyfin.openFirewall` is still `false`, for a new reason.** The
    obvious v2 move is to flip it true now that the container has its own
    firewall. Upstream's `openFirewall` opens 8096 **and** 8920/tcp **and**
@@ -440,8 +462,8 @@ Run after `clan machines update ernst`:
 bridge vlan show dev vb-jellyfin          # expect: 90 PVID Egress Untagged
 ip -br link show master br0               # expect: enp13s0 + vb-jellyfin
 
-# br0 kept ernst's MAC when the second port appeared.
-ip -br link show br0                      # expect: a0:ad:9f:1c:9d:74
+# br0's MAC is unchanged by the second port (it was already NET_ADDR_SET).
+ip -br link show br0                      # expect: b2:8b:e1:f2:1e:7c
 
 # The container has its own address and can resolve.
 nixos-container status jellyfin
