@@ -225,10 +225,32 @@ One **permanent** rule — architecture invariant #4 makes the qBittorrent WebUI
 deliberate, permanent bypass of the "everything behind Traefik" rule. It is in
 the ledger as a `—` row so no later milestone tries to retire it.
 
-- **Source:** the zone your management networks are in. LAN (1) at minimum;
-  Servers (50) too if you want to reach the guest from ernst itself.
-- **Destination:** Services, `10.0.90.11`, `tcp 8080` and `tcp 22`.
-- **TICK `Auto Allow Return Traffic`.**
+Field by field, as the policy editor actually lays it out. **The editor has TWO
+Port sections — one inside the Source Zone card and one inside the Destination
+Zone card** — and they are far enough apart that the first one is the one you
+see. Putting the service port in the source section produces a rule that matches
+only traffic *from* port 8080/22, i.e. never: clients use ephemeral source ports.
+It cost a round here; M4, M5, M8 and M9 all add rules to this same zone.
+
+| Card | Field | Value |
+|---|---|---|
+| — | Name | `Allow qBittorrent from Internal` |
+| **Source Zone** | zone | `Internal` |
+| | match type | **Network** → `LAN`, `Servers` |
+| | Match Opposite | unchecked |
+| | **Port** | **Any** ← *not* the service port |
+| **Action** | | **Allow** |
+| | **Auto Allow Return Traffic** | **✓ ticked** |
+| **Destination Zone** | zone | `Services` |
+| | match type | **IP → Specific** → `10.0.90.11` |
+| | **Port** | **Specific** → Service `Custom` → `8080,22` |
+
+Narrow the source to the two **networks** rather than leaving it at the zone:
+the guest's nftables allows `10.0.10.0/24` and `10.0.50.0/24` and nothing else,
+and a zone-wide rule would authorise more than the guest honours. Not a hole —
+the guest still drops the rest — but two sources of truth that disagree, which
+is how you end up reading a permissive UniFi rule while the real behaviour lives
+in a file in this repo.
 
 That checkbox is the one that costs an afternoon. Without it the SYN is
 forwarded and the SYN-ACK is dropped, which presents exactly as a dead service
