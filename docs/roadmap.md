@@ -21,7 +21,7 @@ Two jobs:
 
 ## Current state
 
-Verified against the repo on 2026-08-19 (`main` @ `cc2a3f2`).
+Verified against the repo on 2026-08-19 (`main` @ `8bdd162`).
 
 | Milestone / work | Status | Refs | Note |
 |---|---|---|---|
@@ -43,7 +43,7 @@ Verified against the repo on 2026-08-19 (`main` @ `cc2a3f2`).
 | Deploy interface = clan CLI | **done** | [#59](https://github.com/lutzgo/clanarchy/pull/59) | `deploy`, `deploy-<machine>`, `test-pr`, `test-vm` removed. Every runbook and milestone prompt below uses `clan machines update` |
 | CI eval check on PRs | **done** | — | `.github/workflows/check.yml` evaluates all four toplevel `drvPath`s |
 | ernst `@blank` snapshots | **open (operator)** | — | ernst has never been genuinely impermanent — root accumulates. `docs/runbooks/ernst-enable-impermanence.md` is written and unexecuted; step 4 is a one-way door. Not a Claude milestone |
-| M1 — Kvantum linkGeneration drift | **open** | — | No fix on `main`: the string `kvantum` appears nowhere in the repo. See [M1](#m1-fixkvantum-stylix-linkgen-drift) for the on-disk evidence gathered |
+| M1 — Kvantum linkGeneration drift | **closed — did not reproduce** | — | Four consecutive activations in the retained journal all passed `linkGeneration`. The on-disk shape that looked like drift is Stylix's `recursive = true` working as designed. See [M1](#m1-kvantum-linkgeneration-drift-closed) |
 | M2 — ernst VLAN bridge | **open** | — | [M2](#m2-featernst-vlan-bridge) — high risk, gates M2b/M3/M5 |
 | M2b — Jellyfin on a tap | **open** | — | [M2b](#m2b-featernst-jellyfin-tap) |
 | M3 — VPN microvm + qBittorrent | **open** | — | [M3](#m3-featernst-vpn-microvm) |
@@ -137,118 +137,57 @@ Rows are retired only by the PR that actually removes the rule.
 
 ---
 
-## M1 — `fix/kvantum-stylix-linkgen-drift`
+## M1 — Kvantum linkGeneration drift (closed)
 
-**Goal.** Home Manager's `linkGeneration` intermittently trips over
-`~/.config/Kvantum/Base16Kvantum` existing as a real directory on miralda,
-turning a routine `clan machines update miralda` into a failed activation. Find
-the actual writer before writing any fix — the cleanup hook is only correct if
-the thing that recreates the directory is understood.
+**Outcome, 2026-08-19: did not reproduce, and the shape that prompted it is
+correct behaviour.** Closed without a code change, per the milestone's own
+instruction to close on evidence rather than add a hook against a problem that no
+longer occurs.
 
-**Depends on.** Nothing. **Risk.** Low, but it touches `home.activation` ordering
-on a machine Sabine's config shares modules with.
+**Evidence 1 — the journal is clean.** `/var/log/journal` is persistent, so the
+record spans boots. Every Home Manager activation it retains reached
+`linkGeneration`, logged `Creating home file links in /home/lgo`, and ended in
+`Finished Home Manager environment for lgo`:
 
-**State verified 2026-08-19** — no fix exists on `main`:
+| Activation | linkGeneration | Result |
+|---|---|---|
+| Jul 21 15:43 | clean | finished |
+| Aug 01 18:45 | clean | finished |
+| Aug 13 10:57 | clean | finished |
+| Aug 19 12:37 | clean | finished |
 
-- The string `kvantum` appears **nowhere** in the repo (`rg -i kvantum` → no hits).
-  Stylix owns the Kvantum target entirely; `stylix.targets.qt.enable` evaluates to
-  `true` for `lgo` on miralda. Stylix is pinned to a commit
-  (`4fa830ff900efc842425aaa88c6e41da99f2823d` in `flake.nix`), so an upstream fix
-  after that commit would not be in the tree.
-- On-disk right now: `~/.config/Kvantum/` is a real directory containing the store
-  symlink `kvantum.kvconfig`; `Base16Kvantum/` is a real directory containing two
-  store symlinks (`Base16Kvantum.kvconfig`, `Base16Kvantum.svg`). All point at the
-  **current** HM generation (`bc18cpa0…-home-manager-files`), mtime 2026-08-13
-  10:57 — the same shape and mtime as other HM-managed directories such as
-  `~/.config/foot/`.
-- That shape is HM's ordinary fallback when the parent directory already exists,
-  so it is **not by itself proof of drift**. The activation journal could not be
-  read from this session (`journalctl -u home-manager-lgo.service` needs root).
-  Phase 1 must therefore start by establishing that the failure still reproduces.
+No `Existing file … would be clobbered`, no non-symlink-in-the-way error, no
+failed activation anywhere in the window. `systemctl show home-manager-lgo.service`
+confirms the latest run: `Result=success`, `ExecMainStatus=0`, `NRestarts=0`. The
+two unrelated failures visible in the same journal — `xdg-desktop-portal-gtk`
+(Aug 13) and a `swayidle` restart (Aug 19) — have nothing to do with file linking.
 
-````text
-Read CLAUDE.md fully before doing anything.
+**Evidence 2 — the on-disk shape is by design, not drift.** Home Manager owns
+**two overlapping entries** under that path, which is what earlier sessions
+misread. From
+`nix eval '.#nixosConfigurations.miralda.config.home-manager.users.lgo.home.file'`:
 
-Work in the clanarchy repo on miralda. Branch: fix/kvantum-stylix-linkgen-drift.
+| Entry | `recursive` | source |
+|---|---|---|
+| `~/.config/Kvantum` | **`true`** | `…-kvantum-themes` |
+| `~/.config/Kvantum/kvantum.kvconfig` | `false` | `…-kvantum-config` |
 
-Problem: Home Manager activation on miralda intermittently fails in
-linkGeneration because ~/.config/Kvantum/Base16Kvantum exists as a real
-directory where HM wants to place its own entry. This is diagnose-then-fix:
-do not write a workaround before Phase 1 concludes.
+`recursive = true` tells HM to walk the source tree and link each file
+*individually* instead of symlinking the directory. Real directories containing
+per-file store symlinks are therefore the **intended** result — and they are also
+what makes the second entry possible at all, since a file cannot be placed inside
+a symlink to a read-only store path. Stylix sets it that way deliberately so its
+theme directory and its config file can coexist.
 
-PHASE 1 — DIAGNOSIS (no .nix changes yet).
+So `~/.config/Kvantum/` and `Base16Kvantum/` being real directories full of
+symlinks is not HM's "fallback because something was in the way". It is the only
+shape this configuration can produce.
 
-State already established, do not redo:
-  - `rg -i kvantum` over the repo returns nothing. There is no repo-side
-    Kvantum config; Stylix's qt target owns it
-    (stylix.targets.qt.enable = true for lgo on miralda).
-  - Stylix is pinned by commit in flake.nix
-    (4fa830ff900efc842425aaa88c6e41da99f2823d).
-  - On disk today: ~/.config/Kvantum is a real dir holding the store symlink
-    kvantum.kvconfig; Base16Kvantum/ is a real dir holding two store symlinks.
-    All resolve to the current home-manager-files generation. This is HM's
-    normal fallback shape, not proof of failure on its own.
-
-Establish, with evidence pasted into the PR body:
-  1. Does it still reproduce? Read the activation journal
-     (`sudo journalctl -u home-manager-lgo.service -n 200`, and
-     `journalctl --user -u home-manager-*` if relevant) for linkGeneration
-     errors — "Existing file ... would be clobbered", or a non-symlink at a
-     path HM manages. If there is no failure in recent history, say so
-     plainly and stop: close the branch with the evidence rather than adding
-     a hook against a problem that no longer occurs.
-  2. If it reproduces: identify the writer. The candidates, distinguish them:
-     - Stylix's qt/kvantum activation writing a real directory itself;
-     - a runtime Qt/Kvantum consumer (Kvantum Manager, a KDE app, the
-       pinentry-qt path) creating ~/.config/Kvantum on first run;
-     - a stale generation whose files were never collected.
-     Use file mtimes, the store paths the symlinks resolve to versus the
-     current generation, and `nix eval` on the HM file set to see exactly
-     what HM believes it owns under .config/Kvantum.
-  3. Check Stylix upstream for a post-pin fix touching the qt/kvantum target
-     (git log on the input's repo since the pinned commit, plus its issue
-     tracker). Report the finding either way.
-
-PHASE 2 — FIX, chosen by what Phase 1 found.
-
-  a. If upstream fixed it: propose a Stylix input bump. ASK FIRST before
-     bumping — the pin is deliberate and a bump moves theming fleet-wide.
-     Report what else the bump would pull in (`nix flake lock --update-input
-     stylix` on a scratch copy, then diff the lock; do not commit the lock
-     change until approved).
-  b. Otherwise: a guarded home.activation cleanup hook, ordered BEFORE
-     linkGeneration (home.activation.<name> =
-     lib.hm.dag.entryBefore [ "linkGeneration" ] ...). It must:
-     - act only on the specific path(s) Phase 1 identified;
-     - delete ONLY when the path is a real directory/file — never when it is
-       a symlink (a symlink is HM's own, and removing it corrupts the
-       generation);
-     - be idempotent and silent in the normal case.
-     Placement: decide between miralda-only (machines/miralda/) and shared
-     (modules/desktop/ or modules/users/lgo.nix) by checking whether biene is
-     exposed to the same path — biene runs labwc with the same Stylix qt
-     target, so state that check explicitly rather than assuming.
-
-TEST PLAN in the PR body: two consecutive `clan machines update miralda`
-runs complete cleanly, the second one being the real proof (the first can
-mask the problem by removing the offending path). Include the exact journal
-lines to check afterwards.
-
-Constraints:
-- Never commit to main. Branch first, PR via `gh pr create` (title
-  imperative, <=70 chars, no prefix; body = summary + test plan).
-- No new flake inputs. The Stylix bump in 2a needs explicit approval.
-- Minimal diffs; commit only the files this change touches.
-- Verify by evaluation:
-    nix flake check
-    nix eval --no-update-lock-file --raw \
-      '.#nixosConfigurations.miralda.config.system.build.toplevel.drvPath'
-  and the same for biene if the fix lands in a shared module.
-- Claude does not deploy. Put the deploy steps in the PR body as a runbook
-  lgo executes: `clan machines update miralda` from the devShell (the
-  deploy-* shell helpers were removed in #59 — do not reintroduce them).
-- Update docs/roadmap.md's status table in the same PR.
-````
+**What would reopen this.** An activation that actually fails at `linkGeneration`
+on a Kvantum path, with the journal line pasted. Absent that there is nothing to
+fix. Note the retained journal is a finite window: a failure older than it would
+not appear above — but a fix cannot be designed against a failure with no
+surviving evidence either.
 
 ---
 
