@@ -454,6 +454,44 @@ in
         settings.server.port = radarrPort;
       };
 
+      # RADARR'S PARENT DIRECTORY, and it is not optional — without it radarr
+      # does not start at all.  Measured on ernst 2026-08-21, first deploy.
+      #
+      # Upstream declares exactly one tmpfiles rule,
+      #   d /var/lib/radarr/.config/Radarr 0700 radarr media
+      # and lets tmpfiles create the intermediate .config implicitly.  Implicit
+      # parents are created ROOT-owned.  On a stock machine that is fine,
+      # because /var/lib/radarr is root-owned too and the whole chain is
+      # uniform — but here /var/lib/radarr is the bind mount, and the host
+      # tmpfiles rule above makes it radarr-owned so the service can write to
+      # it.  systemd-tmpfiles then refuses to descend:
+      #
+      #   Detected unsafe path transition /var/lib/radarr (owned by radarr)
+      #   → /var/lib/radarr/.config (owned by root) during canonicalization
+      #
+      # That is its symlink-attack guard, and it is right to fire: a directory
+      # owned by an unprivileged user leading into one owned by root is exactly
+      # the shape an attacker wants.  systemd-tmpfiles-setup exits 73, the
+      # Radarr directory is never created, and radarr dies on start with
+      # "Access to the path '/var/lib/radarr/.config/Radarr' is denied" —
+      # which reads like a mode problem on the leaf and is a problem two levels
+      # up.
+      #
+      # Declaring .config explicitly with the same owner removes the transition.
+      # Ordering does not matter: systemd-tmpfiles executes items sorted by
+      # path, so the parent is handled before the child whatever file it came
+      # from.
+      #
+      # SONARR NEEDS NO EQUIVALENT, and the reason is worth knowing rather than
+      # inferring: its module ships no tmpfiles rule at all, so Sonarr creates
+      # .config itself, at run time, as its own user.  It works by not going
+      # through tmpfiles — not because its layout is different.
+      systemd.tmpfiles.settings."05-radarr-config"."/var/lib/radarr/.config".d = {
+        user  = "radarr";
+        group = "media";
+        mode  = "0700";
+      };
+
       # Prowlarr.  dataDir left at the default: the module only wires its
       # bind-mount/tmpfiles machinery when dataDir differs from
       # /var/lib/prowlarr, and the packaged ExecStart hardcodes
@@ -525,6 +563,11 @@ in
         DynamicUser = lib.mkForce false;
         User        = "prowlarr";
         Group       = "prowlarr";
+
+        # See the note on sonarr's StateDirectoryMode below — same tug-of-war,
+        # same fix.  0755 from systemd on every start against 0700 from
+        # tmpfiles on every deploy.
+        StateDirectoryMode = "0700";
 
         # Restoring what DynamicUser=true had been implying.
         NoNewPrivileges  = true;
@@ -636,6 +679,22 @@ in
         ProtectSystem  = "strict";
         ReadWritePaths = [ "/srv/media" "/var/lib/sonarr" ];
         UMask          = lib.mkForce "0002";
+
+        # Stops a mode tug-of-war, which is the M3 lesson in a new place.
+        #
+        # sonarr and prowlarr carry StateDirectory=, whose StateDirectoryMode
+        # defaults to 0755 and is RE-APPLIED on every service start.  The host
+        # tmpfiles rule above declares 0700 and is re-applied on every
+        # `clan machines update`.  So the two took turns: 0700 after a deploy,
+        # 0755 after the next restart, neither wrong enough to notice.  First
+        # observed on ernst 2026-08-21 — sonarr and prowlarr on disk as 0755
+        # while this file said 0700, and radarr (no StateDirectory) correctly
+        # at 0700.
+        #
+        # Pinning it here makes systemd agree with tmpfiles rather than
+        # alternate with it.  Radarr needs no equivalent: it has no
+        # StateDirectory, so nothing competes.
+        StateDirectoryMode = "0700";
       };
       systemd.services.radarr.serviceConfig = {
         ProtectSystem  = "strict";
