@@ -783,19 +783,43 @@ in
         # ── WHAT THIS CHANGES on the live instances ──────────────────────────
         #
         # More than the first draft of this block claimed, so it is spelled out.
-        # This applies TRaSH's "Remux + WEB 2160p" profile to both services —
-        # quality definitions (per-quality file size limits) AND the quality
-        # profile itself AND custom-format scoring.  `[Audio] Audio Formats`
-        # syncs by default (it is listed under the template's `skip:` block,
+        # This applies quality definitions (per-quality file size limits) AND a
+        # quality profile AND custom-format scoring.  `[Audio] Audio Formats`
+        # syncs by default (it is listed under the templates' `skip:` blocks,
         # commented out), and that group is what scores TrueHD Atmos and DTS-X
-        # above everything else — i.e. it is the piece that implements "prefer
-        # 4K Dolby Atmos, otherwise fall back".
+        # above everything else.
         #
-        # Remux was chosen over "UHD Bluray + WEB" deliberately: TrueHD Atmos
-        # lives on Bluray remuxes, while WEB releases carry the lossy DD+ Atmos.
-        # The cost is real — roughly 40–80 GB per film and 15–25 GB per episode,
-        # about 3x the encoded profiles. zdata had 47.6 TB free when this was
-        # chosen.
+        # THE TWO SERVICES ARE DELIBERATELY ASYMMETRIC:
+        #
+        #   radarr → Remux + WEB 2160p   films are what you sit down for, and
+        #                                TrueHD Atmos lives on Bluray remuxes;
+        #                                WEB releases carry only lossy DD+ Atmos
+        #   sonarr → WEB-1080p           series are the bulk of the episode
+        #                                count, so this is where restraint
+        #                                actually saves the pool
+        #
+        # WHAT "REMUX" MEANS HERE, because the everyday meaning of the word
+        # points the wrong way: in TRaSH/*arr terms a Remux release is the video
+        # and audio streams lifted UNTOUCHED off the UHD Blu-ray into an MKV.
+        # It is the TOP of the quality ladder and the LARGEST file type —
+        # roughly 40–80 GB per film — not a re-package for compatibility.  If
+        # anything it is *less* compatible: full TrueHD Atmos and dual-layer
+        # Dolby Vision are exactly what weak clients cannot direct-play.
+        #
+        # MEASURED CONTEXT, ernst 2026-08-21.  Sonarr held 133 series, all on a
+        # hand-made profile "Ultra-HD" (HDTV/WEB/Bluray-2160p) with
+        # `upgradeAllowed = FALSE`.  Every TRaSH profile ships
+        # `upgradeAllowed = true`.  Recyclarr creates its profiles ALONGSIDE
+        # existing ones and never reassigns a series, so nothing moves on its
+        # own — but bulk-reassigning those 133 series to an upgrade-enabled
+        # profile would have queued a re-download of most of a 6.1 TB library,
+        # and the same again for 13 TB of films once imported: together roughly
+        # the whole 47.6 TB of free space, pulled through the VPN.
+        #
+        # So the operating rule is: promote titles to a new profile
+        # INDIVIDUALLY.  The one part that applies fleet-wide regardless is
+        # `quality_definition`, which rewrites size limits for every profile
+        # including "Ultra-HD".
         #
         # reset_unmatched_scores means custom formats NOT named by these groups
         # are set to 0 on the synced profile.  That is what makes the profile
@@ -836,15 +860,22 @@ in
 
             quality_definition.type = "series";
 
+            # 1080p for series, deliberately — see the asymmetry note above.
+            # Transcribed from sonarr/templates/web-1080p.yml, NOT from the
+            # 2160p one: the group list differs by more than the profile id.
             quality_profiles = [
               {
-                trash_id = "76a5053bdb2d1e4a8f16a69a37d46c12";   # Remux + WEB 2160p
+                trash_id = "72dae194fc92bf828f32cde7744e51a1";   # WEB-1080p
                 reset_unmatched_scores.enabled = true;
               }
             ];
 
             custom_format_groups.add = [
-              { trash_id = "e3f37512790f00d0e89e54fe5e790d1c"; }  # [Optional] Golden Rule UHD
+              # Golden Rule *HD*, not UHD.  They are different groups with
+              # different trash_ids, tuned to different resolutions, and
+              # carrying the UHD one over from the 2160p template would score
+              # x265/HDR rules that do not belong on a 1080p profile.
+              { trash_id = "158188097a58d7687dee647e04af0da3"; }  # [Optional] Golden Rule HD
               { trash_id = "74aff4168620ed49dcc67e92b2c2a5b4"; }  # [Optional] Language Profiles
               { trash_id = "85fae4a2294965b75710ef2989c850eb"; }  # [Streaming Services] HD/UHD boost
               { trash_id = "59c3af66780d08332fdc64e68297098f"; }  # [Unwanted] Unwanted Formats
