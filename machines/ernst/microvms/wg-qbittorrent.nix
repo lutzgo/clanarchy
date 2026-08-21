@@ -52,6 +52,15 @@
 #   the household, and forward-auth in front of its API would break the arr
 #   integration M4 builds.  Do not "fix" this.
 #
+#   M4 ADDED A THIRD SOURCE, and it is enforced in exactly one place.  The arr
+#   container (10.0.90.13, machines/ernst/containers/arr.nix) drives this
+#   client's API, and it sits on VLAN 90 — the same VLAN, on the same bridge, as
+#   this guest's own tap.  Those frames are switched by br0 and never reach the
+#   UDM-Pro, so the "enforced twice" above is NOT true of that source: the
+#   nftables `api_clients` set below is the only thing standing between the arr
+#   and the WebUI.  It gets the API port and nothing else — no SSH, no ping —
+#   which is why the sets are a pair rather than one widened list.
+#
 # ── uid/gid: the decision the whole media stack rests on ──────────────────────
 #
 #   virtiofsd runs WITHOUT id translation (no --translate-uid/--translate-gid),
@@ -111,13 +120,37 @@
 #
 #   M3's prompt said /srv/media/downloads.  The deployed tree says
 #   /srv/media/torrents: containers/jellyfin.nix already creates
-#   torrents/{movies,tv} root:media 2770 beside library/{movies,tvshows}, and
-#   those are the directories M4's arr will import FROM.  Inventing a fourth
-#   top-level directory would have split the download area in two.  This file
-#   adds only the two directories the client itself needs:
+#   torrents/{movies,tv} root:media 2770 beside library/{movies,tvshows}.
+#   Inventing a fourth top-level directory would have split the download area
+#   in two.  This file adds only the two directories the client itself needs:
 #
 #     /srv/media/torrents/incomplete   in-progress writes (Session\TempPath)
 #     /srv/media/torrents/complete     default save path for uncategorised
+#
+#   CORRECTION, measured 2026-08-21 during M4: the sentence that used to sit
+#   here — "torrents/{movies,tv} … are the directories M4's arr will import
+#   FROM" — is WRONG, and it was an inference, not an observation.  qBittorrent
+#   derives a per-category save path automatically, `<DefaultSavePath>/<category>`,
+#   whenever a category's own save path is left blank.  Sonarr and Radarr create
+#   their categories over the API without one, so the real tree is:
+#
+#     /srv/media/torrents/complete/tv        Sonarr's category
+#     /srv/media/torrents/complete/radarr    Radarr's category
+#     /srv/media/torrents/incomplete/<cat>   in-progress
+#
+#   torrents/{movies,tv} are empty and vestigial.  They are left declared
+#   because deleting a tmpfiles rule does not delete the directory and the
+#   churn buys nothing — but do not write anything expecting to find files
+#   there.  Setting explicit category save paths to "fix" this is a trap while
+#   torrents are in flight: qBittorrent's default reaction to a changed
+#   category save path is to switch affected torrents to Manual Mode, pinning
+#   the existing ones where they are and sending only new ones to the new path,
+#   i.e. splitting the tree the change was meant to tidy.
+#
+#   None of it matters for hardlinks, which is the point worth keeping: the
+#   domain is the DATASET (invariant #2), not the directory layout, so the
+#   M4 import linked across complete/tv → library/tvshows with links=2 exactly
+#   as designed.
 #
 #   Both inside /srv/media, which is ONE hardlink domain — plain subdirectories,
 #   never sub-datasets (invariant #2).
@@ -185,13 +218,45 @@ let
   # lgo's machines live; Servers (50) is ernst itself, so a port-forward from
   # the host works without a second hop.
   #
-  # ONE list, THREE consumers, deliberately: the guest's nftables input chain,
-  # its output chain's established-reply rule, and its routing carve-out.  That
-  # is the correct coupling — the set of networks whose traffic may come IN is
-  # exactly the set whose replies must be allowed to go back OUT rather than
-  # into the tunnel.  The UDM-Pro rule is the fourth consumer and the one that
-  # cannot be derived from here; it has to be kept in step by hand.
+  # These are the OFF-LINK sources, and that is what earns them a route.  Both
+  # are on the far side of the UDM-Pro, so a reply to one has to be steered out
+  # of eth0 explicitly or wg-quick's `suppress_prefixlength 0` sends it into the
+  # tunnel — the failure written up at length at the routes = ... below.
   mgmtNets = [ "10.0.10.0/24" "10.0.50.0/24" ];
+
+  # M4: the arr container, on the guest's OWN link (VLAN 90).  Sonarr and Radarr
+  # drive qBittorrent through its WebUI API, so this address needs the two
+  # firewall entries mgmtNets gets — the input accept, and the established-reply
+  # accept in the output chain that keeps the answer off the tunnel.
+  #
+  # IT MUST NOT GET A ROUTE, which is why this is a second list rather than two
+  # more elements in the first.  10.0.90.0/24 is directly connected on eth0, so
+  # main already holds a /24 for it; that route is prefix length 24 and
+  # therefore survives wg-quick's suppress_prefixlength 0 untouched.  Adding
+  # `10.0.90.13/32 via <dhcp gateway>` on top would take traffic that belongs on
+  # the wire and hand it to the UDM-Pro to bounce back — a hairpin, for a
+  # neighbour two ports away on the same bridge.
+  #
+  # It is also why M4 needs no UDM-Pro rule for this path at all: vb-arr and
+  # tap-vpn are both VLAN-90 ports on br0, so the frames are switched locally
+  # and the gateway never sees them.
+  #
+  # A /32, not the /24.  The Services VLAN also holds Jellyfin and will hold
+  # Traefik; neither has any business reaching a torrent client's API.
+  arrClient = [ "10.0.90.13/32" ];
+
+  # The union, and it has exactly TWO consumers: the input chain's WebUI accept
+  # and the output chain's established-reply accept.  That coupling is the point
+  # — the set of sources whose traffic may come IN is exactly the set whose
+  # replies must be allowed back OUT rather than into the tunnel, so one list
+  # feeding both cannot drift.  M3 stated this as "one list, three consumers";
+  # the third was the routing carve-out, which now belongs to mgmtNets alone for
+  # the reason given just above.
+  #
+  # The UDM-Pro rule is the consumer that cannot be derived from here.  It
+  # covers mgmtNets only — the arr's half never reaches the gateway — and has to
+  # be kept in step by hand.
+  allowedClients = mgmtNets ++ arrClient;
 
   # Secrets are staged out of sops into a host tmpfs directory and shared into
   # the guest read-only.  NOT a share of /run/secrets itself: that path is a
@@ -206,6 +271,35 @@ let
   # qBittorrent.conf, with the WebUI password hash left as a placeholder that
   # the guest substitutes at start.  The ExecStartPre that renders it carries
   # the reasoning: why the whole file is declarative, and what that costs.
+  #
+  # ── DO NOT AUTHENTICATE THE *ARR WITH qBITTORRENT'S API KEY ──────────────────
+  #
+  #   qBittorrent's WebUI has an "API Key" field (Options → WebUI →
+  #   Authentication) and recent Sonarr/Radarr offer it as an alternative to
+  #   username+password.  Using it here is a trap, and it cost a session:
+  #
+  #     The generated key is stored in qBittorrent.conf.  This file is
+  #     REINSTALLED FROM THE STORE ON EVERY START.  So the key survives exactly
+  #     until the next restart — a deploy, or in the case that found this, a
+  #     power cut — and then it is gone.  The *arr keeps sending a key
+  #     qBittorrent no longer knows.
+  #
+  #   The failure is silent in the worst way: the request is rejected BEFORE the
+  #   login path, so qBittorrent's own log records nothing at all — no failure
+  #   line, no IP, no username.  Sonarr says only "Failed to authenticate with
+  #   qBittorrent"; the API test is the thing that names it, reporting
+  #   `propertyName: ApiKey`.  Observed on ernst 2026-08-21: after the outage
+  #   both Sonarr and Radarr failed, while the arr container could still reach
+  #   the WebUI (HTTP 403 in 0.5 ms) and qBittorrent's log held only browser
+  #   logins from lgo's workstation.
+  #
+  #   USE USERNAME + PASSWORD.  `admin` plus the WebUI password is rendered from
+  #   the clan var into the two lines below on every start, so it is the only
+  #   credential here that is guaranteed to still be valid after a restart.
+  #
+  #   If API-key auth is ever actually wanted, the key has to become a clan var
+  #   and be substituted into this template exactly as the password hash is —
+  #   anything else is storing a secret in a file this unit overwrites.
   qbtConfTemplate = pkgs.writeText "qBittorrent.conf" ''
     [LegalNotice]
     Accepted=true
@@ -752,12 +846,27 @@ in
         enable = true;
         ruleset = ''
           table inet killswitch {
-            # Management networks: the only source allowed to reach the WebUI
-            # and SSH.  Mirrored on the UDM-Pro; both must agree.
+            # Management networks: the humans.  SSH and ping, and the WebUI by
+            # way of api_clients below.  Mirrored on the UDM-Pro; both must
+            # agree.
             set mgmt_nets {
               type ipv4_addr
               flags interval
               elements = { ${lib.concatStringsSep ", " mgmtNets} }
+            }
+
+            # Everything allowed to reach the WebUI API: the management
+            # networks, plus M4's arr container on this guest's own VLAN.
+            #
+            # A SUPERSET of mgmt_nets, not a replacement for it, because the
+            # arr gets the API and nothing else — no SSH, no ping.  The
+            # UDM-Pro never sees the arr's traffic (same VLAN, same bridge,
+            # switched locally), so for that source this set is the ONLY thing
+            # enforcing anything.
+            set api_clients {
+              type ipv4_addr
+              flags interval
+              elements = { ${lib.concatStringsSep ", " allowedClients} }
             }
 
             # The VPN endpoint, as address . port.  Deliberately EMPTY at load
@@ -778,9 +887,9 @@ in
               ct state established,related accept
               ct state invalid drop
 
-              iifname "eth0" ip saddr @mgmt_nets tcp dport ${toString webuiPort} accept
-              iifname "eth0" ip saddr @mgmt_nets tcp dport 22 accept
-              iifname "eth0" ip saddr @mgmt_nets icmp type echo-request accept
+              iifname "eth0" ip saddr @api_clients tcp dport ${toString webuiPort} accept
+              iifname "eth0" ip saddr @mgmt_nets   tcp dport 22 accept
+              iifname "eth0" ip saddr @mgmt_nets   icmp type echo-request accept
 
               # DHCPv4 offers/acks.  networkd's initial exchange uses a raw
               # packet socket and bypasses this hook entirely; the rule is here
@@ -807,9 +916,15 @@ in
               # bound to an interface, so a global accept here would let a flow
               # that was built through the tunnel continue out of eth0 the
               # moment wg0 disappeared.  Scoping the established rule to the
-              # management networks keeps the WebUI and SSH answering without
-              # opening that door.
-              oifname "eth0" ip daddr @mgmt_nets ct state established,related accept
+              # allowed clients keeps the WebUI, the API and SSH answering
+              # without opening that door.
+              #
+              # api_clients rather than mgmt_nets: it is the superset, so this
+              # one rule covers the replies to every source the input chain
+              # accepts.  Splitting it per set would let the two drift, and a
+              # drifted output chain presents as "the service is down" from one
+              # client and fine from another.
+              oifname "eth0" ip daddr @api_clients ct state established,related accept
               oifname "eth0" ip daddr . udp dport @vpn_endpoint accept
               oifname "eth0" udp sport 68 udp dport 67 accept
 

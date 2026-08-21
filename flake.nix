@@ -240,6 +240,7 @@
           ./machines/ernst/networking.nix
           ./machines/ernst/htpc.nix
           ./machines/ernst/containers/jellyfin.nix
+          ./machines/ernst/containers/arr.nix
           # microvm.nix's host module, and the one guest that uses it (M3).
           # The import lives here rather than inside wg-qbittorrent.nix
           # because `inputs` reaches a machine module via _module.args, and
