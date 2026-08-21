@@ -861,31 +861,35 @@ in
         after = [ "sonarr.service" "radarr.service" ];
         wants = [ "sonarr.service" "radarr.service" ];
 
-        # GIT IS REQUIRED AT RUNTIME, and its absence is silent.
+        # DO NOT ADD `path = [ pkgs.git ]` HERE.  It was added once, on the
+        # strength of an inference, and reverted after measurement.
         #
-        # Recyclarr does not vendor a git implementation — it shells out to the
-        # `git` binary to clone and fetch the two source repos (TRaSH-Guides and
-        # config-templates) into its data directory.  The upstream NixOS module
-        # does not put git on the unit's PATH, and this container has almost
-        # nothing installed, so on ernst the first real run printed:
+        # Recyclarr does shell out to a `git` binary to clone and fetch the
+        # TRaSH-Guides and config-templates repos, and `command -v git` inside
+        # this container correctly reports nothing — which makes "git is
+        # missing" a very convincing explanation for a sync that does nothing.
+        # It is wrong.  nixpkgs wraps the recyclarr binary with git already on
+        # its PATH (`nix-store -q --references` on the package lists
+        # git-2.54.0), so it finds one regardless of the unit's environment.
+        # Verified on ernst 2026-08-21: with git explicitly filtered OUT of the
+        # PATH passed to it, recyclarr still fetched 74 MB of guides and its
+        # debug log shows the `git fetch` and `git reset --hard` succeeding.
         #
-        #   [INF] Initializing provider: official (type: trash-guides)
-        #   [INF] Initializing provider: official (type: config-templates)
+        # WHAT ACTUALLY CAUSED the silent run that prompted this: the config
+        # file was not where recyclarr was told to look.  This container's /tmp
+        # is a tmpfs, so a file written to the HOST's
+        # /var/lib/nixos-containers/arr/tmp/ is invisible inside — and recyclarr
+        # given a --config path that does not exist prints nothing and EXITS 0.
         #
-        # …and stopped there, having synced nothing, with EXIT CODE 0.
+        # Which is the part worth keeping, because it is not specific to that
+        # mistake: this service fails by succeeding.  A missing config, a
+        # duplicate instance name (see above), a bad template id — all of them
+        # exit 0.  A green `systemctl list-timers` therefore proves nothing
+        # about whether a sync happened.  The real check is the journal:
         #
-        # That is the second time this service has failed by succeeding — the
-        # duplicate-instance-name trap above is the first.  Recyclarr's habit of
-        # exiting 0 on a fatal-in-practice condition means a green
-        # `systemctl list-timers` proves nothing about whether a sync happened.
-        # When checking this service, read the journal for
-        # "Processing Radarr server movies" / "Completed at"; their ABSENCE is
-        # the failure signal, not a non-zero status.
+        #   journalctl -u recyclarr | grep -E "Processing|Completed at"
         #
-        # `path` rather than environment.systemPackages: only this unit needs a
-        # git, and the container's package set stays as small as the rest of
-        # this file works to keep it.
-        path = [ pkgs.git ];
+        # Their ABSENCE is the failure signal, not a non-zero status.
       };
 
       # recyclarr's uid is NOT pinned, and that is the deliberate opposite of
