@@ -184,6 +184,10 @@ let
   sonarrPort   = 8989;
   radarrPort   = 7878;
 
+  # FlareSolverr.  Deliberately NOT in the firewall list below — Prowlarr
+  # reaches it on 127.0.0.1 and nothing outside this netns ever should.
+  flaresolverrPort = 8191;
+
   # Host state sources.  Bound to the upstream default paths inside.
   stateRoot = "/srv/state";
 in
@@ -388,6 +392,11 @@ in
       # argument it was in jellyfin.nix — it is that the set of open ports has
       # to be checked against the UDM-Pro rule by a human, and one list in one
       # place is what makes that check take ten seconds.
+      #
+      # flaresolverrPort (8191) is ABSENT on purpose and must stay absent.  It
+      # is a service whose entire API is "fetch this URL for me"; opening it to
+      # the Services VLAN would hand every host on that VLAN an SSRF primitive.
+      # Prowlarr is in this netns and reaches it on 127.0.0.1.
       networking.firewall.allowedTCPPorts = [ prowlarrPort sonarrPort radarrPort ];
 
       ##########################################################################
@@ -504,6 +513,72 @@ in
         settings.server.port = prowlarrPort;
       };
 
+      # FlareSolverr — a headless Chromium that solves Cloudflare's JS
+      # challenges on Prowlarr's behalf.
+      #
+      # WHY IT IS HERE AND NOT IN THE MICROVM, because architecture invariant
+      # #1 says the opposite and the departure needs its evidence attached.
+      #
+      # The invariant says a service moves up a tier "when it starts talking to
+      # the internet on its own behalf", and this one does it in the most
+      # alarming way available: it renders deliberately hostile pages from
+      # torrent indexers in a real browser engine. On that reading it belongs
+      # in M3's guest, on its own kernel, behind the killswitch. That was the
+      # first choice.
+      #
+      # It was measured before being built, and the measurement inverts it.
+      # The same URL, 2026-08-21:
+      #
+      #   from ernst's home WAN   https://eztvx.to/  HTTP 200
+      #     <title>EZTV - TV Torrents Online Series Download | Official</title>
+      #     plus cdn-cgi/challenge-platform  → a SOLVABLE JS challenge
+      #
+      #   from the IVPN exit      https://eztvx.to/  HTTP 451
+      #     <title>Unavailable For Legal Reasons</title>
+      #                                      → a geo/legal REFUSAL
+      #
+      # There is nothing for FlareSolverr to solve in a 451. The exit is
+      # Leaseweb NL and eztvx blocks the Netherlands outright, so the microvm
+      # placement would take the target indexer from fixable to permanently
+      # dead — the more correct architecture, minus the capability it exists
+      # to provide. (kickass.torrentbay.st is 403 from both and is beyond
+      # FlareSolverr either way.)
+      #
+      # WHAT MAKES THAT ACCEPTABLE rather than merely convenient: the boundary
+      # that protects the library is the uid, not the container. FlareSolverr
+      # keeps upstream's DynamicUser=true, so it runs as a transient uid with
+      # ProtectSystem=strict, PrivateUsers, PrivateDevices and a
+      # SystemCallFilter — and it is NOT in group media, so /srv/media's
+      # 2770 root:media directories are closed to it. A Chromium compromise
+      # would have to escape the sandbox AND escalate AND cross nspawn before
+      # it reached anything this milestone cares about.
+      #
+      # DynamicUser IS RIGHT HERE, and that is not a contradiction of the
+      # prowlarr block above. Prowlarr's problem was DynamicUser plus
+      # PERSISTENT STATE on zdata: a transient uid owning a database. This has
+      # RuntimeDirectory only — /run/flaresolverr, a tmpfs, thrown away on
+      # every stop. Nothing to own, nothing to lose, so the trap cannot fire.
+      #
+      # REVISIT IF the IVPN exit ever moves out of the Netherlands: the
+      # measurement above is what pins this decision, and it is a property of
+      # the exit country, not of the design. Note the exit is shared with
+      # qBittorrent, so changing it means regenerating the wg-qbittorrent vars.
+      #
+      # Prowlarr wiring is a UI step (Settings → Indexers → Indexer Proxies →
+      # FlareSolverr, host http://127.0.0.1:8191, then tag the CF indexers).
+      # It is not faked here, for the same reason the root folders are not.
+      services.flaresolverr = {
+        enable = true;
+        port   = flaresolverrPort;
+
+        # 127.0.0.1 only.  Upstream's openFirewall would open 8191 in this
+        # container's netns, which would expose a remote-URL-fetching service
+        # to the whole Services VLAN — an SSRF primitive with a web API in
+        # front of it.  Prowlarr is in this same netns and needs no port open
+        # at all.
+        openFirewall = false;
+      };
+
       ##########################################################################
       # Hardening.
       #
@@ -512,10 +587,18 @@ in
       # file actually generates, which is how these can be checked before a
       # deploy rather than after one:
       #
-      #   service    upstream directives   this file
-      #   prowlarr   8.2 EXPOSED           1.3 OK
-      #   sonarr     1.5 OK                1.3 OK
-      #   radarr     1.5 OK                1.3 OK
+      #   service       upstream directives   this file
+      #   prowlarr      8.2 EXPOSED           1.3 OK
+      #   sonarr        1.5 OK                1.3 OK
+      #   radarr        1.5 OK                1.3 OK
+      #   flaresolverr  3.0 OK                3.0 OK  (upstream, untouched)
+      #
+      # FlareSolverr is left exactly as upstream ships it, and its 3.0 is the
+      # honest price of what it does: RestrictNamespaces has to permit `user`
+      # so Chromium can build its own sandbox, and tightening that would
+      # replace a browser sandbox with a systemd one — a worse trade. Its
+      # confinement comes from DynamicUser and from NOT being in group media,
+      # not from these directives.
       #
       # Offline analysis does credit DynamicUser='s implications (ProtectSystem,
       # PrivateTmp, NoNewPrivileges, RemoveIPC, RestrictSUIDSGID all score ✓ in
