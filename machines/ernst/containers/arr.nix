@@ -860,6 +860,32 @@ in
       systemd.services.recyclarr = {
         after = [ "sonarr.service" "radarr.service" ];
         wants = [ "sonarr.service" "radarr.service" ];
+
+        # GIT IS REQUIRED AT RUNTIME, and its absence is silent.
+        #
+        # Recyclarr does not vendor a git implementation — it shells out to the
+        # `git` binary to clone and fetch the two source repos (TRaSH-Guides and
+        # config-templates) into its data directory.  The upstream NixOS module
+        # does not put git on the unit's PATH, and this container has almost
+        # nothing installed, so on ernst the first real run printed:
+        #
+        #   [INF] Initializing provider: official (type: trash-guides)
+        #   [INF] Initializing provider: official (type: config-templates)
+        #
+        # …and stopped there, having synced nothing, with EXIT CODE 0.
+        #
+        # That is the second time this service has failed by succeeding — the
+        # duplicate-instance-name trap above is the first.  Recyclarr's habit of
+        # exiting 0 on a fatal-in-practice condition means a green
+        # `systemctl list-timers` proves nothing about whether a sync happened.
+        # When checking this service, read the journal for
+        # "Processing Radarr server movies" / "Completed at"; their ABSENCE is
+        # the failure signal, not a non-zero status.
+        #
+        # `path` rather than environment.systemPackages: only this unit needs a
+        # git, and the container's package set stays as small as the rest of
+        # this file works to keep it.
+        path = [ pkgs.git ];
       };
 
       # recyclarr's uid is NOT pinned, and that is the deliberate opposite of
