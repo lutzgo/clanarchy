@@ -654,6 +654,14 @@ in
           # whole set would leave a root process that cannot read the files it
           # exists to read, and the failure would look like a path bug.
           #
+          # It is also NOT CAP_DAC_OVERRIDE, and the difference is load-bearing
+          # rather than pedantic: READ_SEARCH grants read and traverse only, so
+          # this unit can read sonarr's config.xml and still cannot write over
+          # anything it can see.  The first version of the script tripped on
+          # exactly that — it created its output with `install -m 0400` and then
+          # failed to write to it — which is the correct capability catching a
+          # sloppy script, not a reason to widen the set.  See the ExecStart.
+          #
           # PrivateNetwork is the big one: this handles credentials and has no
           # business having a network stack at all.
           PrivateNetwork          = true;
@@ -703,7 +711,26 @@ in
                 exit 1
               fi
 
-              ${pkgs.coreutils}/bin/install -m 0400 /dev/null "$out"
+              # Create it WRITABLE and let UMask=0077 set the mode; do not
+              # `install -m 0400` first and write afterwards.
+              #
+              # Writing to a 0400 file you own still needs CAP_DAC_OVERRIDE —
+              # owner permission checks use the owner bits, and root is not
+              # exempt once the capability is gone.  The bounding set below
+              # grants CAP_DAC_READ_SEARCH and nothing else, deliberately, so
+              # the earlier install-then-write form failed with "Permission
+              # denied" on its own output.  Measured on ernst 2026-08-21.
+              #
+              # That the READ of sonarr's 0700-directory config.xml succeeded
+              # in the same run is the useful half: DAC_READ_SEARCH is exactly
+              # the right capability, and the script simply must not create
+              # files it then cannot write.
+              #
+              # rm -f first: a leftover 0400 file from an older generation
+              # could not be reopened for writing either.  Unlinking needs
+              # write on the DIRECTORY, which root has by ownership, so no
+              # capability is involved.
+              ${pkgs.coreutils}/bin/rm -f "$out"
               printf '%s' "$key" > "$out"
             }
 
