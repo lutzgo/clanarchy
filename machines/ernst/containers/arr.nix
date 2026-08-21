@@ -188,6 +188,10 @@ let
   # reaches it on 127.0.0.1 and nothing outside this netns ever should.
   flaresolverrPort = 8191;
 
+  # Where the Sonarr/Radarr API keys are staged for recyclarr.  A tmpfs under
+  # /run, refreshed before every sync — see the recyclarr block.
+  recyclarrSecretsDir = "/run/recyclarr-secrets";
+
   # Host state sources.  Bound to the upstream default paths inside.
   stateRoot = "/srv/state";
 in
@@ -580,6 +584,199 @@ in
       };
 
       ##########################################################################
+      # Recyclarr — TRaSH-Guides quality definitions, synced on a timer.
+      #
+      # SCOPE NOTE: M4's prompt says "recyclarr is explicitly OUT of scope; it
+      # is a backlog item to evaluate after this settles."  It is here because
+      # lgo asked for it during the milestone, not because the boundary drifted.
+      # Recorded so the prompt and the tree do not silently disagree.
+      #
+      # It is a good fit for this repo: the NixOS module takes the entire
+      # recyclarr config as a Nix attrset, so "which quality definitions apply"
+      # becomes a reviewable diff instead of UI state nobody can reconstruct.
+      # That is the same argument the root folders lost — those only exist in
+      # the UI, so they stay a documented manual step; this one does not have
+      # to.
+      ##########################################################################
+
+      # THE API KEYS, and why they are not a clan var.
+      #
+      # Recyclarr authenticates to Sonarr and Radarr with their API keys.  Those
+      # keys are not ours to choose: each app generates one on first run and
+      # writes it into its own config.xml on zdata.  There are two ways to get
+      # them to recyclarr and only one of them stays true.
+      #
+      #   A clan-vars prompt would work today and rot tomorrow.  It would mean
+      #   pasting a value that already exists elsewhere, creating a second copy
+      #   with no link to the first — and the day an API key is regenerated in
+      #   the UI (Settings → General → API Key, one button), the var still holds
+      #   the old one and every sync fails 401 while the repo looks correct.
+      #
+      #   Reading config.xml keeps ONE source of truth.  The key lives where the
+      #   app that owns it put it; rotating it in the UI is picked up on the
+      #   next sync with no deploy and no re-prompt.
+      #
+      # So this oneshot stages both keys into a root-only tmpfs directory, and
+      # services.recyclarr's `_secret` mechanism turns them into LoadCredential=
+      # entries.  The key is never in the Nix store, never in config.yml on
+      # disk, and never in the repo — invariant #8 is satisfied without a
+      # generator, because there is no secret here that this machine did not
+      # already hold.
+      #
+      # RuntimeDirectoryPreserve = "yes" with RemainAfterExit = false is the
+      # combination that makes this re-run.  Without the preserve, the runtime
+      # directory is deleted the instant this oneshot exits — i.e. before
+      # recyclarr.service starts and before LoadCredential can read it.  With
+      # RemainAfterExit = true instead, the unit would stay active and never run
+      # again, so a rotated key would be staged once and then be stale forever.
+      # This pair keeps the directory and re-runs the extraction on every sync.
+      systemd.services.recyclarr-api-keys = {
+        description = "Stage Sonarr/Radarr API keys for recyclarr";
+        before     = [ "recyclarr.service" ];
+        requiredBy = [ "recyclarr.service" ];
+        serviceConfig = {
+          Type                    = "oneshot";
+          RemainAfterExit         = false;
+          RuntimeDirectory        = "recyclarr-secrets";
+          RuntimeDirectoryMode    = "0700";
+          RuntimeDirectoryPreserve = "yes";
+          UMask                   = "0077";
+
+          # This unit is ours, so nothing upstream hardens it and a bare root
+          # oneshot scores 9.4 UNSAFE.  It runs as root for exactly one reason —
+          # the two config.xml files live under 0700 directories owned by
+          # sonarr and radarr — so everything that is not "read two files and
+          # write two files" is taken away.
+          #
+          # CapabilityBoundingSet is CAP_DAC_READ_SEARCH and NOT empty, which
+          # is the one thing here that cannot be tightened.  Root's ability to
+          # read another user's 0700 directory IS that capability; dropping the
+          # whole set would leave a root process that cannot read the files it
+          # exists to read, and the failure would look like a path bug.
+          #
+          # PrivateNetwork is the big one: this handles credentials and has no
+          # business having a network stack at all.
+          PrivateNetwork          = true;
+          IPAddressDeny           = "any";
+          CapabilityBoundingSet   = [ "CAP_DAC_READ_SEARCH" ];
+          NoNewPrivileges         = true;
+          ProtectSystem           = "strict";
+          ProtectHome             = true;
+          PrivateTmp              = true;
+          PrivateDevices          = true;
+          ProtectClock            = true;
+          ProtectControlGroups    = true;
+          ProtectHostname         = true;
+          ProtectKernelLogs       = true;
+          ProtectKernelModules    = true;
+          ProtectKernelTunables   = true;
+          ProtectProc             = "invisible";
+          RestrictAddressFamilies = [ "AF_UNIX" ];
+          RestrictNamespaces      = true;
+          RestrictRealtime        = true;
+          RestrictSUIDSGID        = true;
+          RemoveIPC               = true;
+          LockPersonality         = true;
+          SystemCallArchitectures = "native";
+          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+
+          ExecStart = pkgs.writeShellScript "recyclarr-stage-api-keys" ''
+            set -euo pipefail
+
+            stage() {
+              app=$1; xml=$2; out=$3
+
+              if [ ! -r "$xml" ]; then
+                echo "$app: cannot read $xml — has $app finished its first-run wizard?" >&2
+                exit 1
+              fi
+
+              # Assign, then test.  A command substitution that fails inside an
+              # argument does NOT trip `set -e`, so building the file in one
+              # step would turn an unreadable config.xml into an EMPTY api key
+              # and a 401 with nothing in the log to explain it.  That exact
+              # shape shipped once in this repo — see the render script in
+              # microvms/wg-qbittorrent.nix and PR #84.
+              key=$(${pkgs.gnused}/bin/sed -n 's:.*<ApiKey>\(.*\)</ApiKey>.*:\1:p' "$xml" | head -n1)
+              if [ -z "$key" ]; then
+                echo "$app: no <ApiKey> element in $xml" >&2
+                exit 1
+              fi
+
+              ${pkgs.coreutils}/bin/install -m 0400 /dev/null "$out"
+              printf '%s' "$key" > "$out"
+            }
+
+            stage sonarr /var/lib/sonarr/.config/NzbDrone/config.xml ${recyclarrSecretsDir}/sonarr-api-key
+            stage radarr /var/lib/radarr/.config/Radarr/config.xml   ${recyclarrSecretsDir}/radarr-api-key
+          '';
+        };
+      };
+
+      services.recyclarr = {
+        enable = true;
+
+        # Daily, with the module's 5-minute jitter.  Nothing here is urgent —
+        # TRaSH guide changes are edits to a git repo, not events.
+        schedule = "daily";
+
+        # localhost, because all of this shares one netns.  Same payoff as the
+        # Prowlarr→Sonarr/Radarr wiring: no port opened, nothing to firewall.
+        #
+        # WHAT THIS ACTUALLY CHANGES on the first sync, stated plainly because
+        # it edits live Sonarr/Radarr settings: the two quality-DEFINITION
+        # templates only — the per-quality min/max/preferred file sizes.  It
+        # does NOT touch quality profiles, custom formats or scoring, which are
+        # a content decision about what you want downloaded, not infrastructure,
+        # and which are the part that would silently rewrite what the *arr
+        # grabs.  Add those deliberately, as more `include` entries, after
+        # previewing:
+        #
+        #   nixos-container run arr -- \
+        #     runuser -u recyclarr -- recyclarr list templates
+        #   nixos-container run arr -- \
+        #     runuser -u recyclarr -- recyclarr sync --preview \
+        #       --config /var/lib/recyclarr/config.yml
+        #
+        # A template name that does not exist is a loud failure in
+        # `journalctl -u recyclarr`, not a silent no-op.
+        configuration = {
+          sonarr.main = {
+            base_url        = "http://localhost:${toString sonarrPort}";
+            api_key._secret = "${recyclarrSecretsDir}/sonarr-api-key";
+            include = [ { template = "sonarr-quality-definition-series"; } ];
+          };
+          radarr.main = {
+            base_url        = "http://localhost:${toString radarrPort}";
+            api_key._secret = "${recyclarrSecretsDir}/radarr-api-key";
+            include = [ { template = "radarr-quality-definition-movie"; } ];
+          };
+        };
+      };
+
+      # Do not fire while the things being configured are still coming up.
+      # `wants`, not `requires`: recyclarr failing is not a reason to consider
+      # sonarr degraded, and a sync that runs a minute early simply fails and
+      # retries tomorrow.
+      systemd.services.recyclarr = {
+        after = [ "sonarr.service" "radarr.service" ];
+        wants = [ "sonarr.service" "radarr.service" ];
+      };
+
+      # recyclarr's uid is NOT pinned, and that is the deliberate opposite of
+      # sonarr/radarr/prowlarr above.  The 3000-range convention exists because
+      # nspawn passes numeric ids through unmapped, so an id chosen in here is
+      # an id on zdata.  Recyclarr never touches /srv/media — it talks to two
+      # REST APIs on localhost and caches the TRaSH guides in its own state
+      # directory — so no number it uses is ever visible outside this container
+      # and there is nothing to keep in step.  Its state stays on the
+      # container's own filesystem for the same reason: /var/lib/recyclarr holds
+      # a re-downloadable guide cache plus a config.yml generated from this
+      # file, so there is nothing on it worth a zdata bind.  (It survives
+      # anyway — ernst persists /var/lib/nixos-containers — but it would not
+      # matter if it did not.)
+
+      ##########################################################################
       # Hardening.
       #
       # MEASURED, not asserted.  `systemd-analyze security --offline=true
@@ -587,11 +784,15 @@ in
       # file actually generates, which is how these can be checked before a
       # deploy rather than after one:
       #
-      #   service       upstream directives   this file
-      #   prowlarr      8.2 EXPOSED           1.3 OK
-      #   sonarr        1.5 OK                1.3 OK
-      #   radarr        1.5 OK                1.3 OK
-      #   flaresolverr  3.0 OK                3.0 OK  (upstream, untouched)
+      #   service             upstream directives   this file
+      #   prowlarr            8.2 EXPOSED           1.3 OK
+      #   sonarr              1.5 OK                1.3 OK
+      #   radarr              1.5 OK                1.3 OK
+      #   flaresolverr        3.0 OK                3.0 OK  (untouched)
+      #   recyclarr           3.9 OK                3.9 OK  (untouched)
+      #   recyclarr-api-keys  9.4 UNSAFE            1.0 OK  (ours)
+      #
+      # Three of those need a word.
       #
       # FlareSolverr is left exactly as upstream ships it, and its 3.0 is the
       # honest price of what it does: RestrictNamespaces has to permit `user`
@@ -599,6 +800,17 @@ in
       # replace a browser sandbox with a systemd one — a worse trade. Its
       # confinement comes from DynamicUser and from NOT being in group media,
       # not from these directives.
+      #
+      # Recyclarr's own module is already sensible (ProtectSystem=strict,
+      # ReadWritePaths pinned to its state directory, no capabilities); its 3.9
+      # is mostly the network access it genuinely needs, to two localhost APIs
+      # and to GitHub for the guides.
+      #
+      # recyclarr-api-keys is OURS, so nothing upstream hardens it, and a bare
+      # root oneshot scores 9.4 UNSAFE. That number is the reason the block
+      # below exists rather than a bare ExecStart: it handles credentials, so
+      # it is the last unit here that should be the least confined. 1.0 is the
+      # tightest score in the container.
       #
       # Offline analysis does credit DynamicUser='s implications (ProtectSystem,
       # PrivateTmp, NoNewPrivileges, RemoveIPC, RestrictSUIDSGID all score ✓ in
