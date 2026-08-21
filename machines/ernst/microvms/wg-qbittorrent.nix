@@ -120,13 +120,37 @@
 #
 #   M3's prompt said /srv/media/downloads.  The deployed tree says
 #   /srv/media/torrents: containers/jellyfin.nix already creates
-#   torrents/{movies,tv} root:media 2770 beside library/{movies,tvshows}, and
-#   those are the directories M4's arr will import FROM.  Inventing a fourth
-#   top-level directory would have split the download area in two.  This file
-#   adds only the two directories the client itself needs:
+#   torrents/{movies,tv} root:media 2770 beside library/{movies,tvshows}.
+#   Inventing a fourth top-level directory would have split the download area
+#   in two.  This file adds only the two directories the client itself needs:
 #
 #     /srv/media/torrents/incomplete   in-progress writes (Session\TempPath)
 #     /srv/media/torrents/complete     default save path for uncategorised
+#
+#   CORRECTION, measured 2026-08-21 during M4: the sentence that used to sit
+#   here — "torrents/{movies,tv} … are the directories M4's arr will import
+#   FROM" — is WRONG, and it was an inference, not an observation.  qBittorrent
+#   derives a per-category save path automatically, `<DefaultSavePath>/<category>`,
+#   whenever a category's own save path is left blank.  Sonarr and Radarr create
+#   their categories over the API without one, so the real tree is:
+#
+#     /srv/media/torrents/complete/tv        Sonarr's category
+#     /srv/media/torrents/complete/radarr    Radarr's category
+#     /srv/media/torrents/incomplete/<cat>   in-progress
+#
+#   torrents/{movies,tv} are empty and vestigial.  They are left declared
+#   because deleting a tmpfiles rule does not delete the directory and the
+#   churn buys nothing — but do not write anything expecting to find files
+#   there.  Setting explicit category save paths to "fix" this is a trap while
+#   torrents are in flight: qBittorrent's default reaction to a changed
+#   category save path is to switch affected torrents to Manual Mode, pinning
+#   the existing ones where they are and sending only new ones to the new path,
+#   i.e. splitting the tree the change was meant to tidy.
+#
+#   None of it matters for hardlinks, which is the point worth keeping: the
+#   domain is the DATASET (invariant #2), not the directory layout, so the
+#   M4 import linked across complete/tv → library/tvshows with links=2 exactly
+#   as designed.
 #
 #   Both inside /srv/media, which is ONE hardlink domain — plain subdirectories,
 #   never sub-datasets (invariant #2).
