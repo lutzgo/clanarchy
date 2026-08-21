@@ -723,33 +723,105 @@ in
         # localhost, because all of this shares one netns.  Same payoff as the
         # Prowlarr→Sonarr/Radarr wiring: no port opened, nothing to firewall.
         #
-        # WHAT THIS ACTUALLY CHANGES on the first sync, stated plainly because
-        # it edits live Sonarr/Radarr settings: the two quality-DEFINITION
-        # templates only — the per-quality min/max/preferred file sizes.  It
-        # does NOT touch quality profiles, custom formats or scoring, which are
-        # a content decision about what you want downloaded, not infrastructure,
-        # and which are the part that would silently rewrite what the *arr
-        # grabs.  Add those deliberately, as more `include` entries, after
-        # previewing:
+        # ── The config is INLINED, not `include`d, and that is forced ────────
         #
-        #   nixos-container run arr -- \
-        #     runuser -u recyclarr -- recyclarr list templates
-        #   nixos-container run arr -- \
-        #     runuser -u recyclarr -- recyclarr sync --preview \
-        #       --config /var/lib/recyclarr/config.yml
+        # The obvious form is `include: [ { template = "remux-web-2160p"; } ]`,
+        # naming one of the ids in the official config-templates repo.  It does
+        # not work on v8 and fails with "Unable to find include template with
+        # name".  Those templates are STARTER CONFIGS, meant to be copied once
+        # via `recyclarr config create` and then edited; the repo ships no
+        # include-able fragments at all (its `includes/` directory is for
+        # user-authored ones and is empty).  So the template body is
+        # transcribed here instead — which is the better shape for this repo
+        # anyway: the profile and every custom-format group is an explicit,
+        # reviewable value rather than a remote id whose contents can change
+        # under a `git fetch`.
         #
-        # A template name that does not exist is a loud failure in
-        # `journalctl -u recyclarr`, not a silent no-op.
+        # Transcribed from config-templates @ 9faf65f:
+        #   radarr/templates/remux-web-2160p.yml
+        #   sonarr/templates/remux-web-2160p.yml
+        # and validated with `recyclarr sync --preview` against the live
+        # instances before being committed.
+        #
+        # ── INSTANCE NAMES MUST BE UNIQUE ACROSS SERVICES ────────────────────
+        #
+        # `movies` and `series`, not `main` and `main`.  Recyclarr treats the
+        # instance-name namespace as global, not per-service, and it enforces
+        # that in the worst possible way: with both named `main` it logs
+        # "Duplicate instances: [main]" at DEBUG, syncs NOTHING, prints nothing
+        # to the console and EXITS 0.  A green timer, forever, doing nothing.
+        # Measured 2026-08-21; the first version of this file had exactly that
+        # bug and only a --preview run caught it.
+        #
+        # ── WHAT THIS CHANGES on the live instances ──────────────────────────
+        #
+        # More than the first draft of this block claimed, so it is spelled out.
+        # This applies TRaSH's "Remux + WEB 2160p" profile to both services —
+        # quality definitions (per-quality file size limits) AND the quality
+        # profile itself AND custom-format scoring.  `[Audio] Audio Formats`
+        # syncs by default (it is listed under the template's `skip:` block,
+        # commented out), and that group is what scores TrueHD Atmos and DTS-X
+        # above everything else — i.e. it is the piece that implements "prefer
+        # 4K Dolby Atmos, otherwise fall back".
+        #
+        # Remux was chosen over "UHD Bluray + WEB" deliberately: TrueHD Atmos
+        # lives on Bluray remuxes, while WEB releases carry the lossy DD+ Atmos.
+        # The cost is real — roughly 40–80 GB per film and 15–25 GB per episode,
+        # about 3x the encoded profiles. zdata had 47.6 TB free when this was
+        # chosen.
+        #
+        # reset_unmatched_scores means custom formats NOT named by these groups
+        # are set to 0 on the synced profile.  That is what makes the profile
+        # reproducible from this file rather than accumulating whatever the UI
+        # has been poked into.
+        #
+        # To preview before letting the timer run:
+        #   nixos-container run arr -- systemctl start recyclarr-api-keys
+        #   nixos-container run arr -- runuser -u recyclarr -- \
+        #     recyclarr sync --preview --config /var/lib/recyclarr/config.yml
         configuration = {
-          sonarr.main = {
-            base_url        = "http://localhost:${toString sonarrPort}";
-            api_key._secret = "${recyclarrSecretsDir}/sonarr-api-key";
-            include = [ { template = "sonarr-quality-definition-series"; } ];
-          };
-          radarr.main = {
+          radarr.movies = {
             base_url        = "http://localhost:${toString radarrPort}";
             api_key._secret = "${recyclarrSecretsDir}/radarr-api-key";
-            include = [ { template = "radarr-quality-definition-movie"; } ];
+
+            quality_definition.type = "movie";
+
+            quality_profiles = [
+              {
+                trash_id = "fd161a61e3ab826d3a22d53f935696dd";   # Remux + WEB 2160p
+                reset_unmatched_scores.enabled = true;
+              }
+            ];
+
+            # Groups the template adds on top of the three it syncs by default
+            # ([Audio] Audio Formats, [HDR Formats] HDR, [Streaming Services]
+            # General).  Those three are not listed anywhere — they are on
+            # unless explicitly skipped.
+            custom_format_groups.add = [
+              { trash_id = "ff204bbcecdd487d1cefcefdbf0c278d"; }  # [Optional] Golden Rule UHD
+              { trash_id = "a3ac6af01d78e4f21fcb75f601ac96df"; }  # [Unwanted] Unwanted Formats
+            ];
+          };
+
+          sonarr.series = {
+            base_url        = "http://localhost:${toString sonarrPort}";
+            api_key._secret = "${recyclarrSecretsDir}/sonarr-api-key";
+
+            quality_definition.type = "series";
+
+            quality_profiles = [
+              {
+                trash_id = "76a5053bdb2d1e4a8f16a69a37d46c12";   # Remux + WEB 2160p
+                reset_unmatched_scores.enabled = true;
+              }
+            ];
+
+            custom_format_groups.add = [
+              { trash_id = "e3f37512790f00d0e89e54fe5e790d1c"; }  # [Optional] Golden Rule UHD
+              { trash_id = "74aff4168620ed49dcc67e92b2c2a5b4"; }  # [Optional] Language Profiles
+              { trash_id = "85fae4a2294965b75710ef2989c850eb"; }  # [Streaming Services] HD/UHD boost
+              { trash_id = "59c3af66780d08332fdc64e68297098f"; }  # [Unwanted] Unwanted Formats
+            ];
           };
         };
       };
