@@ -47,7 +47,7 @@ Verified against the repo on 2026-08-20 (`main` @ `f9b305e`).
 | M2 — ernst VLAN bridge | **done — deployed 2026-08-20** | [#73](https://github.com/lutzgo/clanarchy/pull/73) | `br0` VLAN-filtering bridge, `enp13s0` as tagged trunk; VLAN 90 (Services) created for M2b/M5. Cutover verified: `br0` holds `10.0.50.10/24`, `enp13s0` enslaved, the `br0 50 PVID Egress Untagged` self entry present, NM now `unmanaged`. [Runbook](runbooks/ernst-vlan-bridge-cutover.md). See [M2](#m2-ernst-vlan-bridge-built-cutover-pending) |
 | M2b — Jellyfin on its own veth | **done — deployed 2026-08-20** | [#82](https://github.com/lutzgo/clanarchy/pull/82) | Jellyfin on `10.0.90.10` via MAC-pinned veth `vb-jellyfin`, VLAN 90. **L3 retired.** Survived a reboot: `br0`'s pinned MAC reproduced at first boot-time creation, the VLAN race won by networkd, `/srv/state/jellyfin` intact through the rollback, `clanarchy-impermanence-check` green. The Nix half deployed first try; the [UDM-Pro half took five rounds](#the-udm-pro-half-cost-more-than-the-nix-half) and disproved M2's Connection-State finding. [M2b](#m2b-jellyfin-on-its-own-veth-done-deployed-2026-08-20) |
 | M3 — VPN microvm + qBittorrent | **done — deployed 2026-08-20** | [#83](https://github.com/lutzgo/clanarchy/pull/83) | `wg-qbittorrent` on the microvm tier: tap on VLAN 90, IVPN wg-quick tunnel, guest-side nftables killswitch. **Killswitch proven**: with wg0 down the guest emitted zero packets and DNS failed rather than leaking. **Hardlink chain proven**, with a negative control — `UMask=0002` is what M4 depends on. Three things had to be fixed after the first deploy: wg-quick wins any routing-rule priority race, a tmpfiles/oneshot contradiction in `jellyfin.nix` had been silently resetting the media directory modes since M2b, and the UDM-Pro policy editor has two Port sections. [M3](#m3-featernst-vpn-microvm-done--deployed-2026-08-20) |
-| M4 — arr stack | **hardlink chain PROVEN 2026-08-21 — reboot test pending** | [#85](https://github.com/lutzgo/clanarchy/pull/85) | Prowlarr/Sonarr/Radarr in one nspawn container, `machines/ernst/containers/arr.nix`. **Departs from its own prompt on networking**: veth on br0 / VLAN 90 (MAC `02:00:00:90:00:05`, `10.0.90.13`) rather than the host-networking v1 the prompt described, because that prompt predates M2b and `networking.nix` already names M4 as a pattern-B consumer. Consequence worth knowing: the arr reaches qBittorrent at L2 over `br0`, so **the UDM-Pro never sees that traffic** and the ZBF rule the prompt listed as a manual step does not exist — the guest's `api_clients` nftables set is the only thing enforcing it. The milestone is **not** done until the `stat` proof runs on ernst. [M4](#m4-featernst-arr-stack) |
+| M4 — arr stack | **done — deployed, proven, and survived an unplanned power cut 2026-08-21** | [#85](https://github.com/lutzgo/clanarchy/pull/85) | Prowlarr/Sonarr/Radarr in one nspawn container, `machines/ernst/containers/arr.nix`. **Departs from its own prompt on networking**: veth on br0 / VLAN 90 (MAC `02:00:00:90:00:05`, `10.0.90.13`) rather than the host-networking v1 the prompt described, because that prompt predates M2b and `networking.nix` already names M4 as a pattern-B consumer. Consequence worth knowing: the arr reaches qBittorrent at L2 over `br0`, so **the UDM-Pro never sees that traffic** and the ZBF rule the prompt listed as a manual step does not exist — the guest's `api_clients` nftables set is the only thing enforcing it. The milestone is **not** done until the `stat` proof runs on ernst. [M4](#m4-featernst-arr-stack) |
 | M5 — Traefik | **open** | — | [M5](#m5-featernst-traefik) |
 | M6 — monitoring | **open** | — | [M6](#m6-featmonitoring) |
 | M7 — Authelia | **open** | — | [M7](#m7-featernst-authelia) |
@@ -844,11 +844,30 @@ over.
 **Depends on.** M3 (for the download client and the uid/gid decision) and
 Jellyfin. **Risk.** Medium.
 
-**Status: deployed, and the hardlink chain is PROVEN on a real import
-(2026-08-21).** What remains is the reboot — invariant #7 names M4 as the last
-of the three milestones whose service state has never met a real rollback — plus
-deploying FlareSolverr and Recyclarr, which were added mid-milestone and are
-committed but not yet on the machine.
+**Status: done. Deployed, hardlink chain proven on a real import, and the whole
+thing survived an unplanned power cut on 2026-08-21** — which is a harsher
+version of the reboot invariant #7 asked for, and it arrived without being
+scheduled.
+
+### Results after the outage
+
+M4 was the last of the three milestones the invariant names as carrying state
+that had never met a real rollback. It has now met one, ungracefully.
+
+| Check | Result |
+|---|---|
+| `zpool status -x` | all pools healthy; `zroot` + `zdata` ONLINE after an unclean loss |
+| `clanarchy-impermanence-check` | `success` / `0`; both `@blank` snapshots present |
+| Failed units, host and container | none |
+| `br0` MAC | `b2:8b:e1:f2:1e:7c` — the pin reproduced again |
+| VLAN 90 on `vb-jellyfin`, `vb-arr`, `tap-vpn` | all landed unaided on a cold boot |
+| `microvm@wg-qbittorrent` | active |
+| prowlarr / sonarr / radarr / flaresolverr | all active |
+| **`/srv/state/*` through the rollback** | **intact** — sonarr 171 M, radarr 3.9 G, prowlarr 4.4 M, jellyfin 34 G, qbittorrent 5.2 M |
+| **M4 hardlinks** | **still `links=2` on the same inodes** |
+
+One of the surviving hardlinks is an `EZTVx.to` release — the indexer
+FlareSolverr was added for, working end to end.
 
 ### The proof
 

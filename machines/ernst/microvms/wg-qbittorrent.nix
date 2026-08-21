@@ -271,6 +271,35 @@ let
   # qBittorrent.conf, with the WebUI password hash left as a placeholder that
   # the guest substitutes at start.  The ExecStartPre that renders it carries
   # the reasoning: why the whole file is declarative, and what that costs.
+  #
+  # ── DO NOT AUTHENTICATE THE *ARR WITH qBITTORRENT'S API KEY ──────────────────
+  #
+  #   qBittorrent's WebUI has an "API Key" field (Options → WebUI →
+  #   Authentication) and recent Sonarr/Radarr offer it as an alternative to
+  #   username+password.  Using it here is a trap, and it cost a session:
+  #
+  #     The generated key is stored in qBittorrent.conf.  This file is
+  #     REINSTALLED FROM THE STORE ON EVERY START.  So the key survives exactly
+  #     until the next restart — a deploy, or in the case that found this, a
+  #     power cut — and then it is gone.  The *arr keeps sending a key
+  #     qBittorrent no longer knows.
+  #
+  #   The failure is silent in the worst way: the request is rejected BEFORE the
+  #   login path, so qBittorrent's own log records nothing at all — no failure
+  #   line, no IP, no username.  Sonarr says only "Failed to authenticate with
+  #   qBittorrent"; the API test is the thing that names it, reporting
+  #   `propertyName: ApiKey`.  Observed on ernst 2026-08-21: after the outage
+  #   both Sonarr and Radarr failed, while the arr container could still reach
+  #   the WebUI (HTTP 403 in 0.5 ms) and qBittorrent's log held only browser
+  #   logins from lgo's workstation.
+  #
+  #   USE USERNAME + PASSWORD.  `admin` plus the WebUI password is rendered from
+  #   the clan var into the two lines below on every start, so it is the only
+  #   credential here that is guaranteed to still be valid after a restart.
+  #
+  #   If API-key auth is ever actually wanted, the key has to become a clan var
+  #   and be substituted into this template exactly as the password hash is —
+  #   anything else is storing a secret in a file this unit overwrites.
   qbtConfTemplate = pkgs.writeText "qBittorrent.conf" ''
     [LegalNotice]
     Accepted=true
