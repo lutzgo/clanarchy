@@ -302,7 +302,14 @@ in
       RemainAfterExit = true;
     };
     script = ''
-      ${pkgs.coreutils}/bin/install -d -m 0700 -o root -g root ${hostSecretsDir}
+      # 0750 root:media, NOT 0700 root:root.  The WebUI hash below is
+      # group-readable so qBittorrent's own ExecStartPre can read it without a
+      # `+`-prefixed escape from the unit's sandbox — but a group-readable file
+      # inside a group-untraversable directory is unreadable, which is exactly
+      # the bug this deployed with: the render step silently substituted an
+      # EMPTY password and the WebUI rejected every login with nothing in any
+      # log to say why.  Group needs x on the directory, not just r on the file.
+      ${pkgs.coreutils}/bin/install -d -m 0750 -o root -g media ${hostSecretsDir}
       ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
         ${gen.files."wg0.conf".path}             ${hostSecretsDir}/wg0.conf
       ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
@@ -946,10 +953,23 @@ in
             "${pkgs.writeShellScript "qbittorrent-render-config" ''
               set -euo pipefail
               conf=/var/lib/qBittorrent/qBittorrent/config/qBittorrent.conf
+
+              # Read into a variable FIRST, and check it.  `sed "s|x|$(cat f)|"`
+              # looks equivalent and is not: a command substitution that fails
+              # inside an argument does not trip `set -e`, so an unreadable
+              # secret becomes an EMPTY password rather than a failed unit.
+              # That shipped once — the WebUI then rejected every login and
+              # nothing anywhere said why.  A plain assignment DOES trip
+              # `set -e`, and the explicit test covers the file being present
+              # but empty.
+              hash=$(${pkgs.coreutils}/bin/cat ${guestSecretsDir}/webui-password-pbkdf2)
+              if [ -z "$hash" ]; then
+                echo "webui-password-pbkdf2 is empty — refusing to start with no password" >&2
+                exit 1
+              fi
+
               ${pkgs.coreutils}/bin/install -Dm600 ${qbtConfTemplate} "$conf"
-              ${pkgs.gnused}/bin/sed -i \
-                "s|@WEBUI_PASSWORD_PBKDF2@|$(${pkgs.coreutils}/bin/cat ${guestSecretsDir}/webui-password-pbkdf2)|" \
-                "$conf"
+              ${pkgs.gnused}/bin/sed -i "s|@WEBUI_PASSWORD_PBKDF2@|$hash|" "$conf"
             ''}"
           ];
         };
