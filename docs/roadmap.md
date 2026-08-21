@@ -47,7 +47,7 @@ Verified against the repo on 2026-08-20 (`main` @ `f9b305e`).
 | M2 — ernst VLAN bridge | **done — deployed 2026-08-20** | [#73](https://github.com/lutzgo/clanarchy/pull/73) | `br0` VLAN-filtering bridge, `enp13s0` as tagged trunk; VLAN 90 (Services) created for M2b/M5. Cutover verified: `br0` holds `10.0.50.10/24`, `enp13s0` enslaved, the `br0 50 PVID Egress Untagged` self entry present, NM now `unmanaged`. [Runbook](runbooks/ernst-vlan-bridge-cutover.md). See [M2](#m2-ernst-vlan-bridge-built-cutover-pending) |
 | M2b — Jellyfin on its own veth | **done — deployed 2026-08-20** | [#82](https://github.com/lutzgo/clanarchy/pull/82) | Jellyfin on `10.0.90.10` via MAC-pinned veth `vb-jellyfin`, VLAN 90. **L3 retired.** Survived a reboot: `br0`'s pinned MAC reproduced at first boot-time creation, the VLAN race won by networkd, `/srv/state/jellyfin` intact through the rollback, `clanarchy-impermanence-check` green. The Nix half deployed first try; the [UDM-Pro half took five rounds](#the-udm-pro-half-cost-more-than-the-nix-half) and disproved M2's Connection-State finding. [M2b](#m2b-jellyfin-on-its-own-veth-done-deployed-2026-08-20) |
 | M3 — VPN microvm + qBittorrent | **done — deployed 2026-08-20** | [#83](https://github.com/lutzgo/clanarchy/pull/83) | `wg-qbittorrent` on the microvm tier: tap on VLAN 90, IVPN wg-quick tunnel, guest-side nftables killswitch. **Killswitch proven**: with wg0 down the guest emitted zero packets and DNS failed rather than leaking. **Hardlink chain proven**, with a negative control — `UMask=0002` is what M4 depends on. Three things had to be fixed after the first deploy: wg-quick wins any routing-rule priority race, a tmpfiles/oneshot contradiction in `jellyfin.nix` had been silently resetting the media directory modes since M2b, and the UDM-Pro policy editor has two Port sections. [M3](#m3-featernst-vpn-microvm-done--deployed-2026-08-20) |
-| M4 — arr stack | **open** | — | [M4](#m4-featernst-arr-stack) |
+| M4 — arr stack | **built — deploy + hardlink proof pending** | [#85](https://github.com/lutzgo/clanarchy/pull/85) | Prowlarr/Sonarr/Radarr in one nspawn container, `machines/ernst/containers/arr.nix`. **Departs from its own prompt on networking**: veth on br0 / VLAN 90 (MAC `02:00:00:90:00:05`, `10.0.90.13`) rather than the host-networking v1 the prompt described, because that prompt predates M2b and `networking.nix` already names M4 as a pattern-B consumer. Consequence worth knowing: the arr reaches qBittorrent at L2 over `br0`, so **the UDM-Pro never sees that traffic** and the ZBF rule the prompt listed as a manual step does not exist — the guest's `api_clients` nftables set is the only thing enforcing it. The milestone is **not** done until the `stat` proof runs on ernst. [M4](#m4-featernst-arr-stack) |
 | M5 — Traefik | **open** | — | [M5](#m5-featernst-traefik) |
 | M6 — monitoring | **open** | — | [M6](#m6-featmonitoring) |
 | M7 — Authelia | **open** | — | [M7](#m7-featernst-authelia) |
@@ -151,7 +151,7 @@ Rows are retired only by the PR that actually removes the rule.
 | — | `Services → DNS-Container` `:53` | UDM-Pro ZBF policy `Allow Jellyfin to DNS`, ID `10000` | The `services` zone is isolated by default, so the container could not resolve at all | **permanent** — not interim, listed here only so it is not mistaken for one | created by M2b. `Services → External` was predicted to be needed too and **was not** — it already passed |
 | L3 | `networking.firewall.allowedTCPPorts = [ 8096 ]` on the host | `machines/ernst/containers/jellyfin.nix` | Jellyfin shares the host network namespace (`privateNetwork = false`), so its port is a host port | **M2b** — the veth on VLAN 90 gives the container its own L2 identity; the host port opening goes away and the ACL moves to the UDM-Pro | **retired in [#82](https://github.com/lutzgo/clanarchy/pull/82)** — the line is deleted from the repo; 8096 is now opened only inside the container's own netns. Effective on the next `clan machines update ernst` |
 | — | `LAN (1) → qBittorrent 10.0.90.11:8080,22/tcp` | UDM-Pro ZBF, M3 | The qBittorrent WebUI (and the guest's SSH) are reachable from the management networks and nowhere else | **permanent** — architecture invariant #4 names this bypass explicitly. It is listed here only so a future milestone does not mistake it for an interim row and "fix" it by adding a Traefik route | **created and verified 2026-08-20.** Source zone `Internal`, narrowed to the `LAN` + `Servers` networks; destination `10.0.90.11` tcp `8080,22`; `Auto Allow Return Traffic` ticked. Servers (50) does need to be listed — with it, `ssh` from ernst itself works. **The port belongs in the Destination card**: the editor has a Port section in *both* zone cards and the source one is the one you see first, which matches only traffic *from* 8080/22, i.e. never |
-| L4 | arr WebUI ports `9696` / `8989` / `7878`, mgmt-VLAN scoped | M4 (host firewall, v1) | arr v1 runs on host networking like Jellyfin did | **M5** for the routes, plus a veth migration mirroring M2b | not yet created |
+| L4 | `LAN (1)` + `Servers (50)` → arr `10.0.90.13:9696,8989,7878/tcp` | UDM-Pro ZBF, M4 | The three arr WebUIs are reached directly; there is no reverse proxy yet | **M5** — replace with the permanent `LAN → traefik:443` rule and Traefik routes | not yet created — **and it is a UDM-Pro row, not a host-firewall one.** Earlier revisions of this table predicted `networking.firewall.allowedTCPPorts` on ernst plus a later veth migration; M4 skipped v1 and went straight to the veth, so the host never opens these ports and there is nothing to migrate. Same shape as the qBittorrent row above: source zone `Internal` narrowed to the LAN + Servers networks, **port in the Destination card**, `Auto Allow Return Traffic` ticked |
 | L5 | Traefik `ipAllowList` on the arr + Grafana routes (mgmt + wg-travel) | M5 (`traefik` container) | There is no identity provider yet | **M7** — replaced by the Authelia forward-auth middleware | not yet created |
 | L6 | Tvheadend ports `9981` / `9982` on the host, mgmt-VLAN scoped | M8 (host firewall, v1) | Only if M8 lands before M2b — Tvheadend v1 would then run on host networking like Jellyfin's and arr's did | **M5** for the web route, plus a veth migration mirroring M2b. Never created at all if M2b lands first | not yet created |
 | L7 | FRITZ!Box → Tvheadend on the ephemeral **UDP** range | UDM-Pro ZBF (off-repo), M8 | SAT>IP media is unicast RTP on a return flow the RTSP rule does not cover | Proving RTP **interleaved over the RTSP TCP connection**, which reduces the whole ACL to TCP 49000 + 554 | not yet created — **avoid**; take the interleaved-TCP path if M8's Phase 0 shows it works |
@@ -843,6 +843,144 @@ over.
 
 **Depends on.** M3 (for the download client and the uid/gid decision) and
 Jellyfin. **Risk.** Medium.
+
+**Status: built in [#85](https://github.com/lutzgo/clanarchy/pull/85), not yet
+deployed.** The code evaluates and the hardening is measured; the thing the
+milestone exists to prove — a link count of 2 on the same inode, end to end —
+needs a running deploy and is [lgo's step](#m4-what-still-has-to-happen-on-ernst).
+
+### What shipped
+
+One nspawn container `arr` (`machines/ernst/containers/arr.nix`) running all
+three services, on its own L2 identity:
+
+- **veth `vb-arr` on `br0`, Services VLAN 90**, MAC `02:00:00:90:00:05`,
+  `10.0.90.13` by DHCP reservation — the M2b pattern, copied from the working
+  version rather than from the sketch.
+- **`/srv/media` bound read-write at the identical path**, whole-dataset and as
+  one mount, so `st_dev` matches across `torrents/` and `library/` and no
+  *arr Remote Path Mapping is needed.
+- **State on zdata** at `/srv/state/{sonarr,radarr,prowlarr}`, bound to each
+  package's upstream default path so no `dataDir` override is required.
+- **uid 3002 sonarr / 3003 radarr** with `media` (gid 3000) as their **primary**
+  group, and **uid 3004 prowlarr** with no media access at all.
+
+### Three decisions that departed from this milestone's own prompt
+
+**1 — Networking is the veth, not host networking, and the prompt is stale
+rather than wrong.** The prompt says "v1: HOST networking, exactly like
+Jellyfin's v1" with a migration note for later; it was written before M2b
+landed. Since then `machines/ernst/networking.nix`'s worked example B is
+titled "systemd-nspawn container (M4 arr, M5 Traefik)" — the topology file
+already expected this. Following the prompt would have re-opened host ports on
+ernst two PRs after [#82](https://github.com/lutzgo/clanarchy/pull/82) deleted
+the last one, and booked a migration PR to undo it.
+
+**2 — The ZBF rule the prompt listed as a manual step does not exist, and must
+not be created.** The prompt anticipated "a ZBF rule allowing the arr container
+to reach the M3 guest's qBittorrent API … since the download client lives on a
+different L2 identity". It does — and both identities are VLAN-90 ports on the
+*same bridge*, so `br0` switches those frames locally and the UDM-Pro never sees
+them. There is nothing for a firewall policy to match.
+
+The consequence is the part worth carrying forward: M3's header claimed the
+WebUI's exposure was "enforced twice, guest-side nftables and a ZBF rule on the
+UDM-Pro". For this third source that is **not true** — the guest's nftables set
+is the only enforcement. So the set was split rather than widened:
+`mgmt_nets` still governs SSH and ping, and a new superset `api_clients` governs
+the WebUI port alone. The arr gets the API and nothing else.
+
+**3 — `mgmtNets` could not simply grow an entry, because it feeds routes as
+well as rules.** M3 built one list with three consumers on purpose. Two of them
+(the nftables input accept, the output established-reply accept) *do* want the
+arr's address. The third — the routing carve-out that keeps replies off the
+tunnel — must **not** have it: `10.0.90.0/24` is directly connected on the
+guest's `eth0`, so `main` already holds a /24 for it, and a /24 survives
+wg-quick's `suppress_prefixlength 0` untouched. Adding `10.0.90.13/32 via
+<gateway>` on top would hairpin traffic through the UDM-Pro to reach a neighbour
+two ports away on the same bridge. Hence `mgmtNets` (routed) plus `arrClient`
+(not routed), joined into `allowedClients` for the nftables set only.
+
+### Prowlarr's `DynamicUser`, and what turning it off costs
+
+Upstream's prowlarr unit is `DynamicUser = true` with `StateDirectory`, i.e.
+state under `/var/lib/private/prowlarr` owned by a uid systemd allocates at run
+time. That is the shape this repo already paid for once on Ollama. It is
+switched to a static uid 3004 here.
+
+The trap in doing so: `DynamicUser = true` **implies** `NoNewPrivileges`,
+`PrivateTmp`, `ProtectSystem=strict`, `ProtectHome=read-only`, `RemoveIPC` and
+`RestrictSUIDSGID`, and upstream sets none of them explicitly — so a naive
+`DynamicUser = false` silently makes Prowlarr the least confined service on the
+box. All six are restated, plus the rest of the sonarr/radarr set that upstream
+never applied to prowlarr at all.
+
+Measured with `systemd-analyze security --offline=true` against the container's
+own generated units, which is how it can be checked *before* a deploy:
+
+| Service | Upstream directives | This PR |
+|---|---|---|
+| prowlarr | **8.2 EXPOSED** | **1.3 OK** |
+| sonarr | 1.5 OK | 1.3 OK |
+| radarr | 1.5 OK | 1.3 OK |
+
+Offline analysis does credit `DynamicUser=`'s implications — `ProtectSystem`,
+`PrivateTmp`, `NoNewPrivileges`, `RemoveIPC` and `RestrictSUIDSGID` all score ✓
+in the baseline — so 8.2 is not an artefact of scoring a switched-off
+`DynamicUser`. It is everything `DynamicUser` never implied.
+
+### Two things that could not be tested without deploying
+
+Both are called out in the file so a first-deploy failure is recognised rather
+than diagnosed from scratch.
+
+- **`ProtectSystem = "strict"` on sonarr/radarr.** Upstream sets nothing;
+  `ReadWritePaths` is enumerated as `/srv/media` plus the service's own state
+  directory. If a service fails to start with "Read-only file system", add the
+  path it names, or drop to `ProtectSystem = "full"`.
+- **Authentication is deliberately NOT declared.** Setting
+  `settings.auth.method` via the env-var passthrough looks right and is a
+  lockout: on a first start with no user in the database, an already-set
+  `AuthenticationMethod` skips the "Create Admin User" wizard and leaves a login
+  form no account can satisfy. The wizard is the intended bootstrap. Pinning
+  auth declaratively is safe only *after* an account exists.
+
+### `UMask = 0002` here means less than it did in M3
+
+M3's header calls `UMask=0002` load-bearing, and for qBittorrent it is: the
+*source* file's mode is what `fs.protected_hardlinks` checks. On the arr side it
+is **not** what makes the import link — a hardlink shares qBittorrent's inode
+and therefore its 0664 mode regardless. What 0002 changes here is everything the
+*arr creates fresh: series and season directories, `.nfo` files, artwork, and
+any import that copies rather than links. At 0022 those land writable by exactly
+one uid, cancelling the point of the setgid bit on those directories.
+
+### M4: what still has to happen on ernst
+
+These are lgo's, and the first three gate the test plan.
+
+1. **DHCP reservation** on the Services network (VLAN 90): MAC
+   `02:00:00:90:00:05` → `10.0.90.13`. **Inside the pool** (`10.0.90.6`–`.254`)
+   — UniFi accepts a `.2`–`.5` address and then silently hands out an ordinary
+   lease instead, which cost M2b a round.
+2. **UDM-Pro ZBF rule** — ledger row **L4**. `LAN` + `Servers` →
+   `10.0.90.13` tcp `9696,8989,7878`. Port in the **Destination** card (M3 lost
+   a round to the Source card's identical-looking Port section), and **tick
+   `Auto Allow Return Traffic`** (M2b lost three rounds to that one).
+3. **Technitium** records for `prowlarr` / `sonarr` / `radarr` → `10.0.90.13`.
+   They move to Traefik in M5.
+4. Nothing for arr → qBittorrent. Same VLAN, same bridge — see departure 2.
+5. **In-UI bootstrap**, which is state the repo deliberately does not fake. The
+   reproducible checklist is in the PR body: create each admin account through
+   the first-run wizard; root folders `/srv/media/library/tvshows` (Sonarr) and
+   `/srv/media/library/movies` (Radarr); qBittorrent as the download client at
+   `10.0.90.11:8080` with **"Use hardlinks instead of copy" on**; Prowlarr
+   applications pointed at `127.0.0.1:8989` / `127.0.0.1:7878`.
+
+### The prompt this was built from
+
+Kept verbatim, including the parts departed from above, because the departures
+are only legible against it.
 
 ````text
 Read CLAUDE.md fully before doing anything.

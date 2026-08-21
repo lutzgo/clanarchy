@@ -286,10 +286,22 @@
   # are the exception worth tracking centrally; see the table below.
   #
   # MAC ALLOCATIONS on 02:00:00:<vlan>:00:<seq> (the whole point of a
-  # convention is that it is written down in one place):
-  #   02:00:00:90:00:02   jellyfin container eth0   (M2b — allocated)
-  #   02:00:00:90:00:03   wg-qbittorrent guest eth0 (M3  — allocated)
-  #   02:00:00:90:00:04   traefik container eth0    (M5  — reserved)
+  # convention is that it is written down in one place), with the DHCP
+  # reservation each one keys.  The reservations live on the UDM-Pro and are
+  # NOT declared in the repo; they are listed here only so the two tables can
+  # be read against each other:
+  #   02:00:00:90:00:02   jellyfin container eth0   (M2b — allocated)  10.0.90.10
+  #   02:00:00:90:00:03   wg-qbittorrent guest eth0 (M3  — allocated)  10.0.90.11
+  #   02:00:00:90:00:04   traefik container eth0    (M5  — reserved)   10.0.90.12
+  #   02:00:00:90:00:05   arr container eth0        (M4  — allocated)  10.0.90.13
+  #
+  # The last octet is 8 + <seq>.  That correspondence is not enforced by
+  # anything and it is worth keeping anyway: it is the only thing that makes a
+  # mis-typed reservation visible by inspection.  M4 took .13 rather than the
+  # next free address so that M5 can still have .12 against the MAC already
+  # reserved for it.  Every reservation must be INSIDE the DHCP pool
+  # (10.0.90.6–.254) — UniFi accepts an address from the .2–.5 range the
+  # cutover runbook set aside and then silently hands out a pool lease instead.
   #
   # NUMERIC ID ALLOCATIONS across the storage boundary — the sibling
   # convention, tracked here for the same reason.  virtiofs and nspawn both
@@ -298,6 +310,10 @@
   #   gid 3000  media        shared read/write group (containers/jellyfin.nix)
   #   uid  964  jellyfin     (containers/jellyfin.nix)
   #   uid 3001  qbittorrent  (microvms/wg-qbittorrent.nix — M3)
+  #   uid 3002  sonarr       (containers/arr.nix — M4, group media)
+  #   uid 3003  radarr       (containers/arr.nix — M4, group media)
+  #   uid 3004  prowlarr     (containers/arr.nix — M4, NOT in media)
+  #   gid 3004  prowlarr     (containers/arr.nix — M4)
   #
   # MAC policy for both: locally-administered (02:…) so it cannot collide with
   # a vendor OUI.  Convention below: 02:00:00:<vlan>:00:<seq>.  The MAC the
@@ -344,10 +360,11 @@
 
   # ── B. systemd-nspawn container (M4 arr, M5 Traefik) ─────────────────────
   #
-  # NO LONGER HYPOTHETICAL.  M2b implemented this pattern for Jellyfin; read
-  # machines/ernst/containers/jellyfin.nix ("Networking — v2") for the working
-  # version with its full rationale, and copy from there rather than from the
-  # sketch below.  The three things that bite:
+  # NO LONGER HYPOTHETICAL.  M2b implemented this pattern for Jellyfin and M4
+  # followed it for the arr stack; read machines/ernst/containers/jellyfin.nix
+  # ("Networking — v2") for the working version with its full rationale, and
+  # copy from there rather than from the sketch below.  The three things that
+  # bite:
   #
   #   containers.<n> = {
   #     privateNetwork  = true;
