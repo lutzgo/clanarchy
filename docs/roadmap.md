@@ -47,7 +47,7 @@ Verified against the repo on 2026-08-20 (`main` @ `f9b305e`).
 | M2 — ernst VLAN bridge | **done — deployed 2026-08-20** | [#73](https://github.com/lutzgo/clanarchy/pull/73) | `br0` VLAN-filtering bridge, `enp13s0` as tagged trunk; VLAN 90 (Services) created for M2b/M5. Cutover verified: `br0` holds `10.0.50.10/24`, `enp13s0` enslaved, the `br0 50 PVID Egress Untagged` self entry present, NM now `unmanaged`. [Runbook](runbooks/ernst-vlan-bridge-cutover.md). See [M2](#m2-ernst-vlan-bridge-built-cutover-pending) |
 | M2b — Jellyfin on its own veth | **done — deployed 2026-08-20** | [#82](https://github.com/lutzgo/clanarchy/pull/82) | Jellyfin on `10.0.90.10` via MAC-pinned veth `vb-jellyfin`, VLAN 90. **L3 retired.** Survived a reboot: `br0`'s pinned MAC reproduced at first boot-time creation, the VLAN race won by networkd, `/srv/state/jellyfin` intact through the rollback, `clanarchy-impermanence-check` green. The Nix half deployed first try; the [UDM-Pro half took five rounds](#the-udm-pro-half-cost-more-than-the-nix-half) and disproved M2's Connection-State finding. [M2b](#m2b-jellyfin-on-its-own-veth-done-deployed-2026-08-20) |
 | M3 — VPN microvm + qBittorrent | **done — deployed 2026-08-20** | [#83](https://github.com/lutzgo/clanarchy/pull/83) | `wg-qbittorrent` on the microvm tier: tap on VLAN 90, IVPN wg-quick tunnel, guest-side nftables killswitch. **Killswitch proven**: with wg0 down the guest emitted zero packets and DNS failed rather than leaking. **Hardlink chain proven**, with a negative control — `UMask=0002` is what M4 depends on. Three things had to be fixed after the first deploy: wg-quick wins any routing-rule priority race, a tmpfiles/oneshot contradiction in `jellyfin.nix` had been silently resetting the media directory modes since M2b, and the UDM-Pro policy editor has two Port sections. [M3](#m3-featernst-vpn-microvm-done--deployed-2026-08-20) |
-| M4 — arr stack | **built — deploy + hardlink proof pending** | [#85](https://github.com/lutzgo/clanarchy/pull/85) | Prowlarr/Sonarr/Radarr in one nspawn container, `machines/ernst/containers/arr.nix`. **Departs from its own prompt on networking**: veth on br0 / VLAN 90 (MAC `02:00:00:90:00:05`, `10.0.90.13`) rather than the host-networking v1 the prompt described, because that prompt predates M2b and `networking.nix` already names M4 as a pattern-B consumer. Consequence worth knowing: the arr reaches qBittorrent at L2 over `br0`, so **the UDM-Pro never sees that traffic** and the ZBF rule the prompt listed as a manual step does not exist — the guest's `api_clients` nftables set is the only thing enforcing it. The milestone is **not** done until the `stat` proof runs on ernst. [M4](#m4-featernst-arr-stack) |
+| M4 — arr stack | **hardlink chain PROVEN 2026-08-21 — reboot test pending** | [#85](https://github.com/lutzgo/clanarchy/pull/85) | Prowlarr/Sonarr/Radarr in one nspawn container, `machines/ernst/containers/arr.nix`. **Departs from its own prompt on networking**: veth on br0 / VLAN 90 (MAC `02:00:00:90:00:05`, `10.0.90.13`) rather than the host-networking v1 the prompt described, because that prompt predates M2b and `networking.nix` already names M4 as a pattern-B consumer. Consequence worth knowing: the arr reaches qBittorrent at L2 over `br0`, so **the UDM-Pro never sees that traffic** and the ZBF rule the prompt listed as a manual step does not exist — the guest's `api_clients` nftables set is the only thing enforcing it. The milestone is **not** done until the `stat` proof runs on ernst. [M4](#m4-featernst-arr-stack) |
 | M5 — Traefik | **open** | — | [M5](#m5-featernst-traefik) |
 | M6 — monitoring | **open** | — | [M6](#m6-featmonitoring) |
 | M7 — Authelia | **open** | — | [M7](#m7-featernst-authelia) |
@@ -844,10 +844,42 @@ over.
 **Depends on.** M3 (for the download client and the uid/gid decision) and
 Jellyfin. **Risk.** Medium.
 
-**Status: built in [#85](https://github.com/lutzgo/clanarchy/pull/85), not yet
-deployed.** The code evaluates and the hardening is measured; the thing the
-milestone exists to prove — a link count of 2 on the same inode, end to end —
-needs a running deploy and is [lgo's step](#m4-what-still-has-to-happen-on-ernst).
+**Status: deployed, and the hardlink chain is PROVEN on a real import
+(2026-08-21).** What remains is the reboot — invariant #7 names M4 as the last
+of the three milestones whose service state has never met a real rollback — plus
+deploying FlareSolverr and Recyclarr, which were added mid-milestone and are
+committed but not yet on the machine.
+
+### The proof
+
+Sonarr imported an 8.2 GB episode from qBittorrent's download tree into the
+library. `stat` on both paths, from the host:
+
+```
+ino=66816  links=2  -rw-rw-r--  3001:media  8227310727
+  /srv/media/library/tvshows/House of the Dragon/Season 3/…DV HDR H.265.mkv
+  /srv/media/torrents/complete/tv/…DDP5.1 Atmos DV HDR. H.265.mkv
+```
+
+One inode, two names, 8.2 GB counted once rather than twice. Owned `3001:media`
+at mode `0664` — qBittorrent's file, linked by Sonarr running as uid 3002
+through group `media`, which is exactly the chain M3's `UMask=0002` was set up
+for and the failure this milestone existed to catch.
+
+Two details worth keeping:
+
+- **It worked despite the qBittorrent categories having no save path.** The
+  file landed in `torrents/complete/tv` rather than the `torrents/tv` that
+  `containers/jellyfin.nix` declares, because an empty category save path falls
+  back to `Session\DefaultSavePath`. Both are plain subdirectories of the one
+  `/srv/media` dataset, so `link()` succeeded anyway. That is invariant #2
+  earning its keep: the hardlink domain is the *dataset*, not the directory
+  layout, so getting the layout wrong costs tidiness and not disk.
+- **The synthetic proof ran first and was worth it.** Before any UI existed, a
+  file created as uid 3001 mode 0664 was linked by uid 3002 (`links=2`, same
+  inode) and the same file at 0644 was refused with `EPERM`. That separated
+  "the plumbing works" from "the *arr chose to hardlink", so when the real
+  import arrived there was only one thing left to doubt.
 
 ### What shipped
 
@@ -954,6 +986,52 @@ and therefore its 0664 mode regardless. What 0002 changes here is everything the
 *arr creates fresh: series and season directories, `.nfo` files, artwork, and
 any import that copies rather than links. At 0022 those land writable by exactly
 one uid, cancelling the point of the setgid bit on those directories.
+
+### Two additions that grew the milestone, on request
+
+Both are outside M4's prompt. Recorded here so the prompt and the tree do not
+silently disagree.
+
+**FlareSolverr**, because several Prowlarr indexers fail with *"blocked by
+CloudFlare Protection"*. It is in the 26.05 pin with a NixOS module, so it
+stays in the nspawn tier. Where it runs contradicts architecture invariant #1
+and the contradiction was measured rather than argued — same URL, 2026-08-21:
+
+| Path | `https://eztvx.to/` |
+|---|---|
+| ernst's home WAN (arr container) | `200`, real site + `cdn-cgi/challenge-platform` → **solvable** |
+| IVPN exit `95.211.172.88` (microvm) | `451 Unavailable For Legal Reasons` → **not solvable** |
+
+There is nothing to solve in a 451; the exit is Leaseweb NL and eztvx blocks
+the Netherlands. The microvm placement would have been the more correct
+architecture minus the capability it exists to provide. What makes the
+container acceptable is that the boundary protecting the library is the **uid**,
+not the container: FlareSolverr keeps upstream's `DynamicUser` and is not in
+group `media`, so `/srv/media`'s `2770 root:media` directories are closed to it.
+**Revisit if the IVPN exit ever leaves the Netherlands.**
+
+**Recyclarr**, which M4's prompt calls out as explicitly out of scope. Two bugs
+in the first version, both caught by `recyclarr sync --preview` against the live
+instances and neither catchable by evaluation:
+
+1. **The template ids did not exist.** `include: - template: …` was written from
+   memory. In v8 the official config-templates repo ships *starter configs* for
+   `recyclarr config create`, not include-able fragments. The template body is
+   transcribed inline instead — better here anyway, since every profile and
+   custom-format group becomes an explicit reviewable value rather than a remote
+   id whose contents move under a `git fetch`.
+2. **Instance names are a GLOBAL namespace, not per-service.** With `radarr.main`
+   and `sonarr.main`, recyclarr logs `Duplicate instances: ["main"]` at DEBUG,
+   syncs nothing, prints nothing to the console and **exits 0** — a green timer,
+   forever, doing nothing. They are `movies` and `series` now.
+
+The API keys are *not* a clan var, deliberately. Sonarr and Radarr generate them
+on first run into their own `config.xml`; a prompted var would be a second copy
+with no link to the first, and would silently go stale the day a key is rotated
+in the UI. A hardened oneshot stages them out of `config.xml` into a root-only
+tmpfs and the module's `_secret` turns them into `LoadCredential=` entries — one
+source of truth, nothing in the store, nothing in the repo, and no generator,
+because there is no secret here that ernst did not already hold.
 
 ### M4: what still has to happen on ernst
 
