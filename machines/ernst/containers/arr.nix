@@ -194,6 +194,19 @@ let
 
   # Host state sources.  Bound to the upstream default paths inside.
   stateRoot = "/srv/state";
+
+  # Traefik's veth address on VLAN 90 (M5, DHCP reservation on the UDM-Pro
+  # keyed on 02:00:00:90:00:04).  The ONLY source permitted to reach the three
+  # web UIs.
+  #
+  # This is the boundary that matters most in this file, and it is worth being
+  # explicit about why: 10.0.90.11 — the qBittorrent microvm, the one workload
+  # on ernst that talks to the open internet on its own behalf — is one
+  # layer-2 hop away on this same bridge.  Its frames to .13 never reach the
+  # UDM-Pro, so no gateway rule can filter them.  This one can.  The full
+  # argument, and what it does not cover, is in the "BACKEND BYPASS HARDENING"
+  # section of machines/ernst/containers/traefik.nix.
+  traefikAddr = "10.0.90.12";
 in
 {
   ##############################################################################
@@ -401,7 +414,46 @@ in
       # is a service whose entire API is "fetch this URL for me"; opening it to
       # the Services VLAN would hand every host on that VLAN an SSRF primitive.
       # Prowlarr is in this netns and reaches it on 127.0.0.1.
-      networking.firewall.allowedTCPPorts = [ prowlarrPort sonarrPort radarrPort ];
+      #
+      # ── M5: THE THREE UIs ARE NOW TRAEFIK-ONLY ────────────────────────────
+      #
+      # These were `allowedTCPPorts = [ prowlarrPort sonarrPort radarrPort ]`
+      # until M5, i.e. open to everything on VLAN 90.  The list is now EMPTY so
+      # that nothing grants them unconditionally before the restricted rules
+      # below are reached, and access is source-restricted to Traefik.
+      #
+      # The "one list in one place" argument above still holds — it has just
+      # moved down three lines.  The set of reachable ports still has to be
+      # checked against the UDM-Pro rule by a human, and it is still one list.
+      #
+      # Why extraCommands and not the newer extraInputRules: that option is
+      # declared unconditionally in firewall-nftables.nix but consumed only
+      # when networking.nftables.enable is true, which it is not here.  Setting
+      # it would produce no rule and no warning — a bypass protection that
+      # silently does not exist.  extraCommands is the iptables backend's own
+      # escape hatch and fails loudly if a rule will not insert.
+      #
+      # PLACEMENT: firewall-iptables.nix's start script emits the
+      # allowedTCPPorts accepts, then extraCommands, then the catch-all
+      # `-j nixos-fw-log-refuse`.  Appending here therefore lands before the
+      # refuse and after everything else.  Nothing is needed in
+      # extraStopCommands — the chain is flushed and rebuilt on every start and
+      # reload, so these do not accumulate.
+      #
+      # NOTHING ELSE NEEDED THESE PORTS, which is why the restriction costs
+      # nothing: Prowlarr pushes to Sonarr and Radarr on 127.0.0.1, recyclarr
+      # reads both APIs on 127.0.0.1, and the *arr reach qBittorrent OUTBOUND.
+      # There was never a second inbound client.
+      #
+      # CONSEQUENCE: `curl http://10.0.90.13:8989` from a laptop now fails, and
+      # that is the milestone working.  For debugging, go in through the
+      # container, where `lo` is always trusted by the NixOS firewall:
+      #     nixos-container run arr -- curl -sS -o /dev/null -w '%{http_code}\n' \
+      #       http://localhost:8989/
+      networking.firewall.allowedTCPPorts = [ ];
+      networking.firewall.extraCommands = lib.concatMapStrings (port: ''
+        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32 --dport ${toString port} -j nixos-fw-accept
+      '') [ prowlarrPort sonarrPort radarrPort ];
 
       ##########################################################################
       # Users.  Numeric ids are the interface across the nspawn boundary.
