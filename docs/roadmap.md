@@ -1175,12 +1175,33 @@ does, and where it answered a question the prompt left open:
   (Zone:DNS:Edit + Zone:Zone:Read) via clan var `traefik-acme`, not the
   account-wide Global API Key; the generator rejects a Global Key by shape,
   because that mistake authenticates fine and is therefore invisible later.
-- **The split-horizon trap that would have cost a renewal.** lego's
-  propagation check must query a **public** resolver. The container's own
-  resolver is Technitium, which is authoritative for the `goclan.org` names
-  inside the LAN and answers an authoritative NXDOMAIN for `_acme-challenge` —
-  so the check would wait for a propagation it can never observe. Pinned to
-  `1.1.1.1` / `9.9.9.9`.
+- **lego's propagation check is pinned to public resolvers** (`1.1.1.1` /
+  `9.9.9.9`) rather than inheriting the container's. As the zones were actually
+  laid out, inheriting would have worked — Technitium hosts one small zone per
+  *service* name and is not authoritative for `goclan.org` itself, so it would
+  recurse for `_acme-challenge`. The pin makes that independent of the zone
+  layout: hosting the whole `goclan.org` zone internally would make Technitium
+  authoritative and it would answer NXDOMAIN forever.
+- **The trap that actually fired was different, and it is worth knowing.**
+  Measured on ernst 2026-08-23: issuance failed with
+  `recursive nameservers: NS 9.9.9.9:53 returned NXDOMAIN for
+  _acme-challenge.goclan.org` while the TXT was demonstrably live at
+  `jamie.ns.cloudflare.com` the whole time. lego queried ~1 s after writing the
+  record, Cloudflare's edge had not published, Cloudflare answers a nonexistent
+  name with **NXDOMAIN rather than NODATA**, and `goclan.org`'s SOA minimum is
+  **1800** — so the resolver cached that negative answer for thirty minutes and
+  every retry inside that window hit lego's own poison. Fixed with
+  `propagation.delayBeforeChecks = "60s"`, so the first query happens after the
+  record exists and the negative entry is never created. **Not** fixed with
+  `propagation.disableChecks`, which would hand the record to Let's Encrypt
+  unverified and burn failed-validation rate limit with no local signal.
+- **`.12` is not optional, and the reservation is the thing that grants it.**
+  First deploy came up on `10.0.90.189` — an ordinary pool lease, because the
+  UDM-Pro reservation did not exist yet. The pinned MAC was correct (the
+  container's link-local `fe80::ff:fe90:4` derives from
+  `02:00:00:90:00:04`), so this is purely a gateway-side omission — and it is
+  not cosmetic: the backend allow-rules hard-code `10.0.90.12`, so Traefik on
+  any other address gets dropped by every backend and every route returns 502.
 - **Backend bypass: mechanism (a), and (b) was not merely worse — it cannot
   work.** Jellyfin (`.10`), qBittorrent (`.11`), Traefik (`.12`) and the arr
   (`.13`) are all ports on `br0`; traffic between them is switched at layer 2

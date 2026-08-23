@@ -673,14 +673,68 @@ in
             dnsChallenge = {
               provider = "cloudflare";
 
-              # PUBLIC resolvers, and this line is the difference between a
-              # certificate that renews and one that does not.  See SPLIT
-              # HORIZON in the file header: the default is the container's own
-              # resolver, which is Technitium, which is authoritative for the
-              # goclan.org names on this LAN and answers an authoritative
-              # NXDOMAIN for _acme-challenge.  lego would then wait for a
-              # propagation that, from where it is looking, can never happen.
+              # PUBLIC resolvers.  `resolvers` is what lego uses to find the
+              # challenge name's AUTHORITY (Traefik's own help text: "Use
+              # following DNS servers to resolve the FQDN authority"); it then
+              # checks the TXT against the authoritative nameservers it found.
+              #
+              # Kept explicit rather than inheriting the container's resolver.
+              # As deployed that inheritance would happen to work — Technitium
+              # hosts one small zone per SERVICE name (jellyfin.goclan.org and
+              # friends) and is not authoritative for goclan.org itself, so it
+              # would recurse for _acme-challenge and get the right answer.
+              # That is a property of how the zones were laid out on 2026-08-23,
+              # not of the design: hosting the whole goclan.org zone internally
+              # would make Technitium authoritative, and it would then answer an
+              # authoritative NXDOMAIN for _acme-challenge forever.  Pinning
+              # public resolvers makes the correct behaviour independent of that
+              # choice.  (An earlier revision of this comment asserted the
+              # Technitium-authoritative case as fact.  It was a prediction, and
+              # it did not fire — the thing that did is below.)
               resolvers = [ "1.1.1.1:53" "9.9.9.9:53" ];
+
+              # ── THE 30-MINUTE NEGATIVE CACHE.  MEASURED ON ernst 2026-08-23 ──
+              #
+              # Without this delay, issuance fails on a race lego loses to
+              # itself, and then keeps losing:
+              #
+              #   1. lego writes the TXT record at Cloudflare.
+              #   2. ~1 s later it asks 9.9.9.9 for the authority of
+              #      _acme-challenge.goclan.org.  Cloudflare's edge has not
+              #      published yet, and Cloudflare answers a nonexistent name
+              #      with NXDOMAIN — not NODATA.
+              #   3. goclan.org's SOA minimum is 1800.  9.9.9.9 therefore caches
+              #      that NXDOMAIN for THIRTY MINUTES.
+              #   4. lego polls every 2 s for 120 s, hits its own poisoned cache
+              #      every time, and times out.  Traefik retries, still inside
+              #      the 30-minute window, and fails identically.
+              #
+              # The observed error names the mechanism exactly, which is the only
+              # reason it was cheap to find:
+              #   "recursive nameservers: NS 9.9.9.9:53 returned NXDOMAIN for
+              #    _acme-challenge.goclan.org"
+              # while the record was demonstrably live at the authoritative
+              # servers the whole time:
+              #   dig +short @jamie.ns.cloudflare.com TXT _acme-challenge.goclan.org
+              #
+              # 60 s, against a Cloudflare edge that publishes in about five.
+              # The point is not the margin — it is that the FIRST query happens
+              # after the record exists, so the negative cache is never created
+              # and there is nothing to wait out.  The 120 s propagation check
+              # still runs afterwards; this only moves when it starts.
+              #
+              # DO NOT "fix" this with propagation.disableChecks instead.  That
+              # hands the record to Let's Encrypt unverified, and a premature
+              # hand-off burns failed-validation rate limit with no local signal
+              # at all.  The check is worth keeping; it just must not run before
+              # the thing it checks for exists.
+              #
+              # IF IT STILL FAILS with NXDOMAIN after this: a poisoned entry is
+              # already cached from an earlier attempt.  Nothing in the config
+              # can clear it — wait out the 30 minutes, or verify with
+              # `dig @9.9.9.9 TXT _acme-challenge.goclan.org` (NOERROR means the
+              # cache is clean) before restarting the container.
+              propagation.delayBeforeChecks = "60s";
             };
           };
         };
