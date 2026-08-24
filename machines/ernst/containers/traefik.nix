@@ -963,6 +963,47 @@ in
           # There is deliberately no `passHostHeader = false` anywhere: Traefik
           # forwards the original Host by default, which is what lets Jellyfin
           # generate correct absolute URLs.
+          # ── A shorter idle timeout on the pool to Authelia (M7) ───────────
+          #
+          # LOG HYGIENE, not behaviour, and it is a HYPOTHESIS rather than a
+          # measurement — labelled as such because this repo has been bitten
+          # twice by the other kind.
+          #
+          # After M7 deployed, authelia-main's journal filled with:
+          #
+          #   level=error msg="Request timeout occurred while handling request
+          #   from client." error="read tcp 10.0.90.15:9091->10.0.90.12:37010:
+          #   i/o timeout" method=GET path=/ status_code=408
+          #
+          # — one per idle connection, at level=error, from this container's
+          # address.  Nothing is broken: every one of those requests was served.
+          #
+          # The mechanism, as far as it can be reasoned about from here:
+          # Authelia's `server.timeouts.read` defaults to 6 s, and Traefik's
+          # backend connection pool holds an idle keep-alive connection for
+          # `idleConnTimeout`, default 90 s.  Whoever's timer is shorter closes
+          # the connection — today that is always Authelia, and fasthttp logs
+          # the close against the LAST request it saw on that connection, which
+          # is why the line names a path that completed normally minutes ago.
+          #
+          # Making Traefik hang up first (5 s < 6 s) should mean the connection
+          # is always closed by its owner and never by a timeout.  The cost is
+          # one TCP handshake per burst on a layer-2 hop that never leaves this
+          # host — microseconds, and only when the proxy has been idle.
+          #
+          # WHY NOT raise Authelia's read timeout instead: that weakens a real
+          # server-side protection (a slow-header client holding a connection)
+          # to silence a log line, and it would have to exceed Traefik's 90 s
+          # to actually work.  The pool is the thing misbehaving; fix the pool.
+          #
+          # CONFIRM AFTER DEPLOY, and if it did not work say so here:
+          #   nixos-container run authelia -- \
+          #     journalctl -u authelia-main --since "30 min ago" | grep -c 408
+          # Expect 0.  If it is not 0, the reasoning above is wrong and the
+          # next reader deserves to know that rather than inherit a plausible
+          # story.
+          http.serversTransports.shortIdle.forwardingTimeouts.idleConnTimeout = "5s";
+
           http.services = {
             jellyfin.loadBalancer.servers = [ { url = "http://${jellyfinAddr}:${toString jellyfinPort}/"; } ];
             prowlarr.loadBalancer.servers = [ { url = "http://${arrAddr}:${toString prowlarrPort}/"; } ];
@@ -975,7 +1016,10 @@ in
             # paths to it.  The portal is a browser-facing route; the
             # middleware's is a server-to-server call on a different path
             # (/api/authz/forward-auth) of the same listener.
-            authelia.loadBalancer.servers = [ { url = "http://${autheliaAddr}:${toString autheliaPort}/"; } ];
+            authelia.loadBalancer = {
+              servers = [ { url = "http://${autheliaAddr}:${toString autheliaPort}/"; } ];
+              serversTransport = "shortIdle";
+            };
           };
         };
       };

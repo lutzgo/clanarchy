@@ -161,14 +161,46 @@
 #   third-party dependency in the login path of every admin UI in the house.
 #   The file costs one `cat`.
 #
-#   The consequence is real and has to be known before the first login:
-#   ENROLLING TOTP SENDS A LINK BY "EMAIL", and the email is a file.
+#   The consequence is real, it is worse than it first looks, and it cost a
+#   round on deploy day.  READ THIS BEFORE ENROLLING ANYONE.
 #
-#       nixos-container run authelia -- cat /var/lib/authelia-main/notification.txt
+#   Authelia 4.39 does not let you register a 2FA device on a merely
+#   authenticated session.  It first requires a SESSION ELEVATION: it sends an
+#   eight-character ONE-TIME CODE through the notifier, and you type that back
+#   before the QR appears.  Our notifier is a file, so "check your email" means
+#   reading a file on ernst.  Use the helper:
 #
-#   Log in with a password, choose to register a device, then read the link out
-#   of that file and open it.  The QR code follows.  This is a once-per-account
-#   step, and it is why the PR's manual steps list it.
+#       authelia-code            # on ernst, as root
+#
+#   THREE TRAPS, ALL OF WHICH FIRED ON 2026-08-24:
+#
+#     1. notification.txt IS APPEND-ONLY.  Every code ever sent is in it,
+#        oldest first.  `cat` shows the FIRST one, which is always the wrong
+#        one.  The failure is
+#          "the code didn't match any recorded code challenges"
+#        or, worse, "the code challenge has expired" — which reads like the
+#        code you just requested timed out, when in fact you typed an older
+#        one.  An earlier revision of this comment said `cat`.  That was the
+#        bug.  The helper exists so nobody has to know this.
+#     2. THE CODE EXPIRES in five minutes (identity_validation's default).
+#        Have the terminal open BEFORE clicking, not after.
+#     3. GENERATING CODES IS RATE-LIMITED, in stacked buckets, and clicking
+#        again because "it didn't work" is what makes it much worse:
+#          Rate Limit Exceeded  bucket=1 delay=35s
+#          Rate Limit Exceeded  bucket=2 delay=545s
+#          Rate Limit Exceeded  bucket=3 delay=1745s      ← 29 minutes
+#        The UI reports this as "Failed to generate the One-Time Code. Please
+#        try again later", which sounds like a broken notifier and is not.  If
+#        you see it, STOP CLICKING and wait; every extra click extends it.
+#
+#   The whole flow, once, per account:
+#       log in with the password  →  Settings → 2FA → One-Time Password → ADD
+#       →  `authelia-code` on ernst  →  type it  →  QR appears  →  scan.
+#
+#   AND ONE UI TRAP THAT IS NOT OURS: the 2FA page can land on "Security Key"
+#   (WebAuthn) even when the account's preferred method is TOTP.  With nothing
+#   registered it then shows only "Register device" and no code box, which
+#   looks like a broken login.  Click METHODS and pick One-Time Password.
 #
 # ── Storage layout on this host (see machines/ernst/disko.nix) ───────────────
 #
@@ -322,6 +354,89 @@ in
   # has no matching passwd entry.
   systemd.tmpfiles.rules = [
     "d /srv/state/authelia 0700 ${toString autheliaUid} ${toString autheliaGid} -"
+  ];
+
+  ##############################################################################
+  # `authelia-code` — print the LATEST one-time code, and only that.
+  #
+  # See NOTIFIER in the file header for why this exists.  Briefly:
+  # notification.txt is append-only, the code expires in five minutes, and
+  # asking for a fresh one is rate-limited in stacked buckets — so reading the
+  # wrong block is not a small mistake.  `cat` shows the oldest code; `tail`
+  # shows the right one plus forty lines of boilerplate to hunt through while
+  # the clock runs.  This prints one line.
+  #
+  # It also prints the AGE, because the specific confusion on deploy day was an
+  # expired code reported as "didn't match" — with an age in front of it, a
+  # stale read is obvious before it is typed.
+  #
+  # Root-only by construction: the file is 0600 uid 3008 on zdata and this
+  # reads it from the host rather than through the container, so there is no
+  # nsenter and nothing to keep in step with the container's paths.
+  ##############################################################################
+  environment.systemPackages = [
+    (pkgs.writeShellApplication {
+      name = "authelia-code";
+      runtimeInputs = [ pkgs.coreutils pkgs.gnused pkgs.gnugrep pkgs.gawk ];
+      text = ''
+        f=/srv/state/authelia/notification.txt
+
+        if [ ! -s "$f" ]; then
+          echo "authelia-code: no notification has ever been sent." >&2
+          echo "  The file is created lazily, on the first one-time code." >&2
+          echo "  Log in at https://${authHost} and click ADD under One-Time" >&2
+          echo "  Password first, then run this again." >&2
+          exit 1
+        fi
+
+        # Blocks begin with a "Date: " line; the newest is last.
+        start=$(grep -n "^Date: " "$f" | tail -1 | cut -d: -f1)
+        if [ -z "$start" ]; then
+          echo "authelia-code: no 'Date:' header in $f — unexpected format." >&2
+          exit 1
+        fi
+        block=$(tail -n +"$start" "$f")
+
+        when=$(printf '%s\n' "$block" | sed -n '1s/^Date: \(....-..-.. ..:..:..\).*/\1/p')
+        subj=$(printf '%s\n' "$block" | sed -n 's/^Subject: //p' | head -1)
+        who=$(printf '%s\n'  "$block" | sed -n 's/^Recipient: //p' | head -1)
+
+        # The payload is the first non-empty line after the first rule of
+        # dashes.  That is the code for an elevation notification and the URL
+        # for a link-style one, which is why this prints whatever it finds
+        # rather than validating a shape.
+        val=$(printf '%s\n' "$block" | awk '/^-{10,}/ { seen = 1; next } seen && NF { print; exit }')
+        if [ -z "$val" ]; then
+          echo "authelia-code: found a notification but no payload in it." >&2
+          echo "  Read it directly:  tail -40 $f" >&2
+          exit 1
+        fi
+
+        age=""
+        if [ -n "$when" ]; then
+          now=$(date +%s)
+          then_=$(date -d "$when" +%s 2>/dev/null || echo "")
+          if [ -n "$then_" ]; then
+            secs=$(( now - then_ ))
+            if [ "$secs" -lt 300 ]; then
+              age="$secs s ago"
+            else
+              age="$(( secs / 60 )) min ago — EXPIRED, request a new one"
+            fi
+          fi
+        fi
+
+        printf '%s\n' "$val"
+        printf '\n'
+        printf '  for      %s\n' "''${who:-?}"
+        printf '  subject  %s\n' "''${subj:-?}"
+        printf '  issued   %s  %s\n' "''${when:-?}" "$age"
+        printf '\n'
+        printf '  Codes expire after 5 minutes.  If the portal says it failed to\n'
+        printf '  generate one, that is the RATE LIMIT, not a broken notifier —\n'
+        printf '  stop clicking and wait; each click extends it.\n'
+      '';
+    })
   ];
 
   # Stage every secret where the container can see it.

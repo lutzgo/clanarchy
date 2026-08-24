@@ -2146,16 +2146,52 @@ every machine that never enabled it.
 
 Authelia requires exactly one notifier; the choices are SMTP and a file. SMTP
 would mean a mail credential, an outbound path to a mail host, and a third-party
-dependency in the login path of every admin UI in the house. The file costs one
-`cat` — but the consequence has to be known before the first login, because
-**enrolling TOTP sends a link by "email"**:
+dependency in the login path of every admin UI in the house. The file is cheaper
+— but "cheaper" turned out to be wrong about *how much* cheaper, and this
+section originally said `cat`, which is the bug that cost a round on deploy day.
 
-```bash
-nixos-container run authelia -- cat /var/lib/authelia-main/notification.txt
+**Authelia 4.39 will not let you register a 2FA device on a merely
+authenticated session.** It first requires a *session elevation*: an
+eight-character one-time code, sent through the notifier, typed back before the
+QR appears. So every enrolment is a round trip through a file on ernst, and
+three things bite:
+
+1. **`notification.txt` is append-only.** Every code ever sent is in it, oldest
+   first, so `cat` shows the one that is always wrong. The error you get is
+   `the code didn't match any recorded code challenges` — or, worse, `the code
+   challenge has expired`, which reads like the code you *just* requested timed
+   out when in fact you typed an older one.
+2. **Codes expire in five minutes.** Have the terminal open before clicking.
+3. **Generating codes is rate-limited in stacked buckets**, and clicking again
+   because "it didn't work" is what makes it much worse:
+   `bucket=1 delay=35s`, `bucket=2 delay=545s`, `bucket=3 delay=1745s` — 29
+   minutes. The UI reports this as *"Failed to generate the One-Time Code.
+   Please try again later"*, which sounds like a broken notifier and is not.
+
+Hence **`authelia-code`**, a root helper on ernst that prints the newest code
+and its age and nothing else:
+
+```console
+# authelia-code
+EAW9R3EC
+
+  for      {Lutz lutz0go@gmail.com}
+  subject  Confirm your identity
+  issued   2026-08-24 17:34:28  40 s ago
 ```
 
-Log in with a password, choose to register a device, read the link out of that
-file, open it, scan the QR. Once per account.
+An age older than five minutes prints `EXPIRED, request a new one` instead — the
+specific confusion on deploy day was an expired code being reported as "didn't
+match", and an age in front of it makes a stale read obvious before it is typed.
+
+The flow, once per account: log in with the password → Settings → 2FA →
+One-Time Password → **ADD** → `authelia-code` → type it → scan the QR.
+
+**One UI trap that is not ours**: the 2FA page can land on *Security Key*
+(WebAuthn) even when the account's preferred method is TOTP. With nothing
+registered it then offers only "Register device" and no code box, which looks
+exactly like a broken login. Click **METHODS** and pick One-Time Password. Both
+accounts hit this.
 
 Password reset is disabled for the matching reason: the reset flow mails a link to
 a file on ernst, so "reset your password" already means "get a shell on ernst" —
@@ -2283,17 +2319,24 @@ M7; worth a `fix/` branch.)*
 
 ### Still to do
 
-- **Enrol TOTP, per account.** `notification.txt` does **not** exist yet, and
-  that is expected rather than a fault: Authelia creates it lazily on the first
-  notification. Log in with the password first, choose to register a device, and
-  only then does the file appear.
+- **Enrol TOTP, per account.** `go` is enrolled (`totp_configurations` has its
+  row); `lgo` is not, and the account is rate-limited from the attempts that
+  found the three traps above. Use `authelia-code` once the buckets drain.
 - **Grafana OIDC has not been exercised** — the "Sign in with Authelia" button
   has not been clicked, so the token exchange and the group→role mapping are
-  unproven.
-- **Break-glass has not been rehearsed.** Stop the container and try the tunnel
-  before you need it, not after.
+  unproven. Everything *around* it has been checked from the monitoring
+  container: it resolves `auth.goclan.org`, discovery returns 200 with TLS
+  verifying, and the client secret is staged `0400` uid 3007.
+- **Break-glass rehearsed 2026-08-24 — works.**
 - **The reboot** (invariant #7). `db.sqlite3` will hold every enrolled TOTP
-  secret and has never met a rollback.
+  secret and has never met a rollback. Do it **after** both accounts are
+  enrolled and have logged in successfully: rebooting now proves nothing,
+  because there is one device in the database to lose.
+- **Confirm the 408 fix**, which is a hypothesis and is labelled as one in
+  `containers/traefik.nix`:
+  `nixos-container run authelia -- journalctl -u authelia-main --since "30 min ago" | grep -c 408`
+  should be 0. If it is not, say so in that comment rather than leaving a
+  plausible story in place.
 
 ### Manual steps — lgo's, and in this order
 
@@ -2317,7 +2360,7 @@ M7; worth a `fix/` branch.)*
    source list is `LAN + IoT` only and does **not** include `Servers`, contrary
    to what the ledger claims. Unrelated to M7, still worth fixing.)*
 5. **`clan machines update ernst`.**
-6. **Enrol TOTP, per account**, using the notifier file — see above. Do lgo's
+6. **Enrol TOTP, per account**, with `authelia-code` on ernst — see the notifier section for the three traps. Do lgo's
    first and confirm it works before touching anything else.
 7. **Verify from the road**, or at least from a non-management VLAN. The whole
    point of retiring L5 is that this now works; it is also the thing that will
