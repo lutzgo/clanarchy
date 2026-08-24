@@ -965,9 +965,8 @@ in
           # generate correct absolute URLs.
           # ── A shorter idle timeout on the pool to Authelia (M7) ───────────
           #
-          # LOG HYGIENE, not behaviour, and it is a HYPOTHESIS rather than a
-          # measurement — labelled as such because this repo has been bitten
-          # twice by the other kind.
+          # LOG HYGIENE, not behaviour.  Shipped as a HYPOTHESIS and since
+          # CONFIRMED — see the measurement at the bottom of this comment.
           #
           # After M7 deployed, authelia-main's journal filled with:
           #
@@ -996,12 +995,24 @@ in
           # to silence a log line, and it would have to exceed Traefik's 90 s
           # to actually work.  The pool is the thing misbehaving; fix the pool.
           #
-          # CONFIRM AFTER DEPLOY, and if it did not work say so here:
+          # ── CONFIRMED ON ernst, 2026-08-24 ────────────────────────────────
+          #
+          #   last 408 logged                       17:42:35
+          #   container@traefik picked this up      17:52:47
+          #   408s after that                       ZERO
+          #
+          # And not for want of traffic: both accounts registered WebAuthn
+          # credentials through this proxy at 18:16 and 18:18, which is exactly
+          # the browse-then-idle pattern that used to produce them.  The
+          # reasoning above holds — Authelia's 6 s read timeout was closing
+          # Traefik's idle pooled connections, and having Traefik hang up at
+          # 5 s means the connection is always closed by its owner.
+          #
+          # Re-check with, if a future nixpkgs bump moves either default:
           #   nixos-container run authelia -- \
           #     journalctl -u authelia-main --since "30 min ago" | grep -c 408
-          # Expect 0.  If it is not 0, the reasoning above is wrong and the
-          # next reader deserves to know that rather than inherit a plausible
-          # story.
+          # Expect 0.  If it is ever not 0, say so HERE rather than leaving a
+          # confirmed-once story to be inherited as permanent truth.
           http.serversTransports.shortIdle.forwardingTimeouts.idleConnTimeout = "5s";
 
           http.services = {
