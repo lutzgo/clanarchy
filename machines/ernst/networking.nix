@@ -292,7 +292,7 @@
   # be read against each other:
   #   02:00:00:90:00:02   jellyfin container eth0   (M2b — allocated)  10.0.90.10
   #   02:00:00:90:00:03   wg-qbittorrent guest eth0 (M3  — allocated)  10.0.90.11
-  #   02:00:00:90:00:04   traefik container eth0    (M5  — reserved)   10.0.90.12
+  #   02:00:00:90:00:04   traefik container eth0    (M5  — allocated)  10.0.90.12
   #   02:00:00:90:00:05   arr container eth0        (M4  — allocated)  10.0.90.13
   #
   # The last octet is 8 + <seq>.  That correspondence is not enforced by
@@ -314,6 +314,8 @@
   #   uid 3003  radarr       (containers/arr.nix — M4, group media)
   #   uid 3004  prowlarr     (containers/arr.nix — M4, NOT in media)
   #   gid 3004  prowlarr     (containers/arr.nix — M4)
+  #   uid 3005  traefik      (containers/traefik.nix — M5, NOT in media)
+  #   gid 3005  traefik      (containers/traefik.nix — M5)
   #
   # MAC policy for both: locally-administered (02:…) so it cannot collide with
   # a vendor OUI.  Convention below: 02:00:00:<vlan>:00:<seq>.  The MAC the
@@ -360,8 +362,9 @@
 
   # ── B. systemd-nspawn container (M4 arr, M5 Traefik) ─────────────────────
   #
-  # NO LONGER HYPOTHETICAL.  M2b implemented this pattern for Jellyfin and M4
-  # followed it for the arr stack; read machines/ernst/containers/jellyfin.nix
+  # NO LONGER HYPOTHETICAL.  M2b implemented this pattern for Jellyfin, M4
+  # followed it for the arr stack and M5 for Traefik; read
+  # machines/ernst/containers/jellyfin.nix
   # ("Networking — v2") for the working version with its full rationale, and
   # copy from there rather than from the sketch below.  The three things that
   # bite:

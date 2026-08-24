@@ -105,6 +105,15 @@ let
   # in the 900s for system users on 26.05) so it cannot collide with a
   # future auto-allocated group.
   mediaGid = 3000;
+
+  # Traefik's veth address on VLAN 90 (M5, DHCP reservation on the UDM-Pro
+  # keyed on 02:00:00:90:00:04).  The ONLY source permitted to reach 8096.
+  #
+  # Naming a peer's address here is the deliberate opposite of the rule this
+  # file follows for its own — see the "BACKEND BYPASS HARDENING" section of
+  # machines/ernst/containers/traefik.nix, which owns the argument for why the
+  # restriction lives on this side rather than on the UDM-Pro.
+  traefikAddr = "10.0.90.12";
 in
 {
   ##############################################################################
@@ -486,7 +495,44 @@ in
       #              would answer it shares this broadcast domain.
       #   1900/udp   DLNA/SSDP.  Same, plus a well-worn RCE surface.  Disable
       #              it in the Jellyfin UI too (Dashboard → DLNA).
-      networking.firewall.allowedTCPPorts = [ 8096 ];
+      #
+      # ── M5: 8096 IS NO LONGER OPEN TO THE VLAN ────────────────────────────
+      #
+      # It was `allowedTCPPorts = [ 8096 ]` until M5.  Now the only source that
+      # may reach it is Traefik, and the list is EMPTY so that nothing grants
+      # the port unconditionally before the restricted rule below is reached.
+      #
+      # Why extraCommands and not allowedTCPPorts: the NixOS firewall has no
+      # per-source form of that option.  `extraInputRules` looks like the
+      # modern answer and is a TRAP HERE — it is declared unconditionally in
+      # nixos/modules/services/networking/firewall-nftables.nix but consumed
+      # ONLY when networking.nftables.enable is true, which it is not.  Setting
+      # it would produce no rule, no warning and no error: a bypass protection
+      # that silently does not exist.  extraCommands is the iptables backend's
+      # own escape hatch and cannot fail quietly — a rule that will not insert
+      # fails the firewall unit.
+      #
+      # PLACEMENT IS WHAT MAKES IT WORK.  firewall-iptables.nix's start script
+      # emits, in order: the allowedTCPPorts accepts, then extraCommands, then
+      # a final `-A nixos-fw -j nixos-fw-log-refuse`.  So appending here lands
+      # after every other accept and before the catch-all refuse — traffic from
+      # traefikAddr is accepted, everything else to 8096 falls through and is
+      # rejected.  There is nothing to add to extraStopCommands: the script
+      # flushes and recreates the nixos-fw chain on every start and reload, so
+      # these rules are rebuilt from scratch rather than accumulated.
+      #
+      # `iptables`, not `ip46tables`: traefikAddr is IPv4 and IPv6AcceptRA is
+      # off on eth0, so there is no v6 path to this port to restrict.
+      #
+      # CONSEQUENCE: `curl http://10.0.90.10:8096` from a laptop or from ernst
+      # now fails, and that is the milestone working.  To reach Jellyfin
+      # directly for debugging, go in through the container, where `lo` is
+      # always trusted by the NixOS firewall:
+      #     nixos-container run jellyfin -- curl -sS localhost:8096/health
+      networking.firewall.allowedTCPPorts = [ ];
+      networking.firewall.extraCommands = ''
+        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32 --dport 8096 -j nixos-fw-accept
+      '';
 
       # Pin jellyfin's numeric UID/GID to match the host-side chown above so
       # the /var/lib/jellyfin bind is owned correctly from first boot.
