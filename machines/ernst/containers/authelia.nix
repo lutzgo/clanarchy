@@ -989,34 +989,39 @@ in
         };
       };
 
-      # NOTE ON THE UPSTREAM HARDENING, deliberately left alone.
+      # NOTE ON THE UPSTREAM HARDENING — MEASURED 2026-08-24, AND IT ALL WORKS.
       #
-      # nixpkgs' authelia module sets a large systemd sandbox unconditionally —
-      # ProtectKernelTunables, ProtectKernelModules, ProtectControlGroups,
-      # RestrictNamespaces, PrivateUsers, MemoryDenyWriteExecute,
-      # ProtectSystem=strict — and, unlike the jellyfin module, it is NOT
-      # container-aware: there is no `!config.boot.isContainer` guard on any of
-      # them.  containers/traefik.nix records that some of those options
-      # conflict with nspawn's own mount-namespace setup.
+      # nixpkgs' authelia module sets a large systemd sandbox unconditionally
+      # and, unlike the jellyfin module, it is NOT container-aware: there is no
+      # `!config.boot.isContainer` guard on any of it.  containers/traefik.nix
+      # records that some such options conflict with nspawn's own
+      # mount-namespace setup, so this file shipped with nothing overridden and
+      # an explicit instruction to record what actually happened.
       #
-      # NOTHING IS OVERRIDDEN HERE, because nothing has been measured.  This
-      # repo's own lesson from M2/M2b is that a plausible inference recorded as
-      # a measurement is how you end up fixing a hazard that does not exist —
-      # and pre-emptively deleting six hardening options from an identity
-      # provider on a guess is a worse trade than fixing it once if it breaks.
+      # What actually happened, on the first deploy, from
+      # `systemctl show authelia-main` inside the container:
       #
-      # IF authelia-main FAILS TO START inside the container, `systemctl status
-      # authelia-main` will name the option in the message
-      # ("Failed to set up mount namespacing", "Operation not permitted").  The
-      # fix is one block, and the first three suspects are listed:
+      #   ActiveState=active   NRestarts=0   ExecMainStatus=0
+      #   ProtectKernelTunables=yes   ProtectKernelModules=yes
+      #   ProtectControlGroups=yes    RestrictNamespaces=yes
+      #   PrivateUsers=yes            MemoryDenyWriteExecute=yes
+      #   ProtectSystem=strict
       #
-      #   systemd.services.authelia-main.serviceConfig = {
-      #     ProtectKernelTunables = lib.mkForce false;
-      #     ProtectControlGroups  = lib.mkForce false;
-      #     PrivateUsers          = lib.mkForce false;
-      #   };
+      # ALL SEVEN ARE IN EFFECT and the service came up first try.  So the
+      # concern was unfounded HERE, and the reason is worth keeping: nspawn
+      # containers under nixos-containers are privileged (no --private-users),
+      # PID 1 inside holds CAP_SYS_ADMIN, and every one of these options is
+      # applied by systemd INSIDE that namespace where it has the privilege to
+      # do so.  The jellyfin module's guard is about a different case.
       #
-      # Record which one it actually was, not which one it might have been.
+      # THE TRANSFERABLE PART is not "these options are fine in nspawn" — it is
+      # that pre-emptively deleting six hardening options from an identity
+      # provider, on a guess, would have permanently weakened this unit to
+      # avert a failure that never occurs.  Do not add a `mkForce false` block
+      # here.  If a future nixpkgs bump does break startup, `systemctl status
+      # authelia-main` names the option in the message ("Failed to set up mount
+      # namespacing", "Operation not permitted") — disable THAT one, and record
+      # it here the same way.
 
       # `curl` is the test plan's instrument — it is what proves the authz
       # endpoint answers from HERE and, run anywhere else, that it does not.
