@@ -398,6 +398,23 @@ in
   # Rate-limiting means a fresh code may not be obtainable for half an hour, so
   # noticing staleness BEFORE typing is worth more than it sounds.
   #
+  # `--wait` EXISTS BECAUSE THE ORDER IS A TRAP, and telling people to get the
+  # order right is not a fix.  Reading the file and THEN clicking ADD gets you
+  # a code that the click itself invalidates:
+  #
+  #     id 6  issued 17:09:34  revoked 17:09:43     ← superseded by the next ADD
+  #     id 7  issued 17:50:52  expires 17:55:52     ← the live one, unread
+  #
+  # and Authelia reports typing the first of those as "the code challenge has
+  # EXPIRED", which sends you looking at clocks rather than at ordering.  Each
+  # ADD mints a new code and revokes the previous one; so does cancelling or
+  # closing the dialog.
+  #
+  # With `--wait` the tool blocks on the file's mtime and prints the code the
+  # instant the notifier writes it, so the sequence becomes "run this, then
+  # click" and there is no earlier code in scrollback to reach for.  It cannot
+  # print a stale one because it only prints on a CHANGE.
+  #
   # Root-only by construction: the file is 0600 uid 3008 on zdata and this
   # reads it from the host rather than through the container, so there is no
   # nsenter and nothing to keep in step with the container's paths.
@@ -408,6 +425,43 @@ in
       runtimeInputs = [ pkgs.coreutils pkgs.gnused pkgs.gnugrep pkgs.gawk ];
       text = ''
         f=/srv/state/authelia/notification.txt
+
+        wait=0
+        case "''${1-}" in
+          -w|--wait) wait=1 ;;
+          "")        ;;
+          *)
+            echo "usage: authelia-code [--wait]" >&2
+            echo "  --wait  block until the NEXT notification is written, then" >&2
+            echo "          print it.  Run this BEFORE clicking ADD: the click" >&2
+            echo "          revokes whatever code the file already holds." >&2
+            exit 2
+            ;;
+        esac
+
+        if [ "$wait" = 1 ]; then
+          # mtime, not content: the notifier rewrites the whole file, and two
+          # consecutive codes could in principle be equal.  A changed mtime is
+          # the event; the content is just what we read afterwards.
+          before=$(stat -c %Y "$f" 2>/dev/null || echo 0)
+          echo "waiting for a new one-time code - click ADD now (120s)…" >&2
+          n=0
+          while [ "$n" -lt 120 ]; do
+            n=$(( n + 1 ))
+            sleep 1
+            now=$(stat -c %Y "$f" 2>/dev/null || echo 0)
+            if [ "$now" != "$before" ]; then
+              break
+            fi
+          done
+          if [ "$n" -ge 120 ]; then
+            echo "authelia-code: no new notification in 120s." >&2
+            echo "  Either ADD was not clicked, or the request was rate-limited" >&2
+            echo "  - check:  nixos-container run authelia -- \\" >&2
+            echo "              journalctl -u authelia-main | grep 'Rate Limit'" >&2
+            exit 1
+          fi
+        fi
 
         if [ ! -s "$f" ]; then
           echo "authelia-code: no notification has ever been sent." >&2
@@ -420,7 +474,7 @@ in
         # Blocks begin with a "Date: " line; the newest is last.
         start=$(grep -n "^Date: " "$f" | tail -1 | cut -d: -f1)
         if [ -z "$start" ]; then
-          echo "authelia-code: no 'Date:' header in $f — unexpected format." >&2
+          echo "authelia-code: no 'Date:' header in $f - unexpected format." >&2
           exit 1
         fi
         block=$(tail -n +"$start" "$f")
@@ -449,7 +503,7 @@ in
             if [ "$secs" -lt 300 ]; then
               age="$secs s ago"
             else
-              age="$(( secs / 60 )) min ago — EXPIRED, request a new one"
+              age="$(( secs / 60 )) min ago - EXPIRED, request a new one"
             fi
           fi
         fi
@@ -459,10 +513,17 @@ in
         printf '  for      %s\n' "''${who:-?}"
         printf '  subject  %s\n' "''${subj:-?}"
         printf '  issued   %s  %s\n' "''${when:-?}" "$age"
+        # ASCII only in this block, and no backticks.  writeShellApplication
+        # runs shellcheck at build time: backticks inside single quotes read as
+        # command substitution (SC2016), and an em-dash makes shellcheck's own
+        # output fail to encode in the build sandbox, which turns a style
+        # warning into a build error naming neither cause.
         printf '\n'
-        printf '  Codes expire after 5 minutes.  If the portal says it failed to\n'
-        printf '  generate one, that is the RATE LIMIT, not a broken notifier —\n'
-        printf '  stop clicking and wait; each click extends it.\n'
+        printf '  Codes expire after 5 minutes, and clicking ADD again revokes\n'
+        printf '  this one.  If you already had a code before clicking, it is\n'
+        printf '  dead: run "authelia-code --wait" and click AFTER starting it.\n'
+        printf '  "Failed to generate the One-Time Code" in the portal is the\n'
+        printf '  RATE LIMIT, not a broken notifier; stop clicking and wait.\n'
       '';
     })
   ];
@@ -489,7 +550,7 @@ in
       set -euo pipefail
 
       # 0711: traversable by anyone, listable by nobody.  The files inside are
-      # read by the AUTHELIA uid, unprivileged, so it must be able to walk in —
+      # read by the AUTHELIA uid, unprivileged, so it must be able to walk in -
       # and 0700 root:root here would produce EACCES on every one of them with
       # a message that names the file rather than the directory.  See PR #84.
       install -d -m 0711 -o root -g root ${secretsDir}
@@ -511,7 +572,7 @@ in
       # Built here rather than in the Nix config for one reason: it carries
       # Grafana's client secret DIGEST, and the Nix store is world-readable on
       # this host.  A pbkdf2-sha512 digest of 72 random alphanumerics is not
-      # meaningfully crackable — the point is not to publish credential
+      # meaningfully crackable - the point is not to publish credential
       # material at all, so there is nothing to argue about later.
       #
       # The digest's own alphabet is base64 with `.` and `/`, so it never
@@ -548,7 +609,7 @@ in
     '';
   };
 
-  # Host side of the container's veth — a VLAN-90 port on br0.
+  # Host side of the container's veth - a VLAN-90 port on br0.
   #
   # There is deliberately NO `networking.firewall.allowedTCPPorts` here.  9091
   # is opened inside the container's own netns; on the host it is not a port at
@@ -576,7 +637,7 @@ in
   # master out of band.  `bridge vlan add` is idempotent; the "-" prefix keeps
   # a backstop from becoming a new failure mode.
   #
-  # `bridge vlan show dev vb-authelia` remains the check — do not trust silence
+  # `bridge vlan show dev vb-authelia` remains the check - do not trust silence
   # from either mechanism.
   systemd.services."container@authelia".serviceConfig.ExecStartPost = [
     "-${pkgs.iproute2}/bin/bridge vlan add dev ${vethName} vid ${toString vlanId} pvid untagged"
@@ -596,7 +657,7 @@ in
   #   storage-encryption-key  encrypts the TOTP secrets and WebAuthn
   #                           credentials AT REST in db.sqlite3.  Changing it
   #                           makes every enrolled second factor
-  #                           undecryptable — Authelia ships
+  #                           undecryptable - Authelia ships
   #                           `storage encryption change-key` for the supported
   #                           rotation, and a `clan vars` regeneration is NOT
   #                           it.  clan only runs a generator when its output
@@ -664,7 +725,7 @@ in
   # be looked up out of sops every time.  Same call as Grafana's admin password
   # and the Cloudflare token.
   #
-  # The file is emitted READ-ONLY and stays that way — `password_reset.disable`
+  # The file is emitted READ-ONLY and stays that way - `password_reset.disable`
   # is set below, so Authelia never writes to it.  A writable user database
   # inside a container whose root filesystem is rebuilt on every deploy would
   # be state living somewhere nothing persists.
@@ -672,7 +733,7 @@ in
   # HASHED WITH AUTHELIA'S OWN CLI rather than with a generic argon2 tool: the
   # digest string has to be one Authelia's verifier accepts, and the binary
   # that writes it is the binary that reads it.  Defaults are argon2id,
-  # m=65536 t=3 p=4 — the profile Authelia recommends for a machine with
+  # m=65536 t=3 p=4 - the profile Authelia recommends for a machine with
   # memory to spare, which this one has.
   clan.core.vars.generators.authelia-users = {
     files."users_database.yml".secret       = true;
@@ -709,7 +770,7 @@ in
 
         # `--password` puts the value on argv, so it is visible in `ps` for the
         # lifetime of this one hash on the machine running `clan vars generate`
-        # — a laptop the operator is sitting at.  Authelia's CLI offers no
+        # - a laptop the operator is sitting at.  Authelia's CLI offers no
         # stdin form (`--password`, `--random`, or an interactive terminal
         # prompt, which a generator has no terminal for).  Noted rather than
         # hidden; if it ever matters, the fix is upstream.
@@ -742,7 +803,7 @@ in
   #
   # Authelia stores the client secret HASHED; Grafana needs the plaintext.  Two
   # values that must correspond, so they are produced by ONE generator in one
-  # run — the alternative (two generators, or a prompt plus a hand-run hashing
+  # run - the alternative (two generators, or a prompt plus a hand-run hashing
   # command) is two things to keep in step with nothing checking that they
   # agree, and the failure mode is an OIDC login that returns
   # "invalid_client" with no indication which half is wrong.
@@ -750,7 +811,7 @@ in
   # 72 alphanumerics: Authelia's own recommended client-secret length, and long
   # enough that the pbkdf2 digest being readable on this host is not a finding.
   #
-  # The PLAINTEXT half is consumed on the other side of the machine — staged
+  # The PLAINTEXT half is consumed on the other side of the machine - staged
   # into the monitoring container by service-modules/monitoring.nix, which also
   # declares the restartUnits for it, because those units exist only on the
   # machine holding that role.
@@ -799,7 +860,7 @@ in
 
     bindMounts = {
       # The SQLite database and the notifier's file, on zdata.  Remapped to the
-      # unit's own StateDirectory so services.authelia needs no path override —
+      # unit's own StateDirectory so services.authelia needs no path override -
       # the same trick containers/jellyfin.nix uses for /var/lib/jellyfin.
       "${dataDir}" = {
         hostPath   = "/srv/state/authelia";
@@ -832,7 +893,7 @@ in
       networking.useNetworkd       = true;
       services.resolved.enable     = true;
 
-      # eth0 — renamed from host0 by container-init before stage 2 runs.
+      # eth0 - renamed from host0 by container-init before stage 2 runs.
       # DHCP against the UDM-Pro reservation; resolver DECLARED, not inherited,
       # so a future change to the Services network's DHCP options cannot
       # silently move this container off Technitium.
@@ -860,7 +921,7 @@ in
 
       # The container's own firewall, in its own netns.
       #
-      # NOTHING is unconditionally open — backend bypass hardening, mechanism
+      # NOTHING is unconditionally open - backend bypass hardening, mechanism
       # (a), and it matters more here than for any other backend: see the
       # X-Forwarded-* paragraph in the file header.  9091 accepts the reverse
       # proxy and 9959 accepts the monitoring container, and no other source
@@ -872,13 +933,13 @@ in
       '';
 
       ##########################################################################
-      # Users.  Numeric ids are the interface across the nspawn boundary — see
+      # Users.  Numeric ids are the interface across the nspawn boundary - see
       # the allocation table in machines/ernst/networking.nix.
       #
       # The upstream module declares users.users.authelia-main without a uid
       # (it lets NixOS allocate one from the system range) and the group
       # without a gid, both as plain definitions, so adding them here is a
-      # MERGE and needs no mkForce — the same shape containers/traefik.nix
+      # MERGE and needs no mkForce - the same shape containers/traefik.nix
       # found for uid 3005, unlike service-modules/monitoring.nix where the
       # upstream modules set ids from config.ids.* and the override has to
       # fight them.
@@ -902,7 +963,7 @@ in
         enable = true;
 
         # The module turns each of these into an AUTHELIA_*_FILE environment
-        # variable that Authelia reads ITSELF, unprivileged — which is why the
+        # variable that Authelia reads ITSELF, unprivileged - which is why the
         # staging unit gives every one of them to uid 3008 rather than to root.
         #
         # oidcIssuerPrivateKeyFile additionally makes the module emit a
@@ -920,7 +981,7 @@ in
 
         # The OIDC client block, staged out of sops.  Authelia merges every
         # --config file it is given, and the module's preStart runs
-        # `validate-config` across all of them — so a malformed staged file
+        # `validate-config` across all of them - so a malformed staged file
         # fails the unit before it can serve a single request.
         settingsFiles = [ oidcClientFile ];
 
@@ -935,8 +996,8 @@ in
           #
           # ONLY THE ForwardAuth AUTHZ ENDPOINT IS DECLARED, which replaces
           # Authelia's default set rather than adding to it.  Upstream ships
-          # four implementations — ForwardAuth, ExtAuthz, AuthRequest and
-          # Legacy — because it does not know which proxy is in front.  This
+          # four implementations - ForwardAuth, ExtAuthz, AuthRequest and
+          # Legacy - because it does not know which proxy is in front.  This
           # one does.  Three unused authorization endpoints on a port that
           # trusts X-Forwarded-* are three ways to get the semantics subtly
           # wrong, and `legacy` in particular behaves differently from the
@@ -969,13 +1030,13 @@ in
           #
           # ONE COOKIE, scoped to the apex, because every protected name is one
           # label below it.  `authelia_url` is what the redirect goes to and it
-          # MUST be inside `domain` — Authelia refuses to start otherwise,
+          # MUST be inside `domain` - Authelia refuses to start otherwise,
           # which is the correct failure and worth knowing before you see it.
           #
           # IN-MEMORY SESSION STORE, deliberately: there is no Redis and there
           # will not be one for a single instance.  The consequence is that
           # restarting this container logs everyone out.  That is the right
-          # trade — a Redis would be a second stateful service, on the same
+          # trade - a Redis would be a second stateful service, on the same
           # box, in the login path of every admin UI, to avoid re-entering a
           # TOTP code after a deploy.
           #
@@ -994,7 +1055,7 @@ in
           ];
 
           ######################################################################
-          # Storage — SQLite, on zdata.
+          # Storage - SQLite, on zdata.
           #
           # Single instance, no HA requirement, and the working set is a
           # handful of rows: a Postgres here would be a second container and a
@@ -1005,7 +1066,7 @@ in
           storage.local.path = "${dataDir}/db.sqlite3";
 
           ######################################################################
-          # Notifier — a file.  See NOTIFIER in the header: enrolling TOTP
+          # Notifier - a file.  See NOTIFIER in the header: enrolling TOTP
           # means reading the link out of this file once per account.
           ######################################################################
           notifier = {
@@ -1014,7 +1075,7 @@ in
           };
 
           ######################################################################
-          # Authentication backend — the staged users_database.yml.
+          # Authentication backend - the staged users_database.yml.
           #
           # password_reset.disable = true is what keeps that file READ-ONLY,
           # and the reason is not squeamishness: the reset flow mails a link,
@@ -1046,7 +1107,7 @@ in
           # (available, not default) rather than disabled: lgo carries a
           # YubiKey, this portal is served over HTTPS on a stable origin, and
           # enrolling one later should not need a deploy.  Duo is off because
-          # it is unconfigured — it requires an API host and a key, so it
+          # it is unconfigured - it requires an API host and a key, so it
           # cannot be reached by accident.
           ######################################################################
           default_2fa_method = "totp";
@@ -1068,7 +1129,7 @@ in
           # five minutes cost a fifteen-minute ban, tracked per user in
           # db.sqlite3 and therefore surviving a restart.
           #
-          # Per USER and not per source address — which is the right axis here.
+          # Per USER and not per source address - which is the right axis here.
           # An attacker on the LAN can change source address at will and cannot
           # change which account they are guessing at.
           ######################################################################
@@ -1087,7 +1148,7 @@ in
           # to add it here fails CLOSED.  That is the whole reason the rule
           # lists domains explicitly rather than matching `*.goclan.org`.
           #
-          # ONE RULE, and no bypass rules at all — see the header for why the
+          # ONE RULE, and no bypass rules at all - see the header for why the
           # enumeration the brief asked for came back empty.
           #
           # `subject` makes group membership load-bearing rather than
@@ -1112,7 +1173,7 @@ in
           # because a client secret digest has no business in the Nix store.
           # What is here is everything that is not credential material.
           #
-          # `jwks` is NOT set here either — the module writes it from
+          # `jwks` is NOT set here either - the module writes it from
           # oidcIssuerPrivateKeyFile through its template filter.
           ######################################################################
           identity_providers.oidc = {
@@ -1132,7 +1193,7 @@ in
         };
       };
 
-      # NOTE ON THE UPSTREAM HARDENING — MEASURED 2026-08-24, AND IT ALL WORKS.
+      # NOTE ON THE UPSTREAM HARDENING - MEASURED 2026-08-24, AND IT ALL WORKS.
       #
       # nixpkgs' authelia module sets a large systemd sandbox unconditionally
       # and, unlike the jellyfin module, it is NOT container-aware: there is no
@@ -1157,16 +1218,16 @@ in
       # applied by systemd INSIDE that namespace where it has the privilege to
       # do so.  The jellyfin module's guard is about a different case.
       #
-      # THE TRANSFERABLE PART is not "these options are fine in nspawn" — it is
+      # THE TRANSFERABLE PART is not "these options are fine in nspawn" - it is
       # that pre-emptively deleting six hardening options from an identity
       # provider, on a guess, would have permanently weakened this unit to
       # avert a failure that never occurs.  Do not add a `mkForce false` block
       # here.  If a future nixpkgs bump does break startup, `systemctl status
       # authelia-main` names the option in the message ("Failed to set up mount
-      # namespacing", "Operation not permitted") — disable THAT one, and record
+      # namespacing", "Operation not permitted") - disable THAT one, and record
       # it here the same way.
 
-      # `curl` is the test plan's instrument — it is what proves the authz
+      # `curl` is the test plan's instrument - it is what proves the authz
       # endpoint answers from HERE and, run anywhere else, that it does not.
       # `dig` checks the container resolves through Technitium.  `sqlite` reads
       # the regulation and TOTP tables when a login misbehaves.
