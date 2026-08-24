@@ -2156,17 +2156,27 @@ eight-character one-time code, sent through the notifier, typed back before the
 QR appears. So every enrolment is a round trip through a file on ernst, and
 three things bite:
 
-1. **`notification.txt` is append-only.** Every code ever sent is in it, oldest
-   first, so `cat` shows the one that is always wrong. The error you get is
-   `the code didn't match any recorded code challenges` — or, worse, `the code
-   challenge has expired`, which reads like the code you *just* requested timed
-   out when in fact you typed an older one.
-2. **Codes expire in five minutes.** Have the terminal open before clicking.
+1. **The file is overwritten, not appended — and the trap is the opposite of
+   what it looks like.** Authelia's filesystem notifier truncates on every
+   send, so `notification.txt` always holds exactly the newest notification.
+   Measured: six rows in `one_time_code`, **one** `Date:` block in the file,
+   mtime frozen at the last send. So the file is never stale — *your terminal
+   is*. `the code didn't match any recorded code challenges` and `the code
+   challenge has expired` both mean the same thing: what you typed is not what
+   is currently valid. Re-read the file, not your scrollback.
+2. **Codes expire in five minutes.** This is the actual failure mode, which is
+   why the helper prints the age.
 3. **Generating codes is rate-limited in stacked buckets**, and clicking again
    because "it didn't work" is what makes it much worse:
    `bucket=1 delay=35s`, `bucket=2 delay=545s`, `bucket=3 delay=1745s` — 29
    minutes. The UI reports this as *"Failed to generate the One-Time Code.
    Please try again later"*, which sounds like a broken notifier and is not.
+   **While rate-limited no new notification is written**, so the file keeps
+   showing the last (expired) code — which reads exactly like a broken helper
+   and is the rate limit being obeyed. The limiter is **in-memory** (there is
+   no rate-limit table in the schema), so `machinectl restart authelia` clears
+   it at the cost of every active session. It applies **per source address**,
+   so one person fumbling blocks every account from that machine.
 
 Hence **`authelia-code`**, a root helper on ernst that prints the newest code
 and its age and nothing else:

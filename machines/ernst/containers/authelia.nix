@@ -174,24 +174,50 @@
 #
 #   THREE TRAPS, ALL OF WHICH FIRED ON 2026-08-24:
 #
-#     1. notification.txt IS APPEND-ONLY.  Every code ever sent is in it,
-#        oldest first.  `cat` shows the FIRST one, which is always the wrong
-#        one.  The failure is
+#     1. THE FILE IS OVERWRITTEN, NOT APPENDED, and the trap is the opposite
+#        of what it looks like.  Authelia's filesystem notifier truncates on
+#        every send, so notification.txt always holds EXACTLY the newest
+#        notification and nothing else.  Measured: six rows in `one_time_code`,
+#        one `Date:` block in the file, mtime frozen at the last send.
+#
+#        So the file is never stale — YOUR TERMINAL IS.  Read a code, take
+#        four minutes over it, and the thing you paste is expired even though
+#        the file has since been rewritten with a fresh one.  The errors are
 #          "the code didn't match any recorded code challenges"
-#        or, worse, "the code challenge has expired" — which reads like the
-#        code you just requested timed out, when in fact you typed an older
-#        one.  An earlier revision of this comment said `cat`.  That was the
-#        bug.  The helper exists so nobody has to know this.
+#        and "the code challenge has expired", and BOTH mean the same thing:
+#        the code you typed is not the code that is currently valid.  Re-read
+#        the file; do not re-read your scrollback.
+#
+#        (An earlier revision of this comment asserted the file was
+#        append-only and that `cat` showed the oldest code.  That was inferred
+#        from a single `tail` and never checked — the same
+#        prediction-recorded-as-measurement this repo keeps catching itself
+#        doing.  `cat` was fine all along; the AGE is what mattered.)
 #     2. THE CODE EXPIRES in five minutes (identity_validation's default).
-#        Have the terminal open BEFORE clicking, not after.
+#        This is the real failure mode, which is why `authelia-code` prints
+#        the age in front of the code and says EXPIRED rather than letting a
+#        stale one be typed.
 #     3. GENERATING CODES IS RATE-LIMITED, in stacked buckets, and clicking
 #        again because "it didn't work" is what makes it much worse:
 #          Rate Limit Exceeded  bucket=1 delay=35s
 #          Rate Limit Exceeded  bucket=2 delay=545s
 #          Rate Limit Exceeded  bucket=3 delay=1745s      ← 29 minutes
 #        The UI reports this as "Failed to generate the One-Time Code. Please
-#        try again later", which sounds like a broken notifier and is not.  If
-#        you see it, STOP CLICKING and wait; every extra click extends it.
+#        try again later", which sounds like a broken notifier and is not.
+#
+#        WHILE RATE-LIMITED, NO NEW NOTIFICATION IS WRITTEN — so the file
+#        keeps showing the last (expired) code, which reads exactly like "the
+#        helper is broken" and is in fact the rate limit being obeyed.  Check
+#        the log before believing anything else:
+#          nixos-container run authelia -- \
+#            journalctl -u authelia-main | grep "Rate Limit"
+#
+#        THE LIMITER IS IN-MEMORY.  There is no rate-limit table in the
+#        schema (checked), so `machinectl restart authelia` clears it
+#        immediately — at the cost of every active session, since the session
+#        store is in-memory too.  That is the escape hatch when the 29-minute
+#        bucket is in the way; STOP CLICKING first, because each click
+#        re-arms it.
 #
 #   The whole flow, once, per account:
 #       log in with the password  →  Settings → 2FA → One-Time Password → ADD
@@ -359,16 +385,18 @@ in
   ##############################################################################
   # `authelia-code` — print the LATEST one-time code, and only that.
   #
-  # See NOTIFIER in the file header for why this exists.  Briefly:
-  # notification.txt is append-only, the code expires in five minutes, and
-  # asking for a fresh one is rate-limited in stacked buckets — so reading the
-  # wrong block is not a small mistake.  `cat` shows the oldest code; `tail`
-  # shows the right one plus forty lines of boilerplate to hunt through while
-  # the clock runs.  This prints one line.
+  # See NOTIFIER in the file header for why this exists.  THE AGE IS THE POINT,
+  # not the extraction: the notifier overwrites the file, so `cat` already
+  # showed the right code — what it did not show is that the code was minted
+  # sixteen minutes ago and died eleven minutes back.  A five-minute lifetime
+  # against forty lines of boilerplate is how a stale paste happens, and both
+  # errors Authelia returns for it ("didn't match", "expired") point at the
+  # code rather than at the clock.
   #
-  # It also prints the AGE, because the specific confusion on deploy day was an
-  # expired code reported as "didn't match" — with an age in front of it, a
-  # stale read is obvious before it is typed.
+  # So this prints the value, then the age, then says EXPIRED when it is —
+  # which is the one line that would have prevented the whole episode.
+  # Rate-limiting means a fresh code may not be obtainable for half an hour, so
+  # noticing staleness BEFORE typing is worth more than it sounds.
   #
   # Root-only by construction: the file is 0600 uid 3008 on zdata and this
   # reads it from the host rather than through the container, so there is no
