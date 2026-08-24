@@ -1037,8 +1037,40 @@ in
                   Gateway     = monHostAddr;
                 }) (lib.filter (n: n != machine.name) resolvable);
                 networkConfig.IPv6AcceptRA = false;
-                # A p2p link with a /128 never becomes "routable".
-                linkConfig.RequiredForOnline = "degraded";
+
+                # "no", and this is a MEASURED correction rather than a
+                # preference.  It was "degraded" on the first deploy, on the
+                # guess that a /128 p2p link never reaches "routable".  That
+                # guess was wrong twice: it does reach routable (it has a
+                # global address), and requiring ANY state here fails.
+                #
+                # The journal from the first successful start, 2026-08-24:
+                #
+                #   12:14:58  mon0: Link UP
+                #   12:14:58  Starting Wait for Network to be Online...
+                #   12:15:18  Timeout occurred while waiting for network
+                #   12:15:18  systemd-networkd-wait-online: FAILED
+                #   12:15:18  mon0: Gained carrier          ← same second
+                #
+                # A veth pair has NO CARRIER until BOTH ends are up, and the
+                # host end of mon0 is brought up by container@monitoring's
+                # postStart — which nixos-containers runs only after nspawn
+                # reports the container started, i.e. after the container's own
+                # boot has finished.  So mon0 cannot possibly be online while
+                # the container is booting: wait-online was waiting for an
+                # event that its own completion is a precondition for.
+                #
+                # It resolved itself only because of the 20 s cap below — the
+                # unit failed, boot finished, READY fired, postStart ran, and
+                # carrier appeared in that same second.  That is the cap doing
+                # exactly what containers/jellyfin.nix designed it for, and it
+                # left one permanently failed unit on every boot as the price.
+                #
+                # Nothing in the container needs mon0 at boot: Prometheus
+                # retries a failed scrape forever and the first one is
+                # seconds away.  eth0 still carries RequiredForOnline =
+                # "routable", so a missing DHCP reservation is still caught.
+                linkConfig.RequiredForOnline = "no";
               };
 
               # 20 s, for the reason containers/jellyfin.nix explains at

@@ -49,7 +49,7 @@ Verified against the repo on 2026-08-20 (`main` @ `f9b305e`).
 | M3 — VPN microvm + qBittorrent | **done — deployed 2026-08-20** | [#83](https://github.com/lutzgo/clanarchy/pull/83) | `wg-qbittorrent` on the microvm tier: tap on VLAN 90, IVPN wg-quick tunnel, guest-side nftables killswitch. **Killswitch proven**: with wg0 down the guest emitted zero packets and DNS failed rather than leaking. **Hardlink chain proven**, with a negative control — `UMask=0002` is what M4 depends on. Three things had to be fixed after the first deploy: wg-quick wins any routing-rule priority race, a tmpfiles/oneshot contradiction in `jellyfin.nix` had been silently resetting the media directory modes since M2b, and the UDM-Pro policy editor has two Port sections. [M3](#m3-featernst-vpn-microvm-done--deployed-2026-08-20) |
 | M4 — arr stack | **done — deployed, proven, and survived an unplanned power cut 2026-08-21** | [#85](https://github.com/lutzgo/clanarchy/pull/85) | Prowlarr/Sonarr/Radarr in one nspawn container, `machines/ernst/containers/arr.nix`. **Departs from its own prompt on networking**: veth on br0 / VLAN 90 (MAC `02:00:00:90:00:05`, `10.0.90.13`) rather than the host-networking v1 the prompt described, because that prompt predates M2b and `networking.nix` already names M4 as a pattern-B consumer. Consequence worth knowing: the arr reaches qBittorrent at L2 over `br0`, so **the UDM-Pro never sees that traffic** and the ZBF rule the prompt listed as a manual step does not exist — the guest's `api_clients` nftables set is the only thing enforcing it. The milestone is **not** done until the `stat` proof runs on ernst. [M4](#m4-featernst-arr-stack) |
 | M5 — Traefik | **done — deployed 2026-08-23, proven 2026-08-24** | [#86](https://github.com/lutzgo/clanarchy/pull/86) | `machines/ernst/containers/traefik.nix`: nspawn container on `vb-traefik`, VLAN 90, MAC `02:00:00:90:00:04` → `10.0.90.12`. One wildcard `*.goclan.org` over ACME DNS-01 at Cloudflare, scoped API token via clan var `traefik-acme`, store on `zdata` at `/srv/state/traefik`. Routes: jellyfin (no middleware, ever) + prowlarr/sonarr/radarr behind the interim `mgmt-only` ipAllowList (L5). **Backend bypass hardening is mechanism (a)** — each backend's own firewall accepts its web port only from `10.0.90.12` — because Jellyfin, the arr, qBittorrent and Traefik are all ports on `br0` and their traffic never reaches the UDM-Pro, so an intra-zone ZBF rule could not see it. **Two consequences on deploy day**: direct access to `10.0.90.10:8096` and `10.0.90.13:{9696,8989,7878}` stops working immediately, so TV clients must move to `jellyfin.goclan.org` in the same window; and the ACME propagation check queries `1.1.1.1`/`9.9.9.9` directly, which a UDM-Pro DNS-interception rule would silently break. [M5](#m5-featernst-traefik) |
-| M6 — monitoring | **deploy in progress — first attempt fail-closed, and it found an older bug** | [#87](https://github.com/lutzgo/clanarchy/pull/87) | **First deploy stopped at `monitoring-secrets`, by design** — and the value it refused turned out to expose that `modules/observability/zfs-ntfy.nix`'s zedlet **has never worked on ernst**: the var holds a bare topic (what the prompt's own `openssl rand -hex 12` hint produces), curl could not resolve it as a hostname, and `>/dev/null 2>&1` threw the error away. Fixed with one shared normaliser used by both publishers, and by making the zedlet report a failed POST. [Details](#first-deploy-2026-08-24-the-fail-closed-path-fired-and-it-found-an-older-bug). Everything else on ernst deployed correctly: three exporters up, all six scrape-ACL rules present, IPv6 masquerade in place, Traefik serving the Grafana route (502 until the container starts). `service-modules/monitoring.nix` (+ `.md`, + one dashboard as JSON): a clan service module with a `client` role on all four machines and a `server` role on ernst. **Scrape targets are derived from `roles.client` membership** — each machine's address comes from the `zerotier-ip-<machine>-zerotier` var clan-core already generates, so adding a machine to the role is the only step needed. The stack is one nspawn container on `vb-monitoring`, VLAN 90, MAC `02:00:00:90:00:06` → `10.0.90.14`, state on `zdata` at `/srv/state/monitoring`. **The one genuinely new piece of engineering is a SECOND interface**: `mon0`, a point-to-point ULA veth to the host, because both things Prometheus must scrape — ernst's own exporters (VLAN 50) and three laptops (ZeroTier, which terminates in the host netns) — are unreachable from VLAN 90. The host forwards and SNATs onto `zt+`, which has the useful side effect that scrapes arrive at a laptop from ernst's own ZeroTier address, i.e. the one source each client permits. **Alerting is (b), keep both**, with the overlap made empty: ZED owns pool state, Prometheus owns everything else and has no `zfs_pool_health` rule, and `ZedNotRunning` is the interlock. Both end at the same ntfy topic. [M6](#m6-featmonitoring) |
+| M6 — monitoring | **deployed to ernst + miralda 2026-08-24; biene/birte pending** | [#87](https://github.com/lutzgo/clanarchy/pull/87) | **Working**: container on `10.0.90.14`, VLAN 90 won unaided, every deployed target scraping `up`, Grafana served through Traefik, and `traefik_tls_certs_not_after` (89 d) + `zfs_pool_health` (0/0) both confirmed **live** — retiring the two metric names that had only been read out of binaries' strings. **Two deploys, each caught a real defect.** The first stopped at `monitoring-secrets`, by design — and the value it refused exposed that `modules/observability/zfs-ntfy.nix`'s zedlet **has never worked on ernst**: the var holds a bare topic (what the prompt's own `openssl rand -hex 12` hint produces), curl could not resolve it as a hostname, and `>/dev/null 2>&1` threw the error away. The second exposed that **`systemd-networkd-wait-online` could never succeed in this container** — a veth has no carrier until both ends are up, and `mon0`'s host end is brought up by `postStart`, which runs *after* the container's boot, so wait-online was waiting on an event its own completion gates. The 20 s cap contained it; `RequiredForOnline = "no"` fixes it. [Details](#first-deploy-2026-08-24-the-fail-closed-path-fired-and-it-found-an-older-bug). `service-modules/monitoring.nix` (+ `.md`, + one dashboard as JSON): a clan service module with a `client` role on all four machines and a `server` role on ernst. **Scrape targets are derived from `roles.client` membership** — each machine's address comes from the `zerotier-ip-<machine>-zerotier` var clan-core already generates, so adding a machine to the role is the only step needed. The stack is one nspawn container on `vb-monitoring`, VLAN 90, MAC `02:00:00:90:00:06` → `10.0.90.14`, state on `zdata` at `/srv/state/monitoring`. **The one genuinely new piece of engineering is a SECOND interface**: `mon0`, a point-to-point ULA veth to the host, because both things Prometheus must scrape — ernst's own exporters (VLAN 50) and three laptops (ZeroTier, which terminates in the host netns) — are unreachable from VLAN 90. The host forwards and SNATs onto `zt+`, which has the useful side effect that scrapes arrive at a laptop from ernst's own ZeroTier address, i.e. the one source each client permits. **Alerting is (b), keep both**, with the overlap made empty: ZED owns pool state, Prometheus owns everything else and has no `zfs_pool_health` rule, and `ZedNotRunning` is the interlock. Both end at the same ntfy topic. [M6](#m6-featmonitoring) |
 | M7 — Authelia | **open** | — | [M7](#m7-featernst-authelia) |
 | M8 — Tvheadend / SAT>IP live TV | **open — operator gate first** | — | Steps 1–3 (patching, UniFi, stream test) are lgo's and must clear before a session starts; the milestone dies if the FRITZ!Box's DVB-C is branding-locked. [M8](#m8-featernst-tvheadend) |
 | M9 — TubeSync | **open** | — | Feeds the Jellyfin library directly. First occupant of the **podman** tier (not in nixpkgs — verified), so it builds the tier as well as the service; podman's attachment to `br0` is unsolved here. [M9](#m9-featernst-tubesync) |
@@ -1657,22 +1657,70 @@ systemctl status prometheus-node-exporter
 ip6tables -L nixos-fw -n | grep 9100        # two accepts, both /128 sources
 ```
 
+### Second deploy, 2026-08-24: the stack is up, and it caught one more real defect
+
+Measured on ernst after the redeploy:
+
+| Check | Result |
+|---|---|
+| `container@monitoring` / `monitoring-secrets` | both **active** |
+| `bridge vlan show dev vb-monitoring` | `90 PVID Egress Untagged` — networkd won the race unaided |
+| Container `eth0` | **`10.0.90.14/24`** — the DHCP reservation exists and is in-pool |
+| `mon0` routes in the container | host `/128` + one `/128` per client, exactly as generated |
+| Prometheus targets | `ernst` (node, zfs, smartctl), `miralda` (node), `traefik`, and the three self-jobs — **all `up`** |
+| `biene` / `birte` | `down` — not yet deployed. **No alert**, because `alwaysOn` is false for both. The design working, not a gap |
+| Traefik → Grafana backend | `200` from inside the traefik container |
+| Grafana provisioning | datasource inserted with the pinned uid `clanarchy-prometheus`; dashboards "finished to provision", no errors |
+| Firing alerts | none |
+
+**Two metric names came off the wire and are correct**, which retires the doubt
+recorded before deploy: `traefik_tls_certs_not_after` reports **89 days**
+remaining on M5's wildcard, and `zfs_pool_health` reports `0` for both `zroot`
+and `zdata`. They were read out of binaries' strings before; they are now read
+out of a running instance.
+
+**The defect: `systemd-networkd-wait-online` failed inside the container, on
+every boot.** The journal dates it to the second:
+
+```
+12:14:58  mon0: Link UP
+12:14:58  Starting Wait for Network to be Online...
+12:15:18  Timeout occurred while waiting for network connectivity.
+12:15:18  systemd-networkd-wait-online.service: FAILED
+12:15:18  mon0: Gained carrier          ← the same second
+```
+
+`mon0` had `RequiredForOnline = "degraded"`, on the guess that a `/128`
+point-to-point link never reaches `routable`. That guess was wrong twice over:
+it *does* reach routable (it has a global address), and requiring **any** state
+there cannot succeed. **A veth pair has no carrier until both ends are up**, and
+the host end of `mon0` is brought up by `container@monitoring`'s `postStart` —
+which `nixos-containers` runs only after nspawn reports the container started,
+i.e. after the container's own boot has finished. wait-online was waiting for an
+event that its own completion is a precondition for.
+
+It resolved itself only because of the 20 s cap — the unit failed, boot
+finished, READY fired, `postStart` ran, carrier appeared. That is exactly what
+`containers/jellyfin.nix` designed the cap for ("one obviously failed unit
+instead of a restart loop"), and here it did the job on a failure mode nobody
+had predicted. The price was a permanently failed unit on every boot, which is
+the kind of noise that hides the next real one.
+
+Fixed with `RequiredForOnline = "no"` on `mon0` only. `eth0` keeps `"routable"`,
+so a missing DHCP reservation is still caught. Nothing in the container needs
+`mon0` at boot — Prometheus retries a failed scrape forever and the first retry
+is seconds away.
+
 ### Not yet proven
 
-- **That the container starts at all.** The first deploy stopped before it —
-  see the section above. Everything host-side is deployed and verified; the
-  container itself, `mon0`, `vb-monitoring` and every scrape have not run once.
-- **The DHCP reservation.** `02:00:00:90:00:06` → `10.0.90.14` has not been
-  confirmed on the UDM-Pro, and it cannot be until the container asks. If it is
-  missing the container comes up on an ordinary pool lease, `traefik.nix`'s
-  hard-coded `.14` misses, and `grafana.goclan.org` keeps returning **502** —
-  which is exactly what it returns now, so the symptom will not change and the
-  address must be read rather than inferred:
-  `nixos-container run monitoring -- ip -br addr show eth0`.
-- **That ZED can now actually deliver.** The splitter is unit-tested and the
-  URL it builds is well-formed, but no POST has been sent to the real topic.
-  One line proves it, and it puts a real notification on the phone:
-  `ssh root@ernst 'set -- $(<splitScript> /run/secrets/vars/zfs-ntfy/url); curl -sSf -d "zed test" "$1/$2"'`
+- **That ZED can now actually deliver.** The splitter is unit-tested and the URL
+  it builds is well-formed, but no POST has been sent to the real topic — that
+  puts a notification on lgo's phone and is lgo's call:
+  `set -- $(<splitScript> /run/secrets/vars/zfs-ntfy/url); curl -sSf -d "zed test" "$1/$2"`
+- **miralda's `zfs-ntfy` var shape.** If it is a bare topic too, its zedlet has
+  been equally dead and the same deploy fixes it — but it was not readable from
+  this session.
+- **biene and birte.** Deployed to neither; both show `down`.
 - **The reboot.** Invariant #7 makes the first reboot after deploy part of the
   milestone. `/srv/state/monitoring` must survive it with the TSDB intact, and
   `clanarchy-impermanence-check` must stay green. Alertmanager's own state
