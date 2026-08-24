@@ -206,9 +206,12 @@ let
   baseDomain = "goclan.org";
 
   # ACME account contact.  Let's Encrypt uses it for expiry warnings, which are
-  # the backstop for a renewal that silently stopped working; there is no
-  # monitoring on this until M6.  Already public — it is the author address on
-  # every commit in this repo.
+  # the backstop for a renewal that silently stopped working.  No longer the
+  # ONLY backstop: M6 scrapes the metrics entryPoint below and raises
+  # CertificateExpiringSoon at 14 days, which is two failed renewals in.  Kept
+  # anyway — an email from the CA arrives even when the monitoring container is
+  # the thing that is down.  Already public: it is the author address on every
+  # commit in this repo.
   acmeEmail = "lutz0go@gmail.com";
 
   # Backends, by the addresses their DHCP reservations pin.  These are PEER
@@ -224,13 +227,34 @@ let
   jellyfinAddr = "10.0.90.10";
   arrAddr      = "10.0.90.13";
 
+  # M6.  The monitoring container: Grafana's backend, and the one host on
+  # VLAN 90 permitted to read this container's metrics endpoint.
+  monitoringAddr = "10.0.90.14";
+
   jellyfinPort = 8096;
   prowlarrPort = 9696;
   sonarrPort   = 8989;
   radarrPort   = 7878;
+  grafanaPort  = 3000;
 
-  # INTERIM ACCESS CONTROL for the arr routes — ledger row L5 in
-  # docs/roadmap.md, to be REPLACED by Authelia forward-auth in M7.
+  # M6.  Traefik's own Prometheus metrics, on a SEPARATE entryPoint from the
+  # one that serves traffic.  Its own port rather than a route on :443 because
+  # a route would be reachable by anything the consumer-zone ZBF rule already
+  # permits to reach :443 — i.e. every client VLAN — and would then need a
+  # middleware to take that back.  A separate listener is restricted once, in
+  # the container firewall, and cannot be re-exposed by adding a router.
+  #
+  # This endpoint is the ONLY source of certificate-expiry data: this process
+  # owns acme.json, so nothing else can answer "when does the wildcard
+  # actually expire" without parsing a file it should not be reading.  The
+  # CertificateExpiringSoon alert in service-modules/monitoring.nix is what
+  # closes the gap this file's ACME block names — "there is no monitoring on
+  # this until M6".
+  metricsPort = 8082;
+
+  # INTERIM ACCESS CONTROL for the arr routes, and since M6 for Grafana too —
+  # ledger row L5 in docs/roadmap.md, to be REPLACED by Authelia forward-auth
+  # in M7.
   #
   # The management networks are the same two containers/arr.nix and
   # microvms/wg-qbittorrent.nix already use (`mgmtNets`), plus the travel VLAN:
@@ -552,7 +576,27 @@ in
       #
       # No 8080: the Traefik dashboard/API is not enabled.  See the static
       # config below.
+      #
+      # 8082 (metrics) is NOT in this list on purpose — it is opened below for
+      # one source address only.  Everything on VLAN 90 could otherwise read
+      # every route name, backend address and TLS setting in the house off an
+      # unauthenticated endpoint, which is most of what the dashboard was
+      # switched off to avoid.
       networking.firewall.allowedTCPPorts = [ 80 443 ];
+
+      # M6: the metrics endpoint, source-restricted to the monitoring
+      # container.  Same mechanism and the same reasoning as the backend
+      # hardening this file imposes on jellyfin and the arr — see BACKEND
+      # BYPASS HARDENING above — just pointing the other way: there, this
+      # container is the permitted source; here, it is the protected one.
+      #
+      # extraCommands and not extraInputRules: the latter is declared
+      # unconditionally in firewall-nftables.nix but consumed only under
+      # networking.nftables, which is off here, so it would produce no rule
+      # and no warning.
+      networking.firewall.extraCommands = ''
+        iptables -A nixos-fw -p tcp -s ${monitoringAddr}/32 --dport ${toString metricsPort} -j nixos-fw-accept
+      '';
 
       ##########################################################################
       # Users.  Numeric ids are the interface across the nspawn boundary.
@@ -607,6 +651,23 @@ in
           log.level     = "INFO";
           accessLog.format = "common";
 
+          # M6: Prometheus metrics, on the dedicated `metrics` entryPoint
+          # below.  Entrypoint labels are on — that is what makes
+          # traefik_entrypoint_* per-listener — and router/service labels are
+          # OFF: they multiply the series count by the number of routes for
+          # data nothing here alerts on or graphs, and every route added later
+          # would silently widen the TSDB.
+          #
+          # addServicesLabels stays off for a second reason: the backend
+          # addresses are the one thing in this config worth not publishing to
+          # an endpoint, even a restricted one.
+          metrics.prometheus = {
+            entryPoint            = "metrics";
+            addEntryPointsLabels  = true;
+            addRoutersLabels      = false;
+            addServicesLabels     = false;
+          };
+
           # THE API AND DASHBOARD ARE OFF, deliberately and by omission: there
           # is no `api` block here at all.  Enabling it would put an
           # unauthenticated read of every route, service and TLS setting behind
@@ -653,6 +714,13 @@ in
                 ];
               };
             };
+
+            # M6.  Plain HTTP, no TLS, no certResolver: this listener is
+            # reachable from exactly one address on the same bridge (see the
+            # firewall rule above), the hop never leaves the host, and asking
+            # the ACME resolver for a certificate here would put a fourth
+            # name in the wildcard's place for no reader.
+            metrics.address = ":${toString metricsPort}";
           };
 
           certificatesResolvers.cloudflare.acme = {
@@ -798,6 +866,25 @@ in
               middlewares = [ "mgmt-only" ];
               service     = "radarr";
             };
+
+            # ── Grafana (M6): admin route, interim-restricted ──────────────
+            #
+            # Same treatment as the arr, and it joins ledger row L5: browser
+            # only, admin facing, ipAllowList until M7 replaces it with
+            # Authelia forward-auth.  Grafana keeps its OWN login underneath
+            # either way — see the vars generator in
+            # service-modules/monitoring.nix for why that account still
+            # matters after M7 exists.
+            #
+            # Nothing special is needed for Grafana's live-tail websockets:
+            # Traefik proxies an Upgrade request transparently, and the
+            # entryPoint sets no forwardedHeaders that could interfere.
+            grafana = {
+              rule        = "Host(`grafana.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "mgmt-only" ];
+              service     = "grafana";
+            };
           };
 
           # Backends are plain HTTP over VLAN 90 — the hop from here to them is
@@ -814,6 +901,7 @@ in
             prowlarr.loadBalancer.servers = [ { url = "http://${arrAddr}:${toString prowlarrPort}/"; } ];
             sonarr.loadBalancer.servers   = [ { url = "http://${arrAddr}:${toString sonarrPort}/"; } ];
             radarr.loadBalancer.servers   = [ { url = "http://${arrAddr}:${toString radarrPort}/"; } ];
+            grafana.loadBalancer.servers  = [ { url = "http://${monitoringAddr}:${toString grafanaPort}/"; } ];
           };
         };
       };

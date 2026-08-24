@@ -49,7 +49,7 @@ Verified against the repo on 2026-08-20 (`main` @ `f9b305e`).
 | M3 — VPN microvm + qBittorrent | **done — deployed 2026-08-20** | [#83](https://github.com/lutzgo/clanarchy/pull/83) | `wg-qbittorrent` on the microvm tier: tap on VLAN 90, IVPN wg-quick tunnel, guest-side nftables killswitch. **Killswitch proven**: with wg0 down the guest emitted zero packets and DNS failed rather than leaking. **Hardlink chain proven**, with a negative control — `UMask=0002` is what M4 depends on. Three things had to be fixed after the first deploy: wg-quick wins any routing-rule priority race, a tmpfiles/oneshot contradiction in `jellyfin.nix` had been silently resetting the media directory modes since M2b, and the UDM-Pro policy editor has two Port sections. [M3](#m3-featernst-vpn-microvm-done--deployed-2026-08-20) |
 | M4 — arr stack | **done — deployed, proven, and survived an unplanned power cut 2026-08-21** | [#85](https://github.com/lutzgo/clanarchy/pull/85) | Prowlarr/Sonarr/Radarr in one nspawn container, `machines/ernst/containers/arr.nix`. **Departs from its own prompt on networking**: veth on br0 / VLAN 90 (MAC `02:00:00:90:00:05`, `10.0.90.13`) rather than the host-networking v1 the prompt described, because that prompt predates M2b and `networking.nix` already names M4 as a pattern-B consumer. Consequence worth knowing: the arr reaches qBittorrent at L2 over `br0`, so **the UDM-Pro never sees that traffic** and the ZBF rule the prompt listed as a manual step does not exist — the guest's `api_clients` nftables set is the only thing enforcing it. The milestone is **not** done until the `stat` proof runs on ernst. [M4](#m4-featernst-arr-stack) |
 | M5 — Traefik | **done — deployed 2026-08-23, proven 2026-08-24** | [#86](https://github.com/lutzgo/clanarchy/pull/86) | `machines/ernst/containers/traefik.nix`: nspawn container on `vb-traefik`, VLAN 90, MAC `02:00:00:90:00:04` → `10.0.90.12`. One wildcard `*.goclan.org` over ACME DNS-01 at Cloudflare, scoped API token via clan var `traefik-acme`, store on `zdata` at `/srv/state/traefik`. Routes: jellyfin (no middleware, ever) + prowlarr/sonarr/radarr behind the interim `mgmt-only` ipAllowList (L5). **Backend bypass hardening is mechanism (a)** — each backend's own firewall accepts its web port only from `10.0.90.12` — because Jellyfin, the arr, qBittorrent and Traefik are all ports on `br0` and their traffic never reaches the UDM-Pro, so an intra-zone ZBF rule could not see it. **Two consequences on deploy day**: direct access to `10.0.90.10:8096` and `10.0.90.13:{9696,8989,7878}` stops working immediately, so TV clients must move to `jellyfin.goclan.org` in the same window; and the ACME propagation check queries `1.1.1.1`/`9.9.9.9` directly, which a UDM-Pro DNS-interception rule would silently break. [M5](#m5-featernst-traefik) |
-| M6 — monitoring | **open** | — | [M6](#m6-featmonitoring) |
+| M6 — monitoring | **done — deployed, alerting proven end to end, and survived a real reboot 2026-08-24; biene/birte pending** | [#87](https://github.com/lutzgo/clanarchy/pull/87) | **Working**: container on `10.0.90.14`, VLAN 90 won unaided, every deployed target scraping `up`, Grafana served through Traefik, and `traefik_tls_certs_not_after` (89 d) + `zfs_pool_health` (0/0) both confirmed **live** — retiring the two metric names that had only been read out of binaries' strings. **Notifications arrive**, from both publishers, on rotated topics — the first confirmed ntfy delivery in this fleet's history. **Survived a real reboot**: `mon0` and `vb-monitoring` created by a boot rather than a deploy, container back on `.14`, the TSDB holding pre-reboot samples, `clanarchy-impermanence-check` green — which closes invariant #7 for this milestone and the `mon0`-across-a-reboot question inherited from M2b. **Three deploys, each caught a real defect.** The first stopped at `monitoring-secrets`, by design — and the value it refused exposed that `modules/observability/zfs-ntfy.nix`'s zedlet **has never worked on ernst**: the var holds a bare topic (what the prompt's own `openssl rand -hex 12` hint produces), curl could not resolve it as a hostname, and `>/dev/null 2>&1` threw the error away. The second exposed that **`systemd-networkd-wait-online` could never succeed in this container** — a veth has no carrier until both ends are up, and `mon0`'s host end is brought up by `postStart`, which runs *after* the container's boot, so wait-online was waiting on an event its own completion gates. The 20 s cap contained it; `RequiredForOnline = "no"` fixes it. [Details](#first-deploy-2026-08-24-the-fail-closed-path-fired-and-it-found-an-older-bug). `service-modules/monitoring.nix` (+ `.md`, + one dashboard as JSON): a clan service module with a `client` role on all four machines and a `server` role on ernst. **Scrape targets are derived from `roles.client` membership** — each machine's address comes from the `zerotier-ip-<machine>-zerotier` var clan-core already generates, so adding a machine to the role is the only step needed. The stack is one nspawn container on `vb-monitoring`, VLAN 90, MAC `02:00:00:90:00:06` → `10.0.90.14`, state on `zdata` at `/srv/state/monitoring`. **The one genuinely new piece of engineering is a SECOND interface**: `mon0`, a point-to-point ULA veth to the host, because both things Prometheus must scrape — ernst's own exporters (VLAN 50) and three laptops (ZeroTier, which terminates in the host netns) — are unreachable from VLAN 90. The host forwards and SNATs onto `zt+`, which has the useful side effect that scrapes arrive at a laptop from ernst's own ZeroTier address, i.e. the one source each client permits. **Alerting is (b), keep both**, with the overlap made empty: ZED owns pool state, Prometheus owns everything else and has no `zfs_pool_health` rule, and `ZedNotRunning` is the interlock. Both end at the same ntfy topic. [M6](#m6-featmonitoring) |
 | M7 — Authelia | **open** | — | [M7](#m7-featernst-authelia) |
 | M8 — Tvheadend / SAT>IP live TV | **open — operator gate first** | — | Steps 1–3 (patching, UniFi, stream test) are lgo's and must clear before a session starts; the milestone dies if the FRITZ!Box's DVB-C is branding-locked. [M8](#m8-featernst-tvheadend) |
 | M9 — TubeSync | **open** | — | Feeds the Jellyfin library directly. First occupant of the **podman** tier (not in nixpkgs — verified), so it builds the tier as well as the service; podman's attachment to `br0` is unsolved here. [M9](#m9-featernst-tubesync) |
@@ -149,11 +149,11 @@ Rows are retired only by the PR that actually removes the rule.
 | L2 | `IoT (20)` → Jellyfin `10.0.90.10:8096/tcp` | UDM-Pro ZBF policy `Allow Jellyfin to Services`, ID `10000` | TVs / streaming devices live on the IoT VLAN | **M5** — same as L1 | **RETIRED 2026-08-23** — policy deleted from the UDM-Pro by lgo with [#86](https://github.com/lutzgo/clanarchy/pull/86). This was the row with a household cost attached: the TV on VLAN 20 lost Jellyfin from the moment M5 deployed until it was pointed at `jellyfin.goclan.org`. Deploy and repoint in one window, and note the same will apply to every future backend that moves behind the proxy. **Careful deleting by ID**: `Allow Jellyfin to DNS` also carried ID `10000` and is PERMANENT — match on the destination (`10.0.90.10:8096`), not the number |
 | L2a | IoT name resolution for L2 | — | IoT clients could not resolve `jellyfin.skynet.lan` | **M5** — repoint at Traefik | **PROMOTED OUT OF THE LEDGER by M5 — permanent, and nothing was ever built for it.** Re-checked as the milestone required. The substance changes (the name IoT must resolve is now `jellyfin.goclan.org`, not `jellyfin.skynet.lan`) but the plumbing does not: M2b measured `dig @10.0.5.3` succeeding from VLAN 20, so IoT's path to Technitium works and is what serves the new name too. There is no shim here to retire and never was — the row existed to track a constraint that turned out not to exist. It stays listed only so a future milestone does not re-derive it from scratch |
 | — | `Services → DNS-Container` `:53` | UDM-Pro ZBF policy `Allow Jellyfin to DNS`, ID `10000` | The `services` zone is isolated by default, so the container could not resolve at all | **permanent** — not interim, listed here only so it is not mistaken for one | created by M2b. `Services → External` was predicted to be needed too and **was not** — it already passed. M5 leans on both: Traefik resolves through Technitium, and reaches Let's Encrypt and Cloudflare's API through External |
-| — | `LAN (1)` + `IoT (20)` + `Servers (50)` → traefik `10.0.90.12:80,443/tcp` | UDM-Pro ZBF policy `Allow Traefik`, ID `10006` | **This is the rule M5 exists to make possible** — one permanent rule per consumer zone, pointing at one address, replacing L1/L2 and pre-empting L4/L8 | **permanent** — every future web service is a Traefik route plus a Technitium record, and touches the UDM-Pro not at all | **created 2026-08-23** with [#86](https://github.com/lutzgo/clanarchy/pull/86). Same shape as the qBittorrent and arr rows: source zone `Internal` narrowed to the listed networks, **ports in the Destination card** (the source card has a Port section too and it is the one you see first), `Auto Allow Return Traffic` ticked. **`80` is in the list on purpose**: Traefik's `:80` entryPoint serves nothing but a 308 to `:443`, and permitting only 443 would leave that listener unreachable. Two things cost a round each — see the note below |
+| — | `LAN (1)` + `IoT (20)` + `Servers (50)` → traefik `10.0.90.12:80,443/tcp` | UDM-Pro ZBF policy `Allow Traefik`, ID `10006` | **This is the rule M5 exists to make possible** — one permanent rule per consumer zone, pointing at one address, replacing L1/L2 and pre-empting L4/L8 | **permanent** — every future web service is a Traefik route plus a Technitium record, and touches the UDM-Pro not at all | **created 2026-08-23** with [#86](https://github.com/lutzgo/clanarchy/pull/86). Same shape as the qBittorrent and arr rows: source zone `Internal` narrowed to the listed networks, **ports in the Destination card** (the source card has a Port section too and it is the one you see first), `Auto Allow Return Traffic` ticked. **`80` is in the list on purpose**: Traefik's `:80` entryPoint serves nothing but a 308 to `:443`, and permitting only 443 would leave that listener unreachable. Two things cost a round each — see the note below. **CORRECTION, measured 2026-08-24 during M6's deploy: the live policy's source list is `LAN + IoT` only — `Servers` is NOT in it**, and `curl -k https://10.0.90.12/` from ernst times out, which is the same symptom M5 lost a round to. Either the row was written from intent rather than from the device, or the network was removed afterwards. Re-add `Servers` unless there is a reason not to; M5's argument for it (the firewall and the `mgmt-only` ipAllowList should agree about what management access means, and the ipAllowList already trusts `10.0.50.0/24`) still holds. Nothing in M6 depends on it |
 | L3 | `networking.firewall.allowedTCPPorts = [ 8096 ]` on the host | `machines/ernst/containers/jellyfin.nix` | Jellyfin shares the host network namespace (`privateNetwork = false`), so its port is a host port | **M2b** — the veth on VLAN 90 gives the container its own L2 identity; the host port opening goes away and the ACL moves to the UDM-Pro | **retired in [#82](https://github.com/lutzgo/clanarchy/pull/82)** — the line is deleted from the repo; 8096 is now opened only inside the container's own netns. Effective on the next `clan machines update ernst` |
 | — | `LAN (1) → qBittorrent 10.0.90.11:8080,22/tcp` | UDM-Pro ZBF, M3 | The qBittorrent WebUI (and the guest's SSH) are reachable from the management networks and nowhere else | **permanent** — architecture invariant #4 names this bypass explicitly. It is listed here only so a future milestone does not mistake it for an interim row and "fix" it by adding a Traefik route | **created and verified 2026-08-20.** Source zone `Internal`, narrowed to the `LAN` + `Servers` networks; destination `10.0.90.11` tcp `8080,22`; `Auto Allow Return Traffic` ticked. Servers (50) does need to be listed — with it, `ssh` from ernst itself works. **The port belongs in the Destination card**: the editor has a Port section in *both* zone cards and the source one is the one you see first, which matches only traffic *from* 8080/22, i.e. never |
 | L4 | `LAN (1)` + `Servers (50)` → arr `10.0.90.13:9696,8989,7878/tcp` | UDM-Pro ZBF, M4 | The three arr WebUIs are reached directly; there is no reverse proxy yet | **M5** — replace with the permanent `LAN → traefik:443` rule and Traefik routes | **never created — superseded by M5, [#86](https://github.com/lutzgo/clanarchy/pull/86).** M4 shipped without it and M5 landed before anyone needed it badly enough to add it, so the interim rule this row describes has no lifetime at all: the arr UIs go straight from "reachable only from inside `br0`" to "reachable through Traefik". **Do not create it now.** The three ports are source-restricted to `10.0.90.12` in `containers/arr.nix`, so a ZBF permit for them would be a rule the backend ignores. Earlier revisions of this table also predicted a host-firewall row plus a veth migration; M4 skipped v1 and went straight to the veth, so neither ever existed either |
-| L5 | Traefik `ipAllowList` on the arr + Grafana routes (mgmt + wg-travel) | M5 (`traefik` container) | There is no identity provider yet | **M7** — replaced by the Authelia forward-auth middleware | **created in [#86](https://github.com/lutzgo/clanarchy/pull/86)** as middleware `mgmt-only` in `containers/traefik.nix`, `sourceRange = 10.0.10.0/24, 10.0.50.0/24, 10.0.70.0/24` — LAN, Servers, and the travel/wg VLAN. Applied to the prowlarr / sonarr / radarr routers and **not** to jellyfin. The Grafana half arrives with M6. Two things M7 must not get wrong: it matches the TCP peer address and ignores `X-Forwarded-For` (correct, because nothing sits in front of this proxy — do not add `forwardedHeaders`), and VLAN 70 is in the list on purpose, so replacing it must not lock lgo out from the road |
+| L5 | Traefik `ipAllowList` on the arr + Grafana routes (mgmt + wg-travel) | M5 (`traefik` container) | There is no identity provider yet | **M7** — replaced by the Authelia forward-auth middleware | **created in [#86](https://github.com/lutzgo/clanarchy/pull/86)** as middleware `mgmt-only` in `containers/traefik.nix`, `sourceRange = 10.0.10.0/24, 10.0.50.0/24, 10.0.70.0/24` — LAN, Servers, and the travel/wg VLAN. Applied to the prowlarr / sonarr / radarr routers and **not** to jellyfin. **The Grafana half arrived with M6 ([#87](https://github.com/lutzgo/clanarchy/pull/87))** — same middleware, same three ranges, on a fourth router (`grafana.goclan.org` → `10.0.90.14:3000`), so M7 replaces one middleware and not two mechanisms. Grafana keeps its own admin login underneath the forward-auth: it is the account that still works when the identity provider is the thing that is broken, which is exactly when someone wants a dashboard. Two things M7 must not get wrong: it matches the TCP peer address and ignores `X-Forwarded-For` (correct, because nothing sits in front of this proxy — do not add `forwardedHeaders`), and VLAN 70 is in the list on purpose, so replacing it must not lock lgo out from the road |
 | L6 | Tvheadend ports `9981` / `9982` on the host, mgmt-VLAN scoped | M8 (host firewall, v1) | Only if M8 lands before M2b — Tvheadend v1 would then run on host networking like Jellyfin's and arr's did | **M5** for the web route, plus a veth migration mirroring M2b. Never created at all if M2b lands first | **never created — both gates have now closed.** M2b landed first, so Tvheadend was never going to run on host networking; M5 has landed too, so the web route already exists as a pattern to copy. M8 should go straight to a veth on VLAN 90 plus a Traefik route, exactly as M4 did |
 | L7 | FRITZ!Box → Tvheadend on the ephemeral **UDP** range | UDM-Pro ZBF (off-repo), M8 | SAT>IP media is unicast RTP on a return flow the RTSP rule does not cover | Proving RTP **interleaved over the RTSP TCP connection**, which reduces the whole ACL to TCP 49000 + 554 | not yet created — **avoid**; take the interleaved-TCP path if M8's Phase 0 shows it works |
 | L8 | TubeSync web UI port, mgmt-VLAN scoped | M9 (host/container firewall, v1) | Only if M9 lands before M5 — an admin UI with no proxy in front of it yet. Mgmt-scoped, so invariant #3 does not cover it | **M5** — replace with the Traefik route. Never created at all if M5 lands first | **never created — M5 landed first.** M9 gets a Traefik route (`tubesync.goclan.org`, behind the `mgmt-only` middleware) and opens no port. Note this does not solve M9's actual open question, which is how a podman container attaches to `br0` on VLAN 90 at all |
@@ -1367,7 +1367,476 @@ Constraints:
 
 ---
 
-## M6 — `feat/monitoring`
+## M6 — `feat/monitoring` (built 2026-08-24; not yet deployed)
+
+**Built in [#87](https://github.com/lutzgo/clanarchy/pull/87).** Evaluated on
+all four machines and `nix flake check`; the alert rules are validated with
+`promtool check rules` (6 rules, SUCCESS). **Nothing is deployed** — Claude does
+not deploy, and the reboot half of invariant #7 has not been exercised for this
+milestone's state.
+
+### The problem the prompt did not anticipate: the container cannot reach what it must scrape
+
+Every container on ernst since M2b lives on VLAN 90 and talks to things that
+are also on VLAN 90. This one is the first that must reach things that are not,
+and **both** of its scrape sources are off that VLAN:
+
+- **ernst's own exporters.** The host holds `10.0.50.10` and `br0` is a member
+  of VLAN 50 only, so a packet from `.14` to the host leaves the bridge, is
+  routed by the UDM-Pro, and is subject to the `Services → Servers` zone pair.
+  M5 lost a round to exactly this shape — `curl` from ernst to `10.0.90.12`
+  timed out after 136 s while a LAN browser succeeded.
+- **The three laptops.** They are not on any VLAN ernst carries. They are on
+  ZeroTier, whose rfc4193 addresses live on the *host's* `zt*` interface inside
+  the *host's* netns. From a container with its own netns there is no path at
+  all — not a filtered one, an absent one.
+
+Four ways out were considered. Host networking (`privateNetwork = false`) makes
+both problems vanish and was rejected: it re-opens three host ports four PRs
+after [#82](https://github.com/lutzgo/clanarchy/pull/82) deleted the last one
+(ledger row L3), and it puts Grafana on VLAN 50 where Traefik needs a ZBF rule
+to reach it. A second veth tagged into VLAN 50 solves the host half and not the
+ZeroTier half. Giving the container its own ZeroTier identity means a second
+node, a second clan var, and a mesh member nobody deploys to.
+
+**What shipped is a second interface, `mon0`** — a `/128`-to-`/128` veth to the
+host on a locally-chosen ULA (`fdca:fe90::1` host / `::2` container) that never
+leaves the machine. `containers.<n>.extraVeths` creates it; the container gets
+one host route plus **one `/128` route per scrape target**, and the host
+forwards and SNATs them onto `zt+` via `networking.nat`.
+
+Three things about that are worth carrying forward:
+
+1. **The routes are per-target, not the ZeroTier `/88`.** They come from the
+   same clan vars the targets do, so it costs nothing to maintain and the
+   container can reach exactly the machines it scrapes and no other node on the
+   mesh. Deriving the `/88` from an address by string-slicing was the first
+   attempt and was dropped: ZeroTier's rfc4193 layout is `fd` + 8-byte network
+   id + `9993` + 5-byte node id, so the prefix boundary falls **mid-group**, and
+   a network id whose last byte is `0x00` would render with leading zeros
+   stripped and slice wrong. A plausible-looking derivation that fails on one
+   value in 256 is worse than no derivation.
+2. **The SNAT is not just plumbing, it is the ACL.** Scrapes arrive at a laptop
+   from ernst's own ZeroTier address — the one source the client role's firewall
+   rule permits. One address to allow, fleet-wide, and it is the same address
+   `clan machines update` already comes from.
+3. **`net.ipv6.conf.all.forwarding = 1` is a no-op on ernst and would not be
+   elsewhere.** The kernel stops accepting router advertisements by default once
+   forwarding is on. ernst already sets `IPv6AcceptRA = false` on `br0` and the
+   trunk and holds no RA-derived address, so nothing changes. Do not copy the
+   `networking.nat` block to a machine that gets its IPv6 from RA.
+
+### Targets are generated, and this is what makes it work
+
+`roles.server.perInstance` reads `roles.client.machines` and, per machine, pulls
+the address out of `zerotier-ip-<machine>-zerotier` with `clanLib.getPublicValue`
+— a **shared, non-secret** var, so it is a plain file in the repo that any
+machine's evaluation can read. Adding a machine to `roles.client` in `clan.nix`
+is the only step needed to monitor it.
+
+Two details that were not obvious:
+
+- **`default = null`, not `getPublicValue`'s default throw.** A machine added to
+  the role before `clan vars generate` has run for it would otherwise fail
+  *every* machine's evaluation — including CI's — with an error naming a
+  generator nobody has heard of. Unresolvable machines are dropped and reported
+  in `warnings` instead.
+- **Role-level settings are deprecated in `perInstance`.** The first version read
+  `roles.server.settings.zerotierInstance` from the client role and clan-core
+  warned at eval that the attribute goes away next release. The per-machine path
+  (`roles.server.machines.<n>.settings`) is both supported and more correct.
+
+### Alerting: (b), keep both, with the overlap made empty
+
+The prompt required a choice and forbade the outcome where two systems alert on
+one pool event. **ZED keeps pool and vdev state**: it is edge-triggered, it is
+fleet-wide via `commonBase`, and — the argument that decides it — it keeps
+working when the monitoring container is down. Prometheus cannot be the thing
+that alerts on ernst's pool while the thing that would alert lives on ernst's
+pool.
+
+**Prometheus takes everything ZED cannot see** and carries **no
+`zfs_pool_health` alert rule at all** — the metric is scraped and shown on the
+dashboard, which is a panel and not a notification.
+
+**`ZedNotRunning` is the interlock**, and it is what makes this a design rather
+than an omission: the one thing ZED cannot report is its own death. It is a
+separate rule from `SystemdUnitFailed` on purpose — a unit that is *stopped*
+rather than *failed* does not trip that one.
+
+Both paths end at the same ntfy topic, the existing `zfs-ntfy` clan var. That
+var stores one value (the full topic URL, because that is all `curl` needs);
+`alertmanager-ntfy` wants the two halves separately, so the host-side staging
+oneshot splits it. A second var would have been a second thing to keep in step,
+and the two publishers landing on different topics is precisely the failure the
+"one alerting path" requirement exists to prevent.
+
+### Six rules, one dashboard, and what was left out
+
+`InstanceDown` (always-on machines only), `SmartFailurePredicted`,
+`FilesystemFillingUp`, `SystemdUnitFailed`, `ZedNotRunning`,
+`CertificateExpiringSoon`.
+
+**`alwaysOn` defaults to false and ernst is the only true.** miralda, biene and
+birte are a laptop, a laptop and a handheld: `up == 0` is their *normal* state
+several times a day. Alerting on it would train everyone to ignore the topic
+that also carries "the array is degraded" — so the down rule is scoped by label
+and the other five still apply to them whenever they are up.
+
+**The certificate rule needed a source that did not exist**, so M6 added one:
+Traefik's Prometheus metrics on a **separate `metrics` entryPoint** (`:8082`),
+source-restricted in the container firewall to `10.0.90.14`. A router on `:443`
+would have been reachable by everything the permanent consumer-zone rule already
+admits, and would then have needed a middleware to take that back. This closes
+the gap `containers/traefik.nix` names in its own ACME comment — "there is no
+monitoring on this until M6".
+
+**Left out deliberately:** no Prometheus or Alertmanager route (they bind
+loopback inside the container; `nixos-container run monitoring -- curl
+localhost:9090` is the path, and the argument is the one M5 makes for the
+Traefik dashboard), no blackbox exporter, no rule library, no Loki.
+
+### Fleet cost on the laptops
+
+node_exporter does no background work between scrapes, so the cost is one wakeup
+per interval: **60 s**, not the 15 s Prometheus defaults to. Twenty collectors
+whose output nothing here reads are disabled — the sysfs-walking ones (`hwmon`
+stayed, `thermal_zone`, `powersupplyclass`, `dmi`, `edac` went), hardware this
+fleet does not have (`mdadm`, `fibrechannel`, `infiniband`, `nvme`, `tapestats`),
+and `zfs`, whose ARC statistics the dedicated pool exporter supersedes for every
+question asked here. **Every name was checked against `node_exporter --help-long`
+rather than assumed** — an unknown `--no-collector.X` is a start-up failure, not
+a warning. The three optional exporters are off on all three laptops: the
+`systemd` collector is the one with real per-scrape cost (D-Bus, every unit), and
+smartctl re-queries every device on a timer.
+
+### First deploy, 2026-08-24: the fail-closed path fired, and it found an older bug
+
+`clan machines update ernst` applied cleanly — Traefik picked up the Grafana
+route, the three exporters came up on the host, all six scrape-ACL rules and the
+IPv6 masquerade were in place — and **the container never started**:
+
+```
+monitoring-secrets.service: zfs-ntfy url is not <baseurl>/<topic>:
+                            <24-hex-topic>
+container@monitoring.service: Dependency failed
+```
+
+That is the designed behaviour — the staging unit refuses a value it cannot
+read, the container does not start, and there is no monitoring rather than
+monitoring that silently cannot notify. But the value it refused was not
+malformed. **It is a bare topic, and it is what the prompt asks for.**
+`modules/observability/zfs-ntfy.nix` calls its var a "topic URL" and, in the
+same sentence, suggests `openssl rand -hex 12` as the source — which produces
+24 hex characters and no URL. Both descriptions are in one prompt; one of them
+was followed.
+
+**So the ZFS zedlet has never worked on ernst.** It passed that string to curl
+verbatim, and curl did what curl does with a schemeless argument. Measured on
+ernst the same day:
+
+```
+curl: (6) Could not resolve host: <24-hex-topic>
+```
+
+The zedlet ends its curl with `>/dev/null 2>&1`, so the error went nowhere. ZFS
+alerting on the machine that holds the array had been dead since the module was
+written, and nothing said so — including this milestone, which was designed
+around "ZED owns pool state" and would have shipped that claim as fact.
+
+**It was found by a consumer that failed loudly on the same input the original
+had been failing silently on.** That is the transferable part, and it is worth
+more than the fix: a notifier that cannot report its own failure is
+indistinguishable from one that was never needed. Nothing in the M6 test plan
+would have caught it either — every check was "does Prometheus alert", none was
+"did ZED ever deliver anything".
+
+Two changes, and the second matters more:
+
+1. **`clanarchy.zfs.ntfy.splitScript`** — one normaliser, in `zfs-ntfy.nix`,
+   accepting a full URL *or* a bare topic (which it completes against the new
+   `clanarchy.zfs.ntfy.baseUrl`, default `https://ntfy.sh`). The zedlet uses it
+   and so does M6's staging unit, deliberately: two publishers reading one value
+   by two rules is how "one alerting path" quietly becomes two, and this
+   milestone's ZED/Prometheus split rests on them landing on the same topic.
+   **Not** fixed by re-prompting — the stored value is correct, only the
+   reader's assumption was wrong, and touching the generator would invalidate
+   the var on every machine holding one.
+2. **The zedlet no longer discards curl's stderr.** It still exits 0 (ZED runs
+   zedlets serially and one must never block the queue) and still drops stdout
+   (ntfy echoes the message back as JSON), but a failed POST now says so in
+   `journalctl -u zfs-zed`.
+
+Unit-tested against seven inputs before redeploying — bare topic, full URL,
+sub-path instance, trailing slash, no topic, empty, scheme-less-with-path — and
+only the three well-formed shapes pass.
+
+**Still unverified**: miralda also holds a `zfs-ntfy` var and its shape was not
+readable from this session. If it is a bare topic too, its zedlet has been
+equally dead, and the same deploy fixes it.
+
+### An unrelated discrepancy found in passing: the `Allow Traefik` rule lost `Servers`
+
+Measured on ernst 2026-08-24: `curl -k https://10.0.90.12/` **times out**. The
+UDM-Pro policy's source list is `LAN + IoT`; `Servers` is not in it, though
+[the ledger row](#interim-rule-ledger) records all three and M5's write-up says
+explicitly that `Servers` is there "so that the firewall and Traefik's
+`mgmt-only` ipAllowList agree about what management access means". M5 lost a
+round to exactly this symptom.
+
+Nothing in M6 depends on it — Prometheus scrapes Traefik's metrics over `br0` at
+layer 2, and the browser reaching `grafana.goclan.org` comes from LAN. It is
+recorded because a plausible inference written down as a measurement is the
+failure shape this file keeps catching, and here is one more: the ledger says
+three networks, the device has two.
+
+### Manual steps — lgo's
+
+1. **`clan vars generate ernst`** — prompts for the Grafana admin password
+   (≥12 chars; the generator rejects shorter). It also generates Grafana's
+   `secret_key` non-interactively. **Run this before the first deploy**: the
+   staging unit bakes a secret path at build time, so a deploy that runs first
+   produces a system whose unit can never succeed however often it is restarted.
+   The failure is at least fail-closed — the container does not start.
+2. **UDM-Pro: one DHCP reservation** on the Services network (VLAN 90), MAC
+   `02:00:00:90:00:06` → `10.0.90.14`. It **must be inside the pool**
+   (`10.0.90.6`–`.254`); UniFi accepts an address from the `.2`–`.5` range and
+   then silently hands out an ordinary lease instead. M2b and M5 each lost a
+   round to that, and here it is not cosmetic either: `containers/traefik.nix`
+   hard-codes `.14` as Grafana's backend and as the only host allowed to read
+   the metrics endpoint.
+3. **Technitium**: `grafana.goclan.org` → `10.0.90.12` (Traefik), the same
+   target as the other four names.
+4. **UDM-Pro: NO new ZBF rule, and this is worth checking rather than
+   assuming.** Grafana rides the existing permanent `Allow Traefik` rule
+   (consumer zones → `10.0.90.12:80,443`). Every scrape path is either layer 2
+   on `br0` (Traefik's metrics endpoint) or inside ernst (`mon0`, and ZeroTier
+   out of the host's own netns). `alertmanager-ntfy` reaching ntfy.sh needs
+   `Services → External`, which M2b measured as already passing.
+5. **Deploy order: ernst first**, then the three clients in any order. Between
+   the two the clients' exporters are not yet running and `up` is 0 for them,
+   which is expected and — because `alwaysOn` is false for all three — does not
+   alert.
+
+### Test plan
+
+```bash
+# ── on ernst ────────────────────────────────────────────────────────────────
+bridge vlan show dev vb-monitoring     # expect: 90 PVID Egress Untagged
+ip -br addr show mon0                  # expect: fdca:fe90::1/128
+nixos-container status monitoring
+nixos-container run monitoring -- ip -br addr show eth0   # expect 10.0.90.14
+nixos-container run monitoring -- ip -6 route             # host + one /128 per client
+
+# The stack is up and every target is healthy.
+nixos-container run monitoring -- curl -s localhost:9090/api/v1/targets \
+  | jq -r '.data.activeTargets[] | "\(.labels.instance)\t\(.labels.job)\t\(.health)"'
+
+# The ONE estimated number in the retention math — check it against ~8000.
+nixos-container run monitoring -- curl -s \
+  'localhost:9090/api/v1/query?query=prometheus_tsdb_head_series' | jq -r '.data.result[].value[1]'
+
+# Alerting end to end.  This posts a real notification to the phone.
+nixos-container run monitoring -- curl -s -XPOST localhost:9093/api/v2/alerts \
+  -H 'Content-Type: application/json' \
+  -d '[{"labels":{"alertname":"M6Smoke","severity":"warning"},
+        "annotations":{"summary":"M6 smoke test","description":"delete me"}}]'
+nixos-container run monitoring -- journalctl -u alertmanager-ntfy -n 20
+
+# ── the negative controls, which are the half that proves anything ──────────
+curl -m5 http://10.0.90.14:3000/            # from a laptop: MUST fail
+curl -m5 http://10.0.90.12:8082/metrics     # from a laptop: MUST fail
+curl -m5 http://[fdda:...:711f]:9100/metrics   # ernst's ZT addr from miralda: MUST fail
+
+# ── from a management VLAN ──────────────────────────────────────────────────
+# grafana.goclan.org → login page over TLS, then the "Clanarchy fleet"
+# dashboard with panels populated (not "datasource not found").
+
+# ── on each client, after its own deploy ────────────────────────────────────
+systemctl status prometheus-node-exporter
+ip6tables -L nixos-fw -n | grep 9100        # two accepts, both /128 sources
+```
+
+### Second deploy, 2026-08-24: the stack is up, and it caught one more real defect
+
+Measured on ernst after the redeploy:
+
+| Check | Result |
+|---|---|
+| `container@monitoring` / `monitoring-secrets` | both **active** |
+| `bridge vlan show dev vb-monitoring` | `90 PVID Egress Untagged` — networkd won the race unaided |
+| Container `eth0` | **`10.0.90.14/24`** — the DHCP reservation exists and is in-pool |
+| `mon0` routes in the container | host `/128` + one `/128` per client, exactly as generated |
+| Prometheus targets | `ernst` (node, zfs, smartctl), `miralda` (node), `traefik`, and the three self-jobs — **all `up`** |
+| `biene` / `birte` | `down` — not yet deployed. **No alert**, because `alwaysOn` is false for both. The design working, not a gap |
+| Traefik → Grafana backend | `200` from inside the traefik container |
+| Grafana provisioning | datasource inserted with the pinned uid `clanarchy-prometheus`; dashboards "finished to provision", no errors |
+| Firing alerts | none |
+
+**Two metric names came off the wire and are correct**, which retires the doubt
+recorded before deploy: `traefik_tls_certs_not_after` reports **89 days**
+remaining on M5's wildcard, and `zfs_pool_health` reports `0` for both `zroot`
+and `zdata`. They were read out of binaries' strings before; they are now read
+out of a running instance.
+
+**The defect: `systemd-networkd-wait-online` failed inside the container, on
+every boot.** The journal dates it to the second:
+
+```
+12:14:58  mon0: Link UP
+12:14:58  Starting Wait for Network to be Online...
+12:15:18  Timeout occurred while waiting for network connectivity.
+12:15:18  systemd-networkd-wait-online.service: FAILED
+12:15:18  mon0: Gained carrier          ← the same second
+```
+
+`mon0` had `RequiredForOnline = "degraded"`, on the guess that a `/128`
+point-to-point link never reaches `routable`. That guess was wrong twice over:
+it *does* reach routable (it has a global address), and requiring **any** state
+there cannot succeed. **A veth pair has no carrier until both ends are up**, and
+the host end of `mon0` is brought up by `container@monitoring`'s `postStart` —
+which `nixos-containers` runs only after nspawn reports the container started,
+i.e. after the container's own boot has finished. wait-online was waiting for an
+event that its own completion is a precondition for.
+
+It resolved itself only because of the 20 s cap — the unit failed, boot
+finished, READY fired, `postStart` ran, carrier appeared. That is exactly what
+`containers/jellyfin.nix` designed the cap for ("one obviously failed unit
+instead of a restart loop"), and here it did the job on a failure mode nobody
+had predicted. The price was a permanently failed unit on every boot, which is
+the kind of noise that hides the next real one.
+
+Fixed with `RequiredForOnline = "no"` on `mon0` only. `eth0` keeps `"routable"`,
+so a missing DHCP reservation is still caught. Nothing in the container needs
+`mon0` at boot — Prometheus retries a failed scrape forever and the first retry
+is seconds away.
+
+### Third deploy, 2026-08-24: the zedlet fix is live, and the bug was fleet-wide
+
+`wait-online` is `active` inside the container, no failed units on the host or in
+it, `clanarchy-impermanence-check` `Result=success`, container still on
+`10.0.90.14` with VLAN 90 correct.
+
+The zedlet now resolves its URL through `splitScript` and builds
+`https://ntfy.sh/<24-char topic>` — checked on ernst by printing the base and the
+topic's *length* rather than the topic.
+
+**And miralda's var is a bare topic too**, checked the same way
+(`clan vars get miralda zfs-ntfy/url` piped through a shape test, never printed).
+So this was never an ernst quirk: **the ZED zedlet had never delivered a
+notification on any machine in the fleet.** Both are fixed by this deploy.
+
+### THE TOPIC WAS LEAKED — ROTATED 2026-08-24, and the rotation was the delivery proof
+
+While recording the findings above, the topic was pasted verbatim — as real
+journal output — into `modules/observability/zfs-ntfy.nix`, this file, and a
+comment on [#87](https://github.com/lutzgo/clanarchy/pull/87). **This repository
+is public.** On a public ntfy instance the topic is the whole access control: it
+grants both read and publish, so anyone holding it can read every pool alert
+this fleet emits and inject fake ones.
+
+All four occurrences are redacted, but redaction is not remediation — the value
+survives in this branch's git history and in GitHub's comment edit history.
+**Rotate it**, on both machines, and note that ernst and miralda have separate
+topics by design (so one noisy machine can be muted without silencing the
+other):
+
+```bash
+clan vars set ernst   zfs-ntfy/url      # new topic; openssl rand -hex 12
+clan vars set miralda zfs-ntfy/url      # a DIFFERENT one
+clan machines update ernst
+clan machines update miralda
+systemctl restart monitoring-secrets container@monitoring   # on ernst
+```
+
+Then re-subscribe both topics in the ntfy app and unsubscribe the old ones.
+
+**Executed 2026-08-24, and notifications arrived** — both paths, on the new
+topics. That single act closed three things at once: the exposure is remediated,
+**ZED delivery is proven for the first time in this fleet's history**, and the
+Alertmanager→ntfy bridge is proven end to end. Verified on ernst afterwards with
+no secret printed: the staged `/run/monitoring-secrets/ntfy.yml` topic matches
+the sops one (so the `monitoring-secrets` restart did land — it is not optional,
+see below), and no unit is failed on the host or in the container.
+
+Two things about the mechanics worth keeping:
+
+- **`clan vars set` reads stdin when it is not a TTY**, so the value need never
+  be displayed or enter shell history:
+  `openssl rand -hex 12 | tr -d '\n' | clan vars set ernst zfs-ntfy/url`.
+  It re-encrypts and auto-commits the sops file itself.
+- **The `monitoring-secrets` restart is required and is not obvious.** That
+  unit's script text embeds the *path* to the sops file, which does not change
+  when its *contents* do — so systemd sees an unchanged unit, does not re-run
+  it, and leaves the previous topic staged in `/run`. A deploy alone silently
+  keeps publishing to the rotated-away topic. The zedlet has no such problem: it
+  reads the file per event.
+
+The generic lesson, since this file exists to carry them: **secret material
+comes out of a `journalctl` paste as readily as out of a config file.** Every
+other secret in this repo is handled correctly precisely because it is *shaped*
+like a secret — a key, a token, a password. A 24-character topic reads like an
+identifier, and that is exactly why it got copied.
+
+**What rotation does not fix**: an unguessable topic is a bearer secret, not
+authentication. ntfy supports reserving a topic and denying anonymous access,
+but publishing then needs an `Authorization: Bearer` header that neither the
+zedlet nor `alertmanager-ntfy` currently sends. Adding token support to both is
+a small, self-contained follow-up and is the only thing that makes a future leak
+survivable rather than fatal.
+
+### Not yet proven
+
+- ~~**That ZED can now actually deliver.**~~ **Proven 2026-08-24** on the rotated
+  topics — see the rotation section above. This is the first confirmed ntfy
+  delivery this fleet has ever produced, from either publisher.
+- **biene and birte.** Deployed to neither; both show `down` (correctly
+  unalerted, which is `alwaysOn = false` doing its job and is itself a small
+  proof).
+- **An Alertmanager silence across a reboot.** Silences and the notification
+  log ride the container's own filesystem on `/var/lib/nixos-containers`
+  (persisted by #54) rather than `zdata`, deliberately. No silence existed
+  before the 2026-08-24 reboot, so that specific path is still untested —
+  create one, reboot, check it is still there.
+
+### The reboot — done 2026-08-24 13:16, and invariant #7 holds
+
+The first boot since M6 deployed. Every earlier reboot in the window predates
+it, so this is the only one that counts.
+
+| Check | Result |
+|---|---|
+| System | `running`, **no failed units** on the host |
+| `clanarchy-impermanence-check` | `Result=success`, `ExecMainStatus=0` — the #54 tripwire green through a real rollback |
+| `zpool list` | `zroot` **ONLINE**, `zdata` **ONLINE** |
+| `br0` MAC | `b2:8b:e1:f2:1e:7c` — **the M2b pin reproduced again**, now with a second container and a second veth type on the bridge |
+| **`mon0` created by a BOOT, not a deploy** | `fdca:fe90::1/128` present — the open question this milestone inherited from M2b's `br0`, closed |
+| `vb-monitoring` | `90 PVID Egress Untagged` — networkd won the VLAN race unaided, third service running |
+| Container | `running`, no failed units, back on **`10.0.90.14`** (reservation honoured across a fresh DHCP cycle) |
+| **`/srv/state/monitoring` through the rollback** | **intact** — `query_range` returns pre-reboot samples for `up{instance="ernst"}` spanning 12:16–13:11 CEST against a 13:16 boot |
+| Targets after one scrape cycle | `ernst` (node/zfs/smartctl), `miralda`, `traefik`, and the three self-jobs all `up` |
+
+**The TSDB continuity check is the one that mattered** and it is worth stating
+how it was made convincing: `up == 1` after a reboot proves nothing — Prometheus
+would report that on an empty database. Querying a *range that ends before the
+boot* is what distinguishes "the data survived" from "the service restarted".
+
+**One operational note, because it will read as a failure again.** The boot took
+long enough to look like a dead machine: no ping, no initrd sshd on 2222, for
+several minutes. That is this host's normal POST — HBA enumeration across eight
+SAS SSDs — and M2b recorded the same thing after its reboot. `nc -z ernst 2222`
+is the check that distinguishes "still in POST" from "waiting for the zroot
+passphrase"; once it answers, `ssh ernst-initrd systemd-tty-ask-password-agent
+--query` unlocks without walking to the TV.
+- ~~**The reboot.**~~ **DONE — 2026-08-24 13:16, see below.**
+- ~~**`mon0` across a reboot.**~~ **DONE — same reboot.**
+- ~~**The zfs_exporter metric names.**~~ **Confirmed live 2026-08-24**:
+  `zfs_pool_health` returns `0` for both `zroot` and `zdata`, and
+  `traefik_tls_certs_not_after` puts M5's wildcard at 89 days. Both had only
+  been read out of binaries' strings before. The reasoning that put the ZFS ones
+  behind a dashboard panel rather than an alert still stands and is worth
+  keeping: a name guessed wrong is then an empty panel, not a missed
+  notification.
 
 **Goal.** A fleet-wide clan service module: Prometheus, Alertmanager and Grafana
 in an nspawn container on ernst, node_exporter on every machine, scrape targets
@@ -1377,6 +1846,9 @@ alerting path, not two.
 
 **Depends on.** M5 for the Grafana route (mgmt-only until M7). Prometheus itself
 does not need it. **Risk.** Low-medium; the fleet-wide half touches laptops.
+
+**The session prompt this was built from is kept below**, per the file's own
+convention.
 
 ````text
 Read CLAUDE.md fully before doing anything.
