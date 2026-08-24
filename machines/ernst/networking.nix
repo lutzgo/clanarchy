@@ -294,6 +294,16 @@
   #   02:00:00:90:00:03   wg-qbittorrent guest eth0 (M3  — allocated)  10.0.90.11
   #   02:00:00:90:00:04   traefik container eth0    (M5  — allocated)  10.0.90.12
   #   02:00:00:90:00:05   arr container eth0        (M4  — allocated)  10.0.90.13
+  #   02:00:00:90:00:06   monitoring container eth0 (M6  — allocated)  10.0.90.14
+  #
+  # THE MONITORING CONTAINER HAS A SECOND INTERFACE, and it is the first one
+  # here that does.  `mon0` is a point-to-point veth to this host on the ULA
+  # fdca:fe90::1 (host) / fdca:fe90::2 (container) — no bridge, no VLAN, no
+  # DHCP, and no reservation, because it never leaves ernst.  It exists so
+  # Prometheus can reach (a) this host's own exporters without hairpinning
+  # through the UDM-Pro and (b) the rest of the fleet over ZeroTier, which
+  # terminates in this netns and is invisible from VLAN 90.  The host forwards
+  # and SNATs for it; see service-modules/monitoring.nix.
   #
   # The last octet is 8 + <seq>.  That correspondence is not enforced by
   # anything and it is worth keeping anyway: it is the only thing that makes a
@@ -316,6 +326,10 @@
   #   gid 3004  prowlarr     (containers/arr.nix — M4)
   #   uid 3005  traefik      (containers/traefik.nix — M5, NOT in media)
   #   gid 3005  traefik      (containers/traefik.nix — M5)
+  #   uid 3006  prometheus   (service-modules/monitoring.nix — M6, NOT in media)
+  #   gid 3006  prometheus   (service-modules/monitoring.nix — M6)
+  #   uid 3007  grafana      (service-modules/monitoring.nix — M6, NOT in media)
+  #   gid 3007  grafana      (service-modules/monitoring.nix — M6)
   #
   # MAC policy for both: locally-administered (02:…) so it cannot collide with
   # a vendor OUI.  Convention below: 02:00:00:<vlan>:00:<seq>.  The MAC the

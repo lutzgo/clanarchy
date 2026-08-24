@@ -213,6 +213,7 @@ Custom clan-service modules registered in `clan.nix` under `modules."@clanarchy/
 | `@clanarchy/printing` | Imports `modules/hardware/printing.nix` on target machines | miralda |
 | `@clanarchy/software` | Per-user browser + email software dispatch (librewolf, firefox, chromium, chrome, edge, thunderbird) | miralda (lgo), biene (sabine) |
 | `@clanarchy/local-ai` | Ollama + OpenCode (self-hosted LLM stack) | miralda |
+| `@clanarchy/monitoring` | `client`: node_exporter (+ optional zfs / smartctl / systemd) on every machine. `server`: Prometheus + Alertmanager + Grafana in one nspawn container. **Scrape targets are derived from `roles.client` membership**, so adding a machine to the role is the only step needed to monitor it | client: all four; server: ernst |
 
 Plus stock clan services used verbatim: `sshd`, `zerotier`, `syncthing`, `wifi`.
 

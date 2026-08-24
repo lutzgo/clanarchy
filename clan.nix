@@ -39,6 +39,7 @@
     modules."@clanarchy/users"        = import ./service-modules/users.nix;
     modules."@clanarchy/software"     = import ./service-modules/software.nix;
     modules."@clanarchy/local-ai"     = import ./service-modules/local-ai.nix;
+    modules."@clanarchy/monitoring"   = import ./service-modules/monitoring.nix;
     modules."@clanarchy/yubikey"      = import ./service-modules/yubikey.nix;
     modules."@clanarchy/printing"     = import ./service-modules/printing.nix;
 
@@ -244,6 +245,52 @@
           models = [ "qwen3-coder:30b" ];
         };
         roles.opencode.machines.miralda.settings.user  = "lgo";
+      };
+
+      # ── Monitoring: Prometheus / Alertmanager / Grafana + node_exporter ──
+      #
+      # The client role is on EVERY machine, and that is the whole design:
+      # scrape targets are derived from this list, so a machine added here is
+      # a machine that gets monitored — there is no target list anywhere else
+      # to forget.
+      #
+      # `alwaysOn` is the one setting that decides whether a machine gets the
+      # InstanceDown alert.  ernst is the only true.  The other three are a
+      # laptop, a laptop and a handheld: `up == 0` is their normal state
+      # several times a day, and alerting on it would train everyone to ignore
+      # the ntfy topic that also carries "the array is degraded".
+      monitoring = {
+        module.input = "self";
+        module.name  = "@clanarchy/monitoring";
+
+        # ernst runs the stack.  MAC and the .12 proxy address are allocated
+        # in the tables in machines/ernst/networking.nix; the DHCP reservation
+        # for 02:00:00:90:00:06 → 10.0.90.14 lives on the UDM-Pro.
+        roles.server.machines.ernst.settings = {
+          mac          = "02:00:00:90:00:06";
+          proxyAddress = "10.0.90.12";
+        };
+
+        # ernst is also a client, and the only one carrying the three optional
+        # exporters: it is the machine with redundancy to lose (a zroot mirror
+        # and a zdata raidz1), eight SAS/NVMe devices worth replacing before
+        # they die, and the unit set — containers, secret staging, the
+        # impermanence tripwire — that fails quietly if nobody looks.
+        roles.client.machines.ernst.settings = {
+          alwaysOn           = true;
+          exporters.zfs      = true;
+          exporters.smartctl = true;
+          exporters.systemd  = true;
+        };
+
+        # The laptops take node_exporter and nothing else.  miralda and biene
+        # are ZFS machines, but a single-vdev laptop pool going degraded IS the
+        # laptop dying, and ZED already reports that; smartctl re-queries every
+        # device on a timer, which is a battery cost for data nobody acts on
+        # before the machine is replaced anyway.
+        roles.client.machines.miralda = { };
+        roles.client.machines.biene   = { };
+        roles.client.machines.birte   = { };
       };
 
       # ── Software: browsers and email clients ─────────────────────────────

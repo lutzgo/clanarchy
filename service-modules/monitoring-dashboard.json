@@ -1,0 +1,344 @@
+{
+  "uid": "clanarchy-fleet",
+  "title": "Clanarchy fleet",
+  "tags": ["clanarchy"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "label": "Machine",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "clanarchy-prometheus" },
+        "query": "label_values(node_uname_info, instance)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Scrape targets up",
+      "description": "One tile per target. Red means Prometheus cannot reach it — for a laptop that usually means it is asleep, which is why only always_on machines are alerted on.",
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "clanarchy-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up",
+          "legendFormat": "{{instance}} / {{job}}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red", "index": 0 } } },
+            { "type": "value", "options": { "1": { "text": "up", "color": "green", "index": 1 } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }] }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "CPU busy",
+      "description": "1 - idle, averaged across cores.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "clanarchy-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\",instance=~\"$instance\"}[5m])) * 100)",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "fillOpacity": 8, "showPoints": "never" }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Memory used",
+      "description": "MemTotal - MemAvailable, i.e. what would actually have to be reclaimed.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "clanarchy-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(1 - (node_memory_MemAvailable_bytes{instance=~\"$instance\"} / node_memory_MemTotal_bytes{instance=~\"$instance\"})) * 100",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "fillOpacity": 8, "showPoints": "never" }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 4,
+      "type": "bargauge",
+      "title": "Filesystem used",
+      "description": "Real filesystems only — the same exclusion list the FilesystemFillingUp alert uses. 85% is where that alert fires.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "clanarchy-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 - (node_filesystem_avail_bytes{fstype!~\"tmpfs|ramfs|overlay|squashfs|autofs|nsfs|devtmpfs|efivarfs\",instance=~\"$instance\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|ramfs|overlay|squashfs|autofs|nsfs|devtmpfs|efivarfs\",instance=~\"$instance\"} * 100)",
+          "legendFormat": "{{instance}} {{mountpoint}}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 75 },
+              { "color": "red", "value": 85 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "ZFS pool health",
+      "description": "zfs_exporter's pool state: 0 = ONLINE. Anything else is what ZED has already sent to ntfy — there is deliberately no Prometheus alert on this metric, so that pool events have exactly one alerting path. See service-modules/monitoring.nix.",
+      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "clanarchy-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "zfs_pool_health",
+          "legendFormat": "{{instance}} / {{pool}}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "ONLINE", "color": "green", "index": 0 },
+                "1": { "text": "DEGRADED", "color": "orange", "index": 1 },
+                "2": { "text": "FAULTED", "color": "red", "index": 2 },
+                "3": { "text": "OFFLINE", "color": "red", "index": 3 },
+                "4": { "text": "UNAVAIL", "color": "red", "index": 4 },
+                "5": { "text": "REMOVED", "color": "red", "index": 5 },
+                "6": { "text": "SUSPENDED", "color": "red", "index": 6 }
+              }
+            }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "ZFS pool free",
+      "description": "Free bytes per pool. The slope is the useful part — capacity alerts fire off the filesystem view above, this is what says how long you have.",
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "clanarchy-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "zfs_pool_free_bytes",
+          "legendFormat": "{{instance}} / {{pool}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "fillOpacity": 0, "showPoints": "never" }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 7,
+      "type": "table",
+      "title": "SMART self-assessment",
+      "description": "1 = the drive says it is healthy, 0 = the drive predicts its own failure. 0 raises SmartFailurePredicted.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "clanarchy-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "smartctl_device_smart_status",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "options": { "showHeader": true },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto" },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "FAILING", "color": "red", "index": 0 },
+                "1": { "text": "passed", "color": "green", "index": 1 }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Failed systemd units",
+      "description": "Only counts machines running node_exporter's systemd collector — today that is ernst alone.",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "clanarchy-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (instance) (node_systemd_unit_state{state=\"failed\"})",
+          "legendFormat": "{{instance}}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "TLS certificate, days left",
+      "description": "From Traefik's own view of acme.json. Renewal starts at 30 days; under 14 raises CertificateExpiringSoon, which means two renewals have already failed.",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "clanarchy-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "min((traefik_tls_certs_not_after - time()) / 86400)",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 14 },
+              { "color": "green", "value": 30 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Network throughput",
+      "description": "Physical and bridge interfaces only — lo, veths, taps and ZeroTier are excluded so a single flow is not counted three times.",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 26 },
+      "datasource": { "type": "prometheus", "uid": "clanarchy-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(node_network_receive_bytes_total{device!~\"lo|v[eb]-.*|tap-.*|zt.*|mon0|docker.*|podman.*\",instance=~\"$instance\"}[5m]) * 8",
+          "legendFormat": "{{instance}} {{device}} rx"
+        },
+        {
+          "refId": "B",
+          "expr": "-rate(node_network_transmit_bytes_total{device!~\"lo|v[eb]-.*|tap-.*|zt.*|mon0|docker.*|podman.*\",instance=~\"$instance\"}[5m]) * 8",
+          "legendFormat": "{{instance}} {{device}} tx"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "custom": { "fillOpacity": 0, "showPoints": "never" }
+        },
+        "overrides": []
+      }
+    }
+  ]
+}
