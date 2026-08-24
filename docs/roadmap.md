@@ -50,7 +50,7 @@ Verified against the repo on 2026-08-20 (`main` @ `f9b305e`).
 | M4 — arr stack | **done — deployed, proven, and survived an unplanned power cut 2026-08-21** | [#85](https://github.com/lutzgo/clanarchy/pull/85) | Prowlarr/Sonarr/Radarr in one nspawn container, `machines/ernst/containers/arr.nix`. **Departs from its own prompt on networking**: veth on br0 / VLAN 90 (MAC `02:00:00:90:00:05`, `10.0.90.13`) rather than the host-networking v1 the prompt described, because that prompt predates M2b and `networking.nix` already names M4 as a pattern-B consumer. Consequence worth knowing: the arr reaches qBittorrent at L2 over `br0`, so **the UDM-Pro never sees that traffic** and the ZBF rule the prompt listed as a manual step does not exist — the guest's `api_clients` nftables set is the only thing enforcing it. The milestone is **not** done until the `stat` proof runs on ernst. [M4](#m4-featernst-arr-stack) |
 | M5 — Traefik | **done — deployed 2026-08-23, proven 2026-08-24** | [#86](https://github.com/lutzgo/clanarchy/pull/86) | `machines/ernst/containers/traefik.nix`: nspawn container on `vb-traefik`, VLAN 90, MAC `02:00:00:90:00:04` → `10.0.90.12`. One wildcard `*.goclan.org` over ACME DNS-01 at Cloudflare, scoped API token via clan var `traefik-acme`, store on `zdata` at `/srv/state/traefik`. Routes: jellyfin (no middleware, ever) + prowlarr/sonarr/radarr behind the interim `mgmt-only` ipAllowList (L5). **Backend bypass hardening is mechanism (a)** — each backend's own firewall accepts its web port only from `10.0.90.12` — because Jellyfin, the arr, qBittorrent and Traefik are all ports on `br0` and their traffic never reaches the UDM-Pro, so an intra-zone ZBF rule could not see it. **Two consequences on deploy day**: direct access to `10.0.90.10:8096` and `10.0.90.13:{9696,8989,7878}` stops working immediately, so TV clients must move to `jellyfin.goclan.org` in the same window; and the ACME propagation check queries `1.1.1.1`/`9.9.9.9` directly, which a UDM-Pro DNS-interception rule would silently break. [M5](#m5-featernst-traefik) |
 | M6 — monitoring | **done — deployed, alerting proven end to end, and survived a real reboot 2026-08-24; biene/birte pending** | [#87](https://github.com/lutzgo/clanarchy/pull/87) | **Working**: container on `10.0.90.14`, VLAN 90 won unaided, every deployed target scraping `up`, Grafana served through Traefik, and `traefik_tls_certs_not_after` (89 d) + `zfs_pool_health` (0/0) both confirmed **live** — retiring the two metric names that had only been read out of binaries' strings. **Notifications arrive**, from both publishers, on rotated topics — the first confirmed ntfy delivery in this fleet's history. **Survived a real reboot**: `mon0` and `vb-monitoring` created by a boot rather than a deploy, container back on `.14`, the TSDB holding pre-reboot samples, `clanarchy-impermanence-check` green — which closes invariant #7 for this milestone and the `mon0`-across-a-reboot question inherited from M2b. **Three deploys, each caught a real defect.** The first stopped at `monitoring-secrets`, by design — and the value it refused exposed that `modules/observability/zfs-ntfy.nix`'s zedlet **has never worked on ernst**: the var holds a bare topic (what the prompt's own `openssl rand -hex 12` hint produces), curl could not resolve it as a hostname, and `>/dev/null 2>&1` threw the error away. The second exposed that **`systemd-networkd-wait-online` could never succeed in this container** — a veth has no carrier until both ends are up, and `mon0`'s host end is brought up by `postStart`, which runs *after* the container's boot, so wait-online was waiting on an event its own completion gates. The 20 s cap contained it; `RequiredForOnline = "no"` fixes it. [Details](#first-deploy-2026-08-24-the-fail-closed-path-fired-and-it-found-an-older-bug). `service-modules/monitoring.nix` (+ `.md`, + one dashboard as JSON): a clan service module with a `client` role on all four machines and a `server` role on ernst. **Scrape targets are derived from `roles.client` membership** — each machine's address comes from the `zerotier-ip-<machine>-zerotier` var clan-core already generates, so adding a machine to the role is the only step needed. The stack is one nspawn container on `vb-monitoring`, VLAN 90, MAC `02:00:00:90:00:06` → `10.0.90.14`, state on `zdata` at `/srv/state/monitoring`. **The one genuinely new piece of engineering is a SECOND interface**: `mon0`, a point-to-point ULA veth to the host, because both things Prometheus must scrape — ernst's own exporters (VLAN 50) and three laptops (ZeroTier, which terminates in the host netns) — are unreachable from VLAN 90. The host forwards and SNATs onto `zt+`, which has the useful side effect that scrapes arrive at a laptop from ernst's own ZeroTier address, i.e. the one source each client permits. **Alerting is (b), keep both**, with the overlap made empty: ZED owns pool state, Prometheus owns everything else and has no `zfs_pool_health` rule, and `ZedNotRunning` is the interlock. Both end at the same ntfy topic. [M6](#m6-featmonitoring) |
-| M7 — Authelia | **open** | — | [M7](#m7-featernst-authelia) |
+| M7 — Authelia | **built 2026-08-24; not yet deployed** | PR-PLACEHOLDER | Authelia 4.39 in an nspawn container, `machines/ernst/containers/authelia.nix`, on `vb-authelia` / VLAN 90 / MAC `02:00:00:90:00:07` → `10.0.90.15`, SQLite on `zdata` at `/srv/state/authelia`. **L5 is retired by deletion, not by stacking** — the `mgmt-only` ipAllowList is gone from `containers/traefik.nix` and the four admin routers carry a `forwardAuth` middleware instead. The cost is stated rather than buried: the login portal is now reachable from the IoT VLAN, because the `Allow Traefik` ZBF rule already permits IoT → `10.0.90.12:443`; what it meets there is `two_factor` plus regulation (3 failures / 5 min → 15 min ban, per user, in SQLite). **The bypass list the brief asked for came back EMPTY**, and that is a finding: `auth.goclan.org` carries no middleware on its own router, so `/api/oidc/*`, `/.well-known/*` and `/api/health` never pass through forward-auth in the first place — a `bypass` rule would match nothing and read as enforcement. Grafana moves to Authelia OIDC with its local admin kept, and **break-glass needed one new line to be true at all**: with the Grafana route behind forward-auth, the local form is unreachable through Traefik, so `10.0.90.14:3000` now also accepts `fdca:fe90::1` — the host end of M6's `mon0` — reachable only as `ssh -N -L 3000:[fdca:fe90::2]:3000 root@ernst`. **Proven offline against the real 4.39.20 binary**: the rendered config, the staged OIDC client block, the generated `users_database.yml` and the JWKS fragment all pass `authelia validate-config`, and all three vars generators were run end to end. [M7](#m7-featernst-authelia) |
 | M8 — Tvheadend / SAT>IP live TV | **open — operator gate first** | — | Steps 1–3 (patching, UniFi, stream test) are lgo's and must clear before a session starts; the milestone dies if the FRITZ!Box's DVB-C is branding-locked. [M8](#m8-featernst-tvheadend) |
 | M9 — TubeSync | **open** | — | Feeds the Jellyfin library directly. First occupant of the **podman** tier (not in nixpkgs — verified), so it builds the tier as well as the service; podman's attachment to `br0` is unsolved here. [M9](#m9-featernst-tubesync) |
 | M10 — Kodi + IR remote | **dropped — 2026-08-20** | — | Dropped by lgo before any code was written: the couch requirement is Plasma Bigscreen plus Steam, and Kodi is a third media UI nobody asked for. The IR-receiver half was orthogonal and survives as a [backlog entry](#floating-backlog) |
@@ -153,10 +153,10 @@ Rows are retired only by the PR that actually removes the rule.
 | L3 | `networking.firewall.allowedTCPPorts = [ 8096 ]` on the host | `machines/ernst/containers/jellyfin.nix` | Jellyfin shares the host network namespace (`privateNetwork = false`), so its port is a host port | **M2b** — the veth on VLAN 90 gives the container its own L2 identity; the host port opening goes away and the ACL moves to the UDM-Pro | **retired in [#82](https://github.com/lutzgo/clanarchy/pull/82)** — the line is deleted from the repo; 8096 is now opened only inside the container's own netns. Effective on the next `clan machines update ernst` |
 | — | `LAN (1) → qBittorrent 10.0.90.11:8080,22/tcp` | UDM-Pro ZBF, M3 | The qBittorrent WebUI (and the guest's SSH) are reachable from the management networks and nowhere else | **permanent** — architecture invariant #4 names this bypass explicitly. It is listed here only so a future milestone does not mistake it for an interim row and "fix" it by adding a Traefik route | **created and verified 2026-08-20.** Source zone `Internal`, narrowed to the `LAN` + `Servers` networks; destination `10.0.90.11` tcp `8080,22`; `Auto Allow Return Traffic` ticked. Servers (50) does need to be listed — with it, `ssh` from ernst itself works. **The port belongs in the Destination card**: the editor has a Port section in *both* zone cards and the source one is the one you see first, which matches only traffic *from* 8080/22, i.e. never |
 | L4 | `LAN (1)` + `Servers (50)` → arr `10.0.90.13:9696,8989,7878/tcp` | UDM-Pro ZBF, M4 | The three arr WebUIs are reached directly; there is no reverse proxy yet | **M5** — replace with the permanent `LAN → traefik:443` rule and Traefik routes | **never created — superseded by M5, [#86](https://github.com/lutzgo/clanarchy/pull/86).** M4 shipped without it and M5 landed before anyone needed it badly enough to add it, so the interim rule this row describes has no lifetime at all: the arr UIs go straight from "reachable only from inside `br0`" to "reachable through Traefik". **Do not create it now.** The three ports are source-restricted to `10.0.90.12` in `containers/arr.nix`, so a ZBF permit for them would be a rule the backend ignores. Earlier revisions of this table also predicted a host-firewall row plus a veth migration; M4 skipped v1 and went straight to the veth, so neither ever existed either |
-| L5 | Traefik `ipAllowList` on the arr + Grafana routes (mgmt + wg-travel) | M5 (`traefik` container) | There is no identity provider yet | **M7** — replaced by the Authelia forward-auth middleware | **created in [#86](https://github.com/lutzgo/clanarchy/pull/86)** as middleware `mgmt-only` in `containers/traefik.nix`, `sourceRange = 10.0.10.0/24, 10.0.50.0/24, 10.0.70.0/24` — LAN, Servers, and the travel/wg VLAN. Applied to the prowlarr / sonarr / radarr routers and **not** to jellyfin. **The Grafana half arrived with M6 ([#87](https://github.com/lutzgo/clanarchy/pull/87))** — same middleware, same three ranges, on a fourth router (`grafana.goclan.org` → `10.0.90.14:3000`), so M7 replaces one middleware and not two mechanisms. Grafana keeps its own admin login underneath the forward-auth: it is the account that still works when the identity provider is the thing that is broken, which is exactly when someone wants a dashboard. Two things M7 must not get wrong: it matches the TCP peer address and ignores `X-Forwarded-For` (correct, because nothing sits in front of this proxy — do not add `forwardedHeaders`), and VLAN 70 is in the list on purpose, so replacing it must not lock lgo out from the road |
+| L5 | Traefik `ipAllowList` on the arr + Grafana routes (mgmt + wg-travel) | M5 (`traefik` container) | There is no identity provider yet | **M7** — replaced by the Authelia forward-auth middleware | **RETIRED IN CODE 2026-08-24 by M7 (PR-PLACEHOLDER); effective on the next `clan machines update ernst`.** Created in [#86](https://github.com/lutzgo/clanarchy/pull/86) as middleware `mgmt-only`, `sourceRange = 10.0.10.0/24, 10.0.50.0/24, 10.0.70.0/24`; extended to a fourth router (Grafana) by [#87](https://github.com/lutzgo/clanarchy/pull/87). **Deleted, not stacked underneath forward-auth** — the option this row's own notes raised. The argument, in full in `containers/authelia.nix`: an IP allow-list under an identity provider means valid credentials plus a correct TOTP code still fail from anywhere nobody pre-declared, which is most of what the identity provider was added for; and two mechanisms for one property is what `containers/traefik.nix` argues against in its own words. Both warnings this row carried were honoured — `trustForwardHeader = false` on the new middleware keeps the peer-address semantics and still ignores client-supplied `X-Forwarded-*` (Traefik writes those itself from the real request either way), and the VLAN 70 lockout it warned about is moot because the replacement does not filter by source at all. **What is lost with it**: the arr and Grafana login surfaces are now visible from the IoT VLAN. That is the trade, and the compensating control is Authelia's per-user regulation, not a network ACL |
 | L6 | Tvheadend ports `9981` / `9982` on the host, mgmt-VLAN scoped | M8 (host firewall, v1) | Only if M8 lands before M2b — Tvheadend v1 would then run on host networking like Jellyfin's and arr's did | **M5** for the web route, plus a veth migration mirroring M2b. Never created at all if M2b lands first | **never created — both gates have now closed.** M2b landed first, so Tvheadend was never going to run on host networking; M5 has landed too, so the web route already exists as a pattern to copy. M8 should go straight to a veth on VLAN 90 plus a Traefik route, exactly as M4 did |
 | L7 | FRITZ!Box → Tvheadend on the ephemeral **UDP** range | UDM-Pro ZBF (off-repo), M8 | SAT>IP media is unicast RTP on a return flow the RTSP rule does not cover | Proving RTP **interleaved over the RTSP TCP connection**, which reduces the whole ACL to TCP 49000 + 554 | not yet created — **avoid**; take the interleaved-TCP path if M8's Phase 0 shows it works |
-| L8 | TubeSync web UI port, mgmt-VLAN scoped | M9 (host/container firewall, v1) | Only if M9 lands before M5 — an admin UI with no proxy in front of it yet. Mgmt-scoped, so invariant #3 does not cover it | **M5** — replace with the Traefik route. Never created at all if M5 lands first | **never created — M5 landed first.** M9 gets a Traefik route (`tubesync.goclan.org`, behind the `mgmt-only` middleware) and opens no port. Note this does not solve M9's actual open question, which is how a podman container attaches to `br0` on VLAN 90 at all |
+| L8 | TubeSync web UI port, mgmt-VLAN scoped | M9 (host/container firewall, v1) | Only if M9 lands before M5 — an admin UI with no proxy in front of it yet. Mgmt-scoped, so invariant #3 does not cover it | **M5** — replace with the Traefik route. Never created at all if M5 lands first | **never created — M5 landed first.** M9 gets a Traefik route (`tubesync.goclan.org`, behind the `authelia` forward-auth middleware — M7 deleted `mgmt-only`, so copy the *arr routers, not this row's original wording) and opens no port. Adding it also means adding the hostname to `access_control` in `containers/authelia.nix`, which is deny-by-default: a route with the middleware and no matching rule fails closed. Note this does not solve M9's actual open question, which is how a podman container attaches to `br0` on VLAN 90 at all |
 
 ---
 
@@ -1983,79 +1983,279 @@ Constraints:
 
 ## M7 — `feat/ernst-authelia`
 
-**Goal.** A single sign-on layer in front of the admin UIs: Authelia as a Traefik
-forward-auth middleware, replacing the interim `ipAllowList` on the arr and
-Grafana routes, with TOTP as the second factor. Authelia over Keycloak — one Go
-binary, a forward-auth model that fits Traefik natively, and an OIDC provider for
-Grafana; there is no federation requirement that would justify Keycloak's weight.
+**Built 2026-08-24 in PR-PLACEHOLDER. Nothing is deployed** — Claude does not
+deploy, and every claim below is either an evaluation, an offline run against the
+real Authelia binary, or explicitly labelled as untested.
 
-**Depends on.** M5. **Risk.** Medium — the failure mode is locking yourself out of
-your own admin UIs from a remote network.
+**Goal, unchanged from the brief.** A single sign-on layer in front of the admin
+UIs: Authelia as a Traefik forward-auth middleware, replacing the interim
+`ipAllowList` on the *arr and Grafana routes, with TOTP as the second factor.
 
-````text
-Read CLAUDE.md fully before doing anything.
+**Authelia over Keycloak, and it was a choice.** One Go binary against a JVM
+stack; `/api/authz/forward-auth` exists natively, where Keycloak in front of the
+*arr would need oauth2-proxy as well — two components for a milestone whose point
+is one; it is still an OIDC provider, which is the other half of the work; and
+there is no SAML consumer and no directory to federate against, which is what
+Keycloak's weight actually buys. What would reopen it: an actual SAML consumer,
+or a second person's directory. The full version is in the header of
+`machines/ernst/containers/authelia.nix`.
 
-Work in the clanarchy repo on miralda. Branch: feat/ernst-authelia.
-Prerequisite: M5 (Traefik) merged and deployed.
+### Shape
 
-DECISION ALREADY MADE: Authelia, not Keycloak. Record the rejection in the
-PR body — single Go binary versus a JVM stack, native forward-auth fit with
-Traefik, built-in OIDC provider, and no federation/SAML requirement here that
-would justify Keycloak's operational weight. Do not re-litigate it; do
-record it, so the next reader knows it was a choice.
+| Piece | Value |
+|---|---|
+| Container | `machines/ernst/containers/authelia.nix`, nspawn, `vb-authelia` on `br0` / VLAN 90 |
+| Address | MAC `02:00:00:90:00:07` → `10.0.90.15` (DHCP reservation on the UDM-Pro) |
+| Ids | uid/gid 3008 `authelia-main`, continuing the 3000-range table in `networking.nix` |
+| State | `/srv/state/authelia` → `/var/lib/authelia-main` — SQLite, plus the notifier's file |
+| Ports | 9091 from `10.0.90.12` only; 9959 (telemetry) from `10.0.90.14` only |
+| Vars | `authelia-secrets` (5 generated), `authelia-users` (1 prompt per account), `authelia-oidc` (a pair) |
 
-SHAPE. systemd-nspawn container in machines/ernst/containers/authelia.nix.
-SQLite storage (single instance, no HA need) under /srv/state/authelia.
-Secrets via clan vars generators — jwt secret, session secret, storage
-encryption key. GENERATE them (openssl rand in the generator script) rather
-than prompting, except where a value genuinely has to come from lgo. No
-placeholder secrets committed.
+**Accounts: `lgo` and `go`, both in `admins`.** Confirmed with lgo before the file
+was written, per the brief. `sgo` is the expected next entry and is one line in
+`autheliaUsers` plus `clan vars generate ernst` — the prompts, the
+`users_database.yml` and the access-control subject list are all derived from that
+one list, so there is nothing to keep in step.
 
-USERS. lgo and sabine — CONFIRM the list with lgo before writing it. File-
-based user database, password hashes produced by a generator, TOTP enrolled
-per user on first login.
+**Three tiers untouched.** Authelia holds credentials and fetches nothing on
+anyone's behalf, so it is trusted-tier / nspawn under invariant #1. Its state is
+on `zdata` under invariant #7, and that invariant has never had a sharper edge in
+this repo: every TOTP secret in the house is in one SQLite file, and putting it on
+`zroot` would have worked perfectly until the next reboot and then locked every
+account out of every admin UI at once, with the recovery path itself behind the
+thing that broke.
 
-TRAEFIK INTEGRATION.
-  - A forwardAuth middleware, applied to the arr routes and the Grafana
-    route, REPLACING the interim ipAllowList (ledger row L5 in
-    docs/roadmap.md — retire it in this PR).
-  - Evaluate whether to stack the allowlist underneath forward-auth as
-    defence in depth. The risk is a wg-travel lockout: if the allowlist stays
-    and the travel VPN's source address is not in it, valid credentials will
-    not help from the road. State the decision and, if stacking, prove the
-    wg-travel range is included.
-  - Access control: deny by default. two_factor policy for admin UIs. Bypass
-    ONLY for the OIDC endpoints and health checks that must be unauthenticated
-    for the flow to work — enumerate them, do not use a broad prefix.
+### The ipAllowList is deleted, not stacked — and the cost is real
 
-GRAFANA. Switch to Authelia OIDC. KEEP the local admin account as
-break-glass, with a note in the PR body on how to reach it when Authelia is
-down.
+The brief asked for this to be evaluated rather than assumed. **Decision: remove
+it.** Three reasons and one cost.
 
-JELLYFIN IS EXPLICITLY EXEMPT. Native auth, no forward-auth, ever — TV and
-mobile clients cannot handle the redirect flow. M5 wrote this into the
-traefik file header; keep it there and repeat it in Authelia's.
+- **An IP allow-list under an IdP defeats the IdP.** The point of adding
+  credentials plus TOTP is that access stops depending on where you are. Keeping
+  the list means valid credentials and a correct code still fail from a phone on
+  the IoT VLAN, or from any network nobody pre-declared.
+- **Two mechanisms for one property** is what `containers/traefik.nix` argues
+  against in its own words — "two sources of truth for one property is how you get
+  a rule nobody dares delete because nobody can prove what it does." That applies
+  to the control it shipped as interim.
+- **The layering is already there and is untouched.** Every backend still refuses
+  its own web port from anything but `10.0.90.12`, so the only path to the *arr is
+  through Traefik — and now the only way through Traefik is through Authelia.
 
-TEST PLAN: unauthenticated request to an arr route is redirected to the
-Authelia portal; login + TOTP grants access; Grafana OIDC login works and
-maps to the right role; the break-glass local admin still works; Jellyfin is
-untouched; and — explicitly — a request from the wg-travel network succeeds.
+**The cost, stated rather than buried: the login portal becomes visible from the
+IoT VLAN.** The `Allow Traefik` ZBF policy already permits IoT → `10.0.90.12:443`,
+so a compromised smart device can now see a login form it previously could not.
+What it meets there is a `two_factor` policy and regulation — three failures in
+five minutes cost a fifteen-minute ban, tracked **per user** in `db.sqlite3` and
+therefore surviving a restart. Per user and not per source is the right axis: an
+attacker on the LAN can change source address at will and cannot change which
+account they are guessing at.
 
-Constraints:
-- Never commit to main. Branch first, PR via `gh pr create` (title
-  imperative, <=70 chars, no prefix; body = summary + test plan + manual
-  steps).
-- No new flake inputs.
-- Minimal diffs; commit only the files this change touches.
-- Verify by evaluation:
-    nix flake check
-    nix eval --no-update-lock-file --raw \
-      '.#nixosConfigurations.ernst.config.system.build.toplevel.drvPath'
-- Claude does not deploy: `clan machines update ernst` and
-  `clan vars generate ernst` are lgo's steps.
-- Update docs/roadmap.md's status table and interim-rule ledger in the same
-  PR — this milestone closes L5.
-````
+The two warnings ledger row L5 carried were both honoured. `trustForwardHeader`
+is **false**, so the middleware keeps the peer-address semantics the ipAllowList
+had (Traefik writes `X-Forwarded-Method/-Proto/-Host/-Uri` onto the auth request
+from the *actual* request regardless; the flag only decides whether a
+client-supplied header is passed through instead — and nothing sits in front of
+this proxy). Authelia's own Traefik documentation shows `true`, which is written
+for deployments behind a CDN; this is not one. And the VLAN 70 lockout the row
+warned about is moot, because the replacement does not filter by source at all.
+
+### The bypass list came back empty, and that is the answer
+
+The brief said to enumerate the OIDC endpoints and health checks that must be
+unauthenticated "for the flow to work", and not to use a broad prefix. Enumerated,
+**the list is empty.**
+
+`auth.goclan.org` carries no middleware on its Traefik router — it cannot, since
+it is the page the forward-auth redirect points at. So
+`/.well-known/openid-configuration`, `/api/oidc/authorization`, `/api/oidc/token`,
+`/api/oidc/userinfo` and `/api/health` are never forwarded for authorization in
+the first place. An `access_control` rule with `policy: bypass` only ever applies
+to requests Traefik forwards, and no request to those paths is one of them.
+Adding such rules would be worse than adding none: they would read as enforcement
+while matching nothing.
+
+What is there instead is `default_policy: deny` plus **one** rule naming the four
+protected hostnames explicitly, with `subject: ["group:admins"]`. Explicit
+hostnames rather than `*.goclan.org` so that adding a route in
+`containers/traefik.nix` with the middleware attached and forgetting to add it
+here fails **closed**.
+
+### Grafana: OIDC, and break-glass needed one new line to be true
+
+Grafana moves to `auth.generic_oauth` against Authelia, with PKCE required on both
+ends and `groups` mapped to roles (`admins` → Admin, everyone else → Viewer,
+`role_attribute_strict = false` so an unexpected claim shape demotes rather than
+locks out). The client secret is generated **as a pair** in one run — plaintext for
+Grafana, pbkdf2 digest for Authelia — because two values that must correspond and
+are produced separately will eventually disagree, and the failure mode is
+`invalid_client` with no indication which half is wrong. The digest is staged out
+of sops into a file rather than written into the config, so no credential material
+lands in the world-readable Nix store.
+
+Two switches that look like one: `users.allow_sign_up` stays **false** (the local
+form) while `auth.generic_oauth.allow_sign_up` must be **true**, or an OIDC login
+succeeds at the issuer and then fails at Grafana with "signup is not allowed".
+
+**The break-glass account was already there and was already unreachable.** M6
+kept Grafana's local admin precisely so it would work when the identity provider
+is what is broken. Putting the Grafana route behind forward-auth makes that
+account unreachable through Traefik — the login form itself is behind the thing
+that is down. So the monitoring container now also accepts `:3000` from
+`fdca:fe90::1`, the **host** end of M6's `mon0` point-to-point ULA veth:
+
+```bash
+ssh -N -L 3000:[fdca:fe90::2]:3000 root@ernst
+# then http://localhost:3000, log in as `admin`
+```
+
+Host-only, root-only, one `ip6tables` line, and it reuses machinery M6 already
+built. `auto_login` is deliberately off for the same reason — it would send anyone
+hitting `/login` straight to the issuer, including the person trying to reach that
+form. `signout_redirect_url` is deliberately unset too, so signing out of a
+dashboard is not also signing out of the *arr.
+
+### Authelia is now a scrape target
+
+`service-modules/monitoring.nix` gains `settings.authelia.{address,metricsPort}`
+and a matching job, source-restricted on the other end to `10.0.90.14` exactly
+like Traefik's. Reason: after this milestone an Authelia that is down is every
+admin UI in the house being down, and an identity provider nobody watches is the
+thing that fails silently. **No new alert rule** — `InstanceDown` keys on
+`always_on="true"`, a label only the machine targets carry, and the same is
+already true of the `traefik` job. What this buys is the history and the `up`
+series to read after an outage.
+
+The module learns nothing about Authelia beyond those settings: no generator name
+is hard-wired and no address is assumed, so it stays a clan service module that
+happens to be pointed at an IdP on ernst rather than one that requires one. The
+OIDC secret's generator is *named* in settings, and the `mkIf`-on-a-config-block
+shape M6 discovered the hard way is reused for the `restartUnits` wiring — guard
+the definition, not the value, or `clan vars check` reports a missing secret on
+every machine that never enabled it.
+
+### The notifier is a file, and TOTP enrolment is therefore an operator step
+
+Authelia requires exactly one notifier; the choices are SMTP and a file. SMTP
+would mean a mail credential, an outbound path to a mail host, and a third-party
+dependency in the login path of every admin UI in the house. The file costs one
+`cat` — but the consequence has to be known before the first login, because
+**enrolling TOTP sends a link by "email"**:
+
+```bash
+nixos-container run authelia -- cat /var/lib/authelia-main/notification.txt
+```
+
+Log in with a password, choose to register a device, read the link out of that
+file, open it, scan the QR. Once per account.
+
+Password reset is disabled for the matching reason: the reset flow mails a link to
+a file on ernst, so "reset your password" already means "get a shell on ernst" —
+and someone with that can re-run `clan vars generate ernst`, which is the real
+reset path and the one that keeps sops as the single source of truth. That is also
+what keeps `users_database.yml` read-only.
+
+### What was verified, offline, against the real binary
+
+This is the part that distinguishes a claim from a prediction. Everything below
+was run on miralda before the PR was opened.
+
+| Check | Result |
+|---|---|
+| `nix flake check` | passed |
+| `toplevel.drvPath` on all four machines | evaluated |
+| `authelia validate-config` on the **rendered** config + staged OIDC client block + generated `users_database.yml` + the module's JWKS fragment | **"Configuration parsed and loaded successfully without errors"** — Authelia 4.39.20, `X_AUTHELIA_CONFIG_FILTERS=template` and all four `AUTHELIA_*_FILE` env vars set exactly as the module sets them |
+| All three vars generators, run end to end with fake prompts | produced 64-char secrets, a verifying 4096-bit RSA key, a two-user `users_database.yml` with `$argon2id$` digests, and a matching plaintext/pbkdf2 pair |
+| The short-password guard | exits 1 with the message, as intended |
+| Traefik dynamic config | four routers carry `authelia`; **`jellyfin` carries none**; `auth.goclan.org` carries none |
+| Container firewalls | authelia 9091 ← `.12` only, 9959 ← `.14` only; monitoring 3000 ← `.12` **and** `fdca:fe90::1` |
+
+**Not verified, because it cannot be without deploying:** that
+`authelia-main.service` starts inside nspawn at all. nixpkgs' authelia module sets
+a large systemd sandbox unconditionally — `ProtectKernelTunables`,
+`ProtectControlGroups`, `RestrictNamespaces`, `PrivateUsers`,
+`MemoryDenyWriteExecute`, `ProtectSystem=strict` — and, unlike the jellyfin
+module, it is **not** container-aware: there is no `!config.boot.isContainer`
+guard on any of them. `containers/traefik.nix` records that some of those conflict
+with nspawn's own mount-namespace setup.
+
+**Nothing was overridden pre-emptively**, and that is deliberate: this repo's own
+lesson from M2/M2b is that a plausible inference recorded as a measurement is how
+you end up fixing a hazard that does not exist. If the unit fails,
+`systemctl status authelia-main` names the option, the fix is a three-line
+`mkForce` block already written out in a comment in the file — and whoever applies
+it should record **which one it actually was**, not which one it might have been.
+
+### Manual steps — lgo's, and in this order
+
+1. **`clan vars generate ernst`** — BEFORE the deploy, not after. Three new
+   generators; two prompts, one per account. clan-core cannot know a sops
+   secret's path until the secret exists, so a deploy that runs first bakes
+   `/no-such-path` into the staging script and produces a system whose staging
+   unit can never succeed however often it is restarted. The failure is at least
+   fail-closed and loud: the unit fails, `container@authelia` never starts, and
+   there is no identity provider rather than one that lets everything through.
+2. **DHCP reservation** on the Services network (VLAN 90): MAC
+   `02:00:00:90:00:07` → `10.0.90.15`. **Inside the pool** (`10.0.90.6`–`.254`) —
+   UniFi accepts an address from the `.2`–`.5` range and then silently hands out
+   an ordinary pool lease instead. M2b lost a round to exactly that.
+3. **Technitium**: `auth.goclan.org` → `10.0.90.12` (Traefik, not the container).
+   Same shape as every other name; the wildcard certificate already covers it, so
+   there is no certificate work.
+4. **No UDM-Pro rule.** The `Allow Traefik` policy already permits every consumer
+   zone to `10.0.90.12:443`, and that is the only address involved. Nothing new
+   is exposed to any zone. *(While in there: M6 measured that this policy's
+   source list is `LAN + IoT` only and does **not** include `Servers`, contrary
+   to what the ledger claims. Unrelated to M7, still worth fixing.)*
+5. **`clan machines update ernst`.**
+6. **Enrol TOTP, per account**, using the notifier file — see above. Do lgo's
+   first and confirm it works before touching anything else.
+7. **Verify from the road**, or at least from a non-management VLAN. The whole
+   point of retiring L5 is that this now works; it is also the thing that will
+   quietly not.
+
+### Test plan
+
+Run after `clan machines update ernst`:
+
+```bash
+# The veth landed on VLAN 90 — the one thing that races.
+bridge vlan show dev vb-authelia          # expect: 90 PVID Egress Untagged
+ip -br link show master br0               # expect: enp13s0 + five vb-* veths
+
+# Staging succeeded and the container is up.
+systemctl status authelia-secrets         # active (exited)
+nixos-container status authelia
+nixos-container run authelia -- systemctl status authelia-main
+nixos-container run authelia -- ip -br addr show eth0   # 10.0.90.15
+
+# The authz endpoint answers, and answers 401 to an unauthenticated probe.
+nixos-container run authelia -- \
+  curl -sS -o /dev/null -w '%{http_code}\n' localhost:9091/api/authz/forward-auth
+
+# It is NOT reachable from the host — mechanism (a) doing its job.
+curl -m5 http://10.0.90.15:9091/ || echo "refused from the host — correct"
+
+# End to end, from a browser:
+#   https://sonarr.goclan.org      → redirected to auth.goclan.org
+#   log in + TOTP                  → lands on Sonarr
+#   https://jellyfin.goclan.org    → NO redirect, Jellyfin's own login
+#   https://grafana.goclan.org     → forward-auth, then "Sign in with Authelia"
+#
+# And from a network that the deleted ipAllowList would have refused —
+# a phone on IoT, or wg-travel. This is the milestone's actual deliverable.
+
+# Break-glass, with Authelia deliberately stopped:
+#   machinectl stop authelia
+#   ssh -N -L 3000:[fdca:fe90::2]:3000 root@ernst
+#   http://localhost:3000  → local admin form, still works
+#   machinectl start authelia
+
+# The reboot is part of the milestone (invariant #7): db.sqlite3 holds every
+# enrolled TOTP secret and has never been tested against a real rollback.
+#   systemctl reboot
+#   …then log in again with the SAME TOTP code source.
+```
 
 ---
 

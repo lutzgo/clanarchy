@@ -269,6 +269,19 @@
         roles.server.machines.ernst.settings = {
           mac          = "02:00:00:90:00:06";
           proxyAddress = "10.0.90.12";
+
+          # M7.  The identity provider, at the address allocated in the table
+          # in machines/ernst/networking.nix.  Two independent things:
+          #   address    — scrape it, because after M7 an Authelia that is down
+          #                is every admin UI in the house being down.
+          #   oidc       — Grafana logs in against it.  The LOCAL admin account
+          #                stays; see the break-glass note in
+          #                service-modules/monitoring.nix.
+          authelia = {
+            address        = "10.0.90.15";
+            oidc.enable    = true;
+            oidc.issuerUrl = "https://auth.goclan.org";
+          };
         };
 
         # ernst is also a client, and the only one carrying the three optional
