@@ -641,6 +641,16 @@ in
 
           grafanaGen = config.clan.core.vars.generators.monitoring-grafana;
 
+          # Optional ntfy bearer token, from the same module and the same
+          # opt-in that gates the zedlet's — one switch, both publishers, so
+          # they cannot end up disagreeing about whether the topic is
+          # authenticated.
+          ntfyAuth      = config.clanarchy.zfs.ntfy.auth.enable;
+          ntfyTokenFile =
+            if ntfyAuth
+            then config.clan.core.vars.generators.zfs-ntfy-token.files."token".path
+            else "/no-such-path";
+
           ##################################################################
           # The single dashboard, as code.
           #
@@ -654,6 +664,7 @@ in
             cp ${./monitoring-dashboard.json} $out/clanarchy-fleet.json
           '';
         in
+        lib.mkMerge [
         {
           ####################################################################
           # It is an error to hold this role without the ntfy var.
@@ -760,13 +771,24 @@ in
               base=''${split%% *}
               topic=''${split##* }
 
+              # Built line by line rather than with a heredoc, because the
+              # optional token has to come out of a FILE and never out of a
+              # shell variable: this unit runs as root and its environment is
+              # inherited by everything it forks.  `tr` writes the value
+              # straight into the redirect.
               umask 077
-              cat > ${ntfyConfFile}.new <<EOF
-              ntfy:
-                baseurl: $base
-                notification:
-                  topic: $topic
-              EOF
+              {
+                echo "ntfy:"
+                echo "  baseurl: $base"
+                ${lib.optionalString ntfyAuth ''
+                echo "  auth:"
+                printf '    token: '
+                tr -d '[:space:]' < ${ntfyTokenFile}
+                echo
+                ''}
+                echo "  notification:"
+                echo "    topic: $topic"
+              } > ${ntfyConfFile}.new
               chown root:root ${ntfyConfFile}.new
               chmod 0400 ${ntfyConfFile}.new
               mv -f ${ntfyConfFile}.new ${ntfyConfFile}
@@ -896,6 +918,49 @@ in
           # identity provider is the thing that is broken — which is exactly
           # when someone needs to look at a dashboard.
           ####################################################################
+          # ── Make a rotated ntfy secret re-stage itself ──────────────────
+          #
+          # The 2026-08-24 rotation needed a manual
+          # `systemctl restart monitoring-secrets container@monitoring`,
+          # and the reason it is easy to forget is that nothing looks wrong
+          # without it: the staging unit's SCRIPT is unchanged (it embeds the
+          # sops PATH, not the contents), so systemd sees an unchanged unit,
+          # does not re-run it, and the previous topic stays staged in /run
+          # while the deploy reports success.  Alerts then keep going to the
+          # topic that was just rotated away from.
+          #
+          # BOTH units are listed and both are needed.  Restarting
+          # container@monitoring alone would not re-run the staging oneshot
+          # (RemainAfterExit=true, already active); restarting the staging
+          # oneshot alone would rewrite /run while alertmanager-ntfy keeps the
+          # copy it loaded as a systemd credential at start.  systemd orders
+          # them correctly on its own through the existing Before=.
+          #
+          # Declared HERE and not in modules/observability/zfs-ntfy.nix
+          # because monitoring-secrets exists only on the machine holding this
+          # role — naming it fleet-wide would point sops-nix at a unit that is
+          # absent on three machines out of four.
+          #
+          # NOTE THE SHAPE of the token half: `mkIf` wraps a CONFIG BLOCK, not
+          # a value.  Written the obvious way —
+          #
+          #   generators.zfs-ntfy-token.files."token".restartUnits =
+          #     lib.mkIf ntfyAuth [ … ];
+          #
+          # — the *value* is conditional but the *attribute path* is not, so
+          # the module system materialises `generators.zfs-ntfy-token` with its
+          # defaults even when auth is off.  That is enough to make clan
+          # believe the generator exists, and `clan vars check` then reports
+          #
+          #   Secret var 'token' for service 'zfs-ntfy-token' … is missing
+          #
+          # on a machine that has deliberately not enabled auth.  Measured
+          # 2026-08-24.  Guard the definition, not the value.
+          clan.core.vars.generators.zfs-ntfy.files."url".restartUnits = [
+            "monitoring-secrets.service"
+            "container@monitoring.service"
+          ];
+
           # ── AND Grafana's secret_key, which is NOT prompted ─────────────
           #
           # nixpkgs 26.05 removed the compiled-in default for
@@ -1575,7 +1640,32 @@ in
               documentation.nixos.enable = false;
             };
           };
-        };
+        }
+
+        # The token's restart wiring, added ONLY when auth is on.
+        #
+        # `mkMerge` + `mkIf` on a WHOLE CONFIG BLOCK, and both halves of that
+        # are load-bearing:
+        #
+        #   - `mkIf` on the VALUE (`restartUnits = mkIf ntfyAuth [ … ]`) leaves
+        #     the attribute PATH defined, which materialises the
+        #     `zfs-ntfy-token` generator on machines that never enabled auth.
+        #     `clan vars check` then reports its token as missing. Measured
+        #     2026-08-24.
+        #   - `//  lib.optionalAttrs ntfyAuth { … }` fixes that and introduces
+        #     INFINITE RECURSION: it forces `config.clanarchy.zfs.ntfy.auth`
+        #     while the module's own attribute structure is still being
+        #     determined. Also measured, immediately after.
+        #
+        # `mkIf` defers the condition until after the structure is known,
+        # which is exactly the property needed here.
+        (lib.mkIf ntfyAuth {
+          clan.core.vars.generators.zfs-ntfy-token.files."token".restartUnits = [
+            "monitoring-secrets.service"
+            "container@monitoring.service"
+          ];
+        })
+        ];
     };
   };
 }
