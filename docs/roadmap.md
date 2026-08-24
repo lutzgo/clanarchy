@@ -1780,10 +1780,63 @@ identifier, and that is exactly why it got copied.
 
 **What rotation does not fix**: an unguessable topic is a bearer secret, not
 authentication. ntfy supports reserving a topic and denying anonymous access,
-but publishing then needs an `Authorization: Bearer` header that neither the
-zedlet nor `alertmanager-ntfy` currently sends. Adding token support to both is
-a small, self-contained follow-up and is the only thing that makes a future leak
-survivable rather than fatal.
+but publishing then needs an `Authorization: Bearer` header. **That support
+exists as of [#88](https://github.com/lutzgo/clanarchy/pull/88)** — see
+[Enabling ntfy auth](#enabling-ntfy-auth-the-order-matters) — and it is the only
+thing that makes a future leak survivable rather than fatal: a leaked *topic* is
+then worth nothing on its own, and a leaked *token* is revocable from ntfy's web
+UI without touching a machine.
+
+### Enabling ntfy auth — the order matters
+
+`clanarchy.zfs.ntfy.auth.enable` is **off by default and enabled on no
+machine**, deliberately: it is one switch shared by the zedlet and M6's
+Alertmanager bridge, and turning it on before the token exists leaves
+`clan vars generate` prompting for something nobody has — and, on ernst, a
+`monitoring-secrets` that fails closed and takes the monitoring container down
+with it. That is the exact round M6's first deploy lost. **Do the ntfy side
+first.**
+
+1. **ntfy account**, on whichever instance `clanarchy.zfs.ntfy.baseUrl` points
+   at (`https://ntfy.sh` by default).
+2. **Reserve both topics** under that account — ernst's and miralda's — and set
+   each to **deny anonymous access**. This is the step that actually changes
+   anything: until a topic is reserved, the token is decoration and the topic
+   is still the whole access control.
+3. **Mint one access token per machine** (Account → Access tokens), each with
+   **write** access to that machine's topic. One token for both would work; one
+   per machine is preferred for the same reason each machine has its own topic —
+   revocation stays per-machine.
+4. **Enable it**, per machine, in `machines/<name>/configuration.nix` beside the
+   existing `clanarchy.zfs.ntfy.enable`:
+   ```nix
+   clanarchy.zfs.ntfy.auth.enable = true;
+   ```
+5. **Generate and deploy**, ernst last if you want a safe order — miralda proves
+   the zedlet path with nothing else riding on it:
+   ```bash
+   clan vars generate miralda   # prompts for the tk_… token; rejects a password by shape
+   clan machines update miralda
+   clan vars generate ernst
+   clan machines update ernst   # no manual restart: restartUnits handles it
+   ```
+6. **Prove it**, with the same smoke test the rotation used — and prove the
+   negative too, which is the half that shows the reservation took:
+   ```bash
+   # Should arrive.
+   ssh root@ernst 'nixos-container run monitoring -- curl -s -XPOST localhost:9093/api/v2/alerts \
+     -H "Content-Type: application/json" \
+     -d "[{\"labels\":{\"alertname\":\"AuthTest\"},\"annotations\":{\"summary\":\"auth test\"}}]"'
+
+   # Should now be REFUSED (403) rather than delivered — anonymous publish.
+   curl -s -o /dev/null -w '%{http_code}\n' -d test https://ntfy.sh/<topic>
+   ```
+   A `200` on the second command means the topic is not reserved yet and step 2
+   was skipped; the first command would still work, which is why both are here.
+
+**Rolling back** is `auth.enable = false` plus a deploy — the topic var is
+untouched by any of this, and the token generator is separate precisely so
+nothing here can invalidate it.
 
 ### Not yet proven
 
