@@ -56,10 +56,42 @@
 #        zfs-zed` will show it.  A fire-and-forget notifier that cannot
 #        report its own failure is indistinguishable from one that was never
 #        needed.
+#
+# ── OPTIONAL BEARER-TOKEN AUTH ──────────────────────────────────────────────
+#
+#   `clanarchy.zfs.ntfy.auth.enable = true` adds an Authorization header to
+#   every publish, which is what a RESERVED ntfy topic requires.
+#
+#   WHY IT MATTERS, and it is not theoretical here: on a public instance an
+#   unreserved topic is a BEARER SECRET.  Knowing it grants both read and
+#   publish, so a single leak — a screenshot, a pasted journal line, a public
+#   commit — hands over every pool alert this fleet emits and the ability to
+#   forge them.  That happened on 2026-08-24 (see docs/roadmap.md, M6), and
+#   rotation was the only available remedy because there was no second factor
+#   to revoke.  With a reserved topic set to deny anonymous access, a leaked
+#   TOPIC is worth nothing on its own, and a leaked TOKEN is revocable from
+#   ntfy's web UI without touching a single machine.
+#
+#   OFF BY DEFAULT, deliberately.  Turning it on before the account, the
+#   reservation and the token exist would leave `clan vars generate` prompting
+#   for something nobody has, and — on the machine running M6's Alertmanager
+#   bridge — a staging unit that fails and takes the monitoring container with
+#   it.  Enablement is a per-machine opt-in once the ntfy side is set up; the
+#   order is in docs/roadmap.md.
 { config, lib, pkgs, ... }:
 let
   cfg = config.clanarchy.zfs.ntfy;
   urlFile = config.clan.core.vars.generators.zfs-ntfy.files."url".path;
+
+  # A SEPARATE generator, not a second file on `zfs-ntfy`.  Adding a file to
+  # an existing generator changes that generator's definition, and clan
+  # decides whether a stored var is still current by comparing definitions —
+  # so the cheap-looking change would put every machine's ALREADY-CORRECT
+  # topic up for regeneration.  A new generator has nothing to invalidate.
+  tokenFile =
+    if cfg.auth.enable
+    then config.clan.core.vars.generators.zfs-ntfy-token.files."token".path
+    else null;
 
   # Normalise the var into "<baseurl> <topic>" on stdout, or fail with a
   # message on stderr.  ONE implementation, shared: the zedlet below uses it,
@@ -132,6 +164,29 @@ in
       '';
     };
 
+    auth.enable = lib.mkOption {
+      type        = lib.types.bool;
+      default     = false;
+      description = ''
+        Send `Authorization: Bearer <token>` with every publish, from a clan
+        var prompted by the `zfs-ntfy-token` generator.
+
+        Required by a RESERVED ntfy topic with anonymous access denied, which
+        is the only configuration in which the topic stops being a bearer
+        secret in its own right.  See the header for what that buys.
+
+        ENABLE ONLY AFTER the ntfy account, the topic reservation and the token
+        exist — otherwise `clan vars generate` prompts for a value nobody has
+        yet, and on the machine holding M6's Alertmanager bridge the staging
+        unit fails closed and the monitoring container does not start.
+
+        The token must carry WRITE access to this machine's topic.  One ntfy
+        account can own every machine's topic and issue one token per machine,
+        which keeps revocation per-machine — the same reason each machine has
+        its own topic.
+      '';
+    };
+
     priority = lib.mkOption {
       type        = lib.types.enum [ "min" "low" "default" "high" "urgent" ];
       default     = "high";
@@ -162,6 +217,53 @@ in
       };
       runtimeInputs = [ pkgs.coreutils ];
       script = ''${pkgs.coreutils}/bin/cat "$prompts/url" > "$out/url"'';
+    };
+
+    # ── clan-vars: ntfy access token (only when auth is enabled) ──────────
+    #
+    # Validated at prompt time, because every way this can be wrong fails
+    # LATE and quietly: a bad token yields HTTP 401 from inside a zedlet that
+    # exits 0 by design, i.e. exactly the class of silent failure this module
+    # spent M6 learning about.  A human is watching once, here.
+    clan.core.vars.generators.zfs-ntfy-token = lib.mkIf cfg.auth.enable {
+      files."token" = {
+        secret = true;
+        # Re-stage the Alertmanager bridge's copy when the token is rotated.
+        # The monitoring service module adds its own unit to this list on the
+        # machine that has one; see service-modules/monitoring.nix.
+        restartUnits = [ ];
+      };
+
+      prompts."token" = {
+        description = "ntfy access token with write access to this machine's topic (tk_…)";
+        type        = "hidden";
+      };
+
+      runtimeInputs = [ pkgs.coreutils pkgs.gnugrep ];
+
+      script = ''
+        set -euo pipefail
+        tok=$(tr -d '[:space:]' < "$prompts/token")
+
+        if [ -z "$tok" ]; then
+          echo "  ✗ empty token" >&2
+          exit 1
+        fi
+
+        # ntfy access tokens are documented as `tk_` followed by alphanumerics.
+        # Rejecting anything else catches the likely mistake — pasting the
+        # ACCOUNT PASSWORD — which would otherwise authenticate nowhere and
+        # present as a topic that silently stops receiving.
+        if ! printf '%s' "$tok" | grep -qE '^tk_[A-Za-z0-9]{20,}$'; then
+          echo "  ✗ that does not look like an ntfy access token." >&2
+          echo "    Expected tk_ followed by alphanumerics." >&2
+          echo "    Create one at: ntfy web UI → Account → Access tokens → Create." >&2
+          echo "    An account PASSWORD is not a token; this module sends a Bearer header." >&2
+          exit 1
+        fi
+
+        printf '%s' "$tok" > "$out/token"
+      '';
     };
 
     # ── ZED zedlet ────────────────────────────────────────────────────────
@@ -218,13 +320,50 @@ in
         # `journalctl -u zfs-zed` will show it.  The exit status is still
         # swallowed by design — the `|| echo` keeps `set -e`-less sh from
         # caring while making the failure legible.
-        ${pkgs.curl}/bin/curl -sSf --max-time 10 \
-          -H "Title: $TITLE" \
-          -H "Priority: $PRIORITY" \
-          -H "Tags: $BASE_TAGS,$HOSTNAME" \
-          -d "$BODY" \
-          "$NTFY_URL" >/dev/null \
-          || echo "zfs-ntfy: POST to $NTFY_BASE failed; the alert was NOT delivered" >&2
+        post() {
+          ${pkgs.curl}/bin/curl -sSf --max-time 10 "$@" \
+            -H "Title: $TITLE" \
+            -H "Priority: $PRIORITY" \
+            -H "Tags: $BASE_TAGS,$HOSTNAME" \
+            -d "$BODY" \
+            "$NTFY_URL" >/dev/null
+        }
+
+        ${lib.optionalString cfg.auth.enable ''
+        # ── Bearer token, and it never touches argv ────────────────────────
+        #
+        # `-H "Authorization: Bearer $tok"` would be the obvious form and is
+        # wrong on this machine: argv is world-readable through /proc, and
+        # ernst carries an unprivileged couch account (`go`) that could read
+        # the token straight out of `ps` during the request.  Assigning it to
+        # a shell variable first is no better — it lands in the environment of
+        # anything the zedlet forks.
+        #
+        # curl's own config format takes a `header = "..."` line, and `-K -`
+        # reads that config from STDIN.  The token therefore travels file →
+        # pipe → curl and is never an argument, never an env var, and never a
+        # temporary file.  `printf` is a shell builtin so the opening literal
+        # does not fork either.
+        TOKEN_FILE='${tokenFile}'
+        if [ -r "$TOKEN_FILE" ]; then
+          {
+            printf 'header = "Authorization: Bearer '
+            ${pkgs.coreutils}/bin/tr -d '[:space:]' < "$TOKEN_FILE"
+            printf '"\n'
+          } | post -K - \
+            || echo "zfs-ntfy: authenticated POST to $NTFY_BASE failed; the alert was NOT delivered" >&2
+          exit 0
+        fi
+
+        # Auth is enabled but the token has not been deployed yet.  Say so
+        # rather than falling back to an anonymous publish: against a reserved
+        # topic that gets a 403, and against an unreserved one it would
+        # succeed while quietly proving nothing about the auth path.
+        echo "zfs-ntfy: auth enabled but $TOKEN_FILE is unreadable — run 'clan vars generate' for this machine" >&2
+        exit 0
+        ''}
+
+        post || echo "zfs-ntfy: POST to $NTFY_BASE failed; the alert was NOT delivered" >&2
 
         exit 0
       '';
