@@ -730,25 +730,35 @@ in
 
               # ── ntfy ────────────────────────────────────────────────────
               #
-              # zfs-ntfy stores ONE value: the full topic URL, because that is
-              # all curl needs.  alertmanager-ntfy wants the two halves
-              # separately (baseurl for the instance, topic for the channel),
-              # so they are split here rather than by adding a second var —
-              # a second var would be a second thing to keep in step with the
-              # first, and the zedlet and this bridge MUST publish to the same
-              # topic or the "one alerting path" property is lost.
-              url=$(tr -d '[:space:]' < ${ntfyUrlFile})
-              base=''${url%/*}
-              topic=''${url##*/}
-
-              # Fail loudly.  A trailing slash makes topic empty, and
-              # alertmanager-ntfy with an empty topic starts fine and posts
-              # into the void — the exact failure mode this whole milestone
-              # exists to make impossible.
-              if [ -z "$base" ] || [ -z "$topic" ] || [ "$base" = "$url" ]; then
-                echo "zfs-ntfy url is not <baseurl>/<topic>: $url" >&2
+              # zfs-ntfy stores ONE value, and it is EITHER a full topic URL
+              # OR a bare topic — the prompt asks for a URL and in the same
+              # sentence suggests `openssl rand -hex 12`, which is a topic.
+              # ernst's is a bare topic.
+              #
+              # alertmanager-ntfy needs the two halves separately (baseurl for
+              # the instance, topic for the channel), so they are split with
+              # THE ZEDLET'S OWN SPLITTER — not a second copy of the logic
+              # here.  Two publishers that disagree about how to read one
+              # value is exactly how "one alerting path" quietly becomes two,
+              # and this milestone's ZED/Prometheus split is built on them
+              # landing on the same topic.
+              #
+              # A second clan var was the obvious alternative and is worse: it
+              # would be a second thing to keep in step, with nothing checking
+              # that it agrees.
+              #
+              # This FAILS THE UNIT on a value it cannot read, which stops the
+              # container — deliberate.  alertmanager-ntfy with an empty topic
+              # starts fine and posts into the void, and a monitoring stack
+              # that silently cannot notify is worse than one that is
+              # obviously down.  It is also how the bare-topic shape was found
+              # at all: the zedlet had been failing on it in silence.
+              if ! split=$(${config.clanarchy.zfs.ntfy.splitScript} ${ntfyUrlFile}); then
+                echo "cannot read a base URL and topic out of the zfs-ntfy var" >&2
                 exit 1
               fi
+              base=''${split%% *}
+              topic=''${split##* }
 
               umask 077
               cat > ${ntfyConfFile}.new <<EOF
