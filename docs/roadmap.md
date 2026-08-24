@@ -49,7 +49,7 @@ Verified against the repo on 2026-08-20 (`main` @ `f9b305e`).
 | M3 — VPN microvm + qBittorrent | **done — deployed 2026-08-20** | [#83](https://github.com/lutzgo/clanarchy/pull/83) | `wg-qbittorrent` on the microvm tier: tap on VLAN 90, IVPN wg-quick tunnel, guest-side nftables killswitch. **Killswitch proven**: with wg0 down the guest emitted zero packets and DNS failed rather than leaking. **Hardlink chain proven**, with a negative control — `UMask=0002` is what M4 depends on. Three things had to be fixed after the first deploy: wg-quick wins any routing-rule priority race, a tmpfiles/oneshot contradiction in `jellyfin.nix` had been silently resetting the media directory modes since M2b, and the UDM-Pro policy editor has two Port sections. [M3](#m3-featernst-vpn-microvm-done--deployed-2026-08-20) |
 | M4 — arr stack | **done — deployed, proven, and survived an unplanned power cut 2026-08-21** | [#85](https://github.com/lutzgo/clanarchy/pull/85) | Prowlarr/Sonarr/Radarr in one nspawn container, `machines/ernst/containers/arr.nix`. **Departs from its own prompt on networking**: veth on br0 / VLAN 90 (MAC `02:00:00:90:00:05`, `10.0.90.13`) rather than the host-networking v1 the prompt described, because that prompt predates M2b and `networking.nix` already names M4 as a pattern-B consumer. Consequence worth knowing: the arr reaches qBittorrent at L2 over `br0`, so **the UDM-Pro never sees that traffic** and the ZBF rule the prompt listed as a manual step does not exist — the guest's `api_clients` nftables set is the only thing enforcing it. The milestone is **not** done until the `stat` proof runs on ernst. [M4](#m4-featernst-arr-stack) |
 | M5 — Traefik | **done — deployed 2026-08-23, proven 2026-08-24** | [#86](https://github.com/lutzgo/clanarchy/pull/86) | `machines/ernst/containers/traefik.nix`: nspawn container on `vb-traefik`, VLAN 90, MAC `02:00:00:90:00:04` → `10.0.90.12`. One wildcard `*.goclan.org` over ACME DNS-01 at Cloudflare, scoped API token via clan var `traefik-acme`, store on `zdata` at `/srv/state/traefik`. Routes: jellyfin (no middleware, ever) + prowlarr/sonarr/radarr behind the interim `mgmt-only` ipAllowList (L5). **Backend bypass hardening is mechanism (a)** — each backend's own firewall accepts its web port only from `10.0.90.12` — because Jellyfin, the arr, qBittorrent and Traefik are all ports on `br0` and their traffic never reaches the UDM-Pro, so an intra-zone ZBF rule could not see it. **Two consequences on deploy day**: direct access to `10.0.90.10:8096` and `10.0.90.13:{9696,8989,7878}` stops working immediately, so TV clients must move to `jellyfin.goclan.org` in the same window; and the ACME propagation check queries `1.1.1.1`/`9.9.9.9` directly, which a UDM-Pro DNS-interception rule would silently break. [M5](#m5-featernst-traefik) |
-| M6 — monitoring | **deployed to ernst + miralda 2026-08-24; biene/birte pending** | [#87](https://github.com/lutzgo/clanarchy/pull/87) | **Working**: container on `10.0.90.14`, VLAN 90 won unaided, every deployed target scraping `up`, Grafana served through Traefik, and `traefik_tls_certs_not_after` (89 d) + `zfs_pool_health` (0/0) both confirmed **live** — retiring the two metric names that had only been read out of binaries' strings. **Two deploys, each caught a real defect.** The first stopped at `monitoring-secrets`, by design — and the value it refused exposed that `modules/observability/zfs-ntfy.nix`'s zedlet **has never worked on ernst**: the var holds a bare topic (what the prompt's own `openssl rand -hex 12` hint produces), curl could not resolve it as a hostname, and `>/dev/null 2>&1` threw the error away. The second exposed that **`systemd-networkd-wait-online` could never succeed in this container** — a veth has no carrier until both ends are up, and `mon0`'s host end is brought up by `postStart`, which runs *after* the container's boot, so wait-online was waiting on an event its own completion gates. The 20 s cap contained it; `RequiredForOnline = "no"` fixes it. [Details](#first-deploy-2026-08-24-the-fail-closed-path-fired-and-it-found-an-older-bug). `service-modules/monitoring.nix` (+ `.md`, + one dashboard as JSON): a clan service module with a `client` role on all four machines and a `server` role on ernst. **Scrape targets are derived from `roles.client` membership** — each machine's address comes from the `zerotier-ip-<machine>-zerotier` var clan-core already generates, so adding a machine to the role is the only step needed. The stack is one nspawn container on `vb-monitoring`, VLAN 90, MAC `02:00:00:90:00:06` → `10.0.90.14`, state on `zdata` at `/srv/state/monitoring`. **The one genuinely new piece of engineering is a SECOND interface**: `mon0`, a point-to-point ULA veth to the host, because both things Prometheus must scrape — ernst's own exporters (VLAN 50) and three laptops (ZeroTier, which terminates in the host netns) — are unreachable from VLAN 90. The host forwards and SNATs onto `zt+`, which has the useful side effect that scrapes arrive at a laptop from ernst's own ZeroTier address, i.e. the one source each client permits. **Alerting is (b), keep both**, with the overlap made empty: ZED owns pool state, Prometheus owns everything else and has no `zfs_pool_health` rule, and `ZedNotRunning` is the interlock. Both end at the same ntfy topic. [M6](#m6-featmonitoring) |
+| M6 — monitoring | **deployed to ernst + miralda 2026-08-24, alerting proven end to end; biene/birte pending, reboot pending** | [#87](https://github.com/lutzgo/clanarchy/pull/87) | **Working**: container on `10.0.90.14`, VLAN 90 won unaided, every deployed target scraping `up`, Grafana served through Traefik, and `traefik_tls_certs_not_after` (89 d) + `zfs_pool_health` (0/0) both confirmed **live** — retiring the two metric names that had only been read out of binaries' strings. **Notifications arrive**, from both publishers, on rotated topics — the first confirmed ntfy delivery in this fleet's history. **Three deploys, each caught a real defect.** The first stopped at `monitoring-secrets`, by design — and the value it refused exposed that `modules/observability/zfs-ntfy.nix`'s zedlet **has never worked on ernst**: the var holds a bare topic (what the prompt's own `openssl rand -hex 12` hint produces), curl could not resolve it as a hostname, and `>/dev/null 2>&1` threw the error away. The second exposed that **`systemd-networkd-wait-online` could never succeed in this container** — a veth has no carrier until both ends are up, and `mon0`'s host end is brought up by `postStart`, which runs *after* the container's boot, so wait-online was waiting on an event its own completion gates. The 20 s cap contained it; `RequiredForOnline = "no"` fixes it. [Details](#first-deploy-2026-08-24-the-fail-closed-path-fired-and-it-found-an-older-bug). `service-modules/monitoring.nix` (+ `.md`, + one dashboard as JSON): a clan service module with a `client` role on all four machines and a `server` role on ernst. **Scrape targets are derived from `roles.client` membership** — each machine's address comes from the `zerotier-ip-<machine>-zerotier` var clan-core already generates, so adding a machine to the role is the only step needed. The stack is one nspawn container on `vb-monitoring`, VLAN 90, MAC `02:00:00:90:00:06` → `10.0.90.14`, state on `zdata` at `/srv/state/monitoring`. **The one genuinely new piece of engineering is a SECOND interface**: `mon0`, a point-to-point ULA veth to the host, because both things Prometheus must scrape — ernst's own exporters (VLAN 50) and three laptops (ZeroTier, which terminates in the host netns) — are unreachable from VLAN 90. The host forwards and SNATs onto `zt+`, which has the useful side effect that scrapes arrive at a laptop from ernst's own ZeroTier address, i.e. the one source each client permits. **Alerting is (b), keep both**, with the overlap made empty: ZED owns pool state, Prometheus owns everything else and has no `zfs_pool_health` rule, and `ZedNotRunning` is the interlock. Both end at the same ntfy topic. [M6](#m6-featmonitoring) |
 | M7 — Authelia | **open** | — | [M7](#m7-featernst-authelia) |
 | M8 — Tvheadend / SAT>IP live TV | **open — operator gate first** | — | Steps 1–3 (patching, UniFi, stream test) are lgo's and must clear before a session starts; the milestone dies if the FRITZ!Box's DVB-C is branding-locked. [M8](#m8-featernst-tvheadend) |
 | M9 — TubeSync | **open** | — | Feeds the Jellyfin library directly. First occupant of the **podman** tier (not in nixpkgs — verified), so it builds the tier as well as the service; podman's attachment to `br0` is unsolved here. [M9](#m9-featernst-tubesync) |
@@ -1726,7 +1726,7 @@ topic's *length* rather than the topic.
 So this was never an ernst quirk: **the ZED zedlet had never delivered a
 notification on any machine in the fleet.** Both are fixed by this deploy.
 
-### THE TOPIC WAS LEAKED AND MUST BE ROTATED
+### THE TOPIC WAS LEAKED — ROTATED 2026-08-24, and the rotation was the delivery proof
 
 While recording the findings above, the topic was pasted verbatim — as real
 journal output — into `modules/observability/zfs-ntfy.nix`, this file, and a
@@ -1751,20 +1751,48 @@ systemctl restart monitoring-secrets container@monitoring   # on ernst
 
 Then re-subscribe both topics in the ntfy app and unsubscribe the old ones.
 
+**Executed 2026-08-24, and notifications arrived** — both paths, on the new
+topics. That single act closed three things at once: the exposure is remediated,
+**ZED delivery is proven for the first time in this fleet's history**, and the
+Alertmanager→ntfy bridge is proven end to end. Verified on ernst afterwards with
+no secret printed: the staged `/run/monitoring-secrets/ntfy.yml` topic matches
+the sops one (so the `monitoring-secrets` restart did land — it is not optional,
+see below), and no unit is failed on the host or in the container.
+
+Two things about the mechanics worth keeping:
+
+- **`clan vars set` reads stdin when it is not a TTY**, so the value need never
+  be displayed or enter shell history:
+  `openssl rand -hex 12 | tr -d '\n' | clan vars set ernst zfs-ntfy/url`.
+  It re-encrypts and auto-commits the sops file itself.
+- **The `monitoring-secrets` restart is required and is not obvious.** That
+  unit's script text embeds the *path* to the sops file, which does not change
+  when its *contents* do — so systemd sees an unchanged unit, does not re-run
+  it, and leaves the previous topic staged in `/run`. A deploy alone silently
+  keeps publishing to the rotated-away topic. The zedlet has no such problem: it
+  reads the file per event.
+
 The generic lesson, since this file exists to carry them: **secret material
 comes out of a `journalctl` paste as readily as out of a config file.** Every
 other secret in this repo is handled correctly precisely because it is *shaped*
 like a secret — a key, a token, a password. A 24-character topic reads like an
 identifier, and that is exactly why it got copied.
 
+**What rotation does not fix**: an unguessable topic is a bearer secret, not
+authentication. ntfy supports reserving a topic and denying anonymous access,
+but publishing then needs an `Authorization: Bearer` header that neither the
+zedlet nor `alertmanager-ntfy` currently sends. Adding token support to both is
+a small, self-contained follow-up and is the only thing that makes a future leak
+survivable rather than fatal.
+
 ### Not yet proven
 
-- **That ZED can now actually deliver.** The splitter is unit-tested and the URL
-  it builds is well-formed, but no POST has been sent to the real topic — that
-  puts a notification on lgo's phone and is lgo's call. Fold it into the
-  rotation above: rotate, redeploy, then send one test.
+- ~~**That ZED can now actually deliver.**~~ **Proven 2026-08-24** on the rotated
+  topics — see the rotation section above. This is the first confirmed ntfy
+  delivery this fleet has ever produced, from either publisher.
 - **biene and birte.** Deployed to neither; both show `down` (correctly
-  unalerted).
+  unalerted, which is `alwaysOn = false` doing its job and is itself a small
+  proof).
 - **The reboot — and the recent ones do NOT count.** ernst was rebooted several
   times during an outage, but `journalctl --list-boots` puts all of them on
   **2026-08-18 to 2026-08-21**, and the current boot began **2026-08-21 20:36**
