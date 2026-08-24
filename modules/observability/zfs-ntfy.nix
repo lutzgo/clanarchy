@@ -76,8 +76,11 @@
 #   reservation and the token exist would leave `clan vars generate` prompting
 #   for something nobody has, and — on the machine running M6's Alertmanager
 #   bridge — a staging unit that fails and takes the monitoring container with
-#   it.  Enablement is a per-machine opt-in once the ntfy side is set up; the
-#   order is in docs/roadmap.md.
+#   it.  Enablement is a per-machine opt-in once the ntfy side is set up, and
+#   THE ORDER MATTERS: account, reserve the topics, deny anonymous access, mint
+#   a token per machine, and only then flip the option.  The full sequence,
+#   including the negative test that proves the reservation actually took, is
+#   in docs/roadmap.md under "Enabling ntfy auth — the order matters".
 { config, lib, pkgs, ... }:
 let
   cfg = config.clanarchy.zfs.ntfy;

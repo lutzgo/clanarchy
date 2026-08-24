@@ -178,10 +178,21 @@ references the datasource by the pinned uid `clanarchy-prometheus`; if
 provisioning of the datasource failed, the dashboard still provisions fine.
 Check `journalctl -u grafana | grep -i provision` inside the container.
 
-**Rotating the ntfy topic or the Grafana password.** A deploy is not enough —
-the staging unit's text is unchanged, so systemd will not re-run it:
+**Rotating the ntfy topic.** No longer needs a manual restart: `restartUnits` on
+the sops entry restarts `monitoring-secrets` *and* `container@monitoring`, in
+that order. `clan vars set ernst zfs-ntfy/url` (reads stdin, so the value need
+never be displayed) then `clan machines update ernst`.
+
+**Rotating the Grafana password.** Still manual — nothing restarts on it:
 
 ```bash
 clan vars generate ernst
 systemctl restart monitoring-secrets container@monitoring
 ```
+
+**ntfy authentication.** `clanarchy.zfs.ntfy.auth.enable` adds a bearer token to
+both publishers, which is what a *reserved* ntfy topic requires — and reserving
+the topic is the only thing that stops the topic itself from being the whole
+access control. Off by default. **Set up the ntfy side first**: the full order,
+and the negative test that proves the reservation took, is in
+`docs/roadmap.md` under "Enabling ntfy auth — the order matters".
