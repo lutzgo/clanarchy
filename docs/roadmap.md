@@ -1711,17 +1711,65 @@ so a missing DHCP reservation is still caught. Nothing in the container needs
 `mon0` at boot — Prometheus retries a failed scrape forever and the first retry
 is seconds away.
 
+### Third deploy, 2026-08-24: the zedlet fix is live, and the bug was fleet-wide
+
+`wait-online` is `active` inside the container, no failed units on the host or in
+it, `clanarchy-impermanence-check` `Result=success`, container still on
+`10.0.90.14` with VLAN 90 correct.
+
+The zedlet now resolves its URL through `splitScript` and builds
+`https://ntfy.sh/<24-char topic>` — checked on ernst by printing the base and the
+topic's *length* rather than the topic.
+
+**And miralda's var is a bare topic too**, checked the same way
+(`clan vars get miralda zfs-ntfy/url` piped through a shape test, never printed).
+So this was never an ernst quirk: **the ZED zedlet had never delivered a
+notification on any machine in the fleet.** Both are fixed by this deploy.
+
+### THE TOPIC WAS LEAKED AND MUST BE ROTATED
+
+While recording the findings above, the topic was pasted verbatim — as real
+journal output — into `modules/observability/zfs-ntfy.nix`, this file, and a
+comment on [#87](https://github.com/lutzgo/clanarchy/pull/87). **This repository
+is public.** On a public ntfy instance the topic is the whole access control: it
+grants both read and publish, so anyone holding it can read every pool alert
+this fleet emits and inject fake ones.
+
+All four occurrences are redacted, but redaction is not remediation — the value
+survives in this branch's git history and in GitHub's comment edit history.
+**Rotate it**, on both machines, and note that ernst and miralda have separate
+topics by design (so one noisy machine can be muted without silencing the
+other):
+
+```bash
+clan vars set ernst   zfs-ntfy/url      # new topic; openssl rand -hex 12
+clan vars set miralda zfs-ntfy/url      # a DIFFERENT one
+clan machines update ernst
+clan machines update miralda
+systemctl restart monitoring-secrets container@monitoring   # on ernst
+```
+
+Then re-subscribe both topics in the ntfy app and unsubscribe the old ones.
+
+The generic lesson, since this file exists to carry them: **secret material
+comes out of a `journalctl` paste as readily as out of a config file.** Every
+other secret in this repo is handled correctly precisely because it is *shaped*
+like a secret — a key, a token, a password. A 24-character topic reads like an
+identifier, and that is exactly why it got copied.
+
 ### Not yet proven
 
 - **That ZED can now actually deliver.** The splitter is unit-tested and the URL
   it builds is well-formed, but no POST has been sent to the real topic — that
-  puts a notification on lgo's phone and is lgo's call:
-  `set -- $(<splitScript> /run/secrets/vars/zfs-ntfy/url); curl -sSf -d "zed test" "$1/$2"`
-- **miralda's `zfs-ntfy` var shape.** If it is a bare topic too, its zedlet has
-  been equally dead and the same deploy fixes it — but it was not readable from
-  this session.
-- **biene and birte.** Deployed to neither; both show `down`.
-- **The reboot.** Invariant #7 makes the first reboot after deploy part of the
+  puts a notification on lgo's phone and is lgo's call. Fold it into the
+  rotation above: rotate, redeploy, then send one test.
+- **biene and birte.** Deployed to neither; both show `down` (correctly
+  unalerted).
+- **The reboot — and the recent ones do NOT count.** ernst was rebooted several
+  times during an outage, but `journalctl --list-boots` puts all of them on
+  **2026-08-18 to 2026-08-21**, and the current boot began **2026-08-21 20:36**
+  and is still running. Every one of them predates M6. Invariant #7 makes the
+  first reboot after deploy part of the
   milestone. `/srv/state/monitoring` must survive it with the TSDB intact, and
   `clanarchy-impermanence-check` must stay green. Alertmanager's own state
   (silences, notification log) is deliberately *not* on `zdata` — it rides
@@ -1729,11 +1777,13 @@ is seconds away.
   also part of the check.
 - **`mon0` across a reboot.** Nothing here has been created by a boot rather
   than by a deploy, which is the same open question M2b closed for `br0`.
-- **The zfs_exporter metric names.** `zfs_pool_health` and `zfs_pool_free_bytes`
-  were read out of the 2.3.12 binary's strings, not out of a running instance.
-  They back **dashboard panels only** — no alert depends on them — so a wrong
-  name is an empty panel and not a missed notification. That was the reason for
-  putting them there and not in a rule.
+- ~~**The zfs_exporter metric names.**~~ **Confirmed live 2026-08-24**:
+  `zfs_pool_health` returns `0` for both `zroot` and `zdata`, and
+  `traefik_tls_certs_not_after` puts M5's wildcard at 89 days. Both had only
+  been read out of binaries' strings before. The reasoning that put the ZFS ones
+  behind a dashboard panel rather than an alert still stands and is worth
+  keeping: a name guessed wrong is then an empty panel, not a missed
+  notification.
 
 **Goal.** A fleet-wide clan service module: Prometheus, Alertmanager and Grafana
 in an nspawn container on ernst, node_exporter on every machine, scrape targets
