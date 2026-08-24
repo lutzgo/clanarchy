@@ -115,7 +115,36 @@ in
     boot.initrd.network.enable = true;
     boot.initrd.systemd.network.networks."50-initrd-${cfg.interface}" = {
       matchConfig.Name = cfg.interface;
-      networkConfig    = { Address = cfg.address; Gateway = cfg.gateway; };
+      networkConfig    = {
+        Address = cfg.address;
+        Gateway = cfg.gateway;
+
+        # Configure the address before the link has carrier.
+        #
+        # machines/ernst/networking.nix sets exactly this on 50-br0, for
+        # exactly this NIC, with the reason written next to it: the atlantic
+        # 10G part takes ~10 s to negotiate.  Stage 1 did not, which is an
+        # inconsistency rather than a decision — the same card behaves the same
+        # way in both stages.
+        #
+        # MEASURED on ernst's 2026-08-24 reboot:
+        #
+        #   19:09:19  networkd: enp13s0: Configuring with 50-initrd-enp13s0
+        #   19:09:19  sshd: Server listening on 0.0.0.0 port 2222
+        #   19:09:25  networkd: enp13s0: Gained carrier          ← 6 s later
+        #   19:10:21  sshd: Received signal 15; terminating      ← handoff
+        #
+        # So the unlock window was 19:09:25-19:10:21 and the first six seconds
+        # of it were spent waiting for a link that was coming up anyway.  Six
+        # seconds is not the reason that reboot was unlocked at the TV (see
+        # docs/guides/remote-unlock.md — the reason was a 36-minute POST), and
+        # it is not claimed to be.  It is set because the address existing
+        # before carrier is strictly better on a recovery path: if negotiation
+        # is ever slow or flaky rather than merely late, the difference is
+        # between "reachable as soon as the link is up" and "not configured at
+        # all".
+        ConfigureWithoutCarrier = true;
+      };
     };
 
     # sshd itself.  Under boot.initrd.systemd.enable, the upstream module
