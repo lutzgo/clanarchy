@@ -69,53 +69,137 @@ into a bogus separate command:
 while ! ssh -tt -o ConnectTimeout=2 ernst-initrd systemd-tty-ask-password-agent --query; do sleep 1; done
 ```
 
-### START THE LOOP AND LEAVE IT.  READ THIS BEFORE DECIDING IT IS BROKEN
+### The window opens in about a minute, and then stays open
 
-**Every failure the loop prints until the unlock window opens is expected**,
-and on this machine that is a long time.  `Connection refused`,
-`No route to host` and `Connection timed out` all mean "ernst is not up yet",
-not "remote unlock is broken".  The loop exists precisely to absorb them.
+**Measured on ernst, 2026-08-24.** An earlier revision of this section claimed
+this machine spends tens of minutes in firmware POST. That was wrong, it was
+inferred from a gap in the journal rather than measured, and it is corrected
+here because it told the reader to expect exactly the wrong thing.
 
-**ernst's POST is measured in tens of minutes, not seconds.**  From the
-2026-08-24 reboot, out of the journal:
+`systemd-analyze time`, from the boot in question:
 
-| time | event |
-|---|---|
-| 18:32:33 | shutdown finishes, machine powers off |
-| **19:09:16** | kernel starts — **36 minutes of firmware POST** |
-| 19:09:19 | `sshd: Server listening on 0.0.0.0 port 2222` |
-| 19:09:25 | `enp13s0: Gained carrier` — **the window opens here** |
-| 19:10:21 | zroot imported, `sshd: Received signal 15` — window closes |
-
-That reboot was unlocked at the TV, and the reason was not a fault in any of
-this: sshd came up correctly, the interface was configured correctly, and the
-window was open for 56 seconds.  It opened **36 minutes** after the reboot
-command, by which time the operator had reasonably concluded the channel was
-dead and walked to the television.
-
-So the failure mode to guard against is human, and the guard is: start the
-loop, put the terminal somewhere visible, and do not interpret errors during
-POST as a verdict.  The window closes when *you* answer the prompt, so it is
-never too short — it is only ever late.
-
-**The 36 minutes is itself worth attention** and is not something this guide
-can fix: it is firmware, before Linux runs, with an HBA enumerating eight SAS
-devices.  `zpool status` is clean, so it is not a failing pool member. If it
-grows, suspect the HBA or a marginal device (see
-`docs/incidents/ernst-slot12-drop-2026-08-11.md`) before suspecting this
-setup.
-
-**How to know the window is open rather than guessing:** the loop succeeding
-*is* the signal — it prints `Password: `. Until then there is nothing to see.
-If you would rather not watch a terminal, ping the address first and start the
-loop once anything answers:
-
-```bash
-while ! ping -c1 -W1 10.0.50.10 >/dev/null 2>&1; do sleep 5; done; echo "ernst is answering — starting unlock loop"
+```
+Startup finished in 36.851s (firmware) + 8.041s (loader) + 1.230s (kernel)
+                  + 1min 6.920s (initrd) + 12.408s (userspace) = 2min 5.451s
 ```
 
-Note `ping` answers in stage 1 *and* in a fully booted system, so it tells you
-ernst is reachable, not that it is waiting for a passphrase.
+**Firmware POST is 37 seconds.** The whole boot is two minutes, and most of
+the initrd minute is the passphrase prompt waiting for a human.
+
+So the real timeline after `systemctl reboot`:
+
+| elapsed | event |
+|---|---|
+| ~0:40 | shutdown finishes, machine resets |
+| ~0:45 | firmware POST (37 s) + systemd-boot (8 s) |
+| ~0:50 | kernel + initrd; sshd listens on 2222, `enp13s0` gains carrier |
+| **~0:50 onwards** | **the window is open, and stays open** |
+| when you answer | zroot imports, initrd hands off, stage-1 sshd is killed |
+
+**The window does not time out.** It closes when *you* answer the prompt, so
+there is no race to win — only a minute to wait.
+
+**Therefore: if the loop has not connected within about two minutes, something
+is actually wrong.** Do not sit through a long silence assuming POST, which is
+what the previous version of this text invited.
+
+### What the 2026-08-24 reboot actually did
+
+The machine was power-cycled at the TV after ~35 minutes, on the belief that it
+had not come back. It had. `zpool history` keeps the receipt, because a boot
+that never reaches stage 2 leaves no journal but still imports the pool:
+
+```
+2026-08-24.13:11:06  zpool import ... zroot     → zdata 13:16:02   (normal boot)
+2026-08-24.18:33:23  zpool import ... zroot     → zdata NEVER      ← the lost boot
+2026-08-24.19:09:20  zpool import ... zroot     → zdata 19:10:24   (after power-cycle)
+```
+
+Shutdown completed at 18:32:33 and stage 1 imported zroot at **18:33:23** —
+fifty seconds later. ernst then sat at the passphrase prompt, reachable, for
+thirty-five minutes.
+
+**`zpool history` is the tool for this in general**: an interrupted boot leaves
+no journal, but the pool import is timestamped, so a zroot import with no
+matching zdata import is a boot that stopped in stage 1.
+
+### Reading the errors correctly
+
+- **`Connection timed out`** is what a **running** ernst gives on 2222 — the
+  host firewall drops the packet (verified against the live machine). So this
+  is the expected error for the first ~40 seconds, while the old system is
+  still shutting down.
+- **`Connection refused`** would mean the address answered with a RST, i.e.
+  something is up but nothing is listening on 2222. If that persists past the
+  first minute it is worth investigating rather than waiting out.
+- **`No route to host`** means the machine is down or mid-POST. Normal, briefly.
+
+**Remote unlock has still never been completed on ernst.** The channel has been
+observed to come up correctly — sshd listening, interface configured — but no
+reboot has yet been unlocked through it, and the 2026-08-24 attempt failed from
+the client side while stage-1 sshd sat there logging nothing.
+
+### Diagnosing the next attempt — both ends at once
+
+The 2026-08-24 attempt could not be diagnosed afterwards because **neither end
+recorded anything usable**: stage-1 sshd logged two lines for the whole boot
+("Server listening", "Received signal 15"), and the client's error was
+remembered rather than captured. Both halves are now instrumented.
+
+**Server side — opt in for one boot, then turn it off.** Set
+
+```nix
+clanarchy.initrdSsh.debug = true;   # machines/ernst/configuration.nix
+```
+
+deploy, and reboot. That adds `LogLevel VERBOSE` to the initrd sshd — so any
+accepted TCP connection logs `Connection from <ip> port <n>` *before*
+authentication — plus a `clanarchy-initrd-netdebug` oneshot that dumps
+`ip -br address`, `ip route` and `ip neigh` into the stage-1 journal. Read it
+after the boot:
+
+```bash
+ssh root@ernst.skynet.lan 'journalctl -b 0 | grep -iE "sshd|clanarchy-initrd-netdebug"'
+```
+
+Then set it back to `false`. It is scaffolding: off by default because
+scaffolding left up stops being read, and because VERBOSE logs every
+connection attempt to a port that exists for recovery. With `debug = false`
+the option is a true no-op — the built system's derivation hash is unchanged
+by its presence.
+
+**Client side** — run the poll loop verbose and *keep the output*:
+
+```bash
+while ! ssh -vvv -tt -o ConnectTimeout=2 ernst-initrd systemd-tty-ask-password-agent --query; do sleep 1; done 2>&1 | tee /tmp/unlock.log
+```
+
+`-vvv` distinguishes the cases that all look like "it didn't work":
+
+| what `-vvv` shows | meaning |
+|---|---|
+| stops at `Connecting to ... port 2222` then times out | packets are not arriving — addressing, VLAN or ARP |
+| `Connection refused` | something answered with a RST; the address is live but nothing is on 2222 |
+| gets to `Remote protocol version` then fails | the network is fine; the problem is the host key or authentication |
+| `Host key verification failed` | expected once; accept the initrd key, see above |
+
+**Read the two together.** `Connection from` on the server plus a client-side
+auth failure is a completely different bug from silence on both ends, and
+until 2026-08-24 there was no way to tell them apart.
+
+### One known asymmetry worth checking first
+
+**ernst answers on a different MAC in stage 1 than in stage 2**, for the same
+IP address. Stage 2 holds `10.0.50.10` on `br0`, whose MAC is pinned to
+`b2:8b:e1:f2:1e:7c` in `machines/ernst/networking.nix`. Stage 1 has no bridge
+and speaks from the NIC's hardware address, `a0:ad:9f:1c:9d:74` — visible in
+the journal as the link-local `fe80::a2ad:9fff:fe1c:9d74`.
+
+Anything upstream holding a neighbour entry for `10.0.50.10` therefore has the
+*wrong* link-layer address during stage 1 until it revalidates. This is a
+candidate explanation and **not** a confirmed cause — `ip neigh` from the
+netdebug unit, plus whether the client's `-vvv` output ever leaves
+`Connecting to`, is what will confirm or kill it.
 
 - `-tt` (double `t`) forces ssh to allocate a pty even when stdin
   isn't one (as inside a `while` loop).

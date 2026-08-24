@@ -31,7 +31,7 @@
 # The initrd sshd host key differs from the running-system host key.  Use
 # `HostKeyAlias` on the client so both keys can coexist in known_hosts
 # without conflict — see the "ernst-initrd" block in modules/users/lgo.nix.
-{ config, lib, ... }:
+{ config, lib, pkgs, ... }:
 let
   cfg = config.clanarchy.initrdSsh;
 in
@@ -92,6 +92,33 @@ in
       example = [ "atlantic" "igc" ];
       description = "NIC drivers to include in the initrd so the interface is up before sshd starts.";
     };
+
+    debug = lib.mkOption {
+      type    = lib.types.bool;
+      default = false;
+      description = ''
+        Instrument stage 1 for ONE diagnostic boot, then turn it off again.
+
+        Adds two things: `LogLevel VERBOSE` on the initrd sshd, so an accepted
+        TCP connection logs `Connection from <ip> port <n>` before any
+        authentication; and a oneshot that dumps `ip -br address`, `ip route`
+        and `ip neigh` into the stage-1 journal.
+
+        Why it is not on by default: it is diagnostic scaffolding, and
+        scaffolding left up permanently stops being read. VERBOSE also logs
+        every connection attempt to a port on the recovery path, which is more
+        detail than a normal boot has any use for.
+
+        Why it exists at all: on 2026-08-24 remote unlock failed and could not
+        be diagnosed afterwards, because stage-1 sshd logged exactly two lines
+        for the whole boot and nothing recorded whether the interface ever held
+        an address. "sshd logged nothing" could not be read as "no packets
+        arrived", and those two have different fixes.
+
+        Turn it on, deploy, reboot, read the journal, turn it off:
+            journalctl -b 0 | grep -iE "sshd|clanarchy-initrd-netdebug"
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -134,15 +161,28 @@ in
         #   19:09:25  networkd: enp13s0: Gained carrier          ← 6 s later
         #   19:10:21  sshd: Received signal 15; terminating      ← handoff
         #
-        # So the unlock window was 19:09:25-19:10:21 and the first six seconds
-        # of it were spent waiting for a link that was coming up anyway.  Six
-        # seconds is not the reason that reboot was unlocked at the TV (see
-        # docs/guides/remote-unlock.md — the reason was a 36-minute POST), and
-        # it is not claimed to be.  It is set because the address existing
-        # before carrier is strictly better on a recovery path: if negotiation
-        # is ever slow or flaky rather than merely late, the difference is
-        # between "reachable as soon as the link is up" and "not configured at
-        # all".
+        # So the first six seconds of the window were spent waiting for a link
+        # that was coming up anyway.  Six seconds is not why that reboot was
+        # unlocked at the TV, and it is not claimed to be.  It is set because
+        # an address that exists before carrier is strictly better on a
+        # recovery path: if negotiation is ever slow or flaky rather than
+        # merely late, the difference is between "reachable as soon as the link
+        # is up" and "not configured at all".
+        #
+        # WHY THAT REBOOT WENT TO THE TV — corrected 2026-08-24, having first
+        # been recorded here as a 36-minute firmware POST.  It was not.
+        # `systemd-analyze time` puts firmware at 36.851 SECONDS and the whole
+        # boot at 2min05.  The 36 minutes was the machine sitting at the
+        # passphrase prompt, reachable, until it was power-cycled — confirmed
+        # by the operator and by `zpool history`, which shows a zroot import at
+        # 18:33:23 (fifty seconds after shutdown) with no matching zdata
+        # import, i.e. a boot that stopped in stage 1 and left no journal.
+        #
+        # The lesson is the one this repo keeps relearning: a gap in the
+        # journal is not a measurement.  It was read as POST because nothing
+        # else was logged, and the one command that would have settled it
+        # (`systemd-analyze time`) was never run.  See
+        # docs/guides/remote-unlock.md for the corrected timeline.
         ConfigureWithoutCarrier = true;
       };
     };
@@ -155,6 +195,50 @@ in
       port               = cfg.port;
       hostKeys           = [ cfg.hostKey ];
       authorizedKeyFiles = cfg.authorizedKeyFiles;
+
+      # OPT-IN ONLY — see clanarchy.initrdSsh.debug.  At the default LogLevel
+      # an aborted or rejected connection can leave no trace at all, so "sshd
+      # logged nothing" cannot be read as "no packets arrived"; VERBOSE logs
+      # `Connection from <ip> port <n>` before any authentication, which is
+      # exactly the line that tells those two apart.
+      #
+      # Not on permanently, deliberately: it is scaffolding, and scaffolding
+      # left up stops being read.
+      extraConfig = lib.mkIf cfg.debug "LogLevel VERBOSE";
+    };
+
+    # Record stage-1 network state, once, after networkd has configured it.
+    # OPT-IN — see clanarchy.initrdSsh.debug.
+    #
+    # THE REASON THIS EXISTS: on 2026-08-24 nothing in the journal could answer
+    # "did enp13s0 actually have 10.0.50.10 in stage 1?".  networkd logs a DHCP
+    # lease but not a static address, so the only IPv4 evidence for the whole
+    # initrd was an absence — and an absence is not a measurement, which is the
+    # mistake this file's history already records twice.
+    #
+    # Three commands, one oneshot, no network traffic.  `ip neigh` is included
+    # deliberately: stage 1 speaks from the interface's HARDWARE MAC while
+    # stage 2 speaks from br0's pinned MAC (machines/ernst/networking.nix), so
+    # the same address has two link-layer identities depending on boot stage,
+    # and a stale neighbour entry upstream is one candidate explanation for
+    # packets that never arrive.
+    boot.initrd.systemd.storePaths =
+      lib.mkIf cfg.debug [ pkgs.iproute2 ];
+
+    boot.initrd.systemd.services.clanarchy-initrd-netdebug = lib.mkIf cfg.debug {
+      description = "Record stage-1 network state for post-mortem";
+      wantedBy    = [ "initrd.target" ];
+      after       = [ "systemd-networkd.service" "network.target" ];
+      unitConfig.DefaultDependencies = false;
+      serviceConfig = {
+        Type            = "oneshot";
+        RemainAfterExit = true;
+      };
+      script = ''
+        ${pkgs.iproute2}/bin/ip -br address show
+        ${pkgs.iproute2}/bin/ip route show
+        ${pkgs.iproute2}/bin/ip neigh show
+      '';
     };
   };
 }
