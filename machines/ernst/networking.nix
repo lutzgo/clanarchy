@@ -295,6 +295,7 @@
   #   02:00:00:90:00:04   traefik container eth0    (M5  — allocated)  10.0.90.12
   #   02:00:00:90:00:05   arr container eth0        (M4  — allocated)  10.0.90.13
   #   02:00:00:90:00:06   monitoring container eth0 (M6  — allocated)  10.0.90.14
+  #   02:00:00:90:00:07   authelia container eth0   (M7  — allocated)  10.0.90.15
   #
   # THE MONITORING CONTAINER HAS A SECOND INTERFACE, and it is the first one
   # here that does.  `mon0` is a point-to-point veth to this host on the ULA
@@ -330,6 +331,8 @@
   #   gid 3006  prometheus   (service-modules/monitoring.nix — M6)
   #   uid 3007  grafana      (service-modules/monitoring.nix — M6, NOT in media)
   #   gid 3007  grafana      (service-modules/monitoring.nix — M6)
+  #   uid 3008  authelia-main (containers/authelia.nix — M7, NOT in media)
+  #   gid 3008  authelia-main (containers/authelia.nix — M7)
   #
   # MAC policy for both: locally-administered (02:…) so it cannot collide with
   # a vendor OUI.  Convention below: 02:00:00:<vlan>:00:<seq>.  The MAC the

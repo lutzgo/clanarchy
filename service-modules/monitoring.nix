@@ -495,6 +495,94 @@ in
         '';
       };
 
+      # ── M7: the identity provider ─────────────────────────────────────────
+      #
+      # Two INDEPENDENT things behind one attribute, because they are one box:
+      # a scrape target, and Grafana's OIDC issuer.  Either can be left off.
+      #
+      # The module knows nothing about Authelia beyond these values — no
+      # generator name is hard-wired, no address is assumed — so this stays a
+      # clan service module that happens to be pointed at one on ernst rather
+      # than one that requires it.
+      authelia = {
+        address = lib.mkOption {
+          type        = lib.types.str;
+          default     = "";
+          example     = "10.0.90.15";
+          description = ''
+            Address of the Authelia container on the Services VLAN.  Empty
+            disables the scrape job entirely.
+
+            Worth scraping specifically because of what M7 did: an Authelia
+            that is down is every admin UI in the house being down, and an
+            identity provider nobody watches is the thing that fails silently.
+          '';
+        };
+
+        metricsPort = lib.mkOption {
+          type        = lib.types.port;
+          default     = 9959;
+          description = "Authelia's telemetry listener (its own upstream default).";
+        };
+
+        oidc = {
+          enable = lib.mkOption {
+            type        = lib.types.bool;
+            default     = false;
+            description = ''
+              Point Grafana's generic_oauth provider at an OIDC issuer.
+
+              Grafana's LOCAL admin account stays enabled either way — see the
+              break-glass note beside services.grafana below.  This adds a
+              second way in; it does not remove the first.
+            '';
+          };
+
+          issuerUrl = lib.mkOption {
+            type        = lib.types.str;
+            default     = "";
+            example     = "https://auth.goclan.org";
+            description = "Issuer base URL, no trailing slash.  Required when oidc.enable is set.";
+          };
+
+          clientId = lib.mkOption {
+            type        = lib.types.str;
+            default     = "grafana";
+            description = "OIDC client id.  Must match the client block on the issuer.";
+          };
+
+          secretGenerator = lib.mkOption {
+            type        = lib.types.str;
+            default     = "authelia-oidc";
+            description = ''
+              Name of the clan vars generator holding the client secret, and
+              the file inside it, as `secretFile`.
+
+              Named rather than imported: the generator is owned by whichever
+              module declares the identity provider (on ernst that is
+              machines/ernst/containers/authelia.nix), and it emits the
+              PLAINTEXT half here and the hashed half there in one run, so the
+              two cannot drift.
+            '';
+          };
+
+          secretFile = lib.mkOption {
+            type    = lib.types.str;
+            default = "grafana-client-secret";
+            description = "File name inside secretGenerator holding the plaintext client secret.";
+          };
+
+          adminGroup = lib.mkOption {
+            type        = lib.types.str;
+            default     = "admins";
+            description = ''
+              Group in the `groups` claim that maps to Grafana's Admin role.
+              Everyone else who gets through forward-auth lands on Viewer.
+            '';
+          };
+        };
+      };
+
       zerotierInstance = lib.mkOption {
         type        = lib.types.str;
         default     = "zerotier";
@@ -640,6 +728,19 @@ in
             else "/no-such-path";
 
           grafanaGen = config.clan.core.vars.generators.monitoring-grafana;
+
+          # ── M7: Grafana's OIDC client secret ────────────────────────────
+          #
+          # Guarded the same way ntfyUrlFile is, and for the same reason: a
+          # machine that has not enabled OIDC must not fail evaluation on a
+          # generator that legitimately does not exist there.  The `enable`
+          # flag is the thing that decides, not the presence of an attribute.
+          oidc            = settings.authelia.oidc;
+          grafanaOidcFile = "${secretsDir}/grafana-oidc-client-secret";
+          oidcSecretPath  =
+            if oidc.enable
+            then config.clan.core.vars.generators.${oidc.secretGenerator}.files.${oidc.secretFile}.path
+            else "/no-such-path";
 
           # Optional ntfy bearer token, from the same module and the same
           # opt-in that gates the zedlet's — one switch, both publishers, so
@@ -811,6 +912,18 @@ in
               # never rotated by a deploy.  See the generator.
               install -m 0400 -o ${toString grafanaUid} -g ${toString grafanaGid} \
                 ${grafanaGen.files."secret-key".path} ${grafanaKeyFile}
+
+              ${lib.optionalString oidc.enable ''
+              # ── M7: the OIDC client secret ──────────────────────────────
+              #
+              # Same ownership as the two above — Grafana reads it itself
+              # through $__file{}, unprivileged.  Its counterpart, the hashed
+              # form the issuer stores, is staged on the other side of this
+              # machine by machines/ernst/containers/authelia.nix out of the
+              # SAME generator run.
+              install -m 0400 -o ${toString grafanaUid} -g ${toString grafanaGid} \
+                ${oidcSecretPath} ${grafanaOidcFile}
+              ''}
             '';
           };
 
@@ -1164,9 +1277,26 @@ in
               # extraCommands and not extraInputRules: the latter is declared
               # unconditionally but consumed only under networking.nftables,
               # which is off here, so it would produce no rule and no warning.
+              #
+              # ── M7 ADDS A SECOND SOURCE, AND IT IS THE BREAK-GLASS PATH ──
+              #
+              # After M7 the Grafana route is behind Authelia forward-auth, so
+              # "keep the local admin as break-glass" is only true if there is
+              # a way to REACH the login form when the identity provider is
+              # the thing that is down — and through Traefik there is not.
+              #
+              # mon0's host end is that way.  It is host-only (a
+              # point-to-point ULA veth that never leaves ernst), it needs
+              # root on ernst to use, and it costs one rule:
+              #
+              #   ssh -N -L 3000:[${monContainerAddr}]:3000 root@ernst
+              #   then http://localhost:3000  →  local admin login
+              #
+              # ip6tables and not iptables: mon0 is IPv6-only by construction.
               networking.firewall.allowedTCPPorts = [ ];
               networking.firewall.extraCommands = ''
-                iptables -A nixos-fw -p tcp -s ${settings.proxyAddress}/32 --dport ${toString ports.grafana} -j nixos-fw-accept
+                iptables  -A nixos-fw -p tcp -s ${settings.proxyAddress}/32 --dport ${toString ports.grafana} -j nixos-fw-accept
+                ip6tables -A nixos-fw -p tcp -s ${monHostAddr}/128          --dport ${toString ports.grafana} -j nixos-fw-accept
               '';
 
               ################################################################
@@ -1291,6 +1421,26 @@ in
                       labels.instance = "traefik";
                     } ];
                   }
+                  # Authelia's telemetry listener (M7).  Same VLAN, same
+                  # bridge, same layer-2 hop as Traefik's — and the same
+                  # source restriction on the other end, keyed on this
+                  # container's address.
+                  #
+                  # Conditional on an address being configured, because the
+                  # module must stay usable on a fleet that has no identity
+                  # provider.  There is no alert on it: `InstanceDown` keys on
+                  # always_on="true", which is a label only the machine
+                  # targets carry, and the same is true of the traefik job
+                  # above.  What this buys is the dashboard and the history —
+                  # authentication_attempts, request latency, and the `up`
+                  # series to look at after an outage.
+                ] ++ lib.optional (settings.authelia.address != "") {
+                  job_name = "authelia";
+                  static_configs = [ {
+                    targets = [ "${settings.authelia.address}:${toString settings.authelia.metricsPort}" ];
+                    labels.instance = "authelia";
+                  } ];
+                } ++ [
                   # The stack watching itself.  All on loopback inside this
                   # netns, so none of these needs a port opened.
                   {
@@ -1544,9 +1694,10 @@ in
               ################################################################
               # Grafana.
               #
-              # Behind Traefik, management VLAN only (ledger row L5) until M7
-              # replaces the ipAllowList with Authelia forward-auth.  Its own
-              # login stays either way — see the vars generator above.
+              # Behind Traefik, and since M7 behind Authelia forward-auth —
+              # ledger row L5's ipAllowList is gone, not stacked underneath.
+              # Its own login stays either way; see the break-glass block
+              # below and the vars generator above.
               ################################################################
               services.grafana = {
                 enable = true;
@@ -1578,11 +1729,89 @@ in
                     cookie_secure    = true;
                   };
 
-                  # A household dashboard, not a SaaS.  Sign-up off, anonymous
-                  # off: the ipAllowList is a network control, not a login,
-                  # and M7 replaces it with one.
+                  # A household dashboard, not a SaaS.  Local sign-up off,
+                  # anonymous off.
+                  #
+                  # `users.allow_sign_up` governs the LOCAL form and stays
+                  # false; `auth.generic_oauth.allow_sign_up` below is a
+                  # different switch and has to be true, or an OIDC login
+                  # succeeds at the issuer and then fails at Grafana with
+                  # "signup is not allowed".  They look like the same setting
+                  # and are not.
                   users.allow_sign_up = false;
                   "auth.anonymous".enabled = false;
+
+                  ############################################################
+                  # M7 — BREAK-GLASS.  Read this before "tidying" it away.
+                  #
+                  # `disable_login_form` is NOT set, so the local admin form
+                  # stays.  That is deliberate and it is the entire reason the
+                  # monitoring-grafana generator still prompts for a password.
+                  #
+                  # The account that matters is the one that works when the
+                  # identity provider is broken — which is exactly when
+                  # somebody wants a dashboard.  After M7 the Grafana ROUTE is
+                  # behind Authelia forward-auth, so reaching that form when
+                  # Authelia is down means going around Traefik entirely:
+                  #
+                  #   ssh -N -L 3000:[${monContainerAddr}]:3000 root@ernst
+                  #   open http://localhost:3000, log in as `admin`
+                  #
+                  # The ip6tables rule that makes that work is in the firewall
+                  # block above; it is host-only and needs root on ernst.
+                  #
+                  # `signout_redirect_url` is deliberately NOT set either: a
+                  # Grafana logout should end the Grafana session and leave
+                  # the Authelia one alone, so that signing out of a dashboard
+                  # is not also signing out of the *arr.
+                  ############################################################
+                  "auth".disable_login_form = false;
+
+                  "auth.generic_oauth" = lib.mkIf oidc.enable {
+                    enabled = true;
+                    name    = "Authelia";
+                    icon    = "signin";
+
+                    # See the note on users.allow_sign_up above — this is the
+                    # OAuth-side switch and it must be on for a first login to
+                    # create the Grafana account.
+                    allow_sign_up = true;
+                    # NOT auto_login: it would send anyone hitting /login
+                    # straight to the issuer, including the person trying to
+                    # reach the break-glass form on localhost.
+                    auto_login    = false;
+
+                    client_id     = oidc.clientId;
+                    client_secret = "$__file{${grafanaOidcFile}}";
+
+                    # `groups` is not a standard OIDC scope; Authelia serves it
+                    # and it is what role_attribute_path reads below.  Without
+                    # it every OIDC user silently lands on Viewer.
+                    scopes = "openid profile email groups";
+
+                    auth_url  = "${oidc.issuerUrl}/api/oidc/authorization";
+                    token_url = "${oidc.issuerUrl}/api/oidc/token";
+                    api_url   = "${oidc.issuerUrl}/api/oidc/userinfo";
+
+                    # PKCE is REQUIRED by the client block on the issuer side,
+                    # so this is not optional hardening — without it the
+                    # authorization request is rejected before a password is
+                    # ever typed.
+                    use_pkce = true;
+
+                    login_attribute_path  = "preferred_username";
+                    name_attribute_path   = "name";
+                    groups_attribute_path = "groups";
+
+                    # JMESPath over the claims.  Membership of the admin group
+                    # is the only distinction drawn; everyone else who gets
+                    # this far is a Viewer.  `role_attribute_strict = false`
+                    # so a claim shape that does not match leaves the user on
+                    # the fallback rather than refusing the login outright —
+                    # a locked-out admin is worse here than a demoted one.
+                    role_attribute_path   = "contains(groups[*], '${oidc.adminGroup}') && 'Admin' || 'Viewer'";
+                    role_attribute_strict = false;
+                  };
 
                   analytics = {
                     reporting_enabled = false;
@@ -1661,6 +1890,40 @@ in
         # which is exactly the property needed here.
         (lib.mkIf ntfyAuth {
           clan.core.vars.generators.zfs-ntfy-token.files."token".restartUnits = [
+            "monitoring-secrets.service"
+            "container@monitoring.service"
+          ];
+        })
+
+        # M7's OIDC wiring, added ONLY when it is switched on.
+        #
+        # Same `mkIf`-on-a-CONFIG-BLOCK shape as the token above, and for the
+        # identical reason: `restartUnits = mkIf oidc.enable [ … ]` would leave
+        # the attribute PATH defined, materialising a generator this module
+        # does not own on every machine that holds the server role without an
+        # identity provider — and `clan vars check` would then report its
+        # secret as missing.  Guard the definition, not the value.
+        #
+        # The generator is named by settings, so this is where the two halves
+        # of the client secret are tied to the units that consume the plaintext
+        # one.  The hashed half's restartUnits are declared beside the issuer,
+        # in machines/ernst/containers/authelia.nix, because those units exist
+        # only there.
+        (lib.mkIf oidc.enable {
+          assertions = [
+            {
+              assertion = oidc.issuerUrl != "";
+              message = ''
+                @clanarchy/monitoring: authelia.oidc.enable is set but
+                authelia.oidc.issuerUrl is empty.  Grafana would be configured
+                with auth_url = "/api/oidc/authorization", which is a relative
+                URL Grafana accepts and then cannot redirect to.  Set it to the
+                issuer's base URL (e.g. "https://auth.goclan.org") in clan.nix.
+              '';
+            }
+          ];
+
+          clan.core.vars.generators.${oidc.secretGenerator}.files.${oidc.secretFile}.restartUnits = [
             "monitoring-secrets.service"
             "container@monitoring.service"
           ];

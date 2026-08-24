@@ -145,7 +145,9 @@
 # ── JELLYFIN KEEPS NATIVE AUTH, FOREVER ──────────────────────────────────────
 #
 #   NEVER put Authelia — or any forward-auth middleware — in front of the
-#   Jellyfin route.  This is written here so M7 does not undo it.
+#   Jellyfin route.  This was written here so M7 would not undo it; M7 has
+#   landed, the `authelia` middleware below exists, and the jellyfin router
+#   still does not carry it.  Keep it that way.
 #
 #   TV apps, the Android/iOS clients, Chromecast senders and every DLNA-ish
 #   device authenticate with Jellyfin's own token API and cannot perform an
@@ -156,8 +158,10 @@
 #   the right one: it is the only one the clients can speak.
 #
 #   The arr routes are the opposite case — browser-only, admin-facing — and
-#   they carry the interim ipAllowList below precisely so M7 has something to
-#   replace.
+#   they are what the forward-auth middleware exists for.  The distinction is
+#   not "admin versus household", it is "can the client render a login page and
+#   follow a 302".  Anything that cannot must authenticate natively or not be
+#   proxied at all.
 #
 # ── Storage layout on this host (see machines/ernst/disko.nix) ───────────────
 #
@@ -231,11 +235,17 @@ let
   # VLAN 90 permitted to read this container's metrics endpoint.
   monitoringAddr = "10.0.90.14";
 
+  # M7.  Authelia.  Two roles in one address: the identity provider this proxy
+  # ASKS about every admin request (the forwardAuth middleware below), and the
+  # login portal it SERVES at auth.<domain> like any other backend.
+  autheliaAddr = "10.0.90.15";
+
   jellyfinPort = 8096;
   prowlarrPort = 9696;
   sonarrPort   = 8989;
   radarrPort   = 7878;
   grafanaPort  = 3000;
+  autheliaPort = 9091;
 
   # M6.  Traefik's own Prometheus metrics, on a SEPARATE entryPoint from the
   # one that serves traffic.  Its own port rather than a route on :443 because
@@ -252,28 +262,26 @@ let
   # this until M6".
   metricsPort = 8082;
 
-  # INTERIM ACCESS CONTROL for the arr routes, and since M6 for Grafana too —
-  # ledger row L5 in docs/roadmap.md, to be REPLACED by Authelia forward-auth
-  # in M7.
+  # ── WHERE THE `mgmt-only` ipAllowList WENT ────────────────────────────────
   #
-  # The management networks are the same two containers/arr.nix and
-  # microvms/wg-qbittorrent.nix already use (`mgmtNets`), plus the travel VLAN:
-  #   10.0.10.0/24   LAN / "Family"  (VLAN 1)
-  #   10.0.50.0/24   Servers         (VLAN 50)
-  #   10.0.70.0/24   Travel / wg     (VLAN 70)
+  # M5 shipped an interim IP allow-list here — 10.0.10.0/24 (LAN),
+  # 10.0.50.0/24 (Servers), 10.0.70.0/24 (travel/wg) — on the *arr routes, and
+  # M6 added Grafana to it.  That was ledger row L5, and M7 RETIRED IT: it is
+  # deleted, not stacked underneath the forward-auth middleware.
   #
-  # VLAN 70 is NOT on ernst's trunk and does not need to be — a wg-travel
-  # client's traffic is routed to VLAN 90 by the UDM-Pro and arrives here with
-  # its 10.0.70.x source intact.  Leaving it out is what would lock lgo out of
-  # the arr from the road, which is the specific failure M7's notes warn about.
+  # The argument for removing rather than keeping it, and the cost that comes
+  # with that (the login portal is now visible from the IoT VLAN), are written
+  # out in machines/ernst/containers/authelia.nix under "THE ipAllowList IS
+  # REMOVED, NOT STACKED".  The short version: an allow-list under an identity
+  # provider means valid credentials plus a correct TOTP code still fail from
+  # anywhere nobody pre-declared, which is most of what the identity provider
+  # was added for.
   #
-  # This is an IP allow-list and NOT authentication.  It is here so the admin
-  # UIs are not simply open the moment they are proxied, and it is marked
-  # interim because it will be wrong for a household the moment anyone wants
-  # access from a phone on the IoT VLAN.  DO NOT INVENT AN AUTH SCHEME HERE —
-  # basic-auth credentials in a clan var would be a third credential store to
-  # rotate and would still have to be torn out for M7.
-  mgmtSourceRanges = [ "10.0.10.0/24" "10.0.50.0/24" "10.0.70.0/24" ];
+  # DO NOT REINTRODUCE IT as "defence in depth" without reading that block.
+  # The depth is still there and it did not come from this list: every backend
+  # refuses its own web port from anything but this container's address, so the
+  # only path to the *arr is through here — and the only way through here is
+  # now through Authelia.
 
   ############################################################################
   # Secrets staging.
@@ -812,18 +820,50 @@ in
         ########################################################################
         dynamicConfigOptions = {
           http.middlewares = {
-            # INTERIM — ledger row L5 in docs/roadmap.md, replaced by Authelia
-            # forward-auth in M7.  See mgmtSourceRanges above for what it
-            # covers and why it is not authentication.
+            # ── M7: Authelia forward-auth ──────────────────────────────────
             #
-            # Traefik's ipAllowList matches the TCP peer address by default and
-            # IGNORES X-Forwarded-For.  That is the correct behaviour here and
-            # it depends on this entryPoint NOT setting
-            # forwardedHeaders.trustedIPs — nothing sits in front of this proxy,
-            # so any XFF header on an inbound request was written by the client
-            # and trusting it would let anyone assert a management source
-            # address.  Do not add forwardedHeaders here.
-            mgmt-only.ipAllowList.sourceRange = mgmtSourceRanges;
+            # Every request to a protected router is paused here while Traefik
+            # asks Authelia whether to continue.  A 2xx lets it through; a 401
+            # is turned into the redirect to the portal.
+            #
+            # trustForwardHeader = FALSE, and this is the setting to get right.
+            # It does NOT control whether Authelia is told what the user asked
+            # for — Traefik always writes X-Forwarded-Method / -Proto / -Host /
+            # -Uri onto the auth request from the ACTUAL request.  What it
+            # controls is whether an X-Forwarded-* header that arrived FROM THE
+            # CLIENT is passed through instead.  Nothing sits in front of this
+            # proxy, so any such header was written by the client, and trusting
+            # it would let anyone claim they were asking for a different host
+            # than the one they are actually being proxied to.
+            #
+            # (Authelia's own Traefik documentation shows `true`.  That is
+            # written for deployments behind a CDN or an upstream load
+            # balancer, where the real client details only exist in those
+            # headers.  This is not one, and `false` is the safe end of the
+            # same switch.  It is the same argument the deleted ipAllowList
+            # rested on: peer address, not headers.)
+            #
+            # authResponseHeaders copies the authenticated identity onto the
+            # request that finally reaches the backend.  Nothing behind here
+            # consumes them today — the *arr have no header auth and Grafana
+            # uses OIDC rather than auth proxy — but they are what a future
+            # `auth.proxy` mode would read, and they are free.
+            #
+            # A NOTE ON WHAT THIS DOES NOT DO: it authenticates the REQUEST,
+            # not the API key.  Sonarr's and Radarr's own API keys still work
+            # for anything that can reach their ports, which after M5 is this
+            # container and nothing else.  Forward-auth is the outer boundary;
+            # mechanism (a) is still the inner one.
+            authelia.forwardAuth = {
+              address            = "http://${autheliaAddr}:${toString autheliaPort}/api/authz/forward-auth";
+              trustForwardHeader = false;
+              authResponseHeaders = [
+                "Remote-User"
+                "Remote-Name"
+                "Remote-Email"
+                "Remote-Groups"
+              ];
+            };
           };
 
           http.routers = {
@@ -837,7 +877,29 @@ in
               service     = "jellyfin";
             };
 
-            # ── The arr stack: admin routes, interim-restricted ────────────
+            # ── Authelia: the portal itself (M7) ───────────────────────────
+            #
+            # NO MIDDLEWARE, necessarily.  This is the route the forward-auth
+            # redirect POINTS AT, so putting the middleware on it would send
+            # an unauthenticated user to a page that redirects them to itself.
+            #
+            # It is also the route Grafana's OIDC flow uses server-side: the
+            # authorization redirect, the token exchange and the userinfo call
+            # all land here.  That is why authelia.nix's access-control block
+            # needs no bypass rules — none of those requests is ever forwarded
+            # for authorization in the first place.
+            #
+            # Reachable from every zone the `Allow Traefik` ZBF rule permits,
+            # which after L5's retirement includes IoT.  What is exposed there
+            # is a login form with a two_factor policy and regulation behind
+            # it; see authelia.nix.
+            authelia = {
+              rule        = "Host(`auth.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              service     = "authelia";
+            };
+
+            # ── The arr stack: admin routes, behind Authelia ───────────────
             #
             # THREE HOSTNAMES, NOT THREE PATH PREFIXES.  containers/arr.nix
             # anticipated this ("M5 can route three paths to one address
@@ -851,30 +913,35 @@ in
             prowlarr = {
               rule        = "Host(`prowlarr.${baseDomain}`)";
               entryPoints = [ "websecure" ];
-              middlewares = [ "mgmt-only" ];
+              middlewares = [ "authelia" ];
               service     = "prowlarr";
             };
             sonarr = {
               rule        = "Host(`sonarr.${baseDomain}`)";
               entryPoints = [ "websecure" ];
-              middlewares = [ "mgmt-only" ];
+              middlewares = [ "authelia" ];
               service     = "sonarr";
             };
             radarr = {
               rule        = "Host(`radarr.${baseDomain}`)";
               entryPoints = [ "websecure" ];
-              middlewares = [ "mgmt-only" ];
+              middlewares = [ "authelia" ];
               service     = "radarr";
             };
 
-            # ── Grafana (M6): admin route, interim-restricted ──────────────
+            # ── Grafana (M6): admin route, behind Authelia ─────────────────
             #
-            # Same treatment as the arr, and it joins ledger row L5: browser
-            # only, admin facing, ipAllowList until M7 replaces it with
-            # Authelia forward-auth.  Grafana keeps its OWN login underneath
-            # either way — see the vars generator in
-            # service-modules/monitoring.nix for why that account still
-            # matters after M7 exists.
+            # Same treatment as the arr — browser only, admin facing — and it
+            # was the fourth member of ledger row L5 until M7 retired it.
+            #
+            # Grafana keeps its OWN login underneath the forward-auth, which
+            # is the account that still works when the identity provider is
+            # the thing that is broken.  M7 is what made that account
+            # REACHABLE again: with this route behind the middleware the local
+            # form cannot be got at through this proxy at all, so the
+            # break-glass path goes around it entirely, over M6's mon0 veth.
+            # It is written out beside services.grafana in
+            # service-modules/monitoring.nix — read it before you need it.
             #
             # Nothing special is needed for Grafana's live-tail websockets:
             # Traefik proxies an Upgrade request transparently, and the
@@ -882,7 +949,7 @@ in
             grafana = {
               rule        = "Host(`grafana.${baseDomain}`)";
               entryPoints = [ "websecure" ];
-              middlewares = [ "mgmt-only" ];
+              middlewares = [ "authelia" ];
               service     = "grafana";
             };
           };
@@ -896,12 +963,63 @@ in
           # There is deliberately no `passHostHeader = false` anywhere: Traefik
           # forwards the original Host by default, which is what lets Jellyfin
           # generate correct absolute URLs.
+          # ── A shorter idle timeout on the pool to Authelia (M7) ───────────
+          #
+          # LOG HYGIENE, not behaviour, and it is a HYPOTHESIS rather than a
+          # measurement — labelled as such because this repo has been bitten
+          # twice by the other kind.
+          #
+          # After M7 deployed, authelia-main's journal filled with:
+          #
+          #   level=error msg="Request timeout occurred while handling request
+          #   from client." error="read tcp 10.0.90.15:9091->10.0.90.12:37010:
+          #   i/o timeout" method=GET path=/ status_code=408
+          #
+          # — one per idle connection, at level=error, from this container's
+          # address.  Nothing is broken: every one of those requests was served.
+          #
+          # The mechanism, as far as it can be reasoned about from here:
+          # Authelia's `server.timeouts.read` defaults to 6 s, and Traefik's
+          # backend connection pool holds an idle keep-alive connection for
+          # `idleConnTimeout`, default 90 s.  Whoever's timer is shorter closes
+          # the connection — today that is always Authelia, and fasthttp logs
+          # the close against the LAST request it saw on that connection, which
+          # is why the line names a path that completed normally minutes ago.
+          #
+          # Making Traefik hang up first (5 s < 6 s) should mean the connection
+          # is always closed by its owner and never by a timeout.  The cost is
+          # one TCP handshake per burst on a layer-2 hop that never leaves this
+          # host — microseconds, and only when the proxy has been idle.
+          #
+          # WHY NOT raise Authelia's read timeout instead: that weakens a real
+          # server-side protection (a slow-header client holding a connection)
+          # to silence a log line, and it would have to exceed Traefik's 90 s
+          # to actually work.  The pool is the thing misbehaving; fix the pool.
+          #
+          # CONFIRM AFTER DEPLOY, and if it did not work say so here:
+          #   nixos-container run authelia -- \
+          #     journalctl -u authelia-main --since "30 min ago" | grep -c 408
+          # Expect 0.  If it is not 0, the reasoning above is wrong and the
+          # next reader deserves to know that rather than inherit a plausible
+          # story.
+          http.serversTransports.shortIdle.forwardingTimeouts.idleConnTimeout = "5s";
+
           http.services = {
             jellyfin.loadBalancer.servers = [ { url = "http://${jellyfinAddr}:${toString jellyfinPort}/"; } ];
             prowlarr.loadBalancer.servers = [ { url = "http://${arrAddr}:${toString prowlarrPort}/"; } ];
             sonarr.loadBalancer.servers   = [ { url = "http://${arrAddr}:${toString sonarrPort}/"; } ];
             radarr.loadBalancer.servers   = [ { url = "http://${arrAddr}:${toString radarrPort}/"; } ];
             grafana.loadBalancer.servers  = [ { url = "http://${monitoringAddr}:${toString grafanaPort}/"; } ];
+
+            # M7.  The same address the forwardAuth middleware above calls,
+            # reached over the same plain-HTTP layer-2 hop — one backend, two
+            # paths to it.  The portal is a browser-facing route; the
+            # middleware's is a server-to-server call on a different path
+            # (/api/authz/forward-auth) of the same listener.
+            authelia.loadBalancer = {
+              servers = [ { url = "http://${autheliaAddr}:${toString autheliaPort}/"; } ];
+              serversTransport = "shortIdle";
+            };
           };
         };
       };
