@@ -69,6 +69,54 @@ into a bogus separate command:
 while ! ssh -tt -o ConnectTimeout=2 ernst-initrd systemd-tty-ask-password-agent --query; do sleep 1; done
 ```
 
+### START THE LOOP AND LEAVE IT.  READ THIS BEFORE DECIDING IT IS BROKEN
+
+**Every failure the loop prints until the unlock window opens is expected**,
+and on this machine that is a long time.  `Connection refused`,
+`No route to host` and `Connection timed out` all mean "ernst is not up yet",
+not "remote unlock is broken".  The loop exists precisely to absorb them.
+
+**ernst's POST is measured in tens of minutes, not seconds.**  From the
+2026-08-24 reboot, out of the journal:
+
+| time | event |
+|---|---|
+| 18:32:33 | shutdown finishes, machine powers off |
+| **19:09:16** | kernel starts — **36 minutes of firmware POST** |
+| 19:09:19 | `sshd: Server listening on 0.0.0.0 port 2222` |
+| 19:09:25 | `enp13s0: Gained carrier` — **the window opens here** |
+| 19:10:21 | zroot imported, `sshd: Received signal 15` — window closes |
+
+That reboot was unlocked at the TV, and the reason was not a fault in any of
+this: sshd came up correctly, the interface was configured correctly, and the
+window was open for 56 seconds.  It opened **36 minutes** after the reboot
+command, by which time the operator had reasonably concluded the channel was
+dead and walked to the television.
+
+So the failure mode to guard against is human, and the guard is: start the
+loop, put the terminal somewhere visible, and do not interpret errors during
+POST as a verdict.  The window closes when *you* answer the prompt, so it is
+never too short — it is only ever late.
+
+**The 36 minutes is itself worth attention** and is not something this guide
+can fix: it is firmware, before Linux runs, with an HBA enumerating eight SAS
+devices.  `zpool status` is clean, so it is not a failing pool member. If it
+grows, suspect the HBA or a marginal device (see
+`docs/incidents/ernst-slot12-drop-2026-08-11.md`) before suspecting this
+setup.
+
+**How to know the window is open rather than guessing:** the loop succeeding
+*is* the signal — it prints `Password: `. Until then there is nothing to see.
+If you would rather not watch a terminal, ping the address first and start the
+loop once anything answers:
+
+```bash
+while ! ping -c1 -W1 10.0.50.10 >/dev/null 2>&1; do sleep 5; done; echo "ernst is answering — starting unlock loop"
+```
+
+Note `ping` answers in stage 1 *and* in a fully booted system, so it tells you
+ernst is reachable, not that it is waiting for a passphrase.
+
 - `-tt` (double `t`) forces ssh to allocate a pty even when stdin
   isn't one (as inside a `while` loop).
   `systemd-tty-ask-password-agent` reads from `/dev/tty`; no pty →
