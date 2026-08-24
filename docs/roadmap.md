@@ -1518,7 +1518,7 @@ IPv6 masquerade were in place — and **the container never started**:
 
 ```
 monitoring-secrets.service: zfs-ntfy url is not <baseurl>/<topic>:
-                            f2eb291e89a1c7bd4e60fdda
+                            <24-hex-topic>
 container@monitoring.service: Dependency failed
 ```
 
@@ -1536,7 +1536,7 @@ verbatim, and curl did what curl does with a schemeless argument. Measured on
 ernst the same day:
 
 ```
-curl: (6) Could not resolve host: f2eb291e89a1c7bd4e60fdda
+curl: (6) Could not resolve host: <24-hex-topic>
 ```
 
 The zedlet ends its curl with `>/dev/null 2>&1`, so the error went nowhere. ZFS

@@ -35,7 +35,7 @@
 #   tried to resolve a hostname made of hex, and the `>/dev/null 2>&1` on the
 #   end threw the error away:
 #
-#     curl: (6) Could not resolve host: f2eb291e89a1c7bd4e60fdda
+#     curl: (6) Could not resolve host: <24-hex-topic>
 #
 #   So ZFS alerting on this machine had NEVER fired, and nothing said so.
 #   It was found only because M6's Alertmanager bridge needed the baseurl and
