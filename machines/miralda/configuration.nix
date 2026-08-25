@@ -19,6 +19,13 @@
   # wifi networks are provisioned via the clan wifi service (inventory.instances.wifi).
   clanarchy.hardware.cpu = "amd";
   clanarchy.display.scale = 1.25;
+
+  # ZSA Voyager: udev rules for Oryx / Keymapp, plus Keymapp itself.
+  # Oryx's *browser* features (live training, web flashing) need WebHID, which
+  # librewolf and firefox do not implement — use chromium for those, or
+  # Keymapp, which needs no browser at all. See modules/hardware/zsa.nix.
+  clanarchy.hardware.zsa.enable = true;
+
   clanarchy.users.lgo.enable = true;
   clanarchy.users.admin.enable = true;
 

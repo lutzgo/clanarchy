@@ -57,6 +57,10 @@ rec {
     ../modules/networking/initrd-ssh.nix
     ../modules/hardware/cpu.nix
     ../modules/hardware/gpu.nix
+    # ZSA keyboards (Voyager et al). Declares `clanarchy.hardware.zsa` and
+    # guards its own body on it, so importing it fleet-wide is inert on the
+    # machines that never plug one in.
+    ../modules/hardware/zsa.nix
     ../modules/virtualisation.nix
     ../modules/users/admin.nix
     ../modules/observability/zfs-ntfy.nix
