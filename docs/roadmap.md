@@ -21,7 +21,7 @@ Two jobs:
 
 ## Current state
 
-Verified against the repo on 2026-08-20 (`main` @ `f9b305e`).
+Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 
 | Milestone / work | Status | Refs | Note |
 |---|---|---|---|
@@ -46,14 +46,20 @@ Verified against the repo on 2026-08-20 (`main` @ `f9b305e`).
 | M1 — Kvantum linkGeneration drift | **closed — did not reproduce** | — | Four consecutive activations in the retained journal all passed `linkGeneration`. The on-disk shape that looked like drift is Stylix's `recursive = true` working as designed. See [M1](#m1-kvantum-linkgeneration-drift-closed) |
 | M2 — ernst VLAN bridge | **done — deployed 2026-08-20** | [#73](https://github.com/lutzgo/clanarchy/pull/73) | `br0` VLAN-filtering bridge, `enp13s0` as tagged trunk; VLAN 90 (Services) created for M2b/M5. Cutover verified: `br0` holds `10.0.50.10/24`, `enp13s0` enslaved, the `br0 50 PVID Egress Untagged` self entry present, NM now `unmanaged`. [Runbook](runbooks/ernst-vlan-bridge-cutover.md). See [M2](#m2-ernst-vlan-bridge-built-cutover-pending) |
 | M2b — Jellyfin on its own veth | **done — deployed 2026-08-20** | [#82](https://github.com/lutzgo/clanarchy/pull/82) | Jellyfin on `10.0.90.10` via MAC-pinned veth `vb-jellyfin`, VLAN 90. **L3 retired.** Survived a reboot: `br0`'s pinned MAC reproduced at first boot-time creation, the VLAN race won by networkd, `/srv/state/jellyfin` intact through the rollback, `clanarchy-impermanence-check` green. The Nix half deployed first try; the [UDM-Pro half took five rounds](#the-udm-pro-half-cost-more-than-the-nix-half) and disproved M2's Connection-State finding. [M2b](#m2b-jellyfin-on-its-own-veth-done-deployed-2026-08-20) |
-| M3 — VPN microvm + qBittorrent | **done — deployed 2026-08-20** | [#83](https://github.com/lutzgo/clanarchy/pull/83) | `wg-qbittorrent` on the microvm tier: tap on VLAN 90, IVPN wg-quick tunnel, guest-side nftables killswitch. **Killswitch proven**: with wg0 down the guest emitted zero packets and DNS failed rather than leaking. **Hardlink chain proven**, with a negative control — `UMask=0002` is what M4 depends on. Three things had to be fixed after the first deploy: wg-quick wins any routing-rule priority race, a tmpfiles/oneshot contradiction in `jellyfin.nix` had been silently resetting the media directory modes since M2b, and the UDM-Pro policy editor has two Port sections. [M3](#m3-featernst-vpn-microvm-done--deployed-2026-08-20) |
+| M3 — VPN microvm + qBittorrent | **done — deployed 2026-08-20** | [#83](https://github.com/lutzgo/clanarchy/pull/83) | `wg-qbittorrent` on the microvm tier: tap on VLAN 90, IVPN wg-quick tunnel, guest-side nftables killswitch. **Killswitch proven**: with wg0 down the guest emitted zero packets and DNS failed rather than leaking. **Hardlink chain proven**, with a negative control — `UMask=0002` is what M4 depends on. Three things had to be fixed after the first deploy: wg-quick wins any routing-rule priority race, a tmpfiles/oneshot contradiction in `jellyfin.nix` had been silently resetting the media directory modes since M2b, and the UDM-Pro policy editor has two Port sections. [M3](#m3-featernst-vpn-microvm-done-deployed-2026-08-20) |
 | M4 — arr stack | **done — deployed, proven, and survived an unplanned power cut 2026-08-21** | [#85](https://github.com/lutzgo/clanarchy/pull/85) | Prowlarr/Sonarr/Radarr in one nspawn container, `machines/ernst/containers/arr.nix`. **Departs from its own prompt on networking**: veth on br0 / VLAN 90 (MAC `02:00:00:90:00:05`, `10.0.90.13`) rather than the host-networking v1 the prompt described, because that prompt predates M2b and `networking.nix` already names M4 as a pattern-B consumer. Consequence worth knowing: the arr reaches qBittorrent at L2 over `br0`, so **the UDM-Pro never sees that traffic** and the ZBF rule the prompt listed as a manual step does not exist — the guest's `api_clients` nftables set is the only thing enforcing it. The milestone is **not** done until the `stat` proof runs on ernst. [M4](#m4-featernst-arr-stack) |
 | M5 — Traefik | **done — deployed 2026-08-23, proven 2026-08-24** | [#86](https://github.com/lutzgo/clanarchy/pull/86) | `machines/ernst/containers/traefik.nix`: nspawn container on `vb-traefik`, VLAN 90, MAC `02:00:00:90:00:04` → `10.0.90.12`. One wildcard `*.goclan.org` over ACME DNS-01 at Cloudflare, scoped API token via clan var `traefik-acme`, store on `zdata` at `/srv/state/traefik`. Routes: jellyfin (no middleware, ever) + prowlarr/sonarr/radarr behind the interim `mgmt-only` ipAllowList (L5). **Backend bypass hardening is mechanism (a)** — each backend's own firewall accepts its web port only from `10.0.90.12` — because Jellyfin, the arr, qBittorrent and Traefik are all ports on `br0` and their traffic never reaches the UDM-Pro, so an intra-zone ZBF rule could not see it. **Two consequences on deploy day**: direct access to `10.0.90.10:8096` and `10.0.90.13:{9696,8989,7878}` stops working immediately, so TV clients must move to `jellyfin.goclan.org` in the same window; and the ACME propagation check queries `1.1.1.1`/`9.9.9.9` directly, which a UDM-Pro DNS-interception rule would silently break. [M5](#m5-featernst-traefik) |
 | M6 — monitoring | **done — deployed, alerting proven end to end, and survived a real reboot 2026-08-24; biene/birte pending** | [#87](https://github.com/lutzgo/clanarchy/pull/87) | **Working**: container on `10.0.90.14`, VLAN 90 won unaided, every deployed target scraping `up`, Grafana served through Traefik, and `traefik_tls_certs_not_after` (89 d) + `zfs_pool_health` (0/0) both confirmed **live** — retiring the two metric names that had only been read out of binaries' strings. **Notifications arrive**, from both publishers, on rotated topics — the first confirmed ntfy delivery in this fleet's history. **Survived a real reboot**: `mon0` and `vb-monitoring` created by a boot rather than a deploy, container back on `.14`, the TSDB holding pre-reboot samples, `clanarchy-impermanence-check` green — which closes invariant #7 for this milestone and the `mon0`-across-a-reboot question inherited from M2b. **Three deploys, each caught a real defect.** The first stopped at `monitoring-secrets`, by design — and the value it refused exposed that `modules/observability/zfs-ntfy.nix`'s zedlet **has never worked on ernst**: the var holds a bare topic (what the prompt's own `openssl rand -hex 12` hint produces), curl could not resolve it as a hostname, and `>/dev/null 2>&1` threw the error away. The second exposed that **`systemd-networkd-wait-online` could never succeed in this container** — a veth has no carrier until both ends are up, and `mon0`'s host end is brought up by `postStart`, which runs *after* the container's boot, so wait-online was waiting on an event its own completion gates. The 20 s cap contained it; `RequiredForOnline = "no"` fixes it. [Details](#first-deploy-2026-08-24-the-fail-closed-path-fired-and-it-found-an-older-bug). `service-modules/monitoring.nix` (+ `.md`, + one dashboard as JSON): a clan service module with a `client` role on all four machines and a `server` role on ernst. **Scrape targets are derived from `roles.client` membership** — each machine's address comes from the `zerotier-ip-<machine>-zerotier` var clan-core already generates, so adding a machine to the role is the only step needed. The stack is one nspawn container on `vb-monitoring`, VLAN 90, MAC `02:00:00:90:00:06` → `10.0.90.14`, state on `zdata` at `/srv/state/monitoring`. **The one genuinely new piece of engineering is a SECOND interface**: `mon0`, a point-to-point ULA veth to the host, because both things Prometheus must scrape — ernst's own exporters (VLAN 50) and three laptops (ZeroTier, which terminates in the host netns) — are unreachable from VLAN 90. The host forwards and SNATs onto `zt+`, which has the useful side effect that scrapes arrive at a laptop from ernst's own ZeroTier address, i.e. the one source each client permits. **Alerting is (b), keep both**, with the overlap made empty: ZED owns pool state, Prometheus owns everything else and has no `zfs_pool_health` rule, and `ZedNotRunning` is the interlock. Both end at the same ntfy topic. [M6](#m6-featmonitoring) |
-| M7 — Authelia | **done — deployed 2026-08-24; both accounts enrolled on TOTP + WebAuthn; Grafana OIDC and the reboot still pending** | [#90](https://github.com/lutzgo/clanarchy/pull/90) | Authelia 4.39 in an nspawn container, `machines/ernst/containers/authelia.nix`, on `vb-authelia` / VLAN 90 / MAC `02:00:00:90:00:07` → `10.0.90.15`, SQLite on `zdata` at `/srv/state/authelia`. **L5 is retired by deletion, not by stacking** — the `mgmt-only` ipAllowList is gone from `containers/traefik.nix` and the four admin routers carry a `forwardAuth` middleware instead. The cost is stated rather than buried: the login portal is now reachable from the IoT VLAN, because the `Allow Traefik` ZBF rule already permits IoT → `10.0.90.12:443`; what it meets there is `two_factor` plus regulation (3 failures / 5 min → 15 min ban, per user, in SQLite). **The bypass list the brief asked for came back EMPTY**, and that is a finding: `auth.goclan.org` carries no middleware on its own router, so `/api/oidc/*`, `/.well-known/*` and `/api/health` never pass through forward-auth in the first place — a `bypass` rule would match nothing and read as enforcement. Grafana moves to Authelia OIDC with its local admin kept, and **break-glass needed one new line to be true at all**: with the Grafana route behind forward-auth, the local form is unreachable through Traefik, so `10.0.90.14:3000` now also accepts `fdca:fe90::1` — the host end of M6's `mon0` — reachable only as `ssh -N -L 3000:[fdca:fe90::2]:3000 root@ernst`. **Proven offline against the real 4.39.20 binary**: the rendered config, the staged OIDC client block, the generated `users_database.yml` and the JWKS fragment all pass `authelia validate-config`, and all three vars generators were run end to end. [M7](#m7-featernst-authelia) |
-| M8 — Tvheadend / SAT>IP live TV | **open — operator gate first** | — | Steps 1–3 (patching, UniFi, stream test) are lgo's and must clear before a session starts; the milestone dies if the FRITZ!Box's DVB-C is branding-locked. [M8](#m8-featernst-tvheadend) |
+| M7 — Authelia | **done — deployed 2026-08-24; both accounts enrolled on TOTP + WebAuthn; L5 retired in code and in the device; Grafana OIDC and the reboot still pending** | [#90](https://github.com/lutzgo/clanarchy/pull/90) | Authelia 4.39 in an nspawn container, `machines/ernst/containers/authelia.nix`, on `vb-authelia` / VLAN 90 / MAC `02:00:00:90:00:07` → `10.0.90.15`, SQLite on `zdata` at `/srv/state/authelia`. **L5 is retired by deletion, not by stacking** — the `mgmt-only` ipAllowList is gone from `containers/traefik.nix` and the four admin routers carry a `forwardAuth` middleware instead. The cost is stated rather than buried: the login portal is now reachable from the IoT VLAN, because the `Allow Traefik` ZBF rule already permits IoT → `10.0.90.12:443`; what it meets there is `two_factor` plus regulation (3 failures / 5 min → 15 min ban, per user, in SQLite). **The bypass list the brief asked for came back EMPTY**, and that is a finding: `auth.goclan.org` carries no middleware on its own router, so `/api/oidc/*`, `/.well-known/*` and `/api/health` never pass through forward-auth in the first place — a `bypass` rule would match nothing and read as enforcement. Grafana moves to Authelia OIDC with its local admin kept, and **break-glass needed one new line to be true at all**: with the Grafana route behind forward-auth, the local form is unreachable through Traefik, so `10.0.90.14:3000` now also accepts `fdca:fe90::1` — the host end of M6's `mon0` — reachable only as `ssh -N -L 3000:[fdca:fe90::2]:3000 root@ernst`. **Proven offline against the real 4.39.20 binary**: the rendered config, the staged OIDC client block, the generated `users_database.yml` and the JWKS fragment all pass `authelia validate-config`, and all three vars generators were run end to end. [M7](#m7-featernst-authelia) |
+| M8 — Tvheadend / SAT>IP live TV | **open — operator gate first, and now a scope gate after M12** | — | Steps 1–3 (patching, UniFi, stream test) are lgo's and must clear before a session starts; the milestone dies if the FRITZ!Box's DVB-C is branding-locked. **New in 2026-08:** M12's MediathekArr may cover most of what recording is *for*, so Phase 0 gains a question ahead of its existing ones — see [what the *arr ecosystem does and does not provide here](#what-the-arr-ecosystem-does-and-does-not-provide-here-surveyed-2026-08). [M8](#m8-featernst-tvheadend) |
 | M9 — TubeSync | **open** | — | Feeds the Jellyfin library directly. First occupant of the **podman** tier (not in nixpkgs — verified), so it builds the tier as well as the service; podman's attachment to `br0` is unsolved here. [M9](#m9-featernst-tubesync) |
 | M10 — Kodi + IR remote | **dropped — 2026-08-20** | — | Dropped by lgo before any code was written: the couch requirement is Plasma Bigscreen plus Steam, and Kodi is a third media UI nobody asked for. The IR-receiver half was orthogonal and survives as a [backlog entry](#floating-backlog) |
+| M11 — fleet-local coding agent | **open — Phase 0 PARTIAL, 2026-08-25** | — | The mechanical half ran and its results are durable; the decision the milestone exists to make has not been made. **The working tree was left untouched at `133a39d` — nothing merged, no Nix written.** Three of the brief's premises were falsified, the context trap is proven with numbers, and the central hypothesis (models hallucinate tool arguments) was **inverted**: zero invented arguments in 88 trials, every failure an Ollama template-parser defect. The human half — the multi-file edit, the Claude Code comparison, real-task failure rates — is lgo's and outstanding. Harness at `~/.local/share/m11-bakeoff/`, re-runnable. [M11](#m11-featfleet-local-coding-agent) |
+| M12 — arr helpers | **open** | — | Byparr, UmlautAdaptarr, Bazarr, Cleanuparr, MediathekArr, recyclarr additions — all inside the **existing** arr container. No new veth, MAC, DHCP reservation or UDM-Pro work, which is why it is first: it proves the hand-rolled-derivation approach M14 depends on without touching a network boundary. Depends on M4. [M12](#m12-featernst-arr-helpers) |
+| M13 — media lifecycle | **open** | — | Jellyseerr at **internal** scope, Janitorr, Scraparr, and four more M6 exporter targets. The external half of Jellyseerr is deliberately split into M16. Depends on M6. [M13](#m13-featernst-media-lifecycle) |
+| M14 — libraries | **open** | — | Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. Introduces a **second write path** into `/srv/media`, so it owes its own hardlink proof with a negative control — M3's does not transfer. Depends on M12. [M14](#m14-featernst-libraries) |
+| M15 — Tdarr / space reclamation | **open** | — | Its own container with VAAPI on the 7900 XTX, plus GPU arbitration against a card that now has three other claimants. **M11's VRAM numbers changed this materially**: a fully-resident Ollama at 64k leaves ~2 GB, so CPU-only Tdarr is now a serious default rather than a fallback — and Muxarr must be evaluated first, because it may reclaim more per CPU-hour with no GPU question at all. Depends on M12. [M15](#m15-featernst-tdarr) |
+| M16 — external ingress | **open** | — | Make `jellyseerr.goclan.org` reachable from the internet, and **only** that. First service accepting connections from outside the home network, so the milestone is about the boundary rather than the service. Creates a permanent bypass row under invariant #4. Depends on M13. [M16](#m16-featernst-external-ingress) |
 
 ---
 
@@ -138,6 +144,159 @@ form, including runbook aliases.
 
 ---
 
+## Standing notes
+
+Not invariants — an invariant is a property of the **system** that a milestone
+must design around. These are properties of the **ground** a milestone stands
+on: hazards that live in a file somebody will edit for an unrelated reason, and
+decisions the fleet owes itself but has not made. They are here rather than
+inside the milestone that discovered them precisely because the person who trips
+over them will not be reading that milestone.
+
+### SN1 — The model tag silently sets the context window
+
+**Ollama derives `num_ctx` from the model when it is not set explicitly.**
+Measured on 2026-08-25: `qwen3-coder:30b` on ernst → **32768**;
+`qwen2.5-coder:7b` on miralda → **4096**. So editing the `models` list in
+`clan.nix` — which is what `service-modules/local-ai.nix`'s `models` option
+invites — **changes the context window fleet-wide, with no diff that shows it.**
+A one-word edit that reads as "use the smaller model" is actually "quarter the
+context and break tool calling", and nothing in the review says so.
+
+The consequence is not degraded output, which is what makes it dangerous.
+Measured at `num_ctx = 8192`: a **17,083-token** file (`containers/arr.nix`) was
+silently truncated to **4,098** tokens. HTTP 200, no flag, no warning anywhere in
+the response. Truncation **keeps the tail and drops the head** at roughly
+`num_ctx/2` — and the system message and tool definitions live at the front, so
+**tool calling went to 0/6**. Asked for a fact from the dropped head, the model
+did not decline: it **invented a plausible, placeholder-shaped MAC address**
+(`00:11:22:33:44:55` in place of `02:00:00:90:00:05`) — precisely the kind of
+value that survives a skim of a diff.
+
+**So `num_ctx` must be set explicitly wherever the model is declared, and the
+two must be reviewed together.** A model-tag change is a context change until
+proven otherwise. The current 32768 on ernst is luck, not configuration; the Nix
+that fixes it is written out and deliberately unlanded — see
+[M11's open question](#the-open-question-for-lgo-and-it-is-not-claudes-to-close).
+
+Cross-referenced from [M11](#m11-featfleet-local-coding-agent) (which measured
+it) and [M15](#m15-featernst-tdarr) (whose entire VRAM budget depends on it).
+
+### SN2 — IPv6 is off, and that is now a decision
+
+**ernst's connection is a static full IP stack** — static public IPv4 *and*
+native IPv6, no CGNAT, no DS-Lite. Confirmed by lgo, 2026-08. Every milestone to
+date was written as if the fleet were v4-only, and until now nothing forced the
+question.
+
+**What the repo does today.** Every container sets `IPv6AcceptRA = false` and
+takes DHCPv4 only — `containers/jellyfin.nix`, `arr.nix`, `traefik.nix`,
+`authelia.nix`, the monitoring container, and the microvm guest, which disables
+v6 outright (M3 records that wg-quick aborts under `set -e` on a dual-stack
+`Address` line). VLAN 90 carries no GUA. The one v6 in the fleet is M6's `mon0`,
+a point-to-point ULA veth to the host — deliberate, scoped, and not what this
+note is about.
+
+**That uniformity is an accident, not a decision.** It propagated by copying
+M2b's working pattern into every subsequent container. No milestone argued for
+it, and no milestone has ever tested it.
+
+**The hazard, precisely.** The v4 security model rests on UDM-Pro ZBF policies
+and — implicitly, unexamined — on RFC1918 plus NAT as a backstop. That backstop
+is why a ZBF mistake has so far cost reachability *from another VLAN* rather than
+*from the internet*: M5 lost a round to `Servers` missing from a source list and
+the failure was a timeout, not an exposure. **IPv6 has no NAT and no equivalent
+backstop.** If RAs ever reach VLAN 90, every container becomes globally
+addressable the moment it accepts one, and the only thing between the internet
+and the arr container's `8989` is the UDM-Pro's **IPv6** firewall — a *different*
+rule set from the v4 policies this repo has maintained and corrected since M2,
+and one **no milestone has ever audited**. The failure would be silent: nothing
+in the fleet monitors for an unexpected GUA.
+
+**Measured 2026-08-25, on ernst and in every container** — the baseline this note
+exists to be checked against:
+
+```
+ip -6 addr show                                  # on ernst
+  br0            fe80::b08b:e1ff:fef2:1e7c/64          link-local only
+  mon0           fdca:fe90::1/128                      M6's ULA, host end
+  ztzavl64zk     fdda:106a:123a:d561:…:711f/88         ZeroTier rfc4193
+  enp13s0        (no inet6 at all — bridge port)
+
+nixos-container run <c> -- ip -6 addr show eth0
+  jellyfin       fe80::ff:fe90:2/64                    link-local only
+  traefik        fe80::ff:fe90:4/64                    link-local only
+  arr            fe80::ff:fe90:5/64                    link-local only
+  monitoring     fe80::ff:fe90:6/64                    link-local only
+  authelia       fe80::ff:fe90:7/64                    link-local only
+```
+
+**Link-local only, everywhere. No GUA anywhere on VLAN 90, and none on the host
+either** — ernst holds no ISP-delegated v6 address at all today. So the native-v6
+half of the connection is, at the fleet's edge, entirely unused. That is the safe
+state and it is the *current* state; it is not a state anything defends.
+
+**A GUA anywhere on VLAN 90 makes this an incident, not a note.** Re-run the
+block above before believing otherwise.
+
+**The decision owed, either answer acceptable:**
+
+- **(a) VLAN 90 is v4-only, deliberately and permanently.** `IPv6AcceptRA = false`
+  is promoted from a copied line to an invariant with a stated reason, and the
+  next container that omits it is a review comment rather than an accident.
+- **(b) IPv6 is supported**, in which case the UDM-Pro's v6 ruleset is audited,
+  proven default-deny inbound, and maintained in parallel from then on — a
+  standing cost, not a one-time one.
+
+**Not decided here.** Recorded as owed.
+
+**Triggers**, any of which forces it: [M16](#m16-featernst-external-ingress)
+choosing the port forward (the tunnel sidesteps v6 entirely); any milestone
+setting `IPv6AcceptRA = true` on VLAN 90; any UDM-Pro change enabling RAs or
+DHCPv6 on the Services network; any service needing v6 reachability from outside.
+
+Cross-referenced from [M16](#m16-featernst-external-ingress) and
+[Floating / backlog](#floating-backlog).
+
+### SN3 — A broken instrument is indistinguishable from a bad result
+
+M11's session very nearly recorded a tool-calling score of **0/10** for
+`qwen3-coder:30b` and wrote the conclusion that follows from it. The true score
+was **28/40**. The difference was a `jq` scoping bug in the session's *own*
+grader (`$a|has(.)` rebinds `.` to `$a`) — a defect in the measuring apparatus,
+producing a damning number about the thing being measured.
+
+That is the same epistemics as SN1's truncation finding, seen from the other
+side. There, a silently truncated context is indistinguishable from a stupid
+model. Here, a silently broken grader is indistinguishable from a stupid model.
+In both cases the observation is confident, internally consistent, and about the
+wrong subject.
+
+**This repo already knows the answer and has paid for it twice.** M3's synthetic
+hardlink proof carries a **negative control** — the same file at `0644`, which
+*must* fail with `EPERM` — for exactly this reason: without it, the test cannot
+distinguish a working chain from root bypassing the check, which is what an
+earlier revision of M3's own plan did. M6 found a zedlet that had never once
+delivered a notification, because it discarded curl's stderr and therefore could
+not report its own failure.
+
+**The rule: check the instrument before believing a number, and especially
+before believing a number that confirms what you expected.** A measurement that
+agrees with the prediction gets less scrutiny than one that contradicts it, which
+is precisely backwards — the confirming result is the one whose harness nobody
+re-reads. In practice this means: a negative control wherever one is possible
+(M14 owes one and its prompt says so), and a sanity path wherever one is not.
+
+**Why this is a standing note and not a tenth invariant.** The nine invariants
+are each a property of the *system* with a *mechanism* behind it — a dataset
+boundary, a firewall rule, a tier, a directory. A milestone respects them in its
+**design**. This is a rule about **method**, it binds every milestone's test plan
+rather than any milestone's architecture, and it has no mechanism to point at.
+Filing it as invariant #10 would dilute a list whose value is that every entry
+names something concrete you can go and check.
+
+---
+
 ## Interim-rule ledger
 
 Temporary firewall / DNS / routing shims. Every row needs a removal trigger.
@@ -153,10 +312,14 @@ Rows are retired only by the PR that actually removes the rule.
 | L3 | `networking.firewall.allowedTCPPorts = [ 8096 ]` on the host | `machines/ernst/containers/jellyfin.nix` | Jellyfin shares the host network namespace (`privateNetwork = false`), so its port is a host port | **M2b** — the veth on VLAN 90 gives the container its own L2 identity; the host port opening goes away and the ACL moves to the UDM-Pro | **retired in [#82](https://github.com/lutzgo/clanarchy/pull/82)** — the line is deleted from the repo; 8096 is now opened only inside the container's own netns. Effective on the next `clan machines update ernst` |
 | — | `LAN (1) → qBittorrent 10.0.90.11:8080,22/tcp` | UDM-Pro ZBF, M3 | The qBittorrent WebUI (and the guest's SSH) are reachable from the management networks and nowhere else | **permanent** — architecture invariant #4 names this bypass explicitly. It is listed here only so a future milestone does not mistake it for an interim row and "fix" it by adding a Traefik route | **created and verified 2026-08-20.** Source zone `Internal`, narrowed to the `LAN` + `Servers` networks; destination `10.0.90.11` tcp `8080,22`; `Auto Allow Return Traffic` ticked. Servers (50) does need to be listed — with it, `ssh` from ernst itself works. **The port belongs in the Destination card**: the editor has a Port section in *both* zone cards and the source one is the one you see first, which matches only traffic *from* 8080/22, i.e. never |
 | L4 | `LAN (1)` + `Servers (50)` → arr `10.0.90.13:9696,8989,7878/tcp` | UDM-Pro ZBF, M4 | The three arr WebUIs are reached directly; there is no reverse proxy yet | **M5** — replace with the permanent `LAN → traefik:443` rule and Traefik routes | **never created — superseded by M5, [#86](https://github.com/lutzgo/clanarchy/pull/86).** M4 shipped without it and M5 landed before anyone needed it badly enough to add it, so the interim rule this row describes has no lifetime at all: the arr UIs go straight from "reachable only from inside `br0`" to "reachable through Traefik". **Do not create it now.** The three ports are source-restricted to `10.0.90.12` in `containers/arr.nix`, so a ZBF permit for them would be a rule the backend ignores. Earlier revisions of this table also predicted a host-firewall row plus a veth migration; M4 skipped v1 and went straight to the veth, so neither ever existed either |
-| L5 | Traefik `ipAllowList` on the arr + Grafana routes (mgmt + wg-travel) | M5 (`traefik` container) | There is no identity provider yet | **M7** — replaced by the Authelia forward-auth middleware | **RETIRED IN CODE 2026-08-24 by M7 ([#90](https://github.com/lutzgo/clanarchy/pull/90)); effective on the next `clan machines update ernst`.** Created in [#86](https://github.com/lutzgo/clanarchy/pull/86) as middleware `mgmt-only`, `sourceRange = 10.0.10.0/24, 10.0.50.0/24, 10.0.70.0/24`; extended to a fourth router (Grafana) by [#87](https://github.com/lutzgo/clanarchy/pull/87). **Deleted, not stacked underneath forward-auth** — the option this row's own notes raised. The argument, in full in `containers/authelia.nix`: an IP allow-list under an identity provider means valid credentials plus a correct TOTP code still fail from anywhere nobody pre-declared, which is most of what the identity provider was added for; and two mechanisms for one property is what `containers/traefik.nix` argues against in its own words. Both warnings this row carried were honoured — `trustForwardHeader = false` on the new middleware keeps the peer-address semantics and still ignores client-supplied `X-Forwarded-*` (Traefik writes those itself from the real request either way), and the VLAN 70 lockout it warned about is moot because the replacement does not filter by source at all. **What is lost with it**: the arr and Grafana login surfaces are now visible from the IoT VLAN. That is the trade, and the compensating control is Authelia's per-user regulation, not a network ACL |
+| L5 | Traefik `ipAllowList` on the arr + Grafana routes (mgmt + wg-travel) | M5 (`traefik` container) | There is no identity provider yet | **M7** — replaced by the Authelia forward-auth middleware | **RETIRED 2026-08-24 by M7 ([#90](https://github.com/lutzgo/clanarchy/pull/90)) — in code AND on the device. Re-verified 2026-08-25**, because this row's own trigger had fired and a row left in the future tense is a row nobody can tell the state of: `grep -n ipAllowList machines/ernst/containers/traefik.nix` returns **four comments and no definition**, and the four routers that carried it (`prowlarr`, `sonarr`, `radarr`, `grafana`) each carry `middlewares = [ "authelia" ]` instead. The deploy that made it effective happened the same day — `https://sonarr.goclan.org/` answered `302 → auth.goclan.org/?rd=…`, which is the middleware and not the ACL. **Nothing is left to remove**; the resolution owed by [L4's reasoning](#interim-rule-ledger) (a permit rule doing nothing is what someone later "fixes" by removing the restriction) is that the shim is gone rather than inert. Created in [#86](https://github.com/lutzgo/clanarchy/pull/86) as middleware `mgmt-only`, `sourceRange = 10.0.10.0/24, 10.0.50.0/24, 10.0.70.0/24`; extended to a fourth router (Grafana) by [#87](https://github.com/lutzgo/clanarchy/pull/87). **Deleted, not stacked underneath forward-auth** — the option this row's own notes raised. The argument, in full in `containers/authelia.nix`: an IP allow-list under an identity provider means valid credentials plus a correct TOTP code still fail from anywhere nobody pre-declared, which is most of what the identity provider was added for; and two mechanisms for one property is what `containers/traefik.nix` argues against in its own words. Both warnings this row carried were honoured — `trustForwardHeader = false` on the new middleware keeps the peer-address semantics and still ignores client-supplied `X-Forwarded-*` (Traefik writes those itself from the real request either way), and the VLAN 70 lockout it warned about is moot because the replacement does not filter by source at all. **What is lost with it**: the arr and Grafana login surfaces are now visible from the IoT VLAN. That is the trade, and the compensating control is Authelia's per-user regulation, not a network ACL |
 | L6 | Tvheadend ports `9981` / `9982` on the host, mgmt-VLAN scoped | M8 (host firewall, v1) | Only if M8 lands before M2b — Tvheadend v1 would then run on host networking like Jellyfin's and arr's did | **M5** for the web route, plus a veth migration mirroring M2b. Never created at all if M2b lands first | **never created — both gates have now closed.** M2b landed first, so Tvheadend was never going to run on host networking; M5 has landed too, so the web route already exists as a pattern to copy. M8 should go straight to a veth on VLAN 90 plus a Traefik route, exactly as M4 did |
 | L7 | FRITZ!Box → Tvheadend on the ephemeral **UDP** range | UDM-Pro ZBF (off-repo), M8 | SAT>IP media is unicast RTP on a return flow the RTSP rule does not cover | Proving RTP **interleaved over the RTSP TCP connection**, which reduces the whole ACL to TCP 49000 + 554 | not yet created — **avoid**; take the interleaved-TCP path if M8's Phase 0 shows it works |
+| — | **M11 creates no row, and that is a property worth stating** | — | Ollama on ernst stays bound to localhost and is reached over an SSH tunnel on local port **11435**; the working tree was left at `133a39d`. So the milestone that added a coding agent to the fleet changed ernst's attack surface **not at all**, and if it stops after Phase 1 it stays that way | **permanent, unless M11 Phase 2 is taken** — and Phase 2 is optional and separately justified. Its trigger is a *second client actually needing it*, not tidiness | not created. Listed so a later session does not read the absence as an oversight. **If Phase 2 is ever taken, read [M11's session prompt](#the-prompt-for-the-m11-remainder) first** — its Phase 2 block is the constraint: Ollama has no authentication and its API includes model *pull* and *delete*, so it is an unauthenticated admin endpoint and the recommendation is ZeroTier-only, never a LAN listener |
+| — | **M12 creates no row either** | — | Everything in M12 lands inside the **existing** arr container and opens no port reachable outside it. Byparr inherits FlareSolverr's exact posture — `8191` absent from the firewall list and staying absent | **permanent** — there is nothing interim here | not created. The one thing M12 *does* touch is the explicit port list `containers/arr.nix` feeds to its `concatMapStrings` Traefik source-restriction; extending that list is the whole mechanism |
 | L8 | TubeSync web UI port, mgmt-VLAN scoped | M9 (host/container firewall, v1) | Only if M9 lands before M5 — an admin UI with no proxy in front of it yet. Mgmt-scoped, so invariant #3 does not cover it | **M5** — replace with the Traefik route. Never created at all if M5 lands first | **never created — M5 landed first.** M9 gets a Traefik route (`tubesync.goclan.org`, behind the `authelia` forward-auth middleware — M7 deleted `mgmt-only`, so copy the *arr routers, not this row's original wording) and opens no port. Adding it also means adding the hostname to `access_control` in `containers/authelia.nix`, which is deny-by-default: a route with the middleware and no matching rule fails closed. Note this does not solve M9's actual open question, which is how a podman container attaches to `br0` on VLAN 90 at all |
+| — | **M13's Jellyseerr and M15's Tdarr routes** | Traefik (`containers/traefik.nix`), M13 and M15 | Both are ordinary Traefik routers on names the M5 wildcard already covers, riding the permanent `Allow Traefik` rule. **Neither is a shim** — listed so nobody creates a ledger row for a route | **permanent** — this is invariant #3 working as designed, not an exception to it | not created. **Two corrections against older wording**: M13's Jellyseerr router deliberately carries **no** middleware (it is a household service and its posture is Jellyseerr's own Jellyfin-account login — see M13), and M15's Tdarr router carries **`authelia`**, not `mgmt-only`, because M7 deleted `mgmt-only` (L5). Copy the *arr routers. Adding either hostname also means adding it to `access_control` in `containers/authelia.nix`, which is deny-by-default: a route with the middleware and no matching rule fails **closed** |
+| — | `WAN → jellyseerr.goclan.org` | M16 — mechanism decided in that milestone (Cloudflare Tunnel recommended over a UDM-Pro port forward) | **This is a deliberate bypass of the "hosts on VLANs the UDM-Pro controls" threat model that every milestone before M16 assumed.** Architecture invariant #4 requires bypasses to be listed; this is one, and it is the first thing in the fleet that accepts a connection from outside the home network | **permanent** — written as a `—` row, in the same shape as the qBittorrent WebUI row, so a future milestone does not mistake it for something to retire and "fix" by removing the restriction | **not created — M16 has not been taken.** Recorded ahead of time because the row's *shape* is a constraint on M16 rather than an outcome of it. **Auth posture belongs in this row when it is created**: the unauthenticated attack surface must be **Authelia**, not Jellyseerr's Node application — forward-auth with 2FA required on the external path, Jellyseerr's own login kept underneath for the reason M6 kept Grafana's local admin. **Invariant #4's Jellyfin exemption does not transfer**: it exists because TV and mobile clients cannot survive a forward-auth redirect, and Jellyseerr's only client is a browser. The two rows sit next to each other and the exemption will look transferable |
 
 ---
 
@@ -1995,6 +2158,59 @@ reboot invariant #7 demands.
 The sections before the deploy notes were written *before* it and are kept as
 written: the design arguments they make are what the deploy tested.
 
+### Close-out — 2026-08-25
+
+**What was built.** One nspawn container (`machines/ernst/containers/authelia.nix`)
+holding Authelia 4.39 on `vb-authelia` / VLAN 90 / MAC `02:00:00:90:00:07` →
+`10.0.90.15`, uid/gid **3008**, SQLite on `zdata` at `/srv/state/authelia`. One
+`forwardAuth` middleware in `containers/traefik.nix`. One OIDC client for Grafana.
+Three vars generators. One root helper, `authelia-code`.
+
+**What is behind it today**, enumerated rather than described, because "the admin
+UIs" is the kind of phrase that stops being true without anyone noticing:
+
+| Router | Middleware | Why |
+|---|---|---|
+| `prowlarr.goclan.org` | `authelia` | admin UI, browser-only client |
+| `sonarr.goclan.org` | `authelia` | admin UI, browser-only client |
+| `radarr.goclan.org` | `authelia` | admin UI, browser-only client |
+| `grafana.goclan.org` | `authelia` | admin UI; keeps its own local admin underneath as break-glass |
+| `jellyfin.goclan.org` | **none, ever** | **invariant #4's exemption, and it survived** — TV and mobile clients cannot survive a forward-auth redirect. Verified in code (`services = jellyfin`, no `middlewares` attribute) and on the wire (`302 → /web/`, its own redirect, no portal) |
+| `auth.goclan.org` | **none, necessarily** | it is the page the redirect points at; a middleware here would redirect an unauthenticated user to itself |
+
+**What was measured.** The container came up first try with nothing overridden,
+which answered the one question the PR shipped deliberately open: nixpkgs' authelia
+module applies seven sandbox options with no `!config.boot.isContainer` guard, and
+**all seven are in effect inside nspawn** with the service active and zero
+restarts. Not pre-emptively deleting them was worth the risk — doing so would have
+permanently weakened an identity provider to avert a failure that does not occur.
+Both accounts are enrolled on TOTP and WebAuthn, read out of
+`authentication_logs` and `sign_count` rather than asserted. The 408s were a
+hypothesis when the PR shipped and are now confirmed fixed.
+
+**What departed from the brief.** The bypass list came back **empty** and that is
+the finding, not an omission — `auth.goclan.org` carries no middleware, so the
+OIDC and health endpoints are never forwarded for authorization and a `bypass`
+rule would match nothing while reading as enforcement. And the `mgmt-only`
+ipAllowList was **deleted rather than stacked underneath** forward-auth, at a
+stated cost: the login portal is now visible from the IoT VLAN.
+
+**L5 is resolved, and the resolution is "gone", not "inert".** This row's removal
+trigger was M7 and it has fired; the ledger's own rule is that such a row is
+removed or re-argued, and leaving one in place is exactly the failure
+[L4](#interim-rule-ledger) names — a permit rule doing nothing, which someone
+later "fixes" by removing the restriction instead. Re-verified 2026-08-25 rather
+than inherited: `grep -n ipAllowList containers/traefik.nix` returns **four
+comments and no definition**. The row is updated to record the device state as
+well as the code state, because a status written in the future tense of a deploy
+that has since happened is a row nobody can read the state of.
+
+**Still open**, and none of it blocks anything downstream: Grafana's OIDC button
+has never been clicked, `lgo`'s TOTP is registered but never exercised (worth one
+deliberate login before relying on it as the YubiKey fallback), and the reboot
+invariant #7 demands has not been taken since `db.sqlite3` grew to four
+credentials.
+
 **Goal, unchanged from the brief.** A single sign-on layer in front of the admin
 UIs: Authelia as a Traefik forward-auth middleware, replacing the interim
 `ipAllowList` on the *arr and Grafana routes, with TOTP as the second factor.
@@ -2561,6 +2777,147 @@ the session. They are the prompt's prerequisite.
   rule (row L7). Settled by 0.3's `-rtsp_transport tcp` result plus what
   Tvheadend's SAT>IP client actually supports.
 
+### What the *arr ecosystem does and does not provide here (surveyed 2026-08)
+
+**Added 2026-08-25. Additive: Phase 0's gate and the four open questions above
+are unchanged, and the session prompt below is unchanged.** What follows is a
+survey result, one structural rethink, and **one scope question that may kill the
+milestone** — sequenced after M12 rather than answered now.
+
+#### The survey result is a NEGATIVE one, and that is the useful part
+
+**awesome-arr was read in full. It has NO live-TV or DVR category, and no PVR
+*arr exists.**
+
+**That is STRUCTURAL, not an omission.** The *arr model is *"find a release,
+download it, import it"*. A PVR is *"a tuner exists, schedule against an EPG,
+capture in real time"*. **Sonarr cannot do the second, and no fork does.** The two
+are not the same problem wearing different clothes.
+
+**TVHEADEND STAYS.** Recorded here so a future session does not re-survey the same
+list hoping for a "Tvheadendarr".
+
+#### Reconsider the split: Tvheadend as SCHEDULER, or as TUNER ONLY?
+
+M8 assumed Tvheadend owns **both** tuner sharing **and** recording. **Jellyfin has
+native Live TV and DVR**: it can consume a tuner (Tvheadend via plugin, or
+M3U/HDHomeRun), read an EPG, **schedule series recordings**, and **record into a
+library it ALREADY INDEXES** — which is the expensive half of M8's
+post-recording chain, for free.
+
+**EVALUATE BOTH AND ARGUE ONE:**
+
+- **(i) Tvheadend records**; something bridges recordings into `/srv/media` and
+  triggers a Jellyfin scan. **More parts** — but recordings survive a Jellyfin
+  rebuild, and **Tvheadend's scheduler is far more capable**: conflict resolution,
+  priorities, timeshift, pre/post padding.
+- **(ii) Tvheadend is a tuner-sharing daemon ONLY**; **Jellyfin's DVR** schedules
+  and records. **Fewer parts**, recordings land in the library **by construction**,
+  **no bridge to write**. But **DVR state lives in Jellyfin's database** and its
+  scheduler is **materially weaker**.
+
+**Shape (ii) may collapse most of M8. TEST IT BEFORE BUILDING (i).** Jellyfin
+already has a container, a veth and a VAAPI device — **(ii)'s marginal cost is a
+plugin and a tuner URL.**
+
+#### The recordings→library bridge is UNSOLVED upstream, if (i) wins
+
+Tvheadend records to **its own directory with its own naming**. **Jellyfin will not
+match those to series, and Sonarr will not import them without help.**
+
+**awesome-arr's Fetcharr does EXACTLY this pattern** — watches a PVR box, copies
+new episodes of followed shows into the library, triggers a scan — **but for Fetch
+TV and Plex.** **Design reference, not a dependency.**
+
+**Nobody has written the Tvheadend→Jellyfin equivalent.** So **(i) costs a small
+bespoke tool** — Go, or a systemd path unit plus a script, in this repo's idiom —
+**and the milestone must budget for it rather than discovering it mid-session.**
+
+Two constraints on it: recordings land **inside the `/srv/media` hardlink domain**
+per invariant #2 (plain subdirectory, no dataset), and **the trigger is a path unit
+or Tvheadend's post-recording hook, NOT a polling timer.**
+
+#### MPEG-TS normalisation is a real step, not a nicety
+
+DVB-C recordings are **MPEG-TS**, often with **broken or discontinuous
+timestamps**, **teletext subtitle tracks Jellyfin handles poorly**, and **multiple
+audio tracks** (German / original / audio description) that a two-language
+household does not all want.
+
+**MUXARR** strips redundant audio and subtitle tracks **WITHOUT re-encoding**, with
+*arr integration for original-language detection — **cheap, lossless, the right
+default**. **TRANSCODERR** is the heavier plugin-configurable pipeline, **only if
+remuxing is insufficient**.
+
+**SEE [M15](#m15-featernst-tdarr) for the shared Muxarr evaluation — whichever
+lands first owns it.** M15 has its own reason to want Muxarr (space reclamation in
+a two-language library), and evaluating it twice would be a waste; evaluating it
+zero times because each milestone assumed the other did is the likelier failure.
+
+**AUTOPULSE** for the library-scan trigger — **only relevant under (i)**. Under
+(ii) there is nothing to trigger, because Jellyfin recorded the file itself.
+
+#### The scope challenge M8 must now answer, and it may kill the milestone
+
+**[M12](#m12-featernst-arr-helpers) adds MediathekArr**, which pulls ARD and ZDF
+content **on demand** through the normal Sonarr/Radarr pipeline.
+
+**For German free-to-air that covers most of what recording is FOR.** The
+öffentlich-rechtliche broadcasters put their programming in the Mediathek, and a
+Mediathek pull arrives **correctly named, correctly matched, already demuxed, with
+subtitles** — needing **no tuner, no SAT>IP RTSP session, no ephemeral-UDP ACL
+(ledger row L7), and no FRITZ!Box cooperation at all.** It sidesteps every one of
+M8's four open questions simultaneously.
+
+**SO M8's PHASE 0 GAINS A QUESTION AHEAD OF ITS EXISTING ONES:** after M12 is
+deployed and **MediathekArr has been used in anger for a few weeks**, **what is
+actually missing?**
+
+**The only answers that justify the milestone:**
+
+- **genuinely live viewing** — sport, news, events — where on-demand is useless;
+- **private broadcasters** (RTL, ProSieben, Sat.1), whose catch-up is paywalled or
+  absent;
+- **Depublizierung** — content removed after a statutory availability window,
+  where **recording is the only way to keep it**;
+- **regional programming** absent from the national Mediathek.
+
+**If none of those matter, M8 SHOULD BE DROPPED**, and ledger rows **L6 and L7
+retired as never-created**. **Dropping on evidence is the [M10](#m10-kodi-ir-remote-dropped)
+pattern and is a good outcome**, not a failure — M10 was dropped before any code
+was written and the roadmap is better for it.
+
+**DO NOT DROP IT NOW.** The question is recorded and **sequenced after M12**; it
+needs weeks of real use to answer, and answering it from a desk would be exactly
+the inference-recorded-as-measurement this file keeps catching.
+
+#### Dispatcharr as Plan B
+
+**M8's death condition is "the FRITZ!Box's DVB-C is branding-locked."** If Phase 0
+finds that, **the fallback is IPTV**, and **Dispatcharr is the tool for that
+shape** — an IPTV tuner with channel, EPG and logo management, presenting a
+**normalised M3U/EPG** to Jellyfin or Tvheadend.
+
+**NOT in awesome-arr** — it surfaced from community configs, **so verify
+maintenance status before relying on it.**
+
+**The legal shape differs from DVB-C** and is **not a decision to make casually,
+or in a docs PR.**
+
+#### Checked and rejected as not applicable
+
+- **ErsatzTV / Tunarr** — build custom live channels **FROM your library**. The
+  **opposite direction**; they consume a library rather than filling one.
+- **iPlayarr** — **same Newznab-shim architecture as MediathekArr** and **worth
+  understanding as a template**, but it is BBC iPlayer.
+- **Fetcharr** — reference design only, per above.
+- **Medusa / SickGear** — Sonarr *alternatives*, not PVR schedulers. **Same
+  structural gap**, so they change nothing.
+
+**Note on the ledger:** this amendment does **NOT** retire L6 or L7. It records
+**the condition under which they would be retired as never-created** — which is
+M8 being dropped after the scope question above is answered.
+
 ````text
 Read CLAUDE.md fully before doing anything.
 
@@ -3063,6 +3420,2424 @@ What the entry got right and what it got wrong:
 
 ---
 
+## M11 — `feat/fleet-local-coding-agent`
+
+**Status: Phase 0 PARTIAL, 2026-08-25.** The mechanical half ran and its results
+are durable. **The decision the milestone exists to make has not been made**, and
+cannot be made by a machine — see [What was not done](#what-was-not-done-and-why-a-machine-could-not-do-it).
+
+**The working tree was left untouched at `133a39d`.** Nothing was merged, no Nix
+was written, and no ledger row was created. Everything below was measured against
+the *running* fleet, from outside the repo. The findings live at
+`~/.local/share/m11-bakeoff/` — `README.md`, `PHASE0-NOTES.md`, wrappers, and
+**re-runnable probes**. `PHASE0-NOTES.md` is the primary source; this section is
+the durable summary of it.
+
+**Goal.** Decide whether a locally-hosted coding agent, driven by ernst's
+`qwen3-coder:30b` on the 7900 XTX, can carry a useful share of daily work on this
+fleet — and if so, which agent, packaged how. Phase 1 packages the winner; Phase 2
+is optional network exposure.
+
+**Depends on.** Ollama on ernst (done). **Risk.** Low in the repo — Phase 0
+deliberately touches nothing — and the real risk is epistemic: naming a winner on
+synthetic evidence, which is what the phase structure exists to prevent.
+
+### Three premises the brief asserted that were false
+
+Recorded as falsifications rather than silently corrected, because the point of
+recording one is that a future reader can see the reasoning was **checked** rather
+than inherited. This is the same discipline M2b applied to M2's `br0`-MAC
+prediction.
+
+**1 — "M11 adds a local agent to a fleet with none." FALSE.**
+`clan.nix` already declares `roles.ollama.machines.ernst.settings.models =
+[ "qwen3-coder:30b" ]` **and** `roles.opencode.machines.miralda.settings.user =
+"lgo"`. Both predate this milestone. So M11 is not an addition. It is a **choice
+between agents on a fleet that already ships one**, plus a **repair of what is
+already there** — and the repair is needed whichever way the choice goes.
+
+**2 — "The deployed opencode config works." FALSE, and it has never worked.**
+`service-modules/local-ai.nix` renders, via `xdg.configFile."opencode/config.json"`:
+
+```json
+{"model":"ollama/qwen2.5-coder:7b","providers":{"ollama":{"baseUrl":"http://localhost:11434/v1"}}}
+```
+
+opencode 1.15.10 rejects it outright:
+
+```
+Error: Configuration is invalid at /home/lgo/.config/opencode/config.json
+↳ Unrecognized key: providers
+```
+
+It is wrong in **four independent ways** against the current schema: `providers` →
+`provider`; `baseUrl` → `options.baseURL`; no `npm` key (the provider needs
+`@ai-sdk/openai-compatible` or it never loads); no `models` map.
+
+**The failure mode is the interesting part and it is what Phase 1 has to design
+around.** opencode **merges** its config sources, so a broken read-only store file
+does not sit inertly beside a good one — **it aborts every run**. There is no
+"ignore the bad file and continue". Both `OPENCODE_CONFIG` and
+`OPENCODE_CONFIG_DIR` were tried; both still load it and both still choke. **Only
+relocating `XDG_CONFIG_HOME` avoids it.** So the deployed config does not merely
+fail to help — it makes opencode **unusable on miralda**, and **it cannot be
+overridden from the environment.**
+
+**That is a declarative-delivery lesson with teeth, and it generalises past this
+tool.** A Nix-rendered config in the read-only store is not merely *inert* when
+wrong. It is **load-bearing and fatal**, and the usual escape hatch — point the
+program somewhere else with an env var — does not exist for a program that merges
+rather than selects. Any milestone rendering config into the store for a tool that
+*also* reads config from elsewhere must check that property before assuming the
+pattern transfers.
+
+This is the **third** instance of this shape in one service module; the other two
+are already written into `local-ai.nix`'s own comments (the `qwen3-coder:8b` tag
+that never existed, and the `DynamicUser` persist trap). It deploys green and does
+nothing — [SN1](#sn1-the-model-tag-silently-sets-the-context-window) again, one
+layer up.
+
+**3 — "`ssh -L 11434:127.0.0.1:11434 ernst` gives miralda ernst's Ollama." FALSE.**
+**miralda runs its own Ollama on `127.0.0.1:11434`** (`qwen2.5-coder:7b`). The
+forward cannot bind. The harness uses local port **11435** instead.
+
+**Why this matters far more than it looks.** A half-working forward would not
+error. It would **silently talk to miralda's local 7B at 4096 context** — which is
+the single worst possible bake-off failure, because it would have produced exactly
+the "local models are bad at tool calling" result the brief predicted, **for
+entirely the wrong reason**, and the number would have looked plausible enough to
+write down. Same shape as M2b's item 1: a prediction that would have been recorded
+as a measurement.
+
+*(Noticed in passing, not M11's problem: miralda's own Ollama runs at **100% CPU** —
+the `gfx1103` HSA override is not getting the model onto the 780M. It makes the
+tunnel to ernst worth more, not less.)*
+
+### The context trap — proven, with numbers
+
+The brief predicted the shape. The session proved it, and the proof is sharper
+than the prediction. These are measurements, and M15 and any future session can
+cite them without re-deriving.
+
+`machines/ernst/containers/arr.nix` is 65,643 bytes ≈ **17,083 prompt tokens**.
+Fed to the model with two tool definitions:
+
+| `num_ctx` | `prompt_eval_count` | tool calls (6 trials) |
+|---|---|---|
+| 8192 | **4098** — silently truncated | **0 OK, 6 NO_CALL** |
+| 32768 | 17083 — intact | 6 OK, 0 failures |
+| 65536 | 17083 — intact | 6 OK, 0 failures |
+
+At 8192 the server discarded **76% of the prompt**, returned **HTTP 200**, and set
+**no flag anywhere in the response**. The mechanism looks like: when the prompt
+exceeds `num_ctx`, truncate to roughly `num_ctx/2` and **keep the tail**. Tool
+calling died because the system message and the tool definitions sit at the
+**front** and were the first thing cut.
+
+Same file, same question, asking for one fact from the **head** (`arrMac`) and one
+from the **tail** (`environment.systemPackages`):
+
+| `num_ctx` | head fact (`arrMac`) | tail fact (`curl`) |
+|---|---|---|
+| 8192 | **`00:11:22:33:44:55` — FABRICATED** | `curl` — correct |
+| 32768 | `02:00:00:90:00:05` — correct | `curl` — correct |
+
+**It did not decline. It invented a placeholder-shaped MAC address that would
+survive a skim of a diff.** That is the most useful single line this session
+produced, and it is the exact shape of two defects already recorded in this repo:
+the recyclarr duplicate-instance bug (green timer, exit 0, syncing nothing) and
+the UmlautAdaptarr https-bypass that M12 has to check for explicitly. **A system
+that fails by succeeding.** A config readback here would have shown
+`num_ctx: 8192` and told you nothing at all — the only way to catch it is to
+measure the thing itself.
+
+**The second-order hazard is worse and has its own standing note.** `num_ctx` is
+**model-derived**: 30b → 32768, 7b → 4096. So changing the model tag in `clan.nix`
+silently changes the context fleet-wide, with no diff that shows it. See
+[SN1](#sn1-the-model-tag-silently-sets-the-context-window), which exists because
+that hazard lives in a file somebody will edit for an unrelated reason.
+
+### Measurements — VRAM and throughput
+
+Card: RX 7900 XTX at `0000:03:00.0`, **24560 MiB** total. Idle baseline (the HTPC
+session) 877–1093 MiB. Ollama 0.32.3, `qwen3-coder:30b`.
+
+| KV config | `num_ctx` | VRAM | of total | placement | decode tok/s |
+|---|---|---|---|---|---|
+| f16 (default) | 32768 | 22361 | 91.0% | 100% GPU | 124.2 |
+| f16 | 32768 | 22361 | 91.0% | 100% GPU | 126.1 |
+| f16 | 65536 | 24471 | 99.6% | **4% CPU / 96% GPU** | 98.5 |
+| **flash-attn only**, f16 | 65536 | **24471** | 99.6% | **4% CPU / 96% GPU** | **97.5** |
+| flash-attn + **q8_0** | 32768 | 20757 | 84.5% | 100% GPU | 111.5 |
+| flash-attn + **q8_0** | **65536** | **22482** | 91.5% | **100% GPU** | **112.6** |
+| flash-attn + q8_0 | 131072 | 24494 | 99.7% | 6% CPU / 94% GPU | 75.2 |
+
+**`q8_0` KV cache is the whole win.**
+
+- **Flash attention alone is a measured NO-OP.** 24471 MiB and 97.5 tok/s —
+  statistically identical to the no-flash baseline at the same context. It is the
+  *enabler*, not the saving. Recorded as a measured no-op so nobody re-tries it as
+  an optimisation.
+- **`q8_0` turns 64k from SPILLING into FULLY RESIDENT**: 22482 MiB, 100% GPU,
+  112.6 tok/s, for **~11% decode cost** against f16 at 32k. Two times the context
+  for one tenth the speed is not a close call.
+
+**Throughput is not a problem and the brief was wrong to fear it.** The brief
+warned that spilling to system RAM would make Ollama "unusably slow, maybe 5
+tok/s". Measured: the **128k spill still ran 75 tok/s**, and the 64k f16 spill ran
+98.5. The framing was right in *kind* — spilling is a real cost and a real reason
+to keep `q8_0` — and **badly wrong in degree**, by more than an order of
+magnitude. Corrected explicitly rather than dropped, because M15 designs its GPU
+arbitration against this number and would otherwise inherit the exaggeration and
+treat eviction as fatal.
+
+### Tool calling — the central hypothesis, inverted
+
+**This is the most important finding in the milestone, and it reverses the
+argument the brief was built on.**
+
+**88 graded trials. Zero invented arguments. Zero missing arguments. Zero
+refusals.** The brief's stated worry — that models under ~70B are prone to
+hallucinating tool arguments — **did not occur even once**.
+
+Every failure was **one** thing: the model emitted a **correct** call in
+qwen3-coder's native `<function=…>` XML —
+
+```
+<function=grep_repo>
+<parameter=pattern>
+API client
+</parameter>
+</function>
+</tool_call>
+```
+
+— and **Ollama's template parser failed to convert it**, returning
+`tool_calls: null` and leaking the markup into `content` as prose.
+
+**The model behaved. The parser did not.**
+
+| endpoint | condition | OK | UNPARSED_XML |
+|---|---|---|---|
+| native `/api/chat` | 1 tool, "read this file" | 6/10 | 4 |
+| native `/api/chat` | 2 tools, "read this file" | 8/10 | 2 |
+| native `/api/chat` | 1 tool, "go find X" | 10/10 | 0 |
+| native `/api/chat` | 2 tools, "go find X" | 4/10 | 6 |
+| **native, total** | short prompts | **28/40 (70%)** | **12/40 (30%)** |
+| `/v1/chat/completions` | short, "read this file" | 5/10 | 5 |
+| `/v1/chat/completions` | short, "go find X" | 1/10 | 9 |
+| `/v1/chat/completions` | **long (17k `arr.nix`)** | **9/10** | 1 |
+
+**And it is not the OpenAI shim.** Native `/api/chat` fails at the **same ~30%
+rate** as `/v1` on short prompts. So the defect is in the **model template's
+parser**, not in the compatibility layer.
+
+**That matters for the escape hatch, and the roadmap has to say so.** The brief
+named *"measured evidence that the /v1 shim mangles tool calls"* as the trigger
+for migrating to **llama-swap + llama-server**. That trigger has **superficially
+fired** — but the diagnosis is different, and **llama-swap would not fix this**:
+swapping the wrapper moves the same template problem somewhere else. Migrating on
+the strength of the original trigger would be work spent on the wrong layer.
+
+**The corrected trigger.** The fix candidate is a **corrected Modelfile template
+in Ollama** — the parser is template-driven, so the template is where the defect
+lives and where the repair belongs. **The migration case only reopens if that
+proves impossible.**
+
+**M11's session recommends holding off on llama-swap**, and the reasoning matters
+more than the conclusion: (i) the defect is *upstream of* the wrapper, so the
+migration does not address it; (ii) both agents **recovered in practice**, because
+a real agent retries and the next turn usually parses — so the measured 30% is a
+latency and token cost, not a failure rate; and (iii) Ollama runs llama.cpp
+underneath anyway, so the migration buys a different API surface and not better
+inference. Three reasons, none of which is "it would be a lot of work".
+
+**The degradation model also flipped.** The brief predicted a **soft band** — tool
+calling degrading gradually as context pressure rose. Measured:
+
+- thin prompts → **70%** native / **30%** on `/v1`
+- 17k-token code context → **~100%** native (12/12) / **90%** on `/v1`
+
+A substantial code context appears to **steer** the model *into* the structured
+format. **There is no soft degradation band.** Context pressure is **harmless
+until you exceed `num_ctx`, and then total** — 0/6, per the table above. That is a
+**cliff, not a slope**, and it changes how the failure should be monitored:
+**there is nothing to watch trending, only a threshold to stay under.** Sample
+sizes are 6–10 per cell; treat the direction as solid and the exact percentages as
+indicative.
+
+### Both agents work — and one new point for Aider
+
+Identical task in a throwaway repo: add docstrings to both functions in
+`calc.py`, make `divide` raise `ValueError` on a zero divisor. **Both completed a
+real edit against ernst's 30B.**
+
+- **OpenCode 1.15.10** — completed it via **native tool calls**. Correct,
+  idiomatic Google-style docstrings, correct guard. Slow on a cold model (~10 min,
+  largely loading 18 GB); **~40 s warm**.
+- **Aider 0.86.1** — completed it via a **SEARCH/REPLACE block, 2.5k tokens
+  sent**, and **auto-committed**. Noticeably faster and far cheaper in tokens.
+
+The milestone's structural argument shows up in the very first measurement: Aider
+spends no tokens on tool schemas and **cannot be hurt by the parser bug above**,
+because it never asks the model to emit a tool call at all. OpenCode buys a real
+agentic loop and pays for it in both tokens and exposure to the one defect that
+was actually measured.
+
+**A packaging finding the brief could not have anticipated, and it is a real
+argument for Aider on *this* fleet specifically.** **OpenCode fetches ~15 MB of
+npm at runtime into its config directory.** Running it created a `node_modules/`
+next to the config with a generated `package.json` pinning
+`@opencode-ai/plugin@1.15.10`, and the `@ai-sdk/openai-compatible` provider named
+in `opencode.json` is resolved the same way. So:
+
+- **A Nix-rendered `opencode.json` is not sufficient to make the agent work.** The
+  config names a provider downloaded from the network on first use, so the
+  declared thing is not the running thing.
+- **The config directory must be WRITABLE.** Today `~/.config/opencode` is a
+  read-only store symlink (`xdg.configFile`), so opencode cannot write beside it.
+  Any Phase 1 module has to hand it a writable directory **and** a `/persist`
+  entry, or it refetches after every rollback.
+
+Combined with falsification (2), **opencode's config story is actively hostile to
+the delivery mechanism this repo uses everywhere else.** That is a first-class
+Phase 1 consideration, not a footnote. Aider has no equivalent problem:
+`nixpkgs#aider-chat` is a closed Python derivation with no runtime fetch.
+
+### What was not done, and why a machine could not do it
+
+**The bake-off itself.** A machine cannot run "two weeks of real use". Three
+required measurements are lgo's and remain outstanding:
+
+| # | Required | Status |
+|---|---|---|
+| 1 | Tool-call reliability over **real tasks** | **partial** — 88 synthetic trials done; the real-task rate is lgo's |
+| 2 | Long-context task on `arr.nix` | **done** — it is the `num_ctx` proof |
+| 3 | **Multi-file clanarchy edit**, driven end to end | **not done** — single-file smoke test only |
+| 4 | **Claude Code comparison**, honest gap | **not done** — lgo's, and the brief explicitly called it **not optional** |
+| 5 | tokens/sec and VRAM at the chosen config | **done** |
+
+(4) is what turns tiering from a guess into evidence. Naming a winner now would be
+exactly the rationalisation the phase structure exists to prevent.
+
+**Candidate (C) — the in-editor option — is NOT installed, and that is a decision
+with an owner, not an omission.** `codecompanion.nvim` / `avante.nvim` cannot be
+added without touching the flake (they are nvf plugins, and the nvf option
+namespace is declared at the NixOS level via `home-manager.sharedModules`), and
+Phase 0 forbade flake changes. So it was **deferred, deliberately, and is recorded
+here rather than allowed to drop silently.**
+
+**Owner: lgo. Decision owed: a `wip/` branch that installs it for evaluation, or
+an explicit "not taking (C)".** It remains the option **best fitted to a nushell +
+zellij + foot + nvf workstation** — the agent lives where the editing already
+happens, with no second TUI and no separate session model — and it is **the one
+most likely to be quietly forgotten, precisely because it needs a flake change**
+and every other candidate does not.
+
+### State of the harness — record this, it is an asset
+
+`~/.local/share/m11-bakeoff/` holds `README.md`, `PHASE0-NOTES.md`, wrapper
+scripts (`bin/m11-tunnel`, `bin/m11-aider`, `bin/m11-opencode`), and
+**re-runnable probes** (`probes/ctx-vram-probe.sh`, `matrix.sh`, `matrix-v1.sh`,
+`matrix-long.sh`, `toolcall-probe.sh`, `toolcall-probe2.sh`, `v1-probe.sh`). **It
+is the instrument that produced every number above.** The next session should
+re-run it, not rebuild it.
+
+It lives outside the repo on purpose — Phase 0 says no PR — and that directory is
+persisted for `lgo`, so it survives a rollback without anything being declared.
+
+Aider was installed via `nix profile`; removal is one command.
+
+**The `q8_0` drop-in on ernst is a `systemctl edit --runtime` override at
+`/run/systemd/system/ollama.service.d/override.conf`. It is RUNTIME-ONLY and dies
+on reboot. That is deliberate and the reasoning should be preserved**: both agents
+are pinned to 32768, which works under either KV config, **so a reboot costs SPEED
+and never CORRECTNESS**. A milestone-in-progress that degrades gracefully on
+reboot is a good property, not an unfinished one.
+
+### The open question for lgo — and it is not Claude's to close
+
+**The brief said server-side work happens regardless of the outcome, AND said
+nothing declarative. Those conflict.** M11's session kept everything
+non-declarative and wrote the ready-to-land Nix into **§7 of `PHASE0-NOTES.md`**
+instead, explicitly flagging it as lgo's call rather than making it.
+
+It is a small block on `service-modules/local-ai.nix`'s `roles.ollama` setting
+`OLLAMA_CONTEXT_LENGTH = "32768"`, `OLLAMA_FLASH_ATTENTION = "1"` and
+`OLLAMA_KV_CACHE_TYPE = "q8_0"` — with the per-machine caveat that these are sized
+for ernst's 24 GB and **miralda's iGPU must not inherit 32768**, so they want to be
+role settings rather than constants.
+
+**Both horns, and it is reasonable either way:**
+
+- **Land it.** It makes the measured configuration **durable and reviewable**,
+  survives the reboot that currently reverts it, and — the strongest argument —
+  closes [SN1](#sn1-the-model-tag-silently-sets-the-context-window) at the one
+  place the hazard actually lives. It is independent of which agent wins.
+- **Hold it.** Landing it means writing declarative configuration **before the
+  agent decision that Phase 0 exists to inform**, which is the sequencing the
+  phase structure was set up to protect. And a setting landed now is a setting
+  reviewed against a bake-off that has not happened.
+
+**Not resolved here. It is lgo's.** Verified 2026-08-25: `local-ai.nix`'s
+`environmentVariables` block holds `ROCR_VISIBLE_DEVICES` and nothing else, so
+none of this is landed and the 32768 in production is the model default.
+
+### Honest scope — revised, and the revision matters
+
+The brief framed the expected ceiling as a **model** limitation: 30B models
+hallucinate tool arguments, cannot hold large contexts, will need Claude for
+anything serious. **The measurements do not support the first claim at all.**
+
+So the tiering conclusion stands but **its reasoning changes**, and the corrected
+reasoning is what belongs here — because the next model upgrade will be evaluated
+against whichever prior this file records:
+
+- **The context ceiling is real and hard.** At 32768, `arr.nix` alone is 17k
+  tokens — **52% of the window for one file**, and a milestone prompt from this
+  document is 20k+ tokens on its own. A 30B at 32k **cannot hold a milestone-scale
+  prompt and reason about a codebase at once.** That is arithmetic and it is not
+  going away.
+- **The tool-call failures are NOT a model ceiling and must not be recorded as
+  one.** They are a **parser bug with a named fix candidate** (the Modelfile
+  template). Recording them as a model property would make the next 30B look no
+  better than this one for reasons that have nothing to do with the model.
+
+A milestone concluding *"the local agent handles a good fraction of daily work and
+the rest still needs Claude"* remains the success condition. **But it should be
+reached for the right reason.** Treat any claim of parity as a testing failure.
+
+### Alternatives considered
+
+**Agents.**
+
+- **Crush** — Charm's fork. **FSL-1.1-MIT**: source-available, reverting to plain
+  MIT two years after each release rather than permissive outright. A real
+  difference for a repo whose stated preference is FOSS and auditability, and
+  worth stating rather than filing as "open source".
+- **Goose** — the Linux Foundation's Agentic AI Foundation. General-purpose and
+  function-calling-driven, which points it straight at the one defect that was
+  actually measured.
+- **Cline / Kilo Code** — VS Code-shaped. Wrong for this workstation.
+- **Codex CLI** — Apache-2.0, genuinely open, OpenAI-oriented.
+- **Nanocoder** — MIT, **local inference by DEFAULT with cloud as explicit
+  opt-in**, which is philosophically the closest thing to how this fleet runs.
+  **Rejected on maturity (~2k stars), not on design** — that is a reason that
+  expires, so **re-check it** rather than treating the rejection as settled.
+
+**The naming situation, because it will otherwise waste a session.** There were
+**two** projects called OpenCode. Charm acquired the original, the community
+split, **Charm's version was renamed CRUSH**, and the SST-maintained fork kept the
+name. **Then it moved again: `sst/opencode` → `anomalyco/opencode`** after the
+team rebranded to Anomaly. Old references, Docker tags and flake inputs pointing
+at `sst/opencode` break. **Record whichever the repo actually pins and the date
+verified** — as of 2026-08-25 this repo pins nothing of its own: it uses
+`pkgs.opencode` from the nixpkgs pin (`fcb8fcd`, 2026-08-09), version **1.15.10**,
+so the naming question is nixpkgs' problem and not this repo's *until someone adds
+a flake input*. Release cadence is extreme — three patch releases in four days in
+August 2026 — so if an input is ever added, **record whether the pin is a tag or a
+branch, and flag a branch as a problem.**
+
+**Inference server, corrected.** **Ollama runs llama.cpp underneath**, so the
+choice is about **wrapper and API surface**, not inference quality — which is
+itself an argument against churning on it.
+
+- **llama-swap + llama-server** — the escape hatch stays open, but **its trigger is
+  now different**; see the tool-calling section. Do not take it on the original
+  trigger.
+- **vLLM** — still not the answer. ROCm targets CDNA / MI-series; RDNA3
+  (`gfx1100`) is community-maintained and historically painful; it preallocates
+  VRAM aggressively, which is exactly the wrong property on a card
+  [M15](#m15-featernst-tdarr) has to arbitrate; and its batching advantage is
+  worthless for one user.
+
+### The prompt for the M11 remainder
+
+````text
+Read CLAUDE.md fully before doing anything.
+
+Work in the clanarchy repo on miralda. Branch: feat/fleet-local-coding-agent.
+
+READ M11 IN docs/roadmap.md FIRST, and read ~/.local/share/m11-bakeoff/
+PHASE0-NOTES.md IN FULL. Phase 0 is DONE and its findings are not to be
+re-derived. Where the roadmap summary and PHASE0-NOTES.md disagree, the file
+wins.
+
+THE HARNESS ALREADY EXISTS AND IS RE-RUNNABLE. Do not rebuild it.
+  ~/.local/share/m11-bakeoff/
+    README.md  PHASE0-NOTES.md
+    bin/m11-tunnel  bin/m11-aider  bin/m11-opencode
+    probes/{ctx-vram-probe,matrix,matrix-v1,matrix-long,
+            toolcall-probe,toolcall-probe2,v1-probe}.sh
+It is the instrument that produced every number in the roadmap section. If a
+number looks wrong, re-run the probe before disbelieving the number — and
+before believing it, because a broken grader nearly cost this milestone a
+wrong conclusion once already (roadmap standing note SN3).
+
+PORT 11434 IS TAKEN ON MIRALDA by its own local ollama. The tunnel to ernst
+uses 11435:
+    ssh -N -L 11435:127.0.0.1:11434 root@10.0.50.10
+Anyone copying the obvious `ssh -L 11434:...` gets a bind failure — or, on a
+machine where it does bind, silently talks to a LOCAL 7B at 4096 context and
+produces a plausible, wrong bake-off result. Check what you are talking to
+before trusting any measurement:
+    curl -s localhost:11435/api/tags | jq -r '.models[].name'
+
+════════════════════════════════════════════════════════════════════════════
+PART 1 — THE HUMAN BAKE-OFF.  lgo's, not Claude's.  BLOCKING for Phase 1.
+════════════════════════════════════════════════════════════════════════════
+Three measurements are outstanding and a machine cannot produce them. If they
+are not in this session, say so and STOP before naming a winner — naming one
+on synthetic evidence is exactly what Phase 0's structure exists to prevent.
+
+  (a) A MULTI-FILE clanarchy edit, driven end to end by each candidate. Not a
+      smoke test. Something with a real dependency between files.
+  (b) THE CLAUDE CODE COMPARISON, on the same tasks. The brief called this
+      explicitly not optional: it is what turns tiering from a guess into
+      evidence. Record the honest gap, including where the local agent won.
+  (c) REAL-TASK tool-failure rates, as opposed to the 88 graded synthetic
+      trials already done. The synthetic rate is ~30% UNPARSED_XML with full
+      recovery on retry; the question is what that costs over real work.
+
+Record all three the way Phase 0 recorded its numbers: what was run, what came
+back, and what the instrument was.
+
+════════════════════════════════════════════════════════════════════════════
+PART 2 — CANDIDATE (C), AND IT NEEDS A DECISION NOT A DEFERRAL
+════════════════════════════════════════════════════════════════════════════
+codecompanion.nvim / avante.nvim were NOT evaluated in Phase 0 because an nvf
+plugin cannot be added without touching the flake, and Phase 0 forbade that.
+Owner: lgo.
+
+It is the option best fitted to a nushell + zellij + foot + nvf workstation,
+and it is the one most likely to be quietly forgotten BECAUSE it needs a flake
+change. Either:
+  - open a wip/ branch that installs it (nvf plugin, wired through
+    programs.nvf.settings the way modules/users/lgo.nix already does, with
+    inputs.nvf pinned as nvf.follows = "govim/nvf"), evaluate it against the
+    same tasks as (a), or
+  - record an explicit "not taking (C)" in docs/roadmap.md with the reason.
+Do NOT let it lapse a second time.
+
+════════════════════════════════════════════════════════════════════════════
+PART 3 — THE TOOL-CALL FIX.  Correct the remedy, not just the diagnosis.
+════════════════════════════════════════════════════════════════════════════
+88 trials, ZERO invented arguments, ZERO missing arguments, ZERO refusals.
+Every failure was ollama's template parser returning tool_calls: null on a
+CORRECT native <function=…> XML call. Native /api/chat fails at the SAME rate
+as /v1, so it is NOT the OpenAI shim.
+
+THE FIX CANDIDATE IS A CORRECTED MODELFILE TEMPLATE IN OLLAMA. Try that first.
+  - Extract the current template: `ollama show --modelfile qwen3-coder:30b`
+  - The parser is template-driven, so the defect and the repair are in the
+    same place.
+  - Measure with probes/toolcall-probe2.sh before and after. A fix is a
+    changed OK rate on the same probe, not a plausible-looking template.
+
+DO NOT MIGRATE TO llama-swap + llama-server ON THE ORIGINAL TRIGGER. The brief
+named "measured evidence that the /v1 shim mangles tool calls" as the trigger
+and it has SUPERFICIALLY fired — but the diagnosis is different and llama-swap
+would move the same template problem somewhere else. Ollama runs llama.cpp
+underneath; the migration buys a different API surface, not better inference.
+The migration case reopens ONLY if the template fix proves impossible. Record
+which happened.
+
+════════════════════════════════════════════════════════════════════════════
+PART 4 — THE §7 DECLARATIVE QUESTION.  ASK LGO, DO NOT DECIDE IT.
+════════════════════════════════════════════════════════════════════════════
+PHASE0-NOTES.md §7 holds ready-to-land Nix for service-modules/local-ai.nix:
+OLLAMA_CONTEXT_LENGTH=32768, OLLAMA_FLASH_ATTENTION=1, OLLAMA_KV_CACHE_TYPE=q8_0.
+It is NOT landed (verified 2026-08-25: environmentVariables holds only
+ROCR_VISIBLE_DEVICES), and the q8_0 setting currently lives in a
+`systemctl edit --runtime` drop-in on ernst that dies on reboot.
+
+Landing it makes the measured configuration durable and reviewable and closes
+standing note SN1 at the place the hazard lives. Not landing it keeps Phase 0's
+"nothing declarative" rule intact until the agent decision is made. Reasonable
+either way; it is lgo's call.
+
+IF IT IS LANDED: make them ROLE SETTINGS, not constants. They are sized for
+ernst's 24 GB and miralda's 780M iGPU must not inherit 32768.
+
+════════════════════════════════════════════════════════════════════════════
+PHASE 1 — PACKAGE THE WINNER
+════════════════════════════════════════════════════════════════════════════
+Only after Part 1. Two corrections folded in from Phase 0:
+
+IF OPENCODE WINS, PHASE 1 REPAIRS — DOES NOT EXTEND — WHAT clan.nix ALREADY
+DECLARES. roles.opencode.machines.miralda already exists and its rendered
+config HAS NEVER WORKED. opencode 1.15.10 rejects it: `Unrecognized key:
+providers`. It is wrong four ways: providers -> provider; baseUrl ->
+options.baseURL; no npm key (the provider needs @ai-sdk/openai-compatible or
+it never loads); no models map.
+
+  AND IT FAILS CLOSED, HARD. opencode MERGES config sources, so the broken
+  store file ABORTS EVERY RUN. OPENCODE_CONFIG and OPENCODE_CONFIG_DIR were
+  both tried; both still load it and both still choke. Only relocating
+  XDG_CONFIG_HOME avoids it. A wrong Nix-rendered config in the store is not
+  inert — it is fatal and un-overridable from the environment.
+
+  AND THE CONFIG DIRECTORY MUST BE WRITABLE. opencode fetches ~15 MB of npm at
+  runtime into it (@opencode-ai/plugin, @ai-sdk/openai-compatible). Today
+  ~/.config/opencode is a read-only store symlink via xdg.configFile, so a
+  plain Nix-rendered file DOES NOT SOLVE THIS. Hand it a writable directory
+  AND a /persist entry, or it refetches after every rollback. Say in the file
+  header which mechanism you chose and what it costs.
+
+IF AIDER WINS: nixpkgs#aider-chat is a closed Python derivation with no
+runtime fetch, so none of the above applies. The Phase 0 install was via
+`nix profile`; Phase 1 makes it declarative. Carry over
+~/.local/share/m11-bakeoff/aider.model.settings.yml rather than re-deriving it.
+
+TRANSPORT STAYS THE SSH TUNNEL, ON PORT 11435, made durable as a systemd USER
+unit (not a system unit — the tunnel is per-user and the agent runs as lgo).
+NOTE THE 11434 COLLISION PROMINENTLY in the file header; it will bite anyone
+who copies the obvious command.
+
+NO NEW MAC, NO NEW ADDRESS, NO NEW uid. Ollama has its existing static uid;
+the agent runs as lgo on the client. machines/ernst/networking.nix says this
+explicitly so nobody adds one for symmetry.
+
+════════════════════════════════════════════════════════════════════════════
+PHASE 2 — NETWORK EXPOSURE.  OPTIONAL, AND SEPARATELY JUSTIFIED.
+════════════════════════════════════════════════════════════════════════════
+DO NOT TAKE THIS AS PART OF PHASE 1. Its trigger is A SECOND CLIENT ACTUALLY
+NEEDING IT, not tidiness. If there is one client, the tunnel is the answer and
+ernst's attack surface stays unchanged — which is what the ledger records as a
+deliberate property of M11.
+
+OLLAMA HAS NO AUTHENTICATION, AND ITS API INCLUDES MODEL PULL AND DELETE.
+Treat it as an unauthenticated ADMIN endpoint, not as a read-only inference
+service. That is the whole threat model.
+
+RECOMMEND ZEROTIER ONLY. ZeroTier terminates in ernst's HOST netns, which is
+where Ollama already lives, so it needs no new plumbing — no veth, no VLAN 90
+address, no UDM-Pro rule, and no LAN listener at all. miralda keeps the tunnel.
+Bind NARROWLY to the ZeroTier address; NEVER 0.0.0.0.
+
+PROVE THE NEGATIVE. Use M2b's netns recipe (roadmap, "Diagnosing this from
+ernst") to probe from VLAN 20 and show the port is unreachable:
+    ip netns add p20; ip link add vb-p20 type veth peer name eth0p
+    ip link set eth0p netns p20; ip link set vb-p20 master br0 up
+    bridge vlan add dev vb-p20 vid 20 pvid untagged
+    ... dhcpcd, then curl -m5 http://<ernst>:11434/api/tags
+A positive test with no negative control is a failed phase.
+
+════════════════════════════════════════════════════════════════════════════
+NEVER RUN `opencode serve` AS A SHARED SERVICE.  IN ANY PHASE.
+════════════════════════════════════════════════════════════════════════════
+Upstream binds it to 127.0.0.1:3080 by design and warns against exposing it,
+because THE AGENT CAN RUN SHELL COMMANDS. An exposed opencode server is remote
+code execution with a nice TUI. The agent runs on each CLIENT; only Ollama is
+ever shared. Headless-server mode looks like the natural homelab answer and it
+is the wrong one — write that into the file header so a later session does not
+"discover" it.
+
+════════════════════════════════════════════════════════════════════════════
+Constraints:
+- Never commit to main. Branch first, PR via `gh pr create` (title
+  imperative, <=70 chars, no prefix; body = summary + test plan + manual
+  steps).
+- Phase 1 may add a flake input only if the winner needs one; say so in the PR
+  body and pin it by tag, never by branch (opencode shipped three patch
+  releases in four days in August 2026).
+- Minimal diffs; commit only the files this change touches.
+- Verify by evaluation:
+    nix flake check
+    nix eval --no-update-lock-file --raw \
+      '.#nixosConfigurations.miralda.config.system.build.toplevel.drvPath'
+    nix eval --no-update-lock-file --raw \
+      '.#nixosConfigurations.ernst.config.system.build.toplevel.drvPath'
+- Claude does not deploy: `clan machines update <machine>` is lgo's step.
+- Update docs/roadmap.md's status table in the same PR, and update standing
+  note SN1 if the §7 block lands.
+````
+
+---
+
+## M12 — `feat/ernst-arr-helpers`
+
+**Goal.** Six additions to the *arr stack, **all inside the existing `arr`
+container**: Byparr replacing FlareSolverr, UmlautAdaptarr, Bazarr, Cleanuparr,
+MediathekArr, and a set of recyclarr additions.
+
+**Depends on.** M4. **Risk.** Medium — five of the six need hand-rolled
+derivations, and that is the point.
+
+**Why it is first.** No new veth, no new MAC, no new DHCP reservation, no UDM-Pro
+work at all. **It proves the hand-rolled-derivation approach that M14 depends on
+without touching a network boundary** — so a milestone that goes wrong goes wrong
+in one place, and the packaging risk and the networking risk are never in flight
+together.
+
+### (a) Byparr replaces FlareSolverr
+
+**Drop-in**: same port `8191`, same `/v1` API, same Prowlarr indexer-proxy entry.
+Camoufox-based rather than undetected-chromedriver, because **FlareSolverr fails
+on 2026 Cloudflare Turnstile and Managed Challenges** — which is the capability
+the thing exists to provide.
+
+**`arr.nix`'s FlareSolverr rationale transfers and must be preserved verbatim in
+substance:**
+
+- **`DynamicUser = true`.** FlareSolverr keeps upstream's, and Byparr must too.
+  There is no persistent state — only a `RuntimeDirectory` — so **the Prowlarr
+  trap cannot fire here**. M4 switched Prowlarr to a static uid and had to restate
+  six hardening options `DynamicUser` had been implying; a service with nothing to
+  persist has no reason to pay that.
+- **NOT in group `media`.** The boundary protecting the library is the **uid**,
+  not the container. `/srv/media`'s `2770 root:media` directories stay closed to
+  it.
+- **`8191` is absent from the firewall list and stays absent.** Its entire API is
+  *"fetch this URL for me"* — **an SSRF primitive with a web API in front.** That
+  sentence is the reason, and it should survive the rename.
+
+**RE-RUN M4's MEASUREMENT. DO NOT INHERIT IT.** `curl https://eztvx.to/` from the
+arr container **and** from the IVPN exit; record both status codes. M4 measured
+`200` vs `451 Unavailable For Legal Reasons` on 2026-08-21, and that finding is a
+property of **the exit country** (Leaseweb NL) rather than of the solver — Byparr
+does not change it. But **a measurement carried forward untested is the failure
+M2b's item 1 warns about**, and M11 has just produced a fresh example of exactly
+that: a premise that survived unchecked into a brief and was false. Two minutes of
+`curl` settles it.
+
+Also record **memory footprint against FlareSolverr**. Camoufox is a patched
+Firefox; undetected-chromedriver is a patched Chromium. They are not the same
+weight and the container has other tenants.
+
+### (b) UmlautAdaptarr
+
+**Highest-value item in this milestone**, and the reason should be written out
+rather than assumed.
+
+German releases with umlauts are **not imported correctly**, are often **not found
+at all** (the *arrs search `o` for `ö`), and Sonarr/Radarr **always expect the
+English TMDB/TVDB title** — which breaks German productions and translations
+outright. The characteristic symptom is *"Found matching series/movie via grab
+history, but release was matched to series by ID"*. **TRaSH's German
+quality-profile guide recommends it by name.**
+
+**The mechanism decides where it goes.** It **presents itself to the *arrs as an
+indexer** but actually **sits between them and the real indexer**, rewriting
+searches and results and renaming releases so the *arrs recognise them.
+
+**Two traps, and the second is the dangerous one:**
+
+1. **Configure it in PROWLARR, not per-arr.** Per-arr configuration costs a speed
+   penalty on multi-indexer search.
+2. **Every indexer URL must change `https` → `http`** so it can intercept locally;
+   outbound to the real indexer stays `https`. **AN INDEXER LEFT ON `https` WORKS
+   FINE AND SILENTLY BYPASSES IT ENTIRELY.** Nothing breaks, nothing logs, and the
+   umlaut handling this milestone exists for simply does not happen for that
+   indexer. **Fails-by-succeeding — the third documented instance in this repo**,
+   alongside recyclarr's duplicate-instance bug (green timer, exit 0, syncing
+   nothing) and [M11's silent truncation](#the-context-trap-proven-with-numbers)
+   (HTTP 200, 76% of the prompt discarded, a fabricated answer). **Check every
+   indexer explicitly and put the list in the PR body.**
+
+A fork exists, **UmlautAdaptarrEX**, with broader multi-language handling.
+**Evaluate both, pick one, and argue it** — do not pick the fork because it is
+newer or the original because it is canonical.
+
+### (c) Bazarr
+
+**Upstream module — confirmed present in ernst's pin, 2026-08-25.**
+
+Bazarr writes `.srt` sidecars **next to the media**, so **`media` must be its
+PRIMARY group** — the same `PrivateUsers = true` reason `sonarr` and `radarr` have
+it. `arr.nix`'s header explains that in full; **refer to it, do not re-derive it.**
+
+German and English profiles, **both directions** — a two-language household wants
+German subtitles on English content and English subtitles on German content, and
+configuring only one is the common half-done outcome.
+
+### (d) Cleanuparr
+
+**It retires three things, which is why they are not added:** **Decluttarr**,
+**Huntarr** and **Checkrr**. Record that, so a later session does not "discover"
+one of them.
+
+Beyond stalled / blocked / malicious cleanup — it exists because of `*.lnk` and
+`*.zipx` files getting stuck in queues — it does **missing-content search**,
+**cutoff-unmet search**, and **custom-format score upgrade search with score
+tracking**.
+
+**The part that matters here:** it removes downloads that are **orphaned, have no
+hardlinks, or are no longer referenced by the arrs**. That turns **M4's link-count
+invariant from something proven once with `stat` into something a service watches
+continuously** — which is a genuine upgrade to the property this whole stack rests
+on.
+
+**Configure conservatively on the first deploy.** A cleaner that deletes is a
+cleaner that can delete the wrong thing, and this one reasons about hardlink
+counts on a tree whose hardlink correctness is the entire point of M3 and M4.
+
+### (e) Unpackerr — CONDITIONAL on a measurement
+
+**Check the last ~50 grabs for archive-delivered releases.** If there are none,
+**record that and SKIP IT**, and write the finding into the roadmap so it is not
+re-litigated in six months.
+
+**Packaging note, measured 2026-08-25 and contradicting an earlier draft of this
+milestone:** `pkgs.unpackerr` **exists** in ernst's pin at **0.15.2**. There is
+**no `services.unpackerr` module**, so it still needs a unit written by hand — but
+it does **not** need a derivation.
+
+### (f) MediathekArr
+
+ARD / ZDF Mediathek as a Prowlarr indexer. It answers a stated complaint: the
+MediathekViewer Jellyfin plugin is poor.
+
+**The mechanism changes the uid decision.** It pretends to be **both**: a usenet
+**INDEXER** (parsing MediathekViewWeb) **and** a SABnzbd **DOWNLOADER** (fetching
+video and subtitles over plain HTTP from the Mediatheken). **Unlike Prowlarr it
+DOES write to `/srv/media` and DOES need a `media`-group uid.** Prowlarr's "no
+media access at all" argument does not transfer, and assuming it does would
+produce a service that fails on its first download.
+
+**It talks to the internet on its own behalf, so argue it explicitly against
+invariant #1** rather than filing it under "it's in the arr container already".
+The argument is probably yes, and it should be made in FlareSolverr's shape —
+measured and stated, not waved through:
+
+- public-broadcaster HTTP, not tracker traffic;
+- no killswitch value — there is nothing here a VPN protects;
+- and **the exit-country problem runs the OTHER way**: these are German services
+  best reached from a **German** IP, so the microvm tier's IVPN exit (Leaseweb NL)
+  would be the wrong side of the same coin M4 measured at `451`.
+
+**NOTE FOR M8: this changes whether M8 needs to exist.** Cross-referenced from
+[the M8 amendment](#what-the-arr-ecosystem-does-and-does-not-provide-here-surveyed-2026-08),
+which turns it into a Phase 0 question ahead of M8's existing ones.
+
+### (g) recyclarr additions — not a new service
+
+The recyclarr block is **already inlined with provenance** (config-templates @
+`9faf65f`) because M4 discovered that v8's official templates are *starter
+configs*, not include-able fragments. **Keep that shape.** Three additions:
+
+- **German quality profiles**, from TRaSH's German guide. The behaviour to
+  configure: **grab the best English release first, then upgrade to German /
+  German-DL when one appears**, upgrading until *"Upgrade Until Custom Format
+  Score"*. This is the companion to (b) — the profiles decide what is wanted, and
+  UmlautAdaptarr is what makes it findable.
+- **A Remux-2160p profile for SONARR**, created alongside and **assigned
+  PER-SERIES**. **M4 measured why**: 133 series sit on a hand-made
+  `upgradeAllowed = false` "Ultra-HD" profile, and a bulk reassignment would queue
+  a re-download of most of **6.1 TB** of television plus the same again for
+  **13 TB** of films — roughly **the whole 47.6 TB of free space, through the
+  VPN**. **The rule is individual promotion.** Restate it in the file header;
+  someone will eventually "tidy up" with a bulk edit and this is the sentence that
+  has to stop them.
+- **An Anime profile if lgo wants it. Ask rather than assume** — it is a
+  substantial custom-format set for content nobody has said they watch.
+
+**TRANSCRIBE WHOLE CUSTOM-FORMAT GROUPS.** TRaSH's own guidance: scores and CF
+combinations are **tested together to prevent download loops**, and most undesired
+results come from changing scores or omitting CFs that work together. A
+half-transcribed group is not a smaller version of the same thing.
+
+**DO NOT ADD PROFILARR.** Same job, but it keeps state in **its own database**;
+the Nix attrset is a reviewable diff with recorded provenance and is strictly
+better here. **Record the rejection** so a later session does not discover it as a
+missing piece.
+
+### Packaging and hardening
+
+`virtualisation.oci-containers` **inside an nspawn container is REJECTED** — see
+[the packaging constraint](#packaging-the-constraint-shaping-m12-m14-and-m15).
+
+Every new unit gets `systemd-analyze security --offline=true`, before/after in the
+PR body, following M4's table. **Watch for the Prowlarr trap in reverse**: any
+upstream unit shipping `DynamicUser = true` that gets switched to a static uid
+**silently loses `NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`,
+`ProtectHome=read-only`, `RemoveIPC` and `RestrictSUIDSGID`**, because
+`DynamicUser` implies all six and upstream sets none explicitly. **Restate all
+six.** M4 measured Prowlarr at **8.2 EXPOSED** before this was caught.
+
+### Ports and uids
+
+**No new MAC, no new address, no DHCP reservation, no UDM-Pro rule.** Everything
+lands in the existing `arr` container on `10.0.90.13`.
+
+The container's Traefik source-restriction is generated by a `concatMapStrings`
+over **one explicit port list** (`[ prowlarrPort sonarrPort radarrPort ]` in
+`containers/arr.nix`). **EXTEND THAT LIST.** Do not add a second mechanism, and
+**do not reach for `extraInputRules`** — it is declared unconditionally but
+consumed only under `networking.nftables`, so it would produce **no rule and no
+warning**. M5 recorded that trap; this is where it would next be stepped in.
+
+uids are reserved in `machines/ernst/networking.nix`: **3009 bazarr, 3010
+umlautadaptarr, 3011 cleanuparr, 3012 mediathekarr, 3013 unpackerr**. Byparr takes
+**no uid** — it keeps upstream's `DynamicUser`, exactly as FlareSolverr does.
+
+````text
+Read CLAUDE.md fully before doing anything.
+
+Work in the clanarchy repo on miralda. Branch: feat/ernst-arr-helpers.
+Prerequisite: M4 deployed (it is). Read M12 in docs/roadmap.md first — the
+decisions below are recorded there with their reasoning. Do not re-litigate
+them; if you overturn one, argue it in a file-header comment.
+
+SHAPE. Everything lands in the EXISTING container,
+machines/ernst/containers/arr.nix. NO new veth, NO new MAC, NO new DHCP
+reservation, NO UDM-Pro work. That is deliberate: this milestone proves the
+hand-rolled-derivation approach M14 depends on WITHOUT touching a network
+boundary, so packaging risk and networking risk are never in flight together.
+
+(a) BYPARR REPLACES FLARESOLVERR. Drop-in: same port 8191, same /v1 API, same
+    Prowlarr indexer-proxy entry. Camoufox-based rather than
+    undetected-chromedriver, because FlareSolverr fails on 2026 Cloudflare
+    Turnstile and Managed Challenges.
+    PRESERVE arr.nix's FlareSolverr rationale, it transfers intact:
+      - DynamicUser = true. No persistent state, only RuntimeDirectory, so
+        the Prowlarr trap cannot fire. Do NOT give it a static uid.
+      - NOT in group media. The boundary protecting the library is the uid,
+        not the container.
+      - 8191 ABSENT from the firewall list, and it stays absent: its entire
+        API is "fetch this URL for me" — an SSRF primitive with a web API in
+        front.
+    RE-RUN M4's MEASUREMENT, DO NOT INHERIT IT:
+        curl -o /dev/null -w '%{http_code}\n' https://eztvx.to/
+    from the arr container AND from the IVPN exit. Record both. M4's
+    200-vs-451 finding is a property of the exit COUNTRY, not of the solver,
+    and Byparr does not change it — but a measurement carried forward untested
+    is the failure M2b's item 1 warns about, and M11 just produced a fresh
+    example of a premise that survived unchecked into a brief.
+    Also record memory footprint against FlareSolverr.
+
+(b) UMLAUTADAPTARR. Highest-value item; write out WHY in the file header.
+    German releases with umlauts are not imported correctly, are often not
+    FOUND at all (the *arrs search "o" for "ö"), and Sonarr/Radarr always
+    expect the English TMDB/TVDB title — breaking German productions and
+    translations, with the symptom "Found matching series/movie via grab
+    history, but release was matched to series by ID". TRaSH's German
+    quality-profile guide recommends it by name.
+    It presents itself to the *arrs as an INDEXER but actually sits BETWEEN
+    them and the real indexer, rewriting searches and results and renaming
+    releases so the *arrs recognise them.
+    TWO TRAPS:
+      - Configure it in PROWLARR, not per-arr, or multi-indexer search takes
+        a speed penalty.
+      - Every indexer URL must change https -> http so it can intercept
+        locally; outbound to the indexer stays https. AN INDEXER LEFT ON
+        https WORKS FINE AND SILENTLY BYPASSES IT ENTIRELY. Check every
+        indexer explicitly and put the list in the PR body.
+    A fork exists (UmlautAdaptarrEX) with broader multi-language handling.
+    Evaluate both, pick one, ARGUE it.
+
+(c) BAZARR. Upstream module — CONFIRMED present in ernst's pin 2026-08-25.
+    It writes .srt sidecars NEXT TO THE MEDIA, so group media must be its
+    PRIMARY group, for the same PrivateUsers = true reason sonarr and radarr
+    have it. arr.nix's header explains it — refer, do not re-derive.
+    German and English profiles, BOTH directions.
+
+(d) CLEANUPARR. It RETIRES three things, therefore do not add them and record
+    that: Decluttarr, Huntarr, Checkrr.
+    Beyond stalled/blocked/malicious cleanup (it exists because of *.lnk and
+    *.zipx files getting stuck), it does missing-content search, cutoff-unmet
+    search, and custom-format score upgrade search with score tracking.
+    THE PART THAT MATTERS: it removes downloads that are orphaned, have no
+    hardlinks, or are no longer referenced by the arrs. That turns M4's
+    link-count invariant from something proven once with `stat` into
+    something a service watches continuously.
+    CONFIGURE CONSERVATIVELY ON FIRST DEPLOY. A cleaner that deletes is a
+    cleaner that can delete the wrong thing.
+
+(e) UNPACKERR — CONDITIONAL ON A MEASUREMENT. Check the last ~50 grabs for
+    archive-delivered releases. If there are none, RECORD THAT AND SKIP IT,
+    writing the finding into docs/roadmap.md so it is not re-litigated.
+    NOTE: pkgs.unpackerr EXISTS (0.15.2, verified 2026-08-25) — there is no
+    services.unpackerr module, so it needs a unit but NOT a derivation.
+
+(f) MEDIATHEKARR. ARD/ZDF Mediathek as a Prowlarr indexer. Answers a stated
+    complaint: the MediathekViewer Jellyfin plugin is poor.
+    THE MECHANISM CHANGES THE UID DECISION: it pretends to be a usenet
+    INDEXER (parsing MediathekViewWeb) AND a SABnzbd DOWNLOADER (fetching
+    video and subtitles over plain HTTP from the Mediatheken). Unlike
+    Prowlarr it DOES write to /srv/media and DOES need a media-group uid.
+    It talks to the internet on its own behalf — ARGUE EXPLICITLY against
+    invariant #1 whether that is acceptable in the nspawn tier, in
+    FlareSolverr's shape. Probably yes: public broadcaster HTTP not tracker
+    traffic, no killswitch value, and the exit-country problem runs the OTHER
+    way since these are German services best reached from a German IP. But
+    ARGUE it, do not wave it through.
+    CROSS-REFERENCE M8: this changes whether M8 needs to exist.
+
+(g) RECYCLARR ADDITIONS — not a new service. The block is inlined with
+    provenance (config-templates @ 9faf65f) because v8's templates are
+    starter configs, not include-able fragments. KEEP THAT SHAPE.
+      - German quality profiles from TRaSH's German guide: grab the best
+        English release first, upgrade to German/German-DL when one appears,
+        upgrading until "Upgrade Until Custom Format Score". Companion to (b).
+      - A Remux-2160p profile for SONARR, created alongside, assigned
+        PER-SERIES. M4 measured why: 133 series on a hand-made
+        upgradeAllowed=false "Ultra-HD" profile, and bulk reassignment would
+        queue a re-download of most of 6.1 TB plus the same again for 13 TB
+        of films — roughly the whole 47.6 TB of free space, through the VPN.
+        THE RULE IS INDIVIDUAL PROMOTION. Restate it in the header; someone
+        will "tidy up" with a bulk edit.
+      - An Anime profile IF LGO WANTS IT. ASK, do not assume.
+    TRANSCRIBE WHOLE CUSTOM-FORMAT GROUPS. TRaSH's guidance: scores and CF
+    combinations are tested together to prevent download loops, and most
+    undesired results come from changing scores or omitting CFs that work
+    together.
+    DO NOT ADD PROFILARR. Same job, state in its own database; the Nix
+    attrset is a reviewable diff with recorded provenance and is strictly
+    better. RECORD the rejection so a later session does not "discover" it.
+
+PACKAGING. Phase A of this milestone is to establish which of these have
+upstream modules AS OF THE SESSION DATE, and to use THAT list rather than any
+list written earlier — including the one in docs/roadmap.md. As of 2026-08-25:
+bazarr has a module; unpackerr has a package but no module; byparr,
+umlautadaptarr, cleanuparr and mediathekarr have neither and need hand-rolled
+derivations pinned as flake inputs.
+  virtualisation.oci-containers INSIDE an nspawn container is REJECTED. State
+  this in the file header. It would be faster and it is a real regression from
+  what arr.nix is: a container whose entire value is that upstream units,
+  upstream hardening and systemd-analyze scores are legible. A Docker image
+  inside it is opaque to every one of those. The escape hatch when upstream
+  ships only an image is the PODMAN TIER invariant #1 already names and M9 is
+  opening — not oci-containers-in-nspawn.
+
+HARDENING. `systemd-analyze security --offline=true` on every new unit,
+before/after in the PR body, following M4's table.
+  WATCH FOR THE PROWLARR TRAP IN REVERSE: any upstream unit shipping
+  DynamicUser = true that gets switched to a static uid SILENTLY loses
+  NoNewPrivileges, PrivateTmp, ProtectSystem=strict, ProtectHome=read-only,
+  RemoveIPC and RestrictSUIDSGID, because DynamicUser implies all six and
+  upstream sets none explicitly. RESTATE ALL SIX. M4 measured Prowlarr at
+  8.2 EXPOSED before this was caught.
+
+PORTS. Append to the ONE explicit list already in arr.nix — the Traefik
+source-restriction is a concatMapStrings over it. Do NOT add a second
+mechanism, and do NOT reach for extraInputRules, which is declared
+unconditionally but consumed only under nftables and would produce no rule and
+no warning.
+  Candidates: bazarr 6767, umlautadaptarr 5005/5006, cleanuparr 11011.
+  VERIFY EACH against upstream defaults; do not trust this list.
+
+UIDS, reserved in machines/ernst/networking.nix — do not invent new ones:
+  3009 bazarr (media primary), 3010 umlautadaptarr (own group, no media
+  access — a proxy, same argument as prowlarr), 3011 cleanuparr (media
+  primary; it DELETES files and needs write), 3012 mediathekarr (media
+  primary; it downloads over HTTP), 3013 unpackerr (media primary,
+  CONDITIONAL on (e)).
+  Byparr gets NO uid — it keeps upstream DynamicUser, like FlareSolverr.
+
+LEDGER: M12 creates no interim rule and opens no port reachable outside the
+container. The roadmap already says so; leave that row alone.
+
+Constraints:
+- Never commit to main. Branch first, PR via `gh pr create` (title
+  imperative, <=70 chars, no prefix; body = summary + test plan + manual
+  steps).
+- New flake inputs ARE expected here (the hand-rolled derivations). Pin each
+  by tag or rev, never by branch, and say in the PR body what each one is.
+- Minimal diffs; commit only the files this change touches.
+- Verify by evaluation:
+    nix flake check
+    nix eval --no-update-lock-file --raw \
+      '.#nixosConfigurations.ernst.config.system.build.toplevel.drvPath'
+- Claude does not deploy: `clan machines update ernst` and
+  `clan vars generate ernst` are lgo's steps.
+- Update docs/roadmap.md's status table in the same PR.
+````
+
+---
+
+## M13 — `feat/ernst-media-lifecycle`
+
+**Goal.** Close the loop between *requesting* media and *reaping* it: Jellyseerr
+at internal scope, Janitorr for disk-space-aware deletion, Scraparr for *arr
+metrics, and four more exporter targets for M6.
+
+**Depends on.** M6. **M7 IS DONE** — read its actual configuration rather than
+planning around a dependency. [M7's close-out](#close-out-2026-08-25) enumerates
+exactly which routers carry forward-auth today.
+
+**Risk.** Medium, and concentrated in one place: **Janitorr deletes things.**
+
+### Jellyseerr — internal scope only, and the split is deliberate
+
+**Confirmed wanted.** And **lgo has decided it must be reachable from the
+INTERNET.** **THAT IS SPLIT INTO [M16](#m16-featernst-external-ingress) AND MUST
+NOT BE IMPLEMENTED HERE.**
+
+M13 ships it at **internal scope**: a Traefik router **without** the mgmt-only
+middleware, reachable from LAN and IoT. **No new UDM-Pro rule** — invariant #3's
+one permanent consumer rule (`LAN + IoT → traefik:443`) already exists as
+*"Allow Traefik"*.
+
+**CONFIRM AGAINST THE LIVE POLICY, NOT THE LEDGER.** M6 found the live source
+list had **silently lost `Servers`** while the ledger row claimed all three
+networks. Table and device have demonstrably disagreed before, and this is a
+milestone that assumes the rule rather than creating one.
+
+**Why internal first, widened in M16, deliberately.** The household proves the
+request workflow before an ingress boundary is added — and the external change
+then gets reviewed **as an external change**, rather than as one line in a
+library-cleanup milestone. That is the same reasoning that gave M2b its own
+milestone instead of folding it into Jellyfin.
+
+**AUTHELIA NOW EXISTS — and Jellyseerr does NOT go behind it in M13.** M16 decides
+the external auth posture; doing it now and reworking it there is **two changes to
+one router**. M13's posture is **Jellyseerr's own Jellyfin-account login**, which
+is also the credential the household already has.
+
+### Janitorr
+
+Disk-space-aware reaping across **Radarr, Sonarr, Jellyseerr and Jellyfin**:
+remote deletion, tag-based schedules, tag-based exclusions, configurable
+expiration.
+
+**Three constraints, all of them first-deploy constraints:**
+
+1. **Dry-run is enabled in the shipped config template and the first deploy keeps
+   it.** Read what it would have deleted before letting it delete.
+2. **Jellyfin deletion needs a real USER, not an API key.** Create a dedicated
+   one. This is an in-UI step and therefore an lgo manual step, not something the
+   session can fake.
+3. **It only picks up media the *arrs downloaded.** Anything imported by hand, or
+   arriving via MediathekArr's own path, is invisible to it — say so out loud
+   rather than discovering it as a gap.
+
+**Additionally enable the *arr Recycle Bin on the first deploy.** Two independent
+safety nets on the first run of a deleting service is not belt-and-braces, it is
+the minimum for a service pointed at 47 TB.
+
+**With Jellyseerr confirmed, the Jellyseerr integration is LOAD-BEARING rather
+than a nicety.** Without it, reaped media leaves **orphaned requests**, and the
+household **re-requests things that were deleted on purpose** — a loop that
+consumes the bandwidth the reaping was meant to save and looks, from the couch,
+exactly like the system being broken.
+
+**It does NOT delete after watching.** That is a different tool, and someone will
+expect it to. Write that into the file header.
+
+### Scraparr, not Exportarr
+
+**Record the rejection.** Exportarr needs **one instance per app**, each with its
+own uid, its own port and its own firewall line — in a container whose entire
+philosophy is *"one list in one place"* and whose Traefik source-restriction is
+literally a `concatMapStrings` over a single explicit port list. Scraparr is **one
+service, one port (`7100`), one config**, multi-instance via aliases.
+
+**It supports `*_API_KEY_FILE`, which maps onto systemd `LoadCredential=`.**
+**REUSE M4's `recyclarr-api-keys` oneshot rather than building a second staging
+mechanism.** M4's argument holds unchanged and is worth restating: the keys are
+generated **by the apps themselves** into their own `config.xml`, so reading them
+there keeps **one source of truth** and **survives a UI key rotation with no
+deploy**. A prompted clan var would be a second copy with no link to the first.
+
+**Env-var mode does NOT support multiple instances** — so the file-based path is
+not merely tidier, it is the only one that works here.
+
+### The exporter fleet, as M6 targets
+
+- **Jellyfin's NATIVE `/metrics` endpoint** — enable it in Jellyfin's config.
+  **No exporter. Do not add one.**
+- **A qBittorrent exporter.** Note it lives in the microvm guest, so its scrape
+  path is the same VLAN-90 layer-2 hop the *arr already use.
+- **node_exporter's `zfs` collector** for pool health and ARC. Note M6
+  **deliberately disabled** the `zfs` collector on the laptops and runs a
+  dedicated pool exporter on ernst — check which one actually answers the question
+  before adding a second source for it.
+- **Jellystat** for playback analytics. **Not Prometheus** — but it feeds
+  **Janitorr's expiry logic**, which is what earns it a slot in this milestone
+  rather than a backlog entry.
+- **NO TDARR EXPORTER.** That arrives with [M15](#m15-featernst-tdarr), which owns
+  it because queue depth is only meaningful once there is a queue.
+
+**ADD AN OLLAMA TARGET.** [M11](#m11-featfleet-local-coding-agent) turned Ollama
+from a background convenience into **interactive tooling**, and
+[M15's arbitration](#m15-featernst-tdarr) will need **VRAM-occupancy history that
+predates it**. M11 measured **22482 MiB at 64k with q8_0 against a 24560 MiB
+card** — **2078 MiB of headroom**. That margin is thin enough that having the
+trend *before* M15 starts is worth more than adding it afterwards and waiting a
+month for data.
+
+### Shape, ports and uids
+
+Jellyseerr, Janitorr and Scraparr all land in the **existing `arr` container**
+unless the session argues otherwise; none of them needs its own L2 identity, and
+M12 has already established the pattern for extending the port list.
+
+uids reserved in `machines/ernst/networking.nix`: **3014 jellyseerr** (own group —
+**no media access**, it requests rather than writes), **3015 janitorr** (`media`
+primary — **it deletes files**), **3016 scraparr** (own group — it reads REST APIs
+only).
+
+Ports to verify against upstream defaults, not to trust from here: **jellyseerr
+5055**, **janitorr 8978**, **scraparr 7100**. Append to the one explicit list;
+`extraInputRules` would produce no rule and no warning.
+
+**Ledger: no interim rows.** Jellyseerr's router is invariant #3 working as
+designed. See [the ledger note](#interim-rule-ledger).
+
+````text
+Read CLAUDE.md fully before doing anything.
+
+Work in the clanarchy repo on miralda. Branch: feat/ernst-media-lifecycle.
+Prerequisite: M6 deployed (it is). Read M13 in docs/roadmap.md first.
+
+M7 IS DONE. Read machines/ernst/containers/{traefik,authelia}.nix and the M7
+close-out in docs/roadmap.md for what is ACTUALLY behind forward-auth today —
+prowlarr, sonarr, radarr, grafana; jellyfin deliberately not; auth.goclan.org
+necessarily not. Do not plan around M7 as a dependency and do not re-derive
+its configuration.
+
+GOAL. Close the loop between requesting media and reaping it.
+
+JELLYSEERR — INTERNAL SCOPE ONLY.
+  lgo has decided Jellyseerr must eventually be reachable FROM THE INTERNET.
+  THAT IS M16 AND MUST NOT BE IMPLEMENTED HERE. If you find yourself editing
+  anything about WAN ingress, stop — you are in the wrong milestone.
+  M13 ships a Traefik router with NO mgmt-only middleware, reachable from LAN
+  and IoT, riding the existing permanent "Allow Traefik" ZBF rule. No new
+  UDM-Pro rule.
+  CONFIRM AGAINST THE LIVE POLICY, NOT THE LEDGER. M6 found the live source
+  list had silently lost `Servers` while the ledger claimed all three
+  networks. Table and device have demonstrably disagreed before.
+  DO NOT put Jellyseerr behind forward-auth in M13. M16 decides the external
+  auth posture, and doing it now then reworking it there is two changes to one
+  router. M13's posture is Jellyseerr's own Jellyfin-account login.
+  Internal first / widen in M16 is deliberate: the household proves the
+  request workflow before an ingress boundary is added, and the external
+  change then gets reviewed AS an external change rather than as a line in a
+  library-cleanup milestone.
+
+JANITORR. Disk-space-aware reaping across Radarr, Sonarr, Jellyseerr and
+Jellyfin: remote deletion, tag-based schedules, tag-based exclusions,
+configurable expiration.
+  THREE CONSTRAINTS:
+    - Dry-run is enabled in the shipped config template and THE FIRST DEPLOY
+      KEEPS IT. Read what it would have deleted before letting it delete.
+    - Jellyfin deletion needs a real USER, not an API key. Create a dedicated
+      one — an lgo manual step for the PR body, not something you can fake.
+    - It only picks up media the *arrs downloaded. Say so out loud.
+  ADDITIONALLY ENABLE THE *ARR RECYCLE BIN on first deploy.
+  With Jellyseerr confirmed, the Jellyseerr integration is LOAD-BEARING:
+  without it, reaped media leaves orphaned requests and the household
+  re-requests things deleted on purpose.
+  It does NOT delete after watching. That is a different tool and someone will
+  expect it to — write that into the file header.
+
+SCRAPARR, NOT EXPORTARR. RECORD THE REJECTION: Exportarr needs one instance
+per app, each with its own uid, port and firewall line, in a container whose
+philosophy is "one list in one place". Scraparr is one service, one port
+(7100), one config, multi-instance via aliases.
+  It supports *_API_KEY_FILE, which maps onto systemd LoadCredential=. REUSE
+  M4's recyclarr-api-keys oneshot rather than building a second staging
+  mechanism: the keys are generated BY THE APPS into their own config.xml, so
+  reading them there keeps one source of truth and survives a UI key rotation
+  with no deploy.
+  ENV-VAR MODE DOES NOT SUPPORT MULTIPLE INSTANCES — the file path is the only
+  one that works, not merely the tidier one.
+
+EXPORTER FLEET, as M6 targets:
+  - Jellyfin's NATIVE /metrics endpoint (enable in its config — NO exporter,
+    do not add one).
+  - A qBittorrent exporter.
+  - node_exporter's zfs collector for pool health and ARC. NOTE: M6
+    deliberately disabled the zfs collector on the laptops and runs a
+    dedicated pool exporter on ernst — check which one answers the question
+    before adding a second source.
+  - Jellystat for playback analytics. Not Prometheus, but it feeds Janitorr's
+    expiry logic, which is what earns it a slot here.
+  - NO TDARR EXPORTER — that arrives with M15, which owns it.
+  - ADD AN OLLAMA TARGET. M11 made it interactive tooling rather than a
+    background convenience, and M15's GPU arbitration will need VRAM-occupancy
+    history that PREDATES it. M11 measured 22482 MiB at 64k with q8_0 against
+    a 24560 MiB card — 2078 MiB of headroom. Having the trend before M15
+    starts is worth more than adding it after and waiting a month for data.
+
+SHAPE. Jellyseerr, Janitorr and Scraparr land in the EXISTING arr container
+unless you argue otherwise in a file-header comment. None needs its own L2
+identity.
+
+PORTS: append to the ONE explicit list in arr.nix that the Traefik
+source-restriction concatMapStrings iterates. Do NOT add a second mechanism,
+and do NOT reach for extraInputRules (declared unconditionally, consumed only
+under nftables — no rule, no warning). Candidates to VERIFY against upstream
+defaults: jellyseerr 5055, janitorr 8978, scraparr 7100.
+
+UIDS, reserved in machines/ernst/networking.nix — do not invent new ones:
+  3014 jellyseerr (own group, NO media access), 3015 janitorr (media primary,
+  it deletes files), 3016 scraparr (own group, reads REST APIs only).
+
+PACKAGING. Establish IN-SESSION which of these have upstream modules and use
+THAT list, not this one. As of 2026-08-25: jellyseerr HAS a module; janitorr,
+scraparr and jellystat have neither module nor package and need hand-rolled
+derivations pinned as flake inputs.
+  virtualisation.oci-containers INSIDE an nspawn container is REJECTED — see
+  the packaging section of docs/roadmap.md. State this in the file header.
+
+HARDENING. `systemd-analyze security --offline=true` on every new unit,
+before/after in the PR body, following M4's table. Watch for the Prowlarr trap
+in reverse: an upstream unit with DynamicUser = true switched to a static uid
+silently loses NoNewPrivileges, PrivateTmp, ProtectSystem=strict,
+ProtectHome=read-only, RemoveIPC and RestrictSUIDSGID. Restate all six.
+
+MANUAL STEPS for the PR body (lgo's):
+  - Technitium record for jellyseerr.goclan.org -> 10.0.90.12 (Traefik).
+    CREATE IT BEFORE ANYONE TYPES THE NAME, not merely before the deploy —
+    M7 recorded that Cloudflare answers a nonexistent *.goclan.org name with
+    NXDOMAIN and the SOA minimum is 1800, so an early lookup poisons the
+    client's resolver for half an hour.
+  - The dedicated Jellyfin USER for Janitorr's deletions.
+  - Jellyseerr's own first-run wizard (Jellyfin server, libraries, users).
+  - `clan machines update ernst` and `clan vars generate ernst`.
+
+TEST PLAN in the PR body:
+  - jellyseerr.goclan.org reachable from LAN AND from IoT (it is a household
+    service; a mgmt-only test proves nothing about the actual users).
+  - A real request flows through to Sonarr/Radarr.
+  - JANITORR IN DRY RUN: paste what it WOULD have deleted. That listing is
+    the deliverable, not a formality.
+  - Scraparr's /metrics answers, and its targets appear `up` in Prometheus.
+  - The Ollama target appears `up` and reports VRAM.
+  - THE NEGATIVE CONTROL: jellyseerr.goclan.org is NOT reachable from outside
+    the home network. It must not be, until M16.
+
+Constraints:
+- Never commit to main. Branch first, PR via `gh pr create` (title
+  imperative, <=70 chars, no prefix; body = summary + test plan + manual
+  steps).
+- New flake inputs expected (the hand-rolled derivations). Pin by tag or rev,
+  never by branch.
+- Minimal diffs; commit only the files this change touches.
+- Verify by evaluation:
+    nix flake check
+    nix eval --no-update-lock-file --raw \
+      '.#nixosConfigurations.ernst.config.system.build.toplevel.drvPath'
+- Claude does not deploy: `clan machines update ernst` and
+  `clan vars generate ernst` are lgo's steps.
+- Update docs/roadmap.md's status table in the same PR.
+````
+
+---
+
+## M14 — `feat/ernst-libraries`
+
+**Goal.** Extend the stack past film and television: music (Lidarr + slskd +
+Soularr), comics (Kapowarr), games (Questarr), audiobooks (Audiobookshelf), and
+synced ebook/audiobook artifacts (Storyteller).
+
+**Depends on.** M12 — which is what proves the hand-rolled-derivation approach
+this milestone leans on hardest. **Risk.** Medium-high, and **not** where it
+looks: the risk is the **second write path into `/srv/media`**, not the number of
+services.
+
+### Music: Lidarr + slskd + Soularr
+
+**Lidarr** — upstream module, confirmed present in ernst's pin 2026-08-25.
+
+**SoulSync considered and REJECTED for now — record why**, because it looks like a
+tidier answer and is not:
+
+- ~400k LOC across a Python backend and a JS/TS frontend;
+- a Vite/React bundle **Docker builds automatically and a Python install must
+  build by hand**;
+- **Deno** plus a **yt-dlp nightly** for YouTube on bare metal;
+- and, decisively, **its own movie/TV/YouTube pipeline** with Prowlarr indexers
+  and Radarr/Sonarr-class quality profiles — **a second opinionated system pointed
+  at the same library.**
+
+**Revisit later as a REPLACEMENT for the music half, never as an addition.** Two
+systems with quality profiles over one library is the failure this repo has spent
+M4 and M12 avoiding.
+
+**slskd goes in the `wg-qbittorrent` MICROVM.** Soulseek is **P2P on the open
+internet on ernst's behalf** — invariant #1 puts it one tier up, and the guest
+already has the killswitch and the exit.
+
+**COUNTER-ARGUMENT TO RECORD, and it is a real one.** Soulseek peer connectivity
+through a shared commercial VPN exit can be poor — many peers are unreachable and
+some clients de-prioritise VPN sources. And **the IVPN exit is Leaseweb NL**,
+which M4 measured as **legally blocked by at least one indexer** (`451`). **MEASURE
+BEFORE COMMITTING.** If it fails, **the fallback is the arr container with the
+tradeoff written down** — a documented tier violation with a stated reason, **not
+a silent move**.
+
+**Soularr stays in the arr container** and reaches slskd's API **across VLAN 90**,
+the way the *arrs reach qBittorrent: same bridge, layer 2, **no UDM-Pro rule** —
+the same departure-2 argument M4 recorded, and for the same reason (both endpoints
+are ports on `br0`, so the UDM-Pro never sees the traffic and a ZBF permit would
+match nothing). **The guest's `api_clients` nftables set grows a second PORT, not
+a second client.**
+
+### The verification that makes this milestone worth doing — and it is NOT M4's
+
+**M14 introduces a SECOND WRITE PATH into `/srv/media`: files from slskd rather
+than from qBittorrent.**
+
+M3 proved the hardlink chain **for qBittorrent specifically**, and what made it
+work was **`UMask = 0002` ON THE SOURCE FILE** — `fs.protected_hardlinks` refuses
+`link()` on a file you do not own unless you have read **and write** on it.
+**slskd's umask is not qBittorrent's, and nothing has checked it.**
+
+**RUN THE SYNTHETIC PROOF WITH THE NEGATIVE CONTROL, exactly as M3 did:**
+
+1. Create a file as **slskd's uid**, in a `2770 root:media` directory.
+2. Link it as **lidarr's uid**, in group `media`. Confirm **one inode** and
+   **`links=2`**.
+3. Then **`chmod` that file `0644`** and confirm the same link now fails with
+   **`EPERM`**.
+
+**Without step 3 the test cannot distinguish a working chain from root bypassing
+the check** — which is the mistake an earlier revision of M3's own plan made (it
+created the file as root and linked it as root, and would have passed whatever
+`UMask` was set to). It is also the same failure class as
+[M11's grader bug](#sn3-a-broken-instrument-is-indistinguishable-from-a-bad-result):
+**a broken instrument is indistinguishable from a good result.**
+
+**A link count of 1 on a real Lidarr import is a FAILED milestone**, not a
+cosmetic issue. Treat it as M4 treated the same number.
+
+### Comics, games, audiobooks
+
+- **Kapowarr** — comics acquisition. **Komga and CWA already serve** the reading
+  side; this is the acquisition half only. **Note Mylar3** as the older,
+  more-mature alternative **considered and not chosen** — record the reason
+  whichever way it goes.
+- **Questarr** — games. Prowlarr app-sync, SQLite-backed.
+- **Audiobookshelf** — upstream module, confirmed present 2026-08-25. **Its own
+  storage tree, no hardlink-domain interaction** — so it is the one service here
+  that does not owe the proof above. Multi-user with per-user progress, and good
+  kids' handling, which is the reason it beats a Jellyfin audiobook library.
+
+### Storyteller — confirmed in scope
+
+**lgo has matched ebook + audiobook pairs**, which is the precondition: **without
+both halves DRM-free for the same title it does nothing at all.** That fact is
+what moves it from "interesting" to "in scope", and it should be stated first so
+nobody adds it speculatively elsewhere.
+
+It takes the pair and emits **a single EPUB3 with embedded audio and
+sentence-level sync via forced alignment.**
+
+**Complementary to Audiobookshelf, not overlapping**: ABS **serves the library**,
+Storyteller **produces synced artifacts from pairs**. Both can be true at once and
+the file header should say so.
+
+**The binding step is CPU-heavy forced alignment.** Sixteen Zen 5 cores make that
+a non-issue in absolute terms, but **it MUST be `nice`'d and `CPUWeight`-limited**
+so it cannot compete with:
+
+- a Jellyfin transcode,
+- an HTPC session,
+- **or — new since [M11](#m11-featfleet-local-coding-agent) — an interactive
+  Ollama session.** That third claimant did not exist when this was first sketched
+  and it is the one whose degradation is most visible: a coding agent that gets
+  slower mid-session for no apparent reason.
+
+**Alignment degrades on long musical intros and messy EPUB formatting**; claimed
+accuracy is **90–95% on clean sources**. **Bind ONE known-good pair and check the
+sync by hand before batching.**
+
+**Justify the slot on language-learning and accessibility, not convenience** —
+that is what it is actually for, and a convenience argument would not survive the
+CPU cost.
+
+**VERIFY the deploy story against the upstream GitLab repo, not blog posts** — the
+write-ups are promotional and thin. **If no sane non-Docker path exists, that
+argues for the PODMAN TIER [M9](#m9-featernst-tubesync) is opening, NOT for
+`oci-containers` inside nspawn.**
+
+### Readarr is archived upstream
+
+**Do not add it.** It has a NixOS module in ernst's pin — **that is not evidence
+it is maintained**, it is evidence nixpkgs has not removed it yet.
+
+**VERIFY IN-SESSION what the current live successor is** — nixpkgs, awesome-arr,
+the fork landscape — and **record findings WITH THE DATE**. **DO NOT write a fork
+name from memory.** The first two to check are **LazyLibrarian** and **CWA's own
+downloader**.
+
+### Shape, ports and uids
+
+uids reserved in `machines/ernst/networking.nix`: **3017 lidarr**, **3018
+soularr**, **3019 kapowarr**, **3020 questarr**, **3021 audiobookshelf** (own
+tree, not `/srv/media`), **3022 storyteller** — all `media` primary — and **3024
+slskd**, which is **in the MICROVM GUEST, not the container**. **slskd's numeric
+id must agree with the host wherever it writes to shared storage**, exactly as
+qBittorrent's `3001` does; virtiofsd runs without id translation, so guest uid
+3024 *is* host uid 3024.
+
+Ports to verify against upstream defaults: **lidarr 8686**, **kapowarr 5656**,
+**questarr 5000**, **audiobookshelf 13378**. Append to the one explicit list in
+`arr.nix`; `extraInputRules` produces no rule and no warning.
+
+````text
+Read CLAUDE.md fully before doing anything.
+
+Work in the clanarchy repo on miralda. Branch: feat/ernst-libraries.
+Prerequisite: M12 merged and deployed. Read M14 in docs/roadmap.md first.
+
+GOAL. Extend the stack past film and TV: music (Lidarr + slskd + Soularr),
+comics (Kapowarr), games (Questarr), audiobooks (Audiobookshelf), and synced
+ebook/audiobook artifacts (Storyteller).
+
+════════════════════════════════════════════════════════════════════════════
+THE VERIFICATION THAT MAKES THIS MILESTONE WORTH DOING — AND IT IS NOT M4's
+════════════════════════════════════════════════════════════════════════════
+M14 introduces a SECOND WRITE PATH into /srv/media: files from slskd rather
+than qBittorrent. M3 proved the hardlink chain for QBITTORRENT SPECIFICALLY,
+and what made it work was UMask = 0002 ON THE SOURCE FILE —
+fs.protected_hardlinks refuses link() on a file you do not own unless you have
+read AND write. slskd's umask is not qBittorrent's and NOTHING HAS CHECKED IT.
+
+RUN THE SYNTHETIC PROOF WITH THE NEGATIVE CONTROL, exactly as M3 did:
+  1. create a file as slskd's uid in a 2770 root:media directory
+  2. link it as lidarr's uid in group media -> ONE INODE, links=2
+  3. chmod that file 0644, link again -> MUST fail EPERM
+
+WITHOUT STEP 3 THE TEST CANNOT DISTINGUISH A WORKING CHAIN FROM ROOT BYPASSING
+THE CHECK — the mistake an earlier revision of M3's own plan made, and the same
+failure class as M11's grader bug (roadmap standing note SN3): a broken
+instrument is indistinguishable from a good result.
+
+A LINK COUNT OF 1 ON A REAL LIDARR IMPORT IS A FAILED MILESTONE.
+
+════════════════════════════════════════════════════════════════════════════
+MUSIC
+════════════════════════════════════════════════════════════════════════════
+LIDARR — upstream module (confirmed in ernst's pin 2026-08-25).
+
+SLSKD GOES IN THE wg-qbittorrent MICROVM. Soulseek is P2P on the open internet
+on ernst's behalf — invariant #1 puts it one tier up, and the guest has the
+killswitch and the exit.
+  COUNTER-ARGUMENT TO RECORD: Soulseek peer connectivity through a shared
+  commercial VPN exit can be poor, and the IVPN exit is Leaseweb NL, which M4
+  measured as legally blocked by at least one indexer (451).
+  MEASURE BEFORE COMMITTING. If it fails, the fallback is the arr container
+  WITH THE TRADEOFF WRITTEN DOWN — a documented tier violation with a stated
+  reason, not a silent move.
+
+SOULARR stays in the arr container and reaches slskd's API across VLAN 90 the
+way the *arrs reach qBittorrent: same bridge, L2, NO UDM-Pro rule — the same
+departure-2 argument M4 recorded. The guest's api_clients nftables set grows a
+second PORT, not a second client.
+
+SOULSYNC — CONSIDERED AND REJECTED FOR NOW. Record why: ~400k LOC across a
+Python backend and JS/TS frontend, a Vite/React bundle Docker builds
+automatically and Python installs must build by hand, Deno plus a yt-dlp
+nightly for YouTube on bare metal, and — decisively — its own movie/TV/YouTube
+pipeline with Prowlarr indexers and Radarr/Sonarr-class quality profiles: a
+second opinionated system pointed at the same library. Revisit later as a
+REPLACEMENT for the music half, never an addition.
+
+════════════════════════════════════════════════════════════════════════════
+COMICS, GAMES, AUDIOBOOKS
+════════════════════════════════════════════════════════════════════════════
+KAPOWARR — comics acquisition; Komga and CWA already serve the reading side.
+  Note Mylar3 as the older, more-mature alternative considered; record the
+  reason whichever way you go.
+QUESTARR — games. Prowlarr app-sync, SQLite-backed.
+AUDIOBOOKSHELF — upstream module (confirmed 2026-08-25), OWN storage tree, no
+  hardlink-domain interaction, so it does not owe the proof above. Multi-user
+  with per-user progress; good kids' handling.
+
+READARR IS ARCHIVED UPSTREAM. DO NOT ADD IT. It still has a NixOS module in
+ernst's pin — that is not evidence it is maintained, only that nixpkgs has not
+removed it. VERIFY IN-SESSION what the current live successor is (nixpkgs,
+awesome-arr, the fork landscape) and RECORD FINDINGS WITH THE DATE. DO NOT
+WRITE A FORK NAME FROM MEMORY. LazyLibrarian and CWA's own downloader are the
+first two to check.
+
+════════════════════════════════════════════════════════════════════════════
+STORYTELLER — CONFIRMED IN SCOPE
+════════════════════════════════════════════════════════════════════════════
+lgo has matched ebook+audiobook pairs — that is the precondition, and without
+both halves DRM-free for the same title it does nothing.
+
+It takes the pair and emits a SINGLE EPUB3 with embedded audio and
+SENTENCE-LEVEL sync via forced alignment.
+
+COMPLEMENTARY to Audiobookshelf, not overlapping: ABS serves the library,
+Storyteller produces synced artifacts from pairs. Say so in the file header.
+
+THE BINDING STEP IS CPU-HEAVY FORCED ALIGNMENT. 16 Zen 5 cores make that a
+non-issue in absolute terms, but it MUST be nice'd and CPUWeight-limited so it
+cannot compete with a Jellyfin transcode, an HTPC session, OR — new since M11
+— AN INTERACTIVE OLLAMA SESSION. That third claimant did not exist when this
+was sketched and it is the one whose degradation is most visible.
+
+Alignment degrades on long musical intros and messy EPUB formatting; claimed
+accuracy 90-95% on clean sources. BIND ONE KNOWN-GOOD PAIR AND CHECK THE SYNC
+BY HAND BEFORE BATCHING.
+
+Justify the slot on language-learning and accessibility, not convenience.
+
+VERIFY THE DEPLOY STORY AGAINST THE UPSTREAM GITLAB REPO, NOT BLOG POSTS — the
+write-ups are promotional and thin. If no sane non-Docker path exists, that
+argues for the PODMAN TIER M9 is opening, NOT for oci-containers inside nspawn.
+
+════════════════════════════════════════════════════════════════════════════
+PACKAGING, UIDS, PORTS
+════════════════════════════════════════════════════════════════════════════
+Establish IN-SESSION which have upstream modules and use THAT list. As of
+2026-08-25: lidarr, slskd and audiobookshelf HAVE modules; soularr, kapowarr,
+questarr and storyteller have neither module nor package.
+  virtualisation.oci-containers INSIDE an nspawn container is REJECTED. State
+  it in the file header.
+
+UIDS, reserved in machines/ernst/networking.nix — do not invent new ones:
+  3017 lidarr, 3018 soularr, 3019 kapowarr, 3020 questarr,
+  3021 audiobookshelf (own tree, not /srv/media), 3022 storyteller
+    — all media primary
+  3024 slskd — MICROVM GUEST, not the container. Its numeric id must agree
+    with the host wherever it writes to shared storage; virtiofsd runs without
+    id translation, so guest uid 3024 IS host uid 3024, exactly like
+    qBittorrent's 3001.
+
+PORTS to VERIFY against upstream defaults: lidarr 8686, kapowarr 5656,
+questarr 5000, audiobookshelf 13378. Append to the ONE explicit list in
+arr.nix that the Traefik source-restriction concatMapStrings iterates. Do NOT
+reach for extraInputRules — no rule, no warning.
+
+HARDENING. `systemd-analyze security --offline=true` on every new unit,
+before/after in the PR body, following M4's table. Prowlarr trap in reverse:
+DynamicUser -> static uid silently drops NoNewPrivileges, PrivateTmp,
+ProtectSystem=strict, ProtectHome=read-only, RemoveIPC, RestrictSUIDSGID.
+Restate all six.
+
+MANUAL STEPS for the PR body (lgo's):
+  - Technitium records for the new names, created BEFORE anyone types them
+    (M7's NXDOMAIN negative-cache finding).
+  - slskd's Soulseek account credentials -> clan vars generator, prompted.
+  - In-UI bootstrap for Lidarr / Kapowarr / Questarr / Audiobookshelf as a
+    reproducible checklist, per M4's configuration policy.
+  - `clan machines update ernst` and `clan vars generate ernst`.
+
+TEST PLAN in the PR body:
+  - THE HARDLINK PROOF WITH ITS NEGATIVE CONTROL, synthetic first, then a
+    REAL Lidarr import with `stat` output. links=1 is a failed milestone.
+  - slskd reachable from the arr container over VLAN 90 and from nowhere else.
+  - Soulseek peer connectivity measured THROUGH THE VPN EXIT, with a real
+    download completing — this is the go/no-go for the microvm placement.
+  - ONE Storyteller binding checked by hand for sync drift before any batch.
+  - `systemd-analyze security` table.
+
+Constraints:
+- Never commit to main. Branch first, PR via `gh pr create` (title
+  imperative, <=70 chars, no prefix; body = summary + test plan + manual
+  steps).
+- New flake inputs expected. Pin by tag or rev, never by branch.
+- Minimal diffs; commit only the files this change touches.
+- Verify by evaluation:
+    nix flake check
+    nix eval --no-update-lock-file --raw \
+      '.#nixosConfigurations.ernst.config.system.build.toplevel.drvPath'
+- Claude does not deploy: `clan machines update ernst` and
+  `clan vars generate ernst` are lgo's steps.
+- Update docs/roadmap.md's status table in the same PR.
+````
+
+---
+
+## M15 — `feat/ernst-tdarr`
+
+**Goal.** Tdarr in its own nspawn container with VAAPI access to the RX 7900 XTX,
+transcoding to AV1 — **plus a GPU arbitration scheme making it the preemptible
+claimant on a card that now has three others.**
+
+**Depends on.** M12. **Risk.** High, and **entirely in the arbitration**, not in
+the transcoding.
+
+**[M11](#m11-featfleet-local-coding-agent) changed this milestone materially.**
+Read that section's VRAM table before designing anything here.
+
+### Why its own container
+
+`/dev/dri` passthrough into the **arr** container would hand the GPU to **Prowlarr
+and Byparr too** — a strictly larger blast radius for no capability. That is
+`arr.nix`'s own argument for giving Prowlarr no media access, applied to a
+different resource.
+
+And **the boundary that matters here is device access**, which nspawn's
+`bindMounts` express directly. Follow M2b's pattern: veth on `br0`, VLAN 90,
+MAC-pinned, DHCP reservation.
+
+### The GPU problem, and why the obvious fix is wrong
+
+**Invariant #5 arbitrates ONE mutual exclusion**: `display-manager.service` vs the
+Bigscreen container, via a flag file and `ConditionPathExists` in
+`modules/roles/htpc.nix`.
+
+**COPYING THAT PATTERN IS THE OBVIOUS MOVE AND IT IS WRONG.** Say so explicitly in
+the file header, because it is the first thing anyone will reach for.
+
+The existing claimants **coexist deliberately**: compute goes through the **render
+node**, KMS through the **card node**, so a session and ROCm coexist and merely
+compete for **VRAM**. **Tdarr's VAAPI ALSO uses the render node.** There is **no
+device-level exclusivity to enforce** — this is **RESOURCE PRIORITY**, and
+`ConditionPathExists` is a **mutual-exclusion primitive**. Using it here would
+either forbid a coexistence that is fine, or forbid nothing at all.
+
+### M11 supplied the VRAM budget, and it is tighter than anyone assumed
+
+**Cite these rather than re-measuring.** Card total **24560 MiB**; idle baseline
+(the HTPC session) 877–1093 MiB.
+
+| Configuration | VRAM | Placement | tok/s |
+|---|---|---|---|
+| 64k, no KV quantisation (f16) | **24471 MiB** | **SPILLING** — 4% CPU / 96% GPU | 98.5 |
+| 64k, flash attention **alone** | 24471 MiB | **a measured NO-OP** — identical to baseline | 97.5 |
+| 64k, **q8_0 KV cache** | **22482 MiB** | **100% GPU resident** | 112.6 |
+
+**A fully-resident Ollama at 64k leaves 2078 MiB — roughly 2 GB — of headroom on
+the card.**
+
+**THERE IS ESSENTIALLY NO VRAM FOR TDARR WHILE OLLAMA IS LOADED.** That is not an
+arbitration nicety to be tuned later. **It is the central constraint of the
+milestone, and any design that assumes coexistence is wrong before it starts.**
+
+*(Note the figure against an earlier draft of this section, which said "~1.5 GB".
+The measured number is 24560 − 22482 = **2078 MiB**. It does not change the
+conclusion, and it is recorded correctly here because this file's own repeated
+lesson is that a number nobody re-derived is a number nobody can trust.)*
+
+**CORRECT ONE INHERITED EXAGGERATION.** Earlier planning warned that spilling to
+system RAM would make Ollama *"unusably slow, maybe 5 tok/s"*. **Measured: the
+128k spill still ran 75 tok/s**, and the 64k f16 spill ran 98.5. Spilling is a
+real cost and a real reason to keep `q8_0` — **but it is not catastrophic, and the
+arbitration must not be designed as though eviction were fatal.** A design that
+treats a spill as an outage will over-restrict Tdarr into never running at all.
+
+### The trigger problem, sharpened by M11
+
+**Ollama is request-driven and IDLES**, so *"Ollama is active"* is **not a systemd
+state**. And the idle gaps are **exactly when a Tdarr worker would claim VRAM** —
+and it will **still be holding it when the next prompt arrives**.
+
+**Since M11, that failure presents to lgo as the coding agent degrading
+mid-session for no visible reason** — which is both the worst diagnostic
+experience available and the hardest thing to attribute to a transcoder.
+
+**Design accordingly, and argue the primitive rather than picking one:**
+
+- **Tdarr workers STOPPED, not deprioritised**, when the HTPC session **or**
+  Ollama is active. Deprioritising a worker does not return its VRAM; only
+  stopping it does, and VRAM is the contended resource here rather than compute.
+- **Resumption from checkpointed jobs.** Tdarr claims support for this. **VERIFY
+  rather than trust, and record how a killed job actually recovers** — a
+  preemptible service whose preemption corrupts its work unit is not preemptible.
+- **Establish what signal exists BEFORE designing against it.** Candidates: the
+  model loader's unit state, VRAM-occupancy polling, an API-side hook, or a
+  keepalive window after the last request. **The HTPC session IS a systemd state
+  and is the easy half** — do that one first and do not let it disguise how hard
+  the Ollama half is.
+- [M13](#m13-featernst-media-lifecycle) adds an **Ollama scrape target**
+  specifically so this milestone starts with VRAM-occupancy history rather than
+  guessing at the shape of the idle gaps.
+
+**DO NOT VFIO-BIND ANYTHING.** Invariant #5 rejects passthrough and explains why
+Bigscreen-in-a-VM was not taken. Nothing here reopens that.
+
+### The encoding decision is a measurement, not an inherited opinion
+
+**VCN AV1 on RDNA3 is fast but trails SVT-AV1 on quality-per-bit.** Tdarr's
+worker/node split allows **both**: GPU workers for backlog, CPU workers on 16 Zen 5
+cores for archival masters.
+
+**Encode one known file both ways at comparable target sizes; VMAF or SSIMULACRA2
+in the PR body.** Not an opinion, a number.
+
+**GIVEN THE VRAM FINDING, CPU-ONLY TDARR IS NOW A SERIOUS DEFAULT rather than a
+fallback.** It **sidesteps the arbitration problem entirely** — no render-node
+contention, no VRAM budget, no idle-gap detection, no preemption design — and the
+9950X is not a weak encoder. **Argue it explicitly instead of assuming GPU
+workers.** If CPU-only wins, most of the hard half of this milestone evaporates,
+and that is a good outcome rather than a diminished one.
+
+### Evaluate Muxarr FIRST, and be willing to stop there
+
+**Stripping redundant audio and subtitle tracks WITHOUT re-encoding may reclaim
+more space per CPU-hour in a two-language household than transcoding does** — at
+**zero quality risk** and with **no GPU arbitration at all**.
+
+**MEASURE what a Muxarr pass would reclaim BEFORE building the container.** If
+that is most of the win: **ship Muxarr and record Tdarr as unnecessary. That is a
+successful milestone**, not an abandoned one.
+
+**OVERLAP WITH [M8](#m8-featernst-tvheadend)**: the M8 amendment also names Muxarr,
+for normalising MPEG-TS recordings. **Whichever lands first owns the evaluation.**
+Cross-referenced from both.
+
+### What NOT to transcode
+
+The Radarr profile **deliberately** grabs **Remux-2160p with TrueHD Atmos and
+dual-layer Dolby Vision**. `arr.nix`'s recyclarr block explains what "remux"
+means: **streams lifted UNTOUCHED off the UHD Blu-ray, 40–80 GB per film.**
+
+**Treat the remux tier as an ARCHIVAL MASTER. Never re-encode it in place.** A
+smaller viewing copy is a **SECOND file**, and **the milestone must decide how
+Jellyfin picks between them** — that decision is part of the deliverable, not a
+follow-up, because a library with two versions of every film and no selection
+rule is worse than one with one.
+
+**Audio: pass TrueHD / Atmos through untouched.** Lossy Atmos is a **different
+product**, not a smaller version of the same one.
+
+### Storage and monitoring
+
+**Output lands in the `/srv/media` hardlink domain, so invariant #2 applies: NO
+NEW DATASETS.** Plain subdirectories only. Own state at `/srv/state/tdarr` per
+invariant #7.
+
+**Add `tdarr-exporter` to M6's targets IN THIS MILESTONE.** Queue depth and
+in-flight progress are what tell you whether the arbitration is **starving** it —
+and **a preemptible service that never runs looks identical to one that works.**
+That is the same epistemics as
+[SN3](#sn3-a-broken-instrument-is-indistinguishable-from-a-bad-result), and it is
+why the exporter is not deferred to M13.
+
+### Packaging, uid and address
+
+**Measured 2026-08-25, and it contradicts an earlier draft of this milestone:**
+`services.tdarr` **is an upstream NixOS module** in ernst's pin, and
+`pkgs.tdarr` **is packaged at 2.74.01**. **No hand-rolled derivation is needed for
+Tdarr itself** — verify that still holds at session time, but do not start by
+writing one. **Muxarr** has neither module nor package.
+
+uid **3023 tdarr**, `media` primary, **plus the `render` group for `/dev/dri`**.
+MAC: the next free entry after `02:00:00:90:00:07` (authelia) — see the
+reservation block in `machines/ernst/networking.nix`. **The address must be inside
+the DHCP pool `10.0.90.6–.254`**; UniFi accepts a `.2`–`.5` address and then
+silently hands out an ordinary lease, which cost M2b, M5 and M6 a round each.
+
+**Ledger**: Tdarr gets a Traefik router behind the **`authelia`** middleware — not
+`mgmt-only`, which M7 deleted. Copy the *arr routers, and remember
+`containers/authelia.nix`'s `access_control` is deny-by-default, so a route with
+the middleware and no matching rule fails **closed**.
+
+````text
+Read CLAUDE.md fully before doing anything.
+
+Work in the clanarchy repo on miralda. Branch: feat/ernst-tdarr.
+Prerequisite: M12 merged and deployed. Read M15 in docs/roadmap.md first, and
+read M11's VRAM table before designing anything — it is the constraint.
+
+GOAL. Tdarr in its own nspawn container with VAAPI access to the RX 7900 XTX,
+transcoding to AV1, plus a GPU arbitration scheme making it the PREEMPTIBLE
+claimant on a card that now has three others.
+
+════════════════════════════════════════════════════════════════════════════
+EVALUATE MUXARR FIRST, AND BE WILLING TO STOP THERE
+════════════════════════════════════════════════════════════════════════════
+Stripping redundant audio and subtitle tracks WITHOUT re-encoding may reclaim
+more space per CPU-hour in a two-language household than transcoding does —
+zero quality risk, no GPU arbitration at all.
+MEASURE WHAT A MUXARR PASS WOULD RECLAIM BEFORE BUILDING THE CONTAINER. If
+that is most of the win, SHIP MUXARR AND RECORD TDARR AS UNNECESSARY. That is
+a SUCCESSFUL milestone.
+OVERLAP WITH M8: the M8 amendment also names Muxarr for MPEG-TS recordings.
+Whichever lands first owns the evaluation — check whether M8 already did it.
+
+════════════════════════════════════════════════════════════════════════════
+WHY ITS OWN CONTAINER
+════════════════════════════════════════════════════════════════════════════
+/dev/dri passthrough into the arr container would hand the GPU to Prowlarr and
+Byparr too — a strictly larger blast radius for no capability, which is
+arr.nix's own argument for giving Prowlarr no media access. And the boundary
+that matters is DEVICE ACCESS, which nspawn's bindMounts express.
+Follow M2b's pattern: veth on br0, VLAN 90, MAC-pinned, DHCP reservation
+INSIDE the pool (10.0.90.6-.254) — UniFi accepts a .2-.5 address and then
+silently hands out an ordinary lease. M2b, M5 and M6 each lost a round to it.
+Next free MAC is after 02:00:00:90:00:07 (authelia) — see the reservation
+block in machines/ernst/networking.nix.
+
+════════════════════════════════════════════════════════════════════════════
+THE GPU PROBLEM, AND WHY THE OBVIOUS FIX IS WRONG
+════════════════════════════════════════════════════════════════════════════
+Invariant #5 arbitrates ONE mutual exclusion: display-manager vs the Bigscreen
+container, via a flag file and ConditionPathExists in modules/roles/htpc.nix.
+COPYING THAT PATTERN IS THE OBVIOUS MOVE AND IT IS WRONG. SAY SO EXPLICITLY IN
+THE FILE HEADER.
+The existing claimants COEXIST DELIBERATELY: compute through the render node,
+KMS through the card node, so a session and ROCm coexist and merely compete for
+VRAM. TDARR'S VAAPI ALSO USES THE RENDER NODE. There is no device-level
+exclusivity to enforce — this is RESOURCE PRIORITY, and ConditionPathExists is
+a MUTUAL-EXCLUSION primitive.
+
+M11 SUPPLIED THE VRAM BUDGET. CITE IT, DO NOT RE-MEASURE.
+Card total 24560 MiB. Idle (HTPC session) 877-1093 MiB.
+  - 64k, no KV quantisation:      24471 MiB — SPILLING (4% CPU / 96% GPU)
+  - 64k, flash attention ALONE:   24471 MiB — a measured NO-OP, 97.5 tok/s
+  - 64k, q8_0 KV cache:           22482 MiB — 100% GPU resident, 112.6 tok/s
+A FULLY-RESIDENT OLLAMA AT 64k LEAVES 2078 MiB — ROUGHLY 2 GB. THERE IS
+ESSENTIALLY NO VRAM FOR TDARR WHILE OLLAMA IS LOADED. That is not an
+arbitration nicety, it is the CENTRAL CONSTRAINT, and any design that assumes
+coexistence is wrong before it starts.
+
+CORRECT ONE INHERITED EXAGGERATION. Earlier planning warned that spilling to
+system RAM would make Ollama "unusably slow, maybe 5 tok/s". MEASURED: the
+128k spill still ran 75 tok/s. Spilling is a real cost and a real reason to
+keep q8_0, but it is NOT catastrophic, and the arbitration must not be designed
+as though eviction were fatal — a design that treats a spill as an outage will
+over-restrict Tdarr into never running at all.
+
+THE TRIGGER PROBLEM, SHARPENED BY M11. Ollama is request-driven and IDLES, so
+"Ollama is active" is NOT a systemd state. The idle gaps are exactly when a
+Tdarr worker would claim VRAM — and it will still be holding it when the next
+prompt arrives. Since M11 that failure presents to lgo as THE CODING AGENT
+DEGRADING MID-SESSION FOR NO VISIBLE REASON.
+DESIGN ACCORDINGLY, AND ARGUE THE PRIMITIVE:
+  - Tdarr workers STOPPED, not deprioritised, when the HTPC session or Ollama
+    is active. Deprioritising does not return VRAM; only stopping does.
+  - Resumption from checkpointed jobs. Tdarr claims support — VERIFY rather
+    than trust, and record how a killed job ACTUALLY recovers. A preemptible
+    service whose preemption corrupts its work unit is not preemptible.
+  - ESTABLISH WHAT SIGNAL EXISTS BEFORE DESIGNING AGAINST IT: the loader's
+    unit state, VRAM-occupancy polling, an API-side hook, or a keepalive
+    window after the last request. The HTPC session IS a systemd state and is
+    the easy half — do it first, and do not let it disguise how hard the
+    Ollama half is.
+  - M13 added an Ollama scrape target so you start with VRAM-occupancy
+    HISTORY rather than guessing at the shape of the idle gaps. Use it.
+
+DO NOT VFIO-BIND ANYTHING. Invariant #5 rejects passthrough and explains why
+Bigscreen-in-a-VM was not taken.
+
+════════════════════════════════════════════════════════════════════════════
+ENCODING — A MEASUREMENT, NOT AN INHERITED OPINION
+════════════════════════════════════════════════════════════════════════════
+VCN AV1 on RDNA3 is fast but trails SVT-AV1 on quality-per-bit. Tdarr's
+worker/node split allows both: GPU workers for backlog, CPU workers on 16 Zen 5
+cores for archival masters. ENCODE ONE KNOWN FILE BOTH WAYS at comparable
+target sizes; VMAF or SSIMULACRA2 in the PR body.
+
+GIVEN THE VRAM FINDING, CPU-ONLY TDARR IS NOW A SERIOUS DEFAULT rather than a
+fallback: it sidesteps the arbitration problem ENTIRELY, and the 9950X is not
+a weak encoder. ARGUE IT EXPLICITLY instead of assuming GPU workers.
+
+WHAT NOT TO TRANSCODE. The Radarr profile deliberately grabs Remux-2160p with
+TrueHD Atmos and dual-layer Dolby Vision — arr.nix's recyclarr block explains
+that "remux" means streams lifted UNTOUCHED off the UHD Blu-ray, 40-80 GB per
+film. TREAT THE REMUX TIER AS AN ARCHIVAL MASTER; NEVER RE-ENCODE IN PLACE. A
+smaller viewing copy is a SECOND FILE, and THIS MILESTONE MUST DECIDE HOW
+JELLYFIN PICKS BETWEEN THEM — that decision is part of the deliverable.
+Audio: pass TrueHD/Atmos through UNTOUCHED. Lossy Atmos is a different
+product, not a smaller version of the same one.
+
+════════════════════════════════════════════════════════════════════════════
+STORAGE, MONITORING, PACKAGING
+════════════════════════════════════════════════════════════════════════════
+STORAGE. Output lands in the /srv/media hardlink domain, so invariant #2
+applies: NO NEW DATASETS, plain subdirectories only. Own state at
+/srv/state/tdarr per invariant #7.
+
+MONITORING. Add tdarr-exporter to M6's targets IN THIS MILESTONE. Queue depth
+and in-flight progress are what tell you whether arbitration is STARVING it —
+a preemptible service that never runs looks identical to one that works
+(roadmap standing note SN3).
+
+PACKAGING. VERIFIED 2026-08-25 and it contradicts earlier drafts: services.tdarr
+IS an upstream NixOS module in ernst's pin, and pkgs.tdarr is packaged at
+2.74.01. NO HAND-ROLLED DERIVATION IS NEEDED FOR TDARR ITSELF — re-verify at
+session time, but do not start by writing one. Muxarr has neither module nor
+package.
+  virtualisation.oci-containers INSIDE an nspawn container is REJECTED. State
+  it in the file header.
+
+UID 3023 tdarr, media primary, PLUS the render group for /dev/dri. Reserved in
+machines/ernst/networking.nix.
+
+LEDGER. Tdarr gets a Traefik router behind the `authelia` middleware — NOT
+mgmt-only, which M7 deleted. Copy the *arr routers. containers/authelia.nix's
+access_control is DENY-BY-DEFAULT, so a route with the middleware and no
+matching rule fails CLOSED — add the hostname there too.
+
+HARDENING. `systemd-analyze security --offline=true`, before/after in the PR
+body, following M4's table.
+
+MANUAL STEPS for the PR body (lgo's):
+  - DHCP reservation on VLAN 90, INSIDE the pool.
+  - Technitium record for tdarr.goclan.org -> 10.0.90.12, created BEFORE
+    anyone types the name (M7's NXDOMAIN negative-cache finding).
+  - Tdarr's in-UI library, flow and worker configuration as a reproducible
+    checklist, per M4's configuration policy.
+  - `clan machines update ernst`.
+
+TEST PLAN in the PR body:
+  - The Muxarr reclamation measurement, FIRST, with the decision it produced.
+  - bridge vlan show dev vb-tdarr -> 90 PVID Egress Untagged.
+  - vainfo inside the container names Navi 31, NOT the iGPU.
+  - The encode comparison with VMAF or SSIMULACRA2 numbers.
+  - THE ARBITRATION, exercised deliberately: start a transcode, then start an
+    Ollama session, and show the worker STOPPED and the job RESUMED. A design
+    that is never tested under contention is not tested.
+  - tdarr-exporter targets `up` in Prometheus with queue depth reporting.
+
+Constraints:
+- Never commit to main. Branch first, PR via `gh pr create` (title
+  imperative, <=70 chars, no prefix; body = summary + test plan + manual
+  steps).
+- A new flake input is expected only if Muxarr is taken; Tdarr needs none.
+- Minimal diffs; commit only the files this change touches.
+- Verify by evaluation:
+    nix flake check
+    nix eval --no-update-lock-file --raw \
+      '.#nixosConfigurations.ernst.config.system.build.toplevel.drvPath'
+- Claude does not deploy: `clan machines update ernst` is lgo's step.
+- Update docs/roadmap.md's status table in the same PR.
+````
+
+---
+
+## M16 — `feat/ernst-external-ingress`
+
+**The milestone.** Make `jellyseerr.goclan.org` reachable **from the internet**,
+and **ONLY** that.
+
+**Depends on.** M13. **M7 IS DONE** — the auth half is configuration, not
+speculation. **Risk.** High, and it is a **different kind** of risk from every
+milestone before it.
+
+### Why it is its own milestone
+
+**Every prior threat model in this repo has been "hosts on VLANs the UDM-Pro
+controls."** M5 reasoned about consumer zones. M2b reasoned about IoT. M4 reasoned
+about a bridge the UDM-Pro never sees. Even M7's stated cost — *"the login portal
+becomes visible from the IoT VLAN"* — is a statement about a VLAN.
+
+**M16 deletes that assumption.** It is a **deliberate bypass under invariant #4**,
+**must be listed** in the ledger, and it **re-opens invariant #1's tier question**
+for whatever terminates the external connection. A milestone that changes the
+shape of the threat model does not belong inside one that cleans up a library.
+
+### What does not exist yet
+
+**There is NO WAN ingress path on ernst.** Traefik's wildcard certificate comes
+from **ACME DNS-01 at Cloudflare**, which proves domain control with **no inbound
+path whatsoever**. **Do not mistake a working certificate for a working ingress** —
+`containers/traefik.nix` says "split horizon, no public A records" in its own
+header, and that is still true.
+
+**Measured precondition, supplied by lgo: a STATIC FULL IP STACK — static public
+IPv4 and native IPv6, no CGNAT, no DS-Lite.** **Confirm the addresses in-session**
+rather than inheriting this line.
+
+**THIS KILLS BOTH PRACTICAL OBJECTIONS TO A PORT FORWARD** — no DDNS, no rotating
+address. **So option (A) is now genuinely SIMPLER than (B), and (B) must win on
+its security argument alone or lose.** That is the honest framing and it should
+not be softened.
+
+### (A) UDM-Pro port forward, WAN `:443` → `10.0.90.12:443`
+
+No new daemon, no third party in the TLS path, one rule created once.
+
+**THE OBJECTION THAT SHOULD DECIDE IT:** it makes **EVERY Traefik router
+internet-reachable**, gated on nothing but **middleware correctness**. After M7
+that means the `authelia` forward-auth middleware becomes the only thing keeping
+`sonarr.goclan.org` private — **and a middleware one edit from wrong FAILS OPEN.**
+
+Compare two decisions this repo has already made the other way:
+
+- **M2b's `DefaultPVID = "none"`**, chosen precisely because a missed VLAN
+  application then **fails closed** — no connectivity — rather than fail-open onto
+  VLAN 50.
+- **[L4's reasoning](#interim-rule-ledger)**: a permit rule doing nothing is what
+  someone later "fixes" by removing the restriction.
+
+**NOT a reason to reject it: "exposing a static IP."** The address is already
+public and M3 recorded it (`78.94.91.74`). That objection sounds like security and
+is not one.
+
+### (B) Cloudflare Tunnel (`cloudflared`), outbound-only
+
+**THE DECIDING PROPERTY: the tunnel DECLARES which hostnames it serves.**
+`jellyfin`, `sonarr`, `radarr`, `prowlarr`, `grafana` and `auth` **do not resolve
+or route from outside at all** — not "are refused", **are not there**.
+
+**Adding a service to the internet becomes an EXPLICIT ACT** rather than the
+default consequence of creating a Traefik route. That is
+**fail-closed-by-construction**, which is the property this repo has chosen at
+every previous fork — `DefaultPVID = "none"`, Authelia's `default_policy: deny`
+with explicit hostnames, `mkOverride` rather than a silent merge.
+
+The **Cloudflare account and a scoped API token already exist** for ACME DNS-01,
+so the third-party relationship is not new. The *dependency* is.
+
+**HONEST COSTS, all of which belong in the PR body:**
+
+- **Cloudflare terminates TLS and can see plaintext.** That is a real disclosure
+  for a request UI carrying **Jellyfin credentials**. Say it plainly.
+- **A third party in the availability path.** Cloudflare down means Jellyseerr
+  externally down — internally unaffected, which is the mitigation.
+- **Cloudflare's terms have historically restricted proxying large media
+  streams.** Jellyseerr is low-bandwidth so **it does not bite** — **but it is a
+  hard reason the tunnel must NEVER grow a `jellyfin.goclan.org` hostname**, and
+  that must be **written down BEFORE someone later "just adds one more"**. It is
+  the single most predictable future edit to this configuration.
+
+**TIER QUESTION — argue it, do not default.** `cloudflared` holds a **persistent
+outbound connection to a third party** and is **what an attacker reaches first**.
+Invariant #1 tiers by trust and workload, and "talks to the internet on its own
+behalf" is the *exact* phrase that moved qBittorrent to the microvm. Place it
+deliberately.
+
+### IPv6 — this is a trigger
+
+**See [SN2](#sn2-ipv6-is-off-and-that-is-now-a-decision).** **(B) sidesteps v6
+entirely** — the tunnel is outbound and the address family of the ingress stops
+being the household's problem.
+
+**(A) does not, and forces the decision.** If **(A) wins**: audit the UDM-Pro's
+**IPv6** ruleset, prove **default-deny inbound**, or explicitly commit VLAN 90 to
+v4-only — **and update SN2 from "owed" to "decided"** in the same PR. A milestone
+that opens a v4 hole and leaves the v6 question open has done half a boundary.
+
+### Recommendation, argued rather than inherited
+
+**(B).** The failure mode bought off is **"six admin UIs silently exposed by one
+bad middleware edit"** — and **designing that class of failure out, rather than
+being careful about it, is what this repo has done at every previous fork.**
+
+The counter-argument is real and should be weighed rather than dismissed: (B) adds
+a daemon, a dependency, and a party that can read the plaintext. If the session
+concludes (A) on the strength of that, **it must then carry the v6 audit and an
+explicit answer to "what stops the next Traefik route from being public".**
+
+### Auth — M7 is done, so this is configuration
+
+**Read what Authelia actually protects today** ([M7's close-out](#close-out-2026-08-25)
+enumerates it) and build on it.
+
+**The unauthenticated attack surface must be AUTHELIA, not Jellyseerr's Node
+application.** Forward-auth with **2FA required** on the external path.
+
+**Jellyseerr's own Jellyfin-account login stays underneath** — for the reason M6
+kept Grafana's admin account under the middleware, and M7 then had to build a path
+back to it: **it is the credential that still works when the identity provider is
+the broken thing.**
+
+**INVARIANT #4's JELLYFIN EXEMPTION DOES NOT TRANSFER, and the roadmap says so
+because the two rows sit next to each other in the ledger.** The exemption exists
+because **TV and mobile clients cannot survive forward-auth**. **Jellyseerr's only
+client is a browser.** Do not read the exemption as licence to skip forward-auth
+here.
+
+Note also that M13 deliberately ships Jellyseerr **without** the middleware at
+internal scope, so **M16 is where that router's posture changes** — one change to
+one router, made once, reviewed as an external change.
+
+### Wizarr — in scope here, and record why it moved
+
+**Previously rejected as overkill**: three people, accounts created by hand once.
+
+**M16 changes the arithmetic.** Every household member now needs an **Authelia
+account in addition to their Jellyfin one**, and [M14](#m14-featernst-libraries)
+adds **Audiobookshelf** to a set already including **Komga**. **Wizarr's value is
+the multi-service invite, which is exactly the problem M16 creates.**
+
+**DECIDE AND ARGUE the identity relationship** rather than letting it emerge: does
+Wizarr provision the **Authelia** account too, or only downstream services? **Which
+is the source of truth for "who is allowed in"?** A defensible answer is
+**Authelia owns identity, Wizarr owns service enrolment** — but **STATE it**,
+because an invite system that half-owns identity is how two account stores drift.
+
+**WIZARR STAYS INTERNAL.** An invite endpoint reachable from outside is a
+**self-service account creation endpoint**. Internal route, **no** mgmt-only
+middleware (it does not exist any more), invites delivered **out of band**.
+
+**If the session concludes it still is not worth it, record that and drop it.**
+Three people is still three people.
+
+uid **3025 wizarr**, own group, **conditional** — reserved so that taking it does
+not require a table edit, and left unclaimed if it is dropped.
+
+### Ledger
+
+**A PERMANENT bypass row under invariant #4**: `WAN → jellyseerr.goclan.org`,
+**mechanism and auth posture in the same row**, written as a **`—` row** like the
+qBittorrent WebUI one **so a future milestone does not mistake it for something to
+retire.** The row is [already drafted](#interim-rule-ledger) with "not created"
+status; M16 fills it in.
+
+**`cloudflared`'s uid depends on the tier decision — do not reserve one yet.**
+
+### Test plan must include negative controls
+
+**From a connection genuinely outside the home network — a phone on mobile data,
+not a laptop on the LAN.** This is the distinction that makes the test mean
+anything, and it is the one most likely to be fudged.
+
+- `jellyseerr.goclan.org` **reaches Authelia**, and Jellyseerr **only after auth**.
+- `jellyfin`, `sonarr`, `radarr`, `prowlarr`, `grafana`, `auth` and (if it exists)
+  `tubesync` `.goclan.org` **ALL UNREACHABLE**. **Record the failure mode for
+  each**, because the two options fail differently and the difference is itself
+  the measurement:
+  - under **(B)** they should **fail to resolve or route**;
+  - under **(A)** they **resolve and are refused by forward-auth** — **a WEAKER
+    result**, and the evidence that justifies (B).
+- **Repeat the whole negative set over IPv6** if the client has it. **A v4-only
+  test proves half the boundary**, and SN2 exists because nobody has ever tested
+  the other half.
+- If **(B)** won, **the UDM-Pro's WAN view shows no new inbound permit.** That is
+  the check that proves the tunnel did what it claimed.
+
+**A PASS ON THE POSITIVE TEST WITH NO NEGATIVE CONTROLS IS A FAILED MILESTONE.**
+
+````text
+Read CLAUDE.md fully before doing anything.
+
+Work in the clanarchy repo on miralda. Branch: feat/ernst-external-ingress.
+Prerequisite: M13 merged and deployed (Jellyseerr live at INTERNAL scope).
+Read M16 in docs/roadmap.md first, and read standing note SN2 (IPv6).
+
+M7 IS DONE. Read machines/ernst/containers/{traefik,authelia}.nix for what is
+ACTUALLY behind forward-auth today. This milestone is configuration, not
+speculation about an identity provider that might exist.
+
+THE MILESTONE. Make jellyseerr.goclan.org reachable FROM THE INTERNET, and
+ONLY that. It is the first service in this fleet accepting connections from
+outside the home network, so THE MILESTONE IS ABOUT THE BOUNDARY, not about
+Jellyseerr.
+
+WHAT DOES NOT EXIST YET: there is NO WAN ingress path on ernst. Traefik's
+wildcard cert comes from ACME DNS-01 at Cloudflare, which proves domain
+control with NO inbound path. DO NOT MISTAKE A WORKING CERTIFICATE FOR A
+WORKING INGRESS.
+
+MEASURED PRECONDITION, supplied by lgo: STATIC FULL IP STACK — static public
+IPv4 AND native IPv6, no CGNAT, no DS-Lite. CONFIRM THE ADDRESSES IN-SESSION.
+This kills both practical objections to a port forward (no DDNS, no rotating
+address), so option (A) is now genuinely SIMPLER than (B), and (B) MUST WIN ON
+ITS SECURITY ARGUMENT ALONE OR LOSE.
+
+════════════════════════════════════════════════════════════════════════════
+(A) UDM-Pro port forward, WAN :443 -> 10.0.90.12:443
+════════════════════════════════════════════════════════════════════════════
+No new daemon, no third party in the TLS path, one rule created once.
+THE OBJECTION THAT SHOULD DECIDE IT: it makes EVERY Traefik router
+internet-reachable, gated on nothing but middleware correctness. The authelia
+forward-auth middleware becomes the only thing keeping sonarr.goclan.org
+private, AND A MIDDLEWARE ONE EDIT FROM WRONG FAILS OPEN.
+  Compare M2b's DefaultPVID = "none", chosen because a miss there fails CLOSED.
+  Compare L4's reasoning: a permit rule doing nothing is what someone later
+  "fixes" by removing the restriction.
+NOT A REASON TO REJECT IT: "exposing a static IP". The address is already
+public and M3 recorded it.
+
+════════════════════════════════════════════════════════════════════════════
+(B) Cloudflare Tunnel (cloudflared), outbound-only
+════════════════════════════════════════════════════════════════════════════
+THE DECIDING PROPERTY: the tunnel DECLARES which hostnames it serves. jellyfin,
+sonarr, radarr, prowlarr, grafana and auth do not resolve or route from outside
+AT ALL — not "are refused", ARE NOT THERE. Adding a service to the internet
+becomes an EXPLICIT ACT rather than the default consequence of creating a
+Traefik route — the same fail-closed-by-construction property this repo has
+chosen at every previous fork.
+The Cloudflare account and scoped API token already exist for ACME DNS-01.
+
+HONEST COSTS, ALL IN THE PR BODY:
+  - Cloudflare terminates TLS and CAN SEE PLAINTEXT — a real disclosure for a
+    request UI carrying Jellyfin credentials. Say it plainly.
+  - A third party in the availability path.
+  - Cloudflare's terms have historically restricted proxying large media
+    streams. Jellyseerr is low-bandwidth so it does not bite — BUT IT IS A
+    HARD REASON THE TUNNEL MUST NEVER GROW A jellyfin.goclan.org HOSTNAME,
+    written down BEFORE someone later "just adds one more".
+
+TIER QUESTION: cloudflared holds a persistent outbound connection to a third
+party and is what an attacker reaches first. ARGUE ITS PLACEMENT AGAINST
+INVARIANT #1. DO NOT DEFAULT. "Talks to the internet on its own behalf" is the
+exact phrase that put qBittorrent in a microvm.
+
+RECOMMENDATION, ARGUED NOT INHERITED: (B). The failure mode bought off is "six
+admin UIs silently exposed by one bad middleware edit", and designing that
+class of failure out rather than being careful about it is what this repo has
+done at every previous fork. If you conclude (A) instead, you must ALSO carry
+the v6 audit below and an explicit answer to "what stops the next Traefik
+route from being public".
+
+════════════════════════════════════════════════════════════════════════════
+IPv6 — THIS IS A TRIGGER FOR STANDING NOTE SN2
+════════════════════════════════════════════════════════════════════════════
+(B) sidesteps v6 entirely. (A) DOES NOT, and forces the decision.
+IF (A) WINS: audit the UDM-Pro's IPv6 ruleset, PROVE DEFAULT-DENY INBOUND, or
+explicitly commit VLAN 90 to v4-only — and UPDATE SN2 FROM "owed" TO "decided"
+in the same PR. A milestone that opens a v4 hole and leaves the v6 question
+open has done half a boundary.
+SN2's baseline measurement (2026-08-25) is link-local only on every container
+and no GUA anywhere on VLAN 90. RE-RUN IT. A GUA there is an incident.
+
+════════════════════════════════════════════════════════════════════════════
+AUTH — M7 IS DONE, SO THIS IS CONFIGURATION
+════════════════════════════════════════════════════════════════════════════
+THE UNAUTHENTICATED ATTACK SURFACE MUST BE AUTHELIA, NOT JELLYSEERR'S NODE
+APPLICATION. Forward-auth with 2FA required on the external path.
+Jellyseerr's own Jellyfin-account login stays UNDERNEATH, for the reason M6
+kept Grafana's admin account under the middleware: it is the credential that
+still works when the identity provider is the broken thing.
+M13 deliberately shipped Jellyseerr WITHOUT the middleware at internal scope,
+so THIS is where that router's posture changes — one change, one router, made
+once and reviewed as an external change.
+
+INVARIANT #4 SAYS Jellyfin's native auth stays forever because TV and mobile
+clients cannot survive forward-auth. THAT EXEMPTION IS ABOUT JELLYFIN. It is
+NOT licence to skip forward-auth on Jellyseerr, whose only client is a browser.
+SAY SO IN THE FILE HEADER — the two rows sit next to each other in the ledger
+and the exemption will look transferable.
+
+Adding the hostname to the middleware also means adding it to `access_control`
+in containers/authelia.nix, which is DENY-BY-DEFAULT: a route with the
+middleware and no matching rule fails CLOSED.
+
+════════════════════════════════════════════════════════════════════════════
+WIZARR — IN SCOPE HERE, AND RECORD WHY IT MOVED
+════════════════════════════════════════════════════════════════════════════
+Previously rejected as overkill: three people, accounts created by hand once.
+M16 CHANGES THE ARITHMETIC — every household member now needs an AUTHELIA
+account in addition to their Jellyfin one, and M14 adds Audiobookshelf to a set
+already including Komga. Wizarr's value is the MULTI-SERVICE INVITE, which is
+exactly the problem M16 creates.
+
+DECIDE AND ARGUE THE IDENTITY RELATIONSHIP: does Wizarr provision the Authelia
+account too, or only downstream services? WHICH IS THE SOURCE OF TRUTH for
+"who is allowed in"? A defensible answer is Authelia owns identity, Wizarr owns
+service enrolment — but STATE it.
+
+WIZARR STAYS INTERNAL. An invite endpoint reachable from outside is a
+self-service account creation endpoint. Internal route, no mgmt-only middleware
+(it no longer exists), invites out of band.
+If you conclude it still is not worth it, RECORD THAT AND DROP IT.
+uid 3025, own group, CONDITIONAL — reserved in machines/ernst/networking.nix.
+
+════════════════════════════════════════════════════════════════════════════
+LEDGER
+════════════════════════════════════════════════════════════════════════════
+A PERMANENT bypass row under invariant #4: WAN -> jellyseerr.goclan.org,
+MECHANISM AND AUTH POSTURE IN THE SAME ROW, written as a "—" row like the
+qBittorrent WebUI one so a future milestone does not mistake it for something
+to retire. The row is already drafted in docs/roadmap.md with "not created"
+status — fill it in, do not create a second one.
+cloudflared's uid depends on the tier decision; do not reserve one until it is
+made.
+
+════════════════════════════════════════════════════════════════════════════
+TEST PLAN — THE NEGATIVE CONTROLS ARE THE MILESTONE
+════════════════════════════════════════════════════════════════════════════
+FROM A CONNECTION GENUINELY OUTSIDE THE HOME NETWORK — a phone on mobile data,
+NOT a laptop on the LAN. This is the distinction most likely to be fudged.
+
+  - jellyseerr.goclan.org reaches AUTHELIA, and Jellyseerr only AFTER auth.
+  - jellyfin, sonarr, radarr, prowlarr, grafana, auth and (if it exists)
+    tubesync .goclan.org ALL UNREACHABLE. RECORD THE FAILURE MODE FOR EACH:
+      under (B) they should fail to RESOLVE or ROUTE;
+      under (A) they resolve and are refused by forward-auth — A WEAKER
+      RESULT, and itself the measurement that justifies (B).
+  - REPEAT THE WHOLE NEGATIVE SET OVER IPv6 if the client has it. A v4-only
+    test proves half the boundary.
+  - If (B) won, the UDM-Pro's WAN view shows NO new inbound permit.
+
+A PASS ON THE POSITIVE TEST WITH NO NEGATIVE CONTROLS IS A FAILED MILESTONE.
+
+Constraints:
+- Never commit to main. Branch first, PR via `gh pr create` (title
+  imperative, <=70 chars, no prefix; body = summary + test plan + manual
+  steps).
+- cloudflared is packaged (2026.5.2 as of 2026-08-25) — no flake input needed
+  for (B). Verify at session time.
+- Minimal diffs; commit only the files this change touches.
+- Verify by evaluation:
+    nix flake check
+    nix eval --no-update-lock-file --raw \
+      '.#nixosConfigurations.ernst.config.system.build.toplevel.drvPath'
+- Claude does not deploy: `clan machines update ernst`, `clan vars generate
+  ernst`, and every UDM-Pro / Cloudflare change are lgo's steps.
+- Update docs/roadmap.md's status table AND the interim-rule ledger in the
+  same PR — this is the milestone that fills in the WAN bypass row, and (if
+  (A) wins) updates standing note SN2 from "owed" to "decided".
+````
+
+---
+
+## Packaging — the constraint shaping M12, M14 and M15
+
+**Establish which services have upstream modules IN-SESSION, on the session's own
+date, and use THAT list.** Not the one below, and not the one in any milestone
+prompt. Both go stale, and this repo has already paid for a plausible inference
+recorded as a measurement three times (M2's VLAN 80, M2b's `br0` MAC, and M11's
+three falsified premises).
+
+**Surveyed 2026-08-25** against ernst's own pin (`nixpkgs` @ `fcb8fcd`,
+2026-08-09), by evaluating `nixosConfigurations.ernst`:
+
+| | upstream NixOS module | packaged |
+|---|---|---|
+| bazarr, lidarr, jellyseerr, audiobookshelf, slskd, autobrr | **yes** | yes |
+| **tdarr** | **yes** — `services.tdarr` | **yes**, 2.74.01 |
+| **unpackerr** | **no** | **yes**, 0.15.2 — needs a unit, not a derivation |
+| readarr | yes | yes — **but archived upstream; a module is not maintenance** |
+| cloudflared | — | yes, 2026.5.2 |
+| byparr, umlautadaptarr, cleanuparr, scraparr, soularr, kapowarr, questarr, storyteller, muxarr, janitorr, wizarr, jellystat, mediathekarr, dispatcharr | no | no |
+
+**Two of these contradict earlier drafts of the milestones above** — tdarr and
+unpackerr were both listed as needing hand-rolled derivations and neither does.
+That is exactly why the survey is a step rather than a table.
+
+Everything in the last row needs a **hand-rolled derivation pinned as a flake
+input**. Expected shapes, **to be confirmed not assumed**: byparr (Python +
+Camoufox), umlautadaptarr (.NET), cleanuparr (.NET), scraparr (Python), soularr
+(Python), kapowarr (Python), questarr (Node), storyteller (**Docker-first — check
+whether a sane non-Docker path exists at all**), muxarr (check), janitorr (JVM),
+jellystat (Node), mediathekarr (.NET).
+
+### `virtualisation.oci-containers` inside an nspawn container is REJECTED
+
+**State this in every milestone that adds a service.**
+
+It would be faster, and it is **a real regression from what `arr.nix` is**: a
+container whose **entire value** is that upstream units, upstream hardening and
+`systemd-analyze` scores are **legible**. M4's Prowlarr table — 8.2 EXPOSED before,
+1.3 OK after — is only possible because the unit is a NixOS unit. **A Docker image
+inside it is opaque to every one of those.**
+
+**The escape hatch when upstream ships only an image is the PODMAN TIER invariant
+#1 already names and [M9](#m9-featernst-tubesync) is opening — not
+`oci-containers`-in-nspawn.**
+
+### M11 added a packaging lesson worth generalising here
+
+**A Nix-rendered config in the read-only store is not inert when wrong.**
+
+opencode **merges** its config sources, so a malformed store file **aborts every
+run** — and **cannot be overridden by environment variables** (`OPENCODE_CONFIG`
+and `OPENCODE_CONFIG_DIR` were both tried; only relocating `XDG_CONFIG_HOME`
+avoids it). **And opencode fetches ~15 MB of npm at runtime into its config
+directory**, so **the directory must be WRITABLE** — a `xdg.configFile` store
+symlink is not enough, and needs a `/persist` entry or it refetches after every
+rollback.
+
+**Any milestone rendering config into the store for a tool that also WRITES there
+must check both properties before assuming the pattern transfers.** The pattern
+works everywhere else in this repo because everywhere else the tool only reads.
+
+### Hardening is not optional, and one trap is worth restating everywhere
+
+Every milestone requires **`systemd-analyze security --offline=true` on every new
+unit**, with **before/after scores in the PR body**, following M4's table. Offline
+analysis works against the container's generated units, so it can be run **before**
+a deploy.
+
+**WATCH FOR THE PROWLARR TRAP IN REVERSE.** Any upstream unit shipping
+`DynamicUser = true` that gets switched to a **static uid** **SILENTLY loses**
+`NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`, `ProtectHome=read-only`,
+`RemoveIPC` and `RestrictSUIDSGID` — because `DynamicUser` **implies all six** and
+upstream sets **none** of them explicitly. **Restate all six.** M4 measured
+Prowlarr at **8.2 EXPOSED** before this was caught, and the switch itself looked
+like a one-line change.
+
+The corollary, which M12 depends on: **a service with no persistent state has no
+reason to make that switch at all.** FlareSolverr keeps `DynamicUser`; Byparr
+should too.
+
+---
+
 ## Floating / backlog
 
 Not sequenced. Each becomes a milestone when it earns one.
@@ -3201,8 +5976,20 @@ dies with them.
 - Division of labour: Prometheus (M6) is internal infrastructure truth; the VPS
   Kuma is the outside-in user path. Neither replaces the other.
 
-**recyclarr.** Evaluate after M4 has settled and the quality profiles have been
-touched by hand at least once — otherwise there is nothing to codify.
+**~~recyclarr.~~ Landed with M4** ([#85](https://github.com/lutzgo/clanarchy/pull/85)),
+outside that milestone's own prompt, with the template body transcribed inline and
+its provenance recorded (config-templates @ `9faf65f`). **Extended by
+[M12(g)](#m12-featernst-arr-helpers)**, which adds the German quality profiles and
+a per-series Remux-2160p profile for Sonarr. This entry is kept only so the
+sequencing is legible; there is nothing left to evaluate.
+
+**IPv6 on VLAN 90 — a decision the fleet owes itself.** Promoted out of the
+backlog into [standing note SN2](#sn2-ipv6-is-off-and-that-is-now-a-decision),
+because it is not a piece of work waiting to earn a milestone: it is a question
+that several future milestones will trip over, and it needs to be answered
+*before* one of them answers it by accident. Measured baseline (2026-08-25):
+link-local only on every container, no GUA anywhere. **A GUA on VLAN 90 makes it
+an incident.** [M16](#m16-featernst-external-ingress) is the nearest trigger.
 
 **MediathekViewDL needs a writable path.** Jellyfin's two library binds are both
 `isReadOnly = true`, and `machines/ernst/containers/jellyfin.nix` states the
@@ -3264,10 +6051,21 @@ Small enough that it does not need a number. Either fold it into whichever
 Jellyfin-adjacent milestone is being worked when it comes up — M2b touches this
 file already — or take it as a standalone `fix/` PR.
 
-**Expose Ollama via Traefik.** Reopens the native-vs-container decision: Ollama
-runs as a host service today because ROCm wants the card directly. Putting it
-behind Traefik means deciding whether it stays native with a route pointed at the
-host, or moves into a container with GPU access plumbed through.
+**Expose Ollama via Traefik — and [M11](#m11-featfleet-local-coding-agent) now
+argues against it.** The original entry reopened the native-vs-container decision:
+Ollama runs as a host service because ROCm wants the card directly, so a Traefik
+route means deciding whether it stays native with a route pointed at the host or
+moves into a container with GPU access plumbed through.
+
+M11's Phase 2 supersedes the question rather than answering it. **Ollama has no
+authentication and its API includes model *pull* and *delete*** — it is an
+unauthenticated **admin** endpoint, not a read-only inference service, so a
+Traefik route would need forward-auth that no API client speaks. **ZeroTier
+terminates in ernst's host netns, where Ollama already lives**, so a second client
+needs no route, no veth and no UDM-Pro rule. **The recommendation is ZeroTier
+only, and the trigger is a second client actually needing it.** Keep this entry as
+the place the *native-vs-container* question is recorded, but do not treat a
+Traefik route as the obvious answer to remote access.
 
 **Un-parking Bigscreen.** Three routes now, and only the third does not require
 conceding an invariant. The container diagnosis is settled and recorded in the

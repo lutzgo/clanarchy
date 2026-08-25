@@ -334,6 +334,173 @@
   #   uid 3008  authelia-main (containers/authelia.nix — M7, NOT in media)
   #   gid 3008  authelia-main (containers/authelia.nix — M7)
   #
+  #===========================================================================
+  # RESERVED — M8 and M12–M16.  Comments only; nothing below is declared yet.
+  #===========================================================================
+  #
+  # These are reservations, not configuration.  They exist so that two
+  # milestones written months apart cannot pick the same number, and so that a
+  # session opening one of them does not have to re-derive the next free id
+  # from six other files.  See docs/roadmap.md for what each milestone is.
+  #
+  # THE NUMBERS ARE NUMBERS ON zdata.  nspawn does not remap them and virtiofs
+  # passes them through unmapped, so a uid chosen inside a container or a guest
+  # IS a uid on the pool.  That is why they are allocated here rather than left
+  # to whichever module happens to create the user first.
+  #
+  # The block starts at 3009 because 3005–3008 are ALREADY TAKEN by traefik,
+  # prometheus, grafana and authelia-main above.  An earlier draft of the arr
+  # expansion started at 3005 and would have collided with four live services.
+  #
+  #   uid 3009  bazarr          (M12, group media PRIMARY — it writes .srt
+  #                              sidecars NEXT TO THE MEDIA, so it needs the
+  #                              same primary-group treatment sonarr/radarr
+  #                              have, for the same PrivateUsers = true reason
+  #                              containers/arr.nix explains in its header)
+  #   uid 3010  umlautadaptarr  (M12, OWN group — NO media access.  It is a
+  #                              PROXY: it presents itself to the *arrs as an
+  #                              indexer and sits between them and the real
+  #                              one.  Same argument as prowlarr — the boundary
+  #                              protecting the library is the uid, not the
+  #                              container)
+  #   gid 3010  umlautadaptarr  (M12)
+  #   uid 3011  cleanuparr      (M12, group media PRIMARY — it DELETES files
+  #                              and therefore needs write, not just read)
+  #   uid 3012  mediathekarr    (M12, group media PRIMARY — unlike prowlarr it
+  #                              really does download: it is a Newznab-shim
+  #                              INDEXER *and* a SABnzbd DOWNLOADER, fetching
+  #                              video and subtitles over plain HTTP from the
+  #                              ARD/ZDF Mediatheken)
+  #   uid 3013  unpackerr       (M12, group media PRIMARY — CONDITIONAL.  Only
+  #                              if the last ~50 grabs actually contain
+  #                              archive-delivered releases; see M12(e).  Note
+  #                              pkgs.unpackerr exists (0.15.2, 2026-08-25) but
+  #                              there is no services.unpackerr module)
+  #
+  #   uid 3014  jellyseerr      (M13, OWN group — NO media access.  It requests
+  #                              media; it never touches a file)
+  #   gid 3014  jellyseerr      (M13)
+  #   uid 3015  janitorr        (M13, group media PRIMARY — it DELETES files.
+  #                              First deploy keeps the shipped config's
+  #                              dry-run, and the *arr Recycle Bin goes on in
+  #                              the same deploy)
+  #   uid 3016  scraparr        (M13, OWN group — it reads REST APIs only.
+  #                              Chosen over Exportarr, which would need one
+  #                              instance, one uid, one port and one firewall
+  #                              line PER APP)
+  #   gid 3016  scraparr        (M13)
+  #
+  #   uid 3017  lidarr          (M14, group media PRIMARY)
+  #   uid 3018  soularr         (M14, group media PRIMARY — stays in the arr
+  #                              container and reaches slskd's API across
+  #                              VLAN 90 at layer 2, exactly as the *arrs reach
+  #                              qBittorrent.  No UDM-Pro rule: both ends are
+  #                              ports on br0 and the gateway never sees the
+  #                              traffic.  See M4's departure 2)
+  #   uid 3019  kapowarr        (M14, group media PRIMARY)
+  #   uid 3020  questarr        (M14, group media PRIMARY)
+  #   uid 3021  audiobookshelf  (M14, group media PRIMARY — but its own storage
+  #                              tree, NOT /srv/media, so it has no
+  #                              hardlink-domain interaction at all)
+  #   uid 3022  storyteller     (M14, group media PRIMARY — CPU-heavy forced
+  #                              alignment, so it must be nice'd and
+  #                              CPUWeight-limited: it competes with a Jellyfin
+  #                              transcode, an HTPC session, and — since M11 —
+  #                              an interactive Ollama session)
+  #
+  #   uid 3023  tdarr           (M15, group media PRIMARY, PLUS the `render`
+  #                              group for /dev/dri.  Its own container, not
+  #                              the arr one: /dev/dri passthrough there would
+  #                              hand the GPU to prowlarr and byparr too)
+  #
+  #   uid 3024  slskd           (M14 — but in the MICROVM GUEST, not the
+  #                              container.  Soulseek is P2P on the open
+  #                              internet on ernst's behalf, so invariant #1
+  #                              puts it one tier up with the killswitch and
+  #                              the exit.  ITS NUMERIC ID MUST AGREE WITH THE
+  #                              HOST wherever it writes to shared storage —
+  #                              virtiofsd runs without id translation, so
+  #                              guest uid 3024 IS host uid 3024, exactly as
+  #                              qBittorrent's 3001 is)
+  #
+  #   uid 3025  wizarr          (M16, OWN group — CONDITIONAL.  Only if M16
+  #                              concludes the multi-service invite is worth
+  #                              it.  It STAYS INTERNAL either way: an invite
+  #                              endpoint reachable from outside is a
+  #                              self-service account creation endpoint)
+  #   gid 3025  wizarr          (M16)
+  #
+  #   uid 3026  tvheadend       (M8, group media PRIMARY — CONDITIONAL, and
+  #                              doubly so.  Only under shape (i), where
+  #                              Tvheadend records and something bridges the
+  #                              recordings into /srv/media; under shape (ii)
+  #                              Jellyfin's own DVR records and Tvheadend needs
+  #                              no media write at all.  And M8 itself may be
+  #                              dropped once M12's MediathekArr has been used
+  #                              in anger — see the M8 amendment in
+  #                              docs/roadmap.md)
+  #
+  # NO uid FOR byparr.  It replaces FlareSolverr and keeps upstream's
+  # DynamicUser, exactly as FlareSolverr does: there is no persistent state,
+  # only a RuntimeDirectory, so the Prowlarr trap cannot fire and there is
+  # nothing to gain by paying for it.  A service with no state has no reason to
+  # take a static uid — and taking one silently drops the six hardening options
+  # DynamicUser implies (NoNewPrivileges, PrivateTmp, ProtectSystem=strict,
+  # ProtectHome=read-only, RemoveIPC, RestrictSUIDSGID).
+  #
+  # NO uid FOR cloudflared YET.  M16's tier decision (nspawn vs microvm vs
+  # somewhere else) is what determines whether it needs one and where it lands.
+  # Do not reserve a number for a placement nobody has argued.
+  #
+  # NO uid, NO MAC AND NO ADDRESS FOR M11 — stated so nobody adds one for
+  # symmetry.  Ollama already has its static uid on ernst (see
+  # service-modules/local-ai.nix, which turned DynamicUser off deliberately),
+  # and the coding agent runs as `lgo` on the CLIENT, not as a service here.
+  # M11 changes ernst's attack surface not at all.
+  #
+  # PORT NOTE FOR M11, recorded here because it is a FLEET fact and not a
+  # milestone detail: 11434 IS ALREADY TAKEN ON MIRALDA by its own local
+  # ollama.  The tunnel to ernst uses local port 11435:
+  #
+  #     ssh -N -L 11435:127.0.0.1:11434 root@10.0.50.10
+  #
+  # Anyone copying the obvious `ssh -L 11434:...` gets a bind failure — or
+  # worse, on a machine where it DOES bind, silently talks to a local 7B at
+  # 4096 context and gets a plausible, wrong answer.  Check what you are
+  # talking to before trusting anything it says:
+  #
+  #     curl -s localhost:11435/api/tags | jq -r '.models[].name'
+  #
+  #---------------------------------------------------------------------------
+  # MAC / ADDRESS RESERVATIONS on VLAN 90.  Far fewer than the uid list,
+  # deliberately.
+  #
+  # M12 NEEDS NONE — every service it adds lands in the EXISTING arr container
+  # on 10.0.90.13.  That is stated here so nobody creates a veth, a MAC and a
+  # reservation out of symmetry with M2b/M4/M5/M6/M7.  It is also why M12 goes
+  # first: it proves the hand-rolled-derivation approach M14 depends on without
+  # touching a network boundary.  Its only networking change is EXTENDING the
+  # one explicit port list containers/arr.nix feeds to its concatMapStrings
+  # Traefik source-restriction — not adding a second mechanism, and NOT
+  # extraInputRules, which is declared unconditionally but consumed only under
+  # networking.nftables and would produce no rule and no warning.
+  #
+  # Next free sequence number is 08; next free address is 10.0.90.16.
+  #   02:00:00:90:00:08   tdarr container eth0      (M15 — RESERVED)  10.0.90.16
+  #   02:00:00:90:00:09   jellyseerr container eth0 (M16 — RESERVED,  10.0.90.17
+  #                       and only if M13/M16 split it out of the arr
+  #                       container.  M13 ships it inside arr by default)
+  #   02:00:00:90:00:0a   tvheadend container eth0  (M8  — RESERVED)  10.0.90.18
+  #                       CONDITIONAL on M8 surviving its scope challenge.
+  #
+  # The 8 + <seq> correspondence holds for all three.  EVERY reservation must
+  # be INSIDE the DHCP pool (10.0.90.6–.254): UniFi accepts a .2–.5 address and
+  # then silently hands out an ordinary pool lease instead.  M2b, M5 and M6
+  # each lost a round to exactly that, and for M5 it was not cosmetic — the
+  # backend allow-rules hard-code .12, so Traefik on any other address made
+  # every route return 502.
+  #===========================================================================
+  #
   # MAC policy for both: locally-administered (02:…) so it cannot collide with
   # a vendor OUI.  Convention below: 02:00:00:<vlan>:00:<seq>.  The MAC the
   # UDM-Pro sees — and that a DHCP reservation must key on — is the GUEST or
