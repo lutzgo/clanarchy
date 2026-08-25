@@ -13,6 +13,12 @@
   # Safe checks: niri/labwc options only exist when the respective compositor module is imported.
   isNiri  = (osConfig.clanarchy.desktop ? niri)  && osConfig.clanarchy.desktop.niri.enable;
   isLabwc = (osConfig.clanarchy.desktop ? labwc) && osConfig.clanarchy.desktop.labwc.enable;
+  # Per-USER gate, deliberately not folded into isNiri. The two happen to
+  # select the same machine today (lgo is the only niri user), and that is
+  # exactly why they must stay separate: a plugin scoped to a person is not a
+  # plugin scoped to a compositor, and conflating them breaks silently the
+  # first time lgo runs labwc or a second person runs niri.
+  isLgo   = config.home.username == "lgo";
 in {
   imports = [
     inputs.noctalia.homeModules.default  # provides programs.noctalia-shell option
@@ -942,6 +948,41 @@ in {
           weekly-calendar        = mkPlugin;
         } // lib.optionalAttrs isNiri {
           niri-auto-tile         = mkPlugin;
+        } // lib.optionalAttrs isLgo {
+          # Giphy GIF search from the launcher (`>gif <query>`). lgo only.
+          #
+          # DELIBERATELY NO `pluginSettings.giphy-search` ENTRY, no
+          # xdg.configFile force entry, and no _delink line — unlike clipper,
+          # screen-recorder and the rest. That is not an omission.
+          #
+          # The plugin REQUIRES a Giphy API key (manifest.json:
+          # defaultSettings = { api_key = ""; rating = "g"; }; free key from
+          # developers.giphy.com). Declaring its settings here would do two
+          # bad things at once:
+          #
+          #   1. A key written into a Nix-rendered settings.json lands in the
+          #      WORLD-READABLE STORE. That is what invariant #8 forbids and
+          #      what M7 went out of its way to avoid, staging Grafana's OIDC
+          #      digest out of sops into a file rather than into the config.
+          #   2. Worse, a DECLARED-EMPTY key would be re-applied on every
+          #      rebuild. The force/_delink pair above exists precisely so
+          #      "Nix-declared defaults are re-applied on every rebuild" — so
+          #      `api_key = ""` here would silently WIPE the real key on every
+          #      `clan machines update miralda`, and the plugin would break
+          #      each deploy for no visible reason.
+          #
+          # So the key is typed once into the plugin's own Settings UI and
+          # lives only in the runtime-owned settings.json. This is M4's
+          # configuration policy — where a setting exists only in the UI, do
+          # not fake it — and it is also the majority shape here: most plugins
+          # in this list carry no pluginSettings block at all. The plugin
+          # self-defaults `rating = "g"` from its manifest, so nothing is lost.
+          #
+          # (`pluginSettings.assistant-panel.translator.deeplApiKey = ""`
+          # above has the same wipe-on-rebuild shape. It is inert today
+          # because that backend is "google", but it is worth knowing about
+          # before anyone switches it to DeepL and wonders where the key went.)
+          giphy-search           = mkPlugin;
         };
         version = 2;
       });
