@@ -211,6 +211,23 @@ let
   webuiPort   = 8080;
   torrentPort = 6881;
 
+  # M13.  prometheus-qbittorrent-exporter's own default port, and the
+  # monitoring container's address on VLAN 90 (M6, 02:00:00:90:00:06).
+  #
+  # The exporter lives INSIDE this guest rather than beside Prometheus, and
+  # that placement is the interesting part: it reads qBittorrent's WebUI API,
+  # which is exactly the interface this file spends 200 lines restricting.
+  # Running it here means the API conversation never leaves the guest — the
+  # exporter talks to 127.0.0.1 — and only the aggregate metrics cross the
+  # wire.  An exporter in the monitoring container would have needed the WebUI
+  # API opened to a third client and the plaintext password staged there too.
+  #
+  # It is also inside the killswitch, which is the right side of it: the
+  # exporter has no reason to reach the internet, and the output chain below
+  # gives it no way to.
+  exporterPort   = 8000;
+  monitoringAddr = "10.0.90.14";
+
   downloadRoot = "/srv/media/torrents";
   stateSource  = "/srv/state/qbittorrent";
 
@@ -267,6 +284,11 @@ let
   guestSecretsDir = "/run/wg-secrets";
 
   gen = config.clan.core.vars.generators.wg-qbittorrent;
+
+  # M13.  The WebUI password lives in its own generator so that adding the
+  # plaintext did not mark `wg-qbittorrent` missing and re-prompt every
+  # WireGuard value — see the generator's own header for the full argument.
+  webuiGen = config.clan.core.vars.generators.qbittorrent-webui;
 
   # qBittorrent.conf, with the WebUI password hash left as a placeholder that
   # the guest substitutes at start.  The ExecStartPre that renders it carries
@@ -412,8 +434,22 @@ in
         ${gen.files."endpoint-port".path}        ${hostSecretsDir}/endpoint-port
       ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
         ${gen.files."ssh-host-key".path}         ${hostSecretsDir}/ssh_host_ed25519_key
+      # Both WebUI password artefacts come from the `qbittorrent-webui`
+      # generator, NOT from `gen` — see that generator for why it is separate.
+      # The staged FILENAMES are unchanged, so nothing in the guest moved.
       ${pkgs.coreutils}/bin/install -m 0440 -o root -g media \
-        ${gen.files."webui-password-pbkdf2".path} ${hostSecretsDir}/webui-password-pbkdf2
+        ${webuiGen.files."password-pbkdf2".path} ${hostSecretsDir}/webui-password-pbkdf2
+
+      # M13.  0400 root:root, NOT 0440 root:media like the hash above it.
+      #
+      # The distinction is the whole reason this is safe to add: the HASH is
+      # group-readable because qBittorrent's own unprivileged ExecStartPre has
+      # to substitute it into a config file.  The PLAINTEXT has no unprivileged
+      # reader at all — the exporter receives it through LoadCredential=, which
+      # PID 1 reads before dropping privileges.  If this ever needs to be 0440,
+      # something has gone wrong with that design rather than with this mode.
+      ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
+        ${webuiGen.files."password".path}        ${hostSecretsDir}/webui-password
     '';
   };
 
@@ -468,7 +504,6 @@ in
     files."wg0.conf".secret              = true;
     files."endpoint-ip".secret           = true;
     files."endpoint-port".secret         = true;
-    files."webui-password-pbkdf2".secret = true;
     files."ssh-host-key".secret          = true;
     files."ssh-host-key.pub".secret      = false;
 
@@ -507,10 +542,9 @@ in
       description = "MTU from the provider's config, or EMPTY for wg-quick's default (IVPN: 1412)";
       type        = "line";
     };
-    prompts."webui-password" = {
-      description = "qBittorrent WebUI password for user 'admin'";
-      type        = "hidden";
-    };
+    # THE WebUI PASSWORD IS NOT PROMPTED HERE ANY MORE — see the
+    # `qbittorrent-webui` generator below for where it went and why moving it
+    # was not optional.
 
     runtimeInputs = [ pkgs.coreutils pkgs.gnugrep pkgs.python3 pkgs.openssh ];
 
@@ -636,11 +670,99 @@ in
       printf '%s' "$ep_ip"   > "$out/endpoint-ip"
       printf '%s' "$ep_port" > "$out/endpoint-port"
 
+      ssh-keygen -t ed25519 -N "" -C "root@wg-qbittorrent" -f "$out/ssh-host-key" >/dev/null
+    '';
+  };
+
+  ##############################################################################
+  # M13 — the qBittorrent WebUI password, in a generator of its OWN.
+  #
+  # ── WHY IT IS NOT PART OF wg-qbittorrent ABOVE, WHERE IT LIVED ────────────
+  #
+  #   M13 needs a SECOND form of this password.  The exporter authenticates to
+  #   the WebUI API as an ordinary client, so it has to PRESENT the password;
+  #   a PBKDF2 verifier cannot be replayed as a credential.  The obvious change
+  #   was to add one more `files."webui-password"` to the generator above.
+  #
+  #   THAT WOULD HAVE BEEN EXPENSIVE, AND SILENTLY SO.  clan decides whether to
+  #   run a generator per GENERATOR, not per file — clan_lib/vars/graph.py:
+  #   "A generator is missing if at least one of its files is missing."  So one
+  #   new file in the generator above marks the WHOLE generator missing, and
+  #   re-running it would have:
+  #
+  #     - re-prompted all SEVEN WireGuard values, i.e. required the IVPN
+  #       private key, peer public key, endpoint, address, DNS and MTU to be
+  #       typed in again from the provider's config;
+  #     - regenerated wg0.conf from those answers;
+  #     - MINTED A NEW SSH HOST KEY for the guest, because ssh-keygen runs
+  #       fresh every time — so every known_hosts entry for it would break.
+  #
+  #   None of that is a price worth paying to store a copy of a password the
+  #   operator already knows.  Splitting it out keeps every file the generator
+  #   above declares present on disk, so that generator is NOT missing and is
+  #   NOT re-run.
+  #
+  #   Checked rather than assumed: `validationHash` — the other thing that can
+  #   force a regeneration — comes from an explicit `validation` attribute that
+  #   neither generator sets, so EDITING A SCRIPT does not invalidate anything.
+  #   Only the file list matters here.
+  #
+  # ── ONE PROMPT, BOTH FORMS.  NOT TWO GENERATORS ───────────────────────────
+  #
+  #   The password is prompted ONCE and both artefacts are derived from that
+  #   single answer.  A second generator holding the plaintext alongside the
+  #   old hash would be two copies of one secret that can silently diverge —
+  #   and the divergence presents as an exporter that cannot log in while the
+  #   WebUI works fine, which is a genuinely annoying thing to debug.
+  #
+  # ── WHAT THIS OVERTURNS, STATED PLAINLY ───────────────────────────────────
+  #
+  #   The generator above used to say the hash "is what ever reaches the
+  #   guest".  That was true and free until M13, and it is no longer free.
+  #   Two alternatives were considered and are worse:
+  #
+  #     1. qBittorrent's WebUI "API Key" field.  ALREADY REJECTED WITH A
+  #        MEASUREMENT in this file's header: HTTP 403 in 0.5 ms, nothing in
+  #        qBittorrent's log.  Re-run that before reaching for it again.
+  #     2. WebUI\AuthSubnetWhitelist for 127.0.0.1, letting the exporter skip
+  #        authentication.  Worse than it looks: `WebUI\LocalHostAuth=true` is
+  #        deliberate, and turning it off lets EVERY process in this guest
+  #        drive the torrent client unauthenticated.
+  #
+  #   The exposure added is bounded: one 0400 root:root file in the guest's
+  #   secrets share, read by PID 1 through LoadCredential= before the exporter
+  #   drops privileges, so the exporter's own user never opens it either.
+  #
+  # ── ONE ORPHAN TO SWEEP ───────────────────────────────────────────────────
+  #
+  #   vars/per-machine/ernst/wg-qbittorrent/webui-password-pbkdf2/ is no longer
+  #   declared by any generator and can be deleted after this lands.  Leaving
+  #   it does no harm — nothing reads it — but it is a stale copy of a secret.
+  clan.core.vars.generators.qbittorrent-webui = {
+    files."password".secret        = true;
+    files."password-pbkdf2".secret = true;
+
+    prompts."password" = {
+      description = "qBittorrent WebUI password for user 'admin' (the EXISTING one, unless you mean to change it)";
+      type        = "hidden";
+    };
+
+    runtimeInputs = [ pkgs.coreutils pkgs.python3 ];
+
+    script = ''
+      set -euo pipefail
+
+      cp "$prompts/password" "$out/password"
+
       # qBittorrent's password format: @ByteArray(<b64 salt>:<b64 hash>), where
       # the hash is PBKDF2-HMAC-SHA512, 100000 iterations, 64-byte key over a
-      # 16-byte salt.  Generated here so the hash — not the password — is what
-      # ever reaches the guest.
-      python3 - "$prompts/webui-password" > "$out/webui-password-pbkdf2" <<'PY'
+      # 16-byte salt.
+      #
+      # The salt is fresh on every run, so re-running this produces a DIFFERENT
+      # hash for the same password.  That is correct and harmless: qBittorrent
+      # verifies against whatever salt is in the file, and the config is
+      # re-rendered on every start anyway.
+      python3 - "$prompts/password" > "$out/password-pbkdf2" <<'PY'
       import base64, hashlib, os, sys
       password = open(sys.argv[1], "rb").read().rstrip(b"\n")
       salt = os.urandom(16)
@@ -650,8 +772,6 @@ in
           base64.b64encode(digest).decode(),
       ))
       PY
-
-      ssh-keygen -t ed25519 -N "" -C "root@wg-qbittorrent" -f "$out/ssh-host-key" >/dev/null
     '';
   };
 
@@ -889,6 +1009,18 @@ in
 
               iifname "eth0" ip saddr @api_clients tcp dport ${toString webuiPort} accept
               iifname "eth0" ip saddr @mgmt_nets   tcp dport 22 accept
+
+              # M13.  The Prometheus exporter, and it gets its OWN rule rather
+              # than a seat in @api_clients — deliberately, in both directions:
+              #
+              #   the monitoring container may reach the EXPORTER and not the
+              #   WebUI API, so a scrape cannot become a torrent command;
+              #   and the arr container may reach the WebUI API and not the
+              #   exporter, which it has no use for.
+              #
+              # A literal address rather than a set, because a set of one is a
+              # set that invites a second element without an argument for it.
+              iifname "eth0" ip saddr ${monitoringAddr} tcp dport ${toString exporterPort} accept
               iifname "eth0" ip saddr @mgmt_nets   icmp type echo-request accept
 
               # DHCPv4 offers/acks.  networkd's initial exchange uses a raw
@@ -925,6 +1057,15 @@ in
               # drifted output chain presents as "the service is down" from one
               # client and fine from another.
               oifname "eth0" ip daddr @api_clients ct state established,related accept
+
+              # M13.  The scrape's reply, and it needs its own line for exactly
+              # the reason the comment above gives about not drifting: the
+              # monitoring container is deliberately NOT in @api_clients, so
+              # the rule above does not cover it, and without this the exporter
+              # would answer into the tunnel and Prometheus would see a
+              # timeout — the same failure the mgmtNets routing note describes.
+              oifname "eth0" ip daddr ${monitoringAddr} ct state established,related accept
+
               oifname "eth0" ip daddr . udp dport @vpn_endpoint accept
               oifname "eth0" udp sport 68 udp dport 67 accept
 
@@ -1034,6 +1175,121 @@ in
         # conf covers the normal path, the flag covers the first start, when
         # the file is written after the check.
         extraArgs = [ "--confirm-legal-notice" ];
+      };
+
+      ##########################################################################
+      # M13 — the Prometheus exporter.
+      #
+      # ── IT IS `qbit-exp`, NOT THE ONE THE NAME SUGGESTS ───────────────────
+      #
+      # `pkgs.prometheus-qbittorrent-exporter` (2.0.1) is martabal/qbit-exp, a
+      # RUST binary called `qbit-exp` — not esanchezm's Python exporter of the
+      # same descriptive name.  Checked by looking in the built store path
+      # rather than inferring from the attribute, because the two take
+      # completely different environment variables and the Python one's
+      # (QBITTORRENT_HOST / QBITTORRENT_PORT) would be silently ignored here.
+      #
+      # The names below were read out of the binary itself.
+      #
+      # ── QBITTORRENT_PASSWORD_FILE IS WHY THIS IS CLEAN ────────────────────
+      #
+      # qbit-exp reads the password from a FILE if told to, so the plaintext
+      # never enters the environment and never appears in /proc/<pid>/environ.
+      # Combined with LoadCredential — which PID 1 reads before dropping to the
+      # exporter's DynamicUser — the staged 0400 root:root file is never opened
+      # by an unprivileged process at all.
+      #
+      # THE API-KEY ROUTE IS DELIBERATELY NOT USED, even though this binary
+      # supports QBITTORRENT_API_KEY.  The header of this file records a
+      # measurement: qBittorrent's WebUI API Key produced HTTP 403 in 0.5 ms
+      # with nothing in its log.  Re-run that before reaching for it again.
+      systemd.services.qbittorrent-exporter = {
+        description = "Prometheus exporter for qBittorrent";
+        wantedBy    = [ "multi-user.target" ];
+        after       = [ "qbittorrent.service" ];
+        wants       = [ "qbittorrent.service" ];
+
+        environment = {
+          # 127.0.0.1: the exporter and qBittorrent share this guest's netns,
+          # so the WebUI API conversation never touches the wire.  That is the
+          # whole reason the exporter lives in here rather than beside
+          # Prometheus — see the exporterPort note at the top of this file.
+          QBITTORRENT_BASE_URL       = "http://127.0.0.1:${toString webuiPort}";
+          QBITTORRENT_USERNAME       = "admin";
+          QBITTORRENT_PASSWORD_FILE  = "%d/webui-password";
+
+          # ── THE COOKIE NAME.  WITHOUT THIS THE EXPORTER NEVER SERVES ──────
+          #
+          # qBittorrent renamed its session cookie in 5.2.0: `SID` became
+          # `QBT_SID_<webui port>`.  qbit-exp still DEFAULTS to `SID`, and its
+          # own startup line says so:
+          #
+          #   WARN SID for qBittorrent < 5.2.0; QBT_SID_<qBittorrent_port>
+          #        for > 5.2.0 (SID)
+          #
+          # — the trailing "(SID)" is the value actually in use.  This guest
+          # runs v5.2.2, so the default is wrong here.
+          #
+          # THE FAILURE IS A LOOP, NOT AN ERROR, which is why it took a manual
+          # run to find.  Login SUCCEEDS and the cookie is stored; every
+          # subsequent request then carries the wrong cookie NAME, qBittorrent
+          # treats it as unauthenticated, and the exporter concludes the cookie
+          # "changed" and logs back in — forever:
+          #
+          #   INFO New cookie for auth stored
+          #   WARN Cookie changed, trying to reconnect ...
+          #
+          # Metrics never populate, so /metrics answers 503 with an EMPTY body
+          # and the unit stays `active` the whole time.  Nothing fails, nothing
+          # restarts, and the only external symptom is up=0 in Prometheus.
+          #
+          # Measured on ernst 2026-08-26 by running the binary by hand in the
+          # guest: with the default, 503; with this set, HTTP 200 and 4296
+          # qbittorrent_* series.
+          #
+          # Derived from webuiPort rather than written as a literal, because
+          # the port is in the name — changing the WebUI port and not this
+          # would resurrect the loop.
+          QBITTORRENT_COOKIE_NAME    = "QBT_SID_${toString webuiPort}";
+
+          # 0.0.0.0, restricted by the nftables rule above to the monitoring
+          # container's address alone.  Stated rather than left to the
+          # binary's default so the number the firewall reasons about and the
+          # number the process binds are the same number in one file.
+          EXPORTER_HOST = "0.0.0.0";
+          EXPORTER_PORT = toString exporterPort;
+        };
+
+        serviceConfig = {
+          Type      = "simple";
+          ExecStart = "${pkgs.prometheus-qbittorrent-exporter}/bin/qbit-exp";
+          Restart   = "on-failure";
+          RestartSec = "30s";
+
+          LoadCredential = [ "webui-password:${guestSecretsDir}/webui-password" ];
+
+          # DynamicUser, and KEPT — this is the flaresolverr shape, not the
+          # prowlarr one.  The exporter holds no state, writes nothing, and
+          # needs no id that means anything on the pool, so there is nothing to
+          # gain by pinning a uid and six hardening directives to lose by it.
+          DynamicUser = true;
+
+          CapabilityBoundingSet   = "";
+          PrivateDevices          = true;
+          ProtectClock            = true;
+          ProtectHostname         = true;
+          ProtectKernelLogs       = true;
+          ProtectKernelModules    = true;
+          ProtectKernelTunables   = true;
+          ProtectProc             = "invisible";
+          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" ];
+          RestrictNamespaces      = true;
+          RestrictRealtime        = true;
+          LockPersonality         = true;
+          SystemCallArchitectures = "native";
+          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          UMask                   = "0077";
+        };
       };
 
       systemd.services.qbittorrent = {

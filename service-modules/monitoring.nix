@@ -277,6 +277,28 @@ in
           '';
         };
 
+        arc = lib.mkOption {
+          type        = lib.types.bool;
+          default     = false;
+          description = ''
+            Enable node_exporter's `zfs` collector, which reports ARC
+            statistics (hit ratio, size, evictions) from
+            /proc/spl/kstat/zfs.
+
+            NOT the same thing as `exporters.zfs` above, despite the names —
+            and that is the trap this option exists to make visible.  The
+            dedicated zfs_exporter reports POOL state: health, capacity,
+            fragmentation.  This collector reports CACHE behaviour.  Neither
+            substitutes for the other, and an earlier revision of this module
+            said one superseded the other; see the disabledCollectors block.
+
+            Worth having on a storage host, where ARC hit ratio is what
+            explains a slow library on a pool that is healthy and disks that
+            are not busy.  Not worth having on a laptop, where the answer is
+            usually "the lid was shut".
+          '';
+        };
+
         systemd = lib.mkOption {
           type        = lib.types.bool;
           default     = false;
@@ -364,11 +386,31 @@ in
             # `netdev`, `filesystem`, `cpu`, `meminfo`, `loadavg`, `diskstats`,
             # `stat`, `time`, `uname`, `os` are all KEPT — they are what the
             # dashboard and every alert are built from.
+            #
+            # ── M13 CORRECTS THE `zfs` LINE ABOVE ───────────────────────────
+            #
+            # It said the dedicated exporter's pool metrics "supersede" this
+            # collector for every question asked here.  That was true of the
+            # questions M6 asked and is NOT true in general: the two answer
+            # different things and neither can stand in for the other.
+            #
+            #   zfs_exporter          POOL — health, capacity, fragmentation.
+            #   node_exporter `zfs`   ARC — hit ratio, size, evictions, read
+            #                         from /proc/spl/kstat/zfs.
+            #
+            # M13 asks for ARC specifically, and on ernst it is worth having:
+            # it is the machine with 47 TB behind it, and ARC hit ratio is what
+            # explains "why did the library get slow" when the pool is healthy
+            # and the disks are not busy.
+            #
+            # It stays OFF everywhere else.  On a laptop ARC behaviour is
+            # decided by whether the lid was shut, which is not a series
+            # anybody reads.
             disabledCollectors = [
               "arp" "btrfs" "dmi" "edac" "entropy" "fibrechannel" "infiniband"
               "ipvs" "mdadm" "nfs" "nfsd" "nvme" "powersupplyclass" "rapl"
-              "selinux" "softnet" "tapestats" "thermal_zone" "xfs" "zfs"
-            ];
+              "selinux" "softnet" "tapestats" "thermal_zone" "xfs"
+            ] ++ lib.optional (!settings.exporters.arc) "zfs";
           };
 
           ####################################################################
@@ -493,6 +535,132 @@ in
           endpoint is scraped at.  Backend bypass hardening, mechanism (a) —
           the argument is in machines/ernst/containers/traefik.nix.
         '';
+      };
+
+      # ── M13: the media-stack targets ──────────────────────────────────────
+      #
+      # FOUR MORE SCRAPE TARGETS, and they share one shape deliberately: an
+      # `address` that defaults to "" and disables the job when left empty.
+      # That is the authelia option's pattern below, and it is what keeps this
+      # a clan-service module that HAPPENS to be pointed at a media stack on
+      # ernst rather than one that requires one — the laptops hold this role's
+      # `client` side and must never need to know these exist.
+      #
+      # Each of them is a plain HTTP endpoint on a VLAN-90 address reached by a
+      # single layer-2 hop inside br0 on this host, exactly like the traefik
+      # and authelia jobs.  None of them gets an alert rule, for the reason
+      # those two do not either: `InstanceDown` keys on always_on="true", which
+      # is a label only the MACHINE targets carry.  What these buy is the
+      # dashboard and the history.
+      mediaStack = {
+        arrAddress = lib.mkOption {
+          type        = lib.types.str;
+          default     = "";
+          example     = "10.0.90.13";
+          description = ''
+            Address of the *arr container on the Services VLAN.  Empty disables
+            the `scraparr` job.
+
+            Scraparr is ONE exporter covering Sonarr, Radarr, Prowlarr, Bazarr
+            and Jellyseerr — see the rejection of Exportarr recorded in
+            machines/ernst/containers/arr.nix.  Its port must additionally be
+            source-restricted to THIS container's address on the far end;
+            adding the target here alone produces a job that times out.
+          '';
+        };
+
+        scraparrPort = lib.mkOption {
+          type        = lib.types.port;
+          default     = 7100;
+          description = "Scraparr's listener (its own upstream default).";
+        };
+
+        jellyfinAddress = lib.mkOption {
+          type        = lib.types.str;
+          default     = "";
+          example     = "10.0.90.10";
+          description = ''
+            Address of the Jellyfin container on the Services VLAN.  Empty
+            disables the `jellyfin` job.
+
+            NO EXPORTER.  Jellyfin serves Prometheus metrics natively — 10.11.x
+            ships prometheus-net — so this scrapes the application directly.
+            Do not add an exporter for it.
+
+            The endpoint is gated on `EnableMetrics` in Jellyfin's own
+            system.xml, which is a dashboard setting and therefore a manual
+            step; until it is on, this job reports up=0.  See the note beside
+            services.jellyfin in machines/ernst/containers/jellyfin.nix.
+          '';
+        };
+
+        jellyfinPort = lib.mkOption {
+          type        = lib.types.port;
+          default     = 8096;
+          description = ''
+            Jellyfin's HTTP port.  Metrics share it with the media API rather
+            than getting a listener of their own, which is why permitting this
+            scrape necessarily permits more than a scrape — stated plainly in
+            the firewall block of containers/jellyfin.nix.
+          '';
+        };
+
+        qbittorrentAddress = lib.mkOption {
+          type        = lib.types.str;
+          default     = "";
+          example     = "10.0.90.11";
+          description = ''
+            Address of the qBittorrent guest on the Services VLAN.  Empty
+            disables the `qbittorrent` job.
+
+            NOTE WHERE THIS ONE LIVES: it is inside M3's VPN microvm — a guest
+            with its own kernel, not a container — so the exporter runs behind
+            the same killswitch as the client it reads.  The scrape path is
+            nonetheless the same VLAN-90 layer-2 hop the *arr use.
+          '';
+        };
+
+        qbittorrentExporterPort = lib.mkOption {
+          type        = lib.types.port;
+          default     = 8000;
+          description = "prometheus-qbittorrent-exporter's listener (its own default).";
+        };
+
+        # ── THERE IS NO OLLAMA OPTION HERE, AND IT IS NOT AN OVERSIGHT ──────
+        #
+        # M13's brief says "ADD AN OLLAMA TARGET", so that it appears `up` and
+        # reports VRAM before M15's GPU arbitration needs the history.  The
+        # premise does not hold, and it was checked on the running machine
+        # rather than reasoned about:
+        #
+        #   ernst, 2026-08-26, ollama 0.32.3
+        #     GET http://127.0.0.1:11434/metrics    404
+        #     GET http://127.0.0.1:11434/api/tags   200
+        #
+        # OLLAMA SERVES NO PROMETHEUS ENDPOINT.  A scrape job pointed at it
+        # would report up=0 forever, which is worse than no job: it is an
+        # alert-shaped object that can never go green, on a dashboard that is
+        # supposed to make red mean something.
+        #
+        # TWO FURTHER REASONS NOT TO PAPER OVER IT WITH AN EXPORTER HERE:
+        #
+        #   1. THE WANTED SERIES IS THE GPU'S, NOT OLLAMA'S.  M15 has to
+        #      arbitrate between Ollama, the gamescope HTPC session and Tdarr
+        #      over ONE 24 GiB card.  Ollama's own view of its allocation
+        #      cannot see the other two, so even a working Ollama exporter
+        #      would answer a narrower question than the one being asked.
+        #   2. NOTHING IS PACKAGED.  ernst's pin has
+        #      prometheus-nvidia-gpu-exporter and no AMD equivalent — no
+        #      amd-smi-exporter, no rocm-smi-exporter — and the card is a
+        #      Navi 31.  So this is a hand-rolled derivation, i.e. a third one
+        #      in a milestone that already has two.
+        #
+        # HANDED TO M15 WITH THE MEASUREMENT ATTACHED, rather than dropped.
+        # M11's numbers are what make the history worth having at all: 22482
+        # MiB at 64k with q8_0 against a 24560 MiB card, i.e. 2078 MiB of
+        # headroom.  M15 should start by packaging an AMD SMI exporter and
+        # scraping the CARD, and it will then cover all three claimants at
+        # once.
       };
 
       # ── M7: the identity provider ─────────────────────────────────────────
@@ -1440,7 +1608,39 @@ in
                     targets = [ "${settings.authelia.address}:${toString settings.authelia.metricsPort}" ];
                     labels.instance = "authelia";
                   } ];
-                } ++ [
+                }
+                # ── M13's media-stack targets ──────────────────────────────
+                #
+                # Each conditional on its own address, so a fleet without a
+                # media stack — or an ernst part-way through M13 — evaluates
+                # and runs with whichever subset is configured.
+                #
+                # NO TDARR JOB.  That arrives with M15, which owns it: queue
+                # depth is only a meaningful series once there is a queue.
+                ++ lib.optional (settings.mediaStack.arrAddress != "") {
+                  job_name = "scraparr";
+                  static_configs = [ {
+                    targets = [ "${settings.mediaStack.arrAddress}:${toString settings.mediaStack.scraparrPort}" ];
+                    labels.instance = "scraparr";
+                  } ];
+                }
+                ++ lib.optional (settings.mediaStack.jellyfinAddress != "") {
+                  job_name = "jellyfin";
+                  static_configs = [ {
+                    targets = [ "${settings.mediaStack.jellyfinAddress}:${toString settings.mediaStack.jellyfinPort}" ];
+                    labels.instance = "jellyfin";
+                  } ];
+                }
+                ++ lib.optional (settings.mediaStack.qbittorrentAddress != "") {
+                  job_name = "qbittorrent";
+                  static_configs = [ {
+                    targets = [ "${settings.mediaStack.qbittorrentAddress}:${toString settings.mediaStack.qbittorrentExporterPort}" ];
+                    labels.instance = "qbittorrent";
+                  } ];
+                }
+                # NO OLLAMA JOB.  Ollama 0.32.3 serves no /metrics — measured
+                # on ernst, see the note in the mediaStack options above.
+                ++ [
                   # The stack watching itself.  All on loopback inside this
                   # netns, so none of these needs a port opened.
                   {

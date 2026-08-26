@@ -337,6 +337,12 @@
   #   uid 3011  cleanuparr   (containers/arr.nix — M12, group media)
   #   uid 3012  mediathekarr (containers/arr.nix — M12, group media; shared by
   #                           the indexer and downloader units)
+  #   uid 3014  jellyseerr   (containers/arr.nix — M13, own group, NO media)
+  #   gid 3014  jellyseerr   (containers/arr.nix — M13)
+  #   uid 3015  janitorr     (containers/arr.nix — M13, group media — it
+  #                           DELETES files and builds the Leaving Soon tree)
+  #   uid 3016  scraparr     (containers/arr.nix — M13, own group, REST only)
+  #   gid 3016  scraparr     (containers/arr.nix — M13)
   #
   #===========================================================================
   # RESERVED — M8 and M12–M16.  Comments only; nothing below is declared yet.
@@ -409,18 +415,9 @@
   #                              pkgs.unpackerr exists (0.15.2, 2026-08-25) but
   #                              there is no services.unpackerr module)
   #
-  #   uid 3014  jellyseerr      (M13, OWN group — NO media access.  It requests
-  #                              media; it never touches a file)
-  #   gid 3014  jellyseerr      (M13)
-  #   uid 3015  janitorr        (M13, group media PRIMARY — it DELETES files.
-  #                              First deploy keeps the shipped config's
-  #                              dry-run, and the *arr Recycle Bin goes on in
-  #                              the same deploy)
-  #   uid 3016  scraparr        (M13, OWN group — it reads REST APIs only.
-  #                              Chosen over Exportarr, which would need one
-  #                              instance, one uid, one port and one firewall
-  #                              line PER APP)
-  #   gid 3016  scraparr        (M13)
+  #   M13 LANDED AND TOOK ALL THREE (2026-08-26).  3014, 3015 and 3016 have
+  #   moved up into the allocated table above; the rows are removed from here
+  #   rather than left in both places.
   #
   #   uid 3017  lidarr          (M14, group media PRIMARY)
   #   uid 3018  soularr         (M14, group media PRIMARY — stays in the arr

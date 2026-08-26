@@ -302,6 +302,24 @@
             oidc.enable    = true;
             oidc.issuerUrl = "https://auth.goclan.org";
           };
+
+          # M13.  Four media-stack targets, all on VLAN 90 addresses from the
+          # table in machines/ernst/networking.nix, except Ollama which is on
+          # ernst itself.
+          #
+          # Each of these needs a matching source-restriction on the FAR end —
+          # the monitoring container's address has to be permitted there, or
+          # the job simply times out.  Those rules are in containers/arr.nix,
+          # containers/jellyfin.nix and microvms/wg-qbittorrent.nix.
+          # THREE, NOT THE FOUR M13 ASKED FOR.  There is deliberately no Ollama
+          # target: ollama 0.32.3 answers 404 on /metrics (measured on ernst,
+          # 2026-08-26), so the job could only ever be down.  The reasoning and
+          # what M15 should do instead are in service-modules/monitoring.nix.
+          mediaStack = {
+            arrAddress         = "10.0.90.13";
+            jellyfinAddress    = "10.0.90.10";
+            qbittorrentAddress = "10.0.90.11";
+          };
         };
 
         # ernst is also a client, and the only one carrying the three optional
@@ -314,6 +332,10 @@
           exporters.zfs      = true;
           exporters.smartctl = true;
           exporters.systemd  = true;
+          # M13.  ARC statistics, which the pool exporter above does NOT cover
+          # — see the option's description for why the two are not
+          # interchangeable.  ernst only: on a laptop this series is noise.
+          exporters.arc      = true;
         };
 
         # The laptops take node_exporter and nothing else.  miralda and biene

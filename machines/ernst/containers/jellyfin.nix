@@ -107,13 +107,23 @@ let
   mediaGid = 3000;
 
   # Traefik's veth address on VLAN 90 (M5, DHCP reservation on the UDM-Pro
-  # keyed on 02:00:00:90:00:04).  The ONLY source permitted to reach 8096.
+  # keyed on 02:00:00:90:00:04).  Until M13, the ONLY source permitted to reach
+  # 8096.
   #
   # Naming a peer's address here is the deliberate opposite of the rule this
   # file follows for its own — see the "BACKEND BYPASS HARDENING" section of
   # machines/ernst/containers/traefik.nix, which owns the argument for why the
   # restriction lives on this side rather than on the UDM-Pro.
   traefikAddr = "10.0.90.12";
+
+  # M13's two API clients.  Same bridge, same VLAN, same one-hop caveat as
+  # traefikAddr; see the firewall block below for what each of them wants and
+  # why neither can go through the proxy.
+  #
+  #   .13  arr container      Janitorr, as a real Jellyfin user
+  #   .14  monitoring         Prometheus, scraping the NATIVE /metrics endpoint
+  arrAddr        = "10.0.90.13";
+  monitoringAddr = "10.0.90.14";
 in
 {
   ##############################################################################
@@ -529,9 +539,38 @@ in
       # directly for debugging, go in through the container, where `lo` is
       # always trusted by the NixOS firewall:
       #     nixos-container run jellyfin -- curl -sS localhost:8096/health
+      #
+      # ── M13: TWO MORE SOURCES, AND NEITHER IS A BROWSER ───────────────────
+      #
+      # Until M13 this list had exactly one entry, because 8096 only ever
+      # fronted a browser and Traefik was the only way to a browser.  M13 adds
+      # two API clients that are not behind the proxy and cannot be:
+      #
+      #   10.0.90.13  the arr container — JANITORR.  It needs Jellyfin's API to
+      #               build the "Leaving Soon" collections and, once dry-run is
+      #               turned off, to issue deletes.  It authenticates as a real
+      #               Jellyfin USER (see the janitorr blocks in arr.nix); it is
+      #               not riding Traefik's session.
+      #   10.0.90.14  the monitoring container — PROMETHEUS.  Jellyfin's NATIVE
+      #               /metrics endpoint, enabled below.  No exporter.
+      #
+      # Both are single layer-2 hops on br0, so — as with the Traefik rule —
+      # their frames never reach the UDM-Pro and this chain is the only
+      # enforcement point that exists for them.
+      #
+      # THE SAME PORT, THREE SOURCES, AND THAT IS THE COST OF JELLYFIN'S
+      # DESIGN: /metrics is served on 8096 alongside the media API rather than
+      # on a separate listener, so permitting a scrape necessarily permits the
+      # monitoring container to reach everything else on 8096 too.  That is
+      # accepted here — the monitoring container runs Prometheus, Alertmanager
+      # and Grafana and nothing that takes untrusted input — but it is stated
+      # rather than glossed, because it is strictly weaker than Authelia's and
+      # Traefik's arrangement, where the telemetry listener is its own port.
       networking.firewall.allowedTCPPorts = [ ];
       networking.firewall.extraCommands = ''
         iptables -A nixos-fw -p tcp -s ${traefikAddr}/32 --dport 8096 -j nixos-fw-accept
+        iptables -A nixos-fw -p tcp -s ${arrAddr}/32 --dport 8096 -j nixos-fw-accept
+        iptables -A nixos-fw -p tcp -s ${monitoringAddr}/32 --dport 8096 -j nixos-fw-accept
       '';
 
       # Pin jellyfin's numeric UID/GID to match the host-side chown above so
@@ -593,6 +632,17 @@ in
         # ports this file has always refused.  The explicit 8096-only list is
         # in the networking block above.
         openFirewall = false;
+
+        # ── M13: /metrics IS NATIVE.  SEE jellyfin-enable-metrics BELOW ──────
+        #
+        # M13 requires Jellyfin's OWN metrics endpoint and forbids adding an
+        # exporter for it.  The endpoint is real in this version: 10.11.11
+        # ships Prometheus.AspNetCore.dll, Prometheus.NetStandard.dll and
+        # prometheus-net.DotNetRuntime.dll (checked in the store path, not
+        # assumed from release notes).
+        #
+        # Enabling it is NOT a dashboard step — see that unit for why this file
+        # ended up owning one XML element.
         hardwareAcceleration = {
           enable = true;
           type   = "vaapi";
@@ -682,6 +732,67 @@ in
       #     boot.isContainer because they conflict with nspawn's own mount
       #     namespace setup.  Overriding here would either error out at
       #     activation or silently no-op depending on the option.
+      ##########################################################################
+      # M13 — flip EnableMetrics in Jellyfin's own system.xml.
+      #
+      # ── THIS WAS PLANNED AS A MANUAL STEP AND THE MANUAL STEP DOES NOT EXIST
+      #
+      #   The PR body said "Dashboard → Advanced → enable metrics".  THERE IS
+      #   NO SUCH TOGGLE.  Jellyfin removed the metrics switch from the web UI;
+      #   in 10.11.11 `EnableMetrics` is a ServerConfiguration property that
+      #   lives ONLY in config/system.xml, and the NixOS module exposes no
+      #   option for it.  Confirmed on ernst, 2026-08-26:
+      #
+      #     <EnableMetrics>false</EnableMetrics>
+      #
+      #   present in the file, absent from every dashboard page.  So the choice
+      #   was never "declare it or let a human click it" — it was "declare it
+      #   or hand-edit XML on every fresh install and after any reset".
+      #
+      # ── WHY THIS DOES NOT CONTRADICT THE `forceEncodingConfig` REASONING ──
+      #
+      #   The argument against Nix owning system.xml still holds completely:
+      #   that file carries every other server setting there is, and a
+      #   store-rendered copy would clobber settings this repo has no opinion
+      #   about.  This unit does NOT own the file.  It rewrites ONE ELEMENT and
+      #   leaves the other several hundred bytes exactly as Jellyfin wrote
+      #   them — closer to `sed -i` than to a template.
+      #
+      # ── IT HAS TO RUN WHILE JELLYFIN IS STOPPED ──────────────────────────
+      #
+      #   Jellyfin rewrites system.xml from memory on shutdown, so an edit made
+      #   while it is running is discarded at the next restart — which is
+      #   exactly how a hand-edit "mysteriously reverts".  ExecStartPre runs in
+      #   the gap and is therefore the only safe moment.
+      #
+      #   Idempotent by construction: it matches only the `false` form, so a
+      #   second run is a no-op, and a future Jellyfin that ships the element
+      #   already true is left alone.
+      #
+      #   It does NOT create the element if absent.  An upstream that stops
+      #   emitting `EnableMetrics` has changed something this file should not
+      #   paper over, so it warns and lets the scrape job go down visibly.
+      systemd.services.jellyfin.serviceConfig.ExecStartPre = [
+        "${pkgs.writeShellScript "jellyfin-enable-metrics" ''
+          set -euo pipefail
+          conf=/var/lib/jellyfin/config/system.xml
+
+          if [ ! -f "$conf" ]; then
+            echo "jellyfin: $conf does not exist yet — first start, nothing to patch" >&2
+            exit 0
+          fi
+
+          if ! ${pkgs.gnugrep}/bin/grep -q '<EnableMetrics>' "$conf"; then
+            echo "jellyfin: no <EnableMetrics> element in $conf — upstream changed; /metrics will stay off" >&2
+            exit 0
+          fi
+
+          ${pkgs.gnused}/bin/sed -i \
+            's|<EnableMetrics>false</EnableMetrics>|<EnableMetrics>true</EnableMetrics>|' \
+            "$conf"
+        ''}"
+      ];
+
       systemd.services.jellyfin.serviceConfig = {
         ProtectHome = true;
         UMask       = "0077";
