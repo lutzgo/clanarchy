@@ -172,17 +172,52 @@
         dns-priority = -100;
       };
 
-      # See THE SECOND BUG above. `method` is required here for the same
-      # all-or-nothing reason it is required in [ipv4]: a section without it is
-      # rejected, and the rejection is silent.
+      # ── IPv6 IS TURNED OFF ON THIS PROFILE, NOT JUST ITS DNS ─────────────
       #
-      # "auto" keeps SLAAC addressing — this turns off only the DNS half.
-      ipv6 = {
-        method          = "auto";
-        ignore-auto-dns = true;
-        dns-search      = "~. skynet.lan";
-        dns-priority    = -100;
-      };
+      # The first attempt at this was `method = "auto"` plus
+      # `ignore-auto-dns = true`, on the reasoning that SLAAC addressing should
+      # be kept and only the resolver suppressed. IT DID NOT WORK, and the
+      # measurement is worth keeping because the failure is invisible:
+      #
+      #   nmcli device show wlp1s0 | grep IP6.DNS     →  (nothing)
+      #   resolvectl status wlp1s0
+      #     Current DNS Server: fd93:8550:36e6:2:2e91:abff:fe73:3f35
+      #            DNS Servers: 10.0.5.3
+      #                         fd93:8550:36e6:2:2e91:abff:fe73:3f35
+      #
+      # NetworkManager correctly held NO IPv6 resolver, and systemd-resolved
+      # had one anyway and was actively using it. `ignore-auto-dns` governs
+      # what NM puts in its own configuration; it does not retract what has
+      # already reached resolved for that link, and a re-activation does not
+      # reliably clear it either.
+      #
+      # The symptom is a COIN FLIP, which is what made this expensive to chase:
+      # 10.0.5.3 answers `radarr.goclan.org` with 10.0.90.12, the gateway
+      # answers NXDOMAIN, and whichever replies first wins and gets cached. The
+      # same name resolved and then failed minutes apart on one machine with no
+      # configuration change in between. This module's header already described
+      # that as "resolved only by luck of link ordering" — this is the same
+      # fault, and half-measures leave the luck in place.
+      #
+      # `method = "disabled"` removes IPv6 from the link entirely: no address,
+      # no default route, no RDNSS, and nothing left for resolved to prefer.
+      #
+      # ── WHY THIS COSTS NOTHING HERE ──────────────────────────────────────
+      #
+      #   - The UDM-Pro's LAN network is configured `IPv6 Interface Type: None`
+      #     already, so IPv6 on this link is UNINTENDED. Router advertisements
+      #     were still arriving (`proto ra`, refreshing every ~30 min) on
+      #     2026-08-26 despite that setting, which is a gateway-side question
+      #     and not one this file can answer.
+      #   - Both split-horizon zones are IPv4-only: `dns.skynet.lan` (10.0.5.3)
+      #     has no AAAA, and neither does anything else in `skynet.lan`.
+      #   - ZeroTier carries its own IPv6 on its own interface and is untouched
+      #     by this — the fleet's v6 connectivity does not run over wifi.
+      #
+      # REVISIT THIS if the LAN ever gains real IPv6. The correct end state
+      # then is `method = "auto"` with the gateway advertising Technitium
+      # rather than itself — at which point Technitium needs an AAAA first.
+      ipv6.method = "disabled";
     };
   };
 }
