@@ -1605,6 +1605,13 @@ in
         #
         # ── INSTANCE NAMES MUST BE UNIQUE ACROSS SERVICES ────────────────────
         #
+        # AND SO MUST base_url — M12 found the second half the hard way, and it
+        # is written out where the block itself lives, below.  Unique names are
+        # necessary and NOT sufficient: recyclarr groups instances by base_url
+        # and treats two names on one server as duplicates, with the identical
+        # silent outcome described here.  ONE INSTANCE PER SERVER, ALWAYS;
+        # extra profiles go in `quality_profiles`.
+        #
         # `movies` and `series`, not `main` and `main`.  Recyclarr treats the
         # instance-name namespace as global, not per-service, and it enforces
         # that in the worst possible way: with both named `main` it logs
@@ -1639,20 +1646,37 @@ in
         # anything it is *less* compatible: full TrueHD Atmos and dual-layer
         # Dolby Vision are exactly what weak clients cannot direct-play.
         #
-        # MEASURED CONTEXT, ernst 2026-08-21.  Sonarr held 133 series, all on a
-        # hand-made profile "Ultra-HD" (HDTV/WEB/Bluray-2160p) with
-        # `upgradeAllowed = FALSE`.  Every TRaSH profile ships
-        # `upgradeAllowed = true`.  Recyclarr creates its profiles ALONGSIDE
-        # existing ones and never reassigns a series, so nothing moves on its
-        # own — but bulk-reassigning those 133 series to an upgrade-enabled
-        # profile would have queued a re-download of most of a 6.1 TB library,
-        # and the same again for 13 TB of films once imported: together roughly
-        # the whole 47.6 TB of free space, pulled through the VPN.
+        # MEASURED CONTEXT — RE-MEASURED 2026-08-26, AND THE OLD NUMBERS WERE
+        # WRONG IN A WAY THAT MATTERED.
         #
-        # So the operating rule is: promote titles to a new profile
-        # INDIVIDUALLY.  The one part that applies fleet-wide regardless is
-        # `quality_definition`, which rewrites size limits for every profile
-        # including "Ultra-HD".
+        # This paragraph used to read: "Sonarr held 133 series, all on a
+        # hand-made profile 'Ultra-HD' with upgradeAllowed = FALSE."  Both
+        # halves are false today, and the second was probably always a
+        # conflation of the two services.  Actual census, via each app's
+        # /api/v3 endpoints:
+        #
+        #   SONARR   139 series
+        #     id 4  HD-1080p               upgradeAllowed=false    67
+        #     id 6  HD - 720p/1080p        upgradeAllowed=false    13
+        #     id 7  Remux + WEB 2160p      upgradeAllowed=TRUE     59
+        #     id 5  Ultra-HD               upgradeAllowed=false     0  ← empty
+        #
+        #   RADARR   2432 movies
+        #     id 5  Ultra-HD               upgradeAllowed=false  2389
+        #     id 7  Remux + WEB 2160p      upgradeAllowed=TRUE     27
+        #     id 6  HD - 720p/1080p        upgradeAllowed=false    16
+        #
+        # So "the big pile sitting on a non-upgrading Ultra-HD profile" is a
+        # RADARR fact — 2389 films — and Sonarr's Ultra-HD holds nothing at
+        # all.  The bulk-edit hazard is real and is mostly on the film side;
+        # the film library is the 13 TB one and the pool has ~47.6 TB free, so
+        # a mass promotion there is still capable of consuming most of it
+        # through the VPN.
+        #
+        # The operating rule is unchanged and now rests on correct numbers:
+        # promote titles to a new profile INDIVIDUALLY.  The one part that
+        # applies fleet-wide regardless is `quality_definition`, which rewrites
+        # size limits for every profile including "Ultra-HD".
         #
         # reset_unmatched_scores means custom formats NOT named by these groups
         # are set to 0 on the synced profile.  That is what makes the profile
@@ -1688,13 +1712,91 @@ in
         # config that failed to apply.  The check that the new instances really
         # are deployed is the unit itself —
         #
-        #   nixos-container run arr -- systemctl cat recyclarr \
-        #     | grep -c LoadCredential
+        #   nixos-container run arr -- systemctl show recyclarr -p ExecStartPre \
+        #     --value | xargs cat | grep -o 'quality_profiles.*' | head -c 400
         #
-        # — which is one entry per `_secret` reference, i.e. five once M12's
-        # three extra instances are in.  Run the service once (or wait for the
-        # timer) and the config.yml catches up.
+        # — the pre-start script embeds the whole rendered config as a heredoc,
+        # so it shows what the NEXT run will use without running anything.
+        # (`grep -c LoadCredential` counts `_secret` references, which is two
+        # here — one per INSTANCE, not per profile.)  Run the service once, or
+        # wait for the timer, and config.yml catches up.
         configuration = {
+
+          ####################################################################
+          # M12 (g) — THREE MORE PROFILES, ON THE TWO EXISTING INSTANCES.
+          #
+          # ── RECYCLARR DEDUPLICATES ON base_url, NOT ON INSTANCE NAME ──────
+          #
+          # THIS IS THE CORRECTED VERSION.  The first attempt gave each new
+          # profile its own INSTANCE (`sonarr.series-german`, and so on) with a
+          # distinct name, on the strength of the "instance names must be
+          # unique" warning further up this file.  Unique names are necessary
+          # and NOT sufficient.  Measured on ernst 2026-08-26:
+          #
+          #   [DBG] Split instances: [
+          #     {"BaseUrl":"http://localhost:7878",
+          #      "InstanceNames":["movies","movies-german"]},
+          #     {"BaseUrl":"http://localhost:8989",
+          #      "InstanceNames":["series","series-german","series-remux-2160p"]}]
+          #
+          # …and then it synced NOTHING and EXITED 0.  Two instance names
+          # pointing at ONE base_url are duplicates as far as recyclarr is
+          # concerned, however differently they are named.  This is the SAME
+          # fails-by-succeeding bug the header already warns about, on a
+          # dimension the warning did not cover — so the rule is now:
+          #
+          #   ONE INSTANCE PER SERVER.  ALWAYS.  Additional profiles go in
+          #   `quality_profiles`; never in a new instance.
+          #
+          # It is only visible with `--log debug`.  At the default level the
+          # command prints two "Initializing provider" lines and stops, which
+          # looks like success.  The check is the ABSENCE of "Processing" and
+          # "Completed at" lines, exactly as the note below `systemd.services.
+          # recyclarr` says.
+          #
+          # ── SO HOW ARE THE GROUPS KEPT APART? assign_scores_to ────────────
+          #
+          # The cross-contamination worry that motivated separate instances is
+          # real: `custom_format_groups` is declared per INSTANCE, and a group
+          # with no `assign_scores_to` applies to ALL guide-backed profiles in
+          # that instance.  Left implicit, the German unwanted-formats set
+          # would land on the English profile and vice versa — a config that
+          # syncs cleanly and scores nonsense.
+          #
+          # `assign_scores_to` is the mechanism that solves it properly, and it
+          # takes a profile REFERENCE — `trash_id` or `name`.  trash_id is used
+          # throughout below: it is what `quality_profiles` already keys on, and
+          # a name can be changed in the *arr UI by anyone, silently detaching
+          # the scores from the profile.
+          #
+          # EVERY GROUP HERE CARRIES AN EXPLICIT assign_scores_to, including
+          # the ones that go to only one profile.  Relying on the "applies to
+          # all" default would mean the correctness of this block changed the
+          # next time a profile was added — which is precisely how it broke.
+          #
+          # The pairings below are NOT invented: each is the group list its own
+          # TRaSH template ships with, transcribed whole, from config-templates
+          # @ 9faf65f.  Scores and CF combinations are tested together to
+          # prevent download loops; a half-transcribed group is not a smaller
+          # version of the same thing.
+          #
+          # NOT ADDED, both recorded so they are not "discovered" later:
+          #
+          #   AN ANIME PROFILE.  M12 (g) says to ask rather than assume, because
+          #   it is a substantial custom-format set for content nobody has said
+          #   they watch.  Asked on 2026-08-26; the answer was no.  Reopen it by
+          #   adding sonarr/templates/anime-remux-1080p.yml's profile to the
+          #   `sonarr.series` quality_profiles list below — NOT as a new
+          #   instance, for the reason at the top of this comment.
+          #
+          #   PROFILARR.  Same job as this block, but it keeps state in ITS OWN
+          #   DATABASE.  A Nix attrset is a reviewable diff with recorded
+          #   provenance and is strictly better here — the argument the
+          #   recyclarr header makes about why this config is inlined rather
+          #   than `include`d applies to Profilarr with more force, not less.
+          #   REJECTED, deliberately.
+          ####################################################################
+
           radarr.movies = {
             base_url        = "http://localhost:${toString radarrPort}";
             api_key._secret = "${arrSecretsDir}/radarr-api-key";
@@ -1706,15 +1808,52 @@ in
                 trash_id = "fd161a61e3ab826d3a22d53f935696dd";   # Remux + WEB 2160p
                 reset_unmatched_scores.enabled = true;
               }
+              # M12: the German companion, pitched to MATCH the English profile
+              # rather than sit below it.  Films are what you sit down for, and
+              # a German profile a step down would make "upgrade to German when
+              # one appears" a downgrade in everything except language.
+              #
+              # THE BEHAVIOUR THIS BUYS, which is the actual request in M12 (g):
+              # grab the best English release first, then upgrade to German /
+              # German-DL when one appears, upgrading until "Upgrade Until
+              # Custom Format Score".  That is a property of the TRaSH German
+              # profile itself — its German-audio CFs carry positive scores and
+              # its cutoff sits above what an English-only release can reach —
+              # not something configured here.  It only takes effect for titles
+              # ASSIGNED to it; see the promotion rule on the Sonarr side.
+              {
+                trash_id = "79faa9943cef2f510b997b1f2a9f3ea6";   # [German] Remux + WEB 2160p
+                reset_unmatched_scores.enabled = true;
+              }
             ];
 
-            # Groups the template adds on top of the three it syncs by default
+            # Groups these templates add on top of the three synced by default
             # ([Audio] Audio Formats, [HDR Formats] HDR, [Streaming Services]
             # General).  Those three are not listed anywhere — they are on
             # unless explicitly skipped.
             custom_format_groups.add = [
-              { trash_id = "ff204bbcecdd487d1cefcefdbf0c278d"; }  # [Optional] Golden Rule UHD
-              { trash_id = "a3ac6af01d78e4f21fcb75f601ac96df"; }  # [Unwanted] Unwanted Formats
+              # Both templates ship Golden Rule UHD, so it goes to both.
+              {
+                trash_id = "ff204bbcecdd487d1cefcefdbf0c278d";    # [Optional] Golden Rule UHD
+                assign_scores_to = [
+                  { trash_id = "fd161a61e3ab826d3a22d53f935696dd"; }
+                  { trash_id = "79faa9943cef2f510b997b1f2a9f3ea6"; }
+                ];
+              }
+              # English unwanted formats — ENGLISH PROFILE ONLY.
+              {
+                trash_id = "a3ac6af01d78e4f21fcb75f601ac96df";    # [Unwanted] Unwanted Formats
+                assign_scores_to = [ { trash_id = "fd161a61e3ab826d3a22d53f935696dd"; } ];
+              }
+              # GERMAN unwanted formats — GERMAN PROFILE ONLY.  A different
+              # trash_id with different contents, not a translation: it adds
+              # German LQ, German LQ (release title) and German Microsized,
+              # which are the formats that make a German library unwatchable
+              # and which the English group knows nothing about.
+              {
+                trash_id = "0ca61b4b233178d07113082a7acff72d";    # [Unwanted] Unwanted Formats German
+                assign_scores_to = [ { trash_id = "79faa9943cef2f510b997b1f2a9f3ea6"; } ];
+              }
             ];
           };
 
@@ -1732,156 +1871,58 @@ in
                 trash_id = "72dae194fc92bf828f32cde7744e51a1";   # WEB-1080p
                 reset_unmatched_scores.enabled = true;
               }
-            ];
-
-            custom_format_groups.add = [
-              # Golden Rule *HD*, not UHD.  They are different groups with
-              # different trash_ids, tuned to different resolutions, and
-              # carrying the UHD one over from the 2160p template would score
-              # x265/HDR rules that do not belong on a 1080p profile.
-              { trash_id = "158188097a58d7687dee647e04af0da3"; }  # [Optional] Golden Rule HD
-              { trash_id = "74aff4168620ed49dcc67e92b2c2a5b4"; }  # [Optional] Language Profiles
-              { trash_id = "85fae4a2294965b75710ef2989c850eb"; }  # [Streaming Services] HD/UHD boost
-              { trash_id = "59c3af66780d08332fdc64e68297098f"; }  # [Unwanted] Unwanted Formats
-            ];
-          };
-
-          ####################################################################
-          # M12 (g) — THREE MORE INSTANCES, NOT THREE MORE PROFILES.
-          #
-          # ── WHY THEY ARE SEPARATE INSTANCES ──────────────────────────────
-          #
-          # The tempting shape is to append a second entry to the existing
-          # `quality_profiles` list.  It is wrong, and quietly so:
-          # `custom_format_groups` is declared PER INSTANCE, not per profile,
-          # so every group listed in a block is scored onto EVERY profile in
-          # that block.  Adding the German profile to `sonarr.series` would
-          # push the English WEB-1080p group set onto the German profile and
-          # the German unwanted-formats set onto the English one — a config
-          # that syncs cleanly and scores nonsense.
-          #
-          # Separate instances keep each profile with exactly the groups its
-          # TRaSH template pairs it with, which is the whole point of the
-          # "TRANSCRIBE WHOLE CUSTOM-FORMAT GROUPS" rule: scores and CF
-          # combinations are tested together to prevent download loops, and
-          # most undesired results come from mixing them.
-          #
-          # INSTANCE NAMES ARE GLOBALLY UNIQUE — see the warning further up
-          # this file.  Two instances sharing a name make recyclarr log
-          # "Duplicate instances" at DEBUG, sync NOTHING, and EXIT 0.  Every
-          # name below is distinct from every other in this attrset.
-          #
-          # `quality_definition` repeats in each block.  That is not a
-          # redundancy to tidy away: it is per-instance in recyclarr's schema,
-          # every block here names the same type for the same service, so the
-          # repeated syncs are idempotent and write identical values.  Drop it
-          # from one and that instance stops maintaining size limits.
-          #
-          # All five blocks were transcribed from config-templates @ 9faf65f,
-          # the same rev the two blocks above name, so a single `git show`
-          # checks the whole file.
-          ####################################################################
-
-          # ── German films: Remux + WEB 2160p ──────────────────────────────
-          #
-          # radarr/templates/german-uhd-remux-web.yml.  Chosen to MATCH the
-          # English radarr profile above rather than a lower tier: films are
-          # what you sit down for, and a German profile a step below the
-          # English one would make "upgrade to German when it appears" a
-          # downgrade in everything except language.
-          #
-          # THE BEHAVIOUR THIS BUYS, which is the actual request in M12 (g):
-          # grab the best English release first, then upgrade to German /
-          # German-DL when one appears, upgrading until "Upgrade Until Custom
-          # Format Score".  That is a property of the TRaSH German profile
-          # itself — its German-audio custom formats carry positive scores and
-          # its cutoff score sits above what an English-only release can
-          # reach — not something configured here.  It only works if titles
-          # are actually ASSIGNED to this profile; see the promotion rule
-          # below, which applies to this exactly as it applies to the Sonarr
-          # 2160p one.
-          radarr.movies-german = {
-            base_url        = "http://localhost:${toString radarrPort}";
-            api_key._secret = "${arrSecretsDir}/radarr-api-key";
-
-            quality_definition.type = "movie";
-
-            quality_profiles = [
-              {
-                trash_id = "79faa9943cef2f510b997b1f2a9f3ea6";   # [German] Remux + WEB 2160p
-                reset_unmatched_scores.enabled = true;
-              }
-            ];
-
-            custom_format_groups.add = [
-              { trash_id = "ff204bbcecdd487d1cefcefdbf0c278d"; }  # [Optional] Golden Rule UHD
-              # GERMAN unwanted formats, not the English list.  Different
-              # trash_id, different contents — it adds German LQ, German LQ
-              # (release title) and German Microsized, which are the formats
-              # that make a German-language library unwatchable and which the
-              # English group knows nothing about.
-              { trash_id = "0ca61b4b233178d07113082a7acff72d"; }  # [Unwanted] Unwanted Formats German
-            ];
-          };
-
-          # ── German series: HD Bluray + WEB ───────────────────────────────
-          #
-          # sonarr/templates/german-hd-bluray-web.yml.  HD rather than UHD, to
-          # match the English sonarr profile's restraint for the same reason
-          # the file already gives: series are the bulk of the episode count,
-          # so this is where restraint actually saves the pool.
-          sonarr.series-german = {
-            base_url        = "http://localhost:${toString sonarrPort}";
-            api_key._secret = "${arrSecretsDir}/sonarr-api-key";
-
-            quality_definition.type = "series";
-
-            quality_profiles = [
+              # M12: German series at HD, matching the English profile's
+              # restraint for the reason this file already gives — series are
+              # the bulk of the episode count, so this is where restraint
+              # actually saves the pool.
               {
                 trash_id = "dca7e5e9e99c703bcbdaaa471dd40e98";   # [German] HD Bluray + WEB
                 reset_unmatched_scores.enabled = true;
               }
-            ];
-
-            custom_format_groups.add = [
-              { trash_id = "158188097a58d7687dee647e04af0da3"; }  # [Optional] Golden Rule HD
-              { trash_id = "6f0872eebfc95b1f93474b7ac866ced0"; }  # [Unwanted] Unwanted Formats German
-            ];
-          };
-
-          # ── Sonarr Remux + WEB 2160p ─────────────────────────────────────
-          #
-          # sonarr/templates/remux-web-2160p.yml.  Created ALONGSIDE the
-          # existing profiles and assigned PER SERIES.
-          #
-          # ── THE RULE IS INDIVIDUAL PROMOTION.  DO NOT BULK-EDIT ──────────
-          #
-          # Someone will eventually "tidy up" by selecting every series in
-          # Sonarr and reassigning the profile in one action.  This paragraph
-          # is the thing that has to stop them, so it is stated with the
-          # numbers M4 measured on this machine:
-          #
-          #   133 series sit on a hand-made "Ultra-HD" profile with
-          #   upgradeAllowed = FALSE.  Every TRaSH profile ships
-          #   upgradeAllowed = true.  Bulk-reassigning those 133 series to an
-          #   upgrade-enabled 2160p profile would queue a re-download of most
-          #   of a 6.1 TB television library, and the same again for 13 TB of
-          #   films once they followed — together roughly THE WHOLE 47.6 TB OF
-          #   FREE SPACE, pulled through the VPN.
-          #
-          # Recyclarr creates profiles alongside existing ones and never
-          # reassigns a series, so nothing moves on its own.  The danger is
-          # entirely a human with a multi-select box.
-          #
-          # Note the Golden Rule id differs from radarr's: Sonarr and Radarr
-          # have DIFFERENT groups with different trash_ids for the same name.
-          sonarr.series-remux-2160p = {
-            base_url        = "http://localhost:${toString sonarrPort}";
-            api_key._secret = "${arrSecretsDir}/sonarr-api-key";
-
-            quality_definition.type = "series";
-
-            quality_profiles = [
+              # M12: Sonarr Remux + WEB 2160p.
+              #
+              # ── THIS ONE ADOPTS AN EXISTING PROFILE.  IT IS NOT NEW ──────
+              #
+              # M12 asked for this to be "created ALONGSIDE" the others.  It
+              # cannot be, and the deploy is what revealed why: Sonarr ALREADY
+              # HAS a profile named exactly `Remux + WEB 2160p` (id 7), with
+              # upgradeAllowed = TRUE and 59 OF THE 139 SERIES ON IT.  Syncing
+              # the guide's profile under its guide name therefore does not
+              # create anything — recyclarr takes the existing profile over and
+              # rewrites it, and `reset_unmatched_scores` below zeroes every
+              # custom format these groups do not name.
+              #
+              # ADOPTING IT IS A DELIBERATE CHOICE, made by lgo on 2026-08-26
+              # with the consequence stated: those 59 series ride an
+              # upgrade-enabled profile, so re-scoring can put their current
+              # files below cutoff and queue 2160p upgrade searches.  The
+              # alternative — giving the guide-backed profile an explicit
+              # `name` so recyclarr builds a separate one and leaves id 7
+              # alone — was considered and rejected: bringing the profile
+              # actually in use into line with TRaSH is the point, and a
+              # second nearly-identical 2160p profile is a thing nobody would
+              # keep straight.
+              #
+              # WATCH THE ACTIVITY QUEUE AFTER THE FIRST REAL SYNC.  If it
+              # fills with upgrade grabs for those 59 series, the lever is
+              # Sonarr's own "Upgrade Until Custom Format Score" on this
+              # profile, not this file.
+              #
+              # ── THE RULE IS STILL INDIVIDUAL PROMOTION.  DO NOT BULK-EDIT ─
+              #
+              # Someone will eventually "tidy up" by selecting everything and
+              # reassigning the profile in one action.  Re-measured 2026-08-26,
+              # and the hazard is mostly on the RADARR side: 2389 of 2432 films
+              # sit on a hand-made "Ultra-HD" profile with upgradeAllowed =
+              # false, and every TRaSH profile ships upgradeAllowed = true.
+              # Mass-promoting those would queue a re-download of most of a
+              # 13 TB film library against ~47.6 TB of free space, through the
+              # VPN.  (The older form of this note put 133 series on Sonarr's
+              # Ultra-HD; Sonarr's Ultra-HD is empty and always was the wrong
+              # service to cite — see the census above.)
+              #
+              # Recyclarr never reassigns a title, so nothing moves on its own.
+              # The danger is entirely a human with a multi-select box.
               {
                 trash_id = "76a5053bdb2d1e4a8f16a69a37d46c12";   # Remux + WEB 2160p
                 reset_unmatched_scores.enabled = true;
@@ -1889,27 +1930,58 @@ in
             ];
 
             custom_format_groups.add = [
-              { trash_id = "e3f37512790f00d0e89e54fe5e790d1c"; }  # [Optional] Golden Rule UHD (SONARR's id)
-              { trash_id = "74aff4168620ed49dcc67e92b2c2a5b4"; }  # [Optional] Language Profiles
-              { trash_id = "85fae4a2294965b75710ef2989c850eb"; }  # [Streaming Services] HD/UHD boost
-              { trash_id = "59c3af66780d08332fdc64e68297098f"; }  # [Unwanted] Unwanted Formats
+              # Golden Rule *HD* for the two HD profiles.  It is a different
+              # group from the UHD one below — different trash_ids, tuned to
+              # different resolutions — and carrying the UHD one onto a 1080p
+              # profile would score x265/HDR rules that do not belong there.
+              {
+                trash_id = "158188097a58d7687dee647e04af0da3";    # [Optional] Golden Rule HD
+                assign_scores_to = [
+                  { trash_id = "72dae194fc92bf828f32cde7744e51a1"; }
+                  { trash_id = "dca7e5e9e99c703bcbdaaa471dd40e98"; }
+                ];
+              }
+              # Golden Rule UHD, and note this is SONARR's id — Sonarr and
+              # Radarr have different groups with different trash_ids under the
+              # same name.  2160p profile only.
+              {
+                trash_id = "e3f37512790f00d0e89e54fe5e790d1c";    # [Optional] Golden Rule UHD
+                assign_scores_to = [ { trash_id = "76a5053bdb2d1e4a8f16a69a37d46c12"; } ];
+              }
+              # The three the two ENGLISH templates share.  Deliberately NOT on
+              # the German profile: its own template ships neither Language
+              # Profiles nor the streaming boost, and adding them would be
+              # exactly the "mixing groups that were tested together" the TRaSH
+              # guidance warns about.
+              {
+                trash_id = "74aff4168620ed49dcc67e92b2c2a5b4";    # [Optional] Language Profiles
+                assign_scores_to = [
+                  { trash_id = "72dae194fc92bf828f32cde7744e51a1"; }
+                  { trash_id = "76a5053bdb2d1e4a8f16a69a37d46c12"; }
+                ];
+              }
+              {
+                trash_id = "85fae4a2294965b75710ef2989c850eb";    # [Streaming Services] HD/UHD boost
+                assign_scores_to = [
+                  { trash_id = "72dae194fc92bf828f32cde7744e51a1"; }
+                  { trash_id = "76a5053bdb2d1e4a8f16a69a37d46c12"; }
+                ];
+              }
+              {
+                trash_id = "59c3af66780d08332fdc64e68297098f";    # [Unwanted] Unwanted Formats
+                assign_scores_to = [
+                  { trash_id = "72dae194fc92bf828f32cde7744e51a1"; }
+                  { trash_id = "76a5053bdb2d1e4a8f16a69a37d46c12"; }
+                ];
+              }
+              # GERMAN unwanted formats — German profile only, same argument as
+              # on the Radarr side.
+              {
+                trash_id = "6f0872eebfc95b1f93474b7ac866ced0";    # [Unwanted] Unwanted Formats German
+                assign_scores_to = [ { trash_id = "dca7e5e9e99c703bcbdaaa471dd40e98"; } ];
+              }
             ];
           };
-
-          # ── NOT ADDED, both recorded so they are not "discovered" later ──
-          #
-          # AN ANIME PROFILE.  M12 (g) says to ask rather than assume, because
-          # it is a substantial custom-format set for content nobody has said
-          # they watch.  Asked on 2026-08-26; the answer was no.  Reopen it by
-          # adding sonarr/templates/anime-remux-1080p.yml as a fourth
-          # instance, not by extending one of the blocks above.
-          #
-          # PROFILARR.  Same job as this block, but it keeps state in ITS OWN
-          # DATABASE.  A Nix attrset is a reviewable diff with recorded
-          # provenance and is strictly better here — the argument the recyclarr
-          # header already makes about why this config is inlined rather than
-          # `include`d applies to Profilarr with more force, not less.
-          # REJECTED, deliberately.
         };
       };
 

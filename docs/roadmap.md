@@ -4472,6 +4472,74 @@ Both fixes were re-verified that way before being pushed.
    tenant of this container is already trusted with *arr API access — but the
    claim is corrected in place, with the condition that would change it.
 
+### The recyclarr block was WRONG, and the deploy is what proved it
+
+**Recyclarr deduplicates on `base_url`, not on instance name.** M12's first
+attempt gave each new profile its own instance (`sonarr.series-german`, and so
+on) on the strength of this repo's own "instance names must be unique" warning.
+Unique names are **necessary and not sufficient**. Measured on ernst with
+`--log debug`:
+
+```
+[DBG] Split instances: [
+  {"BaseUrl":"http://localhost:7878","InstanceNames":["movies","movies-german"]},
+  {"BaseUrl":"http://localhost:8989","InstanceNames":["series","series-german","series-remux-2160p"]}]
+```
+
+…and then it **synced nothing and exited 0** — the same fails-by-succeeding bug
+the M4 header already documented, on a dimension the warning did not cover. At
+the default log level the command prints two "Initializing provider" lines and
+stops, which looks like success. **The check is the ABSENCE of "Processing" and
+"Completed at".**
+
+**The rule is now: ONE INSTANCE PER SERVER, ALWAYS.** Extra profiles go in
+`quality_profiles`; the cross-contamination worry that motivated separate
+instances is solved properly by **`assign_scores_to`** on each
+`custom_format_groups.add` entry, referencing profiles by `trash_id` (a name can
+be changed in the *arr UI, silently detaching the scores). Every group carries an
+explicit `assign_scores_to`, including single-target ones — relying on the
+"applies to all guide-backed profiles" default is exactly what made the block's
+correctness change the moment a second profile appeared.
+
+Corrected and re-previewed against the live instances: both servers now report
+`Processing` and `Completed at`.
+
+### The profile census, re-measured — and one number this repo had wrong
+
+Taken from each app's `/api/v3` endpoints, 2026-08-26:
+
+| Sonarr — 139 series | upgradeAllowed | count |
+|---|---|---|
+| `HD-1080p` | false | 67 |
+| `HD - 720p/1080p` | false | 13 |
+| **`Remux + WEB 2160p`** | **true** | **59** |
+| `Ultra-HD` | false | **0** |
+
+| Radarr — 2432 movies | upgradeAllowed | count |
+|---|---|---|
+| **`Ultra-HD`** | false | **2389** |
+| `Remux + WEB 2160p` | true | 27 |
+| `HD - 720p/1080p` | false | 16 |
+
+**M4's "133 series on a hand-made `upgradeAllowed = false` Ultra-HD profile" is
+false, and appears to have conflated the two services.** Sonarr's Ultra-HD is
+*empty*; the 2389-on-Ultra-HD pile is **Radarr's**. The bulk-edit safety rule is
+unchanged and now rests on correct numbers — the hazard is on the film side,
+where a mass promotion could pull most of a 13 TB library against ~47.6 TB free.
+
+**Consequence for M12 (g): the Sonarr Remux-2160p profile ADOPTS, it does not
+create.** Sonarr already has a profile named exactly `Remux + WEB 2160p` with
+**59 of its 139 series on it**, upgradeAllowed = true. Syncing the guide profile
+under its guide name takes that profile over and rewrites it, with
+`reset_unmatched_scores` zeroing every CF the configured groups do not name.
+**lgo chose adoption on 2026-08-26**, with the consequence stated: those 59
+series can have their current files fall below the new cutoff and queue 2160p
+upgrade searches. The alternative — an explicit `name` so recyclarr builds a
+separate profile and leaves the existing one alone — was considered and rejected
+because bringing the profile actually in use into line with TRaSH is the point.
+**Watch the activity queue after the first real sync**; the lever if it misbehaves
+is Sonarr's "Upgrade Until Custom Format Score" on that profile, not the Nix.
+
 ### Three things the deploy will decide, which evaluation cannot
 
 1. **`ProtectSystem = "strict"` on five new units.** The same call-out M4 made
@@ -4587,11 +4655,15 @@ for state the applications own; that is the same call the *arr root folders lost
    time, and leave the unlinked/orphan handling for last — it reasons about
    hardlink counts on the tree whose hardlink correctness is the point of M3
    and M4.
-6. **Recyclarr profiles are created, never assigned.** Promote titles to the new
-   profiles **INDIVIDUALLY**. A bulk reassignment of the 133 series on the
-   hand-made `upgradeAllowed = false` "Ultra-HD" profile would queue most of
-   6.1 TB of television plus the same again for 13 TB of films — roughly the
-   whole 47.6 TB of free space, through the VPN.
+6. **Recyclarr never reassigns a title.** Promote titles to the new profiles
+   **INDIVIDUALLY**. Re-measured 2026-08-26 (see the census above): the
+   bulk-edit hazard is mostly on the **Radarr** side — 2389 of 2432 films sit
+   on a hand-made `upgradeAllowed = false` "Ultra-HD" profile, and every TRaSH
+   profile ships `upgradeAllowed = true`. Mass-promoting those would queue most
+   of a 13 TB film library against ~47.6 TB free, through the VPN.
+   **One exception to "never assigned":** Sonarr's `Remux + WEB 2160p` is
+   adopted, not created — 59 series are already on it. Watch the activity queue
+   after the first real sync.
 
 ---
 
