@@ -109,7 +109,7 @@ let
       pname,
       projectFile,
       executable,
-      port,
+      listen,
       description,
     }:
     buildDotnetModule {
@@ -141,6 +141,29 @@ let
       # inherited from a file inside a tarball.  It also makes the two
       # components independent of each other's appsettings.
       #
+      # ── THE BIND ADDRESS IS PER-COMPONENT, AND IT BIT ─────────────────
+      #
+      # Both components were originally pinned to 127.0.0.1 on the reasoning
+      # that "nothing outside the container should reach either".  That is
+      # true of the INDEXER and false of the DOWNLOADER, and the difference
+      # only shows up once Traefik is in front:
+      #
+      #   mediathekarr.goclan.org → 502 Bad Gateway
+      #
+      # Traefik lives in its own container at 10.0.90.12 and dials
+      # 10.0.90.13:5007.  A process bound to 127.0.0.1 inside the arr
+      # container is not on that address, so the connection is refused and
+      # Traefik reports 502.  Measured 2026-08-26; `ss -ltn` inside the
+      # container showed `127.0.0.1:5007` while bazarr (6767) and cleanuparr
+      # (11011), which work, were on 0.0.0.0.
+      #
+      # So the downloader binds all interfaces and its exposure is controlled
+      # where every other exposure in this container is controlled — the
+      # source-restricted firewall list in containers/arr.nix, which admits
+      # 5007 from 10.0.90.12 and nothing else.  The INDEXER stays on
+      # 127.0.0.1: its only client is Prowlarr, in this same netns, so it
+      # gets both the firewall's default-deny AND a loopback bind.
+      #
       # --chdir is NOT tidiness.  The downloader serves its setup wizard from
       #   Path.Combine(Directory.GetCurrentDirectory(), "static", "download")
       # — the CURRENT WORKING DIRECTORY, not the content root, so
@@ -154,7 +177,7 @@ let
         wrapProgram $out/bin/${executable} \
           --chdir $out/lib/${pname} \
           --set ASPNETCORE_ENVIRONMENT Production \
-          --set Kestrel__Endpoints__Http__Url "http://127.0.0.1:${toString port}" \
+          --set Kestrel__Endpoints__Http__Url "${listen}" \
           --prefix PATH : ${
             lib.makeBinPath [
               ffmpeg
@@ -197,7 +220,10 @@ in
     pname = "mediathekarr-indexer";
     projectFile = "MediathekArrServer/MediathekArrServer.csproj";
     executable = "MediathekArrServer";
-    port = 5008;
+    # LOOPBACK ONLY.  Prowlarr is in the same netns and reaches it on
+    # 127.0.0.1; nothing else ever should.  Belt and braces with the
+    # firewall, which does not name 5008 either.
+    listen = "http://127.0.0.1:5008";
     description = "ARD/ZDF Mediathek as a Newznab indexer for Prowlarr";
   };
 
@@ -205,7 +231,12 @@ in
     pname = "mediathekarr-downloader";
     projectFile = "MediathekArr/MediathekArrDownloader.csproj";
     executable = "MediathekArrDownloader";
-    port = 5007;
+    # ALL INTERFACES, necessarily — Traefik dials it at 10.0.90.13:5007 to
+    # serve the setup wizard, and a loopback bind returns 502 Bad Gateway.
+    # Exposure is the firewall's job here, exactly as it is for bazarr and
+    # cleanuparr: 5007 is admitted from 10.0.90.12 and refused from
+    # everything else.
+    listen = "http://[::]:5007";
     description = "SABnzbd-shaped downloader and setup wizard for MediathekArr";
   };
 }
