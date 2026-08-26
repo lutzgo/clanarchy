@@ -1383,10 +1383,35 @@ in
       #
       # So this oneshot stages both keys into a root-only tmpfs directory, and
       # services.recyclarr's `_secret` mechanism turns them into LoadCredential=
-      # entries.  The key is never in the Nix store, never in config.yml on
-      # disk, and never in the repo — invariant #8 is satisfied without a
-      # generator, because there is no secret here that this machine did not
-      # already hold.
+      # entries.  The key is never in the Nix store and never in the repo, so
+      # invariant #8 is satisfied without a generator — there is no secret here
+      # that this machine did not already hold.
+      #
+      # CORRECTION, measured on ernst 2026-08-26.  An earlier version of this
+      # paragraph also claimed the key is "never in config.yml on disk".  THAT
+      # IS FALSE, and the correction matters more than the original claim did.
+      # The recyclarr module's ExecStartPre (recyclarr-pre-start) reads each
+      # credential and SUBSTITUTES IT INTO /var/lib/recyclarr/config.yml before
+      # the sync runs.  On this machine that file is:
+      #
+      #     -rw-r--r-- 1 recyclarr recyclarr  /var/lib/recyclarr/config.yml
+      #     drwxr-xr-x 7 recyclarr recyclarr  /var/lib/recyclarr
+      #
+      # i.e. both API keys in PLAINTEXT, world-readable, inside the container.
+      #
+      # It is left alone, deliberately, and the reasoning is worth writing down
+      # rather than re-deriving: the exposure is to processes already inside
+      # this netns, and every one of them — sonarr, radarr, prowlarr, bazarr,
+      # cleanuparr, mediathekarr, umlautadaptarr — either owns one of these keys
+      # or is handed it on purpose.  Widening nothing is what the uid boundary
+      # already does; the keys' real protection is that the container is not
+      # reachable except through Traefik.
+      #
+      # WHAT WOULD CHANGE THIS: a service landing in this container that is NOT
+      # trusted with *arr API access.  There is no such tenant today.  If one
+      # arrives, this is the line that has to be revisited, and the fix is
+      # upstream's (the module should chmod its rendered config), not a second
+      # mechanism here.
       #
       # RuntimeDirectoryPreserve = "yes" with RemainAfterExit = false is the
       # combination that makes this re-run.  Without the preserve, the runtime
@@ -1634,10 +1659,41 @@ in
         # reproducible from this file rather than accumulating whatever the UI
         # has been poked into.
         #
-        # To preview before letting the timer run:
+        # To preview before letting the timer run.
+        #
+        # CORRECTED 2026-08-26 — the previous form in this comment did not work
+        # and failed in a way that reads like a permissions problem:
+        #
+        #   runuser: failed to execute recyclarr: Permission denied
+        #
+        # `recyclarr` IS NOT ON $PATH inside this container.  The container's
+        # environment.systemPackages is deliberately just `curl`; the binary
+        # only ever exists as an absolute store path in the unit's ExecStart.
+        # So the command has to ask systemd where it is rather than assume a
+        # PATH lookup, and the store path changes with every rebuild, so it
+        # must not be pasted literally either:
+        #
         #   nixos-container run arr -- systemctl start arr-api-keys
+        #   BIN=$(nixos-container run arr -- \
+        #           systemctl show recyclarr -p ExecStart --value \
+        #         | grep -o '/nix/store/[^ ]*/bin/recyclarr' | head -1)
         #   nixos-container run arr -- runuser -u recyclarr -- \
-        #     recyclarr sync --preview --config /var/lib/recyclarr/config.yml
+        #     "$BIN" sync --preview --config /var/lib/recyclarr/config.yml
+        #
+        # ONE TRAP IN READING THE OUTPUT, and it cost a confused minute on the
+        # deploy that found this: /var/lib/recyclarr/config.yml IS REGENERATED
+        # BY ExecStartPre, not by the deploy.  Straight after a rebuild it is
+        # still the PREVIOUS generation's file, so a preview run will faithfully
+        # process the OLD instance list and show nothing new.  That is not a
+        # config that failed to apply.  The check that the new instances really
+        # are deployed is the unit itself —
+        #
+        #   nixos-container run arr -- systemctl cat recyclarr \
+        #     | grep -c LoadCredential
+        #
+        # — which is one entry per `_secret` reference, i.e. five once M12's
+        # three extra instances are in.  Run the service once (or wait for the
+        # timer) and the config.yml catches up.
         configuration = {
           radarr.movies = {
             base_url        = "http://localhost:${toString radarrPort}";
