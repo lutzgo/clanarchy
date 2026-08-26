@@ -285,6 +285,11 @@ let
 
   gen = config.clan.core.vars.generators.wg-qbittorrent;
 
+  # M13.  The WebUI password lives in its own generator so that adding the
+  # plaintext did not mark `wg-qbittorrent` missing and re-prompt every
+  # WireGuard value — see the generator's own header for the full argument.
+  webuiGen = config.clan.core.vars.generators.qbittorrent-webui;
+
   # qBittorrent.conf, with the WebUI password hash left as a placeholder that
   # the guest substitutes at start.  The ExecStartPre that renders it carries
   # the reasoning: why the whole file is declarative, and what that costs.
@@ -429,8 +434,11 @@ in
         ${gen.files."endpoint-port".path}        ${hostSecretsDir}/endpoint-port
       ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
         ${gen.files."ssh-host-key".path}         ${hostSecretsDir}/ssh_host_ed25519_key
+      # Both WebUI password artefacts come from the `qbittorrent-webui`
+      # generator, NOT from `gen` — see that generator for why it is separate.
+      # The staged FILENAMES are unchanged, so nothing in the guest moved.
       ${pkgs.coreutils}/bin/install -m 0440 -o root -g media \
-        ${gen.files."webui-password-pbkdf2".path} ${hostSecretsDir}/webui-password-pbkdf2
+        ${webuiGen.files."password-pbkdf2".path} ${hostSecretsDir}/webui-password-pbkdf2
 
       # M13.  0400 root:root, NOT 0440 root:media like the hash above it.
       #
@@ -441,7 +449,7 @@ in
       # PID 1 reads before dropping privileges.  If this ever needs to be 0440,
       # something has gone wrong with that design rather than with this mode.
       ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
-        ${gen.files."webui-password".path}        ${hostSecretsDir}/webui-password
+        ${webuiGen.files."password".path}        ${hostSecretsDir}/webui-password
     '';
   };
 
@@ -496,9 +504,6 @@ in
     files."wg0.conf".secret              = true;
     files."endpoint-ip".secret           = true;
     files."endpoint-port".secret         = true;
-    files."webui-password-pbkdf2".secret = true;
-    # M13.  The plaintext, for the exporter — see the long note in the script.
-    files."webui-password".secret        = true;
     files."ssh-host-key".secret          = true;
     files."ssh-host-key.pub".secret      = false;
 
@@ -537,10 +542,9 @@ in
       description = "MTU from the provider's config, or EMPTY for wg-quick's default (IVPN: 1412)";
       type        = "line";
     };
-    prompts."webui-password" = {
-      description = "qBittorrent WebUI password for user 'admin'";
-      type        = "hidden";
-    };
+    # THE WebUI PASSWORD IS NOT PROMPTED HERE ANY MORE — see the
+    # `qbittorrent-webui` generator below for where it went and why moving it
+    # was not optional.
 
     runtimeInputs = [ pkgs.coreutils pkgs.gnugrep pkgs.python3 pkgs.openssh ];
 
@@ -666,43 +670,99 @@ in
       printf '%s' "$ep_ip"   > "$out/endpoint-ip"
       printf '%s' "$ep_port" > "$out/endpoint-port"
 
+      ssh-keygen -t ed25519 -N "" -C "root@wg-qbittorrent" -f "$out/ssh-host-key" >/dev/null
+    '';
+  };
+
+  ##############################################################################
+  # M13 — the qBittorrent WebUI password, in a generator of its OWN.
+  #
+  # ── WHY IT IS NOT PART OF wg-qbittorrent ABOVE, WHERE IT LIVED ────────────
+  #
+  #   M13 needs a SECOND form of this password.  The exporter authenticates to
+  #   the WebUI API as an ordinary client, so it has to PRESENT the password;
+  #   a PBKDF2 verifier cannot be replayed as a credential.  The obvious change
+  #   was to add one more `files."webui-password"` to the generator above.
+  #
+  #   THAT WOULD HAVE BEEN EXPENSIVE, AND SILENTLY SO.  clan decides whether to
+  #   run a generator per GENERATOR, not per file — clan_lib/vars/graph.py:
+  #   "A generator is missing if at least one of its files is missing."  So one
+  #   new file in the generator above marks the WHOLE generator missing, and
+  #   re-running it would have:
+  #
+  #     - re-prompted all SEVEN WireGuard values, i.e. required the IVPN
+  #       private key, peer public key, endpoint, address, DNS and MTU to be
+  #       typed in again from the provider's config;
+  #     - regenerated wg0.conf from those answers;
+  #     - MINTED A NEW SSH HOST KEY for the guest, because ssh-keygen runs
+  #       fresh every time — so every known_hosts entry for it would break.
+  #
+  #   None of that is a price worth paying to store a copy of a password the
+  #   operator already knows.  Splitting it out keeps every file the generator
+  #   above declares present on disk, so that generator is NOT missing and is
+  #   NOT re-run.
+  #
+  #   Checked rather than assumed: `validationHash` — the other thing that can
+  #   force a regeneration — comes from an explicit `validation` attribute that
+  #   neither generator sets, so EDITING A SCRIPT does not invalidate anything.
+  #   Only the file list matters here.
+  #
+  # ── ONE PROMPT, BOTH FORMS.  NOT TWO GENERATORS ───────────────────────────
+  #
+  #   The password is prompted ONCE and both artefacts are derived from that
+  #   single answer.  A second generator holding the plaintext alongside the
+  #   old hash would be two copies of one secret that can silently diverge —
+  #   and the divergence presents as an exporter that cannot log in while the
+  #   WebUI works fine, which is a genuinely annoying thing to debug.
+  #
+  # ── WHAT THIS OVERTURNS, STATED PLAINLY ───────────────────────────────────
+  #
+  #   The generator above used to say the hash "is what ever reaches the
+  #   guest".  That was true and free until M13, and it is no longer free.
+  #   Two alternatives were considered and are worse:
+  #
+  #     1. qBittorrent's WebUI "API Key" field.  ALREADY REJECTED WITH A
+  #        MEASUREMENT in this file's header: HTTP 403 in 0.5 ms, nothing in
+  #        qBittorrent's log.  Re-run that before reaching for it again.
+  #     2. WebUI\AuthSubnetWhitelist for 127.0.0.1, letting the exporter skip
+  #        authentication.  Worse than it looks: `WebUI\LocalHostAuth=true` is
+  #        deliberate, and turning it off lets EVERY process in this guest
+  #        drive the torrent client unauthenticated.
+  #
+  #   The exposure added is bounded: one 0400 root:root file in the guest's
+  #   secrets share, read by PID 1 through LoadCredential= before the exporter
+  #   drops privileges, so the exporter's own user never opens it either.
+  #
+  # ── ONE ORPHAN TO SWEEP ───────────────────────────────────────────────────
+  #
+  #   vars/per-machine/ernst/wg-qbittorrent/webui-password-pbkdf2/ is no longer
+  #   declared by any generator and can be deleted after this lands.  Leaving
+  #   it does no harm — nothing reads it — but it is a stale copy of a secret.
+  clan.core.vars.generators.qbittorrent-webui = {
+    files."password".secret        = true;
+    files."password-pbkdf2".secret = true;
+
+    prompts."password" = {
+      description = "qBittorrent WebUI password for user 'admin' (the EXISTING one, unless you mean to change it)";
+      type        = "hidden";
+    };
+
+    runtimeInputs = [ pkgs.coreutils pkgs.python3 ];
+
+    script = ''
+      set -euo pipefail
+
+      cp "$prompts/password" "$out/password"
+
       # qBittorrent's password format: @ByteArray(<b64 salt>:<b64 hash>), where
       # the hash is PBKDF2-HMAC-SHA512, 100000 iterations, 64-byte key over a
-      # 16-byte salt.  Generated here so the hash — not the password — is what
-      # ever reaches the guest.
-      # ── M13 OVERTURNS "the hash, not the password, reaches the guest" ─────
+      # 16-byte salt.
       #
-      # The comment above this block said the hash is what ever reaches the
-      # guest, and until M13 that was both true and free: qBittorrent verifies
-      # a login against the PBKDF2 hash, so nothing needed the plaintext.
-      #
-      # M13 adds a SECOND consumer with a different requirement.
-      # prometheus-qbittorrent-exporter authenticates to the WebUI API as an
-      # ordinary client, so it has to PRESENT the password — a verifier cannot
-      # be replayed as a credential.  Three ways out were considered:
-      #
-      #   1. qBittorrent's WebUI "API Key" field.  ALREADY REJECTED, with a
-      #      measurement, in the header of this file: it produced HTTP 403 in
-      #      0.5 ms with nothing in qBittorrent's log.  Use username+password.
-      #   2. WebUI\AuthSubnetWhitelist for 127.0.0.1.  This would let the
-      #      exporter skip authentication entirely, and it is worse than it
-      #      looks: `WebUI\LocalHostAuth=true` above is a deliberate setting,
-      #      and turning it off makes EVERY process in this guest able to drive
-      #      the torrent client unauthenticated.
-      #   3. Stage the plaintext too.  Chosen.
-      #
-      # The exposure this adds is bounded and stated: one more 0400 root:root
-      # file in the guest's secrets share, read by PID 1 through
-      # LoadCredential= before the exporter drops privileges — so the
-      # exporter's own user never opens it either.  That is the same mechanism
-      # containers/arr.nix uses to hand Sonarr's key to Scraparr.
-      #
-      # WHAT WOULD MAKE THIS UNNECESSARY: a qBittorrent release whose API-key
-      # authentication actually works. The measurement in the header is the
-      # thing to re-run before removing this.
-      cp "$prompts/webui-password" "$out/webui-password"
-
-      python3 - "$prompts/webui-password" > "$out/webui-password-pbkdf2" <<'PY'
+      # The salt is fresh on every run, so re-running this produces a DIFFERENT
+      # hash for the same password.  That is correct and harmless: qBittorrent
+      # verifies against whatever salt is in the file, and the config is
+      # re-rendered on every start anyway.
+      python3 - "$prompts/password" > "$out/password-pbkdf2" <<'PY'
       import base64, hashlib, os, sys
       password = open(sys.argv[1], "rb").read().rstrip(b"\n")
       salt = os.urandom(16)
@@ -712,8 +772,6 @@ in
           base64.b64encode(digest).decode(),
       ))
       PY
-
-      ssh-keygen -t ed25519 -N "" -C "root@wg-qbittorrent" -f "$out/ssh-host-key" >/dev/null
     '';
   };
 
