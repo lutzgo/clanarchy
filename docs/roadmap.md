@@ -4591,6 +4591,37 @@ Upstream lists "Radarr Support — in Arbeit" and the codebase agrees:
 and never mentioned Radarr: the setting was accepted and silently ignored. It is
 now set to `false` rather than deleted, so the answer lives next to the switch.
 
+### MediathekArr: 5007 is the one that matters, and 5008 is not in any path
+
+**Corrected after the deploy.** M12's packaging notes say the indexer on 5008 is
+"what Prowlarr is pointed at". It is not. The setup wizard runs inside the
+**downloader** and registers the Prowlarr indexer against
+`http://localhost:5007` — and that works, because **5007 serves the full
+Newznab API too**. Asked both ports the same question:
+
+```
+curl 'http://localhost:5007/api?t=tvsearch&q=Tatort'   → total="3012"
+curl 'http://localhost:5008/api?t=tvsearch&q=Tatort'   → total="3012"
+```
+
+Byte-identical, correctly-formatted release titles from both. So the downloader
+is self-sufficient and **nothing points at 5008**.
+
+**Both units are kept anyway**, and the reason is not inertia: only the indexer
+registers `RulesetBackgroundService`, which refreshes per-show naming rules from
+`mediathekarr.pcjones.de` on a timer — the downloader's journal shows no ruleset
+activity at all. One matching query is not evidence that ruleset upkeep is
+irrelevant, and inferring that from a single result is the species of mistake
+this milestone has already made four times. It costs ~90 MB (the downloader is
+~70 MB). **Revisit only by first answering whether 5007 gets its rulesets some
+other way.**
+
+**Was the two-process packaging still worth it?** Yes, but not for the reason
+predicted. The value was not "Prowlarr needs 5008" — it was that building only
+`MediathekArrServer`, which upstream's repo Dockerfile at `main` suggests, would
+have shipped **no SABnzbd endpoint at all** and no wizard, i.e. an indexer whose
+results nothing could download and no way to configure it.
+
 ### Three things the deploy will decide, which evaluation cannot
 
 1. **`ProtectSystem = "strict"` on five new units.** The same call-out M4 made
@@ -4697,10 +4728,31 @@ for state the applications own; that is the same call the *arr root folders lost
    Cardigann indexers cannot take an `http` Site Link, and if they could, the
    proxy would answer **404** to every request because a Cardigann fetch carries
    no Newznab `t=` parameter. **Do nothing in Prowlarr.**
-3. **MediathekArr**: open the wizard at `https://mediathekarr.goclan.org/`, then
-   add the **indexer** to Prowlarr as Generic Newznab at
-   `http://127.0.0.1:5008` and the **downloader** to Sonarr/Radarr as a SABnzbd
-   client at `127.0.0.1:5007` with categories `tv` and `movies`.
+3. **MediathekArr**: open `https://mediathekarr.goclan.org/download` and run
+   **Open Setup & Migration Wizard**. It does most of the work itself — done
+   2026-08-26, and what it actually wired was:
+   - `POST /api/v3/downloadclient` on **Sonarr** — SABnzbd, `localhost:5007`,
+     **URL Base `download`**, category `tv`;
+   - `POST /api/v1/indexer` on **Prowlarr** — Newznab at
+     `http://localhost:5007` (**not** 5008; see below), which Prowlarr's
+     `fullSync` then pushed to both Sonarr and Radarr automatically.
+
+   **The wizard only offers Sonarr, so Radarr's download client is the one
+   manual step left**: Radarr → Settings → Download Clients → **SABnzbd**,
+   host `localhost`, port `5007`, **URL Base `download`**, category `movies`,
+   SSL off. The API key is not validated (`Settings__ApiKey` is unset, so
+   `AssureApiKey` accepts anything) — any value works.
+   **Expect thin coverage regardless**: upstream lists Radarr support as
+   *"limited, WIP"* — "you can find a few movies via interactive search, but
+   not a lot… you can however find all movies via a text search in Prowlarr
+   and send the result to Radarr."
+
+   **`/var/lib/mediathekarr` staying empty is correct, not a failure.** The
+   wizard configures the *arrs, not itself; MediathekArr's own settings —
+   paths, categories, parallelism — come from the environment variables
+   declared in `arr.nix`, so `mediathekarr.json` is never written. That is the
+   better outcome for this repo: the config is a reviewable diff rather than a
+   file nobody can reconstruct.
 4. **Bazarr**: provider credentials, then **German and English profiles in both
    directions** — German subtitles on English content *and* English on German.
    Configuring only one is the common half-done outcome.

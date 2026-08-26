@@ -1217,11 +1217,39 @@ in
       #
       # ── UPSTREAM SHIPS TWO PROCESSES AND ONLY DOCUMENTS ONE ──────────────
       #
-      #   mediathekarr-indexer     5008   Newznab shim, parses MediathekViewWeb.
-      #                                   This is what PROWLARR is pointed at.
-      #   mediathekarr-downloader  5007   SABnzbd shim + the setup WIZARD.
-      #                                   This is what SONARR and RADARR add as
-      #                                   a download client.
+      #   mediathekarr-downloader  5007   SABnzbd shim + the setup WIZARD +
+      #                                   a full Newznab endpoint.  THIS IS THE
+      #                                   ONE EVERYTHING IS POINTED AT.
+      #   mediathekarr-indexer     5008   Newznab shim, plus the ruleset
+      #                                   background fetcher.  Nothing points
+      #                                   at it.  See below.
+      #
+      # CORRECTED AFTER THE DEPLOY, 2026-08-26.  This block used to say the
+      # indexer on 5008 "is what Prowlarr is pointed at".  It is not.  The
+      # setup wizard — which runs inside the DOWNLOADER — registers the
+      # Prowlarr indexer against `http://localhost:5007`, and that works,
+      # because 5007 serves the Newznab API as well.  Verified by asking both
+      # ports the same question:
+      #
+      #   curl 'http://localhost:5007/api?t=tvsearch&q=Tatort'
+      #   curl 'http://localhost:5008/api?t=tvsearch&q=Tatort'
+      #
+      # Both returned `total="3012"` and byte-identical, correctly-formatted
+      # release titles.  So the downloader is self-sufficient and 5008 is NOT
+      # in the request path of anything.
+      #
+      # BOTH ARE KEPT ANYWAY, deliberately.  Upstream's docker_start.sh runs
+      # both, and the two are not identical: only the INDEXER registers
+      # RulesetBackgroundService, which refreshes the per-show naming rules
+      # from mediathekarr.pcjones.de on a timer.  The downloader's journal
+      # shows no ruleset activity at all.  One matching search result is not
+      # evidence that ruleset upkeep is irrelevant — and inferring that from a
+      # single query is exactly the species of mistake this milestone has
+      # already made four times.  It costs ~90 MB.
+      #
+      # TO REVISIT: if the naming ever drifts, or if the container needs the
+      # memory, the question to answer FIRST is whether 5007 gets its rulesets
+      # some other way.  Until then, run what upstream runs.
       #
       # Upstream's docker-compose publishes only 5007 and its README mentions
       # only 5007, so packaging just the indexer is the easy mistake — and it
