@@ -482,6 +482,27 @@ in
     # plainly next to a path owned by a service whose job is deletion: nothing
     # under here is a real file.
     "d /srv/media/leaving-soon 2770 root ${toString mediaGid} -"
+
+    # The *arr RECYCLE BIN, and it is NOT under ${stateRoot} either.
+    #
+    # IT MUST BE INSIDE /srv/media, and for the same reason the hardlink
+    # section of the header gives, in its other direction: "delete to recycle
+    # bin" is a RENAME.  A rename cannot cross a filesystem boundary, so a bin
+    # on another dataset silently degrades into copy-then-delete — which for a
+    # 60 GB remux means minutes of IO and a temporary doubling of its space,
+    # on the exact operation that is supposed to be cheap and reversible.
+    #
+    # This is the second of the two safety nets M13 requires before Janitorr's
+    # dry-run is ever turned off.  The other is dry-run itself.
+    #
+    # 2770 root:media so sonarr and radarr (both group media) can move files
+    # in, and so anything landing here inherits the group and stays removable.
+    #
+    # SETTING THE PATH IS STILL A UI STEP in each *arr — this rule only
+    # guarantees the directory exists with the right ownership when they are
+    # pointed at it.  Faking the setting from Nix would be a second source of
+    # truth for a value the applications own; see the Cleanuparr block.
+    "d /srv/media/.recycle-bin 2770 root ${toString mediaGid} -"
   ];
 
   # The rest of the media tree is NOT declared here.  containers/jellyfin.nix
@@ -2117,6 +2138,31 @@ in
           RuntimeDirectoryMode     = "0750";
           RuntimeDirectoryPreserve = "yes";
 
+          # NO User=, so this runs as root — it has to, to read other users'
+          # 0700 directories.  Group=media is what makes the RuntimeDirectory
+          # come out root:media 0750 WITHOUT a chown.
+          #
+          # systemd takes RuntimeDirectory ownership from the unit's own
+          # User=/Group=, which is the mechanism the fictional
+          # `RuntimeDirectoryGroup=` was reaching for.  Setting the real
+          # directive gets the same result for free.
+          #
+          # THE FIRST FIX FOR THIS WAS A `chown` IN THE SCRIPT AND IT CRASHED:
+          #
+          #   janitorr-render-config: line 10: 358 Bad system call (core dumped)
+          #     .../coreutils-9.11/bin/chown root:media /run/janitorr
+          #   janitorr-config.service: Main process exited, status=159/n/a
+          #
+          # 159 is 128+31, i.e. SIGSYS — killed by this unit's own
+          # SystemCallFilter.  `~@privileged` subtracts the @chown set, so
+          # chown(2) is not merely denied, the process is shot.  Group= avoids
+          # the syscall entirely rather than widening the filter to permit it,
+          # which is the better of the two fixes: nothing here needs to change
+          # the ownership of anything.
+          #
+          # Measured on ernst 2026-08-26, on the deploy that shipped the chown.
+          Group = "media";
+
           # THE DIRECTORY'S GROUP IS SET IN THE SCRIPT, NOT HERE, AND THAT IS
           # NOT A STYLE CHOICE.
           #
@@ -2151,7 +2197,9 @@ in
           # this unit cannot write over anything it can see.
           PrivateNetwork          = true;
           IPAddressDeny           = "any";
-          CapabilityBoundingSet   = [ "CAP_DAC_READ_SEARCH" "CAP_CHOWN" ];
+          # CAP_DAC_READ_SEARCH only.  CAP_CHOWN was here for the chown that
+          # the Group= note above removed; it went with it.
+          CapabilityBoundingSet   = [ "CAP_DAC_READ_SEARCH" ];
           NoNewPrivileges         = true;
           ProtectSystem           = "strict";
           ProtectHome             = true;
@@ -2178,12 +2226,10 @@ in
 
             out=/run/janitorr/application.yml
 
-            # See the RuntimeDirectory note in this unit's serviceConfig: the
-            # directory is created root:root by systemd, and Janitorr reaches
-            # the file through its `media` group membership — which needs the
-            # execute bit on the DIRECTORY, not just read on the file.
-            ${pkgs.coreutils}/bin/chown root:media /run/janitorr
-            ${pkgs.coreutils}/bin/chmod 0750 /run/janitorr
+            # No chown here — see the Group= note in this unit's serviceConfig.
+            # systemd already created /run/janitorr as root:media 0750, and the
+            # file inherits gid media from this process's egid, so UMask=0027
+            # lands it at root:media 0640 with nothing to adjust.
 
             # Assign, then test — the shape PR #84 got wrong and arr-api-keys
             # documents at length.  A command substitution that fails inside
@@ -2197,14 +2243,18 @@ in
               exit 1
             fi
 
-            # Jellyseerr's key comes out of its OWN settings.json, which it
-            # writes on first run.  Before that wizard is completed the file
-            # does not exist, so this degrades to a disabled client rather
-            # than failing — Janitorr in dry-run is still useful without it.
+            # Jellyseerr's key comes from arr-api-keys, which extracts it from
+            # Jellyseerr's own settings.json.
+            #
+            # M13 originally read settings.json directly here.  It now goes
+            # through the stager for the reason M12 gave when it renamed that
+            # unit: two consumers reading the same application's config file is
+            # one extraction too many, and the stager is already a hard
+            # dependency of this unit.  Still degrades rather than fails —
+            # Janitorr in dry-run is useful without Jellyseerr.
             seerr_key=""
-            if [ -r /var/lib/seerr/settings.json ]; then
-              seerr_key=$(${pkgs.jq}/bin/jq -r '.main.apiKey // empty' \
-                /var/lib/seerr/settings.json)
+            if [ -r ${arrSecretsDir}/jellyseerr-api-key ]; then
+              seerr_key=$(${pkgs.coreutils}/bin/cat ${arrSecretsDir}/jellyseerr-api-key)
             fi
             seerr_enabled=true
             if [ -z "$seerr_key" ]; then
@@ -2358,8 +2408,10 @@ in
                 enabled: false
             EOF
 
-            ${pkgs.coreutils}/bin/chown root:media "$out"
-            ${pkgs.coreutils}/bin/chmod 0640 "$out"
+            # No chown/chmod: Group=media gives this process egid media, so the
+            # redirect above creates the file root:media, and UMask=0027 makes
+            # it 0640.  Both syscalls would be killed by SystemCallFilter
+            # anyway — see the Group= note.
           '';
         };
       };
@@ -2444,14 +2496,15 @@ in
           # LoadCredential below places there, NOT the 0700 staging directory,
           # which this unit's user cannot open.  Specifier expansion applies to
           # Environment=, so these resolve before the process starts.
-          SONARR_API_KEY_FILE = "%d/sonarr-api-key";
-          RADARR_API_KEY_FILE = "%d/radarr-api-key";
-
-          # Prowlarr, Bazarr and Jellyseerr generate their keys the same way
-          # the *arr do, but arr-api-keys does not stage them yet — extending
-          # it is a follow-up, not part of M13, and a partial exporter is
-          # strictly better than none.  Sonarr and Radarr are the two that
-          # carry the library.
+          #
+          # ALL FIVE, and it is all-or-nothing by Scraparr's design: it exits 1
+          # on a service that has a URL without a key OR a key without a URL.
+          # The URLs above and these paths have to stay in lockstep.
+          SONARR_API_KEY_FILE     = "%d/sonarr-api-key";
+          RADARR_API_KEY_FILE     = "%d/radarr-api-key";
+          PROWLARR_API_KEY_FILE   = "%d/prowlarr-api-key";
+          BAZARR_API_KEY_FILE     = "%d/bazarr-api-key";
+          SEERR_API_KEY_FILE      = "%d/jellyseerr-api-key";
         };
 
         serviceConfig = {
@@ -2476,6 +2529,9 @@ in
           LoadCredential = [
             "sonarr-api-key:${arrSecretsDir}/sonarr-api-key"
             "radarr-api-key:${arrSecretsDir}/radarr-api-key"
+            "prowlarr-api-key:${arrSecretsDir}/prowlarr-api-key"
+            "bazarr-api-key:${arrSecretsDir}/bazarr-api-key"
+            "jellyseerr-api-key:${arrSecretsDir}/jellyseerr-api-key"
           ];
 
           # No state, no media, nothing to write anywhere.
@@ -2691,6 +2747,70 @@ in
 
             stage sonarr /var/lib/sonarr/.config/NzbDrone/config.xml ${arrSecretsDir}/sonarr-api-key
             stage radarr /var/lib/radarr/.config/Radarr/config.xml   ${arrSecretsDir}/radarr-api-key
+
+            # ── M13: THREE MORE KEYS, FOR SCRAPARR ───────────────────────
+            #
+            # Prowlarr's is the same <ApiKey> element in the same servarr
+            # config.xml shape, so it reuses stage() unchanged.  Bazarr and
+            # Jellyseerr keep theirs in their own formats and get their own
+            # extractors below.
+            #
+            # ALL THREE ARE MANDATORY, not best-effort, and that is forced by
+            # how Scraparr validates rather than chosen.  It builds a service's
+            # config from ANY matching env var, then requires both `url` and
+            # `api_key` — so a URL with no key AND a key with no URL are both
+            # `sys.exit(1)`.  There is no partial mode.  The first deploy
+            # shipped URLs without keys and produced, on ernst:
+            #
+            #   [ERROR] Invalid config: prowlarr (instance 0): missing 'api_key'
+            #   [ERROR] Invalid config: bazarr (instance 0): missing 'api_key'
+            #   [ERROR] Invalid config: seerr (instance 0): missing 'api_key'
+            #   scraparr.service: Scheduled restart job, restart counter at 41
+            #
+            # Failing loudly HERE, naming the wizard that has not been run, is
+            # much better than a restart loop in a different unit's journal.
+            stage prowlarr /var/lib/prowlarr/config.xml ${arrSecretsDir}/prowlarr-api-key
+
+            # Bazarr: YAML, under `auth:`.  There are three `apikey:` keys in
+            # that file — the other two are provider credentials and are
+            # normally empty — so this walks to the `auth:` block first rather
+            # than taking the first match.  Verified against the live file on
+            # ernst, 2026-08-26.
+            bazarr_out=${arrSecretsDir}/bazarr-api-key
+            bazarr_cfg=/var/lib/bazarr/config/config.yaml
+            if [ ! -r "$bazarr_cfg" ]; then
+              echo "bazarr: cannot read $bazarr_cfg — has Bazarr started at least once?" >&2
+              exit 1
+            fi
+            bazarr_key=$(${pkgs.gawk}/bin/awk '
+              /^auth:/            { inauth = 1; next }
+              /^[^[:space:]]/     { inauth = 0 }
+              inauth && $1 == "apikey:" { gsub(/^['"'"'"]|['"'"'"]$/, "", $2); print $2; exit }
+            ' "$bazarr_cfg")
+            if [ -z "$bazarr_key" ]; then
+              echo "bazarr: no apikey under auth: in $bazarr_cfg" >&2
+              exit 1
+            fi
+            ${pkgs.coreutils}/bin/rm -f "$bazarr_out"
+            printf '%s' "$bazarr_key" > "$bazarr_out"
+
+            # Jellyseerr: JSON, `.main.apiKey`.  jq rather than a regex,
+            # because "apiKey" appears more than once in settings.json and
+            # `head -1` would be a coin flip between the real key and a
+            # per-service one.
+            seerr_out=${arrSecretsDir}/jellyseerr-api-key
+            seerr_cfg=/var/lib/seerr/settings.json
+            if [ ! -r "$seerr_cfg" ]; then
+              echo "jellyseerr: cannot read $seerr_cfg — has its first-run wizard been completed?" >&2
+              exit 1
+            fi
+            seerr_key=$(${pkgs.jq}/bin/jq -r '.main.apiKey // empty' "$seerr_cfg")
+            if [ -z "$seerr_key" ]; then
+              echo "jellyseerr: no .main.apiKey in $seerr_cfg" >&2
+              exit 1
+            fi
+            ${pkgs.coreutils}/bin/rm -f "$seerr_out"
+            printf '%s' "$seerr_key" > "$seerr_out"
 
             # ── UmlautAdaptarr's environment file (M12) ──────────────────
             #

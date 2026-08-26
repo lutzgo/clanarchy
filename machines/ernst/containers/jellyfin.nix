@@ -633,7 +633,7 @@ in
         # in the networking block above.
         openFirewall = false;
 
-        # ── M13: /metrics IS NATIVE, AND ENABLING IT IS A MANUAL STEP ────────
+        # ── M13: /metrics IS NATIVE.  SEE jellyfin-enable-metrics BELOW ──────
         #
         # M13 requires Jellyfin's OWN metrics endpoint and forbids adding an
         # exporter for it.  The endpoint is real in this version: 10.11.11
@@ -641,27 +641,8 @@ in
         # prometheus-net.DotNetRuntime.dll (checked in the store path, not
         # assumed from release notes).
         #
-        # It is gated on `EnableMetrics`, which lives in ServerConfiguration —
-        # i.e. in config/system.xml, NOT network.xml — and the NixOS module
-        # exposes no option for it.
-        #
-        # SO IT IS AN lgo STEP IN THE PR BODY (Dashboard → Advanced → enable
-        # metrics), and that is a deliberate choice rather than a gap:
-        #
-        #   - `forceEncodingConfig` above works because encoding.xml holds ONE
-        #     concern and the module owns a whole template for it.  system.xml
-        #     holds every other server setting there is, so a Nix-owned copy
-        #     would clobber settings this repo has never had an opinion about.
-        #   - A targeted XML edit in an activation script is the other option,
-        #     and it loses to the principle this repo already applies to
-        #     Cleanuparr's SQLite config and the *arr first-run wizards:
-        #     faking application-owned state from Nix creates a second source
-        #     of truth for something the application rewrites on its own.
-        #
-        # Until it is flipped, the `jellyfin` scrape job in
-        # service-modules/monitoring.nix reports up=0.  That is the correct and
-        # visible failure — a target that is declared and honestly down beats a
-        # target that is silently absent.
+        # Enabling it is NOT a dashboard step — see that unit for why this file
+        # ended up owning one XML element.
         hardwareAcceleration = {
           enable = true;
           type   = "vaapi";
@@ -751,6 +732,67 @@ in
       #     boot.isContainer because they conflict with nspawn's own mount
       #     namespace setup.  Overriding here would either error out at
       #     activation or silently no-op depending on the option.
+      ##########################################################################
+      # M13 — flip EnableMetrics in Jellyfin's own system.xml.
+      #
+      # ── THIS WAS PLANNED AS A MANUAL STEP AND THE MANUAL STEP DOES NOT EXIST
+      #
+      #   The PR body said "Dashboard → Advanced → enable metrics".  THERE IS
+      #   NO SUCH TOGGLE.  Jellyfin removed the metrics switch from the web UI;
+      #   in 10.11.11 `EnableMetrics` is a ServerConfiguration property that
+      #   lives ONLY in config/system.xml, and the NixOS module exposes no
+      #   option for it.  Confirmed on ernst, 2026-08-26:
+      #
+      #     <EnableMetrics>false</EnableMetrics>
+      #
+      #   present in the file, absent from every dashboard page.  So the choice
+      #   was never "declare it or let a human click it" — it was "declare it
+      #   or hand-edit XML on every fresh install and after any reset".
+      #
+      # ── WHY THIS DOES NOT CONTRADICT THE `forceEncodingConfig` REASONING ──
+      #
+      #   The argument against Nix owning system.xml still holds completely:
+      #   that file carries every other server setting there is, and a
+      #   store-rendered copy would clobber settings this repo has no opinion
+      #   about.  This unit does NOT own the file.  It rewrites ONE ELEMENT and
+      #   leaves the other several hundred bytes exactly as Jellyfin wrote
+      #   them — closer to `sed -i` than to a template.
+      #
+      # ── IT HAS TO RUN WHILE JELLYFIN IS STOPPED ──────────────────────────
+      #
+      #   Jellyfin rewrites system.xml from memory on shutdown, so an edit made
+      #   while it is running is discarded at the next restart — which is
+      #   exactly how a hand-edit "mysteriously reverts".  ExecStartPre runs in
+      #   the gap and is therefore the only safe moment.
+      #
+      #   Idempotent by construction: it matches only the `false` form, so a
+      #   second run is a no-op, and a future Jellyfin that ships the element
+      #   already true is left alone.
+      #
+      #   It does NOT create the element if absent.  An upstream that stops
+      #   emitting `EnableMetrics` has changed something this file should not
+      #   paper over, so it warns and lets the scrape job go down visibly.
+      systemd.services.jellyfin.serviceConfig.ExecStartPre = [
+        "${pkgs.writeShellScript "jellyfin-enable-metrics" ''
+          set -euo pipefail
+          conf=/var/lib/jellyfin/config/system.xml
+
+          if [ ! -f "$conf" ]; then
+            echo "jellyfin: $conf does not exist yet — first start, nothing to patch" >&2
+            exit 0
+          fi
+
+          if ! ${pkgs.gnugrep}/bin/grep -q '<EnableMetrics>' "$conf"; then
+            echo "jellyfin: no <EnableMetrics> element in $conf — upstream changed; /metrics will stay off" >&2
+            exit 0
+          fi
+
+          ${pkgs.gnused}/bin/sed -i \
+            's|<EnableMetrics>false</EnableMetrics>|<EnableMetrics>true</EnableMetrics>|' \
+            "$conf"
+        ''}"
+      ];
+
       systemd.services.jellyfin.serviceConfig = {
         ProtectHome = true;
         UMask       = "0077";
