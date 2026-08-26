@@ -45,6 +45,91 @@ Expected throughput on the 780M with Qwen3-Coder 8B: **~24–48 tokens/sec** GPU
 
 Pre-pull a model manually with `ollama pull <model>` or set it in `settings.models`.
 
+## Context window, KV cache, and the `<tool_call>` tag
+
+Three settings interact here in a way that is not guessable from any one of
+them, so they are documented together. All numbers were measured on ernst
+(RX 7900 XTX, 24560 MiB, ollama 0.32.3, `qwen3-coder:30b`) during M11; the
+probes that produced them live in `~/.local/share/m11-bakeoff/probes/` and are
+re-runnable.
+
+### Pin `contextLength`, because exceeding it is not an error
+
+Unset, ollama derives the window from the model tag. **Exceeding it returns
+HTTP 200.** The prompt is truncated to about `num_ctx/2`, the **tail is kept
+and the head discarded**, and the head is where the system message and the tool
+definitions live. Measured at `num_ctx=8192` with a 17,083-token prompt: 4,098
+tokens survived, tool calling went 0/6, and a question about the discarded head
+was answered with an invented, placeholder-shaped MAC address rather than a
+refusal.
+
+Reading the config back shows `num_ctx: 8192` and tells you nothing. This is
+the same failure shape as the recyclarr duplicate-instance bug — green, exit 0,
+doing something other than what was asked.
+
+### `q8_0` is not free, and what it costs is tool calls
+
+The VRAM case for `q8_0` is strong: a 65536 window becomes fully resident at
+22482 MiB, where f16 needs 24471 MiB and spills to system RAM, for ~11% of
+decode speed. `OLLAMA_FLASH_ATTENTION=1` on its own is a **measured no-op** —
+it is the prerequisite, not the saving.
+
+But quantising the KV cache also degrades how reliably the model **formats** a
+tool call. Interleaved, n=30 per arm, identical prompt and context:
+
+| KV cache | baseline system prompt | reinforced system prompt |
+|---|---|---|
+| `f16`  | 83%, 83% | 100% |
+| `q8_0` | 40%, 36% | 100% |
+
+So `q8_0` roughly halves tool-call reliability **at a baseline system prompt**,
+and the reinforcement below erases the difference entirely. Set `kvCacheType`
+only where the clients are known to send that reinforcement.
+
+### The one tag that decides it
+
+Every tool-call failure measured on this fleet — across 88 graded Phase 0
+trials and 200+ more since — was the same thing, and it is **not** the model
+inventing arguments. Zero invented arguments, zero missing arguments, zero
+refusals. The model emits a correct call that is **missing its opening
+`<tool_call>` line** while still emitting the closing `</tool_call>`:
+
+```
+<function=grep_repo>
+<parameter=pattern>
+API client
+</parameter>
+</function>
+</tool_call>
+```
+
+`ollama/model/parsers/qwen3coder.go` enters tool-collection **only** on the
+literal string `<tool_call>` and has no `<function=` fallback, so the whole
+block is emitted as prose with `tool_calls: null`.
+
+Two things follow, and both correct a natural first guess:
+
+- **There is no Modelfile template to fix.** `ollama show --modelfile
+  qwen3-coder:30b` is `TEMPLATE {{ .Prompt }}` plus `RENDERER qwen3-coder` and
+  `PARSER qwen3-coder` — named, compiled Go, not editable template text.
+- **The parser and renderer are both correct.** The renderer already injects
+  the format spec *and* an `<IMPORTANT>` reminder that the `<function=...>`
+  block "must be nested within `<tool_call></tool_call>` XML tags". The model
+  ignores an instruction it was already given.
+
+The fix is client-side and cheap — restate that one tag in the system message:
+
+```
+CRITICAL OUTPUT RULE: every function call MUST begin with a literal
+<tool_call> line and end with a literal </tool_call> line. The opening
+<tool_call> tag is mandatory and is the most commonly omitted part. Never
+emit <function=...> unless the immediately preceding line is <tool_call>.
+```
+
+Measured 80/80 valid calls with it, under both KV cache types, against 5/40 at
+baseline on the same conditions. Any agent pointed at this service should send
+it.
+
 ## Usage
 
 ### Inventory (`clan.nix`)
@@ -53,11 +138,23 @@ Pre-pull a model manually with `ollama pull <model>` or set it in `settings.mode
 local-ai = {
   module.input = "self";
   module.name  = "@clanarchy/local-ai";
-  roles.ollama.machines.miralda.settings.models  = [ "qwen3-coder:8b" ];
-  roles.opencode.machines.miralda.settings.user  = "lgo";
-  # roles.opencode.machines.miralda.settings.model = "ollama/qwen2.5-coder:32b";
+  roles.ollama.machines.miralda.settings = {
+    models        = [ "qwen2.5-coder:7b" ];
+    contextLength = 4096;
+  };
+  roles.ollama.machines.ernst.settings = {
+    models        = [ "qwen3-coder:30b" ];
+    contextLength = 32768;
+    kvCacheType   = "q8_0";
+  };
+  roles.opencode.machines.miralda.settings.user = "lgo";
 };
 ```
+
+(The example here once read `qwen3-coder:8b`. That tag has never existed —
+qwen3-coder publishes only 30b and 480b — and it is the reason
+`ollama-model-loader.service` sat in a restart loop. Check a tag before
+using one; see the `models` option description.)
 
 ### Running OpenCode
 

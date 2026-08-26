@@ -233,6 +233,13 @@
           # iGPU; the smaller dedicated coder model keeps it interactive.
           models = [ "qwen2.5-coder:7b" ];
           hsaOverrideGfxVersion = "11.0.3";
+          # 4096 is what this tag derives on its own; pinning it says so out
+          # loud so a future model bump cannot move it silently.  It must NOT
+          # inherit ernst's 32768 — this model runs out of shared system RAM on
+          # the 780M, not out of 24 GiB of VRAM.  Left at f16: a quantised KV
+          # cache buys nothing worth having at a 4096 window and costs
+          # tool-call reliability (see kvCacheType).
+          contextLength = 4096;
         };
         # ernst: RX 7900 XTX (gfx1100) is natively supported by ROCm, so no
         # override — forcing one would select the wrong kernels.  The card is
@@ -243,6 +250,19 @@
         roles.ollama.machines.ernst.settings = {
           # 24 GiB of VRAM on the 7900 XTX fits the 30B MoE comfortably.
           models = [ "qwen3-coder:30b" ];
+          # Both measured, not chosen: M11 Phase 0 walked the context/KV matrix
+          # on this exact card.  32768 is what this tag derives anyway — pinned
+          # so that editing `models` cannot move it without a diff.  q8_0 keeps
+          # a 64k window fully resident (22482 MiB) where f16 spills to system
+          # RAM, and makes the 32k window here cost 20757 MiB instead of 22361.
+          #
+          # q8_0 is safe ONLY because the client reinforces the <tool_call>
+          # wrapper in its system prompt.  Without that it halves tool-call
+          # reliability — the interaction is measured in the kvCacheType option
+          # description and explained in service-modules/local-ai.md.  A client
+          # added here that does not send that reinforcement wants f16.
+          contextLength = 32768;
+          kvCacheType   = "q8_0";
         };
         roles.opencode.machines.miralda.settings.user  = "lgo";
       };
