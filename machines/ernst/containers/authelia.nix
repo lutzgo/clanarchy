@@ -344,6 +344,21 @@ let
     "sonarr.${baseDomain}"
     "radarr.${baseDomain}"
     "grafana.${baseDomain}"
+
+    # M12.  Three more admin UIs in the existing arr container.  All three are
+    # browser-only and admin-facing, i.e. the case forward-auth is for — none
+    # of them has a TV or mobile client that a redirect would break, so the
+    # Jellyfin exemption does not come into it.
+    #
+    # These MUST stay in step with the routers in containers/traefik.nix.  The
+    # comment above says what happens otherwise and it is worth repeating in
+    # the direction that actually bites: a route added THERE without a name
+    # HERE hits default_policy = "deny" and returns 403 to a user who has just
+    # logged in successfully, which reads like an Authelia fault and is a
+    # missing line in a list.
+    "bazarr.${baseDomain}"
+    "cleanuparr.${baseDomain}"
+    "mediathekarr.${baseDomain}"
   ];
 
   ############################################################################

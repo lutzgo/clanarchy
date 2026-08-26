@@ -247,6 +247,19 @@ let
   grafanaPort  = 3000;
   autheliaPort = 9091;
 
+  # M12.  Three more backends in the SAME arr container, on arrAddr — no new
+  # address, no new MAC, no DHCP reservation, no UDM-Pro rule.
+  #
+  # These three and only these three.  M12 also adds UmlautAdaptarr (5005 and
+  # a proxy on 5006) and MediathekArr's Newznab indexer (5008), and neither
+  # gets a route: their only client is Prowlarr, in the same netns, over
+  # 127.0.0.1.  containers/arr.nix keeps them off its firewall list for the
+  # same reason, and 5006 in particular is an HTTP proxy that has no business
+  # being reachable.
+  bazarrPort       = 6767;
+  cleanuparrPort   = 11011;
+  mediathekarrPort = 5007;   # the downloader's SABnzbd API and setup wizard
+
   # M6.  Traefik's own Prometheus metrics, on a SEPARATE entryPoint from the
   # one that serves traffic.  Its own port rather than a route on :443 because
   # a route would be reachable by anything the consumer-zone ZBF rule already
@@ -929,6 +942,47 @@ in
               service     = "radarr";
             };
 
+            # ── M12's three, same treatment ────────────────────────────────
+            #
+            # Ordinary routers on names the M5 wildcard certificate already
+            # covers, riding the permanent `Allow Traefik` ZBF rule.  NOT
+            # shims, so they get no interim-rule ledger row — the roadmap says
+            # as much for M13's and M15's routes and the reasoning is the
+            # same: this is architecture invariant #3 working as designed.
+            #
+            # `authelia`, not `mgmt-only`.  M7 deleted mgmt-only (ledger row
+            # L5) and these are admin-facing browser UIs, which is exactly the
+            # case forward-auth is for.
+            #
+            # ADDING A NAME HERE IS HALF THE JOB.  authelia.nix's
+            # access_control is deny-by-default, so a route carrying this
+            # middleware with no matching domain in `protectedHosts` fails
+            # CLOSED.  All three are added there in the same commit.
+            #
+            # No UrlBase needed on any of them, for the reason the three above
+            # give: distinct hostnames rather than path prefixes.
+            bazarr = {
+              rule        = "Host(`bazarr.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "bazarr";
+            };
+            cleanuparr = {
+              rule        = "Host(`cleanuparr.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "cleanuparr";
+            };
+            # MediathekArr's DOWNLOADER, which is also its setup wizard — the
+            # page a human opens to configure the thing.  The indexer half on
+            # 5008 is deliberately not routed.
+            mediathekarr = {
+              rule        = "Host(`mediathekarr.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "mediathekarr";
+            };
+
             # ── Grafana (M6): admin route, behind Authelia ─────────────────
             #
             # Same treatment as the arr — browser only, admin facing — and it
@@ -1020,6 +1074,11 @@ in
             prowlarr.loadBalancer.servers = [ { url = "http://${arrAddr}:${toString prowlarrPort}/"; } ];
             sonarr.loadBalancer.servers   = [ { url = "http://${arrAddr}:${toString sonarrPort}/"; } ];
             radarr.loadBalancer.servers   = [ { url = "http://${arrAddr}:${toString radarrPort}/"; } ];
+
+            # M12 — same container, same address, three more ports.
+            bazarr.loadBalancer.servers       = [ { url = "http://${arrAddr}:${toString bazarrPort}/"; } ];
+            cleanuparr.loadBalancer.servers   = [ { url = "http://${arrAddr}:${toString cleanuparrPort}/"; } ];
+            mediathekarr.loadBalancer.servers = [ { url = "http://${arrAddr}:${toString mediathekarrPort}/"; } ];
             grafana.loadBalancer.servers  = [ { url = "http://${monitoringAddr}:${toString grafanaPort}/"; } ];
 
             # M7.  The same address the forwardAuth middleware above calls,

@@ -333,10 +333,42 @@
   #   gid 3007  grafana      (service-modules/monitoring.nix — M6)
   #   uid 3008  authelia-main (containers/authelia.nix — M7, NOT in media)
   #   gid 3008  authelia-main (containers/authelia.nix — M7)
+  #   uid 3009  bazarr       (containers/arr.nix — M12, group media)
+  #   uid 3011  cleanuparr   (containers/arr.nix — M12, group media)
+  #   uid 3012  mediathekarr (containers/arr.nix — M12, group media; shared by
+  #                           the indexer and downloader units)
   #
   #===========================================================================
   # RESERVED — M8 and M12–M16.  Comments only; nothing below is declared yet.
   #===========================================================================
+  #
+  # M12 LANDED AND TOOK THREE OF ITS FIVE (2026-08-26).  3009, 3011 and 3012
+  # have moved up into the allocated table above.  The two it did NOT take are
+  # left here, still reserved and still unused, with the reason attached — a
+  # gap in a numbering scheme with no explanation gets closed by the next
+  # person who needs a number:
+  #
+  #   uid 3010  umlautadaptarr  RESERVED, NOT USED.  The service shipped with
+  #                             DynamicUser instead, because it has NO
+  #                             PERSISTENT STATE — verified against upstream:
+  #                             no SQLite anywhere in the repository, caching
+  #                             is IMemoryCache, and its docker-compose
+  #                             declares no volumes.  M12's own rule is that a
+  #                             service with nothing to persist has no reason
+  #                             to trade DynamicUser's six implied hardening
+  #                             directives for a static uid.  Its "no media
+  #                             access" half is kept exactly.  Do not reuse
+  #                             3010: if the service ever gains state, this is
+  #                             the number it takes.
+  #   uid 3013  unpackerr       RESERVED, NOT USED.  M12 (e) made it
+  #                             conditional on a measurement and the
+  #                             measurement said no: 50/50 Sonarr grabs and
+  #                             30/30 Radarr grabs were torrent protocol, the
+  #                             only download client configured is qBittorrent,
+  #                             and there are ZERO archive files among the 986
+  #                             in /srv/media/torrents.  Measured on ernst
+  #                             2026-08-26.  The trigger to revisit is a USENET
+  #                             download client being added, not a hunch.
   #
   # These are reservations, not configuration.  They exist so that two
   # milestones written months apart cannot pick the same number, and so that a
