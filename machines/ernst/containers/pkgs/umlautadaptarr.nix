@@ -157,8 +157,42 @@ stdenv.mkDerivation (finalAttrs: {
     # appsettings.json — http://[::]:5005 — would never be read and the app
     # would fall back to ASP.NET's own default of :5000.  It would start.  It
     # would answer nothing on the port Prowlarr is pointed at.
+    # ── LD_LIBRARY_PATH, and autoPatchelf CANNOT replace it ────────────────
+    #
+    # Measured on ernst 2026-08-26, first deploy: the service started, bound
+    # 5005, fetched 139 series from Sonarr, then aborted with
+    #
+    #     No usable version of libssl was found
+    #     Main process exited, code=dumped, signal=ABRT
+    #
+    # on its first HTTPS call — the POST to umlautadaptarr.pcjones.de.
+    #
+    # autoPatchelf reported "0 dependencies could not be satisfied" and was
+    # telling the truth.  .NET's OpenSSL shim does not LINK against libssl:
+    #
+    #     patchelf --print-needed libSystem.Security.Cryptography.Native.OpenSsl.so
+    #       libdl.so.2  libpthread.so.0  libc.so.6
+    #     patchelf --print-rpath  …
+    #       (empty)
+    #
+    # It dlopen()s libssl.so.3 / libcrypto.so.3 BY SONAME at run time, probing
+    # a list of versions.  A dlopen by soname is invisible to build-time ELF
+    # analysis, so there was nothing for autoPatchelf to fix and nothing for it
+    # to warn about — the check passing is not evidence here.
+    #
+    # THE LOCAL SMOKE TEST DID NOT CATCH IT EITHER, and that is the more
+    # useful half of the lesson: the run that proved 5005 and 5006 bind died
+    # on a deserialisation error from a stub *arr before it ever made an
+    # outbound HTTPS request.  Proving a service BINDS does not prove it can
+    # TALK.  Any future derivation in this directory wants one real outbound
+    # call in its smoke test.
+    #
+    # openssl only.  zlib and icu are reached through DT_NEEDED entries that
+    # autoPatchelf already resolved into RPATHs, and this build sets
+    # System.Globalization.Invariant so the ICU shim is never loaded at all.
     makeWrapper $out/share/umlautadaptarr/UmlautAdaptarr $out/bin/umlautadaptarr \
-      --set ASPNETCORE_CONTENTROOT $out/share/umlautadaptarr
+      --set ASPNETCORE_CONTENTROOT $out/share/umlautadaptarr \
+      --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath [ openssl ]}"
 
     runHook postInstall
   '';
