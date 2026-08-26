@@ -228,6 +228,25 @@ let
   cleanuparrUid   = 3011;
   mediathekarrUid = 3012;
 
+  # M13's additions.  Also reserved in machines/ernst/networking.nix, which
+  # already carried these three rows before this milestone started.
+  #
+  # Two own-group services and one media member, and the split is the same
+  # capability question the header asks of every uid here:
+  #
+  #   jellyseerr  REQUESTS media.  It talks to Sonarr, Radarr and Jellyfin over
+  #               REST and never opens a file under /srv/media, so it gets its
+  #               own group and no media access — the prowlarr shape.
+  #   janitorr    DELETES media, and additionally writes a tree of symlinks for
+  #               its "Leaving Soon" collections.  `media` PRIMARY.
+  #   scraparr    READS REST APIs and serves /metrics.  Own group, the prowlarr
+  #               shape again.
+  jellyseerrUid = 3014;
+  jellyseerrGid = 3014;
+  janitorrUid   = 3015;
+  scraparrUid   = 3016;
+  scraparrGid   = 3016;
+
   # Fixed on the HOST in machines/ernst/containers/jellyfin.nix, which owns
   # `users.groups.media`.  Restated numerically here (and by name only inside
   # the container, where this file does declare the group) so that nothing in
@@ -274,6 +293,39 @@ let
   umlautadaptarrPort      = 5005;      # its own HTTP API
   umlautadaptarrProxyPort = 5006;      # the proxy Prowlarr's indexers point at
 
+  # ── M13 ports ──────────────────────────────────────────────────────────────
+  #
+  # THREE SERVICES, THREE DIFFERENT ANSWERS TO "who may reach this", and the
+  # spread is wider than M12's two-way split — so it gets its own note rather
+  # than being appended to the lists above.
+  #
+  #   REACHABLE THROUGH TRAEFIK.  Jellyseerr is the only one, and it is also
+  #   the only service in this container that is NOT admin-facing: it is what
+  #   the household opens to ask for a film.  Its Traefik router deliberately
+  #   carries NO forward-auth middleware — see the jellyseerr block below and
+  #   the router in containers/traefik.nix.
+  jellyseerrPort = 5055;
+  #
+  #   REACHABLE FROM PROMETHEUS, AND FROM NOTHING ELSE.  This is a NEW SHAPE
+  #   for this file: every restricted rule here until now named traefikAddr,
+  #   because every port here until now fronted a browser.  A metrics endpoint
+  #   is scraped by the monitoring container instead, so it needs a second
+  #   source — see monitoringAddr below and the extraCommands block.
+  scraparrPort = 7100;
+  #
+  #   REACHABLE BY NOBODY.  Janitorr binds a port only because Spring Boot MVC
+  #   is on its classpath; it has NO web UI at all.  Verified at v2.2.0 by
+  #   reading the source: zero @RestController / @Controller classes and an
+  #   empty static-resources tree, and upstream's own README says "You don't
+  #   have to publish ANY ports on the host machine."
+  #
+  #   So this number exists to be PINNED AND BOUND TO LOOPBACK, not to be
+  #   opened.  Left at Spring Boot's default it would be 8080 on 0.0.0.0 —
+  #   i.e. on the veth, on VLAN 90 — which is the umlautadaptarr trap again.
+  #   8978 is the number docs/roadmap.md reserved for Janitorr, kept so the
+  #   roadmap and the repo agree even though nothing routes to it.
+  janitorrPort = 8978;
+
   # Where the Sonarr/Radarr API keys are staged.  A tmpfs under /run,
   # refreshed before every consumer starts — see the arr-api-keys block.
   #
@@ -299,6 +351,57 @@ let
   # argument, and what it does not cover, is in the "BACKEND BYPASS HARDENING"
   # section of machines/ernst/containers/traefik.nix.
   traefikAddr = "10.0.90.12";
+
+  # The monitoring container's veth address on VLAN 90 (M6, DHCP reservation
+  # keyed on 02:00:00:90:00:06).  A SECOND permitted source, and the first one
+  # this file has ever had.
+  #
+  # WHY IT CANNOT JUST GO THROUGH TRAEFIK, since that is the obvious question:
+  # Prometheus scrapes over plain HTTP on a schedule and has no browser, no
+  # cookie jar and no way through forward-auth.  Routing /metrics through the
+  # proxy would mean either a Traefik router with no authentication at all on a
+  # name in the public CT log, or an Authelia bypass rule — both strictly worse
+  # than one iptables rule naming one address on the same bridge.
+  #
+  # It is the same layer-2 hop as traefikAddr and carries the same caveat: the
+  # frames never reach the UDM-Pro, so this rule is the only enforcement point.
+  # M6's containers/traefik.nix and containers/authelia.nix already accept from
+  # this address for exactly the same reason (their own metrics listeners);
+  # this file is the third.
+  monitoringAddr = "10.0.90.14";
+
+  # M13.  The Jellyfin container's veth address on VLAN 90 (M2b, DHCP
+  # reservation keyed on 02:00:00:90:00:02) and the port it serves.
+  #
+  # Janitorr is the FIRST service in this container to talk to Jellyfin, and
+  # that is a boundary crossing worth naming rather than inlining: everything
+  # else here reaches its peers on 127.0.0.1 because they share this netns.
+  # Jellyfin does not — it is a separate container with its own kernel-level
+  # network namespace and its own firewall, which today accepts 8096 from
+  # TRAEFIK ONLY.
+  #
+  # So this address is not sufficient on its own: containers/jellyfin.nix gains
+  # a second source-restricted accept for this container, exactly mirroring the
+  # one this file gains for the monitoring container.  Both are in the same PR.
+  jellyfinAddr = "10.0.90.10";
+  jellyfinPort = 8096;
+
+  # M13.  Janitorr's Jellyfin credentials, staged host-side out of sops and
+  # bound read-only into the container at the SAME path — see the generator
+  # and the staging unit below for why this is not a bind of /run/secrets.
+  janitorrSecretsDir = "/run/janitorr-secrets";
+
+  # Guarded rather than selected directly, the same way
+  # service-modules/monitoring.nix guards its ntfy generator: referencing a
+  # generator that does not exist yet is an EVALUATION error, and an evaluation
+  # error names an attribute rather than the thing a human forgot to run.  With
+  # the guard, a machine whose `clan vars generate ernst` has not been run yet
+  # still evaluates, and the failure moves to the staging unit at runtime where
+  # the message can say what to do.
+  janitorrJellyfinGen =
+    if config.clan.core.vars.generators ? janitorr-jellyfin
+    then config.clan.core.vars.generators.janitorr-jellyfin
+    else { files."credentials.env".path = "/no-such-path"; };
 in
 {
   ##############################################################################
@@ -348,6 +451,37 @@ in
     "d /srv/media/torrents/mediathek            2770 root ${toString mediaGid} -"
     "d /srv/media/torrents/mediathek/incomplete 2770 root ${toString mediaGid} -"
     "d /srv/media/torrents/mediathek/complete   2770 root ${toString mediaGid} -"
+
+    # ── M13 ────────────────────────────────────────────────────────────────
+    #
+    # Two state directories in the usual shape.  Scraparr gets none: it holds
+    # no state at all — it reads REST APIs and answers /metrics from memory,
+    # and its entire configuration arrives as an EnvironmentFile.
+    #
+    # Jellyseerr's directory is named `jellyseerr` on zdata but binds to
+    # /var/lib/SEERR inside, and the mismatch is deliberate — see the bind
+    # mount below for why the two names differ.
+    "d ${stateRoot}/jellyseerr 0700 ${toString jellyseerrUid} ${toString jellyseerrGid} -"
+    "d ${stateRoot}/janitorr   0700 ${toString janitorrUid}   ${toString mediaGid}      -"
+
+    # Janitorr's "Leaving Soon" tree, and — like MediathekArr's download tree
+    # above — it is NOT under ${stateRoot}.
+    #
+    # It has to be inside /srv/media, but for a different reason than the
+    # hardlink one.  This directory holds SYMLINKS to library files, and
+    # Jellyfin is pointed at it as an extra library so that "Movies (Leaving
+    # Soon)" shows up on the couch.  Jellyfin only sees /srv/media, so a tree
+    # anywhere else would resolve to nothing from its side.
+    #
+    # 2770 root:media, matching the rest of the tree: Janitorr (uid 3015,
+    # group media) creates and tears down folders in here on every run —
+    # `file-system.from-scratch` rebuilds the whole thing — and Jellyfin
+    # (uid 964, also in media) has to be able to read what it finds.
+    #
+    # DELETING THIS DIRECTORY DELETES SYMLINKS, NOT MEDIA.  Worth stating
+    # plainly next to a path owned by a service whose job is deletion: nothing
+    # under here is a real file.
+    "d /srv/media/leaving-soon 2770 root ${toString mediaGid} -"
   ];
 
   # The rest of the media tree is NOT declared here.  containers/jellyfin.nix
@@ -363,6 +497,116 @@ in
   # rule the M3 lesson actually states is "one declaration per path", not "one
   # file per tree".  If a later milestone moves MediathekArr elsewhere, these
   # three rules move with it rather than being duplicated there.
+
+  ##############################################################################
+  # M13 — JANITORR'S JELLYFIN CREDENTIALS.  A clan var, and the only prompted
+  # secret this container has.
+  #
+  # ── WHY THESE THREE CANNOT BE READ OUT OF A CONFIG FILE ────────────────────
+  #
+  #   Everything else this container needs is read from the application that
+  #   generated it: sonarr's and radarr's API keys come out of their own
+  #   config.xml (see arr-api-keys), and Jellyseerr's comes out of its own
+  #   settings.json.  That keeps ONE source of truth and survives a key
+  #   rotation in a UI with no deploy — M4's argument, restated in M12.
+  #
+  #   Jellyfin is the exception, twice over:
+  #
+  #     1. Its API key lives in its DATABASE, not in a file this container
+  #        could read even if it had a bind mount for it (it does not — the
+  #        Jellyfin container is a separate netns and a separate state tree).
+  #     2. JANITORR NEEDS A REAL USER, NOT JUST AN API KEY.  Jellyfin's delete
+  #        endpoint authorises against a user account with deletion rights;
+  #        an API key alone cannot delete.  So a username and password are
+  #        needed as well, and an account is definitionally created by a human
+  #        in a UI.
+  #
+  #   That makes prompts the honest shape.  `clan vars generate ernst` asks for
+  #   all three; the PR body carries the in-Jellyfin steps that produce them.
+  #
+  # ── IT IS NOT NEEDED FOR THE FIRST DEPLOY TO SUCCEED ───────────────────────
+  #
+  #   Deliberately.  Janitorr's first deploy runs in DRY-RUN (see its block),
+  #   and dry-run does not call Jellyfin's delete endpoint at all — so a
+  #   deploy that lands before the Jellyfin account exists still produces a
+  #   Janitorr that starts, connects to the *arrs, and prints what it WOULD
+  #   delete, which is the deliverable M13 asks for.
+  #
+  #   What it will not do until these are filled in is build the "Leaving
+  #   Soon" collections, because those are created through the Jellyfin API.
+  clan.core.vars.generators.janitorr-jellyfin = {
+    files."credentials.env" = {
+      secret = true;
+    };
+    prompts."api-key" = {
+      description = "Jellyfin API key for Janitorr (Dashboard → API Keys → +)";
+      type = "hidden";
+    };
+    prompts."username" = {
+      description = "Jellyfin username for Janitorr's dedicated deletion account";
+      type = "line";
+    };
+    prompts."password" = {
+      description = "Password for that Jellyfin account";
+      type = "hidden";
+    };
+    # Written as an EnvironmentFile rather than three separate files because
+    # the consumer is a single config-rendering oneshot inside the container.
+    # Values are NOT quoted: systemd's EnvironmentFile parser treats quotes as
+    # part of the value unless the whole value is quoted, and a password that
+    # silently gains a pair of quotes fails authentication with a message that
+    # says nothing about quoting.
+    script = ''
+      {
+        printf 'JELLYFIN_API_KEY=%s\n'  "$(cat "$prompts/api-key")"
+        printf 'JELLYFIN_USERNAME=%s\n' "$(cat "$prompts/username")"
+        printf 'JELLYFIN_PASSWORD=%s\n' "$(cat "$prompts/password")"
+      } > "$out/credentials.env"
+    '';
+    runtimeInputs = [ pkgs.coreutils ];
+  };
+
+  # Stage them where the container can see them.
+  #
+  # Same shape and the same reasoning as containers/traefik.nix's
+  # traefik-secrets: a directory WE own, bound into the container at the same
+  # path, rather than a bind of /run/secrets — which is a symlink to a
+  # per-generation directory that is REPLACED on every deploy, so an nspawn
+  # bind established at container start would keep exposing a deleted
+  # generation until the container is restarted.
+  #
+  # 0400 root:root.  The rendering oneshot inside the container reads this as
+  # root before writing a file the janitorr uid can read; uid 3015 never opens
+  # this one and must not be able to.
+  #
+  # GENERATE BEFORE YOU DEPLOY — but unlike traefik-secrets, a deploy that runs
+  # first is NOT fatal here.  Until the var exists, `files.<n>.path` evaluates
+  # to the literal "/no-such-path", so this unit fails; it is deliberately NOT
+  # `requiredBy` container@arr, so the container still starts and every other
+  # service in it runs.  Janitorr's config renderer degrades to a Jellyfin-less
+  # configuration, which is exactly what dry-run needs.  See the janitorr-config
+  # block, which is where that degradation is implemented and explained.
+  #
+  # ROTATING THE CREDENTIALS needs a restart, not just a deploy: if this unit's
+  # text is unchanged, systemd will not re-run it when the underlying sops file
+  # changes.  After `clan vars generate ernst`:
+  #     systemctl restart janitorr-secrets container@arr
+  systemd.services.janitorr-secrets = {
+    description = "Stage Janitorr's Jellyfin credentials for container@arr";
+    after       = [ "local-fs.target" ];
+    before      = [ "container@arr.service" ];
+    wantedBy    = [ "container@arr.service" ];
+    serviceConfig = {
+      Type            = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      ${pkgs.coreutils}/bin/install -d -m 0700 -o root -g root ${janitorrSecretsDir}
+      ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
+        ${janitorrJellyfinGen.files."credentials.env".path} \
+        ${janitorrSecretsDir}/jellyfin.env
+    '';
+  };
 
   # Host side of the container's veth — a VLAN-90 port on br0.
   #
@@ -478,6 +722,54 @@ in
         hostPath   = "${stateRoot}/mediathekarr";
         isReadOnly = false;
       };
+
+      # ── M13 ──────────────────────────────────────────────────────────────
+      #
+      # /var/lib/SEERR, not /var/lib/jellyseerr, and the name change is not
+      # cosmetic — it is a 26.05 breaking change this file has to land on the
+      # right side of.
+      #
+      # nixpkgs RENAMED the module: `services.jellyseerr` is now an alias for
+      # `services.seerr` (mkRenamedOptionModule), the package attribute is
+      # `seerr`, and the module picks its state path from stateVersion:
+      #
+      #   stateVersion >= 26.05   StateDirectory=seerr,      /var/lib/seerr
+      #   stateVersion <  26.05   StateDirectory=jellyseerr, /var/lib/jellyseerr/config
+      #
+      # This container declares stateVersion = "26.05", so the NEW path is the
+      # one that applies and this bind has to match it or the module writes to
+      # a directory nothing preserves.
+      #
+      # The zdata side keeps the name `jellyseerr` deliberately: on the pool
+      # these directories are read by a human doing `ls -n /srv/state`, and
+      # "jellyseerr" is what the service is called everywhere else in this
+      # repo — in the Traefik router, in the DNS name, and in the uid table.
+      "/var/lib/seerr" = {
+        hostPath   = "${stateRoot}/jellyseerr";
+        isReadOnly = false;
+      };
+
+      # Janitorr's state.  Small — it keeps no library database, only its own
+      # bookkeeping — but it must survive a container restart, and zroot rolls
+      # back (invariant #7).
+      #
+      # Its CONFIG does not live here: application.yml is rendered into a
+      # tmpfs under /run on every start, because it contains four API keys and
+      # a password.  See the janitorr-config block.
+      "/var/lib/janitorr" = {
+        hostPath   = "${stateRoot}/janitorr";
+        isReadOnly = false;
+      };
+
+      # Scraparr has no bind mount, and that is not an omission — it has no
+      # persistent state at all.  Same situation as UmlautAdaptarr above.
+
+      # Janitorr's Jellyfin credentials, READ-ONLY, at the same path as on the
+      # host.  The only bind mount in this file that carries a secret.
+      "${janitorrSecretsDir}" = {
+        hostPath   = janitorrSecretsDir;
+        isReadOnly = true;
+      };
     };
 
     ############################################################################
@@ -503,6 +795,26 @@ in
       umlautadaptarr = pkgs.callPackage ./pkgs/umlautadaptarr.nix { };
       cleanuparr     = pkgs.callPackage ./pkgs/cleanuparr.nix { };
       mediathekarr   = pkgs.callPackage ./pkgs/mediathekarr.nix { };
+
+      # ── M13's hand-rolled derivations ───────────────────────────────────
+      #
+      # Two of M13's three additions have no nixpkgs package and no NixOS
+      # module.  The third — Jellyseerr — HAS both, and the surprise there was
+      # that it is now called something else: `services.jellyseerr` is a
+      # mkRenamedOptionModule alias for `services.seerr`, and the package
+      # attribute is `seerr`.  See the services.seerr block below.
+      #
+      # These two are NOT alike, and the difference is worth one line each
+      # because it is the whole of M13's packaging risk:
+      #
+      #   janitorr   BUILT FROM SOURCE.  Upstream publishes no artifact at all
+      #              — only an OCI image — so this is a real Gradle/Spring Boot
+      #              build with a committed dependency lock.  Its header
+      #              explains the four things that make that non-obvious.
+      #   scraparr   A plain setuptools Python application whose six
+      #              dependencies are all already in nixpkgs.  The easy one.
+      janitorr = pkgs.callPackage ./pkgs/janitorr.nix { };
+      scraparr = pkgs.callPackage ./pkgs/scraparr.nix { };
     in
     {
       system.stateVersion = "26.05";
@@ -641,17 +953,52 @@ in
       # UmlautAdaptarr's proxy port is the one to think hardest about before
       # ever adding it: 5006 is an HTTP PROXY, and an open HTTP proxy on the
       # Services VLAN is the same class of gift as FlareSolverr's 8191.
+      #
+      # ── M13: ONE MORE THROUGH TRAEFIK, AND A SECOND SOURCE ────────────────
+      #
+      # ADDED TO THE TRAEFIK LIST:
+      #   5055   jellyseerr    the household's request UI
+      #
+      # ADDED TO A NEW, SEPARATE LIST — and the separation is the point:
+      #   7100   scraparr      /metrics, scraped by Prometheus at 10.0.90.14
+      #
+      # Until M13 every rule in this file named one source, so a single
+      # concatMapStrings over one port list said everything.  A metrics
+      # endpoint has a DIFFERENT client, so it needs a different source — and
+      # the two lists are kept apart rather than merged into a list of
+      # (source, port) pairs because the question a human actually asks here is
+      # "what can Traefik reach?", and that question must stay answerable by
+      # reading one list.
+      #
+      # Scraparr binds 0.0.0.0 by default (GENERAL_ADDRESS, verified in
+      # scraparr.py at v3.1.0), so — exactly like UmlautAdaptarr's ports — the
+      # ONLY thing keeping 7100 off VLAN 90 generally is that it appears in a
+      # source-restricted rule and nowhere else.
+      #
+      # NOT ADDED, and this is again the more important half:
+      #   8978   janitorr      it has NO web UI at all (see the port block at
+      #                        the top of this file).  It is additionally bound
+      #                        to 127.0.0.1 by its own configuration, so this
+      #                        list and the application agree rather than the
+      #                        firewall carrying the whole burden.
       networking.firewall.allowedTCPPorts = [ ];
-      networking.firewall.extraCommands = lib.concatMapStrings (port: ''
-        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32 --dport ${toString port} -j nixos-fw-accept
-      '') [
-        prowlarrPort
-        sonarrPort
-        radarrPort
-        bazarrPort
-        cleanuparrPort
-        mediathekarrDownloaderPort
-      ];
+      networking.firewall.extraCommands =
+        lib.concatMapStrings (port: ''
+          iptables -A nixos-fw -p tcp -s ${traefikAddr}/32 --dport ${toString port} -j nixos-fw-accept
+        '') [
+          prowlarrPort
+          sonarrPort
+          radarrPort
+          bazarrPort
+          cleanuparrPort
+          mediathekarrDownloaderPort
+          jellyseerrPort
+        ]
+        + lib.concatMapStrings (port: ''
+          iptables -A nixos-fw -p tcp -s ${monitoringAddr}/32 --dport ${toString port} -j nixos-fw-accept
+        '') [
+          scraparrPort
+        ];
 
       ##########################################################################
       # Users.  Numeric ids are the interface across the nspawn boundary.
@@ -739,6 +1086,52 @@ in
         group        = "media";
         home         = "/var/lib/mediathekarr";
       };
+
+      # ── M13 users ─────────────────────────────────────────────────────────
+      #
+      # JELLYSEERR is declared in full even though `services.seerr` exists,
+      # because that module creates NO user at all — it runs DynamicUser and
+      # therefore has nothing to name.  Turning DynamicUser off (see its block)
+      # means this file owns the account outright.
+      #
+      # OWN GROUP, NO MEDIA.  It is the prowlarr shape and for the prowlarr
+      # reason: Jellyseerr talks to Sonarr, Radarr and Jellyfin over REST and
+      # never opens a file under /srv/media.  Giving it gid 3000 "so it matches
+      # the others" would be a strictly larger blast radius for no capability —
+      # and this is the one service in the container that the whole household
+      # can reach without authenticating to Authelia, so it is the last one
+      # that should hold a handle to 47 TB.
+      users.users.jellyseerr = {
+        isSystemUser = true;
+        uid          = jellyseerrUid;
+        group        = "jellyseerr";
+        home         = "/var/lib/seerr";
+      };
+      users.groups.jellyseerr = { gid = jellyseerrGid; };
+
+      # JANITORR takes `media` as PRIMARY, and here the reason IS the one the
+      # cleanuparr block dismisses: it deletes files it does not own.  Removing
+      # a directory entry needs write on the PARENT directory, and those are
+      # 2770 root:media — so group membership is the whole of its access.
+      #
+      # It also CREATES: the "Leaving Soon" symlink tree under
+      # /srv/media/leaving-soon, which Jellyfin reads as an extra library.
+      users.users.janitorr = {
+        isSystemUser = true;
+        uid          = janitorrUid;
+        group        = "media";
+        home         = "/var/lib/janitorr";
+      };
+
+      # SCRAPARR: own group, no media.  It reads REST APIs and serves
+      # /metrics; it has no reason to be able to name a file in the library.
+      users.users.scraparr = {
+        isSystemUser = true;
+        uid          = scraparrUid;
+        group        = "scraparr";
+        home         = "/var/empty";
+      };
+      users.groups.scraparr = { gid = scraparrGid; };
 
       ##########################################################################
       # The services.
@@ -1425,6 +1818,693 @@ in
       # THE TRIGGER TO REVISIT IS A USENET DOWNLOAD CLIENT, not a hunch: the
       # whole reason this stack sees no archives is that it has no usenet path.
       # Note pkgs.unpackerr exists (0.15.2) and needs a unit, not a derivation.
+
+      ##########################################################################
+      # M13 — JELLYSEERR.  The request side of the loop.
+      #
+      # ── THE MODULE WAS RENAMED, AND THE OPTION YOU WANT IS `services.seerr` ─
+      #
+      # docs/roadmap.md's M13 prompt says "jellyseerr HAS a module", surveyed
+      # 2026-08-25.  It still does, but in ernst's own pin it is reached under a
+      # different name: nixos/modules/services/misc/seerr.nix declares
+      # `services.seerr` and imports
+      #
+      #   (lib.mkRenamedOptionModule [ "services" "jellyseerr" ] [ "services" "seerr" ])
+      #
+      # so `services.jellyseerr` still evaluates — it just emits a rename
+      # warning and sets something else.  The package attribute moved too:
+      # `seerr`, version 3.2.0.  This file uses the new names for both, so the
+      # build produces no rename warnings and a reader grepping for "seerr"
+      # finds everything.
+      #
+      # The 26.05 rename also moved the STATE PATH.  That is handled at the
+      # bind mount, where the two candidate paths are written out.
+      #
+      # ── INTERNAL SCOPE ONLY.  THE EXTERNAL HALF IS M16 ─────────────────────
+      #
+      # lgo has decided Jellyseerr must eventually be reachable FROM THE
+      # INTERNET.  THAT IS M16 AND IS DELIBERATELY NOT IMPLEMENTED HERE.
+      # Nothing in this file, in containers/traefik.nix, or in the UDM-Pro
+      # policy changed to admit a WAN source; M13's router rides the existing
+      # permanent "Allow Traefik" rule (LAN + IoT → traefik:443) and no new
+      # gateway rule was created.
+      #
+      # The split is the same reasoning that gave M2b its own milestone: the
+      # household proves the request workflow first, and the ingress boundary
+      # then gets reviewed AS an ingress change rather than as one line in a
+      # library-cleanup milestone.
+      #
+      # ── IT DOES NOT GO BEHIND AUTHELIA, AND THAT IS DELIBERATE ─────────────
+      #
+      # Authelia exists (M7) and every other browser-facing service in this
+      # container sits behind it.  Jellyseerr does not, for two reasons:
+      #
+      #   1. M16 decides the external auth posture.  Putting it behind
+      #      forward-auth now and reworking it there is two changes to one
+      #      router.
+      #   2. IT IS NOT AN ADMIN SERVICE.  The others in this container are
+      #      operator tools; this is the thing the household opens to ask for a
+      #      film.  Its posture is its OWN Jellyfin-account login — the
+      #      credential everyone here already has — which is also what makes
+      #      "who requested this" meaningful inside Jellyseerr rather than
+      #      collapsing to one Authelia identity.
+      #
+      # This is the same call containers/traefik.nix makes for Jellyfin itself,
+      # and its header states the general form of the argument.
+      services.seerr = {
+        enable = true;
+        port   = jellyseerrPort;
+
+        # Explicit list above, as everywhere in this file.  The module's
+        # openFirewall would set allowedTCPPorts, which is the unconditional
+        # mechanism M5 emptied on purpose.
+        openFirewall = false;
+      };
+
+      # ── THE PROWLARR TRAP, IN ITS THIRD FORM ──────────────────────────────
+      #
+      # The upstream unit runs DynamicUser = true.  A static uid is needed
+      # here for the reason the file header gives — nspawn does not remap ids,
+      # so the number chosen inside is a number on zdata, and /srv/state has to
+      # be owned by something nameable.
+      #
+      # M13's brief warns that switching DynamicUser off silently loses six
+      # directives it implied: NoNewPrivileges, PrivateTmp, ProtectSystem=strict,
+      # ProtectHome=read-only, RemoveIPC and RestrictSUIDSGID.
+      #
+      # CHECKED RATHER THAN ASSUMED, and the answer is interesting: the seerr
+      # module ALREADY sets all six explicitly, so unlike Prowlarr nothing is
+      # actually lost here.  They are restated below anyway — not out of
+      # ceremony, but because this file must not depend on an upstream module
+      # continuing to be generous.  ProtectHome is tightened from the implied
+      # `read-only` to `true` (which the module also does).
+      #
+      # What the module does NOT set, and what this block therefore adds, is
+      # the second tier: CapabilityBoundingSet, RestrictAddressFamilies,
+      # RestrictNamespaces, LockPersonality, SystemCallFilter,
+      # SystemCallArchitectures, ProtectProc and UMask.
+      systemd.services.seerr.serviceConfig = {
+        DynamicUser = lib.mkForce false;
+        User        = "jellyseerr";
+        Group       = "jellyseerr";
+
+        # The six DynamicUser implied.  Restated, per the paragraph above.
+        NoNewPrivileges  = true;
+        PrivateTmp       = true;
+        ProtectSystem    = "strict";
+        ProtectHome      = true;
+        RemoveIPC        = true;
+        RestrictSUIDSGID = true;
+
+        # StateDirectory= already grants this, but naming it keeps the set of
+        # writable paths readable in one place.
+        ReadWritePaths = [ "/var/lib/seerr" ];
+
+        # 0027, NOT 0002 — and this is the one place in this file where the
+        # group-writable default is wrong.
+        #
+        # sonarr, radarr, bazarr, cleanuparr and mediathekarr all use 0002
+        # because their output lands in /srv/media, a tree whose whole point is
+        # that the `media` group can manage it.  Jellyseerr writes only its own
+        # state directory, holds API keys for every *arr in that directory, and
+        # is in no shared group at all — so group-writable buys nothing and
+        # widens a file full of credentials.
+        UMask = "0027";
+
+        CapabilityBoundingSet   = "";
+        PrivateDevices          = true;
+        ProtectClock            = true;
+        ProtectControlGroups    = true;
+        ProtectHostname         = true;
+        ProtectKernelLogs       = true;
+        ProtectKernelModules    = true;
+        ProtectKernelTunables   = true;
+        ProtectProc             = "invisible";
+        RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+        RestrictNamespaces      = true;
+        RestrictRealtime        = true;
+        LockPersonality         = true;
+        SystemCallArchitectures = "native";
+        SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+      };
+
+      ##########################################################################
+      # M13 — JANITORR.  The reaping side of the loop.
+      #
+      # ── WHAT IT IS NOT ────────────────────────────────────────────────────
+      #
+      # IT DOES NOT DELETE AFTER WATCHING.  Someone will expect it to, because
+      # that is what "media lifecycle" sounds like, and M13's brief asks for
+      # this to be written into the file header rather than discovered.
+      #
+      # What it actually does is DISK-SPACE-AWARE EXPIRY: each threshold in
+      # `movie-expiration` / `season-expiration` maps a percentage of FREE DISK
+      # to an age, and nothing is deleted at all until free space falls below
+      # the highest threshold named.  On a pool with room, Janitorr does
+      # nothing, forever, which is the intended resting state.
+      #
+      # IT ONLY SEES MEDIA THE *ARRS DOWNLOADED.  It reasons entirely through
+      # Sonarr's and Radarr's APIs, so anything imported by hand — and anything
+      # arriving through MediathekArr's own path — is invisible to it.  That is
+      # a real gap on this host, not a hypothetical one: M12 added MediathekArr
+      # specifically to pull ARD/ZDF content in.
+      #
+      # ── IT HAS NO WEB UI.  VERIFIED, NOT ASSUMED ──────────────────────────
+      #
+      # At v2.2.0 the source tree contains zero @RestController and zero
+      # @Controller classes and ships no static resources; upstream's README
+      # says "You don't have to publish ANY ports on the host machine."
+      #
+      # It nonetheless BINDS one, because spring-boot-webmvc is on its
+      # classpath and Spring Boot starts Tomcat regardless.  Left alone that is
+      # 0.0.0.0:8080 — inside this netns, that is the veth, on VLAN 90.  So the
+      # configuration below pins the port to 8978 and the ADDRESS to 127.0.0.1,
+      # and the firewall list does not name it.  Two independent mechanisms,
+      # because the trap that produced this note (M12's 0.0.0.0-binding
+      # helpers) was found by measurement rather than by reading a manual.
+      #
+      # ── DRY-RUN IS ON, AND THE FIRST DEPLOY KEEPS IT ──────────────────────
+      #
+      # `application.dry-run: true` below.  M13 requires the first deploy to
+      # ship it that way and requires the PR body to carry what Janitorr WOULD
+      # have deleted, read out of the journal, as the deliverable.
+      #
+      # TURNING IT OFF IS A SEPARATE, DELIBERATE COMMIT.  Alongside it, the
+      # *arr Recycle Bin must be configured — M13 asks for two independent
+      # safety nets on the first run of a deleting service pointed at 47 TB,
+      # and that one is a manual step in Sonarr's and Radarr's own settings.
+      systemd.services.janitorr = {
+        description = "Janitorr — disk-space-aware media expiry across the *arr stack";
+        wantedBy    = [ "multi-user.target" ];
+        after       = [ "sonarr.service" "radarr.service" "seerr.service" "janitorr-config.service" ];
+        wants       = [ "sonarr.service" "radarr.service" "seerr.service" ];
+        requires    = [ "janitorr-config.service" ];
+
+        environment = {
+          # Spring reads this as an additional config location.  `optional:` is
+          # NOT used: the config renderer is a hard `requires` dependency, so
+          # if the file is missing something has already failed and Janitorr
+          # starting with framework defaults (every client disabled, and a
+          # property-binding failure) helps nobody.
+          SPRING_CONFIG_ADDITIONAL_LOCATION = "/run/janitorr/application.yml";
+
+          # 256 MB is upstream's own recommendation, and it is not arbitrary:
+          # the JVM sizes its heap from the container/cgroup limit, and
+          # upstream reports 200 MB as the floor at which it still starts.
+          # MemoryMax below enforces the same number from systemd's side so the
+          # two agree.
+          JAVA_TOOL_OPTIONS = "-XX:+UseSerialGC -Xss512k";
+        };
+
+        serviceConfig = {
+          Type      = "simple";
+          User      = "janitorr";
+          Group     = "media";
+          ExecStart = "${lib.getExe janitorr}";
+          Restart   = "on-failure";
+          RestartSec = "60s";
+
+          # See the JAVA_TOOL_OPTIONS note.  A hard cap rather than MemoryHigh:
+          # this is a background reaper sharing a host with Jellyfin
+          # transcoding and Ollama, and a JVM that grows without bound is
+          # exactly the neighbour that turns a busy evening into an OOM.
+          MemoryMax = "512M";
+
+          # Group-writable, like every other service here that writes into
+          # /srv/media: the "Leaving Soon" tree has to be readable by Jellyfin
+          # (uid 964, group media) and removable by Janitorr on the next run.
+          UMask = "0002";
+
+          # Static uid with persistent state, so every directive DynamicUser
+          # would have implied is restated — the Prowlarr trap in reverse, the
+          # same shape as the cleanuparr block above.
+          NoNewPrivileges  = true;
+          PrivateTmp       = true;
+          ProtectSystem    = "strict";
+          ProtectHome      = true;
+          RemoveIPC        = true;
+          RestrictSUIDSGID = true;
+
+          # It deletes from the library and builds the Leaving Soon tree.
+          ReadWritePaths = [ "/srv/media" "/var/lib/janitorr" ];
+
+          CapabilityBoundingSet   = "";
+          PrivateDevices          = true;
+          ProtectClock            = true;
+          ProtectControlGroups    = true;
+          ProtectHostname         = true;
+          ProtectKernelLogs       = true;
+          ProtectKernelModules    = true;
+          ProtectKernelTunables   = true;
+          ProtectProc             = "invisible";
+          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+          RestrictNamespaces      = true;
+          RestrictRealtime        = true;
+          LockPersonality         = true;
+          SystemCallArchitectures = "native";
+
+          # NO SystemCallFilter, and this is the one deliberate gap in the
+          # hardening of this unit.
+          #
+          # A JVM needs @privileged-adjacent calls that the other services here
+          # do not — membarrier and the perf/JIT paths in particular — and a
+          # filter that kills the runtime at an unpredictable moment during
+          # class loading is worse than no filter: it presents as a service
+          # that starts sometimes.  Everything the filter would have bought is
+          # bought instead by an empty CapabilityBoundingSet, NoNewPrivileges
+          # and the Protect*/Restrict* set above.
+          #
+          # If this is revisited, `SystemCallFilter = [ "@system-service" ]`
+          # WITHOUT the "~@privileged" subtraction is the version to test first.
+        };
+      };
+
+      # ── Janitorr's configuration, rendered at start from staged secrets ────
+      #
+      # A separate oneshot rather than a Nix-rendered file in the store,
+      # because application.yml has to contain FOUR API KEYS AND A PASSWORD and
+      # /nix/store is world-readable.
+      #
+      # It reads from three sources, and the spread is the point:
+      #
+      #   sonarr, radarr    arr-api-keys, which extracts them from each
+      #                     application's OWN config.xml.  One source of truth;
+      #                     survives a key rotation in the UI with no deploy.
+      #   jellyseerr        its own settings.json, for the same reason.  The
+      #                     key is generated by Jellyseerr on first run.
+      #   jellyfin          a clan var with prompts, because its key lives in a
+      #                     database and it additionally needs a real user
+      #                     account.  See the generator on the host side.
+      #
+      # DEGRADES RATHER THAN FAILS when a source is absent, and each
+      # degradation is chosen so that dry-run still produces its listing:
+      #
+      #   no jellyseerr key   the jellyseerr client is written `enabled: false`
+      #   no jellyfin creds   the jellyfin client is written `enabled: false`
+      #
+      # A missing SONARR OR RADARR key is fatal, correctly: those are the
+      # services Janitorr reasons about, and a Janitorr with neither has
+      # nothing to say.
+      systemd.services.janitorr-config = {
+        description = "Render Janitorr's application.yml from staged credentials";
+        after      = [ "arr-api-keys.service" "seerr.service" ];
+        requires   = [ "arr-api-keys.service" ];
+        before     = [ "janitorr.service" ];
+        serviceConfig = {
+          Type                     = "oneshot";
+          RemainAfterExit          = false;
+          RuntimeDirectory         = "janitorr";
+          RuntimeDirectoryMode     = "0750";
+          RuntimeDirectoryPreserve = "yes";
+
+          # THE DIRECTORY'S GROUP IS SET IN THE SCRIPT, NOT HERE, AND THAT IS
+          # NOT A STYLE CHOICE.
+          #
+          # The obvious spelling is `RuntimeDirectoryUser` /
+          # `RuntimeDirectoryGroup`.  THOSE DIRECTIVES DO NOT EXIST.  systemd
+          # has RuntimeDirectoryMode and RuntimeDirectoryPreserve and takes the
+          # OWNERSHIP from the unit's own User=/Group=; the two invented names
+          # are accepted by the NixOS module, written into the unit file, and
+          # then dropped by systemd with
+          #
+          #   Unknown key 'RuntimeDirectoryGroup' in section [Service], ignoring
+          #
+          # — a warning in the journal and nothing else.  Caught here with
+          # `systemd-analyze verify` before deploying, not on ernst.
+          #
+          # This unit runs as ROOT (it has to; it reads other users' 0700
+          # directories), so without the chown below /run/janitorr would be
+          # root:root 0750 — and a 0640 root:media file inside a directory the
+          # media group cannot TRAVERSE is unreadable.  That is precisely the
+          # bug microvms/wg-qbittorrent.nix documents in its staging unit:
+          # "Group needs x on the directory, not just r on the file."
+          #
+          # CAP_CHOWN is in the bounding set above for exactly this one call.
+          UMask = "0027";
+
+          # Same posture as arr-api-keys, and for the same reason: this unit
+          # handles credentials and has no business having a network stack.
+          #
+          # CAP_DAC_READ_SEARCH for the same reason too — sonarr's staged key
+          # and Jellyseerr's settings.json both sit under directories owned by
+          # someone else.  NOT CAP_DAC_OVERRIDE: read and traverse only, so
+          # this unit cannot write over anything it can see.
+          PrivateNetwork          = true;
+          IPAddressDeny           = "any";
+          CapabilityBoundingSet   = [ "CAP_DAC_READ_SEARCH" "CAP_CHOWN" ];
+          NoNewPrivileges         = true;
+          ProtectSystem           = "strict";
+          ProtectHome             = true;
+          PrivateTmp              = true;
+          PrivateDevices          = true;
+          ProtectClock            = true;
+          ProtectControlGroups    = true;
+          ProtectHostname         = true;
+          ProtectKernelLogs       = true;
+          ProtectKernelModules    = true;
+          ProtectKernelTunables   = true;
+          ProtectProc             = "invisible";
+          RestrictAddressFamilies = [ "AF_UNIX" ];
+          RestrictNamespaces      = true;
+          RestrictRealtime        = true;
+          RestrictSUIDSGID        = true;
+          RemoveIPC               = true;
+          LockPersonality         = true;
+          SystemCallArchitectures = "native";
+          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+
+          ExecStart = pkgs.writeShellScript "janitorr-render-config" ''
+            set -euo pipefail
+
+            out=/run/janitorr/application.yml
+
+            # See the RuntimeDirectory note in this unit's serviceConfig: the
+            # directory is created root:root by systemd, and Janitorr reaches
+            # the file through its `media` group membership — which needs the
+            # execute bit on the DIRECTORY, not just read on the file.
+            ${pkgs.coreutils}/bin/chown root:media /run/janitorr
+            ${pkgs.coreutils}/bin/chmod 0750 /run/janitorr
+
+            # Assign, then test — the shape PR #84 got wrong and arr-api-keys
+            # documents at length.  A command substitution that fails inside
+            # an argument does not trip `set -e`, so building the file in one
+            # step would turn an unreadable key into an EMPTY key and a 401
+            # with nothing in the log to explain it.
+            sonarr_key=$(${pkgs.coreutils}/bin/cat ${arrSecretsDir}/sonarr-api-key)
+            radarr_key=$(${pkgs.coreutils}/bin/cat ${arrSecretsDir}/radarr-api-key)
+            if [ -z "$sonarr_key" ] || [ -z "$radarr_key" ]; then
+              echo "janitorr: sonarr/radarr API key is empty — has arr-api-keys run?" >&2
+              exit 1
+            fi
+
+            # Jellyseerr's key comes out of its OWN settings.json, which it
+            # writes on first run.  Before that wizard is completed the file
+            # does not exist, so this degrades to a disabled client rather
+            # than failing — Janitorr in dry-run is still useful without it.
+            seerr_key=""
+            if [ -r /var/lib/seerr/settings.json ]; then
+              seerr_key=$(${pkgs.jq}/bin/jq -r '.main.apiKey // empty' \
+                /var/lib/seerr/settings.json)
+            fi
+            seerr_enabled=true
+            if [ -z "$seerr_key" ]; then
+              seerr_enabled=false
+              echo "janitorr: no Jellyseerr API key yet — has its first-run wizard been completed?" >&2
+            fi
+
+            # Jellyfin's three come from the clan var staged on the host.
+            # Absent until `clan vars generate ernst` has been run and the
+            # in-Jellyfin account created; same degradation.
+            jf_key=""; jf_user=""; jf_pass=""
+            if [ -r ${janitorrSecretsDir}/jellyfin.env ]; then
+              # shellcheck disable=SC1091
+              . ${janitorrSecretsDir}/jellyfin.env
+              jf_key="''${JELLYFIN_API_KEY:-}"
+              jf_user="''${JELLYFIN_USERNAME:-}"
+              jf_pass="''${JELLYFIN_PASSWORD:-}"
+            fi
+            jf_enabled=true
+            if [ -z "$jf_key" ] || [ -z "$jf_user" ] || [ -z "$jf_pass" ]; then
+              jf_enabled=false
+              echo "janitorr: no Jellyfin credentials — Leaving Soon collections will not be built" >&2
+            fi
+
+            ${pkgs.coreutils}/bin/rm -f "$out"
+            ${pkgs.coreutils}/bin/cat > "$out" <<EOF
+            # GENERATED by janitorr-config.service.  Do not edit — it is
+            # rewritten on every start of janitorr.service.  The declarative
+            # source is machines/ernst/containers/arr.nix.
+            server:
+              # See the "IT HAS NO WEB UI" note in arr.nix.  Loopback, and not
+              # in the firewall list.
+              port: ${toString janitorrPort}
+              address: 127.0.0.1
+
+            logging:
+              level:
+                com.github.schaka: INFO
+              # NO `file:` key.  Upstream's template writes /logs/janitorr.log;
+              # this runs under systemd, so stdout goes to the journal and a
+              # second copy on disk is one more thing to rotate and to persist.
+
+            file-system:
+              access: true
+              # Skip deletion of anything still seeding.  ON, deliberately: the
+              # download client is one layer-2 hop away in M3's VPN microvm and
+              # this check is what keeps a reap from cutting a live torrent.
+              validate-seeding: true
+              leaving-soon-dir: "/srv/media/leaving-soon"
+              media-server-leaving-soon-dir: "/srv/media/leaving-soon"
+              from-scratch: true
+              # NOT "/".  The root filesystem here is the container's, which
+              # has nothing to do with the pool Janitorr is reaping.  Pointing
+              # it at / would read zroot's free space and make every expiry
+              # threshold meaningless.
+              free-space-check-dir: "/srv/media"
+
+            application:
+              dry-run: true
+              run-once: false
+              whole-tv-show: false
+              whole-show-seeding-check: false
+              leaving-soon: 14d
+              leaving-soon-threshold-offset-percent: 5
+              exclusion-tags:
+                - "janitorr_keep"
+
+              media-deletion:
+                enabled: true
+                movie-expiration:
+                  5: 180d
+                  10: 365d
+                season-expiration:
+                  5: 180d
+                  10: 365d
+
+              # OFF on the first deploy.  Both of these act on *arr TAGS, and
+              # no title in this library carries one yet — so enabling them
+              # would either do nothing or, worse, do something the moment a
+              # tag is added for an unrelated reason.
+              tag-based-deletion:
+                enabled: false
+                minimum-free-disk-percent: 100
+                schedules: []
+
+              episode-deletion:
+                enabled: false
+
+            clients:
+              default:
+                connect-timeout: 60s
+                read-timeout: 60s
+                level: NONE
+
+              # localhost throughout: all of this shares one netns, which is
+              # the same payoff the Prowlarr wiring gets — no port opened,
+              # nothing to firewall.
+              sonarr:
+                enabled: true
+                url: "http://localhost:${toString sonarrPort}"
+                api-key: "$sonarr_key"
+                delete-empty-shows: true
+              radarr:
+                enabled: true
+                url: "http://localhost:${toString radarrPort}"
+                api-key: "$radarr_key"
+              jellyfin:
+                enabled: $jf_enabled
+                url: "http://${jellyfinAddr}:${toString jellyfinPort}"
+                api-key: "$jf_key"
+                username: "$jf_user"
+                password: "$jf_pass"
+                # Jellyfin is a DIFFERENT container (M2b, 10.0.90.10), so this
+                # one is not localhost — it is the same layer-2 hop Traefik
+                # takes.  Its firewall accepts only Traefik on 8096, so this
+                # needs a rule there; see containers/jellyfin.nix.
+                delete: true
+                exclude-favorited: true
+                leaving-soon-tv: "Shows (Leaving Soon)"
+                leaving-soon-movies: "Movies (Leaving Soon)"
+                leaving-soon-type: MOVIES_AND_TV
+              jellyseerr:
+                enabled: $seerr_enabled
+                url: "http://localhost:${toString jellyseerrPort}"
+                api-key: "$seerr_key"
+                match-server: false
+
+              # JELLYSTAT IS DELIBERATELY OFF, and it is not merely deferred.
+              #
+              # M13's brief lists Jellystat as a target, on the grounds that it
+              # feeds Janitorr's expiry logic.  Two things found on 2026-08-26
+              # move it out of this milestone:
+              #
+              #   1. COST.  It is a Vite SPA plus an Express backend with no
+              #      nixpkgs package, and it requires a PostgreSQL server —
+              #      which this container does not have and which would be the
+              #      first database in it.
+              #   2. UPSTREAM NOW RECOMMENDS SOMETHING ELSE.  Janitorr's own
+              #      example compose says, verbatim: "New users without an
+              #      existing stats setup should only enable janitorr-stats and
+              #      skip Jellystat/Streamystats entirely."
+              #
+              # So the watch-history feed, when it is wanted, is a
+              # `janitorr-stats` question and not a Jellystat one.  Neither is
+              # needed for space-based expiry, which is what M13 ships.
+              jellystat:
+                enabled: false
+              streamystats:
+                enabled: false
+              janitorr-stats:
+                enabled: false
+            EOF
+
+            ${pkgs.coreutils}/bin/chown root:media "$out"
+            ${pkgs.coreutils}/bin/chmod 0640 "$out"
+          '';
+        };
+      };
+
+      ##########################################################################
+      # M13 — SCRAPARR.  *arr metrics for M6, as ONE service.
+      #
+      # ── EXPORTARR WAS REJECTED.  RECORDING THE REJECTION ──────────────────
+      #
+      # Exportarr is the better-known option and it is the wrong shape for this
+      # container.  It needs ONE INSTANCE PER APP: one uid, one port and one
+      # firewall line each, in a file whose entire port policy is "one list in
+      # one place" and whose Traefik source-restriction is literally a
+      # concatMapStrings over a single explicit list.  Six *arr would mean six
+      # of everything.
+      #
+      # Scraparr is one service, one port (7100), one configuration, with every
+      # instance addressed by alias inside it.
+      #
+      # ── ITS CONFIGURATION IS AN EnvironmentFile, NOT A YAML ───────────────
+      #
+      # Scraparr merges a config.yaml with environment variables.  This deploy
+      # ships NO yaml at all, and the reason is the API keys: they must not sit
+      # in /nix/store, and the yaml's own `${VAR}` substitution explicitly does
+      # NOT support the `*_FILE` form (upstream's config.yaml says so in a
+      # comment).  Environment variables support both.
+      #
+      # A NOTE AGAINST docs/roadmap.md, which says "env-var mode does NOT
+      # support multiple instances, so the file-based path is the only one that
+      # works here."  That was true once; at v3.1.0 it is not.  Reading
+      # src/scraparr/parser/__init__.py:
+      #
+      #   SONARR_URL           single instance
+      #   SONARR_PROD_URL      instance with alias "prod"
+      #   SONARR_API_KEY_FILE  reads the key from a path
+      #
+      # — aliases and _FILE both work in env-var mode, and they compose.  The
+      # CONCLUSION the roadmap reached is still the right one; the reason it
+      # gave has expired, so it is corrected here rather than propagated.
+      #
+      # ── IT REUSES arr-api-keys.  NO SECOND STAGING MECHANISM ──────────────
+      #
+      # M13 requires this explicitly, and M4's argument holds unchanged: the
+      # keys are generated BY THE APPLICATIONS into their own config.xml, so
+      # reading them there keeps one source of truth and survives a key
+      # rotation in a UI with no deploy.  A prompted clan var would be a second
+      # copy with no link to the first.
+      #
+      # The staged files sit in a 0700 root-owned RuntimeDirectory, so an
+      # unprivileged reader cannot open them directly.  LoadCredential bridges
+      # that — see the note on it below.
+      systemd.services.scraparr = {
+        description = "Scraparr — Prometheus exporter for the *arr suite";
+        wantedBy    = [ "multi-user.target" ];
+        after       = [ "sonarr.service" "radarr.service" "prowlarr.service" "arr-api-keys.service" ];
+        wants       = [ "sonarr.service" "radarr.service" "prowlarr.service" ];
+        requires    = [ "arr-api-keys.service" ];
+
+        environment = {
+          GENERAL_PORT = toString scraparrPort;
+
+          # 127.0.0.1 would be wrong: Prometheus is in ANOTHER container and
+          # reaches this over the veth.  0.0.0.0 is upstream's default anyway;
+          # it is stated rather than left implicit because the firewall rule
+          # above is what makes that safe, and the two belong in one field of
+          # view.
+          GENERAL_ADDRESS = "0.0.0.0";
+          GENERAL_PATH    = "/metrics";
+
+          # localhost throughout — one netns, no ports opened.
+          SONARR_URL   = "http://localhost:${toString sonarrPort}";
+          RADARR_URL   = "http://localhost:${toString radarrPort}";
+          PROWLARR_URL = "http://localhost:${toString prowlarrPort}";
+          BAZARR_URL   = "http://localhost:${toString bazarrPort}";
+          SEERR_URL    = "http://localhost:${toString jellyseerrPort}";
+
+          # The keys, by PATH rather than by value.  `_FILE` is read by
+          # Scraparr itself at startup (parser/__init__.py `_get_env_value`),
+          # which is what keeps them out of /proc/<pid>/environ.
+          #
+          # %d is systemd's credentials directory — the 0400 copies
+          # LoadCredential below places there, NOT the 0700 staging directory,
+          # which this unit's user cannot open.  Specifier expansion applies to
+          # Environment=, so these resolve before the process starts.
+          SONARR_API_KEY_FILE = "%d/sonarr-api-key";
+          RADARR_API_KEY_FILE = "%d/radarr-api-key";
+
+          # Prowlarr, Bazarr and Jellyseerr generate their keys the same way
+          # the *arr do, but arr-api-keys does not stage them yet — extending
+          # it is a follow-up, not part of M13, and a partial exporter is
+          # strictly better than none.  Sonarr and Radarr are the two that
+          # carry the library.
+        };
+
+        serviceConfig = {
+          Type      = "simple";
+          User      = "scraparr";
+          Group     = "scraparr";
+          ExecStart = "${lib.getExe scraparr}";
+          Restart   = "on-failure";
+          RestartSec = "30s";
+
+          # arr-api-keys writes its output into a 0700 RuntimeDirectory owned
+          # by root, so an unprivileged reader needs help.  This is the one
+          # place M13 adds a path into that directory for a non-root consumer,
+          # and it is done with a systemd CREDENTIAL rather than by widening
+          # the directory: LoadCredential is read by PID 1 before the drop to
+          # User=scraparr, and lands a 0400 copy the service can read.
+          #
+          # Widening the directory instead would have been the tempting fix and
+          # is the wrong one — recyclarr and umlautadaptarr read from the same
+          # directory, and loosening it for a third consumer loosens it for all
+          # three.
+          LoadCredential = [
+            "sonarr-api-key:${arrSecretsDir}/sonarr-api-key"
+            "radarr-api-key:${arrSecretsDir}/radarr-api-key"
+          ];
+
+          # No state, no media, nothing to write anywhere.
+          UMask = "0077";
+
+          NoNewPrivileges  = true;
+          PrivateTmp       = true;
+          ProtectSystem    = "strict";
+          ProtectHome      = true;
+          RemoveIPC        = true;
+          RestrictSUIDSGID = true;
+
+          CapabilityBoundingSet   = "";
+          PrivateDevices          = true;
+          ProtectClock            = true;
+          ProtectControlGroups    = true;
+          ProtectHostname         = true;
+          ProtectKernelLogs       = true;
+          ProtectKernelModules    = true;
+          ProtectKernelTunables   = true;
+          ProtectProc             = "invisible";
+          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+          RestrictNamespaces      = true;
+          RestrictRealtime        = true;
+          LockPersonality         = true;
+          SystemCallArchitectures = "native";
+          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+        };
+      };
 
       ##########################################################################
       # Recyclarr — TRaSH-Guides quality definitions, synced on a timer.

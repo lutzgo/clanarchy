@@ -259,6 +259,7 @@ let
   bazarrPort       = 6767;
   cleanuparrPort   = 11011;
   mediathekarrPort = 5007;   # the downloader's SABnzbd API and setup wizard
+  jellyseerrPort   = 5055;   # M13 — the household's request UI
 
   # M6.  Traefik's own Prometheus metrics, on a SEPARATE entryPoint from the
   # one that serves traffic.  Its own port rather than a route on :443 because
@@ -983,6 +984,44 @@ in
               service     = "mediathekarr";
             };
 
+            # ── Jellyseerr (M13): the HOUSEHOLD route, and the exception ───
+            #
+            # NO MIDDLEWARE, and that is the whole point of this router.
+            #
+            # Every other *arr-container route above carries `authelia`,
+            # because they are operator tools.  This one is not: it is what the
+            # household opens to ask for a film, and its posture is
+            # JELLYSEERR'S OWN JELLYFIN-ACCOUNT LOGIN — the credential everyone
+            # here already has.  That is the same call the jellyfin router at
+            # the top of this block makes, for the same reason.
+            #
+            # Putting it behind forward-auth would also flatten the thing
+            # Jellyseerr exists to track: "who requested this" becomes one
+            # Authelia identity instead of the individual Jellyfin accounts.
+            #
+            # ── IT IS NOT REACHABLE FROM THE INTERNET, AND MUST NOT BE ─────
+            #
+            # lgo has decided Jellyseerr should eventually be WAN-reachable.
+            # THAT IS M16.  This router rides the existing permanent "Allow
+            # Traefik" ZBF rule (LAN + IoT → traefik:443) and M13 created no
+            # UDM-Pro rule, no port forward and no WAN entryPoint.
+            #
+            # M16 is where the external posture — including whether this route
+            # gains a middleware after all — gets decided and reviewed AS an
+            # ingress change.  Doing it here and reworking it there would be
+            # two changes to one router.
+            #
+            # NOTHING IS ADDED TO authelia.nix's `protectedHosts` FOR THIS
+            # NAME, deliberately and necessarily.  That list is what makes a
+            # forward-auth route work; a name in it without the middleware does
+            # nothing, and the middleware without the name fails CLOSED.  This
+            # route has neither, which is the consistent state.
+            jellyseerr = {
+              rule        = "Host(`jellyseerr.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              service     = "jellyseerr";
+            };
+
             # ── Grafana (M6): admin route, behind Authelia ─────────────────
             #
             # Same treatment as the arr — browser only, admin facing — and it
@@ -1079,6 +1118,9 @@ in
             bazarr.loadBalancer.servers       = [ { url = "http://${arrAddr}:${toString bazarrPort}/"; } ];
             cleanuparr.loadBalancer.servers   = [ { url = "http://${arrAddr}:${toString cleanuparrPort}/"; } ];
             mediathekarr.loadBalancer.servers = [ { url = "http://${arrAddr}:${toString mediathekarrPort}/"; } ];
+
+            # M13 — same container, same address, one more port.
+            jellyseerr.loadBalancer.servers   = [ { url = "http://${arrAddr}:${toString jellyseerrPort}/"; } ];
             grafana.loadBalancer.servers  = [ { url = "http://${monitoringAddr}:${toString grafanaPort}/"; } ];
 
             # M7.  The same address the forwardAuth middleware above calls,

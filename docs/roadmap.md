@@ -57,7 +57,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M11 — fleet-local coding agent | **open — Parts 2/3/4 done 2026-08-26; Part 1 outstanding** | — | Phase 0 (2026-08-25) falsified three of the brief's premises and proved the context trap with numbers. Since then: the **§7 Nix landed** as per-machine role settings, closing [SN1](#sn1-the-model-tag-silently-sets-the-context-window); candidate (C) is an explicit **"not taking"**; and Part 3's tool-call defect is **fixed** — but not as predicted. There is **no Modelfile template to correct** (compiled Go renderer/parser), the parser is **correct**, and the model was dropping the opening `<tool_call>` tag; restating it in the system prompt went 5/40 → **80/80**. A new confound surfaced: **`q8_0` halves tool-call reliability** without that rule. **Phase 1 stays blocked on Part 1** — the multi-file edit, the Claude Code comparison and real-task rates are lgo's. Tasks and a validated grader now exist at `~/.local/share/m11-bakeoff/tasks/`. [M11](#m11-featfleet-local-coding-agent) |
 | M12 — arr helpers | **built 2026-08-26 — deploy pending; (a) Byparr split out as M12b** | — | UmlautAdaptarr, Bazarr, Cleanuparr, MediathekArr and the recyclarr additions all landed inside the **existing** arr container, with no new veth, MAC, DHCP reservation or UDM-Pro work — so the hand-rolled-derivation approach M14 depends on is proven. **Three of the six premises did not survive checking**: Byparr is no longer Camoufox-based and is a browser-packaging job in its own right (**[M12b](#m12b-featernst-byparr)**); **MediathekArr is TWO processes**, and upstream's `main` is a diverged, older tree than its own release tag; and **Unpackerr is measured out** — zero archives in 986 files, no usenet client at all. Depends on M4. [M12](#m12-featernst-arr-helpers) |
 | M12c — library profile reassignment | **open — requested 2026-08-26** | — | Recyclarr creates profiles but **never assigns a title to one**, and this library's titles predate the guides. Rules for "high" and "low" quality per shows/films settled by **Q&A first**, then an agent reassigns title by title. **The hazard is the film side**: 2389 of 2432 movies sit on a non-upgrading `Ultra-HD` profile, and every TRaSH profile is upgrade-enabled — a bad rule moves them all and queues most of 13 TB through the VPN. Demotions first, promotions in watched batches, search-on-edit OFF. Depends on M12. [M12c](#m12c--library-profile-reassignment) |
-| M13 — media lifecycle | **open** | — | Jellyseerr at **internal** scope, Janitorr, Scraparr, and four more M6 exporter targets. The external half of Jellyseerr is deliberately split into M16. Depends on M6. [M13](#m13-featernst-media-lifecycle) |
+| M13 — media lifecycle | **built, awaiting deploy — 2026-08-26** | — | Jellyseerr (internal scope), Janitorr (dry-run) and Scraparr all land in the **existing** arr container; three M6 exporter targets, not four. **Janitorr publishes no artifact at all** — GitHub releases carry zero assets and the only channel is a Paketo OCI image — so it is the repo's first from-source **Gradle/Spring Boot 4** build, with a committed 350-artifact mitm-cache lock. **Three roadmap premises did not survive checking**: `services.jellyseerr` is now a renamed alias for **`services.seerr`**; **Ollama serves no `/metrics`** (404, measured), so its target is dropped and handed to M15 with the reasoning; and **Jellystat is deferred** — it needs PostgreSQL, and Janitorr's own docs now recommend `janitorr-stats` instead. Janitorr also has **no web UI**, so its port is bound to loopback and routed nowhere. Depends on M6. [M13](#m13-featernst-media-lifecycle) |
 | M14 — libraries | **open** | — | Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. Introduces a **second write path** into `/srv/media`, so it owes its own hardlink proof with a negative control — M3's does not transfer. Depends on M12. [M14](#m14-featernst-libraries) |
 | M15 — Tdarr / space reclamation | **open** | — | Its own container with VAAPI on the 7900 XTX, plus GPU arbitration against a card that now has three other claimants. **M11's VRAM numbers changed this materially**: a fully-resident Ollama at 64k leaves ~2 GB, so CPU-only Tdarr is now a serious default rather than a fallback — and Muxarr must be evaluated first, because it may reclaim more per CPU-hour with no GPU question at all. Depends on M12. [M15](#m15-featernst-tdarr) |
 | M16 — external ingress | **open** | — | Make `jellyseerr.goclan.org` reachable from the internet, and **only** that. First service accepting connections from outside the home network, so the milestone is about the boundary rather than the service. Creates a permanent bypass row under invariant #4. Depends on M13. [M16](#m16-featernst-external-ingress) |
@@ -5360,6 +5360,116 @@ planning around a dependency. [M7's close-out](#close-out-2026-08-25) enumerates
 exactly which routers carry forward-auth today.
 
 **Risk.** Medium, and concentrated in one place: **Janitorr deletes things.**
+
+### Close-out (2026-08-26) — what was built, and the four premises that failed
+
+Everything below this heading is the milestone **as planned**. This section is
+what the session actually found. Where the two disagree, this section is right
+and the planning text is left in place unedited, so the difference stays
+visible.
+
+**Shipped, all inside the existing `arr` container — no new veth, MAC, DHCP
+reservation or UDM-Pro rule:** Jellyseerr at internal scope, Janitorr in
+dry-run, Scraparr, and three M6 exporter targets.
+
+**1. `services.jellyseerr` no longer exists under that name.** In ernst's own
+pin it is a `mkRenamedOptionModule` alias for **`services.seerr`**, the package
+attribute is `seerr` (3.2.0), and the 26.05 rename also moved the state path —
+`StateDirectory=seerr` at `/var/lib/seerr`, gated on `stateVersion >= 26.05`.
+The bind mount had to land on the new path; the old one would have been
+silently unpersisted. The uid table's name is kept as `jellyseerr` deliberately.
+
+**2. Janitorr publishes NO artifact.** Its GitHub releases carry **zero
+assets** — the only distribution channel is `ghcr.io/schaka/janitorr`, built by
+`bootBuildImage --publishImage`, i.e. a **Paketo buildpack image** rather than a
+jar. `virtualisation.oci-containers` inside an nspawn container is rejected for
+this repo, so this became the first **from-source Gradle build** here: Spring
+Boot 4.1.1, Kotlin 2.4.10, JDK 25, a committed 350-artifact `mitm-cache` deps
+lock. Four things made it non-obvious, all written up in
+`machines/ernst/containers/pkgs/janitorr.nix` — the load-bearing one being that
+`build.gradle.kts` pins `vendor.set(JvmVendorSpec.ADOPTIUM)`, so `pkgs.jdk25`
+fails the toolchain match and `foojay-resolver` tries to **download a JDK** in
+the sandbox. `temurin-bin-25` plus `auto-download=false` fixes it.
+
+It built on the first real attempt. The bug that *did* bite was a `callPackage`
+trap: a `jre_headless ? temurin-bin-25` default is never used, because
+`jre_headless` **exists in nixpkgs** and is Java 21 — so the derivation built
+fine and the jar died at runtime with `UnsupportedClassVersionError` (class file
+69 vs 65). Only running the built wrapper catches that.
+
+**3. Ollama serves no `/metrics`.** Measured on ernst, 2026-08-26, ollama
+0.32.3: `GET /metrics` → **404**, `GET /api/tags` → 200. The target is
+**dropped**, not deferred-in-place: a job that can only ever be down is worse
+than no job. **Handed to [M15](#m15-featernst-tdarr)**, which wants the series
+anyway and should scrape **the card, not Ollama** — its arbitration covers three
+claimants and Ollama's own view cannot see the other two. Note ernst's pin has
+`prometheus-nvidia-gpu-exporter` and **no AMD equivalent**, so that is a
+hand-rolled derivation when M15 gets there.
+
+**4. Jellystat is deferred, and upstream agrees.** It has no nixpkgs package, is
+a Vite SPA plus an Express backend, and needs **PostgreSQL** — which this
+container does not have. More decisively, Janitorr's own example compose now
+says, verbatim: *"New users without an existing stats setup should only enable
+janitorr-stats and skip Jellystat/Streamystats entirely."* So the watch-history
+feed is a `janitorr-stats` question, not a Jellystat one — and neither is needed
+for the space-based expiry M13 ships.
+
+**Also corrected, smaller:**
+
+- **Janitorr has no web UI at all** — zero `@RestController`/`@Controller`
+  classes at v2.2.0, no static resources, and upstream says "You don't have to
+  publish ANY ports." It nonetheless *binds* one because spring-boot-webmvc is
+  on the classpath, so its port is pinned to 8978 **and bound to 127.0.0.1**,
+  and it is routed nowhere and firewalled nowhere. The roadmap's "janitorr 8978"
+  was a port to close, not to open.
+- **Scraparr's env-var mode does support multiple instances** at v3.1.0
+  (`SONARR_PROD_URL` alias form) *and* `*_API_KEY_FILE`. The roadmap's stated
+  reason for the file-based path has expired; its conclusion has not.
+- **node_exporter's `zfs` collector was re-enabled on ernst only.** M6's comment
+  claimed the dedicated pool exporter "supersedes" it. It does not — the pool
+  exporter answers *health/capacity/fragmentation*, the collector answers *ARC*.
+  New `exporters.arc` option, on for ernst, off for the laptops.
+- **Two new source-restriction rules were needed that the plan did not
+  anticipate**, both because a scrape is not a browser: the `arr` container now
+  accepts 7100 from the monitoring container, and `jellyfin` accepts 8096 from
+  both the `arr` container (Janitorr's API calls) and the monitoring container.
+- **The qBittorrent exporter overturns a stated decision** in
+  `microvms/wg-qbittorrent.nix` — "the hash, not the password, reaches the
+  guest". An exporter must *present* a credential, and a PBKDF2 verifier cannot
+  be replayed, so the plaintext is now staged 0400 root:root and handed over via
+  `LoadCredential`. The two alternatives (the WebUI API Key, already measured at
+  HTTP 403; and disabling `LocalHostAuth`) are both worse.
+- `pkgs.prometheus-qbittorrent-exporter` is **martabal/qbit-exp** (Rust), not
+  esanchezm's Python exporter of the same descriptive name. Different
+  environment variables entirely.
+
+**Hardening**, `systemd-analyze security --offline=true`, measured against a
+baseline built with no hardening at all:
+
+| unit | before | after |
+|---|---|---|
+| `seerr` | 6.1 MEDIUM (stock module, `DynamicUser`) | **1.4 OK** |
+| `janitorr` | 9.0 UNSAFE | **2.8 OK** |
+| `janitorr-config` | 9.4 UNSAFE | **1.2 OK** |
+| `scraparr` | 9.0 UNSAFE | **1.4 OK** |
+| `qbittorrent-exporter` (in the microvm) | — (new unit, `DynamicUser` kept) | **1.6 OK** |
+
+`janitorr` is the highest of the four because it deliberately carries **no
+`SystemCallFilter`**: a JVM needs `@privileged`-adjacent calls during class
+loading, and a filter that kills the runtime unpredictably is worse than none.
+The reasoning is beside the unit.
+
+**One bug was caught by `systemd-analyze verify` and is worth propagating.**
+`RuntimeDirectoryUser=` and `RuntimeDirectoryGroup=` **are not systemd
+directives.** The NixOS module accepts them, writes them into the unit, and
+systemd drops them with `Unknown key … ignoring` — a journal line and nothing
+else. `janitorr-config` runs as root, so `/run/janitorr` would have been
+`root:root 0750` and Janitorr (group `media`) could not have **traversed** it to
+read its own config: the same "group needs x on the directory, not just r on the
+file" failure `microvms/wg-qbittorrent.nix` already documents. Ownership comes
+from the unit's own `User=`/`Group=`, or from an explicit `chown`. **Run
+`systemd-analyze verify` on new units, not just `systemd-analyze security`** —
+the second one scores a unit without noticing that a directive is fictional.
 
 ### Jellyseerr — internal scope only, and the split is deliberate
 

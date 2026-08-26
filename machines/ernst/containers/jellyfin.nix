@@ -107,13 +107,23 @@ let
   mediaGid = 3000;
 
   # Traefik's veth address on VLAN 90 (M5, DHCP reservation on the UDM-Pro
-  # keyed on 02:00:00:90:00:04).  The ONLY source permitted to reach 8096.
+  # keyed on 02:00:00:90:00:04).  Until M13, the ONLY source permitted to reach
+  # 8096.
   #
   # Naming a peer's address here is the deliberate opposite of the rule this
   # file follows for its own — see the "BACKEND BYPASS HARDENING" section of
   # machines/ernst/containers/traefik.nix, which owns the argument for why the
   # restriction lives on this side rather than on the UDM-Pro.
   traefikAddr = "10.0.90.12";
+
+  # M13's two API clients.  Same bridge, same VLAN, same one-hop caveat as
+  # traefikAddr; see the firewall block below for what each of them wants and
+  # why neither can go through the proxy.
+  #
+  #   .13  arr container      Janitorr, as a real Jellyfin user
+  #   .14  monitoring         Prometheus, scraping the NATIVE /metrics endpoint
+  arrAddr        = "10.0.90.13";
+  monitoringAddr = "10.0.90.14";
 in
 {
   ##############################################################################
@@ -529,9 +539,38 @@ in
       # directly for debugging, go in through the container, where `lo` is
       # always trusted by the NixOS firewall:
       #     nixos-container run jellyfin -- curl -sS localhost:8096/health
+      #
+      # ── M13: TWO MORE SOURCES, AND NEITHER IS A BROWSER ───────────────────
+      #
+      # Until M13 this list had exactly one entry, because 8096 only ever
+      # fronted a browser and Traefik was the only way to a browser.  M13 adds
+      # two API clients that are not behind the proxy and cannot be:
+      #
+      #   10.0.90.13  the arr container — JANITORR.  It needs Jellyfin's API to
+      #               build the "Leaving Soon" collections and, once dry-run is
+      #               turned off, to issue deletes.  It authenticates as a real
+      #               Jellyfin USER (see the janitorr blocks in arr.nix); it is
+      #               not riding Traefik's session.
+      #   10.0.90.14  the monitoring container — PROMETHEUS.  Jellyfin's NATIVE
+      #               /metrics endpoint, enabled below.  No exporter.
+      #
+      # Both are single layer-2 hops on br0, so — as with the Traefik rule —
+      # their frames never reach the UDM-Pro and this chain is the only
+      # enforcement point that exists for them.
+      #
+      # THE SAME PORT, THREE SOURCES, AND THAT IS THE COST OF JELLYFIN'S
+      # DESIGN: /metrics is served on 8096 alongside the media API rather than
+      # on a separate listener, so permitting a scrape necessarily permits the
+      # monitoring container to reach everything else on 8096 too.  That is
+      # accepted here — the monitoring container runs Prometheus, Alertmanager
+      # and Grafana and nothing that takes untrusted input — but it is stated
+      # rather than glossed, because it is strictly weaker than Authelia's and
+      # Traefik's arrangement, where the telemetry listener is its own port.
       networking.firewall.allowedTCPPorts = [ ];
       networking.firewall.extraCommands = ''
         iptables -A nixos-fw -p tcp -s ${traefikAddr}/32 --dport 8096 -j nixos-fw-accept
+        iptables -A nixos-fw -p tcp -s ${arrAddr}/32 --dport 8096 -j nixos-fw-accept
+        iptables -A nixos-fw -p tcp -s ${monitoringAddr}/32 --dport 8096 -j nixos-fw-accept
       '';
 
       # Pin jellyfin's numeric UID/GID to match the host-side chown above so
@@ -593,6 +632,36 @@ in
         # ports this file has always refused.  The explicit 8096-only list is
         # in the networking block above.
         openFirewall = false;
+
+        # ── M13: /metrics IS NATIVE, AND ENABLING IT IS A MANUAL STEP ────────
+        #
+        # M13 requires Jellyfin's OWN metrics endpoint and forbids adding an
+        # exporter for it.  The endpoint is real in this version: 10.11.11
+        # ships Prometheus.AspNetCore.dll, Prometheus.NetStandard.dll and
+        # prometheus-net.DotNetRuntime.dll (checked in the store path, not
+        # assumed from release notes).
+        #
+        # It is gated on `EnableMetrics`, which lives in ServerConfiguration —
+        # i.e. in config/system.xml, NOT network.xml — and the NixOS module
+        # exposes no option for it.
+        #
+        # SO IT IS AN lgo STEP IN THE PR BODY (Dashboard → Advanced → enable
+        # metrics), and that is a deliberate choice rather than a gap:
+        #
+        #   - `forceEncodingConfig` above works because encoding.xml holds ONE
+        #     concern and the module owns a whole template for it.  system.xml
+        #     holds every other server setting there is, so a Nix-owned copy
+        #     would clobber settings this repo has never had an opinion about.
+        #   - A targeted XML edit in an activation script is the other option,
+        #     and it loses to the principle this repo already applies to
+        #     Cleanuparr's SQLite config and the *arr first-run wizards:
+        #     faking application-owned state from Nix creates a second source
+        #     of truth for something the application rewrites on its own.
+        #
+        # Until it is flipped, the `jellyfin` scrape job in
+        # service-modules/monitoring.nix reports up=0.  That is the correct and
+        # visible failure — a target that is declared and honestly down beats a
+        # target that is silently absent.
         hardwareAcceleration = {
           enable = true;
           type   = "vaapi";

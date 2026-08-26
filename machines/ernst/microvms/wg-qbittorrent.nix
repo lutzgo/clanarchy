@@ -211,6 +211,23 @@ let
   webuiPort   = 8080;
   torrentPort = 6881;
 
+  # M13.  prometheus-qbittorrent-exporter's own default port, and the
+  # monitoring container's address on VLAN 90 (M6, 02:00:00:90:00:06).
+  #
+  # The exporter lives INSIDE this guest rather than beside Prometheus, and
+  # that placement is the interesting part: it reads qBittorrent's WebUI API,
+  # which is exactly the interface this file spends 200 lines restricting.
+  # Running it here means the API conversation never leaves the guest — the
+  # exporter talks to 127.0.0.1 — and only the aggregate metrics cross the
+  # wire.  An exporter in the monitoring container would have needed the WebUI
+  # API opened to a third client and the plaintext password staged there too.
+  #
+  # It is also inside the killswitch, which is the right side of it: the
+  # exporter has no reason to reach the internet, and the output chain below
+  # gives it no way to.
+  exporterPort   = 8000;
+  monitoringAddr = "10.0.90.14";
+
   downloadRoot = "/srv/media/torrents";
   stateSource  = "/srv/state/qbittorrent";
 
@@ -414,6 +431,17 @@ in
         ${gen.files."ssh-host-key".path}         ${hostSecretsDir}/ssh_host_ed25519_key
       ${pkgs.coreutils}/bin/install -m 0440 -o root -g media \
         ${gen.files."webui-password-pbkdf2".path} ${hostSecretsDir}/webui-password-pbkdf2
+
+      # M13.  0400 root:root, NOT 0440 root:media like the hash above it.
+      #
+      # The distinction is the whole reason this is safe to add: the HASH is
+      # group-readable because qBittorrent's own unprivileged ExecStartPre has
+      # to substitute it into a config file.  The PLAINTEXT has no unprivileged
+      # reader at all — the exporter receives it through LoadCredential=, which
+      # PID 1 reads before dropping privileges.  If this ever needs to be 0440,
+      # something has gone wrong with that design rather than with this mode.
+      ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
+        ${gen.files."webui-password".path}        ${hostSecretsDir}/webui-password
     '';
   };
 
@@ -469,6 +497,8 @@ in
     files."endpoint-ip".secret           = true;
     files."endpoint-port".secret         = true;
     files."webui-password-pbkdf2".secret = true;
+    # M13.  The plaintext, for the exporter — see the long note in the script.
+    files."webui-password".secret        = true;
     files."ssh-host-key".secret          = true;
     files."ssh-host-key.pub".secret      = false;
 
@@ -640,6 +670,38 @@ in
       # the hash is PBKDF2-HMAC-SHA512, 100000 iterations, 64-byte key over a
       # 16-byte salt.  Generated here so the hash — not the password — is what
       # ever reaches the guest.
+      # ── M13 OVERTURNS "the hash, not the password, reaches the guest" ─────
+      #
+      # The comment above this block said the hash is what ever reaches the
+      # guest, and until M13 that was both true and free: qBittorrent verifies
+      # a login against the PBKDF2 hash, so nothing needed the plaintext.
+      #
+      # M13 adds a SECOND consumer with a different requirement.
+      # prometheus-qbittorrent-exporter authenticates to the WebUI API as an
+      # ordinary client, so it has to PRESENT the password — a verifier cannot
+      # be replayed as a credential.  Three ways out were considered:
+      #
+      #   1. qBittorrent's WebUI "API Key" field.  ALREADY REJECTED, with a
+      #      measurement, in the header of this file: it produced HTTP 403 in
+      #      0.5 ms with nothing in qBittorrent's log.  Use username+password.
+      #   2. WebUI\AuthSubnetWhitelist for 127.0.0.1.  This would let the
+      #      exporter skip authentication entirely, and it is worse than it
+      #      looks: `WebUI\LocalHostAuth=true` above is a deliberate setting,
+      #      and turning it off makes EVERY process in this guest able to drive
+      #      the torrent client unauthenticated.
+      #   3. Stage the plaintext too.  Chosen.
+      #
+      # The exposure this adds is bounded and stated: one more 0400 root:root
+      # file in the guest's secrets share, read by PID 1 through
+      # LoadCredential= before the exporter drops privileges — so the
+      # exporter's own user never opens it either.  That is the same mechanism
+      # containers/arr.nix uses to hand Sonarr's key to Scraparr.
+      #
+      # WHAT WOULD MAKE THIS UNNECESSARY: a qBittorrent release whose API-key
+      # authentication actually works. The measurement in the header is the
+      # thing to re-run before removing this.
+      cp "$prompts/webui-password" "$out/webui-password"
+
       python3 - "$prompts/webui-password" > "$out/webui-password-pbkdf2" <<'PY'
       import base64, hashlib, os, sys
       password = open(sys.argv[1], "rb").read().rstrip(b"\n")
@@ -889,6 +951,18 @@ in
 
               iifname "eth0" ip saddr @api_clients tcp dport ${toString webuiPort} accept
               iifname "eth0" ip saddr @mgmt_nets   tcp dport 22 accept
+
+              # M13.  The Prometheus exporter, and it gets its OWN rule rather
+              # than a seat in @api_clients — deliberately, in both directions:
+              #
+              #   the monitoring container may reach the EXPORTER and not the
+              #   WebUI API, so a scrape cannot become a torrent command;
+              #   and the arr container may reach the WebUI API and not the
+              #   exporter, which it has no use for.
+              #
+              # A literal address rather than a set, because a set of one is a
+              # set that invites a second element without an argument for it.
+              iifname "eth0" ip saddr ${monitoringAddr} tcp dport ${toString exporterPort} accept
               iifname "eth0" ip saddr @mgmt_nets   icmp type echo-request accept
 
               # DHCPv4 offers/acks.  networkd's initial exchange uses a raw
@@ -925,6 +999,15 @@ in
               # drifted output chain presents as "the service is down" from one
               # client and fine from another.
               oifname "eth0" ip daddr @api_clients ct state established,related accept
+
+              # M13.  The scrape's reply, and it needs its own line for exactly
+              # the reason the comment above gives about not drifting: the
+              # monitoring container is deliberately NOT in @api_clients, so
+              # the rule above does not cover it, and without this the exporter
+              # would answer into the tunnel and Prometheus would see a
+              # timeout — the same failure the mgmtNets routing note describes.
+              oifname "eth0" ip daddr ${monitoringAddr} ct state established,related accept
+
               oifname "eth0" ip daddr . udp dport @vpn_endpoint accept
               oifname "eth0" udp sport 68 udp dport 67 accept
 
@@ -1034,6 +1117,87 @@ in
         # conf covers the normal path, the flag covers the first start, when
         # the file is written after the check.
         extraArgs = [ "--confirm-legal-notice" ];
+      };
+
+      ##########################################################################
+      # M13 — the Prometheus exporter.
+      #
+      # ── IT IS `qbit-exp`, NOT THE ONE THE NAME SUGGESTS ───────────────────
+      #
+      # `pkgs.prometheus-qbittorrent-exporter` (2.0.1) is martabal/qbit-exp, a
+      # RUST binary called `qbit-exp` — not esanchezm's Python exporter of the
+      # same descriptive name.  Checked by looking in the built store path
+      # rather than inferring from the attribute, because the two take
+      # completely different environment variables and the Python one's
+      # (QBITTORRENT_HOST / QBITTORRENT_PORT) would be silently ignored here.
+      #
+      # The names below were read out of the binary itself.
+      #
+      # ── QBITTORRENT_PASSWORD_FILE IS WHY THIS IS CLEAN ────────────────────
+      #
+      # qbit-exp reads the password from a FILE if told to, so the plaintext
+      # never enters the environment and never appears in /proc/<pid>/environ.
+      # Combined with LoadCredential — which PID 1 reads before dropping to the
+      # exporter's DynamicUser — the staged 0400 root:root file is never opened
+      # by an unprivileged process at all.
+      #
+      # THE API-KEY ROUTE IS DELIBERATELY NOT USED, even though this binary
+      # supports QBITTORRENT_API_KEY.  The header of this file records a
+      # measurement: qBittorrent's WebUI API Key produced HTTP 403 in 0.5 ms
+      # with nothing in its log.  Re-run that before reaching for it again.
+      systemd.services.qbittorrent-exporter = {
+        description = "Prometheus exporter for qBittorrent";
+        wantedBy    = [ "multi-user.target" ];
+        after       = [ "qbittorrent.service" ];
+        wants       = [ "qbittorrent.service" ];
+
+        environment = {
+          # 127.0.0.1: the exporter and qBittorrent share this guest's netns,
+          # so the WebUI API conversation never touches the wire.  That is the
+          # whole reason the exporter lives in here rather than beside
+          # Prometheus — see the exporterPort note at the top of this file.
+          QBITTORRENT_BASE_URL       = "http://127.0.0.1:${toString webuiPort}";
+          QBITTORRENT_USERNAME       = "admin";
+          QBITTORRENT_PASSWORD_FILE  = "%d/webui-password";
+
+          # 0.0.0.0, restricted by the nftables rule above to the monitoring
+          # container's address alone.  Stated rather than left to the
+          # binary's default so the number the firewall reasons about and the
+          # number the process binds are the same number in one file.
+          EXPORTER_HOST = "0.0.0.0";
+          EXPORTER_PORT = toString exporterPort;
+        };
+
+        serviceConfig = {
+          Type      = "simple";
+          ExecStart = "${pkgs.prometheus-qbittorrent-exporter}/bin/qbit-exp";
+          Restart   = "on-failure";
+          RestartSec = "30s";
+
+          LoadCredential = [ "webui-password:${guestSecretsDir}/webui-password" ];
+
+          # DynamicUser, and KEPT — this is the flaresolverr shape, not the
+          # prowlarr one.  The exporter holds no state, writes nothing, and
+          # needs no id that means anything on the pool, so there is nothing to
+          # gain by pinning a uid and six hardening directives to lose by it.
+          DynamicUser = true;
+
+          CapabilityBoundingSet   = "";
+          PrivateDevices          = true;
+          ProtectClock            = true;
+          ProtectHostname         = true;
+          ProtectKernelLogs       = true;
+          ProtectKernelModules    = true;
+          ProtectKernelTunables   = true;
+          ProtectProc             = "invisible";
+          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" ];
+          RestrictNamespaces      = true;
+          RestrictRealtime        = true;
+          LockPersonality         = true;
+          SystemCallArchitectures = "native";
+          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          UMask                   = "0077";
+        };
       };
 
       systemd.services.qbittorrent = {
