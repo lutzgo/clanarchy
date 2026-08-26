@@ -55,7 +55,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M9 — TubeSync | **open** | — | Feeds the Jellyfin library directly. First occupant of the **podman** tier (not in nixpkgs — verified), so it builds the tier as well as the service; podman's attachment to `br0` is unsolved here. [M9](#m9-featernst-tubesync) |
 | M10 — Kodi + IR remote | **dropped — 2026-08-20** | — | Dropped by lgo before any code was written: the couch requirement is Plasma Bigscreen plus Steam, and Kodi is a third media UI nobody asked for. The IR-receiver half was orthogonal and survives as a [backlog entry](#floating-backlog) |
 | M11 — fleet-local coding agent | **open — Parts 2/3/4 done 2026-08-26; Part 1 outstanding** | — | Phase 0 (2026-08-25) falsified three of the brief's premises and proved the context trap with numbers. Since then: the **§7 Nix landed** as per-machine role settings, closing [SN1](#sn1-the-model-tag-silently-sets-the-context-window); candidate (C) is an explicit **"not taking"**; and Part 3's tool-call defect is **fixed** — but not as predicted. There is **no Modelfile template to correct** (compiled Go renderer/parser), the parser is **correct**, and the model was dropping the opening `<tool_call>` tag; restating it in the system prompt went 5/40 → **80/80**. A new confound surfaced: **`q8_0` halves tool-call reliability** without that rule. **Phase 1 stays blocked on Part 1** — the multi-file edit, the Claude Code comparison and real-task rates are lgo's. Tasks and a validated grader now exist at `~/.local/share/m11-bakeoff/tasks/`. [M11](#m11-featfleet-local-coding-agent) |
-| M12 — arr helpers | **built 2026-08-26 — deploy pending; (a) Byparr split out as M12b** | — | UmlautAdaptarr, Bazarr, Cleanuparr, MediathekArr and the recyclarr additions all landed inside the **existing** arr container, with no new veth, MAC, DHCP reservation or UDM-Pro work — so the hand-rolled-derivation approach M14 depends on is proven. **Three of the six premises did not survive checking**: Byparr is no longer Camoufox-based and is a browser-packaging job in its own right (**[M12b](#m12b-featernst-byparr)**); **MediathekArr is TWO processes**, and upstream's `main` is a diverged, older tree than its own release tag; and **Unpackerr is measured out** — zero archives in 986 files, no usenet client at all. Depends on M4. [M12](#m12-featernst-arr-helpers) |
+| M12 — arr helpers | **done — deployed and merged 2026-08-26 (#100); (a) Byparr split out as [M12b](#m12b-featernst-byparr)** | — | UmlautAdaptarr, Bazarr, Cleanuparr, MediathekArr and the recyclarr additions all landed inside the **existing** arr container, with no new veth, MAC, DHCP reservation or UDM-Pro work — so the hand-rolled-derivation approach M14 depends on is proven. All five units active on ernst. **Four of the six premises did not survive checking**: Byparr is no longer Camoufox-based and is a browser-packaging job in its own right; **MediathekArr is TWO processes**, and upstream's `main` is a diverged, older tree than its own release tag; **Unpackerr is measured out**; and **UmlautAdaptarr is inert here** — all six indexers are Cardigann HTML scrapers, which it architecturally cannot serve. **One thing is still outstanding**: the first real recyclarr sync fires at 00:03 the night of 2026-08-26 and is what adopts Sonarr's existing `Remux + WEB 2160p` (59 series) — see [the profile census](#the-profile-census-re-measured--and-one-number-this-repo-had-wrong). Depends on M4. [M12](#m12-featernst-arr-helpers) |
 | M12c — library profile reassignment | **open — requested 2026-08-26** | — | Recyclarr creates profiles but **never assigns a title to one**, and this library's titles predate the guides. Rules for "high" and "low" quality per shows/films settled by **Q&A first**, then an agent reassigns title by title. **The hazard is the film side**: 2389 of 2432 movies sit on a non-upgrading `Ultra-HD` profile, and every TRaSH profile is upgrade-enabled — a bad rule moves them all and queues most of 13 TB through the VPN. Demotions first, promotions in watched batches, search-on-edit OFF. Depends on M12. [M12c](#m12c--library-profile-reassignment) |
 | M13 — media lifecycle | **open** | — | Jellyseerr at **internal** scope, Janitorr, Scraparr, and four more M6 exporter targets. The external half of Jellyseerr is deliberately split into M16. Depends on M6. [M13](#m13-featernst-media-lifecycle) |
 | M14 — libraries | **open** | — | Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. Introduces a **second write path** into `/srv/media`, so it owes its own hardlink proof with a negative control — M3's does not transfer. Depends on M12. [M14](#m14-featernst-libraries) |
@@ -4242,11 +4242,27 @@ Constraints:
 
 ## M12 — `feat/ernst-arr-helpers`
 
-**Status: built 2026-08-26, deploy pending.** Five of the six shipped; (a) Byparr
-is split out as [M12b](#m12b-featernst-byparr) and (e) Unpackerr is measured out.
+**Status: DONE — deployed and merged 2026-08-26 (PR #100).** Five of the six
+shipped; (a) Byparr is split out as [M12b](#m12b-featernst-byparr) and (e)
+Unpackerr is measured out. All five units are active on ernst and `main` builds
+byte-identical to the deployed generation.
+
+**Two things outlive the merge and are not defects:**
+
+1. **The first real recyclarr sync had not run at merge time** — the timer fires
+   at 00:03. That run creates the two German profiles and **adopts Sonarr's
+   existing `Remux + WEB 2160p`, which 59 series ride**. Watch the activity
+   queue afterwards; the lever if it misbehaves is Sonarr's "Upgrade Until
+   Custom Format Score" on that profile, not the Nix.
+2. **Manual configuration is by design, not backlog.** Bazarr's language
+   profiles, Cleanuparr's cleaners (enabled one at a time, unlinked/orphan
+   last) and Radarr's MediathekArr download client all live in application
+   databases. Faking them from Nix would create a second source of truth for
+   state the applications own — the same call the *arr root folders lost.
+
 The prompt at the end of this section is kept **as it was written**, so that what
-it assumed and what turned out to be true can be compared — three of its premises
-were false, and the section immediately below is the record of that.
+it assumed and what turned out to be true can be compared — **four** of its
+premises were false, and the sections below are the record of that.
 
 ### What actually shipped, and what the session falsified
 
