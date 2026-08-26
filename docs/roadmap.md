@@ -51,11 +51,11 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M5 — Traefik | **done — deployed 2026-08-23, proven 2026-08-24** | [#86](https://github.com/lutzgo/clanarchy/pull/86) | `machines/ernst/containers/traefik.nix`: nspawn container on `vb-traefik`, VLAN 90, MAC `02:00:00:90:00:04` → `10.0.90.12`. One wildcard `*.goclan.org` over ACME DNS-01 at Cloudflare, scoped API token via clan var `traefik-acme`, store on `zdata` at `/srv/state/traefik`. Routes: jellyfin (no middleware, ever) + prowlarr/sonarr/radarr behind the interim `mgmt-only` ipAllowList (L5). **Backend bypass hardening is mechanism (a)** — each backend's own firewall accepts its web port only from `10.0.90.12` — because Jellyfin, the arr, qBittorrent and Traefik are all ports on `br0` and their traffic never reaches the UDM-Pro, so an intra-zone ZBF rule could not see it. **Two consequences on deploy day**: direct access to `10.0.90.10:8096` and `10.0.90.13:{9696,8989,7878}` stops working immediately, so TV clients must move to `jellyfin.goclan.org` in the same window; and the ACME propagation check queries `1.1.1.1`/`9.9.9.9` directly, which a UDM-Pro DNS-interception rule would silently break. [M5](#m5-featernst-traefik) |
 | M6 — monitoring | **done — deployed, alerting proven end to end, and survived a real reboot 2026-08-24; biene/birte pending** | [#87](https://github.com/lutzgo/clanarchy/pull/87) | **Working**: container on `10.0.90.14`, VLAN 90 won unaided, every deployed target scraping `up`, Grafana served through Traefik, and `traefik_tls_certs_not_after` (89 d) + `zfs_pool_health` (0/0) both confirmed **live** — retiring the two metric names that had only been read out of binaries' strings. **Notifications arrive**, from both publishers, on rotated topics — the first confirmed ntfy delivery in this fleet's history. **Survived a real reboot**: `mon0` and `vb-monitoring` created by a boot rather than a deploy, container back on `.14`, the TSDB holding pre-reboot samples, `clanarchy-impermanence-check` green — which closes invariant #7 for this milestone and the `mon0`-across-a-reboot question inherited from M2b. **Three deploys, each caught a real defect.** The first stopped at `monitoring-secrets`, by design — and the value it refused exposed that `modules/observability/zfs-ntfy.nix`'s zedlet **has never worked on ernst**: the var holds a bare topic (what the prompt's own `openssl rand -hex 12` hint produces), curl could not resolve it as a hostname, and `>/dev/null 2>&1` threw the error away. The second exposed that **`systemd-networkd-wait-online` could never succeed in this container** — a veth has no carrier until both ends are up, and `mon0`'s host end is brought up by `postStart`, which runs *after* the container's boot, so wait-online was waiting on an event its own completion gates. The 20 s cap contained it; `RequiredForOnline = "no"` fixes it. [Details](#first-deploy-2026-08-24-the-fail-closed-path-fired-and-it-found-an-older-bug). `service-modules/monitoring.nix` (+ `.md`, + one dashboard as JSON): a clan service module with a `client` role on all four machines and a `server` role on ernst. **Scrape targets are derived from `roles.client` membership** — each machine's address comes from the `zerotier-ip-<machine>-zerotier` var clan-core already generates, so adding a machine to the role is the only step needed. The stack is one nspawn container on `vb-monitoring`, VLAN 90, MAC `02:00:00:90:00:06` → `10.0.90.14`, state on `zdata` at `/srv/state/monitoring`. **The one genuinely new piece of engineering is a SECOND interface**: `mon0`, a point-to-point ULA veth to the host, because both things Prometheus must scrape — ernst's own exporters (VLAN 50) and three laptops (ZeroTier, which terminates in the host netns) — are unreachable from VLAN 90. The host forwards and SNATs onto `zt+`, which has the useful side effect that scrapes arrive at a laptop from ernst's own ZeroTier address, i.e. the one source each client permits. **Alerting is (b), keep both**, with the overlap made empty: ZED owns pool state, Prometheus owns everything else and has no `zfs_pool_health` rule, and `ZedNotRunning` is the interlock. Both end at the same ntfy topic. [M6](#m6-featmonitoring) |
 | M7 — Authelia | **done — deployed 2026-08-24; both accounts enrolled on TOTP + WebAuthn; L5 retired in code and in the device; Grafana OIDC and the reboot still pending** | [#90](https://github.com/lutzgo/clanarchy/pull/90) | Authelia 4.39 in an nspawn container, `machines/ernst/containers/authelia.nix`, on `vb-authelia` / VLAN 90 / MAC `02:00:00:90:00:07` → `10.0.90.15`, SQLite on `zdata` at `/srv/state/authelia`. **L5 is retired by deletion, not by stacking** — the `mgmt-only` ipAllowList is gone from `containers/traefik.nix` and the four admin routers carry a `forwardAuth` middleware instead. The cost is stated rather than buried: the login portal is now reachable from the IoT VLAN, because the `Allow Traefik` ZBF rule already permits IoT → `10.0.90.12:443`; what it meets there is `two_factor` plus regulation (3 failures / 5 min → 15 min ban, per user, in SQLite). **The bypass list the brief asked for came back EMPTY**, and that is a finding: `auth.goclan.org` carries no middleware on its own router, so `/api/oidc/*`, `/.well-known/*` and `/api/health` never pass through forward-auth in the first place — a `bypass` rule would match nothing and read as enforcement. Grafana moves to Authelia OIDC with its local admin kept, and **break-glass needed one new line to be true at all**: with the Grafana route behind forward-auth, the local form is unreachable through Traefik, so `10.0.90.14:3000` now also accepts `fdca:fe90::1` — the host end of M6's `mon0` — reachable only as `ssh -N -L 3000:[fdca:fe90::2]:3000 root@ernst`. **Proven offline against the real 4.39.20 binary**: the rendered config, the staged OIDC client block, the generated `users_database.yml` and the JWKS fragment all pass `authelia validate-config`, and all three vars generators were run end to end. [M7](#m7-featernst-authelia) |
-| M8 — Tvheadend / SAT>IP live TV | **open — operator gate first, and now a scope gate after M12** | — | Steps 1–3 (patching, UniFi, stream test) are lgo's and must clear before a session starts; the milestone dies if the FRITZ!Box's DVB-C is branding-locked. **New in 2026-08:** M12's MediathekArr may cover most of what recording is *for*, so Phase 0 gains a question ahead of its existing ones — see [what the *arr ecosystem does and does not provide here](#what-the-arr-ecosystem-does-and-does-not-provide-here-surveyed-2026-08). [M8](#m8-featernst-tvheadend) |
+| M8 — Tvheadend / SAT>IP live TV | **open — operator gate first, and now a scope gate after M12** | — | Steps 1–3 (patching, UniFi, stream test) are lgo's and must clear before a session starts; the milestone dies if the FRITZ!Box's DVB-C is branding-locked. **New in 2026-08:** M12's MediathekArr may cover most of what recording is *for*, so Phase 0 gains a question ahead of its existing ones — see [what the *arr ecosystem does and does not provide here](#what-the-arr-ecosystem-does-and-does-not-provide-here-surveyed-2026-08). **MediathekArr is now BUILT (2026-08-26), so that question is answerable with evidence rather than speculation** — do not open M8 until it has been running long enough to say what it does and does not reach. [M8](#m8-featernst-tvheadend) |
 | M9 — TubeSync | **open** | — | Feeds the Jellyfin library directly. First occupant of the **podman** tier (not in nixpkgs — verified), so it builds the tier as well as the service; podman's attachment to `br0` is unsolved here. [M9](#m9-featernst-tubesync) |
 | M10 — Kodi + IR remote | **dropped — 2026-08-20** | — | Dropped by lgo before any code was written: the couch requirement is Plasma Bigscreen plus Steam, and Kodi is a third media UI nobody asked for. The IR-receiver half was orthogonal and survives as a [backlog entry](#floating-backlog) |
 | M11 — fleet-local coding agent | **open — Parts 2/3/4 done 2026-08-26; Part 1 outstanding** | — | Phase 0 (2026-08-25) falsified three of the brief's premises and proved the context trap with numbers. Since then: the **§7 Nix landed** as per-machine role settings, closing [SN1](#sn1-the-model-tag-silently-sets-the-context-window); candidate (C) is an explicit **"not taking"**; and Part 3's tool-call defect is **fixed** — but not as predicted. There is **no Modelfile template to correct** (compiled Go renderer/parser), the parser is **correct**, and the model was dropping the opening `<tool_call>` tag; restating it in the system prompt went 5/40 → **80/80**. A new confound surfaced: **`q8_0` halves tool-call reliability** without that rule. **Phase 1 stays blocked on Part 1** — the multi-file edit, the Claude Code comparison and real-task rates are lgo's. Tasks and a validated grader now exist at `~/.local/share/m11-bakeoff/tasks/`. [M11](#m11-featfleet-local-coding-agent) |
-| M12 — arr helpers | **open** | — | Byparr, UmlautAdaptarr, Bazarr, Cleanuparr, MediathekArr, recyclarr additions — all inside the **existing** arr container. No new veth, MAC, DHCP reservation or UDM-Pro work, which is why it is first: it proves the hand-rolled-derivation approach M14 depends on without touching a network boundary. Depends on M4. [M12](#m12-featernst-arr-helpers) |
+| M12 — arr helpers | **built 2026-08-26 — deploy pending; (a) Byparr split out as M12b** | — | UmlautAdaptarr, Bazarr, Cleanuparr, MediathekArr and the recyclarr additions all landed inside the **existing** arr container, with no new veth, MAC, DHCP reservation or UDM-Pro work — so the hand-rolled-derivation approach M14 depends on is proven. **Three of the six premises did not survive checking**: Byparr is no longer Camoufox-based and is a browser-packaging job in its own right (**[M12b](#m12b-featernst-byparr)**); **MediathekArr is TWO processes**, and upstream's `main` is a diverged, older tree than its own release tag; and **Unpackerr is measured out** — zero archives in 986 files, no usenet client at all. Depends on M4. [M12](#m12-featernst-arr-helpers) |
 | M13 — media lifecycle | **open** | — | Jellyseerr at **internal** scope, Janitorr, Scraparr, and four more M6 exporter targets. The external half of Jellyseerr is deliberately split into M16. Depends on M6. [M13](#m13-featernst-media-lifecycle) |
 | M14 — libraries | **open** | — | Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. Introduces a **second write path** into `/srv/media`, so it owes its own hardlink proof with a negative control — M3's does not transfer. Depends on M12. [M14](#m14-featernst-libraries) |
 | M15 — Tdarr / space reclamation | **open** | — | Its own container with VAAPI on the 7900 XTX, plus GPU arbitration against a card that now has three other claimants. **M11's VRAM numbers changed this materially**: a fully-resident Ollama at 64k leaves ~2 GB, so CPU-only Tdarr is now a serious default rather than a fallback — and Muxarr must be evaluated first, because it may reclaim more per CPU-hour with no GPU question at all. Depends on M12. [M15](#m15-featernst-tdarr) |
@@ -330,7 +330,7 @@ Rows are retired only by the PR that actually removes the rule.
 | L6 | Tvheadend ports `9981` / `9982` on the host, mgmt-VLAN scoped | M8 (host firewall, v1) | Only if M8 lands before M2b — Tvheadend v1 would then run on host networking like Jellyfin's and arr's did | **M5** for the web route, plus a veth migration mirroring M2b. Never created at all if M2b lands first | **never created — both gates have now closed.** M2b landed first, so Tvheadend was never going to run on host networking; M5 has landed too, so the web route already exists as a pattern to copy. M8 should go straight to a veth on VLAN 90 plus a Traefik route, exactly as M4 did |
 | L7 | FRITZ!Box → Tvheadend on the ephemeral **UDP** range | UDM-Pro ZBF (off-repo), M8 | SAT>IP media is unicast RTP on a return flow the RTSP rule does not cover | Proving RTP **interleaved over the RTSP TCP connection**, which reduces the whole ACL to TCP 49000 + 554 | not yet created — **avoid**; take the interleaved-TCP path if M8's Phase 0 shows it works |
 | — | **M11 creates no row, and that is a property worth stating** | — | Ollama on ernst stays bound to localhost and is reached over an SSH tunnel on local port **11435**; the working tree was left at `133a39d`. So the milestone that added a coding agent to the fleet changed ernst's attack surface **not at all**, and if it stops after Phase 1 it stays that way | **permanent, unless M11 Phase 2 is taken** — and Phase 2 is optional and separately justified. Its trigger is a *second client actually needing it*, not tidiness | not created. Listed so a later session does not read the absence as an oversight. **If Phase 2 is ever taken, read [M11's session prompt](#the-prompt-for-the-m11-remainder) first** — its Phase 2 block is the constraint: Ollama has no authentication and its API includes model *pull* and *delete*, so it is an unauthenticated admin endpoint and the recommendation is ZeroTier-only, never a LAN listener |
-| — | **M12 creates no row either** | — | Everything in M12 lands inside the **existing** arr container and opens no port reachable outside it. Byparr inherits FlareSolverr's exact posture — `8191` absent from the firewall list and staying absent | **permanent** — there is nothing interim here | not created. The one thing M12 *does* touch is the explicit port list `containers/arr.nix` feeds to its `concatMapStrings` Traefik source-restriction; extending that list is the whole mechanism |
+| — | **M12 created no row, as predicted — confirmed 2026-08-26** | — | Everything in M12 landed inside the **existing** arr container and opened no port reachable outside it. The one thing it *did* touch is the explicit port list `containers/arr.nix` feeds to its `concatMapStrings` Traefik source-restriction, which gained `bazarr` 6767, `cleanuparr` 11011 and `mediathekarr` 5007 — plus three ordinary Traefik routers behind `authelia` and three names in `protectedHosts`, which are invariant #3 working as designed and not shims. **Four ports were deliberately kept OFF the list**: `flaresolverr` 8191 as before, MediathekArr's indexer 5008, and UmlautAdaptarr's 5005 and **5006**. All four bind `0.0.0.0`/`[::]`, so the container firewall is the only thing keeping them off VLAN 90 — and 5006 is an HTTP proxy, the same class of gift as 8191. Byparr, when [M12b](#m12b-featernst-byparr) lands, inherits FlareSolverr's exact posture | **permanent** — there is nothing interim here | not created |
 | L8 | TubeSync web UI port, mgmt-VLAN scoped | M9 (host/container firewall, v1) | Only if M9 lands before M5 — an admin UI with no proxy in front of it yet. Mgmt-scoped, so invariant #3 does not cover it | **M5** — replace with the Traefik route. Never created at all if M5 lands first | **never created — M5 landed first.** M9 gets a Traefik route (`tubesync.goclan.org`, behind the `authelia` forward-auth middleware — M7 deleted `mgmt-only`, so copy the *arr routers, not this row's original wording) and opens no port. Adding it also means adding the hostname to `access_control` in `containers/authelia.nix`, which is deny-by-default: a route with the middleware and no matching rule fails closed. Note this does not solve M9's actual open question, which is how a podman container attaches to `br0` on VLAN 90 at all |
 | — | **M13's Jellyseerr and M15's Tdarr routes** | Traefik (`containers/traefik.nix`), M13 and M15 | Both are ordinary Traefik routers on names the M5 wildcard already covers, riding the permanent `Allow Traefik` rule. **Neither is a shim** — listed so nobody creates a ledger row for a route | **permanent** — this is invariant #3 working as designed, not an exception to it | not created. **Two corrections against older wording**: M13's Jellyseerr router deliberately carries **no** middleware (it is a household service and its posture is Jellyseerr's own Jellyfin-account login — see M13), and M15's Tdarr router carries **`authelia`**, not `mgmt-only`, because M7 deleted `mgmt-only` (L5). Copy the *arr routers. Adding either hostname also means adding it to `access_control` in `containers/authelia.nix`, which is deny-by-default: a route with the middleware and no matching rule fails **closed** |
 | — | `WAN → jellyseerr.goclan.org` | M16 — mechanism decided in that milestone (Cloudflare Tunnel recommended over a UDM-Pro port forward) | **This is a deliberate bypass of the "hosts on VLANs the UDM-Pro controls" threat model that every milestone before M16 assumed.** Architecture invariant #4 requires bypasses to be listed; this is one, and it is the first thing in the fleet that accepts a connection from outside the home network | **permanent** — written as a `—` row, in the same shape as the qBittorrent WebUI row, so a future milestone does not mistake it for something to retire and "fix" by removing the restriction | **not created — M16 has not been taken.** Recorded ahead of time because the row's *shape* is a constraint on M16 rather than an outcome of it. **Auth posture belongs in this row when it is created**: the unauthenticated attack surface must be **Authelia**, not Jellyseerr's Node application — forward-auth with 2FA required on the external path, Jellyseerr's own login kept underneath for the reason M6 kept Grafana's local admin. **Invariant #4's Jellyfin exemption does not transfer**: it exists because TV and mobile clients cannot survive a forward-auth redirect, and Jellyseerr's only client is a browser. The two rows sit next to each other and the exemption will look transferable |
@@ -4241,6 +4241,289 @@ Constraints:
 
 ## M12 — `feat/ernst-arr-helpers`
 
+**Status: built 2026-08-26, deploy pending.** Five of the six shipped; (a) Byparr
+is split out as [M12b](#m12b-featernst-byparr) and (e) Unpackerr is measured out.
+The prompt at the end of this section is kept **as it was written**, so that what
+it assumed and what turned out to be true can be compared — three of its premises
+were false, and the section immediately below is the record of that.
+
+### What actually shipped, and what the session falsified
+
+**Phase A, re-run on the session's own date (2026-08-26) rather than trusted from
+the 2026-08-25 table.** The table held: `bazarr` has a module (1.6.0),
+`unpackerr` is packaged (0.15.2) with no module, and byparr / umlautadaptarr /
+cleanuparr / mediathekarr have neither. Checked against `nixpkgs-unstable` too —
+none of the four is there either, so there was no cheaper path.
+
+**Three premises did not survive, and each cost real work:**
+
+1. **Byparr is not Camoufox-based any more.** v3.0.4 (2026-08-18) is Playwright
+   plus `invisible-playwright`. Packaging it needs three PyPI packages nixpkgs
+   does not have (`invisible-playwright`, `invisible-core`, `playwright-captcha`),
+   a pin of `playwright==1.60.*` against the **1.59.1** in ernst's nixpkgs,
+   **Python 3.14 exactly**, and a **sealed patched-Firefox engine** that
+   `invisible-core` downloads and verifies against its own digest at run time.
+   The `/v1` route *does* still exist, so the drop-in claim itself is fine. Split
+   out as **[M12b](#m12b-featernst-byparr)** — it is a browser-packaging
+   milestone, and its realistic failure mode is a Byparr that starts, answers
+   `/v1` and never solves a challenge.
+
+2. **MediathekArr is TWO processes, and its `main` branch is a trap.** The
+   Dockerfile at tag `v1.0-beta.12` publishes **two** projects and starts both:
+   `MediathekArrServer` (Newznab indexer, **5008**) and `MediathekArrDownloader`
+   (SABnzbd shim **and the setup wizard**, **5007**). Upstream's compose file
+   publishes only 5007 and its README mentions only 5007, so packaging half the
+   product — an indexer whose results nothing can download — is the easy
+   mistake. Worse, **`main` is a diverged, OLDER tree than the tag**: it carries
+   a single-process Dockerfile, a downloader that hardcodes its output directory
+   relative to the assembly, and a routine that **downloads a static ffmpeg build
+   from johnvansickle.com at run time**. Every signal points at `main` — it is
+   the default branch, it is "8 commits ahead", and the repo's `pushed_at` is
+   2026-08-10 — and all of those are wrong. The 8 commits are LICENSE and README
+   edits; the 2026-08-10 push is *"Fix star history"*.
+
+3. **Unpackerr is measured out.** M12 (e) made it conditional and the condition
+   failed, decisively — see below.
+
+**Everything else went as written**, including the parts that were warnings
+rather than instructions: UmlautAdaptarr's ports really are `[::]:5005` and
+`0.0.0.0:5006` rather than localhost, so the container firewall is genuinely
+load-bearing rather than belt-and-braces.
+
+### The measurements, all re-run rather than inherited
+
+**(a) The exit country, 2026-08-26** — M12 required this specifically because a
+measurement carried forward untested is the failure M2b's item 1 warns about:
+
+| from | URL | result |
+|---|---|---|
+| the `arr` container | `https://eztvx.to/` | **200** |
+| the IVPN exit | `https://eztvx.to/` | **451** |
+| the IVPN exit | — | `95.211.172.88`, country **NL** (Leaseweb) |
+
+Identical to M4's 2026-08-21 finding. It is a property of the **exit country**,
+not of the solver, so it survives Byparr being deferred — and it is what decides
+MediathekArr's placement in the *opposite* direction (see below).
+
+**FlareSolverr's footprint, for the comparison M12b will need:** 243 MB resident,
+842 MB peak.
+
+**(e) Archive-delivered releases — the Unpackerr gate, 2026-08-26:**
+
+| check | result |
+|---|---|
+| Sonarr, last 50 grabs | **50/50 torrent**, client qBittorrent |
+| Radarr, entire history (30) | **30/30 torrent**, client qBittorrent |
+| download clients configured | **one**, qBittorrent. No usenet client exists in either app |
+| `*.rar *.r0[0-9] *.zip *.zipx *.7z` under `/srv/media/torrents` | **0**, out of 986 files |
+| the same under `/srv/media/library` | **0** |
+
+**SKIPPED.** There is nothing for it to unpack, and the reason is structural
+rather than incidental: this stack has no usenet path at all. **The trigger to
+revisit is a usenet download client being added** — not a hunch, and not the
+passage of time. `uid 3013` stays reserved and unused, and
+`machines/ernst/networking.nix` says so. `pkgs.unpackerr` exists (0.15.2) and
+needs a unit, not a derivation, if that day comes.
+
+### Packaging: three derivations, two shapes, and why neither is a flake input
+
+**UmlautAdaptarr and Cleanuparr take the upstream RELEASE ARTIFACT**
+(`linux-x64.zip`, `Cleanuparr-*-linux-amd64.zip`), because that is what upstream
+publishes and **it is the same shape nixpkgs itself uses for the four
+neighbouring services in the same container** — `prowlarr`, `radarr` and
+`sonarr` are release tarballs, `bazarr` is a release zip. A hand-rolled
+derivation that built from source with a nuget lock would be the odd one out.
+
+**MediathekArr is built from source** with `buildDotnetModule`, because it
+publishes **no release assets at all** — every release from `v1.0-beta.5` to
+`v1.0-beta.12` has an empty assets array and the only binary channel is a Docker
+image, which is precisely what M12 rejects.
+
+**The prompt asked for flake inputs; the tree has pinned hashes instead**, and
+the intent is kept in full — nothing tracks a moving target. The mechanism is
+not, for the reason the recyclarr block already argues one file over: a flake
+input is a row in `flake.lock` and `nix flake update` moves every row it can,
+with nothing distinguishing "bump nixpkgs" from "silently move the
+release-rewriting proxy in front of every indexer". A version and a hash in the
+derivation cannot move without an edit, and the edit names the version. For a
+published zip the flake-input form is also a poor mechanical fit — `github:`
+inputs fetch a source tree, not an artifact.
+
+**Three packaging findings worth carrying to M14**, which owes its own
+derivations:
+
+- **Self-contained .NET publishes need `autoPatchelfHook` and little else** —
+  but CoreCLR's `libcoreclrtraceptprovider.so` wants `liblttng-ust.so.0` (LTTng
+  2.12) and nixpkgs carries 2.14. It is dlopen'd only when tracing is switched
+  on. Delete the file; do not pin an EOL tracing library into a media service's
+  closure, and do not `--ignore-missing` it either — that leaves a broken `.so`
+  that fails on the day somebody does turn tracing on.
+- **Single-file self-contained publishes are different from ordinary ones.**
+  Cleanuparr is one 197 MB ELF: `autoPatchelf` fixes only the outer apphost, and
+  the bundled natives are extracted at *run* time, unpatched. They need
+  `LD_LIBRARY_PATH` on the wrapper.
+- **`Directory.GetCurrentDirectory()` is not the content root.** MediathekArr's
+  wizard serves from `<cwd>/static/download`, so `ASPNETCORE_CONTENTROOT` does
+  not help and the process aborts before binding. `makeWrapper --chdir` is the
+  fix.
+
+**Everything was smoke-tested locally before being wired in** — each binary run
+by hand, ports and endpoints confirmed: UmlautAdaptarr binding 5005 + 5006,
+Cleanuparr answering 200 on 11011 and creating its SQLite database, the
+MediathekArr indexer returning a Newznab `caps` document on 5008, and the
+downloader returning `{"version":"4.3.3"}` on 5007 with `mkvmerge` and `ffmpeg`
+resolved from the store.
+
+### Two decisions that departed from this milestone's own prompt
+
+**UmlautAdaptarr takes `DynamicUser`, not the reserved uid 3010.** The prompt's
+uid table assigns it 3010, "own group, no media access". The access half is kept
+exactly; the static uid is not, and **M12's own rule is what overturns it**: *"a
+service with no persistent state has no reason to make that switch at all."*
+Verified against upstream rather than assumed — **no SQLite anywhere in the
+repository, caching is `IMemoryCache`, and its `docker-compose.yml` declares no
+volumes**. A static uid would buy nothing and cost the six directives
+`DynamicUser` silently implies, which is the Prowlarr trap in reverse. **3010
+stays reserved and unused**, with the reason recorded next to it, because a gap
+in a numbering scheme with no explanation gets closed by the next person who
+needs a number.
+
+**The fork question: UmlautAdaptarr, not UmlautAdaptarrEX.** Surveyed
+2026-08-26 — the original is C#, 303 stars, pushed 2026-08-10; **EX is a
+TypeScript REWRITE**, not a fork: 28 stars, one author, four weeks old in its
+current shape. Three reasons, and "it is canonical" is not one of them: (1) this
+component sits in the request path of every indexer search in the stack and its
+documented failure mode is already *works fine and does nothing*, which is the
+worst possible property to pair with a young reimplementation; (2) **TRaSH's
+German guide names the original**, and the recyclarr German profiles in this
+same milestone are transcribed from that guide; (3) EX's advertised advantage is
+**broader multi-language** handling, and this is a two-language household — it
+buys nothing against the risk in (1). Revisit if the original goes quiet, not
+because EX gets newer.
+
+### Three things the deploy will decide, which evaluation cannot
+
+1. **`ProtectSystem = "strict"` on five new units.** The same call-out M4 made
+   for sonarr/radarr: if one fails to start with *"Read-only file system"*, add
+   the path it names to `ReadWritePaths`, or drop to `ProtectSystem = "full"`.
+   A loud, pre-diagnosed failure is worth more than an untightened unit.
+2. **Bazarr's first start against a bind-mounted `/var/lib/bazarr`.** Radarr
+   needed an explicit `.config` tmpfiles rule for exactly this shape (an
+   unsafe-path-transition refusal two levels above the error message). Bazarr's
+   module declares only `dataDir` itself, so there is no nested implicit parent
+   and it should not repeat — but "should not" is why it is on this list.
+3. **`arr-api-keys` on a cold boot.** It now gates UmlautAdaptarr as well as
+   recyclarr, and it exits 1 if either `config.xml` is unreadable. That is
+   fail-closed and correct; `Restart = on-failure` with `RestartSec = 30s` is
+   what makes it recover rather than stay down.
+
+### The recyclarr additions are three new INSTANCES, not three new profiles
+
+The trap here is real and quiet: **`custom_format_groups` is declared per
+INSTANCE, not per profile**, so every group in a block is scored onto every
+profile in that block. Appending the German profile to the existing
+`sonarr.series` block would push the English WEB-1080p group set onto the German
+profile and the German unwanted-formats set onto the English one — a config that
+syncs cleanly and scores nonsense. Separate instances keep each profile with the
+groups its TRaSH template pairs it with, which is what *"transcribe whole
+custom-format groups"* is actually protecting.
+
+Added, all transcribed from config-templates @ `9faf65f` (the rev the existing
+blocks already name, so one `git show` checks the whole file):
+
+| instance | profile | template |
+|---|---|---|
+| `radarr.movies-german` | `[German] Remux + WEB 2160p` | `radarr/templates/german-uhd-remux-web.yml` |
+| `sonarr.series-german` | `[German] HD Bluray + WEB` | `sonarr/templates/german-hd-bluray-web.yml` |
+| `sonarr.series-remux-2160p` | `Remux + WEB 2160p` | `sonarr/templates/remux-web-2160p.yml` |
+
+The German profiles are pitched to **match** their English counterparts rather
+than sit below them — UHD for films, HD for series — because a German profile a
+step below the English one would make *"upgrade to German when it appears"* a
+downgrade in everything except language.
+
+**An Anime profile was ASKED FOR and DECLINED (2026-08-26)**, as M12 (g)
+requires. Recorded so it is not re-litigated; reopen it as a fourth instance,
+never by extending one of the blocks above.
+
+**Profilarr stays REJECTED.** Same job, but it keeps state in its own database.
+
+### Hardening: measured before and after
+
+`systemd-analyze security --offline=true --root=<toplevel>`, 2026-08-26:
+
+| unit | upstream / bare | this file |
+|---|---|---|
+| `bazarr` | **9.0 UNSAFE** | **1.4 OK** |
+| `umlautadaptarr` | 9.4 UNSAFE | **1.3 OK** |
+| `cleanuparr` | 9.0 UNSAFE | **1.4 OK** |
+| `mediathekarr-indexer` | 9.0 UNSAFE | **1.4 OK** |
+| `mediathekarr-downloader` | 9.0 UNSAFE | **1.4 OK** |
+| `arr-api-keys` (renamed) | 9.4 UNSAFE | 1.0 OK (unchanged) |
+| `prowlarr` / `sonarr` / `radarr` | — | 1.3 OK (unchanged) |
+| `flaresolverr` | 3.0 OK | 3.0 OK (untouched) |
+| `recyclarr` | 3.9 OK | 3.9 OK (untouched) |
+
+**Bazarr's 9.0 is real upstream, and it is the finding.** The nixpkgs module
+sets `Type`, `User`, `Group`, `SyslogIdentifier`, `ExecStart`, `Restart`,
+`KillSignal` and `SuccessExitStatus` — and **no hardening directive of any
+kind**. Not a reduced set like Prowlarr's: none. So the block in `arr.nix` is
+not a tightening of upstream's choices, it is the whole of them. The other four
+have no upstream unit at all, so their baseline is the unit anybody would write
+first (`Type`, `User`, `Group`, `ExecStart`), measured against the same nixpkgs.
+
+### Ports: three added to the one list, four deliberately kept off it
+
+The Traefik source-restriction in `containers/arr.nix` is a `concatMapStrings`
+over one explicit list, and extending it is the whole mechanism — no second
+mechanism, and **not** `extraInputRules`, which is consumed only under nftables
+and would produce no rule and no warning.
+
+**Added** (browser UIs, so they also get ordinary Traefik routers behind
+Authelia, plus a name in `protectedHosts` — deny-by-default means a route
+without one fails *closed*): `bazarr` 6767, `cleanuparr` 11011, `mediathekarr`
+5007.
+
+**Kept off**, which is the more important half: `flaresolverr` 8191 (as before),
+the MediathekArr **indexer** 5008, and UmlautAdaptarr's **5005 and 5006**. All
+three of those bind `0.0.0.0`/`[::]` rather than localhost — measured — so
+inside the container's netns they are on the veth, and the only thing keeping
+them off VLAN 90 is that the list does not name them and the chain ends in
+`nixos-fw-log-refuse`. **5006 in particular is an HTTP proxy**, i.e. the same
+class of gift as FlareSolverr's 8191.
+
+### Manual steps — lgo's, and required before any of this does anything
+
+None of these can be faked from Nix without creating a second source of truth
+for state the applications own; that is the same call the *arr root folders lost.
+
+1. **DNS**: `bazarr`, `cleanuparr` and `mediathekarr` under `goclan.org` in
+   Technitium, pointing at Traefik. The M5 wildcard certificate already covers
+   all three.
+2. **UmlautAdaptarr in Prowlarr — the step the milestone lives or dies on.**
+   Every indexer URL must change **`https` → `http`** so it can intercept
+   locally; the outbound leg to the real indexer stays `https`. **An indexer
+   left on `https` works fine and silently bypasses it entirely.** Configure it
+   in **Prowlarr**, not per-arr. Check every indexer explicitly.
+3. **MediathekArr**: open the wizard at `https://mediathekarr.goclan.org/`, then
+   add the **indexer** to Prowlarr as Generic Newznab at
+   `http://127.0.0.1:5008` and the **downloader** to Sonarr/Radarr as a SABnzbd
+   client at `127.0.0.1:5007` with categories `tv` and `movies`.
+4. **Bazarr**: provider credentials, then **German and English profiles in both
+   directions** — German subtitles on English content *and* English on German.
+   Configuring only one is the common half-done outcome.
+5. **Cleanuparr**: every cleaner starts **disabled**. Turn them on one at a
+   time, and leave the unlinked/orphan handling for last — it reasons about
+   hardlink counts on the tree whose hardlink correctness is the point of M3
+   and M4.
+6. **Recyclarr profiles are created, never assigned.** Promote titles to the new
+   profiles **INDIVIDUALLY**. A bulk reassignment of the 133 series on the
+   hand-made `upgradeAllowed = false` "Ultra-HD" profile would queue most of
+   6.1 TB of television plus the same again for 13 TB of films — roughly the
+   whole 47.6 TB of free space, through the VPN.
+
+---
+
 **Goal.** Six additions to the *arr stack, **all inside the existing `arr`
 container**: Byparr replacing FlareSolverr, UmlautAdaptarr, Bazarr, Cleanuparr,
 MediathekArr, and a set of recyclarr additions.
@@ -4627,6 +4910,87 @@ Constraints:
   `clan vars generate ernst` are lgo's steps.
 - Update docs/roadmap.md's status table in the same PR.
 ````
+
+---
+
+## M12b — `feat/ernst-byparr`
+
+**Split out of [M12](#m12-featernst-arr-helpers) on 2026-08-26**, before any code
+was written, because the milestone's own description of it was wrong and what it
+actually needs is a browser-packaging job rather than an arr-helper one.
+
+**Goal, unchanged.** Replace FlareSolverr with Byparr: same port `8191`, same
+`/v1` API, same Prowlarr indexer-proxy entry. **FlareSolverr fails on 2026
+Cloudflare Turnstile and Managed Challenges**, which is the capability the thing
+exists to provide, so this does not go away — it waits.
+
+**Depends on.** M12 (deployed). **Risk.** High, and concentrated in one place.
+
+### What the M12 session established, so this one does not re-derive it
+
+- **`POST /v1` still exists** in v3.0.4 (`src/endpoints.py`, alongside `GET /`
+  → `/docs` and `GET /health`). The drop-in claim holds.
+- **It is NOT Camoufox.** `pyproject.toml` at v3.0.4 lists `fastapi[standard]`,
+  `invisible-playwright`, `playwright==1.60.*`, `playwright-captcha`,
+  `pydantic`, `pydantic-settings`, `trafilatura`. The browser is a **patched
+  Firefox driven through Playwright**.
+- **`requires-python = "==3.14.*"`.** ernst's pin has `python314` (3.14.6), so
+  this one is available — it is just not the default `python3` (3.13.14).
+- **The playwright pin conflicts.** Byparr wants `1.60.*`; ernst's nixpkgs has
+  **1.59.1** for both `playwright` and `playwright-driver`. Note
+  `invisible-playwright` itself declares `playwright<=1.61.0,>=1.55`, so the
+  1.59.1 in the pin satisfies *it* — the conflict is Byparr's own pin, and
+  whether relaxing it is safe is a question for this milestone, not an
+  assumption.
+- **Three PyPI packages are missing from nixpkgs**, checked against ernst's pin
+  **and** `nixpkgs-unstable`: `invisible-playwright`, `invisible-core` (which
+  `invisible-playwright` depends on and which owns the download machinery), and
+  `playwright-captcha`.
+- **The engine is fetched, sealed, and verified at run time.**
+  `invisible-playwright fetch` delegates to `invisible_core.download`, which
+  checks a cached engine against a **seal** before downloading and refuses
+  anything that does not match (`invisible_core.seal.active_seal`,
+  `verify_engine`). That is *good* news for packaging — a digest exists — but
+  the URL and digest have to be extracted from `invisible_core` and pinned as a
+  fixed-output derivation. **This is the milestone's real work.**
+- **Upstream's own Dockerfile pins `ubuntu:24.04`** with the comment that
+  Playwright 1.58 is incompatible with Ubuntu 26.04. Read that before assuming
+  the stock nixpkgs Firefox will do.
+
+### The failure mode to design against, stated up front
+
+**Do not ship a Byparr that runs on stock `playwright-driver.browsers` Firefox
+because it was easier.** `invisible-playwright` *is* the stealth layer; without
+it the service starts, answers `/v1`, returns 200s, and never solves a
+challenge. That is the fourth instance of the fails-by-succeeding shape this repo
+keeps paying for, and it would be the most expensive one yet because it would
+look like a working replacement.
+
+**The acceptance test is therefore not "it starts".** It is a real Cloudflare
+challenge solved end to end — the M12 measurement gives the instrument:
+`https://eztvx.to/` returns **200 with a `cdn-cgi/challenge-platform` body** from
+the arr container, i.e. a *solvable* challenge rather than a 451 refusal.
+
+### What carries over from M12 unchanged
+
+- **`DynamicUser = true`**, `RuntimeDirectory` only, **not** in group `media`.
+  No persistent state, so the Prowlarr trap cannot fire. FlareSolverr's shape.
+- **`8191` is ABSENT from the firewall list in `containers/arr.nix` and stays
+  absent.** Its entire API is *"fetch this URL for me"* — an SSRF primitive with
+  a web API in front. Prowlarr reaches it on `127.0.0.1`.
+- **The exit-country measurement holds** (200 from the container, 451 from the
+  Leaseweb NL exit, re-run 2026-08-26). It is a property of the exit country,
+  not of the solver, so Byparr does not change it and it keeps this in the
+  nspawn tier.
+- **Record memory against FlareSolverr's measured baseline: 243 MB resident,
+  842 MB peak.** Camoufox was a patched Firefox and so is this, but a Playwright
+  Firefox is not the same weight as an undetected-chromedriver Chromium, and the
+  container has six other tenants now.
+
+**If it turns out the engine cannot be pinned reproducibly**, say so and stop —
+the podman tier invariant #1 names, which [M9](#m9-featernst-tubesync) is
+opening, is the escape hatch for an upstream that only ships an image.
+**`virtualisation.oci-containers` inside the nspawn container remains rejected.**
 
 ---
 
@@ -5964,12 +6328,22 @@ three falsified premises).
 unpackerr were both listed as needing hand-rolled derivations and neither does.
 That is exactly why the survey is a step rather than a table.
 
-Everything in the last row needs a **hand-rolled derivation pinned as a flake
-input**. Expected shapes, **to be confirmed not assumed**: byparr (Python +
-Camoufox), umlautadaptarr (.NET), cleanuparr (.NET), scraparr (Python), soularr
-(Python), kapowarr (Python), questarr (Node), storyteller (**Docker-first — check
-whether a sane non-Docker path exists at all**), muxarr (check), janitorr (JVM),
-jellystat (Node), mediathekarr (.NET).
+Everything in the last row needs a **hand-rolled derivation**. Expected shapes,
+**to be confirmed not assumed**: ~~byparr (Python + Camoufox)~~ **byparr (Python
++ Playwright + `invisible-playwright`; NOT Camoufox — corrected 2026-08-26, see
+[M12b](#m12b-featernst-byparr))**, umlautadaptarr (.NET), cleanuparr (.NET),
+scraparr (Python), soularr (Python), kapowarr (Python), questarr (Node),
+storyteller (**Docker-first — check whether a sane non-Docker path exists at
+all**), muxarr (check), janitorr (JVM), jellystat (Node), mediathekarr (.NET).
+
+**M12 settled three of these in practice and the answers generalise** — read
+[its packaging section](#packaging-three-derivations-two-shapes-and-why-neither-is-a-flake-input)
+before writing the next one. In short: **take the upstream release artifact when
+there is one** (it is what nixpkgs does for `sonarr`, `radarr`, `prowlarr` and
+`bazarr`), build from source only when there is not; and **pin with a version and
+a hash in the derivation rather than a flake input**, because `nix flake update`
+moves every row in the lock and nothing distinguishes "bump nixpkgs" from
+"silently move a service in the request path of every search".
 
 ### `virtualisation.oci-containers` inside an nspawn container is REJECTED
 

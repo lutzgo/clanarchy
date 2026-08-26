@@ -1,6 +1,64 @@
 # machines/ernst/containers/arr.nix
 #
-# Prowlarr + Sonarr + Radarr, in one declarative systemd-nspawn NixOS container.
+# Prowlarr + Sonarr + Radarr + Bazarr + UmlautAdaptarr + Cleanuparr +
+# MediathekArr, in one declarative systemd-nspawn NixOS container.
+#
+# ── M12: five services added, one skipped, one split out ─────────────────────
+#
+#   M12 is the arr-helpers milestone.  EVERYTHING IT ADDS LANDS IN THIS
+#   CONTAINER — no new veth, no new MAC, no new DHCP reservation, no UDM-Pro
+#   work — deliberately, so that the packaging risk it exists to prove (four
+#   services with no nixpkgs package and no NixOS module) is never in flight
+#   at the same time as a networking change.
+#
+#     (a) Byparr          SPLIT OUT.  See "BYPARR IS NOT HERE" below.
+#     (b) UmlautAdaptarr  hand-rolled derivation, ./pkgs/umlautadaptarr.nix
+#     (c) Bazarr          upstream module, hardened here from nothing
+#     (d) Cleanuparr      hand-rolled derivation, ./pkgs/cleanuparr.nix
+#     (e) Unpackerr       SKIPPED on a measurement.  See its block below.
+#     (f) MediathekArr    hand-rolled derivation, ./pkgs/mediathekarr.nix,
+#                         TWO units — upstream ships two processes
+#     (g) recyclarr       three more instances, no new service
+#
+#   ── BYPARR IS NOT HERE, AND FLARESOLVERR STAYS ────────────────────────────
+#
+#   M12 (a) called for Byparr to replace FlareSolverr as a drop-in: same port
+#   8191, same /v1 API, same Prowlarr indexer-proxy entry, "Camoufox-based
+#   rather than undetected-chromedriver".
+#
+#   The /v1 half survived checking.  The rest did not.  Byparr v3.0.4
+#   (2026-08-18) IS NOT CAMOUFOX-BASED — it is Playwright plus
+#   `invisible-playwright`, and packaging it means three PyPI packages nixpkgs
+#   does not have (invisible-playwright, invisible-core, playwright-captcha), a
+#   pin of playwright==1.60.* against the 1.59.1 in ernst's nixpkgs, Python
+#   3.14 exactly, and a sealed patched-Firefox engine that invisible-core
+#   downloads and verifies against its own digest at run time.  That last one
+#   is packageable as a fixed-output derivation, but only after working out
+#   how the seal is computed.
+#
+#   That is a browser-packaging milestone wearing an arr-helper's clothes, and
+#   its realistic failure mode is the worst kind available here: a Byparr that
+#   starts, answers /v1, and never actually solves a challenge.  Split out on
+#   2026-08-26 rather than half-done.  FlareSolverr is untouched below and
+#   still works; what it does not do is 2026 Turnstile, which is the whole
+#   reason the replacement was wanted.
+#
+#   ── THE EXIT-COUNTRY MEASUREMENT WAS RE-RUN, NOT INHERITED ────────────────
+#
+#   M12 requires it, because a measurement carried forward untested is the
+#   failure M2b's item 1 warns about.  2026-08-26, the same URL M4 used:
+#
+#     from this container   https://eztvx.to/   HTTP 200
+#     from the IVPN exit    https://eztvx.to/   HTTP 451
+#                           exit 95.211.172.88, country NL (Leaseweb)
+#
+#   Identical to M4's 2026-08-21 result, and it is what keeps FlareSolverr —
+#   and, when it lands, Byparr — on this side of the tier boundary.  It is
+#   also what decides MediathekArr's placement, in the opposite direction: see
+#   that block.
+#
+#   FlareSolverr's footprint, for the comparison M12 asks for when Byparr
+#   arrives: 243 MB resident, 842 MB peak, measured on ernst the same day.
 #
 # Why nspawn: architecture invariant #1.  These are trusted, storage-heavy
 # services that never talk to the internet on their own behalf in a way that
@@ -160,6 +218,16 @@ let
   prowlarrUid = 3004;
   prowlarrGid = 3004;
 
+  # M12's additions.  Reserved in machines/ernst/networking.nix.
+  #
+  # 3010 (umlautadaptarr) and 3013 (unpackerr) are RESERVED AND UNUSED, both
+  # deliberately — see the umlautadaptarr block and the M12 section of the
+  # header.  They are not reassigned here; a reservation that gets quietly
+  # reused is worse than one that stays empty.
+  bazarrUid       = 3009;
+  cleanuparrUid   = 3011;
+  mediathekarrUid = 3012;
+
   # Fixed on the HOST in machines/ernst/containers/jellyfin.nix, which owns
   # `users.groups.media`.  Restated numerically here (and by name only inside
   # the container, where this file does declare the group) so that nothing in
@@ -188,9 +256,33 @@ let
   # reaches it on 127.0.0.1 and nothing outside this netns ever should.
   flaresolverrPort = 8191;
 
-  # Where the Sonarr/Radarr API keys are staged for recyclarr.  A tmpfs under
-  # /run, refreshed before every sync — see the recyclarr block.
-  recyclarrSecretsDir = "/run/recyclarr-secrets";
+  # ── M12 ports ──────────────────────────────────────────────────────────────
+  #
+  # Two groups, and the distinction is the whole of this file's port policy:
+  #
+  #   REACHABLE (through Traefik only, via the restricted list below) — the
+  #   three that a human opens in a browser more than once.
+  bazarrPort       = 6767;
+  cleanuparrPort   = 11011;
+  mediathekarrDownloaderPort = 5007;   # SABnzbd shim *and* the setup wizard
+  #
+  #   LOCALHOST-ONLY (absent from the list, and staying absent, exactly like
+  #   flaresolverrPort) — the ones whose only client is another process in this
+  #   same netns.  Nothing outside this container has any business reaching an
+  #   indexer shim or a rewriting proxy.
+  mediathekarrIndexerPort = 5008;      # Newznab; Prowlarr reaches it on lo
+  umlautadaptarrPort      = 5005;      # its own HTTP API
+  umlautadaptarrProxyPort = 5006;      # the proxy Prowlarr's indexers point at
+
+  # Where the Sonarr/Radarr API keys are staged.  A tmpfs under /run,
+  # refreshed before every consumer starts — see the arr-api-keys block.
+  #
+  # RENAMED from /run/recyclarr-secrets in M12, and the rename is the point:
+  # UmlautAdaptarr needs the same two keys, from the same two config.xml files,
+  # for the same reason (they are not ours to choose — see that block).  One
+  # stager with two consumers beats a second copy of a 40-line hardened unit
+  # that reads the same files.
+  arrSecretsDir = "/run/arr-api-keys";
 
   # Host state sources.  Bound to the upstream default paths inside.
   stateRoot = "/srv/state";
@@ -233,14 +325,44 @@ in
     "d ${stateRoot}/sonarr   0700 ${toString sonarrUid}   ${toString mediaGid}    -"
     "d ${stateRoot}/radarr   0700 ${toString radarrUid}   ${toString mediaGid}    -"
     "d ${stateRoot}/prowlarr 0700 ${toString prowlarrUid} ${toString prowlarrGid} -"
+
+    # M12.  Same shape, same reasoning — numeric ids because these are
+    # container users with no passwd entry on the host.
+    "d ${stateRoot}/bazarr       0700 ${toString bazarrUid}       ${toString mediaGid} -"
+    "d ${stateRoot}/cleanuparr   0700 ${toString cleanuparrUid}   ${toString mediaGid} -"
+    "d ${stateRoot}/mediathekarr 0700 ${toString mediathekarrUid} ${toString mediaGid} -"
+
+    # MediathekArr's download tree, and it is NOT under ${stateRoot}.
+    #
+    # It is media, not state: the downloader writes .mkv files here and the
+    # *arr then HARDLINK them into the library.  A hardlink cannot cross a
+    # filesystem boundary, so this has to live inside the /srv/media dataset
+    # like every other download source (see the hardlink section of the
+    # header).  Putting it on zdata/state would turn every Mediathek import
+    # into a copy, silently — the failure mode invariant #2 exists to prevent.
+    #
+    # 2770 root:media, matching the tmpfiles rules containers/jellyfin.nix and
+    # microvms/wg-qbittorrent.nix declare for the rest of the tree: setgid so
+    # everything created inside inherits `media`, group-writable so sonarr and
+    # radarr can remove the source after a successful import.
+    "d /srv/media/torrents/mediathek            2770 root ${toString mediaGid} -"
+    "d /srv/media/torrents/mediathek/incomplete 2770 root ${toString mediaGid} -"
+    "d /srv/media/torrents/mediathek/complete   2770 root ${toString mediaGid} -"
   ];
 
-  # The media tree itself is NOT declared here.  containers/jellyfin.nix owns
-  # those tmpfiles rules (library/{movies,tvshows}, torrents/{movies,tv}) and
-  # microvms/wg-qbittorrent.nix owns torrents/{incomplete,complete}.  A second
-  # set of rules for the same paths is precisely the failure M3 spent a round
-  # on: tmpfiles enforces mode and ownership on EVERY run, so two declarations
-  # that disagree take turns winning, silently, one per deploy.
+  # The rest of the media tree is NOT declared here.  containers/jellyfin.nix
+  # owns those tmpfiles rules (library/{movies,tvshows}, torrents/{movies,tv})
+  # and microvms/wg-qbittorrent.nix owns torrents/{incomplete,complete}.  A
+  # second set of rules for the same paths is precisely the failure M3 spent a
+  # round on: tmpfiles enforces mode and ownership on EVERY run, so two
+  # declarations that disagree take turns winning, silently, one per deploy.
+  #
+  # torrents/mediathek above is the ONE exception and does not break that rule,
+  # because it is a path NO OTHER FILE DECLARES.  It belongs to this file
+  # because the service that writes it lives in this file, and the ownership
+  # rule the M3 lesson actually states is "one declaration per path", not "one
+  # file per tree".  If a later milestone moves MediathekArr elsewhere, these
+  # three rules move with it rather than being duplicated there.
 
   # Host side of the container's veth — a VLAN-90 port on br0.
   #
@@ -338,12 +460,51 @@ in
         hostPath   = "${stateRoot}/prowlarr";
         isReadOnly = false;
       };
+
+      # M12.  Same pattern: each service's UPSTREAM DEFAULT state path, so
+      # nothing needs a dataDir override.
+      #
+      # UmlautAdaptarr has no entry, and that is not an omission — it has no
+      # persistent state at all.  See its block below.
+      "/var/lib/bazarr" = {
+        hostPath   = "${stateRoot}/bazarr";
+        isReadOnly = false;
+      };
+      "/var/lib/cleanuparr" = {
+        hostPath   = "${stateRoot}/cleanuparr";
+        isReadOnly = false;
+      };
+      "/var/lib/mediathekarr" = {
+        hostPath   = "${stateRoot}/mediathekarr";
+        isReadOnly = false;
+      };
     };
 
     ############################################################################
     # NixOS config for the container's own root filesystem.
     ############################################################################
-    config = { config, pkgs, lib, ... }: {
+    config = { config, pkgs, lib, ... }:
+    let
+      # ── M12's hand-rolled derivations ───────────────────────────────────
+      #
+      # Four of M12's six additions have no nixpkgs package and no NixOS
+      # module, surveyed against ernst's own pin on the session date rather
+      # than trusted from a table (2026-08-26; the 2026-08-25 survey in
+      # docs/roadmap.md still held).  Byparr is split out — see the M12 note
+      # in the header — leaving three, in ./pkgs.
+      #
+      # callPackage from the CONTAINER's pkgs, not the host's: these end up in
+      # the container's closure and should be built against the same nixpkgs
+      # the rest of it is.
+      #
+      # Each derivation carries its own header explaining why it takes the
+      # shape it does; the arguments here are only the ones with a choice in
+      # them.
+      umlautadaptarr = pkgs.callPackage ./pkgs/umlautadaptarr.nix { };
+      cleanuparr     = pkgs.callPackage ./pkgs/cleanuparr.nix { };
+      mediathekarr   = pkgs.callPackage ./pkgs/mediathekarr.nix { };
+    in
+    {
       system.stateVersion = "26.05";
 
       # Matches the host.  Unlike Jellyfin, these three are calendar- and
@@ -450,10 +611,47 @@ in
       # container, where `lo` is always trusted by the NixOS firewall:
       #     nixos-container run arr -- curl -sS -o /dev/null -w '%{http_code}\n' \
       #       http://localhost:8989/
+      #
+      # ── M12: THREE MORE PORTS, AND THREE THAT STAY OFF THE LIST ───────────
+      #
+      # The list below is the only mechanism.  M12's prompt is explicit that a
+      # second one must not be added and that extraInputRules in particular
+      # must not be reached for — it is declared unconditionally but consumed
+      # only under networking.nftables, so it would produce no rule and no
+      # warning.  Extending this list is the whole of it.
+      #
+      # ADDED (a human opens these in a browser, so they go through Traefik):
+      #   6767   bazarr        subtitle management, used regularly
+      #   11011  cleanuparr    its ENTIRE configuration is its web UI
+      #   5007   mediathekarr  the downloader's setup wizard
+      #
+      # NOT ADDED, and this is the more important half:
+      #   8191   flaresolverr            (as before — an SSRF primitive)
+      #   5008   mediathekarr indexer    Prowlarr reaches it on 127.0.0.1
+      #   5005   umlautadaptarr API      Prowlarr reaches it on 127.0.0.1
+      #   5006   umlautadaptarr proxy    ditto
+      #
+      # The last three matter because those processes bind 0.0.0.0/[::], not
+      # localhost — measured 2026-08-26, before this file was written.  Inside
+      # this netns that means they are on the veth, and the ONLY thing keeping
+      # them off VLAN 90 is that this list does not name them and the chain
+      # ends in nixos-fw-log-refuse.  The firewall is load-bearing here, not
+      # belt-and-braces.
+      #
+      # UmlautAdaptarr's proxy port is the one to think hardest about before
+      # ever adding it: 5006 is an HTTP PROXY, and an open HTTP proxy on the
+      # Services VLAN is the same class of gift as FlareSolverr's 8191.
       networking.firewall.allowedTCPPorts = [ ];
       networking.firewall.extraCommands = lib.concatMapStrings (port: ''
         iptables -A nixos-fw -p tcp -s ${traefikAddr}/32 --dport ${toString port} -j nixos-fw-accept
-      '') [ prowlarrPort sonarrPort radarrPort ];
+      '') [
+        prowlarrPort
+        sonarrPort
+        radarrPort
+        bazarrPort
+        cleanuparrPort
+        mediathekarrDownloaderPort
+      ];
 
       ##########################################################################
       # Users.  Numeric ids are the interface across the nspawn boundary.
@@ -496,6 +694,51 @@ in
         home         = "/var/lib/prowlarr";
       };
       users.groups.prowlarr = { gid = prowlarrGid; };
+
+      # ── M12 users ─────────────────────────────────────────────────────────
+      #
+      # BAZARR takes the same shape as sonarr/radarr and for the same reason:
+      # it writes .srt sidecars NEXT TO THE MEDIA, so `media` must be its
+      # PRIMARY group, not a supplementary one.  The header's PrivateUsers
+      # explanation is the reason and is not re-derived here.
+      #
+      # Simpler than sonarr/radarr in one respect, though: the upstream module
+      # declares users.users.bazarr WITHOUT a uid (it leaves the allocation to
+      # NixOS), so setting one here is a new definition of an unset option and
+      # needs no mkForce.  The module also declares the `bazarr` GROUP only
+      # when services.bazarr.group == "bazarr"; it is "media" below, so no
+      # stray group is created.
+      users.users.bazarr.uid = bazarrUid;
+
+      # CLEANUPARR and MEDIATHEKARR are declared in full — there is no upstream
+      # module for either, so nothing else creates them.
+      #
+      # Both take `media` as PRIMARY, and for once the reason is not
+      # PrivateUsers (neither unit sets it):
+      #
+      #   cleanuparr    DELETES files under /srv/media.  Removing a directory
+      #                 entry needs write on the PARENT directory, and those
+      #                 are 2770 root:media — so group membership is the whole
+      #                 of its access, and a supplementary membership squashed
+      #                 by some future hardening directive would present as a
+      #                 cleaner that silently cleans nothing.
+      #   mediathekarr  WRITES video into the download tree and then remuxes
+      #                 it in place.
+      #
+      # `home` points at each service's state directory so that anything
+      # reaching for $HOME lands somewhere writable rather than at /.
+      users.users.cleanuparr = {
+        isSystemUser = true;
+        uid          = cleanuparrUid;
+        group        = "media";
+        home         = "/var/lib/cleanuparr";
+      };
+      users.users.mediathekarr = {
+        isSystemUser = true;
+        uid          = mediathekarrUid;
+        group        = "media";
+        home         = "/var/lib/mediathekarr";
+      };
 
       ##########################################################################
       # The services.
@@ -636,6 +879,476 @@ in
       };
 
       ##########################################################################
+      # M12 (c) — BAZARR.  Subtitles, both directions.
+      #
+      # The only one of M12's additions with an upstream module, and the module
+      # is a thin one: it writes an ExecStart, a tmpfiles rule and a user, and
+      # sets NO hardening directives at all.  Not a reduced set — none.  So the
+      # `systemd.services.bazarr.serviceConfig` block further down is not a
+      # tightening of upstream's choices, it is the whole of them, and its
+      # before/after score is the largest movement in this milestone.
+      #
+      # `media` as the PRIMARY group is the one thing that must not be
+      # "simplified" later: Bazarr writes .srt sidecars INTO the library, next
+      # to the video files, in directories that are 2770 root:media.
+      #
+      # LANGUAGE PROFILES ARE A MANUAL STEP, and deliberately so.  M12 asks for
+      # German and English "both directions" — German subtitles on English
+      # content and English subtitles on German content — which is two profiles
+      # plus per-series/per-movie assignment plus provider credentials.  All of
+      # that lives in Bazarr's own database, and the argument the root folders
+      # lost applies here unchanged: faking it from Nix would create a second
+      # source of truth for state the application owns.  The PR body carries
+      # the steps.
+      services.bazarr = {
+        enable       = true;
+        listenPort   = bazarrPort;
+        user         = "bazarr";
+        group        = "media";     # PRIMARY group — see the header
+        openFirewall = false;       # explicit list above
+      };
+
+      ##########################################################################
+      # M12 (b) — UMLAUTADAPTARR.  The highest-value item in the milestone.
+      #
+      # ── WHY IT EXISTS ────────────────────────────────────────────────────
+      #
+      # German releases with umlauts are not imported correctly, are often not
+      # FOUND at all (the *arrs search "o" for "ö"), and Sonarr/Radarr always
+      # expect the ENGLISH TMDB/TVDB title — which breaks German productions
+      # and translations outright.  The characteristic symptom in a Sonarr log
+      # is "Found matching series/movie via grab history, but release was
+      # matched to series by ID".  TRaSH's German quality-profile guide
+      # recommends it by name, and the recyclarr German profiles added at the
+      # bottom of this file are its other half: the profiles decide what is
+      # wanted, this is what makes it findable.
+      #
+      # ── HOW IT WORKS, because it decides everything else ─────────────────
+      #
+      # It presents itself to the *arrs as an INDEXER, but it actually sits
+      # BETWEEN them and the real indexer, rewriting searches and results and
+      # renaming releases so the *arrs recognise them.  Two ports: 5005 is its
+      # own HTTP API, 5006 is the proxy that Prowlarr's indexer definitions are
+      # pointed at.
+      #
+      # ── THE TRAP THAT MATTERS, restated where it will be read ────────────
+      #
+      # EVERY INDEXER URL IN PROWLARR MUST CHANGE https → http so that this can
+      # intercept locally; the outbound leg to the real indexer stays https.
+      # AN INDEXER LEFT ON https WORKS FINE AND SILENTLY BYPASSES THIS ENTIRELY
+      # — nothing breaks, nothing logs, and the umlaut handling this service
+      # exists for simply does not happen for that indexer.  It is the third
+      # documented fails-by-succeeding in this repo, alongside recyclarr's
+      # duplicate-instance bug and M11's silent context truncation.  The PR
+      # body lists every indexer explicitly for that reason.
+      #
+      # Configure it in PROWLARR, not per-arr: per-arr configuration costs a
+      # speed penalty on multi-indexer search.
+      #
+      # ── THE FORK: UmlautAdaptarr, NOT UmlautAdaptarrEX ───────────────────
+      #
+      # M12 asks for both to be evaluated and the choice argued.  Surveyed
+      # 2026-08-26: PCJones/UmlautAdaptarr, C#, 303 stars, last pushed
+      # 2026-08-10; xpsony/UmlautAdaptarrEX, TypeScript, 28 stars, last pushed
+      # 2026-08-24.  Both are alive.
+      #
+      # The original wins on three counts, and "it is canonical" is not one of
+      # them:
+      #
+      #   1. EX is a REWRITE, not a fork — different language, different
+      #      codebase, one author, four weeks old in its current shape.  This
+      #      component sits in the request path of every indexer search in the
+      #      stack.  Its documented failure mode is already "works fine and
+      #      does nothing", which is the worst possible property to combine
+      #      with a young reimplementation nobody here can debug.
+      #   2. TRaSH's German guide names the ORIGINAL.  The recyclarr German
+      #      profiles in this file are transcribed from that guide, so the two
+      #      halves of this milestone should be the two halves that guide
+      #      describes.
+      #   3. EX's advertised advantage is BROADER MULTI-LANGUAGE handling.
+      #      This is a two-language household.  That is not a capability this
+      #      deployment needs, so it buys nothing against the risk in (1).
+      #
+      # Revisit if the original goes quiet — not because EX gets newer.
+      #
+      # ── NO uid, AND THAT IS A DEPARTURE FROM THE ROADMAP ─────────────────
+      #
+      # docs/roadmap.md reserves uid 3010 for this service, "own group, no
+      # media access — a proxy, same argument as prowlarr".  The access half
+      # of that is kept exactly; the static uid is not, and M12's own rule is
+      # what overturns it:
+      #
+      #   "a service with no persistent state has no reason to make that
+      #    switch at all.  FlareSolverr keeps DynamicUser; Byparr should too."
+      #
+      # This service has no persistent state.  Verified against upstream
+      # rather than assumed: zero SQLite references in the repository, caching
+      # is IMemoryCache, and upstream's own docker-compose declares no volumes
+      # at all.  Every scrap of its configuration arrives as an environment
+      # variable, below.
+      #
+      # A static uid would therefore buy nothing and cost the six directives
+      # DynamicUser silently implies — NoNewPrivileges, PrivateTmp,
+      # ProtectSystem=strict, ProtectHome=read-only, RemoveIPC and
+      # RestrictSUIDSGID — which is the Prowlarr trap in reverse, and the trap
+      # M12's hardening section says to watch for.  So: DynamicUser, no media
+      # group, nothing owned, nothing to lose.  uid 3010 stays reserved and
+      # unused in machines/ernst/networking.nix, which says so.
+      #
+      # ── IT TALKS TO A THIRD-PARTY API, and that is stated not buried ─────
+      #
+      # appsettings.json ships Settings.UmlautAdaptarrApiHost =
+      # https://umlautadaptarr.pcjones.de/api/v1, the maintainer's title
+      # lookup service.  Against invariant #1 that is the same shape as
+      # FlareSolverr and lands the same way: it is metadata traffic, not
+      # tracker traffic; there is nothing here a killswitch protects; and the
+      # microvm's Dutch exit would be no better a place for it.  It stays in
+      # the nspawn tier.
+      systemd.services.umlautadaptarr = {
+        description = "UmlautAdaptarr — umlaut/German-title proxy for the *arrs";
+        wantedBy    = [ "multi-user.target" ];
+
+        # HARD startup dependency, and it is not advisory.  Measured
+        # 2026-08-26: with no *arr reachable, UmlautAdaptarr logs
+        #   The URL "http://.../api?apikey=[REDACTED]" is not reachable.
+        #   Next attempt in 15 seconds...
+        # and NEVER BINDS ITS PORTS.  It blocks in its own constructor until
+        # an *arr answers.  That is good behaviour — it fails closed — but it
+        # means ordering matters and that a restart policy is required rather
+        # than optional.
+        after = [ "sonarr.service" "radarr.service" "arr-api-keys.service" ];
+        wants = [ "sonarr.service" "radarr.service" ];
+
+        serviceConfig = {
+          Type = "simple";
+
+          # The two API keys, as environment variables, staged by
+          # arr-api-keys.service below.  EnvironmentFile is read by PID 1
+          # before privileges are dropped, so a 0600 root-owned file under
+          # /run is exactly right and the DynamicUser never sees it.
+          EnvironmentFile = "${arrSecretsDir}/umlautadaptarr.env";
+
+          ExecStart = "${lib.getExe umlautadaptarr}";
+
+          Restart    = "on-failure";
+          RestartSec = "30s";
+
+          # See the long note above.  Upstream ships no unit at all, so every
+          # directive here is ours.  DynamicUser buys the six implied ones;
+          # the rest is the servarr set this file already applies to prowlarr.
+          DynamicUser      = true;
+          RuntimeDirectory = "umlautadaptarr";
+
+          CapabilityBoundingSet   = "";
+          PrivateDevices          = true;
+          PrivateUsers            = true;
+          ProtectClock            = true;
+          ProtectControlGroups    = true;
+          ProtectHostname         = true;
+          ProtectKernelLogs       = true;
+          ProtectKernelModules    = true;
+          ProtectKernelTunables   = true;
+          ProtectProc             = "invisible";
+          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+          RestrictNamespaces      = true;
+          RestrictRealtime        = true;
+          LockPersonality         = true;
+          SystemCallArchitectures = "native";
+
+          # NOT MemoryDenyWriteExecute — .NET, same JIT rejection this file
+          # already records for sonarr/radarr/prowlarr and jellyfin.nix
+          # records for Jellyfin.
+          SystemCallFilter = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+        };
+      };
+
+      ##########################################################################
+      # M12 (d) — CLEANUPARR.
+      #
+      # ── IT RETIRES THREE THINGS, so they are not added ───────────────────
+      #
+      # DECLUTTARR, HUNTARR and CHECKRR.  Recorded here so that a later session
+      # "discovers" one of them and finds the answer in the same file as the
+      # thing that replaced it.
+      #
+      # ── WHY IT IS WORTH A uid ────────────────────────────────────────────
+      #
+      # Beyond stalled / blocked / malicious cleanup — it exists because *.lnk
+      # and *.zipx files were getting stuck in *arr queues — it does
+      # missing-content search, cutoff-unmet search, and custom-format score
+      # upgrade search with score tracking.
+      #
+      # The part that earns it a place in THIS container: it removes downloads
+      # that are ORPHANED, HAVE NO HARDLINKS, or are no longer referenced by
+      # the *arrs.  That turns M4's link-count invariant from something proven
+      # once with `stat` into something a service watches continuously, which
+      # is a genuine upgrade to the property the whole stack rests on.
+      #
+      # ── CONFIGURE CONSERVATIVELY ON THE FIRST DEPLOY ─────────────────────
+      #
+      # A cleaner that deletes is a cleaner that can delete the wrong thing,
+      # and this one reasons about hardlink counts on a tree whose hardlink
+      # correctness is the entire point of M3 and M4.  Its configuration is a
+      # SQLite database driven from its web UI — there is nothing to set here
+      # — so "conservatively" is a manual step and the PR body spells it out:
+      # every cleaner starts disabled, the download cleaner's unlinked/orphan
+      # handling goes on LAST and only after the *arr Recycle Bin is set.
+      systemd.services.cleanuparr = {
+        description = "Cleanuparr — stalled/blocked/orphaned download cleanup";
+        wantedBy    = [ "multi-user.target" ];
+        after       = [ "sonarr.service" "radarr.service" ];
+        wants       = [ "sonarr.service" "radarr.service" ];
+
+        environment = {
+          PORT = toString cleanuparrPort;
+
+          # CLEANUPARR_CONFIG_PATH is the NON-DOCKER override, and it is the
+          # only way to move the config directory off its built-in default.
+          # /var/lib/cleanuparr is the zdata bind mount.
+          CLEANUPARR_CONFIG_PATH = "/var/lib/cleanuparr";
+        };
+
+        serviceConfig = {
+          Type      = "simple";
+          User      = "cleanuparr";
+          Group     = "media";
+          ExecStart = "${lib.getExe cleanuparr}";
+          Restart   = "on-failure";
+          RestartSec = "30s";
+
+          # Group-writable output, for the reason the sonarr/radarr UMask note
+          # at the bottom of this file gives at length: 0022 would make
+          # anything this service creates writable by exactly one uid, on a
+          # tree whose whole point is that the `media` group can manage it.
+          UMask = "0002";
+
+          # Static uid with persistent state — the prowlarr shape, not the
+          # flaresolverr one — so every directive DynamicUser would have
+          # implied is restated explicitly.  This is the Prowlarr trap in
+          # reverse and it is the reason this block is long.
+          NoNewPrivileges  = true;
+          PrivateTmp       = true;
+          ProtectSystem    = "strict";
+          ProtectHome      = true;
+          RemoveIPC        = true;
+          RestrictSUIDSGID = true;
+
+          # It DELETES from the library and the download tree; that is the job.
+          ReadWritePaths = [ "/srv/media" "/var/lib/cleanuparr" ];
+
+          CapabilityBoundingSet   = "";
+          PrivateDevices          = true;
+          ProtectClock            = true;
+          ProtectControlGroups    = true;
+          ProtectHostname         = true;
+          ProtectKernelLogs       = true;
+          ProtectKernelModules    = true;
+          ProtectKernelTunables   = true;
+          ProtectProc             = "invisible";
+          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+          RestrictNamespaces      = true;
+          RestrictRealtime        = true;
+          LockPersonality         = true;
+          SystemCallArchitectures = "native";
+          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+
+          # NOT PrivateUsers.  sonarr and radarr carry it and it is why `media`
+          # has to be their primary group; here it would buy nothing and cost
+          # the same footgun, because this service's access to /srv/media is
+          # ENTIRELY its group membership — it owns none of those files.
+        };
+      };
+
+      ##########################################################################
+      # M12 (f) — MEDIATHEKARR.  Two processes, not one.
+      #
+      # ARD / ZDF Mediathek as a Prowlarr indexer.  It answers a stated
+      # complaint: the MediathekViewer Jellyfin plugin is poor.
+      #
+      # ── UPSTREAM SHIPS TWO PROCESSES AND ONLY DOCUMENTS ONE ──────────────
+      #
+      #   mediathekarr-indexer     5008   Newznab shim, parses MediathekViewWeb.
+      #                                   This is what PROWLARR is pointed at.
+      #   mediathekarr-downloader  5007   SABnzbd shim + the setup WIZARD.
+      #                                   This is what SONARR and RADARR add as
+      #                                   a download client.
+      #
+      # Upstream's docker-compose publishes only 5007 and its README mentions
+      # only 5007, so packaging just the indexer is the easy mistake — and it
+      # would produce searches that return results nothing can ever download.
+      # ./pkgs/mediathekarr.nix has the full account.
+      #
+      # ── WHY IT NEEDS A MEDIA uid WHEN PROWLARR DOES NOT ──────────────────
+      #
+      # Prowlarr's "no media access at all" argument does NOT transfer, and
+      # assuming it did would produce a service that fails on its first
+      # download.  This one really downloads: the SABnzbd half fetches video
+      # and subtitles over plain HTTP from the Mediatheken, then remuxes with
+      # ffmpeg and mkvmerge.  It writes into /srv/media/torrents/mediathek,
+      # inside the hardlink domain, so the *arrs import from it exactly as they
+      # import from qBittorrent's output.
+      #
+      # ── INVARIANT #1, ARGUED RATHER THAN WAVED THROUGH ───────────────────
+      #
+      # It talks to the internet on its own behalf — MediathekViewWeb, the
+      # maintainer's ruleset API, and thetvdb for metadata — so the invariant's
+      # "move it up a tier" test applies and has to be answered.  The answer is
+      # that it stays here, in FlareSolverr's shape:
+      #
+      #   - public-broadcaster HTTP, not tracker traffic;
+      #   - no killswitch value: there is nothing here a VPN protects;
+      #   - and THE EXIT-COUNTRY PROBLEM RUNS THE OTHER WAY.  These are German
+      #     services, best reached from a German IP.  The microvm tier's IVPN
+      #     exit was re-measured for this milestone on 2026-08-26 and is still
+      #     Leaseweb NL (95.211.172.88) — the wrong side of exactly the coin
+      #     M4 measured at HTTP 451.  Moving this to the "more correct" tier
+      #     would degrade or break the capability it exists to provide.
+      #
+      # NOTE FOR M8: this is the milestone that changes whether M8 needs to
+      # exist at all.  See the M8 amendment in docs/roadmap.md.
+      systemd.services.mediathekarr-indexer = {
+        description = "MediathekArr indexer — ARD/ZDF Mediathek as Newznab";
+        wantedBy    = [ "multi-user.target" ];
+        after       = [ "network-online.target" ];
+        wants       = [ "network-online.target" ];
+
+        serviceConfig = {
+          Type       = "simple";
+          User       = "mediathekarr";
+          Group      = "media";
+          ExecStart  = "${lib.getExe mediathekarr.indexer}";
+          Restart    = "on-failure";
+          RestartSec = "30s";
+
+          # The indexer half NEVER TOUCHES A FILE.  It is in group media only
+          # because it shares a uid with the downloader half, and it is given
+          # no writable path at all — ProtectSystem=strict with no
+          # ReadWritePaths means the entire filesystem is read-only to it.
+          NoNewPrivileges  = true;
+          PrivateTmp       = true;
+          ProtectSystem    = "strict";
+          ProtectHome      = true;
+          RemoveIPC        = true;
+          RestrictSUIDSGID = true;
+
+          CapabilityBoundingSet   = "";
+          PrivateDevices          = true;
+          ProtectClock            = true;
+          ProtectControlGroups    = true;
+          ProtectHostname         = true;
+          ProtectKernelLogs       = true;
+          ProtectKernelModules    = true;
+          ProtectKernelTunables   = true;
+          ProtectProc             = "invisible";
+          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+          RestrictNamespaces      = true;
+          RestrictRealtime        = true;
+          LockPersonality         = true;
+          SystemCallArchitectures = "native";
+          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+        };
+      };
+
+      systemd.services.mediathekarr-downloader = {
+        description = "MediathekArr downloader — SABnzbd shim and setup wizard";
+        wantedBy    = [ "multi-user.target" ];
+        after       = [ "network-online.target" ];
+        wants       = [ "network-online.target" ];
+
+        environment = {
+          # Config, on zdata.  Everything the wizard writes lands here.
+          CONFIG_PATH = "/var/lib/mediathekarr";
+
+          # ── THE PATHS ARE THE SAME STRING EVERYWHERE, on purpose ────────
+          #
+          # This is the identical-path rule from the header, applied to a
+          # second download source.  The downloader reports a completed item
+          # at /srv/media/torrents/mediathek/complete/<cat>/<title>.mkv;
+          # Sonarr looks for it at the same string; both are the same inode,
+          # in the same dataset, so the import is a HARDLINK and no *arr
+          # Remote Path Mapping is needed.  Change one of these and every
+          # Mediathek import silently becomes a copy — or an error that reads
+          # like a permissions problem.
+          DOWNLOAD_INCOMPLETE_PATH = "/srv/media/torrents/mediathek/incomplete";
+          DOWNLOAD_COMPLETE_PATH   = "/srv/media/torrents/mediathek/complete";
+
+          # The SABnzbd categories the *arrs will see.  tv and movies match
+          # the two libraries this stack actually has.
+          CATEGORIES = "tv,movies";
+        };
+
+        serviceConfig = {
+          Type       = "simple";
+          User       = "mediathekarr";
+          Group      = "media";
+          ExecStart  = "${lib.getExe mediathekarr.downloader}";
+          Restart    = "on-failure";
+          RestartSec = "30s";
+
+          # Group-writable, same argument as sonarr/radarr/cleanuparr: what
+          # this writes is imported, moved and eventually deleted by other
+          # members of `media`.
+          UMask = "0002";
+
+          NoNewPrivileges  = true;
+          PrivateTmp       = true;
+          ProtectSystem    = "strict";
+          ProtectHome      = true;
+          RemoveIPC        = true;
+          RestrictSUIDSGID = true;
+
+          ReadWritePaths = [
+            "/srv/media/torrents/mediathek"
+            "/var/lib/mediathekarr"
+          ];
+
+          CapabilityBoundingSet   = "";
+          PrivateDevices          = true;
+          ProtectClock            = true;
+          ProtectControlGroups    = true;
+          ProtectHostname         = true;
+          ProtectKernelLogs       = true;
+          ProtectKernelModules    = true;
+          ProtectKernelTunables   = true;
+          ProtectProc             = "invisible";
+          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+          RestrictNamespaces      = true;
+          RestrictRealtime        = true;
+          LockPersonality         = true;
+          SystemCallArchitectures = "native";
+
+          # ffmpeg and mkvmerge are FORKED, so the filter has to permit it —
+          # @system-service already does.  What it must NOT gain is @privileged
+          # or @mount, and it does not.
+          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+        };
+      };
+
+      ##########################################################################
+      # M12 (e) — UNPACKERR IS NOT HERE, and that is a measured decision.
+      #
+      # M12 makes it conditional on there actually being archive-delivered
+      # releases to unpack.  Measured on ernst, 2026-08-26:
+      #
+      #   sonarr, last 50 grabs      50/50 protocol=torrent, client qBittorrent
+      #   radarr, all 30 in history  30/30 protocol=torrent, client qBittorrent
+      #   download clients configured   ONE, qBittorrent.  No usenet client
+      #                                 exists in either application.
+      #   archives under /srv/media/torrents
+      #                              0, out of 986 files
+      #                              (*.rar, *.r0[0-9], *.zip, *.zipx, *.7z)
+      #   archives under /srv/media/library
+      #                              0
+      #
+      # There is nothing for it to do.  SKIPPED, recorded in docs/roadmap.md so
+      # it is not re-litigated in six months, and uid 3013 stays reserved and
+      # unused.
+      #
+      # THE TRIGGER TO REVISIT IS A USENET DOWNLOAD CLIENT, not a hunch: the
+      # whole reason this stack sees no archives is that it has no usenet path.
+      # Note pkgs.unpackerr exists (0.15.2) and needs a unit, not a derivation.
+
+      ##########################################################################
       # Recyclarr — TRaSH-Guides quality definitions, synced on a timer.
       #
       # SCOPE NOTE: M4's prompt says "recyclarr is explicitly OUT of scope; it
@@ -682,14 +1395,21 @@ in
       # RemainAfterExit = true instead, the unit would stay active and never run
       # again, so a rotated key would be staged once and then be stale forever.
       # This pair keeps the directory and re-runs the extraction on every sync.
-      systemd.services.recyclarr-api-keys = {
-        description = "Stage Sonarr/Radarr API keys for recyclarr";
-        before     = [ "recyclarr.service" ];
-        requiredBy = [ "recyclarr.service" ];
+      #
+      # M12 RENAMED THIS UNIT from recyclarr-api-keys to arr-api-keys, because
+      # it now has two consumers: recyclarr reads the two key files through
+      # `_secret`, and UmlautAdaptarr reads an environment file written from
+      # the same two keys.  The alternative was a second copy of this hardened
+      # unit reading the same two config.xml files, which is one source of
+      # truth too many for a value that can be rotated with one button in a UI.
+      systemd.services.arr-api-keys = {
+        description = "Stage Sonarr/Radarr API keys for recyclarr and UmlautAdaptarr";
+        before     = [ "recyclarr.service" "umlautadaptarr.service" ];
+        requiredBy = [ "recyclarr.service" "umlautadaptarr.service" ];
         serviceConfig = {
           Type                    = "oneshot";
           RemainAfterExit         = false;
-          RuntimeDirectory        = "recyclarr-secrets";
+          RuntimeDirectory        = "arr-api-keys";
           RuntimeDirectoryMode    = "0700";
           RuntimeDirectoryPreserve = "yes";
           UMask                   = "0077";
@@ -786,8 +1506,44 @@ in
               printf '%s' "$key" > "$out"
             }
 
-            stage sonarr /var/lib/sonarr/.config/NzbDrone/config.xml ${recyclarrSecretsDir}/sonarr-api-key
-            stage radarr /var/lib/radarr/.config/Radarr/config.xml   ${recyclarrSecretsDir}/radarr-api-key
+            stage sonarr /var/lib/sonarr/.config/NzbDrone/config.xml ${arrSecretsDir}/sonarr-api-key
+            stage radarr /var/lib/radarr/.config/Radarr/config.xml   ${arrSecretsDir}/radarr-api-key
+
+            # ── UmlautAdaptarr's environment file (M12) ──────────────────
+            #
+            # Same two keys, different shape.  UmlautAdaptarr is an ASP.NET
+            # application configured entirely through environment variables,
+            # and its appsettings.json declares Sonarr and Radarr as ARRAYS —
+            # so the indexed form (Sonarr__0__…) is the one that binds onto
+            # element 0 rather than fighting it.  The non-indexed form in
+            # upstream's docker-compose works too; the indexed one is used
+            # here because it matches the file it is overriding.
+            #
+            # localhost, because all of this shares one netns — the same
+            # payoff the Prowlarr→Sonarr/Radarr wiring gets: no port opened,
+            # nothing to firewall.
+            #
+            # Written with the same rm-then-write dance as the key files, and
+            # for the same measured reason: this unit holds
+            # CAP_DAC_READ_SEARCH and NOT CAP_DAC_OVERRIDE, so it must never
+            # create a file it cannot subsequently write.
+            env_out=${arrSecretsDir}/umlautadaptarr.env
+            ${pkgs.coreutils}/bin/rm -f "$env_out"
+            {
+              echo "Sonarr__0__Enabled=true"
+              echo "Sonarr__0__Name=Sonarr"
+              echo "Sonarr__0__Host=http://localhost:${toString sonarrPort}"
+              echo "Sonarr__0__ApiKey=$(${pkgs.coreutils}/bin/cat ${arrSecretsDir}/sonarr-api-key)"
+              echo "Radarr__0__Enabled=true"
+              echo "Radarr__0__Name=Radarr"
+              echo "Radarr__0__Host=http://localhost:${toString radarrPort}"
+              echo "Radarr__0__ApiKey=$(${pkgs.coreutils}/bin/cat ${arrSecretsDir}/radarr-api-key)"
+              # Ports, stated here rather than left to appsettings.json, so
+              # that the numbers the firewall list above reasons about and the
+              # numbers the service binds are the same numbers in one repo.
+              echo "Kestrel__Endpoints__Http__Url=http://[::]:${toString umlautadaptarrPort}"
+              echo "Settings__ProxyPort=${toString umlautadaptarrProxyPort}"
+            } > "$env_out"
           '';
         };
       };
@@ -879,13 +1635,13 @@ in
         # has been poked into.
         #
         # To preview before letting the timer run:
-        #   nixos-container run arr -- systemctl start recyclarr-api-keys
+        #   nixos-container run arr -- systemctl start arr-api-keys
         #   nixos-container run arr -- runuser -u recyclarr -- \
         #     recyclarr sync --preview --config /var/lib/recyclarr/config.yml
         configuration = {
           radarr.movies = {
             base_url        = "http://localhost:${toString radarrPort}";
-            api_key._secret = "${recyclarrSecretsDir}/radarr-api-key";
+            api_key._secret = "${arrSecretsDir}/radarr-api-key";
 
             quality_definition.type = "movie";
 
@@ -908,7 +1664,7 @@ in
 
           sonarr.series = {
             base_url        = "http://localhost:${toString sonarrPort}";
-            api_key._secret = "${recyclarrSecretsDir}/sonarr-api-key";
+            api_key._secret = "${arrSecretsDir}/sonarr-api-key";
 
             quality_definition.type = "series";
 
@@ -933,6 +1689,171 @@ in
               { trash_id = "59c3af66780d08332fdc64e68297098f"; }  # [Unwanted] Unwanted Formats
             ];
           };
+
+          ####################################################################
+          # M12 (g) — THREE MORE INSTANCES, NOT THREE MORE PROFILES.
+          #
+          # ── WHY THEY ARE SEPARATE INSTANCES ──────────────────────────────
+          #
+          # The tempting shape is to append a second entry to the existing
+          # `quality_profiles` list.  It is wrong, and quietly so:
+          # `custom_format_groups` is declared PER INSTANCE, not per profile,
+          # so every group listed in a block is scored onto EVERY profile in
+          # that block.  Adding the German profile to `sonarr.series` would
+          # push the English WEB-1080p group set onto the German profile and
+          # the German unwanted-formats set onto the English one — a config
+          # that syncs cleanly and scores nonsense.
+          #
+          # Separate instances keep each profile with exactly the groups its
+          # TRaSH template pairs it with, which is the whole point of the
+          # "TRANSCRIBE WHOLE CUSTOM-FORMAT GROUPS" rule: scores and CF
+          # combinations are tested together to prevent download loops, and
+          # most undesired results come from mixing them.
+          #
+          # INSTANCE NAMES ARE GLOBALLY UNIQUE — see the warning further up
+          # this file.  Two instances sharing a name make recyclarr log
+          # "Duplicate instances" at DEBUG, sync NOTHING, and EXIT 0.  Every
+          # name below is distinct from every other in this attrset.
+          #
+          # `quality_definition` repeats in each block.  That is not a
+          # redundancy to tidy away: it is per-instance in recyclarr's schema,
+          # every block here names the same type for the same service, so the
+          # repeated syncs are idempotent and write identical values.  Drop it
+          # from one and that instance stops maintaining size limits.
+          #
+          # All five blocks were transcribed from config-templates @ 9faf65f,
+          # the same rev the two blocks above name, so a single `git show`
+          # checks the whole file.
+          ####################################################################
+
+          # ── German films: Remux + WEB 2160p ──────────────────────────────
+          #
+          # radarr/templates/german-uhd-remux-web.yml.  Chosen to MATCH the
+          # English radarr profile above rather than a lower tier: films are
+          # what you sit down for, and a German profile a step below the
+          # English one would make "upgrade to German when it appears" a
+          # downgrade in everything except language.
+          #
+          # THE BEHAVIOUR THIS BUYS, which is the actual request in M12 (g):
+          # grab the best English release first, then upgrade to German /
+          # German-DL when one appears, upgrading until "Upgrade Until Custom
+          # Format Score".  That is a property of the TRaSH German profile
+          # itself — its German-audio custom formats carry positive scores and
+          # its cutoff score sits above what an English-only release can
+          # reach — not something configured here.  It only works if titles
+          # are actually ASSIGNED to this profile; see the promotion rule
+          # below, which applies to this exactly as it applies to the Sonarr
+          # 2160p one.
+          radarr.movies-german = {
+            base_url        = "http://localhost:${toString radarrPort}";
+            api_key._secret = "${arrSecretsDir}/radarr-api-key";
+
+            quality_definition.type = "movie";
+
+            quality_profiles = [
+              {
+                trash_id = "79faa9943cef2f510b997b1f2a9f3ea6";   # [German] Remux + WEB 2160p
+                reset_unmatched_scores.enabled = true;
+              }
+            ];
+
+            custom_format_groups.add = [
+              { trash_id = "ff204bbcecdd487d1cefcefdbf0c278d"; }  # [Optional] Golden Rule UHD
+              # GERMAN unwanted formats, not the English list.  Different
+              # trash_id, different contents — it adds German LQ, German LQ
+              # (release title) and German Microsized, which are the formats
+              # that make a German-language library unwatchable and which the
+              # English group knows nothing about.
+              { trash_id = "0ca61b4b233178d07113082a7acff72d"; }  # [Unwanted] Unwanted Formats German
+            ];
+          };
+
+          # ── German series: HD Bluray + WEB ───────────────────────────────
+          #
+          # sonarr/templates/german-hd-bluray-web.yml.  HD rather than UHD, to
+          # match the English sonarr profile's restraint for the same reason
+          # the file already gives: series are the bulk of the episode count,
+          # so this is where restraint actually saves the pool.
+          sonarr.series-german = {
+            base_url        = "http://localhost:${toString sonarrPort}";
+            api_key._secret = "${arrSecretsDir}/sonarr-api-key";
+
+            quality_definition.type = "series";
+
+            quality_profiles = [
+              {
+                trash_id = "dca7e5e9e99c703bcbdaaa471dd40e98";   # [German] HD Bluray + WEB
+                reset_unmatched_scores.enabled = true;
+              }
+            ];
+
+            custom_format_groups.add = [
+              { trash_id = "158188097a58d7687dee647e04af0da3"; }  # [Optional] Golden Rule HD
+              { trash_id = "6f0872eebfc95b1f93474b7ac866ced0"; }  # [Unwanted] Unwanted Formats German
+            ];
+          };
+
+          # ── Sonarr Remux + WEB 2160p ─────────────────────────────────────
+          #
+          # sonarr/templates/remux-web-2160p.yml.  Created ALONGSIDE the
+          # existing profiles and assigned PER SERIES.
+          #
+          # ── THE RULE IS INDIVIDUAL PROMOTION.  DO NOT BULK-EDIT ──────────
+          #
+          # Someone will eventually "tidy up" by selecting every series in
+          # Sonarr and reassigning the profile in one action.  This paragraph
+          # is the thing that has to stop them, so it is stated with the
+          # numbers M4 measured on this machine:
+          #
+          #   133 series sit on a hand-made "Ultra-HD" profile with
+          #   upgradeAllowed = FALSE.  Every TRaSH profile ships
+          #   upgradeAllowed = true.  Bulk-reassigning those 133 series to an
+          #   upgrade-enabled 2160p profile would queue a re-download of most
+          #   of a 6.1 TB television library, and the same again for 13 TB of
+          #   films once they followed — together roughly THE WHOLE 47.6 TB OF
+          #   FREE SPACE, pulled through the VPN.
+          #
+          # Recyclarr creates profiles alongside existing ones and never
+          # reassigns a series, so nothing moves on its own.  The danger is
+          # entirely a human with a multi-select box.
+          #
+          # Note the Golden Rule id differs from radarr's: Sonarr and Radarr
+          # have DIFFERENT groups with different trash_ids for the same name.
+          sonarr.series-remux-2160p = {
+            base_url        = "http://localhost:${toString sonarrPort}";
+            api_key._secret = "${arrSecretsDir}/sonarr-api-key";
+
+            quality_definition.type = "series";
+
+            quality_profiles = [
+              {
+                trash_id = "76a5053bdb2d1e4a8f16a69a37d46c12";   # Remux + WEB 2160p
+                reset_unmatched_scores.enabled = true;
+              }
+            ];
+
+            custom_format_groups.add = [
+              { trash_id = "e3f37512790f00d0e89e54fe5e790d1c"; }  # [Optional] Golden Rule UHD (SONARR's id)
+              { trash_id = "74aff4168620ed49dcc67e92b2c2a5b4"; }  # [Optional] Language Profiles
+              { trash_id = "85fae4a2294965b75710ef2989c850eb"; }  # [Streaming Services] HD/UHD boost
+              { trash_id = "59c3af66780d08332fdc64e68297098f"; }  # [Unwanted] Unwanted Formats
+            ];
+          };
+
+          # ── NOT ADDED, both recorded so they are not "discovered" later ──
+          #
+          # AN ANIME PROFILE.  M12 (g) says to ask rather than assume, because
+          # it is a substantial custom-format set for content nobody has said
+          # they watch.  Asked on 2026-08-26; the answer was no.  Reopen it by
+          # adding sonarr/templates/anime-remux-1080p.yml as a fourth
+          # instance, not by extending one of the blocks above.
+          #
+          # PROFILARR.  Same job as this block, but it keeps state in ITS OWN
+          # DATABASE.  A Nix attrset is a reviewable diff with recorded
+          # provenance and is strictly better here — the argument the recyclarr
+          # header already makes about why this config is inlined rather than
+          # `include`d applies to Profilarr with more force, not less.
+          # REJECTED, deliberately.
         };
       };
 
@@ -996,15 +1917,36 @@ in
       # file actually generates, which is how these can be checked before a
       # deploy rather than after one:
       #
-      #   service             upstream directives   this file
-      #   prowlarr            8.2 EXPOSED           1.3 OK
-      #   sonarr              1.5 OK                1.3 OK
-      #   radarr              1.5 OK                1.3 OK
-      #   flaresolverr        3.0 OK                3.0 OK  (untouched)
-      #   recyclarr           3.9 OK                3.9 OK  (untouched)
-      #   recyclarr-api-keys  9.4 UNSAFE            1.0 OK  (ours)
+      #   service                  upstream directives   this file
+      #   prowlarr                 8.2 EXPOSED           1.3 OK
+      #   sonarr                   1.5 OK                1.3 OK
+      #   radarr                   1.5 OK                1.3 OK
+      #   flaresolverr             3.0 OK                3.0 OK  (untouched)
+      #   recyclarr                3.9 OK                3.9 OK  (untouched)
+      #   arr-api-keys             9.4 UNSAFE            1.0 OK  (ours)
+      #   ── M12, measured 2026-08-26 ──────────────────────────────────────
+      #   bazarr                   9.0 UNSAFE            1.4 OK
+      #   umlautadaptarr           9.4 UNSAFE            1.3 OK
+      #   cleanuparr               9.0 UNSAFE            1.4 OK
+      #   mediathekarr-indexer     9.0 UNSAFE            1.4 OK
+      #   mediathekarr-downloader  9.0 UNSAFE            1.4 OK
       #
-      # Three of those need a word.
+      # WHAT THE M12 "UPSTREAM" COLUMN MEANS, because it is not the same thing
+      # it means for prowlarr.  Bazarr's 9.0 is REAL upstream: the nixpkgs
+      # module sets Type, User, Group, SyslogIdentifier, ExecStart, Restart,
+      # KillSignal and SuccessExitStatus, and no hardening directive of any
+      # kind.  The other four have no upstream unit at all, so their baseline
+      # is the unit anybody would write first — Type, User, Group, ExecStart —
+      # measured against the same nixpkgs.  UmlautAdaptarr's 9.4 is higher than
+      # the rest for the same reason arr-api-keys' was: with no User= it would
+      # be root.
+      #
+      # Both columns were produced with
+      #   systemd-analyze security --offline=true --root=<toplevel> <unit>
+      # against generated units, which is how they can be checked before a
+      # deploy rather than after one.
+      #
+      # Three of the original rows need a word.
       #
       # FlareSolverr is left exactly as upstream ships it, and its 3.0 is the
       # honest price of what it does: RestrictNamespaces has to permit `user`
@@ -1018,7 +1960,7 @@ in
       # is mostly the network access it genuinely needs, to two localhost APIs
       # and to GitHub for the guides.
       #
-      # recyclarr-api-keys is OURS, so nothing upstream hardens it, and a bare
+      # arr-api-keys is OURS, so nothing upstream hardens it, and a bare
       # root oneshot scores 9.4 UNSAFE. That number is the reason the block
       # below exists rather than a bare ExecStart: it handles credentials, so
       # it is the last unit here that should be the least confined. 1.0 is the
@@ -1207,6 +2149,68 @@ in
         ProtectSystem  = "strict";
         ReadWritePaths = [ "/srv/media" "/var/lib/radarr" ];
         UMask          = lib.mkForce "0002";
+      };
+
+      # BAZARR — the M12 equivalent of the Prowlarr row, and worse to start
+      # with.
+      #
+      # Upstream's module (nixos/modules/services/misc/bazarr.nix) sets Type,
+      # User, Group, SyslogIdentifier, ExecStart, Restart, KillSignal and
+      # SuccessExitStatus.  That is the complete list.  There is NO hardening
+      # of any kind — not a reduced set like prowlarr's, not a partial one:
+      # none.  So everything below is ours, and unlike prowlarr there is no
+      # "restoring what DynamicUser had been implying" to do, because upstream
+      # never had DynamicUser either.
+      #
+      # The set is deliberately the same one sonarr and radarr get, because
+      # Bazarr is the same kind of thing: a Python/.NET-adjacent web service
+      # that reads and writes the library as group `media` and talks to
+      # subtitle providers over HTTPS.
+      #
+      # ReadWritePaths is /srv/media AND its state directory, and /srv/media
+      # is not narrowable to the library: Bazarr also reads from the download
+      # tree when it grabs subtitles for something mid-import, and the "sync
+      # subtitles" feature rewrites files in place.
+      #
+      # NOT PrivateUsers, for the reason cleanuparr's block gives: it would
+      # squash a supplementary group, and here `media` is primary anyway — but
+      # adding it would buy nothing and would make the primary-group choice
+      # load-bearing in a second place.
+      #
+      # NOT MemoryDenyWriteExecute — Bazarr is Python and its native
+      # extensions map writable-then-executable pages, the same rejection this
+      # file already records for the three .NET services.
+      systemd.services.bazarr.serviceConfig = {
+        NoNewPrivileges  = true;
+        PrivateTmp       = true;
+        ProtectSystem    = "strict";
+        ProtectHome      = true;
+        RemoveIPC        = true;
+        RestrictSUIDSGID = true;
+
+        ReadWritePaths = [ "/srv/media" "/var/lib/bazarr" ];
+
+        # Group-writable sidecars.  A .srt that only bazarr can replace is a
+        # .srt nothing else can clean up, on a tree whose whole point is that
+        # `media` can manage it.  Same argument as sonarr/radarr, and here it
+        # applies to the PRIMARY artefact rather than to incidental metadata.
+        UMask = "0002";
+
+        CapabilityBoundingSet   = "";
+        PrivateDevices          = true;
+        ProtectClock            = true;
+        ProtectControlGroups    = true;
+        ProtectHostname         = true;
+        ProtectKernelLogs       = true;
+        ProtectKernelModules    = true;
+        ProtectKernelTunables   = true;
+        ProtectProc             = "invisible";
+        RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+        RestrictNamespaces      = true;
+        RestrictRealtime        = true;
+        LockPersonality         = true;
+        SystemCallArchitectures = "native";
+        SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
       };
 
       # `curl` is the test plan's instrument: it is what proves this container
