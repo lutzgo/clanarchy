@@ -931,19 +931,69 @@ in
       # own HTTP API, 5006 is the proxy that Prowlarr's indexer definitions are
       # pointed at.
       #
-      # ── THE TRAP THAT MATTERS, restated where it will be read ────────────
+      # ── IT DOES NOTHING FOR THIS FLEET'S INDEXERS.  MEASURED 2026-08-26 ──
       #
-      # EVERY INDEXER URL IN PROWLARR MUST CHANGE https → http so that this can
-      # intercept locally; the outbound leg to the real indexer stays https.
-      # AN INDEXER LEFT ON https WORKS FINE AND SILENTLY BYPASSES THIS ENTIRELY
-      # — nothing breaks, nothing logs, and the umlaut handling this service
-      # exists for simply does not happen for that indexer.  It is the third
-      # documented fails-by-succeeding in this repo, alongside recyclarr's
-      # duplicate-instance bug and M11's silent context truncation.  The PR
-      # body lists every indexer explicitly for that reason.
+      # READ THIS BEFORE TRYING TO "FINISH WIRING IT UP".  M12 called this the
+      # highest-value item in the milestone.  That judgement assumed an
+      # indexer set this deployment does not have, and the service as deployed
+      # is INERT — not misconfigured, not half-wired: architecturally unable to
+      # help.  The evidence, in the order it was found:
       #
-      # Configure it in PROWLARR, not per-arr: per-arr configuration costs a
-      # speed penalty on multi-indexer search.
+      # 1. ALL SIX PROWLARR INDEXERS ARE `Cardigann`.  EZTV, LimeTorrents,
+      #    Nyaa.si, The Pirate Bay, TorrentDownload, YTS — every one of them a
+      #    definition-driven HTML SCRAPER, all torrent protocol.  Cardigann's
+      #    Site Link is a select populated from the bundled YAML definition, so
+      #    the https → http edit the upstream README requires CANNOT BE MADE.
+      #    That is the symptom people notice first.  It is not the cause.
+      #
+      # 2. BOTH INTEGRATION MODES CONVERGE ON THE SAME REQUIREMENT, and this
+      #    is the cause.  Reading the source rather than the README:
+      #
+      #      HttpProxyService (port 5006) rewrites an intercepted request to
+      #        http://localhost:5005/{apiKey}/{uri.Host}{uri.PathAndQuery}
+      #      SearchController's routes are constrained on the NEWZNAB `t=`
+      #        parameter — caps | movie | tvsearch | music | book | search
+      #      UrlUtilities.BuildUrl then does
+      #        new UriBuilder("https", domain)
+      #
+      #    So whichever mode is used, UmlautAdaptarr ends up fetching the
+      #    indexer's own NEWZNAB/TORZNAB API over https and rewriting the XML
+      #    it gets back.  THE TARGET MUST SPEAK NEWZNAB/TORZNAB AT ITS OWN
+      #    DOMAIN.  A Cardigann tracker speaks HTML, and Prowlarr is what turns
+      #    that into Torznab — inside Prowlarr, after the proxy hop.
+      #
+      # 3. SO THE INSTRUCTION WOULD HAVE BROKEN SEARCHES, NOT ENABLED THEM.  A
+      #    Cardigann request carries no `t=` parameter, so no route matches and
+      #    UmlautAdaptarr answers 404.  Tagging these indexers with the proxy
+      #    would take six working indexers offline.  The Site Link dropdown
+      #    being read-only is the only reason that did not happen.
+      #
+      # 4. THE NON-PROXY MODE IS NOT AN ESCAPE EITHER.  `IsValidDomain` demands
+      #    a dotted host and the scheme is hardcoded to https, so
+      #    `http://localhost:5005/_/localhost:9696/1/api` — pointing it at
+      #    Prowlarr, whose Torznab really is XML over plain http — is rejected
+      #    twice over.
+      #
+      # WHY IT IS STILL HERE.  It runs clean (NRestarts=0), and it does real
+      # work that costs nothing: it syncs Sonarr's 139 series and resolves
+      # German titles for 130 of them against the maintainer's API.  The day an
+      # indexer that speaks Newznab or Torznab is added — a usenet provider, or
+      # any tracker with a real API — it becomes useful with a UI change and no
+      # deploy.  Removing it would mean re-deriving all of the above later.
+      #
+      # THE TRIGGER TO REVISIT IS AN INDEXER WITH AN API, not a Prowlarr
+      # update.  This is the same shape as the Unpackerr finding one screen
+      # down, and it has the same root: this stack is 100% torrent, 100%
+      # Cardigann, with no usenet path at all.
+      #
+      # ── THE TRAP, IF THAT DAY COMES ──────────────────────────────────────
+      #
+      # For an indexer that DOES have an API, the README's rule applies and is
+      # a genuine fails-by-succeeding: the indexer URL must change https → http
+      # so this can intercept locally (the outbound leg stays https).  AN
+      # INDEXER LEFT ON https WORKS FINE AND SILENTLY BYPASSES THIS ENTIRELY.
+      # Configure it in PROWLARR, not per-arr — per-arr costs a speed penalty
+      # on multi-indexer search.
       #
       # ── THE FORK: UmlautAdaptarr, NOT UmlautAdaptarrEX ───────────────────
       #
@@ -1559,10 +1609,27 @@ in
               echo "Sonarr__0__Name=Sonarr"
               echo "Sonarr__0__Host=http://localhost:${toString sonarrPort}"
               echo "Sonarr__0__ApiKey=$(${pkgs.coreutils}/bin/cat ${arrSecretsDir}/sonarr-api-key)"
-              echo "Radarr__0__Enabled=true"
-              echo "Radarr__0__Name=Radarr"
-              echo "Radarr__0__Host=http://localhost:${toString radarrPort}"
-              echo "Radarr__0__ApiKey=$(${pkgs.coreutils}/bin/cat ${arrSecretsDir}/radarr-api-key)"
+
+              # RADARR IS OFF, AND NOT BECAUSE OF A PREFERENCE.
+              #
+              # UmlautAdaptarr HAS NO RADARR SUPPORT.  Its feature table lists
+              # "Radarr Support — in Arbeit" (work in progress), and the
+              # codebase agrees: UmlautAdaptarr/Providers/ contains
+              # ArrClientBase, SonarrClient, LidarrClient and ReadarrClient —
+              # there is no RadarrClient.cs at all.
+              #
+              # Confirmed on the running service, ernst 2026-08-26: with
+              # Radarr__0__Enabled=true the journal shows only
+              #   [INF] Init SonarrClient (Sonarr)
+              # and never mentions Radarr again.  The setting was accepted and
+              # silently ignored.
+              #
+              # It is set to FALSE rather than deleted so that the next person
+              # reading this file learns the answer here instead of re-deriving
+              # it from an empty log.  Flip it to true when upstream ships a
+              # RadarrClient — the radarr-api-key file above is already staged
+              # for that day.
+              echo "Radarr__0__Enabled=false"
               # Ports, stated here rather than left to appsettings.json, so
               # that the numbers the firewall list above reasons about and the
               # numbers the service binds are the same numbers in one repo.

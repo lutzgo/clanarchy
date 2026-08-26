@@ -4541,6 +4541,56 @@ because bringing the profile actually in use into line with TRaSH is the point.
 **Watch the activity queue after the first real sync**; the lever if it misbehaves
 is Sonarr's "Upgrade Until Custom Format Score" on that profile, not the Nix.
 
+### UmlautAdaptarr is INERT here, and the reason is architectural
+
+**M12 called (b) the highest-value item in the milestone. That judgement assumed
+an indexer set this fleet does not have.** Established 2026-08-26, after the
+deploy, by reading upstream's source rather than its README:
+
+1. **All six Prowlarr indexers are `Cardigann`** — EZTV, LimeTorrents, Nyaa.si,
+   The Pirate Bay, TorrentDownload, YTS. Every one a definition-driven **HTML
+   scraper**, all torrent protocol. Cardigann's Site Link is a select populated
+   from the bundled YAML definition, so the `https` → `http` edit the upstream
+   README requires **cannot be made**. That is the symptom, not the cause.
+2. **Both integration modes converge on the same requirement.**
+   `HttpProxyService` (5006) rewrites an intercepted request to
+   `http://localhost:5005/{apiKey}/{host}{pathAndQuery}`; `SearchController`'s
+   routes are constrained on the **Newznab `t=`** parameter; and
+   `UrlUtilities.BuildUrl` does `new UriBuilder("https", domain)`. So either way
+   it fetches **the indexer's own Newznab/Torznab API** and rewrites the XML.
+   **The target must speak Newznab/Torznab at its own domain.** A Cardigann
+   tracker speaks HTML, and Prowlarr is what turns that into Torznab — *inside*
+   Prowlarr, after the proxy hop.
+3. **So M12's manual step 2 would have BROKEN searches, not enabled them.** A
+   Cardigann request carries no `t=`, no route matches, UmlautAdaptarr answers
+   **404**. Tagging those six indexers with the proxy would have taken all six
+   offline. The read-only Site Link dropdown is the only reason it did not
+   happen. **The instruction in this milestone's manual steps was wrong and is
+   corrected there.**
+4. **The non-proxy mode is not an escape.** `IsValidDomain` demands a dotted
+   host and the scheme is hardcoded to https, so pointing it at Prowlarr's own
+   Torznab — which really is XML over plain http — is rejected twice over.
+
+**It stays deployed.** It runs clean (`NRestarts=0`) and does real work that
+costs nothing: it syncs Sonarr's 139 series and resolves German titles for
+**130** of them. The day an indexer with a real API is added it becomes useful
+with a UI change and no deploy, and removing it would mean re-deriving all of the
+above later. **The trigger to revisit is an indexer with an API, not a Prowlarr
+update.**
+
+**Same root cause as the Unpackerr finding**: this stack is 100% torrent, 100%
+Cardigann, with no usenet path at all. Two of M12's six items turned out to
+depend on a usenet-shaped library that does not exist here — worth weighing
+before M14 assumes otherwise.
+
+**Radarr is disabled in UmlautAdaptarr's config, and not by preference.**
+Upstream lists "Radarr Support — in Arbeit" and the codebase agrees:
+`Providers/` holds `ArrClientBase`, `SonarrClient`, `LidarrClient` and
+`ReadarrClient` — **there is no `RadarrClient.cs`**. With
+`Radarr__0__Enabled=true` the journal showed only `Init SonarrClient (Sonarr)`
+and never mentioned Radarr: the setting was accepted and silently ignored. It is
+now set to `false` rather than deleted, so the answer lives next to the switch.
+
 ### Three things the deploy will decide, which evaluation cannot
 
 1. **`ProtectSystem = "strict"` on five new units.** The same call-out M4 made
@@ -4640,11 +4690,13 @@ for state the applications own; that is the same call the *arr root folders lost
 1. **DNS**: `bazarr`, `cleanuparr` and `mediathekarr` under `goclan.org` in
    Technitium, pointing at Traefik. The M5 wildcard certificate already covers
    all three.
-2. **UmlautAdaptarr in Prowlarr — the step the milestone lives or dies on.**
-   Every indexer URL must change **`https` → `http`** so it can intercept
-   locally; the outbound leg to the real indexer stays `https`. **An indexer
-   left on `https` works fine and silently bypasses it entirely.** Configure it
-   in **Prowlarr**, not per-arr. Check every indexer explicitly.
+2. ~~**UmlautAdaptarr in Prowlarr.** Every indexer URL must change `https` →
+   `http`…~~ **WITHDRAWN — this step is wrong for this fleet and would have
+   broken all six indexers.** See
+   [UmlautAdaptarr is INERT here](#umlautadaptarr-is-inert-here-and-the-reason-is-architectural).
+   Cardigann indexers cannot take an `http` Site Link, and if they could, the
+   proxy would answer **404** to every request because a Cardigann fetch carries
+   no Newznab `t=` parameter. **Do nothing in Prowlarr.**
 3. **MediathekArr**: open the wizard at `https://mediathekarr.goclan.org/`, then
    add the **indexer** to Prowlarr as Generic Newznab at
    `http://127.0.0.1:5008` and the **downloader** to Sonarr/Radarr as a SABnzbd
