@@ -4742,6 +4742,22 @@ for state the applications own; that is the same call the *arr root folders lost
    host `localhost`, port `5007`, **URL Base `download`**, category `movies`,
    SSL off. The API key is not validated (`Settings__ApiKey` is unset, so
    `AssureApiKey` accepts anything) — any value works.
+
+   **URL Base is an ADVANCED field and the form hides it by default.** Flip
+   "Advanced Settings: Shown" at the top of any Settings page first, or it does
+   not appear at all. Without it the test fails as
+
+   ```
+   Unable to connect to SABnzbd, HTTP request failed: [400:BadRequest]
+   [GET] at [http://localhost:5007/api?mode=get_config&apikey=x&output=json]
+   ```
+
+   which reads like a connectivity or auth fault and is neither: `/api` on 5007
+   is the **Newznab indexer** endpoint, and it returns 400 because
+   `mode=get_config` is not a Newznab query. The SABnzbd shim lives at
+   `/download/api`, which answers 200 with `complete_dir` set to
+   `/srv/media/torrents/mediathek/complete`. Sonarr has the field set because
+   the wizard wrote it through the API, where the advanced flag does not apply.
    **Expect thin coverage regardless**: upstream lists Radarr support as
    *"limited, WIP"* — "you can find a few movies via interactive search, but
    not a lot… you can however find all movies via a text search in Prowlarr
