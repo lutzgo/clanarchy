@@ -326,6 +326,45 @@ let
   #   roadmap and the repo agree even though nothing routes to it.
   janitorrPort = 8978;
 
+  # ── Janitorr's dry-run, hoisted into one place ─────────────────────────────
+  #
+  # This is the switch M13 says the first deploy must keep ON, and turning it
+  # off is a separate, deliberate commit.  It is a binding rather than a
+  # literal in the config heredoc because it now decides TWO things, and they
+  # must not drift apart:
+  #
+  #   application.dry-run    whether Janitorr actually deletes
+  #   logging level          DEBUG while dry-running, INFO once live
+  #
+  # ── WHY THE LOG LEVEL IS TIED TO IT ───────────────────────────────────────
+  #
+  # A dry run whose output is empty is not a dry run, it is a shrug — and at
+  # INFO that is exactly what this produced on the first deploy.  Measured on
+  # ernst 2026-08-26: Janitorr started, ran all three schedules, and logged
+  # only "Tag based cleanup disabled" and "Episode based cleanup disabled".
+  # The MEDIA schedule — the enabled one — printed nothing at all.
+  #
+  # That silence was CORRECT, and the reason is worth writing down because it
+  # will recur.  Reading AbstractCleanupSchedule.scheduleDelete: when free
+  # space is above every configured threshold, `determineDeletionDuration`
+  # returns FOREVER, so `shouldDelete` is false AND `expiration` is FOREVER —
+  # which makes both `log.info` branches unreachable:
+  #
+  #   if (!shouldDelete && expiration != FOREVER.duration)   → false
+  #   if (leavingSoonExpiration != FOREVER.duration)         → false
+  #
+  # The pool was 69% free against a highest threshold of 10%, so Janitorr had
+  # nothing to say and said it.  Everything that WOULD have explained the
+  # decision — the computed expirations, the free-space percentage — is at
+  # log.debug in MediaCleanupSchedule, and the per-title reasoning is at
+  # log.trace.  Upstream's own config template says as much: "Set to DEBUG or
+  # TRACE to get more info about what Janitorr is doing."
+  #
+  # So while dry-run is on, DEBUG is the only setting that makes the milestone
+  # verifiable.  When dry-run goes off, this reverts to INFO on the same line,
+  # and INFO is right then: a live Janitorr logs what it actually deleted.
+  janitorrDryRun = true;
+
   # Where the Sonarr/Radarr API keys are staged.  A tmpfs under /run,
   # refreshed before every consumer starts — see the arr-api-keys block.
   #
@@ -2292,7 +2331,10 @@ in
 
             logging:
               level:
-                com.github.schaka: INFO
+                # DEBUG while dry-running, INFO once live — see the
+                # janitorrDryRun binding at the top of arr.nix for why these
+                # two settings are deliberately welded together.
+                com.github.schaka: ${if janitorrDryRun then "DEBUG" else "INFO"}
               # NO `file:` key.  Upstream's template writes /logs/janitorr.log;
               # this runs under systemd, so stdout goes to the journal and a
               # second copy on disk is one more thing to rotate and to persist.
@@ -2313,7 +2355,7 @@ in
               free-space-check-dir: "/srv/media"
 
             application:
-              dry-run: true
+              dry-run: ${if janitorrDryRun then "true" else "false"}
               run-once: false
               whole-tv-show: false
               whole-show-seeding-check: false

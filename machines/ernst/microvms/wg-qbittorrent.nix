@@ -1218,6 +1218,40 @@ in
           QBITTORRENT_USERNAME       = "admin";
           QBITTORRENT_PASSWORD_FILE  = "%d/webui-password";
 
+          # ── THE COOKIE NAME.  WITHOUT THIS THE EXPORTER NEVER SERVES ──────
+          #
+          # qBittorrent renamed its session cookie in 5.2.0: `SID` became
+          # `QBT_SID_<webui port>`.  qbit-exp still DEFAULTS to `SID`, and its
+          # own startup line says so:
+          #
+          #   WARN SID for qBittorrent < 5.2.0; QBT_SID_<qBittorrent_port>
+          #        for > 5.2.0 (SID)
+          #
+          # — the trailing "(SID)" is the value actually in use.  This guest
+          # runs v5.2.2, so the default is wrong here.
+          #
+          # THE FAILURE IS A LOOP, NOT AN ERROR, which is why it took a manual
+          # run to find.  Login SUCCEEDS and the cookie is stored; every
+          # subsequent request then carries the wrong cookie NAME, qBittorrent
+          # treats it as unauthenticated, and the exporter concludes the cookie
+          # "changed" and logs back in — forever:
+          #
+          #   INFO New cookie for auth stored
+          #   WARN Cookie changed, trying to reconnect ...
+          #
+          # Metrics never populate, so /metrics answers 503 with an EMPTY body
+          # and the unit stays `active` the whole time.  Nothing fails, nothing
+          # restarts, and the only external symptom is up=0 in Prometheus.
+          #
+          # Measured on ernst 2026-08-26 by running the binary by hand in the
+          # guest: with the default, 503; with this set, HTTP 200 and 4296
+          # qbittorrent_* series.
+          #
+          # Derived from webuiPort rather than written as a literal, because
+          # the port is in the name — changing the WebUI port and not this
+          # would resurrect the loop.
+          QBITTORRENT_COOKIE_NAME    = "QBT_SID_${toString webuiPort}";
+
           # 0.0.0.0, restricted by the nftables rule above to the monitoring
           # container's address alone.  Stated rather than left to the
           # binary's default so the number the firewall reasons about and the
