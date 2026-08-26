@@ -56,6 +56,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M10 — Kodi + IR remote | **dropped — 2026-08-20** | — | Dropped by lgo before any code was written: the couch requirement is Plasma Bigscreen plus Steam, and Kodi is a third media UI nobody asked for. The IR-receiver half was orthogonal and survives as a [backlog entry](#floating-backlog) |
 | M11 — fleet-local coding agent | **open — Parts 2/3/4 done 2026-08-26; Part 1 outstanding** | — | Phase 0 (2026-08-25) falsified three of the brief's premises and proved the context trap with numbers. Since then: the **§7 Nix landed** as per-machine role settings, closing [SN1](#sn1-the-model-tag-silently-sets-the-context-window); candidate (C) is an explicit **"not taking"**; and Part 3's tool-call defect is **fixed** — but not as predicted. There is **no Modelfile template to correct** (compiled Go renderer/parser), the parser is **correct**, and the model was dropping the opening `<tool_call>` tag; restating it in the system prompt went 5/40 → **80/80**. A new confound surfaced: **`q8_0` halves tool-call reliability** without that rule. **Phase 1 stays blocked on Part 1** — the multi-file edit, the Claude Code comparison and real-task rates are lgo's. Tasks and a validated grader now exist at `~/.local/share/m11-bakeoff/tasks/`. [M11](#m11-featfleet-local-coding-agent) |
 | M12 — arr helpers | **built 2026-08-26 — deploy pending; (a) Byparr split out as M12b** | — | UmlautAdaptarr, Bazarr, Cleanuparr, MediathekArr and the recyclarr additions all landed inside the **existing** arr container, with no new veth, MAC, DHCP reservation or UDM-Pro work — so the hand-rolled-derivation approach M14 depends on is proven. **Three of the six premises did not survive checking**: Byparr is no longer Camoufox-based and is a browser-packaging job in its own right (**[M12b](#m12b-featernst-byparr)**); **MediathekArr is TWO processes**, and upstream's `main` is a diverged, older tree than its own release tag; and **Unpackerr is measured out** — zero archives in 986 files, no usenet client at all. Depends on M4. [M12](#m12-featernst-arr-helpers) |
+| M12c — library profile reassignment | **open — requested 2026-08-26** | — | Recyclarr creates profiles but **never assigns a title to one**, and this library's titles predate the guides. Rules for "high" and "low" quality per shows/films settled by **Q&A first**, then an agent reassigns title by title. **The hazard is the film side**: 2389 of 2432 movies sit on a non-upgrading `Ultra-HD` profile, and every TRaSH profile is upgrade-enabled — a bad rule moves them all and queues most of 13 TB through the VPN. Demotions first, promotions in watched batches, search-on-edit OFF. Depends on M12. [M12c](#m12c--library-profile-reassignment) |
 | M13 — media lifecycle | **open** | — | Jellyseerr at **internal** scope, Janitorr, Scraparr, and four more M6 exporter targets. The external half of Jellyseerr is deliberately split into M16. Depends on M6. [M13](#m13-featernst-media-lifecycle) |
 | M14 — libraries | **open** | — | Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. Introduces a **second write path** into `/srv/media`, so it owes its own hardlink proof with a negative control — M3's does not transfer. Depends on M12. [M14](#m14-featernst-libraries) |
 | M15 — Tdarr / space reclamation | **open** | — | Its own container with VAAPI on the 7900 XTX, plus GPU arbitration against a card that now has three other claimants. **M11's VRAM numbers changed this materially**: a fully-resident Ollama at 64k leaves ~2 GB, so CPU-only Tdarr is now a serious default rather than a fallback — and Muxarr must be evaluated first, because it may reclaim more per CPU-hour with no GPU question at all. Depends on M12. [M15](#m15-featernst-tdarr) |
@@ -5134,6 +5135,97 @@ the arr container, i.e. a *solvable* challenge rather than a 451 refusal.
 the podman tier invariant #1 names, which [M9](#m9-featernst-tubesync) is
 opening, is the escape hatch for an upstream that only ships an image.
 **`virtualisation.oci-containers` inside the nspawn container remains rejected.**
+
+---
+
+## M12c — library profile reassignment
+
+**Requested by lgo on 2026-08-26**, during M12's deploy, as the answer to a
+problem M12 deliberately refused to solve: recyclarr creates and maintains
+quality profiles but **never assigns a title to one**, and this library's titles
+are on profiles that predate the guides.
+
+**Goal.** Decide, by Q&A, what "high quality" and "low quality" mean for shows
+and for films in this household — then have an agent do the reassignment, title
+by title, against those rules.
+
+**Depends on.** M12 deployed and its recyclarr profiles synced at least once, so
+the target profiles exist and their custom-format scores are settled.
+
+### Why this is a milestone and not a chore
+
+**Every other milestone in this repo has been about a config that can be
+reviewed as a diff. This one changes a database, 2571 rows at a time, and the
+mistake is not reversible by `git revert`.** The starting position, measured
+2026-08-26:
+
+| Sonarr — 139 series | upgradeAllowed | count |
+|---|---|---|
+| `HD-1080p` | false | 67 |
+| `HD - 720p/1080p` | false | 13 |
+| `Remux + WEB 2160p` | **true** | 59 |
+| `Ultra-HD` | false | 0 |
+
+| Radarr — 2432 movies | upgradeAllowed | count |
+|---|---|---|
+| `Ultra-HD` | false | **2389** |
+| `Remux + WEB 2160p` | **true** | 27 |
+| `HD - 720p/1080p` | false | 16 |
+
+**The hazard is the film side and it is the whole reason the "individual
+promotion" rule exists.** 2389 films sit on a non-upgrading profile. Every TRaSH
+profile ships `upgradeAllowed = true`. Move them all at once and Radarr queues
+an upgrade search for each — against a 13 TB library and ~47.6 TB of free space,
+through the VPN. **A rule engine that gets its rules slightly wrong does this
+faster than a human with a multi-select box, not slower.**
+
+### The shape it should take
+
+**Phase 0 — the Q&A, and it is the milestone's actual content.** The rules are
+lgo's, not the agent's, and they have to be written down before anything moves.
+At minimum:
+
+- What earns 2160p? Everything that exists in it, or a named list — franchises,
+  anything with an Atmos/DV track, anything above some TMDB rating, recent
+  releases only?
+- What is the floor? Is `HD - 720p/1080p` a deliberate "I do not care about
+  this" tier, or historical accident?
+- **German-language titles**: M12 added `[German] Remux + WEB 2160p` and
+  `[German] HD Bluray + WEB`. Does a German production go to a German profile
+  automatically, or only when a German release actually exists?
+- **Does anything move DOWN?** Demotion is the cheap half — it frees space and
+  triggers no downloads — and is probably where a first pass should start.
+- What must never be touched at all?
+
+**Phase 1 — classify, do not act.** The agent reads both libraries through the
+`/api/v3` endpoints and emits a **proposed** mapping: current profile → target
+profile, per title, with the rule that fired. That file is reviewed as a diff.
+**This is the deliverable of Phase 1; nothing is written to either app.**
+
+**Phase 2 — apply, in batches, demotions first.** `PUT /api/v3/movie/editor`
+and Sonarr's `/api/v3/seriesEditor` take bulk edits, so batching is native.
+Rules that must hold:
+
+- **Demotions and no-op moves first**, in one batch, and confirm the queue stays
+  empty afterwards.
+- **Promotions in small batches with the queue watched between them.** The
+  measurement that matters is Radarr's activity queue depth and `zdata` free
+  space, not the count of rows changed.
+- **`searchForMovie` / monitored-search must be OFF for the edit itself.** The
+  editor endpoint can trigger a search on change; that flag is the difference
+  between "reassigned 400 films" and "queued 400 downloads".
+
+**Phase 3 — record the rules where they will be re-read.** The rules belong in
+the repo even though the state they produce does not. A later session that finds
+a title on an odd profile needs to know whether that was a rule or a mistake.
+
+### The one thing that must not be assumed
+
+**Recyclarr will fight this if the rules disagree with it.** It owns the profile
+*definitions* and rewrites them on every sync; this milestone owns the
+*assignments*. Those are separable — but only as long as nobody solves an
+assignment problem by editing a profile's cutoff in the UI, because the next
+recyclarr run will revert it and the reassignment will look like it drifted.
 
 ---
 
