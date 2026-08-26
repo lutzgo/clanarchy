@@ -54,7 +54,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M8 — Tvheadend / SAT>IP live TV | **open — operator gate first, and now a scope gate after M12** | — | Steps 1–3 (patching, UniFi, stream test) are lgo's and must clear before a session starts; the milestone dies if the FRITZ!Box's DVB-C is branding-locked. **New in 2026-08:** M12's MediathekArr may cover most of what recording is *for*, so Phase 0 gains a question ahead of its existing ones — see [what the *arr ecosystem does and does not provide here](#what-the-arr-ecosystem-does-and-does-not-provide-here-surveyed-2026-08). [M8](#m8-featernst-tvheadend) |
 | M9 — TubeSync | **open** | — | Feeds the Jellyfin library directly. First occupant of the **podman** tier (not in nixpkgs — verified), so it builds the tier as well as the service; podman's attachment to `br0` is unsolved here. [M9](#m9-featernst-tubesync) |
 | M10 — Kodi + IR remote | **dropped — 2026-08-20** | — | Dropped by lgo before any code was written: the couch requirement is Plasma Bigscreen plus Steam, and Kodi is a third media UI nobody asked for. The IR-receiver half was orthogonal and survives as a [backlog entry](#floating-backlog) |
-| M11 — fleet-local coding agent | **open — Phase 0 PARTIAL, 2026-08-25** | — | The mechanical half ran and its results are durable; the decision the milestone exists to make has not been made. **The working tree was left untouched at `133a39d` — nothing merged, no Nix written.** Three of the brief's premises were falsified, the context trap is proven with numbers, and the central hypothesis (models hallucinate tool arguments) was **inverted**: zero invented arguments in 88 trials, every failure an Ollama template-parser defect. The human half — the multi-file edit, the Claude Code comparison, real-task failure rates — is lgo's and outstanding. Harness at `~/.local/share/m11-bakeoff/`, re-runnable. [M11](#m11-featfleet-local-coding-agent) |
+| M11 — fleet-local coding agent | **open — Parts 2/3/4 done 2026-08-26; Part 1 outstanding** | — | Phase 0 (2026-08-25) falsified three of the brief's premises and proved the context trap with numbers. Since then: the **§7 Nix landed** as per-machine role settings, closing [SN1](#sn1-the-model-tag-silently-sets-the-context-window); candidate (C) is an explicit **"not taking"**; and Part 3's tool-call defect is **fixed** — but not as predicted. There is **no Modelfile template to correct** (compiled Go renderer/parser), the parser is **correct**, and the model was dropping the opening `<tool_call>` tag; restating it in the system prompt went 5/40 → **80/80**. A new confound surfaced: **`q8_0` halves tool-call reliability** without that rule. **Phase 1 stays blocked on Part 1** — the multi-file edit, the Claude Code comparison and real-task rates are lgo's. Tasks and a validated grader now exist at `~/.local/share/m11-bakeoff/tasks/`. [M11](#m11-featfleet-local-coding-agent) |
 | M12 — arr helpers | **open** | — | Byparr, UmlautAdaptarr, Bazarr, Cleanuparr, MediathekArr, recyclarr additions — all inside the **existing** arr container. No new veth, MAC, DHCP reservation or UDM-Pro work, which is why it is first: it proves the hand-rolled-derivation approach M14 depends on without touching a network boundary. Depends on M4. [M12](#m12-featernst-arr-helpers) |
 | M13 — media lifecycle | **open** | — | Jellyseerr at **internal** scope, Janitorr, Scraparr, and four more M6 exporter targets. The external half of Jellyseerr is deliberately split into M16. Depends on M6. [M13](#m13-featernst-media-lifecycle) |
 | M14 — libraries | **open** | — | Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. Introduces a **second write path** into `/srv/media`, so it owes its own hardlink proof with a negative control — M3's does not transfer. Depends on M12. [M14](#m14-featernst-libraries) |
@@ -175,9 +175,23 @@ value that survives a skim of a diff.
 
 **So `num_ctx` must be set explicitly wherever the model is declared, and the
 two must be reviewed together.** A model-tag change is a context change until
-proven otherwise. The current 32768 on ernst is luck, not configuration; the Nix
-that fixes it is written out and deliberately unlanded — see
-[M11's open question](#the-open-question-for-lgo-and-it-is-not-claudes-to-close).
+proven otherwise.
+
+**CLOSED 2026-08-26 at the place the hazard lives.** `roles.ollama` now carries
+a `contextLength` setting and both machines set it explicitly — ernst 32768,
+miralda 4096. The window no longer moves when `models` is edited, and the two
+now sit adjacent in `clan.nix` so a review sees both. The hazard is recorded
+rather than deleted because it returns the moment a **new** machine joins
+`roles.ollama` without setting it: the option defaults to `null`, which restores
+exactly the model-derived behaviour above. **Adding a machine to that role means
+setting its context.**
+
+A second hazard of the same shape was found while closing this one and is worth
+reading together with it: `kvCacheType = "q8_0"` roughly **halves tool-call
+reliability** (83% → 38%) unless the client's system prompt explicitly demands
+the `<tool_call>` wrapper — a server-side VRAM optimisation whose cost lands in
+a different component and appears in no readback. Measured, interleaved, n=30
+per arm. Both are documented in `service-modules/local-ai.md`.
 
 Cross-referenced from [M11](#m11-featfleet-local-coding-agent) (which measured
 it) and [M15](#m15-featernst-tdarr) (whose entire VRAM budget depends on it).
@@ -3422,16 +3436,24 @@ What the entry got right and what it got wrong:
 
 ## M11 — `feat/fleet-local-coding-agent`
 
-**Status: Phase 0 PARTIAL, 2026-08-25.** The mechanical half ran and its results
-are durable. **The decision the milestone exists to make has not been made**, and
-cannot be made by a machine — see [What was not done](#what-was-not-done-and-why-a-machine-could-not-do-it).
+**Status: Parts 2, 3 and 4 done 2026-08-26. Part 1 outstanding, and it blocks
+Phase 1.** The decision the milestone exists to make — which agent — **still has
+not been made**, and cannot be made by a machine; see
+[What was not done](#what-was-not-done-and-why-a-machine-could-not-do-it).
 
-**The working tree was left untouched at `133a39d`.** Nothing was merged, no Nix
-was written, and no ledger row was created. Everything below was measured against
-the *running* fleet, from outside the repo. The findings live at
-`~/.local/share/m11-bakeoff/` — `README.md`, `PHASE0-NOTES.md`, wrappers, and
-**re-runnable probes**. `PHASE0-NOTES.md` is the primary source; this section is
-the durable summary of it.
+Phase 0 (2026-08-25) left the tree untouched at `133a39d`. The 2026-08-26
+session landed the first Nix of this milestone: the §7 server-side block, as
+per-machine role settings. The findings live at `~/.local/share/m11-bakeoff/` —
+`README.md`, `PHASE0-NOTES.md`, wrappers, **re-runnable probes**, and now
+`tasks/` for Part 1. `PHASE0-NOTES.md` is the primary source and **§8 supersedes
+§3's attribution**; this section is the durable summary.
+
+| Part | Owner | Status |
+|---|---|---|
+| 1 — the human bake-off | lgo | **outstanding — blocks Phase 1.** Tasks + validated grader ready |
+| 2 — candidate (C) | lgo | **decided: not taking it**, [below](#part-2--candidate-c-is-not-being-taken) |
+| 3 — the tool-call fix | Claude | **done**, and the remedy was not the predicted one — [below](#part-3--the-tool-call-defect-corrected-twice) |
+| 4 — the §7 declarative question | lgo | **decided: landed**, as role settings |
 
 **Goal.** Decide whether a locally-hosted coding agent, driven by ernst's
 `qwen3-coder:30b` on the 7900 XTX, can carry a useful share of daily work on this
@@ -3442,7 +3464,12 @@ is optional network exposure.
 deliberately touches nothing — and the real risk is epistemic: naming a winner on
 synthetic evidence, which is what the phase structure exists to prevent.
 
-### Three premises the brief asserted that were false
+### Four premises the brief asserted that were false
+
+*(Three found in Phase 0 and listed here; the fourth — "the tool-call parser is
+template-driven, so fix the Modelfile template" — was found on 2026-08-26 and
+is in [Part 3](#part-3--the-tool-call-defect-corrected-twice). It is the only
+one the roadmap itself asserted rather than inherited from the brief.)*
 
 Recorded as falsifications rather than silently corrected, because the point of
 recording one is that a future reader can see the reasoning was **checked** rather
@@ -3644,6 +3671,13 @@ in Ollama** — the parser is template-driven, so the template is where the defe
 lives and where the repair belongs. **The migration case only reopens if that
 proves impossible.**
 
+> **Falsified 2026-08-26.** There is no template: the Modelfile is
+> `TEMPLATE {{ .Prompt }}` plus a **compiled Go** renderer and parser, and the
+> parser is correct — the *model* drops the opening `<tool_call>` tag. The fix
+> is a system-prompt reinforcement (5/40 → 80/80), and **llama-swap is closed
+> off entirely**, since the same model would emit the same malformed call
+> through any wrapper. See [Part 3](#part-3--the-tool-call-defect-corrected-twice).
+
 **M11's session recommends holding off on llama-swap**, and the reasoning matters
 more than the conclusion: (i) the defect is *upstream of* the wrapper, so the
 migration does not address it; (ii) both agents **recovered in practice**, because
@@ -3665,6 +3699,131 @@ until you exceed `num_ctx`, and then total** — 0/6, per the table above. That 
 **there is nothing to watch trending, only a threshold to stay under.** Sample
 sizes are 6–10 per cell; treat the direction as solid and the exact percentages as
 indicative.
+
+### Part 3 — the tool-call defect, corrected twice
+
+**Everything above this heading was written on 2026-08-25 and its numbers
+stand. Its attribution does not.** Part 3 set out to fix the parser via a
+corrected Modelfile template. That remedy does not exist, and pursuing it would
+have been a session spent on a file that is not there. Measured 2026-08-26;
+full detail in `PHASE0-NOTES.md` §8.
+
+**There is no Modelfile template to correct — falsified premise #4.**
+
+```
+$ ollama show --modelfile qwen3-coder:30b
+TEMPLATE {{ .Prompt }}
+RENDERER qwen3-coder
+PARSER   qwen3-coder
+```
+
+`TEMPLATE` is a bare passthrough. `RENDERER` and `PARSER` name **compiled Go**
+in the ollama binary (`model/renderers/qwen3coder.go`, `model/parsers/`), not
+editable template text. The roadmap's own instruction — *"the parser is
+template-driven, so the template is where the defect lives"* — was wrong about
+the mechanism it was directing the next session toward.
+
+**And the parser is correct. So is the renderer. The model is at fault.**
+`model/parsers/qwen3coder.go` enters tool-collection **only** on the literal
+string `<tool_call>`, with no `<function=` fallback. The renderer **already**
+injects an `<IMPORTANT>` reminder that the `<function=...>` block *"must be
+nested within `<tool_call></tool_call>` XML tags"*. A probe written to ask the
+one decisive question — in a failed call, is the opening tag present or absent?
+— returned **8 absent, 0 present**, and across 200+ trials since, the
+"present but unparsed" count has never left zero.
+
+**So Phase 0's headline — "the model behaved, the server-side parser did not" —
+is backwards.** The model drops one tag while emitting its closing partner, and
+ignores an instruction it was already given. That also **closes the llama-swap
+escape hatch for good**: swapping the wrapper carries the same model emitting
+the same malformed call. The migration case does not reopen on this evidence.
+
+**The fix is four lines of system prompt**, restating the one missing tag:
+
+| condition | baseline | + reinforcement |
+|---|---|---|
+| 2 tools, "go find X" | 2/20 (10%) | **20/20** |
+| 2 tools, "read this file" | 3/20 (15%) | **20/20** |
+
+**80/80 valid calls with the rule against 5/40 without**, across both KV cache
+types. It ships in `~/.local/share/m11-bakeoff/toolcall-rule.md`, is wired into
+the harness's `opencode.json`, and is documented in
+`service-modules/local-ai.md` for whatever Phase 1 packages. Aider is immune —
+it never asks for a tool call at all.
+
+### The q8_0 confound — a VRAM setting that costs tool calls
+
+**Nobody had measured these two together.** Phase 0 measured VRAM under `q8_0`
+and tool calling in separate runs, then §7 recommended landing `q8_0`
+permanently on the strength of the VRAM run alone. Flipping only the KV type,
+interleaved to control for drift, n=30 per arm, identical prompt and context:
+
+| KV cache | baseline system prompt | + reinforcement |
+|---|---|---|
+| `f16`  | 83%, 83% | 100% |
+| `q8_0` | 40%, 36% | 100% |
+
+**Quantising the KV cache roughly halves tool-call formatting reliability** —
+it degrades instruction-following on exactly the structural detail this model
+was already weakest at. **The reinforcement erases the difference entirely.**
+
+So `q8_0` is free *only* if the client sends the rule; otherwise it silently
+trades agent reliability for VRAM. That is the same shape as the context trap
+and the recyclarr bug: a change that reports success while the cost lands
+somewhere nobody is looking, invisible in any readback. The two settings are
+now documented together in the `kvCacheType` option description **so they
+cannot be read apart**, which is the only durable form this finding has.
+
+**M15 should note this**: its GPU arbitration inherits `q8_0` from ernst's
+ollama config, and the tool-call cost is a property of that choice.
+
+### Part 4 — the §7 block landed, as role settings
+
+**Decided by lgo, 2026-08-26: land it.** `roles.ollama` now carries
+`contextLength` and `kvCacheType`, both `nullOr` and defaulting to `null`, with
+`OLLAMA_FLASH_ATTENTION=1` set from inside the KV-cache branch rather than
+exposed as a third knob — it is a prerequisite, not a choice.
+
+Settings rather than constants, which was the stated condition and matters:
+
+| machine | context | KV cache | why |
+|---|---|---|---|
+| ernst | 32768 | `q8_0` | 24 GiB discrete 7900 XTX |
+| miralda | 4096 | *(unset → f16)* | 780M iGPU out of shared system RAM |
+
+Verified by evaluation, not by reading the diff:
+
+```
+ernst    {"OLLAMA_CONTEXT_LENGTH":"32768","OLLAMA_FLASH_ATTENTION":"1","OLLAMA_KV_CACHE_TYPE":"q8_0","ROCR_VISIBLE_DEVICES":"0"}
+miralda  {"HSA_OVERRIDE_GFX_VERSION":"11.0.3","OLLAMA_CONTEXT_LENGTH":"4096","ROCR_VISIBLE_DEVICES":"0"}
+```
+
+**miralda does not inherit ernst's window**, which was the whole point of the
+per-machine requirement. This also makes the `q8_0` drop-in on ernst durable —
+it previously lived in a `systemctl edit --runtime` override that a reboot
+discarded. **It is landed but not deployed**: `clan machines update ernst` and
+`clan machines update miralda` are lgo's step.
+
+### Part 2 — candidate (C) is not being taken
+
+**Decided by lgo, 2026-08-26: not taking it.** `codecompanion.nvim` /
+`avante.nvim` will not be evaluated for M11. Recorded here as a decision with a
+date rather than allowed to lapse a second time, which is what the previous
+revision of this section explicitly warned against.
+
+The argument *for* it has not gone away and is still the one in the
+[alternatives](#alternatives-considered): miralda is already nushell + zellij +
+foot + nvf, and every other candidate adds a fourth context to switch into.
+What makes it declinable now is sequencing, not merit — **taking it means a
+flake change in service of an evaluation, before the bake-off that would tell
+you whether an in-editor agent is worth having at all.** Part 1 is the blocking
+work; adding a third candidate widens it rather than advancing it.
+
+**The re-check trigger, so this is a deferral with an exit and not a burial:**
+revisit (C) if Part 1 concludes that a local agent earns a permanent place in
+the workflow. At that point the question stops being "which agent" and becomes
+"where does it live", which is the question (C) actually answers — and it
+composes with whichever of (A)/(B) wins rather than competing with it.
 
 ### Both agents work — and one new point for Aider
 
@@ -3720,19 +3879,21 @@ required measurements are lgo's and remain outstanding:
 (4) is what turns tiering from a guess into evidence. Naming a winner now would be
 exactly the rationalisation the phase structure exists to prevent.
 
-**Candidate (C) — the in-editor option — is NOT installed, and that is a decision
-with an owner, not an omission.** `codecompanion.nvim` / `avante.nvim` cannot be
-added without touching the flake (they are nvf plugins, and the nvf option
-namespace is declared at the NixOS level via `home-manager.sharedModules`), and
-Phase 0 forbade flake changes. So it was **deferred, deliberately, and is recorded
-here rather than allowed to drop silently.**
+**Candidate (C) — the in-editor option — was NOT installed in Phase 0**, because
+`codecompanion.nvim` / `avante.nvim` cannot be added without touching the flake
+(they are nvf plugins, and the nvf option namespace is declared at the NixOS
+level via `home-manager.sharedModules`), and Phase 0 forbade flake changes.
 
-**Owner: lgo. Decision owed: a `wip/` branch that installs it for evaluation, or
-an explicit "not taking (C)".** It remains the option **best fitted to a nushell +
-zellij + foot + nvf workstation** — the agent lives where the editing already
-happens, with no second TUI and no separate session model — and it is **the one
-most likely to be quietly forgotten, precisely because it needs a flake change**
-and every other candidate does not.
+**Resolved 2026-08-26: not taking it**, with a re-check trigger — see
+[Part 2](#part-2--candidate-c-is-not-being-taken). It is no longer an open
+thread.
+
+**Part 1 is now equipped.** The three outstanding measurements have tasks, a
+throwaway-worktree harness, and a grader validated against both a positive and a
+negative control at `~/.local/share/m11-bakeoff/tasks/`. Two multi-file tasks:
+one objectively gradeable with a hard cross-file dependency, one with a
+known-good reference solution. **(b), the Claude Code comparison, remains lgo's
+alone** — that has not changed and cannot.
 
 ### State of the harness — record this, it is an asset
 
@@ -3748,14 +3909,33 @@ persisted for `lgo`, so it survives a rollback without anything being declared.
 
 Aider was installed via `nix profile`; removal is one command.
 
-**The `q8_0` drop-in on ernst is a `systemctl edit --runtime` override at
-`/run/systemd/system/ollama.service.d/override.conf`. It is RUNTIME-ONLY and dies
-on reboot. That is deliberate and the reasoning should be preserved**: both agents
-are pinned to 32768, which works under either KV config, **so a reboot costs SPEED
-and never CORRECTNESS**. A milestone-in-progress that degrades gracefully on
-reboot is a good property, not an unfinished one.
+**The `q8_0` drop-in on ernst was a `systemctl edit --runtime` override at
+`/run/systemd/system/ollama.service.d/override.conf`, runtime-only and lost on
+reboot.** That was deliberate while nothing was declarative: both agents are
+pinned to 32768, which works under either KV config, so a reboot cost speed and
+never correctness. **Superseded 2026-08-26** — `kvCacheType = "q8_0"` is now a
+role setting in `clan.nix` and survives reboot once ernst is deployed. The
+override on the running daemon is now redundant with the declared config rather
+than in conflict with it.
 
-### The open question for lgo — and it is not Claude's to close
+Two probes were added on 2026-08-26 and belong to the asset:
+`probes/rawcapture.sh` (records the leaked content instead of grading it — it is
+what proved the parser innocent) and `probes/kv-toolcall-confound.sh` (flips the
+KV type, interleaved, and **always restores the drop-in it found**).
+
+### The open question for lgo — CLOSED 2026-08-26, landed
+
+**Resolved: landed, as role settings.** See
+[Part 4](#part-4--the-7-block-landed-as-role-settings) for what shipped and the
+evaluated proof that miralda does not inherit ernst's window. The section below
+is kept as the record of the question and both horns, because the reasoning is
+what a future session needs, not the outcome.
+
+One thing the argument below did **not** know, and it strengthens the "land it"
+horn rather than weakening it: `q8_0` carries a **tool-call cost** that no
+readback reveals. A setting with an invisible cost in another component is
+exactly the kind that must be declared and commented rather than left in a
+runtime drop-in nobody re-derives.
 
 **The brief said server-side work happens regardless of the outcome, AND said
 nothing declarative. Those conflict.** M11's session kept everything
@@ -3799,9 +3979,13 @@ against whichever prior this file records:
   prompt and reason about a codebase at once.** That is arithmetic and it is not
   going away.
 - **The tool-call failures are NOT a model ceiling and must not be recorded as
-  one.** They are a **parser bug with a named fix candidate** (the Modelfile
-  template). Recording them as a model property would make the next 30B look no
-  better than this one for reasons that have nothing to do with the model.
+  one.** ~~They are a **parser bug with a named fix candidate** (the Modelfile
+  template).~~ **Corrected 2026-08-26:** they are a model *formatting* slip —
+  one dropped `<tool_call>` tag — and they are **fixed by four lines of system
+  prompt** (5/40 → 80/80). The conclusion is unchanged and now better founded:
+  this is not a ceiling, it is a prompt the client failed to send. Recording it
+  as a model property would make the next 30B look no better than this one for
+  reasons that have nothing to do with capability.
 
 A milestone concluding *"the local agent handles a good fraction of daily work and
 the rest still needs Claude"* remains the success condition. **But it should be

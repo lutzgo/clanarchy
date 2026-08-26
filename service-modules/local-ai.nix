@@ -41,6 +41,66 @@
       '';
     };
 
+    interface.options.contextLength = lib.mkOption {
+      type        = lib.types.nullOr lib.types.ints.positive;
+      default     = null;
+      example     = 32768;
+      description = ''
+        Value for `OLLAMA_CONTEXT_LENGTH`, or null to leave it unset.
+
+        Leave it unset and ollama derives the context PER MODEL, so the tag in
+        `models` above silently sets the context window for every client with
+        no diff that shows it.  Measured 2026-08-25: `qwen3-coder:30b` → 32768,
+        `qwen2.5-coder:7b` → 4096.
+
+        That matters because exceeding the window is NOT an error.  Ollama
+        truncates the prompt to roughly num_ctx/2, KEEPS THE TAIL, discards the
+        head — which is where the system message and the tool definitions live
+        — and returns HTTP 200 with no flag set anywhere in the response.
+        Measured: a 17,083-token prompt became 4,098 at num_ctx=8192, tool
+        calling went 0/6, and the model answered a question about the discarded
+        head by INVENTING a placeholder-shaped MAC address.  Reading the config
+        back would have shown `num_ctx: 8192` and told you nothing; the only
+        way to catch it is to measure the thing itself.
+
+        So pin it explicitly, per machine.  It is sized against VRAM, not
+        against taste: 32768 is right for ernst's 24 GiB 7900 XTX and would be
+        wrong for an iGPU running out of shared system RAM.
+      '';
+    };
+
+    interface.options.kvCacheType = lib.mkOption {
+      type        = lib.types.nullOr (lib.types.enum [ "f16" "q8_0" "q4_0" ]);
+      default     = null;
+      example     = "q8_0";
+      description = ''
+        Value for `OLLAMA_KV_CACHE_TYPE`, or null for ollama's default (f16).
+        Setting anything other than null also sets `OLLAMA_FLASH_ATTENTION=1`,
+        which is its prerequisite.
+
+        `q8_0` is what makes a 65536 context fit in the 7900 XTX's 24 GiB at
+        all — measured 22482 MiB fully resident, versus 24471 MiB and a spill
+        to system RAM on f16 — for about 11% of decode speed.  Flash attention
+        ALONE saves nothing (measured identical to baseline); it is the
+        enabler, not the saving.
+
+        WEIGH THIS AGAINST THE TOOL-CALL COST, which is real and was measured
+        on 2026-08-26 only because Phase 0 had measured VRAM and tool calling
+        in separate runs and never together:
+
+          KV     baseline system prompt    reinforced system prompt
+          f16    83%, 83%                  100%
+          q8_0   40%, 36%                  100%
+
+        Interleaved, n=30 per arm, same prompt and context throughout.  **q8_0
+        roughly halves tool-call reliability unless the client's system prompt
+        explicitly demands the `<tool_call>` wrapper** — see local-ai.md for
+        why that one tag is the whole failure.  With that reinforcement in
+        place the KV type stops mattering and q8_0 is free.  Without it, this
+        setting quietly trades agent reliability for VRAM.
+      '';
+    };
+
     interface.options.hsaOverrideGfxVersion = lib.mkOption {
       type        = lib.types.nullOr lib.types.str;
       default     = null;
@@ -73,6 +133,14 @@
             ROCR_VISIBLE_DEVICES = "0";
           } // lib.optionalAttrs (settings.hsaOverrideGfxVersion != null) {
             HSA_OVERRIDE_GFX_VERSION = settings.hsaOverrideGfxVersion;
+          } // lib.optionalAttrs (settings.contextLength != null) {
+            OLLAMA_CONTEXT_LENGTH = toString settings.contextLength;
+          } // lib.optionalAttrs (settings.kvCacheType != null) {
+            # Flash attention is the prerequisite for a quantised KV cache, so
+            # it is set here rather than exposed as a separate knob that could
+            # be forgotten.  On its own it is a measured no-op.
+            OLLAMA_FLASH_ATTENTION = "1";
+            OLLAMA_KV_CACHE_TYPE   = settings.kvCacheType;
           };
 
           # Pin ollama to a static system user instead of the nixpkgs default
