@@ -261,6 +261,15 @@ let
   mediathekarrPort = 5007;   # the downloader's SABnzbd API and setup wizard
   jellyseerrPort   = 5055;   # M13 — the household's request UI
 
+  # M8.  Tvheadend, in its OWN container (nspawn, vb-tvheadend, VLAN 90) — it
+  # needed a second network leg to the FRITZ!Box, which the arr container has
+  # no business having.  Only the web UI routes through here; Jellyfin pulls
+  # the M3U/XMLTV and the streams directly at L2 (10.0.90.10 → .18:9981,
+  # allowed by the tvheadend container's own firewall), and HTSP (9982) is
+  # routed nowhere and opened to nobody.
+  tvheadendAddr = "10.0.90.18";
+  tvheadendPort = 9981;
+
   # M6.  Traefik's own Prometheus metrics, on a SEPARATE entryPoint from the
   # one that serves traffic.  Its own port rather than a route on :443 because
   # a route would be reachable by anything the consumer-zone ZBF rule already
@@ -984,6 +993,22 @@ in
               service     = "mediathekarr";
             };
 
+            # ── Tvheadend (M8): admin route, behind Authelia ───────────────
+            #
+            # Same treatment as the *arr routers: an admin-facing browser UI
+            # with no TV/mobile client that a forward-auth redirect could
+            # break — the household never opens this page; they watch Live TV
+            # through Jellyfin, whose own router above stays middleware-free.
+            # The name is in authelia.nix's protectedHosts in the same
+            # commit (deny-by-default: middleware without the name fails
+            # CLOSED as a 403).
+            tvheadend = {
+              rule        = "Host(`tvheadend.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "tvheadend";
+            };
+
             # ── Jellyseerr (M13): the HOUSEHOLD route, and the exception ───
             #
             # NO MIDDLEWARE, and that is the whole point of this router.
@@ -1121,6 +1146,9 @@ in
 
             # M13 — same container, same address, one more port.
             jellyseerr.loadBalancer.servers   = [ { url = "http://${arrAddr}:${toString jellyseerrPort}/"; } ];
+
+            # M8 — its own container on .18.
+            tvheadend.loadBalancer.servers    = [ { url = "http://${tvheadendAddr}:${toString tvheadendPort}/"; } ];
             grafana.loadBalancer.servers  = [ { url = "http://${monitoringAddr}:${toString grafanaPort}/"; } ];
 
             # M7.  The same address the forwardAuth middleware above calls,

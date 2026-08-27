@@ -10,8 +10,13 @@
 #            NO LONGER carries an address: it is a TAGGED TRUNK PORT on br0.
 #            Takes ~10 s to gain link at boot; docs/guides/remote-unlock.md
 #            polls for exactly that reason.
-#   enp12s0  Intel I226-V 2.5G (igc) — intentionally unplugged, left
-#            unconfigured.  Must never block boot (see note 6).
+#   enp12s0  Intel I226-V 2.5G (igc) — since M8 (2026-08-27) the DIRECT link
+#            to the FRITZ!Box 6591's LAN, enslaved to the two-port bridge
+#            br-fritz for the tvheadend container's SAT>IP leg.  Owned by
+#            machines/ernst/containers/tvheadend.nix (units live with the
+#            service); RequiredForOnline=no there, so it still never blocks
+#            boot (see note 6).  The FRITZ segment never touches br0, the
+#            trunk, or any skynet VLAN — that isolation is the point.
 #
 # ── Topology ──────────────────────────────────────────────────────────────
 #
@@ -296,9 +301,14 @@
   #   02:00:00:90:00:05   arr container eth0        (M4  — allocated)  10.0.90.13
   #   02:00:00:90:00:06   monitoring container eth0 (M6  — allocated)  10.0.90.14
   #   02:00:00:90:00:07   authelia container eth0   (M7  — allocated)  10.0.90.15
+  #   02:00:00:90:00:0a   tvheadend container eth0  (M8  — allocated)  10.0.90.18
   #
-  # THE MONITORING CONTAINER HAS A SECOND INTERFACE, and it is the first one
-  # here that does.  `mon0` is a point-to-point veth to this host on the ULA
+  # TWO CONTAINERS HAVE A SECOND INTERFACE.  The tvheadend container's
+  # `fritz0` (M8) is a veth onto `br-fritz`, the two-port bridge that joins
+  # enp12s0's direct FRITZ!Box link — static 192.168.178.2/24 on the FRITZ's
+  # own subnet, no DHCP, no gateway, no reservation; see
+  # machines/ernst/containers/tvheadend.nix.  The monitoring container's
+  # `mon0` came first: a point-to-point veth to this host on the ULA
   # fdca:fe90::1 (host) / fdca:fe90::2 (container) — no bridge, no VLAN, no
   # DHCP, and no reservation, because it never leaves ernst.  It exists so
   # Prometheus can reach (a) this host's own exporters without hairpinning
@@ -343,6 +353,12 @@
   #                           DELETES files and builds the Leaving Soon tree)
   #   uid 3016  scraparr     (containers/arr.nix — M13, own group, REST only)
   #   gid 3016  scraparr     (containers/arr.nix — M13)
+  #   uid 3026  tvheadend    (containers/tvheadend.nix — M8, OWN group, NO
+  #                           media access: shape (ii) won, Jellyfin's DVR
+  #                           records and Tvheadend writes only its own state.
+  #                           Escalating to shape (i) is where media
+  #                           membership would come back — with an argument)
+  #   gid 3026  tvheadend    (containers/tvheadend.nix — M8)
   #
   #===========================================================================
   # RESERVED — M8 and M12–M16.  Comments only; nothing below is declared yet.
@@ -459,15 +475,14 @@
   #                              self-service account creation endpoint)
   #   gid 3025  wizarr          (M16)
   #
-  #   uid 3026  tvheadend       (M8, group media PRIMARY — CONDITIONAL, and
-  #                              doubly so.  Only under shape (i), where
-  #                              Tvheadend records and something bridges the
-  #                              recordings into /srv/media; under shape (ii)
-  #                              Jellyfin's own DVR records and Tvheadend needs
-  #                              no media write at all.  And M8 itself may be
-  #                              dropped once M12's MediathekArr has been used
-  #                              in anger — see the M8 amendment in
-  #                              docs/roadmap.md)
+  #   uid 3026  tvheadend       M8 LANDED 2026-08-27 AND TOOK THIS — moved up
+  #                              into the allocated table, as shape (ii): OWN
+  #                              group, NO media access.  The conditional
+  #                              this row used to carry resolved the other
+  #                              way: lgo opened M8 deliberately (live TV
+  #                              wanted despite MediathekArr), and Jellyfin's
+  #                              DVR records, so "group media PRIMARY" never
+  #                              happened.
   #
   # NO uid FOR byparr.  It replaces FlareSolverr and keeps upstream's
   # DynamicUser, exactly as FlareSolverr does: there is no persistent state,
@@ -519,8 +534,10 @@
   #   02:00:00:90:00:09   jellyseerr container eth0 (M16 — RESERVED,  10.0.90.17
   #                       and only if M13/M16 split it out of the arr
   #                       container.  M13 ships it inside arr by default)
-  #   02:00:00:90:00:0a   tvheadend container eth0  (M8  — RESERVED)  10.0.90.18
-  #                       CONDITIONAL on M8 surviving its scope challenge.
+  #   02:00:00:90:00:0a   tvheadend container eth0  — M8 LANDED 2026-08-27,
+  #                       moved up into the allocated table (10.0.90.18).
+  #                       The scope challenge resolved by operator decision:
+  #                       live TV is wanted alongside MediathekArr.
   #
   # The 8 + <seq> correspondence holds for all three.  EVERY reservation must
   # be INSIDE the DHCP pool (10.0.90.6–.254): UniFi accepts a .2–.5 address and

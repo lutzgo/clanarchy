@@ -210,6 +210,7 @@ in
     "d /srv/media/library            0755 root       root       -"
     "d /srv/media/library/movies     2770 root       media      -"
     "d /srv/media/library/tvshows    2770 root       media      -"
+    "d /srv/media/library/recordings 2770 root       media      -"
     "d /srv/media/torrents           0755 root       root       -"
     "d /srv/media/torrents/movies    2770 root       media      -"
     "d /srv/media/torrents/tv        2770 root       media      -"
@@ -241,8 +242,8 @@ in
       Type            = "oneshot";
       RemainAfterExit = true;
       ExecStart = [
-        "${pkgs.coreutils}/bin/chown root:media /srv/media/library/movies /srv/media/library/tvshows /srv/media/torrents/movies /srv/media/torrents/tv"
-        "${pkgs.coreutils}/bin/chmod 2770       /srv/media/library/movies /srv/media/library/tvshows /srv/media/torrents/movies /srv/media/torrents/tv"
+        "${pkgs.coreutils}/bin/chown root:media /srv/media/library/movies /srv/media/library/tvshows /srv/media/library/recordings /srv/media/torrents/movies /srv/media/torrents/tv"
+        "${pkgs.coreutils}/bin/chmod 2770       /srv/media/library/movies /srv/media/library/tvshows /srv/media/library/recordings /srv/media/torrents/movies /srv/media/torrents/tv"
       ];
     };
   };
@@ -366,6 +367,21 @@ in
       "/media/Server001/TV-Shows" = {
         hostPath   = "/srv/media/library/tvshows";
         isReadOnly = true;
+      };
+
+      # M8, shape (ii): Jellyfin's OWN DVR is the recorder — Tvheadend only
+      # shares tuners (see containers/tvheadend.nix's header for the
+      # argument).  This is the ONE writable media bind in this container,
+      # and the exception to "Jellyfin never writes to library data" above:
+      # recordings are the library data Jellyfin itself produces.  Plain
+      # subdirectory of the one hardlink-domain dataset (invariant #2), no
+      # snapshots (like everything under /srv/media), mode 2770 root:media
+      # with jellyfin (uid 964, member of media) writing via the setgid
+      # group.  Configured in the UI as the DVR recording path plus a
+      # Recordings library — see the M8 PR checklist.
+      "/media/Server001/Recordings" = {
+        hostPath   = "/srv/media/library/recordings";
+        isReadOnly = false;
       };
 
       # Jellyfin persistent state.  Remapped to the upstream default path
