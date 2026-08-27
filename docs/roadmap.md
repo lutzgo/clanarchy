@@ -3069,6 +3069,41 @@ measurement before the actual cause surfaced — the decisive test was
 `curl -u` versus `curl --digest` against the binary, which returned 401 and
 200 respectively.
 
+**The third deploy found a defect in Tvheadend itself, and it needed a
+patch.** Jellyfin's tuner worked immediately — the M3U parsed and all 109
+channels were read — but **the guide was empty and "Map Channels" was
+blank**, with this in Jellyfin's log:
+
+```
+System.Xml.XmlException: Invalid character in the given encoding. Line 72029, position 252.
+   at Jellyfin.XmlTv.XmlTvReader.GetChannels()
+```
+
+Tvheadend serves its guide as `encoding="utf-8"` **without guaranteeing the
+bytes are valid UTF-8**, and .NET's `XmlReader` is strict, so it discards the
+whole document. Measured: **5 bad bytes in 8.9 MB, all from one broadcaster**
+(Bibel TV), whose EIT text carries mangled umlauts — `k<c3><c2>nnen` for
+"können", `F<c3>llen` for "Fällen". **109 channels of guide data lost to five
+bytes.**
+
+**Upstream already tries to handle this** (`htsbuf.c`, issue #5909): it
+validates the UTF-8 *lead* byte and the remaining buffer length. It then
+copies the continuation bytes unchecked, directly beneath a comment saying so
+— *"We should probably check each character in the range is also valid."*
+`0xc3` announces a two-byte sequence and `0xc2` is not a continuation byte, so
+that exact gap is what lets this through. The patch
+(`pkgs/tvheadend-xmltv-utf8.patch`) closes it: continuation bytes must be
+`10xxxxxx`, and a lead byte with a bogus continuation is replaced by a space
+— the same treatment the function already gives a wholly invalid lead byte.
+It is upstream-shaped and should be offered upstream rather than carried
+forever; re-check on every rev bump.
+
+**Verified by A/B against the real byte sequences**, since the EPG lives in
+memory (`epgdb.v3` was 79 bytes) and could not be replayed from a state copy.
+Unpatched, both real sequences emit invalid UTF-8; patched, both become
+valid, while correctly-encoded 2-byte umlauts, a 3-byte €, a 4-byte emoji,
+XML escaping and end-truncated sequences are all byte-identical.
+
 Two DNS notes from the same deploy, neither a code defect: `tvheadend` had to
 be created in Technitium as its **own primary zone** (`tvheadend.goclan.org`
 with an `@` A record → `10.0.90.12`), which is how every other `*.goclan.org`

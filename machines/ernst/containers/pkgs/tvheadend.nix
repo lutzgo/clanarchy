@@ -80,6 +80,33 @@ stdenv.mkDerivation rec {
     hash = "sha256-jOqpMjLEsQAsAtPMJT+7e01x/QcUKxHSNQteFf7k9tk=";
   };
 
+  # ── ONE PATCH, AND IT IS NOT A PREFERENCE ──────────────────────────────────
+  #
+  #   Tvheadend emits its XMLTV guide as `encoding="utf-8"` but does not
+  #   guarantee the bytes are valid UTF-8, and a SINGLE bad byte makes strict
+  #   parsers discard the WHOLE document.  .NET's XmlReader — hence Jellyfin —
+  #   is strict: `XmlException: Invalid character in the given encoding`, and
+  #   Live TV ends up with no guide at all.
+  #
+  #   Measured here 2026-08-27: 5 bad bytes in an 8.9 MB guide, all from one
+  #   broadcaster (Bibel TV) whose EIT text carries mangled umlauts —
+  #   `k<c3><c2>nnen` for "können", `F<c3>llen` for "Fällen".  109 channels of
+  #   guide data lost to five bytes.
+  #
+  #   Upstream ALREADY tries to handle this (htsbuf.c, issue #5909): it
+  #   validates the UTF-8 LEAD byte and the remaining buffer length.  But it
+  #   then copies the continuation bytes unchecked, above a comment that says
+  #   so in as many words — "We should probably check each character in the
+  #   range is also valid."  0xc3 announces a two-byte sequence and 0xc2 is
+  #   not a continuation byte, so exactly that gap is what lets this through.
+  #
+  #   The patch closes it: continuation bytes must be 10xxxxxx, and a lead
+  #   byte whose continuation is bogus is replaced with a space — the same
+  #   treatment the function already gives a completely invalid lead byte.
+  #   Upstream-shaped, so it should be offered upstream rather than carried
+  #   forever; re-check it on every rev bump.
+  patches = [ ./tvheadend-xmltv-utf8.patch ];
+
   nativeBuildInputs = [
     makeWrapper
     pkg-config
