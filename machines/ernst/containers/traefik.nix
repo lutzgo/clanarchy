@@ -269,6 +269,7 @@ let
   # routed nowhere and opened to nobody.
   tvheadendAddr = "10.0.90.18";
   tvheadendPort = 9981;
+
   # M9.  TubeSync, the first occupant of the PODMAN tier, on its own address.
   # Not in the arr container: it is a podman workload whose network namespace
   # is built by hand (see containers/tubesync.nix), which has nothing to do
@@ -1013,6 +1014,8 @@ in
               entryPoints = [ "websecure" ];
               middlewares = [ "authelia" ];
               service     = "tvheadend";
+            };
+
             # ── TubeSync (M9): admin route, behind Authelia ────────────────
             #
             # Browser-only and admin-facing, so the *arr treatment applies and
@@ -1170,6 +1173,7 @@ in
 
             # M8 — its own container on .18.
             tvheadend.loadBalancer.servers    = [ { url = "http://${tvheadendAddr}:${toString tvheadendPort}/"; } ];
+
             # M9 — its own address, in a podman netns on VLAN 90.
             tubesync.loadBalancer.servers     = [ { url = "http://${tubesyncAddr}:${toString tubesyncPort}/"; } ];
             grafana.loadBalancer.servers  = [ { url = "http://${monitoringAddr}:${toString grafanaPort}/"; } ];
