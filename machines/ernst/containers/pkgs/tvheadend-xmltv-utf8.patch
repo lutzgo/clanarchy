@@ -1,0 +1,27 @@
+--- a/src/htsbuf.c
++++ b/src/htsbuf.c
+@@ -386,7 +386,23 @@
+           htsbuf_append(hq, s, c - s - 1);
+           break;
+         } else {
+-          // We should probably check each character in the range is also valid.
++          // Validate the CONTINUATION bytes as well.  A valid lead byte
++          // followed by a byte that is not 10xxxxxx is still invalid UTF-8,
++          // and emitting it produces a document that strict XML parsers
++          // (.NET's XmlReader, hence Jellyfin) reject outright -- one bad
++          // byte discards an entire guide.  Seen in the wild from a
++          // broadcaster whose EIT text carries a mangled umlaut: 0xc3 0xc2.
++          int cont, cont_ok = 1;
++          for (cont = 0; cont < num_bytes - 1; cont++)
++            if ((c[cont] & 0xc0) != 0x80) { cont_ok = 0; break; }
++          if (!cont_ok) {
++            // Same treatment as a completely invalid lead byte above:
++            // replace it with a space and rescan from the next byte.
++            htsbuf_append(hq, s, c - s - 1);
++            htsbuf_append(hq, " ", 1);
++            s = c;
++            continue;
++          }
+           htsbuf_append(hq, s, c - s - 1);
+           htsbuf_append(hq, c-1, num_bytes);
+           s=c-1;

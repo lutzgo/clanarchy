@@ -51,7 +51,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M5 — Traefik | **done — deployed 2026-08-23, proven 2026-08-24** | [#86](https://github.com/lutzgo/clanarchy/pull/86) | `machines/ernst/containers/traefik.nix`: nspawn container on `vb-traefik`, VLAN 90, MAC `02:00:00:90:00:04` → `10.0.90.12`. One wildcard `*.goclan.org` over ACME DNS-01 at Cloudflare, scoped API token via clan var `traefik-acme`, store on `zdata` at `/srv/state/traefik`. Routes: jellyfin (no middleware, ever) + prowlarr/sonarr/radarr behind the interim `mgmt-only` ipAllowList (L5). **Backend bypass hardening is mechanism (a)** — each backend's own firewall accepts its web port only from `10.0.90.12` — because Jellyfin, the arr, qBittorrent and Traefik are all ports on `br0` and their traffic never reaches the UDM-Pro, so an intra-zone ZBF rule could not see it. **Two consequences on deploy day**: direct access to `10.0.90.10:8096` and `10.0.90.13:{9696,8989,7878}` stops working immediately, so TV clients must move to `jellyfin.goclan.org` in the same window; and the ACME propagation check queries `1.1.1.1`/`9.9.9.9` directly, which a UDM-Pro DNS-interception rule would silently break. [M5](#m5-featernst-traefik) |
 | M6 — monitoring | **done — deployed, alerting proven end to end, and survived a real reboot 2026-08-24; biene/birte pending** | [#87](https://github.com/lutzgo/clanarchy/pull/87) | **Working**: container on `10.0.90.14`, VLAN 90 won unaided, every deployed target scraping `up`, Grafana served through Traefik, and `traefik_tls_certs_not_after` (89 d) + `zfs_pool_health` (0/0) both confirmed **live** — retiring the two metric names that had only been read out of binaries' strings. **Notifications arrive**, from both publishers, on rotated topics — the first confirmed ntfy delivery in this fleet's history. **Survived a real reboot**: `mon0` and `vb-monitoring` created by a boot rather than a deploy, container back on `.14`, the TSDB holding pre-reboot samples, `clanarchy-impermanence-check` green — which closes invariant #7 for this milestone and the `mon0`-across-a-reboot question inherited from M2b. **Three deploys, each caught a real defect.** The first stopped at `monitoring-secrets`, by design — and the value it refused exposed that `modules/observability/zfs-ntfy.nix`'s zedlet **has never worked on ernst**: the var holds a bare topic (what the prompt's own `openssl rand -hex 12` hint produces), curl could not resolve it as a hostname, and `>/dev/null 2>&1` threw the error away. The second exposed that **`systemd-networkd-wait-online` could never succeed in this container** — a veth has no carrier until both ends are up, and `mon0`'s host end is brought up by `postStart`, which runs *after* the container's boot, so wait-online was waiting on an event its own completion gates. The 20 s cap contained it; `RequiredForOnline = "no"` fixes it. [Details](#first-deploy-2026-08-24-the-fail-closed-path-fired-and-it-found-an-older-bug). `service-modules/monitoring.nix` (+ `.md`, + one dashboard as JSON): a clan service module with a `client` role on all four machines and a `server` role on ernst. **Scrape targets are derived from `roles.client` membership** — each machine's address comes from the `zerotier-ip-<machine>-zerotier` var clan-core already generates, so adding a machine to the role is the only step needed. The stack is one nspawn container on `vb-monitoring`, VLAN 90, MAC `02:00:00:90:00:06` → `10.0.90.14`, state on `zdata` at `/srv/state/monitoring`. **The one genuinely new piece of engineering is a SECOND interface**: `mon0`, a point-to-point ULA veth to the host, because both things Prometheus must scrape — ernst's own exporters (VLAN 50) and three laptops (ZeroTier, which terminates in the host netns) — are unreachable from VLAN 90. The host forwards and SNATs onto `zt+`, which has the useful side effect that scrapes arrive at a laptop from ernst's own ZeroTier address, i.e. the one source each client permits. **Alerting is (b), keep both**, with the overlap made empty: ZED owns pool state, Prometheus owns everything else and has no `zfs_pool_health` rule, and `ZedNotRunning` is the interlock. Both end at the same ntfy topic. [M6](#m6-featmonitoring) |
 | M7 — Authelia | **done — deployed 2026-08-24; both accounts enrolled on TOTP + WebAuthn; L5 retired in code and in the device; Grafana OIDC and the reboot still pending** | [#90](https://github.com/lutzgo/clanarchy/pull/90) | Authelia 4.39 in an nspawn container, `machines/ernst/containers/authelia.nix`, on `vb-authelia` / VLAN 90 / MAC `02:00:00:90:00:07` → `10.0.90.15`, SQLite on `zdata` at `/srv/state/authelia`. **L5 is retired by deletion, not by stacking** — the `mgmt-only` ipAllowList is gone from `containers/traefik.nix` and the four admin routers carry a `forwardAuth` middleware instead. The cost is stated rather than buried: the login portal is now reachable from the IoT VLAN, because the `Allow Traefik` ZBF rule already permits IoT → `10.0.90.12:443`; what it meets there is `two_factor` plus regulation (3 failures / 5 min → 15 min ban, per user, in SQLite). **The bypass list the brief asked for came back EMPTY**, and that is a finding: `auth.goclan.org` carries no middleware on its own router, so `/api/oidc/*`, `/.well-known/*` and `/api/health` never pass through forward-auth in the first place — a `bypass` rule would match nothing and read as enforcement. Grafana moves to Authelia OIDC with its local admin kept, and **break-glass needed one new line to be true at all**: with the Grafana route behind forward-auth, the local form is unreachable through Traefik, so `10.0.90.14:3000` now also accepts `fdca:fe90::1` — the host end of M6's `mon0` — reachable only as `ssh -N -L 3000:[fdca:fe90::2]:3000 root@ernst`. **Proven offline against the real 4.39.20 binary**: the rendered config, the staged OIDC client block, the generated `users_database.yml` and the JWKS fragment all pass `authelia validate-config`, and all three vars generators were run end to end. [M7](#m7-featernst-authelia) |
-| M8 — Tvheadend / SAT>IP live TV | **open — operator gate first, and now a scope gate after M12** | — | Steps 1–3 (patching, UniFi, stream test) are lgo's and must clear before a session starts; the milestone dies if the FRITZ!Box's DVB-C is branding-locked. **New in 2026-08:** M12's MediathekArr may cover most of what recording is *for*, so Phase 0 gains a question ahead of its existing ones — see [what the *arr ecosystem does and does not provide here](#what-the-arr-ecosystem-does-and-does-not-provide-here-surveyed-2026-08). **MediathekArr is now BUILT (2026-08-26), so that question is answerable with evidence rather than speculation** — do not open M8 until it has been running long enough to say what it does and does not reach. [M8](#m8-featernst-tvheadend) |
+| M8 — Tvheadend / SAT>IP live TV | **built, awaiting deploy — 2026-08-27; Phase 0 cleared the same day with live evidence** | — | lgo opened the scope gate deliberately (live TV wanted alongside MediathekArr) and Phase 0 cleared interactively: `DVBC-4` in `satipdesc.xml`, all 8 probed muxes lock, ZDF HD captured end-to-end (13.7 MB / 12 s, h264 720p50 + 2× AC-3 + EIT in-mux). **Two premises fell in the build session**: nixpkgs **removed tvheadend entirely** (PR #332259), so it is a from-source build (`--disable-libav` — the FFmpeg-4 coupling that killed it upstream is transcoding-only, which Jellyfin owns); and the FRITZ!Box is **directly cabled to ernst's spare NIC** (`enp12s0` → `br-fritz` → container `fritz0`), so no UniFi VLAN, no ZBF rule, and **L6/L7 retired as never-created**. Interleaved-TCP RTP is 461-rejected by the box — UDP unicast, one firewall line. Shape **(ii)**: Tvheadend shares tuners + EPG, **Jellyfin's DVR records** into `/srv/media/library/recordings`. [M8](#m8-featernst-tvheadend) |
 | M9 — TubeSync | **open** | — | Feeds the Jellyfin library directly. First occupant of the **podman** tier (not in nixpkgs — verified), so it builds the tier as well as the service; podman's attachment to `br0` is unsolved here. [M9](#m9-featernst-tubesync) |
 | M10 — Kodi + IR remote | **dropped — 2026-08-20** | — | Dropped by lgo before any code was written: the couch requirement is Plasma Bigscreen plus Steam, and Kodi is a third media UI nobody asked for. The IR-receiver half was orthogonal and survives as a [backlog entry](#floating-backlog) |
 | M11 — fleet-local coding agent | **open — Parts 2/3/4 done 2026-08-26; Part 1 outstanding** | — | Phase 0 (2026-08-25) falsified three of the brief's premises and proved the context trap with numbers. Since then: the **§7 Nix landed** as per-machine role settings, closing [SN1](#sn1-the-model-tag-silently-sets-the-context-window); candidate (C) is an explicit **"not taking"**; and Part 3's tool-call defect is **fixed** — but not as predicted. There is **no Modelfile template to correct** (compiled Go renderer/parser), the parser is **correct**, and the model was dropping the opening `<tool_call>` tag; restating it in the system prompt went 5/40 → **80/80**. A new confound surfaced: **`q8_0` halves tool-call reliability** without that rule. **Phase 1 stays blocked on Part 1** — the multi-file edit, the Claude Code comparison and real-task rates are lgo's. Tasks and a validated grader now exist at `~/.local/share/m11-bakeoff/tasks/`. [M11](#m11-featfleet-local-coding-agent) |
@@ -328,8 +328,8 @@ Rows are retired only by the PR that actually removes the rule.
 | — | `LAN (1) → qBittorrent 10.0.90.11:8080,22/tcp` | UDM-Pro ZBF, M3 | The qBittorrent WebUI (and the guest's SSH) are reachable from the management networks and nowhere else | **permanent** — architecture invariant #4 names this bypass explicitly. It is listed here only so a future milestone does not mistake it for an interim row and "fix" it by adding a Traefik route | **created and verified 2026-08-20.** Source zone `Internal`, narrowed to the `LAN` + `Servers` networks; destination `10.0.90.11` tcp `8080,22`; `Auto Allow Return Traffic` ticked. Servers (50) does need to be listed — with it, `ssh` from ernst itself works. **The port belongs in the Destination card**: the editor has a Port section in *both* zone cards and the source one is the one you see first, which matches only traffic *from* 8080/22, i.e. never |
 | L4 | `LAN (1)` + `Servers (50)` → arr `10.0.90.13:9696,8989,7878/tcp` | UDM-Pro ZBF, M4 | The three arr WebUIs are reached directly; there is no reverse proxy yet | **M5** — replace with the permanent `LAN → traefik:443` rule and Traefik routes | **never created — superseded by M5, [#86](https://github.com/lutzgo/clanarchy/pull/86).** M4 shipped without it and M5 landed before anyone needed it badly enough to add it, so the interim rule this row describes has no lifetime at all: the arr UIs go straight from "reachable only from inside `br0`" to "reachable through Traefik". **Do not create it now.** The three ports are source-restricted to `10.0.90.12` in `containers/arr.nix`, so a ZBF permit for them would be a rule the backend ignores. Earlier revisions of this table also predicted a host-firewall row plus a veth migration; M4 skipped v1 and went straight to the veth, so neither ever existed either |
 | L5 | Traefik `ipAllowList` on the arr + Grafana routes (mgmt + wg-travel) | M5 (`traefik` container) | There is no identity provider yet | **M7** — replaced by the Authelia forward-auth middleware | **RETIRED 2026-08-24 by M7 ([#90](https://github.com/lutzgo/clanarchy/pull/90)) — in code AND on the device. Re-verified 2026-08-25**, because this row's own trigger had fired and a row left in the future tense is a row nobody can tell the state of: `grep -n ipAllowList machines/ernst/containers/traefik.nix` returns **four comments and no definition**, and the four routers that carried it (`prowlarr`, `sonarr`, `radarr`, `grafana`) each carry `middlewares = [ "authelia" ]` instead. The deploy that made it effective happened the same day — `https://sonarr.goclan.org/` answered `302 → auth.goclan.org/?rd=…`, which is the middleware and not the ACL. **Nothing is left to remove**; the resolution owed by [L4's reasoning](#interim-rule-ledger) (a permit rule doing nothing is what someone later "fixes" by removing the restriction) is that the shim is gone rather than inert. Created in [#86](https://github.com/lutzgo/clanarchy/pull/86) as middleware `mgmt-only`, `sourceRange = 10.0.10.0/24, 10.0.50.0/24, 10.0.70.0/24`; extended to a fourth router (Grafana) by [#87](https://github.com/lutzgo/clanarchy/pull/87). **Deleted, not stacked underneath forward-auth** — the option this row's own notes raised. The argument, in full in `containers/authelia.nix`: an IP allow-list under an identity provider means valid credentials plus a correct TOTP code still fail from anywhere nobody pre-declared, which is most of what the identity provider was added for; and two mechanisms for one property is what `containers/traefik.nix` argues against in its own words. Both warnings this row carried were honoured — `trustForwardHeader = false` on the new middleware keeps the peer-address semantics and still ignores client-supplied `X-Forwarded-*` (Traefik writes those itself from the real request either way), and the VLAN 70 lockout it warned about is moot because the replacement does not filter by source at all. **What is lost with it**: the arr and Grafana login surfaces are now visible from the IoT VLAN. That is the trade, and the compensating control is Authelia's per-user regulation, not a network ACL |
-| L6 | Tvheadend ports `9981` / `9982` on the host, mgmt-VLAN scoped | M8 (host firewall, v1) | Only if M8 lands before M2b — Tvheadend v1 would then run on host networking like Jellyfin's and arr's did | **M5** for the web route, plus a veth migration mirroring M2b. Never created at all if M2b lands first | **never created — both gates have now closed.** M2b landed first, so Tvheadend was never going to run on host networking; M5 has landed too, so the web route already exists as a pattern to copy. M8 should go straight to a veth on VLAN 90 plus a Traefik route, exactly as M4 did |
-| L7 | FRITZ!Box → Tvheadend on the ephemeral **UDP** range | UDM-Pro ZBF (off-repo), M8 | SAT>IP media is unicast RTP on a return flow the RTSP rule does not cover | Proving RTP **interleaved over the RTSP TCP connection**, which reduces the whole ACL to TCP 49000 + 554 | not yet created — **avoid**; take the interleaved-TCP path if M8's Phase 0 shows it works |
+| L6 | Tvheadend ports `9981` / `9982` on the host, mgmt-VLAN scoped | M8 (host firewall, v1) | Only if M8 lands before M2b — Tvheadend v1 would then run on host networking like Jellyfin's and arr's did | **M5** for the web route, plus a veth migration mirroring M2b. Never created at all if M2b lands first | **RETIRED as never-created (M8 built 2026-08-27).** M2b landed first, so Tvheadend never ran on host networking; it went straight to a veth on VLAN 90 plus a Traefik route, exactly as this row predicted. 9982 (HTSP) ended up opened to nobody at all — no client for it exists in this fleet |
+| L7 | FRITZ!Box → Tvheadend on the ephemeral **UDP** range | UDM-Pro ZBF (off-repo), M8 | SAT>IP media is unicast RTP on a return flow the RTSP rule does not cover | Proving RTP **interleaved over the RTSP TCP connection**, which reduces the whole ACL to TCP 49000 + 554 | **RETIRED as never-created (M8 built 2026-08-27), by a route this row did not predict.** Phase 0 measured interleaved-TCP as UNAVAILABLE — the 6591 answers `461 Unsupported Transport` to a TCP SETUP — so the "avoid" path was closed. But the FRITZ!Box ended up **directly cabled to ernst's spare NIC** (`enp12s0` → `br-fritz`), so the RTP return flow never crosses the UDM-Pro at all: the "broad, ugly" ephemeral-UDP ACL became one source-scoped iptables line inside the tvheadend container (`-s 192.168.178.1 -p udp`). No UDM-Pro rule of any kind exists for M8 |
 | — | **M11 creates no row, and that is a property worth stating** | — | Ollama on ernst stays bound to localhost and is reached over an SSH tunnel on local port **11435**; the working tree was left at `133a39d`. So the milestone that added a coding agent to the fleet changed ernst's attack surface **not at all**, and if it stops after Phase 1 it stays that way | **permanent, unless M11 Phase 2 is taken** — and Phase 2 is optional and separately justified. Its trigger is a *second client actually needing it*, not tidiness | not created. Listed so a later session does not read the absence as an oversight. **If Phase 2 is ever taken, read [M11's session prompt](#the-prompt-for-the-m11-remainder) first** — its Phase 2 block is the constraint: Ollama has no authentication and its API includes model *pull* and *delete*, so it is an unauthenticated admin endpoint and the recommendation is ZeroTier-only, never a LAN listener |
 | — | **M12 created no row, as predicted — confirmed 2026-08-26** | — | Everything in M12 landed inside the **existing** arr container and opened no port reachable outside it. The one thing it *did* touch is the explicit port list `containers/arr.nix` feeds to its `concatMapStrings` Traefik source-restriction, which gained `bazarr` 6767, `cleanuparr` 11011 and `mediathekarr` 5007 — plus three ordinary Traefik routers behind `authelia` and three names in `protectedHosts`, which are invariant #3 working as designed and not shims. **Four ports were deliberately kept OFF the list**: `flaresolverr` 8191 as before, MediathekArr's indexer 5008, and UmlautAdaptarr's 5005 and **5006**. All four bind `0.0.0.0`/`[::]`, so the container firewall is the only thing keeping them off VLAN 90 — and 5006 is an HTTP proxy, the same class of gift as 8191. Byparr, when [M12b](#m12b-featernst-byparr) lands, inherits FlareSolverr's exact posture | **permanent** — there is nothing interim here | not created |
 | L8 | TubeSync web UI port, mgmt-VLAN scoped | M9 (host/container firewall, v1) | Only if M9 lands before M5 — an admin UI with no proxy in front of it yet. Mgmt-scoped, so invariant #3 does not cover it | **M5** — replace with the Traefik route. Never created at all if M5 lands first | **never created — M5 landed first.** M9 gets a Traefik route (`tubesync.goclan.org`, behind the `authelia` forward-auth middleware — M7 deleted `mgmt-only`, so copy the *arr routers, not this row's original wording) and opens no port. Adding it also means adding the hostname to `access_control` in `containers/authelia.nix`, which is deny-by-default: a route with the middleware and no matching rule fails closed. Note this does not solve M9's actual open question, which is how a podman container attaches to `br0` on VLAN 90 at all |
@@ -2932,6 +2932,276 @@ or in a docs PR.**
 **Note on the ledger:** this amendment does **NOT** retire L6 or L7. It records
 **the condition under which they would be retired as never-created** — which is
 M8 being dropped after the scope question above is answered.
+*(Superseded 2026-08-27: both rows are now retired as never-created, by the
+build below — for the opposite reason. M8 was opened, not dropped.)*
+
+### Build session close-out (2026-08-27) — Phase 0 cleared live, and two premises fell
+
+Everything above this heading is the milestone as planned; where they disagree,
+this section is right. The scope gate was opened **by operator decision** — lgo
+wants live TV alongside MediathekArr — and Phase 0 was cleared interactively in
+the same session, with the operator patching cables while the session probed.
+
+**Phase 0 evidence, all measured 2026-08-27:**
+
+- `satipdesc.xml` → `<satip:X_SATIPCAP>DVBC-4</satip:X_SATIPCAP>` — four DVB-C
+  frontends, present despite the Vodafone-branded firmware (`6591lgi`). **No
+  branding lock.** The box even publishes its own channel M3U with full tuning
+  parameters (213 channels): `http://192.168.178.1/dvb/m3u/channellist.m3u`.
+- **Stream test**: ZDF HD (450 MHz, 256QAM, sr 6900) captured over raw
+  RTSP/UDP from ernst — 12 s → 13.7 MB of MPEG-TS (~9.1 Mbit/s); ffprobe on
+  the file: h264 1280×720@50 + 2× AC-3 + **an EPG data stream**, so EIT rides
+  the mux and the OTA grabber needs no external XMLTV source.
+- **Mux sweep**: all 8 probed frequencies lock (quality 13–14, level 114–131);
+  330 MHz (Das Erste) locks noticeably slower than the rest.
+- **RTP transport question (L7): answered by measurement, against the
+  preferred option.** SETUP over interleaved-TCP → `461 Unsupported
+  Transport`; UDP unicast works. This is also why ffmpeg's RTSP client
+  *hangs silently* against this box when RTP can't arrive — probe with a raw
+  RTSP client (the session's probe scripts) or tcpdump, not ffprobe alone.
+
+**Premise 1 fell: tvheadend is NOT in nixpkgs — it was removed** (package and
+module, also gone from unstable; nixpkgs PR #332259, "stuck on an unmaintained
+version that required FFmpeg 4"). Instead of moving tiers, M8 follows M13's
+Janitorr precedent: a from-source build in
+`machines/ernst/containers/pkgs/tvheadend.nix`, pinned to an upstream master
+rev (upstream is active; no stable tag since 2018), with `--disable-libav` —
+the FFmpeg coupling that killed the nixpkgs package lives entirely in
+transcoding, which Jellyfin owns. Three configure flags **download things at
+build time** and must never be dropped: `--disable-ffmpeg_static`,
+`--disable-pcloud_cache`, `--disable-dvbscan` (scan tables substituted from
+`pkgs.dtv-scan-tables`). The binary was built and smoke-tested in-session.
+
+**Premise 2 fell: there is no UniFi half at all.** Phase 0's 0.1/0.2 assumed
+the FRITZ!Box lands on a UniFi VLAN. It is in **Vodafone bridge mode** (the
+UDM-Pro holds the public IP), and its first patched leg sat IPv4-silent on the
+USW — which turned out to be a *port class* property, not bridge-mode
+inertness: **one FRITZ LAN port (the guest port) is IPv4-dark** (no ARP, no
+DHCPv4, RA-only, services blocked) while the others serve the full
+192.168.178.0/24 with DHCP, UI and SAT>IP. The fix was topological: the
+FRITZ!Box is now **cabled directly into `enp12s0`**, ernst's previously unused
+second NIC, joined to the tvheadend container's `fritz0` veth by a dedicated
+two-port bridge `br-fritz`. Consequences: no VLAN decision, no rogue-DHCP
+exposure (the FRITZ's DHCP server can only ever reach the container), no ZBF
+rule, no DHCP-reservation for the FRITZ, and **L6 + L7 retired as
+never-created**. The host holds no address on the FRITZ segment; the
+container's `fritz0` is static `192.168.178.2/24`, no gateway, no DNS.
+
+**One hazard measured and closed by construction**: the FRITZ sends IPv6 RAs
+carrying a default route (6to4 + ULA). A manually-upped `enp12s0` during
+Phase 0 briefly gave *the host* an IPv6 default route via the FRITZ — an SN2
+violation. Every interface in `tvheadend.nix` pins `IPv6AcceptRA = false`,
+and Avahi carries an explicit `denyInterfaces` for the segment.
+
+**Shape (ii) won, as the amendment predicted**: Tvheadend is a tuner-sharing
+and EPG daemon; **Jellyfin's DVR schedules and records**, into
+`/srv/media/library/recordings` (plain subdir of the hardlink domain, 2770
+root:media, RW-bound into the jellyfin container as
+`/media/Server001/Recordings` — the one writable media bind that container
+has). uid 3026 therefore has its own group and **no media access**; escalating
+to shape (i) is a new argument, not a config flip. HTSP (9982) is bound but
+opened to nobody; 9981 is reachable only from Traefik
+(`tvheadend.goclan.org`, behind `authelia`) and Jellyfin.
+
+**First deploy (2026-08-27) found one real defect, and it is a hardening
+trap worth propagating.** The service crash-looped on **SIGSYS**
+(`status=31/SYS`, core dumped, nothing in Tvheadend's own log — it never got
+far enough to open one), and the only symptom through the front door was
+Traefik answering **502 Bad Gateway**. The cause: `SystemCallFilter =
+[ "@system-service" "~@privileged" ]` removes **`chown`**, which is a member
+of *both* sets — and Tvheadend calls `chown(lockfile, -1, -1)` at startup, a
+**no-op** that changes neither owner nor group. seccomp filters on the
+syscall number, not its arguments, so a call that could not possibly do
+anything privileged still killed the process. Fixed by appending `"@chown"`
+**after** the `~@privileged` line (order is load-bearing: systemd applies the
+lines in sequence). Adding it back costs nothing real — the unit runs
+unprivileged with `CapabilityBoundingSet=""`, so without `CAP_CHOWN` the
+kernel refuses any chown that would actually change an owner; the syscall is
+permitted, the operation stays impossible.
+
+**The general lesson, and it is the sibling of M13's `RuntimeDirectoryUser`
+finding**: `systemd-analyze security` scores the unit *better* with the
+crashing filter, because it rates directives rather than whether the process
+survives them. The A/B that actually settled it was `systemd-run --user` with
+the three filter lines against the real binary — it starts and serves
+`/playlist/channels.m3u` (200); with only the first two it dies instantly.
+**Run the service under the filter, not just the analyzer over it.**
+
+**The second deploy found something structural, and it killed two items the
+prompt asked for.** `tvheadend.goclan.org` reached Tvheadend's own login box
+and then rejected every attempt — which looks exactly like a wrong password
+and is not one. **Tvheadend's own HTTP auth cannot coexist with Authelia
+forward-auth**: both use the `Authorization` header. Measured through the
+real chain:
+
+| request | result |
+|---|---|
+| no `Authorization` header | **302** — Authelia redirect, normal |
+| *any* `Authorization` header | **401 — from Authelia**, before Tvheadend is reached |
+
+Tvheadend challenges with **Digest only** (no Basic at all — verified against
+the built binary: `WWW-Authenticate: Digest realm="tvheadend", qop=auth, …`).
+The browser answers in `Authorization`; Traefik hands that request to
+Authelia for authorization; Authelia reads the header as *its own*
+credential, does not find `tvhadmin` in its user database, and returns 401.
+The browser re-prompts forever.
+
+Worth recording because it generalises: **any backend whose own auth uses the
+`Authorization` header is incompatible with a forward-auth middleware on the
+same router.** The *arr apps do not hit this because they use form/cookie
+auth with an API-key header; Tvheadend is the first HTTP-auth backend in this
+fleet.
+
+**Resolved by lgo, 2026-08-27: Authelia is the auth boundary, Tvheadend runs
+`--noacl`.** So the prompt's **superuser credential and its clan var are
+gone** (the var was generated, then removed as orphaned), and so is its
+**streaming-only Jellyfin user** — Jellyfin needs no credential in its M3U or
+XMLTV URLs. What guards the port instead is the container firewall, which
+admits exactly two sources: Traefik (behind two-factor) and Jellyfin. **That
+firewall is now the only thing between the LAN and an unauthenticated admin
+UI, so widening it means revisiting this decision.** Two coherent
+alternatives are recorded in the file header for whoever does.
+
+Also worth knowing for the next hand-rolled unit: the superuser file format
+*was* correct all along, and three separate hypotheses (wrong path, wrong
+JSON keys, plaintext-vs-`password2` obfuscation) were each disproved by
+measurement before the actual cause surfaced — the decisive test was
+`curl -u` versus `curl --digest` against the binary, which returned 401 and
+200 respectively.
+
+**The third deploy found a defect in Tvheadend itself, and it needed a
+patch.** Jellyfin's tuner worked immediately — the M3U parsed and all 109
+channels were read — but **the guide was empty and "Map Channels" was
+blank**, with this in Jellyfin's log:
+
+```
+System.Xml.XmlException: Invalid character in the given encoding. Line 72029, position 252.
+   at Jellyfin.XmlTv.XmlTvReader.GetChannels()
+```
+
+Tvheadend serves its guide as `encoding="utf-8"` **without guaranteeing the
+bytes are valid UTF-8**, and .NET's `XmlReader` is strict, so it discards the
+whole document. Measured: **5 bad bytes in 8.9 MB, all from one broadcaster**
+(Bibel TV), whose EIT text carries mangled umlauts — `k<c3><c2>nnen` for
+"können", `F<c3>llen` for "Fällen". **109 channels of guide data lost to five
+bytes.**
+
+**Upstream already tries to handle this** (`htsbuf.c`, issue #5909): it
+validates the UTF-8 *lead* byte and the remaining buffer length. It then
+copies the continuation bytes unchecked, directly beneath a comment saying so
+— *"We should probably check each character in the range is also valid."*
+`0xc3` announces a two-byte sequence and `0xc2` is not a continuation byte, so
+that exact gap is what lets this through. The patch
+(`pkgs/tvheadend-xmltv-utf8.patch`) closes it: continuation bytes must be
+`10xxxxxx`, and a lead byte with a bogus continuation is replaced by a space
+— the same treatment the function already gives a wholly invalid lead byte.
+It is upstream-shaped and should be offered upstream rather than carried
+forever; re-check on every rev bump.
+
+**Verified by A/B against the real byte sequences**, since the EPG lives in
+memory (`epgdb.v3` was 79 bytes) and could not be replayed from a state copy.
+Unpatched, both real sequences emit invalid UTF-8; patched, both become
+valid, while correctly-encoded 2-byte umlauts, a 3-byte €, a 4-byte emoji,
+XML escaping and end-truncated sequences are all byte-identical.
+
+**AND THE PATCH ALONE DID NOT FIX IT — JELLYFIN CACHES THE XMLTV FILE.**
+After the deploy the live guide was provably clean (0 invalid bytes, strict
+XML parse OK, 109 channels / 15,448 programmes), yet Jellyfin kept throwing
+*the identical exception at the identical byte offset*, and "Refresh Guide
+Data" did not help. The giveaway was that the offset never moved: it was
+re-parsing a 9.3 MB copy at
+`/var/cache/jellyfin/xmltv/<hash>.xml`, downloaded before the fix and
+confirmed to still contain the bad bytes. Deleting that one file and
+refreshing again pulled a clean copy and the error stopped.
+
+So the operational rule, which applies to **any** future change to what
+Tvheadend serves: **fixing the source is only half — clear Jellyfin's XMLTV
+cache too.** Note `/var/cache/jellyfin` is a tmpfs here (see
+`containers/jellyfin.nix`), so restarting the Jellyfin container clears it as
+a side effect; deleting the single file is the surgical version and does not
+interrupt playback.
+
+**PLAYBACK WORKS, 2026-08-27 — and the transcode watch-item resolved the
+best way it could.** The prompt asked to verify whether SD MPEG-2 falls back
+to software decode on the Granite Ridge iGPU. On the path measured, **nothing
+decodes at all**: Jellyfin served the stream as **DirectStream with
+`-codec:v:0 copy`**. Tvheadend hands over a passthrough remux
+(`profile=pass`), Jellyfin copies the video elementary stream, and the iGPU
+is never involved — so the VAAPI question is moot for any client that can
+handle the broadcast codec natively. It only becomes live again for a client
+that cannot, and that is where the MPEG-2 question should be re-asked.
+
+**THE TV CLIENT DOES NOT PLAY LIVE TV, and that is being left alone
+deliberately (lgo, 2026-08-27).** The browser client works; the Jellyfin app
+on the television does not. It is **not** being chased, because the couch
+path for this household is **ernst's own HDMI output** — the `htpc` role,
+which is a real Plasma/gamescope session on the TV with a local media client
+(see `modules/roles/htpc.nix`). A smart-TV app talking to Jellyfin over the
+IoT VLAN was never the intended living-room route; it was in the test plan
+because the plan was written before the HTPC role's relevance here was
+obvious.
+
+So the M8 test-plan line *"a channel plays end-to-end on a real client (TV on
+the IoT VLAN, not just a browser)"* is **deferred, not passed**. What
+replaces it is playing a channel from the couch client ON ernst. Worth
+knowing if it is ever picked up: this is also the case where the transcode
+question comes back, since a client that cannot direct-stream is exactly what
+would exercise VAAPI — the browser path measured above never decodes
+anything.
+
+**One thing to let settle rather than fix.** Of 37 muxes, **15 are currently
+marked `scan_result: 2` (failed)** and several EPG subscriptions sit in state
+`Bad` with zero bytes. That reads like dead muxes and **is probably not**:
+394 MHz is among the "failed" ones, and Phase 0 measured that exact frequency
+locking cleanly (quality 14, real payload) — and BILD HD, which lives on it,
+is one of the mapped channels. The likelier explanation is **tuner
+starvation**: four tuners, 37 muxes, and an initial EPG sweep that occupies
+all four at once, so scans that cannot get a frontend time out and are
+recorded as failures. It is not blocking, because live viewing at weight 100
+preempts EPG grabs at weight 4 — which is exactly the mechanism the tuner
+ceiling section describes, working. **Do not delete muxes on this evidence**;
+re-check the scan results once the first full EPG sweep has finished, and
+only then disable whatever is genuinely absent.
+
+Two DNS notes from the same deploy, neither a code defect: `tvheadend` had to
+be created in Technitium as its **own primary zone** (`tvheadend.goclan.org`
+with an `@` A record → `10.0.90.12`), which is how every other `*.goclan.org`
+override on this resolver is shaped — the parent zone is Cloudflare's, so a
+name that is not locally authoritative returns NXDOMAIN from upstream. And
+the first wrong attempt was cached by systemd-resolved on the client, so
+`resolvectl flush-caches` was needed after fixing it.
+
+**Manual steps that remain lgo's** (also in the PR body): DHCP reservation
+`02:00:00:90:00:0a` → `10.0.90.18` on the UDM-Pro (inside the pool!);
+Technitium record for `tvheadend` (**as its own primary zone**);
+`clan machines update ernst`; then the in-UI checklist — SAT>IP network on
+the discovered server, mux scan, channel mapping, EIT grabber on, and
+Jellyfin's Live TV wiring (M3U tuner + XMLTV guide from
+`http://10.0.90.18:9981`, DVR path to the recordings library). **No `clan
+vars generate` step and no Tvheadend user creation** — both died with the
+auth finding above.
+
+**Two more checklist items were wrong and are corrected here.** *"Set the
+SAT>IP network's max input streams to 4"* — **there is no such setting**, and
+the instruction misread how the SAT>IP client works. The ceiling is the
+number of frontends Tvheadend creates, which comes from the device's "Tuner
+configuration" (`tunercfgu`), left at **Auto**: it reads `X_SATIPCAP` from
+`satipdesc.xml` (`DVBC-4`) and creates exactly four. Auto beats pinning
+`DVBC-4` by hand — if Vodafone's firmware changes the tuner count, Auto
+follows and a hand-pinned value silently would not. Contention is resolved by
+**subscription weight** (EPG grab 4, live viewing 100), so a live tune
+preempts an EPG grab rather than failing, which is why the initial EPG scan
+saturating all four tuners is fine. The same auto-detection also got the
+transport right unprompted: `tcp_mode: false` on disk, matching Phase 0's
+measured 461.
+
+**Configured and verified on ernst 2026-08-27**: four tuners under "GoFRITZ -
+192.168.178.1", 116 services found, **109 channels mapped** (7 ignored, 0
+failed), EIT grabber enabled, and — the flow that actually matters — from
+**inside the Jellyfin container**, `playlist/channels.m3u` returns 200 with
+109 channels and `xmltv/channels` returns 200 with **15,552 programmes**.
+Stream URLs carry `profile=pass`, i.e. Tvheadend remuxes and never
+transcodes, which is what shape (ii) requires.
 
 ````text
 Read CLAUDE.md fully before doing anything.

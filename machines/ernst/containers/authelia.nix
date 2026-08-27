@@ -359,6 +359,12 @@ let
     "bazarr.${baseDomain}"
     "cleanuparr.${baseDomain}"
     "mediathekarr.${baseDomain}"
+
+    # M8.  Tvheadend's web UI — admin-facing, browser-only, no client that a
+    # redirect could break (the household watches Live TV through Jellyfin,
+    # which stays exempt).  Must stay in step with the tvheadend router in
+    # containers/traefik.nix, same as every name above.
+    "tvheadend.${baseDomain}"
   ];
 
   ############################################################################
