@@ -435,6 +435,44 @@ in
           #     when refused, but a hardening flag whose observable effect
           #     is "EPG regexes got slower" is the kind that never gets
           #     re-evaluated.  Left off, stated here.
+          #
+          # ── @chown IS ADDED BACK, AND THE FIRST DEPLOY IS WHY ─────────
+          #
+          #   `@system-service ~@privileged` alone makes this service
+          #   CRASH-LOOP AT STARTUP: SIGSYS, status=31/SYS, core dumped,
+          #   nothing in Tvheadend's own log because it never gets far
+          #   enough to open one.  Measured on ernst 2026-08-27, and the
+          #   only visible symptom through the front door was Traefik
+          #   answering 502 Bad Gateway.
+          #
+          #   The syscall is `chown`, which is a member of BOTH
+          #   @system-service (via @chown) and @privileged — so subtracting
+          #   @privileged takes it away.  Tvheadend calls it on its lock
+          #   file at startup, as `chown(path, -1, -1)`: a NO-OP that
+          #   changes neither owner nor group and needs no capability at
+          #   all.  seccomp filters on the syscall NUMBER, not on
+          #   arguments, so a call that could not possibly do anything
+          #   privileged still gets the process killed.
+          #
+          #   Adding it back costs nothing real here: the unit runs as an
+          #   unprivileged uid with CapabilityBoundingSet="" and
+          #   NoNewPrivileges, and without CAP_CHOWN the kernel refuses any
+          #   chown that would actually change an owner.  The syscall is
+          #   permitted; the operation is still impossible.
+          #
+          #   ORDER MATTERS AND IT IS LOAD-BEARING.  systemd applies these
+          #   lines in sequence — allow @system-service, subtract
+          #   @privileged, then add @chown back — so @chown must come
+          #   AFTER the ~@privileged line.  Verified empirically under a
+          #   real seccomp filter rather than read off the manual:
+          #   `systemd-run --user` with these three lines starts and serves
+          #   HTTP, with only the first two it dies on SIGSYS.
+          #
+          #   GENERAL LESSON, worth propagating the way M13's
+          #   RuntimeDirectoryUser finding was: `systemd-analyze security`
+          #   scores this unit BETTER with the crashing filter, because it
+          #   rates directives, not whether the process survives them.  Run
+          #   the service, not just the analyzer.
           NoNewPrivileges        = true;
           ProtectSystem          = "strict";
           ReadWritePaths         = [ "/var/lib/tvheadend" ];
@@ -452,7 +490,7 @@ in
           RemoveIPC              = true;
           LockPersonality        = true;
           CapabilityBoundingSet  = "";
-          SystemCallFilter       = [ "@system-service" "~@privileged" ];
+          SystemCallFilter       = [ "@system-service" "~@privileged" "@chown" ];
           UMask                  = "0077";
         };
       };

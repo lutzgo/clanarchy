@@ -3003,6 +3003,38 @@ to shape (i) is a new argument, not a config flip. HTSP (9982) is bound but
 opened to nobody; 9981 is reachable only from Traefik
 (`tvheadend.goclan.org`, behind `authelia`) and Jellyfin.
 
+**First deploy (2026-08-27) found one real defect, and it is a hardening
+trap worth propagating.** The service crash-looped on **SIGSYS**
+(`status=31/SYS`, core dumped, nothing in Tvheadend's own log — it never got
+far enough to open one), and the only symptom through the front door was
+Traefik answering **502 Bad Gateway**. The cause: `SystemCallFilter =
+[ "@system-service" "~@privileged" ]` removes **`chown`**, which is a member
+of *both* sets — and Tvheadend calls `chown(lockfile, -1, -1)` at startup, a
+**no-op** that changes neither owner nor group. seccomp filters on the
+syscall number, not its arguments, so a call that could not possibly do
+anything privileged still killed the process. Fixed by appending `"@chown"`
+**after** the `~@privileged` line (order is load-bearing: systemd applies the
+lines in sequence). Adding it back costs nothing real — the unit runs
+unprivileged with `CapabilityBoundingSet=""`, so without `CAP_CHOWN` the
+kernel refuses any chown that would actually change an owner; the syscall is
+permitted, the operation stays impossible.
+
+**The general lesson, and it is the sibling of M13's `RuntimeDirectoryUser`
+finding**: `systemd-analyze security` scores the unit *better* with the
+crashing filter, because it rates directives rather than whether the process
+survives them. The A/B that actually settled it was `systemd-run --user` with
+the three filter lines against the real binary — it starts and serves
+`/playlist/channels.m3u` (200); with only the first two it dies instantly.
+**Run the service under the filter, not just the analyzer over it.**
+
+Two DNS notes from the same deploy, neither a code defect: `tvheadend` had to
+be created in Technitium as its **own primary zone** (`tvheadend.goclan.org`
+with an `@` A record → `10.0.90.12`), which is how every other `*.goclan.org`
+override on this resolver is shaped — the parent zone is Cloudflare's, so a
+name that is not locally authoritative returns NXDOMAIN from upstream. And
+the first wrong attempt was cached by systemd-resolved on the client, so
+`resolvectl flush-caches` was needed after fixing it.
+
 **Manual steps that remain lgo's** (also in the PR body): DHCP reservation
 `02:00:00:90:00:0a` → `10.0.90.18` on the UDM-Pro (inside the pool!);
 Technitium record for `tvheadend`; `clan vars generate ernst` (superuser
