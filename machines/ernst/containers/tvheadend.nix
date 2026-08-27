@@ -83,11 +83,30 @@
 #     - EPG grabbing (the OTA EIT grabber periodically tunes muxes),
 #     - anything the FRITZ!Box itself does with its tuners (FRITZ!App TV),
 #     - every concurrent live stream and every DVR recording.
-#   Set the SAT>IP network's "Max input streams" to 4 in the UI (see the PR
-#   checklist).  Headroom decision: live viewing wins; recordings are shape
-#   (ii) (Jellyfin DVR) and a failed recording shows up in Jellyfin's
-#   activity log.  A fifth concurrent tune fails cleanly at the RTSP layer
-#   (the box refuses the SETUP; Tvheadend reports "no free adapter").
+#   THERE IS NO "MAX INPUT STREAMS" SETTING TO SET, and the M8 prompt's
+#   instruction to set one was based on a wrong model of the SAT>IP client.
+#   The ceiling is not a limit applied to a network — it is the NUMBER OF
+#   FRONTENDS Tvheadend creates, which comes from the SAT>IP device's "Tuner
+#   configuration" (`tunercfgu`).  That is left at **"Auto"**, which reads
+#   X_SATIPCAP from satipdesc.xml — `DVBC-4` here — and creates exactly four
+#   DVB-C frontends.  Verified on the running instance 2026-08-27: four
+#   tuners under "GoFRITZ - 192.168.178.1", and `tunercfgu: "Auto"` on disk.
+#   Auto is preferable to pinning `DVBC-4` by hand: if Vodafone's firmware
+#   ever changes the tuner count, Auto follows it and a hand-pinned value
+#   silently would not.
+#
+#   Contention is resolved by SUBSCRIPTION WEIGHT, not by a cap: the EPG
+#   grabber subscribes at weight 4 and live viewing at 100, so a live tune
+#   PREEMPTS an EPG grab rather than failing.  That is why the initial EPG
+#   scan happily saturates all four tuners and is not a problem.  Headroom
+#   decision: live viewing wins; recordings are shape (ii) (Jellyfin DVR) and
+#   a failed recording shows up in Jellyfin's activity log.  A fifth
+#   concurrent tune fails cleanly at the RTSP layer (the box refuses the
+#   SETUP; Tvheadend reports "no free adapter").
+#
+#   The same auto-detection got the transport right without being told:
+#   `tcp_mode: false` on disk, matching Phase 0's measured 461 rejection of
+#   interleaved TCP.
 #
 # ── SHAPE (ii): TVHEADEND SHARES TUNERS, JELLYFIN RECORDS ───────────────────
 #

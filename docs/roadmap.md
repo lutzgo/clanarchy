@@ -3081,11 +3081,33 @@ the first wrong attempt was cached by systemd-resolved on the client, so
 `02:00:00:90:00:0a` → `10.0.90.18` on the UDM-Pro (inside the pool!);
 Technitium record for `tvheadend` (**as its own primary zone**);
 `clan machines update ernst`; then the in-UI checklist — SAT>IP network on
-the discovered server with **max input streams 4**, mux scan, channel
-mapping, EIT grabber on, and Jellyfin's Live TV wiring (M3U tuner +
-XMLTV guide from `http://10.0.90.18:9981`, DVR path to the recordings
-library). **No `clan vars generate` step and no Tvheadend user creation** —
-both died with the auth finding above.
+the discovered server, mux scan, channel mapping, EIT grabber on, and
+Jellyfin's Live TV wiring (M3U tuner + XMLTV guide from
+`http://10.0.90.18:9981`, DVR path to the recordings library). **No `clan
+vars generate` step and no Tvheadend user creation** — both died with the
+auth finding above.
+
+**Two more checklist items were wrong and are corrected here.** *"Set the
+SAT>IP network's max input streams to 4"* — **there is no such setting**, and
+the instruction misread how the SAT>IP client works. The ceiling is the
+number of frontends Tvheadend creates, which comes from the device's "Tuner
+configuration" (`tunercfgu`), left at **Auto**: it reads `X_SATIPCAP` from
+`satipdesc.xml` (`DVBC-4`) and creates exactly four. Auto beats pinning
+`DVBC-4` by hand — if Vodafone's firmware changes the tuner count, Auto
+follows and a hand-pinned value silently would not. Contention is resolved by
+**subscription weight** (EPG grab 4, live viewing 100), so a live tune
+preempts an EPG grab rather than failing, which is why the initial EPG scan
+saturating all four tuners is fine. The same auto-detection also got the
+transport right unprompted: `tcp_mode: false` on disk, matching Phase 0's
+measured 461.
+
+**Configured and verified on ernst 2026-08-27**: four tuners under "GoFRITZ -
+192.168.178.1", 116 services found, **109 channels mapped** (7 ignored, 0
+failed), EIT grabber enabled, and — the flow that actually matters — from
+**inside the Jellyfin container**, `playlist/channels.m3u` returns 200 with
+109 channels and `xmltv/channels` returns 200 with **15,552 programmes**.
+Stream URLs carry `profile=pass`, i.e. Tvheadend remuxes and never
+transcodes, which is what shape (ii) requires.
 
 ````text
 Read CLAUDE.md fully before doing anything.
