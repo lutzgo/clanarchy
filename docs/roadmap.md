@@ -3027,6 +3027,48 @@ the three filter lines against the real binary — it starts and serves
 `/playlist/channels.m3u` (200); with only the first two it dies instantly.
 **Run the service under the filter, not just the analyzer over it.**
 
+**The second deploy found something structural, and it killed two items the
+prompt asked for.** `tvheadend.goclan.org` reached Tvheadend's own login box
+and then rejected every attempt — which looks exactly like a wrong password
+and is not one. **Tvheadend's own HTTP auth cannot coexist with Authelia
+forward-auth**: both use the `Authorization` header. Measured through the
+real chain:
+
+| request | result |
+|---|---|
+| no `Authorization` header | **302** — Authelia redirect, normal |
+| *any* `Authorization` header | **401 — from Authelia**, before Tvheadend is reached |
+
+Tvheadend challenges with **Digest only** (no Basic at all — verified against
+the built binary: `WWW-Authenticate: Digest realm="tvheadend", qop=auth, …`).
+The browser answers in `Authorization`; Traefik hands that request to
+Authelia for authorization; Authelia reads the header as *its own*
+credential, does not find `tvhadmin` in its user database, and returns 401.
+The browser re-prompts forever.
+
+Worth recording because it generalises: **any backend whose own auth uses the
+`Authorization` header is incompatible with a forward-auth middleware on the
+same router.** The *arr apps do not hit this because they use form/cookie
+auth with an API-key header; Tvheadend is the first HTTP-auth backend in this
+fleet.
+
+**Resolved by lgo, 2026-08-27: Authelia is the auth boundary, Tvheadend runs
+`--noacl`.** So the prompt's **superuser credential and its clan var are
+gone** (the var was generated, then removed as orphaned), and so is its
+**streaming-only Jellyfin user** — Jellyfin needs no credential in its M3U or
+XMLTV URLs. What guards the port instead is the container firewall, which
+admits exactly two sources: Traefik (behind two-factor) and Jellyfin. **That
+firewall is now the only thing between the LAN and an unauthenticated admin
+UI, so widening it means revisiting this decision.** Two coherent
+alternatives are recorded in the file header for whoever does.
+
+Also worth knowing for the next hand-rolled unit: the superuser file format
+*was* correct all along, and three separate hypotheses (wrong path, wrong
+JSON keys, plaintext-vs-`password2` obfuscation) were each disproved by
+measurement before the actual cause surfaced — the decisive test was
+`curl -u` versus `curl --digest` against the binary, which returned 401 and
+200 respectively.
+
 Two DNS notes from the same deploy, neither a code defect: `tvheadend` had to
 be created in Technitium as its **own primary zone** (`tvheadend.goclan.org`
 with an `@` A record → `10.0.90.12`), which is how every other `*.goclan.org`
@@ -3037,13 +3079,13 @@ the first wrong attempt was cached by systemd-resolved on the client, so
 
 **Manual steps that remain lgo's** (also in the PR body): DHCP reservation
 `02:00:00:90:00:0a` → `10.0.90.18` on the UDM-Pro (inside the pool!);
-Technitium record for `tvheadend`; `clan vars generate ernst` (superuser
-credential — generated, not prompted); `clan machines update ernst`; then the
-in-UI checklist — SAT>IP network on the discovered server with **max input
-streams 4**, mux scan, channel mapping, EIT grabber on, a streaming-only
-Tvheadend user for Jellyfin, and Jellyfin's Live TV wiring (M3U tuner +
+Technitium record for `tvheadend` (**as its own primary zone**);
+`clan machines update ernst`; then the in-UI checklist — SAT>IP network on
+the discovered server with **max input streams 4**, mux scan, channel
+mapping, EIT grabber on, and Jellyfin's Live TV wiring (M3U tuner +
 XMLTV guide from `http://10.0.90.18:9981`, DVR path to the recordings
-library).
+library). **No `clan vars generate` step and no Tvheadend user creation** —
+both died with the auth finding above.
 
 ````text
 Read CLAUDE.md fully before doing anything.

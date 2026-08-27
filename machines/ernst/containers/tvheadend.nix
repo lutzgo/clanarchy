@@ -113,6 +113,51 @@
 #   The Jellyfin-side recordings directory (/srv/media/library/recordings,
 #   bound RW into the jellyfin container) is declared in jellyfin.nix.
 #
+# ── AUTHENTICATION: NONE HERE, AUTHELIA OWNS IT (--noacl) ───────────────────
+#
+#   THE M8 PROMPT ASKED FOR A TVHEADEND SUPERUSER AND A SEPARATE
+#   STREAMING-ONLY USER FOR JELLYFIN.  Both are gone, and the first deploy is
+#   why: Tvheadend's own HTTP auth CANNOT COEXIST with Authelia forward-auth,
+#   because the two contend for the same header.
+#
+#   Measured through the real chain on 2026-08-27:
+#
+#     no Authorization header          -> 302  (Authelia redirect, normal)
+#     ANY Authorization header         -> 401  (from AUTHELIA, not Tvheadend)
+#
+#   Tvheadend challenges with **Digest only** — it offers no Basic at all
+#   (`WWW-Authenticate: Digest realm="tvheadend", qop=auth, …`, verified
+#   against the built binary).  The browser answers in the `Authorization`
+#   header; Traefik's forwardAuth hands that request to Authelia, which
+#   treats the header as ITS OWN credential, fails to find `tvhadmin` in its
+#   user database, and returns 401 before the request ever reaches this
+#   container.  The browser re-prompts, forever.  The observable symptom is a
+#   login box that reappears after every attempt — which looks exactly like a
+#   wrong password and is not one.
+#
+#   So the choice was never "which credential" but "which layer authenticates".
+#   lgo chose Authelia, 2026-08-27.  Consequences, stated plainly:
+#
+#     - Anyone who clears Authelia reaches Tvheadend AS ADMIN.  Today that is
+#       `lgo` and `go`, both already in Authelia's `admins` group, so no
+#       privilege is actually widened.
+#     - 9981 is NOT a public port.  The container firewall below admits
+#       exactly two sources — Traefik (10.0.90.12, behind two-factor) and
+#       Jellyfin (10.0.90.10) — and nothing else on VLAN 90, let alone off it.
+#       That firewall is now the ONLY thing standing between the LAN and an
+#       unauthenticated admin UI, so DO NOT WIDEN IT without revisiting this
+#       decision.
+#     - Jellyfin needs no credential in its M3U/XMLTV URLs, which is the
+#       second half of what the prompt's "streaming-only user" was for.
+#
+#   IF THIS EVER NEEDS REVISITING, the two coherent alternatives are: drop the
+#   `authelia` middleware from the tvheadend router in containers/traefik.nix
+#   and let Tvheadend's digest auth be the gate (loses 2FA and the portal); or
+#   keep both and give Traefik's address an anonymous full-rights ACCESS ENTRY
+#   inside Tvheadend so no Authorization header is ever needed (defence in
+#   depth, but that entry is hand-made UI state that a lost state dir takes
+#   with it).  Neither is better by inspection — they trade different things.
+#
 # ── STORAGE ─────────────────────────────────────────────────────────────────
 #
 #   /srv/state/tvheadend (zdata) → /var/lib/tvheadend in the container, the
@@ -212,7 +257,16 @@ in
   services.avahi.denyInterfaces = [ "br-fritz" "enp12s0" "fritz0" ];
 
   ##############################################################################
-  # Host side 2 — the Services-VLAN veth, state dir, superuser var.
+  # Host side 2 — the Services-VLAN veth and the state dir.
+  #
+  # THERE IS NO CREDENTIAL HERE, AND THAT IS A DECISION — see "AUTHENTICATION"
+  # in the file header.  An earlier revision of this file generated a
+  # Tvheadend superuser as a clan var and staged it into the state dir; it
+  # was removed once the first deploy proved Tvheadend's own HTTP auth cannot
+  # coexist with Authelia forward-auth.  If that var is still in
+  # vars/per-machine/ernst/tvheadend-superuser/ it is orphaned, and the file
+  # staged at /srv/state/tvheadend/superuser by that revision is inert — both
+  # can be deleted.
   ##############################################################################
 
   # State dir on zdata.  Numeric ids: the tvheadend user exists only inside
@@ -220,53 +274,6 @@ in
   systemd.tmpfiles.rules = [
     "d /srv/state/tvheadend 0700 ${toString tvheadendUid} ${toString tvheadendGid} -"
   ];
-
-  # Superuser credentials — generated, not prompted: nothing outside this
-  # repo knows them, so there is nothing for an operator to type.  Tvheadend
-  # loads the file `superuser` from its config dir at startup
-  # (hts_settings_load("superuser"), src/access.c) and treats that account as
-  # authoritative regardless of the UI-managed ACL tree.  This is the
-  # M4-configuration-policy escape hatch: the ACL/user database is UI state,
-  # but the credential that BOOTSTRAPS it comes from a var, so a wiped state
-  # dir never means a locked-out or wide-open UI.
-  clan.core.vars.generators.tvheadend-superuser = {
-    files."superuser.json".secret = true;
-    runtimeInputs = [ pkgs.coreutils pkgs.openssl ];
-    script = ''
-      printf '{"username":"tvhadmin","password":"%s"}\n' \
-        "$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)" \
-        > "$out/superuser.json"
-    '';
-  };
-
-  # Stage it into the state dir before the container starts.  Same shape as
-  # janitorr-secrets: wantedBy, deliberately NOT requiredBy — if the var has
-  # not been generated yet this unit fails, the container still starts, and
-  # Tvheadend runs with its stock first-run ACL.  That is acceptable here
-  # because the only sources that can reach the UI at all are Traefik (behind
-  # Authelia) and Jellyfin; it is still listed as a manual step because the
-  # superuser is what makes the in-UI configuration rebuildable.
-  #
-  # Rotation, as with janitorr-secrets, needs a restart, not just a deploy:
-  #     systemctl restart tvheadend-superuser container@tvheadend
-  systemd.services.tvheadend-superuser = {
-    description = "Stage Tvheadend's superuser credentials for container@tvheadend";
-    after       = [ "local-fs.target" ];
-    before      = [ "container@tvheadend.service" ];
-    wantedBy    = [ "container@tvheadend.service" ];
-    serviceConfig = {
-      Type            = "oneshot";
-      RemainAfterExit = true;
-    };
-    script = ''
-      ${pkgs.coreutils}/bin/install -d -m 0700 \
-        -o ${toString tvheadendUid} -g ${toString tvheadendGid} /srv/state/tvheadend
-      ${pkgs.coreutils}/bin/install -m 0400 \
-        -o ${toString tvheadendUid} -g ${toString tvheadendGid} \
-        ${config.clan.core.vars.generators.tvheadend-superuser.files."superuser.json".path} \
-        /srv/state/tvheadend/superuser
-    '';
-  };
 
   # Host side of the VLAN-90 veth — identical rationale to vb-jellyfin /
   # vb-arr, see jellyfin.nix's "Host-side wiring" for the long form.
@@ -420,6 +427,11 @@ in
             "--htsp_port ${toString htspPort}"
             "--satip_xml http://${fritzAddr}:49000/satipdesc.xml"
             "--nobackup"
+            # --noacl: Tvheadend performs NO authentication of its own.
+            # Authelia is the auth boundary.  This is load-bearing, not a
+            # convenience — see "AUTHENTICATION" in the file header for the
+            # measurement that forced it and what guards the port instead.
+            "--noacl"
           ];
           User  = "tvheadend";
           Group = "tvheadend";
