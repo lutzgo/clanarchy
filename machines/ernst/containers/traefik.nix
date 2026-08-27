@@ -270,6 +270,13 @@ let
   tvheadendAddr = "10.0.90.18";
   tvheadendPort = 9981;
 
+  # M9.  TubeSync, the first occupant of the PODMAN tier, on its own address.
+  # Not in the arr container: it is a podman workload whose network namespace
+  # is built by hand (see containers/tubesync.nix), which has nothing to do
+  # with how the arr container is put together.
+  tubesyncAddr = "10.0.90.19";
+  tubesyncPort = 4848;
+
   # M6.  Traefik's own Prometheus metrics, on a SEPARATE entryPoint from the
   # one that serves traffic.  Its own port rather than a route on :443 because
   # a route would be reachable by anything the consumer-zone ZBF rule already
@@ -1009,6 +1016,23 @@ in
               service     = "tvheadend";
             };
 
+            # ── TubeSync (M9): admin route, behind Authelia ────────────────
+            #
+            # Browser-only and admin-facing, so the *arr treatment applies and
+            # the Jellyfin carve-out does not — there is no TV or mobile
+            # client here that a forward-auth redirect could break.
+            #
+            # containers/tubesync.nix explains why its own HTTP_USER/HTTP_PASS
+            # basic auth is NOT used as a second layer: it would answer in the
+            # `Authorization` header, which Authelia consumes as its own
+            # credential and rejects.  M8 paid for that lesson with Tvheadend.
+            tubesync = {
+              rule        = "Host(`tubesync.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "tubesync";
+            };
+
             # ── Jellyseerr (M13): the HOUSEHOLD route, and the exception ───
             #
             # NO MIDDLEWARE, and that is the whole point of this router.
@@ -1149,6 +1173,9 @@ in
 
             # M8 — its own container on .18.
             tvheadend.loadBalancer.servers    = [ { url = "http://${tvheadendAddr}:${toString tvheadendPort}/"; } ];
+
+            # M9 — its own address, in a podman netns on VLAN 90.
+            tubesync.loadBalancer.servers     = [ { url = "http://${tubesyncAddr}:${toString tubesyncPort}/"; } ];
             grafana.loadBalancer.servers  = [ { url = "http://${monitoringAddr}:${toString grafanaPort}/"; } ];
 
             # M7.  The same address the forwardAuth middleware above calls,
