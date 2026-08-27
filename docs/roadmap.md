@@ -3131,6 +3131,24 @@ is never involved — so the VAAPI question is moot for any client that can
 handle the broadcast codec natively. It only becomes live again for a client
 that cannot, and that is where the MPEG-2 question should be re-asked.
 
+**THE TV CLIENT DOES NOT PLAY LIVE TV, and that is being left alone
+deliberately (lgo, 2026-08-27).** The browser client works; the Jellyfin app
+on the television does not. It is **not** being chased, because the couch
+path for this household is **ernst's own HDMI output** — the `htpc` role,
+which is a real Plasma/gamescope session on the TV with a local media client
+(see `modules/roles/htpc.nix`). A smart-TV app talking to Jellyfin over the
+IoT VLAN was never the intended living-room route; it was in the test plan
+because the plan was written before the HTPC role's relevance here was
+obvious.
+
+So the M8 test-plan line *"a channel plays end-to-end on a real client (TV on
+the IoT VLAN, not just a browser)"* is **deferred, not passed**. What
+replaces it is playing a channel from the couch client ON ernst. Worth
+knowing if it is ever picked up: this is also the case where the transcode
+question comes back, since a client that cannot direct-stream is exactly what
+would exercise VAAPI — the browser path measured above never decodes
+anything.
+
 **One thing to let settle rather than fix.** Of 37 muxes, **15 are currently
 marked `scan_result: 2` (failed)** and several EPG subscriptions sit in state
 `Bad` with zero bytes. That reads like dead muxes and **is probably not**:
