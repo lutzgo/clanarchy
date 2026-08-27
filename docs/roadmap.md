@@ -3104,6 +3104,23 @@ Unpatched, both real sequences emit invalid UTF-8; patched, both become
 valid, while correctly-encoded 2-byte umlauts, a 3-byte €, a 4-byte emoji,
 XML escaping and end-truncated sequences are all byte-identical.
 
+**AND THE PATCH ALONE DID NOT FIX IT — JELLYFIN CACHES THE XMLTV FILE.**
+After the deploy the live guide was provably clean (0 invalid bytes, strict
+XML parse OK, 109 channels / 15,448 programmes), yet Jellyfin kept throwing
+*the identical exception at the identical byte offset*, and "Refresh Guide
+Data" did not help. The giveaway was that the offset never moved: it was
+re-parsing a 9.3 MB copy at
+`/var/cache/jellyfin/xmltv/<hash>.xml`, downloaded before the fix and
+confirmed to still contain the bad bytes. Deleting that one file and
+refreshing again pulled a clean copy and the error stopped.
+
+So the operational rule, which applies to **any** future change to what
+Tvheadend serves: **fixing the source is only half — clear Jellyfin's XMLTV
+cache too.** Note `/var/cache/jellyfin` is a tmpfs here (see
+`containers/jellyfin.nix`), so restarting the Jellyfin container clears it as
+a side effect; deleting the single file is the surgical version and does not
+interrupt playback.
+
 Two DNS notes from the same deploy, neither a code defect: `tvheadend` had to
 be created in Technitium as its **own primary zone** (`tvheadend.goclan.org`
 with an `@` A record → `10.0.90.12`), which is how every other `*.goclan.org`
