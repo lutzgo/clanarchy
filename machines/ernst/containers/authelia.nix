@@ -365,6 +365,12 @@ let
     # which stays exempt).  Must stay in step with the tvheadend router in
     # containers/traefik.nix, same as every name above.
     "tvheadend.${baseDomain}"
+    # M9.  TubeSync's web UI — admin-facing and browser-only, so the same
+    # argument applies.  Note its own HTTP_USER/HTTP_PASS basic auth is
+    # deliberately left UNSET rather than layered underneath this: it would
+    # answer in the `Authorization` header, which this service consumes as its
+    # own credential and rejects.  See containers/tubesync.nix.
+    "tubesync.${baseDomain}"
   ];
 
   ############################################################################

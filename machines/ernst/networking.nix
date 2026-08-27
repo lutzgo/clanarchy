@@ -302,6 +302,15 @@
   #   02:00:00:90:00:06   monitoring container eth0 (M6  — allocated)  10.0.90.14
   #   02:00:00:90:00:07   authelia container eth0   (M7  — allocated)  10.0.90.15
   #   02:00:00:90:00:0a   tvheadend container eth0  (M8  — allocated)  10.0.90.18
+  #   02:00:00:90:00:0b   tubesync netns eth0       (M9  — allocated)  10.0.90.19
+  #
+  # THE TUBESYNC ENTRY IS NOT A CONTAINER veth IN THE NSPAWN SENSE, and it is
+  # the first of its kind here: it is a veth into a BARE NETWORK NAMESPACE that
+  # machines/ernst/containers/tubesync.nix creates, which podman then joins
+  # with `--network=ns:`.  The DHCP reservation still keys on the MAC above,
+  # exactly as it does for every nspawn container — the namespace runs its own
+  # DHCP client because it has no networkd in it.  Pattern C, and that file is
+  # the worked example.
   #
   # TWO CONTAINERS HAVE A SECOND INTERFACE.  The tvheadend container's
   # `fritz0` (M8) is a veth onto `br-fritz`, the two-port bridge that joins
@@ -359,6 +368,16 @@
   #                           Escalating to shape (i) is where media
   #                           membership would come back — with an argument)
   #   gid 3026  tvheadend    (containers/tvheadend.nix — M8)
+  #   uid 3027  tubesync     (containers/tubesync.nix — M9, group media
+  #                           PRIMARY — it writes downloads into the shared
+  #                           media dataset.  NO uid was ever reserved for
+  #                           this service: the reservation block below jumps
+  #                           from M8's 3026 to M14's 3017 group, so 3027 was
+  #                           allocated when M9 landed.  It is a PODMAN
+  #                           workload and the number is still literal on
+  #                           zdata, because the container is rootful and
+  #                           unmapped — see that file's ROOTFUL section for
+  #                           why rootless was rejected)
   #
   #===========================================================================
   # RESERVED — M8 and M12–M16.  Comments only; nothing below is declared yet.
