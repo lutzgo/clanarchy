@@ -3121,6 +3121,30 @@ cache too.** Note `/var/cache/jellyfin` is a tmpfs here (see
 a side effect; deleting the single file is the surgical version and does not
 interrupt playback.
 
+**PLAYBACK WORKS, 2026-08-27 — and the transcode watch-item resolved the
+best way it could.** The prompt asked to verify whether SD MPEG-2 falls back
+to software decode on the Granite Ridge iGPU. On the path measured, **nothing
+decodes at all**: Jellyfin served the stream as **DirectStream with
+`-codec:v:0 copy`**. Tvheadend hands over a passthrough remux
+(`profile=pass`), Jellyfin copies the video elementary stream, and the iGPU
+is never involved — so the VAAPI question is moot for any client that can
+handle the broadcast codec natively. It only becomes live again for a client
+that cannot, and that is where the MPEG-2 question should be re-asked.
+
+**One thing to let settle rather than fix.** Of 37 muxes, **15 are currently
+marked `scan_result: 2` (failed)** and several EPG subscriptions sit in state
+`Bad` with zero bytes. That reads like dead muxes and **is probably not**:
+394 MHz is among the "failed" ones, and Phase 0 measured that exact frequency
+locking cleanly (quality 14, real payload) — and BILD HD, which lives on it,
+is one of the mapped channels. The likelier explanation is **tuner
+starvation**: four tuners, 37 muxes, and an initial EPG sweep that occupies
+all four at once, so scans that cannot get a frontend time out and are
+recorded as failures. It is not blocking, because live viewing at weight 100
+preempts EPG grabs at weight 4 — which is exactly the mechanism the tuner
+ceiling section describes, working. **Do not delete muxes on this evidence**;
+re-check the scan results once the first full EPG sweep has finished, and
+only then disable whatever is genuinely absent.
+
 Two DNS notes from the same deploy, neither a code defect: `tvheadend` had to
 be created in Technitium as its **own primary zone** (`tvheadend.goclan.org`
 with an `@` A record → `10.0.90.12`), which is how every other `*.goclan.org`
