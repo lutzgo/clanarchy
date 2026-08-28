@@ -387,6 +387,45 @@ let
   questarrPort       = 5000;
   audiobookshelfPort = 13378;
   #
+  # ── M14's SYSCALL FILTER.  ONE ENTRY DIFFERENT, AND IT IS LOAD-BEARING ────
+  #
+  # Identical to the list every M12/M13 service above uses, plus `@chown` added
+  # back after `~@privileged` removes it.  Later entries win, so the trailing
+  # `@chown` re-permits chown/fchown/lchown/fchownat.
+  #
+  # ── WHY, MEASURED ON ernst 2026-08-28 ───────────────────────────────────
+  #
+  # Audiobookshelf was killed on startup by the filter, immediately after it
+  # had opened its database:
+  #
+  #   audiobookshelf.service: Main process exited, code=dumped, status=31/SYS
+  #   audit: type=1326 uid=3021 comm="libuv-worker" sig=31 syscall=93
+  #
+  # `status=31/SYS` is SIGSYS — a seccomp kill, not an application error — and
+  # syscall 93 on x86_64 is `fchown`.  systemd's `@privileged` set includes
+  # `@chown`, so `~@privileged` removed it and the service died the first time
+  # Node touched file ownership.
+  #
+  # ── WHY THIS COSTS ALMOST NOTHING ───────────────────────────────────────
+  #
+  # Every unit using this list also sets `CapabilityBoundingSet = ""`, so it
+  # has no CAP_CHOWN — and without CAP_CHOWN the kernel only permits chown to
+  # the caller's OWN uid/gid.  Re-allowing the syscall therefore grants the
+  # ability to set ownership these services already have, and nothing more.
+  #
+  # What blocking it bought was not security but a CRASH: SIGSYS kills the
+  # process outright rather than returning EPERM, so the failure mode is a
+  # service that dies mid-operation instead of one that handles an error.
+  #
+  # ── AND IT IS WHAT UPSTREAM ALREADY DOES ────────────────────────────────
+  #
+  # nixpkgs' sonarr and radarr modules ship a filter that PERMITS chown —
+  # verified by reading the live units on ernst (`systemctl show sonarr -p
+  # SystemCallFilter` lists `chown chown32`, ours did not).  So this brings
+  # M14's services into line with the *arrs that have been running here for
+  # months, rather than inventing a laxer policy.
+  m14SyscallFilter = [ "@system-service" "~@privileged" "~@debug" "~@mount" "@chown" ];
+
   # SOULARR HAS NO PORT, and that is worth stating in the same place as the
   # ones that do.  It is a one-shot script driven by a timer, not a server; its
   # bundled Flask web UI is deliberately not packaged at all (see
@@ -678,6 +717,53 @@ in
     # that survives a restart — a tmpfs would silently disable the interlock.
     # It also keeps `.current_page.txt` and `failed_imports.json` there.
     "d ${stateRoot}/lidarr         0700 ${toString lidarrUid}         ${toString mediaGid}    -"
+
+    # LIDARR'S `.config` PARENT — and this one is not housekeeping, it is what
+    # makes Lidarr able to start at all.
+    #
+    # ── THE DEADLOCK, MEASURED ON ernst 2026-08-28 ─────────────────────────
+    #
+    # The nixpkgs lidarr module ships its OWN tmpfiles rule:
+    #
+    #     d /var/lib/lidarr/.config/Lidarr 0700 lidarr media -
+    #
+    # To honour it, systemd-tmpfiles must first create the intermediate
+    # `.config` — and it creates missing PARENTS as root:root 0755, not as the
+    # rule's owner.  Having done so it then refuses to descend through the
+    # ownership change it just created:
+    #
+    #     Detected unsafe path transition /var/lib/lidarr (owned by lidarr)
+    #     → /var/lib/lidarr/.config (owned by root) during canonicalization
+    #
+    # So the rule leaves behind a root-owned `.config`, never creates `Lidarr`
+    # inside it, and never recovers on a later run — the transition is just as
+    # unsafe next boot.  Lidarr, running as uid 3017, then cannot create its
+    # data directory and dies on startup:
+    #
+    #     System.UnauthorizedAccessException: Access to the path
+    #     '/var/lib/lidarr/.config/Lidarr' is denied.
+    #
+    # The exception surfaces inside Sentry's transport initialisation, which
+    # sends anyone reading the stack trace looking for a network or telemetry
+    # problem.  It is a plain permission error two frames further down.
+    #
+    # ── WHY sonarr DOES NOT HIT THIS ──────────────────────────────────────
+    #
+    # Its `/var/lib/sonarr/.config` is owned by sonarr, created by Sonarr
+    # itself on a much earlier deploy before any such rule existed.  The
+    # deadlock only bites a service whose state directory is EMPTY the first
+    # time tmpfiles runs — i.e. exactly a newly added one, which is why this
+    # was invisible until M14.
+    #
+    # ── THE FIX IS TO PRE-EMPT THE PARENT, NOT TO FIGHT THE MODULE ────────
+    #
+    # Creating `.config` here, owned by lidarr, means there is no ownership
+    # transition for tmpfiles to object to, and the module's own rule then
+    # completes normally on the same run.  This declares a path NOTHING ELSE
+    # declares (the module owns `.config/Lidarr`, this owns `.config`), so it
+    # does not reintroduce the two-declarations-take-turns problem the
+    # MediathekArr note above warns about.
+    "d ${stateRoot}/lidarr/.config 0700 ${toString lidarrUid}         ${toString mediaGid}    -"
     "d ${stateRoot}/soularr        0700 ${toString soularrUid}        ${toString mediaGid}    -"
     "d ${stateRoot}/kapowarr       0700 ${toString kapowarrUid}       ${toString mediaGid}    -"
     "d ${stateRoot}/questarr       0700 ${toString questarrUid}       ${toString questarrGid} -"
@@ -3165,7 +3251,7 @@ in
         RestrictSUIDSGID      = true;
         LockPersonality       = true;
         SystemCallArchitectures = "native";
-        SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+        SystemCallFilter        = m14SyscallFilter;
 
         # AF_INET/AF_INET6 for indexers and MusicBrainz, AF_UNIX for logging.
         RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
@@ -3359,7 +3445,7 @@ in
           RestrictRealtime        = true;
           LockPersonality         = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter        = m14SyscallFilter;
         };
       };
 
@@ -3449,7 +3535,7 @@ in
           # multiprocessing with the default start method plus Popen, and
           # `~@privileged` is fine but a stricter list would block the
           # process-control calls the restart mechanism depends on.
-          SystemCallFilter = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter = m14SyscallFilter;
         };
       };
 
@@ -3528,7 +3614,7 @@ in
           RestrictRealtime        = true;
           LockPersonality         = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter        = m14SyscallFilter;
 
           # NOT MemoryDenyWriteExecute: V8 JITs, exactly like the .NET services
           # above.  Same rejection, different runtime.
@@ -3609,7 +3695,7 @@ in
         RestrictSUIDSGID      = true;
         LockPersonality       = true;
         SystemCallArchitectures = "native";
-        SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+        SystemCallFilter        = m14SyscallFilter;
         RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
 
         ProtectSystem  = "strict";

@@ -145,7 +145,47 @@ let
   # table's 8 + <seq> convention: 10.0.90.20.
   netns    = "storyteller";
   vethHost = "vb-storyteller";
-  vethNs   = "eth0";
+
+  # `st0`, NOT `eth0` — AND THIS IS NOT COSMETIC.
+  #
+  # ── THE COLLISION, MEASURED ON ernst 2026-08-28 ─────────────────────────
+  #
+  # containers/tubesync.nix names its namespace interface `eth0`.  Copying
+  # that here produced a Storyteller namespace with NO IPv4 ADDRESS AT ALL,
+  # and a dhcp unit that reported success:
+  #
+  #   storyteller-dhcp.service: Deactivated successfully.
+  #   dhcpcd[21555]: sending commands to dhcpcd process
+  #
+  # That second line is the whole story.  dhcpcd keys its pidfile and control
+  # socket on the INTERFACE NAME, not on the network namespace:
+  #
+  #   /run/dhcpcd/eth0-4.pid
+  #   /run/dhcpcd/eth0-4.sock
+  #
+  # These units differ only in their NETWORK namespace — `NetworkNamespacePath=`
+  # changes nothing about the mount namespace — so both see the same /run.
+  # TubeSync's dhcpcd starts first and creates `eth0-4.sock`; Storyteller's
+  # then finds it, concludes that dhcpcd is already managing "eth0", hands its
+  # arguments to that instance as a CLIENT, and exits 0.  The lease it asks
+  # for is applied in TubeSync's namespace, where it is a no-op.
+  #
+  # It fails silently in the worst way: the unit succeeds, the container
+  # starts, the veth is up with the right MAC and the right VLAN — and the
+  # service is simply unreachable, which presents as a 502 from Traefik.
+  # `Restart = on-failure` cannot help, because nothing failed.
+  #
+  # ── THE RULE FOR THE NEXT ONE ──────────────────────────────────────────
+  #
+  # EVERY podman-tier namespace must use a UNIQUE interface name.  M9's file
+  # anticipated that its choices should be re-examined "before the SECOND
+  # podman service, not after"; this is the item that re-examination would
+  # have caught.  A third service must not be called `eth0` or `st0` either.
+  #
+  # Nothing else depends on the name: podman joins the namespace rather than
+  # building it, the DHCP reservation keys on the MAC, and the namespace
+  # firewall below matches on `lo` and addresses, never on this interface.
+  vethNs   = "st0";
   mac      = "02:00:00:90:00:0c";
   vlanId   = 90;
 

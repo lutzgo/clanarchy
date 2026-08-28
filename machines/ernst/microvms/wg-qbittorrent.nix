@@ -1790,7 +1790,27 @@ in
           LockPersonality         = true;
           RestrictRealtime        = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+
+          # `@chown` is added back after `~@privileged` removes it, and the
+          # trailing position matters — later entries win.
+          #
+          # MEASURED ELSEWHERE, APPLIED HERE PRE-EMPTIVELY.  On 2026-08-28 the
+          # identical filter killed Audiobookshelf in the arr container the
+          # first time it touched file ownership:
+          #
+          #   status=31/SYS   (SIGSYS — a seccomp kill, not an app error)
+          #   syscall=93      (fchown on x86_64)
+          #
+          # slskd is the other M14 service that WRITES INTO /srv/media, as a
+          # uid whose files Lidarr must then be able to hardlink, so it is in
+          # exactly the same position — and a SIGSYS mid-download is a far
+          # worse failure than the EPERM it would otherwise get.
+          #
+          # It costs essentially nothing: CapabilityBoundingSet is "" above, so
+          # there is no CAP_CHOWN and the kernel only permits chown to this
+          # process's own uid/gid.  nixpkgs' own sonarr and radarr units permit
+          # chown for the same class of workload.
+          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" "@chown" ];
 
           # NOT MemoryDenyWriteExecute.  slskd is .NET and the JIT maps
           # writable-then-executable pages, so it would start and then die on
