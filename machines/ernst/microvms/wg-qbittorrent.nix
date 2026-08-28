@@ -981,16 +981,49 @@ in
     files."slskd.env".secret = true;
     files."api-key".secret   = true;
 
+    # ── THESE THREE PROMPTS ARE TWO DIFFERENT ACCOUNTS ────────────────────
+    #
+    # 1 + 2 are an account on the PUBLIC SOULSEEK NETWORK.
+    # 3 is the local slskd admin panel, whose username is always `slskd`.
+    #
+    # Answering all three as one credential set is the obvious mistake and it
+    # was made on the first deploy (2026-08-28): username `admin`, one password
+    # reused for both. The result is `INVALIDPASS` from the Soulseek server —
+    # see the description text below for why that is unrecoverable rather than
+    # merely wrong.
     prompts."slsk-username" = {
-      description = "Soulseek NETWORK account username (registered at soulseek.org)";
+      description = ''
+        SOULSEEK NETWORK username — ACCOUNT 1 of 2, on the public network.
+
+        There is NO registration page. Soulseek creates the account on the
+        first successful login, so an unclaimed name becomes yours and a name
+        someone else already holds rejects you with INVALIDPASS forever. There
+        is no way to test availability except by connecting.
+
+        So do NOT use `admin`, `slskd`, your first name, or anything short:
+        those are all long since taken. Pick something distinctive.
+      '';
       type        = "line";
     };
     prompts."slsk-password" = {
-      description = "Soulseek NETWORK account password";
+      description = ''
+        SOULSEEK NETWORK password — pairs with the username above.
+
+        USE A PASSWORD YOU USE NOWHERE ELSE, and specifically not the slskd web
+        UI password prompted next. This one is sent to a third-party network
+        over a protocol with weak credential protection; reusing it would mean
+        a leak there also hands over this machine's admin panel.
+      '';
       type        = "hidden";
     };
     prompts."web-password" = {
-      description = "slskd web UI password for user 'slskd'";
+      description = ''
+        slskd WEB UI password — ACCOUNT 2 of 2, purely local to this guest.
+
+        The username for it is always `slskd` (fixed below, not prompted).
+        Nothing outside ernst knows this account exists. Unrelated to the
+        Soulseek credentials above.
+      '';
       type        = "hidden";
     };
 
