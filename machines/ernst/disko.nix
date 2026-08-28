@@ -340,6 +340,56 @@
           };
         };
 
+        # /srv/audiobooks — M14.  Audiobookshelf's library, the ebook halves
+        #   Storyteller consumes, and the synced EPUB3s it produces.
+        #
+        # A SEPARATE DATASET, AND NOT A SUBDIRECTORY OF /srv/media.  The
+        # distinction matters and it is the opposite of invariant #2's
+        # instruction, so it needs its own justification:
+        #
+        #   Invariant #2 says never to create a sub-dataset UNDER /srv/media,
+        #   because a dataset boundary inside the hardlink domain silently
+        #   turns every *arr import into a copy.  This is a SIBLING of
+        #   /srv/media, not a child of it, so it creates no boundary inside
+        #   that domain and cannot cause that failure.
+        #
+        #   Nothing here is ever hardlinked from anywhere.  Audiobookshelf has
+        #   no importer — it scans a directory a human fills — and Storyteller
+        #   READS a pair and WRITES a new file rather than linking either.  So
+        #   there is no chain to break, which is exactly why docs/roadmap.md
+        #   says Audiobookshelf is the one M14 service that does not owe the
+        #   hardlink proof.
+        #
+        # recordsize=1M: audiobooks are large and read sequentially, the same
+        #   pattern as /srv/media.  ZFS uses variable block sizes up to the
+        #   recordsize, so the EPUB halves are not padded out to 1M.
+        # exec/setuid/devices=off: library data, never executable — the
+        #   /srv/media reasoning, and it applies with more force here because
+        #   Storyteller is the one M14 service running as an opaque container
+        #   image (see machines/ernst/containers/storyteller.nix).
+        # com.sun:auto-snapshot=true: this is NOT re-acquirable in the way
+        #   /srv/media is.  A synced EPUB3 costs an hour of forced alignment to
+        #   regenerate, and the DRM-free source pairs are a manual acquisition
+        #   rather than something an *arr can fetch again.
+        #
+        # CREATED BY HAND ONCE, like every other dataset in this block — see
+        # the note at the top of `datasets` and docs/guides/ernst-zdata-datasets.md.
+        # disko does not create datasets on an existing pool; it only emits the
+        # fileSystems entry that mounts them.
+        audiobooks = {
+          type = "zfs_fs";
+          mountpoint = "/srv/audiobooks";
+          options = {
+            mountpoint = "legacy";
+            recordsize = "1M";
+            exec       = "off";
+            setuid     = "off";
+            devices    = "off";
+            atime      = "off";
+            "com.sun:auto-snapshot" = "true";
+          };
+        };
+
         # zdata/backup — reserved.  Not created here; when the backup strategy
         # is chosen we may want a very different recordsize / compression /
         # (perhaps) encryption story, so add it deliberately at that point.
