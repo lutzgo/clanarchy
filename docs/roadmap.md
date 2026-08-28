@@ -58,7 +58,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M12 — arr helpers | **done — deployed and merged 2026-08-26 (#100); (a) Byparr split out as [M12b](#m12b-featernst-byparr)** | — | UmlautAdaptarr, Bazarr, Cleanuparr, MediathekArr and the recyclarr additions all landed inside the **existing** arr container, with no new veth, MAC, DHCP reservation or UDM-Pro work — so the hand-rolled-derivation approach M14 depends on is proven. All five units active on ernst. **Four of the six premises did not survive checking**: Byparr is no longer Camoufox-based and is a browser-packaging job in its own right; **MediathekArr is TWO processes**, and upstream's `main` is a diverged, older tree than its own release tag; **Unpackerr is measured out**; and **UmlautAdaptarr is inert here** — all six indexers are Cardigann HTML scrapers, which it architecturally cannot serve. **One thing is still outstanding**: the first real recyclarr sync fires at 00:03 the night of 2026-08-26 and is what adopts Sonarr's existing `Remux + WEB 2160p` (59 series) — see [the profile census](#the-profile-census-re-measured--and-one-number-this-repo-had-wrong). Depends on M4. [M12](#m12-featernst-arr-helpers) |
 | M12c — library profile reassignment | **open — requested 2026-08-26** | — | Recyclarr creates profiles but **never assigns a title to one**, and this library's titles predate the guides. Rules for "high" and "low" quality per shows/films settled by **Q&A first**, then an agent reassigns title by title. **The hazard is the film side**: 2389 of 2432 movies sit on a non-upgrading `Ultra-HD` profile, and every TRaSH profile is upgrade-enabled — a bad rule moves them all and queues most of 13 TB through the VPN. Demotions first, promotions in watched batches, search-on-edit OFF. Depends on M12. [M12c](#m12c--library-profile-reassignment) |
 | M13 — media lifecycle | **done — deployed via [#102](https://github.com/lutzgo/clanarchy/pull/102), operator-confirmed 2026-08-27** | [#102](https://github.com/lutzgo/clanarchy/pull/102) | Deployed and confirmed working by lgo, with no deploy findings recorded — Janitorr stays in **dry-run** as the plan requires, so letting it delete is a deliberate later step, not part of this close. M16 (external ingress for Jellyseerr) is now unblocked. Jellyseerr (internal scope), Janitorr (dry-run) and Scraparr all land in the **existing** arr container; three M6 exporter targets, not four. **Janitorr publishes no artifact at all** — GitHub releases carry zero assets and the only channel is a Paketo OCI image — so it is the repo's first from-source **Gradle/Spring Boot 4** build, with a committed 350-artifact mitm-cache lock. **Three roadmap premises did not survive checking**: `services.jellyseerr` is now a renamed alias for **`services.seerr`**; **Ollama serves no `/metrics`** (404, measured), so its target is dropped and handed to M15 with the reasoning; and **Jellystat is deferred** — it needs PostgreSQL, and Janitorr's own docs now recommend `janitorr-stats` instead. Janitorr also has **no web UI**, so its port is bound to loopback and routed nowhere. Depends on M6. [M13](#m13-featernst-media-lifecycle) |
-| M14 — libraries | **open** | — | Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. Introduces a **second write path** into `/srv/media`, so it owes its own hardlink proof with a negative control — M3's does not transfer. Depends on M12. [M14](#m14-featernst-libraries) |
+| M14 — libraries | **built 2026-08-28; not yet deployed** | — | All six land: Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. **The hardlink proof PASSED with its negative control, run pre-deploy** — the chain works iff slskd carries `UMask=0002`, and **the nixpkgs slskd module does not set one**, so every music import would have silently degraded to a copy. **Four premises did not survive checking**: Storyteller's upstream repo has **moved** (the roadmap's link is an archived namespace) and has no sane non-Docker build, so it takes the **podman tier** — the tier's second occupant; **Questarr publishes no release assets**, making it M14's only real build; **Audiobookshelf's port is 8000 in nixpkgs**, not the roadmap's 13378; and **`lidarr.nix` and `audiobookshelf.nix` ship NO hardening at all** — both measured at **9.0 UNSAFE** before, 1.6 OK after. Soulseek through the VPN exit measured reachable; **peer connectivity is the remaining go/no-go**. Depends on M12. [M14](#m14-featernst-libraries) |
 | M15 — Tdarr / space reclamation | **open** | — | Its own container with VAAPI on the 7900 XTX, plus GPU arbitration against a card that now has three other claimants. **M11's VRAM numbers changed this materially**: a fully-resident Ollama at 64k leaves ~2 GB, so CPU-only Tdarr is now a serious default rather than a fallback — and Muxarr must be evaluated first, because it may reclaim more per CPU-hour with no GPU question at all. Depends on M12. [M15](#m15-featernst-tdarr) |
 | M16 — external ingress | **open** | — | Make `jellyseerr.goclan.org` reachable from the internet, and **only** that. First service accepting connections from outside the home network, so the milestone is about the boundary rather than the service. Creates a permanent bypass row under invariant #4. Depends on M13. [M16](#m16-featernst-external-ingress) |
 
@@ -331,6 +331,7 @@ Rows are retired only by the PR that actually removes the rule.
 | L6 | Tvheadend ports `9981` / `9982` on the host, mgmt-VLAN scoped | M8 (host firewall, v1) | Only if M8 lands before M2b — Tvheadend v1 would then run on host networking like Jellyfin's and arr's did | **M5** for the web route, plus a veth migration mirroring M2b. Never created at all if M2b lands first | **RETIRED as never-created (M8 built 2026-08-27).** M2b landed first, so Tvheadend never ran on host networking; it went straight to a veth on VLAN 90 plus a Traefik route, exactly as this row predicted. 9982 (HTSP) ended up opened to nobody at all — no client for it exists in this fleet |
 | L7 | FRITZ!Box → Tvheadend on the ephemeral **UDP** range | UDM-Pro ZBF (off-repo), M8 | SAT>IP media is unicast RTP on a return flow the RTSP rule does not cover | Proving RTP **interleaved over the RTSP TCP connection**, which reduces the whole ACL to TCP 49000 + 554 | **RETIRED as never-created (M8 built 2026-08-27), by a route this row did not predict.** Phase 0 measured interleaved-TCP as UNAVAILABLE — the 6591 answers `461 Unsupported Transport` to a TCP SETUP — so the "avoid" path was closed. But the FRITZ!Box ended up **directly cabled to ernst's spare NIC** (`enp12s0` → `br-fritz`), so the RTP return flow never crosses the UDM-Pro at all: the "broad, ugly" ephemeral-UDP ACL became one source-scoped iptables line inside the tvheadend container (`-s 192.168.178.1 -p udp`). No UDM-Pro rule of any kind exists for M8 |
 | — | **M11 creates no row, and that is a property worth stating** | — | Ollama on ernst stays bound to localhost and is reached over an SSH tunnel on local port **11435**; the working tree was left at `133a39d`. So the milestone that added a coding agent to the fleet changed ernst's attack surface **not at all**, and if it stops after Phase 1 it stays that way | **permanent, unless M11 Phase 2 is taken** — and Phase 2 is optional and separately justified. Its trigger is a *second client actually needing it*, not tidiness | not created. Listed so a later session does not read the absence as an oversight. **If Phase 2 is ever taken, read [M11's session prompt](#the-prompt-for-the-m11-remainder) first** — its Phase 2 block is the constraint: Ollama has no authentication and its API includes model *pull* and *delete*, so it is an unauthenticated admin endpoint and the recommendation is ZeroTier-only, never a LAN listener |
+| — | **M14 created no row either — confirmed 2026-08-28** | — | Five of its six services landed in the **existing** arr container and opened no port reachable outside it beyond four ordinary Traefik routers (lidarr, kapowarr, questarr, audiobookshelf), which are invariant #3 working as designed. The sixth, **Storyteller**, took the podman tier and therefore a new address on VLAN 90 (`10.0.90.20`, MAC `02:00:00:90:00:0c`) — but it needs **no UDM-Pro rule of any kind**: it is reached only through Traefik, riding the permanent `Allow Traefik` policy, and its own netns firewall accepts `8001` from `10.0.90.12` alone. **slskd needed nothing either**: it went into the EXISTING microvm guest, and the guest's `api_clients` nftables set gained a **PORT** (5030), not a client — the arr container was already in it for qBittorrent. Its Soulseek listen port (50300) is admitted on **`wg0` only**, never `eth0`. **THE ONE THING WORTH RE-READING LATER**: Questarr binds `0.0.0.0` (measured by running it), as do Kapowarr and Audiobookshelf by explicit configuration, so the container firewall is the ONLY thing keeping those three off VLAN 90 generally — load-bearing, not belt-and-braces, exactly as M12 recorded for UmlautAdaptarr's ports | **permanent** — nothing interim here | not created |
 | — | **M12 created no row, as predicted — confirmed 2026-08-26** | — | Everything in M12 landed inside the **existing** arr container and opened no port reachable outside it. The one thing it *did* touch is the explicit port list `containers/arr.nix` feeds to its `concatMapStrings` Traefik source-restriction, which gained `bazarr` 6767, `cleanuparr` 11011 and `mediathekarr` 5007 — plus three ordinary Traefik routers behind `authelia` and three names in `protectedHosts`, which are invariant #3 working as designed and not shims. **Four ports were deliberately kept OFF the list**: `flaresolverr` 8191 as before, MediathekArr's indexer 5008, and UmlautAdaptarr's 5005 and **5006**. All four bind `0.0.0.0`/`[::]`, so the container firewall is the only thing keeping them off VLAN 90 — and 5006 is an HTTP proxy, the same class of gift as 8191. Byparr, when [M12b](#m12b-featernst-byparr) lands, inherits FlareSolverr's exact posture | **permanent** — there is nothing interim here | not created |
 | L8 | TubeSync web UI port, mgmt-VLAN scoped | M9 (host/container firewall, v1) | Only if M9 lands before M5 — an admin UI with no proxy in front of it yet. Mgmt-scoped, so invariant #3 does not cover it | **M5** — replace with the Traefik route. Never created at all if M5 lands first | **RETIRED as never-created (M9 built 2026-08-27).** M5 landed long before M9, so TubeSync got an ordinary Traefik router behind `authelia` and opened no port at all. The row's own note already predicted this. What it did NOT predict is that the web UI needed a firewall anyway, in a place the ledger has no concept of: a bare network namespace handed to podman has no rules, and podman adds none, so `containers/tubesync.nix` installs them inside the namespace — 4848 from Traefik only. That is not an interim rule and gets no row; it is the same backend-side source restriction `containers/traefik.nix` applies everywhere else |
 | — | **M13's Jellyseerr and M15's Tdarr routes** | Traefik (`containers/traefik.nix`), M13 and M15 | Both are ordinary Traefik routers on names the M5 wildcard already covers, riding the permanent `Allow Traefik` rule. **Neither is a shim** — listed so nobody creates a ledger row for a route | **permanent** — this is invariant #3 working as designed, not an exception to it | not created. **Two corrections against older wording**: M13's Jellyseerr router deliberately carries **no** middleware (it is a household service and its posture is Jellyseerr's own Jellyfin-account login — see M13), and M15's Tdarr router carries **`authelia`**, not `mgmt-only`, because M7 deleted `mgmt-only` (L5). Copy the *arr routers. Adding either hostname also means adding it to `access_control` in `containers/authelia.nix`, which is deny-by-default: a route with the middleware and no matching rule fails **closed** |
@@ -6115,6 +6116,130 @@ Constraints:
 ---
 
 ## M14 — `feat/ernst-libraries`
+
+**Status: built 2026-08-28, not yet deployed.** All six services landed in one
+PR. What follows is the milestone as planned; the outcomes, corrections and
+measurements are in the next subsection, which is the part to read first.
+
+### What was measured, and the four premises that did not survive
+
+**THE HARDLINK PROOF PASSED, WITH ITS NEGATIVE CONTROL, BEFORE ANY DEPLOY.**
+This milestone's central verification does not need the services running — it
+needs the numeric uids, which is all `setpriv` requires. Run on ernst
+2026-08-28 in a `2770 root:media` directory on `zdata/media`, with
+`fs.protected_hardlinks = 1`:
+
+| step | result |
+|---|---|
+| file written as uid 3024 (slskd), `umask 0002` | `0664 3024:3000`, inode 68809, links=1 |
+| linked as uid 3017 (lidarr), group `media` | **LINK OK** — one inode, **links=2** |
+| same file `chmod 0644`, linked again | **EPERM** |
+
+The third step is what makes the first two mean anything. Without it the test
+cannot distinguish a working chain from root bypassing the check — the mistake
+an earlier revision of M3's own plan made, and the same failure class as
+[SN3](#sn3-a-broken-instrument-is-indistinguishable-from-a-bad-result).
+
+**AND IT FOUND THE BUG IT WAS LOOKING FOR.** The nixpkgs `slskd` module's unit
+carries fifteen hardening directives and **no `UMask`**, so it inherits
+systemd's `0022`, writes `0644` files, and every Lidarr import would have
+failed to hardlink and silently fallen back to copying. The override is in
+`microvms/wg-qbittorrent.nix` and is the single most load-bearing line in M14.
+
+**1 — Storyteller's upstream repo has MOVED, and this document's link is
+stale.** M14 says "verify the deploy story against the upstream GitLab repo"
+and points at `gitlab.com/smoores/storyteller`. That namespace is **archived
+and read-only, last activity 2025-07-06**. The live project is
+`gitlab.com/storyteller-platform/storyteller`, mirrored to
+`github.com/smoores-dev/storyteller`. Anyone following the instruction via the
+link would have read a tree a year out of date.
+
+Verified against the live Dockerfile: a **Next.js standalone build over
+yarn-berry workspaces**, native per-architecture prebuilds, vendored
+**whisper.cpp** binaries, a **Readium binary lifted out of a different
+container image**, and a gcc-compiled SQLite extension. **No sane non-Docker
+path exists**, so this milestone's own escape hatch fires and Storyteller takes
+the **podman tier** — its second occupant after M9's TubeSync.
+`oci-containers`-in-nspawn was rejected, as required.
+
+The image is pinned by digest to `web-v2.9.3`. **`latest` is a trap here**:
+upstream's own compose file uses it, and on that registry it currently resolves
+to a **`web-v3.0.0-beta.N`** build (measured with `skopeo`: `latest` created
+2026-08-18, `web-v2.9.3` created 2026-03-15). The `-rocm` variant was rejected —
+the 7900 XTX is Ollama's card, and M11 measured a resident Ollama at 64k leaving
+~2 GB of VRAM.
+
+**2 — Questarr publishes no release assets**, so the "take the upstream release
+artifact" rule has nothing to take: v1.4.2's assets array is empty and the only
+channel is an OCI image. It is therefore M14's only real build
+(`buildNpmPackage`, Vite frontend, `tsc` server pass, one native module).
+Its "SQLite-backed" premise **was** correct — and note that widely-syndicated
+reviews describe it as PostgreSQL-backed, which is stale; upstream removed
+Postgres in favour of SQLite.
+
+**3 — Audiobookshelf's port is 8000, not 13378.** The roadmap listed 13378,
+which is the **Docker image's** number; nixpkgs' module defaults to `8000` and
+host `127.0.0.1`. Both are set explicitly — the host matters as much as the
+port, since `127.0.0.1` would make it unreachable from Traefik. The other three
+were verified correct: lidarr 8686, kapowarr 5656, questarr 5000.
+
+**4 — `lidarr.nix` and `audiobookshelf.nix` ship NO HARDENING AT ALL.** This is
+the Prowlarr trap in a third form, and the family resemblance is what makes it
+dangerous: `sonarr.nix` and `radarr.nix` each carry a full `# Hardening` block,
+so the reasonable assumption is that `lidarr.nix` does too. It does not — its
+entire `serviceConfig` is Type, User, Group, EnvironmentFile, ExecStart,
+Restart. Measured with `systemd-analyze security --offline=true`:
+
+| unit | upstream as shipped | with this PR |
+|---|---|---|
+| `lidarr.service` | **9.0 UNSAFE** | **1.6 OK** |
+| `audiobookshelf.service` | **9.0 UNSAFE** | **1.6 OK** |
+| `slskd.service` | 5.1 MEDIUM | **1.2 OK** |
+| `soularr.service` | — (no upstream unit) | 1.4 OK |
+| `kapowarr.service` | — (no upstream unit) | 1.4 OK |
+| `questarr.service` | — (no upstream unit) | 1.4 OK |
+| `podman-storyteller.service` | — (new) | **9.6 UNSAFE** — see below |
+
+**The 9.6 is the podman tier's known cost, not a regression.**
+`podman-tubesync.service` (M9, deployed and working) scores **exactly the same
+9.6** on this system, measured side by side. The unit being scored is the one
+that *drives podman* — it runs as root and does so by necessity — so the number
+describes the runtime, not Storyteller. This is the cost invariant #1 accepts
+when it names podman an escape hatch, and it is why the tier is for services
+that ship only an image and nothing else.
+
+slskd's 5.1 was almost entirely one missing directive: `CapabilityBoundingSet`
+unset, so every capability line scores against it. Empty is safe there because
+it binds 5030 and 50300 — nothing below 1024, so no `CAP_NET_BIND_SERVICE` to
+keep.
+
+**The lesson worth generalising: READ THE UNIT. Do not infer it from a
+sibling.** nixpkgs' servarr modules are not uniform, and nothing warns you.
+
+**Soulseek through the VPN exit is not blocked at the transport layer.**
+Measured from inside the `wg-qbittorrent` guest, 2026-08-28: exit IP
+`95.211.172.88` (Leaseweb NL), and a TCP connect to `vps.slsknet.org:2271`
+succeeds. **That is not the whole go/no-go** — it says nothing about whether
+enough peers accept connections from a commercial VPN exit for searches to be
+useful, and that cannot be measured without the service running. It stays the
+first item in the test plan, and the documented fallback if it fails is the arr
+container **with the tradeoff written down**, never a silent move.
+
+**Two shape changes against what this document predicted**, both reasoned:
+`questarr` shipped **own-group with no media access** (it never opens a file
+under `/srv/media`), and `storyteller` shipped on the **podman tier** rather
+than beside the rest.
+
+**Readarr's successor landscape, checked 2026-08-28 as required.** Readarr was
+archived in June 2025 when its metadata backend (`api.bookinfo.club`) went
+permanently offline. The live options are **Bindery** (`vavallee/bindery`,
+which positions itself as the modern replacement — but is **Usenet/SABnzbd
+oriented**, and M12 measured this fleet as having *zero* Usenet, so it is a poor
+fit *here* specifically), **LazyLibrarian** (still developed, closest match, not
+in nixpkgs), and **Chaptarr**. **None was added** — M14 as specified contains no
+book *arr*, and the ebook side is served by Storyteller and CWA. Recorded so a
+later milestone does not re-derive it. Do not write a fork name from memory;
+this list has a date on it for a reason.
 
 **Goal.** Extend the stack past film and television: music (Lidarr + slskd +
 Soularr), comics (Kapowarr), games (Questarr), audiobooks (Audiobookshelf), and

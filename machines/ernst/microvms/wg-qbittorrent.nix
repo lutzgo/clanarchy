@@ -1761,6 +1761,43 @@ in
           # with a different umask, which is the whole reason M14 owes its own
           # proof.
           UMask = "0002";
+
+          # ── THE REST OF THE HARDENING UPSTREAM LEAVES OFF ────────────────
+          #
+          # The module's unit is genuinely well hardened as far as it goes —
+          # fifteen Protect*/Restrict* directives — but it stops short of the
+          # three that carry the most weight, and the measurement says so.
+          # `systemd-analyze security --offline=true` on the generated unit:
+          #
+          #   upstream as shipped      5.1 MEDIUM
+          #   with the block below     see the PR table
+          #
+          # Almost all of that 5.1 is ONE missing directive:
+          # CapabilityBoundingSet is unset, so every capability line scores
+          # against it — CAP_SYS_ADMIN, CAP_SYS_PTRACE, CAP_SETUID and twenty
+          # more, none of which slskd has any use for.
+          #
+          # EMPTY IS SAFE HERE, and the thing that would make it unsafe is
+          # worth naming: a service binding a port below 1024 needs
+          # CAP_NET_BIND_SERVICE.  slskd binds 5030 and 50300, both well above
+          # it, so there is nothing to keep.
+          CapabilityBoundingSet = "";
+
+          # AF_INET/AF_INET6 for the Soulseek network and the API, AF_UNIX for
+          # logging.  slskd speaks no other address family.
+          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+
+          LockPersonality         = true;
+          RestrictRealtime        = true;
+          SystemCallArchitectures = "native";
+          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+
+          # NOT MemoryDenyWriteExecute.  slskd is .NET and the JIT maps
+          # writable-then-executable pages, so it would start and then die on
+          # the first request.  Same rejection containers/arr.nix and
+          # containers/jellyfin.nix record for the same runtime — and the same
+          # one qBittorrent's block above does not need to make, because
+          # nothing there is managed.
         };
       };
 
