@@ -91,8 +91,52 @@ while ! ssh -tt -o ConnectTimeout=2 ernst-initrd systemd-tty-ask-password-agent 
 > while ! ssh -tt -p 2222 -o ConnectTimeout=2 root@10.0.50.10 systemd-tty-ask-password-agent --query; do sleep 1; done
 > ```
 >
+> …and in nushell (see the section below for why it has to look like this):
+>
+> ```nu
+> loop { if (try { ^ssh -tt -p 2222 -o ConnectTimeout=2 root@10.0.50.10 systemd-tty-ask-password-agent --query; true } catch { false }) { break }; sleep 1sec }
+> ```
+>
 > The alias is still preferable: it also sets `HostKeyAlias`, which keeps the
 > initrd host key from colliding with the running system's entry.
+
+#### The same loop in nushell
+
+The command above is **bash**. `lgo`'s login shell is nushell, so pasting it
+into an ordinary terminal does not run a poll loop — it fails to parse before
+a single connection is attempted:
+
+```
+Error: nu::parser::parse_mismatch
+ 1 | while ! ssh -tt … --query; do sleep 1; done
+   :         ^|^
+   :          `-- expected operator
+```
+
+The nushell equivalent, verified on nushell 0.112.2:
+
+```nu
+loop { if (try { ^ssh -tt -o ConnectTimeout=2 ernst-initrd systemd-tty-ask-password-agent --query; true } catch { false }) { break }; sleep 1sec }
+```
+
+Three things about that line are not stylistic, and a "tidier" rewrite will
+break in ways that only show up on a recovery:
+
+- **`try` is required, and it must be used as an EXPRESSION.** In nushell a
+  failing external command *aborts the script* — it does not merely set a
+  status. So the obvious translation, running ssh and then testing
+  `$env.LAST_EXIT_CODE`, never reaches the test: the shell has already exited.
+  Measured, not assumed.
+- **The result is bound with `if (try {…} catch {…})`, not assigned to a
+  `mut`.** Nushell closures cannot capture mutable variables, so the natural
+  `mut connected = false; try { …; $connected = true }` fails at parse time
+  with `capture of mutable variable`.
+- **`try` does not swallow stdio.** The passphrase prompt stays interactive —
+  confirmed by piping stdin through `try { ^cat }`. Do **not** reach for
+  `complete` to get the exit code: it captures stdout and stdin, and you would
+  have a loop that can never be typed into.
+
+Keep it on one line, for the same reason the bash version says so.
 
 ### It is console OR remote, never both
 
