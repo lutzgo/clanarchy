@@ -387,11 +387,16 @@ let
   questarrPort       = 5000;
   audiobookshelfPort = 13378;
   #
-  # ── M14's SYSCALL FILTER.  ONE ENTRY DIFFERENT, AND IT IS LOAD-BEARING ────
+  # ── THE SYSCALL FILTER FOR EVERY UNIT IN THIS CONTAINER ──────────────────
   #
-  # Identical to the list every M12/M13 service above uses, plus `@chown` added
-  # back after `~@privileged` removes it.  Later entries win, so the trailing
-  # `@chown` re-permits chown/fchown/lchown/fchownat.
+  # ONE binding, used by all of them, and it is what nixpkgs' own sonarr and
+  # radarr modules already use — verified by reading sonarr.nix at ernst's pin,
+  # which ends its list with exactly `"@chown"`.
+  #
+  # Everything hand-written in this file used to carry the first four entries
+  # and drop the fifth.  `@chown` is added back after `~@privileged` removes
+  # it; later entries win, so the trailing `@chown` re-permits
+  # chown/fchown/lchown/fchownat.
   #
   # ── WHY, MEASURED ON ernst 2026-08-28 ───────────────────────────────────
   #
@@ -420,11 +425,35 @@ let
   # ── AND IT IS WHAT UPSTREAM ALREADY DOES ────────────────────────────────
   #
   # nixpkgs' sonarr and radarr modules ship a filter that PERMITS chown —
-  # verified by reading the live units on ernst (`systemctl show sonarr -p
-  # SystemCallFilter` lists `chown chown32`, ours did not).  So this brings
-  # M14's services into line with the *arrs that have been running here for
-  # months, rather than inventing a laxer policy.
-  m14SyscallFilter = [ "@system-service" "~@privileged" "~@debug" "~@mount" "@chown" ];
+  # verified both from the live units on ernst (`systemctl show sonarr -p
+  # SystemCallFilter` lists `chown chown32`, ours did not) and from the module
+  # source.  So this is not a laxer policy invented here; it is the policy the
+  # *arrs in this same container have been running under for months.
+  #
+  # ── WHY IT IS APPLIED TO THE PRE-EXISTING SERVICES TOO ──────────────────
+  #
+  # M12's and M13's units were written with the four-entry list and have run
+  # without incident, so the risk here is LATENT rather than observed — with
+  # one exception worth naming, because it is the same failure that actually
+  # fired:
+  #
+  #   seerr (Jellyseerr) is Node, and the process seccomp killed on 2026-08-28
+  #   was a Node `libuv-worker` calling fchown.  Same runtime, same worker
+  #   pool, same syscall — Audiobookshelf simply reached it first because it
+  #   touches ownership during its initial library scan.
+  #
+  # The others are a spread of likelihood rather than a certainty: bazarr
+  # writes .srt sidecars next to media, mediathekarr writes and remuxes video,
+  # cleanuparr deletes files it does not own, and janitorr-config renders files
+  # as root.  Any of them calling fchown once would be killed outright rather
+  # than handed an EPERM it could report.
+  #
+  # NOT CHANGED, deliberately, and both are outside this container: traefik's
+  # unit (containers/traefik.nix) and the qBittorrent exporter in the microvm
+  # guest.  Neither writes into a shared tree, both are working, and neither
+  # has any evidence of need — a filter is not something to widen across
+  # ownership boundaries on symmetry alone.
+  arrSyscallFilter = [ "@system-service" "~@privileged" "~@debug" "~@mount" "@chown" ];
 
   # SOULARR HAS NO PORT, and that is worth stating in the same place as the
   # ones that do.  It is a one-shot script driven by a timer, not a server; its
@@ -2133,7 +2162,7 @@ in
           # NOT MemoryDenyWriteExecute — .NET, same JIT rejection this file
           # already records for sonarr/radarr/prowlarr and jellyfin.nix
           # records for Jellyfin.
-          SystemCallFilter = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter = arrSyscallFilter;
         };
       };
 
@@ -2225,7 +2254,7 @@ in
           RestrictRealtime        = true;
           LockPersonality         = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter        = arrSyscallFilter;
 
           # NOT PrivateUsers.  sonarr and radarr carry it and it is why `media`
           # has to be their primary group; here it would buy nothing and cost
@@ -2348,7 +2377,7 @@ in
           RestrictRealtime        = true;
           LockPersonality         = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter        = arrSyscallFilter;
         };
       };
 
@@ -2423,7 +2452,7 @@ in
           # ffmpeg and mkvmerge are FORKED, so the filter has to permit it —
           # @system-service already does.  What it must NOT gain is @privileged
           # or @mount, and it does not.
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter        = arrSyscallFilter;
         };
       };
 
@@ -2577,7 +2606,7 @@ in
         RestrictRealtime        = true;
         LockPersonality         = true;
         SystemCallArchitectures = "native";
-        SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+        SystemCallFilter        = arrSyscallFilter;
       };
 
       ##########################################################################
@@ -2830,7 +2859,7 @@ in
           RemoveIPC               = true;
           LockPersonality         = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter        = arrSyscallFilter;
 
           ExecStart = pkgs.writeShellScript "janitorr-render-config" ''
             set -euo pipefail
@@ -3172,7 +3201,7 @@ in
           RestrictRealtime        = true;
           LockPersonality         = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter        = arrSyscallFilter;
         };
       };
 
@@ -3251,7 +3280,7 @@ in
         RestrictSUIDSGID      = true;
         LockPersonality       = true;
         SystemCallArchitectures = "native";
-        SystemCallFilter        = m14SyscallFilter;
+        SystemCallFilter        = arrSyscallFilter;
 
         # AF_INET/AF_INET6 for indexers and MusicBrainz, AF_UNIX for logging.
         RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
@@ -3445,7 +3474,7 @@ in
           RestrictRealtime        = true;
           LockPersonality         = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = m14SyscallFilter;
+          SystemCallFilter        = arrSyscallFilter;
         };
       };
 
@@ -3535,7 +3564,7 @@ in
           # multiprocessing with the default start method plus Popen, and
           # `~@privileged` is fine but a stricter list would block the
           # process-control calls the restart mechanism depends on.
-          SystemCallFilter = m14SyscallFilter;
+          SystemCallFilter = arrSyscallFilter;
         };
       };
 
@@ -3614,7 +3643,7 @@ in
           RestrictRealtime        = true;
           LockPersonality         = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = m14SyscallFilter;
+          SystemCallFilter        = arrSyscallFilter;
 
           # NOT MemoryDenyWriteExecute: V8 JITs, exactly like the .NET services
           # above.  Same rejection, different runtime.
@@ -3695,7 +3724,7 @@ in
         RestrictSUIDSGID      = true;
         LockPersonality       = true;
         SystemCallArchitectures = "native";
-        SystemCallFilter        = m14SyscallFilter;
+        SystemCallFilter        = arrSyscallFilter;
         RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
 
         ProtectSystem  = "strict";
@@ -3846,7 +3875,7 @@ in
           RemoveIPC               = true;
           LockPersonality         = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter        = arrSyscallFilter;
 
           ExecStart = pkgs.writeShellScript "recyclarr-stage-api-keys" ''
             set -euo pipefail
@@ -4801,7 +4830,7 @@ in
         RestrictRealtime        = true;
         LockPersonality         = true;
         SystemCallArchitectures = "native";
-        SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+        SystemCallFilter        = arrSyscallFilter;
       };
 
       # `curl` is the test plan's instrument: it is what proves this container
