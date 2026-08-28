@@ -1069,36 +1069,8 @@ in
             # wildcard already covers, riding the permanent `Allow Traefik` ZBF
             # rule, so none of them is a shim and none gets a ledger row.
             #
-            # AUDIOBOOKSHELF IS THE INTERESTING ONE.  It is a HOUSEHOLD service
-            # like Jellyseerr, not an operator tool — so the obvious move is to
-            # copy Jellyseerr's middleware-free router.  DO NOT.
-            #
-            # The Jellyseerr exemption is narrow and does not transfer.  It
-            # exists because Jellyseerr's posture is its OWN Jellyfin-account
-            # login, so removing forward-auth swaps one login for another
-            # rather than removing authentication.  Audiobookshelf has its own
-            # accounts too — but it also has NATIVE MOBILE AND TV CLIENTS, and
-            # that is the axis that actually matters here.
-            #
-            # So which way does that cut?  It cuts TOWARDS authelia, and this
-            # is the trade being made deliberately:
-            #
-            #   Architecture invariant #4 exempts JELLYFIN from forward-auth
-            #   precisely because TV and mobile clients cannot survive an
-            #   authentication redirect.  The Audiobookshelf mobile app has the
-            #   same problem, and it WILL fail against this router.
-            #
-            #   It gets the middleware anyway because, unlike Jellyfin, nothing
-            #   in this household is using the native app yet — the library is
-            #   new as of this milestone.  Adding auth now and relaxing it
-            #   later if the app is wanted is reversible; shipping an
-            #   unauthenticated route and tightening it after people have
-            #   configured clients is not.
-            #
-            #   IF THE MOBILE APP IS EVER WANTED, this is the router to change,
-            #   the change is to drop `middlewares`, and it needs a ledger row
-            #   under invariant #4 naming a THIRD permanent bypass alongside
-            #   Jellyfin's and qBittorrent's.  Do not make that change quietly.
+            # AUDIOBOOKSHELF IS THE EXCEPTION, and it is the THIRD permanent
+            # bypass in this fleet.  See its router below.
             lidarr = {
               rule        = "Host(`lidarr.${baseDomain}`)";
               entryPoints = [ "websecure" ];
@@ -1117,10 +1089,51 @@ in
               middlewares = [ "authelia" ];
               service     = "questarr";
             };
+            # ── Audiobookshelf (M14): NO MIDDLEWARE.  A permanent bypass ────
+            #
+            # NO `middlewares`, and — like Jellyfin's router — that is the
+            # whole point of this one rather than an omission.
+            #
+            # THE REASON IS INVARIANT #4's JELLYFIN CLAUSE, NOT CONVENIENCE.
+            # Audiobookshelf has native mobile and TV clients, and a
+            # forward-auth redirect is exactly what those cannot survive: the
+            # app speaks to the REST API with a bearer token and has no browser
+            # to follow a 302 to auth.goclan.org, so every request would fail
+            # in a way that looks like a broken server rather than a login
+            # prompt.  App support is a stated requirement for this library.
+            #
+            # This is the THIRD permanent bypass in the fleet, alongside
+            # Jellyfin's native auth and the qBittorrent WebUI, and it is
+            # listed as such in docs/roadmap.md's interim-rule ledger — as a
+            # `—` row, because it is permanent and must not be mistaken for
+            # something to "fix" later by adding the middleware back.
+            #
+            # WHAT CARRIES THE AUTHENTICATION INSTEAD.  Audiobookshelf's own
+            # accounts, and they are now the ENTIRE boundary — the same posture
+            # Jellyfin has had since M5 and Jellyseerr since M13.  Two
+            # consequences that are NOT theoretical:
+            #
+            #   1. ITS FIRST-RUN WIZARD IS UNAUTHENTICATED BY CONSTRUCTION.
+            #      With no root account yet, the initial-setup page will create
+            #      one for whoever loads it first.  With `authelia` in front
+            #      that page was protected; without it, it is reachable from
+            #      every consumer VLAN the moment the Technitium record
+            #      resolves.  THE ADMIN ACCOUNT MUST BE CREATED IMMEDIATELY
+            #      after the first deploy — the PR body carries this as an
+            #      ordering constraint, not a to-do.
+            #   2. THERE IS NO SECOND FACTOR ON THIS NAME.  Authelia's per-user
+            #      regulation and 2FA do not apply here.  That is the trade
+            #      being made for app support, made deliberately, and it is why
+            #      this comment is long.
+            #
+            # NOT COMPARABLE TO JELLYSEERR'S EXEMPTION, which rests on a
+            # different argument (its posture is a Jellyfin-account login, so
+            # dropping forward-auth swaps one login for another).  This one
+            # rests on the client-compatibility clause.  Both end at the same
+            # place; do not merge the reasoning.
             audiobookshelf = {
               rule        = "Host(`audiobookshelf.${baseDomain}`)";
               entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
               service     = "audiobookshelf";
             };
             storyteller = {

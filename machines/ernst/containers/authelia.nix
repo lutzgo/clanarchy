@@ -372,30 +372,38 @@ let
     # own credential and rejects.  See containers/tubesync.nix.
     "tubesync.${baseDomain}"
 
-    # ── M14.  Five more, and ONE of them is a deliberate trade ─────────────
+    # ── M14.  Four more admin UIs ──────────────────────────────────────────
     #
-    # Four are the ordinary case — admin-facing browser UIs in the existing arr
+    # The ordinary case — admin-facing browser UIs in the existing arr
     # container (lidarr, kapowarr, questarr) or its own podman netns
     # (storyteller).  No TV or mobile client that a redirect would break, so
     # the Jellyfin exemption does not come into it, same as every name above.
     #
-    # AUDIOBOOKSHELF IS THE TRADE.  It is a HOUSEHOLD service with real native
-    # mobile and TV clients, which is exactly the shape architecture invariant
-    # #4 exempts Jellyfin for — and its app WILL fail against forward-auth.
+    # AUDIOBOOKSHELF IS DELIBERATELY ABSENT, and this is the second name in the
+    # fleet to be absent on purpose rather than by oversight (Jellyfin is the
+    # first; Jellyseerr the third).
     #
-    # It is listed here anyway, because nothing in this household uses that app
-    # yet (the library arrives with this milestone) and the reversibility runs
-    # one way: adding auth now and relaxing it later is easy, while shipping an
-    # unauthenticated route and tightening it after people have configured
-    # clients is not.
+    # It has native mobile and TV clients, and app support is a stated
+    # requirement for that library — so it falls under architecture invariant
+    # #4's client-compatibility clause exactly as Jellyfin does: an app that
+    # talks to a REST API with a bearer token has no browser to follow a 302 to
+    # this portal, and every request fails looking like a broken server.
     #
-    # IF THE APP IS EVER WANTED: remove this name AND the router's middleware
-    # in containers/traefik.nix, and add an interim-rule-ledger row naming a
-    # third permanent bypass under invariant #4.  Not a quiet change.
+    # ITS ROUTER THEREFORE CARRIES NO MIDDLEWARE, and the two files have to
+    # agree.  Listing it here without the middleware would be inert — this list
+    # only decides what `access_control` permits for requests that REACH
+    # Authelia — but an inert entry is exactly the kind of thing someone later
+    # "fixes" by adding the middleware back, which is how the app would break
+    # months from now with nothing to point at.  Absent in both places, with
+    # the reason written down in both.
+    #
+    # The full argument, including what carries the authentication instead and
+    # the first-run hazard that follows, is on the router in
+    # containers/traefik.nix.  It is a PERMANENT bypass with a `—` row in
+    # docs/roadmap.md's ledger, not a shim.
     "lidarr.${baseDomain}"
     "kapowarr.${baseDomain}"
     "questarr.${baseDomain}"
-    "audiobookshelf.${baseDomain}"
     "storyteller.${baseDomain}"
   ];
 
