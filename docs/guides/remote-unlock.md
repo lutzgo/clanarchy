@@ -69,6 +69,51 @@ into a bogus separate command:
 while ! ssh -tt -o ConnectTimeout=2 ernst-initrd systemd-tty-ask-password-agent --query; do sleep 1; done
 ```
 
+> **USE THE ALIAS. Do not substitute the IP address.** The `ernst-initrd`
+> alias is what carries `Port 2222`; a bare `10.0.50.10` uses ssh's default
+> port 22, where **nothing listens during stage 1**. The symptom is a poll
+> loop that never connects, on a machine that is booting perfectly well:
+>
+> ```
+> $ while ! ssh -tt -o ConnectTimeout=2 10.0.50.10 systemd-tty-ask-password-agent --query; do sleep 1; done
+> ssh: connect to host 10.0.50.10 port 22: Connection timed out
+> ssh: connect to host 10.0.50.10 port 22: Connection timed out
+> ```
+>
+> That is `port 22` in the error, not 2222 — which is the tell, and it is easy
+> to miss when you are already stressed because a machine is down. This
+> happened for real on **2026-08-28**, during a recovery where the console was
+> the only other way in and the out-of-band KVM was also dead.
+>
+> If you must use the address, pass the port explicitly:
+>
+> ```bash
+> while ! ssh -tt -p 2222 -o ConnectTimeout=2 root@10.0.50.10 systemd-tty-ask-password-agent --query; do sleep 1; done
+> ```
+>
+> The alias is still preferable: it also sets `HostKeyAlias`, which keeps the
+> initrd host key from colliding with the running system's entry.
+
+### It is console OR remote, never both
+
+**Entering the passphrase at the console is what ENDS the remote window.**
+Stage 1 waits for the passphrase indefinitely — see the 36-minute case
+below — so the window is not on a timer. It closes the instant the
+passphrase is accepted, wherever it was typed, because stage 1 then hands
+off and its sshd is killed.
+
+Measured on ernst, 2026-08-28, on a boot that was unlocked at the TV:
+
+```
+[  4.795] sshd: Server listening on 0.0.0.0 port 2222   ← window opens
+[ 11.933] enp13s0: Gained carrier                        ← reachable from here
+[ 45.959] sshd: Received signal 15; terminating          ← passphrase entered
+```
+
+So "sshd was only up for 34 seconds" was a consequence of someone standing
+at the machine, not a property of the initrd. If you intend to unlock
+remotely, **do not touch the console** — walk away and let the loop run.
+
 ### The window opens in about a minute, and then stays open
 
 **Measured on ernst, 2026-08-24.** An earlier revision of this section claimed
