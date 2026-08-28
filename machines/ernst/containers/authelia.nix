@@ -371,6 +371,32 @@ let
     # answer in the `Authorization` header, which this service consumes as its
     # own credential and rejects.  See containers/tubesync.nix.
     "tubesync.${baseDomain}"
+
+    # ── M14.  Five more, and ONE of them is a deliberate trade ─────────────
+    #
+    # Four are the ordinary case — admin-facing browser UIs in the existing arr
+    # container (lidarr, kapowarr, questarr) or its own podman netns
+    # (storyteller).  No TV or mobile client that a redirect would break, so
+    # the Jellyfin exemption does not come into it, same as every name above.
+    #
+    # AUDIOBOOKSHELF IS THE TRADE.  It is a HOUSEHOLD service with real native
+    # mobile and TV clients, which is exactly the shape architecture invariant
+    # #4 exempts Jellyfin for — and its app WILL fail against forward-auth.
+    #
+    # It is listed here anyway, because nothing in this household uses that app
+    # yet (the library arrives with this milestone) and the reversibility runs
+    # one way: adding auth now and relaxing it later is easy, while shipping an
+    # unauthenticated route and tightening it after people have configured
+    # clients is not.
+    #
+    # IF THE APP IS EVER WANTED: remove this name AND the router's middleware
+    # in containers/traefik.nix, and add an interim-rule-ledger row naming a
+    # third permanent bypass under invariant #4.  Not a quiet change.
+    "lidarr.${baseDomain}"
+    "kapowarr.${baseDomain}"
+    "questarr.${baseDomain}"
+    "audiobookshelf.${baseDomain}"
+    "storyteller.${baseDomain}"
   ];
 
   ############################################################################

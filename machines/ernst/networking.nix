@@ -303,6 +303,7 @@
   #   02:00:00:90:00:07   authelia container eth0   (M7  — allocated)  10.0.90.15
   #   02:00:00:90:00:0a   tvheadend container eth0  (M8  — allocated)  10.0.90.18
   #   02:00:00:90:00:0b   tubesync netns eth0       (M9  — allocated)  10.0.90.19
+  #   02:00:00:90:00:0c   storyteller netns eth0    (M14 — allocated)  10.0.90.20
   #
   # THE TUBESYNC ENTRY IS NOT A CONTAINER veth IN THE NSPAWN SENSE, and it is
   # the first of its kind here: it is a veth into a BARE NETWORK NAMESPACE that
@@ -368,6 +369,34 @@
   #                           Escalating to shape (i) is where media
   #                           membership would come back — with an argument)
   #   gid 3026  tvheadend    (containers/tvheadend.nix — M8)
+  #   uid 3017  lidarr       (containers/arr.nix — M14, group media PRIMARY —
+  #                           it hardlinks out of slskd's download tree, which
+  #                           is the second write path M14 exists to prove)
+  #   uid 3018  soularr      (containers/arr.nix — M14, group media PRIMARY.
+  #                           NOT the prowlarr shape, though it looks like it:
+  #                           it reads ID3 tags out of the downloads with
+  #                           music-tag and moves rejects aside, so it needs
+  #                           real access and not just REST)
+  #   uid 3019  kapowarr     (containers/arr.nix — M14, group media PRIMARY)
+  #   uid 3020  questarr     (containers/arr.nix — M14, OWN group, NO media.
+  #                           The prowlarr shape: IGDB and Prowlarr over REST,
+  #                           and it writes only to /srv/games/questarr, a
+  #                           different dataset outside the hardlink domain)
+  #   gid 3020  questarr     (containers/arr.nix — M14)
+  #   uid 3021  audiobookshelf (containers/arr.nix — M14, group media PRIMARY —
+  #                           but for /srv/audiobooks, NOT /srv/media, which it
+  #                           never touches.  The group is what it shares with
+  #                           storyteller on that dataset)
+  #   uid 3022  storyteller  (containers/storyteller.nix — M14, group media,
+  #                           and PODMAN rather than nspawn: upstream has no
+  #                           sane non-Docker build.  Rootful and unmapped, so
+  #                           the number is literal on zdata — see that file)
+  #   uid 3024  slskd        (microvms/wg-qbittorrent.nix — M14, group media
+  #                           PRIMARY, IN THE GUEST.  Soulseek is P2P on the
+  #                           open internet on ernst's behalf, so invariant #1
+  #                           puts it one tier up.  virtiofsd passes ids
+  #                           through unmapped, so guest uid 3024 IS host uid
+  #                           3024, exactly as qBittorrent's 3001 is)
   #   uid 3027  tubesync     (containers/tubesync.nix — M9, group media
   #                           PRIMARY — it writes downloads into the shared
   #                           media dataset.  NO uid was ever reserved for
@@ -454,38 +483,32 @@
   #   moved up into the allocated table above; the rows are removed from here
   #   rather than left in both places.
   #
-  #   uid 3017  lidarr          (M14, group media PRIMARY)
-  #   uid 3018  soularr         (M14, group media PRIMARY — stays in the arr
-  #                              container and reaches slskd's API across
-  #                              VLAN 90 at layer 2, exactly as the *arrs reach
-  #                              qBittorrent.  No UDM-Pro rule: both ends are
-  #                              ports on br0 and the gateway never sees the
-  #                              traffic.  See M4's departure 2)
-  #   uid 3019  kapowarr        (M14, group media PRIMARY)
-  #   uid 3020  questarr        (M14, group media PRIMARY)
-  #   uid 3021  audiobookshelf  (M14, group media PRIMARY — but its own storage
-  #                              tree, NOT /srv/media, so it has no
-  #                              hardlink-domain interaction at all)
-  #   uid 3022  storyteller     (M14, group media PRIMARY — CPU-heavy forced
-  #                              alignment, so it must be nice'd and
-  #                              CPUWeight-limited: it competes with a Jellyfin
-  #                              transcode, an HTPC session, and — since M11 —
-  #                              an interactive Ollama session)
+  #   M14 LANDED AND TOOK ALL SIX (2026-08-28).  3017–3022 and 3024 have moved
+  #   up into the allocated table above; the rows are removed from here rather
+  #   than left in both places.
+  #
+  #   TWO of them did not land in the shape this block predicted, and the
+  #   corrections are kept because both were reasoned, not typos:
+  #
+  #     3020 questarr    predicted "group media PRIMARY"; shipped OWN GROUP,
+  #                      NO MEDIA.  It never opens a file under /srv/media —
+  #                      it talks to IGDB and Prowlarr over REST and files
+  #                      games onto /srv/games, a different dataset entirely.
+  #                      Giving it gid 3000 would have been a strictly larger
+  #                      blast radius for no capability, which is the same test
+  #                      that made prowlarr and jellyseerr own-group.
+  #     3022 storyteller predicted to sit with the rest; shipped on the PODMAN
+  #                      TIER in its own container and its own netns, because
+  #                      upstream has no sane non-Docker build (Next.js
+  #                      standalone + whisper.cpp + a Readium binary lifted out
+  #                      of another image).  That is docs/roadmap.md's own
+  #                      escape hatch firing exactly as written, not a
+  #                      departure from it.
   #
   #   uid 3023  tdarr           (M15, group media PRIMARY, PLUS the `render`
   #                              group for /dev/dri.  Its own container, not
   #                              the arr one: /dev/dri passthrough there would
   #                              hand the GPU to prowlarr and byparr too)
-  #
-  #   uid 3024  slskd           (M14 — but in the MICROVM GUEST, not the
-  #                              container.  Soulseek is P2P on the open
-  #                              internet on ernst's behalf, so invariant #1
-  #                              puts it one tier up with the killswitch and
-  #                              the exit.  ITS NUMERIC ID MUST AGREE WITH THE
-  #                              HOST wherever it writes to shared storage —
-  #                              virtiofsd runs without id translation, so
-  #                              guest uid 3024 IS host uid 3024, exactly as
-  #                              qBittorrent's 3001 is)
   #
   #   uid 3025  wizarr          (M16, OWN group — CONDITIONAL.  Only if M16
   #                              concludes the multi-service invite is worth
@@ -547,6 +570,16 @@
   # Traefik source-restriction — not adding a second mechanism, and NOT
   # extraInputRules, which is declared unconditionally but consumed only under
   # networking.nftables and would produce no rule and no warning.
+  #
+  # M14 NEEDED EXACTLY ONE, and the asymmetry is the milestone's placement
+  # story in miniature.  Five of its six services are ordinary NixOS units and
+  # went into the EXISTING arr container on 10.0.90.13 — no veth, no MAC, no
+  # reservation, exactly as M12 and M13 did.  The sixth, Storyteller, is an
+  # opaque OCI image with no sane non-Docker build, so it took the podman tier
+  # and with it a netns, a MAC and a reservation of its own (0c → 10.0.90.20).
+  #
+  # slskd needed none either, for a different reason: it went into the EXISTING
+  # microvm guest, which already has 02:00:00:90:00:03.
   #
   # Next free sequence number is 08; next free address is 10.0.90.16.
   #   02:00:00:90:00:08   tdarr container eth0      (M15 — RESERVED)  10.0.90.16

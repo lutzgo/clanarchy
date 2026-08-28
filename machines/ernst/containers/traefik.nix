@@ -277,6 +277,34 @@ let
   tubesyncAddr = "10.0.90.19";
   tubesyncPort = 4848;
 
+  # ── M14 ───────────────────────────────────────────────────────────────────
+  #
+  # FOUR more ports on the arr container's ONE address, and one new address.
+  # The split is the milestone's whole placement story in two lines: everything
+  # that is just another NixOS unit went into the existing container and needed
+  # no network work at all; the one thing that is an opaque image took the
+  # podman tier and therefore its own netns, MAC and DHCP reservation.
+  #
+  # Ports verified against upstream on 2026-08-28 — and audiobookshelf's is the
+  # one docs/roadmap.md got wrong: nixpkgs' module defaults to 8000, while
+  # 13378 is the Docker image's number and what every client expects.
+  # containers/arr.nix sets it explicitly for that reason.
+  lidarrPort         = 8686;
+  kapowarrPort       = 5656;
+  questarrPort       = 5000;
+  audiobookshelfPort = 13378;
+
+  # Storyteller, the podman tier's SECOND occupant, on its own address.
+  # 02:00:00:90:00:0c → 10.0.90.20, following the 8 + <seq> convention in
+  # machines/ernst/networking.nix.
+  storytellerAddr = "10.0.90.20";
+  storytellerPort = 8001;
+
+  # SOULARR HAS NO ROUTE AND NO PORT.  It is a one-shot timer, not a server,
+  # and its bundled Flask web UI is deliberately not packaged — see
+  # machines/ernst/containers/pkgs/soularr.nix.  Listed here as an absence so
+  # nobody adds a router for symmetry with the rest of the milestone.
+
   # M6.  Traefik's own Prometheus metrics, on a SEPARATE entryPoint from the
   # one that serves traffic.  Its own port rather than a route on :443 because
   # a route would be reachable by anything the consumer-zone ZBF rule already
@@ -1033,6 +1061,75 @@ in
               service     = "tubesync";
             };
 
+            # ── M14's five, and one of them is NOT like the others ─────────
+            #
+            # Four operator tools behind `authelia`, in the usual shape:
+            # lidarr, kapowarr, questarr and storyteller.  Nothing new to say
+            # about those — they are admin-facing browser UIs on names the M5
+            # wildcard already covers, riding the permanent `Allow Traefik` ZBF
+            # rule, so none of them is a shim and none gets a ledger row.
+            #
+            # AUDIOBOOKSHELF IS THE INTERESTING ONE.  It is a HOUSEHOLD service
+            # like Jellyseerr, not an operator tool — so the obvious move is to
+            # copy Jellyseerr's middleware-free router.  DO NOT.
+            #
+            # The Jellyseerr exemption is narrow and does not transfer.  It
+            # exists because Jellyseerr's posture is its OWN Jellyfin-account
+            # login, so removing forward-auth swaps one login for another
+            # rather than removing authentication.  Audiobookshelf has its own
+            # accounts too — but it also has NATIVE MOBILE AND TV CLIENTS, and
+            # that is the axis that actually matters here.
+            #
+            # So which way does that cut?  It cuts TOWARDS authelia, and this
+            # is the trade being made deliberately:
+            #
+            #   Architecture invariant #4 exempts JELLYFIN from forward-auth
+            #   precisely because TV and mobile clients cannot survive an
+            #   authentication redirect.  The Audiobookshelf mobile app has the
+            #   same problem, and it WILL fail against this router.
+            #
+            #   It gets the middleware anyway because, unlike Jellyfin, nothing
+            #   in this household is using the native app yet — the library is
+            #   new as of this milestone.  Adding auth now and relaxing it
+            #   later if the app is wanted is reversible; shipping an
+            #   unauthenticated route and tightening it after people have
+            #   configured clients is not.
+            #
+            #   IF THE MOBILE APP IS EVER WANTED, this is the router to change,
+            #   the change is to drop `middlewares`, and it needs a ledger row
+            #   under invariant #4 naming a THIRD permanent bypass alongside
+            #   Jellyfin's and qBittorrent's.  Do not make that change quietly.
+            lidarr = {
+              rule        = "Host(`lidarr.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "lidarr";
+            };
+            kapowarr = {
+              rule        = "Host(`kapowarr.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "kapowarr";
+            };
+            questarr = {
+              rule        = "Host(`questarr.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "questarr";
+            };
+            audiobookshelf = {
+              rule        = "Host(`audiobookshelf.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "audiobookshelf";
+            };
+            storyteller = {
+              rule        = "Host(`storyteller.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "storyteller";
+            };
+
             # ── Jellyseerr (M13): the HOUSEHOLD route, and the exception ───
             #
             # NO MIDDLEWARE, and that is the whole point of this router.
@@ -1176,6 +1273,15 @@ in
 
             # M9 — its own address, in a podman netns on VLAN 90.
             tubesync.loadBalancer.servers     = [ { url = "http://${tubesyncAddr}:${toString tubesyncPort}/"; } ];
+
+            # M14 — four more ports on the arr container's address …
+            lidarr.loadBalancer.servers         = [ { url = "http://${arrAddr}:${toString lidarrPort}/"; } ];
+            kapowarr.loadBalancer.servers       = [ { url = "http://${arrAddr}:${toString kapowarrPort}/"; } ];
+            questarr.loadBalancer.servers       = [ { url = "http://${arrAddr}:${toString questarrPort}/"; } ];
+            audiobookshelf.loadBalancer.servers = [ { url = "http://${arrAddr}:${toString audiobookshelfPort}/"; } ];
+
+            # … and one more podman netns of its own, the tier's second.
+            storyteller.loadBalancer.servers    = [ { url = "http://${storytellerAddr}:${toString storytellerPort}/"; } ];
             grafana.loadBalancer.servers  = [ { url = "http://${monitoringAddr}:${toString grafanaPort}/"; } ];
 
             # M7.  The same address the forwardAuth middleware above calls,

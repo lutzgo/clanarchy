@@ -706,20 +706,30 @@ in
     # Three directories, and the split is what makes Storyteller and
     # Audiobookshelf complementary rather than overlapping:
     #
-    #   library/    finished audiobooks.  Audiobookshelf scans this.
-    #   ebooks/     the DRM-free ebook halves.  Storyteller's INPUT.
-    #   synced/     Storyteller's OUTPUT — EPUB3 with embedded audio and
-    #               sentence-level sync.  Audiobookshelf can serve these too,
-    #               which is the whole point of putting them on one dataset.
+    #   library/      finished audiobooks.  Audiobookshelf scans this.
+    #   ebooks/       the DRM-free ebook halves, staged by hand.
+    #   storyteller/  Storyteller's ENTIRE /data volume — its database, the
+    #                 originals it has been given, and the synced EPUB3s it
+    #                 produces.  It is here rather than under ${stateRoot}
+    #                 BECAUSE IT IS NOT PURELY STATE: the outputs are library
+    #                 content, and putting them on the same dataset as
+    #                 Audiobookshelf's library is what lets ABS be pointed at
+    #                 them without a copy.
     #
-    # 2770 root:media so both services (audiobookshelf here, storyteller in its
-    # own podman container) can write, and so anything created inherits the
-    # group.  Storyteller runs as uid 3022 in group media — see
-    # machines/ernst/containers/storyteller.nix.
-    "d ${audiobooksRoot}         2770 root ${toString mediaGid} -"
-    "d ${audiobooksRoot}/library 2770 root ${toString mediaGid} -"
-    "d ${audiobooksRoot}/ebooks  2770 root ${toString mediaGid} -"
-    "d ${audiobooksRoot}/synced  2770 root ${toString mediaGid} -"
+    # A NOTE ON WHAT IS *NOT* CLAIMED HERE.  Storyteller takes its input
+    # through its own web UI and writes its output inside /data; there is no
+    # verified watch-a-directory hand-off between it and Audiobookshelf, and
+    # this repo does not pretend otherwise.  Adding the produced files as an
+    # Audiobookshelf library is an lgo UI step in the PR body.  Upstream ships
+    # exactly ONE volume, and mounting it somewhere useful is the whole of the
+    # integration.
+    #
+    # 2770 root:media so both services can write, and so anything created
+    # inherits the group.  Storyteller runs as uid 3022 in group media, from a
+    # different container — see machines/ernst/containers/storyteller.nix.
+    "d ${audiobooksRoot}             2770 root ${toString mediaGid} -"
+    "d ${audiobooksRoot}/library     2770 root ${toString mediaGid} -"
+    "d ${audiobooksRoot}/ebooks      2770 root ${toString mediaGid} -"
 
     # QUESTARR'S GAME TREE, on zdata/games — a THIRD dataset, and deliberately
     # not /srv/media.

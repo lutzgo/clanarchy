@@ -245,6 +245,9 @@
           ./machines/ernst/containers/authelia.nix
           ./machines/ernst/containers/tvheadend.nix
           ./machines/ernst/containers/tubesync.nix
+          # M14.  The podman tier's SECOND occupant — podman itself is enabled
+          # by tubesync.nix above, not re-enabled here.
+          ./machines/ernst/containers/storyteller.nix
           # microvm.nix's host module, and the one guest that uses it (M3).
           # The import lives here rather than inside wg-qbittorrent.nix
           # because `inputs` reaches a machine module via _module.args, and
