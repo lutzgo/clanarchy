@@ -305,12 +305,21 @@ in
   # can be pointed at the produced EPUB3s without a copy or a chown.  Group
   # WRITE is deliberately absent: nothing else should be modifying another
   # application's database directory.
+  #
+  # `audiobooks-tree.service` (containers/arr.nix) is what actually VERIFIES
+  # the dataset is mounted, and this unit requires it rather than repeating the
+  # check.  The dependency is deliberately harder here than it is for the arr
+  # container: Storyteller's entire /data — its database included — lives on
+  # that dataset, so a Storyteller that starts without it is not a degraded
+  # Storyteller, it is a NEW EMPTY ONE that would then have to be reconciled
+  # with the real database by hand.  Audiobookshelf merely shows an empty
+  # library, so it is allowed to start.
   systemd.services.storyteller-data-dir = {
     description = "Create ${dataDir} as storyteller:media 0750";
     wantedBy = [ "multi-user.target" ];
     before   = [ "podman-storyteller.service" ];
-    after    = [ "srv-audiobooks.mount" ];
-    requires = [ "srv-audiobooks.mount" ];
+    after    = [ "srv-audiobooks.mount" "audiobooks-tree.service" ];
+    requires = [ "srv-audiobooks.mount" "audiobooks-tree.service" ];
     serviceConfig = {
       Type            = "oneshot";
       RemainAfterExit = true;

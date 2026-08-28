@@ -724,12 +724,10 @@ in
     # exactly ONE volume, and mounting it somewhere useful is the whole of the
     # integration.
     #
-    # 2770 root:media so both services can write, and so anything created
-    # inherits the group.  Storyteller runs as uid 3022 in group media, from a
-    # different container — see machines/ernst/containers/storyteller.nix.
-    "d ${audiobooksRoot}             2770 root ${toString mediaGid} -"
-    "d ${audiobooksRoot}/library     2770 root ${toString mediaGid} -"
-    "d ${audiobooksRoot}/ebooks      2770 root ${toString mediaGid} -"
+    # THESE THREE ARE NOT tmpfiles RULES — see audiobooks-tree.service below.
+    # A tmpfiles rule here would create them on zroot whenever the dataset is
+    # not mounted, which is exactly the failure that took ernst down on
+    # 2026-08-28 (in its other direction).
 
     # QUESTARR'S GAME TREE, on zdata/games — a THIRD dataset, and deliberately
     # not /srv/media.
@@ -746,6 +744,107 @@ in
     # ALLOWED TO EXECUTE would be the worst place in the fleet to do it.
     "d /srv/games/questarr 0750 ${toString questarrUid} ${toString questarrGid} -"
   ];
+
+  ##############################################################################
+  # The /srv/audiobooks tree — a UNIT, not tmpfiles rules, and the distinction
+  # is what stops this dataset taking the machine down a second time.
+  #
+  # ── WHY THIS IS NOT A tmpfiles RULE ──────────────────────────────────────
+  #
+  # tmpfiles runs early and unconditionally.  If zdata/audiobooks is not
+  # mounted — not created yet, wrong `mountpoint` property, pool imported late
+  # — a tmpfiles rule cheerfully creates /srv/audiobooks/{library,ebooks} ON
+  # zroot, which ROLLS BACK on every boot (invariant #7).  Audiobookshelf would
+  # then scan an empty library, write cover art into it, and lose the lot at
+  # the next reboot, with nothing anywhere saying why.
+  #
+  # containers/jellyfin.nix and containers/tubesync.nix already make this
+  # argument for their own download trees ("a tmpfiles rule alone races the
+  # mount") and pair theirs with an ordered oneshot.  This is the same pattern
+  # with one addition: it VERIFIES the mount rather than merely ordering after
+  # it, because `Requires=` on a mount marked `nofail` does not fail the way an
+  # unqualified reader would expect.
+  #
+  # ── WHY IT FAILS INSTEAD OF FIXING ITSELF ────────────────────────────────
+  #
+  # It could `zfs set mountpoint=legacy` and mount the dataset itself.  It
+  # deliberately does not: a unit that silently repairs storage layout is a
+  # unit that hides the fact that the layout was wrong, and the next surprise
+  # is a dataset nobody meant to create being adopted into the tree.  Failing
+  # loudly, in a unit named after the problem, is the M13/`clanarchy-
+  # impermanence-check` precedent — that one exists because ernst was silently
+  # not impermanent for a month.
+  #
+  # ── BLAST RADIUS, WHICH IS THE WHOLE POINT ───────────────────────────────
+  #
+  # `before`, NOT `requiredBy`, on container@arr.  If this unit fails, the arr
+  # container STILL STARTS: Sonarr, Radarr, Prowlarr, Bazarr and the rest have
+  # nothing to do with audiobooks and must not go down because a library
+  # dataset is missing.  Audiobookshelf inside it will show an empty library,
+  # which is the visible-and-harmless failure this is aiming for.
+  #
+  # Storyteller is the exception and is handled in containers/storyteller.nix:
+  # its ENTIRE /data lives on this dataset, so `storyteller-data-dir.service`
+  # really does require the mount and `podman-storyteller` really is blocked by
+  # it.  A Storyteller that starts without its database is not a degraded
+  # Storyteller, it is a new empty one.
+  #
+  # On 2026-08-28 the machine went to emergency — no sshd, no containers, no
+  # microvm — because this dataset's mount failed and a `fileSystems` entry is
+  # `RequiredBy` local-fs.target by default.  `nofail` in machines/ernst/disko.nix
+  # is the other half of the fix and carries the full account.
+  ##############################################################################
+  systemd.services.audiobooks-tree = {
+    description = "Verify zdata/audiobooks is mounted and create its tree";
+    wantedBy = [ "multi-user.target" ];
+    after    = [ "srv-audiobooks.mount" ];
+    # Ordering only.  See BLAST RADIUS above — a failure here must not stop
+    # the arr container.
+    before   = [ "container@arr.service" ];
+    serviceConfig = {
+      Type            = "oneshot";
+      RemainAfterExit = true;
+    };
+    path = [ pkgs.util-linux pkgs.coreutils ];
+    script = ''
+      set -eu
+
+      # findmnt, not `mountpoint`: this has to check WHAT is mounted, not just
+      # that something is.  With `nofail` the mount unit can fail while
+      # /srv/audiobooks still exists as an ordinary directory on zroot, and
+      # that is precisely the case a bare mountpoint test would pass.
+      src=$(findmnt --noheadings --output SOURCE --target ${audiobooksRoot} || true)
+      fstype=$(findmnt --noheadings --output FSTYPE --target ${audiobooksRoot} || true)
+
+      if [ "$src" != "zdata/audiobooks" ] || [ "$fstype" != "zfs" ]; then
+        echo "audiobooks-tree: ${audiobooksRoot} is NOT zdata/audiobooks." >&2
+        echo "  found: source='$src' fstype='$fstype'" >&2
+        echo "" >&2
+        echo "  Refusing to create the tree, because doing so would put the" >&2
+        echo "  audiobook library on zroot, which rolls back on every boot." >&2
+        echo "" >&2
+        echo "  The dataset must exist AND carry mountpoint=legacy — a ZFS" >&2
+        echo "  dataset without it cannot be mounted by mount(8) at all:" >&2
+        echo "" >&2
+        echo "    zfs create -o mountpoint=legacy -o recordsize=1M \\" >&2
+        echo "      -o exec=off -o setuid=off -o devices=off -o atime=off \\" >&2
+        echo "      -o com.sun:auto-snapshot=true zdata/audiobooks" >&2
+        echo "" >&2
+        echo "  If it exists already:  zfs set mountpoint=legacy zdata/audiobooks" >&2
+        echo "  Then:                  systemctl start srv-audiobooks.mount" >&2
+        echo "  See docs/guides/ernst-zdata-datasets.md." >&2
+        exit 1
+      fi
+
+      # 2770 root:media, matching the rest of the shared trees: setgid so
+      # everything created inside inherits the group, group-writable so
+      # Audiobookshelf (in the arr container) and Storyteller (in its own
+      # podman netns, uid 3022) can both manage what they find.
+      install -d -o root -g ${toString mediaGid} -m 2770 ${audiobooksRoot}
+      install -d -o root -g ${toString mediaGid} -m 2770 ${audiobooksRoot}/library
+      install -d -o root -g ${toString mediaGid} -m 2770 ${audiobooksRoot}/ebooks
+    '';
+  };
 
   # The rest of the media tree is NOT declared here.  containers/jellyfin.nix
   # owns those tmpfiles rules (library/{movies,tvshows}, torrents/{movies,tv})

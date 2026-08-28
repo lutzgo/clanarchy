@@ -79,7 +79,47 @@ zfs create \
   -o devices=off \
   -o atime=off \
   zdata/games
+
+# /srv/audiobooks — M14. Audiobookshelf's library, the DRM-free ebook
+# halves, and Storyteller's /data (its database and the synced EPUB3s it
+# produces). A SIBLING of zdata/media, never a child: invariant #2 forbids
+# a dataset boundary INSIDE the hardlink domain, and nothing here is ever
+# hardlinked anyway. auto-snapshot because a synced EPUB3 costs an hour of
+# forced alignment to regenerate and the source pairs are acquired by hand.
+zfs create \
+  -o mountpoint=legacy \
+  -o recordsize=1M \
+  -o exec=off \
+  -o setuid=off \
+  -o devices=off \
+  -o atime=off \
+  -o com.sun:auto-snapshot=true \
+  zdata/audiobooks
 ```
+
+> **`-o mountpoint=legacy` is not decoration on any of these, and this
+> dataset is where that was learned.** A ZFS dataset whose `mountpoint`
+> property is anything else **cannot be mounted by `mount(8)` at all** —
+> `zfs` refuses outright. NixOS mounts every dataset here through a
+> generated `.mount` unit, so without `legacy` the unit fails; and because
+> a `fileSystems` entry is `RequiredBy` `local-fs.target` by default, that
+> failure takes `local-fs.target` with it and the machine boots into
+> **emergency**: no sshd, no containers, no microvm.
+>
+> That is exactly what happened on **2026-08-28**, when M14 shipped
+> `zdata/audiobooks` in `disko.nix` without adding it to this file — so
+> there was no command to copy, and the dataset was created without the
+> property. The machine had to be recovered from the boot menu.
+>
+> Two things changed as a result: this section exists, and
+> `/srv/audiobooks` now carries **`nofail`** (see `machines/ernst/disko.nix`)
+> so that a library dataset can never again be a hard boot dependency of the
+> whole NAS. `audiobooks-tree.service` fails loudly instead.
+>
+> **disko does not create datasets on an existing pool.** It only emits the
+> `fileSystems` entry that mounts them. Adding a dataset to `disko.nix`
+> without running the `zfs create` here is therefore a deploy that fails,
+> not a deploy that creates it.
 
 `compression=zstd` and encryption are inherited from the pool root and
 should not be restated.

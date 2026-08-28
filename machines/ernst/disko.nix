@@ -396,4 +396,48 @@
       };
     };
   };
+
+  ##############################################################################
+  # `nofail` on /srv/audiobooks — added after this dataset TOOK ERNST DOWN.
+  #
+  # ── WHAT HAPPENED, 2026-08-28 ─────────────────────────────────────────────
+  #
+  #   M14 added zdata/audiobooks.  disko does not create datasets on an existing
+  #   pool — it only emits the `fileSystems` entry that mounts them — so the
+  #   dataset is created by hand from docs/guides/ernst-zdata-datasets.md.
+  #   Every command in that runbook passes `-o mountpoint=legacy`, and M14 did
+  #   not add a section for this dataset, so there was nothing concrete to copy.
+  #
+  #   A ZFS dataset whose `mountpoint` property is NOT `legacy` cannot be
+  #   mounted by mount(8) at all — zfs refuses outright.  So `srv-audiobooks.mount`
+  #   failed, and because a `fileSystems` entry is `RequiredBy` local-fs.target
+  #   by default, local-fs.target failed with it and the machine went to
+  #   emergency: no sshd, no containers, no microvm, no exporters.  The kernel
+  #   still answered ping and still sent RST on :22, which is what made it look
+  #   like a crash rather than a failed mount.
+  #
+  #   THE POINT IS NOT THE MISSING PROPERTY.  That was one mistake and it is
+  #   fixed in the runbook.  The point is that A LIBRARY DATASET WAS ALLOWED TO
+  #   BE A HARD BOOT DEPENDENCY OF THE WHOLE NAS.  /srv/audiobooks holds
+  #   audiobooks.  Nothing about ernst booting, serving Jellyfin, running the
+  #   VPN guest or accepting SSH depends on it, and the blast radius of any
+  #   failure here — a typo'd property, a pool that imports late, a dataset
+  #   nobody created yet — should be "Audiobookshelf is down", not "the server
+  #   is unreachable and needs a console".
+  #
+  # ── WHY THIS IS NOT APPLIED TO THE OTHER /srv DATASETS ───────────────────
+  #
+  #   Deliberately narrow.  /srv/media and /srv/state are different: services
+  #   that write there without them mounted would scribble onto zroot, which
+  #   ROLLS BACK (invariant #7), so silent success is worse than loud failure
+  #   for those two.  The same objection applies here in miniature and is
+  #   answered by the check unit in containers/storyteller.nix rather than by
+  #   taking the host down — see `audiobooks-dataset-check.service`, which fails
+  #   loudly and stops the two consumers while leaving everything else running.
+  #
+  #   `fileSystems.<n>.options` is a list and disko's own definition is
+  #   `[ "defaults" ]`, so this MERGES with it rather than replacing it — no
+  #   mkForce, and `defaults,nofail` is what reaches the mount unit.
+  ##############################################################################
+  fileSystems."/srv/audiobooks".options = [ "nofail" ];
 }
