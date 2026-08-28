@@ -315,6 +315,42 @@ let
   exporterPort   = 8000;
   monitoringAddr = "10.0.90.14";
 
+  # M14.  Traefik's veth address on VLAN 90 (M5, reservation keyed on
+  # 02:00:00:90:00:04), permitted to reach slskd's WEB UI and nothing else.
+  #
+  # ── WHY THIS EXISTS: THE HUMAN PATH WAS THE ONE THING WITHOUT A ROUTE ────
+  #
+  # M14 gave slskd's API a path for SOULARR — the arr container, same VLAN,
+  # switched locally — and stopped there.  The human web UI was left reachable
+  # only by connecting to 10.0.90.11:5030 DIRECTLY from a management VLAN,
+  # which made it the only admin UI in this fleet not behind Traefik, and the
+  # only one whose reachability depends on a per-guest UDM-Pro exception.
+  #
+  # That exception is exactly what failed.  Measured 2026-08-28 from a LAN
+  # client, after the guest's own firewall and slskd were both verified
+  # correct:
+  #
+  #   :22    OK        :8080  HTTP 200        :5030  TIMEOUT
+  #
+  # while the same three from VLAN 50 all answered.  The page half-loaded and
+  # its SignalR websocket then died on a loop — "Lost connection to slskd,
+  # Retrying…" — because the initial GET rode an existing conntrack entry and
+  # the persistent connection did not.
+  #
+  # A Traefik route removes the whole class of problem: the browser reaches
+  # 10.0.90.12:443 under the ONE permanent `Allow Traefik` policy that every
+  # other service already uses (invariant #3), and no VLAN-90 port needs to be
+  # opened to a consumer network at all.
+  #
+  # ── ITS OWN RULE, NOT A SEAT IN @api_clients ────────────────────────────
+  #
+  # Deliberately, and for the reason the exporter's rule states in both
+  # directions: @api_clients also carries qBittorrent's WebUI API on 8080, and
+  # Traefik has no business driving a torrent client.  Traefik may reach the
+  # slskd UI and nothing else; the arr container may reach the APIs and not
+  # this.  A shared set would grant both to both.
+  traefikAddr = "10.0.90.12";
+
   downloadRoot = "/srv/media/torrents";
   stateSource  = "/srv/state/qbittorrent";
 
@@ -1332,6 +1368,12 @@ in
               # own line because its client is neither of those.
               iifname "eth0" ip saddr @api_clients tcp dport ${toString slskdWebPort} accept
 
+              # M14.  Traefik, for the slskd WEB UI only — see traefikAddr.
+              # This is what makes slskd reachable at slskd.goclan.org like
+              # every other admin UI, instead of depending on a per-guest
+              # UDM-Pro exception for a consumer VLAN.
+              iifname "eth0" ip saddr ${traefikAddr} tcp dport ${toString slskdWebPort} accept
+
               iifname "eth0" ip saddr @mgmt_nets   tcp dport 22 accept
 
               # M13.  The Prometheus exporter, and it gets its OWN rule rather
@@ -1401,6 +1443,14 @@ in
               # would answer into the tunnel and Prometheus would see a
               # timeout — the same failure the mgmtNets routing note describes.
               oifname "eth0" ip daddr ${monitoringAddr} ct state established,related accept
+
+              # M14.  Traefik's reply, and it needs its own line for the same
+              # reason the exporter's does: Traefik is deliberately NOT in
+              # @api_clients, so the rule above does not cover it.  Without
+              # this the slskd UI would answer INTO THE TUNNEL and every
+              # request through the proxy would time out — the failure the
+              # mgmtNets routing note describes, in a third place.
+              oifname "eth0" ip daddr ${traefikAddr} ct state established,related accept
 
               oifname "eth0" ip daddr . udp dport @vpn_endpoint accept
               oifname "eth0" udp sport 68 udp dport 67 accept

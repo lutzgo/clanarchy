@@ -405,6 +405,12 @@ let
     "kapowarr.${baseDomain}"
     "questarr.${baseDomain}"
     "storyteller.${baseDomain}"
+
+    # M14, added after the fact.  slskd's web UI lives in the microvm guest
+    # and was the only admin surface in this fleet without a Traefik route —
+    # see the slskd router in containers/traefik.nix for why that had to
+    # change.  Same treatment as every other operator tool here.
+    "slskd.${baseDomain}"
   ];
 
   ############################################################################

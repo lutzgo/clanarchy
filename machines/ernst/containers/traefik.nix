@@ -300,6 +300,27 @@ let
   storytellerAddr = "10.0.90.20";
   storytellerPort = 8001;
 
+  # slskd's web UI, in the MICROVM guest — the first backend here that is not
+  # an nspawn container or a podman netns.
+  #
+  # ADDED AFTER THE FACT, and the omission is worth recording.  M14 routed
+  # Soularr to slskd's API across VLAN 90 at layer 2 and stopped there, which
+  # left the human web UI as the ONLY admin surface in this fleet not behind
+  # Traefik — reachable solely by pointing a browser at 10.0.90.11:5030 from a
+  # management VLAN, i.e. dependent on a per-guest UDM-Pro exception.
+  #
+  # That exception is what failed on 2026-08-28: from a LAN client, the guest
+  # answered :22 and :8080 but timed out on :5030, so the page half-loaded and
+  # its websocket died in a retry loop.  Routing it here removes the
+  # dependency entirely — the browser talks to Traefik under the one permanent
+  # `Allow Traefik` policy, and VLAN 90 needs no consumer-facing hole.
+  #
+  # The guest's nftables gained a matching pair of rules for THIS address only
+  # (input on 5030, and the established reply) — deliberately not a seat in its
+  # @api_clients set, which would also hand Traefik qBittorrent's API.
+  slskdAddr = "10.0.90.11";
+  slskdPort = 5030;
+
   # SOULARR HAS NO ROUTE AND NO PORT.  It is a one-shot timer, not a server,
   # and its bundled Flask web UI is deliberately not packaged — see
   # machines/ernst/containers/pkgs/soularr.nix.  Listed here as an absence so
@@ -1143,6 +1164,22 @@ in
               service     = "storyteller";
             };
 
+            # slskd's web UI — in the microvm guest, not a container.  Behind
+            # `authelia` like every other admin surface; its own login exists
+            # but is a single shared operator account, not per-user.
+            #
+            # NOTE ON WEBSOCKETS: this UI is SignalR-driven and holds a
+            # persistent connection.  Traefik proxies websockets natively with
+            # no extra configuration, which is part of why routing it here is
+            # better than the direct path it replaces — that path died on the
+            # websocket while ordinary GETs still succeeded.
+            slskd = {
+              rule        = "Host(`slskd.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "slskd";
+            };
+
             # ── Jellyseerr (M13): the HOUSEHOLD route, and the exception ───
             #
             # NO MIDDLEWARE, and that is the whole point of this router.
@@ -1295,6 +1332,9 @@ in
 
             # … and one more podman netns of its own, the tier's second.
             storyteller.loadBalancer.servers    = [ { url = "http://${storytellerAddr}:${toString storytellerPort}/"; } ];
+
+            # … and one in the microvm guest, the first non-container backend.
+            slskd.loadBalancer.servers          = [ { url = "http://${slskdAddr}:${toString slskdPort}/"; } ];
             grafana.loadBalancer.servers  = [ { url = "http://${monitoringAddr}:${toString grafanaPort}/"; } ];
 
             # M7.  The same address the forwardAuth middleware above calls,
