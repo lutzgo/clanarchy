@@ -58,7 +58,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M12 — arr helpers | **done — deployed and merged 2026-08-26 (#100); (a) Byparr split out as [M12b](#m12b-featernst-byparr)** | — | UmlautAdaptarr, Bazarr, Cleanuparr, MediathekArr and the recyclarr additions all landed inside the **existing** arr container, with no new veth, MAC, DHCP reservation or UDM-Pro work — so the hand-rolled-derivation approach M14 depends on is proven. All five units active on ernst. **Four of the six premises did not survive checking**: Byparr is no longer Camoufox-based and is a browser-packaging job in its own right; **MediathekArr is TWO processes**, and upstream's `main` is a diverged, older tree than its own release tag; **Unpackerr is measured out**; and **UmlautAdaptarr is inert here** — all six indexers are Cardigann HTML scrapers, which it architecturally cannot serve. **One thing is still outstanding**: the first real recyclarr sync fires at 00:03 the night of 2026-08-26 and is what adopts Sonarr's existing `Remux + WEB 2160p` (59 series) — see [the profile census](#the-profile-census-re-measured--and-one-number-this-repo-had-wrong). Depends on M4. [M12](#m12-featernst-arr-helpers) |
 | M12c — library profile reassignment | **open — requested 2026-08-26** | — | Recyclarr creates profiles but **never assigns a title to one**, and this library's titles predate the guides. Rules for "high" and "low" quality per shows/films settled by **Q&A first**, then an agent reassigns title by title. **The hazard is the film side**: 2389 of 2432 movies sit on a non-upgrading `Ultra-HD` profile, and every TRaSH profile is upgrade-enabled — a bad rule moves them all and queues most of 13 TB through the VPN. Demotions first, promotions in watched batches, search-on-edit OFF. Depends on M12. [M12c](#m12c--library-profile-reassignment) |
 | M13 — media lifecycle | **done — deployed via [#102](https://github.com/lutzgo/clanarchy/pull/102), operator-confirmed 2026-08-27** | [#102](https://github.com/lutzgo/clanarchy/pull/102) | Deployed and confirmed working by lgo, with no deploy findings recorded — Janitorr stays in **dry-run** as the plan requires, so letting it delete is a deliberate later step, not part of this close. M16 (external ingress for Jellyseerr) is now unblocked. Jellyseerr (internal scope), Janitorr (dry-run) and Scraparr all land in the **existing** arr container; three M6 exporter targets, not four. **Janitorr publishes no artifact at all** — GitHub releases carry zero assets and the only channel is a Paketo OCI image — so it is the repo's first from-source **Gradle/Spring Boot 4** build, with a committed 350-artifact mitm-cache lock. **Three roadmap premises did not survive checking**: `services.jellyseerr` is now a renamed alias for **`services.seerr`**; **Ollama serves no `/metrics`** (404, measured), so its target is dropped and handed to M15 with the reasoning; and **Jellystat is deferred** — it needs PostgreSQL, and Janitorr's own docs now recommend `janitorr-stats` instead. Janitorr also has **no web UI**, so its port is bound to loopback and routed nowhere. Depends on M6. [M13](#m13-featernst-media-lifecycle) |
-| M14 — libraries | **done — deployed and merged 2026-08-29** | — | All six land: Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. **The hardlink proof PASSED with its negative control, run pre-deploy** — the chain works iff slskd carries `UMask=0002`, and **the nixpkgs slskd module does not set one**, so every music import would have silently degraded to a copy. **Four premises did not survive checking**: Storyteller's upstream repo has **moved** (the roadmap's link is an archived namespace) and has no sane non-Docker build, so it takes the **podman tier** — the tier's second occupant; **Questarr publishes no release assets**, making it M14's only real build; **Audiobookshelf's port is 8000 in nixpkgs**, not the roadmap's 13378; and **`lidarr.nix` and `audiobookshelf.nix` ship NO hardening at all** — both measured at **9.0 UNSAFE** before, 1.6 OK after. Soulseek through the VPN exit measured reachable; **peer connectivity is the remaining go/no-go**. Depends on M12. [M14](#m14-featernst-libraries) |
+| M14 — libraries | **done — deployed and merged 2026-08-29 ([#108](https://github.com/lutzgo/clanarchy/pull/108)); ONE VERIFICATION STILL OWED** | — | All six land: Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. **The hardlink proof PASSED with its negative control, run pre-deploy** — the chain works iff slskd carries `UMask=0002`, and **the nixpkgs slskd module does not set one**, so every music import would have silently degraded to a copy. **Four premises did not survive checking**: Storyteller's upstream repo has **moved** (the roadmap's link is an archived namespace) and has no sane non-Docker build, so it takes the **podman tier** — the tier's second occupant; **Questarr publishes no release assets**, making it M14's only real build; **Audiobookshelf's port is 8000 in nixpkgs**, not the roadmap's 13378; and **`lidarr.nix` and `audiobookshelf.nix` ship NO hardening at all** — both measured at **9.0 UNSAFE** before, 1.6 OK after. Soulseek through the VPN exit measured reachable; **peer connectivity is the remaining go/no-go**. Depends on M12. [M14](#m14-featernst-libraries) |
 | M15 — Tdarr / space reclamation | **open** | — | Its own container with VAAPI on the 7900 XTX, plus GPU arbitration against a card that now has three other claimants. **M11's VRAM numbers changed this materially**: a fully-resident Ollama at 64k leaves ~2 GB, so CPU-only Tdarr is now a serious default rather than a fallback — and Muxarr must be evaluated first, because it may reclaim more per CPU-hour with no GPU question at all. Depends on M12. [M15](#m15-featernst-tdarr) |
 | M16 — external ingress | **open** | — | Make `jellyseerr.goclan.org` reachable from the internet, and **only** that. First service accepting connections from outside the home network, so the milestone is about the boundary rather than the service. Creates a permanent bypass row under invariant #4. Depends on M13. [M16](#m16-featernst-external-ingress) |
 | M17 — ebook acquisition | **open** | — | **Bindery** for ebooks, chosen over LazyLibrarian and Chaptarr on fit with this repo rather than features: a single **Go binary with release tarballs**, so it lands on M12's settled packaging rule (take the upstream artifact, pin version + hash) and runs as an ordinary NixOS unit with a legible `systemd-analyze` score. Chaptarr is the better *product* — one instance for ebooks and audiobooks, narrator-aware — and is **Docker-only**, i.e. a third opaque podman image; LazyLibrarian is mature but Python with vendored deps. **The premise is already proven**: lgo acquires ebooks through the existing indexers, so unlike the books-category concern raised during M14 this is not blocked on indexer coverage. Depends on M14. [M17](#m17-featernst-bindery) |
@@ -319,6 +319,40 @@ boundary, a firewall rule, a tier, a directory. A milestone respects them in its
 rather than any milestone's architecture, and it has no mechanism to point at.
 Filing it as invariant #10 would dilute a list whose value is that every entry
 names something concrete you can go and check.
+
+### SN4 — A failed oneshot on a timer is silent
+
+**Found by M14, the expensive way.** Soularr ran every 15 minutes for a day and
+failed every single time:
+
+```
+cat: /run/arr-api-keys/lidarr-api-key: Permission denied
+```
+
+Roughly ninety consecutive failures, and **nothing anywhere said so**. The
+service was `active (waiting)` because that is the *timer's* state; the unit
+itself was `inactive (dead)` with a stale `Result=exit-code` that no dashboard
+looks at. `systemctl list-units --failed` was **empty** — a oneshot that failed
+and was then re-triggered does not stay in the failed set. The symptom reached
+a human only as "nothing has downloaded", days later, with no obvious place to
+look.
+
+**The rule: a timer-driven unit needs an alert, or it does not need to exist.**
+A long-running service that dies is loud — the port stops answering, the
+container restart-loops, someone notices within minutes. A oneshot has none of
+that: its whole lifecycle is "start, exit, disappear", and a failing exit looks
+identical to a successful one from every angle except its journal.
+
+**Concretely, for this fleet:** anything on a timer needs either a Prometheus
+alert on `node_systemd_unit_state{state="failed"}` for that unit, or an
+`OnFailure=` handler that reaches ntfy. M6 already scrapes systemd unit state on
+every machine, so the exporter half exists and only the alert rule is missing.
+This is owed by `soularr`, `recyclarr` and every future timer.
+
+**Why this is a standing note and not an invariant**, on SN3's own test: it is a
+rule about *method* — how a milestone must make its work observable — not a
+property of the system with a mechanism to point at. It binds every milestone
+that adds a timer, and no milestone's architecture.
 
 ---
 
@@ -6149,7 +6183,7 @@ needs the numeric uids, which is all `setpriv` requires. Run on ernst
 The third step is what makes the first two mean anything. Without it the test
 cannot distinguish a working chain from root bypassing the check — the mistake
 an earlier revision of M3's own plan made, and the same failure class as
-[SN3](#sn3-a-broken-instrument-is-indistinguishable-from-a-bad-result).
+[SN3](#sn3--a-broken-instrument-is-indistinguishable-from-a-bad-result).
 
 **AND IT FOUND THE BUG IT WAS LOOKING FOR.** The nixpkgs `slskd` module's unit
 carries fifteen hardening directives and **no `UMask`**, so it inherits
@@ -6272,6 +6306,22 @@ credential therefore appeared to do nothing. Rotation needs
 **qBittorrent must be checked afterwards**: its unit is `Restart=no`, and it
 exited cleanly on one such restart and stayed down.
 
+**5 — Soularr could not read its own credentials, and failed silently for a
+day.** Found at close-out, not during the deploy:
+
+```
+cat: /run/arr-api-keys/lidarr-api-key: Permission denied
+```
+
+The staged *arr API keys are `0600 root:root` inside a `0700` root-owned
+directory — deliberately, and `arr.nix`'s own header explains why. `User=soularr`
+therefore cannot open them. Scraparr solves exactly this with `LoadCredential`
+(PID 1 reads as root, then hands the unit a `0400` copy under
+`$CREDENTIALS_DIRECTORY`), and the header says so; the render script used a bare
+`cat` anyway. **This is why nothing ever landed** — zero files in the Soulseek
+tree, zero in the music library — while the manual slskd searches worked fine
+and made the pipeline look alive. See [SN4](#sn4--a-failed-oneshot-on-a-timer-is-silent).
+
 ### The go/no-go is answered: peers DO serve this exit
 
 **Measured 2026-08-29.** slskd authenticated (`Logged in to the Soulseek server`)
@@ -6281,6 +6331,15 @@ shared commercial VPN exit can be poor, on an IVPN/Leaseweb NL address M4 had
 measured as `451`-blocked by an indexer — **does not hold here**. The microvm
 placement stands and the documented fallback (the arr container, as a stated tier
 violation) is not needed.
+
+**WHAT IS STILL OWED: the hardlink proof on a REAL import.** The synthetic
+proof with its negative control passed pre-deploy and is recorded above, and it
+is the half that proves the *mechanism*. The other half — a Lidarr import of a
+Soularr-fetched album showing **one inode and `links=2`** — has never run,
+because Soularr was broken from the first deploy until close-out (defect 5).
+**A `links=1` on that first real import is a failed milestone, not a cosmetic
+issue**, and M14 is closed on the understanding that this check happens on the
+first album that lands.
 
 **Two credential traps cost time and are worth stating.** Soulseek has **no
 registration page**: an account is created on first successful login, so a
@@ -6405,7 +6464,7 @@ work was **`UMask = 0002` ON THE SOURCE FILE** — `fs.protected_hardlinks` refu
 the check** — which is the mistake an earlier revision of M3's own plan made (it
 created the file as root and linked it as root, and would have passed whatever
 `UMask` was set to). It is also the same failure class as
-[M11's grader bug](#sn3-a-broken-instrument-is-indistinguishable-from-a-bad-result):
+[M11's grader bug](#sn3--a-broken-instrument-is-indistinguishable-from-a-bad-result):
 **a broken instrument is indistinguishable from a good result.**
 
 **A link count of 1 on a real Lidarr import is a FAILED milestone**, not a
@@ -6807,7 +6866,7 @@ invariant #7.
 in-flight progress are what tell you whether the arbitration is **starving** it —
 and **a preemptible service that never runs looks identical to one that works.**
 That is the same epistemics as
-[SN3](#sn3-a-broken-instrument-is-indistinguishable-from-a-bad-result), and it is
+[SN3](#sn3--a-broken-instrument-is-indistinguishable-from-a-bad-result), and it is
 why the exporter is not deferred to M13.
 
 ### Packaging, uid and address
@@ -7562,6 +7621,32 @@ should too.
 ## Floating / backlog
 
 Not sequenced. Each becomes a milestone when it earns one.
+
+**The GL.iNet Comet KVM does not work, and it failed when it was the only way
+in.** Architecture invariant #5 names it as the out-of-band head on the iGPU
+(`card0`), i.e. the designated path when ernst is unreachable. On 2026-08-28 the
+machine sat in emergency mode with no sshd, and the KVM was dead — leaving a
+5-second systemd-boot window on the TV as the entire recovery surface. It was
+not investigated at the time because the priority was getting the box back.
+**Diagnose it while nothing is broken**, which is the only time worth doing it.
+
+**Verify initrd SSH end to end, deliberately.** It has never been confirmed
+working on this machine, and two separate attempts on 2026-08-28 failed for
+mundane and *different* reasons: the machine was powered off during one, and the
+other used a bare IP, which drops the alias's `Port 2222` and silently tries 22.
+Stage-1 sshd itself looked healthy — `Server listening on 0.0.0.0 port 2222` at
+4.8 s, through to handoff — but **no attempt is known to have reached it while
+it was up**, so "it works" is not established. The test: reboot, run the nushell
+loop from `docs/guides/remote-unlock.md` with the **`ernst-initrd` alias**, and
+do not touch the console — entering the passphrase locally is what closes the
+window. If it still fails, `clanarchy.initrdSsh.debug = true` logs
+`ip -br address` from stage 1, which is the one fact none of the current
+evidence supplies.
+
+**Alert on failed timer units.** See
+[SN4](#sn4--a-failed-oneshot-on-a-timer-is-silent). M6 already scrapes systemd
+unit state on every machine, so this is an alert rule rather than new
+infrastructure. Owed by `soularr` and `recyclarr` today.
 
 **`user activation for go failed` on every ernst deploy.** Activation reports
 `Failed to start user unit basic.target … Did not receive a reply`, five times,
