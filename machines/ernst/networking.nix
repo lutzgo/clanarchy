@@ -408,6 +408,14 @@
   #                           zdata, because the container is rootful and
   #                           unmapped — see that file's ROOTFUL section for
   #                           why rootless was rejected)
+  #   uid 3028  bindery      (containers/arr.nix — M17, group media PRIMARY.
+  #                           Ebook acquisition, the Readarr successor: a
+  #                           static Go binary from upstream's release
+  #                           tarball, ordinary NixOS unit in the arr
+  #                           container.  THIRD write path into /srv/media —
+  #                           its own hardlink proof is in M17's test plan,
+  #                           because M14's proof covers slskd's uid, not
+  #                           this one)
   #
   #===========================================================================
   # RESERVED — M8 and M12–M16.  Comments only; nothing below is declared yet.
@@ -519,15 +527,16 @@
   #                              `render` for /dev/dri) rather than inheriting
   #                              this comment.
   #
-  #   uid 3028  bindery         (M17, group media PRIMARY — ebook acquisition,
-  #                              the successor picked for Readarr.  A Go single
-  #                              binary with release tarballs, so it lands on
-  #                              M12's packaging rule and runs as an ordinary
-  #                              NixOS unit rather than the podman tier that
-  #                              Chaptarr's Docker-only build would have forced.
-  #                              It is a THIRD write path into /srv/media, so it
-  #                              owes its own hardlink proof — M14's covers
-  #                              slskd's uid, not this one)
+  #   uid 3028  bindery         M17 LANDED 2026-08-29 AND TOOK THIS — moved up
+  #                              into the allocated table.  Exactly the shape
+  #                              this row predicted: a Go single binary from
+  #                              upstream's release tarball (M12's packaging
+  #                              rule), an ordinary NixOS unit in the arr
+  #                              container, group media PRIMARY.  The hardlink
+  #                              proof this row said it owes is in M17's PR
+  #                              test plan — a THIRD write path into
+  #                              /srv/media, and M14's proof covers slskd's
+  #                              uid, not this one.
   #
   #   uid 3025  wizarr          RESERVED, NOT USED.  M16 evaluated it as its
   #                              brief required and DROPPED it (2026-08-29):

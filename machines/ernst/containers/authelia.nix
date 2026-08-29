@@ -437,6 +437,11 @@ let
     # see the slskd router in containers/traefik.nix for why that had to
     # change.  Same treatment as every other operator tool here.
     "slskd.${baseDomain}"
+
+    # M17.  Bindery — ebook acquisition in the arr container.  The ordinary
+    # case: operator-facing, browser-only, no client a redirect could break.
+    # The household reads in Audiobookshelf/Storyteller and never opens this.
+    "bindery.${baseDomain}"
   ];
 
   ############################################################################
