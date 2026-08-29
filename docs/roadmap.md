@@ -58,7 +58,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M12 — arr helpers | **done — deployed and merged 2026-08-26 (#100); (a) Byparr split out as [M12b](#m12b-featernst-byparr)** | — | UmlautAdaptarr, Bazarr, Cleanuparr, MediathekArr and the recyclarr additions all landed inside the **existing** arr container, with no new veth, MAC, DHCP reservation or UDM-Pro work — so the hand-rolled-derivation approach M14 depends on is proven. All five units active on ernst. **Four of the six premises did not survive checking**: Byparr is no longer Camoufox-based and is a browser-packaging job in its own right; **MediathekArr is TWO processes**, and upstream's `main` is a diverged, older tree than its own release tag; **Unpackerr is measured out**; and **UmlautAdaptarr is inert here** — all six indexers are Cardigann HTML scrapers, which it architecturally cannot serve. **One thing is still outstanding**: the first real recyclarr sync fires at 00:03 the night of 2026-08-26 and is what adopts Sonarr's existing `Remux + WEB 2160p` (59 series) — see [the profile census](#the-profile-census-re-measured--and-one-number-this-repo-had-wrong). Depends on M4. [M12](#m12-featernst-arr-helpers) |
 | M12c — library profile reassignment | **open — requested 2026-08-26** | — | Recyclarr creates profiles but **never assigns a title to one**, and this library's titles predate the guides. Rules for "high" and "low" quality per shows/films settled by **Q&A first**, then an agent reassigns title by title. **The hazard is the film side**: 2389 of 2432 movies sit on a non-upgrading `Ultra-HD` profile, and every TRaSH profile is upgrade-enabled — a bad rule moves them all and queues most of 13 TB through the VPN. Demotions first, promotions in watched batches, search-on-edit OFF. Depends on M12. [M12c](#m12c--library-profile-reassignment) |
 | M13 — media lifecycle | **done — deployed via [#102](https://github.com/lutzgo/clanarchy/pull/102), operator-confirmed 2026-08-27** | [#102](https://github.com/lutzgo/clanarchy/pull/102) | Deployed and confirmed working by lgo, with no deploy findings recorded — Janitorr stays in **dry-run** as the plan requires, so letting it delete is a deliberate later step, not part of this close. M16 (external ingress for Jellyseerr) is now unblocked. Jellyseerr (internal scope), Janitorr (dry-run) and Scraparr all land in the **existing** arr container; three M6 exporter targets, not four. **Janitorr publishes no artifact at all** — GitHub releases carry zero assets and the only channel is a Paketo OCI image — so it is the repo's first from-source **Gradle/Spring Boot 4** build, with a committed 350-artifact mitm-cache lock. **Three roadmap premises did not survive checking**: `services.jellyseerr` is now a renamed alias for **`services.seerr`**; **Ollama serves no `/metrics`** (404, measured), so its target is dropped and handed to M15 with the reasoning; and **Jellystat is deferred** — it needs PostgreSQL, and Janitorr's own docs now recommend `janitorr-stats` instead. Janitorr also has **no web UI**, so its port is bound to loopback and routed nowhere. Depends on M6. [M13](#m13-featernst-media-lifecycle) |
-| M14 — libraries | **built 2026-08-28; not yet deployed** | — | All six land: Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. **The hardlink proof PASSED with its negative control, run pre-deploy** — the chain works iff slskd carries `UMask=0002`, and **the nixpkgs slskd module does not set one**, so every music import would have silently degraded to a copy. **Four premises did not survive checking**: Storyteller's upstream repo has **moved** (the roadmap's link is an archived namespace) and has no sane non-Docker build, so it takes the **podman tier** — the tier's second occupant; **Questarr publishes no release assets**, making it M14's only real build; **Audiobookshelf's port is 8000 in nixpkgs**, not the roadmap's 13378; and **`lidarr.nix` and `audiobookshelf.nix` ship NO hardening at all** — both measured at **9.0 UNSAFE** before, 1.6 OK after. Soulseek through the VPN exit measured reachable; **peer connectivity is the remaining go/no-go**. Depends on M12. [M14](#m14-featernst-libraries) |
+| M14 — libraries | **deployed 2026-08-28/29; one item outstanding** | — | All six land: Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. **The hardlink proof PASSED with its negative control, run pre-deploy** — the chain works iff slskd carries `UMask=0002`, and **the nixpkgs slskd module does not set one**, so every music import would have silently degraded to a copy. **Four premises did not survive checking**: Storyteller's upstream repo has **moved** (the roadmap's link is an archived namespace) and has no sane non-Docker build, so it takes the **podman tier** — the tier's second occupant; **Questarr publishes no release assets**, making it M14's only real build; **Audiobookshelf's port is 8000 in nixpkgs**, not the roadmap's 13378; and **`lidarr.nix` and `audiobookshelf.nix` ship NO hardening at all** — both measured at **9.0 UNSAFE** before, 1.6 OK after. Soulseek through the VPN exit measured reachable; **peer connectivity is the remaining go/no-go**. Depends on M12. [M14](#m14-featernst-libraries) |
 | M15 — Tdarr / space reclamation | **open** | — | Its own container with VAAPI on the 7900 XTX, plus GPU arbitration against a card that now has three other claimants. **M11's VRAM numbers changed this materially**: a fully-resident Ollama at 64k leaves ~2 GB, so CPU-only Tdarr is now a serious default rather than a fallback — and Muxarr must be evaluated first, because it may reclaim more per CPU-hour with no GPU question at all. Depends on M12. [M15](#m15-featernst-tdarr) |
 | M16 — external ingress | **open** | — | Make `jellyseerr.goclan.org` reachable from the internet, and **only** that. First service accepting connections from outside the home network, so the milestone is about the boundary rather than the service. Creates a permanent bypass row under invariant #4. Depends on M13. [M16](#m16-featernst-external-ingress) |
 
@@ -6225,6 +6225,76 @@ keep.
 
 **The lesson worth generalising: READ THE UNIT. Do not infer it from a
 sibling.** nixpkgs' servarr modules are not uniform, and nothing warns you.
+
+### What the deploy found — four defects, all in the wiring, none in evaluation
+
+Everything below passed `nix flake check` and built cleanly, then failed on
+contact with the machine. Recorded because the pattern is the lesson: none of
+these were findable without deploying.
+
+**1 — Lidarr could not start, and the stack trace pointed at the wrong thing.**
+`System.UnauthorizedAccessException: Access to the path
+'/var/lib/lidarr/.config/Lidarr' is denied`, surfacing inside *Sentry's*
+transport initialisation. The nixpkgs lidarr module ships its own tmpfiles rule
+for `.config/Lidarr`; tmpfiles creates the missing parent `.config` as
+**root:root 0755**, then refuses to descend through the ownership change it just
+made — `Detected unsafe path transition`. It never recovers, because the
+transition is equally unsafe next boot. It can only bite a service whose state
+directory is empty the first time tmpfiles runs, i.e. a newly added one, which
+is why sonarr never hit it in three years.
+
+**2 — Audiobookshelf was killed by its own hardening.** `status=31/SYS` is
+SIGSYS; the audit record gave `syscall=93` — `fchown`, from a Node
+`libuv-worker`. systemd's `@privileged` contains `@chown`, so `~@privileged`
+removed it. Upstream `sonarr.nix` ends its filter with exactly `"@chown"` for
+this reason and M14 had copied only the first four entries. **Every unit in the
+arr container now shares one binding matching upstream**, which also closes the
+same latent hole in the M12/M13 services — `seerr` is Node too.
+
+**3 — Storyteller had no IP while reporting success.** `dhcpcd: sending commands
+to dhcpcd process`, then exit 0. dhcpcd keys its control socket on the
+**interface name** (`/run/dhcpcd/eth0-4.sock`), and these units share a mount
+namespace — only the network namespace differs. TubeSync's dhcpcd owned `eth0`;
+Storyteller's became its client and applied the lease in the wrong namespace.
+Unit succeeds, container runs, veth has the right MAC and VLAN, service
+unreachable — nothing for `Restart=on-failure` to catch. **Every podman-tier
+namespace now uses a unique interface name** (`st0`). M9's header said its
+choices should be re-examined "before the SECOND podman service"; this is the
+item that would have caught.
+
+**4 — Rotating a secret does not reach the guest.**
+`microvm-secrets-wg-qbittorrent.service` is a `RemainAfterExit` oneshot, so
+`switch-to-configuration` leaves it alone when its script text is unchanged —
+and the guest keeps reading the previously staged copy. A regenerated Soulseek
+credential therefore appeared to do nothing. Rotation needs
+`systemctl restart microvm-secrets-wg-qbittorrent microvm@wg-qbittorrent`, and
+**qBittorrent must be checked afterwards**: its unit is `Restart=no`, and it
+exited cleanly on one such restart and stayed down.
+
+### The go/no-go is answered: peers DO serve this exit
+
+**Measured 2026-08-29.** slskd authenticated (`Logged in to the Soulseek server`)
+and a search returned a peer offering a free upload slot at **3.58 MB/s**. So the
+counter-argument this milestone recorded — that Soulseek connectivity through a
+shared commercial VPN exit can be poor, on an IVPN/Leaseweb NL address M4 had
+measured as `451`-blocked by an indexer — **does not hold here**. The microvm
+placement stands and the documented fallback (the arr container, as a stated tier
+violation) is not needed.
+
+**Two credential traps cost time and are worth stating.** Soulseek has **no
+registration page**: an account is created on first successful login, so a
+username someone else holds rejects you with `INVALIDPASS` permanently and there
+is no way to test availability except by connecting. `admin` was never going to
+work. The generator's three prompts are also **two accounts**, not one — the
+prompts now say so.
+
+**slskd's web UI needed a Traefik route, and M14 shipped without one.** It was
+the only admin surface in this fleet reachable solely by pointing a browser at a
+VLAN-90 address from a management network, i.e. dependent on a per-guest UDM-Pro
+exception. That exception failed in practice — from the LAN the guest answered
+`:22` and `:8080` but timed out on `:5030`, so the page half-loaded and its
+SignalR websocket died in a retry loop. It is now `slskd.goclan.org` behind
+Authelia, verified end to end.
 
 **Soulseek through the VPN exit is not blocked at the transport layer.**
 Measured from inside the `wg-qbittorrent` guest, 2026-08-28: exit IP
