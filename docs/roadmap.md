@@ -59,7 +59,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M12c — library profile reassignment | **open — requested 2026-08-26** | — | Recyclarr creates profiles but **never assigns a title to one**, and this library's titles predate the guides. Rules for "high" and "low" quality per shows/films settled by **Q&A first**, then an agent reassigns title by title. **The hazard is the film side**: 2389 of 2432 movies sit on a non-upgrading `Ultra-HD` profile, and every TRaSH profile is upgrade-enabled — a bad rule moves them all and queues most of 13 TB through the VPN. Demotions first, promotions in watched batches, search-on-edit OFF. Depends on M12. [M12c](#m12c--library-profile-reassignment) |
 | M13 — media lifecycle | **done — deployed via [#102](https://github.com/lutzgo/clanarchy/pull/102), operator-confirmed 2026-08-27** | [#102](https://github.com/lutzgo/clanarchy/pull/102) | Deployed and confirmed working by lgo, with no deploy findings recorded — Janitorr stays in **dry-run** as the plan requires, so letting it delete is a deliberate later step, not part of this close. M16 (external ingress for Jellyseerr) is now unblocked. Jellyseerr (internal scope), Janitorr (dry-run) and Scraparr all land in the **existing** arr container; three M6 exporter targets, not four. **Janitorr publishes no artifact at all** — GitHub releases carry zero assets and the only channel is a Paketo OCI image — so it is the repo's first from-source **Gradle/Spring Boot 4** build, with a committed 350-artifact mitm-cache lock. **Three roadmap premises did not survive checking**: `services.jellyseerr` is now a renamed alias for **`services.seerr`**; **Ollama serves no `/metrics`** (404, measured), so its target is dropped and handed to M15 with the reasoning; and **Jellystat is deferred** — it needs PostgreSQL, and Janitorr's own docs now recommend `janitorr-stats` instead. Janitorr also has **no web UI**, so its port is bound to loopback and routed nowhere. Depends on M6. [M13](#m13-featernst-media-lifecycle) |
 | M14 — libraries | **done — deployed and merged 2026-08-29 ([#108](https://github.com/lutzgo/clanarchy/pull/108)); ONE VERIFICATION STILL OWED** | — | All six land: Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. **The hardlink proof PASSED with its negative control, run pre-deploy** — the chain works iff slskd carries `UMask=0002`, and **the nixpkgs slskd module does not set one**, so every music import would have silently degraded to a copy. **Four premises did not survive checking**: Storyteller's upstream repo has **moved** (the roadmap's link is an archived namespace) and has no sane non-Docker build, so it takes the **podman tier** — the tier's second occupant; **Questarr publishes no release assets**, making it M14's only real build; **Audiobookshelf's port is 8000 in nixpkgs**, not the roadmap's 13378; and **`lidarr.nix` and `audiobookshelf.nix` ship NO hardening at all** — both measured at **9.0 UNSAFE** before, 1.6 OK after. Soulseek through the VPN exit measured reachable; **peer connectivity is the remaining go/no-go**. Depends on M12. [M14](#m14-featernst-libraries) |
-| M15 — Tdarr / space reclamation | **open** | — | Its own container with VAAPI on the 7900 XTX, plus GPU arbitration against a card that now has three other claimants. **M11's VRAM numbers changed this materially**: a fully-resident Ollama at 64k leaves ~2 GB, so CPU-only Tdarr is now a serious default rather than a fallback — and Muxarr must be evaluated first, because it may reclaim more per CPU-hour with no GPU question at all. Depends on M12. [M15](#m15-featernst-tdarr) |
+| M15 — Tdarr / space reclamation | **closed 2026-08-29 — measured, and NOTHING SHIPS: neither Muxarr nor Tdarr** | — | The Muxarr measurement the milestone required ran first, over the whole library (7,469 files, 20.94 TiB, per-stream sizes mostly from exact mkv statistics tags): a full track-strip pass reclaims **375 GiB — 1.7%** — against **57.6 TiB free** on a pool at 31%. And the "zero quality risk" premise was wrong for THIS household: 115 GiB of that figure is Japanese audio on anime, and **300 films carry no German or English track at all** — this library watches original-language versions, so language-stripping is a curation risk, not a free lunch. The transcode side dissolves with it: the h264 tier is 4,968 hours / 14.59 TiB, i.e. months of 16-core SVT-AV1 to reclaim ~5 TiB nobody is short of. **The GPU arbitration problem M15 existed to solve is not solved — it is UNPROVOKED**: no service claims the render node, so Ollama's 2 GB headroom stays uncontested. uid 3023 stays reserved-not-used; no router, no exporter. Re-open triggers recorded in the close-out. Depends on M12. [M15](#m15-featernst-tdarr) |
 | M16 — external ingress | **open** | — | Make `jellyseerr.goclan.org` reachable from the internet, and **only** that. First service accepting connections from outside the home network, so the milestone is about the boundary rather than the service. Creates a permanent bypass row under invariant #4. Depends on M13. [M16](#m16-featernst-external-ingress) |
 | M17 — ebook acquisition | **open** | — | **Bindery** for ebooks, chosen over LazyLibrarian and Chaptarr on fit with this repo rather than features: a single **Go binary with release tarballs**, so it lands on M12's settled packaging rule (take the upstream artifact, pin version + hash) and runs as an ordinary NixOS unit with a legible `systemd-analyze` score. Chaptarr is the better *product* — one instance for ebooks and audiobooks, narrator-aware — and is **Docker-only**, i.e. a third opaque podman image; LazyLibrarian is mature but Python with vendored deps. **The premise is already proven**: lgo acquires ebooks through the existing indexers, so unlike the books-category concern raised during M14 this is not blocked on indexer coverage. Depends on M14. [M17](#m17-featernst-bindery) |
 
@@ -379,7 +379,7 @@ Rows are retired only by the PR that actually removes the rule.
 | — | **M14 created no row either — confirmed 2026-08-28** | — | Five of its six services landed in the **existing** arr container and opened no port reachable outside it beyond four ordinary Traefik routers (lidarr, kapowarr, questarr, audiobookshelf), which are invariant #3 working as designed. **Audiobookshelf's forward-auth bypass is the row directly above and is a separate matter** — it is about what sits in FRONT of that route, not about the route itself, which needs no shim like the other three. The sixth, **Storyteller**, took the podman tier and therefore a new address on VLAN 90 (`10.0.90.20`, MAC `02:00:00:90:00:0c`) — but it needs **no UDM-Pro rule of any kind**: it is reached only through Traefik, riding the permanent `Allow Traefik` policy, and its own netns firewall accepts `8001` from `10.0.90.12` alone. **slskd needed nothing either**: it went into the EXISTING microvm guest, and the guest's `api_clients` nftables set gained a **PORT** (5030), not a client — the arr container was already in it for qBittorrent. Its Soulseek listen port (50300) is admitted on **`wg0` only**, never `eth0`. **THE ONE THING WORTH RE-READING LATER**: Questarr binds `0.0.0.0` (measured by running it), as do Kapowarr and Audiobookshelf by explicit configuration, so the container firewall is the ONLY thing keeping those three off VLAN 90 generally — load-bearing, not belt-and-braces, exactly as M12 recorded for UmlautAdaptarr's ports | **permanent** — nothing interim here | not created |
 | — | **M12 created no row, as predicted — confirmed 2026-08-26** | — | Everything in M12 landed inside the **existing** arr container and opened no port reachable outside it. The one thing it *did* touch is the explicit port list `containers/arr.nix` feeds to its `concatMapStrings` Traefik source-restriction, which gained `bazarr` 6767, `cleanuparr` 11011 and `mediathekarr` 5007 — plus three ordinary Traefik routers behind `authelia` and three names in `protectedHosts`, which are invariant #3 working as designed and not shims. **Four ports were deliberately kept OFF the list**: `flaresolverr` 8191 as before, MediathekArr's indexer 5008, and UmlautAdaptarr's 5005 and **5006**. All four bind `0.0.0.0`/`[::]`, so the container firewall is the only thing keeping them off VLAN 90 — and 5006 is an HTTP proxy, the same class of gift as 8191. Byparr, when [M12b](#m12b-featernst-byparr) lands, inherits FlareSolverr's exact posture | **permanent** — there is nothing interim here | not created |
 | L8 | TubeSync web UI port, mgmt-VLAN scoped | M9 (host/container firewall, v1) | Only if M9 lands before M5 — an admin UI with no proxy in front of it yet. Mgmt-scoped, so invariant #3 does not cover it | **M5** — replace with the Traefik route. Never created at all if M5 lands first | **RETIRED as never-created (M9 built 2026-08-27).** M5 landed long before M9, so TubeSync got an ordinary Traefik router behind `authelia` and opened no port at all. The row's own note already predicted this. What it did NOT predict is that the web UI needed a firewall anyway, in a place the ledger has no concept of: a bare network namespace handed to podman has no rules, and podman adds none, so `containers/tubesync.nix` installs them inside the namespace — 4848 from Traefik only. That is not an interim rule and gets no row; it is the same backend-side source restriction `containers/traefik.nix` applies everywhere else |
-| — | **M13's Jellyseerr and M15's Tdarr routes** | Traefik (`containers/traefik.nix`), M13 and M15 | Both are ordinary Traefik routers on names the M5 wildcard already covers, riding the permanent `Allow Traefik` rule. **Neither is a shim** — listed so nobody creates a ledger row for a route | **permanent** — this is invariant #3 working as designed, not an exception to it | not created. **Two corrections against older wording**: M13's Jellyseerr router deliberately carries **no** middleware (it is a household service and its posture is Jellyseerr's own Jellyfin-account login — see M13), and M15's Tdarr router carries **`authelia`**, not `mgmt-only`, because M7 deleted `mgmt-only` (L5). Copy the *arr routers. Adding either hostname also means adding it to `access_control` in `containers/authelia.nix`, which is deny-by-default: a route with the middleware and no matching rule fails **closed** |
+| — | **M13's Jellyseerr and M15's Tdarr routes** | Traefik (`containers/traefik.nix`), M13 and M15 | Both are ordinary Traefik routers on names the M5 wildcard already covers, riding the permanent `Allow Traefik` rule. **Neither is a shim** — listed so nobody creates a ledger row for a route | **permanent** — this is invariant #3 working as designed, not an exception to it | not created. **M15's half is now moot**: the milestone closed 2026-08-29 without shipping, so the Tdarr router was never created (the guidance stands for any future service: `authelia` middleware, not `mgmt-only`, which M7 deleted per L5). M13's Jellyseerr router exists and deliberately carries **no** middleware (household service; its posture is Jellyseerr's own Jellyfin-account login — see M13). Copy the *arr routers for anything new. Adding a hostname to the middleware also means adding it to `access_control` in `containers/authelia.nix`, which is deny-by-default: a route with the middleware and no matching rule fails **closed** |
 | — | `WAN → jellyseerr.goclan.org` | M16 — mechanism decided in that milestone (Cloudflare Tunnel recommended over a UDM-Pro port forward) | **This is a deliberate bypass of the "hosts on VLANs the UDM-Pro controls" threat model that every milestone before M16 assumed.** Architecture invariant #4 requires bypasses to be listed; this is one, and it is the first thing in the fleet that accepts a connection from outside the home network | **permanent** — written as a `—` row, in the same shape as the qBittorrent WebUI row, so a future milestone does not mistake it for something to retire and "fix" by removing the restriction | **not created — M16 has not been taken.** Recorded ahead of time because the row's *shape* is a constraint on M16 rather than an outcome of it. **Auth posture belongs in this row when it is created**: the unauthenticated attack surface must be **Authelia**, not Jellyseerr's Node application — forward-auth with 2FA required on the external path, Jellyseerr's own login kept underneath for the reason M6 kept Grafana's local admin. **Invariant #4's Jellyfin exemption does not transfer**: it exists because TV and mobile clients cannot survive a forward-auth redirect, and Jellyseerr's only client is a browser. The two rows sit next to each other and the exemption will look transferable |
 
 ---
@@ -2914,6 +2914,11 @@ remuxing is insufficient**.
 lands first owns it.** M15 has its own reason to want Muxarr (space reclamation in
 a two-language library), and evaluating it twice would be a waste; evaluating it
 zero times because each milestone assumed the other did is the likelier failure.
+
+**ANSWERED — M15's close-out (2026-08-29) owns the evaluation and it covers
+this case too**: `/srv/media/library/recordings` holds 14 KiB, so there is
+nothing to normalise; Muxarr does not ship. The trigger to revisit is the DVR
+actually being used, recorded in M15's close-out.
 
 **AUTOPULSE** for the library-scan trigger — **only relevant under (i)**. Under
 (ii) there is nothing to trigger, because Jellyfin recorded the file itself.
@@ -6723,6 +6728,92 @@ the transcoding.
 
 **[M11](#m11-featfleet-local-coding-agent) changed this milestone materially.**
 Read that section's VRAM table before designing anything here.
+
+### Close-out 2026-08-29 — measured, and nothing ships
+
+**The milestone's own first instruction was followed — "measure what a Muxarr
+pass would reclaim BEFORE building the container" — and the measurement closed
+the milestone.** Its own text blessed "ship Muxarr and record Tdarr as
+unnecessary" as a successful outcome; the numbers support the stronger
+conclusion, on the same logic: record **both** as unnecessary, and write down
+what would reopen the question.
+
+**Method.** Every video file under `/srv/media/library/{movies,tvshows}` —
+7,469 files, 20.94 TiB — was ffprobed on ernst (2026-08-29). Per-stream sizes
+came from mkv statistics tags (`NUMBER_OF_BYTES`, exact) for **82%** of the
+candidate bytes, `bit_rate × duration` for 13%, codec-default rates for the
+rest. Strippable = audio/subtitle streams in neither German nor English, plus
+commentary tracks. Instrument checks per [SN3](#sn3--a-broken-instrument-is-indistinguishable-from-a-bad-result):
+one probe failure in 7,469 (`Red Sonja (1985).mkv`, counted as zero reclaim);
+files with **no** keepable audio had their reclaim zeroed rather than counted
+(300 files — see below, they turned out to be a finding, not an edge case);
+the per-language breakdown was cross-checked against the total. The raw JSONL
+lived in `/root/m15-scan/` on ernst — zroot, so it rolls back; the numbers
+that matter are all here.
+
+**The Muxarr result.**
+
+| | reclaim | of library |
+|---|---|---|
+| Full strip (non-deu/eng audio + subs + commentary) | **375 GiB** | 1.7% |
+| …excluding Japanese audio (anime originals) | 301 GiB | 1.4% |
+| Commentary tracks alone | 45 GiB | 0.2% |
+
+Against **57.6 TiB free** (zdata at 31%), the full-strip number is 0.6% of free
+space. There is no version of this that pays for a service, a uid, a route and
+a standing flow configuration.
+
+**The "zero quality risk" premise was WRONG for this household, and that
+matters more than the small number.** 1,150 Japanese audio streams sit on what
+is plainly an anime collection watched in the original; and **300 films have no
+German or English audio at all** — Amélie, Anatomy of a Fall, A Bittersweet
+Life, Alcarràs. This library is curated by people who watch
+original-language versions. A language-keyed strip pass is not lossless here;
+it is an automated edit of a curation decision, applied 7,000 times.
+
+**The transcode side dissolves on the same measurement.** The h264 tier — the
+only bulk AV1 candidate — is 5,115 files, **4,968 hours of content, 14.59
+TiB** (9.66 TiB of video streams). Archival-quality SVT-AV1 on the 9950X runs
+near realtime for 1080p, so that backlog is **months of continuous 16-core
+encoding** to reclaim perhaps 5 TiB — under 10% of current free space —
+while accepting re-encode risk across the library's main viewing tier. The
+2160p/remux tier was never a candidate (archival masters, per this milestone's
+own text) and is only 1.71 TiB anyway. Per CPU-hour, per invariant, per watt:
+not worth it at 31% pool utilisation. **The encode comparison (VMAF /
+SSIMULACRA2) is deliberately NOT run** — it decides GPU vs CPU workers for a
+transcoder this close-out concludes should not exist.
+
+**What this buys the rest of the fleet: the GPU arbitration problem is not
+solved, it is UNPROVOKED.** No third claimant on the render node means
+Ollama's measured 2,078 MiB of headroom stays uncontested, the idle-gap
+trigger problem never needs a primitive, and the coding agent cannot be
+degraded mid-session by a transcoder. That was the milestone's entire "high"
+risk, and not building it is the cheapest correct answer on record.
+
+**M8's half of the Muxarr question is answered by the same close** ("whichever
+lands first owns the evaluation"): `/srv/media/library/recordings` holds
+**14 KiB** — the DVR has effectively never been used — so there is nothing to
+normalise either.
+
+**Book-keeping.** uid **3023** in `machines/ernst/networking.nix` moves to
+RESERVED, NOT USED (the umlautadaptarr/unpackerr shape). The pre-recorded
+ledger note about "M15's Tdarr route" stays exactly as written — the router
+was never created. No M6 exporter target; SN3's "a preemptible service that
+never runs looks identical to one that works" does not apply to a service that
+deliberately does not exist.
+
+**Re-open triggers, any of which reopens this as a NEW milestone with fresh
+measurements:**
+
+1. `/srv/media` crossing **70% of pool capacity** — M6's Grafana shows the
+   trend; at the library's observed growth that is years out, and the decision
+   should be re-made on that day's numbers, not these.
+2. A **per-title need for viewing copies** (e.g. a bandwidth-limited remote
+   client needing smaller versions of specific remuxes) — a targeted job with
+   the Jellyfin version-selection question attached, not a bulk pass.
+3. The DVR actually being used, resurrecting M8's MPEG-TS normalisation case.
+
+
 
 ### Why its own container
 
