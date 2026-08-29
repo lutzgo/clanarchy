@@ -58,9 +58,10 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M12 — arr helpers | **done — deployed and merged 2026-08-26 (#100); (a) Byparr split out as [M12b](#m12b-featernst-byparr)** | — | UmlautAdaptarr, Bazarr, Cleanuparr, MediathekArr and the recyclarr additions all landed inside the **existing** arr container, with no new veth, MAC, DHCP reservation or UDM-Pro work — so the hand-rolled-derivation approach M14 depends on is proven. All five units active on ernst. **Four of the six premises did not survive checking**: Byparr is no longer Camoufox-based and is a browser-packaging job in its own right; **MediathekArr is TWO processes**, and upstream's `main` is a diverged, older tree than its own release tag; **Unpackerr is measured out**; and **UmlautAdaptarr is inert here** — all six indexers are Cardigann HTML scrapers, which it architecturally cannot serve. **One thing is still outstanding**: the first real recyclarr sync fires at 00:03 the night of 2026-08-26 and is what adopts Sonarr's existing `Remux + WEB 2160p` (59 series) — see [the profile census](#the-profile-census-re-measured--and-one-number-this-repo-had-wrong). Depends on M4. [M12](#m12-featernst-arr-helpers) |
 | M12c — library profile reassignment | **open — requested 2026-08-26** | — | Recyclarr creates profiles but **never assigns a title to one**, and this library's titles predate the guides. Rules for "high" and "low" quality per shows/films settled by **Q&A first**, then an agent reassigns title by title. **The hazard is the film side**: 2389 of 2432 movies sit on a non-upgrading `Ultra-HD` profile, and every TRaSH profile is upgrade-enabled — a bad rule moves them all and queues most of 13 TB through the VPN. Demotions first, promotions in watched batches, search-on-edit OFF. Depends on M12. [M12c](#m12c--library-profile-reassignment) |
 | M13 — media lifecycle | **done — deployed via [#102](https://github.com/lutzgo/clanarchy/pull/102), operator-confirmed 2026-08-27** | [#102](https://github.com/lutzgo/clanarchy/pull/102) | Deployed and confirmed working by lgo, with no deploy findings recorded — Janitorr stays in **dry-run** as the plan requires, so letting it delete is a deliberate later step, not part of this close. M16 (external ingress for Jellyseerr) is now unblocked. Jellyseerr (internal scope), Janitorr (dry-run) and Scraparr all land in the **existing** arr container; three M6 exporter targets, not four. **Janitorr publishes no artifact at all** — GitHub releases carry zero assets and the only channel is a Paketo OCI image — so it is the repo's first from-source **Gradle/Spring Boot 4** build, with a committed 350-artifact mitm-cache lock. **Three roadmap premises did not survive checking**: `services.jellyseerr` is now a renamed alias for **`services.seerr`**; **Ollama serves no `/metrics`** (404, measured), so its target is dropped and handed to M15 with the reasoning; and **Jellystat is deferred** — it needs PostgreSQL, and Janitorr's own docs now recommend `janitorr-stats` instead. Janitorr also has **no web UI**, so its port is bound to loopback and routed nowhere. Depends on M6. [M13](#m13-featernst-media-lifecycle) |
-| M14 — libraries | **deployed 2026-08-28/29; one item outstanding** | — | All six land: Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. **The hardlink proof PASSED with its negative control, run pre-deploy** — the chain works iff slskd carries `UMask=0002`, and **the nixpkgs slskd module does not set one**, so every music import would have silently degraded to a copy. **Four premises did not survive checking**: Storyteller's upstream repo has **moved** (the roadmap's link is an archived namespace) and has no sane non-Docker build, so it takes the **podman tier** — the tier's second occupant; **Questarr publishes no release assets**, making it M14's only real build; **Audiobookshelf's port is 8000 in nixpkgs**, not the roadmap's 13378; and **`lidarr.nix` and `audiobookshelf.nix` ship NO hardening at all** — both measured at **9.0 UNSAFE** before, 1.6 OK after. Soulseek through the VPN exit measured reachable; **peer connectivity is the remaining go/no-go**. Depends on M12. [M14](#m14-featernst-libraries) |
+| M14 — libraries | **done — deployed and merged 2026-08-29** | — | All six land: Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. **The hardlink proof PASSED with its negative control, run pre-deploy** — the chain works iff slskd carries `UMask=0002`, and **the nixpkgs slskd module does not set one**, so every music import would have silently degraded to a copy. **Four premises did not survive checking**: Storyteller's upstream repo has **moved** (the roadmap's link is an archived namespace) and has no sane non-Docker build, so it takes the **podman tier** — the tier's second occupant; **Questarr publishes no release assets**, making it M14's only real build; **Audiobookshelf's port is 8000 in nixpkgs**, not the roadmap's 13378; and **`lidarr.nix` and `audiobookshelf.nix` ship NO hardening at all** — both measured at **9.0 UNSAFE** before, 1.6 OK after. Soulseek through the VPN exit measured reachable; **peer connectivity is the remaining go/no-go**. Depends on M12. [M14](#m14-featernst-libraries) |
 | M15 — Tdarr / space reclamation | **open** | — | Its own container with VAAPI on the 7900 XTX, plus GPU arbitration against a card that now has three other claimants. **M11's VRAM numbers changed this materially**: a fully-resident Ollama at 64k leaves ~2 GB, so CPU-only Tdarr is now a serious default rather than a fallback — and Muxarr must be evaluated first, because it may reclaim more per CPU-hour with no GPU question at all. Depends on M12. [M15](#m15-featernst-tdarr) |
 | M16 — external ingress | **open** | — | Make `jellyseerr.goclan.org` reachable from the internet, and **only** that. First service accepting connections from outside the home network, so the milestone is about the boundary rather than the service. Creates a permanent bypass row under invariant #4. Depends on M13. [M16](#m16-featernst-external-ingress) |
+| M17 — ebook acquisition | **open** | — | **Bindery** for ebooks, chosen over LazyLibrarian and Chaptarr on fit with this repo rather than features: a single **Go binary with release tarballs**, so it lands on M12's settled packaging rule (take the upstream artifact, pin version + hash) and runs as an ordinary NixOS unit with a legible `systemd-analyze` score. Chaptarr is the better *product* — one instance for ebooks and audiobooks, narrator-aware — and is **Docker-only**, i.e. a third opaque podman image; LazyLibrarian is mature but Python with vendored deps. **The premise is already proven**: lgo acquires ebooks through the existing indexers, so unlike the books-category concern raised during M14 this is not blocked on indexer coverage. Depends on M14. [M17](#m17-featernst-bindery) |
 
 ---
 
@@ -7371,7 +7372,102 @@ Constraints:
 
 ---
 
-## Packaging — the constraint shaping M12, M14 and M15
+## M17 — `feat/ernst-bindery`
+
+**Goal.** Ebook acquisition, the one media class the stack still has no
+automation for. Readarr is archived; this picks its successor and packages it.
+
+**Depends on.** M14 — which supplies the pattern (a new service in the existing
+arr container, a Traefik route behind Authelia, a uid from the reservation
+table) and, more usefully, the four ways that pattern went wrong on deploy.
+
+**Risk.** Low-medium, and concentrated in one place: **the project is four
+months old.** Nothing else here is novel.
+
+### Bindery, chosen on FIT rather than features — surveyed 2026-08-29
+
+| | **Bindery** | LazyLibrarian | Chaptarr |
+|---|---|---|---|
+| Runtime | **Go, single binary** | Python | C# / .NET |
+| Created | Apr 2026 | Nov 2018 | **Jun 2026** |
+| Release artifacts | **`linux_amd64.tar.gz` + checksums + SBOM** | source only | **Docker only** |
+| Torrent clients | qBit / Transmission / Deluge / rTorrent | yes | yes |
+| Indexers | Newznab + **Torznab** | Prowlarr-capable | native Prowlarr |
+| Metadata | **6 sources, no scraping** | own + fallbacks | own pipeline |
+| In nixpkgs | no | no | no |
+
+**None of the three is packaged**, so the choice is which derivation to write.
+
+**Bindery wins because it is the only one that lands on this repo's settled
+packaging rule**: take the upstream release artifact, pin a version and a hash.
+`v1.33.2` ships a static Go binary tarball, so the derivation is smaller than
+`kapowarr.nix` and vendors nothing. It runs as an ordinary NixOS unit, which
+keeps `systemd-analyze` legible — the property the packaging section exists to
+protect, and the one M14 proved is worth having (`lidarr` and `audiobookshelf`
+both scored **9.0 UNSAFE** as upstream ships them).
+
+**Its metadata design is the other half.** Readarr died when
+`api.bookinfo.club` went offline. Bindery uses six independent sources with
+OpenLibrary primary and explicitly no Goodreads scraping — i.e. it is built
+against the exact failure that killed the thing it replaces.
+
+**CHAPTARR IS THE BETTER PRODUCT AND THE WORSE FIT, and that is the trade being
+made.** One instance for ebooks *and* audiobooks, narrator-aware matching,
+MP3→M4B — and Docker-only, which means the podman tier: a third opaque image on
+a box that already carries TubeSync and Storyteller. Invariant #1 calls podman
+an escape hatch, not a default. **Revisit if Bindery stalls**, and record the
+reason either way.
+
+**The books-category worry raised during M14 does NOT apply.** That concern —
+that none of the seven Prowlarr indexers carries a Books category — was
+measured and is real, but lgo already acquires ebooks through the existing
+indexers, so the acquisition premise is proven rather than assumed. Do not
+re-derive it.
+
+### What M14 learned that this milestone must apply
+
+Four defects reached a working deploy of M14 and **none was catchable by
+evaluation**. Each has a direct counterpart here:
+
+1. **Read the unit, do not infer it from a sibling.** `lidarr.nix` ships no
+   hardening while `sonarr.nix` ships a full block. Bindery has no module at
+   all, so its unit is written here — restate all six DynamicUser-implied
+   directives, and end `SystemCallFilter` with `@chown` (M14's SIGSYS).
+2. **A service whose state directory is EMPTY on first run is where tmpfiles
+   ownership deadlocks bite.** If Bindery wants a nested config path, create
+   the parent explicitly with the right owner.
+3. **Credentials it cannot read are the default outcome.** The staged *arr API
+   keys are `0600 root:root`; an unprivileged unit needs `LoadCredential`.
+   Soularr shipped with a bare `cat` and failed silently on a timer for a day.
+4. **A failed oneshot on a timer is invisible.** If any part of this is
+   timer-driven, it needs a monitoring alert or it will fail unnoticed.
+
+### Shape
+
+**uid 3028** — next free after M9's tubesync (3027); the M14 block took
+3017–3022 and 3024, and 3023/3025 remain reserved for M15/M16. Group `media`
+PRIMARY: it writes ebooks into the library and its output must stay manageable
+by the group.
+
+**In the arr container**, not its own — same argument as every M12/M13/M14
+service: no new veth, MAC or DHCP reservation, and Prowlarr is on `localhost`.
+
+**Storage.** `/srv/media/library/books` and `/srv/media/torrents/books`, both
+inside `/srv/media` so the download → library move is a rename on one dataset.
+**It owes the hardlink proof** — this is a *third* write path into `/srv/media`,
+and M14's proof covers slskd's uid, not Bindery's.
+
+**Port** to verify against upstream, not assumed. **Traefik router behind
+`authelia`** plus a `protectedHosts` entry — `access_control` is deny-by-default
+and a route with the middleware and no rule fails closed.
+
+**Prowlarr** gets it as a Torznab consumer. Note Questarr's shape here:
+**Questarr pulls from Prowlarr**, it is not a Prowlarr *application*. Establish
+which way Bindery goes before wiring either side.
+
+---
+
+## Packaging — the constraint shaping M12, M14, M15 and M17
 
 **Establish which services have upstream modules IN-SESSION, on the session's own
 date, and use THAT list.** Not the one below, and not the one in any milestone

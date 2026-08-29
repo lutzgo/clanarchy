@@ -510,6 +510,16 @@
   #                              the arr one: /dev/dri passthrough there would
   #                              hand the GPU to prowlarr and byparr too)
   #
+  #   uid 3028  bindery         (M17, group media PRIMARY — ebook acquisition,
+  #                              the successor picked for Readarr.  A Go single
+  #                              binary with release tarballs, so it lands on
+  #                              M12's packaging rule and runs as an ordinary
+  #                              NixOS unit rather than the podman tier that
+  #                              Chaptarr's Docker-only build would have forced.
+  #                              It is a THIRD write path into /srv/media, so it
+  #                              owes its own hardlink proof — M14's covers
+  #                              slskd's uid, not this one)
+  #
   #   uid 3025  wizarr          (M16, OWN group — CONDITIONAL.  Only if M16
   #                              concludes the multi-service invite is worth
   #                              it.  It STAYS INTERNAL either way: an invite

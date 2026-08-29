@@ -3355,13 +3355,25 @@ in
 
         # Wants, not requires: if Lidarr is down this pass should fail and be
         # retried at the next firing, not block the timer forever.
-        after = [ "lidarr.service" "arr-api-keys.service" ];
-        wants = [ "lidarr.service" ];
+        after    = [ "lidarr.service" "arr-api-keys.service" ];
+        wants    = [ "lidarr.service" ];
+        # requires, not wants: without the staged keys this pass can only
+        # write a config.ini with an empty API key, which Lidarr answers with
+        # a 401 that says nothing about why.
+        requires = [ "arr-api-keys.service" ];
 
         serviceConfig = {
           Type  = "oneshot";
           User  = "soularr";
           Group = "media";
+
+          # See the render script: these are read by PID 1 as root and handed
+          # to the unit as 0400 copies under $CREDENTIALS_DIRECTORY.  Both are
+          # root-owned and unreadable by this unit's user at their real paths.
+          LoadCredential = [
+            "lidarr-api-key:${arrSecretsDir}/lidarr-api-key"
+            "slskd-api-key:${slskdCredsGen.files."api-key".path}"
+          ];
 
           # Renders config.ini into a private tmpfs directory immediately
           # before the run.  RuntimeDirectory gives it 0700 ownership by the
@@ -3379,8 +3391,22 @@ in
               # `set -e`, which is how containers/jellyfin.nix's sibling bug
               # shipped an EMPTY password once.  A plain assignment does trip
               # it, and the explicit test covers "file present but empty".
-              lidarr_key=$(${pkgs.coreutils}/bin/cat ${arrSecretsDir}/lidarr-api-key)
-              slskd_key=$(${pkgs.coreutils}/bin/cat ${slskdCredsGen.files."api-key".path})
+              # $CREDENTIALS_DIRECTORY, NOT the staging directory.
+              #
+              # The staged keys are 0600 root:root inside a 0700 root directory
+              # — deliberately, see the arr-api-keys block — so User=soularr
+              # cannot open them and `cat` fails with "Permission denied".
+              # That is exactly what shipped: every timer firing failed for a
+              # day before anyone looked, because a failed oneshot on a timer
+              # is silent unless you go and read its journal.
+              #
+              # LoadCredential below is what bridges it: PID 1 reads the files
+              # as root BEFORE dropping to this unit's user, and places 0400
+              # copies here that the service can read.  Scraparr solves the
+              # same problem the same way and this file's header already said
+              # so.
+              lidarr_key=$(${pkgs.coreutils}/bin/cat "$CREDENTIALS_DIRECTORY/lidarr-api-key")
+              slskd_key=$(${pkgs.coreutils}/bin/cat "$CREDENTIALS_DIRECTORY/slskd-api-key")
 
               if [ -z "$lidarr_key" ] || [ -z "$slskd_key" ]; then
                 echo "soularr: an API key is empty — has arr-api-keys run, and has 'clan vars generate ernst' been run for slskd-credentials?" >&2
