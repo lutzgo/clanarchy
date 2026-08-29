@@ -70,6 +70,8 @@
 #     uid 3001  qbittorrent     allocated here (see the id table in
 #                               machines/ernst/networking.nix's MAC block for
 #                               the sibling convention)
+#     uid 3024  slskd           M14.  Same rule, same reason — see the M14
+#                               section below
 #     gid 3000  media           fixed on the host in containers/jellyfin.nix;
 #                               restated in the guest, and it MUST match
 #                               numerically or every file the guest writes
@@ -90,6 +92,56 @@
 #   hardlink and silently fall back to copying — which is exactly the failure
 #   that fills a 6-wide raidz1 twice over.  0002 gives 0664 and the link
 #   succeeds.  The PR test plan proves this with `stat` rather than assuming it.
+#
+# ── M14: slskd, AND WHY IT IS THE SECOND OCCUPANT OF THIS GUEST ─────────────
+#
+#   Soulseek is peer-to-peer on the open internet on ernst's behalf, which is
+#   the exact test invariant #1 applies: a workload that talks to the internet
+#   on its own behalf goes one tier up, into the microvm that already carries
+#   the killswitch and the exit.  So slskd lands HERE and not in the arr
+#   container, while Soularr — which only drives slskd's REST API and never
+#   speaks Soulseek — stays in the container.
+#
+#   THE PLACEMENT WAS MEASURED BEFORE IT WAS COMMITTED, as M14 requires.  The
+#   recorded counter-argument is that Soulseek connectivity through a shared
+#   commercial VPN exit can be poor, and that this exit is Leaseweb NL — which
+#   M4 measured as legally blocked by at least one indexer (HTTP 451).  From
+#   inside this guest on 2026-08-28:
+#
+#     curl https://api.ipify.org        →  95.211.172.88   (Leaseweb NL)
+#     TCP connect vps.slsknet.org:2271  →  OPEN
+#
+#   So the transport is not blocked and the placement stands.  What that does
+#   NOT prove is PEER connectivity — whether enough peers accept connections
+#   from this exit to make searches useful — and that cannot be measured
+#   without the service running.  It is the go/no-go in the PR test plan, and
+#   the documented fallback if it fails is the arr container WITH THE TRADEOFF
+#   WRITTEN DOWN: a deliberate tier violation with a stated reason, never a
+#   silent move.
+#
+#   UMask=0002 APPLIES TO slskd TOO, AND UPSTREAM DOES NOT SET IT.  This is the
+#   single most important line in M14 and it is worth being blunt: the nixpkgs
+#   slskd module's unit sets LockPersonality, NoNewPrivileges, PrivateUsers,
+#   ProtectSystem=strict and a dozen more — and NO UMask at all.  It therefore
+#   inherits systemd's 0022, writes 0644 files, and every Lidarr import would
+#   fail to hardlink and silently fall back to copying.
+#
+#   That is not a prediction.  Measured on ernst 2026-08-28, in a 2770
+#   root:media directory on zdata/media, with fs.protected_hardlinks = 1:
+#
+#     file written as uid 3024 with umask 0002  →  0664, links=1
+#     linked as uid 3017 (lidarr) in group media →  LINK OK, one inode, links=2
+#     same file chmod 0644, linked again        →  EPERM
+#
+#   The third step is the negative control and it is what makes the first two
+#   mean anything: without it the test cannot tell a working chain from root
+#   bypassing the check.  M3's own first draft made exactly that mistake, and
+#   it is the same failure class as M11's grader bug (roadmap standing note
+#   SN3) — a broken instrument is indistinguishable from a good result.
+#
+#   The override is applied in the slskd block below, and M14 owes its own
+#   proof rather than inheriting M3's because this is a SECOND WRITE PATH into
+#   /srv/media by a different service with a different umask.
 #
 # ── virtiofs, not 9p ─────────────────────────────────────────────────────────
 #
@@ -211,6 +263,41 @@ let
   webuiPort   = 8080;
   torrentPort = 6881;
 
+  # ── M14: slskd ────────────────────────────────────────────────────────────
+  #
+  # uid 3024, reserved for this service in machines/ernst/networking.nix and
+  # reserved THERE rather than here for the reason that file gives: the number
+  # is a number on zdata, so it is allocated centrally and not by whichever
+  # module happens to create the user first.
+  slskdUid = 3024;
+
+  # Upstream defaults, restated because three things have to agree: the
+  # module's own settings, this guest's nftables ruleset, and Soularr's
+  # config.ini over in containers/arr.nix.
+  #
+  #   5030   the web UI and the REST API.  Reached from the management VLANs
+  #          (a human) and from the arr container (Soularr).
+  #   50300  the Soulseek LISTEN port — incoming peer connections.  It belongs
+  #          on wg0 ONLY, exactly like qBittorrent's torrentPort, and for the
+  #          same reason: an incoming peer connection arriving on eth0 would be
+  #          a peer that found this host at its real address.
+  slskdWebPort    = 5030;
+  slskdListenPort = 50300;
+
+  # slskd's download tree, and it is a SIBLING of downloadRoot rather than a
+  # subdirectory of it.
+  #
+  # Both are inside /srv/media, which is what matters for hardlinks — the
+  # domain is the DATASET (invariant #2), not the directory layout.  They are
+  # kept apart because Cleanuparr and the *arr recycle-bin logic both treat
+  # everything under torrents/ as qBittorrent's, and because "which client
+  # wrote this" is a question someone will ask of a stuck file at 0200.
+  soulseekRoot = "/srv/media/soulseek";
+
+  # State, on zdata beside qBittorrent's (invariant #7).  Mounted at the
+  # module's own StateDirectory path so the packaged unit needs no override.
+  slskdStateSource = "/srv/state/slskd";
+
   # M13.  prometheus-qbittorrent-exporter's own default port, and the
   # monitoring container's address on VLAN 90 (M6, 02:00:00:90:00:06).
   #
@@ -227,6 +314,42 @@ let
   # gives it no way to.
   exporterPort   = 8000;
   monitoringAddr = "10.0.90.14";
+
+  # M14.  Traefik's veth address on VLAN 90 (M5, reservation keyed on
+  # 02:00:00:90:00:04), permitted to reach slskd's WEB UI and nothing else.
+  #
+  # ── WHY THIS EXISTS: THE HUMAN PATH WAS THE ONE THING WITHOUT A ROUTE ────
+  #
+  # M14 gave slskd's API a path for SOULARR — the arr container, same VLAN,
+  # switched locally — and stopped there.  The human web UI was left reachable
+  # only by connecting to 10.0.90.11:5030 DIRECTLY from a management VLAN,
+  # which made it the only admin UI in this fleet not behind Traefik, and the
+  # only one whose reachability depends on a per-guest UDM-Pro exception.
+  #
+  # That exception is exactly what failed.  Measured 2026-08-28 from a LAN
+  # client, after the guest's own firewall and slskd were both verified
+  # correct:
+  #
+  #   :22    OK        :8080  HTTP 200        :5030  TIMEOUT
+  #
+  # while the same three from VLAN 50 all answered.  The page half-loaded and
+  # its SignalR websocket then died on a loop — "Lost connection to slskd,
+  # Retrying…" — because the initial GET rode an existing conntrack entry and
+  # the persistent connection did not.
+  #
+  # A Traefik route removes the whole class of problem: the browser reaches
+  # 10.0.90.12:443 under the ONE permanent `Allow Traefik` policy that every
+  # other service already uses (invariant #3), and no VLAN-90 port needs to be
+  # opened to a consumer network at all.
+  #
+  # ── ITS OWN RULE, NOT A SEAT IN @api_clients ────────────────────────────
+  #
+  # Deliberately, and for the reason the exporter's rule states in both
+  # directions: @api_clients also carries qBittorrent's WebUI API on 8080, and
+  # Traefik has no business driving a torrent client.  Traefik may reach the
+  # slskd UI and nothing else; the arr container may reach the APIs and not
+  # this.  A shared set would grant both to both.
+  traefikAddr = "10.0.90.12";
 
   downloadRoot = "/srv/media/torrents";
   stateSource  = "/srv/state/qbittorrent";
@@ -260,7 +383,12 @@ let
   #
   # A /32, not the /24.  The Services VLAN also holds Jellyfin and will hold
   # Traefik; neither has any business reaching a torrent client's API.
-  arrClient = [ "10.0.90.13/32" ];
+  #
+  # M14 hoisted the bare address out of the list: slskd's CIDR-scoped API key
+  # needs the same address in a different syntax, and two literals for one host
+  # is how they drift apart.
+  arrAddr   = "10.0.90.13";
+  arrClient = [ "${arrAddr}/32" ];
 
   # The union, and it has exactly TWO consumers: the input chain's WebUI accept
   # and the output chain's established-reply accept.  That coupling is the point
@@ -289,6 +417,28 @@ let
   # plaintext did not mark `wg-qbittorrent` missing and re-prompt every
   # WireGuard value — see the generator's own header for the full argument.
   webuiGen = config.clan.core.vars.generators.qbittorrent-webui;
+
+  # M14.  slskd's credentials, in a THIRD generator for exactly the reason M13
+  # split out the second one: adding files to an existing generator marks it
+  # incomplete and re-prompts every value it already holds, and nobody wants to
+  # re-enter a WireGuard private key to add a Soulseek password.
+  #
+  # Guarded rather than referenced directly, the same way containers/arr.nix
+  # guards janitorr-jellyfin: naming a generator that does not exist yet is an
+  # EVALUATION error, and an evaluation error names an attribute rather than
+  # the thing a human forgot to run.  With the guard, a machine whose
+  # `clan vars generate ernst` has not been run yet still evaluates and the
+  # failure moves to the staging unit, where the message can say what to do.
+  #
+  # UNLIKE janitorr's, though, this one IS fatal to the guest: the staging unit
+  # is requiredBy microvm@, so a missing var means no VM rather than a VM with
+  # a broken service.  That is deliberate and matches the WireGuard secrets
+  # beside it — slskd with no Soulseek credentials cannot connect at all, and a
+  # guest that starts anyway would just be a quieter failure.
+  slskdGen =
+    if config.clan.core.vars.generators ? slskd-credentials
+    then config.clan.core.vars.generators.slskd-credentials
+    else { files."slskd.env".path = "/no-such-path"; };
 
   # qBittorrent.conf, with the WebUI password hash left as a placeholder that
   # the guest substitutes at start.  The ExecStartPre that renders it carries
@@ -371,6 +521,23 @@ in
     "d ${downloadRoot}/incomplete 2770 root media -"
     "d ${downloadRoot}/complete   2770 root media -"
     "d ${stateSource}             0700 ${toString qbtUid} ${toString mediaGid} -"
+
+    # ── M14: slskd ──────────────────────────────────────────────────────────
+    #
+    # Same 2770 root:media as qBittorrent's tree, and for the identical reason:
+    # setgid so everything created inside inherits gid media, group-writable so
+    # Lidarr (a different uid in group media) can hardlink out of it and remove
+    # the source after a successful import.
+    #
+    # The modes here and slskd's UMask=0002 are the TWO halves of one property
+    # and neither works alone — setgid fixes the group, the umask fixes the
+    # group's write bit, and fs.protected_hardlinks needs both.  See the M14
+    # section of the header for the measurement.
+    "d ${soulseekRoot}            2770 root media -"
+    "d ${soulseekRoot}/incomplete 2770 root media -"
+    "d ${soulseekRoot}/complete   2770 root media -"
+
+    "d ${slskdStateSource}        0700 ${toString slskdUid} ${toString mediaGid} -"
   ];
 
   ##############################################################################
@@ -450,6 +617,18 @@ in
       # something has gone wrong with that design rather than with this mode.
       ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
         ${webuiGen.files."password".path}        ${hostSecretsDir}/webui-password
+
+      # M14.  slskd's EnvironmentFile: Soulseek account, web UI login, and the
+      # primary API key Soularr authenticates with.
+      #
+      # 0400 root:root, like the plaintext above it and unlike the pbkdf2 hash.
+      # systemd's EnvironmentFile= is read by PID 1 BEFORE it drops to the
+      # slskd uid, so no unprivileged process ever opens this file — the same
+      # argument the qbit-exp LoadCredential note makes two lines up.  If this
+      # ever needs to be group-readable, something has gone wrong with that
+      # design rather than with this mode.
+      ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
+        ${slskdGen.files."slskd.env".path}        ${hostSecretsDir}/slskd.env
     '';
   };
 
@@ -776,6 +955,138 @@ in
   };
 
   ##############################################################################
+  # M14 — slskd's credentials.  ONE generator, TWO consumers, and that is the
+  # point of its shape.
+  #
+  # ── WHAT IS PROMPTED AND WHAT IS GENERATED ─────────────────────────────────
+  #
+  #   PROMPTED, because they are accounts a human owns and this repo cannot
+  #   invent:
+  #     slsk-username / slsk-password   the Soulseek NETWORK account, registered
+  #                                     at soulseek.org.  slskd cannot connect
+  #                                     without it and there is no anonymous
+  #                                     mode.
+  #     web-password                    the slskd web UI login.  The username is
+  #                                     fixed to `slskd` below — it is a
+  #                                     single-operator UI behind Authelia, so a
+  #                                     prompt for it would be a prompt whose
+  #                                     answer is always the same.
+  #
+  #   GENERATED, because nothing outside this machine ever needs to know it and
+  #   a human-chosen value would only be weaker:
+  #     api-key                         32 hex characters, used by Soularr.
+  #
+  # ── TWO OUTPUT FILES, AND THE SPLIT IS DELIBERATE ─────────────────────────
+  #
+  #   slskd.env   the guest's EnvironmentFile.  Everything slskd needs.
+  #   api-key     the bare key, nothing else — consumed by containers/arr.nix,
+  #               which renders it into Soularr's config.ini at run time.
+  #
+  #   The alternative was a second prompted secret in the arr container, which
+  #   would be a SECOND COPY of the same key with no link to the first: rotate
+  #   one and the other silently keeps the old value until someone notices
+  #   Soularr getting 401s.  One generator makes rotation a single edit.  It is
+  #   the same argument M4 made for reading the *arr API keys out of their own
+  #   config.xml instead of prompting for them.
+  #
+  # ── THE KEY IS CIDR-SCOPED TO THE arr CONTAINER ───────────────────────────
+  #
+  #   slskd's "primary" API key accepts a role and a CIDR list as a
+  #   semicolon-separated tuple, which is the only way to constrain it from an
+  #   environment variable:
+  #
+  #     SLSKD_API_KEY=cidr=<list>;<key>
+  #
+  #   The list is 10.0.90.13/32 — Soularr's container and nothing else.  Its
+  #   ROLE is left at the primary key's default (Administrator) and that is a
+  #   deliberate non-choice rather than an oversight: Soularr ENQUEUES
+  #   downloads, so ReadOnly cannot work, and slskd's documented roles do not
+  #   include a middle option that covers "search and download but not
+  #   reconfigure".  The CIDR is therefore the constraint that is actually
+  #   doing the work, which is why it is not omitted.
+  #
+  #   Upstream's own caution applies and is worth restating: CIDR filtering
+  #   breaks behind a reverse proxy, because the remote address becomes the
+  #   proxy's.  It works HERE precisely because Soularr does NOT go through
+  #   Traefik — it reaches slskd directly across VLAN 90 at layer 2, which is
+  #   the same departure-2 argument M4 recorded for the *arrs and qBittorrent.
+  #   If a later milestone ever routes Soularr through the proxy, this CIDR
+  #   silently stops constraining anything.
+  ##############################################################################
+  clan.core.vars.generators.slskd-credentials = {
+    files."slskd.env".secret = true;
+    files."api-key".secret   = true;
+
+    # ── THESE THREE PROMPTS ARE TWO DIFFERENT ACCOUNTS ────────────────────
+    #
+    # 1 + 2 are an account on the PUBLIC SOULSEEK NETWORK.
+    # 3 is the local slskd admin panel, whose username is always `slskd`.
+    #
+    # Answering all three as one credential set is the obvious mistake and it
+    # was made on the first deploy (2026-08-28): username `admin`, one password
+    # reused for both. The result is `INVALIDPASS` from the Soulseek server —
+    # see the description text below for why that is unrecoverable rather than
+    # merely wrong.
+    prompts."slsk-username" = {
+      description = ''
+        SOULSEEK NETWORK username — ACCOUNT 1 of 2, on the public network.
+
+        There is NO registration page. Soulseek creates the account on the
+        first successful login, so an unclaimed name becomes yours and a name
+        someone else already holds rejects you with INVALIDPASS forever. There
+        is no way to test availability except by connecting.
+
+        So do NOT use `admin`, `slskd`, your first name, or anything short:
+        those are all long since taken. Pick something distinctive.
+      '';
+      type        = "line";
+    };
+    prompts."slsk-password" = {
+      description = ''
+        SOULSEEK NETWORK password — pairs with the username above.
+
+        USE A PASSWORD YOU USE NOWHERE ELSE, and specifically not the slskd web
+        UI password prompted next. This one is sent to a third-party network
+        over a protocol with weak credential protection; reusing it would mean
+        a leak there also hands over this machine's admin panel.
+      '';
+      type        = "hidden";
+    };
+    prompts."web-password" = {
+      description = ''
+        slskd WEB UI password — ACCOUNT 2 of 2, purely local to this guest.
+
+        The username for it is always `slskd` (fixed below, not prompted).
+        Nothing outside ernst knows this account exists. Unrelated to the
+        Soulseek credentials above.
+      '';
+      type        = "hidden";
+    };
+
+    runtimeInputs = [ pkgs.coreutils pkgs.openssl ];
+
+    script = ''
+      set -euo pipefail
+
+      openssl rand -hex 16 > "$out/api-key"
+
+      # Values are NOT quoted.  systemd's EnvironmentFile parser treats quotes
+      # as part of the value unless the WHOLE value is quoted, and a Soulseek
+      # password that silently gains a pair of quotes fails authentication with
+      # a message that says nothing about quoting — the same trap
+      # containers/arr.nix's janitorr-jellyfin generator documents.
+      {
+        printf 'SLSKD_SLSK_USERNAME=%s\n' "$(cat "$prompts/slsk-username")"
+        printf 'SLSKD_SLSK_PASSWORD=%s\n' "$(cat "$prompts/slsk-password")"
+        printf 'SLSKD_USERNAME=slskd\n'
+        printf 'SLSKD_PASSWORD=%s\n'      "$(cat "$prompts/web-password")"
+        printf 'SLSKD_API_KEY=cidr=%s;%s\n' \
+          '${arrAddr}/32' "$(cat "$out/api-key")"
+      } > "$out/slskd.env"
+    '';
+  };
+
+  ##############################################################################
   # The guest.
   ##############################################################################
   microvm.vms.${vmName} = {
@@ -845,6 +1156,41 @@ in
             mountPoint = guestSecretsDir;
             proto = "virtiofs";
             readOnly = true;
+            posixAcl = false;
+          }
+
+          # ── M14: slskd ────────────────────────────────────────────────────
+          #
+          # A SEPARATE share for the Soulseek tree rather than widening the
+          # `downloads` one to all of /srv/media.  The guest gets exactly the
+          # two subtrees its two clients write and nothing else — the media
+          # LIBRARY is not shared into the machine that faces the internet, and
+          # that is the whole reason to keep the shares narrow.
+          #
+          # IDENTICAL PATH on both sides, like `downloads` above, and for the
+          # same reason: Soularr hands Lidarr the path slskd reports, so the
+          # two must agree verbatim or every import needs a remote-path mapping
+          # to get wrong.
+          #
+          # Hardlinks still work across it because they are not this share's
+          # problem: Lidarr links from /srv/media/soulseek to
+          # /srv/media/library inside the ARR CONTAINER, which binds the whole
+          # dataset in one mount.  The domain is the dataset (invariant #2).
+          {
+            tag = "soulseek";
+            source = soulseekRoot;
+            mountPoint = soulseekRoot;
+            proto = "virtiofs";
+            posixAcl = false;
+          }
+          {
+            # slskd's state, at the module's own StateDirectory path so the
+            # packaged unit needs no override — the same trick `qbt-state` uses
+            # for /var/lib/qBittorrent.
+            tag = "slskd-state";
+            source = slskdStateSource;
+            mountPoint = "/var/lib/slskd";
+            proto = "virtiofs";
             posixAcl = false;
           }
         ];
@@ -1008,6 +1354,26 @@ in
               ct state invalid drop
 
               iifname "eth0" ip saddr @api_clients tcp dport ${toString webuiPort} accept
+
+              # M14.  slskd's web UI and REST API.
+              #
+              # THE SET GROWS A SECOND PORT, NOT A SECOND CLIENT — which is
+              # what docs/roadmap.md's M14 requires, and it is exactly right
+              # here: the set already means "the humans, plus the arr
+              # container", and both of those want slskd for the same reasons
+              # they want qBittorrent.  A separate set would be a second list
+              # holding the same three entries, free to drift.
+              #
+              # Contrast the exporter rule below, which really does need its
+              # own line because its client is neither of those.
+              iifname "eth0" ip saddr @api_clients tcp dport ${toString slskdWebPort} accept
+
+              # M14.  Traefik, for the slskd WEB UI only — see traefikAddr.
+              # This is what makes slskd reachable at slskd.goclan.org like
+              # every other admin UI, instead of depending on a per-guest
+              # UDM-Pro exception for a consumer VLAN.
+              iifname "eth0" ip saddr ${traefikAddr} tcp dport ${toString slskdWebPort} accept
+
               iifname "eth0" ip saddr @mgmt_nets   tcp dport 22 accept
 
               # M13.  The Prometheus exporter, and it gets its OWN rule rather
@@ -1032,6 +1398,18 @@ in
               # the provider forwards a port; harmless when it does not.
               iifname "wg0" tcp dport ${toString torrentPort} accept
               iifname "wg0" udp dport ${toString torrentPort} accept
+
+              # M14.  slskd's Soulseek listen port, and it is `wg0` ONLY —
+              # deliberately, and it is the line that would be easiest to get
+              # wrong by copying the WebUI rule above.
+              #
+              # An incoming Soulseek peer connection arriving on eth0 would be
+              # a peer that had found this host at its REAL address, which is
+              # the one thing this guest exists to prevent.  On wg0 it is a
+              # peer that found the exit, which is the intended shape.
+              #
+              # TCP only: the Soulseek protocol's peer connections are TCP.
+              iifname "wg0" tcp dport ${toString slskdListenPort} accept
             }
 
             chain forward {
@@ -1065,6 +1443,14 @@ in
               # would answer into the tunnel and Prometheus would see a
               # timeout — the same failure the mgmtNets routing note describes.
               oifname "eth0" ip daddr ${monitoringAddr} ct state established,related accept
+
+              # M14.  Traefik's reply, and it needs its own line for the same
+              # reason the exporter's does: Traefik is deliberately NOT in
+              # @api_clients, so the rule above does not cover it.  Without
+              # this the slskd UI would answer INTO THE TUNNEL and every
+              # request through the proxy would time out — the failure the
+              # mgmtNets routing note describes, in a third place.
+              oifname "eth0" ip daddr ${traefikAddr} ct state established,related accept
 
               oifname "eth0" ip daddr . udp dport @vpn_endpoint accept
               oifname "eth0" udp sport 68 udp dport 67 accept
@@ -1343,6 +1729,178 @@ in
               ${pkgs.gnused}/bin/sed -i "s|@WEBUI_PASSWORD_PBKDF2@|$hash|" "$conf"
             ''}"
           ];
+        };
+      };
+
+      ########################################################################
+      # M14 — slskd.
+      #
+      # See the M14 section of the file header for the placement argument and
+      # for the hardlink measurement that dictates UMask below.
+      ########################################################################
+
+      # uid/gid pinned to match the host, and `media` as the PRIMARY group —
+      # the qbittorrent shape, for the identical reason.  Upstream's unit sets
+      # PrivateUsers=true (verified by reading the module, not assumed), which
+      # maps only User= and Group= into the service's user namespace; a
+      # SUPPLEMENTARY media membership would be squashed to nogroup inside it
+      # and every downloaded file would land in a group the host cannot name.
+      #
+      # The module creates users.users.slskd itself, but only when `user` is
+      # left at its default — and it assigns NO uid, leaving the allocation to
+      # NixOS.  So setting one here is a new definition of an unset option and
+      # needs no mkForce, exactly like bazarr in containers/arr.nix.  It also
+      # declares the `slskd` GROUP only when group == "slskd"; it is "media"
+      # below, so no stray group is created.
+      users.users.slskd = {
+        isSystemUser = true;
+        uid          = slskdUid;
+        group        = "media";
+      };
+
+      services.slskd = {
+        enable = true;
+        user   = "slskd";
+        group  = "media";
+
+        # Reachability is the killswitch's job, above.  Upstream's openFirewall
+        # opens soulseek.listen_port via networking.firewall — which is
+        # DISABLED in this guest (`networking.firewall.enable = false`, the
+        # nftables ruleset replaces it entirely), so this option would be inert
+        # rather than wrong.  It is set false anyway so that nobody reads its
+        # absence as "the port is open somewhere else".
+        openFirewall = false;
+
+        # The credentials — Soulseek account, web UI login, and the CIDR-scoped
+        # primary API key — arrive through the environment, never the store.
+        # See the slskd-credentials generator.
+        #
+        # A NOTE ON PRECEDENCE, because it is counter-intuitive and it decides
+        # whether this works: slskd loads configuration in the order
+        # `defaults < environment variables < YAML < command line`.  The YAML
+        # BEATS the environment.  The module renders that YAML into the store
+        # from `settings`, so anything named in `settings` below would silently
+        # override the matching environment variable.  That is precisely why
+        # `soulseek.username`, `soulseek.password` and everything under
+        # `web.authentication` are absent from `settings` — they must be left
+        # unset for the EnvironmentFile to win.
+        environmentFile = "${guestSecretsDir}/slskd.env";
+
+        settings = {
+          directories = {
+            downloads  = "${soulseekRoot}/complete";
+            incomplete = "${soulseekRoot}/incomplete";
+          };
+
+          soulseek.listen_port = slskdListenPort;
+
+          web = {
+            port = slskdWebPort;
+            # Bind every interface INSIDE this guest: the API has to be
+            # reachable from the arr container across VLAN 90, and the guest
+            # has exactly one non-loopback interface, on which the killswitch
+            # above admits precisely @api_clients.  The firewall is the
+            # boundary here, the bind address is not.
+            https.disabled = true;
+          };
+
+          # NOTHING IS SHARED.  slskd defaults to sharing no directories, and
+          # this states it rather than relying on that default.
+          #
+          # It is worth an explicit note because Soulseek is a RECIPROCAL
+          # network and sharing is the socially expected behaviour — so the
+          # absence of a shares list will look like an oversight to anyone who
+          # knows the protocol.  It is not: pointing a share at /srv/media
+          # would publish this household's library to the open internet from
+          # the one machine that has an unfiltered path to it, which is a
+          # different decision entirely from "download music".  If sharing is
+          # ever wanted it needs its own directory, its own argument, and a
+          # read-only share into this guest — not a line added here.
+          shares.directories = [ ];
+        };
+      };
+
+      systemd.services.slskd = {
+        # Start after the tunnel but do not require it — the qbittorrent shape
+        # again, and for the same reason: slskd binds the Soulseek connection
+        # at the application level, so if wg0 is down it should come up and say
+        # so rather than vanish.  The module's own `after = [ "network.target" ]`
+        # is merged with this, not replaced by it.
+        wants = [ "wg-quick-wg0.service" ];
+        after = [ "wg-quick-wg0.service" ];
+
+        serviceConfig = {
+          # THE line that makes M14's hardlinks possible, and upstream does NOT
+          # set it — the module's unit carries fifteen hardening directives and
+          # no UMask, so it inherits systemd's 0022 and writes 0644 files.
+          #
+          # 0002 → 0664, which is what fs.protected_hardlinks requires before
+          # Lidarr (a different uid in group media) may link a file it does not
+          # own.  Measured both ways on ernst 2026-08-28 — see the header.
+          # With 0022 every music import silently degrades to a copy.
+          #
+          # Do not "tidy" this away, and do not assume M3's proof covers it:
+          # this is a SECOND write path into /srv/media by a different service
+          # with a different umask, which is the whole reason M14 owes its own
+          # proof.
+          UMask = "0002";
+
+          # ── THE REST OF THE HARDENING UPSTREAM LEAVES OFF ────────────────
+          #
+          # The module's unit is genuinely well hardened as far as it goes —
+          # fifteen Protect*/Restrict* directives — but it stops short of the
+          # three that carry the most weight, and the measurement says so.
+          # `systemd-analyze security --offline=true` on the generated unit:
+          #
+          #   upstream as shipped      5.1 MEDIUM
+          #   with the block below     see the PR table
+          #
+          # Almost all of that 5.1 is ONE missing directive:
+          # CapabilityBoundingSet is unset, so every capability line scores
+          # against it — CAP_SYS_ADMIN, CAP_SYS_PTRACE, CAP_SETUID and twenty
+          # more, none of which slskd has any use for.
+          #
+          # EMPTY IS SAFE HERE, and the thing that would make it unsafe is
+          # worth naming: a service binding a port below 1024 needs
+          # CAP_NET_BIND_SERVICE.  slskd binds 5030 and 50300, both well above
+          # it, so there is nothing to keep.
+          CapabilityBoundingSet = "";
+
+          # AF_INET/AF_INET6 for the Soulseek network and the API, AF_UNIX for
+          # logging.  slskd speaks no other address family.
+          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+
+          LockPersonality         = true;
+          RestrictRealtime        = true;
+          SystemCallArchitectures = "native";
+
+          # `@chown` is added back after `~@privileged` removes it, and the
+          # trailing position matters — later entries win.
+          #
+          # MEASURED ELSEWHERE, APPLIED HERE PRE-EMPTIVELY.  On 2026-08-28 the
+          # identical filter killed Audiobookshelf in the arr container the
+          # first time it touched file ownership:
+          #
+          #   status=31/SYS   (SIGSYS — a seccomp kill, not an app error)
+          #   syscall=93      (fchown on x86_64)
+          #
+          # slskd is the other M14 service that WRITES INTO /srv/media, as a
+          # uid whose files Lidarr must then be able to hardlink, so it is in
+          # exactly the same position — and a SIGSYS mid-download is a far
+          # worse failure than the EPERM it would otherwise get.
+          #
+          # It costs essentially nothing: CapabilityBoundingSet is "" above, so
+          # there is no CAP_CHOWN and the kernel only permits chown to this
+          # process's own uid/gid.  nixpkgs' own sonarr and radarr units permit
+          # chown for the same class of workload.
+          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" "@chown" ];
+
+          # NOT MemoryDenyWriteExecute.  slskd is .NET and the JIT maps
+          # writable-then-executable pages, so it would start and then die on
+          # the first request.  Same rejection containers/arr.nix and
+          # containers/jellyfin.nix record for the same runtime — and the same
+          # one qBittorrent's block above does not need to make, because
+          # nothing there is managed.
         };
       };
 

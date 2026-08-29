@@ -371,6 +371,46 @@ let
     # answer in the `Authorization` header, which this service consumes as its
     # own credential and rejects.  See containers/tubesync.nix.
     "tubesync.${baseDomain}"
+
+    # ── M14.  Four more admin UIs ──────────────────────────────────────────
+    #
+    # The ordinary case — admin-facing browser UIs in the existing arr
+    # container (lidarr, kapowarr, questarr) or its own podman netns
+    # (storyteller).  No TV or mobile client that a redirect would break, so
+    # the Jellyfin exemption does not come into it, same as every name above.
+    #
+    # AUDIOBOOKSHELF IS DELIBERATELY ABSENT, and this is the second name in the
+    # fleet to be absent on purpose rather than by oversight (Jellyfin is the
+    # first; Jellyseerr the third).
+    #
+    # It has native mobile and TV clients, and app support is a stated
+    # requirement for that library — so it falls under architecture invariant
+    # #4's client-compatibility clause exactly as Jellyfin does: an app that
+    # talks to a REST API with a bearer token has no browser to follow a 302 to
+    # this portal, and every request fails looking like a broken server.
+    #
+    # ITS ROUTER THEREFORE CARRIES NO MIDDLEWARE, and the two files have to
+    # agree.  Listing it here without the middleware would be inert — this list
+    # only decides what `access_control` permits for requests that REACH
+    # Authelia — but an inert entry is exactly the kind of thing someone later
+    # "fixes" by adding the middleware back, which is how the app would break
+    # months from now with nothing to point at.  Absent in both places, with
+    # the reason written down in both.
+    #
+    # The full argument, including what carries the authentication instead and
+    # the first-run hazard that follows, is on the router in
+    # containers/traefik.nix.  It is a PERMANENT bypass with a `—` row in
+    # docs/roadmap.md's ledger, not a shim.
+    "lidarr.${baseDomain}"
+    "kapowarr.${baseDomain}"
+    "questarr.${baseDomain}"
+    "storyteller.${baseDomain}"
+
+    # M14, added after the fact.  slskd's web UI lives in the microvm guest
+    # and was the only admin surface in this fleet without a Traefik route —
+    # see the slskd router in containers/traefik.nix for why that had to
+    # change.  Same treatment as every other operator tool here.
+    "slskd.${baseDomain}"
   ];
 
   ############################################################################

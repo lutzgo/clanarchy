@@ -277,6 +277,55 @@ let
   tubesyncAddr = "10.0.90.19";
   tubesyncPort = 4848;
 
+  # ── M14 ───────────────────────────────────────────────────────────────────
+  #
+  # FOUR more ports on the arr container's ONE address, and one new address.
+  # The split is the milestone's whole placement story in two lines: everything
+  # that is just another NixOS unit went into the existing container and needed
+  # no network work at all; the one thing that is an opaque image took the
+  # podman tier and therefore its own netns, MAC and DHCP reservation.
+  #
+  # Ports verified against upstream on 2026-08-28 — and audiobookshelf's is the
+  # one docs/roadmap.md got wrong: nixpkgs' module defaults to 8000, while
+  # 13378 is the Docker image's number and what every client expects.
+  # containers/arr.nix sets it explicitly for that reason.
+  lidarrPort         = 8686;
+  kapowarrPort       = 5656;
+  questarrPort       = 5000;
+  audiobookshelfPort = 13378;
+
+  # Storyteller, the podman tier's SECOND occupant, on its own address.
+  # 02:00:00:90:00:0c → 10.0.90.20, following the 8 + <seq> convention in
+  # machines/ernst/networking.nix.
+  storytellerAddr = "10.0.90.20";
+  storytellerPort = 8001;
+
+  # slskd's web UI, in the MICROVM guest — the first backend here that is not
+  # an nspawn container or a podman netns.
+  #
+  # ADDED AFTER THE FACT, and the omission is worth recording.  M14 routed
+  # Soularr to slskd's API across VLAN 90 at layer 2 and stopped there, which
+  # left the human web UI as the ONLY admin surface in this fleet not behind
+  # Traefik — reachable solely by pointing a browser at 10.0.90.11:5030 from a
+  # management VLAN, i.e. dependent on a per-guest UDM-Pro exception.
+  #
+  # That exception is what failed on 2026-08-28: from a LAN client, the guest
+  # answered :22 and :8080 but timed out on :5030, so the page half-loaded and
+  # its websocket died in a retry loop.  Routing it here removes the
+  # dependency entirely — the browser talks to Traefik under the one permanent
+  # `Allow Traefik` policy, and VLAN 90 needs no consumer-facing hole.
+  #
+  # The guest's nftables gained a matching pair of rules for THIS address only
+  # (input on 5030, and the established reply) — deliberately not a seat in its
+  # @api_clients set, which would also hand Traefik qBittorrent's API.
+  slskdAddr = "10.0.90.11";
+  slskdPort = 5030;
+
+  # SOULARR HAS NO ROUTE AND NO PORT.  It is a one-shot timer, not a server,
+  # and its bundled Flask web UI is deliberately not packaged — see
+  # machines/ernst/containers/pkgs/soularr.nix.  Listed here as an absence so
+  # nobody adds a router for symmetry with the rest of the milestone.
+
   # M6.  Traefik's own Prometheus metrics, on a SEPARATE entryPoint from the
   # one that serves traffic.  Its own port rather than a route on :443 because
   # a route would be reachable by anything the consumer-zone ZBF rule already
@@ -1033,6 +1082,104 @@ in
               service     = "tubesync";
             };
 
+            # ── M14's five, and one of them is NOT like the others ─────────
+            #
+            # Four operator tools behind `authelia`, in the usual shape:
+            # lidarr, kapowarr, questarr and storyteller.  Nothing new to say
+            # about those — they are admin-facing browser UIs on names the M5
+            # wildcard already covers, riding the permanent `Allow Traefik` ZBF
+            # rule, so none of them is a shim and none gets a ledger row.
+            #
+            # AUDIOBOOKSHELF IS THE EXCEPTION, and it is the THIRD permanent
+            # bypass in this fleet.  See its router below.
+            lidarr = {
+              rule        = "Host(`lidarr.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "lidarr";
+            };
+            kapowarr = {
+              rule        = "Host(`kapowarr.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "kapowarr";
+            };
+            questarr = {
+              rule        = "Host(`questarr.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "questarr";
+            };
+            # ── Audiobookshelf (M14): NO MIDDLEWARE.  A permanent bypass ────
+            #
+            # NO `middlewares`, and — like Jellyfin's router — that is the
+            # whole point of this one rather than an omission.
+            #
+            # THE REASON IS INVARIANT #4's JELLYFIN CLAUSE, NOT CONVENIENCE.
+            # Audiobookshelf has native mobile and TV clients, and a
+            # forward-auth redirect is exactly what those cannot survive: the
+            # app speaks to the REST API with a bearer token and has no browser
+            # to follow a 302 to auth.goclan.org, so every request would fail
+            # in a way that looks like a broken server rather than a login
+            # prompt.  App support is a stated requirement for this library.
+            #
+            # This is the THIRD permanent bypass in the fleet, alongside
+            # Jellyfin's native auth and the qBittorrent WebUI, and it is
+            # listed as such in docs/roadmap.md's interim-rule ledger — as a
+            # `—` row, because it is permanent and must not be mistaken for
+            # something to "fix" later by adding the middleware back.
+            #
+            # WHAT CARRIES THE AUTHENTICATION INSTEAD.  Audiobookshelf's own
+            # accounts, and they are now the ENTIRE boundary — the same posture
+            # Jellyfin has had since M5 and Jellyseerr since M13.  Two
+            # consequences that are NOT theoretical:
+            #
+            #   1. ITS FIRST-RUN WIZARD IS UNAUTHENTICATED BY CONSTRUCTION.
+            #      With no root account yet, the initial-setup page will create
+            #      one for whoever loads it first.  With `authelia` in front
+            #      that page was protected; without it, it is reachable from
+            #      every consumer VLAN the moment the Technitium record
+            #      resolves.  THE ADMIN ACCOUNT MUST BE CREATED IMMEDIATELY
+            #      after the first deploy — the PR body carries this as an
+            #      ordering constraint, not a to-do.
+            #   2. THERE IS NO SECOND FACTOR ON THIS NAME.  Authelia's per-user
+            #      regulation and 2FA do not apply here.  That is the trade
+            #      being made for app support, made deliberately, and it is why
+            #      this comment is long.
+            #
+            # NOT COMPARABLE TO JELLYSEERR'S EXEMPTION, which rests on a
+            # different argument (its posture is a Jellyfin-account login, so
+            # dropping forward-auth swaps one login for another).  This one
+            # rests on the client-compatibility clause.  Both end at the same
+            # place; do not merge the reasoning.
+            audiobookshelf = {
+              rule        = "Host(`audiobookshelf.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              service     = "audiobookshelf";
+            };
+            storyteller = {
+              rule        = "Host(`storyteller.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "storyteller";
+            };
+
+            # slskd's web UI — in the microvm guest, not a container.  Behind
+            # `authelia` like every other admin surface; its own login exists
+            # but is a single shared operator account, not per-user.
+            #
+            # NOTE ON WEBSOCKETS: this UI is SignalR-driven and holds a
+            # persistent connection.  Traefik proxies websockets natively with
+            # no extra configuration, which is part of why routing it here is
+            # better than the direct path it replaces — that path died on the
+            # websocket while ordinary GETs still succeeded.
+            slskd = {
+              rule        = "Host(`slskd.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "slskd";
+            };
+
             # ── Jellyseerr (M13): the HOUSEHOLD route, and the exception ───
             #
             # NO MIDDLEWARE, and that is the whole point of this router.
@@ -1176,6 +1323,18 @@ in
 
             # M9 — its own address, in a podman netns on VLAN 90.
             tubesync.loadBalancer.servers     = [ { url = "http://${tubesyncAddr}:${toString tubesyncPort}/"; } ];
+
+            # M14 — four more ports on the arr container's address …
+            lidarr.loadBalancer.servers         = [ { url = "http://${arrAddr}:${toString lidarrPort}/"; } ];
+            kapowarr.loadBalancer.servers       = [ { url = "http://${arrAddr}:${toString kapowarrPort}/"; } ];
+            questarr.loadBalancer.servers       = [ { url = "http://${arrAddr}:${toString questarrPort}/"; } ];
+            audiobookshelf.loadBalancer.servers = [ { url = "http://${arrAddr}:${toString audiobookshelfPort}/"; } ];
+
+            # … and one more podman netns of its own, the tier's second.
+            storyteller.loadBalancer.servers    = [ { url = "http://${storytellerAddr}:${toString storytellerPort}/"; } ];
+
+            # … and one in the microvm guest, the first non-container backend.
+            slskd.loadBalancer.servers          = [ { url = "http://${slskdAddr}:${toString slskdPort}/"; } ];
             grafana.loadBalancer.servers  = [ { url = "http://${monitoringAddr}:${toString grafanaPort}/"; } ];
 
             # M7.  The same address the forwardAuth middleware above calls,

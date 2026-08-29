@@ -169,6 +169,19 @@ let
   # octet follows the table's 8 + <seq> convention.
   netns     = "tubesync";
   vethHost  = "vb-tubesync";
+
+  # `eth0` here is FINE ONLY BECAUSE THIS ONE IS FIRST.  Do not copy it.
+  #
+  # dhcpcd keys its pidfile and control socket on the INTERFACE NAME
+  # (/run/dhcpcd/eth0-4.sock), and these units share a mount namespace — only
+  # the NETWORK namespace differs.  A second podman service whose interface is
+  # also called `eth0` finds this instance's socket, hands its arguments over
+  # as a client, and exits 0 without ever obtaining a lease: unit succeeds,
+  # container starts, namespace has no address, Traefik returns 502.
+  #
+  # Measured on 2026-08-28 when M14's Storyteller did exactly that.  Every
+  # podman-tier namespace after this one uses a unique name — see
+  # containers/storyteller.nix, which uses `st0` and carries the full account.
   vethNs    = "eth0";
   mac       = "02:00:00:90:00:0b";
   vlanId    = 90;

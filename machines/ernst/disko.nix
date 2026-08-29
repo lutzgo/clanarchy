@@ -340,10 +340,104 @@
           };
         };
 
+        # /srv/audiobooks — M14.  Audiobookshelf's library, the ebook halves
+        #   Storyteller consumes, and the synced EPUB3s it produces.
+        #
+        # A SEPARATE DATASET, AND NOT A SUBDIRECTORY OF /srv/media.  The
+        # distinction matters and it is the opposite of invariant #2's
+        # instruction, so it needs its own justification:
+        #
+        #   Invariant #2 says never to create a sub-dataset UNDER /srv/media,
+        #   because a dataset boundary inside the hardlink domain silently
+        #   turns every *arr import into a copy.  This is a SIBLING of
+        #   /srv/media, not a child of it, so it creates no boundary inside
+        #   that domain and cannot cause that failure.
+        #
+        #   Nothing here is ever hardlinked from anywhere.  Audiobookshelf has
+        #   no importer — it scans a directory a human fills — and Storyteller
+        #   READS a pair and WRITES a new file rather than linking either.  So
+        #   there is no chain to break, which is exactly why docs/roadmap.md
+        #   says Audiobookshelf is the one M14 service that does not owe the
+        #   hardlink proof.
+        #
+        # recordsize=1M: audiobooks are large and read sequentially, the same
+        #   pattern as /srv/media.  ZFS uses variable block sizes up to the
+        #   recordsize, so the EPUB halves are not padded out to 1M.
+        # exec/setuid/devices=off: library data, never executable — the
+        #   /srv/media reasoning, and it applies with more force here because
+        #   Storyteller is the one M14 service running as an opaque container
+        #   image (see machines/ernst/containers/storyteller.nix).
+        # com.sun:auto-snapshot=true: this is NOT re-acquirable in the way
+        #   /srv/media is.  A synced EPUB3 costs an hour of forced alignment to
+        #   regenerate, and the DRM-free source pairs are a manual acquisition
+        #   rather than something an *arr can fetch again.
+        #
+        # CREATED BY HAND ONCE, like every other dataset in this block — see
+        # the note at the top of `datasets` and docs/guides/ernst-zdata-datasets.md.
+        # disko does not create datasets on an existing pool; it only emits the
+        # fileSystems entry that mounts them.
+        audiobooks = {
+          type = "zfs_fs";
+          mountpoint = "/srv/audiobooks";
+          options = {
+            mountpoint = "legacy";
+            recordsize = "1M";
+            exec       = "off";
+            setuid     = "off";
+            devices    = "off";
+            atime      = "off";
+            "com.sun:auto-snapshot" = "true";
+          };
+        };
+
         # zdata/backup — reserved.  Not created here; when the backup strategy
         # is chosen we may want a very different recordsize / compression /
         # (perhaps) encryption story, so add it deliberately at that point.
       };
     };
   };
+
+  ##############################################################################
+  # `nofail` on /srv/audiobooks — added after this dataset TOOK ERNST DOWN.
+  #
+  # ── WHAT HAPPENED, 2026-08-28 ─────────────────────────────────────────────
+  #
+  #   M14 added zdata/audiobooks.  disko does not create datasets on an existing
+  #   pool — it only emits the `fileSystems` entry that mounts them — so the
+  #   dataset is created by hand from docs/guides/ernst-zdata-datasets.md.
+  #   Every command in that runbook passes `-o mountpoint=legacy`, and M14 did
+  #   not add a section for this dataset, so there was nothing concrete to copy.
+  #
+  #   A ZFS dataset whose `mountpoint` property is NOT `legacy` cannot be
+  #   mounted by mount(8) at all — zfs refuses outright.  So `srv-audiobooks.mount`
+  #   failed, and because a `fileSystems` entry is `RequiredBy` local-fs.target
+  #   by default, local-fs.target failed with it and the machine went to
+  #   emergency: no sshd, no containers, no microvm, no exporters.  The kernel
+  #   still answered ping and still sent RST on :22, which is what made it look
+  #   like a crash rather than a failed mount.
+  #
+  #   THE POINT IS NOT THE MISSING PROPERTY.  That was one mistake and it is
+  #   fixed in the runbook.  The point is that A LIBRARY DATASET WAS ALLOWED TO
+  #   BE A HARD BOOT DEPENDENCY OF THE WHOLE NAS.  /srv/audiobooks holds
+  #   audiobooks.  Nothing about ernst booting, serving Jellyfin, running the
+  #   VPN guest or accepting SSH depends on it, and the blast radius of any
+  #   failure here — a typo'd property, a pool that imports late, a dataset
+  #   nobody created yet — should be "Audiobookshelf is down", not "the server
+  #   is unreachable and needs a console".
+  #
+  # ── WHY THIS IS NOT APPLIED TO THE OTHER /srv DATASETS ───────────────────
+  #
+  #   Deliberately narrow.  /srv/media and /srv/state are different: services
+  #   that write there without them mounted would scribble onto zroot, which
+  #   ROLLS BACK (invariant #7), so silent success is worse than loud failure
+  #   for those two.  The same objection applies here in miniature and is
+  #   answered by the check unit in containers/storyteller.nix rather than by
+  #   taking the host down — see `audiobooks-dataset-check.service`, which fails
+  #   loudly and stops the two consumers while leaving everything else running.
+  #
+  #   `fileSystems.<n>.options` is a list and disko's own definition is
+  #   `[ "defaults" ]`, so this MERGES with it rather than replacing it — no
+  #   mkForce, and `defaults,nofail` is what reaches the mount unit.
+  ##############################################################################
+  fileSystems."/srv/audiobooks".options = [ "nofail" ];
 }

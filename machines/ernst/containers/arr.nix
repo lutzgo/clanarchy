@@ -247,6 +247,39 @@ let
   scraparrUid   = 3016;
   scraparrGid   = 3016;
 
+  # ── M14's additions.  Reserved in machines/ernst/networking.nix ────────────
+  #
+  # FIVE here and a sixth elsewhere.  slskd's 3024 is NOT in this list: it runs
+  # in the MICROVM GUEST, because Soulseek is P2P on the open internet on
+  # ernst's behalf and invariant #1 puts that one tier up.  See
+  # machines/ernst/microvms/wg-qbittorrent.nix.
+  #
+  # Four `media` members and one own-group service, and the split is the same
+  # capability question this file asks of every uid:
+  #
+  #   lidarr          IMPORTS music into the library — it hardlinks out of
+  #                   slskd's download tree, which is the second write path
+  #                   this whole milestone exists to prove.  media PRIMARY.
+  #   soularr         drives Lidarr and slskd over REST, and never opens a file
+  #                   under /srv/media... EXCEPT that it must read the download
+  #                   directory to match tracks (music-tag reads ID3 out of the
+  #                   downloaded files).  media PRIMARY, and this is the one
+  #                   M14 uid whose group is not obvious from its description.
+  #   kapowarr        DOWNLOADS comics and files them.  media PRIMARY.
+  #   audiobookshelf  serves its OWN tree on zdata/audiobooks and never touches
+  #                   /srv/media at all.  media PRIMARY anyway — see its block
+  #                   for why that is about /srv/audiobooks, not /srv/media.
+  #   questarr        OWN group, NO media.  It is the prowlarr shape: it talks
+  #                   to IGDB and Prowlarr over REST and files games onto
+  #                   /srv/games, which is a different dataset entirely and not
+  #                   part of the hardlink domain.
+  lidarrUid         = 3017;
+  soularrUid        = 3018;
+  kapowarrUid       = 3019;
+  questarrUid       = 3020;
+  questarrGid       = 3020;
+  audiobookshelfUid = 3021;
+
   # Fixed on the HOST in machines/ernst/containers/jellyfin.nix, which owns
   # `users.groups.media`.  Restated numerically here (and by name only inside
   # the container, where this file does declare the group) so that nothing in
@@ -325,6 +358,107 @@ let
   #   8978 is the number docs/roadmap.md reserved for Janitorr, kept so the
   #   roadmap and the repo agree even though nothing routes to it.
   janitorrPort = 8978;
+
+  # ── M14 ports ─────────────────────────────────────────────────────────────
+  #
+  # VERIFIED AGAINST UPSTREAM, as docs/roadmap.md's M14 requires — and one of
+  # the four was wrong in the roadmap, which is exactly why it says "verify"
+  # rather than listing them as fact:
+  #
+  #   lidarr          8686   correct.  The servarr settings module's default.
+  #   kapowarr        5656   correct.  backend/internals/settings.py, V1.3.1.
+  #   questarr        5000   correct.  Its own docs, and the PORT env var it
+  #                          reads is what sets it.
+  #   audiobookshelf 13378   THE ROADMAP'S NUMBER IS THE DOCKER IMAGE'S, NOT
+  #                          THE MODULE'S.  nixpkgs' services.audiobookshelf
+  #                          defaults to port 8000 and host 127.0.0.1.  13378
+  #                          is what every Audiobookshelf client and every
+  #                          upstream doc says, so it is set EXPLICITLY below
+  #                          rather than left at the module default — and the
+  #                          host has to be set too, or Traefik cannot reach it
+  #                          at all.
+  #
+  # All four are REACHABLE through Traefik: each is a browser UI a human opens
+  # more than once.  Audiobookshelf is the only one of them that is not
+  # admin-facing — it is a household service, like Jellyseerr — but unlike
+  # Jellyseerr it still gets the `authelia` middleware.  See its block.
+  lidarrPort         = 8686;
+  kapowarrPort       = 5656;
+  questarrPort       = 5000;
+  audiobookshelfPort = 13378;
+  #
+  # ── THE SYSCALL FILTER FOR EVERY UNIT IN THIS CONTAINER ──────────────────
+  #
+  # ONE binding, used by all of them, and it is what nixpkgs' own sonarr and
+  # radarr modules already use — verified by reading sonarr.nix at ernst's pin,
+  # which ends its list with exactly `"@chown"`.
+  #
+  # Everything hand-written in this file used to carry the first four entries
+  # and drop the fifth.  `@chown` is added back after `~@privileged` removes
+  # it; later entries win, so the trailing `@chown` re-permits
+  # chown/fchown/lchown/fchownat.
+  #
+  # ── WHY, MEASURED ON ernst 2026-08-28 ───────────────────────────────────
+  #
+  # Audiobookshelf was killed on startup by the filter, immediately after it
+  # had opened its database:
+  #
+  #   audiobookshelf.service: Main process exited, code=dumped, status=31/SYS
+  #   audit: type=1326 uid=3021 comm="libuv-worker" sig=31 syscall=93
+  #
+  # `status=31/SYS` is SIGSYS — a seccomp kill, not an application error — and
+  # syscall 93 on x86_64 is `fchown`.  systemd's `@privileged` set includes
+  # `@chown`, so `~@privileged` removed it and the service died the first time
+  # Node touched file ownership.
+  #
+  # ── WHY THIS COSTS ALMOST NOTHING ───────────────────────────────────────
+  #
+  # Every unit using this list also sets `CapabilityBoundingSet = ""`, so it
+  # has no CAP_CHOWN — and without CAP_CHOWN the kernel only permits chown to
+  # the caller's OWN uid/gid.  Re-allowing the syscall therefore grants the
+  # ability to set ownership these services already have, and nothing more.
+  #
+  # What blocking it bought was not security but a CRASH: SIGSYS kills the
+  # process outright rather than returning EPERM, so the failure mode is a
+  # service that dies mid-operation instead of one that handles an error.
+  #
+  # ── AND IT IS WHAT UPSTREAM ALREADY DOES ────────────────────────────────
+  #
+  # nixpkgs' sonarr and radarr modules ship a filter that PERMITS chown —
+  # verified both from the live units on ernst (`systemctl show sonarr -p
+  # SystemCallFilter` lists `chown chown32`, ours did not) and from the module
+  # source.  So this is not a laxer policy invented here; it is the policy the
+  # *arrs in this same container have been running under for months.
+  #
+  # ── WHY IT IS APPLIED TO THE PRE-EXISTING SERVICES TOO ──────────────────
+  #
+  # M12's and M13's units were written with the four-entry list and have run
+  # without incident, so the risk here is LATENT rather than observed — with
+  # one exception worth naming, because it is the same failure that actually
+  # fired:
+  #
+  #   seerr (Jellyseerr) is Node, and the process seccomp killed on 2026-08-28
+  #   was a Node `libuv-worker` calling fchown.  Same runtime, same worker
+  #   pool, same syscall — Audiobookshelf simply reached it first because it
+  #   touches ownership during its initial library scan.
+  #
+  # The others are a spread of likelihood rather than a certainty: bazarr
+  # writes .srt sidecars next to media, mediathekarr writes and remuxes video,
+  # cleanuparr deletes files it does not own, and janitorr-config renders files
+  # as root.  Any of them calling fchown once would be killed outright rather
+  # than handed an EPERM it could report.
+  #
+  # NOT CHANGED, deliberately, and both are outside this container: traefik's
+  # unit (containers/traefik.nix) and the qBittorrent exporter in the microvm
+  # guest.  Neither writes into a shared tree, both are working, and neither
+  # has any evidence of need — a filter is not something to widen across
+  # ownership boundaries on symmetry alone.
+  arrSyscallFilter = [ "@system-service" "~@privileged" "~@debug" "~@mount" "@chown" ];
+
+  # SOULARR HAS NO PORT, and that is worth stating in the same place as the
+  # ones that do.  It is a one-shot script driven by a timer, not a server; its
+  # bundled Flask web UI is deliberately not packaged at all (see
+  # ./pkgs/soularr.nix).  Nothing listens, so nothing is opened.
 
   # ── Janitorr's dry-run, hoisted into one place ─────────────────────────────
   #
@@ -424,6 +558,64 @@ let
   # one this file gains for the monitoring container.  Both are in the same PR.
   jellyfinAddr = "10.0.90.10";
   jellyfinPort = 8096;
+
+  # M14.  The VPN microvm's address on VLAN 90 (M3, DHCP reservation keyed on
+  # 02:00:00:90:00:03) and slskd's API port inside it.
+  #
+  # This is the SECOND cross-boundary peer this container has, after Jellyfin,
+  # and it is the more interesting one: it is an OUTBOUND connection to the
+  # guest that faces the open internet.  Soularr initiates it, the guest's
+  # nftables `api_clients` set admits it, and no UDM-Pro rule exists or could
+  # — vb-arr and tap-vpn are both VLAN-90 ports on br0, so the frames are
+  # switched locally and the gateway never sees them.  That is M4's departure 2,
+  # unchanged, and M14 reuses it rather than inventing a second mechanism.
+  #
+  # The guest's set gained a PORT for this, not a client: the arr container was
+  # already in `api_clients` for qBittorrent's WebUI.
+  slskdAddr = "10.0.90.11";
+  slskdPort = 5030;
+
+  # M14.  slskd's download tree, declared in microvms/wg-qbittorrent.nix and
+  # restated here because THREE things have to agree on it verbatim: slskd's
+  # own `directories.downloads`, Soularr's config.ini (which tells Lidarr where
+  # to look), and Lidarr's import.
+  #
+  # It is a SIBLING of /srv/media/torrents rather than a subdirectory, so that
+  # "which client wrote this" stays answerable — and both are inside
+  # /srv/media, which is what actually matters for hardlinks (invariant #2: the
+  # domain is the DATASET, not the directory layout).
+  soulseekRoot        = "/srv/media/soulseek";
+  soulseekDownloadDir = "${soulseekRoot}/complete";
+
+  # M14.  Where Soularr's rendered config.ini lives — a tmpfs under /run,
+  # written on every timer firing before the script runs.
+  #
+  # It holds TWO API keys (Lidarr's, read out of Lidarr's own config.xml by
+  # arr-api-keys; and slskd's, from the clan var), so it cannot be a store
+  # file.  Same shape and same reasoning as janitorr's application.yml.
+  soularrConfigDir = "/run/soularr";
+
+  # M14.  slskd's API key, generated by the slskd-credentials generator over in
+  # microvms/wg-qbittorrent.nix — ONE generator, TWO consumers, so a rotation
+  # cannot leave the guest and Soularr disagreeing.
+  #
+  # Guarded for the same reason janitorrJellyfinGen is: referencing a generator
+  # that does not exist yet is an EVALUATION error naming an attribute, rather
+  # than a runtime error naming the command a human forgot to run.
+  slskdCredsGen =
+    if config.clan.core.vars.generators ? slskd-credentials
+    then config.clan.core.vars.generators.slskd-credentials
+    else { files."api-key".path = "/no-such-path"; };
+
+  # M14.  Audiobookshelf's library tree, on its OWN dataset (zdata/audiobooks,
+  # declared in machines/ernst/disko.nix) rather than under /srv/media.
+  #
+  # It is a SIBLING of /srv/media, not a child, so it creates no dataset
+  # boundary inside the hardlink domain and invariant #2 is untouched.  Nothing
+  # here is ever hardlinked: Audiobookshelf has no importer, and Storyteller
+  # reads a pair and writes a new file rather than linking either.  That is why
+  # docs/roadmap.md exempts Audiobookshelf from M14's hardlink proof.
+  audiobooksRoot = "/srv/audiobooks";
 
   # M13.  Janitorr's Jellyfin credentials, staged host-side out of sops and
   # bound read-only into the container at the SAME path — see the generator
@@ -542,7 +734,232 @@ in
     # pointed at it.  Faking the setting from Nix would be a second source of
     # truth for a value the applications own; see the Cleanuparr block.
     "d /srv/media/.recycle-bin 2770 root ${toString mediaGid} -"
+
+    # ── M14 ────────────────────────────────────────────────────────────────
+    #
+    # State directories, in the usual 0700 shape with numeric ids.
+    #
+    # Soularr gets one even though it is a one-shot script, and it is NOT
+    # optional: soularr.py writes `.soularr.lock` into its --var-dir and
+    # refuses to start while it is present.  That lock is what stops two timer
+    # firings from overlapping on a long search, so it has to live somewhere
+    # that survives a restart — a tmpfs would silently disable the interlock.
+    # It also keeps `.current_page.txt` and `failed_imports.json` there.
+    "d ${stateRoot}/lidarr         0700 ${toString lidarrUid}         ${toString mediaGid}    -"
+
+    # LIDARR'S `.config` PARENT — and this one is not housekeeping, it is what
+    # makes Lidarr able to start at all.
+    #
+    # ── THE DEADLOCK, MEASURED ON ernst 2026-08-28 ─────────────────────────
+    #
+    # The nixpkgs lidarr module ships its OWN tmpfiles rule:
+    #
+    #     d /var/lib/lidarr/.config/Lidarr 0700 lidarr media -
+    #
+    # To honour it, systemd-tmpfiles must first create the intermediate
+    # `.config` — and it creates missing PARENTS as root:root 0755, not as the
+    # rule's owner.  Having done so it then refuses to descend through the
+    # ownership change it just created:
+    #
+    #     Detected unsafe path transition /var/lib/lidarr (owned by lidarr)
+    #     → /var/lib/lidarr/.config (owned by root) during canonicalization
+    #
+    # So the rule leaves behind a root-owned `.config`, never creates `Lidarr`
+    # inside it, and never recovers on a later run — the transition is just as
+    # unsafe next boot.  Lidarr, running as uid 3017, then cannot create its
+    # data directory and dies on startup:
+    #
+    #     System.UnauthorizedAccessException: Access to the path
+    #     '/var/lib/lidarr/.config/Lidarr' is denied.
+    #
+    # The exception surfaces inside Sentry's transport initialisation, which
+    # sends anyone reading the stack trace looking for a network or telemetry
+    # problem.  It is a plain permission error two frames further down.
+    #
+    # ── WHY sonarr DOES NOT HIT THIS ──────────────────────────────────────
+    #
+    # Its `/var/lib/sonarr/.config` is owned by sonarr, created by Sonarr
+    # itself on a much earlier deploy before any such rule existed.  The
+    # deadlock only bites a service whose state directory is EMPTY the first
+    # time tmpfiles runs — i.e. exactly a newly added one, which is why this
+    # was invisible until M14.
+    #
+    # ── THE FIX IS TO PRE-EMPT THE PARENT, NOT TO FIGHT THE MODULE ────────
+    #
+    # Creating `.config` here, owned by lidarr, means there is no ownership
+    # transition for tmpfiles to object to, and the module's own rule then
+    # completes normally on the same run.  This declares a path NOTHING ELSE
+    # declares (the module owns `.config/Lidarr`, this owns `.config`), so it
+    # does not reintroduce the two-declarations-take-turns problem the
+    # MediathekArr note above warns about.
+    "d ${stateRoot}/lidarr/.config 0700 ${toString lidarrUid}         ${toString mediaGid}    -"
+    "d ${stateRoot}/soularr        0700 ${toString soularrUid}        ${toString mediaGid}    -"
+    "d ${stateRoot}/kapowarr       0700 ${toString kapowarrUid}       ${toString mediaGid}    -"
+    "d ${stateRoot}/questarr       0700 ${toString questarrUid}       ${toString questarrGid} -"
+    "d ${stateRoot}/audiobookshelf 0700 ${toString audiobookshelfUid} ${toString mediaGid}    -"
+
+    # THE MUSIC LIBRARY — Lidarr's import TARGET, and it is inside /srv/media
+    # because that is the hardlink domain.
+    #
+    # It sits beside library/{movies,tvshows}, which containers/jellyfin.nix
+    # declares.  This one is declared HERE rather than there, following the
+    # same rule the MediathekArr note above states: one declaration per path,
+    # and the path belongs to the file that owns the service which writes it.
+    # Jellyfin does not serve music in this deployment; Lidarr is the only
+    # thing that writes here.
+    "d /srv/media/library/music 2770 root ${toString mediaGid} -"
+
+    # KAPOWARR'S DOWNLOAD TREE, and — like MediathekArr's — it is NOT under
+    # ${stateRoot}.  It is media: Kapowarr downloads .cbz files here and then
+    # files them into its own library, and both ends must be inside the one
+    # dataset or the move degrades into a copy.
+    "d /srv/media/torrents/comics 2770 root ${toString mediaGid} -"
+    "d /srv/media/library/comics  2770 root ${toString mediaGid} -"
+
+    # AUDIOBOOKSHELF'S TREE, on its own dataset.
+    #
+    # Three directories, and the split is what makes Storyteller and
+    # Audiobookshelf complementary rather than overlapping:
+    #
+    #   library/      finished audiobooks.  Audiobookshelf scans this.
+    #   ebooks/       the DRM-free ebook halves, staged by hand.
+    #   storyteller/  Storyteller's ENTIRE /data volume — its database, the
+    #                 originals it has been given, and the synced EPUB3s it
+    #                 produces.  It is here rather than under ${stateRoot}
+    #                 BECAUSE IT IS NOT PURELY STATE: the outputs are library
+    #                 content, and putting them on the same dataset as
+    #                 Audiobookshelf's library is what lets ABS be pointed at
+    #                 them without a copy.
+    #
+    # A NOTE ON WHAT IS *NOT* CLAIMED HERE.  Storyteller takes its input
+    # through its own web UI and writes its output inside /data; there is no
+    # verified watch-a-directory hand-off between it and Audiobookshelf, and
+    # this repo does not pretend otherwise.  Adding the produced files as an
+    # Audiobookshelf library is an lgo UI step in the PR body.  Upstream ships
+    # exactly ONE volume, and mounting it somewhere useful is the whole of the
+    # integration.
+    #
+    # THESE THREE ARE NOT tmpfiles RULES — see audiobooks-tree.service below.
+    # A tmpfiles rule here would create them on zroot whenever the dataset is
+    # not mounted, which is exactly the failure that took ernst down on
+    # 2026-08-28 (in its other direction).
+
+    # QUESTARR'S GAME TREE, on zdata/games — a THIRD dataset, and deliberately
+    # not /srv/media.
+    #
+    # Games are not media and have no hardlink relationship with anything in
+    # the library; /srv/games already exists for exactly this kind of content
+    # (see machines/ernst/disko.nix, where it carries exec=on because game
+    # binaries must run — which is precisely why nothing else in this container
+    # is allowed near it).
+    #
+    # 0750 questarr:questarr, NOT 2770 root:media.  Questarr is the only writer
+    # and the only reader, so there is no group to share with — and giving
+    # `media` a foothold on the one dataset on this pool where files are
+    # ALLOWED TO EXECUTE would be the worst place in the fleet to do it.
+    "d /srv/games/questarr 0750 ${toString questarrUid} ${toString questarrGid} -"
   ];
+
+  ##############################################################################
+  # The /srv/audiobooks tree — a UNIT, not tmpfiles rules, and the distinction
+  # is what stops this dataset taking the machine down a second time.
+  #
+  # ── WHY THIS IS NOT A tmpfiles RULE ──────────────────────────────────────
+  #
+  # tmpfiles runs early and unconditionally.  If zdata/audiobooks is not
+  # mounted — not created yet, wrong `mountpoint` property, pool imported late
+  # — a tmpfiles rule cheerfully creates /srv/audiobooks/{library,ebooks} ON
+  # zroot, which ROLLS BACK on every boot (invariant #7).  Audiobookshelf would
+  # then scan an empty library, write cover art into it, and lose the lot at
+  # the next reboot, with nothing anywhere saying why.
+  #
+  # containers/jellyfin.nix and containers/tubesync.nix already make this
+  # argument for their own download trees ("a tmpfiles rule alone races the
+  # mount") and pair theirs with an ordered oneshot.  This is the same pattern
+  # with one addition: it VERIFIES the mount rather than merely ordering after
+  # it, because `Requires=` on a mount marked `nofail` does not fail the way an
+  # unqualified reader would expect.
+  #
+  # ── WHY IT FAILS INSTEAD OF FIXING ITSELF ────────────────────────────────
+  #
+  # It could `zfs set mountpoint=legacy` and mount the dataset itself.  It
+  # deliberately does not: a unit that silently repairs storage layout is a
+  # unit that hides the fact that the layout was wrong, and the next surprise
+  # is a dataset nobody meant to create being adopted into the tree.  Failing
+  # loudly, in a unit named after the problem, is the M13/`clanarchy-
+  # impermanence-check` precedent — that one exists because ernst was silently
+  # not impermanent for a month.
+  #
+  # ── BLAST RADIUS, WHICH IS THE WHOLE POINT ───────────────────────────────
+  #
+  # `before`, NOT `requiredBy`, on container@arr.  If this unit fails, the arr
+  # container STILL STARTS: Sonarr, Radarr, Prowlarr, Bazarr and the rest have
+  # nothing to do with audiobooks and must not go down because a library
+  # dataset is missing.  Audiobookshelf inside it will show an empty library,
+  # which is the visible-and-harmless failure this is aiming for.
+  #
+  # Storyteller is the exception and is handled in containers/storyteller.nix:
+  # its ENTIRE /data lives on this dataset, so `storyteller-data-dir.service`
+  # really does require the mount and `podman-storyteller` really is blocked by
+  # it.  A Storyteller that starts without its database is not a degraded
+  # Storyteller, it is a new empty one.
+  #
+  # On 2026-08-28 the machine went to emergency — no sshd, no containers, no
+  # microvm — because this dataset's mount failed and a `fileSystems` entry is
+  # `RequiredBy` local-fs.target by default.  `nofail` in machines/ernst/disko.nix
+  # is the other half of the fix and carries the full account.
+  ##############################################################################
+  systemd.services.audiobooks-tree = {
+    description = "Verify zdata/audiobooks is mounted and create its tree";
+    wantedBy = [ "multi-user.target" ];
+    after    = [ "srv-audiobooks.mount" ];
+    # Ordering only.  See BLAST RADIUS above — a failure here must not stop
+    # the arr container.
+    before   = [ "container@arr.service" ];
+    serviceConfig = {
+      Type            = "oneshot";
+      RemainAfterExit = true;
+    };
+    path = [ pkgs.util-linux pkgs.coreutils ];
+    script = ''
+      set -eu
+
+      # findmnt, not `mountpoint`: this has to check WHAT is mounted, not just
+      # that something is.  With `nofail` the mount unit can fail while
+      # /srv/audiobooks still exists as an ordinary directory on zroot, and
+      # that is precisely the case a bare mountpoint test would pass.
+      src=$(findmnt --noheadings --output SOURCE --target ${audiobooksRoot} || true)
+      fstype=$(findmnt --noheadings --output FSTYPE --target ${audiobooksRoot} || true)
+
+      if [ "$src" != "zdata/audiobooks" ] || [ "$fstype" != "zfs" ]; then
+        echo "audiobooks-tree: ${audiobooksRoot} is NOT zdata/audiobooks." >&2
+        echo "  found: source='$src' fstype='$fstype'" >&2
+        echo "" >&2
+        echo "  Refusing to create the tree, because doing so would put the" >&2
+        echo "  audiobook library on zroot, which rolls back on every boot." >&2
+        echo "" >&2
+        echo "  The dataset must exist AND carry mountpoint=legacy — a ZFS" >&2
+        echo "  dataset without it cannot be mounted by mount(8) at all:" >&2
+        echo "" >&2
+        echo "    zfs create -o mountpoint=legacy -o recordsize=1M \\" >&2
+        echo "      -o exec=off -o setuid=off -o devices=off -o atime=off \\" >&2
+        echo "      -o com.sun:auto-snapshot=true zdata/audiobooks" >&2
+        echo "" >&2
+        echo "  If it exists already:  zfs set mountpoint=legacy zdata/audiobooks" >&2
+        echo "  Then:                  systemctl start srv-audiobooks.mount" >&2
+        echo "  See docs/guides/ernst-zdata-datasets.md." >&2
+        exit 1
+      fi
+
+      # 2770 root:media, matching the rest of the shared trees: setgid so
+      # everything created inside inherits the group, group-writable so
+      # Audiobookshelf (in the arr container) and Storyteller (in its own
+      # podman netns, uid 3022) can both manage what they find.
+      install -d -o root -g ${toString mediaGid} -m 2770 ${audiobooksRoot}
+      install -d -o root -g ${toString mediaGid} -m 2770 ${audiobooksRoot}/library
+      install -d -o root -g ${toString mediaGid} -m 2770 ${audiobooksRoot}/ebooks
+    '';
+  };
 
   # The rest of the media tree is NOT declared here.  containers/jellyfin.nix
   # owns those tmpfiles rules (library/{movies,tvshows}, torrents/{movies,tv})
@@ -830,6 +1247,64 @@ in
         hostPath   = janitorrSecretsDir;
         isReadOnly = true;
       };
+
+      # ── M14 ──────────────────────────────────────────────────────────────
+      #
+      # Per-service state, each at its package's upstream default path so
+      # nothing needs a dataDir override.
+      #
+      # LIDARR'S IS THE ONE WITH A TWIST.  The servarr module's dataDir
+      # defaults to `/var/lib/lidarr/.config/Lidarr` — NOT `/var/lib/lidarr`
+      # like sonarr's and radarr's — and, unlike sonarr's, its unit has NO
+      # StateDirectory at all.  So the bind is the HOME directory and Lidarr
+      # creates `.config/Lidarr` inside it on first start.  Binding the deeper
+      # path instead would work until Lidarr wrote anything else into its home.
+      "/var/lib/lidarr" = {
+        hostPath   = "${stateRoot}/lidarr";
+        isReadOnly = false;
+      };
+      "/var/lib/soularr" = {
+        hostPath   = "${stateRoot}/soularr";
+        isReadOnly = false;
+      };
+      "/var/lib/kapowarr" = {
+        hostPath   = "${stateRoot}/kapowarr";
+        isReadOnly = false;
+      };
+      "/var/lib/questarr" = {
+        hostPath   = "${stateRoot}/questarr";
+        isReadOnly = false;
+      };
+      "/var/lib/audiobookshelf" = {
+        hostPath   = "${stateRoot}/audiobookshelf";
+        isReadOnly = false;
+      };
+
+      # Audiobookshelf's LIBRARY, on its own dataset.  Read-write: it writes
+      # cached cover art and, when asked, renames files it has scanned.
+      #
+      # At the identical path on both sides, like /srv/media — for the same
+      # reason, and here it matters for a second one: Storyteller writes into
+      # ${audiobooksRoot}/synced from a DIFFERENT container, and the two only
+      # agree about what a path means if neither of them rewrites it.
+      "${audiobooksRoot}" = {
+        hostPath   = audiobooksRoot;
+        isReadOnly = false;
+      };
+
+      # Questarr's game tree.  ONLY the subdirectory it owns, not /srv/games.
+      #
+      # This is the one bind mount in this file that is deliberately narrower
+      # than the dataset it comes from, and the reason is in the tmpfiles rule
+      # above: /srv/games carries exec=on, and it also holds the HTPC's Steam
+      # library, which has nothing to do with this container.  Binding the
+      # whole dataset would hand every service in this netns — prowlarr,
+      # flaresolverr, an opaque .NET indexer proxy — a writable, EXECUTABLE
+      # tree.  One subdirectory is what Questarr needs.
+      "/srv/games/questarr" = {
+        hostPath   = "/srv/games/questarr";
+        isReadOnly = false;
+      };
     };
 
     ############################################################################
@@ -875,6 +1350,33 @@ in
       #              dependencies are all already in nixpkgs.  The easy one.
       janitorr = pkgs.callPackage ./pkgs/janitorr.nix { };
       scraparr = pkgs.callPackage ./pkgs/scraparr.nix { };
+
+      # ── M14's hand-rolled derivations ───────────────────────────────────
+      #
+      # Three of M14's six additions land in this container without a nixpkgs
+      # package or module.  Surveyed against ernst's own pin on the session
+      # date (2026-08-28, nixpkgs fcb8fcd) — the 2026-08-25 survey in
+      # docs/roadmap.md still held exactly.
+      #
+      # The three that DO have modules are lidarr and audiobookshelf (below)
+      # and slskd (in the microvm guest).  The sixth, Storyteller, is not here
+      # at all: it has no sane non-Docker build and takes the podman tier —
+      # see machines/ernst/containers/storyteller.nix.
+      #
+      # These three are not alike, and one line each is worth it because the
+      # spread is M14's whole packaging risk:
+      #
+      #   soularr    a SCRIPT with no build system at all.  Its own header
+      #              explains why that makes it a stdenv derivation rather
+      #              than buildPythonApplication, and why it runs from a timer.
+      #   kapowarr   the release-artifact case docs/roadmap.md's packaging
+      #              rule prefers: an upstream zip, unpacked, wrapped.
+      #   questarr   the only REAL build in M14 — buildNpmPackage over a Vite
+      #              frontend and a tsc server pass, because upstream publishes
+      #              no release assets whatsoever.
+      soularr  = pkgs.callPackage ./pkgs/soularr.nix { };
+      kapowarr = pkgs.callPackage ./pkgs/kapowarr.nix { };
+      questarr = pkgs.callPackage ./pkgs/questarr.nix { };
     in
     {
       system.stateVersion = "26.05";
@@ -1053,6 +1555,33 @@ in
           cleanuparrPort
           mediathekarrDownloaderPort
           jellyseerrPort
+
+          # ── M14: FOUR MORE THROUGH TRAEFIK ───────────────────────────────
+          #
+          # All four are browser UIs a human opens more than once, so all four
+          # go through the proxy and none of them anywhere else.
+          #
+          # THE ONE TO THINK ABOUT IS QUESTARR, and it is worth a line because
+          # its posture is the umlautadaptarr/scraparr situation again:
+          # measured at v1.4.2 by running it, it binds 0.0.0.0 by default and
+          # its config dump confirms `"host": "0.0.0.0"`.  Inside this netns
+          # that means it is on the veth, on VLAN 90, and the ONLY thing
+          # keeping it off that VLAN generally is that this rule names one
+          # source and the chain ends in nixos-fw-log-refuse.  The firewall is
+          # load-bearing here, not belt-and-braces.
+          #
+          # Kapowarr and Audiobookshelf are the same shape — both are given
+          # --Host/host = 0.0.0.0 explicitly above, deliberately, because the
+          # alternative (127.0.0.1) would make them unreachable from Traefik in
+          # another container while adding no security this rule does not
+          # already provide.
+          #
+          # SOULARR IS ABSENT AND STAYS ABSENT.  It listens on nothing: its
+          # bundled Flask web UI is not packaged at all.  See ./pkgs/soularr.nix.
+          lidarrPort
+          kapowarrPort
+          questarrPort
+          audiobookshelfPort
         ]
         + lib.concatMapStrings (port: ''
           iptables -A nixos-fw -p tcp -s ${monitoringAddr}/32 --dport ${toString port} -j nixos-fw-accept
@@ -1192,6 +1721,78 @@ in
         home         = "/var/empty";
       };
       users.groups.scraparr = { gid = scraparrGid; };
+
+      # ── M14 users ─────────────────────────────────────────────────────────
+      #
+      # LIDARR takes the sonarr/radarr shape exactly, mkForce and all: the
+      # servarr module declares users.users.lidarr WITH a uid, taken from
+      # config.ids.uids.lidarr, so this is an override of an existing plain
+      # definition and not a new one.  isSystemUser must come with it for the
+      # reason the sonarr block gives — 3017 is not < 1000, so NixOS stops
+      # inferring "effectively a system user" and asserts.
+      #
+      # media PRIMARY, and here the PrivateUsers reason does NOT apply: unlike
+      # sonarr's and radarr's, LIDARR'S UPSTREAM UNIT HAS NO HARDENING AT ALL
+      # (see its service block below).  It is media-primary because it must
+      # hardlink out of slskd's download tree, and that access is entirely its
+      # group membership — the same argument the cleanuparr block makes.
+      users.users.lidarr = {
+        isSystemUser = true;
+        uid          = lib.mkForce lidarrUid;
+      };
+
+      # SOULARR, KAPOWARR and AUDIOBOOKSHELF are declared in full where nothing
+      # else creates them, and `home` points at each one's state directory so
+      # anything reaching for $HOME lands somewhere writable rather than at /.
+      #
+      # SOULARR IS media PRIMARY, AND THAT IS NOT OBVIOUS.  It looks like a
+      # pure REST client — it drives Lidarr and slskd over HTTP — which would
+      # make it the prowlarr shape, own group and no media.  It is not: it
+      # reads ID3 tags out of the downloaded files with `music-tag` to decide
+      # whether a release actually matches, and it moves rejected downloads
+      # aside.  Both need real access to slskd's tree under /srv/media.
+      users.users.soularr = {
+        isSystemUser = true;
+        uid          = soularrUid;
+        group        = "media";
+        home         = "/var/lib/soularr";
+      };
+
+      users.users.kapowarr = {
+        isSystemUser = true;
+        uid          = kapowarrUid;
+        group        = "media";
+        home         = "/var/lib/kapowarr";
+      };
+
+      # AUDIOBOOKSHELF is media PRIMARY for a tree that is NOT /srv/media, and
+      # the distinction is worth stating so nobody "fixes" it later.
+      #
+      # Its library is /srv/audiobooks, a separate dataset (see the header of
+      # the let-binding above).  That tree is 2770 root:media, so `media` is
+      # what gets it write access there — and it is shared with Storyteller,
+      # which writes synced EPUB3s into the same tree from a different
+      # container as a different uid.  A private `audiobookshelf` group would
+      # mean the two services could not see each other's output, which is the
+      # entire reason they are on one dataset.
+      #
+      # The module declares users.users.audiobookshelf without a uid (leaving
+      # allocation to NixOS), so setting one needs no mkForce — the bazarr
+      # situation.  It declares the `audiobookshelf` GROUP only when group ==
+      # "audiobookshelf"; it is "media" below, so no stray group appears.
+      users.users.audiobookshelf.uid = audiobookshelfUid;
+
+      # QUESTARR: own group, no media — the prowlarr shape.  It talks to IGDB
+      # and Prowlarr over REST and writes only to /srv/games/questarr, which is
+      # a different dataset and not part of the hardlink domain.  It has no
+      # reason to be able to name a file in the media library.
+      users.users.questarr = {
+        isSystemUser = true;
+        uid          = questarrUid;
+        group        = "questarr";
+        home         = "/var/lib/questarr";
+      };
+      users.groups.questarr = { gid = questarrGid; };
 
       ##########################################################################
       # The services.
@@ -1561,7 +2162,7 @@ in
           # NOT MemoryDenyWriteExecute — .NET, same JIT rejection this file
           # already records for sonarr/radarr/prowlarr and jellyfin.nix
           # records for Jellyfin.
-          SystemCallFilter = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter = arrSyscallFilter;
         };
       };
 
@@ -1653,7 +2254,7 @@ in
           RestrictRealtime        = true;
           LockPersonality         = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter        = arrSyscallFilter;
 
           # NOT PrivateUsers.  sonarr and radarr carry it and it is why `media`
           # has to be their primary group; here it would buy nothing and cost
@@ -1776,7 +2377,7 @@ in
           RestrictRealtime        = true;
           LockPersonality         = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter        = arrSyscallFilter;
         };
       };
 
@@ -1851,7 +2452,7 @@ in
           # ffmpeg and mkvmerge are FORKED, so the filter has to permit it —
           # @system-service already does.  What it must NOT gain is @privileged
           # or @mount, and it does not.
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter        = arrSyscallFilter;
         };
       };
 
@@ -2005,7 +2606,7 @@ in
         RestrictRealtime        = true;
         LockPersonality         = true;
         SystemCallArchitectures = "native";
-        SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+        SystemCallFilter        = arrSyscallFilter;
       };
 
       ##########################################################################
@@ -2258,7 +2859,7 @@ in
           RemoveIPC               = true;
           LockPersonality         = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter        = arrSyscallFilter;
 
           ExecStart = pkgs.writeShellScript "janitorr-render-config" ''
             set -euo pipefail
@@ -2600,8 +3201,569 @@ in
           RestrictRealtime        = true;
           LockPersonality         = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter        = arrSyscallFilter;
         };
+      };
+
+      ##########################################################################
+      # M14 (a) — LIDARR.  Music, and the consumer end of the second write path.
+      #
+      # ── ITS UPSTREAM MODULE SHIPS NO HARDENING.  NONE ────────────────────
+      #
+      # This is the surprise of M14 and it is worth stating plainly, because
+      # the sibling modules set the expectation the other way.  nixpkgs'
+      # servarr modules are NOT uniform:
+      #
+      #   sonarr.nix    a full "# Hardening" block — CapabilityBoundingSet,
+      #                 NoNewPrivileges, ProtectHome, PrivateUsers, ProtectProc,
+      #                 RestrictAddressFamilies, UMask = "0022", …
+      #   radarr.nix    the same
+      #   lidarr.nix    Type, User, Group, EnvironmentFile, ExecStart, Restart.
+      #                 THAT IS THE ENTIRE serviceConfig.
+      #
+      # Read at ernst's own pin on 2026-08-28, not assumed from the family
+      # resemblance.  So Lidarr does not need its UMask overridden the way
+      # sonarr's and radarr's do — it needs the whole set supplied, and the
+      # `mkForce` those two require would be wrong here (there is no upstream
+      # definition to conflict with).
+      #
+      # This is the Prowlarr trap in a third form.  M4 met it as "DynamicUser →
+      # static uid silently drops six directives"; M12 met it as "upstream sets
+      # eight of them"; here upstream sets zero and the family suggests
+      # otherwise.  The lesson generalises: READ THE UNIT, do not infer it from
+      # a sibling.
+      #
+      # ── dataDir IS NOT /var/lib/lidarr ───────────────────────────────────
+      #
+      # The module defaults it to `/var/lib/lidarr/.config/Lidarr`, and the
+      # unit has no StateDirectory at all, so nothing creates the directory
+      # either.  Left alone, that is exactly right for this container: the bind
+      # mount is /var/lib/lidarr (the home), the host tmpfiles rule owns it as
+      # 3017:3000, and Lidarr creates `.config/Lidarr` inside on first start.
+      ##########################################################################
+      services.lidarr = {
+        enable       = true;
+        user         = "lidarr";
+        group        = "media";     # PRIMARY group — see the users block
+        openFirewall = false;       # explicit list above
+        settings.server.port = lidarrPort;
+      };
+
+      systemd.services.lidarr.serviceConfig = {
+        # THE hardlink line, and the consumer half of the property
+        # microvms/wg-qbittorrent.nix's slskd block provides.  slskd writes
+        # 0664; Lidarr links and then writes its own artwork and .nfo files
+        # next to the media, and at 0022 those would land writable by exactly
+        # one uid on a tree whose whole point is that `media` can manage it.
+        #
+        # NO mkForce, unlike sonarr and radarr: upstream sets no UMask here at
+        # all, so this is a new definition rather than a competing one.
+        UMask = "0002";
+
+        # The hardening upstream omits.  Same set as sonarr's and radarr's,
+        # restated in full rather than referenced, because there is nothing
+        # here to inherit from.
+        CapabilityBoundingSet = "";
+        NoNewPrivileges       = true;
+        PrivateDevices        = true;
+        PrivateTmp            = true;
+        ProtectClock          = true;
+        ProtectControlGroups  = true;
+        ProtectHostname       = true;
+        ProtectKernelLogs     = true;
+        ProtectKernelModules  = true;
+        ProtectKernelTunables = true;
+        ProtectProc           = "invisible";
+        RemoveIPC             = true;
+        RestrictNamespaces    = true;
+        RestrictRealtime      = true;
+        RestrictSUIDSGID      = true;
+        LockPersonality       = true;
+        SystemCallArchitectures = "native";
+        SystemCallFilter        = arrSyscallFilter;
+
+        # AF_INET/AF_INET6 for indexers and MusicBrainz, AF_UNIX for logging.
+        RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+
+        # NOT ProtectHome = true.  sonarr and radarr carry it and can, because
+        # their dataDir is /var/lib/<name>; Lidarr's home IS its state
+        # directory and ProtectHome would make /var/lib/lidarr invisible to it.
+        # ProtectSystem=strict plus an explicit ReadWritePaths is what does the
+        # work instead.
+        ProtectSystem  = "strict";
+        ReadWritePaths = [ "/srv/media" "/var/lib/lidarr" ];
+
+        # NOT PrivateUsers.  sonarr and radarr carry it — which is why `media`
+        # has to be their PRIMARY group — and it is upstream's choice there,
+        # not this file's.  Adding it here would buy nothing (Lidarr's access
+        # to /srv/media is entirely its group membership, and that group is
+        # already primary) and would cost the same footgun for the next person
+        # who adds a supplementary group.
+        #
+        # NOT MemoryDenyWriteExecute: Lidarr is .NET and the JIT maps
+        # writable-then-executable pages.  Same rejection as sonarr/radarr and
+        # containers/jellyfin.nix, for the same runtime.
+      };
+
+      ##########################################################################
+      # M14 (b) — SOULARR.  A TIMER, NOT A SERVICE.
+      #
+      # It reads Lidarr's "wanted" list, searches Soulseek through slskd's REST
+      # API, grabs the best match into slskd's download tree, and tells Lidarr
+      # to import it.  Lidarr then hardlinks out of that tree, which is the
+      # chain M14's proof is about.
+      #
+      # ── WHY A TIMER ──────────────────────────────────────────────────────
+      #
+      # soularr.py runs one pass and EXITS.  Upstream's Docker image fakes a
+      # daemon with a `SCRIPT_INTERVAL` sleep loop and its README's non-Docker
+      # instruction is a cron entry.  A `Restart=always` service would restart-
+      # loop by design and log every SUCCESSFUL pass as a service exit.
+      #
+      # 15 minutes, not upstream's 5.  Every firing is a full pass over Lidarr's
+      # wanted list plus live Soulseek searches, each search bounded by
+      # `search_timeout`; five minutes is tuned for someone watching a fresh
+      # setup fill up, not for steady state.  The lock file makes an overlong
+      # pass safe either way — see below.
+      #
+      # ── THE CONFIG IS RENDERED AT RUN TIME, NOT INTO THE STORE ───────────
+      #
+      # config.ini carries TWO API keys: Lidarr's (out of Lidarr's own
+      # config.xml, via the existing arr-api-keys stager) and slskd's (from the
+      # clan var).  Neither may sit in /nix/store, so the file is written into
+      # a tmpfs on every firing — the same shape as janitorr's application.yml.
+      #
+      # ── THE LOCK FILE IS AN INTERLOCK, NOT A LEFTOVER ────────────────────
+      #
+      # soularr.py writes `.soularr.lock` into --var-dir and refuses to start
+      # while it exists, which is what stops a slow pass from being overrun by
+      # the next timer firing.  --var-dir therefore points at the PERSISTENT
+      # state bind mount, not at the tmpfs holding the config: a lock on a
+      # tmpfs would be erased by a reboot mid-pass, and — worse — would not be
+      # seen by the next firing at all if the tmpfs were per-invocation.
+      #
+      # It also means a CRASHED pass leaves the lock behind and Soularr stays
+      # stopped until someone removes it.  That is upstream's design and it is
+      # the right failure direction here (a stuck downloader is visible; a
+      # doubled one corrupts its own import queue), but it is the first thing
+      # to check when Soularr "stops working":
+      #
+      #     rm /srv/state/soularr/.soularr.lock
+      ##########################################################################
+      systemd.services.soularr = {
+        description = "Soularr — fill Lidarr's wanted list from Soulseek via slskd";
+
+        # Wants, not requires: if Lidarr is down this pass should fail and be
+        # retried at the next firing, not block the timer forever.
+        after    = [ "lidarr.service" "arr-api-keys.service" ];
+        wants    = [ "lidarr.service" ];
+        # requires, not wants: without the staged keys this pass can only
+        # write a config.ini with an empty API key, which Lidarr answers with
+        # a 401 that says nothing about why.
+        requires = [ "arr-api-keys.service" ];
+
+        serviceConfig = {
+          Type  = "oneshot";
+          User  = "soularr";
+          Group = "media";
+
+          # See the render script: these are read by PID 1 as root and handed
+          # to the unit as 0400 copies under $CREDENTIALS_DIRECTORY.  Both are
+          # root-owned and unreadable by this unit's user at their real paths.
+          LoadCredential = [
+            "lidarr-api-key:${arrSecretsDir}/lidarr-api-key"
+            "slskd-api-key:${slskdCredsGen.files."api-key".path}"
+          ];
+
+          # Renders config.ini into a private tmpfs directory immediately
+          # before the run.  RuntimeDirectory gives it 0700 ownership by the
+          # service user and — importantly — REMOVES IT WHEN THE UNIT STOPS,
+          # so the API keys exist only while a pass is running.
+          RuntimeDirectory     = "soularr";
+          RuntimeDirectoryMode = "0700";
+
+          ExecStartPre = [
+            "${pkgs.writeShellScript "soularr-render-config" ''
+              set -euo pipefail
+
+              # Read into variables FIRST and check them.  A command
+              # substitution that fails inside a sed argument does not trip
+              # `set -e`, which is how containers/jellyfin.nix's sibling bug
+              # shipped an EMPTY password once.  A plain assignment does trip
+              # it, and the explicit test covers "file present but empty".
+              # $CREDENTIALS_DIRECTORY, NOT the staging directory.
+              #
+              # The staged keys are 0600 root:root inside a 0700 root directory
+              # — deliberately, see the arr-api-keys block — so User=soularr
+              # cannot open them and `cat` fails with "Permission denied".
+              # That is exactly what shipped: every timer firing failed for a
+              # day before anyone looked, because a failed oneshot on a timer
+              # is silent unless you go and read its journal.
+              #
+              # LoadCredential below is what bridges it: PID 1 reads the files
+              # as root BEFORE dropping to this unit's user, and places 0400
+              # copies here that the service can read.  Scraparr solves the
+              # same problem the same way and this file's header already said
+              # so.
+              lidarr_key=$(${pkgs.coreutils}/bin/cat "$CREDENTIALS_DIRECTORY/lidarr-api-key")
+              slskd_key=$(${pkgs.coreutils}/bin/cat "$CREDENTIALS_DIRECTORY/slskd-api-key")
+
+              if [ -z "$lidarr_key" ] || [ -z "$slskd_key" ]; then
+                echo "soularr: an API key is empty — has arr-api-keys run, and has 'clan vars generate ernst' been run for slskd-credentials?" >&2
+                exit 1
+              fi
+
+              ${pkgs.coreutils}/bin/install -m 0600 /dev/null ${soularrConfigDir}/config.ini
+              ${pkgs.coreutils}/bin/cat > ${soularrConfigDir}/config.ini <<EOF
+              [Lidarr]
+              api_key = $lidarr_key
+              host_url = http://localhost:${toString lidarrPort}
+              download_dir = ${soulseekDownloadDir}
+              disable_sync = False
+
+              [Slskd]
+              api_key = $slskd_key
+              host_url = http://${slskdAddr}:${toString slskdPort}
+              url_base = /
+              download_dir = ${soulseekDownloadDir}
+              delete_searches = False
+              stalled_timeout = 3600
+              remote_queue_timeout = 300
+
+              [Release Settings]
+              use_selected_lidarr_release = False
+              use_most_common_tracknum = True
+              allow_multi_disc = True
+              accepted_countries = Europe,Japan,United Kingdom,United States,[Worldwide],Australia,Canada
+              skip_region_check = False
+              accepted_formats = CD,Digital Media,Vinyl
+
+              [Search Settings]
+              search_timeout = 5000
+              maximum_peer_queue = 50
+              minimum_peer_upload_speed = 0
+              minimum_filename_match_ratio = 0.8
+              minimum_search_interval = 5
+              allowed_filetypes = flac 24/192,flac 16/44.1,flac,mp3 320,mp3
+              album_prepend_artist = False
+              search_type = incrementing_page
+              number_of_albums_to_grab = 10
+              search_source = missing
+              failed_import_denylist = True
+
+              [Download Settings]
+              allow_uploads = False
+
+              [Logging]
+              level = INFO
+              format = [%%(levelname)s|%%(module)s|L%%(lineno)d] %%(asctime)s: %%(message)s
+              datefmt = %%Y-%%m-%%dT%%H:%%M:%%S%%z
+              EOF
+            ''}"
+          ];
+
+          # --config-dir and --var-dir are BOTH passed explicitly.  Upstream
+          # defaults both to os.getcwd(), which for a systemd unit is `/`, and
+          # a downloader that silently reads its configuration out of the root
+          # directory is worse than one that fails.
+          ExecStart = "${lib.getExe soularr} --config-dir ${soularrConfigDir} --var-dir /var/lib/soularr";
+
+          # Group-writable output — it moves rejected downloads aside inside
+          # slskd's tree, which is 2770 root:media.  Same argument as
+          # sonarr/radarr/cleanuparr.
+          UMask = "0002";
+
+          # Static uid with persistent state — the prowlarr shape, so every
+          # directive DynamicUser would have implied is restated explicitly.
+          NoNewPrivileges  = true;
+          PrivateTmp       = true;
+          ProtectSystem    = "strict";
+          ProtectHome      = true;
+          RemoveIPC        = true;
+          RestrictSUIDSGID = true;
+
+          # It reads ID3 tags out of the download tree and moves rejects; it
+          # never touches the library, which Lidarr owns.
+          ReadWritePaths = [ soulseekRoot "/var/lib/soularr" ];
+
+          CapabilityBoundingSet   = "";
+          PrivateDevices          = true;
+          ProtectClock            = true;
+          ProtectControlGroups    = true;
+          ProtectHostname         = true;
+          ProtectKernelLogs       = true;
+          ProtectKernelModules    = true;
+          ProtectKernelTunables   = true;
+          ProtectProc             = "invisible";
+          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+          RestrictNamespaces      = true;
+          RestrictRealtime        = true;
+          LockPersonality         = true;
+          SystemCallArchitectures = "native";
+          SystemCallFilter        = arrSyscallFilter;
+        };
+      };
+
+      systemd.timers.soularr = {
+        description = "Run Soularr every 15 minutes";
+        wantedBy    = [ "timers.target" ];
+        timerConfig = {
+          OnBootSec      = "10m";
+          OnUnitActiveSec = "15m";
+          # A missed firing (host down, container restarting) runs once on the
+          # next start rather than not at all.  Harmless for an idempotent
+          # pass over a wanted list.
+          Persistent     = true;
+          # Without this every firing lands on the same second across reboots,
+          # which for a job that hammers a P2P network is a needless pattern.
+          RandomizedDelaySec = "2m";
+        };
+      };
+
+      ##########################################################################
+      # M14 (c) — KAPOWARR.  Comics acquisition.
+      #
+      # Komga and CWA already serve the READING side in this household; this is
+      # the acquisition half only.  ./pkgs/kapowarr.nix records why it was
+      # chosen over Mylar3 (short version: Mylar3 is Usenet-first and this fleet
+      # has measurably no Usenet).
+      #
+      # It re-executes itself to implement in-app restart, which is why the
+      # derivation wraps a python env rather than patching a shebang — see its
+      # header.  For systemd that means the unit's MAINPID is the supervisor and
+      # the real work happens in a child, so Type=simple and KillMode default
+      # (control-group) are both correct: stopping the unit must take the child
+      # with it.
+      ##########################################################################
+      systemd.services.kapowarr = {
+        description = "Kapowarr — comic book library manager";
+        wantedBy    = [ "multi-user.target" ];
+        after       = [ "network.target" ];
+
+        serviceConfig = {
+          Type  = "simple";
+          User  = "kapowarr";
+          Group = "media";
+
+          # -o binds the listener.  0.0.0.0 INSIDE this netns, where the
+          # container firewall admits ${traefikAddr} and nothing else on this
+          # port — the same posture every other web UI here has.
+          ExecStart = lib.concatStringsSep " " [
+            (lib.getExe kapowarr)
+            "--DatabaseFolder /var/lib/kapowarr"
+            "--LogFolder /var/lib/kapowarr"
+            "--TempDownloadFolder /srv/media/torrents/comics"
+            "--Host 0.0.0.0"
+            "--Port ${toString kapowarrPort}"
+          ];
+
+          Restart    = "on-failure";
+          RestartSec = "30s";
+
+          UMask = "0002";
+
+          NoNewPrivileges  = true;
+          PrivateTmp       = true;
+          ProtectSystem    = "strict";
+          ProtectHome      = true;
+          RemoveIPC        = true;
+          RestrictSUIDSGID = true;
+
+          ReadWritePaths = [ "/srv/media" "/var/lib/kapowarr" ];
+
+          CapabilityBoundingSet   = "";
+          PrivateDevices          = true;
+          ProtectClock            = true;
+          ProtectControlGroups    = true;
+          ProtectHostname         = true;
+          ProtectKernelLogs       = true;
+          ProtectKernelModules    = true;
+          ProtectKernelTunables   = true;
+          ProtectProc             = "invisible";
+          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+          RestrictNamespaces      = true;
+          RestrictRealtime        = true;
+          LockPersonality         = true;
+          SystemCallArchitectures = "native";
+
+          # NOT the usual filter set.  Kapowarr's supervisor uses
+          # multiprocessing with the default start method plus Popen, and
+          # `~@privileged` is fine but a stricter list would block the
+          # process-control calls the restart mechanism depends on.
+          SystemCallFilter = arrSyscallFilter;
+        };
+      };
+
+      ##########################################################################
+      # M14 (d) — QUESTARR.  Games.
+      #
+      # ── IT NEEDS A WRITABLE WorkingDirectory HOLDING ITS MIGRATIONS ──────
+      #
+      # Read ./pkgs/questarr.nix's header before changing anything here.
+      # Questarr resolves BOTH its Drizzle migrations directory AND its
+      # server.log from process.cwd(), so the working directory has to be
+      # writable AND contain `migrations/`.  Neither a store path nor a bare
+      # state directory satisfies both.
+      #
+      # The tmpfiles `L+` rule below is what reconciles them: the state
+      # directory is the cwd, and `migrations` inside it is a forced symlink
+      # into the package.  `L+` rather than `L` because the store path changes
+      # on every upgrade and a plain `L` would leave the old link in place,
+      # which would run LAST DEPLOY'S migrations against this deploy's schema.
+      ##########################################################################
+      systemd.tmpfiles.rules = [
+        "L+ /var/lib/questarr/migrations - - - - ${questarr}/lib/questarr/migrations"
+      ];
+
+      systemd.services.questarr = {
+        description = "Questarr — game library manager";
+        wantedBy    = [ "multi-user.target" ];
+        after       = [ "network.target" ];
+
+        environment = {
+          PORT = toString questarrPort;
+          # Its default is 0.0.0.0 already; stated so the bind address is not a
+          # thing a reader has to go and look up in the built JavaScript.
+          HOST = "0.0.0.0";
+          SQLITE_DB_PATH = "/var/lib/questarr/questarr.db";
+        };
+
+        serviceConfig = {
+          Type  = "simple";
+          User  = "questarr";
+          Group = "questarr";      # OWN group — no media, see the users block
+
+          WorkingDirectory = "/var/lib/questarr";
+          ExecStart        = lib.getExe questarr;
+          Restart          = "on-failure";
+          RestartSec       = "30s";
+
+          # 0027, not 0002.  This is the one M14 service whose output NO other
+          # uid ever needs to read: it owns /srv/games/questarr outright and
+          # shares no group with anything.  The 0002 everywhere else in this
+          # file exists to make `media` able to manage a shared tree; there is
+          # no shared tree here, so the looser mask would be a permission
+          # granted to nobody.
+          UMask = "0027";
+
+          NoNewPrivileges  = true;
+          PrivateTmp       = true;
+          ProtectSystem    = "strict";
+          ProtectHome      = true;
+          RemoveIPC        = true;
+          RestrictSUIDSGID = true;
+
+          ReadWritePaths = [ "/var/lib/questarr" "/srv/games/questarr" ];
+
+          CapabilityBoundingSet   = "";
+          PrivateDevices          = true;
+          ProtectClock            = true;
+          ProtectControlGroups    = true;
+          ProtectHostname         = true;
+          ProtectKernelLogs       = true;
+          ProtectKernelModules    = true;
+          ProtectKernelTunables   = true;
+          ProtectProc             = "invisible";
+          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+          RestrictNamespaces      = true;
+          RestrictRealtime        = true;
+          LockPersonality         = true;
+          SystemCallArchitectures = "native";
+          SystemCallFilter        = arrSyscallFilter;
+
+          # NOT MemoryDenyWriteExecute: V8 JITs, exactly like the .NET services
+          # above.  Same rejection, different runtime.
+        };
+      };
+
+      ##########################################################################
+      # M14 (e) — AUDIOBOOKSHELF.  The one service here that owes no hardlink
+      # proof, and the one whose upstream unit is least hardened.
+      #
+      # ── ITS MODULE HAS NO HARDENING EITHER, AND LESS THAN LIDARR'S ───────
+      #
+      # nixpkgs' services.audiobookshelf unit is Type, User, Group,
+      # StateDirectory, WorkingDirectory, ExecStart, Restart.  That is all of
+      # it — no CapabilityBoundingSet, no NoNewPrivileges, no ProtectSystem,
+      # nothing.  Read at ernst's pin on 2026-08-28.
+      #
+      # So this is the second module in M14 whose hardening has to be supplied
+      # rather than adjusted, and it makes the same point Lidarr's block does:
+      # read the unit.
+      #
+      # ── COMPLEMENTARY TO STORYTELLER, NOT OVERLAPPING ────────────────────
+      #
+      # Audiobookshelf SERVES the library; Storyteller PRODUCES synced EPUB3s
+      # from ebook+audiobook pairs.  They share one dataset on purpose, so that
+      # Storyteller's output under ${audiobooksRoot}/synced is a directory
+      # Audiobookshelf can simply be pointed at.  See
+      # machines/ernst/containers/storyteller.nix.
+      #
+      # ── WHY IT BEATS A JELLYFIN AUDIOBOOK LIBRARY ────────────────────────
+      #
+      # Per-user progress that actually works across devices, and good handling
+      # of children's accounts.  Jellyfin tracks position per item, not per
+      # user per item, in a way that makes a shared audiobook unusable for two
+      # people at once — which is the whole use case in this household.
+      ##########################################################################
+      services.audiobookshelf = {
+        enable = true;
+        user   = "audiobookshelf";
+        group  = "media";           # for /srv/audiobooks, NOT /srv/media
+
+        # BOTH of these differ from the module's defaults, and both have to.
+        #
+        #   port  the module defaults to 8000; 13378 is what upstream, every
+        #         client and docs/roadmap.md use.
+        #   host  the module defaults to 127.0.0.1, which would make it
+        #         unreachable from Traefik in another container entirely.  The
+        #         container firewall is what restricts it, as everywhere else
+        #         in this file.
+        port = audiobookshelfPort;
+        host = "0.0.0.0";
+
+        openFirewall = false;       # explicit list above
+      };
+
+      systemd.services.audiobookshelf.serviceConfig = {
+        # Group-writable: Storyteller (uid 3022, group media, different
+        # container) writes into the same tree, and Audiobookshelf writes cover
+        # art and — when asked — renames scanned files.  Neither can manage the
+        # other's output at 0022.
+        UMask = "0002";
+
+        # Everything upstream omits.
+        CapabilityBoundingSet = "";
+        NoNewPrivileges       = true;
+        PrivateDevices        = true;
+        PrivateTmp            = true;
+        ProtectClock          = true;
+        ProtectControlGroups  = true;
+        ProtectHostname       = true;
+        ProtectKernelLogs     = true;
+        ProtectKernelModules  = true;
+        ProtectKernelTunables = true;
+        ProtectProc           = "invisible";
+        RemoveIPC             = true;
+        RestrictNamespaces    = true;
+        RestrictRealtime      = true;
+        RestrictSUIDSGID      = true;
+        LockPersonality       = true;
+        SystemCallArchitectures = "native";
+        SystemCallFilter        = arrSyscallFilter;
+        RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+
+        ProtectSystem  = "strict";
+        ReadWritePaths = [ audiobooksRoot "/var/lib/audiobookshelf" ];
+
+        # NOT ProtectHome: its home IS /var/lib/audiobookshelf, the same
+        # situation Lidarr is in.
+        #
+        # NOT MemoryDenyWriteExecute: Node, so V8 JITs.  Third rejection of the
+        # same directive in this file, for the third runtime.
+        #
+        # NO /srv/media ANYWHERE.  This service has no business in the film and
+        # television library and this is the line that says so.
       };
 
       ##########################################################################
@@ -2739,7 +3901,7 @@ in
           RemoveIPC               = true;
           LockPersonality         = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+          SystemCallFilter        = arrSyscallFilter;
 
           ExecStart = pkgs.writeShellScript "recyclarr-stage-api-keys" ''
             set -euo pipefail
@@ -2789,6 +3951,25 @@ in
 
             stage sonarr /var/lib/sonarr/.config/NzbDrone/config.xml ${arrSecretsDir}/sonarr-api-key
             stage radarr /var/lib/radarr/.config/Radarr/config.xml   ${arrSecretsDir}/radarr-api-key
+
+            # ── M14: LIDARR, FOR SOULARR ─────────────────────────────────
+            #
+            # Same servarr <ApiKey> element in the same config.xml shape, so it
+            # reuses stage() unchanged — the third consumer of this stager and
+            # the reason it was renamed out of `recyclarr-secrets` in M12.
+            #
+            # The PATH is the thing to get right, and it is NOT the pattern
+            # sonarr and radarr follow.  Lidarr's servarr module defaults
+            # dataDir to `/var/lib/lidarr/.config/Lidarr` — the same nesting —
+            # but the directory component is `Lidarr`, not an NzbDrone-style
+            # legacy name.  Checked against the module rather than guessed from
+            # Sonarr's, which is where the `.config/NzbDrone` surprise lives.
+            #
+            # MANDATORY, like M13's three and for a related reason: Soularr
+            # cannot do anything at all without Lidarr's key, and its
+            # ExecStartPre refuses to write a config.ini containing an empty
+            # one.  Failing here names the wizard that has not been run.
+            stage lidarr /var/lib/lidarr/.config/Lidarr/config.xml   ${arrSecretsDir}/lidarr-api-key
 
             # ── M13: THREE MORE KEYS, FOR SCRAPARR ───────────────────────
             #
@@ -3675,7 +4856,7 @@ in
         RestrictRealtime        = true;
         LockPersonality         = true;
         SystemCallArchitectures = "native";
-        SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
+        SystemCallFilter        = arrSyscallFilter;
       };
 
       # `curl` is the test plan's instrument: it is what proves this container
