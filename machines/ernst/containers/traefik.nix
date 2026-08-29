@@ -1180,41 +1180,49 @@ in
               service     = "slskd";
             };
 
-            # ── Jellyseerr (M13): the HOUSEHOLD route, and the exception ───
+            # ── Jellyseerr: the HOUSEHOLD route — posture changed by M16 ───
             #
-            # NO MIDDLEWARE, and that is the whole point of this router.
+            # M13 shipped this router with NO middleware, deliberately, and
+            # its comment said M16 would be where the posture changes,
+            # reviewed as an ingress change.  This is that change: since M16
+            # this name is reachable FROM THE INTERNET through the Cloudflare
+            # Tunnel (containers/cloudflared.nix), and the milestone's
+            # requirement is that the unauthenticated attack surface on the
+            # external path is AUTHELIA, not Jellyseerr's Node application.
             #
-            # Every other *arr-container route above carries `authelia`,
-            # because they are operator tools.  This one is not: it is what the
-            # household opens to ask for a film, and its posture is
-            # JELLYSEERR'S OWN JELLYFIN-ACCOUNT LOGIN — the credential everyone
-            # here already has.  That is the same call the jellyfin router at
-            # the top of this block makes, for the same reason.
+            # ONE ROUTER SERVES BOTH PATHS, so the middleware applies to the
+            # household's internal requests too.  That is accepted, not
+            # overlooked — the alternatives were worse in this repo's own
+            # terms:
             #
-            # Putting it behind forward-auth would also flatten the thing
-            # Jellyseerr exists to track: "who requested this" becomes one
-            # Authelia identity instead of the individual Jellyfin accounts.
+            #   - a second, internal-only router keyed on ClientIP with no
+            #     middleware FAILS OPEN: any request the internal matcher
+            #     mis-classifies is served unauthenticated.  This shape fails
+            #     CLOSED — a mis-classified internal request meets a login
+            #     form, which is an inconvenience, not an exposure;
+            #   - an Authelia `networks`-based bypass rule for RFC1918
+            #     sources trusts X-Forwarded-For arithmetic on the exact
+            #     boundary this milestone exists to harden.
             #
-            # ── IT IS NOT REACHABLE FROM THE INTERNET, AND MUST NOT BE ─────
+            # The cost is that household members hold an Authelia account
+            # (group `household` in authelia.nix) alongside their Jellyfin
+            # one.  Authelia's remember-me runs a month, so the friction is
+            # periodic, not per-visit.
             #
-            # lgo has decided Jellyseerr should eventually be WAN-reachable.
-            # THAT IS M16.  This router rides the existing permanent "Allow
-            # Traefik" ZBF rule (LAN + IoT → traefik:443) and M13 created no
-            # UDM-Pro rule, no port forward and no WAN entryPoint.
+            # "WHO REQUESTED THIS" IS NOT FLATTENED — M13's comment worried
+            # it would be.  Forward-auth sits IN FRONT of Jellyseerr; its own
+            # Jellyfin-account login (and per-user request attribution)
+            # continues underneath, exactly as Grafana keeps its local admin
+            # under the same middleware.
             #
-            # M16 is where the external posture — including whether this route
-            # gains a middleware after all — gets decided and reviewed AS an
-            # ingress change.  Doing it here and reworking it there would be
-            # two changes to one router.
-            #
-            # NOTHING IS ADDED TO authelia.nix's `protectedHosts` FOR THIS
-            # NAME, deliberately and necessarily.  That list is what makes a
-            # forward-auth route work; a name in it without the middleware does
-            # nothing, and the middleware without the name fails CLOSED.  This
-            # route has neither, which is the consistent state.
+            # The name is in authelia.nix's access_control via its OWN rule
+            # (household + admins), NOT via `protectedHosts` — that list
+            # feeds the admins-only rule, and this is the one protected name
+            # in the fleet a non-admin must be able to reach.
             jellyseerr = {
               rule        = "Host(`jellyseerr.${baseDomain}`)";
               entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
               service     = "jellyseerr";
             };
 

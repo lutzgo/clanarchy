@@ -314,11 +314,21 @@ let
   # subject list are all derived from this list, so there is nothing to keep in
   # step.  `sgo` is the expected next entry.
   #
-  # Both accounts are in `admins`, which is the only group any rule mentions.
-  # A differentiated group (say `viewers`, one_factor on Grafana only) is one
-  # entry in `groups` plus one rule below; it is not built because nobody has
-  # asked for the distinction, and an access-control matrix for a household of
-  # two is a thing to get wrong rather than a thing to have.
+  # M7 wrote here that a differentiated group "is not built because nobody has
+  # asked for the distinction".  M16 is somebody asking: putting Jellyseerr
+  # behind forward-auth means a NON-admin — Sabine — must be able to pass the
+  # portal for exactly one name, and handing the household `admins` to avoid a
+  # group would put every *arr UI one login behind hers.  So `household`
+  # exists, it is mentioned by exactly one rule (the jellyseerr one below),
+  # and it reaches nothing else — an account in it can authenticate and still
+  # hits default_policy = "deny" everywhere protectedHosts applies.
+  #
+  # ADDING sabine IS A GENERATOR CHANGE: `clan vars generate ernst` re-runs
+  # authelia-users, which re-prompts EVERY password in this list — lgo's and
+  # go's included (re-entering the same values is fine; the argon2 salt
+  # changes, the credential does not).  The manual step in M16's PR body says
+  # so, because a prompt for a password you thought was settled reads like a
+  # bug at the worst moment.
   #
   # The email addresses are NOT correspondence addresses.  The notifier writes
   # to a file (see the header), so these are identifiers Authelia uses to
@@ -327,11 +337,24 @@ let
   # commit in this repo.
   ############################################################################
   autheliaUsers = [
-    { name = "lgo"; displayName = "Lutz";  email = "lutz0go@gmail.com"; groups = [ "admins" ]; }
-    { name = "go";  displayName = "Go";    email = "go@${baseDomain}";  groups = [ "admins" ]; }
+    { name = "lgo";    displayName = "Lutz";   email = "lutz0go@gmail.com";     groups = [ "admins" ]; }
+    { name = "go";     displayName = "Go";     email = "go@${baseDomain}";      groups = [ "admins" ]; }
+    { name = "sabine"; displayName = "Sabine"; email = "sabine@${baseDomain}";  groups = [ "household" ]; }
   ];
 
-  adminGroup = "admins";
+  adminGroup     = "admins";
+  householdGroup = "household";
+
+  # The one name a NON-admin may reach through forward-auth — Jellyseerr,
+  # whose router gained the `authelia` middleware in M16 when the name became
+  # internet-reachable through the Cloudflare Tunnel.  Its OWN list and its
+  # OWN rule below, deliberately kept out of protectedHosts: that list feeds
+  # the admins-only rule, and merging them would either hand `household`
+  # every admin UI or lock admins' families out of the request page,
+  # depending on which end you merged toward.
+  householdHosts = [
+    "jellyseerr.${baseDomain}"
+  ];
 
   # The names forward-auth protects.  Kept as one list because it is used
   # twice — once for the access-control rule here, once as the thing the
@@ -381,7 +404,10 @@ let
     #
     # AUDIOBOOKSHELF IS DELIBERATELY ABSENT, and this is the second name in the
     # fleet to be absent on purpose rather than by oversight (Jellyfin is the
-    # first; Jellyseerr the third).
+    # first).  Jellyseerr used to be the third; since M16 it is protected
+    # after all — via `householdHosts` and its own rule below, NOT this list,
+    # because this list feeds the admins-only rule and Jellyseerr is the one
+    # protected name a non-admin must reach.
     #
     # It has native mobile and TV clients, and app support is a stated
     # requirement for that library — so it falls under architecture invariant
@@ -1229,6 +1255,23 @@ in
                 domain  = protectedHosts;
                 policy  = "two_factor";
                 subject = [ "group:${adminGroup}" ];
+              }
+
+              # M16 — Jellyseerr, the one name a NON-admin may reach.  Two
+              # top-level subject entries are OR'd by Authelia (a nested list
+              # would AND them), so this admits `household` AND `admins`
+              # without putting either in the other's group.
+              #
+              # two_factor for BOTH paths: the roadmap requires 2FA on the
+              # external one, and there is no way to distinguish paths here
+              # without trusting X-Forwarded-For arithmetic on exactly the
+              # boundary M16 hardens — see the router comment in
+              # containers/traefik.nix.  Internally it costs a TOTP prompt
+              # once per remember-me period.
+              {
+                domain  = householdHosts;
+                policy  = "two_factor";
+                subject = [ "group:${adminGroup}" "group:${householdGroup}" ];
               }
             ];
           };

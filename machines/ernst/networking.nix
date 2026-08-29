@@ -304,6 +304,7 @@
   #   02:00:00:90:00:0a   tvheadend container eth0  (M8  — allocated)  10.0.90.18
   #   02:00:00:90:00:0b   tubesync netns eth0       (M9  — allocated)  10.0.90.19
   #   02:00:00:90:00:0c   storyteller netns eth0    (M14 — allocated)  10.0.90.20
+  #   02:00:00:90:00:0d   cloudflared container eth0 (M16 — allocated) 10.0.90.21
   #
   # THE TUBESYNC ENTRY IS NOT A CONTAINER veth IN THE NSPAWN SENSE, and it is
   # the first of its kind here: it is a veth into a BARE NETWORK NAMESPACE that
@@ -528,12 +529,33 @@
   #                              owes its own hardlink proof — M14's covers
   #                              slskd's uid, not this one)
   #
-  #   uid 3025  wizarr          (M16, OWN group — CONDITIONAL.  Only if M16
-  #                              concludes the multi-service invite is worth
-  #                              it.  It STAYS INTERNAL either way: an invite
-  #                              endpoint reachable from outside is a
-  #                              self-service account creation endpoint)
-  #   gid 3025  wizarr          (M16)
+  #   uid 3025  wizarr          RESERVED, NOT USED.  M16 evaluated it as its
+  #                              brief required and DROPPED it (2026-08-29):
+  #                              the household is three people, the accounts
+  #                              M16 actually creates numbered exactly ONE
+  #                              (sabine, in authelia.nix's autheliaUsers),
+  #                              and an invite service to automate one
+  #                              account is a standing web app to save five
+  #                              minutes once.  The identity question it
+  #                              would have posed is answered without it:
+  #                              AUTHELIA OWNS IDENTITY (users_database.yml,
+  #                              via clan vars), services own their own
+  #                              enrolment, and nothing provisions across.
+  #                              The trigger to revisit is the household
+  #                              growing past hand-managed size, not M16's
+  #                              ingress.  If taken, it STAYS INTERNAL: an
+  #                              invite endpoint reachable from outside is a
+  #                              self-service account creation endpoint.
+  #   gid 3025  wizarr          (same status)
+  #
+  #   uid 3029  cloudflared     (M16, containers/cloudflared.nix — OWN group,
+  #                              NO media.  The Cloudflare Tunnel client: the
+  #                              fleet's only WAN ingress, in its own nspawn
+  #                              container with an egress firewall that
+  #                              admits Traefik's :443 and Technitium's :53
+  #                              and rejects the rest of RFC1918.  Stateless;
+  #                              no /srv/state directory)
+  #   gid 3029  cloudflared     (M16)
   #
   #   uid 3026  tvheadend       M8 LANDED 2026-08-27 AND TOOK THIS — moved up
   #                              into the allocated table, as shape (ii): OWN
@@ -599,11 +621,16 @@
   # slskd needed none either, for a different reason: it went into the EXISTING
   # microvm guest, which already has 02:00:00:90:00:03.
   #
-  # Next free sequence number is 08; next free address is 10.0.90.16.
-  #   02:00:00:90:00:08   tdarr container eth0      (M15 — RESERVED)  10.0.90.16
-  #   02:00:00:90:00:09   jellyseerr container eth0 (M16 — RESERVED,  10.0.90.17
-  #                       and only if M13/M16 split it out of the arr
-  #                       container.  M13 ships it inside arr by default)
+  # Next free sequence number is 0e; next free address is 10.0.90.22.
+  # (08/.16 and 09/.17 below are LAPSED reservations, kept as history so the
+  # gap in the sequence reads as a decision rather than an oversight.)
+  #   02:00:00:90:00:08   tdarr container eth0      (M15 — LAPSED: the
+  #                       milestone closed 2026-08-29 without shipping;
+  #                       see uid 3023's row below)                10.0.90.16
+  #   02:00:00:90:00:09   jellyseerr container eth0 (LAPSED: M13 shipped it
+  #                       inside the arr container and M16 kept it there —
+  #                       external ingress reaches it through Traefik, so
+  #                       no split-out ever happened)              10.0.90.17
   #   02:00:00:90:00:0a   tvheadend container eth0  — M8 LANDED 2026-08-27,
   #                       moved up into the allocated table (10.0.90.18).
   #                       The scope challenge resolved by operator decision:
