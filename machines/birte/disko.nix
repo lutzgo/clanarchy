@@ -1,13 +1,21 @@
 import ../../modules/disko/btrfs.nix {
-  # IMPORTANT:
-  # Boot from the Clan installer USB (via a USB-C hub on the Deck).
-  # SSH into the installer, then:
-  #   ls -l /dev/disk/by-id/
-  # The Deck's internal NVMe shows up as something like:
-  #   /dev/disk/by-id/nvme-<model>_<serial>
-  # Replace the value below with the full by-id path.
-  # DO NOT use /dev/nvme0n1 directly.
-  device = "/dev/disk/by-id/CHANGEME-steamdeck-internal-nvme";
+  # The Deck OLED's internal 1 TB NVMe, by stable id.  DO NOT use
+  # /dev/nvme0n1 directly — the installer USB enumerates alongside it.
+  #
+  # udev also exposes this drive as `..._50026B7283737F09_1` (a duplicate
+  # emitted for the second nvme id source) and as the EUI form
+  # `nvme-eui.00000000000000000026b7283737f095`.  All three resolve to
+  # nvme0n1; the bare model_serial below is the canonical one.
+  #
+  # To rediscover after a drive swap: boot the Clan installer USB (via a
+  # USB-C hub on the Deck), SSH in, and run `ls -l /dev/disk/by-id/`.
+  device = "/dev/disk/by-id/nvme-KINGSTON_OM3PGP41024P-A0_50026B7283737F09";
+
+  # Partition labels become disk-birte-*, NOT disk-main-*. The installer USB
+  # is flashed `--disk main`, so a target using "main" collides with it during
+  # install and bootctl can write the bootloader to the stick — which is
+  # exactly what happened here on 2026-08-31.
+  diskName = "birte";
 
   # btrfs rather than the fleet's ZFS (modules/disko/base.nix).  OpenZFS is
   # out-of-tree and gates the kernel; birte tracks nixpkgs-unstable and a

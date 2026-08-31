@@ -15,13 +15,20 @@
 # also matters because the persisted `.local/share` is an impermanence
 # bind-mount: a subvol mounted underneath that path would be shadowed by
 # the bind and silently disappear.
-{ config, lib, ... }:
+{ config, lib, pkgs, utils, ... }:
 let
-  # disko names partitions `disk-<disk>-<partition>`; ours is disk.main /
-  # partition `btrfs` (see modules/disko/btrfs.nix).  The rollback runs
-  # before sysroot.mount, so it addresses the raw partition rather than a
-  # mounted path.
-  rootPart = "/dev/disk/by-partlabel/disk-main-btrfs";
+  # disko names partitions `disk-<disk>-<partition>`.  The disk name is
+  # per-machine and deliberately not "main" (see modules/disko/btrfs.nix for
+  # why), so derive it from the disko config rather than hardcoding — a
+  # hardcoded `disk-main-btrfs` would silently stop matching the moment a
+  # machine picked its own name, and this unit runs in stage 1 where that is
+  # expensive to debug.
+  diskName = builtins.head (builtins.attrNames config.disko.devices.disk);
+  rootPart = "/dev/disk/by-partlabel/disk-${diskName}-btrfs";
+
+  # systemd's unit name for that device, e.g.
+  # dev-disk-by\x2dpartlabel-disk\x2dbirte\x2dbtrfs.device
+  rootPartUnit = "${utils.escapeSystemdPath rootPart}.device";
 in
 {
   config = lib.mkIf (config.clanarchy.rootfs == "btrfs") {
@@ -40,16 +47,49 @@ in
     # Unit name matches the ZFS backend's on purpose: modules/vm-variant.nix
     # disables `boot.initrd.systemd.services.rollback` by name so build-vm
     # works for either backend without special-casing.
-    boot.initrd.systemd.services.rollback = {
+    boot.initrd.systemd.services.rollback = lib.mkIf config.clanarchy.impermanence.rollback.enable {
       description = "Rollback btrfs @root and @home to blank";
       wantedBy = [ "initrd.target" ];
+      # The by-partlabel symlink is created by udev, and `DefaultDependencies
+      # = no` strips the implicit ordering that would otherwise wait for it.
+      # Without this the unit runs too early and dies with
+      #   mount: special device /dev/disk/by-partlabel/disk-…-btrfs does not
+      #   exist.
+      #
+      # Depend on the device unit itself rather than initrd-root-device.target:
+      # it names exactly the symlink the script dereferences, so the ordering
+      # cannot be satisfied by some other device showing up first. `requires`
+      # rather than `wants` — with no device there is nothing sane to do, and
+      # failing here is safe now that the script no longer deletes anything
+      # before its replacement exists.
+      after = [ rootPartUnit ];
+      requires = [ rootPartUnit ];
       before = [ "sysroot.mount" ];
       unitConfig.DefaultDependencies = "no";
       serviceConfig.Type = "oneshot";
       script = ''
         set -eu
         mkdir -p /btrfs_tmp
-        mount -o subvolid=5 ${rootPart} /btrfs_tmp
+        # `-t btrfs` is not optional. Without it mount has to autodetect the
+        # type, which needs libblkid's superblock probes — absent from the
+        # minimal initrd — and the unit dies with
+        #   mount: /btrfs_tmp: no valid filesystem type specified.
+        # which reads like a broken device and is not one.
+        mount -t btrfs -o subvolid=5 ${rootPart} /btrfs_tmp
+
+        # btrfs refuses to delete a subvolume that still contains subvolumes,
+        # so clear any nested ones first.  `subvolume list -o` prints paths
+        # relative to the filesystem root in field 9.  @games is a top-level
+        # sibling, not nested under either target, so it is never touched.
+        delete_tree() {
+          target="$1"
+          [ -e "$target" ] || return 0
+          btrfs subvolume list -o "$target" | cut -f9 -d' ' |
+            while read -r nested; do
+              btrfs subvolume delete "/btrfs_tmp/$nested" || true
+            done
+          btrfs subvolume delete "$target"
+        }
 
         for sub in @root @home; do
           if [ ! -e "/btrfs_tmp/$sub-blank" ]; then
@@ -57,23 +97,110 @@ in
             # freshly-installed state, so capture it as the baseline and
             # leave it in place.
             btrfs subvolume snapshot "/btrfs_tmp/$sub" "/btrfs_tmp/$sub-blank"
-          else
-            # btrfs refuses to delete a subvolume that still contains
-            # subvolumes, so clear any nested ones first.  `subvolume list -o`
-            # prints paths relative to the mount point in field 9.  @games is
-            # a top-level sibling, not nested here, so it is never touched.
-            if [ -e "/btrfs_tmp/$sub" ]; then
-              btrfs subvolume list -o "/btrfs_tmp/$sub" | cut -f9 -d' ' |
-                while read -r nested; do
-                  btrfs subvolume delete "/btrfs_tmp/$nested" || true
-                done
-              btrfs subvolume delete "/btrfs_tmp/$sub"
-            fi
-            btrfs subvolume snapshot "/btrfs_tmp/$sub-blank" "/btrfs_tmp/$sub"
+            continue
           fi
+
+          # Reclaim a leftover from a previous interrupted run.
+          delete_tree "/btrfs_tmp/$sub-old"
+
+          # Move the live subvolume aside rather than deleting it outright.
+          # The previous shape deleted $sub and only then recreated it from
+          # $sub-blank, so any failure in between left the machine with no
+          # root subvolume at all — unbootable, in stage 1, on a handheld
+          # with no keyboard. This way $sub is absent only for the duration
+          # of a rename, and if the snapshot below fails the previous root is
+          # still on disk as $sub-old and can be renamed back from an
+          # installer.
+          if [ -e "/btrfs_tmp/$sub" ]; then
+            mv "/btrfs_tmp/$sub" "/btrfs_tmp/$sub-old"
+          fi
+
+          btrfs subvolume snapshot "/btrfs_tmp/$sub-blank" "/btrfs_tmp/$sub"
+
+          # `btrfs subvolume snapshot` does not recurse into nested
+          # subvolumes. systemd makes /var/lib/machines and /var/lib/portables
+          # subvolumes on btrfs, and /var/tmp and /srv end up as subvolumes
+          # too, so the snapshot contains a *stub* at each of those paths: an
+          # empty directory with inode 2 whose mode is 0755 and which silently
+          # ignores chmod — the call returns success and changes nothing.
+          #
+          # A 0755 /var/tmp breaks every service with PrivateTmp=true, because
+          # systemd cannot set up the private instance. That is dbus-broker,
+          # systemd-logind, nscd, avahi, bluetooth, wpa_supplicant and more,
+          # all failing with "Failed to spawn 'start' task: Operation not
+          # permitted" — which reads like a permissions or resource problem
+          # and is neither. With dbus and logind down there is no session and
+          # no sshd, so the machine is a black screen that cannot be logged
+          # into. birte spent an evening in that state.
+          #
+          # Stubs cannot be repaired in place; they have to be removed and
+          # recreated as ordinary directories with the right mode.
+          if [ "$sub" = "@root" ]; then
+            for spec in "var/tmp 1777" "srv 0755" \
+                        "var/lib/machines 0700" "var/lib/portables 0700"; do
+              set -- $spec
+              p="/btrfs_tmp/$sub/$1"
+              [ -d "$p" ] || continue
+              rmdir "$p" 2>/dev/null || continue   # non-empty means it is real
+              mkdir -m "$2" "$p"
+            done
+          fi
+
+          # Only now that the replacement exists is it safe to reclaim.
+          delete_tree "/btrfs_tmp/$sub-old"
         done
 
         umount /btrfs_tmp
+      '';
+    };
+
+    # Post-boot tripwire, mirroring the ZFS backend's.
+    #
+    # It matters more here, not less: the btrfs rollback seeds its own blank
+    # snapshots, so a first boot where the unit fails leaves the machine with
+    # *no* baseline at all and nothing in `systemctl --failed` to say so —
+    # initrd unit failures do not carry into the booted system's state.  That
+    # is exactly how ernst went a month without impermanence.
+    #
+    # A failing unit is deliberate: it surfaces in `systemctl --failed` and in
+    # the tail of every deploy ("warning: the following units failed: …").
+    # Only meaningful when something actually rolls back. With the rollback
+    # disabled the snapshots can still be present — birte's are, left over
+    # from the boot that seeded them — and this unit would go green while
+    # nothing whatsoever is impermanent. Green must not be reachable in a
+    # state the machine is not actually in.
+    systemd.services.clanarchy-impermanence-check = lib.mkIf config.clanarchy.impermanence.rollback.enable {
+      description = "Verify the btrfs rollback snapshots this machine depends on exist";
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      path = [ pkgs.btrfs-progs ];
+      script = ''
+        # `-a` prefixes top-level paths with <FS_TREE>/; strip it so the
+        # names compare equal to the @root-blank / @home-blank we create.
+        subvols=$(btrfs subvolume list -a / | sed 's|.*[[:space:]]path ||; s|^<FS_TREE>/||')
+
+        missing=""
+        for sub in @root @home; do
+          printf '%s\n' "$subvols" | grep -qx -- "$sub-blank" \
+            || missing="$missing $sub-blank"
+        done
+
+        if [ -n "$missing" ]; then
+          echo "Missing rollback snapshot(s):$missing" >&2
+          echo "This machine's root is NOT impermanent — anything written" >&2
+          echo "outside /persist survives reboots, contrary to the fleet's" >&2
+          echo "design and to what the docs claim." >&2
+          echo "" >&2
+          echo "The initrd rollback unit seeds these itself on first boot, so" >&2
+          echo "their absence means that unit failed. Check:" >&2
+          echo "  journalctl -b -u rollback" >&2
+          exit 1
+        fi
+
+        echo "rollback snapshots present: @root-blank @home-blank"
       '';
     };
   };

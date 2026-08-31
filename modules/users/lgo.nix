@@ -262,6 +262,14 @@ in
             "ernst ernst.local ernst.skynet.lan 10.0.50.10 fdda:106a:123a:d561:1099:933e:4c60:711f" = {
               PubkeyAuthentication = "unbound";
             };
+            # birte serves a CA-signed cert host key like ernst, so it hits the
+            # same GnuPG 2.4.x bug: without this every connection dies with
+            # "signing failed for ED25519 ... agent refused operation" before
+            # pinentry is ever reached. This is not a network fault, though it
+            # looks exactly like one.
+            "birte birte.local birte.skynet.lan fdda:106a:123a:d561:1099:931a:a82e:da69" = {
+              PubkeyAuthentication = "unbound";
+            };
             # Stage-1 (initrd) sshd for remote zroot unlock.  Different sshd,
             # different host key from the running system — HostKeyAlias keeps
             # both entries in ~/.ssh/known_hosts without a "REMOTE HOST

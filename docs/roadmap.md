@@ -7793,6 +7793,38 @@ should too.
 
 Not sequenced. Each becomes a milestone when it earns one.
 
+**Plasma Bigscreen on birte is navigable only by touch — `xdg-desktop-portal`
+drops its input.** Bigscreen launches and renders correctly on the Deck (it is
+the one machine that can run it natively, since it tracks unstable where
+`kdePackages.plasma-bigscreen` matches the installed Plasma generation; ernst
+needs the nspawn container in `modules/desktop/bigscreen.nix` only because it is
+on stable). Its input bridge is what fails.
+`plasma-bigscreen-inputhandler` reads the D-pad and sticks correctly and maps
+them properly — button 11 → `KEY_UP`, 12 → `KEY_DOWN`, sticks → pointer motion,
+all visible in its journal — then injects them through the XDG RemoteDesktop
+portal, which Bigscreen hardcodes via `PLASMA_INTEGRATION_USE_PORTAL=1` in
+`plasma-bigscreen-common-env`. `xdg-desktop-portal` 1.22.1 then drops every
+event on an internal assertion:
+
+```
+xdg-desktop-portal: g_hash_table_lookup: assertion 'hash_table != NULL' failed
+```
+
+one line per keypress, timestamps matching the presses exactly. Touch works
+because it reaches KWin without passing through the portal. Ruled out already:
+portal routing is correct (`kde-portals.conf` sets `default=kde`, and the
+session declares `DesktopNames=KDE`), all three portal services run, and there
+is no pending permission dialog — so this is not the approval catch-22 it
+resembles. **Next step is upstream, not configuration**: check whether a newer
+`xdg-desktop-portal` or `xdg-desktop-portal-kde` fixes it, and if not, get a
+backtrace from the assertion rather than guessing. Until then birte's "Switch
+to Desktop" points at plain Plasma; Bigscreen stays registered and selectable
+from SDDM. Restoring it is a one-line revert — the technique is a
+`sessionPackages` entry with `lib.mkBefore` shadowing `plasma.desktop`, needed
+because `steamos-manager` will only ever select `plasma.desktop` or
+`plasmax11.desktop` (`steamosctl get-valid-desktop-sessions`) and that list is
+not configurable. See `machines/birte/jovian.nix`.
+
 **The GL.iNet Comet KVM does not work, and it failed when it was the only way
 in.** Architecture invariant #5 names it as the out-of-band head on the iGPU
 (`card0`), i.e. the designated path when ernst is unreachable. On 2026-08-28 the

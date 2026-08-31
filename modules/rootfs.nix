@@ -33,6 +33,24 @@
     '';
   };
 
+  options.clanarchy.impermanence.rollback.enable = lib.mkOption {
+    type = lib.types.bool;
+    default = true;
+    description = ''
+      Whether the stage-1 rollback unit runs. Setting this false leaves the
+      machine's root mutable — impermanence is off — but keeps the layout,
+      the persist bind-mounts and everything else intact.
+
+      This is an escape hatch, not a configuration choice. Its purpose is to
+      get a machine that fails in stage 1 to a point where it can be logged
+      into and debugged, without a reinstall and without hand-editing the
+      kernel command line on hardware that may not have a keyboard. A machine
+      left in this state is accumulating state outside /persist, and
+      clanarchy-impermanence-check will not save you — it verifies the blank
+      snapshots exist, not that anything rolls back to them.
+    '';
+  };
+
   config = {
     # Impermanence needs /persist and /home mounted in stage 1, and the
     # rollback units in both backends are systemd-initrd services.

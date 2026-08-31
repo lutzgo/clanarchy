@@ -30,14 +30,33 @@
 #                     /home/deck/.local/share/Steam.  Whoever sets this is
 #                     responsible for the mountpoint's ownership (a fresh
 #                     subvol is root:root); see machines/birte/deck.nix.
+#   diskName        — disko's name for this disk, which becomes the GPT
+#                     partition label prefix: `disk-<diskName>-<partition>`.
+#                     MUST be unique per machine, and must never be "main".
+#
+#                     The Clan installer USB is flashed with `--disk main`,
+#                     so its ESP is labelled `disk-main-ESP`. If the target's
+#                     ESP carries that same label, then during
+#                     `clan machines install` both are present and
+#                     /dev/disk/by-partlabel/disk-main-ESP is ambiguous —
+#                     bootctl writes the bootloader to whichever udev
+#                     resolved last. That silently installed birte's
+#                     bootloader onto the USB stick: the Deck's internal ESP
+#                     was left empty and the machine could not boot without
+#                     the stick in it.
 {
   device,
+  diskName,
   enableSwap ? false,
   swapSize ? "8G",
   encryptSwap ? true,
   gamesMountpoint ? "/games",
 }:
 { lib, ... }:
+assert lib.assertMsg (diskName != "main") ''
+  modules/disko/btrfs.nix: diskName must not be "main" — it collides with the
+  Clan installer USB's partition labels during `clan machines install`.
+'';
 let
   # Mirrors the ZFS template's rootFsOptions (compression = zstd,
   # atime = off) so both backends behave the same way.
@@ -45,7 +64,7 @@ let
 in
 {
   disko.devices = {
-    disk.main = {
+    disk.${diskName} = {
       type = "disk";
       inherit device;
       content = {

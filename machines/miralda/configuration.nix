@@ -47,8 +47,30 @@
   clanarchy.apps.flatpak.enable = true;
   clanarchy.apps.desktopTools.enable = true;
 
+  # Mount the ESP by PARTUUID, not by the partlabel disko assigns.
+  #
+  # Every machine in this clan uses disko's disk name `main`, so every ESP in
+  # the fleet is labelled `disk-main-ESP` — including the ones on Clan
+  # installer USB sticks, which are flashed with `--disk main`. Plug a stick
+  # into this machine and udev resolves
+  # /dev/disk/by-partlabel/disk-main-ESP to whichever device it saw last,
+  # which is how this machine ended up with the installer's ESP mounted at
+  # /boot. A bootloader update in that window writes to the USB stick instead
+  # of the internal drive: it corrupts the installer and leaves the real ESP
+  # stale, and nothing warns you.
+  #
+  # PARTUUID is the GPT partition GUID and is unique per partition. It is
+  # regenerated if this disk is ever repartitioned, so a reinstall of miralda
+  # means updating the value below — `lsblk -o NAME,PARTUUID /dev/nvme0n1`.
+  fileSystems."/boot".device =
+    lib.mkForce "/dev/disk/by-partuuid/7f729396-f5cf-4125-a095-84e666aa8b09";
+
   # ZFS pool alerts via ntfy.sh — URL prompted at `clan vars generate miralda` time.
   clanarchy.zfs.ntfy.enable = true;
+
+  # Hand big compiles (birte's Valve kernel above all) to ernst — 32 cores
+  # and 249 GB, versus this machine's 16 cores and frequently <8 GB free.
+  clanarchy.remoteBuilder.client.enable = true;
 
   # clan vars generate runs as root, leaving shared vars root-owned.
   # Re-chown after every activation so lgo can enter devShell without sudo.

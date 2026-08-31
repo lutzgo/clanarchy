@@ -1,4 +1,4 @@
-{ ... }:
+{ config, ... }:
 {
   networking.hostName = "birte";
   # Regenerate if cloning: head -c4 /dev/urandom | od -A none -t x4 | tr -d ' '
@@ -34,11 +34,43 @@
   # survive.  The game library lives on its own @games subvol.
   clanarchy.rootfs = "btrfs";
 
+  # Bluetooth pairings. A handheld pairs controllers and headphones and must
+  # not forget them on every boot; nothing else in the fleet persists this
+  # because no other machine depends on pairing as a matter of course.
+  environment.persistence."/persist".directories = [ "/var/lib/bluetooth" ];
+
+  # Impermanence is on. It previously made this machine unbootable, and the
+  # cause is worth keeping written down because the symptom pointed nowhere
+  # near it: `btrfs subvolume snapshot` does not recurse into nested
+  # subvolumes, so restoring @root left 0755 stubs at /var/tmp, /srv,
+  # /var/lib/machines and /var/lib/portables. A 0755 /var/tmp breaks every
+  # service with PrivateTmp=true — dbus-broker, logind, nscd, avahi,
+  # bluetooth, wpa_supplicant — which surfaces as
+  #
+  #   Failed to spawn 'start' task: Operation not permitted
+  #
+  # and, with dbus and logind down, as a black screen with no sshd.
+  # modules/btrfs-impermanence.nix now rebuilds those stubs after each
+  # restore.
+  #
+  # When changing anything about the rollback, reboot TWICE. The first boot
+  # only seeds the blank snapshots and exercises none of the restore path;
+  # it looks like success and proves nothing.
+  clanarchy.impermanence.rollback.enable = true;
+
   # Hybrid-sleep: the swap partition (see disko.nix) is the resume device.
   # `clanarchy.roles.laptop.hybridSleep.enable` defaults to true — standard
   # for laptops and handheld consoles across the clan — so no override here.
-  # "swap" is set by disko from the partition name in the partitions attrset.
-  boot.resumeDevice = "/dev/disk/by-partlabel/disk-main-swap";
+  #
+  # Derived from the disko disk name rather than written out, because the two
+  # must agree and nothing checks that they do. Hardcoding it as
+  # disk-main-swap is what hung birte's first boot on the renamed layout: the
+  # device unit for a swap partition that no longer existed sat in a start job
+  # with "no limit", so the boot never progressed and never timed out either.
+  boot.resumeDevice =
+    "/dev/disk/by-partlabel/disk-${
+      builtins.head (builtins.attrNames config.disko.devices.disk)
+    }-swap";
 
   # (Steam / Proton are unfree — `allowUnfree = true` is already baked into
   # the pkgs instance built in lib/mk-machine.nix, so we intentionally do
