@@ -1189,7 +1189,7 @@
           "[13]",
           "[14]"
         ],
-        "bogo": 5599,
+        "bogo": 5600,
         "cache": 512,
         "units": 8,
         "page_size": 4096,
@@ -1924,7 +1924,7 @@
           "/dev/input/by-id/usb-Valve_Software_Steam_Deck_Controller_MFCB50202A9A-event-kbd",
           "/dev/input/by-path/pci-0000:04:00.4-usb-0:3:1.0-event-kbd",
           "/dev/input/by-path/pci-0000:04:00.4-usbv2-0:3:1.0-event-kbd",
-          "/dev/input/event4"
+          "/dev/input/event5"
         ],
         "resources": [
           {
@@ -2394,7 +2394,7 @@
         "resources": [
           {
             "type": "hwaddr",
-            "address": 101
+            "address": 55
           },
           {
             "type": "phwaddr",
@@ -2598,7 +2598,7 @@
     "network_interface": [
       {
         "index": 58,
-        "attached_to": 0,
+        "attached_to": 12,
         "class_list": [
           "network_interface"
         ],
@@ -2608,14 +2608,33 @@
           "value": 263
         },
         "sub_class": {
-          "hex": "0000",
-          "name": "Loopback",
-          "value": 0
+          "hex": "0001",
+          "name": "Ethernet",
+          "value": 1
         },
-        "model": "Loopback network interface",
-        "sysfs_id": "/class/net/lo",
+        "model": "Ethernet network interface",
+        "sysfs_id": "/class/net/wlo1",
+        "sysfs_device_link": "/devices/pci0000:00/0000:00:01.4/0000:03:00.0",
         "unix_device_names": [
-          "lo"
+          "wlo1"
+        ],
+        "resources": [
+          {
+            "type": "hwaddr",
+            "address": 55
+          },
+          {
+            "type": "phwaddr",
+            "address": 49
+          }
+        ],
+        "driver": "ath11k_pci",
+        "driver_module": "ath11k_pci",
+        "drivers": [
+          "ath11k_pci"
+        ],
+        "driver_modules": [
+          "ath11k_pci"
         ]
       },
       {
@@ -2661,7 +2680,7 @@
       },
       {
         "index": 60,
-        "attached_to": 12,
+        "attached_to": 0,
         "class_list": [
           "network_interface"
         ],
@@ -2671,33 +2690,14 @@
           "value": 263
         },
         "sub_class": {
-          "hex": "0001",
-          "name": "Ethernet",
-          "value": 1
+          "hex": "0000",
+          "name": "Loopback",
+          "value": 0
         },
-        "model": "Ethernet network interface",
-        "sysfs_id": "/class/net/wlo1",
-        "sysfs_device_link": "/devices/pci0000:00/0000:00:01.4/0000:03:00.0",
+        "model": "Loopback network interface",
+        "sysfs_id": "/class/net/lo",
         "unix_device_names": [
-          "wlo1"
-        ],
-        "resources": [
-          {
-            "type": "hwaddr",
-            "address": 101
-          },
-          {
-            "type": "phwaddr",
-            "address": 49
-          }
-        ],
-        "driver": "ath11k_pci",
-        "driver_module": "ath11k_pci",
-        "drivers": [
-          "ath11k_pci"
-        ],
-        "driver_modules": [
-          "ath11k_pci"
+          "lo"
         ]
       }
     ],
