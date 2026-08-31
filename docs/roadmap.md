@@ -61,7 +61,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M14 — libraries | **done — deployed and merged 2026-08-29 ([#108](https://github.com/lutzgo/clanarchy/pull/108)); ONE VERIFICATION STILL OWED** | — | All six land: Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. **The hardlink proof PASSED with its negative control, run pre-deploy** — the chain works iff slskd carries `UMask=0002`, and **the nixpkgs slskd module does not set one**, so every music import would have silently degraded to a copy. **Four premises did not survive checking**: Storyteller's upstream repo has **moved** (the roadmap's link is an archived namespace) and has no sane non-Docker build, so it takes the **podman tier** — the tier's second occupant; **Questarr publishes no release assets**, making it M14's only real build; **Audiobookshelf's port is 8000 in nixpkgs**, not the roadmap's 13378; and **`lidarr.nix` and `audiobookshelf.nix` ship NO hardening at all** — both measured at **9.0 UNSAFE** before, 1.6 OK after. Soulseek through the VPN exit measured reachable; **peer connectivity is the remaining go/no-go**. Depends on M12. [M14](#m14-featernst-libraries) |
 | M15 — Tdarr / space reclamation | **closed 2026-08-29 — measured, and NOTHING SHIPS: neither Muxarr nor Tdarr** | — | The Muxarr measurement the milestone required ran first, over the whole library (7,469 files, 20.94 TiB, per-stream sizes mostly from exact mkv statistics tags): a full track-strip pass reclaims **375 GiB — 1.7%** — against **57.6 TiB free** on a pool at 31%. And the "zero quality risk" premise was wrong for THIS household: 115 GiB of that figure is Japanese audio on anime, and **300 films carry no German or English track at all** — this library watches original-language versions, so language-stripping is a curation risk, not a free lunch. The transcode side dissolves with it: the h264 tier is 4,968 hours / 14.59 TiB, i.e. months of 16-core SVT-AV1 to reclaim ~5 TiB nobody is short of. **The GPU arbitration problem M15 existed to solve is not solved — it is UNPROVOKED**: no service claims the render node, so Ollama's 2 GB headroom stays uncontested. uid 3023 stays reserved-not-used; no router, no exporter. Re-open triggers recorded in the close-out. Depends on M12. [M15](#m15-featernst-tdarr) |
 | M16 — external ingress | **built 2026-08-29 — deploy, Cloudflare/UDM-Pro steps and the external negative controls are lgo's** | — | **(B) won — Cloudflare Tunnel**, on the fail-closed argument its brief predicted: the tunnel's ingress list names its hostnames, so `sonarr.goclan.org` and the rest are not refused from outside, they are **not there**. cloudflared runs in its **own nspawn container** (`10.0.90.21`, uid 3029, MAC `…:0d`) — microvm argued and rejected — with an **egress firewall** admitting only Traefik `:443` and Technitium `:53` on RFC1918, so a compromised tunnel can reach on the LAN exactly what the internet already reaches through it. **One premise did not survive implementation**: the test plan listed `auth.goclan.org` among the must-be-unreachable names, but forward-auth is a redirect protocol — **the portal must ride the tunnel or no external login can complete**; the corrected test plan is in the PR. The jellyseerr router **gains `authelia`** (both paths — a ClientIP split fails open, and an XFF-based bypass trusts the header this milestone exists to distrust); a `household` group + **sabine's account** make that survivable for non-admins. **Wizarr evaluated and dropped**: the accounts created numbered one. SN2 untriggered — the tunnel is outbound-only. Depends on M13. [M16](#m16-featernst-external-ingress) |
-| M17 — ebook acquisition | **open** | — | **Bindery** for ebooks, chosen over LazyLibrarian and Chaptarr on fit with this repo rather than features: a single **Go binary with release tarballs**, so it lands on M12's settled packaging rule (take the upstream artifact, pin version + hash) and runs as an ordinary NixOS unit with a legible `systemd-analyze` score. Chaptarr is the better *product* — one instance for ebooks and audiobooks, narrator-aware — and is **Docker-only**, i.e. a third opaque podman image; LazyLibrarian is mature but Python with vendored deps. **The premise is already proven**: lgo acquires ebooks through the existing indexers, so unlike the books-category concern raised during M14 this is not blocked on indexer coverage. Depends on M14. [M17](#m17-featernst-bindery) |
+| M17 — ebook acquisition | **done — deployed and operator-confirmed 2026-08-31; both owed verifications PASSED** | — | **Bindery v1.33.2 lands exactly as surveyed**: uid 3028 in the arr container, static Go binary from the upstream tarball (checksum verified against upstream's own `checksums.txt`), hardened unit written whole with all four M14 deploy-defect classes answered in place — including **one new trap found by running the binary: `BINDERY_DB_PATH` does not follow `BINDERY_DATA_DIR`**, so both are pinned or first start dies on `mkdir /config`. **The M14-era "Usenet-oriented, poor fit" note is resolved**: upstream's repo *description* still says SABnzbd — the stale artifact — while the README and settings at v1.33.2 carry qBittorrent/Transmission/Deluge/rTorrent and Torznab; the M17 survey re-checked and is right. Binds `0.0.0.0` (measured), so the container firewall is load-bearing, questarr-style. **Prowlarr wiring goes the Questarr way**: Bindery *consumes* Torznab feeds, it is not a Prowlarr application. Traefik router behind `authelia` + `protectedHosts` entry. `MemoryDenyWriteExecute = true` — the first unit in the arr container that can carry it (Go, no JIT). **Audiobook capability deliberately unrouted**: that pipeline belongs to Audiobookshelf + Storyteller. **Both owed verifications passed on deploy day**: the uid-3028 hardlink proof (same inode, link count 2) **with its negative control** (0644 file owned by uid 3017 refused `EPERM`, `fs.protected_hardlinks` confirmed enabled first), and `systemd-analyze security bindery` at **1.5 OK** — level with kapowarr/questarr, against the 9.0 UNSAFE lidarr and audiobookshelf shipped as. The firewall was confirmed load-bearing: `10.0.90.13:8787` times out from the LAN while the Traefik name redirects to Authelia. **One deploy-day defect, and it was in the manual steps rather than the code**: they omitted the Technitium record, which the roadmap requires for every new Traefik hostname *before anyone types the name* — the name was typed first, the NXDOMAIN cached, and `ERR_NAME_NOT_RESOLVED` survived the record's creation until `resolvectl flush-caches`. **The ABS integration was wired after the fact and stays read-only by enforcement**: `/srv/audiobooks` is mounted `ro` in Bindery's namespace (measured), so it catalogues but cannot move, rename or delete — letting it *acquire* audiobooks remains the thing to avoid. Depends on M14. [M17](#m17-featernst-bindery) |
 
 ---
 
@@ -7579,6 +7579,40 @@ table) and, more usefully, the four ways that pattern went wrong on deploy.
 
 **Risk.** Low-medium, and concentrated in one place: **the project is four
 months old.** Nothing else here is novel.
+
+### Build notes 2026-08-29 — landed as surveyed, two findings worth keeping
+
+- **The 2026-08-28 "Usenet-oriented, poor fit" note (M14 section) and this
+  section's survey are BOTH right about what they read.** Upstream's repo
+  *description* still says "for Usenet … download via SABnzbd"; the README
+  and settings surface at v1.33.2 carry qBittorrent / Transmission / Deluge
+  / rTorrent and Torznab. The description is marketing that lagged the code
+  — noted in `pkgs/bindery.nix` so the next survey checks the README, not
+  the tagline.
+- **`BINDERY_DB_PATH` does not follow `BINDERY_DATA_DIR`** — found by
+  running the binary before writing the unit. With only DATA_DIR set, the
+  dbPath stays at the compiled-in `/config/bindery.db` and first start dies
+  on `mkdir /config: permission denied`. Both are pinned in the unit. This
+  is M14's defect class 2/3 caught at measurement time instead of deploy
+  time, which is the entire argument for running binaries before packaging
+  them.
+- **Binds `0.0.0.0` (measured: `*:8787`)** — the questarr posture; the
+  arr-container firewall's source-restricted rule is load-bearing.
+- **Port 8787 verified by running, kept.** API answers 401 without a key,
+  UI serves 200 — noted, not leaned on.
+- **The four M14 deploy-defect classes are answered in the unit's own
+  header** (no module to misread; state dir pre-owned by uid 3028; no
+  staged credentials at all — indexer/client secrets live in its DB via UI,
+  the Sonarr posture; long-running service, so SN4 does not apply by
+  shape).
+- **Audiobook capability deliberately unrouted**: `BINDERY_AUDIOBOOK_DIR`
+  unset and no audiobook acquisition configured — /srv/audiobooks belongs
+  to the Audiobookshelf + Storyteller pair, and a second quality-logic
+  writer into one tree is the M4/M12 failure. Chaptarr's one-instance
+  appeal loses to this on purpose.
+- **Owed on deploy day**: the uid-3028 hardlink proof with its 0644
+  negative control, and `systemd-analyze security bindery` inside the
+  container recorded in the PR thread.
 
 ### Bindery, chosen on FIT rather than features — surveyed 2026-08-29
 

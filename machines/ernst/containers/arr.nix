@@ -280,6 +280,12 @@ let
   questarrGid       = 3020;
   audiobookshelfUid = 3021;
 
+  # M17.  Bindery DOWNLOADS ebooks and files them into /srv/media — the third
+  # write path into the hardlink domain (after the *arr trio and slskd), which
+  # is why it owes its own hardlink proof (uid-specific; M14's covered slskd's
+  # uid, not this one).  media PRIMARY, the kapowarr shape.
+  binderyUid        = 3028;
+
   # Fixed on the HOST in machines/ernst/containers/jellyfin.nix, which owns
   # `users.groups.media`.  Restated numerically here (and by name only inside
   # the container, where this file does declare the group) so that nothing in
@@ -386,6 +392,15 @@ let
   kapowarrPort       = 5656;
   questarrPort       = 5000;
   audiobookshelfPort = 13378;
+
+  # ── M17 port ──────────────────────────────────────────────────────────────
+  #
+  # VERIFIED BY RUNNING THE BINARY (2026-08-29), not read off a docs page:
+  # its startup log prints `"port":"8787"` and `ss` shows `*:8787` — i.e. it
+  # binds 0.0.0.0, the umlautadaptarr/questarr posture, so the restricted
+  # rule below is load-bearing for it too.  BINDERY_PORT is what sets it.
+  # Reachable through Traefik: a browser UI a human opens more than once.
+  binderyPort        = 8787;
   #
   # ── THE SYSCALL FILTER FOR EVERY UNIT IN THIS CONTAINER ──────────────────
   #
@@ -798,6 +813,12 @@ in
     "d ${stateRoot}/questarr       0700 ${toString questarrUid}       ${toString questarrGid} -"
     "d ${stateRoot}/audiobookshelf 0700 ${toString audiobookshelfUid} ${toString mediaGid}    -"
 
+    # M17 — Bindery's state.  Owned by the service uid so there is no
+    # ownership transition on the FIRST run for tmpfiles to deadlock on —
+    # the lidarr lesson above, applied pre-emptively to a service whose
+    # state directory is guaranteed empty on deploy day.
+    "d ${stateRoot}/bindery        0700 ${toString binderyUid}        ${toString mediaGid}    -"
+
     # THE MUSIC LIBRARY — Lidarr's import TARGET, and it is inside /srv/media
     # because that is the hardlink domain.
     #
@@ -815,6 +836,15 @@ in
     # dataset or the move degrades into a copy.
     "d /srv/media/torrents/comics 2770 root ${toString mediaGid} -"
     "d /srv/media/library/comics  2770 root ${toString mediaGid} -"
+
+    # M17 — BINDERY'S TREES, the same shape for the same reason: download and
+    # library ends BOTH inside /srv/media, so the import is a rename (or a
+    # hardlink) on one dataset rather than a copy across two (invariant #2).
+    # NOT /srv/audiobooks: that dataset belongs to the Audiobookshelf +
+    # Storyteller pair; Bindery's audiobook capability is deliberately left
+    # unrouted (see its unit below).
+    "d /srv/media/torrents/books  2770 root ${toString mediaGid} -"
+    "d /srv/media/library/books   2770 root ${toString mediaGid} -"
 
     # AUDIOBOOKSHELF'S TREE, on its own dataset.
     #
@@ -1280,6 +1310,18 @@ in
         isReadOnly = false;
       };
 
+      # ── M17 ──────────────────────────────────────────────────────────────
+      #
+      # Bindery's SQLite database and image cache.  Both paths inside are set
+      # EXPLICITLY in its unit — BINDERY_DB_PATH does not follow
+      # BINDERY_DATA_DIR (measured; see ./pkgs/bindery.nix), so leaving either
+      # unset points the service at the compiled-in /config default and it
+      # dies on mkdir at first start.
+      "/var/lib/bindery" = {
+        hostPath   = "${stateRoot}/bindery";
+        isReadOnly = false;
+      };
+
       # Audiobookshelf's LIBRARY, on its own dataset.  Read-write: it writes
       # cached cover art and, when asked, renames files it has scanned.
       #
@@ -1377,6 +1419,10 @@ in
       soularr  = pkgs.callPackage ./pkgs/soularr.nix { };
       kapowarr = pkgs.callPackage ./pkgs/kapowarr.nix { };
       questarr = pkgs.callPackage ./pkgs/questarr.nix { };
+      # M17.  The release-artifact case again, and the cleanest one yet: a
+      # single static Go binary out of an upstream tarball with checksums
+      # and SBOMs.  See ./pkgs/bindery.nix.
+      bindery  = pkgs.callPackage ./pkgs/bindery.nix { };
     in
     {
       system.stateVersion = "26.05";
@@ -1582,6 +1628,16 @@ in
           kapowarrPort
           questarrPort
           audiobookshelfPort
+
+          # ── M17: ONE MORE THROUGH TRAEFIK ────────────────────────────────
+          #
+          # Bindery is the questarr posture yet again: measured binding
+          # 0.0.0.0 (`ss` shows *:8787 with BINDERY_PORT set), so this
+          # source-restricted rule is the ONLY thing keeping it off VLAN 90
+          # generally.  Load-bearing, not belt-and-braces.  Its API demands a
+          # key (401 without one, measured) — defence the three above don't
+          # all have, noted but NOT leaned on.
+          binderyPort
         ]
         + lib.concatMapStrings (port: ''
           iptables -A nixos-fw -p tcp -s ${monitoringAddr}/32 --dport ${toString port} -j nixos-fw-accept
@@ -1763,6 +1819,17 @@ in
         uid          = kapowarrUid;
         group        = "media";
         home         = "/var/lib/kapowarr";
+      };
+
+      # M17 — BINDERY: media PRIMARY, the kapowarr shape and for the kapowarr
+      # reason.  It downloads into /srv/media/torrents/books and files into
+      # /srv/media/library/books, and every file it creates must stay
+      # manageable by the group (UMask 0002 in its unit is the other half).
+      users.users.bindery = {
+        isSystemUser = true;
+        uid          = binderyUid;
+        group        = "media";
+        home         = "/var/lib/bindery";
       };
 
       # AUDIOBOOKSHELF is media PRIMARY for a tree that is NOT /srv/media, and
@@ -3764,6 +3831,115 @@ in
         #
         # NO /srv/media ANYWHERE.  This service has no business in the film and
         # television library and this is the line that says so.
+      };
+
+      ##########################################################################
+      # M17 — BINDERY.  Ebooks: the last media class with no acquisition
+      # automation.  Readarr is archived (its metadata backend died);
+      # Bindery is the successor picked on FIT — see ./pkgs/bindery.nix for
+      # the survey correction (upstream's own repo description was the stale
+      # artifact) and docs/roadmap.md's M17 for the full comparison.
+      #
+      # ── EVERY M14 DEPLOY DEFECT, ANSWERED IN PLACE ───────────────────────
+      #
+      #   1. "Read the unit" — there is no unit to read: no module exists,
+      #      so this one is written whole, with the full directive set and
+      #      arrSyscallFilter (whose trailing @chown is M14's SIGSYS fix).
+      #   2. Empty-state-dir tmpfiles deadlock — the state dir is created
+      #      already OWNED by uid 3028 (tmpfiles above), and both DB_PATH
+      #      and DATA_DIR are pinned inside it, so first start creates files
+      #      in a directory it owns and nothing transitions ownership.
+      #   3. Credentials it cannot read — Bindery has none staged: it MINTS
+      #      its own API key (Settings → General) and holds its own client
+      #      credentials in its DB.  Prowlarr's Torznab keys and
+      #      qBittorrent's login are entered in its UI (manual steps in the
+      #      PR), the same posture as Sonarr/Radarr.  Nothing here does a
+      #      bare `cat` of a root-owned file on a timer.
+      #   4. Failed-oneshot-on-a-timer invisibility — NOT APPLICABLE BY
+      #      SHAPE: this is a long-running service, and a long-running
+      #      service that dies is loud (SN4's own distinction).  No timer,
+      #      no OnFailure debt.
+      #
+      # ── WHAT IS DELIBERATELY NOT CONFIGURED ──────────────────────────────
+      #
+      #   BINDERY_AUDIOBOOK_DIR.  Unset, so audiobooks Bindery might acquire
+      #   route to the ebook library dir — and audiobook acquisition is NOT
+      #   set up in its UI.  The audiobook pipeline in this house is
+      #   Audiobookshelf + Storyteller on /srv/audiobooks; a second writer
+      #   into that tree from another product's quality logic is the
+      #   two-systems-one-library failure M4/M12 exist to avoid.  If that
+      #   changes, set the variable AND argue the ownership here.
+      #
+      #   BINDERY_TRUSTED_PROXY / BINDERY_URL_BASE.  Distinct hostname, no
+      #   subpath, and nothing consumes client IPs from it — same as every
+      #   other *arr here.
+      ##########################################################################
+      systemd.services.bindery = {
+        description = "Bindery — ebook acquisition and library manager";
+        wantedBy    = [ "multi-user.target" ];
+        after       = [ "network.target" ];
+
+        environment = {
+          BINDERY_PORT         = toString binderyPort;
+          BINDERY_DATA_DIR     = "/var/lib/bindery";
+          # Does NOT follow DATA_DIR — measured, see ./pkgs/bindery.nix.
+          # Unset, the compiled-in default is /config/bindery.db and the
+          # service dies on mkdir at first start.
+          BINDERY_DB_PATH      = "/var/lib/bindery/bindery.db";
+          BINDERY_LIBRARY_DIR  = "/srv/media/library/books";
+          BINDERY_DOWNLOAD_DIR = "/srv/media/torrents/books";
+          # Phone-home off, same call as every service here that offers it.
+          BINDERY_TELEMETRY_DISABLED = "true";
+        };
+
+        serviceConfig = {
+          Type  = "simple";
+          User  = "bindery";
+          Group = "media";
+
+          ExecStart  = lib.getExe bindery;
+          Restart    = "on-failure";
+          RestartSec = "30s";
+
+          # Group-writable output: the import chain into /srv/media depends
+          # on it, exactly as the slskd UMask finding proved for music.
+          UMask = "0002";
+
+          NoNewPrivileges  = true;
+          PrivateTmp       = true;
+          ProtectSystem    = "strict";
+          RemoveIPC        = true;
+          RestrictSUIDSGID = true;
+
+          ReadWritePaths = [ "/srv/media" "/var/lib/bindery" ];
+
+          CapabilityBoundingSet   = "";
+          PrivateDevices          = true;
+          ProtectClock            = true;
+          ProtectControlGroups    = true;
+          ProtectHostname         = true;
+          ProtectKernelLogs       = true;
+          ProtectKernelModules    = true;
+          ProtectKernelTunables   = true;
+          ProtectProc             = "invisible";
+          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+          RestrictNamespaces      = true;
+          RestrictRealtime        = true;
+          LockPersonality         = true;
+          SystemCallArchitectures = "native";
+          SystemCallFilter        = arrSyscallFilter;
+
+          # ProtectHome CAN be true here, unlike lidarr's and
+          # audiobookshelf's units: the directive shields /home and /root,
+          # not /var/lib, and this service's home is /var/lib/bindery — so
+          # it costs nothing and closes two directories nothing here reads.
+          ProtectHome = true;
+
+          # Go does not JIT — the first unit in THIS container that can
+          # carry the directive (every earlier rejection in this file is a
+          # .NET or V8 runtime).
+          MemoryDenyWriteExecute = true;
+        };
       };
 
       ##########################################################################

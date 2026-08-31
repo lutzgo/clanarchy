@@ -294,6 +294,10 @@ let
   questarrPort       = 5000;
   audiobookshelfPort = 13378;
 
+  # M17 — Bindery, in the arr container.  Verified by RUNNING the binary
+  # (2026-08-29): BINDERY_PORT, default 8787, kept.
+  binderyPort        = 8787;
+
   # Storyteller, the podman tier's SECOND occupant, on its own address.
   # 02:00:00:90:00:0c → 10.0.90.20, following the 8 + <seq> convention in
   # machines/ernst/networking.nix.
@@ -1110,6 +1114,20 @@ in
               middlewares = [ "authelia" ];
               service     = "questarr";
             };
+            # ── Bindery (M17): admin route, behind Authelia ────────────────
+            #
+            # The *arr treatment: an operator-facing browser UI with no TV or
+            # mobile client a forward-auth redirect could break — the
+            # household asks for books the same way it asks for films, and
+            # READS them in Audiobookshelf/Storyteller, never here.  The name
+            # is in authelia.nix's protectedHosts in the same commit
+            # (deny-by-default: middleware without the name fails CLOSED).
+            bindery = {
+              rule        = "Host(`bindery.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "bindery";
+            };
             # ── Audiobookshelf (M14): NO MIDDLEWARE.  A permanent bypass ────
             #
             # NO `middlewares`, and — like Jellyfin's router — that is the
@@ -1337,6 +1355,9 @@ in
             kapowarr.loadBalancer.servers       = [ { url = "http://${arrAddr}:${toString kapowarrPort}/"; } ];
             questarr.loadBalancer.servers       = [ { url = "http://${arrAddr}:${toString questarrPort}/"; } ];
             audiobookshelf.loadBalancer.servers = [ { url = "http://${arrAddr}:${toString audiobookshelfPort}/"; } ];
+
+            # M17 — a fifth port on the arr container's address.
+            bindery.loadBalancer.servers        = [ { url = "http://${arrAddr}:${toString binderyPort}/"; } ];
 
             # … and one more podman netns of its own, the tier's second.
             storyteller.loadBalancer.servers    = [ { url = "http://${storytellerAddr}:${toString storytellerPort}/"; } ];
