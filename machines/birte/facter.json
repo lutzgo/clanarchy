@@ -1189,7 +1189,7 @@
           "[13]",
           "[14]"
         ],
-        "bogo": 5599,
+        "bogo": 5600,
         "cache": 512,
         "units": 8,
         "page_size": 4096,
@@ -1924,7 +1924,7 @@
           "/dev/input/by-id/usb-Valve_Software_Steam_Deck_Controller_MFCB50202A9A-event-kbd",
           "/dev/input/by-path/pci-0000:04:00.4-usb-0:3:1.0-event-kbd",
           "/dev/input/by-path/pci-0000:04:00.4-usbv2-0:3:1.0-event-kbd",
-          "/dev/input/event5"
+          "/dev/input/event4"
         ],
         "resources": [
           {
@@ -2394,7 +2394,7 @@
         "resources": [
           {
             "type": "hwaddr",
-            "address": 52
+            "address": 97
           },
           {
             "type": "phwaddr",
@@ -2598,6 +2598,28 @@
     "network_interface": [
       {
         "index": 58,
+        "attached_to": 0,
+        "class_list": [
+          "network_interface"
+        ],
+        "base_class": {
+          "hex": "0107",
+          "name": "Network Interface",
+          "value": 263
+        },
+        "sub_class": {
+          "hex": "0000",
+          "name": "Loopback",
+          "value": 0
+        },
+        "model": "Loopback network interface",
+        "sysfs_id": "/class/net/lo",
+        "unix_device_names": [
+          "lo"
+        ]
+      },
+      {
+        "index": 59,
         "attached_to": 12,
         "class_list": [
           "network_interface"
@@ -2621,7 +2643,7 @@
         "resources": [
           {
             "type": "hwaddr",
-            "address": 52
+            "address": 97
           },
           {
             "type": "phwaddr",
@@ -2638,7 +2660,7 @@
         ]
       },
       {
-        "index": 59,
+        "index": 60,
         "attached_to": 57,
         "class_list": [
           "network_interface"
@@ -2676,28 +2698,6 @@
         ],
         "driver_modules": [
           "r8152"
-        ]
-      },
-      {
-        "index": 60,
-        "attached_to": 0,
-        "class_list": [
-          "network_interface"
-        ],
-        "base_class": {
-          "hex": "0107",
-          "name": "Network Interface",
-          "value": 263
-        },
-        "sub_class": {
-          "hex": "0000",
-          "name": "Loopback",
-          "value": 0
-        },
-        "model": "Loopback network interface",
-        "sysfs_id": "/class/net/lo",
-        "unix_device_names": [
-          "lo"
         ]
       }
     ],
