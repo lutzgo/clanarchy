@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ lib, pkgs, ... }:
 #
 # Jovian-NixOS wiring for the Steam Deck (OLED / Galileo).
 #
@@ -64,44 +64,40 @@
   # jovian.steam.desktopSession is validated against
   # services.displayManager.sessionData.sessionNames, so without this the
   # setting above fails to evaluate rather than silently doing nothing.
-  services.displayManager.sessionPackages = [ pkgs.kdePackages.plasma-bigscreen ];
-
-  # Switching into Bigscreen, without steamos-manager.
+  # Make the session steamos-manager insists on *be* Bigscreen.
   #
-  # Session switching on SteamOS is "write the autologin session into
-  # /etc/sddm.conf.d/zz-holo-autologin.conf, restart the display manager".
-  # steamos-manager does exactly that but refuses any session outside its
-  # allowlist, so Bigscreen has to be written directly. Everything else —
-  # going back to Gaming Mode, the login-mode flag — still goes through
-  # steamos-manager, which handles those fine.
+  # Steam does not reliably use steamos-session-select. Once
+  # jovian-setup-desktop-session succeeds, Steam switches through
+  # steamos-manager over D-Bus and the shim is never invoked — so
+  # intercepting there only works while Jovian's setup unit is broken, which
+  # is not something to depend on. steamos-manager will only ever select
+  # plasma.desktop or plasmax11.desktop, so the reliable interception point
+  # is the session file itself.
   #
-  # Same shape as the switcher in modules/roles/htpc.nix: a root oneshot
-  # doing the privileged part, and a polkit rule letting exactly one user
-  # start exactly that unit.
-  systemd.services.clanarchy-switch-to-desktop = {
-    description = "Point SDDM autologin at Plasma Bigscreen and restart it";
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = pkgs.writeShellScript "clanarchy-switch-to-desktop" ''
-        set -eu
-        printf '[Autologin]\nSession=plasma-bigscreen-wayland.desktop\n' \
-          > /etc/sddm.conf.d/zz-holo-autologin.conf
-        exec ${pkgs.systemd}/bin/systemctl restart display-manager.service
-      '';
-    };
-  };
+  # installedSessions assembles the session directory with lndir, where the
+  # first package providing a name wins; mkBefore puts this ahead of
+  # plasma-workspace so our plasma.desktop shadows Plasma's. The real desktop
+  # is re-exported as plasma-desktop.desktop so nothing is lost — Bigscreen
+  # has no file manager and is a poor place to be stuck.
+  services.displayManager.sessionPackages = lib.mkBefore [
+    (pkgs.runCommand "plasma-session-is-bigscreen"
+      { passthru.providedSessions = [ "plasma" "plasma-desktop" ]; }
+      ''
+        mkdir -p "$out/share/wayland-sessions"
 
-  # extraConfig rather than extraRules — the same reason as the pcscd rule in
-  # modules/hardware/yubikey.nix.
-  security.polkit.extraConfig = ''
-    polkit.addRule(function(action, subject) {
-      if (action.id == "org.freedesktop.systemd1.manage-units" &&
-          action.lookup("unit") == "clanarchy-switch-to-desktop.service" &&
-          subject.user == "deck") {
-        return polkit.Result.YES;
-      }
-    });
-  '';
+        sed 's/^Name=.*/Name=Plasma Bigscreen/' \
+          ${pkgs.kdePackages.plasma-bigscreen}/share/wayland-sessions/plasma-bigscreen-wayland.desktop \
+          > "$out/share/wayland-sessions/plasma.desktop"
+
+        # Note the `sessions` output: plasma-workspace keeps its .desktop
+        # files out of $out, so the obvious path does not exist.
+        sed 's/^Name=.*/Name=Plasma (Desktop)/' \
+          ${pkgs.kdePackages.plasma-workspace.sessions}/share/wayland-sessions/plasma.desktop \
+          > "$out/share/wayland-sessions/plasma-desktop.desktop"
+      '')
+
+    pkgs.kdePackages.plasma-bigscreen
+  ];
 
   # Steam's in-UI "Switch to Desktop" button shells out to
   # `steamos-session-select`. Jovian no longer ships that name: the script was
@@ -174,11 +170,10 @@
           exec ${pkgs.holo-session-selection}/bin/holo-session-select gamescope
           ;;
         desktop|plasma|plasma-wayland|plasma-x11|bigscreen)
-          # Record that desktop is the current mode so steamos-manager and the
-          # Steam UI agree with reality, then do the switch ourselves — its
-          # own switch-to-desktop-mode would put us in plain Plasma.
-          ${pkgs.steamos-manager}/bin/steamosctl set-default-login-mode desktop || true
-          exec ${pkgs.systemd}/bin/systemctl start clanarchy-switch-to-desktop.service
+          # plasma.desktop *is* Bigscreen (see sessionPackages above), so the
+          # ordinary switch lands in the right place and needs no special
+          # casing here.
+          exec ${pkgs.steamos-manager}/bin/steamosctl switch-to-desktop-mode
           ;;
         *)
           exec ${pkgs.holo-session-selection}/bin/holo-session-select "$arg"
