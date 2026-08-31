@@ -505,10 +505,18 @@
   #                      escape hatch firing exactly as written, not a
   #                      departure from it.
   #
-  #   uid 3023  tdarr           (M15, group media PRIMARY, PLUS the `render`
-  #                              group for /dev/dri.  Its own container, not
-  #                              the arr one: /dev/dri passthrough there would
-  #                              hand the GPU to prowlarr and byparr too)
+  #   uid 3023  tdarr           RESERVED, NOT USED.  M15 closed 2026-08-29
+  #                              without shipping anything: the measurement it
+  #                              was required to run first (a Muxarr strip pass
+  #                              reclaims 375 GiB — 1.7% of the library —
+  #                              against 57.6 TiB free) closed the milestone,
+  #                              and CPU-months of AV1 for ~5 TiB nobody is
+  #                              short of went with it.  See M15's close-out in
+  #                              docs/roadmap.md for the re-open triggers; if
+  #                              one fires, the new milestone re-argues its
+  #                              shape (own container, media PRIMARY plus
+  #                              `render` for /dev/dri) rather than inheriting
+  #                              this comment.
   #
   #   uid 3028  bindery         (M17, group media PRIMARY — ebook acquisition,
   #                              the successor picked for Readarr.  A Go single
