@@ -64,40 +64,28 @@
   # jovian.steam.desktopSession is validated against
   # services.displayManager.sessionData.sessionNames, so without this the
   # setting above fails to evaluate rather than silently doing nothing.
-  # Make the session steamos-manager insists on *be* Bigscreen.
+  # Bigscreen is registered and selectable from SDDM, but it is NOT what
+  # "Switch to Desktop" lands in.
   #
-  # Steam does not reliably use steamos-session-select. Once
-  # jovian-setup-desktop-session succeeds, Steam switches through
-  # steamos-manager over D-Bus and the shim is never invoked — so
-  # intercepting there only works while Jovian's setup unit is broken, which
-  # is not something to depend on. steamos-manager will only ever select
-  # plasma.desktop or plasmax11.desktop, so the reliable interception point
-  # is the session file itself.
+  # It runs and renders fine here, but its only input bridge is broken:
+  # plasma-bigscreen-inputhandler reads the D-pad and sticks correctly and
+  # maps them to keycodes, then injects them through the XDG RemoteDesktop
+  # portal — which Bigscreen hardcodes via PLASMA_INTEGRATION_USE_PORTAL=1.
+  # xdg-desktop-portal 1.22.1 then drops every event on an internal
+  # assertion:
   #
-  # installedSessions assembles the session directory with lndir, where the
-  # first package providing a name wins; mkBefore puts this ahead of
-  # plasma-workspace so our plasma.desktop shadows Plasma's. The real desktop
-  # is re-exported as plasma-desktop.desktop so nothing is lost — Bigscreen
-  # has no file manager and is a poor place to be stuck.
-  services.displayManager.sessionPackages = lib.mkBefore [
-    (pkgs.runCommand "plasma-session-is-bigscreen"
-      { passthru.providedSessions = [ "plasma" "plasma-desktop" ]; }
-      ''
-        mkdir -p "$out/share/wayland-sessions"
-
-        sed 's/^Name=.*/Name=Plasma Bigscreen/' \
-          ${pkgs.kdePackages.plasma-bigscreen}/share/wayland-sessions/plasma-bigscreen-wayland.desktop \
-          > "$out/share/wayland-sessions/plasma.desktop"
-
-        # Note the `sessions` output: plasma-workspace keeps its .desktop
-        # files out of $out, so the obvious path does not exist.
-        sed 's/^Name=.*/Name=Plasma (Desktop)/' \
-          ${pkgs.kdePackages.plasma-workspace.sessions}/share/wayland-sessions/plasma.desktop \
-          > "$out/share/wayland-sessions/plasma-desktop.desktop"
-      '')
-
-    pkgs.kdePackages.plasma-bigscreen
-  ];
+  #   xdg-desktop-portal: g_hash_table_lookup: assertion 'hash_table != NULL'
+  #
+  # firing once per keypress. The result is a shell navigable only by
+  # touchscreen, since touch goes straight to KWin and never enters the
+  # portal. That is upstream, not configuration — see docs/roadmap.md.
+  #
+  # An earlier revision shadowed plasma.desktop with Bigscreen so that
+  # steamos-manager's fixed allowlist would land there. That worked, and is
+  # the technique to restore once the portal is fixed; it is reverted rather
+  # than left in place because a session nobody can navigate is worse than
+  # the plain desktop.
+  services.displayManager.sessionPackages = [ pkgs.kdePackages.plasma-bigscreen ];
 
   # Steam's in-UI "Switch to Desktop" button shells out to
   # `steamos-session-select`. Jovian no longer ships that name: the script was
