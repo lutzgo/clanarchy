@@ -24,9 +24,21 @@ in {
       wantedBy    = [ "multi-user.target" ];
       after       = [ "network-online.target" ];
       wants       = [ "network-online.target" ];
+      # network-online.target above is necessary but not sufficient: it fires
+      # when a link is up, which on a wifi-only machine can still precede
+      # working DNS. birte failed every boot with
+      #   error: Can't load uri https://dl.flathub.org/repo/... [6] Could not
+      #   resolve hostname
+      # and then succeeded immediately when run by hand minutes later. Retry
+      # rather than tightening the ordering, since there is no target that
+      # means "resolver answers".
+      startLimitIntervalSec = 300;
+      startLimitBurst       = 5;
       serviceConfig = {
         Type            = "oneshot";
         RemainAfterExit = true;
+        Restart         = "on-failure";
+        RestartSec      = 15;
         ExecStart       = "${pkgs.flatpak}/bin/flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo";
       };
     };

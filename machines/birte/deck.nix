@@ -82,6 +82,16 @@
     home.stateVersion  = "25.11";
 
     stylix.autoEnable = true;
+
+    # No screen lock. The Deck has no keyboard attached in Desktop Mode, and
+    # the deck password only exists as a sha-512 hash in clan vars — nobody
+    # can look it up, so a lock screen here is a lockout, not a security
+    # boundary. Gaming Mode is the normal session and never locks anyway.
+    xdg.configFile."kscreenlockerrc".text = ''
+      [Daemon]
+      Autolock=false
+      LockOnResume=false
+    '';
     # Note: stylix.targets.kde is force-disabled for every HM user on birte
     # via home-manager.sharedModules in stylix.nix — see the comment there.
   };

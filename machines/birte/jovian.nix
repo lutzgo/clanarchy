@@ -28,6 +28,11 @@
     decky-loader.enable = true;
   };
 
+  # Decky keeps installed plugins and their settings here. Without this the
+  # rollback discards every plugin on each boot, and Decky comes back looking
+  # freshly installed with no indication why.
+  environment.persistence."/persist".directories = [ "/var/lib/decky-loader" ];
+
   # Steam's in-UI "Switch to Desktop" button shells out to
   # `steamos-session-select`. Jovian no longer ships that name: the script was
   # renamed upstream to `holo-session-select` (pkgs.holo-session-selection),
@@ -45,6 +50,17 @@
   # modules/roles/htpc.nix reimplements this script from scratch for ernst,
   # which is not a Deck and has no Jovian. Here the real thing exists and only
   # needs exposing — do not import the htpc version.
+  # Decky shells out to `systemctl` and `python3` by bare name, but Jovian's
+  # unit sets no PATH, so both fail at startup:
+  #
+  #   [helpers][WARNING]: Failed to execute get_system_pythonpaths():
+  #     [Errno 2] No such file or directory: 'python3'
+  #   FileNotFoundError: [Errno 2] No such file or directory: 'systemctl'
+  #
+  # The loader survives and serves plugins, but its service_stop/service_active
+  # helpers are dead, so anything Decky wants to restart silently does nothing.
+  systemd.services.decky-loader.path = [ pkgs.systemd pkgs.python3 ];
+
   environment.systemPackages = [
     (pkgs.writeShellScriptBin "steamos-session-select" ''
       # holo-session-select understands the SteamOS session names but not the

@@ -61,26 +61,48 @@ in
         mkdir -p /btrfs_tmp
         mount -o subvolid=5 ${rootPart} /btrfs_tmp
 
+        # btrfs refuses to delete a subvolume that still contains subvolumes,
+        # so clear any nested ones first.  `subvolume list -o` prints paths
+        # relative to the filesystem root in field 9.  @games is a top-level
+        # sibling, not nested under either target, so it is never touched.
+        delete_tree() {
+          target="$1"
+          [ -e "$target" ] || return 0
+          btrfs subvolume list -o "$target" | cut -f9 -d' ' |
+            while read -r nested; do
+              btrfs subvolume delete "/btrfs_tmp/$nested" || true
+            done
+          btrfs subvolume delete "$target"
+        }
+
         for sub in @root @home; do
           if [ ! -e "/btrfs_tmp/$sub-blank" ]; then
             # First boot after install: the subvol is the pristine
             # freshly-installed state, so capture it as the baseline and
             # leave it in place.
             btrfs subvolume snapshot "/btrfs_tmp/$sub" "/btrfs_tmp/$sub-blank"
-          else
-            # btrfs refuses to delete a subvolume that still contains
-            # subvolumes, so clear any nested ones first.  `subvolume list -o`
-            # prints paths relative to the mount point in field 9.  @games is
-            # a top-level sibling, not nested here, so it is never touched.
-            if [ -e "/btrfs_tmp/$sub" ]; then
-              btrfs subvolume list -o "/btrfs_tmp/$sub" | cut -f9 -d' ' |
-                while read -r nested; do
-                  btrfs subvolume delete "/btrfs_tmp/$nested" || true
-                done
-              btrfs subvolume delete "/btrfs_tmp/$sub"
-            fi
-            btrfs subvolume snapshot "/btrfs_tmp/$sub-blank" "/btrfs_tmp/$sub"
+            continue
           fi
+
+          # Reclaim a leftover from a previous interrupted run.
+          delete_tree "/btrfs_tmp/$sub-old"
+
+          # Move the live subvolume aside rather than deleting it outright.
+          # The previous shape deleted $sub and only then recreated it from
+          # $sub-blank, so any failure in between left the machine with no
+          # root subvolume at all — unbootable, in stage 1, on a handheld
+          # with no keyboard. This way $sub is absent only for the duration
+          # of a rename, and if the snapshot below fails the previous root is
+          # still on disk as $sub-old and can be renamed back from an
+          # installer.
+          if [ -e "/btrfs_tmp/$sub" ]; then
+            mv "/btrfs_tmp/$sub" "/btrfs_tmp/$sub-old"
+          fi
+
+          btrfs subvolume snapshot "/btrfs_tmp/$sub-blank" "/btrfs_tmp/$sub"
+
+          # Only now that the replacement exists is it safe to reclaim.
+          delete_tree "/btrfs_tmp/$sub-old"
         done
 
         umount /btrfs_tmp
