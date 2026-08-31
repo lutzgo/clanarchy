@@ -248,6 +248,9 @@
           # M14.  The podman tier's SECOND occupant — podman itself is enabled
           # by tubesync.nix above, not re-enabled here.
           ./machines/ernst/containers/storyteller.nix
+          # M16.  The fleet's ONLY WAN ingress path — read that file's header
+          # before adding a hostname to it.
+          ./machines/ernst/containers/cloudflared.nix
           # microvm.nix's host module, and the one guest that uses it (M3).
           # The import lives here rather than inside wg-qbittorrent.nix
           # because `inputs` reaches a machine module via _module.args, and
