@@ -59,7 +59,12 @@ in
       script = ''
         set -eu
         mkdir -p /btrfs_tmp
-        mount -o subvolid=5 ${rootPart} /btrfs_tmp
+        # `-t btrfs` is not optional. Without it mount has to autodetect the
+        # type, which needs libblkid's superblock probes — absent from the
+        # minimal initrd — and the unit dies with
+        #   mount: /btrfs_tmp: no valid filesystem type specified.
+        # which reads like a broken device and is not one.
+        mount -t btrfs -o subvolid=5 ${rootPart} /btrfs_tmp
 
         # btrfs refuses to delete a subvolume that still contains subvolumes,
         # so clear any nested ones first.  `subvolume list -o` prints paths
