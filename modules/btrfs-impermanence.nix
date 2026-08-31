@@ -43,14 +43,13 @@ in
     boot.initrd.systemd.services.rollback = lib.mkIf config.clanarchy.impermanence.rollback.enable {
       description = "Rollback btrfs @root and @home to blank";
       wantedBy = [ "initrd.target" ];
-      # The root block device has to exist before subvolid=5 can be mounted
-      # off it.  `DefaultDependencies = no` strips the implicit ordering that
-      # would normally cover that, and the mount below addresses a
-      # *udev-created* by-partlabel symlink — so without this the unit races
-      # udev and dies on `mount: no such file or directory` on a cold boot.
-      # The ZFS sibling never hit this because it orders after
-      # zfs-import-zroot.service, which itself waits for the devices.
-      after = [ "initrd-root-device.target" ];
+      # NOTE: `after = [ "initrd-root-device.target" ]` was added here on the
+      # theory that the unit races udev for the by-partlabel symlink.  It did
+      # not fix the failure, and birte stopped booting entirely on the install
+      # carrying it — the only other change in that install being an inert
+      # facter refresh (bogomips, an event-node number, a loopback entry).
+      # Reverted until someone has actually read the journal.  Do not re-add
+      # it without evidence.
       before = [ "sysroot.mount" ];
       unitConfig.DefaultDependencies = "no";
       serviceConfig.Type = "oneshot";

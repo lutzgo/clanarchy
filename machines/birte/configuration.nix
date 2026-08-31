@@ -34,6 +34,20 @@
   # survive.  The game library lives on its own @games subvol.
   clanarchy.rootfs = "btrfs";
 
+  # TEMPORARY — birte does not boot with the stage-1 rollback unit enabled.
+  # It has never once succeeded on this machine: after two installs there are
+  # no @root-blank / @home-blank subvolumes, and the second install left the
+  # Deck unable to reach any session at all. Turning the unit off gets a
+  # usable machine back so the failure can be read out of the journal on
+  # @persist instead of guessed at from the source.
+  #
+  # While this is false, birte's root is MUTABLE: nothing rolls back, and
+  # anything written outside /persist survives reboots. That is contrary to
+  # the fleet's design and to what docs/guides/impermanence.md claims.
+  # clanarchy-impermanence-check does not cover this — it verifies the blank
+  # snapshots exist, not that anything rolls back to them.
+  clanarchy.impermanence.rollback.enable = false;
+
   # Hybrid-sleep: the swap partition (see disko.nix) is the resume device.
   # `clanarchy.roles.laptop.hybridSleep.enable` defaults to true — standard
   # for laptops and handheld consoles across the clan — so no override here.
