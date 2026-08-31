@@ -147,6 +147,19 @@
     # no error of its own — a black screen with nothing to go on.
     pkgs.kdePackages.plasma-bigscreen
 
+    # Bigscreen's homescreen applet — its entire main UI — imports the
+    # org.kde.kdeconnect QML module in the header, and one missing module
+    # takes the whole shell down:
+    #
+    #   error when loading applet "org.kde.bigscreen.homescreen"
+    #     HomeHeader.qml: Type Indicators.KdeConnect unavailable
+    #     KdeConnect.qml: module "org.kde.kdeconnect" is not installed
+    #
+    # plasma-bigscreen does not depend on it, so it has to be installed
+    # alongside. This is the QML module, not the phone-pairing feature —
+    # unrelated to clanarchy.apps.communication's Valent on other machines.
+    pkgs.kdePackages.kdeconnect-kde
+
     (pkgs.makeDesktopItem {
       name = "return-to-gaming-mode";
       desktopName = "Return to Gaming Mode";
