@@ -62,6 +62,10 @@ rec {
     # machines that never plug one in.
     ../modules/hardware/zsa.nix
     ../modules/virtualisation.nix
+    # Distributed Nix builds. Declares `clanarchy.remoteBuilder` with both
+    # roles off by default, so importing it fleet-wide is inert until a
+    # machine opts into client or server.
+    ../modules/nix-remote-builder.nix
     ../modules/users/admin.nix
     ../modules/observability/zfs-ntfy.nix
   ];

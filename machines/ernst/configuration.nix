@@ -23,6 +23,10 @@
   # ZFS pool alerts via ntfy.sh — URL prompted at `clan vars generate ernst` time.
   clanarchy.zfs.ntfy.enable = true;
 
+  # Accept Nix builds dispatched by miralda's nix-daemon. The authorised key
+  # is restricted to `nix-daemon --stdio`, so it buys builds, not a shell.
+  clanarchy.remoteBuilder.server.enable = true;
+
   # Bulk-storage diagnostics. smartd pulls in smartmontools.
   # rsync is here (not just for the one-time Arch → ernst media copy) because
   # ernst is the media server: `roles/server.nix` zeroes

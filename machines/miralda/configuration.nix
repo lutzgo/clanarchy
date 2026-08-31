@@ -50,6 +50,10 @@
   # ZFS pool alerts via ntfy.sh — URL prompted at `clan vars generate miralda` time.
   clanarchy.zfs.ntfy.enable = true;
 
+  # Hand big compiles (birte's Valve kernel above all) to ernst — 32 cores
+  # and 249 GB, versus this machine's 16 cores and frequently <8 GB free.
+  clanarchy.remoteBuilder.client.enable = true;
+
   # clan vars generate runs as root, leaving shared vars root-owned.
   # Re-chown after every activation so lgo can enter devShell without sudo.
   system.activationScripts.clanVarsOwnership.text = ''
