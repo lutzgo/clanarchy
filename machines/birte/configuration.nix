@@ -1,4 +1,4 @@
-{ ... }:
+{ config, ... }:
 {
   networking.hostName = "birte";
   # Regenerate if cloning: head -c4 /dev/urandom | od -A none -t x4 | tr -d ' '
@@ -51,8 +51,16 @@
   # Hybrid-sleep: the swap partition (see disko.nix) is the resume device.
   # `clanarchy.roles.laptop.hybridSleep.enable` defaults to true — standard
   # for laptops and handheld consoles across the clan — so no override here.
-  # "swap" is set by disko from the partition name in the partitions attrset.
-  boot.resumeDevice = "/dev/disk/by-partlabel/disk-main-swap";
+  #
+  # Derived from the disko disk name rather than written out, because the two
+  # must agree and nothing checks that they do. Hardcoding it as
+  # disk-main-swap is what hung birte's first boot on the renamed layout: the
+  # device unit for a swap partition that no longer existed sat in a start job
+  # with "no limit", so the boot never progressed and never timed out either.
+  boot.resumeDevice =
+    "/dev/disk/by-partlabel/disk-${
+      builtins.head (builtins.attrNames config.disko.devices.disk)
+    }-swap";
 
   # (Steam / Proton are unfree — `allowUnfree = true` is already baked into
   # the pkgs instance built in lib/mk-machine.nix, so we intentionally do
