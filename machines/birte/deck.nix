@@ -70,6 +70,17 @@
   systemd.tmpfiles.rules = [
     "d /games 0700 deck ${config.users.users.deck.group} - -"
     "L+ /home/deck/.local/share/Steam - - - - /games"
+
+    # Decky injects its UI into the Steam client through Steam's CEF remote
+    # debugger, which Steam only exposes when this marker file exists. Without
+    # it decky-loader runs, listens on 1337 and logs
+    #   [wsrouter][WARNING]: Dropping message as there is no connected socket
+    # while never appearing in the Quick Access Menu — it looks for all the
+    # world like Decky is simply not installed.
+    #
+    # Steam resolves ~/.steam/steam to /games here, so the marker lands on the
+    # @games subvol and survives the rollback on its own.
+    "f /games/.cef-enable-remote-debugging 0644 deck ${config.users.users.deck.group} - -"
   ];
 
   # Home Manager for `deck`. Stylix's HM auto-enable is the default when the
