@@ -131,7 +131,27 @@
   # helpers are dead, so anything Decky wants to restart silently does nothing.
   systemd.services.decky-loader.path = [ pkgs.systemd pkgs.python3 ];
 
+  # A way back to Gaming Mode that does not require a terminal.
+  #
+  # SteamOS ships a "Return to Gaming Mode" desktop shortcut; Jovian does not,
+  # and neither does anything else here — ~deck/Desktop is empty. In Plasma
+  # that is merely annoying, since Konsole can run steamos-session-select.
+  # In Bigscreen it is a trap: there is no terminal and no file manager, so
+  # without this entry the only way out is SSH.
   environment.systemPackages = [
+    (pkgs.makeDesktopItem {
+      name = "return-to-gaming-mode";
+      desktopName = "Return to Gaming Mode";
+      comment = "Leave the desktop and go back to Steam Big Picture";
+      icon = "steam";
+      exec = "steamos-session-select gamescope";
+      categories = [ "Game" ];
+      # Bigscreen's launcher only lists applications that declare themselves
+      # for it; without this the entry is invisible in exactly the session
+      # that most needs it.
+      extraConfig.X-KDE-PluginInfo-Category = "Application";
+    })
+
     (pkgs.writeShellScriptBin "steamos-session-select" ''
       # holo-session-select understands the SteamOS session names but not the
       # bare "desktop" that older Steam builds pass. Map it to the
