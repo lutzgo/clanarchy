@@ -135,7 +135,12 @@ in
     #
     # A failing unit is deliberate: it surfaces in `systemctl --failed` and in
     # the tail of every deploy ("warning: the following units failed: …").
-    systemd.services.clanarchy-impermanence-check = {
+    # Only meaningful when something actually rolls back. With the rollback
+    # disabled the snapshots can still be present — birte's are, left over
+    # from the boot that seeded them — and this unit would go green while
+    # nothing whatsoever is impermanent. Green must not be reachable in a
+    # state the machine is not actually in.
+    systemd.services.clanarchy-impermanence-check = lib.mkIf config.clanarchy.impermanence.rollback.enable {
       description = "Verify the btrfs rollback snapshots this machine depends on exist";
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
