@@ -135,6 +135,18 @@
   # In Bigscreen it is a trap: there is no terminal and no file manager, so
   # without this entry the only way out is SSH.
   environment.systemPackages = [
+    # Not redundant with sessionPackages above: that only registers the
+    # .desktop file, it does not put anything on PATH. plasma-bigscreen-wayland
+    # is a shell script whose first line is
+    #
+    #   . plasma-bigscreen-common-env
+    #
+    # sourced by bare name, and it calls its other helpers the same way. With
+    # the package off PATH that source fails, the script exits immediately,
+    # and SDDM logs a session that starts and closes in the same second with
+    # no error of its own — a black screen with nothing to go on.
+    pkgs.kdePackages.plasma-bigscreen
+
     (pkgs.makeDesktopItem {
       name = "return-to-gaming-mode";
       desktopName = "Return to Gaming Mode";
