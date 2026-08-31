@@ -117,6 +117,35 @@ in
 
           btrfs subvolume snapshot "/btrfs_tmp/$sub-blank" "/btrfs_tmp/$sub"
 
+          # `btrfs subvolume snapshot` does not recurse into nested
+          # subvolumes. systemd makes /var/lib/machines and /var/lib/portables
+          # subvolumes on btrfs, and /var/tmp and /srv end up as subvolumes
+          # too, so the snapshot contains a *stub* at each of those paths: an
+          # empty directory with inode 2 whose mode is 0755 and which silently
+          # ignores chmod — the call returns success and changes nothing.
+          #
+          # A 0755 /var/tmp breaks every service with PrivateTmp=true, because
+          # systemd cannot set up the private instance. That is dbus-broker,
+          # systemd-logind, nscd, avahi, bluetooth, wpa_supplicant and more,
+          # all failing with "Failed to spawn 'start' task: Operation not
+          # permitted" — which reads like a permissions or resource problem
+          # and is neither. With dbus and logind down there is no session and
+          # no sshd, so the machine is a black screen that cannot be logged
+          # into. birte spent an evening in that state.
+          #
+          # Stubs cannot be repaired in place; they have to be removed and
+          # recreated as ordinary directories with the right mode.
+          if [ "$sub" = "@root" ]; then
+            for spec in "var/tmp 1777" "srv 0755" \
+                        "var/lib/machines 0700" "var/lib/portables 0700"; do
+              set -- $spec
+              p="/btrfs_tmp/$sub/$1"
+              [ -d "$p" ] || continue
+              rmdir "$p" 2>/dev/null || continue   # non-empty means it is real
+              mkdir -m "$2" "$p"
+            done
+          fi
+
           # Only now that the replacement exists is it safe to reclaim.
           delete_tree "/btrfs_tmp/$sub-old"
         done
