@@ -40,7 +40,7 @@ in
     # Unit name matches the ZFS backend's on purpose: modules/vm-variant.nix
     # disables `boot.initrd.systemd.services.rollback` by name so build-vm
     # works for either backend without special-casing.
-    boot.initrd.systemd.services.rollback = {
+    boot.initrd.systemd.services.rollback = lib.mkIf config.clanarchy.impermanence.rollback.enable {
       description = "Rollback btrfs @root and @home to blank";
       wantedBy = [ "initrd.target" ];
       # The root block device has to exist before subvolid=5 can be mounted

@@ -35,7 +35,7 @@ in
     #     failed* unit once userspace is up.
     #   * rollback itself failed — a real problem (pool trouble, a clone
     #     holding the snapshot).  That now aborts instead of being swallowed.
-    boot.initrd.systemd.services.rollback = {
+    boot.initrd.systemd.services.rollback = lib.mkIf config.clanarchy.impermanence.rollback.enable {
       description = "Rollback ZFS datasets to blank";
       wantedBy = [ "initrd.target" ];
       after = [ "zfs-import-zroot.service" ];
