@@ -111,16 +111,113 @@
 #   daemon, no root and no side effects. It is the check that would have caught
 #   this at the time, and it is worth running against any future change to an
 #   `ensureProfiles` profile before deploying it.
+#   ── THE SECOND BUG: IPv4 WAS ONLY HALF THE LINK ───────────────────────────
+#
+#   Everything above concerns `[ipv4]`, and for a year that looked sufficient
+#   because Technitium is reached at 10.0.5.3. It is not sufficient, because
+#   the UDM-Pro also advertises ITSELF as a DNS server over IPv6 RA — and
+#   systemd-resolved will happily prefer that one.
+#
+#   Measured on miralda, 2026-08-26, with the declarative profile active and
+#   the hand-made one deleted:
+#
+#     resolvectl status wlp1s0
+#       Current DNS Server: fd93:8550:36e6:2:2e91:abff:fe73:3f35   ← IPv6
+#              DNS Servers: 10.0.5.3                               ← Technitium
+#                           fd93:8550:36e6:2:2e91:abff:fe73:3f35
+#                           2002:25c9:20fe:2:2e91:abff:fe73:3f35
+#
+#     dig @fd93:…:3f35 example.com              → 104.20.23.154   (works)
+#     dig @fd93:…:3f35 jellyseerr.goclan.org    → NOTHING
+#     dig @fd93:…:3f35 ernst.skynet.lan         → NOTHING
+#     dig @10.0.5.3    jellyseerr.goclan.org    → 10.0.90.12
+#     dig @10.0.5.3    ernst.skynet.lan         → 10.0.50.10
+#
+#   So the IPv6 server is a working recursive resolver that knows NEITHER
+#   split-horizon zone — it is the gateway, not Technitium. Every internal
+#   name fails while public browsing looks perfectly healthy, which is why
+#   this presents as "the *arr are down" rather than as a DNS fault.
+#
+#   `ipv4.dns-priority = -100` cannot help: priority orders servers WITHIN a
+#   family, and the RA-supplied IPv6 servers arrive on the same link through a
+#   channel `[ipv4]` does not govern at all.
+#
+#   THE FIX HERE IS `ipv6.ignore-auto-dns`. It tells NetworkManager not to
+#   accept router-advertised resolvers on this profile, which leaves 10.0.5.3
+#   as the only nameserver on the link. The routing domain and priority are
+#   mirrored into `[ipv6]` as well, so the two families cannot disagree about
+#   which link owns "~.".
+#
+#   ── WHAT THIS DOES *NOT* FIX, AND WHO OWNS THAT ───────────────────────────
+#
+#   PHONES, TABLETS, TVs AND EVERY OTHER CLIENT. This module only reaches
+#   machines in this flake. The same measurement was reproduced from a Fairphone
+#   5 on the same LAN, and no NixOS module can help it: it takes the UDM-Pro's
+#   advertised IPv6 resolver and loses every internal name too.
+#
+#   The real fix is on the UDM-Pro — either stop advertising an IPv6 DNS
+#   server on the client networks, or point it at Technitium — and it is
+#   lgo's, not this file's. This module is defence in depth for the machines it
+#   can reach, not the cure.
 { lib, config, ... }:
 {
   config = lib.mkIf config.networking.networkmanager.enable {
-    networking.networkmanager.ensureProfiles.profiles.home.ipv4 = {
-      # NOT optional, and not a default. See THE BUG above: an [ipv4] section
-      # without `method` makes NM reject the entire connection, and the only
-      # visible symptom is a machine with no declarative wifi profile.
-      method       = "auto";
-      dns-search   = "~. skynet.lan";
-      dns-priority = -100;
+    networking.networkmanager.ensureProfiles.profiles.home = {
+      ipv4 = {
+        # NOT optional, and not a default. See THE BUG above: an [ipv4] section
+        # without `method` makes NM reject the entire connection, and the only
+        # visible symptom is a machine with no declarative wifi profile.
+        method       = "auto";
+        dns-search   = "~. skynet.lan";
+        dns-priority = -100;
+      };
+
+      # ── IPv6 IS TURNED OFF ON THIS PROFILE, NOT JUST ITS DNS ─────────────
+      #
+      # The first attempt at this was `method = "auto"` plus
+      # `ignore-auto-dns = true`, on the reasoning that SLAAC addressing should
+      # be kept and only the resolver suppressed. IT DID NOT WORK, and the
+      # measurement is worth keeping because the failure is invisible:
+      #
+      #   nmcli device show wlp1s0 | grep IP6.DNS     →  (nothing)
+      #   resolvectl status wlp1s0
+      #     Current DNS Server: fd93:8550:36e6:2:2e91:abff:fe73:3f35
+      #            DNS Servers: 10.0.5.3
+      #                         fd93:8550:36e6:2:2e91:abff:fe73:3f35
+      #
+      # NetworkManager correctly held NO IPv6 resolver, and systemd-resolved
+      # had one anyway and was actively using it. `ignore-auto-dns` governs
+      # what NM puts in its own configuration; it does not retract what has
+      # already reached resolved for that link, and a re-activation does not
+      # reliably clear it either.
+      #
+      # The symptom is a COIN FLIP, which is what made this expensive to chase:
+      # 10.0.5.3 answers `radarr.goclan.org` with 10.0.90.12, the gateway
+      # answers NXDOMAIN, and whichever replies first wins and gets cached. The
+      # same name resolved and then failed minutes apart on one machine with no
+      # configuration change in between. This module's header already described
+      # that as "resolved only by luck of link ordering" — this is the same
+      # fault, and half-measures leave the luck in place.
+      #
+      # `method = "disabled"` removes IPv6 from the link entirely: no address,
+      # no default route, no RDNSS, and nothing left for resolved to prefer.
+      #
+      # ── WHY THIS COSTS NOTHING HERE ──────────────────────────────────────
+      #
+      #   - The UDM-Pro's LAN network is configured `IPv6 Interface Type: None`
+      #     already, so IPv6 on this link is UNINTENDED. Router advertisements
+      #     were still arriving (`proto ra`, refreshing every ~30 min) on
+      #     2026-08-26 despite that setting, which is a gateway-side question
+      #     and not one this file can answer.
+      #   - Both split-horizon zones are IPv4-only: `dns.skynet.lan` (10.0.5.3)
+      #     has no AAAA, and neither does anything else in `skynet.lan`.
+      #   - ZeroTier carries its own IPv6 on its own interface and is untouched
+      #     by this — the fleet's v6 connectivity does not run over wifi.
+      #
+      # REVISIT THIS if the LAN ever gains real IPv6. The correct end state
+      # then is `method = "auto"` with the gateway advertising Technitium
+      # rather than itself — at which point Technitium needs an AAAA first.
+      ipv6.method = "disabled";
     };
   };
 }
