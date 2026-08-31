@@ -15,7 +15,7 @@
 # also matters because the persisted `.local/share` is an impermanence
 # bind-mount: a subvol mounted underneath that path would be shadowed by
 # the bind and silently disappear.
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, utils, ... }:
 let
   # disko names partitions `disk-<disk>-<partition>`.  The disk name is
   # per-machine and deliberately not "main" (see modules/disko/btrfs.nix for
@@ -25,6 +25,10 @@ let
   # expensive to debug.
   diskName = builtins.head (builtins.attrNames config.disko.devices.disk);
   rootPart = "/dev/disk/by-partlabel/disk-${diskName}-btrfs";
+
+  # systemd's unit name for that device, e.g.
+  # dev-disk-by\x2dpartlabel-disk\x2dbirte\x2dbtrfs.device
+  rootPartUnit = "${utils.escapeSystemdPath rootPart}.device";
 in
 {
   config = lib.mkIf (config.clanarchy.rootfs == "btrfs") {
@@ -46,13 +50,20 @@ in
     boot.initrd.systemd.services.rollback = lib.mkIf config.clanarchy.impermanence.rollback.enable {
       description = "Rollback btrfs @root and @home to blank";
       wantedBy = [ "initrd.target" ];
-      # NOTE: `after = [ "initrd-root-device.target" ]` was added here on the
-      # theory that the unit races udev for the by-partlabel symlink.  It did
-      # not fix the failure, and birte stopped booting entirely on the install
-      # carrying it — the only other change in that install being an inert
-      # facter refresh (bogomips, an event-node number, a loopback entry).
-      # Reverted until someone has actually read the journal.  Do not re-add
-      # it without evidence.
+      # The by-partlabel symlink is created by udev, and `DefaultDependencies
+      # = no` strips the implicit ordering that would otherwise wait for it.
+      # Without this the unit runs too early and dies with
+      #   mount: special device /dev/disk/by-partlabel/disk-…-btrfs does not
+      #   exist.
+      #
+      # Depend on the device unit itself rather than initrd-root-device.target:
+      # it names exactly the symlink the script dereferences, so the ordering
+      # cannot be satisfied by some other device showing up first. `requires`
+      # rather than `wants` — with no device there is nothing sane to do, and
+      # failing here is safe now that the script no longer deletes anything
+      # before its replacement exists.
+      after = [ rootPartUnit ];
+      requires = [ rootPartUnit ];
       before = [ "sysroot.mount" ];
       unitConfig.DefaultDependencies = "no";
       serviceConfig.Type = "oneshot";
