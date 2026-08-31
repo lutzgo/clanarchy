@@ -1189,7 +1189,7 @@
           "[13]",
           "[14]"
         ],
-        "bogo": 5600,
+        "bogo": 5599,
         "cache": 512,
         "units": 8,
         "page_size": 4096,
@@ -2394,7 +2394,7 @@
         "resources": [
           {
             "type": "hwaddr",
-            "address": 97
+            "address": 101
           },
           {
             "type": "phwaddr",
@@ -2620,47 +2620,6 @@
       },
       {
         "index": 59,
-        "attached_to": 12,
-        "class_list": [
-          "network_interface"
-        ],
-        "base_class": {
-          "hex": "0107",
-          "name": "Network Interface",
-          "value": 263
-        },
-        "sub_class": {
-          "hex": "0001",
-          "name": "Ethernet",
-          "value": 1
-        },
-        "model": "Ethernet network interface",
-        "sysfs_id": "/class/net/wlo1",
-        "sysfs_device_link": "/devices/pci0000:00/0000:00:01.4/0000:03:00.0",
-        "unix_device_names": [
-          "wlo1"
-        ],
-        "resources": [
-          {
-            "type": "hwaddr",
-            "address": 97
-          },
-          {
-            "type": "phwaddr",
-            "address": 49
-          }
-        ],
-        "driver": "ath11k_pci",
-        "driver_module": "ath11k_pci",
-        "drivers": [
-          "ath11k_pci"
-        ],
-        "driver_modules": [
-          "ath11k_pci"
-        ]
-      },
-      {
-        "index": 60,
         "attached_to": 57,
         "class_list": [
           "network_interface"
@@ -2698,6 +2657,47 @@
         ],
         "driver_modules": [
           "r8152"
+        ]
+      },
+      {
+        "index": 60,
+        "attached_to": 12,
+        "class_list": [
+          "network_interface"
+        ],
+        "base_class": {
+          "hex": "0107",
+          "name": "Network Interface",
+          "value": 263
+        },
+        "sub_class": {
+          "hex": "0001",
+          "name": "Ethernet",
+          "value": 1
+        },
+        "model": "Ethernet network interface",
+        "sysfs_id": "/class/net/wlo1",
+        "sysfs_device_link": "/devices/pci0000:00/0000:00:01.4/0000:03:00.0",
+        "unix_device_names": [
+          "wlo1"
+        ],
+        "resources": [
+          {
+            "type": "hwaddr",
+            "address": 101
+          },
+          {
+            "type": "phwaddr",
+            "address": 49
+          }
+        ],
+        "driver": "ath11k_pci",
+        "driver_module": "ath11k_pci",
+        "drivers": [
+          "ath11k_pci"
+        ],
+        "driver_modules": [
+          "ath11k_pci"
         ]
       }
     ],
