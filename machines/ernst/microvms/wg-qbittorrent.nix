@@ -1595,6 +1595,13 @@ in
         after       = [ "qbittorrent.service" ];
         wants       = [ "qbittorrent.service" ];
 
+        # Same reasoning as the qbittorrent unit above, one path instead of
+        # three: LoadCredential= below reads from the secrets share, and a
+        # LoadCredential whose source is missing fails the unit.  That failure
+        # would at least be loud, unlike qBittorrent's — but ordering it
+        # correctly means it does not happen at all.
+        unitConfig.RequiresMountsFor = [ guestSecretsDir ];
+
         environment = {
           # 127.0.0.1: the exporter and qBittorrent share this guest's netns,
           # so the WebUI API conversation never touches the wire.  That is the
@@ -1685,6 +1692,52 @@ in
         # will not move a byte regardless.
         wants = [ "wg-quick-wg0.service" ];
         after = [ "wg-quick-wg0.service" ];
+
+        # ── ORDER AFTER THE VIRTIOFS SHARES.  THIS WAS MISSING ──────────────
+        #
+        # EVERY path this service depends on is a virtiofs share, and until M13
+        # the unit was ordered against NONE of them — only against wg0:
+        #
+        #   /var/lib/qBittorrent   the entire profile: config AND resume data
+        #   /srv/media/torrents    Session\DefaultSavePath and Session\TempPath
+        #   /run/wg-secrets        read by the ExecStartPre render script
+        #
+        # systemd derives RequiresMountsFor automatically from directives it
+        # can see — WorkingDirectory=, ReadWritePaths= and friends — but the
+        # save paths live inside qBittorrent.conf, which systemd cannot read.
+        # So nothing ordered this service after the mounts, and whether it won
+        # the race was luck.
+        #
+        # ── THE SYMPTOM THIS EXPLAINS ──────────────────────────────────────
+        #
+        # Observed on ernst 2026-08-26, twice, and NOT reproducible on demand:
+        # qbittorrent.service starts at boot and exits 0 after ~700 ms having
+        # printed NOTHING — no journal line, no entry in qBittorrent's own log.
+        # Both ExecStartPre and ExecStart report status=0/SUCCESS, so systemd
+        # is satisfied and the unit simply goes inactive.  The WebUI never
+        # binds, and the only external symptom is up=0 on the exporter.
+        #
+        # Running the SAME binary with the SAME arguments and the SAME profile
+        # by hand, as the qbittorrent user, worked every time — which is what
+        # points at ordering rather than at configuration.  A guest restart
+        # also fixed it, which is what a race looks like.
+        #
+        # THIS IS A HYPOTHESIS FOR THAT FAILURE, STATED AS ONE.  It has not
+        # been caught in the act.  But the ordering is wrong on its own merits
+        # whether or not it is the cause, and the fix costs nothing: a service
+        # whose entire state lives on three shares should not start before they
+        # are mounted.
+        #
+        # RequiresMountsFor rather than a hand-written After= on the generated
+        # .mount units: it takes PATHS, so it keeps working if microvm.nix ever
+        # changes how it names them, and it adds Requires= as well as After=
+        # so a share that fails to mount fails the service loudly instead of
+        # starting it against an empty directory.
+        unitConfig.RequiresMountsFor = [
+          "/var/lib/qBittorrent"
+          downloadRoot
+          guestSecretsDir
+        ];
 
         serviceConfig = {
           # THE line that makes M4's hardlinks possible.  0002 → files 0664,
