@@ -15,7 +15,7 @@
 # also matters because the persisted `.local/share` is an impermanence
 # bind-mount: a subvol mounted underneath that path would be shadowed by
 # the bind and silently disappear.
-{ config, lib, ... }:
+{ config, lib, pkgs, ... }:
 let
   # disko names partitions `disk-<disk>-<partition>`; ours is disk.main /
   # partition `btrfs` (see modules/disko/btrfs.nix).  The rollback runs
@@ -43,6 +43,14 @@ in
     boot.initrd.systemd.services.rollback = {
       description = "Rollback btrfs @root and @home to blank";
       wantedBy = [ "initrd.target" ];
+      # The root block device has to exist before subvolid=5 can be mounted
+      # off it.  `DefaultDependencies = no` strips the implicit ordering that
+      # would normally cover that, and the mount below addresses a
+      # *udev-created* by-partlabel symlink — so without this the unit races
+      # udev and dies on `mount: no such file or directory` on a cold boot.
+      # The ZFS sibling never hit this because it orders after
+      # zfs-import-zroot.service, which itself waits for the devices.
+      after = [ "initrd-root-device.target" ];
       before = [ "sysroot.mount" ];
       unitConfig.DefaultDependencies = "no";
       serviceConfig.Type = "oneshot";
@@ -74,6 +82,51 @@ in
         done
 
         umount /btrfs_tmp
+      '';
+    };
+
+    # Post-boot tripwire, mirroring the ZFS backend's.
+    #
+    # It matters more here, not less: the btrfs rollback seeds its own blank
+    # snapshots, so a first boot where the unit fails leaves the machine with
+    # *no* baseline at all and nothing in `systemctl --failed` to say so —
+    # initrd unit failures do not carry into the booted system's state.  That
+    # is exactly how ernst went a month without impermanence.
+    #
+    # A failing unit is deliberate: it surfaces in `systemctl --failed` and in
+    # the tail of every deploy ("warning: the following units failed: …").
+    systemd.services.clanarchy-impermanence-check = {
+      description = "Verify the btrfs rollback snapshots this machine depends on exist";
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      path = [ pkgs.btrfs-progs ];
+      script = ''
+        # `-a` prefixes top-level paths with <FS_TREE>/; strip it so the
+        # names compare equal to the @root-blank / @home-blank we create.
+        subvols=$(btrfs subvolume list -a / | sed 's|.*[[:space:]]path ||; s|^<FS_TREE>/||')
+
+        missing=""
+        for sub in @root @home; do
+          printf '%s\n' "$subvols" | grep -qx -- "$sub-blank" \
+            || missing="$missing $sub-blank"
+        done
+
+        if [ -n "$missing" ]; then
+          echo "Missing rollback snapshot(s):$missing" >&2
+          echo "This machine's root is NOT impermanent — anything written" >&2
+          echo "outside /persist survives reboots, contrary to the fleet's" >&2
+          echo "design and to what the docs claim." >&2
+          echo "" >&2
+          echo "The initrd rollback unit seeds these itself on first boot, so" >&2
+          echo "their absence means that unit failed. Check:" >&2
+          echo "  journalctl -b -u rollback" >&2
+          exit 1
+        fi
+
+        echo "rollback snapshots present: @root-blank @home-blank"
       '';
     };
   };
