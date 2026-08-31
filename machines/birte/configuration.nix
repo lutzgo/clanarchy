@@ -39,6 +39,26 @@
   # because no other machine depends on pairing as a matter of course.
   environment.persistence."/persist".directories = [ "/var/lib/bluetooth" ];
 
+  # OFF until the nsncd failure below is understood. Do not re-enable without
+  # rebooting TWICE and checking `systemctl --failed` after the second one.
+  #
+  # The first boot after enabling only seeds @root-blank; it proves nothing.
+  # The second boot is the first that actually rolls back, and on birte that
+  # boot died with:
+  #
+  #   nscd.service: Failed to spawn 'start' task: Operation not permitted
+  #   Failed to start Name Service Cache Daemon (nsncd).
+  #   Dependency failed for User and Group Name Lookups.
+  #
+  # nss-user-lookup.target then fails, so nothing that resolves a user can
+  # start — no display manager, no gamescope, no sshd. The machine is a black
+  # screen and unreachable, with no way in except the installer USB.
+  #
+  # @root itself restores cleanly (no @root-old is left behind), so this is
+  # not corruption: some state nsncd needs is outside /persist and does not
+  # survive the rollback. Find it before turning this back on.
+  clanarchy.impermanence.rollback.enable = false;
+
   # Hybrid-sleep: the swap partition (see disko.nix) is the resume device.
   # `clanarchy.roles.laptop.hybridSleep.enable` defaults to true — standard
   # for laptops and handheld consoles across the clan — so no override here.
