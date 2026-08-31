@@ -11,6 +11,12 @@ import ../../modules/disko/btrfs.nix {
   # USB-C hub on the Deck), SSH in, and run `ls -l /dev/disk/by-id/`.
   device = "/dev/disk/by-id/nvme-KINGSTON_OM3PGP41024P-A0_50026B7283737F09";
 
+  # Partition labels become disk-birte-*, NOT disk-main-*. The installer USB
+  # is flashed `--disk main`, so a target using "main" collides with it during
+  # install and bootctl can write the bootloader to the stick — which is
+  # exactly what happened here on 2026-08-31.
+  diskName = "birte";
+
   # btrfs rather than the fleet's ZFS (modules/disko/base.nix).  OpenZFS is
   # out-of-tree and gates the kernel; birte tracks nixpkgs-unstable and a
   # Valve kernel via Jovian, so it can't afford that coupling.  btrfs is

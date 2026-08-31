@@ -17,11 +17,14 @@
 # the bind and silently disappear.
 { config, lib, pkgs, ... }:
 let
-  # disko names partitions `disk-<disk>-<partition>`; ours is disk.main /
-  # partition `btrfs` (see modules/disko/btrfs.nix).  The rollback runs
-  # before sysroot.mount, so it addresses the raw partition rather than a
-  # mounted path.
-  rootPart = "/dev/disk/by-partlabel/disk-main-btrfs";
+  # disko names partitions `disk-<disk>-<partition>`.  The disk name is
+  # per-machine and deliberately not "main" (see modules/disko/btrfs.nix for
+  # why), so derive it from the disko config rather than hardcoding — a
+  # hardcoded `disk-main-btrfs` would silently stop matching the moment a
+  # machine picked its own name, and this unit runs in stage 1 where that is
+  # expensive to debug.
+  diskName = builtins.head (builtins.attrNames config.disko.devices.disk);
+  rootPart = "/dev/disk/by-partlabel/disk-${diskName}-btrfs";
 in
 {
   config = lib.mkIf (config.clanarchy.rootfs == "btrfs") {
