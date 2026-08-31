@@ -28,9 +28,28 @@ let
   cfg = config.clanarchy.remoteBuilder;
   gen = config.clan.core.vars.generators.remote-builder-ssh;
 
-  # readFile keeps ssh-keygen's trailing newline; it must not survive into an
-  # authorized_keys line that carries a command= prefix.
-  builderPubKey = lib.removeSuffix "\n" gen.files."builder_ed25519.pub".value;
+  # The builder reads the public half straight out of the repo rather than by
+  # declaring the generator itself.  Declaring it on both ends looks tidier
+  # but does not work: the private half must deploy only to the client, that
+  # makes the two definitions differ in `files`, and clan rejects a shared
+  # generator whose definitions diverge between machines —
+  #   "Machines ernst and miralda have different definitions for shared
+  #    generator 'remote-builder-ssh' (differ in: files)"
+  # which blocks *every* `clan machines install/update`, not just this one.
+  pubKeyPath =
+    config.clan.core.settings.directory
+    + "/vars/shared/remote-builder-ssh/builder_ed25519.pub/value";
+
+  # Absent until `clan vars generate` has run.  Degrade quietly rather than
+  # throwing: a builder that cannot evaluate would wedge unrelated clan
+  # operations on every machine in the flake.
+  builderPubKey =
+    if builtins.pathExists pubKeyPath then
+      # readFile keeps ssh-keygen's trailing newline; it must not survive into
+      # an authorized_keys line carrying a command= prefix.
+      lib.removeSuffix "\n" (builtins.readFile pubKeyPath)
+    else
+      null;
 in
 {
   options.clanarchy.remoteBuilder = {
@@ -88,17 +107,15 @@ in
   config = lib.mkMerge [
 
     # ── Shared keypair ────────────────────────────────────────────────────
-    # Declared on both ends so the one generator backs both roles.
-    (lib.mkIf (cfg.client.enable || cfg.server.enable) {
+    # Declared by the client only — see pubKeyPath above for why the builder
+    # must not declare it too.  `share = true` still places it under
+    # vars/shared/, which is what lets the builder read the public half.
+    (lib.mkIf cfg.client.enable {
       clan.core.vars.generators.remote-builder-ssh = {
         share = true;
 
         files."builder_ed25519" = {
           secret = true;
-          # Only the dispatching side needs the private half; without this
-          # gate, declaring the generator on the builder would ship it there
-          # too, for nothing.
-          deploy = cfg.client.enable;
           owner = "root";
           group = "root";
           mode = "0400";
@@ -144,9 +161,15 @@ in
       # Restricted to the nix-daemon protocol: this key grants remote *builds*,
       # not a root shell.  `restrict` additionally drops pty allocation and
       # all forwarding.
-      users.users.root.openssh.authorizedKeys.keys = [
-        ''command="${config.nix.package}/bin/nix-daemon --stdio",restrict ${builderPubKey}''
-      ];
+      users.users.root.openssh.authorizedKeys.keys =
+        lib.optional (builderPubKey != null)
+          ''command="${config.nix.package}/bin/nix-daemon --stdio",restrict ${builderPubKey}'';
+
+      warnings = lib.optional (builderPubKey == null) ''
+        clanarchy.remoteBuilder.server is enabled but the builder key does not
+        exist yet, so no key has been authorised and remote builds will be
+        refused. Run `clan vars generate miralda`, then redeploy this machine.
+      '';
     })
   ];
 }
