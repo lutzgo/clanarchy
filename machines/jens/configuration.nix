@@ -73,15 +73,12 @@
   # internal drive: it corrupts the installer and leaves the real ESP stale,
   # and nothing warns you.
   #
-  # PARTUUID is the GPT partition GUID and is unique per partition, so it only
-  # exists once disko has actually partitioned this disk.  Fill it in after
-  # `clan machines install jens`:
-  #   ssh root@jens.skynet.lan lsblk -o NAME,PARTUUID /dev/nvme0n1
-  # and it must be updated again if jens is ever reinstalled.
-  #
-  # TODO(install): replace with the real PARTUUID and drop this comment.
-  # fileSystems."/boot".device =
-  #   lib.mkForce "/dev/disk/by-partuuid/________-____-____-____-____________";
+  # PARTUUID is the GPT partition GUID and is unique per partition. It is
+  # regenerated if this disk is ever repartitioned, so a reinstall of jens
+  # means updating the value below — `lsblk -o NAME,PARTUUID /dev/nvme0n1`.
+  # Read off the installed system on 2026-09-01.
+  fileSystems."/boot".device =
+    lib.mkForce "/dev/disk/by-partuuid/1012baa5-1831-4ca4-8bbc-13eb1b056f88";
 
   # ZFS pool alerts via ntfy.sh — URL prompted at `clan vars generate jens` time.
   clanarchy.zfs.ntfy.enable = true;
