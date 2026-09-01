@@ -87,12 +87,50 @@
   # HM integration imports it (see stylix.nix at the NixOS level); autoEnable
   # covers the plasma6/kde, GTK, Qt, cursor, and font targets based on the
   # active base16 scheme.
-  home-manager.users.deck = { ... }: {
+  home-manager.users.deck = { config, lib, ... }: {
     home.username      = "deck";
     home.homeDirectory = "/home/deck";
     home.stateVersion  = "25.11";
 
     stylix.autoEnable = true;
+
+    # ── ~/.gtkrc-2.0: overwrite, never back up ───────────────────────────────
+    #
+    # Plasma rewrites this file itself.  `kde-gtk-config` regenerates
+    # ~/.gtkrc-2.0 during the desktop session so GTK2 apps follow the Plasma
+    # theme, which means the file HM manages is replaced, by another program,
+    # between one activation and the next.
+    #
+    # HM's response to finding an unmanaged file where it expects its own is to
+    # move it aside using `home-manager.backupFileExtension` (set to "bak" in
+    # modules/base.nix).  That works exactly once.  On the next deploy the
+    # backup is already there and activation fails outright:
+    #
+    #   Existing file '/home/deck/.gtkrc-2.0.bak' would be clobbered by
+    #   backing up '/home/deck/.gtkrc-2.0'
+    #   home-manager-deck.service: Failed with result 'exit-code'
+    #
+    # which takes the whole user profile down — Stylix theming included — over
+    # a file whose contents nobody wanted preserved.  Hit on birte on
+    # 2026-09-01; the stale .bak dated from the previous deploy.
+    #
+    # `force = true` makes HM overwrite instead of backing up, which is the
+    # right answer specifically because the file being discarded is generated:
+    # Plasma writes it again at the next session start regardless.  It is the
+    # remedy HM's own error message suggests.
+    #
+    # The key is the ABSOLUTE path, not ".gtkrc-2.0" — HM's gtk2 module
+    # declares it as `home.file.${cfg2.configLocation}` and configLocation
+    # defaults to "${config.home.homeDirectory}/.gtkrc-2.0".  A relative key
+    # would silently create a SECOND, unrelated entry and fix nothing.
+    #
+    # mkForce because that same module sets `force = false` EXPLICITLY rather
+    # than leaving it at its default, so a plain `true` is a conflict, not an
+    # override:
+    #   The option `…force' has conflicting definition values:
+    #     - In `machines/birte/deck.nix': true
+    #     - In `home-manager/modules/misc/gtk/gtk2.nix': false
+    home.file."${config.home.homeDirectory}/.gtkrc-2.0".force = lib.mkForce true;
 
     # No screen lock. The Deck has no keyboard attached in Desktop Mode, and
     # the deck password only exists as a sha-512 hash in clan vars — nobody
