@@ -272,6 +272,10 @@
           # M14.  The podman tier's SECOND occupant — podman itself is enabled
           # by tubesync.nix above, not re-enabled here.
           ./machines/ernst/containers/storyteller.nix
+          # RomM — the ROM library manager, and the podman tier's THIRD
+          # occupant.  Masters the library that Syncthing replicates to
+          # birte's RetroDECK; see docs/guides/birte-emulation.md.
+          ./machines/ernst/containers/romm.nix
           # M16.  The fleet's ONLY WAN ingress path — read that file's header
           # before adding a hostname to it.
           ./machines/ernst/containers/cloudflared.nix

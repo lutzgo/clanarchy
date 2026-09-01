@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, lib, pkgs, ... }:
 #
 # `deck` — the primary user on birte. Jovian wires the Steam gaming session
 # to a user named "deck" (see jovian.steam.user in jovian.nix) but does NOT
@@ -22,7 +22,9 @@
     shell        = pkgs.bashInteractive;
     # `gamemode` for Jovian's gamescope-session; the rest are the usual
     # desktop groups so KDE / audio / networking work in Desktop Mode.
-    extraGroups  = [ "wheel" "networkmanager" "video" "audio" "input" "gamemode" ];
+    # `roms` is the group shared with `syncthing` for the replicated ROM and
+    # BIOS trees — see the tmpfiles rules below.
+    extraGroups  = [ "wheel" "networkmanager" "video" "audio" "input" "gamemode" "roms" ];
     hashedPasswordFile =
       config.clan.core.vars.generators.deck-password.files."hashed-password".path;
   };
@@ -80,7 +82,19 @@
   # `L+` forces the symlink each boot, so it is re-established after the
   # rollback regardless of what the persisted .local/share contains.
   systemd.tmpfiles.rules = [
-    "d /games 0700 deck ${config.users.users.deck.group} - -"
+    # 0710 deck:roms, not the 0700 this was.
+    #
+    # Syncthing has to REACH /games/retrodeck/roms, and reaching a path needs
+    # execute on every directory above it — the target's own 2770 is not
+    # enough.  With /games at 0700 the replication failed with
+    # `stat /games/retrodeck/roms: permission denied` even though the ROM
+    # directory itself was group-writable and syncthing was in the group.
+    #
+    # `1` rather than `5` for the group bit is the whole point: execute
+    # WITHOUT read.  Syncthing can descend to the paths it has been given and
+    # cannot list /games, so the Steam library sitting beside the ROM tree
+    # stays unenumerable.  Other is still 0 — nothing here is world-anything.
+    "d /games 0710 deck roms - -"
     "L+ /home/deck/.local/share/Steam - - - - /games"
 
     # Decky injects its UI into the Steam client through Steam's CEF remote
@@ -109,9 +123,51 @@
     # Layout note: the tree RetroDECK creates here (roms/<system>/, bios/) is
     # deliberately also a valid RomM library root — see the ROM-library
     # section in docs/guides/birte-emulation.md.
-    "d /games/retrodeck 0700 deck ${config.users.users.deck.group} - -"
+    # 0710 deck:roms for the same reason as /games above — traverse for the
+    # group, no listing, nothing for other.  RetroDECK owns this outright as
+    # `deck`; syncthing only ever passes through it.
+    "d /games/retrodeck 0710 deck roms - -"
+
+    # `roms` and `bios` are the two subtrees Syncthing replicates from ernst
+    # (see the syncthing instance in clan.nix), so they need a group that both
+    # `deck` and `syncthing` are in — 2770 deck:roms rather than the 0700 the
+    # rest of the data folder gets.
+    #
+    # SETGID (the leading 2) is the load-bearing digit, exactly as on ernst:
+    # two principals write in here — RetroDECK as `deck`, Syncthing as
+    # `syncthing` — and a file written by one has to stay writable by the
+    # other.  Without it the group would follow whichever process created the
+    # file and the two would slowly fence each other out of the tree.
+    #
+    # Everything else under /games/retrodeck (saves, states, .downloaded_media)
+    # is NOT synced and stays deck's alone.
+    "d /games/retrodeck/roms 2770 deck roms - -"
+    "d /games/retrodeck/bios 2770 deck roms - -"
+
     "L+ /home/deck/retrodeck - - - - /games/retrodeck"
   ];
+
+  # The shared group above.  `deck` needs it to keep writing its own library;
+  # `syncthing` needs it to land files from ernst at all.  This is the same
+  # two-member-group shape machines/ernst/containers/romm.nix uses on the other
+  # end of the replication, and for the same reason.
+  #
+  # Membership is declared from the GROUP side, not as
+  # `users.users.syncthing.extraGroups`, and that is deliberate.
+  #
+  # Writing `users.users.syncthing.extraGroups` is a DEFINITION of that user:
+  # it instantiates the submodule, and on a machine where the syncthing module
+  # has not defined the rest of the account the build fails with assertions
+  # about `isSystemUser` and an unset `group` that mention neither ROMs nor
+  # Syncthing.  Wrapping it in `lib.mkIf` does not help — naming the attribute
+  # path is enough to instantiate it — and on THIS file it additionally
+  # collides with the `users.users.deck` definition above ("attribute
+  # 'users.users' already defined"), because one module cannot define both a
+  # parent attrset and its child.  Both failures were hit in that order.
+  #
+  # `users.groups.<name>.members` has neither problem: it names a user without
+  # defining one.
+  users.groups.roms.members = [ "syncthing" ];
 
   # Home Manager for `deck`. Stylix's HM auto-enable is the default when the
   # HM integration imports it (see stylix.nix at the NixOS level); autoEnable
