@@ -185,99 +185,109 @@
         roles.default.machines.jens    = { };
       };
 
-      # ── Syncthing ───────────────────────────────────────────────────────────
-      # Syncs ~/Public across clan laptops.
-      # openDefaultPorts restricts the firewall to zt+ (zerotier) interfaces.
+      # ── Syncthing: TWO SEPARATE CLUSTERS, NOT ONE ──────────────────────────
+      #
+      # `openDefaultPorts` restricts the firewall to zt+ (zerotier) interfaces.
       # User overrides (run as lgo / sabine) are in machines/*/configuration.nix.
-      # Run `clan vars generate <machine>` once to generate syncthing key/cert/ID.
-      # ── EVERY FOLDER HERE NAMES ITS `devices` EXPLICITLY ─────────────────
+      # Run `clan vars generate <machine>` once to generate key/cert/ID.
       #
-      # clan-core's syncthing service treats `devices = [ ]` as "share with
-      # EVERY peer in this instance" (clanServices/syncthing/default.nix:
-      # `if folderConfig.devices == [ ] then lib.attrNames validDevices`).
-      # That default was harmless while the peer set was three machines all
-      # sharing one folder — and it stops being harmless the moment a fourth
-      # peer joins, because adding a peer silently widens every existing
-      # folder onto it.
+      # ── WHY TWO INSTANCES ───────────────────────────────────────────────
       #
-      # ernst and birte joined for the ROM library.  Without the explicit
-      # lists below, that act alone would have shared lgo's and Sabine's
-      # Public folders onto a homelab server and a games console, which
-      # nobody asked for and nothing would have announced.
-      syncthing = {
-        module = { name = "syncthing"; input = "clan-core"; };
-        roles.peer.machines.miralda = {
-          settings = {
-            openDefaultPorts = true;
-            folders.public = {
-              path    = "/home/lgo/Public";
-              devices = [ "miralda" "jens" "biene" ];
-            };
-          };
-        };
-        roles.peer.machines.jens = {
-          settings = {
-            openDefaultPorts = true;
-            folders.public = {
-              path    = "/home/lgo/Public";
-              devices = [ "miralda" "jens" "biene" ];
-            };
-          };
-        };
-        roles.peer.machines.biene = {
-          settings = {
-            openDefaultPorts = true;
-            folders.public = {
-              path    = "/home/sabine/Public";
-              devices = [ "miralda" "jens" "biene" ];
-            };
-          };
-        };
+      # clan-core's syncthing service puts every peer of an instance into
+      # every other peer's DEVICE list, while folder sharing is scoped
+      # per-folder.  A single five-machine instance therefore creates pairs
+      # that know each other but share nothing at all — ernst and jens, ernst
+      # and miralda, birte and biene.  Syncthing does not leave such a pair
+      # alone: the two connect, exchange hellos, find no folder in common and
+      # drop, then reconnect.  Measured on ernst, roughly one connect/drop
+      # cycle every ten seconds, per peer, forever:
+      #
+      #   INF Established secure connection (device=ZY2KORK ...)
+      #   INF Lost device connection (... error="reading length: EOF")
+      #
+      # It is not merely noise.  It buries anything real in those journals,
+      # which is exactly where a genuine sync fault would have to be read.
+      #
+      # Splitting into two instances makes the device lists disjoint, so no
+      # machine ever knows a peer it shares nothing with, and the churn has
+      # nowhere to come from.
+      #
+      # ── AND IT MAKES THE SCOPING STRUCTURAL ─────────────────────────────
+      #
+      # `devices = [ ]` means "share with every peer in THIS instance"
+      # (clanServices/syncthing/default.nix: `if folderConfig.devices == [ ]
+      # then lib.attrNames validDevices`).  In one big instance that default
+      # was a trap — adding ernst and birte for the ROM library would have
+      # silently shared lgo's and Sabine's Public folders onto a homelab
+      # server and a games console — and it had to be defused by naming the
+      # devices of every folder by hand.
+      #
+      # With the clusters split, instance membership IS the scope, so the
+      # default is correct by construction and the hand-maintained lists are
+      # gone.  That is deliberate rather than lazy: keeping both would be two
+      # sources of truth for one property, which containers/traefik.nix
+      # already argues against in its own words — "how you get a rule nobody
+      # dares delete because nobody can prove what it does".  To share
+      # something with a machine now, put the machine in the instance.
 
-        # ── The ROM library: ernst masters it, birte plays it offline ──────
-        #
-        # ernst's copy is the authoritative one — it is the tree RomM scans
-        # and the one that gets snapshotted (zdata/roms sets
-        # com.sun:auto-snapshot=true precisely because Syncthing is NOT a
-        # backup: it replicates deletions faithfully and within seconds).
-        #
-        # birte's copy is what makes the Deck work away from the house. That
-        # was the whole reason a network mount was rejected in favour of a
-        # full second copy; see the header of
-        # machines/ernst/containers/romm.nix.
-        #
-        # The two paths differ because each machine already had a right answer
-        # for where large game data lives: ernst's own dataset, and birte's
-        # @games subvolume, which is outside the rollback and outside the
-        # impermanence bind-mounts.  Syncthing does not care that they differ.
-        #
-        # ── TWO FOLDERS, NOT ONE ROOT ─────────────────────────────────────
-        #
-        # The obvious shape — one folder pairing ernst's /srv/roms with
-        # birte's /games/retrodeck — is wrong, because those two directories
-        # are not the same set of things.  RetroDECK's data folder also holds
-        # `saves/`, `states/` and `.downloaded_media/`, so a root-level pair
-        # would push the Deck's save games and its whole scraped-art cache
-        # onto the server as a side effect of syncing ROMs.
-        #
-        # `roms` and `bios` are exactly the subtrees that correspond on both
-        # machines, so those are the folders. Saves stay local to the Deck;
-        # if they should be replicated too, that is a separate decision with
-        # its own conflict semantics (two machines playing the same game),
-        # not something to acquire by accident.
-        roles.peer.machines.ernst = {
-          settings = {
-            openDefaultPorts = true;
-            folders.roms = { path = "/srv/roms/roms"; devices = [ "ernst" "birte" ]; };
-            folders.bios = { path = "/srv/roms/bios"; devices = [ "ernst" "birte" ]; };
-          };
+      # The laptops: lgo's and Sabine's ~/Public.
+      syncthing-home = {
+        module = { name = "syncthing"; input = "clan-core"; };
+        roles.peer.machines.miralda.settings = {
+          openDefaultPorts = true;
+          folders.public.path = "/home/lgo/Public";
         };
-        roles.peer.machines.birte = {
-          settings = {
-            openDefaultPorts = true;
-            folders.roms = { path = "/games/retrodeck/roms"; devices = [ "ernst" "birte" ]; };
-            folders.bios = { path = "/games/retrodeck/bios"; devices = [ "ernst" "birte" ]; };
-          };
+        roles.peer.machines.jens.settings = {
+          openDefaultPorts = true;
+          folders.public.path = "/home/lgo/Public";
+        };
+        roles.peer.machines.biene.settings = {
+          openDefaultPorts = true;
+          folders.public.path = "/home/sabine/Public";
+        };
+      };
+
+      # ── The ROM library: ernst masters it, birte plays it offline ──────────
+      #
+      # ernst's copy is the authoritative one — it is the tree RomM scans and
+      # the one that gets snapshotted (zdata/roms sets
+      # com.sun:auto-snapshot=true precisely because Syncthing is NOT a
+      # backup: it replicates deletions faithfully and within seconds).
+      #
+      # birte's copy is what makes the Deck work away from the house.  That was
+      # the whole reason a network mount was rejected in favour of a full
+      # second copy; see the header of machines/ernst/containers/romm.nix.
+      #
+      # The two paths differ because each machine already had a right answer
+      # for where large game data lives: ernst's own dataset, and birte's
+      # @games subvolume, which is outside the rollback and outside the
+      # impermanence bind-mounts.  Syncthing does not care that they differ.
+      #
+      # ── TWO FOLDERS, NOT ONE ROOT ───────────────────────────────────────
+      #
+      # The obvious shape — one folder pairing ernst's /srv/roms with birte's
+      # /games/retrodeck — is wrong, because those two directories are not the
+      # same set of things.  RetroDECK's data folder also holds `saves/`,
+      # `states/` and `.downloaded_media/`, so a root-level pair would push the
+      # Deck's save games and its whole scraped-art cache onto the server as a
+      # side effect of syncing ROMs.
+      #
+      # `roms` and `bios` are exactly the subtrees that correspond on both
+      # machines, so those are the folders.  Saves stay local to the Deck; if
+      # they should be replicated too, that is a separate decision with its own
+      # conflict semantics (two machines playing the same game), not something
+      # to acquire by accident.
+      syncthing-roms = {
+        module = { name = "syncthing"; input = "clan-core"; };
+        roles.peer.machines.ernst.settings = {
+          openDefaultPorts = true;
+          folders.roms.path = "/srv/roms/roms";
+          folders.bios.path = "/srv/roms/bios";
+        };
+        roles.peer.machines.birte.settings = {
+          openDefaultPorts = true;
+          folders.roms.path = "/games/retrodeck/roms";
+          folders.bios.path = "/games/retrodeck/bios";
         };
       };
 
