@@ -259,6 +259,33 @@ in
             "biene.local biene.skynet.lan 10.0.10.105 fdda:106a:123a:d561:1099:93da:ef5d:598c" = {
               HostKeyAlgorithms = "ssh-ed25519";
             };
+            # jens serves a CA-signed cert host key (it has the openssh-cert
+            # generator like ernst and birte), so it hits the same GnuPG 2.4.x
+            # bug and needs the same opt-out rather than biene's
+            # HostKeyAlgorithms form.
+            #
+            # This is a PATTERN LIST, and it matches the Host name typed on the
+            # command line — not the resolved address. So every form that gets
+            # typed has to appear, or that one form re-triggers the exact
+            # failure this block exists to prevent.
+            #
+            #   jens.local   the name that actually works day to day. Technitium
+            #                has no A record for ANY laptop — biene.skynet.lan
+            #                and miralda.skynet.lan return nothing either, and
+            #                only ernst.skynet.lan (a static entry) resolves.
+            #                Laptops are found over mDNS.
+            #   jens.skynet.lan  listed for the day that changes, not because it
+            #                resolves now.
+            #   10.0.10.173  DHCP, so it can move — matching biene's entry
+            #                above, which carries 10.0.10.105 for the same
+            #                reason. Prefer jens.local; this is here so that
+            #                typing the address does not fail confusingly.
+            #   fdda:…       ZeroTier, and the important one: `clan machines
+            #                update` connects over ZeroTier, so leaving it out
+            #                would miss the one path that actually deploys.
+            "jens jens.local jens.skynet.lan 10.0.10.173 fdda:106a:123a:d561:1099:9389:afa5:121b" = {
+              PubkeyAuthentication = "unbound";
+            };
             "ernst ernst.local ernst.skynet.lan 10.0.50.10 fdda:106a:123a:d561:1099:933e:4c60:711f" = {
               PubkeyAuthentication = "unbound";
             };

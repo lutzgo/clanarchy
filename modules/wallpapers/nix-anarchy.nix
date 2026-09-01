@@ -1,5 +1,10 @@
 # Per-workspace wallpapers: nix-anarchy SVGs recolored to the active Stylix base16 palette.
 #
+# Shared by every machine running lgo's Niri desktop (miralda, jens).  Nothing
+# in here is machine-specific: the colors come from whatever Stylix scheme the
+# importing machine selected, and the only two hard-coded names are the `lgo`
+# user and the `eDP-1` output, both of which hold on any of those laptops.
+#
 # All 5 SVGs share the same 22-color palette.  This module replaces those colors
 # with Stylix base16 equivalents using sed, renders to PNG via rsvg-convert, then
 # composites centered on a matching dark 1920×1080 background via ImageMagick.

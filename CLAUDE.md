@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Clanarchy** is a NixOS declarative configuration using **clan-core** to manage four machines:
+**Clanarchy** is a NixOS declarative configuration using **clan-core** to manage five machines:
 
 - `miralda` — Framework 13 AMD, NixOS 26.05. Niri + UWSM + regreet Wayland desktop, ZFS + impermanence, YubiKey PIV for age encryption, clan vars for secrets. Daily driver for `lgo`.
+- `jens` — Framework 12 Intel (convertible 2-in-1), NixOS 26.05. Deliberately the same machine as `miralda` from the user's side: same Niri desktop, same Selenized Black theme and wallpapers, same ZFS + impermanence, same `lgo` toolchain. Differences are hardware only — Intel instead of AMD (`clanarchy.hardware.cpu`), a 1920×1200 panel, and `clanarchy.hardware.convertible.enable` for the accelerometer / auto-rotation / on-screen keyboard. No local Ollama: miralda's local-ai role is ROCm, which does not apply to an Intel iGPU. OpenCode is still there, reaching ernst's `qwen3-coder:30b` over a restricted SSH port-forward (`roles.opencode.…tunnel.enable`) rather than over an exposed ollama port.
 - `biene` — Lenovo laptop, NixOS 26.05. labwc + UWSM + regreet Wayland desktop with Noctalia shell (Sabine's machine), ZFS + impermanence, clan vars for secrets.
 - `birte` — Steam Deck OLED (Galileo). Jovian-NixOS Steam Gaming Mode by default; "Switch to Desktop" drops into KDE Plasma 6 via SDDM. Built entirely against `nixpkgs-unstable` (Jovian only supports unstable). Lives on branch `feat/birte-steamdeck` until merged.
 - `ernst` — AM5 / X870E homelab server. NAS + VM host + GPU compute; encrypted mirrored `zroot` + encrypted `zdata` raidz1. Carries **two** machine-type roles: `server` (headless baseline) plus `htpc` — a living-room Steam Big Picture / KDE Plasma session on the TV, switchable at runtime. Stable channel throughout (the gamescope session is stock nixpkgs, not Jovian).
@@ -18,7 +19,7 @@ Enter the devShell via direnv (`.envrc` uses `use flake`) or manually with `nix 
 **Deployment is the clan CLI — do not add a wrapper for it.**
 
 ```bash
-clan machines update <machine>          # miralda | biene | birte | ernst
+clan machines update <machine>          # miralda | jens | biene | birte | ernst
 clan machines update <m> --target-host root@host   # override the configured address
 clan vars generate <machine>            # (re)generate secrets, then update
 ```
@@ -109,12 +110,22 @@ All modules are explicitly imported in `flake.nix` (no auto-discovery):
 |------|---------|
 | `configuration.nix` | Hostname, timezone, ZFS/systemd-boot, SSH daemon, per-user overrides |
 | `disko.nix` | Thin wrapper over `modules/disko/base.nix` — NVMe device path, encryption on |
-| `stylix.nix` | Selenized Black theme; imports `modules/stylix-base.nix` and adds scheme + wallpaper + font sizes + regreet target |
-| `wallpapers.nix` | Per-workspace nix-anarchy SVG wallpapers |
 | `home-modules/browsers.nix` | HM: Chromium/LibreWolf per-user config |
 | `home-modules/console-desktop.nix` | HM: TTY / console-only fallback session for `lgo` |
 | `yubikey_ed25519.pub`, `yubikey_rsa.pub`, `clanarchy_admin.pub` | Committed SSH pubkeys used across the clan |
 | `facter.json` | nixos-facter hardware fingerprint |
+
+miralda's theme and wallpapers used to live here as `stylix.nix` / `wallpapers.nix`. They are now `modules/themes/selenized-black.nix` and `modules/wallpapers/nix-anarchy.nix`, shared with `jens` — neither file ever contained anything machine-specific, and keeping two copies in step by hand was not going to work. `machines/biene/` and `machines/birte/` still carry their own `stylix.nix`, because they run a different palette.
+
+### Machine Module Layout (`machines/jens/`)
+
+| File | Purpose |
+|------|---------|
+| `configuration.nix` | Hostname, timezone, Intel CPU/GPU, convertible + ZSA hardware, apps, syncthing user |
+| `disko.nix` | Thin wrapper over `modules/disko/base.nix` — NVMe device path, encryption on, no swap |
+| `facter.json` | nixos-facter hardware fingerprint |
+
+No `stylix.nix` or `wallpapers.nix`: `flake.nix` imports the shared `modules/themes/selenized-black.nix` + `modules/wallpapers/nix-anarchy.nix` for this machine, same as miralda.
 
 ### Machine Module Layout (`machines/biene/`)
 
@@ -173,6 +184,9 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | `hardware/display.nix` | `clanarchy.display.scale` option: console font/mode scaling for boot/TTY |
 | `hardware/printing.nix` | CUPS + hplip + SANE |
 | `hardware/yubikey.nix` | pcscd + GnuPG agent (pinentry-qt wrapper) + polkit rule |
+| `hardware/convertible.nix` | `clanarchy.hardware.convertible` option: iio-sensor-proxy, a `niri msg`-driven auto-rotate user service, and wvkbd. Imported fleet-wide, inert on clamshells. Consumer: jens |
+| `themes/selenized-black.nix` | Shared Stylix theme (scheme + generated wallpaper + font sizes + regreet target) for miralda and jens |
+| `wallpapers/nix-anarchy.nix` | Shared per-workspace nix-anarchy SVG wallpapers, recolored to the active Stylix palette. Consumers: miralda, jens |
 | `desktop/desktop-common.nix` | Shared NixOS bits for all Noctalia-based Wayland compositors: regreet, pipewire, fonts, NetworkManager, Mullvad, Noctalia plugin runtime deps |
 | `desktop/noctalia-hm.nix` | Shared HM: Noctalia settings, starship, swayidle, packages, activation hooks |
 | `desktop/foot-hm.nix` | Shared HM: foot terminal config (Stylix-themed) |
@@ -206,14 +220,14 @@ Custom clan-service modules registered in `clan.nix` under `modules."@clanarchy/
 
 | Module | Purpose | Used by (in `clan.nix`) |
 |--------|---------|-------------------------|
-| `@clanarchy/machine-type` | Hardware/role archetype dispatch: `laptop` / `server` / `htpc` (imports the matching `modules/roles/*.nix`). Roles compose — a machine may hold more than one | miralda/biene/birte (laptop), ernst (server + htpc) |
-| `@clanarchy/desktop` | Desktop dispatch: `niri` / `labwc` / `kde` (imports the matching `modules/desktop/*.nix`) | miralda (niri), biene (labwc), birte (kde) |
-| `@clanarchy/users` | User dispatch: `lgo` / `sabine` (imports the matching `modules/users/*.nix`) | miralda (lgo), biene (sabine) |
-| `@clanarchy/yubikey` | Imports `modules/hardware/yubikey.nix` on target machines | miralda |
-| `@clanarchy/printing` | Imports `modules/hardware/printing.nix` on target machines | miralda |
-| `@clanarchy/software` | Per-user browser + email software dispatch (librewolf, firefox, chromium, chrome, edge, thunderbird) | miralda (lgo), biene (sabine) |
-| `@clanarchy/local-ai` | Ollama + OpenCode (self-hosted LLM stack) | miralda |
-| `@clanarchy/monitoring` | `client`: node_exporter (+ optional zfs / smartctl / systemd) on every machine. `server`: Prometheus + Alertmanager + Grafana in one nspawn container. **Scrape targets are derived from `roles.client` membership**, so adding a machine to the role is the only step needed to monitor it | client: all four; server: ernst |
+| `@clanarchy/machine-type` | Hardware/role archetype dispatch: `laptop` / `server` / `htpc` (imports the matching `modules/roles/*.nix`). Roles compose — a machine may hold more than one | miralda/jens/biene/birte (laptop), ernst (server + htpc) |
+| `@clanarchy/desktop` | Desktop dispatch: `niri` / `labwc` / `kde` (imports the matching `modules/desktop/*.nix`) | miralda + jens (niri), biene (labwc), birte (kde) |
+| `@clanarchy/users` | User dispatch: `lgo` / `sabine` (imports the matching `modules/users/*.nix`) | miralda + jens (lgo), biene (sabine) |
+| `@clanarchy/yubikey` | Imports `modules/hardware/yubikey.nix` on target machines | miralda, jens |
+| `@clanarchy/printing` | Imports `modules/hardware/printing.nix` on target machines | miralda, jens |
+| `@clanarchy/software` | Per-user browser + email software dispatch (librewolf, firefox, chromium, chrome, edge, thunderbird) | miralda + jens (lgo), biene (sabine) |
+| `@clanarchy/local-ai` | Ollama + OpenCode (self-hosted LLM stack). `opencode` can reach a remote ollama over a restricted SSH port-forward rather than needing one locally | ollama: miralda, ernst; opencode: miralda (local), jens (tunnelled to ernst) |
+| `@clanarchy/monitoring` | `client`: node_exporter (+ optional zfs / smartctl / systemd) on every machine. `server`: Prometheus + Alertmanager + Grafana in one nspawn container. **Scrape targets are derived from `roles.client` membership**, so adding a machine to the role is the only step needed to monitor it | client: all five; server: ernst |
 
 Plus stock clan services used verbatim: `sshd`, `zerotier`, `syncthing`, `wifi`.
 
@@ -228,13 +242,13 @@ Generated outputs land in `vars/per-machine/<machine>/`. Run generators with `cl
 
 ### Key Design Decisions
 
-**Machine Composition Helpers (`lib/mk-machine.nix`)**: Every clan machine needs the same `_module.args` injection (`pkgs-unstable` + `inputs`), the same stylix kmscon workaround, and the same list of shared modules. Instead of repeating that boilerplate in each `clan.machines.<name>` block, `lib/mk-machine.nix` exports `mkModuleArgs`, `stylixKmsconFix` (bundled into `commonHeadful`), plus two shared imports lists: `commonBase` (universal — impermanence, HM, `modules/base.nix`, `modules/channel.nix`, `rootfs.nix`, `zfs-impermanence.nix`, `btrfs-impermanence.nix`, `vm-variant.nix`, `locale.nix`, `networking/mdns.nix`, `networking/resolved.nix`, `networking/initrd-ssh.nix`, `hardware/cpu.nix`, `hardware/gpu.nix`, `virtualisation.nix`, `users/admin.nix`) and `commonHeadful` (`commonBase` + stylix + `hardware/display.nix` + `networking/skynet-dns-nm.nix` + `modules/apps`). `ernst` uses `commonBase`; the others use `commonHeadful`.
+**Machine Composition Helpers (`lib/mk-machine.nix`)**: Every clan machine needs the same `_module.args` injection (`pkgs-unstable` + `inputs`), the same stylix kmscon workaround, and the same list of shared modules. Instead of repeating that boilerplate in each `clan.machines.<name>` block, `lib/mk-machine.nix` exports `mkModuleArgs`, `stylixKmsconFix` (bundled into `commonHeadful`), plus two shared imports lists: `commonBase` (universal — impermanence, HM, `modules/base.nix`, `modules/channel.nix`, `rootfs.nix`, `zfs-impermanence.nix`, `btrfs-impermanence.nix`, `vm-variant.nix`, `locale.nix`, `networking/mdns.nix`, `networking/resolved.nix`, `networking/initrd-ssh.nix`, `hardware/cpu.nix`, `hardware/gpu.nix`, `hardware/zsa.nix`, `hardware/convertible.nix`, `virtualisation.nix`, `nix-remote-builder.nix`, `users/admin.nix`, `observability/zfs-ntfy.nix`) and `commonHeadful` (`commonBase` + stylix + `hardware/display.nix` + `networking/skynet-dns-nm.nix` + `modules/apps`). `ernst` uses `commonBase`; the others use `commonHeadful`.
 
 **Per-machine nixpkgs channel (`modules/channel.nix`)**: `clanarchy.channel = "stable"` (default) keeps the clan-core pin; `clanarchy.channel = "unstable"` swaps the machine's `nixpkgs.pkgs` to `nixpkgs-unstable`. Used by birte for Jovian compatibility. The override uses `mkOverride 25` to win against clan-core's `overridePkgs.nix` `mkForce`.
 
 **Impermanence**: Two backends, selected per machine by `clanarchy.rootfs` (declared in `modules/rootfs.nix`, which also holds the shared persist paths). Both backends are imported unconditionally by `commonBase` and each guards its own body on the option — the same pattern as `modules/channel.nix`.
 
-- `clanarchy.rootfs = "zfs"` (default; miralda, biene, ernst) — root **and home** roll back to `@blank` ZFS snapshots on boot. The snapshots are **not** created automatically; a machine missing them silently isn't impermanent at all, which is exactly what happened to ernst for a month. `clanarchy-impermanence-check.service` now fails loudly when they're absent — if a deploy reports it, that machine is accumulating state outside `/persist`. See [docs/runbooks/ernst-enable-impermanence.md](docs/runbooks/ernst-enable-impermanence.md).
+- `clanarchy.rootfs = "zfs"` (default; miralda, jens, biene, ernst) — root **and home** roll back to `@blank` ZFS snapshots on boot. The snapshots are **not** created automatically; a machine missing them silently isn't impermanent at all, which is exactly what happened to ernst for a month. `clanarchy-impermanence-check.service` now fails loudly when they're absent — if a deploy reports it, that machine is accumulating state outside `/persist`. See [docs/runbooks/ernst-enable-impermanence.md](docs/runbooks/ernst-enable-impermanence.md).
 - `clanarchy.rootfs = "btrfs"` (birte) — `@root` and `@home` both roll back, to `@root-blank` / `@home-blank` subvolume snapshots, seeded automatically on first boot. Behaviourally equivalent to the ZFS backend.
 
 The shared system-level persist set lives in `modules/rootfs.nix`: `/var/lib/nixos`, `/var/lib/sops-nix`, `/var/log`, `/var/lib/systemd`, plus `/etc/machine-id`. Modules add their own as needed — e.g. `/var/lib/libvirt` (virtualisation), `/var/lib/private/ollama` (local-ai), `/var/lib/clanarchy-session` (htpc role). Per-user paths (`.gnupg`, `.config`, `.local/share`, …) are declared in `modules/users/*.nix` and the machine's user modules.

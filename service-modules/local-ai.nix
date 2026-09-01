@@ -117,8 +117,54 @@
       '';
     };
 
+    interface.options.remoteClients.enable = lib.mkEnableOption ''
+      accepting SSH port-forwards from clan machines that have no usable local
+      ollama (see the opencode role's `tunnel` option)
+
+      This does NOT put ollama on the network. The daemon stays bound to
+      loopback; what this authorises is one dedicated key, restricted to
+      forwarding a single loopback port and nothing else — no shell, no pty,
+      no agent or X11 forwarding
+    '';
+
     perInstance = { settings, ... }: {
-      nixosModule = { pkgs, lib, ... }: {
+      nixosModule = { config, pkgs, lib, ... }:
+        let
+          # Read the client's public half straight out of the repo rather than
+          # declaring the generator here too. Declaring it on both ends makes
+          # the two `files` sets differ, and clan rejects a shared generator
+          # whose definitions diverge between machines. Same pattern, and the
+          # same reason, as modules/nix-remote-builder.nix.
+          tunnelPubKeyPath =
+            config.clan.core.settings.directory
+            + "/vars/shared/ollama-tunnel-ssh/tunnel_ed25519.pub/value";
+
+          # Absent until the client's `clan vars generate` has run. Degrade
+          # quietly: a machine that cannot evaluate would wedge unrelated clan
+          # operations across the whole flake.
+          tunnelPubKey =
+            if builtins.pathExists tunnelPubKeyPath then
+              lib.removeSuffix "\n" (builtins.readFile tunnelPubKeyPath)
+            else
+              null;
+        in
+        {
+
+        # `restrict` turns everything off, including port forwarding; the
+        # `port-forwarding` that follows turns exactly that back on, and
+        # `permitopen` narrows it to the one destination. The result grants a
+        # forward to loopback:11434 and nothing else — notably not a shell.
+        users.users.root.openssh.authorizedKeys.keys =
+          lib.optionals (settings.remoteClients.enable && tunnelPubKey != null) [
+            ''restrict,port-forwarding,permitopen="127.0.0.1:11434" ${tunnelPubKey}''
+          ];
+
+        warnings = lib.optional (settings.remoteClients.enable && tunnelPubKey == null) ''
+          local-ai: remoteClients is enabled on this machine but
+          vars/shared/ollama-tunnel-ssh/tunnel_ed25519.pub does not exist yet,
+          so no key has been authorised and the tunnel will be refused. Run
+          `clan vars generate <the client machine>`, then redeploy this one.
+        '';
 
         services.ollama = {
           enable     = true;
@@ -277,7 +323,7 @@
 
   # ── OpenCode coding agent ──────────────────────────────────────────────────
   roles.opencode = {
-    description = "OpenCode CLI coding agent wired to the local Ollama endpoint.";
+    description = "OpenCode CLI coding agent, pointed at a local or tunnelled Ollama endpoint.";
 
     interface.options = {
       user = lib.mkOption {
@@ -289,30 +335,233 @@
         type        = lib.types.str;
         default     = "ollama/qwen2.5-coder:7b";
         description = ''
-          Default model (format: `ollama/<name>` for local Ollama models).
+          Default model, as `<provider-id>/<ollama tag>`. The provider id is
+          always `ollama` here — it is the key this role writes into
+          `provider` in OpenCode's config.
 
-          Must name a model the target machine's ollama role actually pulls,
-          or OpenCode asks for something that was never fetched. Kept in step
-          with the `models` default above; opencode currently runs only on
-          miralda, whose ollama role pulls this same tag.
+          Must name a model the endpoint's ollama role actually pulls, or
+          OpenCode asks for something that was never fetched. miralda's ollama
+          pulls `qwen2.5-coder:7b`; ernst's pulls `qwen3-coder:30b`.
         '';
+      };
+
+      tunnel = {
+        enable = lib.mkEnableOption ''
+          reaching a REMOTE ollama over an SSH port-forward instead of a local
+          one. For machines with no GPU worth the name, or none ollama can use
+
+          ollama on the far end is not, and should not be, exposed on the
+          network: `services.ollama` binds 127.0.0.1 and
+          machines/ernst/networking.nix records that deliberately ("M11 changes
+          ernst's attack surface not at all"). A forward keeps that true — the
+          listener stays loopback-only on both ends
+        '';
+
+        remoteHost = lib.mkOption {
+          type        = lib.types.str;
+          default     = "ernst.skynet.lan";
+          description = "Host running the ollama this machine should talk to.";
+        };
+
+        remoteUser = lib.mkOption {
+          type        = lib.types.str;
+          default     = "root";
+          description = ''
+            User to authenticate as on the far end. root, because that is
+            whose `authorized_keys` the ollama role writes the tunnel key
+            into — and the key is restricted to one forward, so it grants no
+            shell (see the ollama role's `remoteClients` option).
+          '';
+        };
+
+        localPort = lib.mkOption {
+          type        = lib.types.port;
+          default     = 11435;
+          description = ''
+            Local port the forward listens on, loopback only.
+
+            11435 rather than the obvious 11434 because miralda runs its OWN
+            ollama on 11434 — machines/ernst/networking.nix records that as a
+            fleet fact precisely so nobody copies `ssh -L 11434:...` and either
+            gets a bind failure or, worse, silently talks to a local 7B at 4096
+            context and believes the answer. The port is uniform across the
+            fleet for the same reason: one number to check, everywhere.
+
+            Sanity check what you reached:
+              curl -s localhost:11435/api/tags | jq -r '.models[].name'
+          '';
+        };
+
+        remotePort = lib.mkOption {
+          type        = lib.types.port;
+          default     = 11434;
+          description = "Port ollama listens on (loopback) at the far end.";
+        };
+
+        hostNames = lib.mkOption {
+          type        = lib.types.listOf lib.types.str;
+          default     = [ "ernst" "ernst.skynet.lan" "10.0.50.10" ];
+          description = "Names/addresses the pinned host key below is valid for.";
+        };
+
+        hostPublicKey = lib.mkOption {
+          type        = lib.types.str;
+          default     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILd954KHVjUAOX06pHP/+ou78tpo6OYKMQL2ew3eUqEt";
+          description = ''
+            The far end's SSH host public key, pinned so the tunnel never has
+            to TOFU. Mirrors
+            `vars/per-machine/ernst/openssh/ssh.id_ed25519.pub/value` — the
+            same value `clanarchy.remoteBuilder.hostPublicKey` pins, and it
+            has to be updated in both places if ernst's host key is ever
+            regenerated.
+          '';
+        };
       };
     };
 
     perInstance = { settings, ... }: {
-      nixosModule = { pkgs, ... }: {
-        environment.systemPackages = [ pkgs.opencode ];
+      nixosModule = { config, pkgs, lib, ... }:
+        let
+          gen = config.clan.core.vars.generators.ollama-tunnel-ssh;
 
-        home-manager.users.${settings.user} = { lib, ... }: {
-          # Point OpenCode at the local Ollama API.
-          # ~/.config is persisted for lgo (modules/users/lgo.nix), so this
-          # config survives ZFS rollback without an explicit persist entry.
-          xdg.configFile."opencode/config.json".text = builtins.toJSON {
-            model = settings.model;
-            providers.ollama.baseUrl = "http://localhost:11434/v1";
-          };
-        };
-      };
+          baseURL =
+            if settings.tunnel.enable then
+              "http://127.0.0.1:${toString settings.tunnel.localPort}/v1"
+            else
+              "http://127.0.0.1:11434/v1";
+
+          # The one instruction that decides whether tool calling works at all
+          # against qwen3-coder. The model drops the OPENING <tool_call> tag
+          # while still emitting the closing one, ollama's parser matches the
+          # literal string, and the whole call is emitted as prose with
+          # `tool_calls: null`. Measured 5/40 valid calls at baseline, 80/80
+          # with this line, under both KV cache types.
+          #
+          # It is not optional on ernst: that instance runs `kvCacheType =
+          # "q8_0"`, which halves tool-call reliability at a baseline system
+          # prompt (40%/36% vs f16's 83%/83%) and costs nothing once this is
+          # sent. The full measurement is in the kvCacheType option
+          # description and in local-ai.md.
+          toolCallRule = pkgs.writeText "opencode-tool-call-rule.md" ''
+            CRITICAL OUTPUT RULE: every function call MUST begin with a literal
+            <tool_call> line and end with a literal </tool_call> line. The opening
+            <tool_call> tag is mandatory and is the most commonly omitted part. Never
+            emit <function=...> unless the immediately preceding line is <tool_call>.
+          '';
+        in
+        lib.mkMerge [
+
+          {
+            environment.systemPackages = [ pkgs.opencode ];
+
+            home-manager.users.${settings.user} = { lib, ... }: {
+              # ~/.config is persisted for lgo (modules/users/lgo.nix), so this
+              # config survives ZFS rollback without an explicit persist entry.
+              #
+              # SCHEMA NOTE, because this file was wrong for a long time and
+              # failed silently: opencode 1.x wants `provider.<id>` with an
+              # `npm` driver and `options.baseURL`. The previous
+              # `providers.ollama.baseUrl` (plural key, camelCase `baseUrl`, no
+              # driver) matches no version of the schema — opencode ignored the
+              # whole block and fell through to its own defaults, which is why
+              # this never worked.
+              xdg.configFile."opencode/config.json".text = builtins.toJSON {
+                "$schema" = "https://opencode.ai/config.json";
+                model = settings.model;
+                provider.ollama = {
+                  # Ollama's /v1 surface is OpenAI-compatible, so the generic
+                  # OpenAI-compatible driver is the right one; there is no
+                  # ollama-specific npm package to name here.
+                  npm = "@ai-sdk/openai-compatible";
+                  name = "Ollama (${if settings.tunnel.enable then settings.tunnel.remoteHost else "local"})";
+                  options = { inherit baseURL; };
+                  # Declaring the model explicitly matters: this provider has
+                  # no model catalogue for opencode to discover, so an
+                  # undeclared tag is not selectable even when ollama has it.
+                  models.${lib.removePrefix "ollama/" settings.model} = { };
+                };
+                instructions = [ "${toolCallRule}" ];
+              };
+            };
+          }
+
+          # ── SSH forward to a remote ollama ──────────────────────────────
+          (lib.mkIf settings.tunnel.enable {
+
+            # Dedicated keypair, generated as a SHARED var so the far end can
+            # read the public half straight out of the repo. Declared by the
+            # CLIENT only — declaring it on both ends makes the two `files`
+            # sets differ, and clan rejects a shared generator whose
+            # definitions diverge between machines, which blocks every
+            # install/update in the flake rather than just this one. Same
+            # pattern, and the same reasoning, as
+            # modules/nix-remote-builder.nix.
+            #
+            # It cannot reuse the remote-builder key: that one is authorised
+            # on ernst with `command="nix-daemon --stdio",restrict`, and
+            # `restrict` drops port forwarding.
+            clan.core.vars.generators.ollama-tunnel-ssh = {
+              share = true;
+
+              files."tunnel_ed25519" = {
+                secret = true;
+                owner  = "root";
+                group  = "root";
+                mode   = "0400";
+              };
+              files."tunnel_ed25519.pub".secret = false;
+
+              runtimeInputs = [ pkgs.openssh ];
+              script = ''
+                ssh-keygen -t ed25519 -N "" -C "clanarchy-ollama-tunnel" \
+                  -f "$out/tunnel_ed25519"
+              '';
+            };
+
+            programs.ssh.knownHosts."clanarchy-ollama-tunnel" = {
+              inherit (settings.tunnel) hostNames;
+              publicKey = settings.tunnel.hostPublicKey;
+            };
+
+            # A system service, not a user one: the private key is root-owned
+            # 0400 (clan vars), and lgo's own SSH access to ernst authenticates
+            # with the YubiKey, which needs gpg-agent inside an interactive
+            # session and so cannot carry a background tunnel.
+            systemd.services.ollama-tunnel = {
+              description = "SSH port-forward to ${settings.tunnel.remoteHost}'s ollama";
+              after    = [ "network-online.target" ];
+              wants    = [ "network-online.target" ];
+              wantedBy = [ "multi-user.target" ];
+
+              serviceConfig = {
+                ExecStart = lib.concatStringsSep " " [
+                  "${pkgs.openssh}/bin/ssh"
+                  "-NT"
+                  # Fail loudly instead of holding open a session that forwards
+                  # nothing — without this the unit looks healthy while every
+                  # request to localhost is refused.
+                  "-o ExitOnForwardFailure=yes"
+                  "-o ServerAliveInterval=30"
+                  "-o ServerAliveCountMax=3"
+                  "-o StrictHostKeyChecking=yes"
+                  "-o IdentitiesOnly=yes"
+                  "-i ${gen.files."tunnel_ed25519".path}"
+                  "-L 127.0.0.1:${toString settings.tunnel.localPort}:127.0.0.1:${toString settings.tunnel.remotePort}"
+                  "${settings.tunnel.remoteUser}@${settings.tunnel.remoteHost}"
+                ];
+                # A laptop loses this link every time it sleeps or roams.
+                # Restarting always (not just on-failure) is the point.
+                Restart    = "always";
+                RestartSec = "10s";
+                DynamicUser = false;
+                User = "root";
+              };
+              # Don't let a laptop that is off the home LAN burn its restart
+              # budget and give up permanently.
+              startLimitIntervalSec = 0;
+            };
+          })
+        ];
     };
   };
 }
