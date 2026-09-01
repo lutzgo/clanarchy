@@ -1120,6 +1120,45 @@ in
           server = {
             address = "tcp://0.0.0.0:${toString autheliaPort}/";
             endpoints.authz.forward-auth.implementation = "ForwardAuth";
+
+            # ── COOKIE ONLY.  Authelia must NOT read `Authorization` ────────
+            #
+            # By default the ForwardAuth endpoint tries header strategies as
+            # well as the session cookie, which means it CONSUMES an inbound
+            # `Authorization: Basic` header as a credential for ITSELF.  Any
+            # request carrying one is answered 401 with
+            # `WWW-Authenticate: Basic realm="Authorization Required"` before
+            # it ever reaches the backend — and a browser turns that into its
+            # own native username/password dialog, which no amount of
+            # backend credentials can satisfy because it is Authelia asking.
+            #
+            # THIS FLEET HAS NOW PAID FOR THAT THREE TIMES.  M8 lost most of a
+            # session to it with Tvheadend's digest auth; M9 avoided it by
+            # leaving TubeSync's HTTP_USER/HTTP_PASS unset and wrote down the
+            # rule ("a backend whose own auth uses the Authorization header
+            # cannot sit behind a forward-auth middleware", see
+            # containers/tubesync.nix); and RomM hit it anyway, because RomM
+            # has no such opt-out — its login endpoint IS HTTP Basic and
+            # cannot be configured away.
+            #
+            # Restricting the strategies to `CookieSession` is what retires
+            # that rule rather than working around it for a third time.
+            # Authelia still gates every protected host exactly as before —
+            # the session cookie is what every one of them actually presents
+            # — and an `Authorization` header now passes through untouched to
+            # the backend it was meant for.
+            #
+            # WHAT THIS GIVES UP, stated plainly: Authelia will no longer
+            # accept HTTP Basic credentials as proof of identity on the
+            # forward-auth path.  Nothing in this fleet does that — every
+            # protected route is a browser UI carrying the cookie, and the
+            # one non-browser consumer (Jellyfin's apps) is exempt from
+            # forward-auth entirely.  If some future client wants to
+            # authenticate to AUTHELIA with a Basic header, this is the line
+            # that stops it, and it should get an OIDC client instead.
+            endpoints.authz.forward-auth.authn_strategies = [
+              { name = "CookieSession"; }
+            ];
           };
 
           # To the journal, as text.  `journalctl -u authelia-main` inside the
