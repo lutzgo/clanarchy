@@ -442,6 +442,22 @@ let
     # case: operator-facing, browser-only, no client a redirect could break.
     # The household reads in Audiobookshelf/Storyteller and never opens this.
     "bindery.${baseDomain}"
+
+    # RomM — the ROM library manager in its own podman netns.  The ordinary
+    # case again: operator-facing, browser-only.  It has an in-browser
+    # EmulatorJS player, but that is a browser and follows redirects like one;
+    # the Deck does NOT read its games through this route, it plays a
+    # Syncthing replica off local disk, so there is no native client here
+    # whose bearer token a 302 could break.  That is what keeps it out of the
+    # Jellyfin/Audiobookshelf exemption.
+    #
+    # This line was MISSING on the first deploy, and the failure was exactly
+    # the one the comment at the top of this list describes: the router in
+    # containers/traefik.nix carried the `authelia` middleware, this list did
+    # not carry the name, and romm.<domain> answered 403 — which reads as an
+    # Authelia fault and is a missing line in a list.  Left recorded here
+    # because the comment predicted it and it happened anyway.
+    "romm.${baseDomain}"
   ];
 
   ############################################################################

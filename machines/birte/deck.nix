@@ -82,7 +82,19 @@
   # `L+` forces the symlink each boot, so it is re-established after the
   # rollback regardless of what the persisted .local/share contains.
   systemd.tmpfiles.rules = [
-    "d /games 0700 deck ${config.users.users.deck.group} - -"
+    # 0710 deck:roms, not the 0700 this was.
+    #
+    # Syncthing has to REACH /games/retrodeck/roms, and reaching a path needs
+    # execute on every directory above it — the target's own 2770 is not
+    # enough.  With /games at 0700 the replication failed with
+    # `stat /games/retrodeck/roms: permission denied` even though the ROM
+    # directory itself was group-writable and syncthing was in the group.
+    #
+    # `1` rather than `5` for the group bit is the whole point: execute
+    # WITHOUT read.  Syncthing can descend to the paths it has been given and
+    # cannot list /games, so the Steam library sitting beside the ROM tree
+    # stays unenumerable.  Other is still 0 — nothing here is world-anything.
+    "d /games 0710 deck roms - -"
     "L+ /home/deck/.local/share/Steam - - - - /games"
 
     # Decky injects its UI into the Steam client through Steam's CEF remote
@@ -111,7 +123,10 @@
     # Layout note: the tree RetroDECK creates here (roms/<system>/, bios/) is
     # deliberately also a valid RomM library root — see the ROM-library
     # section in docs/guides/birte-emulation.md.
-    "d /games/retrodeck 0755 deck ${config.users.users.deck.group} - -"
+    # 0710 deck:roms for the same reason as /games above — traverse for the
+    # group, no listing, nothing for other.  RetroDECK owns this outright as
+    # `deck`; syncthing only ever passes through it.
+    "d /games/retrodeck 0710 deck roms - -"
 
     # `roms` and `bios` are the two subtrees Syncthing replicates from ernst
     # (see the syncthing instance in clan.nix), so they need a group that both
