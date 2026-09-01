@@ -121,6 +121,33 @@ zfs create \
 > without running the `zfs create` here is therefore a deploy that fails,
 > not a deploy that creates it.
 
+```bash
+# /srv/roms — the ROM library RomM manages (containers/romm.nix), and the
+# master copy Syncthing replicates to birte's RetroDECK.
+#
+# ITS OWN DATASET RATHER THAN A DIRECTORY UNDER /srv/games, because of exec.
+# /srv/games carries exec ON so Steam and Questarr's PC game binaries can run;
+# a ROM is data that an emulator reads and nothing ever executes, so it has no
+# business on the one dataset in this pool where files may run.
+#
+# recordsize=1M MUST be set at creation — dominated by large disc images, and
+# it cannot be changed retroactively for existing data.
+#
+# com.sun:auto-snapshot=true, unlike /srv/media and /srv/games which opt out as
+# re-acquirable. Syncthing is NOT a backup: it propagates deletions to birte
+# within seconds, so snapshots are the only thing standing between an
+# accidental delete and losing the library on both machines.
+zfs create \
+  -o mountpoint=legacy \
+  -o recordsize=1M \
+  -o exec=off \
+  -o setuid=off \
+  -o devices=off \
+  -o atime=off \
+  -o com.sun:auto-snapshot=true \
+  zdata/roms
+```
+
 `compression=zstd` and encryption are inherited from the pool root and
 should not be restated.
 
@@ -135,7 +162,8 @@ Property audit — every value below must match what was requested above:
 ```bash
 zfs get -H -o value \
   mountpoint,recordsize,exec,setuid,devices,atime,compression,encryption \
-  zdata/media zdata/media/movies zdata/media/tvshows zdata/state zdata/games
+  zdata/media zdata/media/movies zdata/media/tvshows zdata/state zdata/games \
+  zdata/roms
 ```
 
 Expected:
@@ -147,6 +175,7 @@ Expected:
 | `zdata/media/tvshows` | legacy | 1M         | off  | off    | off     | off   | zstd     | aes-256-gcm  |
 | `zdata/state`         | legacy | 128K       | on   | off    | off     | off   | zstd     | aes-256-gcm  |
 | `zdata/games`         | legacy | 128K       | on   | off    | off     | off   | zstd     | aes-256-gcm  |
+| `zdata/roms`          | legacy | 1M         | off  | off    | off     | off   | zstd     | aes-256-gcm  |
 
 ## Deploy
 
