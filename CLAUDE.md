@@ -95,7 +95,8 @@ The full walkthrough — `clan flash write` + `clan machines install <name>` —
 
 - `flake.nix` — inputs, devShell, and `clan.machines.*` composition. Each machine block uses helpers from `lib/mk-machine.nix` to avoid repeating boilerplate.
 - `lib/mk-machine.nix` — `mkModuleArgs`, `stylixKmsconFix`, `commonBase`, `commonHeadful`. See "Machine Composition Helpers" under Key Design Decisions. Per-machine nixpkgs channel selection is in `modules/channel.nix` (option `clanarchy.channel = "stable" | "unstable"`).
-- `clan.nix` — clan-core metadata (`name = "clanarchy"`, `domain = "goclan.org"`), nixpkgs overlays (niri sandbox fix, ungoogled-chromium flags), clan-service inventory instances (see Service Modules below).
+- `clan.nix` — clan-core metadata (`name = "clanarchy"`, `domain = "goclan.org"`), the stable `pkgsForSystem` instance, clan-service inventory instances (see Service Modules below).
+- `lib/overlays.nix` — the nixpkgs overlays (niri sandbox fix, ungoogled-chromium privacy flags), applied to **both** pkgs instances: the stable one in `clan.nix` and the unstable one in `lib/mk-machine.nix`. A machine on `clanarchy.channel = "unstable"` takes its whole `pkgs` from the latter, so an overlay listed in only one place silently doesn't apply there.
 - `machines/<name>/` — machine-specific NixOS configs (see per-machine tables).
 - `modules/` — shared NixOS modules used by multiple machines (see below).
 - `service-modules/` — custom clan-service modules registered in `clan.nix` (see below).
@@ -225,7 +226,7 @@ Custom clan-service modules registered in `clan.nix` under `modules."@clanarchy/
 | `@clanarchy/users` | User dispatch: `lgo` / `sabine` (imports the matching `modules/users/*.nix`) | miralda + jens (lgo), biene (sabine) |
 | `@clanarchy/yubikey` | Imports `modules/hardware/yubikey.nix` on target machines | miralda, jens |
 | `@clanarchy/printing` | Imports `modules/hardware/printing.nix` on target machines | miralda, jens |
-| `@clanarchy/software` | Per-user browser + email software dispatch (librewolf, firefox, chromium, chrome, edge, thunderbird) | miralda + jens (lgo), biene (sabine) |
+| `@clanarchy/software` | Per-user browser + email software dispatch (librewolf, firefox, chromium, chrome, edge, thunderbird) | miralda + jens (lgo), biene (sabine), birte (deck — chromium + chrome, for Desktop Mode) |
 | `@clanarchy/local-ai` | Ollama + OpenCode (self-hosted LLM stack). `opencode` can reach a remote ollama over a restricted SSH port-forward rather than needing one locally | ollama: miralda, ernst; opencode: miralda (local), jens (tunnelled to ernst) |
 | `@clanarchy/monitoring` | `client`: node_exporter (+ optional zfs / smartctl / systemd) on every machine. `server`: Prometheus + Alertmanager + Grafana in one nspawn container. **Scrape targets are derived from `roles.client` membership**, so adding a machine to the role is the only step needed to monitor it | client: all five; server: ernst |
 
