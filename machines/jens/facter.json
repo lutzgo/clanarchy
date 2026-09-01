@@ -1739,7 +1739,7 @@
         "resources": [
           {
             "type": "hwaddr",
-            "address": 97
+            "address": 53
           },
           {
             "type": "phwaddr",
@@ -2031,7 +2031,7 @@
         "resources": [
           {
             "type": "hwaddr",
-            "address": 97
+            "address": 53
           },
           {
             "type": "phwaddr",
