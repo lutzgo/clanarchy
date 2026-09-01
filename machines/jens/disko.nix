@@ -13,8 +13,11 @@ import ../../modules/disko/base.nix {
   #
   # DO NOT use /dev/sda or /dev/nvme0n1 directly.
   #
-  # TODO(install): replace with the by-id path read off the installer.
-  device = "/dev/disk/by-id/REPLACE-ME";
+  # Read off the installer on 2026-09-01.  Note that udev also publishes
+  # `nvme-WD_BLACK_SN770M_2TB_252738400046_1` and an
+  # `nvme-eui.e8238fa6bf530001001b444a4580669f` alias for this same device;
+  # the plain model+serial name below is the stable one to use.
+  device = "/dev/disk/by-id/nvme-WD_BLACK_SN770M_2TB_252738400046";
 
   # jens's ZFS pool is encrypted (default) and has no swap partition —
   # same as miralda.  See the hybridSleep note in configuration.nix.

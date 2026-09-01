@@ -210,13 +210,13 @@
       # and a panel that folds into a tablet
       # (clanarchy.hardware.convertible.enable).
       #
-      # Two things miralda has that jens does not.  OpenTabletDriver and the
-      # hid_uclogic blacklist, because the Huion Kamvas is a desk fixture and
-      # does not travel.  And Ollama: miralda's local-ai role is ROCm on a
-      # 780M, and this machine's iGPU is Intel, where that stack does not
-      # apply — a model here would run CPU-only.  The local-ai `opencode` role
-      # is left off with it: that role hard-codes http://localhost:11434, so on
-      # a machine with no ollama it would install a client pointed at nothing.
+      # The one thing miralda has that jens does not is a local Ollama:
+      # miralda's local-ai role is ROCm on a 780M, and this machine's iGPU is
+      # Intel, where that stack does not apply — a model here would run
+      # CPU-only.  OpenCode is still installed and points at ernst's
+      # qwen3-coder:30b over a restricted SSH port-forward; see
+      # roles.opencode's `tunnel` option in service-modules/local-ai.nix for
+      # why a forward rather than opening ollama's port.
       clan.machines.jens = {
         imports = [ (mkModuleArgs { }) ] ++ commonHeadful ++ [
           ./modules/themes/selenized-black.nix

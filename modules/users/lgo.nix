@@ -264,12 +264,10 @@ in
             # bug and needs the same opt-out rather than biene's
             # HostKeyAlgorithms form.
             #
-            # TODO(install): append jens's ZeroTier IPv6 to this pattern list
-            # once `clan vars generate jens` has produced it —
-            #   cat vars/shared/zerotier-ip-jens-zerotier/zerotier-ip/value
-            # `clan machines update` connects over ZeroTier, so without it the
-            # override does not apply on the path that actually deploys.
-            "jens jens.local jens.skynet.lan" = {
+            # The ZeroTier address is in the list because `clan machines
+            # update` connects over ZeroTier — leave it out and the override
+            # misses the one path that actually deploys.
+            "jens jens.local jens.skynet.lan fdda:106a:123a:d561:1099:9389:afa5:121b" = {
               PubkeyAuthentication = "unbound";
             };
             "ernst ernst.local ernst.skynet.lan 10.0.50.10 fdda:106a:123a:d561:1099:933e:4c60:711f" = {

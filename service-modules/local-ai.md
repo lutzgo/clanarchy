@@ -15,8 +15,73 @@ Both packages ship in nixpkgs (26.05+) — no external flake input required.
 
 | Role | What it does |
 |------|-------------|
-| `ollama` | Enables `services.ollama` with ROCm acceleration for the AMD Radeon 780M iGPU (`gfx1103`); pre-pulls models on service start; persists `/var/lib/ollama` across ZFS rollbacks |
-| `opencode` | Installs `pkgs.opencode`; writes `~/.config/opencode/config.json` pointing at the local Ollama API |
+| `ollama` | Enables `services.ollama` with ROCm acceleration for the AMD Radeon 780M iGPU (`gfx1103`); pre-pulls models on service start; persists `/var/lib/ollama` across ZFS rollbacks. Optionally (`remoteClients.enable`) authorises one restricted key so a machine with no usable GPU can forward to it |
+| `opencode` | Installs `pkgs.opencode`; writes `~/.config/opencode/config.json` pointing at an Ollama API — the local one by default, or a remote one over an SSH forward (`tunnel.enable`) |
+
+### Reaching a remote ollama (`tunnel.enable`)
+
+`services.ollama` binds loopback and stays that way; `machines/ernst/networking.nix`
+records that as deliberate ("M11 changes ernst's attack surface not at all"). So a
+client with no usable GPU — `jens`, whose iGPU is Intel and so cannot use the ROCm
+stack this role is built around — does not get ollama opened up to it. It gets an
+SSH port-forward, which keeps the listener loopback-only at both ends:
+
+```
+jens 127.0.0.1:11435  ──ssh -L──▶  ernst 127.0.0.1:11434
+```
+
+Three pieces, all declarative:
+
+- **A dedicated keypair**, generated as a shared clan var (`ollama-tunnel-ssh`) by
+  the *client* only. It cannot reuse the remote-builder key: that one is authorised
+  with `command="nix-daemon --stdio",restrict`, and `restrict` drops port forwarding.
+- **`ollama-tunnel.service`** on the client — a system unit, because the private key
+  is root-owned `0400` and lgo's own access to ernst authenticates with the YubiKey,
+  which needs gpg-agent inside an interactive session. `Restart=always` with no start
+  limit, because a laptop loses this link every time it sleeps or roams.
+- **One `authorized_keys` line** on the server, from `remoteClients.enable`:
+  `restrict,port-forwarding,permitopen="127.0.0.1:11434"`. A forward to that one
+  destination and nothing else — no shell, no pty, no agent or X11 forwarding.
+
+`localPort` is **11435, not 11434**, everywhere in the fleet — miralda runs its own
+ollama on 11434. Check what you actually reached before trusting an answer:
+
+```bash
+curl -s localhost:11435/api/tags | jq -r '.models[].name'
+```
+
+Ordering: the server reads the client's public half out of `vars/shared/`, so run
+`clan vars generate <client>` before deploying the server. Until then the server
+emits a warning and authorises nothing.
+
+### OpenCode config schema
+
+The generated `config.json` uses opencode 1.x's shape:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "ollama/qwen3-coder:30b",
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "options": { "baseURL": "http://127.0.0.1:11435/v1" },
+      "models": { "qwen3-coder:30b": {} }
+    }
+  },
+  "instructions": ["/nix/store/…-opencode-tool-call-rule.md"]
+}
+```
+
+This role previously wrote `providers.ollama.baseUrl` — plural key, camelCase
+`baseUrl`, no `npm` driver. That matches no version of the schema, so opencode
+ignored the block entirely and fell through to its own defaults. It failed silently,
+which is why it went unnoticed. The provider's `models` map is not optional either:
+this provider has no catalogue for opencode to discover, so an undeclared tag is not
+selectable even when ollama has it pulled.
+
+`instructions` points at the `<tool_call>` reinforcement below, so any machine using
+this role sends it by construction rather than by remembering to.
 
 ## Hardware note (AMD Radeon 780M / gfx1103)
 
@@ -130,6 +195,10 @@ Measured 80/80 valid calls with it, under both KV cache types, against 5/40 at
 baseline on the same conditions. Any agent pointed at this service should send
 it.
 
+The `opencode` role now does this automatically: it writes that text to a store
+file and names it in the config's `instructions`, so the reinforcement ships with
+the role instead of depending on whoever configures the client remembering it.
+
 ## Usage
 
 ### Inventory (`clan.nix`)
@@ -146,8 +215,18 @@ local-ai = {
     models        = [ "qwen3-coder:30b" ];
     contextLength = 32768;
     kvCacheType   = "q8_0";
+    # Authorise jens's forward (see below).  Does not expose ollama.
+    remoteClients.enable = true;
   };
   roles.opencode.machines.miralda.settings.user = "lgo";
+
+  # jens: Intel iGPU, so no local ollama at all — talk to ernst's card
+  # over an SSH forward instead.
+  roles.opencode.machines.jens.settings = {
+    user  = "lgo";
+    model = "ollama/qwen3-coder:30b";   # must match ernst's `models`
+    tunnel.enable = true;
+  };
 };
 ```
 

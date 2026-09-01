@@ -284,8 +284,26 @@
           # added here that does not send that reinforcement wants f16.
           contextLength = 32768;
           kvCacheType   = "q8_0";
+
+          # Accept the SSH forward jens uses to reach this model (see
+          # roles.opencode.machines.jens below).  ollama itself stays bound to
+          # loopback — this authorises one key restricted to forwarding
+          # 127.0.0.1:11434 and nothing else.
+          remoteClients.enable = true;
         };
         roles.opencode.machines.miralda.settings.user  = "lgo";
+
+        # jens has no ollama of its own: its iGPU is Intel, where the ROCm
+        # stack the ollama role is built around does not apply, and a 30B MoE
+        # on CPU is not something to sit in front of.  So opencode here talks
+        # to ernst's card over an SSH forward, with ollama still listening only
+        # on ernst's loopback at both ends of the tunnel.
+        roles.opencode.machines.jens.settings = {
+          user  = "lgo";
+          # Must match what ernst's ollama role actually pulls, above.
+          model = "ollama/qwen3-coder:30b";
+          tunnel.enable = true;
+        };
       };
 
       # ── Monitoring: Prometheus / Alertmanager / Grafana + node_exporter ──
