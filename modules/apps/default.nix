@@ -8,5 +8,6 @@
     ./containers.nix
     ./flatpak.nix
     ./desktop-tools.nix
+    ./emulation.nix
   ];
 }

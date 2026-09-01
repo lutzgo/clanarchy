@@ -57,6 +57,18 @@
       ".local/state" # HM profile symlinks, systemd user state
       ".cache"       # shader caches — re-derivable, but recompiling them on
                      # every boot is exactly the stutter a Deck must avoid
+
+      # Flatpak's per-app state.  Every Flatpak app keeps its config, data and
+      # cache under ~/.var/app/<app-id>/ and NOTHING else — none of it lands
+      # in .config or .local/share, so the four entries above do not cover it.
+      # /var/lib/flatpak (persisted by modules/apps/flatpak.nix) keeps the
+      # installed *apps* across a rollback; without this line they came back
+      # every boot freshly installed and completely unconfigured.
+      #
+      # RetroDECK is the case that exposed it: its entire configuration,
+      # including which data folder it was pointed at, lives in
+      # ~/.var/app/net.retrodeck.retrodeck/config/retrodeck/retrodeck.cfg.
+      ".var/app"
     ];
   };
 
@@ -81,6 +93,24 @@
     # Steam resolves ~/.steam/steam to /games here, so the marker lands on the
     # @games subvol and survives the rollback on its own.
     "f /games/.cef-enable-remote-debugging 0644 deck ${config.users.users.deck.group} - -"
+
+    # RetroDECK's data folder — ROMs, BIOS, saves, states, scraped media.
+    # Same reasoning as the Steam library above: it belongs on @games, which
+    # is outside the rollback path, outside the impermanence bind-mounts, and
+    # carries nodatacow.  A ROM library is exactly the "large files, plenty of
+    # them" case that subvolume exists for, and putting it under /persist
+    # instead would mix a media library in with system state.
+    #
+    # The symlink means RetroDECK's first-run wizard can be answered with its
+    # default "Internal" option — ~/retrodeck already resolves onto the right
+    # subvolume, so there is no custom path to remember or re-enter after a
+    # reinstall.  `L+` re-forces it every boot, after the rollback.
+    #
+    # Layout note: the tree RetroDECK creates here (roms/<system>/, bios/) is
+    # deliberately also a valid RomM library root — see the ROM-library
+    # section in docs/guides/birte-emulation.md.
+    "d /games/retrodeck 0700 deck ${config.users.users.deck.group} - -"
+    "L+ /home/deck/retrodeck - - - - /games/retrodeck"
   ];
 
   # Home Manager for `deck`. Stylix's HM auto-enable is the default when the

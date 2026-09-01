@@ -144,7 +144,7 @@ No `stylix.nix` or `wallpapers.nix`: `flake.nix` imports the shared `modules/the
 | `configuration.nix` | Hostname, timezone, btrfs/systemd-boot, SSH daemon; `clanarchy.rootfs = "btrfs"`; Steam Deck power/hardware tweaks |
 | `disko.nix` | Thin wrapper over `modules/disko/btrfs.nix` — btrfs (not ZFS), unencrypted, 16G plain swap for hybrid-sleep, `@games` subvol at `/games` (symlinked into deck's home) |
 | `jovian.nix` | Jovian-NixOS wiring: Steam Gaming Mode enablement, gamescope-session, `deck` user provisioning |
-| `deck.nix` | Deck-specific user config + HM stylix enablement |
+| `deck.nix` | Deck-specific user config + HM stylix enablement; persist set (incl. `.var/app` for Flatpak state) and the `/games` + `/games/retrodeck` tmpfiles rules |
 | `stylix.nix` | Catppuccin Mocha theme, SVG-recolored wallpaper at native 1280×800; imports `modules/stylix-base.nix` (no regreet target — SDDM is Jovian-provisioned) |
 
 ### Machine Module Layout (`machines/ernst/`)
@@ -209,6 +209,7 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | `apps/communication.nix` | `clanarchy.apps.communication`: messaging apps (Valent, etc.) |
 | `apps/containers.nix` | `clanarchy.apps.containers`: Podman / container tooling |
 | `apps/desktop-tools.nix` | `clanarchy.apps.desktopTools`: desktop utilities bundle |
+| `apps/emulation.nix` | `clanarchy.apps.emulation.switch`: Eden (Switch). Consumer: birte — RetroDECK covers everything older but [dropped Switch support permanently in Feb 2026](https://retrodeck.readthedocs.io/en/latest/blog/2026/02/19/february-2026---extra-switch-emulation-support---will-be-removed/). See [docs/guides/birte-emulation.md](docs/guides/birte-emulation.md) |
 | `apps/flatpak.nix` | `clanarchy.apps.flatpak`: Flatpak + Flathub remote |
 | `apps/gnome-core.nix` | `clanarchy.apps.gnomeCoreApps`: a few standalone GTK apps (text editor, calculator, software centre). Consumer: biene. Not the GNOME desktop — that was removed |
 | `apps/graphics.nix` | `clanarchy.apps.graphics`: graphics/creative apps (GIMP, Inkscape, etc.) |
