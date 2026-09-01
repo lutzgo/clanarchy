@@ -277,17 +277,39 @@
       # they should be replicated too, that is a separate decision with its own
       # conflict semantics (two machines playing the same game), not something
       # to acquire by accident.
+      # ── ignorePerms: THE TWO ENDS ARE OWNED BY DIFFERENT PRINCIPALS ─────
+      #
+      # Syncthing replicates permission bits by default, and it cannot do that
+      # here.  `chmod` requires OWNERSHIP, not group membership, and syncthing
+      # owns neither end: on ernst the tree is RomM's (uid 3029, 2770
+      # root:romm) and on birte it is RetroDECK's (deck:roms).  Syncthing is
+      # only ever a member of the shared group, so it failed on every
+      # directory it tried to sync:
+      #
+      #   syncing: handling dir (setting permissions):
+      #   chmod /srv/roms/roms/playdate: operation not permitted
+      #
+      # AND IT WOULD BE WRONG EVEN IF IT WORKED.  The permission bits on both
+      # ends are decided declaratively — by romm-dirs.service on ernst and by
+      # the tmpfiles rules in machines/birte/deck.nix on birte — precisely so
+      # that two different local writers can share each tree.  Letting
+      # Syncthing carry one machine's bits onto the other would overwrite a
+      # deliberate local decision with a remote one, and the setgid bit that
+      # makes the whole arrangement work is exactly what would be lost.
+      #
+      # So the permissions are owned by each machine and the CONTENT is what
+      # replicates.  That is the correct division here, not a concession.
       syncthing-roms = {
         module = { name = "syncthing"; input = "clan-core"; };
         roles.peer.machines.ernst.settings = {
           openDefaultPorts = true;
-          folders.roms.path = "/srv/roms/roms";
-          folders.bios.path = "/srv/roms/bios";
+          folders.roms = { path = "/srv/roms/roms"; ignorePerms = true; };
+          folders.bios = { path = "/srv/roms/bios"; ignorePerms = true; };
         };
         roles.peer.machines.birte.settings = {
           openDefaultPorts = true;
-          folders.roms.path = "/games/retrodeck/roms";
-          folders.bios.path = "/games/retrodeck/bios";
+          folders.roms = { path = "/games/retrodeck/roms"; ignorePerms = true; };
+          folders.bios = { path = "/games/retrodeck/bios"; ignorePerms = true; };
         };
       };
 
