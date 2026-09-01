@@ -9,6 +9,11 @@
 let
   unstablePkgs = import inputs.nixpkgs-unstable {
     system = "x86_64-linux";
+    # Same overlays as the stable instance built by `pkgsForSystem` in
+    # clan.nix.  A machine on `clanarchy.channel = "unstable"` takes its
+    # whole `pkgs` from here, so leaving them off means package overrides
+    # silently apply to some machines and not others.
+    overlays = [ (import ./overlays.nix) ];
     config = {
       allowUnfree = true;
       # birte pulls pnpm-9.15.9 transitively (Jovian / KDE tooling).  Since

@@ -4,27 +4,13 @@
     # Instantiate pkgs once per system with overlays applied.
     # nixpkgs.overlays in NixOS modules is ignored when pkgsForSystem is set
     # (clan-core force-sets nixpkgs.pkgs before NixOS modules run).
+    # The overlay list itself lives in lib/overlays.nix, because
+    # lib/mk-machine.nix has to apply the same one to the unstable pkgs
+    # instance — see the header there.
     pkgsForSystem = system: import inputs.nixpkgs {
       inherit system;
       config.allowUnfree = true;
-      overlays = [
-        # niri 25.08 test suite hits EMFILE (too many open files) in the Nix sandbox
-        (_: prev: {
-          niri = prev.niri.overrideAttrs (_: { checkPhase = ":"; });
-        })
-        # ungoogled-chromium: bake privacy flags into the binary.
-        # Must be here (pkgsForSystem) — nixpkgs.overlays in NixOS modules is
-        # ignored when pkgsForSystem is set (clan-core pre-sets nixpkgs.pkgs).
-        (_: prev: {
-          ungoogled-chromium = prev.ungoogled-chromium.override {
-            commandLineArgs = [
-              "--no-pings"
-              "--disable-search-engine-collection"
-              "--extension-mime-request-handling=always-prompt-for-install"
-            ];
-          };
-        })
-      ];
+      overlays = [ (import ./lib/overlays.nix) ];
     };
 
     meta.name = "clanarchy";
@@ -409,6 +395,14 @@
         roles.chromium.machines.jens.settings.user      = "lgo";
         roles.chrome.machines.jens.settings.user        = "lgo";
         roles.edge.machines.jens                        = { };
+        # browsers — deck, in birte's Desktop Mode.  Gaming Mode has Steam's
+        # own built-in browser; these are for the KDE session behind
+        # "Switch to Desktop".  Chromium carries the same hardened flags and
+        # managed policies as the laptops (the overlay in lib/overlays.nix
+        # now reaches unstable too), and Chrome is here for the same reason
+        # it is anywhere — DRM and SSO that Chromium refuses.
+        roles.chromium.machines.birte.settings.user     = "deck";
+        roles.chrome.machines.birte.settings.user       = "deck";
         # browsers — sabine
         roles.librewolf.machines.biene.settings.user    = "sabine";
         roles.edge.machines.biene                       = { };
