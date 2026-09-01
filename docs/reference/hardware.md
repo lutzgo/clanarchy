@@ -8,6 +8,9 @@ Hardware-specific options. Set these to match the physical machine.
 | Option | Type | Description |
 |--------|------|-------------|
 | `clanarchy.display.scale` | `floating point number` | Physical display scale hint. Set to 1.0 for standard-DPI panels (e.g. 1366×768 at ~100 PPI), 1.25 for mid-range (e.g. Framework 13 2256×1504 at ~200 PPI), or 2.0 for 4K/5K at ≥ 220 PPI.  This value controls pre-compositor settings (systemd-boot console mode, Linux console font). The compositor output scale is configured separately via clanarchy.desktop.{niri,labwc}.display.scale.  |
+| `clanarchy.hardware.convertible.autoRotate.enable` | `boolean` | Rotate the compositor output to follow the accelerometer. Turn this off to keep the sensor available to applications (Noctalia, GNOME apps) without anything acting on it automatically.  Only takes effect on Niri machines — the service drives `niri msg`.  |
+| `clanarchy.hardware.convertible.autoRotate.output` | `string` | Compositor output name to rotate. The built-in panel on every laptop in this clan. |
+| `clanarchy.hardware.convertible.enable` | `boolean` | Whether to enable convertible / 2-in-1 support (accelerometer, auto-rotation, on-screen keyboard). |
 | `clanarchy.hardware.cpu` | `one of "amd", "intel"` | CPU/GPU vendor — selects hardware-specific drivers and env vars (ROCm vs Intel media). |
 | `clanarchy.hardware.gpu.amd.enable` | `boolean` | Whether to enable AMD GPU baseline (amdgpu kernel module + mesa + Rusticl). |
 | `clanarchy.hardware.gpu.amd.rocm.enable` | `boolean` | Whether to enable ROCm compute stack (HIP runtime, OpenCL ICD, rocminfo). |
