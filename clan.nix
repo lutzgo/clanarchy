@@ -45,6 +45,7 @@
 
     inventory.machines = {
       miralda = { };
+      jens    = { };
       biene   = { };
       ernst   = { };
       birte   = { };
@@ -61,6 +62,7 @@
         module.input = "self";
         module.name  = "@clanarchy/machine-type";
         roles.laptop.machines.miralda.settings.framework.enable = true;
+        roles.laptop.machines.jens.settings.framework.enable = true;  # Framework 12
         roles.laptop.machines.biene = { };   # no Framework hardware
         roles.laptop.machines.birte = { };   # Steam Deck OLED — battery-backed handheld
         roles.server.machines.ernst = { };
@@ -135,6 +137,13 @@
         module.name  = "@clanarchy/desktop";
         # miralda: Niri with Framework 13 display — default settings match hardware
         roles.niri.machines.miralda = { };
+        # jens: same Niri desktop, Framework 12 panel — 1920×1200 at 12.2"
+        # (~186 PPI).  The role's resolution defaults are miralda's 2256×1504,
+        # so they have to be named here; scale 1.25 is right for both.
+        roles.niri.machines.jens.settings.display = {
+          width  = 1920;
+          height = 1200;
+        };
         # biene: labwc with Noctalia shell (replaces GNOME/GDM).
         # 1366x768 panel — native resolution (1.0) avoids 1.25 default that
         # shrinks usable logical space to 1093x614 on this low-res screen.
@@ -152,6 +161,7 @@
         module.input = "self";
         module.name  = "@clanarchy/users";
         roles.lgo.machines.miralda  = { };
+        roles.lgo.machines.jens     = { };
         roles.sabine.machines.biene = { };
       };
 
@@ -176,6 +186,9 @@
         module.input = "self";
         module.name  = "@clanarchy/yubikey";
         roles.default.machines.miralda = { };
+        # The key travels with lgo, so every machine lgo logs into needs the
+        # pcscd + pinentry-qt wiring — not just the one it was first set up on.
+        roles.default.machines.jens    = { };
       };
 
       # ── Printing ───────────────────────────────────────────────────────────
@@ -183,6 +196,7 @@
         module.input = "self";
         module.name  = "@clanarchy/printing";
         roles.default.machines.miralda = { };
+        roles.default.machines.jens    = { };
       };
 
       # ── Syncthing ───────────────────────────────────────────────────────────
@@ -193,6 +207,12 @@
       syncthing = {
         module = { name = "syncthing"; input = "clan-core"; };
         roles.peer.machines.miralda = {
+          settings = {
+            openDefaultPorts = true;
+            folders.public.path = "/home/lgo/Public";
+          };
+        };
+        roles.peer.machines.jens = {
           settings = {
             openDefaultPorts = true;
             folders.public.path = "/home/lgo/Public";
@@ -212,6 +232,7 @@
       # `clan vars generate <machine>` time (shared across machines via share = true).
       wifi = {
         roles.default.machines.miralda = { };
+        roles.default.machines.jens    = { };
         roles.default.machines.biene   = { };
         roles.default.machines.birte   = { };   # Steam Deck — wifi only
         # ernst is wired-only — intentionally excluded.
@@ -344,12 +365,13 @@
         # device on a timer, which is a battery cost for data nobody acts on
         # before the machine is replaced anyway.
         roles.client.machines.miralda = { };
+        roles.client.machines.jens    = { };
         roles.client.machines.biene   = { };
         roles.client.machines.birte   = { };
       };
 
       # ── Software: browsers and email clients ─────────────────────────────
-      # miralda/lgo:  all five browsers, no email.
+      # miralda/lgo, jens/lgo:  all five browsers, no email.
       #   librewolf/chrome home.file configs are managed here (removed from
       #   machines/miralda/home-modules/browsers.nix to avoid duplication).
       # biene/sabine: librewolf + edge; both email clients.
@@ -363,6 +385,12 @@
         roles.chromium.machines.miralda.settings.user   = "lgo";
         roles.chrome.machines.miralda.settings.user     = "lgo";
         roles.edge.machines.miralda                     = { };
+        # browsers — lgo on jens, the same five
+        roles.librewolf.machines.jens.settings.user     = "lgo";
+        roles.firefox.machines.jens.settings.user       = "lgo";
+        roles.chromium.machines.jens.settings.user      = "lgo";
+        roles.chrome.machines.jens.settings.user        = "lgo";
+        roles.edge.machines.jens                        = { };
         # browsers — sabine
         roles.librewolf.machines.biene.settings.user    = "sabine";
         roles.edge.machines.biene                       = { };

@@ -61,6 +61,12 @@ rec {
     # guards its own body on it, so importing it fleet-wide is inert on the
     # machines that never plug one in.
     ../modules/hardware/zsa.nix
+    # Convertible / 2-in-1 hardware (jens). Same pattern as zsa.nix above:
+    # declares `clanarchy.hardware.convertible` and guards its body on it, so
+    # it is inert on the clamshells. It has to be fleet-wide rather than
+    # jens-only because modules/desktop/niri-hm.nix reads the option to decide
+    # whether to bind the on-screen keyboard, and that module is shared.
+    ../modules/hardware/convertible.nix
     ../modules/virtualisation.nix
     # Distributed Nix builds. Declares `clanarchy.remoteBuilder` with both
     # roles off by default, so importing it fleet-wide is inert until a

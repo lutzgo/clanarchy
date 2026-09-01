@@ -195,10 +195,34 @@
       clan.machines.miralda = {
         imports = [ (mkModuleArgs { }) ] ++ commonHeadful ++ [
           ./modules/users/sgo.nix
+          ./modules/themes/selenized-black.nix
+          ./modules/wallpapers/nix-anarchy.nix
           ./machines/miralda/configuration.nix
           ./machines/miralda/disko.nix
-          ./machines/miralda/stylix.nix
-          ./machines/miralda/wallpapers.nix
+        ];
+      };
+
+      # jens — Framework Laptop 12 (Intel, convertible).  Deliberately the same
+      # machine as miralda from the user's side: Niri + UWSM + regreet, the
+      # Selenized Black theme and the same per-workspace wallpapers, ZFS +
+      # impermanence, lgo's full toolchain.  The differences are all hardware —
+      # Intel rather than AMD (see clanarchy.hardware.cpu in configuration.nix)
+      # and a panel that folds into a tablet
+      # (clanarchy.hardware.convertible.enable).
+      #
+      # Two things miralda has that jens does not.  OpenTabletDriver and the
+      # hid_uclogic blacklist, because the Huion Kamvas is a desk fixture and
+      # does not travel.  And Ollama: miralda's local-ai role is ROCm on a
+      # 780M, and this machine's iGPU is Intel, where that stack does not
+      # apply — a model here would run CPU-only.  The local-ai `opencode` role
+      # is left off with it: that role hard-codes http://localhost:11434, so on
+      # a machine with no ollama it would install a client pointed at nothing.
+      clan.machines.jens = {
+        imports = [ (mkModuleArgs { }) ] ++ commonHeadful ++ [
+          ./modules/themes/selenized-black.nix
+          ./modules/wallpapers/nix-anarchy.nix
+          ./machines/jens/configuration.nix
+          ./machines/jens/disko.nix
         ];
       };
 

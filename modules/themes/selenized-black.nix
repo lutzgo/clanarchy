@@ -1,3 +1,10 @@
+# Selenized Black — the shared Stylix theme for lgo's workstations.
+#
+# Lives here rather than under machines/<name>/ because miralda and jens run
+# the same desktop and must look identical; a per-machine copy of this file
+# would be 70 lines that drift apart the first time one of them is tweaked.
+# Machines wanting a different palette (biene, birte: Catppuccin Mocha) keep
+# their own machines/<name>/stylix.nix instead of importing this.
 { pkgs, config, ... }:
 let
   # Pick a Base16/Base24 from https://tinted-theming.github.io/tinted-gallery/.
@@ -50,7 +57,7 @@ let
       '';
 in
 {
-  imports = [ ../../modules/stylix-base.nix ];
+  imports = [ ../stylix-base.nix ];
 
   stylix = {
     base16Scheme = schemePath;

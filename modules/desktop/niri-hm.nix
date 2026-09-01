@@ -267,6 +267,20 @@
         "Mod+Shift+7".action.move-window-to-workspace = 7;
         "Mod+Shift+8".action.move-window-to-workspace = 8;
         "Mod+Shift+9".action.move-window-to-workspace = 9;
+      }
+      # --- Convertible / 2-in-1 only ---
+      # Folding the panel back puts the physical keyboard face-down, so there
+      # has to be a way to summon an on-screen one without it.  Guarded on the
+      # hardware option (modules/hardware/convertible.nix), which is off on
+      # every clamshell — the bind is simply absent there rather than pointing
+      # at a package that isn't installed.
+      // lib.optionalAttrs osConfig.clanarchy.hardware.convertible.enable {
+        # Toggle: wvkbd has no toggle of its own, so kill it if it's up.
+        "Mod+O".action.spawn = [
+          "sh"
+          "-c"
+          "pkill -x wvkbd-mobintl || uwsm app -- wvkbd-mobintl -L 250"
+        ];
       };
 
       # Lid switch events — only spawn actions are supported.
