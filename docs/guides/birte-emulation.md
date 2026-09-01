@@ -108,6 +108,59 @@ console; it looks for them in the `keys/` folder of its data directory, which
 you can open from inside the app. Both `~/.config/eden` and `~/.local/share/eden`
 are already persisted for `deck`, so wherever it puts them, they stay.
 
+Switch dumps themselves belong in `/srv/roms/roms/switch/` on ernst — that
+directory already exists and already replicates to
+`/games/retrodeck/roms/switch/` on the Deck, so Eden can simply be pointed at
+the synced copy. RomM indexes them too (`switch` is one of its platforms).
+
+### Anything launched from Gaming Mode needs its library env cleaned
+
+**Symptom:** a non-Steam shortcut works perfectly from the KDE menu in Desktop
+Mode and does nothing at all in Gaming Mode.
+
+**Cause:** Steam exports its own `LD_LIBRARY_PATH`, pointing at the bundled
+Ubuntu-12 Steam Runtime, to everything it launches. Those libraries shadow the
+ones every Nix-built binary is linked against. Measured on birte:
+
+```console
+$ chromium            # with Steam's LD_LIBRARY_PATH
+chromium: /games/ubuntu12_32/steam-runtime/usr/lib/x86_64-linux-gnu/libnss3.so:
+          version `NSS_3.30' not found (required by …/chromium)
+```
+
+It is not specific to browsers — with that variable set, plain coreutils fails
+the same way (`head`, `tr`: `libattr.so.1: version 'ATTR_1.3' not found`), which
+is a good way to recognise it.
+
+**Fix:** in Steam, right-click the shortcut → Properties → **Launch Options**:
+
+```
+env -u LD_LIBRARY_PATH -u LD_PRELOAD %command%
+```
+
+Desktop Mode is unaffected because launching from the KDE menu never goes
+through Steam.
+
+### What Steam actually records in a shortcut
+
+Steam stores a desktop entry's `Exec` field **literally** — it does not resolve
+it. From birte's `shortcuts.vdf`:
+
+| Shortcut | Stored `Exe` | |
+|---|---|---|
+| Chromium | `"chromium"` | bare name, resolved via PATH at launch |
+| Eden | `"eden"` | same |
+| Google Chrome | `"/nix/store/awfz…/bin/google-chrome-stable"` | **store path — will break** |
+
+A bare name is fine here because `/run/current-system/sw/bin` is on the
+gamescope session's PATH. A baked-in `/nix/store` path is not: it breaks at the
+next update plus garbage collection. google-chrome's upstream desktop entry
+uses an absolute `Exec`, so that is what Steam captured.
+
+If a shortcut dies after an update, re-add it with **Browse** and pick
+`/run/current-system/sw/bin/<name>` explicitly rather than letting Steam scan
+the desktop entry.
+
 ## The ROM library, and self-hosting RomM
 
 The RetroDECK tree above is *deliberately* a valid [RomM][romm] library root.
