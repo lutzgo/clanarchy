@@ -83,6 +83,12 @@
   clanarchy.apps.flatpak.enable       = true;
   clanarchy.apps.desktopTools.enable  = true;
 
+  # Switch emulation. RetroDECK (installed as a Flatpak, see deck.nix for the
+  # persistence and data-folder wiring it needs) covers everything up to the
+  # Switch and dropped the Switch itself in February 2026, so that one console
+  # is packaged separately here.
+  clanarchy.apps.emulation.switch.enable = true;
+
   # Machine-agnostic gaming bits (Steam + Proton-GE).
   # Jovian / Deck-hardware wiring lives in jovian.nix and deck.nix.
   clanarchy.gaming = {

@@ -70,15 +70,24 @@ in
     };
   };
 
-  # Force-disable stylix's KDE HM target for every user on birte.
-  # stylix generates `stylix-kde-apply-plasma-theme` via
-  # `pkgs.writeShellApplication`, whose runtime-env preamble
-  # (`username=<user>`) now trips shellcheck SC2209 in nixpkgs 26.05 and
-  # fails the build.  KDE only appears on birte in Desktop Mode (Switch to
-  # Desktop); the gaming session doesn't touch it.  The Catppuccin palette
-  # still reaches Plasma via the GTK/Qt/cursor HM targets that autoEnable
-  # leaves on.
-  home-manager.sharedModules = [
-    { stylix.targets.kde.enable = false; }
-  ];
+  # Stylix's KDE HM target is disabled for `admin` ONLY — not for `deck`.
+  #
+  # The target builds `stylix-kde-apply-plasma-theme` with
+  # `pkgs.writeShellApplication`, and stylix passes the account name through
+  # `runtimeEnv`, which emits a `username=<user>` preamble line.  ShellCheck
+  # rejects that line with SC2209 ("use var=$(command) to assign output")
+  # when the value happens to be the name of a command it knows — and
+  # `admin` is such a name.  `deck` is not:
+  #
+  #   writeShellApplication { runtimeEnv.username = "deck";  … }  → builds
+  #   writeShellApplication { runtimeEnv.username = "admin"; … }  → SC2209
+  #
+  # This used to be disabled for every user on birte, which meant the
+  # headless admin stub — an account that never opens Plasma — was the
+  # reason `deck`, the account that only ever sees Plasma in Desktop Mode,
+  # got no Plasma theming at all.  Scoping the workaround to the account
+  # that actually trips it lets Desktop Mode follow the Stylix palette
+  # properly, rather than only picking it up second-hand through the
+  # GTK/Qt/cursor targets.
+  home-manager.users.admin.stylix.targets.kde.enable = false;
 }
