@@ -305,6 +305,7 @@
   #   02:00:00:90:00:0b   tubesync netns eth0       (M9  — allocated)  10.0.90.19
   #   02:00:00:90:00:0c   storyteller netns eth0    (M14 — allocated)  10.0.90.20
   #   02:00:00:90:00:0d   cloudflared container eth0 (M16 — allocated) 10.0.90.21
+  #   02:00:00:90:00:0e   romm netns rm0            (romm — allocated) 10.0.90.22
   #
   # THE TUBESYNC ENTRY IS NOT A CONTAINER veth IN THE NSPAWN SENSE, and it is
   # the first of its kind here: it is a veth into a BARE NETWORK NAMESPACE that
@@ -416,6 +417,26 @@
   #                           its own hardlink proof is in M17's test plan,
   #                           because M14's proof covers slskd's uid, not
   #                           this one)
+  #   uid 3029  romm         (containers/romm.nix — the ROM library manager,
+  #                           OWN group 3029, NO media.  It is a PODMAN
+  #                           workload, rootful and unmapped, so the number is
+  #                           literal on zdata like tubesync's and
+  #                           storyteller's.
+  #
+  #                           ITS GROUP HAS A SECOND MEMBER, which is unusual
+  #                           enough to state here rather than only in that
+  #                           file: `syncthing` is added to gid 3029 so it can
+  #                           replicate /srv/roms to birte.  The library tree
+  #                           is 2770 root:romm — SETGID, so a file written by
+  #                           either principal stays writable by the other.
+  #
+  #                           NOT in `media`, deliberately: a ROM library has
+  #                           no hardlink relationship with the arr suite and
+  #                           nothing in it is served by Jellyfin.  It also
+  #                           does NOT live on /srv/games despite being games
+  #                           — that dataset carries exec ON for Steam and
+  #                           Questarr binaries, and ROMs are data that is read,
+  #                           never executed.  zdata/roms is its own dataset)
   #
   #===========================================================================
   # RESERVED — M8 and M12–M16.  Comments only; nothing below is declared yet.
@@ -630,7 +651,10 @@
   # slskd needed none either, for a different reason: it went into the EXISTING
   # microvm guest, which already has 02:00:00:90:00:03.
   #
-  # Next free sequence number is 0e; next free address is 10.0.90.22.
+  # Next free sequence number is 0f; next free address is 10.0.90.23.
+  # (0e → 10.0.90.22 went to RomM, the podman tier's THIRD occupant.  Note for
+  # whoever takes 0f: containers/storyteller.nix's rule about UNIQUE namespace
+  # interface names still binds — `eth0`, `st0` and `rm0` are all taken.)
   # (08/.16 and 09/.17 below are LAPSED reservations, kept as history so the
   # gap in the sequence reads as a decision rather than an oversight.)
   #   02:00:00:90:00:08   tdarr container eth0      (M15 — LAPSED: the

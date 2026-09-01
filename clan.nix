@@ -190,24 +190,93 @@
       # openDefaultPorts restricts the firewall to zt+ (zerotier) interfaces.
       # User overrides (run as lgo / sabine) are in machines/*/configuration.nix.
       # Run `clan vars generate <machine>` once to generate syncthing key/cert/ID.
+      # ── EVERY FOLDER HERE NAMES ITS `devices` EXPLICITLY ─────────────────
+      #
+      # clan-core's syncthing service treats `devices = [ ]` as "share with
+      # EVERY peer in this instance" (clanServices/syncthing/default.nix:
+      # `if folderConfig.devices == [ ] then lib.attrNames validDevices`).
+      # That default was harmless while the peer set was three machines all
+      # sharing one folder — and it stops being harmless the moment a fourth
+      # peer joins, because adding a peer silently widens every existing
+      # folder onto it.
+      #
+      # ernst and birte joined for the ROM library.  Without the explicit
+      # lists below, that act alone would have shared lgo's and Sabine's
+      # Public folders onto a homelab server and a games console, which
+      # nobody asked for and nothing would have announced.
       syncthing = {
         module = { name = "syncthing"; input = "clan-core"; };
         roles.peer.machines.miralda = {
           settings = {
             openDefaultPorts = true;
-            folders.public.path = "/home/lgo/Public";
+            folders.public = {
+              path    = "/home/lgo/Public";
+              devices = [ "miralda" "jens" "biene" ];
+            };
           };
         };
         roles.peer.machines.jens = {
           settings = {
             openDefaultPorts = true;
-            folders.public.path = "/home/lgo/Public";
+            folders.public = {
+              path    = "/home/lgo/Public";
+              devices = [ "miralda" "jens" "biene" ];
+            };
           };
         };
         roles.peer.machines.biene = {
           settings = {
             openDefaultPorts = true;
-            folders.public.path = "/home/sabine/Public";
+            folders.public = {
+              path    = "/home/sabine/Public";
+              devices = [ "miralda" "jens" "biene" ];
+            };
+          };
+        };
+
+        # ── The ROM library: ernst masters it, birte plays it offline ──────
+        #
+        # ernst's copy is the authoritative one — it is the tree RomM scans
+        # and the one that gets snapshotted (zdata/roms sets
+        # com.sun:auto-snapshot=true precisely because Syncthing is NOT a
+        # backup: it replicates deletions faithfully and within seconds).
+        #
+        # birte's copy is what makes the Deck work away from the house. That
+        # was the whole reason a network mount was rejected in favour of a
+        # full second copy; see the header of
+        # machines/ernst/containers/romm.nix.
+        #
+        # The two paths differ because each machine already had a right answer
+        # for where large game data lives: ernst's own dataset, and birte's
+        # @games subvolume, which is outside the rollback and outside the
+        # impermanence bind-mounts.  Syncthing does not care that they differ.
+        #
+        # ── TWO FOLDERS, NOT ONE ROOT ─────────────────────────────────────
+        #
+        # The obvious shape — one folder pairing ernst's /srv/roms with
+        # birte's /games/retrodeck — is wrong, because those two directories
+        # are not the same set of things.  RetroDECK's data folder also holds
+        # `saves/`, `states/` and `.downloaded_media/`, so a root-level pair
+        # would push the Deck's save games and its whole scraped-art cache
+        # onto the server as a side effect of syncing ROMs.
+        #
+        # `roms` and `bios` are exactly the subtrees that correspond on both
+        # machines, so those are the folders. Saves stay local to the Deck;
+        # if they should be replicated too, that is a separate decision with
+        # its own conflict semantics (two machines playing the same game),
+        # not something to acquire by accident.
+        roles.peer.machines.ernst = {
+          settings = {
+            openDefaultPorts = true;
+            folders.roms = { path = "/srv/roms/roms"; devices = [ "ernst" "birte" ]; };
+            folders.bios = { path = "/srv/roms/bios"; devices = [ "ernst" "birte" ]; };
+          };
+        };
+        roles.peer.machines.birte = {
+          settings = {
+            openDefaultPorts = true;
+            folders.roms = { path = "/games/retrodeck/roms"; devices = [ "ernst" "birte" ]; };
+            folders.bios = { path = "/games/retrodeck/bios"; devices = [ "ernst" "birte" ]; };
           };
         };
       };

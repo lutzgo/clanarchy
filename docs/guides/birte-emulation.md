@@ -140,23 +140,95 @@ the server and be consumed directly by the Deck instead of scraping per-device.
 [romm]: https://romm.app/
 [romm-exports]: https://docs.romm.app/latest/reference/exports/
 
-### Where the library should live — not yet decided
+### Where the library lives: ernst masters, birte syncs
 
-RomM is Docker/Compose upstream; on `ernst` it would be another podman
-container alongside the existing ones, behind traefik and authelia, with the
-library on `zdata`. That part is routine. The part that is a real decision is
-**where the authoritative library lives**, because it changes what birte mounts:
+`machines/ernst/containers/romm.nix` runs RomM on the podman tier — its third
+occupant, after TubeSync and Storyteller — at `romm.<domain>` behind Authelia.
 
-| | Library on ernst, birte mounts it | Library mastered on ernst, synced to birte |
-|---|---|---|
-| **Mechanism** | NFS/SMB export → mounted at `/games/retrodeck/roms` | Syncthing (already in the clan) replicates into `/games/retrodeck` |
-| **Deck away from home** | no games | full library offline |
-| **Disk on birte** | almost none | a full copy |
-| **Saves** | naturally shared | need their own sync decision, and conflict on concurrent play |
+```
+ernst   /srv/roms/            ← zdata/roms, the authoritative library
+          roms/<platform>/         RomM scans this
+          bios/<platform>/
+             │
+        Syncthing (folders `roms` and `bios`)
+             │
+birte   /games/retrodeck/
+          roms/<system>/           RetroDECK plays this, offline
+          bios/
+          saves/ states/ …        ← NOT synced, deck's alone
+```
 
-For a handheld that leaves the house, the sync option is the one that matches
-how the device is actually used; the mount option is simpler and strictly
-better for a machine that never moves.
+A **network mount was rejected**. It is simpler and avoids the second copy, and
+it makes the library unreachable whenever the Deck is away from the house —
+which is what a Steam Deck is *for*. The cost of the choice actually made is a
+full second copy on birte's NVMe, taken deliberately.
 
-Nothing for RomM is built yet — this section is the design, not a description
-of something deployed.
+Three details in that diagram are load-bearing:
+
+- **Two Syncthing folders, not one root.** Pairing `/srv/roms` with
+  `/games/retrodeck` wholesale would push the Deck's save games and its entire
+  scraped-art cache onto the server as a side effect. `roms` and `bios` are
+  exactly the subtrees that correspond on both machines.
+- **Saves are not synced.** That is a separate decision with its own conflict
+  semantics (two machines, same game, two save files) and should not be
+  acquired by accident.
+- **Syncthing is not a backup** — it replicates deletions faithfully and fast.
+  `zdata/roms` therefore sets `com.sun:auto-snapshot=true`, unlike its
+  neighbours `/srv/media` and `/srv/games` which opt out as re-acquirable.
+  Snapshots are the only thing between an accidental delete and losing it on
+  both machines within seconds.
+
+The library is on **its own dataset, not under `/srv/games`**, and the reason is
+the `exec` property: `/srv/games` carries exec *on* because Steam and Questarr's
+PC games are binaries that must run. A ROM is data — an emulator reads it,
+nothing executes it — so `zdata/roms` is `exec=off,setuid=off,devices=off`.
+
+### Deploying it
+
+`zdata/roms` must be created by hand before the first deploy that carries it,
+like every other dataset on that pool — see
+[ernst zdata datasets](ernst-zdata-datasets.md). Then:
+
+```bash
+clan machines update ernst
+clan machines update birte
+```
+
+Syncthing pairing is automatic between clan peers (identities come from clan
+vars), but the folders must be **accepted once** in each machine's Syncthing UI.
+
+### After the first start
+
+- **Metadata.** Only [Hasheous](https://hasheous.org/) is enabled out of the
+  box, because it is the one source needing no account. IGDB, SteamGridDB,
+  ScreenScraper and RetroAchievements each want credentials tied to a personal
+  account; add them as environment variables when you have them. They are
+  deliberately not clan vars — a `prompts` generator would block
+  `clan vars generate ernst` on values that may not exist yet.
+- **Platform names.** RomM matches folder names against its own platform slugs
+  and RetroDECK uses ES-DE system names. They agree on the common ones and
+  diverge on others; map the rest under `system.platforms` in RomM's
+  `config.yml` (in `/srv/state/romm/config`) rather than renaming anything on
+  disk — the folder names on disk are what RetroDECK reads.
+- **ES-DE metadata export.** Enabling it in RomM's config writes a
+  `gamelist.xml` into each platform folder alongside `covers/` and
+  `screenshots/`. RetroDECK's frontend *is* ES-DE, so scraping happens once on
+  the server and the Deck consumes the result instead of scraping per-device.
+
+### What about Questarr?
+
+They are not integrated, and should not be:
+
+- **Different content.** Questarr acquires **PC games** through Prowlarr
+  indexers and files them into `/srv/games/questarr`. RomM manages **console
+  ROMs** for emulation. Neither reads the other's tree.
+- **The permission boundary is deliberate.** `/srv/games/questarr` is `0750
+  questarr:questarr` precisely so that nothing else has a foothold on the one
+  dataset in the pool where files may execute. Pointing RomM at it would
+  breach a decision `containers/arr.nix` argues for at length.
+- **There is no hand-off to build.** Questarr's output tree is not
+  `roms/<platform>/`, so RomM would index it as noise.
+
+The one genuine overlap is **IGDB**: both use it for metadata, so the same IGDB
+client ID and secret work in both. That is credential reuse in a UI, not a data
+path — nothing in this repo wires it.

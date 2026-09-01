@@ -304,6 +304,11 @@ let
   storytellerAddr = "10.0.90.20";
   storytellerPort = 8001;
 
+  # RomM — the ROM library manager on the podman tier (containers/romm.nix).
+  # Its netns firewall accepts this address and no other on ${toString rommPort}.
+  rommAddr = "10.0.90.22";
+  rommPort = 8080;
+
   # slskd's web UI, in the MICROVM guest — the first backend here that is not
   # an nspawn container or a podman netns.
   #
@@ -1182,6 +1187,25 @@ in
               service     = "storyteller";
             };
 
+            # ── RomM: admin route, behind Authelia ────────────────────────
+            #
+            # The usual admin-surface shape, and NOT one of the client-
+            # compatibility carve-outs.  RomM has its own login and an
+            # EmulatorJS in-browser player, but every consumer here is a
+            # browser on a name the M5 wildcard already covers — the Deck
+            # reads its games from a Syncthing replica on local disk, not
+            # through this route, so there is no native client whose token
+            # handling a forward-auth redirect could break.
+            #
+            # That distinction matters because it is exactly the argument
+            # Jellyfin and Audiobookshelf won and this one does not get to.
+            romm = {
+              rule        = "Host(`romm.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "romm";
+            };
+
             # slskd's web UI — in the microvm guest, not a container.  Behind
             # `authelia` like every other admin surface; its own login exists
             # but is a single shared operator account, not per-user.
@@ -1361,6 +1385,7 @@ in
 
             # … and one more podman netns of its own, the tier's second.
             storyteller.loadBalancer.servers    = [ { url = "http://${storytellerAddr}:${toString storytellerPort}/"; } ];
+            romm.loadBalancer.servers           = [ { url = "http://${rommAddr}:${toString rommPort}/"; } ];
 
             # … and one in the microvm guest, the first non-container backend.
             slskd.loadBalancer.servers          = [ { url = "http://${slskdAddr}:${toString slskdPort}/"; } ];

@@ -276,6 +276,44 @@
           };
         };
 
+        # /srv/roms — the ROM library RomM manages (containers/romm.nix), and
+        # the master copy that Syncthing replicates to birte's RetroDECK.
+        #
+        # ITS OWN DATASET RATHER THAN A DIRECTORY UNDER /srv/games, and the
+        # difference is the exec property.  /srv/games carries exec ON because
+        # Steam and Questarr's PC games are binaries that must run.  A ROM is
+        # data — an emulator reads it, nothing ever executes it — so putting
+        # thousands of files downloaded from the internet on the one dataset in
+        # this pool where files are allowed to run would be gratuitous.
+        # containers/arr.nix makes the same argument in the other direction
+        # when it refuses to let `media` near /srv/games.
+        #
+        # recordsize=1M: dominated by large disc images.  ZFS uses variable
+        #   block sizes up to recordsize, so the small cartridge ROMs are not
+        #   padded out to 1M.  Cannot be changed retroactively — set at birth.
+        # exec/setuid/devices=off: see above.
+        # com.sun:auto-snapshot=true, and this is the one place this dataset
+        #   differs from its neighbours /srv/media and /srv/games, which both
+        #   opt out as large and re-acquirable.  A ROM library is neither:
+        #   dumps are not re-downloadable on demand.  More to the point, the
+        #   birte replica is SYNCTHING, and Syncthing is not a backup — it
+        #   propagates deletions faithfully.  Snapshots are the only thing
+        #   standing between an accidental delete and losing it on both
+        #   machines within seconds.
+        roms = {
+          type = "zfs_fs";
+          mountpoint = "/srv/roms";
+          options = {
+            mountpoint = "legacy";
+            recordsize = "1M";
+            exec       = "off";
+            setuid     = "off";
+            devices    = "off";
+            atime      = "off";
+            "com.sun:auto-snapshot" = "true";
+          };
+        };
+
         # /srv/unsorted — everything worth keeping off the retired Arch server
         # (tomala-server001) that is not media: photos, documents, ebooks,
         # audiobooks, per-person folders.  ~485 GB.
