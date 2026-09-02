@@ -268,6 +268,94 @@ vars), but the folders must be **accepted once** in each machine's Syncthing UI.
   `screenshots/`. RetroDECK's frontend *is* ES-DE, so scraping happens once on
   the server and the Deck consumes the result instead of scraping per-device.
 
+### Importing a downloaded collection into the library
+
+Grabs from Prowlarr and Questarr land in qBittorrent's completed folder, not in
+the library — deliberately. The two are different things: `/srv/media/torrents`
+is a download area the client still owns, and `/srv/roms` is the curated tree
+RomM indexes and Syncthing replicates.
+
+**COPY, never move.** qBittorrent goes on seeding what it downloaded; moving
+the files out from under it breaks the torrent and stops the seed.
+
+A worked example — a 174 MB `.7z` grabbed as
+`Nintendo for PC (Every NES Rom and Emu EVER)`:
+
+```console
+$ 7z l -slt "…/3538 NES ROMS … with ALL Emulators.7z" | grep ^Path | cut -d/ -f2 | sort -u
+Emulators          ← Windows .exe / .dll — NOT wanted
+Roms               ← 3537 × .nes — this is the part you want
+```
+
+Collections routinely bundle Windows emulators alongside the ROMs. Take only
+the ROM directory. (`/srv/roms` is `exec=off` anyway, so a bundled `.exe` could
+not run from there even if copied — see the dataset note above.)
+
+Run on ernst. Set the four variables at the top and the rest is generic — the
+archive's inner path (`*/Roms/*`) and the ROM extension are the only things
+that change between collections.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+SRC="/srv/media/torrents/complete/<torrent folder>"   # what qBittorrent downloaded
+INNER='*/Roms/*'                                      # subtree to take; see 7z l below
+EXT=nes                                               # ROM extension to keep
+PLATFORM=nes                                          # ES-DE's directory name
+ROMM_UID=3029
+
+DEST="/srv/roms/roms/${PLATFORM}"
+ARCHIVE=$(find "$SRC" -maxdepth 1 \( -name '*.7z' -o -name '*.zip' -o -name '*.rar' \) | head -1)
+
+# Stage on the SAME dataset, so the copy is a rename-speed local copy and a
+# half-finished extraction never lands in the library.
+STAGE=$(mktemp -d /srv/roms/.import.XXXXXX)
+trap 'rm -rf "$STAGE"' EXIT
+
+# 1. Extract ONLY the ROM subtree — not the bundled emulators.
+nix shell nixpkgs#p7zip -c 7z x "$ARCHIVE" -o"$STAGE" "$INNER" -bso0 -bsp0
+
+# 2. Look before you copy: confirm the extension and the count.
+find "$STAGE" -type f | sed 's/.*\.//' | tr 'A-Z' 'a-z' | sort | uniq -c | sort -rn | head -5
+
+# 3. Copy in. -n so a re-run never overwrites an existing curated file.
+install -d -o "$ROMM_UID" -g romm -m 2770 "$DEST"
+find "$STAGE" -type f -iname "*.${EXT}" -exec cp -n -t "$DEST" {} +
+
+# 4. Ownership: the setgid bit fixes the group, not the owner.
+chown -R "${ROMM_UID}:romm" "$DEST"
+```
+
+To find `INNER` for an unfamiliar archive, list its second-level directories
+first — this is what tells you the emulators are in there:
+
+```console
+$ 7z l -slt "$ARCHIVE" | grep ^Path | cut -d/ -f2 | sort -u
+Emulators
+Roms
+```
+
+Then **Scan** in RomM. Check afterwards:
+
+```bash
+find "/srv/roms/roms/${PLATFORM}" -type f | wc -l          # matches step 2's count
+find "/srv/roms/roms/${PLATFORM}" -type f -size 0 | wc -l  # must be 0
+find /srv/roms/roms -name gamelist.xml                     # ES-DE export produced metadata
+```
+
+Do not judge the result by `du -sh` alone: `zdata/roms` is zstd-compressed, so
+a real import of 3537 NES ROMs reports **691M apparent / 366M on disk**. Use
+the file count and a zero-byte check instead.
+
+and the files appear on birte under `/games/retrodeck/roms/nes/` once Syncthing
+catches up.
+
+If the platform shows as **"Unknown"** in RomM, the folder name is not one of
+its slugs — add a `system.platforms` mapping in
+`/srv/state/romm/config/config.yml` and restart `podman-romm`. Do not rename the
+folder: ES-DE reads that name literally and cannot be remapped.
+
 ### What about Questarr?
 
 They are not integrated, and should not be:
