@@ -1643,46 +1643,7 @@ in
           iptables -A nixos-fw -p tcp -s ${monitoringAddr}/32 --dport ${toString port} -j nixos-fw-accept
         '') [
           scraparrPort
-        ]
-
-        # ── THE DOWNLOAD CLIENT REACHES PROWLARR.  Deliberate widening ─────
-        #
-        # `slskdAddr` is 10.0.90.11 — the wg-qbittorrent microvm, which every
-        # other comment in this file works to keep AWAY from these ports.  This
-        # rule is the one exception, and it exists because of how Questarr
-        # hands work to a download client.
-        #
-        # Sonarr, Radarr and Lidarr fetch a .torrent themselves and upload the
-        # FILE to qBittorrent.  Questarr instead passes a URL and lets the
-        # client fetch it — and the URL it passes is Prowlarr's, as Questarr
-        # sees it.  Questarr shares this container with Prowlarr, so that URL
-        # is `http://localhost:9696/<id>/download?apikey=…`, and localhost in
-        # the microvm is not Prowlarr.  qBittorrent's own log, measured:
-        #
-        #   Downloading torrent... Source: "http://localhost:9696/1/download?…"
-        #   Failed to add torrent.  Source: "http://localhost:9696/1/download?…"
-        #
-        # Questarr reports `{"success":true,"message":"Download queued in
-        # qBittorrent"}` regardless, because qBittorrent answers HTTP 200 with
-        # a failure BODY that Questarr does not read.  Nothing appears anywhere
-        # and nothing is logged as an error — which is why this cost a session
-        # to find.
-        #
-        # WHAT IT COSTS, stated rather than buried: the one workload on this
-        # box that talks to the open internet on its own behalf can now reach
-        # Prowlarr's API port.  Two things bound that, and neither is an
-        # argument that the widening is free:
-        #
-        #   - Only 9696, and only from that one address.  The web UIs of every
-        #     other service here remain traefik-only.
-        #   - The API key is ALREADY inside the download URLs qBittorrent is
-        #     handed, so this grants network reach, not a new credential.
-        #
-        # Questarr's Prowlarr URL must be set to http://<this container>:9696
-        # to match; leaving it at localhost keeps the old failure.
-        + ''
-          iptables -A nixos-fw -p tcp -s ${slskdAddr}/32 --dport ${toString prowlarrPort} -j nixos-fw-accept
-        '';
+        ];
 
       ##########################################################################
       # Users.  Numeric ids are the interface across the nspawn boundary.
