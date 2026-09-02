@@ -268,6 +268,66 @@ vars), but the folders must be **accepted once** in each machine's Syncthing UI.
   `screenshots/`. RetroDECK's frontend *is* ES-DE, so scraping happens once on
   the server and the Deck consumes the result instead of scraping per-device.
 
+### Importing a downloaded collection into the library
+
+Grabs from Prowlarr and Questarr land in qBittorrent's completed folder, not in
+the library — deliberately. The two are different things: `/srv/media/torrents`
+is a download area the client still owns, and `/srv/roms` is the curated tree
+RomM indexes and Syncthing replicates.
+
+**COPY, never move.** qBittorrent goes on seeding what it downloaded; moving
+the files out from under it breaks the torrent and stops the seed.
+
+A worked example — a 174 MB `.7z` grabbed as
+`Nintendo for PC (Every NES Rom and Emu EVER)`:
+
+```console
+$ 7z l -slt "…/3538 NES ROMS … with ALL Emulators.7z" | grep ^Path | cut -d/ -f2 | sort -u
+Emulators          ← Windows .exe / .dll — NOT wanted
+Roms               ← 3537 × .nes — this is the part you want
+```
+
+Collections routinely bundle Windows emulators alongside the ROMs. Take only
+the ROM directory. (`/srv/roms` is `exec=off` anyway, so a bundled `.exe` could
+not run from there even if copied — see the dataset note above.)
+
+```bash
+ssh root@ernst.goclan.org
+
+SRC="/srv/media/torrents/complete/<torrent folder>"
+STAGE=$(mktemp -d /srv/roms/.import.XXXXXX)   # same dataset -> no cross-device copy
+
+# 1. Extract ONLY the ROM subtree, flattening the archive's own top directory.
+nix shell nixpkgs#p7zip -c 7z x "$SRC"/*.7z -o"$STAGE" '*/Roms/*'
+
+# 2. Look before you copy — confirm the extension and the count.
+find "$STAGE" -type f | sed 's/.*\.//' | sort | uniq -c | sort -rn | head
+
+# 3. Copy into the platform folder. Directory name must be the one ES-DE uses;
+#    RomM is remapped to it in config.yml, never the other way round.
+install -d -o 3029 -g romm -m 2770 /srv/roms/roms/nes
+find "$STAGE" -type f -iname '*.nes' -exec cp -n -t /srv/roms/roms/nes {} +
+
+# 4. Ownership. The setgid bit fixes the group, not the owner.
+chown -R 3029:romm /srv/roms/roms/nes
+rm -rf "$STAGE"
+```
+
+Then **Scan** in RomM. Check afterwards:
+
+```bash
+find /srv/roms/roms/nes -type f | wc -l      # matches step 2's count
+find /srv/roms/roms -name gamelist.xml       # ES-DE export produced metadata
+```
+
+and the files appear on birte under `/games/retrodeck/roms/nes/` once Syncthing
+catches up.
+
+If the platform shows as **"Unknown"** in RomM, the folder name is not one of
+its slugs — add a `system.platforms` mapping in
+`/srv/state/romm/config/config.yml` and restart `podman-romm`. Do not rename the
+folder: ES-DE reads that name literally and cannot be remapped.
+
 ### What about Questarr?
 
 They are not integrated, and should not be:
