@@ -405,6 +405,61 @@ in
     '';
   };
 
+  # ── Metadata provider credentials.  PROMPTED, not generated ─────────────
+  #
+  # The three above are generated because nobody types them.  These are the
+  # opposite: they are credentials for accounts that exist outside this clan,
+  # so the only source is the operator.
+  #
+  # THEY ARE NOT A UI SETTING.  RomM reads every metadata provider's
+  # credentials from the ENVIRONMENT at startup and its API only reports which
+  # sources came out enabled — `/api/heartbeat` on 5.2.0 answers
+  #
+  #   "STEAMGRIDDB_API_ENABLED": false, "IGDB_API_ENABLED": false,
+  #   "HASHEOUS_API_ENABLED": true
+  #
+  # so there is no field in the web UI that could set them.  That is why this
+  # is a clan var and a container env var rather than a note telling someone to
+  # click something.
+  #
+  # OPTIONAL BY CONSTRUCTION.  An empty answer is a valid answer: RomM treats a
+  # missing or empty key as "source disabled" and carries on with Hasheous,
+  # which needs no account at all.  So this prompt never blocks a deploy on a
+  # credential the operator does not have yet — press enter and revisit it with
+  # `clan vars generate ernst --generator romm-metadata-keys --regenerate`.
+  clan.core.vars.generators.romm-metadata-keys = {
+    files."steamgriddb-api-key".secret = true;
+    files."igdb-client-id".secret      = true;
+    files."igdb-client-secret".secret  = true;
+
+    prompts."steamgriddb-api-key" = {
+      description = "SteamGridDB API key for RomM cover art (steamgriddb.com/profile/preferences/api) — blank to leave disabled";
+      type        = "hidden";
+    };
+    # IGDB is RomM's primary metadata source and the one that fills in names,
+    # release dates and genres; SteamGridDB only supplies artwork.  Prompted
+    # together because they are the same errand, and because the same IGDB
+    # application already backs Questarr.
+    prompts."igdb-client-id" = {
+      description = "IGDB (Twitch) client ID for RomM metadata — blank to leave disabled";
+      type        = "hidden";
+    };
+    prompts."igdb-client-secret" = {
+      description = "IGDB (Twitch) client secret for RomM metadata — blank to leave disabled";
+      type        = "hidden";
+    };
+
+    runtimeInputs = [ pkgs.coreutils ];
+    script = ''
+      # `tr -d` strips the trailing newline the prompt adds: these end up in an
+      # env file, where a newline would terminate the value early and leave the
+      # next line looking like a stray assignment.
+      for f in steamgriddb-api-key igdb-client-id igdb-client-secret; do
+        tr -d '\n' < "$prompts/$f" > "$out/$f"
+      done
+    '';
+  };
+
   clan.core.vars.generators.romm-db-root-password = {
     files."password".secret = true;
     runtimeInputs = [ pkgs.coreutils pkgs.openssl ];
@@ -443,6 +498,10 @@ in
         authKey = config.clan.core.vars.generators.romm-auth-secret.files."secret-key".path;
         dbPw    = config.clan.core.vars.generators.romm-db-password.files."password".path;
         rootPw  = config.clan.core.vars.generators.romm-db-root-password.files."password".path;
+        meta    = config.clan.core.vars.generators.romm-metadata-keys.files;
+        sgdbKey = meta."steamgriddb-api-key".path;
+        igdbId  = meta."igdb-client-id".path;
+        igdbSec = meta."igdb-client-secret".path;
       in
       ''
         set -eu
@@ -452,11 +511,17 @@ in
         auth=$(${pkgs.coreutils}/bin/cat ${authKey})
         dbpw=$(${pkgs.coreutils}/bin/cat ${dbPw})
         rootpw=$(${pkgs.coreutils}/bin/cat ${rootPw})
+        sgdb=$(${pkgs.coreutils}/bin/cat ${sgdbKey})
+        igdbid=$(${pkgs.coreutils}/bin/cat ${igdbId})
+        igdbsec=$(${pkgs.coreutils}/bin/cat ${igdbSec})
 
         ${pkgs.coreutils}/bin/install -m 0400 -o root -g root /dev/null ${secretsDir}/romm.env
         ${pkgs.coreutils}/bin/cat > ${secretsDir}/romm.env <<EOF
         ROMM_AUTH_SECRET_KEY=$auth
         DB_PASSWD=$dbpw
+        STEAMGRIDDB_API_KEY=$sgdb
+        IGDB_CLIENT_ID=$igdbid
+        IGDB_CLIENT_SECRET=$igdbsec
         EOF
 
         ${pkgs.coreutils}/bin/install -m 0400 -o root -g root /dev/null ${secretsDir}/romm-db.env
