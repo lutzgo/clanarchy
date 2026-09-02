@@ -283,10 +283,10 @@ in
             #   fdda:…       ZeroTier, and the important one: `clan machines
             #                update` connects over ZeroTier, so leaving it out
             #                would miss the one path that actually deploys.
-            "jens jens.local jens.skynet.lan 10.0.10.173 fdda:106a:123a:d561:1099:9389:afa5:121b" = {
+            "jens jens.local jens.goclan.org jens.skynet.lan 10.0.10.173 fdda:106a:123a:d561:1099:9389:afa5:121b" = {
               PubkeyAuthentication = "unbound";
             };
-            "ernst ernst.local ernst.skynet.lan 10.0.50.10 fdda:106a:123a:d561:1099:933e:4c60:711f" = {
+            "ernst ernst.local ernst.goclan.org ernst.skynet.lan 10.0.50.10 fdda:106a:123a:d561:1099:933e:4c60:711f" = {
               PubkeyAuthentication = "unbound";
             };
             # birte serves a CA-signed cert host key like ernst, so it hits the
@@ -294,7 +294,28 @@ in
             # "signing failed for ED25519 ... agent refused operation" before
             # pinentry is ever reached. This is not a network fault, though it
             # looks exactly like one.
-            "birte birte.local birte.skynet.lan fdda:106a:123a:d561:1099:931a:a82e:da69" = {
+            #
+            # ── <name>.goclan.org WAS ADDED TO ALL THREE BLOCKS, 2026-09-02 ──
+            #
+            # Those names did not resolve until AAAA records for each machine's
+            # ZeroTier address were created in Technitium.  The moment they did,
+            # they became the names actually used — clan's default target is
+            # `<name>.<domain>` and the host certificates are issued for exactly
+            # that principal — and every one of them bypassed the workaround:
+            #
+            #   ssh -G root@birte.local        -> pubkeyauthentication unbound
+            #   ssh -G root@birte.goclan.org   -> pubkeyauthentication true
+            #
+            # ssh_config matches the Host NAME AS TYPED, never the resolved
+            # address, so a pattern list covering birte.local and the ZeroTier
+            # address says nothing about a third name pointing at the same host.
+            # This is the failure mode already recorded for `ernst-zt` below;
+            # it recurred because a new alias appeared from outside the repo.
+            #
+            # THE RULE: any new way of naming a machine has to be added here at
+            # the same time, or it re-triggers a bug that looks like the network
+            # being down.
+            "birte birte.local birte.goclan.org birte.skynet.lan fdda:106a:123a:d561:1099:931a:a82e:da69" = {
               PubkeyAuthentication = "unbound";
             };
             # Stage-1 (initrd) sshd for remote zroot unlock.  Different sshd,
