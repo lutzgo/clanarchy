@@ -291,34 +291,62 @@ Collections routinely bundle Windows emulators alongside the ROMs. Take only
 the ROM directory. (`/srv/roms` is `exec=off` anyway, so a bundled `.exe` could
 not run from there even if copied — see the dataset note above.)
 
+Run on ernst. Set the four variables at the top and the rest is generic — the
+archive's inner path (`*/Roms/*`) and the ROM extension are the only things
+that change between collections.
+
 ```bash
-ssh root@ernst.goclan.org
+#!/usr/bin/env bash
+set -euo pipefail
 
-SRC="/srv/media/torrents/complete/<torrent folder>"
-STAGE=$(mktemp -d /srv/roms/.import.XXXXXX)   # same dataset -> no cross-device copy
+SRC="/srv/media/torrents/complete/<torrent folder>"   # what qBittorrent downloaded
+INNER='*/Roms/*'                                      # subtree to take; see 7z l below
+EXT=nes                                               # ROM extension to keep
+PLATFORM=nes                                          # ES-DE's directory name
+ROMM_UID=3029
 
-# 1. Extract ONLY the ROM subtree, flattening the archive's own top directory.
-nix shell nixpkgs#p7zip -c 7z x "$SRC"/*.7z -o"$STAGE" '*/Roms/*'
+DEST="/srv/roms/roms/${PLATFORM}"
+ARCHIVE=$(find "$SRC" -maxdepth 1 \( -name '*.7z' -o -name '*.zip' -o -name '*.rar' \) | head -1)
 
-# 2. Look before you copy — confirm the extension and the count.
-find "$STAGE" -type f | sed 's/.*\.//' | sort | uniq -c | sort -rn | head
+# Stage on the SAME dataset, so the copy is a rename-speed local copy and a
+# half-finished extraction never lands in the library.
+STAGE=$(mktemp -d /srv/roms/.import.XXXXXX)
+trap 'rm -rf "$STAGE"' EXIT
 
-# 3. Copy into the platform folder. Directory name must be the one ES-DE uses;
-#    RomM is remapped to it in config.yml, never the other way round.
-install -d -o 3029 -g romm -m 2770 /srv/roms/roms/nes
-find "$STAGE" -type f -iname '*.nes' -exec cp -n -t /srv/roms/roms/nes {} +
+# 1. Extract ONLY the ROM subtree — not the bundled emulators.
+nix shell nixpkgs#p7zip -c 7z x "$ARCHIVE" -o"$STAGE" "$INNER" -bso0 -bsp0
 
-# 4. Ownership. The setgid bit fixes the group, not the owner.
-chown -R 3029:romm /srv/roms/roms/nes
-rm -rf "$STAGE"
+# 2. Look before you copy: confirm the extension and the count.
+find "$STAGE" -type f | sed 's/.*\.//' | tr 'A-Z' 'a-z' | sort | uniq -c | sort -rn | head -5
+
+# 3. Copy in. -n so a re-run never overwrites an existing curated file.
+install -d -o "$ROMM_UID" -g romm -m 2770 "$DEST"
+find "$STAGE" -type f -iname "*.${EXT}" -exec cp -n -t "$DEST" {} +
+
+# 4. Ownership: the setgid bit fixes the group, not the owner.
+chown -R "${ROMM_UID}:romm" "$DEST"
+```
+
+To find `INNER` for an unfamiliar archive, list its second-level directories
+first — this is what tells you the emulators are in there:
+
+```console
+$ 7z l -slt "$ARCHIVE" | grep ^Path | cut -d/ -f2 | sort -u
+Emulators
+Roms
 ```
 
 Then **Scan** in RomM. Check afterwards:
 
 ```bash
-find /srv/roms/roms/nes -type f | wc -l      # matches step 2's count
-find /srv/roms/roms -name gamelist.xml       # ES-DE export produced metadata
+find "/srv/roms/roms/${PLATFORM}" -type f | wc -l          # matches step 2's count
+find "/srv/roms/roms/${PLATFORM}" -type f -size 0 | wc -l  # must be 0
+find /srv/roms/roms -name gamelist.xml                     # ES-DE export produced metadata
 ```
+
+Do not judge the result by `du -sh` alone: `zdata/roms` is zstd-compressed, so
+a real import of 3537 NES ROMs reports **691M apparent / 366M on disk**. Use
+the file count and a zero-byte check instead.
 
 and the files appear on birte under `/games/retrodeck/roms/nes/` once Syncthing
 catches up.
