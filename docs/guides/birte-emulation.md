@@ -273,88 +273,150 @@ vars), but the folders must be **accepted once** in each machine's Syncthing UI.
 Grabs from Prowlarr and Questarr land in qBittorrent's completed folder, not in
 the library — deliberately. The two are different things: `/srv/media/torrents`
 is a download area the client still owns, and `/srv/roms` is the curated tree
-RomM indexes and Syncthing replicates.
+RomM indexes and Syncthing replicates. Nothing moves between them automatically,
+because deciding *which console a file belongs to* is a judgement call that ES-DE
+cannot undo later (see the "Unknown platform" note at the end).
 
-**COPY, never move.** qBittorrent goes on seeding what it downloaded; moving
-the files out from under it breaks the torrent and stops the seed.
-
-A worked example — a 174 MB `.7z` grabbed as
-`Nintendo for PC (Every NES Rom and Emu EVER)`:
-
-```console
-$ 7z l -slt "…/3538 NES ROMS … with ALL Emulators.7z" | grep ^Path | cut -d/ -f2 | sort -u
-Emulators          ← Windows .exe / .dll — NOT wanted
-Roms               ← 3537 × .nes — this is the part you want
-```
-
-Collections routinely bundle Windows emulators alongside the ROMs. Take only
-the ROM directory. (`/srv/roms` is `exec=off` anyway, so a bundled `.exe` could
-not run from there even if copied — see the dataset note above.)
-
-Run on ernst. Set the four variables at the top and the rest is generic — the
-archive's inner path (`*/Roms/*`) and the ROM extension are the only things
-that change between collections.
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-SRC="/srv/media/torrents/complete/<torrent folder>"   # what qBittorrent downloaded
-INNER='*/Roms/*'                                      # subtree to take; see 7z l below
-EXT=nes                                               # ROM extension to keep
-PLATFORM=nes                                          # ES-DE's directory name
-ROMM_UID=3029
-
-DEST="/srv/roms/roms/${PLATFORM}"
-ARCHIVE=$(find "$SRC" -maxdepth 1 \( -name '*.7z' -o -name '*.zip' -o -name '*.rar' \) | head -1)
-
-# Stage on the SAME dataset, so the copy is a rename-speed local copy and a
-# half-finished extraction never lands in the library.
-STAGE=$(mktemp -d /srv/roms/.import.XXXXXX)
-trap 'rm -rf "$STAGE"' EXIT
-
-# 1. Extract ONLY the ROM subtree — not the bundled emulators.
-nix shell nixpkgs#p7zip -c 7z x "$ARCHIVE" -o"$STAGE" "$INNER" -bso0 -bsp0
-
-# 2. Look before you copy: confirm the extension and the count.
-find "$STAGE" -type f | sed 's/.*\.//' | tr 'A-Z' 'a-z' | sort | uniq -c | sort -rn | head -5
-
-# 3. Copy in. -n so a re-run never overwrites an existing curated file.
-install -d -o "$ROMM_UID" -g romm -m 2770 "$DEST"
-find "$STAGE" -type f -iname "*.${EXT}" -exec cp -n -t "$DEST" {} +
-
-# 4. Ownership: the setgid bit fixes the group, not the owner.
-chown -R "${ROMM_UID}:romm" "$DEST"
-```
-
-To find `INNER` for an unfamiliar archive, list its second-level directories
-first — this is what tells you the emulators are in there:
+`rom-import` on ernst does the mechanical half. It is a NixOS-provided command
+declared in `machines/ernst/containers/romm.nix` — the same file that defines
+uid 3029, the `romm` group and the `/srv/roms` layout, so the tool cannot drift
+from the deployment the way a script pasted into a document does.
 
 ```console
-$ 7z l -slt "$ARCHIVE" | grep ^Path | cut -d/ -f2 | sort -u
-Emulators
-Roms
+$ ssh root@ernst.skynet.lan
+# rom-import
+rom-import — copy finished downloads into the RomM library.
+
+  rom-import list [-c CATS]            what qBittorrent has, in the ROM categories
+  rom-import inspect SRC               what is inside a folder or archive
+  rom-import copy [OPTS] PLATFORM SRC  copy/extract it into the library
+  rom-import unpack SRC                extract an archive to staging, print the path
+  rom-import clean                     delete the staging area
+  rom-import verify [PLATFORM]         file counts, zero-byte files, gamelist.xml
 ```
 
-Then **Scan** in RomM. Check afterwards:
+#### The workflow
+
+**1. What is ready?** `list` logs into qBittorrent's WebUI with the same clan
+var the arr stack uses and shows only the ROM categories:
+
+```console
+# rom-import list
+DONE  15.8G  prowlarr  /srv/media/torrents/complete/The_Legend_of_Zelda_BotW
+DONE  40.6G  prowlarr  /srv/media/torrents/complete/EverDrive-9-5-2018
+DONE  0G     prowlarr  /srv/media/torrents/complete/Amiga kick Rom all 3 - (1.3)(2.0)(3.1).rar
+29%   42.9G  prowlarr  /srv/media/torrents/incomplete/N3DS
+```
+
+**2. Look before you copy.** `inspect` works on a folder *or* an archive
+without extracting it, and the extension histogram is the useful half — it is
+what reveals that a "Mega Drive" pack is actually four consoles:
+
+```console
+# rom-import inspect '…/Mega EverDrive Pack v6.2.7z'
+== top level ==
+1 US - A-F
+3 Sega 32X
+3 Sega Master System & Mark III
+5 Sega CD Bios
+…
+== extensions ==
+   2772 sms
+   1701 bin
+   1628 md
+    109 sg
+     87 32x
+```
+
+**3. Copy it in.** The extension is what routes a file to the right console, so
+`-e` is the main control. `-n` shows the plan without touching anything:
+
+```console
+# rom-import copy -n -e nes nes '…/3538 NES ROMS with ALL Emulators.7z'
+```
+
+Sources are **copied, never moved** — qBittorrent goes on seeding what it
+downloaded, and moving files out from under it breaks the torrent.
+
+**4. Multi-console packs: unpack once, copy several times.** Running `copy`
+twice on one archive extracts it twice. `unpack` extracts to staging and prints
+the path, so each platform is one cheap pass over the same tree:
 
 ```bash
-find "/srv/roms/roms/${PLATFORM}" -type f | wc -l          # matches step 2's count
-find "/srv/roms/roms/${PLATFORM}" -type f -size 0 | wc -l  # must be 0
-find /srv/roms/roms -name gamelist.xml                     # ES-DE export produced metadata
+d=$(rom-import unpack '…/Mega EverDrive Pack v6.2.7z')
+rom-import copy -e md,smd genesis      "$d"
+rom-import copy -e 32x    sega32x      "$d"
+rom-import copy -e sms    mastersystem "$d"
+rom-import copy -e sg,sc  sg-1000      "$d"
+rom-import clean
 ```
 
-Do not judge the result by `du -sh` alone: `zdata/roms` is zstd-compressed, so
-a real import of 3537 NES ROMs reports **691M apparent / 366M on disk**. Use
-the file count and a zero-byte check instead.
+**5. Firmware goes to `bios/`, not `roms/`.** `-b` switches the destination
+tree — it is a separate Syncthing folder, and RetroDECK looks for BIOS images
+only there:
 
-and the files appear on birte under `/games/retrodeck/roms/nes/` once Syncthing
-catches up.
+```console
+# rom-import copy -b amiga '…/Amiga kick Rom all 3 - (1.3)(2.0)(3.1).rar'
+```
 
-If the platform shows as **"Unknown"** in RomM, the folder name is not one of
-its slugs — add a `system.platforms` mapping in
-`/srv/state/romm/config/config.yml` and restart `podman-romm`. Do not rename the
-folder: ES-DE reads that name literally and cannot be remapped.
+**6. Scan in RomM**, then `rom-import verify` for the whole library.
+
+#### Things that have actually gone wrong
+
+- **Collections bundle emulators.** A NES set shipped a Windows `Emulators/`
+  directory beside `Roms/`; a Switch grab hid Ryujinx *and* Yuzu inside the
+  same `.7z` as the game, and both landed in the library because the copy was
+  unfiltered. `copy` now warns when a nested archive matches, but the real fix
+  is passing `-e` with the ROM extension. (`/srv/roms` is `exec=off`, so a
+  bundled `.exe` could not run from there even if copied — see the dataset note
+  above — but it still pollutes the scan and gets replicated to birte.)
+- **`.rar` needs `unar`, not `7z`.** p7zip 17.x dropped the non-free Rar codec,
+  so `7z l` reports `Can not open the file as archive` on a perfectly good RAR.
+  `rom-import` dispatches to `lsar`/`unar` by extension; if you are doing it by
+  hand, do the same.
+- **The library is flat per platform.** Two files with the same basename in
+  different subdirectories of one archive collapse into one, and `cp -n` keeps
+  whichever it saw first. This is usually a regional or "unpadded" duplicate
+  and is fine — the Virtual Boy pack matched 427 files and landed 354 for
+  exactly that reason — but `copy` prints a `note:` line rather than hiding it.
+- **`du -sh` misleads.** `zdata/roms` is zstd-compressed, so 3537 NES ROMs
+  report **691M apparent / 366M on disk**. `verify` prints both, plus a
+  zero-byte count, which are the honest numbers.
+- **Ownership.** A fresh platform directory is `root:root`, and the setgid bit
+  fixes the *group* of new files, never the owner. `copy` chowns to 3029 after
+  every import; without that, RomM cannot write its resources beside the ROMs.
+
+#### If RomM shows the platform as "Unknown"
+
+The folder name is not one of RomM's slugs. **Do not rename the folder** — ES-DE
+on birte reads that name literally and cannot be remapped. Map it on RomM's side
+instead, in `/srv/state/romm/config/config.yml`:
+
+```yaml
+system:
+  platforms:
+    gc: ngc                    # ES-DE name : RomM slug
+    psx: ps
+    sega32x: sega32
+    atarilynx: lynx
+    mastersystem: sms
+    ngp: neo-geo-pocket
+    ngpc: neo-geo-pocket-color
+    sg-1000: sg1000
+```
+
+RomM re-reads `config.yml` live, so no restart is needed — confirm with:
+
+```console
+# podman exec romm python -c 'from config.config_manager import config_manager as cm; print(cm.get_config().PLATFORMS_BINDING)'
+```
+
+A quick way to find the slug RomM wants: it pre-creates a directory for every
+platform it knows, so `ls -d /srv/roms/roms/*lynx*` answers the question
+directly.
+
+The files appear on birte under `/games/retrodeck/roms/<platform>/` once
+Syncthing catches up.
 
 ### What about Questarr?
 

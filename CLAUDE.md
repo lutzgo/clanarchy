@@ -156,7 +156,8 @@ No `stylix.nix` or `wallpapers.nix`: `flake.nix` imports the shared `modules/the
 | `disko.nix` | Multi-disk hand-written disko: mirrored encrypted `zroot` (2× 960 GB SAS SSD) + raidz1 encrypted `zdata` (6× 15.36 TB SAS SSD). Does NOT use `modules/disko/base.nix` |
 | `hardware-configuration.nix` | Bootloader + kernel modules for the AM5 / X870E board |
 | `htpc.nix` | `go` user (couch account, deliberately not in `wheel`) + password vars generator; Steam library symlinked onto `zdata/games` |
-| `containers/romm.nix` | RomM — ROM library manager, podman tier's third occupant. Masters `zdata/roms`, which Syncthing replicates to birte's RetroDECK. See [docs/guides/birte-emulation.md](docs/guides/birte-emulation.md) |
+| `containers/romm.nix` | RomM — ROM library manager, podman tier's third occupant. Masters `zdata/roms`, which Syncthing replicates to birte's RetroDECK. Also declares the `rom-import` command. See [docs/guides/birte-emulation.md](docs/guides/birte-emulation.md) |
+| `rom-import.sh` | Body of `rom-import` (moving finished downloads into the ROM library). Not standalone — `containers/romm.nix` prepends the uid/gid/path constants and wraps it in `writeShellApplication`, so the tool cannot drift from the deployment |
 
 ### Shared Module Layout (`modules/`)
 

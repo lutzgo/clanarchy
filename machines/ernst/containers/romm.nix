@@ -663,4 +663,71 @@ in
       CPUWeight = 40;
     };
   };
+
+  ##############################################################################
+  # `rom-import` — moving a finished download into the library.
+  #
+  # This lives here, rather than in a script pasted into the guide, for one
+  # reason: the constants below (uid 3029, the `romm` gid, /srv/roms, the
+  # roms/bios split) are DEFINED in this file, and a copy of them in a document
+  # is a copy that goes stale silently.  The tool is generated from the same
+  # `let` bindings the container is, so it cannot disagree with the deployment.
+  #
+  # WHY A TOOL AND NOT `cp`.  Every import has to get four things right, and
+  # each of them has already cost a session:
+  #
+  #   1. COPY, NEVER MOVE.  qBittorrent goes on seeding what it downloaded;
+  #      moving the files out from under it kills the torrent.
+  #   2. Collections bundle EMULATORS.  A Switch grab shipped Ryujinx and Yuzu
+  #      inside the same archive, and they landed in the library because the
+  #      copy was unfiltered.  Hence -e, and the nested-archive warning.
+  #   3. Ownership.  A fresh directory is root:root and the setgid bit fixes
+  #      only the GROUP of new files, never the owner — so RomM (uid 3029)
+  #      cannot write its own resources next to ROMs it cannot chown.
+  #   4. Staging must be on the SAME dataset and OUTSIDE roms/ and bios/.
+  #      Those two directories are Syncthing folders and RomM's scan targets;
+  #      a half-extracted 8 GB pack visible there gets replicated to birte and
+  #      indexed mid-flight.  /srv/roms/.staging is on the dataset (so the copy
+  #      is rename-speed) but in neither folder.
+  #
+  # The one thing it does NOT do is decide WHICH platform a file belongs to.
+  # That needs a human: the directory name is read literally by ES-DE on birte
+  # and cannot be remapped afterwards.  See docs/guides/birte-emulation.md.
+  ##############################################################################
+
+  environment.systemPackages = [
+    (pkgs.writeShellApplication {
+      name = "rom-import";
+
+      runtimeInputs = with pkgs; [
+        coreutils findutils gnugrep gnused gawk
+        p7zip          # .7z and .zip
+        unar           # .rar — p7zip 17.x dropped the non-free Rar codec, so
+                       # `7z l` reports "Can not open the file as archive" on a
+                       # perfectly good RAR.  lsar/unar are the free path.
+        curl jq        # the qBittorrent WebUI API, for `rom-import list`
+        util-linux     # column
+      ];
+
+      text = ''
+        LIB=${libraryDir}
+        ROMM_UID=${toString rommUid}
+        ROMM_GID=${toString rommGid}
+
+        # qBittorrent runs in the WireGuard microvm; its WebUI is reachable on
+        # the container VLAN.  The password is the SAME clan var the arr stack
+        # authenticates with — one generator, and this is a third consumer, so
+        # a rotation cannot leave this tool behind holding a stale copy.
+        QBT=http://10.0.90.11:8080
+        # Quoted deliberately: to shellcheck a bare `admin` reads as a command
+        # substitution that lost its $( ) — SC2209, and writeShellApplication
+        # fails the build on it.
+        QBT_USER="admin"
+        QBT_PWFILE=${config.clan.core.vars.generators.qbittorrent-webui.files."password".path}
+        CATS=prowlarr,games
+
+        ${builtins.readFile ../rom-import.sh}
+      '';
+    })
+  ];
 }
