@@ -386,6 +386,38 @@ only there:
   fixes the *group* of new files, never the owner. `copy` chowns to 3029 after
   every import; without that, RomM cannot write its resources beside the ROMs.
 
+#### Scanning a large library
+
+A scan is an rq job, and it is **serial by default and hard-capped at four
+hours** — `SCAN_WORKERS` is an `asyncio.Semaphore` that defaults to 1, and
+`SCAN_TIMEOUT` defaults to 14400 seconds. `containers/romm.nix` raises both,
+and the reason is worth knowing because the failure mode is so quiet:
+
+- Measured throughput at the default of one worker was **~150 ROMs/hour**,
+  falling from 235 in the first hour to 93 by the fourth. Every ROM is a round
+  trip to IGDB, SteamGridDB and Hasheous.
+- When the four-hour timeout fires, the job dies with
+  `rq.timeouts.JobTimeoutException`. ROMs already committed **survive**, so the
+  UI shows a plausible-looking partial library rather than an error — the first
+  real scan here reported 531 games across 3 platforms out of ~5000 files
+  across 5, and nothing said it had failed.
+- The `gamelist.xml` export runs at the **end** of the job, so a scan that
+  times out produces no ES-DE metadata at all. This is worth spelling out
+  because it looks exactly like a misconfiguration: `scan.gamelist.export` can
+  be correctly set to `true`, be read correctly, and still never write a file.
+
+So if `gamelist.xml` is missing, check whether the scan actually finished before
+touching the config:
+
+```bash
+podman logs romm 2>&1 | grep -c "Auto-export"       # 0 = the export never ran
+podman logs romm 2>&1 | grep -A3 JobTimeoutException
+```
+
+Scans are resumable — a quick scan skips what is already indexed — and RomM's
+UI can scan a single platform at a time. For a library this size, one platform
+per job is the sane unit of work.
+
 #### If RomM shows the platform as "Unknown"
 
 The folder name is not one of RomM's slugs. **Do not rename the folder** — ES-DE

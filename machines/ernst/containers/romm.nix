@@ -587,16 +587,45 @@ in
       ROMM_PORT = toString webPort;
 
       # Hasheous is the one metadata source that needs NO account and NO API
-      # key, so it is the only one enabled here and it makes the first scan
-      # useful on its own.
+      # key, so it is enabled unconditionally and makes a scan useful even
+      # before anyone has signed up for anything.
       #
-      # IGDB, SteamGridDB, ScreenScraper and RetroAchievements each require
-      # credentials tied to a personal account.  They are deliberately NOT
-      # declared as clan vars: a `prompts` generator would block
-      # `clan vars generate ernst` on values that may not exist yet, for
-      # enrichment that is optional.  Adding them later is a documented step —
-      # see docs/guides/birte-emulation.md.
+      # IGDB and SteamGridDB need credentials tied to a personal account.  They
+      # arrive through environmentFiles as the `romm-metadata-keys` prompted
+      # generator below — the empty-prompt path leaves them unset, so a machine
+      # whose owner has not signed up still deploys and still scans.
       HASHEOUS_API_ENABLED = "true";
+
+      # ── Why these two are set, and what happens when they are not ──────────
+      #
+      # SCAN_WORKERS is an asyncio.Semaphore around per-ROM scanning
+      # (endpoints/sockets/scan.py), and it DEFAULTS TO 1 — the scan is
+      # entirely serial, and every ROM is a round trip to IGDB, SteamGridDB and
+      # Hasheous.  Measured on the first real scan: ~150 ROMs/hour, degrading
+      # from 235 in the first hour to 93 by the fourth.
+      #
+      # SCAN_TIMEOUT is an rq job timeout, and it DEFAULTS TO 4 HOURS.  When it
+      # fires the job dies with rq.timeouts.JobTimeoutException and takes the
+      # whole tail of the scan with it.  That is not a cosmetic failure: the
+      # gamelist.xml export runs at the END of the job, so a scan that times
+      # out silently produces no ES-DE metadata at all — which is exactly how
+      # this library sat at "gamelist.xml: 0" while `scan.gamelist.export` was
+      # correctly set to true and being read.  ROMs already committed do
+      # survive, so a timed-out scan looks like a partial success rather than a
+      # crash: 531 of ~5000 files, three platforms out of five.
+      #
+      # 4 workers, not more, because there is NO rate limiter in
+      # handler/metadata/igdb_handler.py and IGDB's documented ceiling is 4
+      # requests per second.  Each ROM also costs local hashing and SteamGridDB
+      # and Hasheous calls, so 4 concurrent ROMs stays under that ceiling
+      # rather than racing it.
+      #
+      # 24 hours, not 4, because the library is 37k files across 26 platforms.
+      # Even at 4× the measured rate a full pass does not fit in an afternoon,
+      # and the point of the timeout is to catch a wedged scan — not to cap a
+      # legitimately long one.
+      SCAN_WORKERS = "4";
+      SCAN_TIMEOUT = toString (24 * 60 * 60);
     };
     environmentFiles = [ "${secretsDir}/romm.env" ];
 
