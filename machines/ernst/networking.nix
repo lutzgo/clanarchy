@@ -304,8 +304,25 @@
   #   02:00:00:90:00:0a   tvheadend container eth0  (M8  — allocated)  10.0.90.18
   #   02:00:00:90:00:0b   tubesync netns eth0       (M9  — allocated)  10.0.90.19
   #   02:00:00:90:00:0c   storyteller netns eth0    (M14 — allocated)  10.0.90.20
-  #   02:00:00:90:00:0d   cloudflared container eth0 (M16 — allocated) 10.0.90.21
+  #   02:00:00:90:00:0d   —  FREE AGAIN (M18)                          10.0.90.21
+  #                       Held by M16's cloudflared container, the Cloudflare
+  #                       Tunnel that was this fleet's only WAN ingress from
+  #                       2026-08-29.  M18 dropped the tunnel for a UDM-Pro
+  #                       port forward terminating at Traefik, deleted
+  #                       containers/cloudflared.nix, and this pair went with
+  #                       it.  The DHCP reservation on the UDM-Pro should be
+  #                       deleted too — a reservation for a MAC nothing uses
+  #                       is how an address gets handed out twice later.
+  #                       Reusable; the next container may take it.
   #   02:00:00:90:00:0e   romm netns rm0            (romm — allocated) 10.0.90.22
+  #
+  #   M18 ADDED NO MAC AND NO ADDRESS, which is worth stating because it is a
+  #   milestone that opened the house to the internet.  CrowdSec runs INSIDE
+  #   the traefik container's netns (containers/crowdsec.nix) — it is the only
+  #   namespace that sees the pre-DNAT source address of a WAN request, since
+  #   br0 forwards those frames at layer 2 and br_netfilter is not loaded on
+  #   this host (measured 2026-09-03).  So it shares .12 and needs nothing of
+  #   its own here.
   #
   # THE TUBESYNC ENTRY IS NOT A CONTAINER veth IN THE NSPAWN SENSE, and it is
   # the first of its kind here: it is a veth into a BARE NETWORK NAMESPACE that
@@ -437,6 +454,28 @@
   #                           — that dataset carries exec ON for Steam and
   #                           Questarr binaries, and ROMs are data that is read,
   #                           never executed.  zdata/roms is its own dataset)
+  #   uid 3030  crowdsec     (containers/crowdsec.nix — M18, OWN group, NO
+  #                           media and no other group either.  A log parser
+  #                           has no business holding a handle to anything.
+  #
+  #                           IT RUNS IN THE TRAEFIK CONTAINER'S NETNS, not in
+  #                           one of its own — see that file's header — but the
+  #                           number is still literal on zdata, because
+  #                           /srv/state/crowdsec is bound in at
+  #                           /var/lib/crowdsec and holds the decisions
+  #                           database.
+  #
+  #                           PINNING IT IS NOT COSMETIC HERE.  nixpkgs'
+  #                           crowdsec module creates /var/lib/crowdsec/state
+  #                           but not its parent, so on a machine where that
+  #                           parent lands root-owned the agent registers
+  #                           itself in the database, fails to write its own
+  #                           API credentials beside it, and then crash-loops
+  #                           forever in the `activating` state — invisible to
+  #                           `systemctl list-units --failed`.  Measured in a
+  #                           VM, 2026-09-03.  A tmpfiles rule owning the bind
+  #                           mount as 3030 is what stops it)
+  #   gid 3030  crowdsec     (containers/crowdsec.nix — M18)
   #
   #===========================================================================
   # RESERVED — M8 and M12–M16.  Comments only; nothing below is declared yet.
@@ -578,14 +617,24 @@
   #                              self-service account creation endpoint.
   #   gid 3025  wizarr          (same status)
   #
-  #   uid 3029  cloudflared     (M16, containers/cloudflared.nix — OWN group,
-  #                              NO media.  The Cloudflare Tunnel client: the
-  #                              fleet's only WAN ingress, in its own nspawn
-  #                              container with an egress firewall that
-  #                              admits Traefik's :443 and Technitium's :53
-  #                              and rejects the rest of RFC1918.  Stateless;
-  #                              no /srv/state directory)
-  #   gid 3029  cloudflared     (M16)
+  #   uid 3029  cloudflared     M16 TOOK THIS AND M18 GAVE IT BACK — and it was
+  #                              COLLIDING while it lasted, which is the part
+  #                              worth keeping.  RomM holds 3029 in the
+  #                              allocated table above, and M16 allocated the
+  #                              same number to cloudflared here.  Nothing
+  #                              broke, for a reason that is luck rather than
+  #                              design: cloudflared was declared stateless and
+  #                              got no /srv/state directory, so the two
+  #                              principals never named the same file on zdata.
+  #                              They would have the moment anyone gave the
+  #                              tunnel something to persist.
+  #
+  #                              Recorded rather than quietly deleted, because
+  #                              the lesson is about this table and not about
+  #                              cloudflared: a uid was taken by editing the
+  #                              RESERVED block while the ALLOCATED block above
+  #                              already held it.  Read both halves before
+  #                              picking a number.  Next free is 3031.
   #
   #   uid 3026  tvheadend       M8 LANDED 2026-08-27 AND TOOK THIS — moved up
   #                              into the allocated table, as shape (ii): OWN
@@ -604,9 +653,10 @@
   # DynamicUser implies (NoNewPrivileges, PrivateTmp, ProtectSystem=strict,
   # ProtectHome=read-only, RemoveIPC, RestrictSUIDSGID).
   #
-  # NO uid FOR cloudflared YET.  M16's tier decision (nspawn vs microvm vs
-  # somewhere else) is what determines whether it needs one and where it lands.
-  # Do not reserve a number for a placement nobody has argued.
+  # THE cloudflared ROWS ARE GONE, and M18 is why: the tunnel was replaced by
+  # a UDM-Pro port forward terminating at Traefik, and containers/cloudflared.nix
+  # was deleted.  Its uid row is directly above, kept for the collision it
+  # recorded; its MAC and address are marked FREE AGAIN in the table further up.
   #
   # NO uid, NO MAC AND NO ADDRESS FOR M11 — stated so nobody adds one for
   # symmetry.  Ollama already has its static uid on ernst (see
@@ -651,7 +701,9 @@
   # slskd needed none either, for a different reason: it went into the EXISTING
   # microvm guest, which already has 02:00:00:90:00:03.
   #
-  # Next free sequence number is 0f; next free address is 10.0.90.23.
+  # Next free sequence number is 0f; next free address is 10.0.90.23 — but 0d
+  # / 10.0.90.21 is ALSO free again since M18 deleted the cloudflared container,
+  # and a reused pair is better than a growing table.  See its row above.
   # (0e → 10.0.90.22 went to RomM, the podman tier's THIRD occupant.  Note for
   # whoever takes 0f: containers/storyteller.nix's rule about UNIQUE namespace
   # interface names still binds — `eth0`, `st0` and `rm0` are all taken.)
