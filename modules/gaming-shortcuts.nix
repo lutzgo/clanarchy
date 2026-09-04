@@ -403,7 +403,23 @@ in
 
     systemd.services.clanarchy-steam-shortcuts = {
       description = "Merge declared non-Steam shortcuts into Steam's library";
-      wantedBy = [ "multi-user.target" ];
+
+      # Pulled in by the display manager, not just by multi-user.target, and
+      # deliberately NOT RemainAfterExit.
+      #
+      # The obvious wiring — oneshot, RemainAfterExit, wantedBy multi-user —
+      # runs this exactly once per boot, and then a `systemctl restart
+      # display-manager` starts Steam again without reconciling anything. That
+      # is precisely the moment reconciliation is wanted: the session is down,
+      # so the file is safe to touch, and a redeploy that changed a shortcut's
+      # target has just landed. Getting it applied would otherwise need a full
+      # reboot. Hit on ernst 2026-09-04 after the media client gained a
+      # wrapper: new exe in the config, old exe still in Steam.
+      #
+      # Letting the unit go inactive is what makes it re-runnable, and the
+      # merge is idempotent (it rewrites nothing when nothing changed), so
+      # running it on every session start costs a few milliseconds.
+      wantedBy = [ "multi-user.target" "display-manager.service" ];
 
       # Before the display manager, because that is what starts the session
       # that starts Steam — see the lost-update note at the top of this file.
@@ -418,7 +434,6 @@ in
 
       serviceConfig = {
         Type = "oneshot";
-        RemainAfterExit = true;
         # As the gaming user, so the files land with the right ownership and
         # the unit cannot write anywhere that user could not already.
         User = cfg.user;
