@@ -223,10 +223,38 @@ in
   # RetroDECK grows another one, it shows up as the same scan failure naming
   # the new path, and it goes in this list.
   #
-  # The deeper fix is for ernst's copy to be sendonly, since this file's header
-  # already calls it the authoritative one; that is a change to how the Deck is
-  # allowed to contribute BIOS files, so it is a decision rather than a
-  # cleanup.
+  # ── sendonly, because a list of names is not a rule ─────────────────────
+  #
+  # The ignore list below is twenty paths that happened to exist on 2026-09-04.
+  # RetroDECK will add an emulator, that emulator will get its own symlinks,
+  # and the scan will break again naming a path nobody has written down yet.
+  # Enumerating symptoms does not stop the cause.
+  #
+  # The cause is that `bios` is sendreceive between a server that masters the
+  # library and a handheld that scribbles emulator state into the same tree.
+  # This file's header already calls ernst's copy the authoritative one, so
+  # make the sync say that: ernst sends, and simply does not accept what birte
+  # has to say about the BIOS folder. RetroDECK can then create whatever
+  # internal links it likes and none of them reach the server.
+  #
+  # The cost, stated plainly: a BIOS file dropped on the Deck no longer
+  # propagates up. Adding one now means putting it on ernst — which is where
+  # the library is curated anyway, and is the same direction ROMs already
+  # flow.
+  #
+  # `roms` is deliberately left sendreceive. The Deck is a legitimate source
+  # of ROMs, and RetroDECK does not litter that tree the way it does bios/.
+  #
+  # The ignores stay, and are not redundant. Under sendonly a local deletion
+  # is *propagated*, so without them removing those twenty stale links from
+  # ernst would have pushed the deletion to birte and taken RetroDECK's
+  # texture packs with it. Ignored paths are excluded in both directions,
+  # which is what made the cleanup safe.
+  # mkForce because the clan syncthing service sets `type` for every folder it
+  # declares (sendreceive); this is a deliberate per-folder override of that,
+  # not a second opinion.
+  services.syncthing.settings.folders.bios.type = lib.mkForce "sendonly";
+
   services.syncthing.settings.folders.bios.ignorePatterns = [
     "/HdPacks"
     "/cemu/usr/save"
