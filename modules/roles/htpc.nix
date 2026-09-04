@@ -194,6 +194,28 @@ let
         # default instead.
         if cfg.bigscreen.enable then "plasma|bigscreen)" else "plasma)"
       } exec ${pkgs.kdePackages.plasma-workspace}/bin/startplasma-wayland ;;
+      ${lib.optionalString cfg.mediaClient.enable ''
+        kodi|media)
+          # NOT exec: we need to run something after Kodi exits.
+          #
+          # Kodi's power menu offers "Exit", and the display manager is set to
+          # relogin, so the wrapper would be re-entered, read "kodi" from the
+          # state file again and restart Kodi — an inescapable loop on a
+          # machine whose only input device may be a game controller. Dropping
+          # back to the gaming session on exit mirrors what SteamOS does with
+          # its own mode switch, and leaves the couch user somewhere they can
+          # navigate rather than staring at the same screen they just tried to
+          # leave.
+          #
+          # Only rewritten when Kodi exits cleanly. A crash leaves the choice
+          # alone, so the relogin brings Kodi back rather than silently
+          # demoting the machine out of media mode because of a segfault.
+          if ${cfg.mediaClient.exe} ${cfg.mediaClient.arguments}; then
+            printf 'gamescope\n' > ${stateFile}
+          fi
+          exit 0
+          ;;
+      ''}
       *)      exec /run/current-system/sw/bin/steam-gamescope ;;
     esac
   '';
@@ -222,6 +244,9 @@ let
       case "$mode" in
         gamescope|gamescope-wayland|steamos|gaming) mode=gamescope ;;
         plasma|plasma-wayland|plasma-x11|desktop)   mode=plasma ;;
+        ${lib.optionalString cfg.mediaClient.enable ''
+          kodi|media|tv)                             mode=kodi ;;
+        ''}
         ${
           # Only accept "bigscreen" when the container was actually built —
           # otherwise the switcher would happily record a mode whose unit
@@ -232,8 +257,8 @@ let
         }
         *)
           echo "usage: clanarchy-session-select {gamescope|plasma${
-            lib.optionalString cfg.bigscreen.enable "|bigscreen"
-          }}" >&2
+            lib.optionalString cfg.mediaClient.enable "|kodi"
+          }${lib.optionalString cfg.bigscreen.enable "|bigscreen"}}" >&2
           exit 2
           ;;
       esac
@@ -388,15 +413,16 @@ in
     };
 
     defaultSession = lib.mkOption {
-      type = lib.types.enum [ "gamescope" "plasma" "bigscreen" ];
+      type = lib.types.enum [ "gamescope" "plasma" "kodi" "bigscreen" ];
       default = "gamescope";
       description = ''
         Which session to land in when no choice has been made yet — i.e.
         first boot, and after `/persist` is reset. Deck-like behaviour is
-        `gamescope`; use `plasma` if the machine should feel like a desktop
-        that happens to game, or `bigscreen` for a TV media appliance.
+        `gamescope`; `kodi` for a machine that is mostly for watching things;
+        `plasma` if it should feel like a desktop that happens to game.
 
-        `bigscreen` requires `bigscreen.enable`.
+        `kodi` requires `mediaClient.enable`, `bigscreen` requires
+        `bigscreen.enable`.
       '';
     };
 
@@ -502,8 +528,8 @@ in
 
       package = lib.mkOption {
         type = lib.types.package;
-        default = pkgs.kodi-wayland.withPackages (p: [ p.jellyfin ]);
-        defaultText = lib.literalExpression "pkgs.kodi-wayland.withPackages (p: [ p.jellyfin ])";
+        default = pkgs.kodi-gbm.withPackages (p: [ p.jellyfin ]);
+        defaultText = lib.literalExpression "pkgs.kodi-gbm.withPackages (p: [ p.jellyfin ])";
         description = ''
           Media client to install. Kodi with the Jellyfin add-on, talking to
           the Jellyfin server ernst already runs in an nspawn container.
@@ -564,7 +590,7 @@ in
 
       exe = lib.mkOption {
         type = lib.types.str;
-        default = "/run/current-system/sw/bin/kodi";
+        default = "/run/current-system/sw/bin/kodi-standalone";
         description = ''
           Binary the Steam shortcut launches. Deliberately a
           `/run/current-system/sw/bin` path and not a store path: Steam
@@ -580,14 +606,18 @@ in
 
       arguments = lib.mkOption {
         type = lib.types.str;
-        default = "-fs";
+        default = "--windowing=gbm";
         description = ''
-          Launch options for the shortcut. `-fs` is Kodi's fullscreen flag,
-          the same one its own "Open in fullscreen" desktop action uses.
+          Launch options. `--windowing=gbm` is what Kodi's own
+          `kodi-gbm.desktop` session entry uses, and it is the whole point of
+          running the client as a session: in GBM mode Kodi talks to KMS
+          directly, with no compositor in the way.
 
-          Deliberately not `--standalone`: that mode expects to own the
-          session and take over power management, which on this machine
-          belongs to the session switcher in this module.
+          That buys two things it cannot have as a window inside gamescope.
+          It can change the display mode, so a 23.976p film plays at 23.976
+          Hz instead of juddering against a 60 Hz output — on a TV that is
+          the single biggest picture-quality difference available here. And
+          it drives HDR itself rather than through gamescope's tone-mapping.
         '';
       };
 
@@ -637,17 +667,22 @@ in
         '';
       };
 
-      steamShortcut.enable =
-        lib.mkEnableOption ''
-          a Steam library entry for the media client, so it is launchable
-          from Big Picture.
+      steamShortcut.enable = lib.mkEnableOption ''
+        a Steam library entry for the media client, so it is launchable from
+        inside Big Picture.
 
-          Without it the client is installed but reachable only from Plasma's
-          launcher — i.e. only from the mode you switched away from to get to
-          the TV session. Turn it off if the entry is being managed by hand
-          instead
-        ''
-        // { default = true; };
+        Off by default, because the client is its own session arm — reached
+        with `clanarchy-session-select kodi` rather than from Steam's
+        library. The two are close to mutually exclusive in practice: a GBM
+        build talks to KMS directly and is not a Wayland client, so it cannot
+        run as a window inside gamescope at all. Enabling this alongside the
+        default `package` would produce a library entry that fails to start.
+
+        Worth turning on only with a `package` and `exe` swapped for a
+        windowed build — and then think twice, because two ways to launch the
+        same client with different picture quality is a trap for whoever else
+        uses the TV
+      '';
     };
 
     controller.enable =
@@ -711,6 +746,14 @@ in
           clanarchy.roles.htpc.defaultSession = "bigscreen" requires
           clanarchy.roles.htpc.bigscreen.enable = true — otherwise the
           container the boot dispatcher would start does not exist.
+        '';
+      }
+      {
+        assertion = cfg.defaultSession == "kodi" -> cfg.mediaClient.enable;
+        message = ''
+          clanarchy.roles.htpc.defaultSession = "kodi" requires
+          clanarchy.roles.htpc.mediaClient.enable = true — otherwise the
+          machine boots into a session arm whose binary is not installed.
         '';
       }
     ];
