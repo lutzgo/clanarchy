@@ -429,6 +429,21 @@ let
     exec = "${sessionSelect}/bin/clanarchy-session-select gamescope";
     categories = [ "Game" ];
   };
+
+  # The same trip back, for the arm the machine actually boots into.
+  #
+  # Plasma had a launcher to reach Steam and none to reach the media client,
+  # which is the default session — so from the desktop the only way back to
+  # the thing this machine is mostly for was a terminal. Every arm reachable
+  # from every other arm without one is the point of the switcher.
+  mediaLauncher = pkgs.makeDesktopItem {
+    name = "clanarchy-return-to-media";
+    desktopName = "Return to Media Mode";
+    comment = "Restart into the ${cfg.mediaClient.name} session";
+    icon = "kodi";
+    exec = "${sessionSelect}/bin/clanarchy-session-select kodi";
+    categories = [ "AudioVideo" ];
+  };
 in
 {
   imports = [
@@ -1164,6 +1179,7 @@ in
       steamosShim
       returnLauncher
     ]
+    ++ lib.optional cfg.mediaClient.enable mediaLauncher
     ++ lib.optional cfg.mediaClient.enable cfg.mediaClient.package
     ++ lib.optional (cfg.mediaClient.enable && cfg.mediaClient.scaleFactor != null) mediaClientTvLauncher;
 
