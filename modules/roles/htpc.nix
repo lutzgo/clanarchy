@@ -110,6 +110,36 @@ let
   # error rather than a dark TV, and blocking on it would turn a typo into a
   # machine with neither a session nor a greeter.  Start, fail visibly, and let
   # the relogin loop below make the failure repeat where it can be read.
+  # Sound has to come out of the same card the picture does.
+  #
+  # A GPU's HDMI audio is function .1 of the same PCI device as its display
+  # function .0, so the TV's speakers hang off `<gpu>.1` and nothing else. On
+  # a two-GPU box both cards present an HDMI sink, they arrive with identical
+  # priority (600/600 as shipped), and which one WirePlumber picks as default
+  # is then down to enumeration order — i.e. whichever card the kernel probed
+  # first. On ernst that lands on the *iGPU*, whose HDMI goes to the KVM and
+  # not to the living room: picture on the TV, sound into a device with no
+  # speakers attached. Observed 2026-09-04 — Jellyfin played Avatar with the
+  # default sink on "Radeon HD Audio Controller" and no audio in the room.
+  #
+  # Derived from `display.gpuPciAddress` rather than written out separately so
+  # the two cannot drift: the option that decides which card draws the picture
+  # is the one that decides where the sound goes.
+  #
+  # Matched on the PCI prefix and not the full node name, because the trailing
+  # part encodes which HDMI connector is in use (`hdmi-stereo-extra3` = the
+  # TV's current HDMI 4). Moving the cable to another port on the same card
+  # renames the node; it must not silently un-fix this.
+  tvAudioNodeMatch =
+    let
+      # 0000:03:00.0 (display) -> 0000:03:00.1 (its HDMI audio function)
+      audioAddress = (lib.removeSuffix ".0" cfg.display.gpuPciAddress) + ".1";
+      # PipeWire spells PCI addresses with underscores for the colons, keeping
+      # the dot before the function: 0000:03:00.1 -> 0000_03_00.1
+      prefix = "alsa_output.pci-" + builtins.replaceStrings [ ":" ] [ "_" ] audioAddress + ".";
+    in
+    "~" + builtins.replaceStrings [ "." ] [ "\\." ] prefix + ".*";
+
   waitForDisplay = lib.optionalString (cfg.display.gpuPciAddress != null) ''
     drmDir=/sys/bus/pci/devices/${cfg.display.gpuPciAddress}/drm
     set -- "$drmDir"/card[0-9]*
@@ -592,6 +622,31 @@ in
       gpu.pciAddress = cfg.bigscreen.gpu.pciAddress;
     };
 
+    # Make the TV's HDMI audio the default sink — see tvAudioNodeMatch above.
+    #
+    # A priority bump rather than a hardcoded default: WirePlumber picks the
+    # highest-priority *available* sink, so if the TV is off at login and its
+    # sink is absent, this degrades to the iGPU rather than to silence, and
+    # snaps back when the TV returns. Naming one node as "the" default cannot
+    # do that.
+    #
+    # It also stays out of the user's way. An explicit choice in System
+    # Settings is stored in ~/.local/state/wireplumber (persisted for the
+    # couch user) and still wins over priority — this only decides what
+    # happens when nobody has chosen, which includes every fresh install.
+    services.pipewire.wireplumber.extraConfig."51-htpc-tv-audio" =
+      lib.mkIf (cfg.display.gpuPciAddress != null) {
+        "monitor.alsa.rules" = [
+          {
+            matches = [ { "node.name" = tvAudioNodeMatch; } ];
+            actions.update-props = {
+              "priority.session" = 2000;
+              "priority.driver" = 2000;
+            };
+          }
+        ];
+      };
+
     # Kill Plasma's screen locker on the TV.
     #
     # Written to /etc/xdg rather than the couch user's ~/.config for two
@@ -726,8 +781,24 @@ in
     ] ++ lib.optional cfg.mediaClient.enable cfg.mediaClient.package;
 
     # Owned by the couch user so switching needs no privilege escalation.
+    #
+    # The *file* is declared too, not just the directory, and that is the whole
+    # point of the second rule. The switcher is a shell redirect into an
+    # existing path, so whoever creates the file first owns it — and running
+    # `clanarchy-session-select` once as root over SSH (the obvious thing to do
+    # when the TV is unreachable) leaves behind a root-owned `current` that the
+    # couch user can no longer write. The symptom is bad: every later switch
+    # from the sofa dies with "Permission denied" before it reaches the
+    # display-manager restart, so the Return to Gaming Mode launcher silently
+    # does nothing at all. Hit on ernst 2026-09-04, by exactly that route.
+    #
+    # `f` seeds it with the configured default when absent; `z` re-asserts
+    # ownership on every boot, which is what actually repairs the root-owned
+    # case rather than merely avoiding it.
     systemd.tmpfiles.rules = [
       "d ${stateDir} 0755 ${cfg.user} ${config.users.users.${cfg.user}.group} -"
+      "f ${stateFile} 0644 ${cfg.user} ${config.users.users.${cfg.user}.group} - ${cfg.defaultSession}"
+      "z ${stateFile} 0644 ${cfg.user} ${config.users.users.${cfg.user}.group} -"
     ];
 
     # Survive impermanence rollback, so the machine comes back up in the
