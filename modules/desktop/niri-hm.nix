@@ -29,6 +29,17 @@
 
       prefer-no-csd = true;
 
+      # Top-left hot corner (opens the Overview) off. It sits exactly where a
+      # maximized window's close/menu controls are, so it fires constantly by
+      # accident. Note this config binds no `toggle-overview` key, so with the
+      # corner off the Overview is unreachable — add a bind below if it is
+      # ever wanted deliberately.
+      #
+      # niri 26.04 has no per-corner toggle — `hot-corners { top-left false }`
+      # is rejected by `niri validate` — and top-left is the only corner niri
+      # binds, so disabling the feature wholesale is exactly equivalent here.
+      gestures.hot-corners.enable = false;
+
       spawn-at-startup = [
         {command = ["uwsm" "app" "--" "noctalia-shell"];}
         {command = ["keepassxc" "--minimized"];}
@@ -344,13 +355,22 @@
         // wallpaper, overview, fade-overlay, exclusion, and trigger zones
         // deliberately do NOT get a rule (they are either invisible or ARE
         // the backdrop).
+        //
+        // noctalia-notifications-* and noctalia-toast-* are excluded on
+        // purpose. niri applies a background-effect to the whole layer
+        // surface rectangle, not to what the surface paints. Those two are
+        // the only Noctalia surfaces that are much larger than their visible
+        // content: Notification.qml/Toast.qml size the window to
+        // notifWidth + shadowPadding*2 by the height of the entire stack,
+        // then draw rounded, gapped cards inside it. Blurring that gives a
+        // hard-edged square block behind (and below, and between) the cards.
+        // Bar/dock/launcher/OSD wrap their content tightly, so the square
+        // blur region coincides with what they paint and is invisible.
         layer-rule {
             match namespace="^noctalia-bar-content-"
             match namespace="^noctalia-dock-"
             match namespace="^noctalia-launcher-"
             match namespace="^noctalia-osd-"
-            match namespace="^noctalia-toast-"
-            match namespace="^noctalia-notifications-"
             background-effect {
                 blur true
             }

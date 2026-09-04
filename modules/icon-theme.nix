@@ -6,13 +6,23 @@
 #
 # Niri wires gtk.iconTheme in niri-hm.nix via osConfig.
 #
-# Default: a Papirus-Dark variant whose folder icons are recolored to match
-# the active Stylix base0D accent color.  Falls back to plain Papirus-Dark
-# when Stylix is not enabled (e.g. a headless server).
+# Default: a Papirus variant whose folder icons are recolored to match the
+# active Stylix base0D accent color.  Falls back to plain Papirus-Dark when
+# Stylix is not enabled (e.g. a headless server).
+#
+# The source variant follows stylix.polarity: Papirus-Light on a light scheme
+# (miralda's gruvbox-light), Papirus-Dark otherwise.  Only the panel/symbolic
+# icons actually differ between the two — the folders are byte-identical — but
+# a dark-tinted status icon on a light bar is exactly the mismatch that shows.
 { config, lib, pkgs, ... }:
 let
-  # Build a Papirus-Dark copy with the folder blue replaced by base0D.
-  # Papirus-Dark uses three blue shades in its places/ SVG files:
+  # Papirus-Light is only correct with a light polarity; "either" (Stylix's
+  # default when nothing forces a side) keeps the historical dark source.
+  papirusVariant =
+    if config.stylix.polarity == "light" then "Papirus-Light" else "Papirus-Dark";
+
+  # Build a Papirus copy with the folder blue replaced by base0D.
+  # Papirus uses three blue shades in its places/ SVG files:
   #   #5294e2  main folder body
   #   #4877b1  folder tab / shadow
   #   #3a87e5  lighter highlight on some variants
@@ -29,10 +39,12 @@ let
 
       mkdir -p "$out/share/icons"
 
-      # papirus-icon-theme stores Papirus-Dark as a symlink to another variant;
-      # cp -r would copy that symlink as-is, leaving us with 0 real icon files.
-      # cp -rL dereferences all symlinks so we get a real writable file tree.
-      cp -rL "${pkgs.papirus-icon-theme}/share/icons/Papirus-Dark" \
+      # papirus-icon-theme stores most of each variant's size directories as
+      # symlinks into ../Papirus; cp -r would copy those symlinks as-is,
+      # leaving us with almost no real icon files (Papirus-Light in particular
+      # carries zero places/ SVGs of its own).  cp -rL dereferences all
+      # symlinks so we get a complete, writable file tree.
+      cp -rL "${pkgs.papirus-icon-theme}/share/icons/${papirusVariant}" \
              "$out/share/icons/Papirus-Stylix"
       chmod -R +w "$out/share/icons/Papirus-Stylix"
 
@@ -51,15 +63,15 @@ print(f'{int(r*0.85):02x}{int(g*0.85):02x}{int(b*0.85):02x}')
           -e "s/#3a87e5/#${c.base0D}/g" \
           {} +
 
-      # Rename theme, drop the breeze-dark Inherits dependency, and remove
-      # FollowsColorScheme=true — that flag makes GNOME look for a
+      # Rename theme, drop the breeze/breeze-dark Inherits dependency, and
+      # remove FollowsColorScheme=true — that flag makes GNOME look for a
       # "Papirus-Stylix-Dark" variant which doesn't exist, falling back to
       # no icons.
       sed -i \
-        -e 's/^Name=Papirus-Dark$/Name=Papirus-Stylix/'                       \
-        -e 's/^Comment=.*$/Comment=Papirus Dark with Stylix accent folders/'  \
-        -e 's/^Inherits=.*/Inherits=hicolor/'                                 \
-        -e '/^FollowsColorScheme=/d'                                           \
+        -e 's/^Name=${papirusVariant}$/Name=Papirus-Stylix/'                            \
+        -e 's/^Comment=.*$/Comment=${papirusVariant} with Stylix accent folders/'       \
+        -e 's/^Inherits=.*/Inherits=hicolor/'                                           \
+        -e '/^FollowsColorScheme=/d'                                                     \
         "$out/share/icons/Papirus-Stylix/index.theme"
 
       # Regenerate the GTK icon cache so GNOME/GTK apps can use the theme

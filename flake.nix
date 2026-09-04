@@ -195,7 +195,9 @@
       clan.machines.miralda = {
         imports = [ (mkModuleArgs { }) ] ++ commonHeadful ++ [
           ./modules/users/sgo.nix
-          ./modules/themes/selenized-black.nix
+          # Palette is selected by name in machines/miralda/configuration.nix
+          # (clanarchy.theme); see modules/themes/palettes.nix for the registry.
+          ./modules/themes
           ./modules/wallpapers/nix-anarchy.nix
           ./machines/miralda/configuration.nix
           ./machines/miralda/disko.nix
@@ -204,11 +206,13 @@
 
       # jens — Framework Laptop 12 (Intel, convertible).  Deliberately the same
       # machine as miralda from the user's side: Niri + UWSM + regreet, the
-      # Selenized Black theme and the same per-workspace wallpapers, ZFS +
-      # impermanence, lgo's full toolchain.  The differences are all hardware —
-      # Intel rather than AMD (see clanarchy.hardware.cpu in configuration.nix)
-      # and a panel that folds into a tablet
-      # (clanarchy.hardware.convertible.enable).
+      # same per-workspace wallpapers, ZFS + impermanence, lgo's full
+      # toolchain.  The differences are all hardware — Intel rather than AMD
+      # (see clanarchy.hardware.cpu in configuration.nix) and a panel that
+      # folds into a tablet (clanarchy.hardware.convertible.enable) — plus the
+      # palette: jens stayed on Selenized Black when miralda moved to Gruvbox
+      # Light Hard.  The wallpaper module derives everything from the active
+      # Stylix scheme, so the same file renders correctly on both.
       #
       # The one thing miralda has that jens does not is a local Ollama:
       # miralda's local-ai role is ROCm on a 780M, and this machine's iGPU is
@@ -219,7 +223,7 @@
       # why a forward rather than opening ollama's port.
       clan.machines.jens = {
         imports = [ (mkModuleArgs { }) ] ++ commonHeadful ++ [
-          ./modules/themes/selenized-black.nix
+          ./modules/themes
           ./modules/wallpapers/nix-anarchy.nix
           ./machines/jens/configuration.nix
           ./machines/jens/disko.nix
