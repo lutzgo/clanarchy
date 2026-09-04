@@ -60,7 +60,7 @@
         example = "htpc";
       };
       defaultSession = lib.mkOption {
-        type = lib.types.enum [ "gamescope" "plasma" "bigscreen" ];
+        type = lib.types.enum [ "gamescope" "plasma" "kodi" "bigscreen" ];
         default = "gamescope";
         description = "Session to land in before any choice has been made.";
       };

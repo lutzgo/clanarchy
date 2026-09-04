@@ -25,7 +25,8 @@
 # execs either the gamescope Steam session or Plasma.  Switching is then
 # "write the file, restart the display manager" — the same shape as SteamOS.
 #
-#   /var/lib/clanarchy-session/current   "gamescope" | "plasma" | "bigscreen"
+#   /var/lib/clanarchy-session/current
+#     "gamescope" | "plasma" | "kodi" | "bigscreen"
 #
 # The directory is owned by the couch user so the switch needs no root, and a
 # polkit rule lets that user restart display-manager.service (and nothing
@@ -194,6 +195,28 @@ let
         # default instead.
         if cfg.bigscreen.enable then "plasma|bigscreen)" else "plasma)"
       } exec ${pkgs.kdePackages.plasma-workspace}/bin/startplasma-wayland ;;
+      ${lib.optionalString cfg.mediaClient.enable ''
+        kodi|media)
+          # NOT exec: we need to run something after Kodi exits.
+          #
+          # Kodi's power menu offers "Exit", and the display manager is set to
+          # relogin, so the wrapper would be re-entered, read "kodi" from the
+          # state file again and restart Kodi — an inescapable loop on a
+          # machine whose only input device may be a game controller. Dropping
+          # back to the gaming session on exit mirrors what SteamOS does with
+          # its own mode switch, and leaves the couch user somewhere they can
+          # navigate rather than staring at the same screen they just tried to
+          # leave.
+          #
+          # Only rewritten when Kodi exits cleanly. A crash leaves the choice
+          # alone, so the relogin brings Kodi back rather than silently
+          # demoting the machine out of media mode because of a segfault.
+          if ${cfg.mediaClient.exe} ${cfg.mediaClient.arguments}; then
+            printf 'gamescope\n' > ${stateFile}
+          fi
+          exit 0
+          ;;
+      ''}
       *)      exec /run/current-system/sw/bin/steam-gamescope ;;
     esac
   '';
@@ -222,6 +245,9 @@ let
       case "$mode" in
         gamescope|gamescope-wayland|steamos|gaming) mode=gamescope ;;
         plasma|plasma-wayland|plasma-x11|desktop)   mode=plasma ;;
+        ${lib.optionalString cfg.mediaClient.enable ''
+          kodi|media|tv)                             mode=kodi ;;
+        ''}
         ${
           # Only accept "bigscreen" when the container was actually built —
           # otherwise the switcher would happily record a mode whose unit
@@ -232,8 +258,8 @@ let
         }
         *)
           echo "usage: clanarchy-session-select {gamescope|plasma${
-            lib.optionalString cfg.bigscreen.enable "|bigscreen"
-          }}" >&2
+            lib.optionalString cfg.mediaClient.enable "|kodi"
+          }${lib.optionalString cfg.bigscreen.enable "|bigscreen"}}" >&2
           exit 2
           ;;
       esac
@@ -388,15 +414,16 @@ in
     };
 
     defaultSession = lib.mkOption {
-      type = lib.types.enum [ "gamescope" "plasma" "bigscreen" ];
+      type = lib.types.enum [ "gamescope" "plasma" "kodi" "bigscreen" ];
       default = "gamescope";
       description = ''
         Which session to land in when no choice has been made yet — i.e.
         first boot, and after `/persist` is reset. Deck-like behaviour is
-        `gamescope`; use `plasma` if the machine should feel like a desktop
-        that happens to game, or `bigscreen` for a TV media appliance.
+        `gamescope`; `kodi` for a machine that is mostly for watching things;
+        `plasma` if it should feel like a desktop that happens to game.
 
-        `bigscreen` requires `bigscreen.enable`.
+        `kodi` requires `mediaClient.enable`, `bigscreen` requires
+        `bigscreen.enable`.
       '';
     };
 
@@ -502,8 +529,8 @@ in
 
       package = lib.mkOption {
         type = lib.types.package;
-        default = pkgs.kodi-wayland.withPackages (p: [ p.jellyfin ]);
-        defaultText = lib.literalExpression "pkgs.kodi-wayland.withPackages (p: [ p.jellyfin ])";
+        default = pkgs.kodi-gbm.withPackages (p: [ p.jellyfin ]);
+        defaultText = lib.literalExpression "pkgs.kodi-gbm.withPackages (p: [ p.jellyfin ])";
         description = ''
           Media client to install. Kodi with the Jellyfin add-on, talking to
           the Jellyfin server ernst already runs in an nspawn container.
@@ -538,31 +565,6 @@ in
 
           `kodi-wayland` rather than plain `kodi`: the session it launches
           into is gamescope, which is a Wayland compositor.
-
-          ── Why this is a Steam shortcut and not a session arm ────────────
-          Kodi ships its own session (kodi-gbm.desktop -> kodi-standalone
-          --windowing=gbm) and it would be the better home for it: in GBM
-          mode Kodi drives KMS directly, so it can switch the panel to
-          23.976 Hz per title instead of juddering a 24p film against a 60 Hz
-          output, and it drives HDR itself. Tried on ernst 2026-09-04, and
-          reverted the same day.
-
-          The blocker is GPU selection on a two-GPU box. Kodi's GBM backend
-          opens DRM cards in enumeration order and keeps the first with a
-          *connected* connector. Here that is card0 — the iGPU, whose
-          HDMI-A-2 is permanently connected to the Comet KVM — so Kodi came
-          up healthy on `raphael_mendocino`, offering the KVM's 2560x1440
-          mode list, and the TV on card1 stayed black. Two overrides were
-          tried and neither exists in Kodi 21: `KODI_GBM_DEVICE` is set in
-          the process environment but the binary contains no such string, and
-          `videoscreen.monitor` is read only after a card has already been
-          opened.
-
-          What would work is denying the couch user access to card0 so the
-          open() fails and Kodi moves on — but that user reaches it through
-          both the `video` group and a logind uaccess ACL, so it needs a udev
-          rule closing both, on the machine that fronts the array. Worth
-          doing deliberately, not as a drive-by.
         '';
       };
 
@@ -589,7 +591,7 @@ in
 
       exe = lib.mkOption {
         type = lib.types.str;
-        default = "/run/current-system/sw/bin/kodi";
+        default = "/run/current-system/sw/bin/kodi-standalone";
         description = ''
           Binary the Steam shortcut launches. Deliberately a
           `/run/current-system/sw/bin` path and not a store path: Steam
@@ -605,14 +607,24 @@ in
 
       arguments = lib.mkOption {
         type = lib.types.str;
-        default = "-fs";
+        default = "--windowing=gbm";
         description = ''
-          Launch options for the shortcut. `-fs` is Kodi's fullscreen flag,
-          the same one its own "Open in fullscreen" desktop action uses.
+          Launch options. `--windowing=gbm` is what Kodi's own
+          `kodi-gbm.desktop` session entry uses, and it is the whole point of
+          running the client as a session: in GBM mode Kodi talks to KMS
+          directly, with no compositor in the way.
 
-          Deliberately not `--standalone`: that mode expects to own the
-          session and take over power management, which on this machine
-          belongs to the session switcher in this module.
+          That buys two things it cannot have as a window inside gamescope.
+          It can change the display mode, so a 23.976p film plays at 23.976
+          Hz instead of juddering against a 60 Hz output — on a TV that is
+          the single biggest picture-quality difference available here. And
+          it drives HDR itself rather than through gamescope's tone-mapping.
+
+          The catch is that GBM mode has no device selection at all, which on
+          a two-GPU box sends Kodi to the wrong card. That is solved by the
+          udev rules under `services.udev.extraRules` below — read those
+          before changing anything here, because this option only works at
+          all because of them.
         '';
       };
 
@@ -662,17 +674,22 @@ in
         '';
       };
 
-      steamShortcut.enable =
-        lib.mkEnableOption ''
-          a Steam library entry for the media client, so it is launchable
-          from Big Picture.
+      steamShortcut.enable = lib.mkEnableOption ''
+        a Steam library entry for the media client, so it is launchable from
+        inside Big Picture.
 
-          Without it the client is installed but reachable only from Plasma's
-          launcher — i.e. only from the mode you switched away from to get to
-          the TV session. Turn it off if the entry is being managed by hand
-          instead
-        ''
-        // { default = true; };
+        Off by default, because the client is its own session arm — reached
+        with `clanarchy-session-select kodi` rather than from Steam's
+        library. The two are close to mutually exclusive in practice: a GBM
+        build talks to KMS directly and is not a Wayland client, so it cannot
+        run as a window inside gamescope at all. Enabling this alongside the
+        default `package` would produce a library entry that fails to start.
+
+        Worth turning on only with a `package` and `exe` swapped for a
+        windowed build — and then think twice, because two ways to launch the
+        same client with different picture quality is a trap for whoever else
+        uses the TV
+      '';
     };
 
     controller.enable =
@@ -738,6 +755,14 @@ in
           container the boot dispatcher would start does not exist.
         '';
       }
+      {
+        assertion = cfg.defaultSession == "kodi" -> cfg.mediaClient.enable;
+        message = ''
+          clanarchy.roles.htpc.defaultSession = "kodi" requires
+          clanarchy.roles.htpc.mediaClient.enable = true — otherwise the
+          machine boots into a session arm whose binary is not installed.
+        '';
+      }
     ];
 
     # KDE Plasma 6 + SDDM + pipewire + fonts. The role owns the decision;
@@ -756,6 +781,40 @@ in
         ;
       gpu.pciAddress = cfg.bigscreen.gpu.pciAddress;
     };
+
+    # Hand the couch session exactly one GPU: the TV's.
+    #
+    # Kodi's GBM backend has no device selection. It opens DRM cards in
+    # enumeration order and keeps the first with a *connected* connector —
+    # `KODI_GBM_DEVICE` does not exist in Kodi 21 (set it and the binary never
+    # reads it), and `videoscreen.monitor` is consulted only after a card has
+    # already been opened. On a two-GPU box that means it takes whichever card
+    # the kernel happened to probe first. On ernst that is the iGPU, whose
+    # HDMI-A-2 is permanently connected to the Comet KVM, so Kodi rendered a
+    # 2560x1440 picture into the KVM while the TV stayed black.
+    #
+    # Since the mechanism cannot be told which card to use, it is told which
+    # cards it may open. Deny every DRM card node to the session user, then
+    # re-allow the one the TV hangs off — so Kodi's open() fails on everything
+    # else and its loop walks on to the right card by itself. Written as
+    # deny-then-allow rather than naming the iGPU, so a third GPU appearing
+    # later is excluded by default instead of silently becoming a candidate.
+    #
+    # Both halves are needed, because the couch user reaches a card two ways:
+    #   TAG-="uaccess"   stops systemd-logind granting a per-session ACL
+    #   GROUP="root"     stops the `video` group membership granting it
+    # Removing only one leaves access intact — verified on ernst 2026-09-04,
+    # where dropping uaccess alone still left `user:go:rw-` on the node.
+    #
+    # Scoped to `card[0-9]*`, the KMS nodes. Render nodes (`renderD*`) are
+    # deliberately untouched: that is how the Jellyfin container reaches the
+    # iGPU for VAAPI (machines/ernst/containers/jellyfin.nix) and how ROCm
+    # reaches the dGPU. This restricts who may *drive a display*, not who may
+    # compute.
+    services.udev.extraRules = lib.mkIf (cfg.display.gpuPciAddress != null) ''
+      SUBSYSTEM=="drm", KERNEL=="card[0-9]*", TAG-="uaccess", GROUP="root", MODE="0660"
+      SUBSYSTEM=="drm", KERNEL=="card[0-9]*", ENV{ID_PATH}=="pci-${cfg.display.gpuPciAddress}", TAG+="uaccess", GROUP="video", MODE="0660"
+    '';
 
     # Make the TV's HDMI audio the default sink — see tvAudioNodeMatch above.
     #

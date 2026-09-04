@@ -52,13 +52,18 @@
         roles.laptop.machines.biene = { };   # no Framework hardware
         roles.laptop.machines.birte = { };   # Steam Deck OLED — battery-backed handheld
         roles.server.machines.ernst = { };
-        # ernst doubles as the living-room machine: boots into Steam Big
-        # Picture on the TV, switches to Plasma and back.  Stable channel +
-        # ZFS throughout — this is the stock nixpkgs gamescope session, not
-        # Jovian (see modules/roles/htpc.nix for why that distinction holds).
+        # ernst doubles as the living-room machine: boots into Kodi on the TV
+        # and switches to Steam Big Picture or Plasma at runtime.  Stable
+        # channel + ZFS throughout — the gaming arm is the stock nixpkgs
+        # gamescope session, not Jovian (see modules/roles/htpc.nix for why
+        # that distinction holds).
         roles.htpc.machines.ernst.settings = {
           user = "go";
-          defaultSession = "gamescope";
+          # The living room watches more than it plays, so the machine should
+          # come up in the media client rather than in Steam. Gaming is one
+          # `clanarchy-session-select gamescope` away, and Kodi's own Exit
+          # lands there too (see the kodi arm in modules/roles/htpc.nix).
+          defaultSession = "kodi";
           # Autologin on: this is a TV appliance and should behave like one —
           # power on, land in the session, no keyboard required.
           #
