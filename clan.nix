@@ -96,6 +96,15 @@
           # output by segfaulting.  See modules/roles/htpc.nix.
           display.gpuPciAddress = "0000:03:00.0";
 
+          # The living-room set is an HDR LG, and the couch use case is
+          # watching films rather than only playing games: without this the
+          # gamescope session is SDR, so Jellyfin's HDR material has to be
+          # tone-mapped to SDR on the server — a 4K Dolby Vision transcode
+          # that ernst's iGPU manages at barely realtime (0.87x measured
+          # 2026-09-04). HDR output is what lets the client direct-play it
+          # instead, which costs the server nothing at all.
+          display.hdr.enable = true;
+
           # Plasma Bigscreen: OFF, and staying off.
           #
           # It cannot work in a container — Plasma 6.7 drives its session

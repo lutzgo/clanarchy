@@ -80,6 +80,9 @@
         '';
       };
 
+      display.hdr.enable =
+        lib.mkEnableOption "HDR output in the gamescope session (see modules/roles/htpc.nix for when this is worth it)";
+
       bigscreen = {
         enable =
           lib.mkEnableOption "Plasma Bigscreen mode in an nspawn container (see modules/desktop/bigscreen.nix)";
@@ -116,6 +119,7 @@
               inherit (settings) user defaultSession;
               autologin.enable = settings.autologin.enable;
               display.gpuPciAddress = settings.display.gpuPciAddress;
+              display.hdr.enable = settings.display.hdr.enable;
               bigscreen = {
                 inherit (settings.bigscreen) enable gid;
               }

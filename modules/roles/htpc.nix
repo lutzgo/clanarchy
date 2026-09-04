@@ -431,6 +431,21 @@ in
       '';
     };
 
+    display.hdr.enable = lib.mkEnableOption ''
+      HDR output in the gamescope session, via gamescope's `--hdr-enabled`.
+
+      Off by default because it depends entirely on the panel: gamescope
+      drives the display in an HDR colourspace and tone-maps SDR content up
+      into it, which on a set that handles HDR badly looks worse than plain
+      SDR, not better.
+
+      It is not only for games. Without it the session is SDR, so HDR video
+      played by the media client is delivered to an SDR output and comes out
+      washed out — which is the usual reason a client is left force-
+      transcoding HDR to SDR on the server instead of direct-playing it.
+      Turning this on is what makes turning that off worthwhile
+    '';
+
     bigscreen = {
       enable = lib.mkEnableOption ''
         the Plasma Bigscreen mode, run from an nspawn container carrying its
@@ -764,6 +779,12 @@ in
 
     # The stock gamescope Steam session from nixpkgs — no Jovian.
     programs.steam.gamescopeSession.enable = true;
+
+    # nixpkgs builds the launcher as
+    #   gamescope --steam ${args} -- steam ${steamArgs}
+    # so this lands before the `--`, i.e. as a gamescope flag rather than a
+    # Steam one. See programs/steam.nix in nixpkgs.
+    programs.steam.gamescopeSession.args = lib.mkIf cfg.display.hdr.enable [ "--hdr-enabled" ];
 
     # Steam and Proton are unfree.  birte gets this from the pkgs instance
     # built in lib/mk-machine.nix (`allowUnfree = true` baked in), but HTPC
