@@ -262,6 +262,43 @@ let
     '';
   };
 
+  # Artwork for the media client's Steam entry.
+  #
+  # Both are rasterised from the app's own scalable icon: Steam's image
+  # loader handles PNG/JPG/TGA but not SVG, so pointing the shortcut at
+  # `hicolor/scalable` directly yields an entry with no icon at all.
+  #
+  # The 600×900 tile is the one that matters — it is what Big Picture shows
+  # in the library grid, and Steam's fallback for a shortcut without one is a
+  # grey rectangle with the name printed on it.
+  #
+  # The background is deliberately dark rather than the app's own brand
+  # colours: Jellyfin's mark *is* a purple-to-blue gradient, so putting it on
+  # that same gradient renders the logo all but invisible (tried, looked like
+  # a broken image). Dark backing makes it pop, and Steam does not draw the
+  # name over portrait art, so the label is baked in.
+  mediaArtwork =
+    let
+      src = cfg.mediaClient.artwork;
+      label = lib.escapeShellArg cfg.mediaClient.name;
+    in
+    {
+      icon = pkgs.runCommand "media-client-icon.png" {
+        nativeBuildInputs = [ pkgs.librsvg ];
+      } "rsvg-convert -w 256 -h 256 ${src} -o $out";
+
+      cover = pkgs.runCommand "media-client-cover.png" {
+        nativeBuildInputs = [ pkgs.librsvg pkgs.imagemagick ];
+      } ''
+        rsvg-convert -w 380 -h 380 ${src} -o logo.png
+        magick -size 600x900 gradient:'#241a33-#0c0c12' \
+          logo.png -gravity center -geometry +0-70 -composite \
+          -font ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans-Bold.ttf \
+          -pointsize 64 -fill '#f2f2f7' -gravity center -annotate +0+220 ${label} \
+          png:$out
+      '';
+    };
+
   # Desktop-mode launcher for the trip back, so returning to Gaming Mode
   # doesn't require a terminal.
   returnLauncher = pkgs.makeDesktopItem {
@@ -404,9 +441,73 @@ in
           but is not packaged in 26.05 — the top-level attribute is a
           throwing alias pointing at `kdePackages.plasma-bigscreen`, which
           does not exist. So the 10-foot UI is Steam Big Picture, with this
-          client added to it as a launcher entry (see the note below).
+          client added to it as a launcher entry.
         '';
       };
+
+      name = lib.mkOption {
+        type = lib.types.str;
+        default = "Jellyfin";
+        description = "Name the client appears under in the Steam library.";
+      };
+
+      exe = lib.mkOption {
+        type = lib.types.str;
+        default = "/run/current-system/sw/bin/jellyfin-desktop";
+        description = ''
+          Binary the Steam shortcut launches. Deliberately a
+          `/run/current-system/sw/bin` path and not a store path: Steam
+          derives a non-Steam shortcut's app id from the exe string, so a
+          path that changes on every rebuild would make Steam treat the entry
+          as a brand-new game each time — new id, artwork gone, controller
+          layout gone.
+
+          Note the binary is `jellyfin-desktop`, not `jellyfin-media-player`:
+          the package renamed its output at 2.0.0 while keeping the old
+          attribute name.
+        '';
+      };
+
+      arguments = lib.mkOption {
+        type = lib.types.str;
+        default = "--fullscreen --tv";
+        description = ''
+          Launch options for the shortcut. Jellyfin Media Player ships two
+          distinct front-ends and picks the desktop one by default; `--tv`
+          selects the 10-foot interface that is navigable with a controller,
+          which is the only one that makes sense from Big Picture. (The same
+          pair is exposed as the "TV [Fullscreen]" action in its .desktop
+          file.)
+        '';
+      };
+
+      artwork = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = "${cfg.mediaClient.package}/share/icons/hicolor/scalable/apps/org.jellyfin.JellyfinDesktop.svg";
+        defaultText = lib.literalExpression ''"''${package}/share/icons/hicolor/scalable/apps/org.jellyfin.JellyfinDesktop.svg"'';
+        description = ''
+          Source SVG the library icon and grid tile are rendered from. Steam's
+          image loader does not read SVG, so both are rasterised at build
+          time; the tile is the app logo centred on the Jellyfin brand
+          gradient, because the alternative Steam draws for art-less
+          shortcuts is a grey box with the name in it.
+
+          Set to null to install the shortcut with no artwork — necessary if
+          `package` is swapped for a client that does not ship that path.
+        '';
+      };
+
+      steamShortcut.enable =
+        lib.mkEnableOption ''
+          a Steam library entry for the media client, so it is launchable
+          from Big Picture.
+
+          Without it the client is installed but reachable only from Plasma's
+          launcher — i.e. only from the mode you switched away from to get to
+          the TV session. Turn it off if the entry is being managed by hand
+          instead
+        ''
+        // { default = true; };
     };
 
     controller.enable =
@@ -501,6 +602,18 @@ in
     clanarchy.gaming = {
       enable = true;
       user = cfg.user;
+
+      # Put the media client in the Steam library. Steam keeps non-Steam
+      # shortcuts in a binary blob under a directory named after the account's
+      # steamid — unknowable at build time — so this is a runtime merge rather
+      # than a file we can write; modules/gaming-shortcuts.nix has the detail.
+      shortcuts = lib.optional (cfg.mediaClient.enable && cfg.mediaClient.steamShortcut.enable) {
+        inherit (cfg.mediaClient) name arguments;
+        exe = cfg.mediaClient.exe;
+        tags = [ "Media" ];
+        icon = if cfg.mediaClient.artwork == null then null else mediaArtwork.icon;
+        coverArt = if cfg.mediaClient.artwork == null then null else mediaArtwork.cover;
+      };
     };
 
     # The stock gamescope Steam session from nixpkgs — no Jovian.
@@ -558,16 +671,15 @@ in
     services.displayManager.sddm.autoLogin.relogin = lib.mkIf cfg.autologin.enable true;
 
     # The media client is installed system-wide (not just into the session)
-    # so it shows up in Plasma's launcher too, and so Steam's "Add a
-    # Non-Steam Game" browser can find it on PATH.
+    # so it shows up in Plasma's launcher too, and so `mediaClient.exe` can
+    # be a stable /run/current-system/sw/bin path rather than a store path
+    # that moves on every rebuild.
     #
-    # NOTE — one manual step: Steam stores non-Steam shortcuts in
-    # `shortcuts.vdf`, a *binary* VDF blob inside the user's Steam data dir.
-    # Generating that declaratively is possible but brittle across Steam
-    # versions, so the launcher entry is added once by hand from Big
-    # Picture (Library → Add a Non-Steam Game → Jellyfin Media Player).  It
-    # survives reboots because `.local/share` is persisted for the couch
-    # user — see the machine's user module.
+    # Getting it into *Big Picture* is a separate job — see the shortcuts
+    # wiring under clanarchy.gaming above.  This used to be a documented
+    # manual step (Library → Add a Non-Steam Game, once, by hand); it is now
+    # declared, which also means it comes back on its own after an
+    # impermanence rollback wipes the Steam config.
     environment.systemPackages = [
       sessionSelect
       steamosShim

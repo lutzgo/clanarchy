@@ -188,6 +188,7 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | `hardware/printing.nix` | CUPS + hplip + SANE |
 | `hardware/yubikey.nix` | pcscd + GnuPG agent (pinentry-qt wrapper) + polkit rule |
 | `hardware/convertible.nix` | `clanarchy.hardware.convertible` option: iio-sensor-proxy, a `niri msg`-driven auto-rotate user service, and wvkbd. Imported fleet-wide, inert on clamshells. Consumer: jens |
+| `gaming-shortcuts.nix` | `clanarchy.gaming.shortcuts`: declarative non-Steam Steam-library entries. Merges into Steam's binary `shortcuts.vdf` at boot (before the display manager), matching on `name`, leaving hand-added entries and Steam's own per-entry state alone. Imported by `gaming-common.nix`. Consumer: the htpc role's media client |
 | `themes/default.nix` | Declares `clanarchy.theme` and applies the selected entry: scheme, polarity, font sizes, generated wallpaper, regreet target. Imported by miralda + jens |
 | `themes/palettes.nix` | The theme registry — one data entry (`scheme` + `polarity`, optional `fontSizes`) per known-good theme. Adding a theme is one entry here; switching is one line in a machine's `configuration.nix` |
 | `wallpapers/nix-anarchy.nix` | Shared per-workspace nix-anarchy SVG wallpapers, recolored to the active Stylix palette. Consumers: miralda, jens |
@@ -201,7 +202,7 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | `desktop/kde.nix` | KDE Plasma 6 desktop: SDDM, Plasma packages (used by birte's "Switch to Desktop" session) |
 | `roles/laptop.nix` | Laptop role: fwupd (all laptops), thermald (Intel only), power-profiles-daemon, weekly Nix GC (14-day retention) |
 | `roles/server.nix` | Server role (headless): no GUI packages, no laptop-only services |
-| `roles/htpc.nix` | HTPC role: stock-nixpkgs gamescope Steam session + KDE Plasma behind one wrapper session, switched at runtime via `clanarchy-session-select` (and a `steamos-session-select` shim so Steam's own button works). Installs a couch media client (Jellyfin Media Player by default) — Plasma Bigscreen is not packaged in 26.05. Options: `user`, `defaultSession`, `autologin.enable`, `mediaClient.{enable,package}` |
+| `roles/htpc.nix` | HTPC role: stock-nixpkgs gamescope Steam session + KDE Plasma behind one wrapper session, switched at runtime via `clanarchy-session-select` (and a `steamos-session-select` shim so Steam's own button works). Installs a couch media client (Jellyfin Media Player by default) and adds it to the Steam library as a non-Steam shortcut with generated artwork, so it is launchable from Big Picture — Plasma Bigscreen is not packaged in 26.05. Options: `user`, `defaultSession`, `autologin.enable`, `mediaClient.{enable,package,name,exe,arguments,artwork,steamShortcut.enable}` |
 | `roles/vm.nix` | VM guest role: SPICE agent, QEMU guest tools |
 | `roles/rpi.nix` | Raspberry Pi role (unused; kept for future clan expansion) |
 | `users/admin.nix` | admin user: SSH keys, password, impermanence, HM stub |
