@@ -690,7 +690,12 @@ in {
       colorSchemes = {
         useWallpaperColors = false;
         predefinedScheme = "";
-        darkMode = true;
+        # Not a color source — the surface colors come from the Stylix
+        # noctalia-shell target.  This is what ColorSchemeService feeds to
+        # gsettings (syncGsettings below) as org.gnome.desktop.interface
+        # color-scheme, so GTK apps must be told the same side of the palette
+        # Stylix already picked, or they render dark chrome on a light desktop.
+        darkMode = osConfig.stylix.polarity != "light";
         schedulingMode = "off";
         manualSunrise = "06:30";
         manualSunset = "18:30";

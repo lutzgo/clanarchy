@@ -4,11 +4,14 @@
 # bits: `stylix.base16Scheme`, `stylix.image`, `stylix.fonts.sizes`, and
 # `stylix.targets.regreet.enable` where the machine actually uses regreet
 # (birte skips it — SDDM is provisioned by Jovian).
-{ pkgs, ... }:
+{ lib, pkgs, ... }:
 {
   stylix = {
     enable = true;
-    polarity = "dark";
+
+    # mkDefault, not a plain value: modules/themes/gruvbox-light.nix (miralda)
+    # overrides this to "light". Every other headful machine takes the default.
+    polarity = lib.mkDefault "dark";
 
     # Stylix's release version follows a different cadence than NixOS 26.05;
     # the warning about "different Stylix and NixOS versions" is expected in
