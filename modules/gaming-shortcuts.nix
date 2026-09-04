@@ -139,10 +139,14 @@ let
     import shutil
     import struct
     import sys
+    import time
     import zlib
 
     SPEC = "${spec}"
     HOME = "${userHome}"
+
+    # Seconds to let a departing Steam finish exiting before giving up.
+    STEAM_EXIT_TIMEOUT = 30
 
     # Binary VDF: a tag byte, a NUL-terminated key, then the value.
     #   0x00  nested map, terminated by 0x08
@@ -352,8 +356,26 @@ let
         if not wanted:
             return 0
 
-        if steam_is_running():
-            print("Steam is running; leaving shortcuts.vdf alone", file=sys.stderr)
+        # Wait for Steam to finish exiting rather than bailing on sight.
+        #
+        # This unit is ordered Before= the display manager, but that only
+        # orders against the display manager *starting*. On a `systemctl
+        # restart display-manager` the old session's teardown is asynchronous,
+        # so Steam is typically still alive for a few seconds after the unit
+        # fires — and an immediate bail meant the merge never got a window at
+        # all on the one event where it matters most. Observed on ernst
+        # 2026-09-04: two restarts in a row, both refused, shortcut unchanged.
+        #
+        # Waiting rather than ignoring Steam: it holds shortcuts.vdf in memory
+        # and writes it back on exit, so merging underneath a live client is a
+        # lost update. Bail only if it is still there after the grace period,
+        # which is the "someone started this by hand mid-session" case.
+        for _ in range(STEAM_EXIT_TIMEOUT):
+            if not steam_is_running():
+                break
+            time.sleep(1)
+        else:
+            print("Steam still running after %ds; leaving shortcuts.vdf alone" % STEAM_EXIT_TIMEOUT, file=sys.stderr)
             return 0
 
         dirs = steam_config_dirs()
