@@ -545,6 +545,22 @@ in
       living-room-appliance feel; leave it off to keep a login prompt in
       front of the array
     '';
+
+    screenLocker.enable = lib.mkEnableOption ''
+      Plasma's screen locker in the desktop arm.
+
+      Off by default, because on a TV it locks you out rather than securing
+      anything. Plasma autolocks after five idle minutes and then demands the
+      couch user's password — which on this fleet is a clan var nobody has
+      memorised, typed on whatever input device happens to be in the room.
+      Meanwhile it guards nothing: with `autologin.enable` the machine already
+      hands that session to anyone who walks up and presses power, so the
+      locker only ever stands between the sofa and a session it will give away
+      on the next reboot anyway.
+
+      Turn it on for a couch machine that is somewhere semi-public *and* has
+      autologin off, where the lock is a real boundary rather than a puzzle
+    '';
   };
 
   config = lib.mkIf cfg.enable {
@@ -574,6 +590,29 @@ in
         extraPackages
         ;
       gpu.pciAddress = cfg.bigscreen.gpu.pciAddress;
+    };
+
+    # Kill Plasma's screen locker on the TV.
+    #
+    # Written to /etc/xdg rather than the couch user's ~/.config for two
+    # reasons: it needs no per-user plumbing (there is no home-manager for the
+    # couch account), and /etc/xdg is on `XDG_CONFIG_DIRS` in the Plasma
+    # session, so KConfig picks it up as a system default. Home is rolled back
+    # on every boot here, which a user-level file would have to survive.
+    #
+    # `[$i]` is KDE's kiosk immutability marker. It does more than set a
+    # default: it makes the group unwritable from user config, so the System
+    # Settings toggle is greyed out instead of silently re-enabling a lockout
+    # that then persists in /persist. LockOnResume matters as much as Autolock
+    # on a TV — the panel dropping DPMS and coming back is a "resume", so
+    # without it the lock returns the first time someone turns the telly off
+    # and on again.
+    environment.etc."xdg/kscreenlockerrc" = lib.mkIf (!cfg.screenLocker.enable) {
+      text = ''
+        [Daemon][$i]
+        Autolock=false
+        LockOnResume=false
+      '';
     };
 
     # Wireless controller support.
