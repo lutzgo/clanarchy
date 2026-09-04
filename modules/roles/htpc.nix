@@ -1106,6 +1106,33 @@ in
       user = cfg.user;
     };
 
+    # Tear the couch user's session down completely when the display manager
+    # stops, rather than leaving its systemd --user manager behind.
+    #
+    # Switching arms restarts the display manager, but logind keeps
+    # `user@<uid>` and everything under it alive across that — pipewire,
+    # wireplumber, the xdg portals. After enough switches those services are
+    # bound to sessions that no longer exist, and the next login inherits the
+    # wreckage. Seen on ernst 2026-09-04 after an afternoon of switching:
+    #
+    #   startplasma-wayland    running, no children, blocked on a futex
+    #   sddm-helper            Failed to take control of "/dev/tty1": EPERM
+    #   wireplumber            listen(): Address already in use
+    #
+    # `startplasma` wedged while holding /dev/tty1, so every following
+    # autologin failed to take the VT and SDDM's relogin loop simply spun —
+    # roughly 1400 sessions before it was noticed. From the sofa that looks
+    # like "switching to desktop hangs", with nothing on screen to say why.
+    #
+    # ExecStopPost rather than logind's KillUserProcesses: this is scoped to
+    # the couch user on a machine whose display manager is restarted as a
+    # matter of routine, and it leaves SSH sessions and the server side of
+    # this box alone. The couch account has nothing that should outlive a
+    # deliberate session switch.
+    systemd.services.display-manager.serviceConfig.ExecStopPost = [
+      "${pkgs.systemd}/bin/loginctl terminate-user ${cfg.user}"
+    ];
+
     # Autologin again when a session ends, rather than once per display-manager
     # start.
     #
