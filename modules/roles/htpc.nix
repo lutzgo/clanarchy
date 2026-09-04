@@ -527,13 +527,74 @@ in
         lib.mkEnableOption "a couch media client alongside the gaming session"
         // { default = true; };
 
+      addons = lib.mkOption {
+        type = lib.types.functionTo (lib.types.listOf lib.types.package);
+        default =
+          p: with p; [
+            # The server integration itself: syncs the Jellyfin library into
+            # Kodi's own database, so browsing is local and instant.
+            jellyfin
+
+            # Not optional in practice. Whenever the server does *not* hand
+            # over the original file — a transcode, a remux, anything the
+            # client cannot direct-play — Jellyfin delivers HLS, and Kodi
+            # cannot play HLS without this. Leaving it out produces a setup
+            # that works perfectly until the first file that needs help and
+            # then fails with nothing useful on screen.
+            inputstream-adaptive
+
+            # What add-ons actually call to check inputstream is present and
+            # enabled before they hand it a stream. Jellyfin for Kodi uses it.
+            inputstreamhelper
+
+            # Auto-plays the next episode with the countdown card. The
+            # Jellyfin add-on has explicit support for it, and it is most of
+            # what makes a series feel like a TV app rather than a file
+            # browser.
+            upnext
+
+            # Subtitle search from inside playback, for the cases where the
+            # server has no embedded track worth using.
+            a4ksubtitles
+
+            # Remap the remote or controller from inside Kodi. Worth having
+            # on a machine whose input devices are still an open question —
+            # there is no keyboard in the living room by design.
+            keymap
+          ];
+        defaultText = lib.literalExpression ''
+          p: with p; [ jellyfin inputstream-adaptive inputstreamhelper upnext a4ksubtitles keymap ]
+        '';
+        description = ''
+          Add-ons built into the client package, as a `withPackages` selector.
+
+          Declared here rather than installed from Kodi's repository at
+          runtime so they survive a rebuild and are visible in the config
+          rather than only in `~/.kodi`.
+
+          Deliberately excluded, having been considered:
+
+          - `jellycon` — a second, lighter Jellyfin add-on that browses the
+            server live instead of syncing. Running both against one server
+            is a good way to get two libraries that disagree.
+          - `trakt` — Jellyfin already tracks watched state and syncs it
+            back, so this mostly adds a second scrobbler racing the first.
+          - `netflix` — needs Widevine and a login; DRM plumbing this role
+            has no business carrying.
+          - `pvr-hts` — the Tvheadend client, and ernst does run Tvheadend.
+            Left out only because an enabled-but-unconfigured PVR add-on
+            nags on every start; add it here the day live TV is wanted.
+        '';
+      };
+
       package = lib.mkOption {
         type = lib.types.package;
-        default = pkgs.kodi-gbm.withPackages (p: [ p.jellyfin ]);
-        defaultText = lib.literalExpression "pkgs.kodi-gbm.withPackages (p: [ p.jellyfin ])";
+        default = pkgs.kodi-gbm.withPackages cfg.mediaClient.addons;
+        defaultText = lib.literalExpression "pkgs.kodi-gbm.withPackages config.clanarchy.roles.htpc.mediaClient.addons";
         description = ''
           Media client to install. Kodi with the Jellyfin add-on, talking to
-          the Jellyfin server ernst already runs in an nspawn container.
+          the Jellyfin server ernst already runs in an nspawn container. The
+          add-on set is `mediaClient.addons`.
 
           ── Why not Jellyfin Media Player ────────────────────────────────
           It was the obvious choice and it does not work here. JMP is a Qt
@@ -674,6 +735,26 @@ in
         '';
       };
 
+      remoteControl.enable = lib.mkEnableOption ''
+        network remote control of the media client — opens Kodi's web
+        interface and EventServer to the LAN, for phone remotes like Kore or
+        Yatse.
+
+        Off by default, and worth a deliberate decision for the same reason
+        `autologin.enable` is: this role lands on a machine that also fronts
+        the storage array. Kodi's web server is a full control surface — it
+        can browse the library, start playback, and shut the machine down —
+        so it must be given a username and password in Kodi's own settings
+        (Services -> Control), not just exposed.
+
+        KDE Connect / Valent is *not* an alternative here, though it looks
+        like one. Its remote-input feature injects events into a desktop
+        session through a compositor or the RemoteDesktop portal, and the
+        media client runs on bare KMS with neither. Its media controls speak
+        MPRIS, which Kodi does not expose. It works fine against the plasma
+        arm, which is not where the films are
+      '';
+
       steamShortcut.enable = lib.mkEnableOption ''
         a Steam library entry for the media client, so it is launchable from
         inside Big Picture.
@@ -780,6 +861,25 @@ in
         extraPackages
         ;
       gpu.pciAddress = cfg.bigscreen.gpu.pciAddress;
+    };
+
+    # Phone-remote access to the media client.
+    #
+    # Kodi binds all three of these to localhost until its own "allow remote
+    # control from other systems" setting is on, so opening the ports is
+    # necessary but not sufficient — the toggle in Services -> Control is the
+    # other half, and it is runtime state in ~/.kodi rather than something
+    # this module can set.
+    #
+    #   8080/tcp  web interface + JSON-RPC over HTTP — what Kore and Yatse use
+    #   9090/tcp  raw JSON-RPC, for clients that prefer the socket transport
+    #   9777/udp  EventServer, which is how those apps send key presses
+    #
+    # Discovery needs no port of its own: the fleet already runs Avahi
+    # (modules/networking/mdns.nix) and Kodi advertises over it.
+    networking.firewall = lib.mkIf (cfg.mediaClient.enable && cfg.mediaClient.remoteControl.enable) {
+      allowedTCPPorts = [ 8080 9090 ];
+      allowedUDPPorts = [ 9777 ];
     };
 
     # Hand the couch session exactly one GPU: the TV's.
