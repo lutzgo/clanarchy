@@ -355,6 +355,43 @@ let
       '';
     };
 
+  # The OSMC skin, with nixpkgs' dead source pin repaired.
+  #
+  # nixpkgs 26.05 fetches tag `v21.1.1-August-update`, which upstream has
+  # since removed — the build dies on a 404 from GitHub, so the package is
+  # broken rather than merely unfree.
+  #
+  # Upstream renamed the tag rather than republishing: `v21.2.1-August-update`
+  # hashes to sha256-3BR6HfKefuyybDv9c/ZkkZMRDyWNZWpftulXyUAD9nY=, byte for
+  # byte what nixpkgs already expects from the old name. So this changes which
+  # name the archive is fetched under and nothing about its contents, which is
+  # why the hash below is copied unchanged from nixpkgs rather than being a
+  # new artefact anyone has to vouch for.
+  #
+  # Drop this the moment nixpkgs bumps its own pin.
+  #
+  # Takes the add-on set as an argument rather than reaching for
+  # `pkgs.kodiPackages`, and that is load-bearing. `withPackages` filters its
+  # selector's result with
+  #
+  #   hasKodiAddon = drv: drv ? kodiAddonFor && drv.kodiAddonFor == kodi;
+  #
+  # so an add-on built against a *different* Kodi than the one being wrapped
+  # is dropped — silently, with no error and no warning. Building this from
+  # `pkgs.kodiPackages` (which targets plain `kodi`) while wrapping
+  # `kodi-gbm` produced an environment byte-identical to one without the skin
+  # at all. Derive it from the set the selector is handed and the tag matches.
+  osmcSkinFor =
+    p:
+    p.osmc-skin.overrideAttrs (_: {
+      src = pkgs.fetchFromGitHub {
+        owner = "osmc";
+        repo = "skin.osmc";
+        tag = "v21.2.1-August-update";
+        hash = "sha256-3BR6HfKefuyybDv9c/ZkkZMRDyWNZWpftulXyUAD9nY=";
+      };
+    });
+
   # The client as Big Picture launches it: scaled for the couch.
   #
   # A wrapper rather than launch options on the Steam entry, because Steam
@@ -561,7 +598,23 @@ in
             # on a machine whose input devices are still an open question —
             # there is no keyboard in the living room by design.
             keymap
-          ];
+
+            # The only skin nixpkgs packages. Everything else people reach
+            # for — Arctic Horizon, Arctic Zephyr, Aeon Nox — exists solely
+            # in Kodi's own repository, so it can be installed at runtime and
+            # will persist in ~/.kodi, but cannot be declared here.
+            #
+            # It is CC-BY-NC-SA, which nixpkgs classes as unfree, so it needs
+            # an entry in this role's allowUnfreePredicate below. Fine for a
+            # living room; the NC clause is why it is not simply free.
+            #
+            # Installing it does not select it: Kodi keeps the active skin in
+            # ~/.kodi as runtime state. Settings -> Interface -> Skin.
+            #
+            # Repaired rather than taken straight from `p`: nixpkgs' own
+            # attribute is broken on a dead source URL. See osmcSkinFor above.
+          ]
+          ++ [ (osmcSkinFor p) ];
         defaultText = lib.literalExpression ''
           p: with p; [ jellyfin inputstream-adaptive inputstreamhelper upnext a4ksubtitles keymap ]
         '';
@@ -1036,6 +1089,11 @@ in
         "steam-run"
         "steam-jupiter-unwrapped"
         "proton-ge-bin"
+
+        # The OSMC skin, CC-BY-NC-SA — see mediaClient.addons. Not a
+        # proprietary blob like the rest of this list; it is here purely
+        # because the non-commercial clause makes nixpkgs call it unfree.
+        "osmc-skin"
       ];
 
     # Point the display manager at the wrapper session rather than at
