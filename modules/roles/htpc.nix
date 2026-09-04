@@ -502,30 +502,69 @@ in
 
       package = lib.mkOption {
         type = lib.types.package;
-        default = pkgs.jellyfin-media-player;
-        defaultText = lib.literalExpression "pkgs.jellyfin-media-player";
+        default = pkgs.kodi-wayland.withPackages (p: [ p.jellyfin ]);
+        defaultText = lib.literalExpression "pkgs.kodi-wayland.withPackages (p: [ p.jellyfin ])";
         description = ''
-          Media client to install. Defaults to Jellyfin Media Player, which
-          has its own 10-foot TV interface and talks to the Jellyfin server
-          ernst already runs in an nspawn container.
+          Media client to install. Kodi with the Jellyfin add-on, talking to
+          the Jellyfin server ernst already runs in an nspawn container.
 
-          Plasma Bigscreen would have been the obvious "KDE for TV" answer
-          but is not packaged in 26.05 — the top-level attribute is a
-          throwing alias pointing at `kdePackages.plasma-bigscreen`, which
-          does not exist. So the 10-foot UI is Steam Big Picture, with this
-          client added to it as a launcher entry.
+          ── Why not Jellyfin Media Player ────────────────────────────────
+          It was the obvious choice and it does not work here. JMP is a Qt
+          shell that is supposed to play through mpv, advertising mpv's codec
+          support to the server. The nixpkgs build ships no web client (975 KB
+          total, no JS at all), so it loads jellyfin-web from the server — and
+          the mpv player plugin never registers into that page. Measured on
+          ernst 2026-09-04: the client's own log shows jellyfin-web loading
+          `htmlVideoPlayer` and no JMP player, and the playback URL carries
+
+            VideoCodec=av1,h264,vp9   AudioCodec=aac,opus,flac
+            TranscodeReasons=ContainerNotSupported,VideoCodecNotSupported,
+                             AudioCodecNotSupported
+
+          i.e. QtWebEngine's HTML5 <video> capabilities, not mpv's. So every
+          HEVC file is transcoded to H.264 and every Dolby track flattened to
+          stereo AAC, no matter what JMP's own audio and video settings say —
+          those settings feed the mpv path, which is not the one running. On
+          this hardware that meant a 4K Dolby Vision tone-map on the iGPU at
+          0.87x realtime: a film that could not finish.
+
+          Kodi decodes in-process. It direct-plays HEVC and Dolby Vision and
+          bitstreams AC3/E-AC3/TrueHD to the receiver, so the server does no
+          work at all.
+
+          ── Why not Plasma Bigscreen ─────────────────────────────────────
+          Not packaged in 26.05 — the top-level attribute is a throwing alias
+          pointing at `kdePackages.plasma-bigscreen`, which does not exist.
+
+          `kodi-wayland` rather than plain `kodi`: the session it launches
+          into is gamescope, which is a Wayland compositor.
         '';
       };
 
       name = lib.mkOption {
         type = lib.types.str;
-        default = "Jellyfin";
+        default = "Kodi";
         description = "Name the client appears under in the Steam library.";
+      };
+
+      persistenceDirectories = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ".kodi" ];
+        description = ''
+          Home-relative directories the client keeps its state in, added to
+          the couch user's impermanence set.
+
+          Not optional in practice. Home is rolled back on every boot here,
+          and Kodi keeps everything — the Jellyfin add-on, the server it is
+          paired with, the login, the library cache, every setting — under
+          `~/.kodi`. Without this the client comes up as a fresh install after
+          each reboot and someone has to re-add the server from the sofa.
+        '';
       };
 
       exe = lib.mkOption {
         type = lib.types.str;
-        default = "/run/current-system/sw/bin/jellyfin-desktop";
+        default = "/run/current-system/sw/bin/kodi";
         description = ''
           Binary the Steam shortcut launches. Deliberately a
           `/run/current-system/sw/bin` path and not a store path: Steam
@@ -534,35 +573,34 @@ in
           as a brand-new game each time — new id, artwork gone, controller
           layout gone.
 
-          Note the binary is `jellyfin-desktop`, not `jellyfin-media-player`:
-          the package renamed its output at 2.0.0 while keeping the old
-          attribute name.
+          `kodi-wayland` still installs its binary as plain `kodi`; there is
+          no separate `kodi-wayland` executable.
         '';
       };
 
       arguments = lib.mkOption {
         type = lib.types.str;
-        default = "--fullscreen --tv";
+        default = "-fs";
         description = ''
-          Launch options for the shortcut. Jellyfin Media Player ships two
-          distinct front-ends and picks the desktop one by default; `--tv`
-          selects the 10-foot interface that is navigable with a controller,
-          which is the only one that makes sense from Big Picture. (The same
-          pair is exposed as the "TV [Fullscreen]" action in its .desktop
-          file.)
+          Launch options for the shortcut. `-fs` is Kodi's fullscreen flag,
+          the same one its own "Open in fullscreen" desktop action uses.
+
+          Deliberately not `--standalone`: that mode expects to own the
+          session and take over power management, which on this machine
+          belongs to the session switcher in this module.
         '';
       };
 
       artwork = lib.mkOption {
         type = lib.types.nullOr lib.types.path;
-        default = "${cfg.mediaClient.package}/share/icons/hicolor/scalable/apps/org.jellyfin.JellyfinDesktop.svg";
-        defaultText = lib.literalExpression ''"''${package}/share/icons/hicolor/scalable/apps/org.jellyfin.JellyfinDesktop.svg"'';
+        default = "${cfg.mediaClient.package}/share/icons/hicolor/scalable/apps/kodi.svg";
+        defaultText = lib.literalExpression ''"''${package}/share/icons/hicolor/scalable/apps/kodi.svg"'';
         description = ''
           Source SVG the library icon and grid tile are rendered from. Steam's
           image loader does not read SVG, so both are rasterised at build
-          time; the tile is the app logo centred on the Jellyfin brand
-          gradient, because the alternative Steam draws for art-less
-          shortcuts is a grey box with the name in it.
+          time; the tile is the app logo centred on a dark backing, because
+          the alternative Steam draws for art-less shortcuts is a grey box
+          with the name in it.
 
           Set to null to install the shortcut with no artwork — necessary if
           `package` is swapped for a client that does not ship that path.
@@ -571,10 +609,15 @@ in
 
       scaleFactor = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
-        default = "2";
+        default = null;
         description = ''
           Qt scale factor applied when the client is launched from the gaming
           session, via `QT_SCALE_FACTOR`.
+
+          Null for Kodi, which is not a Qt application and scales its own
+          10-foot skin to whatever resolution it is given — the problem below
+          simply does not arise. It is kept because it is real for any Qt or
+          Electron client someone swaps in.
 
           Needed because the two sessions handle a 4K TV completely
           differently. Plasma scales the output (ernst's TV output is at
@@ -875,6 +918,15 @@ in
       "f ${stateFile} 0644 ${cfg.user} ${config.users.users.${cfg.user}.group} - ${cfg.defaultSession}"
       "z ${stateFile} 0644 ${cfg.user} ${config.users.users.${cfg.user}.group} -"
     ];
+
+    # The media client's own state. Home is rolled back on every boot, and
+    # Kodi keeps the Jellyfin add-on, the paired server, the login and every
+    # setting under ~/.kodi — so without this the client is a fresh install
+    # after each reboot and someone re-adds the server from the sofa.
+    environment.persistence."/persist".users.${cfg.user} =
+      lib.mkIf (cfg.mediaClient.enable && cfg.mediaClient.persistenceDirectories != [ ]) {
+        directories = cfg.mediaClient.persistenceDirectories;
+      };
 
     # Survive impermanence rollback, so the machine comes back up in the
     # session it was left in.
