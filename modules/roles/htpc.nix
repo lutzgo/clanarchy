@@ -703,6 +703,44 @@ in
         description = "Name the client appears under in the Steam library.";
       };
 
+      # ── Client settings that are NOT declarable, and were hard to find ───
+      #
+      # Kodi rewrites ~/.kodi/userdata/guisettings.xml on exit, so nothing
+      # here can own these. They are runtime state, persisted with the rest of
+      # ~/.kodi. Recorded because all three cost an evening to find and a
+      # fresh install starts from the wrong value on every one.
+      #
+      # videoplayer.useprimedecoder = false
+      #   Must be off. Kodi's DRMPRIME decoder returns no buffer at all for
+      #   10-bit content on this GPU:
+      #     CDVDVideoCodecDRMPRIME::GetPicture - videoBuffer:nullptr
+      #                                          format:yuv420p10le
+      #   The symptom is vicious: audio plays, the receiver lights up, and
+      #   the screen shows only the Kodi UI — it looks like a rendering or
+      #   compositor problem, not a decoder one. With it off Kodi uses
+      #   FFmpeg/VAAPI on the same card, decodes 4K HEVC at ~8% CPU, and
+      #   the nullptr errors go to zero.
+      #
+      # videoplayer.adjustrefreshrate = 0
+      #   Has to stay off, which is the sad one. It *works* — the log shows
+      #   "Display resolution ADJUST : 3840x2160 @ 24.000000 Hz" — and then
+      #   the modeset tears down the EGL surface and Kodi aborts:
+      #     VideoPlayer: OnLostDisplay received
+      #     eglSwapBuffers failed (EGL_BAD_ALLOC)
+      #   Four SIGABRTs in six minutes, one per play. A 2 s
+      #   videoscreen.delayrefreshchange did not help. amdgpu/EGL, not
+      #   config. Revisit on a kernel or Kodi bump; until then 24p judders.
+      #
+      # audiooutput.eac3passthrough = true  ← this is the Atmos switch
+      #   Atmos rides inside Dolby Digital Plus on streaming sources, so
+      #   E-AC3 passthrough is what puts Atmos on the receiver; TrueHD is a
+      #   different, rarer carrier. Kodi does not even offer
+      #   truehdpassthrough here, because it reaches the TV through a
+      #   PipeWire hdmi-stereo sink and TrueHD needs 8-channel HBR. Leave it
+      #   off. audiooutput.ac3transcode = true is a useful backstop for
+      #   sources whose codec cannot be passed through: Kodi re-encodes to
+      #   DD 5.1 rather than collapsing to stereo, which is what the TV's
+      #   ELD would otherwise force (it advertises LPCM 2ch only).
       persistenceDirectories = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ".kodi" ];
@@ -743,11 +781,17 @@ in
           running the client as a session: in GBM mode Kodi talks to KMS
           directly, with no compositor in the way.
 
-          That buys two things it cannot have as a window inside gamescope.
-          It can change the display mode, so a 23.976p film plays at 23.976
-          Hz instead of juddering against a 60 Hz output — on a TV that is
-          the single biggest picture-quality difference available here. And
-          it drives HDR itself rather than through gamescope's tone-mapping.
+          That buys two things it cannot have as a window inside gamescope:
+          it drives HDR itself rather than through gamescope's tone-mapping,
+          and it can in principle change the display mode so a 23.976p film
+          plays at 23.976 Hz instead of juddering against 60 Hz.
+
+          The HDR half works — verified on ernst 2026-09-04, the TV lit its
+          HDR badge during playback with the server doing no tone-mapping at
+          all. The refresh-rate half does not, on this hardware, and it is
+          worth being blunt about that because it was the headline argument
+          for running Kodi as a session in the first place. See the client
+          settings note below.
 
           The catch is that GBM mode has no device selection at all, which on
           a two-GPU box sends Kodi to the wrong card. That is solved by the
