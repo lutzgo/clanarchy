@@ -60,7 +60,7 @@
         example = "htpc";
       };
       defaultSession = lib.mkOption {
-        type = lib.types.enum [ "gamescope" "plasma" "bigscreen" ];
+        type = lib.types.enum [ "gamescope" "plasma" "kodi" "bigscreen" ];
         default = "gamescope";
         description = "Session to land in before any choice has been made.";
       };
@@ -79,6 +79,12 @@
           the wait.
         '';
       };
+
+      display.hdr.enable =
+        lib.mkEnableOption "HDR output in the gamescope session (see modules/roles/htpc.nix for when this is worth it)";
+
+      mediaClient.remoteControl.enable =
+        lib.mkEnableOption "network remote control of the media client (Kore/Yatse); needs a password set in Kodi's Services -> Control";
 
       bigscreen = {
         enable =
@@ -116,6 +122,8 @@
               inherit (settings) user defaultSession;
               autologin.enable = settings.autologin.enable;
               display.gpuPciAddress = settings.display.gpuPciAddress;
+              display.hdr.enable = settings.display.hdr.enable;
+              mediaClient.remoteControl.enable = settings.mediaClient.remoteControl.enable;
               bigscreen = {
                 inherit (settings.bigscreen) enable gid;
               }

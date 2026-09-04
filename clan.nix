@@ -52,13 +52,18 @@
         roles.laptop.machines.biene = { };   # no Framework hardware
         roles.laptop.machines.birte = { };   # Steam Deck OLED — battery-backed handheld
         roles.server.machines.ernst = { };
-        # ernst doubles as the living-room machine: boots into Steam Big
-        # Picture on the TV, switches to Plasma and back.  Stable channel +
-        # ZFS throughout — this is the stock nixpkgs gamescope session, not
-        # Jovian (see modules/roles/htpc.nix for why that distinction holds).
+        # ernst doubles as the living-room machine: boots into Kodi on the TV
+        # and switches to Steam Big Picture or Plasma at runtime.  Stable
+        # channel + ZFS throughout — the gaming arm is the stock nixpkgs
+        # gamescope session, not Jovian (see modules/roles/htpc.nix for why
+        # that distinction holds).
         roles.htpc.machines.ernst.settings = {
           user = "go";
-          defaultSession = "gamescope";
+          # The living room watches more than it plays, so the machine should
+          # come up in the media client rather than in Steam. Gaming is one
+          # `clanarchy-session-select gamescope` away, and Kodi's own Exit
+          # lands there too (see the kodi arm in modules/roles/htpc.nix).
+          defaultSession = "kodi";
           # Autologin on: this is a TV appliance and should behave like one —
           # power on, land in the session, no keyboard required.
           #
@@ -95,6 +100,27 @@
           # as `disconnected`, and gamescope answers a card with no connected
           # output by segfaulting.  See modules/roles/htpc.nix.
           display.gpuPciAddress = "0000:03:00.0";
+
+          # The living-room set is an HDR LG, and the couch use case is
+          # watching films rather than only playing games: without this the
+          # gamescope session is SDR, so Jellyfin's HDR material has to be
+          # tone-mapped to SDR on the server — a 4K Dolby Vision transcode
+          # that ernst's iGPU manages at barely realtime (0.87x measured
+          # 2026-09-04). HDR output is what lets the client direct-play it
+          # instead, which costs the server nothing at all.
+          display.hdr.enable = true;
+
+          # Phone remote (Kore) for the couch, since the TV remote cannot
+          # reach Kodi: no CEC adapter is fitted, and CEC over the GPU's HDMI
+          # does not exist on consumer cards.
+          #
+          # This opens a full control surface — browse, play, shut the machine
+          # down — on the box that fronts the array, so it is only half the
+          # job: Kodi's own web server must be given a username and password
+          # in Services -> Control, which is runtime state this cannot set.
+          # Reachability from the phone's VLAN is the UDM-Pro's business, the
+          # same as it was for Jellyfin.
+          mediaClient.remoteControl.enable = true;
 
           # Plasma Bigscreen: OFF, and staying off.
           #

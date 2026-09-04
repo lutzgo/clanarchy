@@ -25,7 +25,8 @@
 # execs either the gamescope Steam session or Plasma.  Switching is then
 # "write the file, restart the display manager" — the same shape as SteamOS.
 #
-#   /var/lib/clanarchy-session/current   "gamescope" | "plasma" | "bigscreen"
+#   /var/lib/clanarchy-session/current
+#     "gamescope" | "plasma" | "kodi" | "bigscreen"
 #
 # The directory is owned by the couch user so the switch needs no root, and a
 # polkit rule lets that user restart display-manager.service (and nothing
@@ -110,6 +111,36 @@ let
   # error rather than a dark TV, and blocking on it would turn a typo into a
   # machine with neither a session nor a greeter.  Start, fail visibly, and let
   # the relogin loop below make the failure repeat where it can be read.
+  # Sound has to come out of the same card the picture does.
+  #
+  # A GPU's HDMI audio is function .1 of the same PCI device as its display
+  # function .0, so the TV's speakers hang off `<gpu>.1` and nothing else. On
+  # a two-GPU box both cards present an HDMI sink, they arrive with identical
+  # priority (600/600 as shipped), and which one WirePlumber picks as default
+  # is then down to enumeration order — i.e. whichever card the kernel probed
+  # first. On ernst that lands on the *iGPU*, whose HDMI goes to the KVM and
+  # not to the living room: picture on the TV, sound into a device with no
+  # speakers attached. Observed 2026-09-04 — Jellyfin played Avatar with the
+  # default sink on "Radeon HD Audio Controller" and no audio in the room.
+  #
+  # Derived from `display.gpuPciAddress` rather than written out separately so
+  # the two cannot drift: the option that decides which card draws the picture
+  # is the one that decides where the sound goes.
+  #
+  # Matched on the PCI prefix and not the full node name, because the trailing
+  # part encodes which HDMI connector is in use (`hdmi-stereo-extra3` = the
+  # TV's current HDMI 4). Moving the cable to another port on the same card
+  # renames the node; it must not silently un-fix this.
+  tvAudioNodeMatch =
+    let
+      # 0000:03:00.0 (display) -> 0000:03:00.1 (its HDMI audio function)
+      audioAddress = (lib.removeSuffix ".0" cfg.display.gpuPciAddress) + ".1";
+      # PipeWire spells PCI addresses with underscores for the colons, keeping
+      # the dot before the function: 0000:03:00.1 -> 0000_03_00.1
+      prefix = "alsa_output.pci-" + builtins.replaceStrings [ ":" ] [ "_" ] audioAddress + ".";
+    in
+    "~" + builtins.replaceStrings [ "." ] [ "\\." ] prefix + ".*";
+
   waitForDisplay = lib.optionalString (cfg.display.gpuPciAddress != null) ''
     drmDir=/sys/bus/pci/devices/${cfg.display.gpuPciAddress}/drm
     set -- "$drmDir"/card[0-9]*
@@ -164,6 +195,28 @@ let
         # default instead.
         if cfg.bigscreen.enable then "plasma|bigscreen)" else "plasma)"
       } exec ${pkgs.kdePackages.plasma-workspace}/bin/startplasma-wayland ;;
+      ${lib.optionalString cfg.mediaClient.enable ''
+        kodi|media)
+          # NOT exec: we need to run something after Kodi exits.
+          #
+          # Kodi's power menu offers "Exit", and the display manager is set to
+          # relogin, so the wrapper would be re-entered, read "kodi" from the
+          # state file again and restart Kodi — an inescapable loop on a
+          # machine whose only input device may be a game controller. Dropping
+          # back to the gaming session on exit mirrors what SteamOS does with
+          # its own mode switch, and leaves the couch user somewhere they can
+          # navigate rather than staring at the same screen they just tried to
+          # leave.
+          #
+          # Only rewritten when Kodi exits cleanly. A crash leaves the choice
+          # alone, so the relogin brings Kodi back rather than silently
+          # demoting the machine out of media mode because of a segfault.
+          if ${cfg.mediaClient.exe} ${cfg.mediaClient.arguments}; then
+            printf 'gamescope\n' > ${stateFile}
+          fi
+          exit 0
+          ;;
+      ''}
       *)      exec /run/current-system/sw/bin/steam-gamescope ;;
     esac
   '';
@@ -192,6 +245,9 @@ let
       case "$mode" in
         gamescope|gamescope-wayland|steamos|gaming) mode=gamescope ;;
         plasma|plasma-wayland|plasma-x11|desktop)   mode=plasma ;;
+        ${lib.optionalString cfg.mediaClient.enable ''
+          kodi|media|tv)                             mode=kodi ;;
+        ''}
         ${
           # Only accept "bigscreen" when the container was actually built —
           # otherwise the switcher would happily record a mode whose unit
@@ -202,8 +258,8 @@ let
         }
         *)
           echo "usage: clanarchy-session-select {gamescope|plasma${
-            lib.optionalString cfg.bigscreen.enable "|bigscreen"
-          }}" >&2
+            lib.optionalString cfg.mediaClient.enable "|kodi"
+          }${lib.optionalString cfg.bigscreen.enable "|bigscreen"}}" >&2
           exit 2
           ;;
       esac
@@ -262,6 +318,107 @@ let
     '';
   };
 
+  # Artwork for the media client's Steam entry.
+  #
+  # Both are rasterised from the app's own scalable icon: Steam's image
+  # loader handles PNG/JPG/TGA but not SVG, so pointing the shortcut at
+  # `hicolor/scalable` directly yields an entry with no icon at all.
+  #
+  # The 600×900 tile is the one that matters — it is what Big Picture shows
+  # in the library grid, and Steam's fallback for a shortcut without one is a
+  # grey rectangle with the name printed on it.
+  #
+  # The background is deliberately dark rather than the app's own brand
+  # colours: Jellyfin's mark *is* a purple-to-blue gradient, so putting it on
+  # that same gradient renders the logo all but invisible (tried, looked like
+  # a broken image). Dark backing makes it pop, and Steam does not draw the
+  # name over portrait art, so the label is baked in.
+  mediaArtwork =
+    let
+      src = cfg.mediaClient.artwork;
+      label = lib.escapeShellArg cfg.mediaClient.name;
+    in
+    {
+      icon = pkgs.runCommand "media-client-icon.png" {
+        nativeBuildInputs = [ pkgs.librsvg ];
+      } "rsvg-convert -w 256 -h 256 ${src} -o $out";
+
+      cover = pkgs.runCommand "media-client-cover.png" {
+        nativeBuildInputs = [ pkgs.librsvg pkgs.imagemagick ];
+      } ''
+        rsvg-convert -w 380 -h 380 ${src} -o logo.png
+        magick -size 600x900 gradient:'#241a33-#0c0c12' \
+          logo.png -gravity center -geometry +0-70 -composite \
+          -font ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans-Bold.ttf \
+          -pointsize 64 -fill '#f2f2f7' -gravity center -annotate +0+220 ${label} \
+          png:$out
+      '';
+    };
+
+  # The OSMC skin, with nixpkgs' dead source pin repaired.
+  #
+  # nixpkgs 26.05 fetches tag `v21.1.1-August-update`, which upstream has
+  # since removed — the build dies on a 404 from GitHub, so the package is
+  # broken rather than merely unfree.
+  #
+  # Upstream renamed the tag rather than republishing: `v21.2.1-August-update`
+  # hashes to sha256-3BR6HfKefuyybDv9c/ZkkZMRDyWNZWpftulXyUAD9nY=, byte for
+  # byte what nixpkgs already expects from the old name. So this changes which
+  # name the archive is fetched under and nothing about its contents, which is
+  # why the hash below is copied unchanged from nixpkgs rather than being a
+  # new artefact anyone has to vouch for.
+  #
+  # Drop this the moment nixpkgs bumps its own pin.
+  #
+  # Takes the add-on set as an argument rather than reaching for
+  # `pkgs.kodiPackages`, and that is load-bearing. `withPackages` filters its
+  # selector's result with
+  #
+  #   hasKodiAddon = drv: drv ? kodiAddonFor && drv.kodiAddonFor == kodi;
+  #
+  # so an add-on built against a *different* Kodi than the one being wrapped
+  # is dropped — silently, with no error and no warning. Building this from
+  # `pkgs.kodiPackages` (which targets plain `kodi`) while wrapping
+  # `kodi-gbm` produced an environment byte-identical to one without the skin
+  # at all. Derive it from the set the selector is handed and the tag matches.
+  osmcSkinFor =
+    p:
+    p.osmc-skin.overrideAttrs (_: {
+      src = pkgs.fetchFromGitHub {
+        owner = "osmc";
+        repo = "skin.osmc";
+        tag = "v21.2.1-August-update";
+        hash = "sha256-3BR6HfKefuyybDv9c/ZkkZMRDyWNZWpftulXyUAD9nY=";
+      };
+    });
+
+  # The client as Big Picture launches it: scaled for the couch.
+  #
+  # A wrapper rather than launch options on the Steam entry, because Steam
+  # stores those in the same binary blob as everything else and a
+  # `VAR=x %command%` prefix is Steam-version-dependent shell handling we
+  # would rather not depend on. A wrapper is just a program, and it works
+  # identically if someone runs it from a terminal to debug.
+  #
+  # Referenced through /run/current-system/sw/bin for the same reason
+  # mediaClient.exe is: the Steam app id is derived from the exe string, so a
+  # store path that moves each rebuild would orphan the library entry.
+  mediaClientTvLauncher = pkgs.writeShellApplication {
+    name = "clanarchy-media-client-tv";
+    text = ''
+      export QT_SCALE_FACTOR=${cfg.mediaClient.scaleFactor}
+      exec ${cfg.mediaClient.exe} "$@"
+    '';
+  };
+
+  # Whatever the Steam entry should actually run — the wrapper when a scale
+  # factor is configured, the client itself when it is not.
+  mediaClientShortcutExe =
+    if cfg.mediaClient.scaleFactor == null then
+      cfg.mediaClient.exe
+    else
+      "/run/current-system/sw/bin/clanarchy-media-client-tv";
+
   # Desktop-mode launcher for the trip back, so returning to Gaming Mode
   # doesn't require a terminal.
   returnLauncher = pkgs.makeDesktopItem {
@@ -271,6 +428,21 @@ let
     icon = "steam";
     exec = "${sessionSelect}/bin/clanarchy-session-select gamescope";
     categories = [ "Game" ];
+  };
+
+  # The same trip back, for the arm the machine actually boots into.
+  #
+  # Plasma had a launcher to reach Steam and none to reach the media client,
+  # which is the default session — so from the desktop the only way back to
+  # the thing this machine is mostly for was a terminal. Every arm reachable
+  # from every other arm without one is the point of the switcher.
+  mediaLauncher = pkgs.makeDesktopItem {
+    name = "clanarchy-return-to-media";
+    desktopName = "Return to Media Mode";
+    comment = "Restart into the ${cfg.mediaClient.name} session";
+    icon = "kodi";
+    exec = "${sessionSelect}/bin/clanarchy-session-select kodi";
+    categories = [ "AudioVideo" ];
   };
 in
 {
@@ -294,15 +466,16 @@ in
     };
 
     defaultSession = lib.mkOption {
-      type = lib.types.enum [ "gamescope" "plasma" "bigscreen" ];
+      type = lib.types.enum [ "gamescope" "plasma" "kodi" "bigscreen" ];
       default = "gamescope";
       description = ''
         Which session to land in when no choice has been made yet — i.e.
         first boot, and after `/persist` is reset. Deck-like behaviour is
-        `gamescope`; use `plasma` if the machine should feel like a desktop
-        that happens to game, or `bigscreen` for a TV media appliance.
+        `gamescope`; `kodi` for a machine that is mostly for watching things;
+        `plasma` if it should feel like a desktop that happens to game.
 
-        `bigscreen` requires `bigscreen.enable`.
+        `kodi` requires `mediaClient.enable`, `bigscreen` requires
+        `bigscreen.enable`.
       '';
     };
 
@@ -336,6 +509,21 @@ in
         display; the wait is then skipped entirely.
       '';
     };
+
+    display.hdr.enable = lib.mkEnableOption ''
+      HDR output in the gamescope session, via gamescope's `--hdr-enabled`.
+
+      Off by default because it depends entirely on the panel: gamescope
+      drives the display in an HDR colourspace and tone-maps SDR content up
+      into it, which on a set that handles HDR badly looks worse than plain
+      SDR, not better.
+
+      It is not only for games. Without it the session is SDR, so HDR video
+      played by the media client is delivered to an SDR output and comes out
+      washed out — which is the usual reason a client is left force-
+      transcoding HDR to SDR on the server instead of direct-playing it.
+      Turning this on is what makes turning that off worthwhile
+    '';
 
     bigscreen = {
       enable = lib.mkEnableOption ''
@@ -391,22 +579,310 @@ in
         lib.mkEnableOption "a couch media client alongside the gaming session"
         // { default = true; };
 
-      package = lib.mkOption {
-        type = lib.types.package;
-        default = pkgs.jellyfin-media-player;
-        defaultText = lib.literalExpression "pkgs.jellyfin-media-player";
-        description = ''
-          Media client to install. Defaults to Jellyfin Media Player, which
-          has its own 10-foot TV interface and talks to the Jellyfin server
-          ernst already runs in an nspawn container.
+      addons = lib.mkOption {
+        type = lib.types.functionTo (lib.types.listOf lib.types.package);
+        default =
+          p: with p; [
+            # The server integration itself: syncs the Jellyfin library into
+            # Kodi's own database, so browsing is local and instant.
+            jellyfin
 
-          Plasma Bigscreen would have been the obvious "KDE for TV" answer
-          but is not packaged in 26.05 — the top-level attribute is a
-          throwing alias pointing at `kdePackages.plasma-bigscreen`, which
-          does not exist. So the 10-foot UI is Steam Big Picture, with this
-          client added to it as a launcher entry (see the note below).
+            # Not optional in practice. Whenever the server does *not* hand
+            # over the original file — a transcode, a remux, anything the
+            # client cannot direct-play — Jellyfin delivers HLS, and Kodi
+            # cannot play HLS without this. Leaving it out produces a setup
+            # that works perfectly until the first file that needs help and
+            # then fails with nothing useful on screen.
+            inputstream-adaptive
+
+            # What add-ons actually call to check inputstream is present and
+            # enabled before they hand it a stream. Jellyfin for Kodi uses it.
+            inputstreamhelper
+
+            # Auto-plays the next episode with the countdown card. The
+            # Jellyfin add-on has explicit support for it, and it is most of
+            # what makes a series feel like a TV app rather than a file
+            # browser.
+            upnext
+
+            # Subtitle search from inside playback, for the cases where the
+            # server has no embedded track worth using.
+            a4ksubtitles
+
+            # Remap the remote or controller from inside Kodi. Worth having
+            # on a machine whose input devices are still an open question —
+            # there is no keyboard in the living room by design.
+            keymap
+
+            # The only skin nixpkgs packages. Everything else people reach
+            # for — Arctic Horizon, Arctic Zephyr, Aeon Nox — exists solely
+            # in Kodi's own repository, so it can be installed at runtime and
+            # will persist in ~/.kodi, but cannot be declared here.
+            #
+            # It is CC-BY-NC-SA, which nixpkgs classes as unfree, so it needs
+            # an entry in this role's allowUnfreePredicate below. Fine for a
+            # living room; the NC clause is why it is not simply free.
+            #
+            # Installing it does not select it: Kodi keeps the active skin in
+            # ~/.kodi as runtime state. Settings -> Interface -> Skin.
+            #
+            # Repaired rather than taken straight from `p`: nixpkgs' own
+            # attribute is broken on a dead source URL. See osmcSkinFor above.
+          ]
+          ++ [ (osmcSkinFor p) ];
+        defaultText = lib.literalExpression ''
+          p: with p; [ jellyfin inputstream-adaptive inputstreamhelper upnext a4ksubtitles keymap ]
+        '';
+        description = ''
+          Add-ons built into the client package, as a `withPackages` selector.
+
+          Declared here rather than installed from Kodi's repository at
+          runtime so they survive a rebuild and are visible in the config
+          rather than only in `~/.kodi`.
+
+          Deliberately excluded, having been considered:
+
+          - `jellycon` — a second, lighter Jellyfin add-on that browses the
+            server live instead of syncing. Running both against one server
+            is a good way to get two libraries that disagree.
+          - `trakt` — Jellyfin already tracks watched state and syncs it
+            back, so this mostly adds a second scrobbler racing the first.
+          - `netflix` — needs Widevine and a login; DRM plumbing this role
+            has no business carrying.
+          - `pvr-hts` — the Tvheadend client, and ernst does run Tvheadend.
+            Left out only because an enabled-but-unconfigured PVR add-on
+            nags on every start; add it here the day live TV is wanted.
         '';
       };
+
+      package = lib.mkOption {
+        type = lib.types.package;
+        default = pkgs.kodi-gbm.withPackages cfg.mediaClient.addons;
+        defaultText = lib.literalExpression "pkgs.kodi-gbm.withPackages config.clanarchy.roles.htpc.mediaClient.addons";
+        description = ''
+          Media client to install. Kodi with the Jellyfin add-on, talking to
+          the Jellyfin server ernst already runs in an nspawn container. The
+          add-on set is `mediaClient.addons`.
+
+          ── Why not Jellyfin Media Player ────────────────────────────────
+          It was the obvious choice and it does not work here. JMP is a Qt
+          shell that is supposed to play through mpv, advertising mpv's codec
+          support to the server. The nixpkgs build ships no web client (975 KB
+          total, no JS at all), so it loads jellyfin-web from the server — and
+          the mpv player plugin never registers into that page. Measured on
+          ernst 2026-09-04: the client's own log shows jellyfin-web loading
+          `htmlVideoPlayer` and no JMP player, and the playback URL carries
+
+            VideoCodec=av1,h264,vp9   AudioCodec=aac,opus,flac
+            TranscodeReasons=ContainerNotSupported,VideoCodecNotSupported,
+                             AudioCodecNotSupported
+
+          i.e. QtWebEngine's HTML5 <video> capabilities, not mpv's. So every
+          HEVC file is transcoded to H.264 and every Dolby track flattened to
+          stereo AAC, no matter what JMP's own audio and video settings say —
+          those settings feed the mpv path, which is not the one running. On
+          this hardware that meant a 4K Dolby Vision tone-map on the iGPU at
+          0.87x realtime: a film that could not finish.
+
+          Kodi decodes in-process. It direct-plays HEVC and Dolby Vision and
+          bitstreams AC3/E-AC3/TrueHD to the receiver, so the server does no
+          work at all.
+
+          ── Why not Plasma Bigscreen ─────────────────────────────────────
+          Not packaged in 26.05 — the top-level attribute is a throwing alias
+          pointing at `kdePackages.plasma-bigscreen`, which does not exist.
+
+          `kodi-wayland` rather than plain `kodi`: the session it launches
+          into is gamescope, which is a Wayland compositor.
+        '';
+      };
+
+      name = lib.mkOption {
+        type = lib.types.str;
+        default = "Kodi";
+        description = "Name the client appears under in the Steam library.";
+      };
+
+      # ── Client settings that are NOT declarable, and were hard to find ───
+      #
+      # Kodi rewrites ~/.kodi/userdata/guisettings.xml on exit, so nothing
+      # here can own these. They are runtime state, persisted with the rest of
+      # ~/.kodi. Recorded because all three cost an evening to find and a
+      # fresh install starts from the wrong value on every one.
+      #
+      # videoplayer.useprimedecoder = false
+      #   Must be off. Kodi's DRMPRIME decoder returns no buffer at all for
+      #   10-bit content on this GPU:
+      #     CDVDVideoCodecDRMPRIME::GetPicture - videoBuffer:nullptr
+      #                                          format:yuv420p10le
+      #   The symptom is vicious: audio plays, the receiver lights up, and
+      #   the screen shows only the Kodi UI — it looks like a rendering or
+      #   compositor problem, not a decoder one. With it off Kodi uses
+      #   FFmpeg/VAAPI on the same card, decodes 4K HEVC at ~8% CPU, and
+      #   the nullptr errors go to zero.
+      #
+      # videoplayer.adjustrefreshrate = 0
+      #   Has to stay off, which is the sad one. It *works* — the log shows
+      #   "Display resolution ADJUST : 3840x2160 @ 24.000000 Hz" — and then
+      #   the modeset tears down the EGL surface and Kodi aborts:
+      #     VideoPlayer: OnLostDisplay received
+      #     eglSwapBuffers failed (EGL_BAD_ALLOC)
+      #   Four SIGABRTs in six minutes, one per play. A 2 s
+      #   videoscreen.delayrefreshchange did not help. amdgpu/EGL, not
+      #   config. Revisit on a kernel or Kodi bump; until then 24p judders.
+      #
+      # audiooutput.eac3passthrough = true  ← this is the Atmos switch
+      #   Atmos rides inside Dolby Digital Plus on streaming sources, so
+      #   E-AC3 passthrough is what puts Atmos on the receiver; TrueHD is a
+      #   different, rarer carrier. Kodi does not even offer
+      #   truehdpassthrough here, because it reaches the TV through a
+      #   PipeWire hdmi-stereo sink and TrueHD needs 8-channel HBR. Leave it
+      #   off. audiooutput.ac3transcode = true is a useful backstop for
+      #   sources whose codec cannot be passed through: Kodi re-encodes to
+      #   DD 5.1 rather than collapsing to stereo, which is what the TV's
+      #   ELD would otherwise force (it advertises LPCM 2ch only).
+      persistenceDirectories = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ".kodi" ];
+        description = ''
+          Home-relative directories the client keeps its state in, added to
+          the couch user's impermanence set.
+
+          Not optional in practice. Home is rolled back on every boot here,
+          and Kodi keeps everything — the Jellyfin add-on, the server it is
+          paired with, the login, the library cache, every setting — under
+          `~/.kodi`. Without this the client comes up as a fresh install after
+          each reboot and someone has to re-add the server from the sofa.
+        '';
+      };
+
+      exe = lib.mkOption {
+        type = lib.types.str;
+        default = "/run/current-system/sw/bin/kodi-standalone";
+        description = ''
+          Binary the Steam shortcut launches. Deliberately a
+          `/run/current-system/sw/bin` path and not a store path: Steam
+          derives a non-Steam shortcut's app id from the exe string, so a
+          path that changes on every rebuild would make Steam treat the entry
+          as a brand-new game each time — new id, artwork gone, controller
+          layout gone.
+
+          `kodi-wayland` still installs its binary as plain `kodi`; there is
+          no separate `kodi-wayland` executable.
+        '';
+      };
+
+      arguments = lib.mkOption {
+        type = lib.types.str;
+        default = "--windowing=gbm";
+        description = ''
+          Launch options. `--windowing=gbm` is what Kodi's own
+          `kodi-gbm.desktop` session entry uses, and it is the whole point of
+          running the client as a session: in GBM mode Kodi talks to KMS
+          directly, with no compositor in the way.
+
+          That buys two things it cannot have as a window inside gamescope:
+          it drives HDR itself rather than through gamescope's tone-mapping,
+          and it can in principle change the display mode so a 23.976p film
+          plays at 23.976 Hz instead of juddering against 60 Hz.
+
+          The HDR half works — verified on ernst 2026-09-04, the TV lit its
+          HDR badge during playback with the server doing no tone-mapping at
+          all. The refresh-rate half does not, on this hardware, and it is
+          worth being blunt about that because it was the headline argument
+          for running Kodi as a session in the first place. See the client
+          settings note below.
+
+          The catch is that GBM mode has no device selection at all, which on
+          a two-GPU box sends Kodi to the wrong card. That is solved by the
+          udev rules under `services.udev.extraRules` below — read those
+          before changing anything here, because this option only works at
+          all because of them.
+        '';
+      };
+
+      artwork = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = "${cfg.mediaClient.package}/share/icons/hicolor/scalable/apps/kodi.svg";
+        defaultText = lib.literalExpression ''"''${package}/share/icons/hicolor/scalable/apps/kodi.svg"'';
+        description = ''
+          Source SVG the library icon and grid tile are rendered from. Steam's
+          image loader does not read SVG, so both are rasterised at build
+          time; the tile is the app logo centred on a dark backing, because
+          the alternative Steam draws for art-less shortcuts is a grey box
+          with the name in it.
+
+          Set to null to install the shortcut with no artwork — necessary if
+          `package` is swapped for a client that does not ship that path.
+        '';
+      };
+
+      scaleFactor = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Qt scale factor applied when the client is launched from the gaming
+          session, via `QT_SCALE_FACTOR`.
+
+          Null for Kodi, which is not a Qt application and scales its own
+          10-foot skin to whatever resolution it is given — the problem below
+          simply does not arise. It is kept because it is real for any Qt or
+          Electron client someone swaps in.
+
+          Needed because the two sessions handle a 4K TV completely
+          differently. Plasma scales the output (ernst's TV output is at
+          scale 2), so the client looks right there with no help. The
+          gamescope session runs raw native resolution — nixpkgs starts it as
+          `gamescope --steam -- steam -tenfoot`, with no `-W`/`-H` — and
+          Steam's own Deck UI compensates internally. A Qt/QtWebEngine app
+          dropped into that gets no such treatment and renders at true 3840
+          pixels wide, which from a sofa is unreadable.
+
+          So this is deliberately *not* set on the desktop entry, only on the
+          Steam shortcut: setting it globally would double-scale the client
+          in Plasma, which already scales it once.
+
+          Set to null to launch the client unwrapped, e.g. on a 1080p TV where
+          neither session needs the help.
+        '';
+      };
+
+      remoteControl.enable = lib.mkEnableOption ''
+        network remote control of the media client — opens Kodi's web
+        interface and EventServer to the LAN, for phone remotes like Kore or
+        Yatse.
+
+        Off by default, and worth a deliberate decision for the same reason
+        `autologin.enable` is: this role lands on a machine that also fronts
+        the storage array. Kodi's web server is a full control surface — it
+        can browse the library, start playback, and shut the machine down —
+        so it must be given a username and password in Kodi's own settings
+        (Services -> Control), not just exposed.
+
+        KDE Connect / Valent is *not* an alternative here, though it looks
+        like one. Its remote-input feature injects events into a desktop
+        session through a compositor or the RemoteDesktop portal, and the
+        media client runs on bare KMS with neither. Its media controls speak
+        MPRIS, which Kodi does not expose. It works fine against the plasma
+        arm, which is not where the films are
+      '';
+
+      steamShortcut.enable = lib.mkEnableOption ''
+        a Steam library entry for the media client, so it is launchable from
+        inside Big Picture.
+
+        Off by default, because the client is its own session arm — reached
+        with `clanarchy-session-select kodi` rather than from Steam's
+        library. The two are close to mutually exclusive in practice: a GBM
+        build talks to KMS directly and is not a Wayland client, so it cannot
+        run as a window inside gamescope at all. Enabling this alongside the
+        default `package` would produce a library entry that fails to start.
+
+        Worth turning on only with a `package` and `exe` swapped for a
+        windowed build — and then think twice, because two ways to launch the
+        same client with different picture quality is a trap for whoever else
+        uses the TV
+      '';
     };
 
     controller.enable =
@@ -444,6 +920,22 @@ in
       living-room-appliance feel; leave it off to keep a login prompt in
       front of the array
     '';
+
+    screenLocker.enable = lib.mkEnableOption ''
+      Plasma's screen locker in the desktop arm.
+
+      Off by default, because on a TV it locks you out rather than securing
+      anything. Plasma autolocks after five idle minutes and then demands the
+      couch user's password — which on this fleet is a clan var nobody has
+      memorised, typed on whatever input device happens to be in the room.
+      Meanwhile it guards nothing: with `autologin.enable` the machine already
+      hands that session to anyone who walks up and presses power, so the
+      locker only ever stands between the sofa and a session it will give away
+      on the next reboot anyway.
+
+      Turn it on for a couch machine that is somewhere semi-public *and* has
+      autologin off, where the lock is a real boundary rather than a puzzle
+    '';
   };
 
   config = lib.mkIf cfg.enable {
@@ -454,6 +946,14 @@ in
           clanarchy.roles.htpc.defaultSession = "bigscreen" requires
           clanarchy.roles.htpc.bigscreen.enable = true — otherwise the
           container the boot dispatcher would start does not exist.
+        '';
+      }
+      {
+        assertion = cfg.defaultSession == "kodi" -> cfg.mediaClient.enable;
+        message = ''
+          clanarchy.roles.htpc.defaultSession = "kodi" requires
+          clanarchy.roles.htpc.mediaClient.enable = true — otherwise the
+          machine boots into a session arm whose binary is not installed.
         '';
       }
     ];
@@ -473,6 +973,107 @@ in
         extraPackages
         ;
       gpu.pciAddress = cfg.bigscreen.gpu.pciAddress;
+    };
+
+    # Phone-remote access to the media client.
+    #
+    # Kodi binds all three of these to localhost until its own "allow remote
+    # control from other systems" setting is on, so opening the ports is
+    # necessary but not sufficient — the toggle in Services -> Control is the
+    # other half, and it is runtime state in ~/.kodi rather than something
+    # this module can set.
+    #
+    #   8080/tcp  web interface + JSON-RPC over HTTP — what Kore and Yatse use
+    #   9090/tcp  raw JSON-RPC, for clients that prefer the socket transport
+    #   9777/udp  EventServer, which is how those apps send key presses
+    #
+    # Discovery needs no port of its own: the fleet already runs Avahi
+    # (modules/networking/mdns.nix) and Kodi advertises over it.
+    networking.firewall = lib.mkIf (cfg.mediaClient.enable && cfg.mediaClient.remoteControl.enable) {
+      allowedTCPPorts = [ 8080 9090 ];
+      allowedUDPPorts = [ 9777 ];
+    };
+
+    # Hand the couch session exactly one GPU: the TV's.
+    #
+    # Kodi's GBM backend has no device selection. It opens DRM cards in
+    # enumeration order and keeps the first with a *connected* connector —
+    # `KODI_GBM_DEVICE` does not exist in Kodi 21 (set it and the binary never
+    # reads it), and `videoscreen.monitor` is consulted only after a card has
+    # already been opened. On a two-GPU box that means it takes whichever card
+    # the kernel happened to probe first. On ernst that is the iGPU, whose
+    # HDMI-A-2 is permanently connected to the Comet KVM, so Kodi rendered a
+    # 2560x1440 picture into the KVM while the TV stayed black.
+    #
+    # Since the mechanism cannot be told which card to use, it is told which
+    # cards it may open. Deny every DRM card node to the session user, then
+    # re-allow the one the TV hangs off — so Kodi's open() fails on everything
+    # else and its loop walks on to the right card by itself. Written as
+    # deny-then-allow rather than naming the iGPU, so a third GPU appearing
+    # later is excluded by default instead of silently becoming a candidate.
+    #
+    # Both halves are needed, because the couch user reaches a card two ways:
+    #   TAG-="uaccess"   stops systemd-logind granting a per-session ACL
+    #   GROUP="root"     stops the `video` group membership granting it
+    # Removing only one leaves access intact — verified on ernst 2026-09-04,
+    # where dropping uaccess alone still left `user:go:rw-` on the node.
+    #
+    # Scoped to `card[0-9]*`, the KMS nodes. Render nodes (`renderD*`) are
+    # deliberately untouched: that is how the Jellyfin container reaches the
+    # iGPU for VAAPI (machines/ernst/containers/jellyfin.nix) and how ROCm
+    # reaches the dGPU. This restricts who may *drive a display*, not who may
+    # compute.
+    services.udev.extraRules = lib.mkIf (cfg.display.gpuPciAddress != null) ''
+      SUBSYSTEM=="drm", KERNEL=="card[0-9]*", TAG-="uaccess", GROUP="root", MODE="0660"
+      SUBSYSTEM=="drm", KERNEL=="card[0-9]*", ENV{ID_PATH}=="pci-${cfg.display.gpuPciAddress}", TAG+="uaccess", GROUP="video", MODE="0660"
+    '';
+
+    # Make the TV's HDMI audio the default sink — see tvAudioNodeMatch above.
+    #
+    # A priority bump rather than a hardcoded default: WirePlumber picks the
+    # highest-priority *available* sink, so if the TV is off at login and its
+    # sink is absent, this degrades to the iGPU rather than to silence, and
+    # snaps back when the TV returns. Naming one node as "the" default cannot
+    # do that.
+    #
+    # It also stays out of the user's way. An explicit choice in System
+    # Settings is stored in ~/.local/state/wireplumber (persisted for the
+    # couch user) and still wins over priority — this only decides what
+    # happens when nobody has chosen, which includes every fresh install.
+    services.pipewire.wireplumber.extraConfig."51-htpc-tv-audio" =
+      lib.mkIf (cfg.display.gpuPciAddress != null) {
+        "monitor.alsa.rules" = [
+          {
+            matches = [ { "node.name" = tvAudioNodeMatch; } ];
+            actions.update-props = {
+              "priority.session" = 2000;
+              "priority.driver" = 2000;
+            };
+          }
+        ];
+      };
+
+    # Kill Plasma's screen locker on the TV.
+    #
+    # Written to /etc/xdg rather than the couch user's ~/.config for two
+    # reasons: it needs no per-user plumbing (there is no home-manager for the
+    # couch account), and /etc/xdg is on `XDG_CONFIG_DIRS` in the Plasma
+    # session, so KConfig picks it up as a system default. Home is rolled back
+    # on every boot here, which a user-level file would have to survive.
+    #
+    # `[$i]` is KDE's kiosk immutability marker. It does more than set a
+    # default: it makes the group unwritable from user config, so the System
+    # Settings toggle is greyed out instead of silently re-enabling a lockout
+    # that then persists in /persist. LockOnResume matters as much as Autolock
+    # on a TV — the panel dropping DPMS and coming back is a "resume", so
+    # without it the lock returns the first time someone turns the telly off
+    # and on again.
+    environment.etc."xdg/kscreenlockerrc" = lib.mkIf (!cfg.screenLocker.enable) {
+      text = ''
+        [Daemon][$i]
+        Autolock=false
+        LockOnResume=false
+      '';
     };
 
     # Wireless controller support.
@@ -501,10 +1102,28 @@ in
     clanarchy.gaming = {
       enable = true;
       user = cfg.user;
+
+      # Put the media client in the Steam library. Steam keeps non-Steam
+      # shortcuts in a binary blob under a directory named after the account's
+      # steamid — unknowable at build time — so this is a runtime merge rather
+      # than a file we can write; modules/gaming-shortcuts.nix has the detail.
+      shortcuts = lib.optional (cfg.mediaClient.enable && cfg.mediaClient.steamShortcut.enable) {
+        inherit (cfg.mediaClient) name arguments;
+        exe = mediaClientShortcutExe;
+        tags = [ "Media" ];
+        icon = if cfg.mediaClient.artwork == null then null else mediaArtwork.icon;
+        coverArt = if cfg.mediaClient.artwork == null then null else mediaArtwork.cover;
+      };
     };
 
     # The stock gamescope Steam session from nixpkgs — no Jovian.
     programs.steam.gamescopeSession.enable = true;
+
+    # nixpkgs builds the launcher as
+    #   gamescope --steam ${args} -- steam ${steamArgs}
+    # so this lands before the `--`, i.e. as a gamescope flag rather than a
+    # Steam one. See programs/steam.nix in nixpkgs.
+    programs.steam.gamescopeSession.args = lib.mkIf cfg.display.hdr.enable [ "--hdr-enabled" ];
 
     # Steam and Proton are unfree.  birte gets this from the pkgs instance
     # built in lib/mk-machine.nix (`allowUnfree = true` baked in), but HTPC
@@ -529,6 +1148,11 @@ in
         "steam-run"
         "steam-jupiter-unwrapped"
         "proton-ge-bin"
+
+        # The OSMC skin, CC-BY-NC-SA — see mediaClient.addons. Not a
+        # proprietary blob like the rest of this list; it is here purely
+        # because the non-commercial clause makes nixpkgs call it unfree.
+        "osmc-skin"
       ];
 
     # Point the display manager at the wrapper session rather than at
@@ -540,6 +1164,33 @@ in
       enable = true;
       user = cfg.user;
     };
+
+    # Tear the couch user's session down completely when the display manager
+    # stops, rather than leaving its systemd --user manager behind.
+    #
+    # Switching arms restarts the display manager, but logind keeps
+    # `user@<uid>` and everything under it alive across that — pipewire,
+    # wireplumber, the xdg portals. After enough switches those services are
+    # bound to sessions that no longer exist, and the next login inherits the
+    # wreckage. Seen on ernst 2026-09-04 after an afternoon of switching:
+    #
+    #   startplasma-wayland    running, no children, blocked on a futex
+    #   sddm-helper            Failed to take control of "/dev/tty1": EPERM
+    #   wireplumber            listen(): Address already in use
+    #
+    # `startplasma` wedged while holding /dev/tty1, so every following
+    # autologin failed to take the VT and SDDM's relogin loop simply spun —
+    # roughly 1400 sessions before it was noticed. From the sofa that looks
+    # like "switching to desktop hangs", with nothing on screen to say why.
+    #
+    # ExecStopPost rather than logind's KillUserProcesses: this is scoped to
+    # the couch user on a machine whose display manager is restarted as a
+    # matter of routine, and it leaves SSH sessions and the server side of
+    # this box alone. The couch account has nothing that should outlive a
+    # deliberate session switch.
+    systemd.services.display-manager.serviceConfig.ExecStopPost = [
+      "${pkgs.systemd}/bin/loginctl terminate-user ${cfg.user}"
+    ];
 
     # Autologin again when a session ends, rather than once per display-manager
     # start.
@@ -558,26 +1209,53 @@ in
     services.displayManager.sddm.autoLogin.relogin = lib.mkIf cfg.autologin.enable true;
 
     # The media client is installed system-wide (not just into the session)
-    # so it shows up in Plasma's launcher too, and so Steam's "Add a
-    # Non-Steam Game" browser can find it on PATH.
+    # so it shows up in Plasma's launcher too, and so `mediaClient.exe` can
+    # be a stable /run/current-system/sw/bin path rather than a store path
+    # that moves on every rebuild.
     #
-    # NOTE — one manual step: Steam stores non-Steam shortcuts in
-    # `shortcuts.vdf`, a *binary* VDF blob inside the user's Steam data dir.
-    # Generating that declaratively is possible but brittle across Steam
-    # versions, so the launcher entry is added once by hand from Big
-    # Picture (Library → Add a Non-Steam Game → Jellyfin Media Player).  It
-    # survives reboots because `.local/share` is persisted for the couch
-    # user — see the machine's user module.
+    # Getting it into *Big Picture* is a separate job — see the shortcuts
+    # wiring under clanarchy.gaming above.  This used to be a documented
+    # manual step (Library → Add a Non-Steam Game, once, by hand); it is now
+    # declared, which also means it comes back on its own after an
+    # impermanence rollback wipes the Steam config.
     environment.systemPackages = [
       sessionSelect
       steamosShim
       returnLauncher
-    ] ++ lib.optional cfg.mediaClient.enable cfg.mediaClient.package;
+    ]
+    ++ lib.optional cfg.mediaClient.enable mediaLauncher
+    ++ lib.optional cfg.mediaClient.enable cfg.mediaClient.package
+    ++ lib.optional (cfg.mediaClient.enable && cfg.mediaClient.scaleFactor != null) mediaClientTvLauncher;
 
     # Owned by the couch user so switching needs no privilege escalation.
+    #
+    # The *file* is declared too, not just the directory, and that is the whole
+    # point of the second rule. The switcher is a shell redirect into an
+    # existing path, so whoever creates the file first owns it — and running
+    # `clanarchy-session-select` once as root over SSH (the obvious thing to do
+    # when the TV is unreachable) leaves behind a root-owned `current` that the
+    # couch user can no longer write. The symptom is bad: every later switch
+    # from the sofa dies with "Permission denied" before it reaches the
+    # display-manager restart, so the Return to Gaming Mode launcher silently
+    # does nothing at all. Hit on ernst 2026-09-04, by exactly that route.
+    #
+    # `f` seeds it with the configured default when absent; `z` re-asserts
+    # ownership on every boot, which is what actually repairs the root-owned
+    # case rather than merely avoiding it.
     systemd.tmpfiles.rules = [
       "d ${stateDir} 0755 ${cfg.user} ${config.users.users.${cfg.user}.group} -"
+      "f ${stateFile} 0644 ${cfg.user} ${config.users.users.${cfg.user}.group} - ${cfg.defaultSession}"
+      "z ${stateFile} 0644 ${cfg.user} ${config.users.users.${cfg.user}.group} -"
     ];
+
+    # The media client's own state. Home is rolled back on every boot, and
+    # Kodi keeps the Jellyfin add-on, the paired server, the login and every
+    # setting under ~/.kodi — so without this the client is a fresh install
+    # after each reboot and someone re-adds the server from the sofa.
+    environment.persistence."/persist".users.${cfg.user} =
+      lib.mkIf (cfg.mediaClient.enable && cfg.mediaClient.persistenceDirectories != [ ]) {
+        directories = cfg.mediaClient.persistenceDirectories;
+      };
 
     # Survive impermanence rollback, so the machine comes back up in the
     # session it was left in.
