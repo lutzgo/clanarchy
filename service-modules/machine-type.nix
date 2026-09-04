@@ -83,6 +83,9 @@
       display.hdr.enable =
         lib.mkEnableOption "HDR output in the gamescope session (see modules/roles/htpc.nix for when this is worth it)";
 
+      mediaClient.remoteControl.enable =
+        lib.mkEnableOption "network remote control of the media client (Kore/Yatse); needs a password set in Kodi's Services -> Control";
+
       bigscreen = {
         enable =
           lib.mkEnableOption "Plasma Bigscreen mode in an nspawn container (see modules/desktop/bigscreen.nix)";
@@ -120,6 +123,7 @@
               autologin.enable = settings.autologin.enable;
               display.gpuPciAddress = settings.display.gpuPciAddress;
               display.hdr.enable = settings.display.hdr.enable;
+              mediaClient.remoteControl.enable = settings.mediaClient.remoteControl.enable;
               bigscreen = {
                 inherit (settings.bigscreen) enable gid;
               }

@@ -110,6 +110,18 @@
           # instead, which costs the server nothing at all.
           display.hdr.enable = true;
 
+          # Phone remote (Kore) for the couch, since the TV remote cannot
+          # reach Kodi: no CEC adapter is fitted, and CEC over the GPU's HDMI
+          # does not exist on consumer cards.
+          #
+          # This opens a full control surface — browse, play, shut the machine
+          # down — on the box that fronts the array, so it is only half the
+          # job: Kodi's own web server must be given a username and password
+          # in Services -> Control, which is runtime state this cannot set.
+          # Reachability from the phone's VLAN is the UDM-Pro's business, the
+          # same as it was for Jellyfin.
+          mediaClient.remoteControl.enable = true;
+
           # Plasma Bigscreen: OFF, and staying off.
           #
           # It cannot work in a container — Plasma 6.7 drives its session
