@@ -329,6 +329,33 @@ let
       '';
     };
 
+  # The client as Big Picture launches it: scaled for the couch.
+  #
+  # A wrapper rather than launch options on the Steam entry, because Steam
+  # stores those in the same binary blob as everything else and a
+  # `VAR=x %command%` prefix is Steam-version-dependent shell handling we
+  # would rather not depend on. A wrapper is just a program, and it works
+  # identically if someone runs it from a terminal to debug.
+  #
+  # Referenced through /run/current-system/sw/bin for the same reason
+  # mediaClient.exe is: the Steam app id is derived from the exe string, so a
+  # store path that moves each rebuild would orphan the library entry.
+  mediaClientTvLauncher = pkgs.writeShellApplication {
+    name = "clanarchy-media-client-tv";
+    text = ''
+      export QT_SCALE_FACTOR=${cfg.mediaClient.scaleFactor}
+      exec ${cfg.mediaClient.exe} "$@"
+    '';
+  };
+
+  # Whatever the Steam entry should actually run — the wrapper when a scale
+  # factor is configured, the client itself when it is not.
+  mediaClientShortcutExe =
+    if cfg.mediaClient.scaleFactor == null then
+      cfg.mediaClient.exe
+    else
+      "/run/current-system/sw/bin/clanarchy-media-client-tv";
+
   # Desktop-mode launcher for the trip back, so returning to Gaming Mode
   # doesn't require a terminal.
   returnLauncher = pkgs.makeDesktopItem {
@@ -527,6 +554,31 @@ in
         '';
       };
 
+      scaleFactor = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = "2";
+        description = ''
+          Qt scale factor applied when the client is launched from the gaming
+          session, via `QT_SCALE_FACTOR`.
+
+          Needed because the two sessions handle a 4K TV completely
+          differently. Plasma scales the output (ernst's TV output is at
+          scale 2), so the client looks right there with no help. The
+          gamescope session runs raw native resolution — nixpkgs starts it as
+          `gamescope --steam -- steam -tenfoot`, with no `-W`/`-H` — and
+          Steam's own Deck UI compensates internally. A Qt/QtWebEngine app
+          dropped into that gets no such treatment and renders at true 3840
+          pixels wide, which from a sofa is unreadable.
+
+          So this is deliberately *not* set on the desktop entry, only on the
+          Steam shortcut: setting it globally would double-scale the client
+          in Plasma, which already scales it once.
+
+          Set to null to launch the client unwrapped, e.g. on a 1080p TV where
+          neither session needs the help.
+        '';
+      };
+
       steamShortcut.enable =
         lib.mkEnableOption ''
           a Steam library entry for the media client, so it is launchable
@@ -703,7 +755,7 @@ in
       # than a file we can write; modules/gaming-shortcuts.nix has the detail.
       shortcuts = lib.optional (cfg.mediaClient.enable && cfg.mediaClient.steamShortcut.enable) {
         inherit (cfg.mediaClient) name arguments;
-        exe = cfg.mediaClient.exe;
+        exe = mediaClientShortcutExe;
         tags = [ "Media" ];
         icon = if cfg.mediaClient.artwork == null then null else mediaArtwork.icon;
         coverArt = if cfg.mediaClient.artwork == null then null else mediaArtwork.cover;
@@ -778,7 +830,9 @@ in
       sessionSelect
       steamosShim
       returnLauncher
-    ] ++ lib.optional cfg.mediaClient.enable cfg.mediaClient.package;
+    ]
+    ++ lib.optional cfg.mediaClient.enable cfg.mediaClient.package
+    ++ lib.optional (cfg.mediaClient.enable && cfg.mediaClient.scaleFactor != null) mediaClientTvLauncher;
 
     # Owned by the couch user so switching needs no privilege escalation.
     #
