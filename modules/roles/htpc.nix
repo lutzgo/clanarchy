@@ -962,6 +962,42 @@ in
     # the desktop module owns the implementation.
     clanarchy.desktop.kde.enable = true;
 
+    # Sever DrKonqi from systemd-coredump. On this role it is not a crash
+    # reporter, it is a fork bomb.
+    #
+    # nixpkgs' plasma6 module ends with:
+    #
+    #   systemd.packages = [ kdePackages.drkonqi ];
+    #   systemd.services."drkonqi-coredump-processor@".wantedBy =
+    #     [ "systemd-coredump@.service" ];
+    #
+    # so every coredump on the machine starts a processor instance, which
+    # hands the dump to drkonqi-coredump-launcher in the crashing user's
+    # session. In the couch session that launcher cannot start: gamescope
+    # exports DISPLAY for its embedded Xwayland, so Qt picks the `xcb`
+    # platform plugin, which since Qt 6.5 needs libxcb-cursor — absent here.
+    # Qt then calls qFatal(), the launcher takes SIGABRT, and *that* abort is
+    # itself a coredump. Which starts another processor. Which starts another
+    # launcher.
+    #
+    # Observed on ernst 2026-09-04: Kodi crashed at 21:06, and eight minutes
+    # later the loop had written 180,363 launcher coredumps (3 GB in
+    # /var/lib/systemd/coredump, which is on the persist dataset and so
+    # survives rollback). It only stopped when the session went away, leaving
+    # two processor units stuck in `failed` — which is what the
+    # SystemdUnitFailed alert fires on, forever, until reset by hand.
+    #
+    # Excluding drkonqi via environment.plasma6.excludePackages does not fix
+    # this: that option filters systemPackages only, while the two lines above
+    # are unconditional, so the units stay registered and keep triggering.
+    # Dropping the wantedBy is the trigger itself, and nothing else uses it.
+    #
+    # Crashes are not lost — systemd-coredump still records every one, and
+    # `coredumpctl` on the host is how they were being read anyway. What goes
+    # away is the GUI "report this to KDE" dialog, which no one was ever going
+    # to see on a television.
+    systemd.services."drkonqi-coredump-processor@".wantedBy = lib.mkForce [ ];
+
     # Bigscreen mode. The role holds the couch-user identity; the desktop
     # module owns the container and the GPU plumbing.
     clanarchy.desktop.bigscreen = lib.mkIf cfg.bigscreen.enable {
