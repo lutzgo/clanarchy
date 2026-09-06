@@ -1,0 +1,2630 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="NixOS declarative configuration — guides and option reference">
+      
+      
+      
+        <link rel="canonical" href="https://lutzgo.github.io/clanarchy/runbooks/ernst-vlan-bridge-cutover/">
+      
+      
+        <link rel="prev" href="../ernst-enable-impermanence/">
+      
+      
+        <link rel="next" href="../ernst-vpn-microvm-deploy/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>ernst VLAN bridge cutover - Clanarchy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#ernst-cutting-over-to-the-vlan-bridge" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Clanarchy" class="md-header__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Clanarchy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ernst VLAN bridge cutover
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/first-time-install/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../zfs-auto-snapshot-optin/" class="md-tabs__link">
+          
+  
+  
+  Runbooks
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../incidents/ernst-slot12-drop-2026-08-11/" class="md-tabs__link">
+          
+  
+  
+  Incidents
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Clanarchy" class="md-nav__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Clanarchy
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/first-time-install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    First-time install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploying and testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/updating-machines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating machines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/adding-a-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/accepting-pull-requests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Accepting pull requests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/networking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Networking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/yubikey/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/yubikey-ssh-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey SSH setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/remote-unlock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote unlock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ernst-zdata-datasets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zdata datasets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/htpc-bigscreen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / Plasma Bigscreen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/htpc-controllers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / game controllers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/birte-emulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emulation on birte
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/firmware-updates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware updates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/noctalia-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/noctalia-v5-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia v5 migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/obs-sony-webcam/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OBS / Sony webcam
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runbooks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Runbooks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../zfs-auto-snapshot-optin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZFS auto-snapshot opt-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-zroot-drive-replacement/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zroot drive replacement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-enable-impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst enabling impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VLAN bridge cutover
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VLAN bridge cutover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What changes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-udm-pro-done-first-verified-on-its-own" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. UDM-Pro — done FIRST, verified on its own
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. UDM-Pro — done FIRST, verified on its own">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-create-the-services-network" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Create the Services network
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-firewall-zone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Firewall zone
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-port-profile-on-ernsts-switch-port" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Port profile on ernst's switch port
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-prove-the-trunk-before-touching-ernsts-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 Prove the trunk before touching ernst's config
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-verify-with-ernst-unchanged" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5 Verify with ernst unchanged
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Deploy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-verification-in-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Verification, in order
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Verification, in order">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reachability-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reachability matrix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reboot-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reboot test
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Recovery
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5b-expected-after-the-cutover-not-faults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5b. Expected after the cutover — not faults
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-after-the-cutover" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. After the cutover
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-vpn-microvm-deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VPN microvm deploy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Incidents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Incidents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../incidents/ernst-slot12-drop-2026-08-11/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst slot-12 drive drop (2026-08-11)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../incidents/ernst-jellyfin-vaapi-drm-display-failure-2026-08-18/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst Jellyfin VAAPI DRM display failure (2026-08-18)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/hardware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Desktop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/apps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/users/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/wifi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What changes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-udm-pro-done-first-verified-on-its-own" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. UDM-Pro — done FIRST, verified on its own
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. UDM-Pro — done FIRST, verified on its own">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-create-the-services-network" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Create the Services network
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-firewall-zone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Firewall zone
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-port-profile-on-ernsts-switch-port" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Port profile on ernst's switch port
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-prove-the-trunk-before-touching-ernsts-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 Prove the trunk before touching ernst's config
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-verify-with-ernst-unchanged" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5 Verify with ernst unchanged
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Deploy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-verification-in-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Verification, in order
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Verification, in order">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reachability-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reachability matrix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reboot-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reboot test
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Recovery
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5b-expected-after-the-cutover-not-faults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5b. Expected after the cutover — not faults
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-after-the-cutover" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. After the cutover
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/lutzgo/clanarchy/edit/main/docs/runbooks/ernst-vlan-bridge-cutover.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="ernst-cutting-over-to-the-vlan-bridge">ernst — cutting over to the VLAN bridge<a class="headerlink" href="#ernst-cutting-over-to-the-vlan-bridge" title="Permanent link">&para;</a></h1>
+<p>Converting ernst from a plain static address on <code>enp13s0</code> to a VLAN-filtering
+bridge <code>br0</code>, with <code>enp13s0</code> as a tagged trunk port.</p>
+<p><strong>This is the high-risk change in the ernst buildout.</strong> ernst is reachable only
+over the network being reconfigured, and <code>clan machines update</code> applies it
+<em>live</em> — there is no stage-for-next-boot mode, so <code>switch-to-configuration boot</code>
+<strong>and</strong> <code>switch</code> both run and networkd reconfigures mid-session.</p>
+<p>Read the whole runbook before starting. §2 happens on the UDM-Pro <em>before</em>
+anything is deployed, and is verified with ernst still untouched.</p>
+<h2 id="what-changes">What changes<a class="headerlink" href="#what-changes" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Before</th>
+<th>After</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Host address</td>
+<td>on <code>enp13s0</code></td>
+<td>on <code>br0</code></td>
+</tr>
+<tr>
+<td><code>enp13s0</code></td>
+<td>static <code>10.0.50.10/24</code></td>
+<td>trunk port, no L3</td>
+</tr>
+<tr>
+<td>VLANs on the wire</td>
+<td>untagged only</td>
+<td>50 untagged (PVID) + 1, 5, 20, 90 tagged</td>
+</tr>
+<tr>
+<td>DNS routing</td>
+<td><code>Domains = "~. skynet.lan"</code> on <code>enp13s0</code></td>
+<td>same, on <code>br0</code></td>
+</tr>
+<tr>
+<td>Stage-1 initrd SSH</td>
+<td>raw <code>enp13s0</code></td>
+<td><strong>unchanged</strong> — raw <code>enp13s0</code></td>
+</tr>
+</tbody>
+</table>
+<p>The host's L2 identity does not change: with exactly one port, the kernel gives
+<code>br0</code> the burned-in MAC of <code>enp13s0</code>.</p>
+<h2 id="1-prerequisites">1. Prerequisites<a class="headerlink" href="#1-prerequisites" title="Permanent link">&para;</a></h2>
+<p>Do not skip any of these. Each one is a channel you may need.</p>
+<ol>
+<li><strong>A console you have actually tested.</strong> Two heads exist and they are not
+   interchangeable:</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Head</th>
+<th>DRM</th>
+<th>PCI</th>
+<th>Watched by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>iGPU</td>
+<td><code>card0-HDMI-A-2</code></td>
+<td><code>0000:7b:00.0</code></td>
+<td>GL.iNet Comet KVM</td>
+</tr>
+<tr>
+<td>dGPU (7900 XTX)</td>
+<td><code>card1-HDMI-A-1</code></td>
+<td><code>0000:03:00.0</code></td>
+<td>the living-room TV</td>
+</tr>
+</tbody>
+</table>
+<p>The KVM is the <em>documented</em> console, but it is not the essential one — and
+   as of 2026-08-19 it was dead (black screen, no video and no input) while
+   <code>card0-HDMI-A-2</code> still reported <code>connected</code>, i.e. the fault was on the KVM
+   side, not a missing signal.</p>
+<p><strong>The TV plus a keyboard is a sufficient substitute, and in one way a
+   better one:</strong> it gives a full recovery shell without depending on firmware
+   video at all. <code>logind</code> runs with the default <code>NAutoVTs=6</code>, so <strong>Ctrl+Alt+F2</strong>
+   drops from the HTPC session to a getty.</p>
+<p><strong>Test this before you change anything, not after:</strong></p>
+<ul>
+<li>At the TV, press <strong>Ctrl+Alt+F2</strong> — you should get a login prompt.</li>
+<li>Log in as <strong><code>admin</code></strong> (uid 1000). <code>root</code> is locked and <code>go</code> is
+     deliberately not in <code>wheel</code>, so <code>admin</code> is the only local account that
+     can fix anything.</li>
+<li>Run <code>sudo -v</code> to confirm the password works and sudo is available
+     (<code>%wheel ALL=(ALL:ALL)</code> is set).</li>
+<li><strong>Ctrl+Alt+F1</strong> returns to the couch session.</li>
+</ul>
+<p>If <code>admin</code> cannot log in there, stop — you have no recovery path and the
+   cutover must wait until either the KVM or that login is fixed.</p>
+<p>Note the boot menu is a separate question: systemd-boot renders on whichever
+   head the UEFI treats as primary, which is very likely the iGPU (that is why
+   the KVM watches it). With the KVM dead you should assume <strong>the boot menu is
+   not visible</strong>, and use the live rollback in §5 instead — it does not need it.
+2. <strong>Second out-of-band path.</strong> ZeroTier survives a VLAN-50 mistake that would
+   leave the KVM as the only option:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>ssh ernst-zt true
+</code></pre></div>
+<ol>
+<li><strong>Rollback target exists.</strong> Confirm the previous generation is selectable in
+   the systemd-boot menu — over the KVM, not just <code>bootctl list</code> output.</li>
+<li><strong>Record the current state</strong> for comparison, and for the MAC that M2b will
+   need to pin:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>ip -br link show enp13s0        # ← save this MAC
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>ip -br addr
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>ip route
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>resolvectl status
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>nmcli device status
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>bridge link show                # expect empty
+</code></pre></div>
+<p>Baseline captured 2026-08-19, before the cutover:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enp13s0</code> MAC</td>
+<td><code>a0:ad:9f:1c:9d:74</code> — ~~the value to pin on <code>br0</code> before M2b~~. <strong>Wrong prediction, see §6:</strong> <code>br0</code> never inherited it. Re-read <code>br0</code>'s own MAC after the cutover and pin <em>that</em></td>
+</tr>
+<tr>
+<td>Address</td>
+<td><code>10.0.50.10/24</code> on <code>enp13s0</code></td>
+</tr>
+<tr>
+<td>Default route</td>
+<td><code>via 10.0.50.1 dev enp13s0</code></td>
+</tr>
+<tr>
+<td><code>bridge link show</code></td>
+<td>empty</td>
+</tr>
+<tr>
+<td><code>nmcli</code> on <code>enp13s0</code></td>
+<td><strong><code>connected (externally)</code></strong></td>
+</tr>
+<tr>
+<td>resolved on <code>enp13s0</code></td>
+<td>DNS <code>10.0.5.3</code>, domain <code>skynet.lan ~.</code></td>
+</tr>
+</tbody>
+</table>
+<p>Note the NetworkManager row. <code>connected (externally)</code> means NM <em>sees</em> the
+   uplink and considers it managed-but-configured-elsewhere — it is not hands
+   off today. That is precisely why <code>machines/ernst/networking.nix</code> names
+   <code>br0</code> and the physical NICs in <code>networking.networkmanager.unmanaged</code>
+   rather than trusting udev's <code>ID_NET_MANAGED_BY</code> tagging. After the cutover
+   these must read <code>unmanaged</code>, not <code>connected (externally)</code>.</p>
+<ol>
+<li><strong>Deploy target.</strong> clan's configured <code>targetHost</code> is DNS-dependent. Use the
+   IP literal for the cutover so name resolution is off the critical path:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>clan machines update ernst --target-host root@10.0.50.10
+</code></pre></div>
+<h2 id="2-udm-pro-done-first-verified-on-its-own">2. UDM-Pro — done FIRST, verified on its own<a class="headerlink" href="#2-udm-pro-done-first-verified-on-its-own" title="Permanent link">&para;</a></h2>
+<p>Making the port a trunk <strong>does not change untagged handling</strong>, so this step is a
+no-op for the running host and can be verified independently. Doing it after the
+deploy would stack two unverified changes on top of each other.</p>
+<h3 id="21-create-the-services-network">2.1 Create the Services network<a class="headerlink" href="#21-create-the-services-network" title="Permanent link">&para;</a></h3>
+<p>Settings → Networks → <strong>Create New Network</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Name</td>
+<td><code>Services</code></td>
+</tr>
+<tr>
+<td>VLAN ID</td>
+<td><code>90</code></td>
+</tr>
+<tr>
+<td>Gateway / Host Address</td>
+<td><code>10.0.90.1/24</code></td>
+</tr>
+<tr>
+<td>DHCP</td>
+<td>Server on. UniFi fixes the range at <strong><code>10.0.90.6</code>–<code>10.0.90.254</code></strong> and does not allow narrowing it</td>
+</tr>
+<tr>
+<td>Domain Name</td>
+<td><code>skynet.lan</code></td>
+</tr>
+<tr>
+<td>DNS Server</td>
+<td><strong>Manual → <code>10.0.5.3</code></strong> so containers inherit Technitium like the host</td>
+</tr>
+<tr>
+<td>Device Isolation</td>
+<td><strong>off</strong> — Traefik must reach Jellyfin in M5</td>
+</tr>
+</tbody>
+</table>
+<p><strong>On addressing for M2b/M5.</strong> The pool covers almost the whole subnet, so there
+is no "static range" to hold back. Give containers <strong>DHCP reservations against
+their pinned MACs</strong> — UniFi assigns a fixed IP inside the pool quite happily, and
+that keeps the network's source of truth on the UDM-Pro, which is what M2b wanted
+anyway. Only <code>10.0.90.2</code>–<code>.5</code> sit outside the pool, so reserve those for anything
+that genuinely must be hard-coded.</p>
+<h3 id="22-firewall-zone">2.2 Firewall zone<a class="headerlink" href="#22-firewall-zone" title="Permanent link">&para;</a></h3>
+<p><strong>A new network lands in the <code>Internal</code> zone by default.</strong> On this UDM-Pro
+<code>Internal</code> already holds LAN, IoT, HA, DNS-Container, Servers and Matter, and the
+matrix has <code>Internal → Internal: Allow All</code>. Leaving <code>Services</code> there means it
+shares a zone — and therefore a blanket allow — with the host it is supposed to
+be separable from, and architecture invariant #3 has nothing to bite on.</p>
+<p>Zone-Based Firewall → <strong>Create Zone</strong> → name it <code>Services</code> → assign the
+<code>Services</code> network to it. A network belongs to exactly one zone, so this removes
+it from <code>Internal</code> automatically. Confirm afterwards that the <code>Internal</code> row no
+longer lists <code>Services</code>.</p>
+<p>No policies yet — M2b and M5 add them. But know what that implies: once
+<code>Services</code> is its own zone it is <strong>isolated by default</strong>, so when M2b puts
+Jellyfin there it will need at minimum <code>Services → DNS-Container</code> (Technitium at
+10.0.5.3, or nothing resolves) and <code>Services → External</code> (metadata and plugin
+downloads). Those belong to M2b, not here — they are noted so their absence
+later reads as expected rather than as a bug.</p>
+<p>Leave the existing interim rules alone. <code>Allow Jellyfin from LAN to Servers</code>
+(<code>10.0.50.10/32:8096</code>, ledger row <strong>L1</strong>) stays pointed at the host address —
+Jellyfin is still on host networking until M2b.</p>
+<p>No rules yet — M2b and M5 add them. Leave interim ledger rows <strong>L1</strong> (Family →
+<code>ernst:8096</code>) and <strong>L2</strong> (IoT → <code>ernst:8096</code>) pointing at <code>10.0.50.10</code>; Jellyfin
+is still on host networking after this change.</p>
+<h3 id="23-port-profile-on-ernsts-switch-port">2.3 Port profile on ernst's switch port<a class="headerlink" href="#23-port-profile-on-ernsts-switch-port" title="Permanent link">&para;</a></h3>
+<p><strong>ernst is on <code>USW Pro 24 PoE</code> port 6, not on a UDM-Pro SFP+ port.</strong> Verified
+2026-08-19 from the UniFi client list. The topology is:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>UDM-Pro SFP+2 ══ 10 GbE ══ USW Pro 24 PoE ── port 6 (GbE) ── ernst enp13s0
+</code></pre></div>
+<p>So there are two links to think about, not one: the access port carrying ernst,
+and the switch's uplink to the UDM-Pro. UniFi normally propagates every network
+across inter-switch uplinks automatically — verify rather than assume, but the
+uplink is not usually where this goes wrong.</p>
+<p>Note ernst's own port runs at <strong>1 GbE</strong>: the AQC113CS is 10GBASE-T, but port 6
+is a GbE port. Nothing here depends on the speed; it is recorded so nobody
+"fixes" a link that was never 10G.</p>
+<p>Settings → Profiles → Ethernet Port Profiles.</p>
+<ul>
+<li><strong>Native VLAN / Network: <code>Servers (50)</code> — do not change, do not blank.</strong>
+  This is what keeps stage-1 initrd SSH alive. In stage 1 the raw NIC speaks
+  untagged; a pure tagged trunk kills the unlock channel and makes every future
+  boot a KVM trip.</li>
+<li><strong>Tagged VLAN Management: Custom</strong> → <code>LAN (1)</code>, <code>DNS-Container (5)</code>,
+  <code>IoT (20)</code>, <code>Services (90)</code>.
+  Not "Allow All" — that would put HA (30), Guest (40) and Matter (60) on the
+  trunk, against the decision that a VLAN not on the trunk cannot be reached by
+  a typo in a future container unit.</li>
+</ul>
+<p>Apply to <code>USW Pro 24 PoE</code> <strong>port 6</strong> only — do not edit the shared "All" profile
+in place unless it is used by that port alone, or every other port inherits the
+trunk.</p>
+<h3 id="24-prove-the-trunk-before-touching-ernsts-config">2.4 Prove the trunk before touching ernst's config<a class="headerlink" href="#24-prove-the-trunk-before-touching-ernsts-config" title="Permanent link">&para;</a></h3>
+<p>Do not take the switch UI's word for it. These probes create VLAN sub-interfaces
+on the <em>running</em> <code>enp13s0</code>, prove what the trunk actually delivers, and remove
+themselves — the host's own untagged config is never touched.</p>
+<p><strong>Are tagged frames arriving at all?</strong> Passive, no addressing, no firewall
+involvement:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">for</span><span class="w"> </span>v<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">5</span><span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="m">90</span><span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span>ip<span class="w"> </span>link<span class="w"> </span>add<span class="w"> </span>link<span class="w"> </span>enp13s0<span class="w"> </span>name<span class="w"> </span>vl<span class="nv">$v</span><span class="w"> </span><span class="nb">type</span><span class="w"> </span>vlan<span class="w"> </span>id<span class="w"> </span><span class="nv">$v</span><span class="p">;</span><span class="w"> </span>ip<span class="w"> </span>link<span class="w"> </span><span class="nb">set</span><span class="w"> </span>vl<span class="nv">$v</span><span class="w"> </span>up<span class="p">;</span><span class="w"> </span><span class="k">done</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>sleep<span class="w"> </span><span class="m">25</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="k">for</span><span class="w"> </span>v<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">5</span><span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="m">90</span><span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"VLAN </span><span class="nv">$v</span><span class="s2">: </span><span class="k">$(</span>cat<span class="w"> </span>/sys/class/net/vl<span class="nv">$v</span>/statistics/rx_packets<span class="k">)</span><span class="s2"> pkts"</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="k">for</span><span class="w"> </span>v<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">5</span><span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="m">90</span><span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span>ip<span class="w"> </span>link<span class="w"> </span>del<span class="w"> </span>vl<span class="nv">$v</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
+</code></pre></div>
+<p>Busy VLANs (LAN, IoT) should show thousands; quiet ones (DNS-Container,
+Services) may show only a couple of LLDP/STP frames — <strong>any non-zero count means
+the tag is being delivered.</strong> Zero on a busy VLAN means the port profile did not
+apply.</p>
+<p><strong>Is the VLAN routed?</strong> Tagging and routing are different things, and this is the
+trap that cost time on 2026-08-19:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>ip<span class="w"> </span>link<span class="w"> </span>add<span class="w"> </span>link<span class="w"> </span>enp13s0<span class="w"> </span>name<span class="w"> </span>vl90<span class="w"> </span><span class="nb">type</span><span class="w"> </span>vlan<span class="w"> </span>id<span class="w"> </span><span class="m">90</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>ip<span class="w"> </span>addr<span class="w"> </span>add<span class="w"> </span><span class="m">10</span>.0.90.250/24<span class="w"> </span>dev<span class="w"> </span>vl90<span class="p">;</span><span class="w"> </span>ip<span class="w"> </span>link<span class="w"> </span><span class="nb">set</span><span class="w"> </span>vl90<span class="w"> </span>up<span class="p">;</span><span class="w"> </span>sleep<span class="w"> </span><span class="m">4</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>ping<span class="w"> </span>-c1<span class="w"> </span>-W2<span class="w"> </span>-I<span class="w"> </span>vl90<span class="w"> </span><span class="m">10</span>.0.90.1<span class="w"> </span>&gt;/dev/null<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="p">;</span><span class="w"> </span>ip<span class="w"> </span>neigh<span class="w"> </span>show<span class="w"> </span>dev<span class="w"> </span>vl90
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>ip<span class="w"> </span>link<span class="w"> </span>del<span class="w"> </span>vl90
+</code></pre></div>
+<p><code>lladdr … REACHABLE</code> means a gateway SVI exists. <code>INCOMPLETE</code> or <code>FAILED</code> means
+<strong>nothing is routing that VLAN</strong>, even though the tag is being delivered.
+Confirm with a DHCP probe that configures nothing:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>nix<span class="w"> </span>shell<span class="w"> </span>nixpkgs#dhcpcd<span class="w"> </span>-c<span class="w"> </span>dhcpcd<span class="w"> </span>-1<span class="w"> </span>-T<span class="w"> </span>vl90
+</code></pre></div>
+<p>Falling back to a <code>169.254.x</code> IPv4LL address means no DHCP server answered.</p>
+<p>Use a VLAN you know is routed as the control — VLAN 5 should ARP-resolve
+<code>10.0.5.1</code> and ping Technitium at <code>10.0.5.3</code>. If the control works and the new
+VLAN does not, the fault is that network's configuration, not the trunk.</p>
+<div class="admonition danger">
+<p class="admonition-title">Resolved 2026-08-20 — Services moved to VLAN 90 / <code>10.0.90.0/24</code></p>
+<p><strong>This is history, kept because the failure mode is worth recognising.</strong> The
+Services network was originally VLAN 80 on <code>10.0.80.0/24</code>, and its gateway
+never answered. The fix was to renumber, not to repair anything: the subnet
+was already taken.</p>
+<p><code>wg show</code> on the UDM-Pro identified the claimant as a live site-to-site
+peer, not a stale entry — <code>allowed ips: 10.0.70.2/32, 10.0.80.0/24</code>, with
+16.02 GiB received / 55.78 GiB sent. Reclaiming the subnet would have broken
+that tunnel's routing, so Services moved instead. <code>10.0.90.0/24</code> was verified
+free first (<code>ip route show | grep -E '^10\.0\.'</code>), and <code>10.0.80.0/24</code> is the
+only subnet routed to <code>wgsrv1</code>.</p>
+<p><strong><code>10.0.80.0/24</code> was claimed by the <code>skynet-travel</code> WireGuard
+config</strong>, so the UDM-Pro carried two routes for it and the wrong one won:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>10.0.80.0/24 dev wgsrv1 proto VPN scope link          ← wins
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>10.0.80.0/24 dev br80   proto kernel scope link src 10.0.80.1
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>ip route get 10.0.80.250 → dev wgsrv1 src 10.0.70.1   ❌
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>ip route get 10.0.20.250 → dev br20   src 10.0.20.1   ✅
+</code></pre></div>
+<p>The UDM-Pro sets <code>arp_filter = 1</code> on its bridges, which answers an ARP
+request <strong>only if the kernel would route back to the sender out of that same
+interface</strong>. It would have routed to <code>10.0.80.250</code> via <code>wgsrv1</code>, so it
+silently declined to reply on <code>br80</code> — no filter, no log, no error.</p>
+<p>This is why every component tested correct in isolation: interfaces <code>UP</code>,
+<code>eth10.80</code>/<code>switch0.80</code> properly enslaved to <code>br80</code>, address present,
+requests visibly arriving (<code>tcpdump -i br80 -n -e arp</code> showed ernst's
+<code>a0:ad:9f:1c:9d:74</code>), sysctls identical to the working <code>br20</code>, and ebtables
+empty. The fault was one routing-table row.</p>
+<p><strong>Diagnostic sequence that found it</strong> — reuse this shape for any "VLAN is
+tagged but the gateway is silent" case:</p>
+<ol>
+<li><code>ip link show master br&lt;N&gt;</code> — are the VLAN subinterfaces enslaved?</li>
+<li><code>tcpdump -i br&lt;N&gt; -n -e arp</code> — do the requests actually arrive?</li>
+<li><code>sysctl …arp_ignore …arp_filter …rp_filter</code> — diff against a <em>working</em>
+   bridge, not against expectations.</li>
+<li><strong><code>ip route get &lt;sender-ip&gt;</code></strong> — the decisive one. With <code>arp_filter = 1</code>,
+   an ARP reply is a routing decision.</li>
+</ol>
+<p>Wrong hypotheses discarded on the way: "VLAN Only" network (settings
+disproved it), provisioning lag (persisted for hours), and the UDM↔USW
+uplink not trunking VLAN 80 (frames demonstrably arrived).</p>
+<p><strong>Lesson for future VLANs: check the subnet against <code>ip route show</code> on the
+UDM-Pro before creating the network.</strong> A free VLAN ID does not imply a free
+subnet — VPN peers, WireGuard <code>AllowedIPs</code> and site-to-site tunnels all
+install routes that shadow a connected network.</p>
+<p><strong>This never blocked M2</strong> — the bridge cutover needs only VLAN 50 untagged
+for the host. It gates <strong>M2b</strong>, where Jellyfin first needs an address on the
+services VLAN.</p>
+</div>
+<h3 id="25-verify-with-ernst-unchanged">2.5 Verify with ernst unchanged<a class="headerlink" href="#25-verify-with-ernst-unchanged" title="Permanent link">&para;</a></h3>
+<p>From miralda:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>ping -c3 10.0.50.10
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>ssh root@10.0.50.10 true
+</code></pre></div>
+<p>Expect a brief port bounce while the profile is pushed. <strong>If this fails, stop
+and revert the port profile.</strong> ernst's configuration is still untouched at this
+point, so the switch is the only thing that can be wrong.</p>
+<h2 id="3-deploy">3. Deploy<a class="headerlink" href="#3-deploy" title="Permanent link">&para;</a></h2>
+<p>The SSH transport may drop at the moment the address migrates from <code>enp13s0</code> to
+<code>br0</code>. Plan for it rather than being surprised by it.</p>
+<ul>
+<li>Run from miralda inside <code>zellij</code>, so a dropped connection does not kill the run.</li>
+<li>Keep the KVM console visible throughout.</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>clan machines update ernst --target-host root@10.0.50.10
+</code></pre></div>
+<p>If the connection drops, <strong>do not retry blind</strong> — look at the KVM console first,
+then re-run. The update is idempotent.</p>
+<h2 id="4-verification-in-order">4. Verification, in order<a class="headerlink" href="#4-verification-in-order" title="Permanent link">&para;</a></h2>
+<p>On ernst, over restored SSH or the KVM:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>networkctl list                 # br0 routable/configured, enp13s0 enslaved/configured
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>networkctl status br0 enp13s0
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>bridge -d vlan show             # ← the decisive one
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>bridge -d link show             # enp13s0 master br0, state forwarding
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>ip -br addr                     # 10.0.50.10/24 on br0, nothing on enp13s0
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>ip route                        # default via 10.0.50.1 dev br0
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>resolvectl status br0           # DNS Servers: 10.0.5.3 ; DNS Domain: ~. skynet.lan
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>nmcli device status             # br0 and enp13s0 both unmanaged
+</code></pre></div>
+<p><code>nmcli</code> is a real check, not a formality: before the cutover <code>enp13s0</code> reads
+<code>connected (externally)</code>. If it still does afterwards — or if <code>br0</code> appears as
+anything other than <code>unmanaged</code> — NetworkManager did not take the hands-off
+setting, and it can still pull the rug out from under networkd.</p>
+<p><code>bridge vlan show</code> must show exactly this:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>port      vlan-id
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>enp13s0   1
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>          5
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>          20
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>          50 PVID Egress Untagged
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>          90
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>br0       50 PVID Egress Untagged     ← the "self" entry
+</code></pre></div>
+<p><strong>If the <code>br0</code> line is missing, the host is deaf</strong> — it holds an address and
+cannot emit a frame. See §5 for the one-line live fix.</p>
+<h3 id="reachability-matrix">Reachability matrix<a class="headerlink" href="#reachability-matrix" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>From</th>
+<th>Check</th>
+<th>Proves</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ernst</td>
+<td><code>ping -c3 10.0.50.1</code></td>
+<td>untagged egress on VLAN 50</td>
+</tr>
+<tr>
+<td>ernst</td>
+<td><code>ping -c3 10.0.5.3</code></td>
+<td>Technitium reachable</td>
+</tr>
+<tr>
+<td>ernst</td>
+<td><code>resolvectl query ernst.skynet.lan</code></td>
+<td>the <code>~.</code> routing domain is live</td>
+</tr>
+<tr>
+<td>ernst</td>
+<td><code>curl -sSo /dev/null -w '%{http_code}\n' https://cache.nixos.org/nix-cache-info</code></td>
+<td>DNS + egress, i.e. the <em>next</em> deploy will work</td>
+</tr>
+<tr>
+<td>miralda</td>
+<td><code>ssh root@10.0.50.10 true</code></td>
+<td>inbound on the server VLAN</td>
+</tr>
+<tr>
+<td>miralda</td>
+<td><code>avahi-resolve -n ernst.local</code></td>
+<td>mDNS survived the move to <code>br0</code></td>
+</tr>
+<tr>
+<td>miralda</td>
+<td><code>ssh ernst-zt true</code></td>
+<td>the out-of-band channel survived</td>
+</tr>
+<tr>
+<td>a LAN/Family host</td>
+<td><code>curl -sSI http://10.0.50.10:8096/health</code></td>
+<td>ledger row <strong>L1</strong> still holds</td>
+</tr>
+<tr>
+<td>an IoT TV</td>
+<td>Jellyfin app plays a title</td>
+<td>ledger row <strong>L2</strong> still holds</td>
+</tr>
+</tbody>
+</table>
+<h3 id="reboot-test">Reboot test<a class="headerlink" href="#reboot-test" title="Permanent link">&para;</a></h3>
+<p>This is the <strong>only</strong> thing that proves initrd SSH survived the trunk change. Do
+it with the KVM open, before considering the cutover done.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>while ! ssh -tt -o ConnectTimeout=2 ernst-initrd systemd-tty-ask-password-agent --query; do sleep 1; done
+</code></pre></div>
+<p>The poll loop is deliberate: the atlantic 10G NIC takes ~10 s to gain link at
+boot. If the alias does not answer, try the IP-literal form in §5 before
+concluding the channel is dead.</p>
+<h2 id="5-recovery">5. Recovery<a class="headerlink" href="#5-recovery" title="Permanent link">&para;</a></h2>
+<p><strong>Host is deaf — <code>bridge vlan show</code> has no <code>br0</code> self entry.</strong> One line from the
+KVM restores it immediately:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>bridge vlan add dev br0 vid 50 pvid untagged self
+</code></pre></div>
+<p>Then fix the unit and redeploy. This is the most likely failure and the cheapest
+to recover from.</p>
+<p><strong>Anything worse — roll back live from the TTY, no reboot.</strong> This is the
+preferred path, and it works even when the boot menu is invisible. At the TV:
+Ctrl+Alt+F2, log in as <code>admin</code>, then</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>ls<span class="w"> </span>-1<span class="w"> </span>/nix/var/nix/profiles/<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>system-<span class="w"> </span><span class="p">|</span><span class="w"> </span>sort<span class="w"> </span>-V<span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-3<span class="w">   </span><span class="c1"># pick the previous one</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>sudo<span class="w"> </span>/nix/var/nix/profiles/system-23-link/bin/switch-to-configuration<span class="w"> </span>switch
+</code></pre></div>
+<p>substituting the generation number <em>below</em> the current one. That restores the
+plain <code>50-enp13s0</code> networking immediately, without a reboot, without the boot
+menu, and without needing zroot to be unlocked again.</p>
+<p><strong>Boot-menu rollback</strong> — reboot and select the previous generation at
+systemd-boot, then unlock zroot. Only if the live path above is unavailable, and
+note it needs the boot menu to be <em>visible</em>: with the Comet KVM dead, assume it
+is not. Prefer the TTY.</p>
+<p><strong><code>ernst-initrd</code> does not resolve.</strong> That alias uses <code>HostName ernst.skynet.lan</code>
+— DNS-dependent, and DNS is exactly what a bad cutover can break. The address is
+static, so use it directly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>ssh -tt -p 2222 -o HostKeyAlias=ernst-initrd -o ConnectTimeout=2 \
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>    root@10.0.50.10 systemd-tty-ask-password-agent --query
+</code></pre></div>
+<p><strong>What initrd SSH can and cannot do.</strong> It unlocks zroot so the machine finishes
+booting. It is <strong>not</strong> a stage-2 rescue shell: it cannot fix networkd, and it
+cannot reach you at all if the port lost its untagged VLAN 50 or if VLAN 50
+itself is broken.</p>
+<p><strong>Last resort.</strong> Physical access, previous generation from the boot menu.</p>
+<h2 id="5b-expected-after-the-cutover-not-faults">5b. Expected after the cutover — not faults<a class="headerlink" href="#5b-expected-after-the-cutover-not-faults" title="Permanent link">&para;</a></h2>
+<p>Observed on the real cutover, 2026-08-20. Both look alarming and neither is a
+problem with the bridge.</p>
+<p><strong>ZeroTier goes <code>OFFLINE</code> and needs a restart.</strong> The daemon does not survive its
+host interface being replaced: <code>zerotier-cli info</code> reports <code>OFFLINE</code> even though
+the node still holds its address and general internet works (<code>curl
+https://cache.nixos.org/nix-cache-info</code> → 200). <code>ssh ernst-zt</code> times out, which
+is alarming precisely because it is the backup channel. One restart fixes it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>systemctl<span class="w"> </span>restart<span class="w"> </span>zerotierone
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>sleep<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>zerotier-cli<span class="w"> </span>info<span class="w">      </span><span class="c1"># expect ONLINE</span>
+</code></pre></div>
+<p><strong>Do this as the last verification step</strong>, and confirm <code>ssh ernst-zt true</code>
+succeeds — otherwise the second out-of-band path is silently gone.</p>
+<p><strong><code>ssh ernst.skynet.lan</code> fails, <code>ssh root@ernst.skynet.lan</code> works.</strong> This is <em>not</em>
+caused by the cutover. The <code>lgo</code> HM ssh config matches <code>Host ernst ernst.local
+ernst.skynet.lan …</code> but sets no <code>User</code>, so it defaults to <code>lgo</code> — and <strong><code>lgo</code> does
+not exist on ernst</strong>, which only has <code>admin</code> (uid 1000) and <code>go</code> (uid 1001). Always
+use <code>root@</code>. Worth confirming before a cutover so it is not mistaken for lockout
+mid-deploy.</p>
+<p><strong><code>ernst.local</code> not resolving is also not a regression.</strong> mDNS is link-local, and
+miralda (LAN, VLAN 1) is on a different VLAN from ernst (Servers, VLAN 50), so it
+depends on the UDM-Pro's mDNS repeater rather than on ernst. Control test:
+<code>avahi-resolve -n biene.local</code> fails the same way from miralda, and biene was
+never touched. If <code>.local</code> names matter, that is a UDM-Pro repeater question.</p>
+<h2 id="6-after-the-cutover">6. After the cutover<a class="headerlink" href="#6-after-the-cutover" title="Permanent link">&para;</a></h2>
+<ul>
+<li>~~Pin <code>br0</code>'s MAC <strong>using the value captured in §1.4</strong>~~ — <strong>done in M2b, but
+  NOT to that value, and the reasoning above was wrong.</strong> Measured on ernst
+  2026-08-20: <code>br0</code> does <strong>not</strong> carry <code>enp13s0</code>'s <code>a0:ad:9f:1c:9d:74</code>, it
+  carries <code>b2:8b:e1:f2:1e:7c</code>, and <code>/sys/class/net/br0/addr_assign_type</code> is
+  <code>3</code> (<code>NET_ADDR_SET</code>). systemd-networkd sets a MAC on the netdevs it creates,
+  so <code>br_stp_recalculate_bridge_id()</code> returns early instead of adopting a port
+  address — <strong>the lowest-port-MAC hazard cannot fire on a networkd-created
+  bridge.</strong> Pinning to §1.4's value would therefore have <em>changed</em> <code>br0</code>'s MAC
+  on the same deploy that moves Jellyfin, on the interface holding ernst's only
+  management address. <code>machines/ernst/networking.nix</code> pins the observed
+  <code>b2:8b:e1:f2:1e:7c</code> instead, which is a no-op today.</li>
+</ul>
+<p>The pin still earns its place, for a reason nobody had checked: <strong><code>br0</code> has
+  never survived a reboot.</strong> <code>journalctl --list-boots</code> shows the current boot
+  began 2026-08-18 21:37 and <code>br0</code> was created live by this cutover at
+  2026-08-20 10:11, so no boot has ever regenerated it. Pinning settles that in
+  the safe direction — a no-op freeze if networkd's value is derived from
+  machine-id, and the thing that stops it moving every boot if it is not.</p>
+<p><strong>General lesson, and it is the same one VLAN 80 taught:</strong> §1.4 recorded
+  <code>enp13s0</code>'s MAC and <em>predicted</em> <code>br0</code> would inherit it. Nobody re-read <code>br0</code>
+  after the cutover. Record what you measured, not what you expect to be true.
+- M3 copies worked example A (a tap) from that file. <strong>M4 and M5 should copy
+  M2b's working nspawn veth from <code>machines/ernst/containers/jellyfin.nix</code></strong>
+  rather than example B, which is now only a pattern summary — the real one
+  carries the <code>ExecStartPost</code> that settles the networkd-vs-nspawn VLAN race and
+  the <code>wait-online</code> cap that keeps a DHCP failure from restart-looping the
+  container. Taps and veths are not interchangeable.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

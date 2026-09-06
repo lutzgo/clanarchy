@@ -1,0 +1,2964 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="NixOS declarative configuration — guides and option reference">
+      
+      
+      
+        <link rel="canonical" href="https://lutzgo.github.io/clanarchy/runbooks/ernst-zroot-drive-replacement/">
+      
+      
+        <link rel="prev" href="../zfs-auto-snapshot-optin/">
+      
+      
+        <link rel="next" href="../ernst-enable-impermanence/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>ernst zroot drive replacement - Clanarchy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#ernst-zroot-mirror-drive-replacement" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Clanarchy" class="md-header__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Clanarchy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ernst zroot drive replacement
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/first-time-install/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../zfs-auto-snapshot-optin/" class="md-tabs__link">
+          
+  
+  
+  Runbooks
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../incidents/ernst-slot12-drop-2026-08-11/" class="md-tabs__link">
+          
+  
+  
+  Incidents
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Clanarchy" class="md-nav__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Clanarchy
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/first-time-install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    First-time install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploying and testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/updating-machines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating machines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/adding-a-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/accepting-pull-requests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Accepting pull requests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/networking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Networking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/yubikey/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/yubikey-ssh-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey SSH setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/remote-unlock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote unlock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ernst-zdata-datasets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zdata datasets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/htpc-bigscreen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / Plasma Bigscreen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/htpc-controllers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / game controllers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/birte-emulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emulation on birte
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/firmware-updates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware updates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/noctalia-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/noctalia-v5-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia v5 migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/obs-sony-webcam/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OBS / Sony webcam
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runbooks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Runbooks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../zfs-auto-snapshot-optin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZFS auto-snapshot opt-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zroot drive replacement
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zroot drive replacement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference-fill-in-before-starting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick reference — fill in before starting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0-prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0. Prerequisites
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0. Prerequisites">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#0a-working-console-or-ssh-access-to-ernst" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0a. Working console or SSH access to ernst
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#0b-confirm-ernst-is-still-up-and-determine-which-case-applies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0b. Confirm ernst is still up and determine which case applies
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#0c-build-the-installer-usb-case-a-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0c. Build the installer USB — Case A only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#0d-about-the-sops-nix-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0d. About the sops-nix key
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-identify-the-failed-drive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Identify the failed drive
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-prepare-the-pool-while-ernst-is-still-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Prepare the pool (while ernst is still up)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-cold-swap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Cold swap
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-provision-the-new-drive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Provision the new drive
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Provision the new drive">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#4a-import-the-existing-zpool-case-a-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4a. Import the existing zpool — Case A only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4b-identify-the-new-drive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4b. Identify the new drive
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4c-verify-sector-format-mandatory-and-reformat-if-needed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4c. Verify sector format (mandatory) and reformat if needed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4d-wipe-any-existing-partition-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4d. Wipe any existing partition table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4e-recreate-the-disko-partition-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4e. Recreate the disko partition layout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4f-format-and-mount-the-new-esp-case-a-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4f. Format and mount the new ESP — Case A only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4g-attach-the-new-drive-to-the-zroot-mirror" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4g. Attach the new drive to the zroot mirror
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4h-install-the-bootloader-from-a-chroot-case-a-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4h. Install the bootloader from a chroot — Case A only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4i-clean-unmount-and-reboot-case-a-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4i. Clean unmount and reboot — Case A only
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-fix-sops-if-needed-and-redeploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Fix sops if needed and redeploy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Fix sops if needed and redeploy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#5a-fix-sops-nix-key-if-broken" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5a. Fix sops-nix key if broken
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5b-update-diskonix-on-miralda" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5b. Update disko.nix on miralda
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5c-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5c. Deploy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5d-verify-boot-resilience" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5d. Verify boot resilience
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-rollback-troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Rollback / troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pre-flight-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-flight checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-enable-impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst enabling impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-vlan-bridge-cutover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VLAN bridge cutover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-vpn-microvm-deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VPN microvm deploy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Incidents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Incidents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../incidents/ernst-slot12-drop-2026-08-11/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst slot-12 drive drop (2026-08-11)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../incidents/ernst-jellyfin-vaapi-drm-display-failure-2026-08-18/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst Jellyfin VAAPI DRM display failure (2026-08-18)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/hardware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Desktop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/apps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/users/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/wifi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference-fill-in-before-starting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick reference — fill in before starting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0-prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0. Prerequisites
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0. Prerequisites">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#0a-working-console-or-ssh-access-to-ernst" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0a. Working console or SSH access to ernst
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#0b-confirm-ernst-is-still-up-and-determine-which-case-applies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0b. Confirm ernst is still up and determine which case applies
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#0c-build-the-installer-usb-case-a-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0c. Build the installer USB — Case A only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#0d-about-the-sops-nix-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0d. About the sops-nix key
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-identify-the-failed-drive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Identify the failed drive
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-prepare-the-pool-while-ernst-is-still-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Prepare the pool (while ernst is still up)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-cold-swap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Cold swap
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-provision-the-new-drive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Provision the new drive
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Provision the new drive">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#4a-import-the-existing-zpool-case-a-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4a. Import the existing zpool — Case A only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4b-identify-the-new-drive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4b. Identify the new drive
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4c-verify-sector-format-mandatory-and-reformat-if-needed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4c. Verify sector format (mandatory) and reformat if needed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4d-wipe-any-existing-partition-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4d. Wipe any existing partition table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4e-recreate-the-disko-partition-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4e. Recreate the disko partition layout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4f-format-and-mount-the-new-esp-case-a-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4f. Format and mount the new ESP — Case A only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4g-attach-the-new-drive-to-the-zroot-mirror" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4g. Attach the new drive to the zroot mirror
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4h-install-the-bootloader-from-a-chroot-case-a-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4h. Install the bootloader from a chroot — Case A only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4i-clean-unmount-and-reboot-case-a-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4i. Clean unmount and reboot — Case A only
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-fix-sops-if-needed-and-redeploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Fix sops if needed and redeploy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Fix sops if needed and redeploy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#5a-fix-sops-nix-key-if-broken" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5a. Fix sops-nix key if broken
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5b-update-diskonix-on-miralda" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5b. Update disko.nix on miralda
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5c-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5c. Deploy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5d-verify-boot-resilience" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5d. Verify boot resilience
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-rollback-troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Rollback / troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pre-flight-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-flight checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/lutzgo/clanarchy/edit/main/docs/runbooks/ernst-zroot-drive-replacement.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="ernst-zroot-mirror-drive-replacement">ernst — zroot mirror drive replacement<a class="headerlink" href="#ernst-zroot-mirror-drive-replacement" title="Permanent link">&para;</a></h1>
+<p>General guide for replacing a failed disk in ernst's encrypted mirrored
+<code>zroot</code> pool. Cold-swap procedure in either case (the enclosure does not
+support hot-swap).</p>
+<p>The two mirror halves are asymmetric — one carries the ESP + swap + zroot
+partition, the other holds only a zroot partition — so the procedure
+branches on which disk failed:</p>
+<ul>
+<li><strong>Case A</strong> — the ESP-carrying disk failed (currently <code>disk.system-a</code> in
+  <code>machines/ernst/disko.nix</code>). Pulling this disk removes the only bootable
+  ESP, so provisioning happens from an installer USB via a chroot. New ESP
+  gets written; bootloader is reinstalled.</li>
+<li><strong>Case B</strong> — the zroot-only disk failed (currently <code>disk.system-b</code>). The
+  surviving disk still holds a working ESP, so ernst boots normally after
+  the cold swap. Provisioning happens from the running system. No installer
+  USB required, no chroot, no bootloader work.</li>
+</ul>
+<p>See <code>machines/ernst/disko.nix</code> for the current layout — the "ESP-carrying"
+role belongs to whichever <code>disk.system-*</code> block has an <code>EF00</code> partition.</p>
+<hr />
+<h2 id="quick-reference-fill-in-before-starting">Quick reference — fill in before starting<a class="headerlink" href="#quick-reference-fill-in-before-starting" title="Permanent link">&para;</a></h2>
+<p>Derive each value at the point in the runbook where it's needed; noted
+here so you can keep them together on a note pad.</p>
+<table>
+<thead>
+<tr>
+<th>Placeholder</th>
+<th>How to derive</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;FAILED_WWN&gt;</code></td>
+<td><code>zpool status zroot</code> — the FAULTED / UNAVAIL / DEGRADED vdev's <code>wwn-…</code> name (matches a <code>disk.system-*.device</code> in <code>machines/ernst/disko.nix</code>)</td>
+</tr>
+<tr>
+<td><code>&lt;FAILED_ROLE&gt;</code></td>
+<td>Cross-reference <code>&lt;FAILED_WWN&gt;</code> against <code>disko.nix</code> to determine whether it's <code>system-a</code> (ESP + swap + zroot) or <code>system-b</code> (zroot only)</td>
+</tr>
+<tr>
+<td><code>&lt;CASE&gt;</code></td>
+<td><strong>A</strong> if <code>&lt;FAILED_ROLE&gt;</code> is the ESP-carrying disk; <strong>B</strong> if it's the zroot-only disk</td>
+</tr>
+<tr>
+<td><code>&lt;SURVIVOR_WWN&gt;</code></td>
+<td><code>zpool status zroot</code> — the ONLINE mirror half's <code>wwn-…</code> name</td>
+</tr>
+<tr>
+<td><code>&lt;SLOT&gt;</code></td>
+<td>Physical enclosure slot for the failed drive — see §1 for SES-based derivation</td>
+</tr>
+<tr>
+<td><code>&lt;NEW_DEV&gt;</code></td>
+<td>After inserting the replacement, kernel-assigned <code>/dev/sd?</code> — <code>lsblk -o NAME,SIZE,SERIAL,WWN</code></td>
+</tr>
+<tr>
+<td><code>&lt;NEW_WWN&gt;</code></td>
+<td>Same <code>lsblk</code> output — the drive's <code>WWN</code> column</td>
+</tr>
+<tr>
+<td><code>&lt;NEW_MODEL&gt;</code></td>
+<td><code>smartctl -i &lt;NEW_DEV&gt;</code> → <em>Model Number</em></td>
+</tr>
+<tr>
+<td><code>&lt;NEW_SERIAL&gt;</code></td>
+<td><code>smartctl -i &lt;NEW_DEV&gt;</code> → <em>Serial number</em></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Reminder (Case A only)</strong> — do not reboot ernst until the replacement is
+installed and a bootloader is written to a new ESP. The current running
+kernel is safe; a cold reboot with the ESP-carrying disk absent means no
+bootable EFI partition until §4h. Case B is not affected — the surviving
+ESP remains authoritative throughout.</p>
+</blockquote>
+<hr />
+<h2 id="contents">Contents<a class="headerlink" href="#contents" title="Permanent link">&para;</a></h2>
+<ol>
+<li><a href="#0-prerequisites">Prerequisites</a></li>
+<li><a href="#1-identify-the-failed-drive">Identify the failed drive</a></li>
+<li><a href="#2-prepare-the-pool-while-ernst-is-still-up">Prepare the pool (while ernst is still up)</a></li>
+<li><a href="#3-cold-swap">Cold swap</a></li>
+<li><a href="#4-provision-the-new-drive">Provision the new drive</a></li>
+<li><a href="#5-fix-sops-if-needed-and-redeploy">Fix sops if needed and redeploy</a></li>
+<li><a href="#6-rollback-troubleshooting">Rollback / troubleshooting</a></li>
+<li><a href="#pre-flight-checklist">Pre-flight checklist</a></li>
+</ol>
+<hr />
+<h2 id="0-prerequisites">0. Prerequisites<a class="headerlink" href="#0-prerequisites" title="Permanent link">&para;</a></h2>
+<h3 id="0a-working-console-or-ssh-access-to-ernst">0a. Working console or SSH access to ernst<a class="headerlink" href="#0a-working-console-or-ssh-access-to-ernst" title="Permanent link">&para;</a></h3>
+<p>Required to run §2 (<code>zpool detach</code>) before power-off. In Case B, SSH access
+is also required after the swap for §4b onwards. In Case A everything from
+§3 onwards happens from the installer USB, not via SSH.</p>
+<h3 id="0b-confirm-ernst-is-still-up-and-determine-which-case-applies">0b. Confirm ernst is still up and determine which case applies<a class="headerlink" href="#0b-confirm-ernst-is-still-up-and-determine-which-case-applies" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uptime
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>zpool<span class="w"> </span>status<span class="w"> </span>zroot
+</code></pre></div>
+<ul>
+<li>Note <code>&lt;FAILED_WWN&gt;</code> from the FAULTED / UNAVAIL / DEGRADED vdev.</li>
+<li>Note <code>&lt;SURVIVOR_WWN&gt;</code> from the ONLINE half.</li>
+<li>Cross-reference <code>&lt;FAILED_WWN&gt;</code> against <code>machines/ernst/disko.nix</code>
+  <code>disk.system-*.device</code> lines to find <code>&lt;FAILED_ROLE&gt;</code>.</li>
+<li>Determine <code>&lt;CASE&gt;</code>:<ul>
+<li><strong>Case A</strong> — <code>&lt;FAILED_ROLE&gt;</code> has <code>EF00</code> + <code>8200</code> + <code>BF01</code> partitions
+  in disko.nix (ESP-carrying disk).</li>
+<li><strong>Case B</strong> — <code>&lt;FAILED_ROLE&gt;</code> has only a <code>BF01</code> partition
+  (zroot-only disk).</li>
+</ul>
+</li>
+</ul>
+<h3 id="0c-build-the-installer-usb-case-a-only">0c. Build the installer USB — Case A only<a class="headerlink" href="#0c-build-the-installer-usb-case-a-only" title="Permanent link">&para;</a></h3>
+<p>Skip entirely for Case B; ernst boots off the surviving ESP after the
+swap and there is no chroot step.</p>
+<p>The installer must match the flake's <code>clan-core</code> rev, otherwise <code>clan flash</code>
+build/eval will drift from the running config. Same rule as the initial
+install (see <code>CLAUDE.md</code> §Installing a Machine from Scratch).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nv">REV</span><span class="o">=</span><span class="k">$(</span>nix<span class="w"> </span>flake<span class="w"> </span>metadata<span class="w"> </span>--json<span class="w"> </span>.<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'.locks.nodes."clan-core".locked.rev'</span><span class="k">)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1"># lsblk first to confirm the USB device path — clan flash wipes it entirely.</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>lsblk
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>clan<span class="w"> </span>flash<span class="w"> </span>write<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span>--flake<span class="w"> </span><span class="s2">"git+https://git.clan.lol/clan/clan-core?ref=</span><span class="nv">$REV</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">  </span>--ssh-pubkey<span class="w"> </span>machines/miralda/yubikey_ed25519.pub<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">  </span>--disk<span class="w"> </span>main<span class="w"> </span>/dev/sdX<span class="w">      </span><span class="c1"># X = your USB stick — CONFIRM before running</span>
+</code></pre></div>
+<p>Have the zroot passphrase ready in a password manager — you'll need to type
+it in the installer when importing the pool. The initrd-ssh unlock helper
+only assists the installed system's stage 1, not the installer.</p>
+<h3 id="0d-about-the-sops-nix-key">0d. About the sops-nix key<a class="headerlink" href="#0d-about-the-sops-nix-key" title="Permanent link">&para;</a></h3>
+<p><strong>Not a blocker for this procedure in either case.</strong> In Case A, the
+bootloader install in §4h runs <code>switch-to-configuration boot</code>, which writes
+only the bootloader — it does not run the sops activation scripts. In Case B
+nothing touches sops at all until §5c's deploy. If sops is broken, that is
+dealt with in §5a <em>before</em> the final <code>clan machines update ernst</code>. Do not chase
+sops now.</p>
+<hr />
+<h2 id="1-identify-the-failed-drive">1. Identify the failed drive<a class="headerlink" href="#1-identify-the-failed-drive" title="Permanent link">&para;</a></h2>
+<p>Applies to both cases. Aim: determine which physical enclosure slot the
+failed drive occupies, so you pull the right tray in §3.</p>
+<p>If the failed drive is currently offline from the SAS bus (dropped and not
+re-enumerated), you can't blink its own locator LED. Blink the LEDs of
+every OTHER drive instead — the empty/unresponsive slot is the failed one.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># List enclosure services devices</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>ls<span class="w"> </span>/dev/sg*<span class="w"> </span>/dev/bsg/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Read enclosure element status (serials + slot correspondence)</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">for</span><span class="w"> </span>sg<span class="w"> </span><span class="k">in</span><span class="w"> </span>/dev/sg*<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"=== </span><span class="nv">$sg</span><span class="s2"> ==="</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span>sg_ses<span class="w"> </span>--page<span class="o">=</span>aes<span class="w"> </span><span class="s2">"</span><span class="nv">$sg</span><span class="s2">"</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">    </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">"Element index|SAS addr|slot|serial"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-20
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="k">done</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="c1"># Blink LOCATE LED on a suspected slot to confirm before pulling</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>sg_ses<span class="w"> </span>--index<span class="o">=</span>&lt;N&gt;<span class="w"> </span>--set<span class="o">=</span>locate<span class="w"> </span>/dev/sgX
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="c1"># Turn it off again</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>sg_ses<span class="w"> </span>--index<span class="o">=</span>&lt;N&gt;<span class="w"> </span>--clear<span class="o">=</span>locate<span class="w"> </span>/dev/sgX
+</code></pre></div>
+<p>Once you've identified <code>&lt;SLOT&gt;</code>:</p>
+<ol>
+<li>Open the chassis.</li>
+<li>Cross-check the tray in <code>&lt;SLOT&gt;</code> — status LED should be dark or amber
+   (not the green blink of an active drive).</li>
+<li>Pull the tray.</li>
+<li><strong>Read the label on the drive itself and confirm it's the one you
+   intend to remove</strong> (serial number matches what <code>sg_ses</code> reported for
+   that slot, and does NOT match <code>&lt;SURVIVOR_WWN&gt;</code>'s serial).</li>
+</ol>
+<hr />
+<h2 id="2-prepare-the-pool-while-ernst-is-still-up">2. Prepare the pool (while ernst is still up)<a class="headerlink" href="#2-prepare-the-pool-while-ernst-is-still-up" title="Permanent link">&para;</a></h2>
+<p>Both cases. Do this from ernst over SSH <strong>before powering off</strong>. It cleanly
+removes the failing drive from ZFS's view so nothing tries to reach a
+phantom device once the pool re-imports (Case A) or continues running
+(Case B).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Confirm state</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>zpool<span class="w"> </span>status<span class="w"> </span>zroot
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1"># Expected: mirror-0 with one half showing FAULTED / UNAVAIL / DEGRADED</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># Detach the failed half so ZFS stops trying to talk to it.</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="c1"># Pool becomes single-vdev (still ONLINE, no redundancy — expected until §4g).</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>zpool<span class="w"> </span>detach<span class="w"> </span>zroot<span class="w"> </span>wwn-&lt;FAILED_WWN&gt;-part&lt;N&gt;
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="c1"># &lt;N&gt; is 3 if the failed disk is system-a (ESP + swap + zfs layout),</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="c1"># or 1 if the failed disk is system-b (zfs-only layout).</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="c1"># Verify:</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>zpool<span class="w"> </span>status<span class="w"> </span>zroot
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="c1"># Expected: no mirror-0 wrapper anymore, just wwn-&lt;SURVIVOR_WWN&gt;-part&lt;N&gt; ONLINE.</span>
+</code></pre></div>
+<p>If the failed disk carried swap and it's still referenced, turn it off:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>swapon<span class="w"> </span>--show
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>swapoff<span class="w"> </span>/dev/mapper/disk-&lt;FAILED_ROLE&gt;-swap<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
+</code></pre></div>
+<blockquote>
+<p><strong>If the running system is already unreachable</strong> — dead getty on every
+VT (console shows only kernel/service spam, no login prompt) <em>and</em> SSH
+broken — skip this step entirely. After the pool re-import in §4a
+(Case A), detach the ghost vdev there instead using its GUID from
+<code>zpool status</code>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>zpool<span class="w"> </span>detach<span class="w"> </span>zroot<span class="w"> </span>&lt;GUID&gt;
+</code></pre></div>
+The end state is identical: single-vdev pool ready for §4g's attach.</p>
+</blockquote>
+<hr />
+<h2 id="3-cold-swap">3. Cold swap<a class="headerlink" href="#3-cold-swap" title="Permanent link">&para;</a></h2>
+<p>Both cases: shutdown, swap, power on. Only the boot medium differs.</p>
+<ol>
+<li>Clean shutdown from ernst:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>systemctl<span class="w"> </span>poweroff
+</code></pre></div>
+<p><strong>If getty is dead on every VT and SSH is broken</strong>, don't reinstall or
+   try to bring sshd back up — press <strong>Ctrl+Alt+Del</strong> at the physical
+   console. systemd traps the key combo and performs a clean shutdown
+   even with getty gone. Then power off at POST. The §2 detach step is
+   handled from the installer per that step's fallback note.</p>
+<ol>
+<li>
+<p>Wait for full power-off. Verify PSU LED / chassis is quiet.</p>
+</li>
+<li>
+<p>Physically swap the drive in <code>&lt;SLOT&gt;</code>:</p>
+</li>
+<li>Pull the failing tray (confirmed by serial in §1).</li>
+<li>Transfer screws to the replacement SSD in the same caddy positions.</li>
+<li>
+<p>Insert into <code>&lt;SLOT&gt;</code>; push firmly until the latch clicks.</p>
+</li>
+<li>
+<p>Power on:</p>
+</li>
+<li><strong>Case A</strong> — insert the installer USB <em>before</em> powering on. Enter the
+     boot menu (typically <strong>F11</strong> on ASUS X870E boards) and boot the USB,
+     <strong>not</strong> the internal disk.</li>
+<li>
+<p><strong>Case B</strong> — ensure no installer USB is inserted. Boot normally from
+     the internal disk (the surviving ESP is untouched).</p>
+</li>
+<li>
+<p>Verify the new drive enumerated:</p>
+</li>
+<li>
+<p><strong>Case A</strong> — at the installer shell:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>lsblk<span class="w"> </span>-o<span class="w"> </span>NAME,SIZE,SERIAL,WWN
+</code></pre></div>
+</li>
+<li>
+<p><strong>Case B</strong> — once ernst is up, from your admin workstation:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>ssh<span class="w"> </span>root@ernst.skynet.lan<span class="w"> </span>lsblk<span class="w"> </span>-o<span class="w"> </span>NAME,SIZE,SERIAL,WWN
+</code></pre></div>
+</li>
+</ol>
+<p>Note <code>&lt;NEW_DEV&gt;</code> and <code>&lt;NEW_WWN&gt;</code>. Expect both mirror-role drives visible
+   plus the data disks. The new drive has an empty/unknown partition table.</p>
+<hr />
+<h2 id="4-provision-the-new-drive">4. Provision the new drive<a class="headerlink" href="#4-provision-the-new-drive" title="Permanent link">&para;</a></h2>
+<p><strong>Case A</strong> runs §4a–§4i from the installer, with a chroot for the
+bootloader step. <strong>Case B</strong> runs §4b–§4e and §4g from the live running
+system (as root, over SSH) and skips §4a, §4f, §4h, §4i entirely.</p>
+<h3 id="4a-import-the-existing-zpool-case-a-only">4a. Import the existing zpool — Case A only<a class="headerlink" href="#4a-import-the-existing-zpool-case-a-only" title="Permanent link">&para;</a></h3>
+<p>Case B: the pool is already imported and mounted by the running system.
+Skip this section.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Import read-write, root-relative to /mnt (installer convention).</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="c1"># -f is REQUIRED: the pool was last opened by ernst's hostid; the installer</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="c1"># has a different one, so import without -f fails with</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># "pool was previously in use from another system".</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>zpool<span class="w"> </span>import<span class="w"> </span>-f<span class="w"> </span>-R<span class="w"> </span>/mnt<span class="w"> </span>zroot
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="c1"># If §2's detach was skipped (unreachable running system): drop the ghost</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="c1"># vdev now, by GUID (visible in `zpool status zroot`):</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="c1">#   zpool detach zroot &lt;GUID&gt;</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="c1"># Unlock the encrypted pool</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>zfs<span class="w"> </span>load-key<span class="w"> </span>zroot<span class="w">     </span><span class="c1"># prompt: zroot passphrase</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="c1"># Mount legacy datasets — matches machines/ernst/disko.nix zpool.zroot.datasets</span>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>mount<span class="w"> </span>-t<span class="w"> </span>zfs<span class="w"> </span>zroot/root<span class="w">    </span>/mnt
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>mount<span class="w"> </span>-t<span class="w"> </span>zfs<span class="w"> </span>zroot/nix<span class="w">     </span>/mnt/nix
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>/mnt/home<span class="w"> </span>/mnt/persist<span class="w"> </span>/mnt/tmp
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>mount<span class="w"> </span>-t<span class="w"> </span>zfs<span class="w"> </span>zroot/home<span class="w">    </span>/mnt/home
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>mount<span class="w"> </span>-t<span class="w"> </span>zfs<span class="w"> </span>zroot/persist<span class="w"> </span>/mnt/persist
+<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a>mount<span class="w"> </span>-t<span class="w"> </span>zfs<span class="w"> </span>zroot/tmp<span class="w">     </span>/mnt/tmp
+</code></pre></div>
+<h3 id="4b-identify-the-new-drive">4b. Identify the new drive<a class="headerlink" href="#4b-identify-the-new-drive" title="Permanent link">&para;</a></h3>
+<p>Both cases. Commands identical.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>lsblk<span class="w"> </span>-o<span class="w"> </span>NAME,SIZE,SERIAL,WWN
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="c1"># Set variables:</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="nv">NEW_DEV</span><span class="o">=</span>/dev/sdX
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="nv">NEW_WWN</span><span class="o">=</span>0x................
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="c1"># Sanity</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>smartctl<span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$NEW_DEV</span><span class="s2">"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">"Model|Serial|Capacity"</span>
+</code></pre></div>
+<h3 id="4c-verify-sector-format-mandatory-and-reformat-if-needed">4c. Verify sector format (mandatory) and reformat if needed<a class="headerlink" href="#4c-verify-sector-format-mandatory-and-reformat-if-needed" title="Permanent link">&para;</a></h3>
+<p>Both cases. Replacement drives are often different SKUs or OEM channels
+than the survivor. Enterprise SAS SSDs sometimes ship formatted 4Kn or
+with T10 PI (protection information) enabled — both incompatible with the
+pool's existing 512-byte-logical vdevs.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>sg_readcap<span class="w"> </span>-l<span class="w"> </span><span class="s2">"</span><span class="nv">$NEW_DEV</span><span class="s2">"</span>
+</code></pre></div>
+<p><code>sg3_utils</code> (which provides <code>sg_readcap</code> and <code>sg_format</code>) is <strong>not</strong> on
+the clan flash installer image and isn't in ernst's system PATH by
+default. Bring it in ad-hoc via <code>nix shell</code> in either case:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>nix<span class="w"> </span>shell<span class="w"> </span>nixpkgs#sg3_utils<span class="w"> </span>-c<span class="w"> </span>sg_readcap<span class="w"> </span>-l<span class="w"> </span><span class="s2">"</span><span class="nv">$NEW_DEV</span><span class="s2">"</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>nix<span class="w"> </span>shell<span class="w"> </span>nixpkgs#sg3_utils<span class="w"> </span>-c<span class="w"> </span>sg_format<span class="w">  </span>--format<span class="w"> </span>--size<span class="o">=</span><span class="m">512</span><span class="w"> </span><span class="s2">"</span><span class="nv">$NEW_DEV</span><span class="s2">"</span>
+</code></pre></div>
+<p>Required properties in the output:
+- <strong>Logical block length: 512</strong>
+- <strong>prot_en=0</strong> (no T10 PI)</p>
+<p>If either is wrong, reformat before partitioning:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>sg_format<span class="w"> </span>--format<span class="w"> </span>--size<span class="o">=</span><span class="m">512</span><span class="w"> </span><span class="s2">"</span><span class="nv">$NEW_DEV</span><span class="s2">"</span>
+</code></pre></div>
+<p>Takes ~20–30 min on a 960 GB SSD. Runs synchronously; the drive stays busy
+throughout. Re-run <code>sg_readcap -l</code> afterwards to confirm.</p>
+<p><strong>Notes on cross-model compatibility:</strong>
+- Any IDEMA-standard 960 GB SAS drive has an identical LBA count, so
+  mixing e.g. PM1643 / PM1643a / PM1653 in the mirror is fine as long as
+  sector format matches.
+- SAS-24G drives (PM1653 etc.) negotiate down to 12 Gb/s on ernst's SAS
+  9300-8i HBA. No config change needed.</p>
+<h3 id="4d-wipe-any-existing-partition-table">4d. Wipe any existing partition table<a class="headerlink" href="#4d-wipe-any-existing-partition-table" title="Permanent link">&para;</a></h3>
+<p>Both cases.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>wipefs<span class="w"> </span>-a<span class="w"> </span><span class="s2">"</span><span class="nv">$NEW_DEV</span><span class="s2">"</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>sgdisk<span class="w"> </span>-Z<span class="w">  </span><span class="s2">"</span><span class="nv">$NEW_DEV</span><span class="s2">"</span>
+</code></pre></div>
+<h3 id="4e-recreate-the-disko-partition-layout">4e. Recreate the disko partition layout<a class="headerlink" href="#4e-recreate-the-disko-partition-layout" title="Permanent link">&para;</a></h3>
+<p>Both cases, layout branches on <code>&lt;CASE&gt;</code>. Match
+<code>machines/ernst/disko.nix</code> → <code>disk.&lt;FAILED_ROLE&gt;.content.partitions</code>
+exactly.</p>
+<p><strong>Case A</strong> — replacing the ESP-carrying disk: 1 GiB ESP + 16 GiB swap +
+remainder ZFS.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>sgdisk<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span>-n<span class="w"> </span><span class="m">1</span>:0:+1G<span class="w">   </span>-t<span class="w"> </span><span class="m">1</span>:EF00<span class="w"> </span>-c<span class="w"> </span><span class="m">1</span>:disk-&lt;FAILED_ROLE&gt;-ESP<span class="w">  </span><span class="se">\</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span>-n<span class="w"> </span><span class="m">2</span>:0:+16G<span class="w">  </span>-t<span class="w"> </span><span class="m">2</span>:8200<span class="w"> </span>-c<span class="w"> </span><span class="m">2</span>:disk-&lt;FAILED_ROLE&gt;-swap<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">  </span>-n<span class="w"> </span><span class="m">3</span>:0:0<span class="w">     </span>-t<span class="w"> </span><span class="m">3</span>:BF01<span class="w"> </span>-c<span class="w"> </span><span class="m">3</span>:disk-&lt;FAILED_ROLE&gt;-zfs<span class="w">  </span><span class="se">\</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">  </span><span class="s2">"</span><span class="nv">$NEW_DEV</span><span class="s2">"</span>
+</code></pre></div>
+<p><strong>Case B</strong> — replacing the zroot-only disk: single ZFS partition spanning
+the disk.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>sgdisk<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">  </span>-n<span class="w"> </span><span class="m">1</span>:0:0<span class="w">     </span>-t<span class="w"> </span><span class="m">1</span>:BF01<span class="w"> </span>-c<span class="w"> </span><span class="m">1</span>:disk-&lt;FAILED_ROLE&gt;-zfs<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">  </span><span class="s2">"</span><span class="nv">$NEW_DEV</span><span class="s2">"</span>
+</code></pre></div>
+<p>Then, either case:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>partprobe<span class="w">   </span><span class="s2">"</span><span class="nv">$NEW_DEV</span><span class="s2">"</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>udevadm<span class="w"> </span>settle
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="c1"># Verify partlabels exist</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>ls<span class="w"> </span>-l<span class="w"> </span>/dev/disk/by-partlabel/<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"disk-&lt;FAILED_ROLE&gt;"</span>
+</code></pre></div>
+<h3 id="4f-format-and-mount-the-new-esp-case-a-only">4f. Format and mount the new ESP — Case A only<a class="headerlink" href="#4f-format-and-mount-the-new-esp-case-a-only" title="Permanent link">&para;</a></h3>
+<p>Case B: skip this section — the surviving disk's ESP is untouched and
+authoritative.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>mkfs.vfat<span class="w"> </span>-F<span class="w"> </span><span class="m">32</span><span class="w"> </span>-n<span class="w"> </span>ESP<span class="w"> </span>/dev/disk/by-partlabel/disk-&lt;FAILED_ROLE&gt;-ESP
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="c1"># Mount into the target root's /boot (installer chroot convention)</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>mount<span class="w"> </span>/dev/disk/by-partlabel/disk-&lt;FAILED_ROLE&gt;-ESP<span class="w"> </span>/mnt/boot
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>ls<span class="w"> </span>/mnt/boot<span class="w">          </span><span class="c1"># empty; bootloader install fills it</span>
+</code></pre></div>
+<p>Swap needs no manual formatting — disko.nix sets <code>randomEncryption = true</code>,
+so <code>systemd-cryptsetup@disk-&lt;FAILED_ROLE&gt;-swap.service</code> creates a fresh key
+and swap header each boot.</p>
+<h3 id="4g-attach-the-new-drive-to-the-zroot-mirror">4g. Attach the new drive to the zroot mirror<a class="headerlink" href="#4g-attach-the-new-drive-to-the-zroot-mirror" title="Permanent link">&para;</a></h3>
+<p>Both cases. Command is identical — <code>zpool attach</code> works against by-partlabel
+device paths in either the installer or the running system.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>zpool<span class="w"> </span>attach<span class="w"> </span>zroot<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="w">  </span>wwn-&lt;SURVIVOR_WWN&gt;-part&lt;N&gt;<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="w">  </span>/dev/disk/by-partlabel/disk-&lt;FAILED_ROLE&gt;-zfs
+</code></pre></div>
+<p><code>&lt;N&gt;</code> matches the survivor's zfs-partition number (1 for <code>system-b</code>, 3 for
+<code>system-a</code> in the current layout).</p>
+<p>Resilver kicks off immediately. On mirrored SAS SSDs with only a few GB
+used (zroot typically sits at ~4.5 GB), resilver completes in <strong>seconds</strong>,
+not minutes — the mirror is ONLINE and both halves match by the time you
+switch terminals. It's safe to overlap Case A's §4h bootloader work with
+the resilver window; just re-check <code>zpool status zroot</code> before §4i's
+<code>zpool export</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>watch<span class="w"> </span>-n<span class="w"> </span><span class="m">5</span><span class="w"> </span><span class="s1">'zpool status zroot | head -20'</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="c1"># Ctrl-C once "resilver completed" appears and the pool is ONLINE</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="c1"># with no read/write/checksum errors on either half.</span>
+</code></pre></div>
+<h3 id="4h-install-the-bootloader-from-a-chroot-case-a-only">4h. Install the bootloader from a chroot — Case A only<a class="headerlink" href="#4h-install-the-bootloader-from-a-chroot-case-a-only" title="Permanent link">&para;</a></h3>
+<p>Case B: skip. The surviving disk's ESP already has a valid bootloader.</p>
+<p>Run <strong>both</strong> commands in this order — the first primes the ESP with the
+systemd-boot binary; the second wires up the generation entries. Running
+only the second (as an obvious first attempt) crashes with a Python
+traceback from <code>bootctl status</code> because efivars aren't visible from
+inside the chroot (<code>Firmware: n/a</code>), so the NixOS systemd-boot installer
+bails before writing anything.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1"># 1. Prime the new ESP with systemd-boot (no NVRAM changes — chroot has</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="c1">#    no efivars). --no-variables suppresses the efibootmgr call that</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="c1">#    would otherwise fail.</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>nixos-enter<span class="w"> </span>--root<span class="w"> </span>/mnt<span class="w"> </span>-c<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="w">  </span><span class="s2">"bootctl --esp-path=/boot install --no-variables"</span>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="c1"># 2. Now run the NixOS bootloader activation. This writes generation</span>
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a><span class="c1">#    entries (nixos-generation-*.conf), the loader config, and the</span>
+<a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a><span class="c1">#    initrd/kernel copies.</span>
+<a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a>nixos-enter<span class="w"> </span>--root<span class="w"> </span>/mnt<span class="w"> </span>-c<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a><span class="w">  </span><span class="s2">"/run/current-system/bin/switch-to-configuration boot"</span>
+<a id="__codelineno-21-12" name="__codelineno-21-12" href="#__codelineno-21-12"></a>
+<a id="__codelineno-21-13" name="__codelineno-21-13" href="#__codelineno-21-13"></a><span class="c1"># Sanity check — you should see one nixos-generation-*.conf entry.</span>
+<a id="__codelineno-21-14" name="__codelineno-21-14" href="#__codelineno-21-14"></a>ls<span class="w"> </span>/mnt/boot/loader/entries
+</code></pre></div>
+<p><code>switch-to-configuration boot</code> runs only the bootloader-install step; it
+does <strong>not</strong> run sops or user-secret activation. If sops-nix is broken this
+step still succeeds.</p>
+<p>After first successful boot from the running system, register the NVRAM
+entry and tidy the boot order:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>ssh<span class="w"> </span>root@ernst.skynet.lan
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>bootctl<span class="w"> </span>install<span class="w">   </span><span class="c1"># creates the "Linux Boot Manager" NVRAM entry now</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">                  </span><span class="c1"># that efivars are visible</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="c1"># Inspect current entries and reorder as needed.</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>nix<span class="w"> </span>shell<span class="w"> </span>nixpkgs#efibootmgr<span class="w"> </span>-c<span class="w"> </span>efibootmgr
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a>nix<span class="w"> </span>shell<span class="w"> </span>nixpkgs#efibootmgr<span class="w"> </span>-c<span class="w"> </span>efibootmgr<span class="w"> </span>-o<span class="w"> </span>&lt;hex,hex,...&gt;<span class="w">   </span><span class="c1"># new order</span>
+</code></pre></div>
+<p>The firmware auto-creates a <strong>"UEFI OS"</strong> fallback entry pointing at
+<code>\EFI\BOOT\BOOTX64.EFI</code>. Harmless — keep it as a last-resort fallback.
+"Linux Boot Manager" (systemd-boot) should be first in <code>BootOrder</code>.</p>
+<h3 id="4i-clean-unmount-and-reboot-case-a-only">4i. Clean unmount and reboot — Case A only<a class="headerlink" href="#4i-clean-unmount-and-reboot-case-a-only" title="Permanent link">&para;</a></h3>
+<p>Case B: skip. Continue to §5 with the system still running.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>umount<span class="w"> </span>-R<span class="w"> </span>/mnt
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>zpool<span class="w"> </span><span class="nb">export</span><span class="w"> </span>zroot
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="c1"># Remove USB now, then:</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>systemctl<span class="w"> </span>reboot
+</code></pre></div>
+<p>Stage 1 will prompt for the zroot passphrase. The initrd-ssh host key
+lives on <code>/persist/etc/secrets/initrd/</code> — which is on a dataset you never
+touched during this replacement — so remote unlock still works out of the
+box. From miralda:
+<a href="../../guides/remote-unlock/"><code>docs/guides/remote-unlock.md</code></a>. No console
+needed for the passphrase; no re-generation of the initrd host key.</p>
+<p><strong>On first reboot: enter UEFI setup and verify boot order.</strong> Common failure
+mode is "worked in the chroot, won't boot unattended" because the firmware
+still ranks a stale EFI entry pointing at the removed drive's ESP above the
+new one.</p>
+<ul>
+<li>Enter setup (Del or F2 on ASUS ProArt boards).</li>
+<li>Boot → Boot Priority.</li>
+<li>Confirm the "Linux Boot Manager" entry pointing at the <strong>new</strong> drive is
+  first.</li>
+<li>Delete or demote any entry pointing at the removed drive's ESP.</li>
+<li>Save and exit.</li>
+</ul>
+<hr />
+<h2 id="5-fix-sops-if-needed-and-redeploy">5. Fix sops if needed and redeploy<a class="headerlink" href="#5-fix-sops-if-needed-and-redeploy" title="Permanent link">&para;</a></h2>
+<p>Both cases converge here. In Case A you just rebooted into the repaired
+system; in Case B you never left it.</p>
+<h3 id="5a-fix-sops-nix-key-if-broken">5a. Fix sops-nix key if broken<a class="headerlink" href="#5a-fix-sops-nix-key-if-broken" title="Permanent link">&para;</a></h3>
+<p><strong>Only relevant if the activation error <code>sops-install-secrets: cannot read
+keyfile '/var/lib/sops-nix/key.txt'</code> appears on the next
+<code>clan machines update ernst</code>.</strong> If deploys are clean, skip this section.</p>
+<p>First diagnose — the key may exist on the persist mount and only the
+impermanence binding be broken:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>ls<span class="w"> </span>-la<span class="w"> </span>/var/lib/sops-nix/<span class="w"> </span>/persist/var/lib/sops-nix/<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>mount<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>sops-nix
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>findmnt<span class="w"> </span>/var/lib/sops-nix
+</code></pre></div>
+<p><strong>Case i — key exists on <code>/persist</code> but not visible at <code>/var/lib/sops-nix</code>:</strong>
+the impermanence mapping is broken. Check the persist entry for
+<code>/var/lib/sops-nix</code> in the flake (<code>modules/zfs-impermanence.nix</code> and any
+ernst-specific persist config), fix, redeploy. No key regeneration needed.</p>
+<p><strong>Case ii — key genuinely absent</strong> (empty <code>/persist/var/lib/sops-nix/</code>):</p>
+<ol>
+<li>Generate a new machine age key at the persisted path. <code>age</code> is not in
+   ernst's system PATH by default; bring it into scope via <code>nix shell</code>:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>/persist/var/lib/sops-nix
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>nix<span class="w"> </span>shell<span class="w"> </span>nixpkgs#age<span class="w"> </span>-c<span class="w"> </span>age-keygen<span class="w"> </span>-o<span class="w"> </span>/persist/var/lib/sops-nix/key.txt
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>chmod<span class="w"> </span><span class="m">600</span><span class="w"> </span>/persist/var/lib/sops-nix/key.txt
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>nix<span class="w"> </span>shell<span class="w"> </span>nixpkgs#age<span class="w"> </span>-c<span class="w"> </span>age-keygen<span class="w"> </span>-y<span class="w"> </span>/persist/var/lib/sops-nix/key.txt<span class="w">   </span><span class="c1"># print new public key</span>
+</code></pre></div></li>
+<li>From miralda, update ernst's machine recipient in the clan sops config
+   (<code>sops/machines/ernst/</code> or <code>.sops.yaml</code> depending on layout) to the new
+   public key.</li>
+<li>Re-encrypt existing vars against the new recipient. For plain sops-managed
+   files, <code>sops updatekeys &lt;path&gt;</code> on each. For machine-scoped clan vars,
+   use <code>clan vars generate --regenerate ernst</code> (verified against
+   <code>clan vars --help</code> at this flake's pinned clan-core rev — the subcommand
+   surface is <code>{keygen,check,fix,list,get,set,generate,upload}</code>, so any
+   older docs mentioning <code>clan vars regenerate</code> are stale).</li>
+<li>Commit the recipient rotation on a <code>vars/ernst-key-rotation</code> branch and
+   land it via PR.</li>
+<li>Verify decryption works from miralda before deploying:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>sops<span class="w"> </span>-d<span class="w"> </span>sops/machines/ernst/&lt;some-secret-file&gt;
+</code></pre></div></li>
+<li>On ernst, verify the impermanence bind now shows the key:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>ls<span class="w"> </span>-la<span class="w"> </span>/var/lib/sops-nix/
+</code></pre></div></li>
+</ol>
+<h3 id="5b-update-diskonix-on-miralda">5b. Update <code>disko.nix</code> on miralda<a class="headerlink" href="#5b-update-diskonix-on-miralda" title="Permanent link">&para;</a></h3>
+<p>Edit <code>machines/ernst/disko.nix</code> for the replaced disk. Update <strong>both</strong> the
+<code>device</code> line and the trailing comment (model + serial) so the config
+remains self-documenting:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>disk<span class="o">.</span><span class="l">&lt;FAILED_ROLE&gt;</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>  <span class="ss">type</span> <span class="o">=</span> <span class="s2">"disk"</span><span class="p">;</span>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>  <span class="ss">device</span> <span class="o">=</span> <span class="s2">"/dev/disk/by-id/wwn-&lt;NEW_WWN&gt;"</span><span class="p">;</span>  <span class="c1"># &lt;NEW_MODEL&gt;  &lt;NEW_SERIAL&gt;</span>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>  <span class="o">...</span>
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a><span class="p">};</span>
+</code></pre></div>
+<p>Commit on a branch and open a PR:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>git<span class="w"> </span>switch<span class="w"> </span>-c<span class="w"> </span>fix/ernst-replace-&lt;FAILED_ROLE&gt;
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>git<span class="w"> </span>add<span class="w"> </span>machines/ernst/disko.nix
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"ernst: replace &lt;FAILED_ROLE&gt; disk (new WWN &lt;NEW_WWN&gt;)"</span>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>push<span class="w"> </span>origin<span class="w"> </span>fix/ernst-replace-&lt;FAILED_ROLE&gt;
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a>gh<span class="w"> </span>pr<span class="w"> </span>create<span class="w"> </span>--title<span class="w"> </span><span class="s2">"ernst: replace failed &lt;FAILED_ROLE&gt; SAS SSD"</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a><span class="w">  </span>--body<span class="w"> </span><span class="s2">"New drive: &lt;NEW_MODEL&gt; &lt;NEW_SERIAL&gt; (WWN &lt;NEW_WWN&gt;)."</span>
+</code></pre></div>
+<h3 id="5c-deploy">5c. Deploy<a class="headerlink" href="#5c-deploy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>clan<span class="w"> </span>machines<span class="w"> </span>update<span class="w"> </span>ernst
+</code></pre></div>
+<p>Case A: bootloader install writes to the new ESP; services activate.
+Case B: no bootloader change; services activate.</p>
+<h3 id="5d-verify-boot-resilience">5d. Verify boot resilience<a class="headerlink" href="#5d-verify-boot-resilience" title="Permanent link">&para;</a></h3>
+<p>Both cases. Reboot once to prove the drive+ESP combo boots unattended:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>ssh<span class="w"> </span>root@ernst.skynet.lan<span class="w"> </span><span class="s1">'systemctl reboot'</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="c1"># wait 60–90 s</span>
+<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>ssh<span class="w"> </span>root@ernst.skynet.lan<span class="w"> </span><span class="s1">'</span>
+<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a><span class="s1">  uptime</span>
+<a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a><span class="s1">  zpool status zroot</span>
+<a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a><span class="s1">  systemctl --failed --no-pager</span>
+<a id="__codelineno-31-7" name="__codelineno-31-7" href="#__codelineno-31-7"></a><span class="s1">'</span>
+</code></pre></div>
+<p><strong>Green result</strong>: fresh uptime, <code>zroot</code> ONLINE with <em>both</em> <code>mirror-0</code>
+halves ONLINE and zero errors, no failed units. Runbook complete.</p>
+<hr />
+<h2 id="6-rollback-troubleshooting">6. Rollback / troubleshooting<a class="headerlink" href="#6-rollback-troubleshooting" title="Permanent link">&para;</a></h2>
+<ul>
+<li>
+<p><strong><code>zpool attach</code> fails with "device is too small"</strong> — the new drive has
+  slightly fewer sectors than the survivor. Any IDEMA-standard 960 GB SAS
+  drive should match. If it doesn't (rare cross-vendor case), use
+  <code>zpool attach -f</code> after confirming the delta is trivial (&lt; 1 MB); if it's
+  larger, the drive is undersized and unsuitable.</p>
+</li>
+<li>
+<p><strong><code>zpool attach</code> fails with "block size mismatch"</strong> — sector format
+  wasn't caught in §4c. Detach, <code>sg_format --format --size=512</code> the new
+  drive, retry §4d–4g.</p>
+</li>
+<li>
+<p><strong>New drive also flaps on the SAS bus</strong> — the fault is the backplane,
+  cable, or HBA port, not the drive. Move it to a different slot; if the
+  problem follows the drive it's the drive, if it stays on the slot it's
+  the enclosure hardware.</p>
+</li>
+<li>
+<p><strong>Bootloader install fails in chroot (Case A)</strong> — check
+  <code>mount | grep /mnt/boot</code> and <code>ls /mnt/boot</code>. The ESP must be mounted and
+  writable. If <code>by-partlabel</code> doesn't resolve, <code>udevadm trigger &amp;&amp; udevadm
+  settle</code> and remount.</p>
+</li>
+<li>
+<p><strong>Pool import fails with "one or more devices is currently unavailable"
+  (Case A)</strong> — after the detach in §2, the pool has a single vdev; if the
+  survivor itself is now flaking (worst case), <code>zpool import -F zroot</code> may
+  work as a last resort. Only try this if the survivor is healthy —
+  otherwise stop and restore from backup.</p>
+</li>
+<li>
+<p><strong>Resilver very slow or erroring on the survivor</strong> — the survivor is
+  degrading too. Stop, <code>zfs send</code> critical datasets to an external
+  destination, then continue.</p>
+</li>
+<li>
+<p><strong>Machine won't boot after §4i's reboot (Case A only)</strong> — UEFI boot
+  order issue: see §4i last paragraph. Enter setup, promote the new "Linux
+  Boot Manager" entry, delete stale entries.</p>
+</li>
+<li>
+<p><strong><code>clan machines update ernst</code> in §5c fails at <code>setupSecrets</code></strong> — sops-nix key
+  issue; go to §5a.</p>
+</li>
+</ul>
+<hr />
+<h2 id="pre-flight-checklist">Pre-flight checklist<a class="headerlink" href="#pre-flight-checklist" title="Permanent link">&para;</a></h2>
+<ul>
+<li>[ ] Replacement SAS SSD in hand (any IDEMA-standard 960 GB matching the
+      current mirror capacity — same model preferred, but PM1643a/PM1653
+      are interchangeable)</li>
+<li>[ ] <code>&lt;FAILED_WWN&gt;</code> and <code>&lt;SURVIVOR_WWN&gt;</code> noted from <code>zpool status zroot</code></li>
+<li>[ ] <code>&lt;FAILED_ROLE&gt;</code> and <code>&lt;CASE&gt;</code> determined by cross-referencing
+      <code>disko.nix</code> (§0b)</li>
+<li>[ ] Console or SSH access to ernst working (§0a)</li>
+<li>[ ] Installer USB built against the pinned clan-core rev <strong>(Case A only,
+      §0c)</strong></li>
+<li>[ ] zroot passphrase available in a password manager <strong>(Case A only —
+      installer prompts for it; Case B never re-imports)</strong></li>
+<li>[ ] <code>&lt;SLOT&gt;</code> physically located and confirmed (§1)</li>
+<li>[ ] <code>zpool detach</code> done (§2)</li>
+<li>[ ] Torx driver for the drive caddy screws</li>
+<li>[ ] ESD strap or grounded surface</li>
+<li>[ ] Terminal open with this runbook and a note pad for <code>&lt;NEW_WWN&gt;</code>,
+      <code>&lt;NEW_MODEL&gt;</code>, <code>&lt;NEW_SERIAL&gt;</code></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

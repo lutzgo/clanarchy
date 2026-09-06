@@ -1,0 +1,2564 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="NixOS declarative configuration — guides and option reference">
+      
+      
+      
+        <link rel="canonical" href="https://lutzgo.github.io/clanarchy/guides/birte-emulation/">
+      
+      
+        <link rel="prev" href="../htpc-controllers/">
+      
+      
+        <link rel="next" href="../firmware-updates/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Emulation on birte - Clanarchy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#emulation-on-birte" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Clanarchy" class="md-header__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Clanarchy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Emulation on birte
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../first-time-install/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../runbooks/zfs-auto-snapshot-optin/" class="md-tabs__link">
+          
+  
+  
+  Runbooks
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../incidents/ernst-slot12-drop-2026-08-11/" class="md-tabs__link">
+          
+  
+  
+  Incidents
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Clanarchy" class="md-nav__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Clanarchy
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../first-time-install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    First-time install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploying and testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../updating-machines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating machines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adding-a-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../accepting-pull-requests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Accepting pull requests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../networking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Networking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../yubikey/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../yubikey-ssh-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey SSH setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote-unlock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote unlock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-zdata-datasets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zdata datasets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../htpc-bigscreen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / Plasma Bigscreen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../htpc-controllers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / game controllers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emulation on birte
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emulation on birte
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-impermanence-trap-read-this-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The impermanence trap — read this first
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retrodeck-first-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RetroDECK first run
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-them-into-steam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting them into Steam
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Getting them into Steam">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#retrodeck-use-its-bundled-steam-rom-manager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RetroDECK — use its bundled Steam ROM Manager
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eden-one-manual-shortcut" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Eden — one manual shortcut
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#anything-launched-from-gaming-mode-needs-its-library-env-cleaned" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Anything launched from Gaming Mode needs its library env cleaned
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-steam-actually-records-in-a-shortcut" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Steam actually records in a shortcut
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-rom-library-and-self-hosting-romm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The ROM library, and self-hosting RomM
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The ROM library, and self-hosting RomM">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#where-the-library-lives-ernst-masters-birte-syncs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the library lives: ernst masters, birte syncs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deploying-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deploying it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#after-the-first-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        After the first start
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#importing-a-downloaded-collection-into-the-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Importing a downloaded collection into the library
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Importing a downloaded collection into the library">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#things-that-have-actually-gone-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Things that have actually gone wrong
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scanning-a-large-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scanning a large library
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#if-romm-shows-the-platform-as-unknown" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If RomM shows the platform as "Unknown"
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-about-questarr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What about Questarr?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../firmware-updates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware updates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../noctalia-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../noctalia-v5-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia v5 migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../obs-sony-webcam/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OBS / Sony webcam
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runbooks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Runbooks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/zfs-auto-snapshot-optin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZFS auto-snapshot opt-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-zroot-drive-replacement/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zroot drive replacement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-enable-impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst enabling impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-vlan-bridge-cutover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VLAN bridge cutover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-vpn-microvm-deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VPN microvm deploy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Incidents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Incidents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../incidents/ernst-slot12-drop-2026-08-11/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst slot-12 drive drop (2026-08-11)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../incidents/ernst-jellyfin-vaapi-drm-display-failure-2026-08-18/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst Jellyfin VAAPI DRM display failure (2026-08-18)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/hardware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Desktop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/apps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/users/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/wifi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-impermanence-trap-read-this-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The impermanence trap — read this first
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retrodeck-first-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RetroDECK first run
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-them-into-steam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting them into Steam
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Getting them into Steam">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#retrodeck-use-its-bundled-steam-rom-manager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RetroDECK — use its bundled Steam ROM Manager
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eden-one-manual-shortcut" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Eden — one manual shortcut
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#anything-launched-from-gaming-mode-needs-its-library-env-cleaned" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Anything launched from Gaming Mode needs its library env cleaned
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-steam-actually-records-in-a-shortcut" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Steam actually records in a shortcut
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-rom-library-and-self-hosting-romm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The ROM library, and self-hosting RomM
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The ROM library, and self-hosting RomM">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#where-the-library-lives-ernst-masters-birte-syncs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the library lives: ernst masters, birte syncs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deploying-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deploying it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#after-the-first-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        After the first start
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#importing-a-downloaded-collection-into-the-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Importing a downloaded collection into the library
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Importing a downloaded collection into the library">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#things-that-have-actually-gone-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Things that have actually gone wrong
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scanning-a-large-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scanning a large library
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#if-romm-shows-the-platform-as-unknown" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If RomM shows the platform as "Unknown"
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-about-questarr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What about Questarr?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/lutzgo/clanarchy/edit/main/docs/guides/birte-emulation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="emulation-on-birte">Emulation on birte<a class="headerlink" href="#emulation-on-birte" title="Permanent link">&para;</a></h1>
+<p>Two pieces of software, because one no longer covers the whole range:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>RetroDECK</th>
+<th>Eden</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Consoles</strong></td>
+<td>everything up to and including the Switch's predecessors</td>
+<td>Switch 1 only</td>
+</tr>
+<tr>
+<td><strong>Installed as</strong></td>
+<td>Flatpak, <code>net.retrodeck.retrodeck</code> (imperative — <code>services.flatpak.packages</code> does not exist in this nixpkgs)</td>
+<td>Nix package <code>pkgs.eden</code>, via <code>clanarchy.apps.emulation.switch.enable</code></td>
+</tr>
+<tr>
+<td><strong>Config lives in</strong></td>
+<td><code>~/.var/app/net.retrodeck.retrodeck/</code></td>
+<td><code>~/.config/eden</code> + <code>~/.local/share/eden</code></td>
+</tr>
+<tr>
+<td><strong>Game data lives in</strong></td>
+<td><code>~/retrodeck</code> → <code>/games/retrodeck</code></td>
+<td>wherever you point it; <code>/games</code> has the space</td>
+</tr>
+<tr>
+<td><strong>Into Steam via</strong></td>
+<td>its own bundled Steam ROM Manager</td>
+<td>one manual "Add a Non-Steam Game"</td>
+</tr>
+</tbody>
+</table>
+<p>RetroDECK <a href="https://retrodeck.readthedocs.io/en/latest/blog/2026/02/19/february-2026---extra-switch-emulation-support---will-be-removed/">removed Switch emulation permanently in February 2026</a> —
+DMCA exposure the volunteer project chose not to carry — and its own
+announcement tells users to run a Switch emulator themselves alongside it.
+That is the entire reason Eden is packaged separately rather than being
+redundant with RetroDECK.</p>
+<h2 id="the-impermanence-trap-read-this-first">The impermanence trap — read this first<a class="headerlink" href="#the-impermanence-trap-read-this-first" title="Permanent link">&para;</a></h2>
+<p>birte rolls <code>@root</code> <strong>and <code>@home</code></strong> back to blank subvolumes on every boot
+(see <a href="../impermanence/">Impermanence</a>). Only paths declared in
+<code>machines/birte/deck.nix</code> survive.</p>
+<p>Flatpak apps keep <strong>all</strong> of their state under <code>~/.var/app/&lt;app-id&gt;/</code> — not in
+<code>.config</code>, not in <code>.local/share</code>. <code>/var/lib/flatpak</code> was already persisted, so
+installed Flatpaks came back after a reboot, but they came back <em>freshly
+installed and completely unconfigured</em>. <code>deck.nix</code> now persists <code>.var/app</code>,
+which is what makes RetroDECK's setup stick at all.</p>
+<p>The second half is the data folder. <code>~/retrodeck</code> is a <code>tmpfiles</code> <code>L+</code> symlink
+onto <code>/games/retrodeck</code>, on the <code>@games</code> subvolume — outside the rollback path,
+outside the impermanence bind-mounts, <code>nodatacow</code>, and where the free space is.</p>
+<p>Both changes landed together. <strong>If you configured RetroDECK before deploying
+them, that configuration is already gone</strong> — redo the first-run wizard after
+the deploy, not before.</p>
+<h2 id="retrodeck-first-run">RetroDECK first run<a class="headerlink" href="#retrodeck-first-run" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>clan<span class="w"> </span>machines<span class="w"> </span>update<span class="w"> </span>birte
+</code></pre></div>
+<p>Then, in Desktop Mode, launch RetroDECK and answer the wizard:</p>
+<ul>
+<li><strong>Data folder: pick "Internal"</strong>. It resolves to <code>~/retrodeck</code>, which is
+  already the symlink onto <code>/games/retrodeck</code>. There is no custom path to
+  enter, and nothing to re-enter after a reinstall.</li>
+<li>Do <strong>not</strong> pick the SD card option unless a card is actually in the slot —
+  birte's library lives on the internal NVMe.</li>
+</ul>
+<p>The tree it creates:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>/games/retrodeck/
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>├── roms/&lt;system&gt;/     # nes/, snes/, gba/, psx/ … one folder per system
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>├── bios/              # BIOS and firmware, flat
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>├── saves/  states/    # per-emulator save and save-state trees
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>└── .downloaded_media/ # scraped art — can grow to many GB
+</code></pre></div>
+<p>ROMs go in the matching system folder; a NES game in <code>roms/nes/</code>. BIOS files go
+in <code>bios/</code>, though <a href="https://retrodeck.readthedocs.io/en/latest/wiki_management/bios-firmware/">a few components also want firmware next to the ROM</a>.</p>
+<h2 id="getting-them-into-steam">Getting them into Steam<a class="headerlink" href="#getting-them-into-steam" title="Permanent link">&para;</a></h2>
+<h3 id="retrodeck-use-its-bundled-steam-rom-manager">RetroDECK — use its bundled Steam ROM Manager<a class="headerlink" href="#retrodeck-use-its-bundled-steam-rom-manager" title="Permanent link">&para;</a></h3>
+<p>RetroDECK has <a href="https://retrodeck.readthedocs.io/en/latest/wiki_utility_guides/srm/srm-guide/">shipped Steam ROM Manager since 0.9.0b</a>. It adds
+<em>individual games</em> as non-Steam shortcuts, pulls artwork from SteamGridDB, and
+applies RetroDECK's Steam Input layouts — which is the part that matters,
+because a hand-made shortcut gets none of the controller mapping.</p>
+<ul>
+<li><strong>Bulk / one-off</strong>: Configurator → Open Component → Steam ROM Manager.</li>
+<li><strong>Keep it current</strong>: Configurator → Steam Tools → <strong>Automatic Steam Sync</strong> →
+  Yes. New ROMs then appear in Steam without re-running anything.</li>
+</ul>
+<p>Steam only re-reads its shortcut list at startup, so after either one:
+<strong>restart Steam</strong> — switching Gaming Mode → Desktop Mode → Gaming Mode is
+enough, and is the fast way to do it on the Deck.</p>
+<h3 id="eden-one-manual-shortcut">Eden — one manual shortcut<a class="headerlink" href="#eden-one-manual-shortcut" title="Permanent link">&para;</a></h3>
+<p>Eden is a single application, so there is nothing to bulk-import:
+Steam → Games → <strong>Add a Non-Steam Game</strong> → tick <strong>Eden</strong> → Add.</p>
+<p>Two things make that shortcut durable, and both are deliberate:</p>
+<ul>
+<li>Eden's desktop entry uses a bare <code>Exec=eden %f</code>, and the package is in
+  <code>environment.systemPackages</code>, so what Steam resolves and stores is
+  <code>/run/current-system/sw/bin/eden</code>. That path is stable across rebuilds. Had
+  the entry carried a <code>/nix/store/…</code> path, Steam would have baked it into
+  <code>shortcuts.vdf</code> and the shortcut would have broken at the next garbage
+  collection.</li>
+<li><code>shortcuts.vdf</code> itself lives under <code>~/.local/share/Steam</code>, which is a symlink
+  to <code>/games</code>. It is outside the rollback, so shortcuts added by hand survive
+  reboots — the same mechanism that keeps the Steam library itself.</li>
+</ul>
+<p>Eden needs Switch keys (<code>prod.keys</code>, <code>title.keys</code>) dumped from your own
+console; it looks for them in the <code>keys/</code> folder of its data directory, which
+you can open from inside the app. Both <code>~/.config/eden</code> and <code>~/.local/share/eden</code>
+are already persisted for <code>deck</code>, so wherever it puts them, they stay.</p>
+<p>Switch dumps themselves belong in <code>/srv/roms/roms/switch/</code> on ernst — that
+directory already exists and already replicates to
+<code>/games/retrodeck/roms/switch/</code> on the Deck, so Eden can simply be pointed at
+the synced copy. RomM indexes them too (<code>switch</code> is one of its platforms).</p>
+<h3 id="anything-launched-from-gaming-mode-needs-its-library-env-cleaned">Anything launched from Gaming Mode needs its library env cleaned<a class="headerlink" href="#anything-launched-from-gaming-mode-needs-its-library-env-cleaned" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom:</strong> a non-Steam shortcut works perfectly from the KDE menu in Desktop
+Mode and does nothing at all in Gaming Mode.</p>
+<p><strong>Cause:</strong> Steam exports its own <code>LD_LIBRARY_PATH</code>, pointing at the bundled
+Ubuntu-12 Steam Runtime, to everything it launches. Those libraries shadow the
+ones every Nix-built binary is linked against. Measured on birte:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="gp">$ </span>chromium<span class="w">            </span><span class="c1"># with Steam's LD_LIBRARY_PATH</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="go">chromium: /games/ubuntu12_32/steam-runtime/usr/lib/x86_64-linux-gnu/libnss3.so:</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="go">          version `NSS_3.30' not found (required by …/chromium)</span>
+</code></pre></div>
+<p>It is not specific to browsers — with that variable set, plain coreutils fails
+the same way (<code>head</code>, <code>tr</code>: <code>libattr.so.1: version 'ATTR_1.3' not found</code>), which
+is a good way to recognise it.</p>
+<p><strong>Fix:</strong> in Steam, right-click the shortcut → Properties → <strong>Launch Options</strong>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>env -u LD_LIBRARY_PATH -u LD_PRELOAD %command%
+</code></pre></div>
+<p>Desktop Mode is unaffected because launching from the KDE menu never goes
+through Steam.</p>
+<h3 id="what-steam-actually-records-in-a-shortcut">What Steam actually records in a shortcut<a class="headerlink" href="#what-steam-actually-records-in-a-shortcut" title="Permanent link">&para;</a></h3>
+<p>Steam stores a desktop entry's <code>Exec</code> field <strong>literally</strong> — it does not resolve
+it. From birte's <code>shortcuts.vdf</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Shortcut</th>
+<th>Stored <code>Exe</code></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Chromium</td>
+<td><code>"chromium"</code></td>
+<td>bare name, resolved via PATH at launch</td>
+</tr>
+<tr>
+<td>Eden</td>
+<td><code>"eden"</code></td>
+<td>same</td>
+</tr>
+<tr>
+<td>Google Chrome</td>
+<td><code>"/nix/store/awfz…/bin/google-chrome-stable"</code></td>
+<td><strong>store path — will break</strong></td>
+</tr>
+</tbody>
+</table>
+<p>A bare name is fine here because <code>/run/current-system/sw/bin</code> is on the
+gamescope session's PATH. A baked-in <code>/nix/store</code> path is not: it breaks at the
+next update plus garbage collection. google-chrome's upstream desktop entry
+uses an absolute <code>Exec</code>, so that is what Steam captured.</p>
+<p>If a shortcut dies after an update, re-add it with <strong>Browse</strong> and pick
+<code>/run/current-system/sw/bin/&lt;name&gt;</code> explicitly rather than letting Steam scan
+the desktop entry.</p>
+<h2 id="the-rom-library-and-self-hosting-romm">The ROM library, and self-hosting RomM<a class="headerlink" href="#the-rom-library-and-self-hosting-romm" title="Permanent link">&para;</a></h2>
+<p>The RetroDECK tree above is <em>deliberately</em> a valid <a href="https://romm.app/">RomM</a> library root.
+RomM's recommended layout and RetroDECK's are the same shape:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>RomM "structure A"          RetroDECK
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>library/                    /games/retrodeck/
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>├── roms/&lt;platform&gt;/        ├── roms/&lt;system&gt;/
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>└── bios/&lt;platform&gt;/        └── bios/            ← flat, not per-platform
+</code></pre></div>
+<p>So <code>/games/retrodeck</code> can be handed to RomM as its library root as-is. Two
+caveats, neither fatal:</p>
+<ul>
+<li><strong>Platform folder names.</strong> RomM matches folders against its own platform
+  slugs; RetroDECK uses ES-DE system names. They agree on the common ones
+  (<code>nes</code>, <code>snes</code>, <code>gba</code>, <code>psx</code>) and diverge on others. RomM handles that with
+  an explicit mapping under <code>system.platforms</code> in its <code>config.yml</code> — no
+  renaming of RetroDECK's folders required.</li>
+<li><strong>BIOS.</strong> RomM expects <code>bios/&lt;platform&gt;/</code>, RetroDECK keeps <code>bios/</code> flat. The
+  BIOS tree is optional in RomM, so the simplest answer is to let RomM index
+  ROMs only.</li>
+</ul>
+<p>RomM also <a href="https://docs.romm.app/latest/reference/exports/">exports ES-DE metadata</a>: with it enabled, a scan
+writes a <code>gamelist.xml</code> into each platform folder alongside <code>covers/</code> and
+<code>screenshots/</code>. RetroDECK's frontend <em>is</em> ES-DE, so scraping can happen once on
+the server and be consumed directly by the Deck instead of scraping per-device.</p>
+<h3 id="where-the-library-lives-ernst-masters-birte-syncs">Where the library lives: ernst masters, birte syncs<a class="headerlink" href="#where-the-library-lives-ernst-masters-birte-syncs" title="Permanent link">&para;</a></h3>
+<p><code>machines/ernst/containers/romm.nix</code> runs RomM on the podman tier — its third
+occupant, after TubeSync and Storyteller — at <code>romm.&lt;domain&gt;</code> behind Authelia.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>ernst   /srv/roms/            ← zdata/roms, the authoritative library
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>          roms/&lt;platform&gt;/         RomM scans this
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>          bios/&lt;platform&gt;/
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>             │
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>        Syncthing (folders `roms` and `bios`)
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>             │
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>birte   /games/retrodeck/
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>          roms/&lt;system&gt;/           RetroDECK plays this, offline
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>          bios/
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>          saves/ states/ …        ← NOT synced, deck's alone
+</code></pre></div>
+<p>A <strong>network mount was rejected</strong>. It is simpler and avoids the second copy, and
+it makes the library unreachable whenever the Deck is away from the house —
+which is what a Steam Deck is <em>for</em>. The cost of the choice actually made is a
+full second copy on birte's NVMe, taken deliberately.</p>
+<p>Three details in that diagram are load-bearing:</p>
+<ul>
+<li><strong>Two Syncthing folders, not one root.</strong> Pairing <code>/srv/roms</code> with
+  <code>/games/retrodeck</code> wholesale would push the Deck's save games and its entire
+  scraped-art cache onto the server as a side effect. <code>roms</code> and <code>bios</code> are
+  exactly the subtrees that correspond on both machines.</li>
+<li><strong>Saves are not synced.</strong> That is a separate decision with its own conflict
+  semantics (two machines, same game, two save files) and should not be
+  acquired by accident.</li>
+<li><strong>Syncthing is not a backup</strong> — it replicates deletions faithfully and fast.
+  <code>zdata/roms</code> therefore sets <code>com.sun:auto-snapshot=true</code>, unlike its
+  neighbours <code>/srv/media</code> and <code>/srv/games</code> which opt out as re-acquirable.
+  Snapshots are the only thing between an accidental delete and losing it on
+  both machines within seconds.</li>
+</ul>
+<p>The library is on <strong>its own dataset, not under <code>/srv/games</code></strong>, and the reason is
+the <code>exec</code> property: <code>/srv/games</code> carries exec <em>on</em> because Steam and Questarr's
+PC games are binaries that must run. A ROM is data — an emulator reads it,
+nothing executes it — so <code>zdata/roms</code> is <code>exec=off,setuid=off,devices=off</code>.</p>
+<h3 id="deploying-it">Deploying it<a class="headerlink" href="#deploying-it" title="Permanent link">&para;</a></h3>
+<p><code>zdata/roms</code> must be created by hand before the first deploy that carries it,
+like every other dataset on that pool — see
+<a href="../ernst-zdata-datasets/">ernst zdata datasets</a>. Then:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>clan<span class="w"> </span>machines<span class="w"> </span>update<span class="w"> </span>ernst
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>clan<span class="w"> </span>machines<span class="w"> </span>update<span class="w"> </span>birte
+</code></pre></div>
+<p>Syncthing pairing is automatic between clan peers (identities come from clan
+vars), but the folders must be <strong>accepted once</strong> in each machine's Syncthing UI.</p>
+<h3 id="after-the-first-start">After the first start<a class="headerlink" href="#after-the-first-start" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Metadata.</strong> Only <a href="https://hasheous.org/">Hasheous</a> is enabled out of the
+  box, because it is the one source needing no account. IGDB, SteamGridDB,
+  ScreenScraper and RetroAchievements each want credentials tied to a personal
+  account; add them as environment variables when you have them. They are
+  deliberately not clan vars — a <code>prompts</code> generator would block
+  <code>clan vars generate ernst</code> on values that may not exist yet.</li>
+<li><strong>Platform names.</strong> RomM matches folder names against its own platform slugs
+  and RetroDECK uses ES-DE system names. They agree on the common ones and
+  diverge on others; map the rest under <code>system.platforms</code> in RomM's
+  <code>config.yml</code> (in <code>/srv/state/romm/config</code>) rather than renaming anything on
+  disk — the folder names on disk are what RetroDECK reads.</li>
+<li><strong>ES-DE metadata export.</strong> Enabling it in RomM's config writes a
+  <code>gamelist.xml</code> into each platform folder alongside <code>covers/</code> and
+  <code>screenshots/</code>. RetroDECK's frontend <em>is</em> ES-DE, so scraping happens once on
+  the server and the Deck consumes the result instead of scraping per-device.</li>
+</ul>
+<h3 id="importing-a-downloaded-collection-into-the-library">Importing a downloaded collection into the library<a class="headerlink" href="#importing-a-downloaded-collection-into-the-library" title="Permanent link">&para;</a></h3>
+<p>Grabs from Prowlarr and Questarr land in qBittorrent's completed folder, not in
+the library — deliberately. The two are different things: <code>/srv/media/torrents</code>
+is a download area the client still owns, and <code>/srv/roms</code> is the curated tree
+RomM indexes and Syncthing replicates. Nothing moves between them automatically,
+because deciding <em>which console a file belongs to</em> is a judgement call that ES-DE
+cannot undo later (see the "Unknown platform" note at the end).</p>
+<p><code>rom-import</code> on ernst does the mechanical half. It is a NixOS-provided command
+declared in <code>machines/ernst/containers/romm.nix</code> — the same file that defines
+uid 3029, the <code>romm</code> group and the <code>/srv/roms</code> layout, so the tool cannot drift
+from the deployment the way a script pasted into a document does.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="gp">$ </span>ssh<span class="w"> </span>root@ernst.skynet.lan
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="gp"># </span>rom-import
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="go">rom-import — copy finished downloads into the RomM library.</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="go">  rom-import list [-c CATS]            what qBittorrent has, in the ROM categories</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="go">  rom-import inspect SRC               what is inside a folder or archive</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="go">  rom-import copy [OPTS] PLATFORM SRC  copy/extract it into the library</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="go">  rom-import unpack SRC                extract an archive to staging, print the path</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="go">  rom-import clean                     delete the staging area</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="go">  rom-import verify [PLATFORM]         file counts, zero-byte files, gamelist.xml</span>
+</code></pre></div>
+<h4 id="the-workflow">The workflow<a class="headerlink" href="#the-workflow" title="Permanent link">&para;</a></h4>
+<p><strong>1. What is ready?</strong> <code>list</code> logs into qBittorrent's WebUI with the same clan
+var the arr stack uses and shows only the ROM categories:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="gp"># </span>rom-import<span class="w"> </span>list
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="go">DONE  15.8G  prowlarr  /srv/media/torrents/complete/The_Legend_of_Zelda_BotW</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="go">DONE  40.6G  prowlarr  /srv/media/torrents/complete/EverDrive-9-5-2018</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="go">DONE  0G     prowlarr  /srv/media/torrents/complete/Amiga kick Rom all 3 - (1.3)(2.0)(3.1).rar</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="go">29%   42.9G  prowlarr  /srv/media/torrents/incomplete/N3DS</span>
+</code></pre></div>
+<p><strong>2. Look before you copy.</strong> <code>inspect</code> works on a folder <em>or</em> an archive
+without extracting it, and the extension histogram is the useful half — it is
+what reveals that a "Mega Drive" pack is actually four consoles:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="gp"># </span>rom-import<span class="w"> </span>inspect<span class="w"> </span><span class="s1">'…/Mega EverDrive Pack v6.2.7z'</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="go">== top level ==</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="go">1 US - A-F</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="go">3 Sega 32X</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="go">3 Sega Master System &amp; Mark III</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="go">5 Sega CD Bios</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="go">…</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="go">== extensions ==</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="go">   2772 sms</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="go">   1701 bin</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="go">   1628 md</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="go">    109 sg</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="go">     87 32x</span>
+</code></pre></div>
+<p><strong>3. Copy it in.</strong> The extension is what routes a file to the right console, so
+<code>-e</code> is the main control. <code>-n</code> shows the plan without touching anything:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="gp"># </span>rom-import<span class="w"> </span>copy<span class="w"> </span>-n<span class="w"> </span>-e<span class="w"> </span>nes<span class="w"> </span>nes<span class="w"> </span><span class="s1">'…/3538 NES ROMS with ALL Emulators.7z'</span>
+</code></pre></div>
+<p>Sources are <strong>copied, never moved</strong> — qBittorrent goes on seeding what it
+downloaded, and moving files out from under it breaks the torrent.</p>
+<p><strong>4. Multi-console packs: unpack once, copy several times.</strong> Running <code>copy</code>
+twice on one archive extracts it twice. <code>unpack</code> extracts to staging and prints
+the path, so each platform is one cheap pass over the same tree:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nv">d</span><span class="o">=</span><span class="k">$(</span>rom-import<span class="w"> </span>unpack<span class="w"> </span><span class="s1">'…/Mega EverDrive Pack v6.2.7z'</span><span class="k">)</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>rom-import<span class="w"> </span>copy<span class="w"> </span>-e<span class="w"> </span>md,smd<span class="w"> </span>genesis<span class="w">      </span><span class="s2">"</span><span class="nv">$d</span><span class="s2">"</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>rom-import<span class="w"> </span>copy<span class="w"> </span>-e<span class="w"> </span>32x<span class="w">    </span>sega32x<span class="w">      </span><span class="s2">"</span><span class="nv">$d</span><span class="s2">"</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>rom-import<span class="w"> </span>copy<span class="w"> </span>-e<span class="w"> </span>sms<span class="w">    </span>mastersystem<span class="w"> </span><span class="s2">"</span><span class="nv">$d</span><span class="s2">"</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>rom-import<span class="w"> </span>copy<span class="w"> </span>-e<span class="w"> </span>sg,sc<span class="w">  </span>sg-1000<span class="w">      </span><span class="s2">"</span><span class="nv">$d</span><span class="s2">"</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>rom-import<span class="w"> </span>clean
+</code></pre></div>
+<p><strong>5. Firmware goes to <code>bios/</code>, not <code>roms/</code>.</strong> <code>-b</code> switches the destination
+tree — it is a separate Syncthing folder, and RetroDECK looks for BIOS images
+only there:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="gp"># </span>rom-import<span class="w"> </span>copy<span class="w"> </span>-b<span class="w"> </span>amiga<span class="w"> </span><span class="s1">'…/Amiga kick Rom all 3 - (1.3)(2.0)(3.1).rar'</span>
+</code></pre></div>
+<p><strong>6. Scan in RomM</strong>, then <code>rom-import verify</code> for the whole library.</p>
+<h4 id="things-that-have-actually-gone-wrong">Things that have actually gone wrong<a class="headerlink" href="#things-that-have-actually-gone-wrong" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Collections bundle emulators.</strong> A NES set shipped a Windows <code>Emulators/</code>
+  directory beside <code>Roms/</code>; a Switch grab hid Ryujinx <em>and</em> Yuzu inside the
+  same <code>.7z</code> as the game, and both landed in the library because the copy was
+  unfiltered. <code>copy</code> now warns when a nested archive matches, but the real fix
+  is passing <code>-e</code> with the ROM extension. (<code>/srv/roms</code> is <code>exec=off</code>, so a
+  bundled <code>.exe</code> could not run from there even if copied — see the dataset note
+  above — but it still pollutes the scan and gets replicated to birte.)</li>
+<li><strong><code>.rar</code> needs <code>unar</code>, not <code>7z</code>.</strong> p7zip 17.x dropped the non-free Rar codec,
+  so <code>7z l</code> reports <code>Can not open the file as archive</code> on a perfectly good RAR.
+  <code>rom-import</code> dispatches to <code>lsar</code>/<code>unar</code> by extension; if you are doing it by
+  hand, do the same.</li>
+<li><strong>The library is flat per platform.</strong> Two files with the same basename in
+  different subdirectories of one archive collapse into one, and <code>cp -n</code> keeps
+  whichever it saw first. This is usually a regional or "unpadded" duplicate
+  and is fine — the Virtual Boy pack matched 427 files and landed 354 for
+  exactly that reason — but <code>copy</code> prints a <code>note:</code> line rather than hiding it.</li>
+<li><strong><code>du -sh</code> misleads.</strong> <code>zdata/roms</code> is zstd-compressed, so 3537 NES ROMs
+  report <strong>691M apparent / 366M on disk</strong>. <code>verify</code> prints both, plus a
+  zero-byte count, which are the honest numbers.</li>
+<li><strong>Ownership.</strong> A fresh platform directory is <code>root:root</code>, and the setgid bit
+  fixes the <em>group</em> of new files, never the owner. <code>copy</code> chowns to 3029 after
+  every import; without that, RomM cannot write its resources beside the ROMs.</li>
+</ul>
+<h4 id="scanning-a-large-library">Scanning a large library<a class="headerlink" href="#scanning-a-large-library" title="Permanent link">&para;</a></h4>
+<p>A scan is an rq job, and it is <strong>serial by default and hard-capped at four
+hours</strong> — <code>SCAN_WORKERS</code> is an <code>asyncio.Semaphore</code> that defaults to 1, and
+<code>SCAN_TIMEOUT</code> defaults to 14400 seconds. <code>containers/romm.nix</code> raises both,
+and the reason is worth knowing because the failure mode is so quiet:</p>
+<ul>
+<li>Measured throughput at the default of one worker was <strong>~150 ROMs/hour</strong>,
+  falling from 235 in the first hour to 93 by the fourth. Every ROM is a round
+  trip to IGDB, SteamGridDB and Hasheous.</li>
+<li>When the four-hour timeout fires, the job dies with
+  <code>rq.timeouts.JobTimeoutException</code>. ROMs already committed <strong>survive</strong>, so the
+  UI shows a plausible-looking partial library rather than an error — the first
+  real scan here reported 531 games across 3 platforms out of ~5000 files
+  across 5, and nothing said it had failed.</li>
+<li>The <code>gamelist.xml</code> export runs at the <strong>end</strong> of the job, so a scan that
+  times out produces no ES-DE metadata at all. This is worth spelling out
+  because it looks exactly like a misconfiguration: <code>scan.gamelist.export</code> can
+  be correctly set to <code>true</code>, be read correctly, and still never write a file.</li>
+</ul>
+<p>So if <code>gamelist.xml</code> is missing, check whether the scan actually finished before
+touching the config:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>podman<span class="w"> </span>logs<span class="w"> </span>romm<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s2">"Auto-export"</span><span class="w">       </span><span class="c1"># 0 = the export never ran</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>podman<span class="w"> </span>logs<span class="w"> </span>romm<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-A3<span class="w"> </span>JobTimeoutException
+</code></pre></div>
+<p>Scans are resumable — a quick scan skips what is already indexed — and RomM's
+UI can scan a single platform at a time. For a library this size, one platform
+per job is the sane unit of work.</p>
+<h4 id="if-romm-shows-the-platform-as-unknown">If RomM shows the platform as "Unknown"<a class="headerlink" href="#if-romm-shows-the-platform-as-unknown" title="Permanent link">&para;</a></h4>
+<p>The folder name is not one of RomM's slugs. <strong>Do not rename the folder</strong> — ES-DE
+on birte reads that name literally and cannot be remapped. Map it on RomM's side
+instead, in <code>/srv/state/romm/config/config.yml</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nt">system</span><span class="p">:</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">  </span><span class="nt">platforms</span><span class="p">:</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="nt">gc</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ngc</span><span class="w">                    </span><span class="c1"># ES-DE name : RomM slug</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">    </span><span class="nt">psx</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ps</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">    </span><span class="nt">sega32x</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sega32</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">    </span><span class="nt">atarilynx</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">lynx</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">    </span><span class="nt">mastersystem</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sms</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="w">    </span><span class="nt">ngp</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">neo-geo-pocket</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="w">    </span><span class="nt">ngpc</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">neo-geo-pocket-color</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="w">    </span><span class="nt">sg-1000</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sg1000</span>
+</code></pre></div>
+<p>RomM re-reads <code>config.yml</code> live, so no restart is needed — confirm with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="gp"># </span>podman<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>romm<span class="w"> </span>python<span class="w"> </span>-c<span class="w"> </span><span class="s1">'from config.config_manager import config_manager as cm; print(cm.get_config().PLATFORMS_BINDING)'</span>
+</code></pre></div>
+<p>A quick way to find the slug RomM wants: it pre-creates a directory for every
+platform it knows, so <code>ls -d /srv/roms/roms/*lynx*</code> answers the question
+directly.</p>
+<p>The files appear on birte under <code>/games/retrodeck/roms/&lt;platform&gt;/</code> once
+Syncthing catches up.</p>
+<h3 id="what-about-questarr">What about Questarr?<a class="headerlink" href="#what-about-questarr" title="Permanent link">&para;</a></h3>
+<p>They are not integrated, and should not be:</p>
+<ul>
+<li><strong>Different content.</strong> Questarr acquires <strong>PC games</strong> through Prowlarr
+  indexers and files them into <code>/srv/games/questarr</code>. RomM manages <strong>console
+  ROMs</strong> for emulation. Neither reads the other's tree.</li>
+<li><strong>The permission boundary is deliberate.</strong> <code>/srv/games/questarr</code> is <code>0750
+  questarr:questarr</code> precisely so that nothing else has a foothold on the one
+  dataset in the pool where files may execute. Pointing RomM at it would
+  breach a decision <code>containers/arr.nix</code> argues for at length.</li>
+<li><strong>There is no hand-off to build.</strong> Questarr's output tree is not
+  <code>roms/&lt;platform&gt;/</code>, so RomM would index it as noise.</li>
+</ul>
+<p>The one genuine overlap is <strong>IGDB</strong>: both use it for metadata, so the same IGDB
+client ID and secret work in both. That is credential reuse in a UI, not a data
+path — nothing in this repo wires it.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

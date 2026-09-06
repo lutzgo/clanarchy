@@ -1,0 +1,2667 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="NixOS declarative configuration — guides and option reference">
+      
+      
+      
+        <link rel="canonical" href="https://lutzgo.github.io/clanarchy/runbooks/ernst-vpn-microvm-deploy/">
+      
+      
+        <link rel="prev" href="../ernst-vlan-bridge-cutover/">
+      
+      
+        <link rel="next" href="../../incidents/ernst-slot12-drop-2026-08-11/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>ernst VPN microvm deploy - Clanarchy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#ernst-bringing-up-the-vpn-microvm" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Clanarchy" class="md-header__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Clanarchy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ernst VPN microvm deploy
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/first-time-install/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../zfs-auto-snapshot-optin/" class="md-tabs__link">
+          
+  
+  
+  Runbooks
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../incidents/ernst-slot12-drop-2026-08-11/" class="md-tabs__link">
+          
+  
+  
+  Incidents
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Clanarchy" class="md-nav__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Clanarchy
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/first-time-install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    First-time install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploying and testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/updating-machines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating machines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/adding-a-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/accepting-pull-requests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Accepting pull requests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/networking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Networking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/yubikey/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/yubikey-ssh-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey SSH setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/remote-unlock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote unlock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ernst-zdata-datasets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zdata datasets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/htpc-bigscreen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / Plasma Bigscreen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/htpc-controllers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / game controllers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/birte-emulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emulation on birte
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/firmware-updates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware updates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/noctalia-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/noctalia-v5-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia v5 migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/obs-sony-webcam/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OBS / Sony webcam
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runbooks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Runbooks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../zfs-auto-snapshot-optin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZFS auto-snapshot opt-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-zroot-drive-replacement/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zroot drive replacement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-enable-impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst enabling impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-vlan-bridge-cutover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VLAN bridge cutover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VPN microvm deploy
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VPN microvm deploy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-need-in-front-of-you" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you need in front of you
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#order-and-why-it-is-not-negotiable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Order, and why it is not negotiable
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-generate-the-vars" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Generate the vars
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Generate the vars">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-dhcp-reservation-on-the-udm-pro" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. DHCP reservation on the UDM-Pro
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Deploy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-verify-at-l2-before-the-firewall-is-in-the-way" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Verify at L2, before the firewall is in the way
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-the-firewall-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. The firewall rule
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-verify-for-real" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Verify for real
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Verify for real">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-tunnel-is-up-and-traffic-actually-uses-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The tunnel is up and traffic actually uses it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-killswitch-actually-holds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The killswitch actually holds
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-hardlink-chain-the-reason-m4-can-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The hardlink chain — the reason M4 can work
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-webui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The WebUI
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-the-reboot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. The reboot
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-merge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Merge
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expected-not-faults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expected — not faults
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-it-does-not-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When it does not work
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rotating-the-tunnel-later" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rotating the tunnel later
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backing-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backing out
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Incidents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Incidents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../incidents/ernst-slot12-drop-2026-08-11/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst slot-12 drive drop (2026-08-11)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../incidents/ernst-jellyfin-vaapi-drm-display-failure-2026-08-18/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst Jellyfin VAAPI DRM display failure (2026-08-18)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/hardware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Desktop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/apps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/users/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/wifi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-need-in-front-of-you" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you need in front of you
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#order-and-why-it-is-not-negotiable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Order, and why it is not negotiable
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-generate-the-vars" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Generate the vars
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Generate the vars">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-dhcp-reservation-on-the-udm-pro" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. DHCP reservation on the UDM-Pro
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Deploy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-verify-at-l2-before-the-firewall-is-in-the-way" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Verify at L2, before the firewall is in the way
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-the-firewall-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. The firewall rule
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-verify-for-real" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Verify for real
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Verify for real">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-tunnel-is-up-and-traffic-actually-uses-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The tunnel is up and traffic actually uses it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-killswitch-actually-holds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The killswitch actually holds
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-hardlink-chain-the-reason-m4-can-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The hardlink chain — the reason M4 can work
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-webui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The WebUI
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-the-reboot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. The reboot
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-merge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Merge
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expected-not-faults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expected — not faults
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-it-does-not-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When it does not work
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rotating-the-tunnel-later" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rotating the tunnel later
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backing-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backing out
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/lutzgo/clanarchy/edit/main/docs/runbooks/ernst-vpn-microvm-deploy.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="ernst-bringing-up-the-vpn-microvm">ernst — bringing up the VPN microvm<a class="headerlink" href="#ernst-bringing-up-the-vpn-microvm" title="Permanent link">&para;</a></h1>
+<p>Deploying M3: <code>wg-qbittorrent</code>, a microvm on ernst running qBittorrent behind an
+IVPN WireGuard tunnel with a guest-side nftables killswitch. Code is
+<a href="https://github.com/lutzgo/clanarchy/pull/83">PR #83</a>; this runbook is the other
+half.</p>
+<p>Read it end to end before starting. Nothing here is a one-way door — unlike
+<a href="../ernst-enable-impermanence/">enabling impermanence</a>, every step is reversible
+by deploying <code>main</code> again — but two steps are ordering-sensitive and one of them
+costs a rebuild if you get it wrong.</p>
+<p><strong>Time:</strong> about an hour, most of it waiting for a build.</p>
+<h2 id="what-you-need-in-front-of-you">What you need in front of you<a class="headerlink" href="#what-you-need-in-front-of-you" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>The YubiKey</strong>, plugged in. Not for the vars generation — that only encrypts,
+  to public recipients — but for <code>ssh root@ernst</code> and for reaching the guest
+  afterwards. The guest authorises exactly one key: <code>machines/miralda/yubikey_ed25519.pub</code>.</li>
+<li><strong>IVPN's WireGuard config</strong>, from the Client Area. Generate the key pair
+  locally and register only the public half:</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>wg<span class="w"> </span>genkey<span class="w"> </span><span class="p">|</span><span class="w"> </span>tee<span class="w"> </span>&gt;<span class="o">(</span>wg<span class="w"> </span>pubkey<span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span><span class="o">)</span><span class="w">   </span><span class="c1"># private → stdout, public → stderr</span>
+</code></pre></div>
+<p>Six of the seven prompts come straight out of the resulting config file.
+- <strong>UDM-Pro access</strong>, for one DHCP reservation and one firewall rule.
+- <strong>The branch checked out and the tree clean.</strong> <code>clan vars generate</code> commits
+  into whatever branch you are on:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>git<span class="w"> </span>switch<span class="w"> </span>feat/ernst-vpn-microvm<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>status<span class="w"> </span>-sb
+</code></pre></div>
+<h2 id="order-and-why-it-is-not-negotiable">Order, and why it is not negotiable<a class="headerlink" href="#order-and-why-it-is-not-negotiable" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Vars before deploy.</strong> clan-core cannot know a sops secret's path until the
+   secret exists — until then <code>files.&lt;n&gt;.path</code> evaluates to the literal
+   <code>/no-such-path</code>, and that string is baked into the staging unit. Deploy first
+   and you get a system whose <code>microvm-secrets-wg-qbittorrent.service</code> can never
+   succeed. It fails closed (the VM never starts) but the fix is another build,
+   not a restart.</li>
+<li><strong>DHCP reservation before deploy.</strong> Not fatal to get wrong — the guest takes a
+   pool lease and works — but then every address in this runbook is wrong and
+   the firewall rule points at nothing.</li>
+<li><strong>Firewall rule before you try to reach it.</strong> Until it exists the guest is
+   only reachable at L2, from within VLAN 90. Step 4 does exactly that, on
+   purpose, so that "unreachable" can be attributed before it is diagnosed.</li>
+</ol>
+<hr />
+<h2 id="1-generate-the-vars">1. Generate the vars<a class="headerlink" href="#1-generate-the-vars" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>clan<span class="w"> </span>vars<span class="w"> </span>generate<span class="w"> </span>ernst
+</code></pre></div>
+<p>Only the new <code>wg-qbittorrent</code> generator should prompt; the existing ernst
+generators are already satisfied and are skipped. <strong>clan asks in alphabetical
+order of prompt name</strong>, not the order they are declared:</p>
+<table>
+<thead>
+<tr>
+<th>Prompt</th>
+<th>From IVPN's config</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>address</code></td>
+<td><code>[Interface] Address</code></td>
+<td>keep the <code>/32</code>. IVPN assigns from <code>172.16.0.0/12</code></td>
+</tr>
+<tr>
+<td><code>dns</code></td>
+<td><code>[Interface] DNS</code></td>
+<td><code>172.16.0.1</code>, or <code>10.0.254.2</code> / <code>10.0.254.3</code> for AntiTracker</td>
+</tr>
+<tr>
+<td><code>endpoint</code></td>
+<td><code>[Peer] Endpoint</code></td>
+<td><strong>IP literal</strong>, <code>IP:PORT</code>. Rejected otherwise — see below</td>
+</tr>
+<tr>
+<td><code>mtu</code></td>
+<td><code>[Interface] MTU</code></td>
+<td><strong><code>1412</code> for IVPN.</strong> Empty = wg-quick's 1420, which is too high here</td>
+</tr>
+<tr>
+<td><code>peer-public-key</code></td>
+<td><code>[Peer] PublicKey</code></td>
+<td>the server's</td>
+</tr>
+<tr>
+<td><code>private-key</code></td>
+<td><code>[Interface] PrivateKey</code></td>
+<td>yours; the one whose public half you registered</td>
+</tr>
+<tr>
+<td><code>webui-password</code></td>
+<td>—</td>
+<td>qBittorrent WebUI, user <code>admin</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>The endpoint must be an IP address.</strong> The generator rejects a hostname on
+purpose: wg-quick resolves the endpoint using the guest's resolver, which is
+in-tunnel, which does not exist until the handshake that needs the endpoint. If
+the Client Area gave you <code>de1.wg.ivpn.net</code>, resolve it yourself:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>dig<span class="w"> </span>+short<span class="w"> </span>de1.wg.ivpn.net
+</code></pre></div>
+<p>That pins the tunnel to one specific server. If IVPN later retires or renumbers
+it, re-run this step and restart the two units (see <a href="#rotating-the-tunnel-later">Rotating the
+tunnel</a>).</p>
+<p><strong>There is no preshared key and no username/password.</strong> IVPN authenticates the
+registered key; the generator has no prompt for either, and that is correct
+rather than an omission.</p>
+<h3 id="check">Check<a class="headerlink" href="#check" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>git<span class="w"> </span>log<span class="w"> </span>--oneline<span class="w"> </span>-1<span class="w">        </span><span class="c1"># expect: vars: update via generator wg-qbittorrent</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>git<span class="w"> </span>status<span class="w"> </span>-sb<span class="w">              </span><span class="c1"># expect: clean — clan commits for you</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>ls<span class="w"> </span>vars/per-machine/ernst/wg-qbittorrent/
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># expect: endpoint-ip  endpoint-port  ssh-host-key  ssh-host-key.pub</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1">#         webui-password-pbkdf2  wg0.conf</span>
+</code></pre></div>
+<p>Six entries, each a directory containing an encrypted <code>secret</code> — except
+<code>ssh-host-key.pub</code>, which is public by design so it can go in <code>known_hosts</code>.</p>
+<p>Nothing is decrypted into the working tree, and nothing needs <code>git add</code>: clan
+committed it. If that commit is missing, check <code>git config commit.gpgsign</code> —
+clan's commit is unsigned and will fail if signing is forced on.</p>
+<hr />
+<h2 id="2-dhcp-reservation-on-the-udm-pro">2. DHCP reservation on the UDM-Pro<a class="headerlink" href="#2-dhcp-reservation-on-the-udm-pro" title="Permanent link">&para;</a></h2>
+<p>Services network (VLAN 90), MAC <code>02:00:00:90:00:03</code> → <strong><code>10.0.90.11</code></strong>.</p>
+<p><strong>It must be inside the DHCP pool</strong> (<code>10.0.90.6</code>–<code>.254</code>). UniFi accepts an
+address from the <code>.2</code>–<code>.5</code> range the cutover runbook set aside and then silently
+hands out an ordinary pool lease instead — that range is for addresses hard-coded
+on the client, not for reservations. This cost M2b a round of debugging; do not
+repeat it.</p>
+<hr />
+<h2 id="3-deploy">3. Deploy<a class="headerlink" href="#3-deploy" title="Permanent link">&para;</a></h2>
+<p>From the branch, per the pre-merge check in
+<a href="../../guides/accepting-pull-requests/">accepting-pull-requests.md</a>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>clan<span class="w"> </span>machines<span class="w"> </span>update<span class="w"> </span>ernst
+</code></pre></div>
+<p>This is the first build of a second NixOS closure (the guest), so expect it to
+take noticeably longer than a normal ernst deploy.</p>
+<p>The deploy activates immediately — there is no stage-only mode. It does not
+touch the bootloader, disko or impermanence, so the risk of losing the machine
+is low; but ernst's only management address rides <code>br0</code>, and this deploy adds a
+port to that bridge. Have the <a href="../../guides/remote-unlock/">Comet KVM</a> reachable
+before you run it, as usual.</p>
+<hr />
+<h2 id="4-verify-at-l2-before-the-firewall-is-in-the-way">4. Verify at L2, before the firewall is in the way<a class="headerlink" href="#4-verify-at-l2-before-the-firewall-is-in-the-way" title="Permanent link">&para;</a></h2>
+<p>The guest is on VLAN 90 and ernst holds no address there, so everything from
+your desk still has to cross the UDM-Pro — and the rule for that does not exist
+yet. Rather than guess, borrow M2b's probe: a veth on <code>br0</code> tagged into VLAN 90,
+in its own netns, is <em>inside</em> the same broadcast domain as the guest. Traffic
+between them is switched, never routed, so the firewall is not involved at all.</p>
+<p>First, host-side, no network needed:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>ssh<span class="w"> </span>root@10.0.50.10
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>systemctl<span class="w"> </span>status<span class="w"> </span>microvm@wg-qbittorrent<span class="w">            </span><span class="c1"># active (running)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>systemctl<span class="w"> </span>status<span class="w"> </span>microvm-secrets-wg-qbittorrent<span class="w">    </span><span class="c1"># active (exited)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>bridge<span class="w"> </span>vlan<span class="w"> </span>show<span class="w"> </span>dev<span class="w"> </span>tap-vpn<span class="w">                       </span><span class="c1"># 90 PVID Egress Untagged</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>ip<span class="w"> </span>-br<span class="w"> </span>link<span class="w"> </span>show<span class="w"> </span>master<span class="w"> </span>br0<span class="w">                        </span><span class="c1"># enp13s0 + vb-jellyfin + tap-vpn</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>journalctl<span class="w"> </span>-u<span class="w"> </span>microvm@wg-qbittorrent<span class="w"> </span>-n<span class="w"> </span><span class="m">40</span><span class="w">         </span><span class="c1"># the guest's console log</span>
+</code></pre></div>
+<p>That last one is the guest's serial console: qemu wires it to the service's
+stdout, so a full boot log lands in ernst's journal. It is one-way — there is no
+console to type into, which is why the guest runs sshd.</p>
+<p>Then, from inside VLAN 90:</p>
+<p><strong>Two differences from M2b's version of this probe, both learned the hard way
+on the first run.</strong> ernst has no <code>dhcpcd</code> — <code>roles/server.nix</code> zeroes
+<code>environment.defaultPackages</code> — so the probe takes a static address from the
+<code>.2</code>–<code>.5</code> range the cutover runbook set aside for exactly that. And unlike
+Jellyfin, <strong>this guest firewalls by source address</strong>, so almost everything the
+probe tries is <em>supposed</em> to fail. Read the ARP table, not the ping.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>ip<span class="w"> </span>netns<span class="w"> </span>add<span class="w"> </span>p90
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>ip<span class="w"> </span>link<span class="w"> </span>add<span class="w"> </span>vb-p90<span class="w"> </span><span class="nb">type</span><span class="w"> </span>veth<span class="w"> </span>peer<span class="w"> </span>name<span class="w"> </span>eth0p
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>ip<span class="w"> </span>link<span class="w"> </span><span class="nb">set</span><span class="w"> </span>eth0p<span class="w"> </span>netns<span class="w"> </span>p90
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>ip<span class="w"> </span>link<span class="w"> </span><span class="nb">set</span><span class="w"> </span>vb-p90<span class="w"> </span>master<span class="w"> </span>br0<span class="w"> </span>up
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>bridge<span class="w"> </span>vlan<span class="w"> </span>add<span class="w"> </span>dev<span class="w"> </span>vb-p90<span class="w"> </span>vid<span class="w"> </span><span class="m">90</span><span class="w"> </span>pvid<span class="w"> </span>untagged
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>ip<span class="w"> </span>netns<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>p90<span class="w"> </span>ip<span class="w"> </span>link<span class="w"> </span><span class="nb">set</span><span class="w"> </span>eth0p<span class="w"> </span>address<span class="w"> </span><span class="m">02</span>:00:00:90:00:99
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>ip<span class="w"> </span>netns<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>p90<span class="w"> </span>ip<span class="w"> </span>addr<span class="w"> </span>add<span class="w"> </span><span class="m">10</span>.0.90.5/24<span class="w"> </span>dev<span class="w"> </span>eth0p
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>ip<span class="w"> </span>netns<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>p90<span class="w"> </span>ip<span class="w"> </span>link<span class="w"> </span><span class="nb">set</span><span class="w"> </span>eth0p<span class="w"> </span>up
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>sleep<span class="w"> </span><span class="m">2</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>ip<span class="w"> </span>netns<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>p90<span class="w"> </span>ping<span class="w"> </span>-c2<span class="w"> </span>-W2<span class="w"> </span><span class="m">10</span>.0.90.11<span class="w">        </span><span class="c1"># expect: 100% loss — correct</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>ip<span class="w"> </span>netns<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>p90<span class="w"> </span>ip<span class="w"> </span>neigh<span class="w">                       </span><span class="c1"># THIS is the check</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>ip<span class="w"> </span>link<span class="w"> </span>del<span class="w"> </span>vb-p90<span class="p">;</span><span class="w"> </span>ip<span class="w"> </span>netns<span class="w"> </span>del<span class="w"> </span>p90<span class="w">             </span><span class="c1"># leaves nothing behind</span>
+</code></pre></div>
+<p>The line that matters:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>10.0.90.11 dev eth0p lladdr 02:00:00:90:00:03 REACHABLE
+</code></pre></div>
+<p>That single line proves three things at once: the DHCP reservation took (the
+guest holds <code>.11</code>), the guest is alive and answering at L2, and the reservation
+is bound to the right MAC. ARP is answered because <code>arp</code> is a separate netfilter
+family that <code>table inet killswitch</code> does not touch.</p>
+<p><strong>Everything else failing is the correct result.</strong> <code>10.0.90.5</code> is not in
+<code>mgmt_nets</code>, so the guest's input chain drops the ICMP, the WebUI and SSH — which
+is exactly what should happen to a stranger on the Services VLAN. A probe that
+<em>could</em> reach port 8080 from here would mean the firewall was wrong.</p>
+<p>To watch the tunnel itself, sniff the host side of the tap — no login required:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>timeout<span class="w"> </span><span class="m">20</span><span class="w"> </span>tcpdump<span class="w"> </span>-ni<span class="w"> </span>tap-vpn<span class="w"> </span>-c<span class="w"> </span><span class="m">8</span><span class="w"> </span><span class="s1">'udp port &lt;endpoint-port&gt;'</span>
+</code></pre></div>
+<p>A healthy tunnel shows a 148-byte handshake initiation out, a 92-byte response
+back, a 32-byte keepalive, and then transport traffic in both directions. If you
+see only outbound packets, the handshake is failing — check the keys and the
+endpoint.</p>
+<p>If the ARP entry is absent, stay on ernst: the problem is in
+<code>journalctl -u microvm@wg-qbittorrent</code>, not in the firewall.</p>
+<hr />
+<h2 id="5-the-firewall-rule">5. The firewall rule<a class="headerlink" href="#5-the-firewall-rule" title="Permanent link">&para;</a></h2>
+<p>One <strong>permanent</strong> rule — architecture invariant #4 makes the qBittorrent WebUI a
+deliberate, permanent bypass of the "everything behind Traefik" rule. It is in
+the ledger as a <code>—</code> row so no later milestone tries to retire it.</p>
+<p>Field by field, as the policy editor actually lays it out. <strong>The editor has TWO
+Port sections — one inside the Source Zone card and one inside the Destination
+Zone card</strong> — and they are far enough apart that the first one is the one you
+see. Putting the service port in the source section produces a rule that matches
+only traffic <em>from</em> port 8080/22, i.e. never: clients use ephemeral source ports.
+It cost a round here; M4, M5, M8 and M9 all add rules to this same zone.</p>
+<table>
+<thead>
+<tr>
+<th>Card</th>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>—</td>
+<td>Name</td>
+<td><code>Allow qBittorrent from Internal</code></td>
+</tr>
+<tr>
+<td><strong>Source Zone</strong></td>
+<td>zone</td>
+<td><code>Internal</code></td>
+</tr>
+<tr>
+<td></td>
+<td>match type</td>
+<td><strong>Network</strong> → <code>LAN</code>, <code>Servers</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Match Opposite</td>
+<td>unchecked</td>
+</tr>
+<tr>
+<td></td>
+<td><strong>Port</strong></td>
+<td><strong>Any</strong> ← <em>not</em> the service port</td>
+</tr>
+<tr>
+<td><strong>Action</strong></td>
+<td></td>
+<td><strong>Allow</strong></td>
+</tr>
+<tr>
+<td></td>
+<td><strong>Auto Allow Return Traffic</strong></td>
+<td><strong>✓ ticked</strong></td>
+</tr>
+<tr>
+<td><strong>Destination Zone</strong></td>
+<td>zone</td>
+<td><code>Services</code></td>
+</tr>
+<tr>
+<td></td>
+<td>match type</td>
+<td><strong>IP → Specific</strong> → <code>10.0.90.11</code></td>
+</tr>
+<tr>
+<td></td>
+<td><strong>Port</strong></td>
+<td><strong>Specific</strong> → Service <code>Custom</code> → <code>8080,22</code></td>
+</tr>
+</tbody>
+</table>
+<p>Narrow the source to the two <strong>networks</strong> rather than leaving it at the zone:
+the guest's nftables allows <code>10.0.10.0/24</code> and <code>10.0.50.0/24</code> and nothing else,
+and a zone-wide rule would authorise more than the guest honours. Not a hole —
+the guest still drops the rest — but two sources of truth that disagree, which
+is how you end up reading a permissive UniFi rule while the real behaviour lives
+in a file in this repo.</p>
+<p>That checkbox is the one that costs an afternoon. Without it the SYN is
+forwarded and the SYN-ACK is dropped, which presents exactly as a dead service
+and logs nothing. The tell is a rule with a <strong>non-zero hit count</strong> and a
+connection that still hangs. Connection State <code>All</code> is fine and is <em>not</em> a
+substitute — see <a href="../../roadmap/#the-udm-pro-half-cost-more-than-the-nix-half">M2b's
+table</a>.</p>
+<p><strong>Whether Servers (50) → Services needs its own rule is not established.</strong> LAN
+and Servers are both in the <code>Internal</code> zone, so a rule whose source is the zone
+covers both; a rule whose source is the LAN <em>network</em> does not. Jellyfin has only
+ever been reached from LAN and IoT, so this has never been tested. Set the source
+to cover both, or find out with the probe above re-tagged into VLAN 50 rather
+than assuming.</p>
+<hr />
+<h2 id="6-verify-for-real">6. Verify for real<a class="headerlink" href="#6-verify-for-real" title="Permanent link">&para;</a></h2>
+<p>From miralda, with the YubiKey in.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>ssh-keygen<span class="w"> </span>-F<span class="w"> </span><span class="m">10</span>.0.90.11<span class="w">    </span><span class="c1"># nothing yet; the host key is the one clan generated</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>ssh<span class="w"> </span>root@10.0.90.11
+</code></pre></div>
+<p>The host key fingerprint should match <code>vars/per-machine/ernst/wg-qbittorrent/ssh-host-key.pub/value</code>
+— it is public precisely so you can check it instead of clicking through.</p>
+<h3 id="the-tunnel-is-up-and-traffic-actually-uses-it">The tunnel is up and traffic actually uses it<a class="headerlink" href="#the-tunnel-is-up-and-traffic-actually-uses-it" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># In the guest:</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>wg<span class="w"> </span>show<span class="w">                                    </span><span class="c1"># a recent handshake, non-zero transfer</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>curl<span class="w"> </span>-s<span class="w"> </span>https://ifconfig.co<span class="w">                </span><span class="c1"># IVPN's exit address</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>getent<span class="w"> </span>hosts<span class="w"> </span>example.com<span class="w">                   </span><span class="c1"># resolves — via the in-tunnel DNS</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="c1"># From miralda, for comparison:</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>curl<span class="w"> </span>-s<span class="w"> </span>https://ifconfig.co<span class="w">                </span><span class="c1"># your WAN address — MUST differ</span>
+</code></pre></div>
+<p>If <code>wg show</code> is healthy but nothing resolves, the in-tunnel DNS is being routed
+the wrong way. Check <code>resolvectl status</code> / <code>/etc/resolv.conf</code> in the guest, and
+re-read the <code>routingPolicyRules</code> comment in the module — the management-network
+carve-out is deliberately per-subnet rather than a <code>10.0.0.0/16</code> supernet
+precisely because IVPN's AntiTracker resolvers live at <code>10.0.254.2</code>/<code>.3</code>.</p>
+<h3 id="the-killswitch-actually-holds">The killswitch actually holds<a class="headerlink" href="#the-killswitch-actually-holds" title="Permanent link">&para;</a></h3>
+<p>Stop the tunnel and watch the host-side tap. This is the test the milestone
+exists for.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># On ernst, in one window:</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>tcpdump<span class="w"> </span>-ni<span class="w"> </span>tap-vpn<span class="w"> </span><span class="s1">'not arp and not (udp port 67 or udp port 68)'</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1"># In the guest, in another:</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>systemctl<span class="w"> </span>stop<span class="w"> </span>wg-quick-wg0
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>curl<span class="w"> </span>-m5<span class="w"> </span>https://ifconfig.co<span class="w">     </span><span class="c1"># must FAIL — not fall back to the WAN</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>getent<span class="w"> </span>hosts<span class="w"> </span>example.com<span class="w">         </span><span class="c1"># must FAIL — no name leak either</span>
+</code></pre></div>
+<p>tcpdump must show <strong>nothing but</strong> traffic to the IVPN endpoint (and it will stop
+even that once wg0 is down). Any packet to any other address is a leak and the
+milestone has failed. A DNS query leaving here would be the classic failure: the
+packets are held but the names escape.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>systemctl<span class="w"> </span>start<span class="w"> </span>wg-quick-wg0<span class="w">     </span><span class="c1"># and re-check `wg show`</span>
+</code></pre></div>
+<h3 id="the-hardlink-chain-the-reason-m4-can-work">The hardlink chain — the reason M4 can work<a class="headerlink" href="#the-hardlink-chain-the-reason-m4-can-work" title="Permanent link">&para;</a></h3>
+<p>This is the part worth being fussy about, because a false pass here is invisible
+until M4 has silently filled the array twice over.</p>
+<p>Create the file <strong>as qBittorrent does</strong> — its uid, its umask — not as root:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># In the guest:</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>runuser<span class="w"> </span>-u<span class="w"> </span>qbittorrent<span class="w"> </span>--<span class="w"> </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">'umask 0002; : &gt; /srv/media/torrents/complete/probe'</span>
+</code></pre></div>
+<p>Then, on ernst, link it <strong>as a non-root process in group media</strong> — root would
+bypass the very check we are testing:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>ls<span class="w"> </span>-l<span class="w"> </span>/srv/media/torrents/complete/probe
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="c1"># expect:  -rw-rw-r-- 1 3001 media   ← 3001 because the host has no name for it</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>setpriv<span class="w"> </span>--reuid<span class="w"> </span><span class="m">3002</span><span class="w"> </span>--regid<span class="w"> </span><span class="m">3000</span><span class="w"> </span>--clear-groups<span class="w"> </span>--groups<span class="w"> </span><span class="m">3000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">  </span>ln<span class="w"> </span>/srv/media/torrents/complete/probe<span class="w"> </span>/srv/media/library/movies/probe
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>stat<span class="w"> </span>-c<span class="w"> </span><span class="s1">'%i %h %U:%G %a'</span><span class="w"> </span>/srv/media/torrents/complete/probe<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="w">                         </span>/srv/media/library/movies/probe
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="c1"># expect: identical inode, link count 2, on both lines</span>
+</code></pre></div>
+<p>Uid 3002 is a stand-in for M4's arr: a different uid, in group media, exactly as
+the arr will be.</p>
+<p><strong>Now prove the control</strong>, so you know the test can fail:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>rm<span class="w"> </span>/srv/media/library/movies/probe
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>chmod<span class="w"> </span><span class="m">0644</span><span class="w"> </span>/srv/media/torrents/complete/probe
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>setpriv<span class="w"> </span>--reuid<span class="w"> </span><span class="m">3002</span><span class="w"> </span>--regid<span class="w"> </span><span class="m">3000</span><span class="w"> </span>--clear-groups<span class="w"> </span>--groups<span class="w"> </span><span class="m">3000</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">  </span>ln<span class="w"> </span>/srv/media/torrents/complete/probe<span class="w"> </span>/srv/media/library/movies/probe
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="c1"># expect: "Operation not permitted"</span>
+</code></pre></div>
+<p>That is <code>fs.protected_hardlinks</code> refusing a link to a file the caller neither
+owns nor can write. It is why <code>UMask=0002</code> is on the qBittorrent unit, and why a
+tidy-minded future edit removing it would break M4 without breaking anything
+visible at the time.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>rm<span class="w"> </span>-f<span class="w"> </span>/srv/media/torrents/complete/probe<span class="w"> </span>/srv/media/library/movies/probe
+</code></pre></div>
+<h3 id="the-webui">The WebUI<a class="headerlink" href="#the-webui" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>xdg-open<span class="w"> </span>http://10.0.90.11:8080/<span class="w">     </span><span class="c1"># user: admin, password: what you set in step 1</span>
+</code></pre></div>
+<p>In the UI, confirm <strong>Tools → Preferences → Advanced → Network Interface</strong> shows
+<code>wg0</code>. That binding is the second line of defence; nftables is the guarantee.</p>
+<hr />
+<h2 id="7-the-reboot">7. The reboot<a class="headerlink" href="#7-the-reboot" title="Permanent link">&para;</a></h2>
+<p>Not optional. Architecture invariant #7 names M3 as one of three milestones
+carrying state that has never met a real rollback — ernst only became genuinely
+impermanent on 2026-08-18.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>systemctl<span class="w"> </span>reboot<span class="w">     </span><span class="c1"># then wait for the zroot passphrase prompt on the TV/KVM</span>
+</code></pre></div>
+<p>Afterwards:</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Expect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>systemctl status clanarchy-impermanence-check</code></td>
+<td>success — both <code>@blank</code> snapshots present</td>
+</tr>
+<tr>
+<td><code>ls -l /var/lib/microvms/wg-qbittorrent/</code></td>
+<td><code>current</code> + <code>toplevel</code> symlinks, rebuilt from the store</td>
+</tr>
+<tr>
+<td><code>systemctl status microvm@wg-qbittorrent</code></td>
+<td>running</td>
+</tr>
+<tr>
+<td><code>bridge vlan show dev tap-vpn</code></td>
+<td><code>90 PVID Egress Untagged</code> — created from config this time</td>
+</tr>
+<tr>
+<td>guest <code>ls /var/lib/qBittorrent/qBittorrent/</code></td>
+<td>the session survived, on zdata</td>
+</tr>
+<tr>
+<td>guest <code>wg show</code></td>
+<td>handshake re-established without intervention</td>
+</tr>
+</tbody>
+</table>
+<p><code>/var/lib/microvms</code> is deliberately <strong>not</strong> in <code>/persist</code>:
+<code>install-microvm-wg-qbittorrent.service</code> rewrites it from the store on every
+boot, so persisting it would only freeze a stale <code>current</code> symlink across a
+redeploy. The reboot is what proves that claim.</p>
+<hr />
+<h2 id="8-merge">8. Merge<a class="headerlink" href="#8-merge" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>gh<span class="w"> </span>pr<span class="w"> </span>merge<span class="w"> </span><span class="m">83</span><span class="w"> </span>--squash<span class="w"> </span>--delete-branch
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>git<span class="w"> </span>switch<span class="w"> </span>main<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>fetch<span class="w"> </span>origin<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>merge<span class="w"> </span>--ff-only<span class="w"> </span>origin/main
+</code></pre></div>
+<p>Then update the roadmap status row from <strong>code landed — deploy pending</strong> to
+<strong>done — deployed \&lt;date&gt;</strong>, and write up anything this runbook got wrong. M2b's
+write-up is the model: what was measured, not what was expected.</p>
+<hr />
+<h2 id="expected-not-faults">Expected — not faults<a class="headerlink" href="#expected-not-faults" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>A duplicate-tmpfiles warning for <code>/srv/media/torrents</code>.</strong> microvm.nix emits
+  its own rule for every share source in <code>10-microvm.conf</code>; ours is in
+  <code>00-nixos.conf</code>, sorts first and wins. The warning is systemd noting it
+  ignored the second.</li>
+<li><strong><code>systemd-networkd-wait-online</code> failing inside the guest</strong> if DHCP is slow.
+  The timeout is capped at 20 s on purpose; <code>network-online.target</code> is reached
+  regardless and the services start. One failed unit, everything else running,
+  is the diagnosable shape.</li>
+<li><strong>qBittorrent reporting no incoming connections.</strong> IVPN removed port
+  forwarding in September 2023. Outgoing peer connections work; incoming ones
+  cannot. The guest's inbound rule for the torrent port is inert by design.</li>
+<li><strong><code>microvm-virtiofsd@</code> restarting once at boot.</strong> <code>Restart=always</code> with a 5 s
+  delay; it settles.</li>
+</ul>
+<h2 id="when-it-does-not-work">When it does not work<a class="headerlink" href="#when-it-does-not-work" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Look at</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>microvm@</code> will not start</td>
+<td><code>systemctl status microvm-secrets-wg-qbittorrent</code> — if its script references <code>/no-such-path</code>, the vars were generated after the build. Re-deploy.</td>
+</tr>
+<tr>
+<td>Guest boots, tunnel never comes up</td>
+<td><code>nft list set inet killswitch vpn_endpoint</code> in the guest. Empty means <code>vpn-killswitch-endpoint.service</code> did not run — the handshake is blocked, fail-closed, by design.</td>
+</tr>
+<tr>
+<td>Tunnel up, nothing resolves</td>
+<td>The DNS server is being routed out <code>eth0</code> and dropped. See the AntiTracker note in step 6.</td>
+</tr>
+<tr>
+<td>Handshake fine, transfers stall</td>
+<td>MTU. IVPN wants 1412; if you left the prompt empty you have 1420. Re-run step 1.</td>
+</tr>
+<tr>
+<td>Reachable from ernst, not from miralda</td>
+<td><code>Auto Allow Return Traffic</code> on the ZBF rule, and the zone-vs-network source question in step 5.</td>
+</tr>
+<tr>
+<td>Everything unreachable, guest healthy at L2</td>
+<td>The rule is missing or points at the wrong address. Re-check the DHCP reservation actually took (step 2).</td>
+</tr>
+</tbody>
+</table>
+<h2 id="rotating-the-tunnel-later">Rotating the tunnel later<a class="headerlink" href="#rotating-the-tunnel-later" title="Permanent link">&para;</a></h2>
+<p>New IVPN key, or a server that moved:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>clan<span class="w"> </span>vars<span class="w"> </span>generate<span class="w"> </span>ernst<span class="w">      </span><span class="c1"># re-prompts only what changed</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>clan<span class="w"> </span>machines<span class="w"> </span>update<span class="w"> </span>ernst
+</code></pre></div>
+<p>If only the secret's <em>contents</em> changed and no path did, nix sees no difference
+and the staging unit will not re-run on its own:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>ssh<span class="w"> </span>root@10.0.50.10<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">  </span>microvm-secrets-wg-qbittorrent<span class="w"> </span>microvm@wg-qbittorrent
+</code></pre></div>
+<h2 id="backing-out">Backing out<a class="headerlink" href="#backing-out" title="Permanent link">&para;</a></h2>
+<p>Nothing here is one-way. Deploy <code>main</code> and the guest, its tap and its units all
+disappear; <code>/srv/state/qbittorrent</code> and anything downloaded stay on zdata,
+because they were never on the rolled-back pool to begin with.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>git<span class="w"> </span>switch<span class="w"> </span>main<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>clan<span class="w"> </span>machines<span class="w"> </span>update<span class="w"> </span>ernst
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
