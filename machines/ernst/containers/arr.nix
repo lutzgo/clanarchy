@@ -3482,6 +3482,31 @@ in
       # to check when Soularr "stops working":
       #
       #     rm /srv/state/soularr/.soularr.lock
+      #
+      # ── THE LOGGING FORMAT TAKES A SINGLE %, AND THIS IS NOT COSMETIC ────
+      #
+      # Doubling the percent signs in the [Logging] section destroys every log
+      # line the service ever writes — in BOTH sinks, the journal and
+      # soularr.log:
+      #
+      #   soularr[1969]: [%(levelname)s|%(module)s|L%(lineno)d] %(asctime)s: %(message)s
+      #
+      # Doubling is the correct reflex for configparser's DEFAULT
+      # BasicInterpolation, where `%(name)s` is a reference to another option
+      # and a literal `%` must be escaped.  Soularr does not use it.  It builds
+      # its parser with an ExtendedInterpolation subclass (soularr.py:1331),
+      # whose reference syntax is `${section:option}` and in which `%` has no
+      # special meaning whatsoever — upstream's comment on that line says the
+      # point was to make "storing logging formats in the config file much
+      # easier".
+      #
+      # So `%%` is never un-doubled.  It arrives at logging.basicConfig still
+      # doubled, and %-style formatting renders `%%` as a literal `%` — which
+      # prints the TEMPLATE and discards the message.  soularr.log reached
+      # 143 KB without one readable line.
+      #
+      # This shipped unnoticed because it was unreachable: until 2026-09-06 the
+      # unit died at LoadCredential and never ran a pass at all.
       ##########################################################################
       systemd.services.soularr = {
         description = "Soularr — fill Lidarr's wanted list from Soulseek via slskd";
@@ -3620,10 +3645,12 @@ in
               [Download Settings]
               allow_uploads = False
 
+              # Single %, NOT %% — soularr parses with ExtendedInterpolation.
+              # See the block comment above this unit before changing these.
               [Logging]
               level = INFO
-              format = [%%(levelname)s|%%(module)s|L%%(lineno)d] %%(asctime)s: %%(message)s
-              datefmt = %%Y-%%m-%%dT%%H:%%M:%%S%%z
+              format = [%(levelname)s|%(module)s|L%(lineno)d] %(asctime)s: %(message)s
+              datefmt = %Y-%m-%dT%H:%M:%S%z
               EOF
             ''}"
           ];
