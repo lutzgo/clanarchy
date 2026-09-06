@@ -622,6 +622,27 @@ let
     then config.clan.core.vars.generators.slskd-credentials
     else { files."api-key".path = "/no-such-path"; };
 
+  # Where that key is STAGED for the container.
+  #
+  # `slskdCredsGen.files."api-key".path` is a HOST path under /run/secrets, and
+  # /run in an nspawn container is a private tmpfs — the host's copy is simply
+  # not there.  Pointing soularr's LoadCredential straight at it is what
+  # shipped, and PID 1 inside the container failed every single firing with
+  #
+  #   soularr.service: Failed to set up credentials: No such file or directory
+  #   soularr.service: Control process exited, code=exited, status=243/CREDENTIALS
+  #
+  # 1412 times between 2026-08-28 and 2026-09-06, during which Soularr never
+  # completed one pass.  It is the same class of mistake as the "Permission
+  # denied" bug the LoadCredential block below was added to fix, one layer out:
+  # that fix made the LIDARR key reachable and left the slskd one unreachable.
+  #
+  # So the key takes the route every other secret in this file takes: a host
+  # unit copies it into a directory, and that directory is bound in read-only
+  # at the same path.  Modelled on janitorrSecretsDir, which does exactly this
+  # and for exactly this reason.
+  soularrSecretsDir = "/run/soularr-secrets";
+
   # M14.  Audiobookshelf's library tree, on its OWN dataset (zdata/audiobooks,
   # declared in machines/ernst/disko.nix) rather than under /srv/media.
   #
@@ -1115,6 +1136,44 @@ in
     '';
   };
 
+  # The same staging, for slskd's API key — see soularrSecretsDir above for why
+  # soularr cannot read the clan var's own path from inside the container.
+  #
+  # ROTATING IT needs a restart and not just a deploy, for the same reason as
+  # janitorr-secrets: unchanged unit text means systemd will not re-run this
+  # when the underlying sops file changes.  After `clan vars generate ernst`:
+  #     systemctl restart soularr-secrets container@arr
+  systemd.services.soularr-secrets = {
+    description = "Stage slskd's API key for Soularr in container@arr";
+    after       = [ "local-fs.target" ];
+    before      = [ "container@arr.service" ];
+    wantedBy    = [ "container@arr.service" ];
+    serviceConfig = {
+      Type            = "oneshot";
+      RemainAfterExit = true;
+    };
+    # Stage an EMPTY file rather than failing when the var is absent.
+    #
+    # LoadCredential is evaluated by PID 1 before ExecStartPre runs, so a
+    # missing source file kills soularr at step CREDENTIALS with "No such file
+    # or directory" — which names neither the key nor the command that would
+    # produce it.  An empty file lets the unit reach its own render script,
+    # whose emptiness check already prints the actionable message.  A source
+    # that exists but cannot be copied still fails here, loudly, as it should.
+    script = ''
+      ${pkgs.coreutils}/bin/install -d -m 0700 -o root -g root ${soularrSecretsDir}
+      if [ -r ${slskdCredsGen.files."api-key".path} ]; then
+        ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
+          ${slskdCredsGen.files."api-key".path} \
+          ${soularrSecretsDir}/slskd-api-key
+      else
+        echo "soularr-secrets: no slskd API key at ${slskdCredsGen.files."api-key".path} — run 'clan vars generate ernst'. Staging an empty file so soularr reports it by name." >&2
+        ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
+          /dev/null ${soularrSecretsDir}/slskd-api-key
+      fi
+    '';
+  };
+
   # Host side of the container's veth — a VLAN-90 port on br0.
   #
   # There is deliberately NO `networking.firewall.allowedTCPPorts` here.  The
@@ -1272,9 +1331,16 @@ in
       # persistent state at all.  Same situation as UmlautAdaptarr above.
 
       # Janitorr's Jellyfin credentials, READ-ONLY, at the same path as on the
-      # host.  The only bind mount in this file that carries a secret.
+      # host.  One of the two bind mounts in this file that carry a secret.
       "${janitorrSecretsDir}" = {
         hostPath   = janitorrSecretsDir;
+        isReadOnly = true;
+      };
+
+      # The other one: slskd's API key, for Soularr.  Same shape, same reason —
+      # a clan var's own /run/secrets path does not exist inside the container.
+      "${soularrSecretsDir}" = {
+        hostPath   = soularrSecretsDir;
         isReadOnly = true;
       };
 
@@ -3439,7 +3505,9 @@ in
           # root-owned and unreadable by this unit's user at their real paths.
           LoadCredential = [
             "lidarr-api-key:${arrSecretsDir}/lidarr-api-key"
-            "slskd-api-key:${slskdCredsGen.files."api-key".path}"
+            # The STAGED copy, not slskdCredsGen's own path: that one is on the
+            # host and invisible in here.  See soularrSecretsDir.
+            "slskd-api-key:${soularrSecretsDir}/slskd-api-key"
           ];
 
           # Renders config.ini into a private tmpfs directory immediately
