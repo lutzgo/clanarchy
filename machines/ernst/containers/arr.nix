@@ -3500,6 +3500,37 @@ in
           User  = "soularr";
           Group = "media";
 
+          # Bound the pass.  Without this a hung one runs forever.
+          #
+          # A Type=oneshot unit is "activating" for as long as its ExecStart
+          # runs, and TimeoutStartSec defaults to infinity for oneshots — so a
+          # pass that wedges on an unresponsive slskd or a transfer that never
+          # completes never ends.  While it sits there the timer cannot fire
+          # again (the unit is already active), so Soularr stops running
+          # permanently, and the unit shows `activating` rather than `failed`
+          # so nothing looks wrong.  Silent, indefinite, and self-concealing:
+          # the worst of the three.
+          #
+          # TimeoutStartSec and NOT RuntimeMaxSec.  systemd.service(5) is
+          # explicit that RuntimeMaxSec "does not have any effect on
+          # Type=oneshot services ... use TimeoutStartSec= to limit their
+          # activation".  Setting the other one looks right and does nothing.
+          #
+          # Two hours.  A legitimate pass is bounded by the config rendered
+          # below: each search by `search_timeout`, and a transfer this pass is
+          # waiting on by `stalled_timeout`, which is 3600.  So one stalled
+          # download can legitimately hold a pass for an hour; two hours clears
+          # that with room and still turns "forever" into a bounded failure.
+          #
+          # On expiry the unit goes to `failed` with Result=timeout — and note
+          # that the lock file described above is then LEFT BEHIND, which is
+          # the documented, deliberate failure direction: Soularr stays stopped
+          # until someone runs the `rm`.  That is a better resting place than
+          # the current one only because `failed` is a state something can
+          # eventually alert on; `activating` is not.  Nothing watches units
+          # inside this container yet, which is what makes that caveat matter.
+          TimeoutStartSec = 7200;
+
           # See the render script: these are read by PID 1 as root and handed
           # to the unit as 0400 copies under $CREDENTIALS_DIRECTORY.  Both are
           # root-owned and unreadable by this unit's user at their real paths.
