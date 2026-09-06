@@ -488,6 +488,11 @@
           # — see the option's description for why the two are not
           # interchangeable.  ernst only: on a laptop this series is noise.
           exporters.arc      = true;
+          # Failed units INSIDE the seven nspawn containers, which
+          # exporters.systemd above cannot see: it reads the host's systemd and
+          # each container runs its own init.  ernst is the only machine in the
+          # fleet with containers at all, so it is the only consumer.
+          exporters.containers = true;
         };
 
         # The laptops take node_exporter and nothing else.  miralda and biene
