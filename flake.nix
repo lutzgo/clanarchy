@@ -280,9 +280,17 @@
           # occupant.  Masters the library that Syncthing replicates to
           # birte's RetroDECK; see docs/guides/birte-emulation.md.
           ./machines/ernst/containers/romm.nix
-          # M16.  The fleet's ONLY WAN ingress path — read that file's header
-          # before adding a hostname to it.
-          ./machines/ernst/containers/cloudflared.nix
+          # M18.  CrowdSec, INSIDE the traefik container's netns — the only
+          # place that sees the pre-DNAT source of a WAN request.  It
+          # co-defines containers.traefik; read its header before assuming
+          # traefik.nix is the whole of what runs in there.
+          #
+          # It replaces M16's containers/cloudflared.nix, which was the
+          # fleet's WAN ingress until the tunnel was dropped.  The fail-closed
+          # argument that file carried now lives in traefik.nix's header and
+          # in docs/roadmap.md M16 — a deleted rationale is a rationale that
+          # gets re-lost.
+          ./machines/ernst/containers/crowdsec.nix
           # microvm.nix's host module, and the one guest that uses it (M3).
           # The import lives here rather than inside wg-qbittorrent.nix
           # because `inputs` reaches a machine module via _module.args, and
