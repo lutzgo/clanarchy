@@ -493,6 +493,12 @@
           # each container runs its own init.  ernst is the only machine in the
           # fleet with containers at all, so it is the only consumer.
           exporters.containers = true;
+          # Crash loops.  ernst is where processes crash unattended: the couch
+          # session relaunches Kodi on its own, and the containers restart
+          # their services, so a process can die repeatedly without any unit
+          # ever changing state.  The laptops have someone sitting in front of
+          # them when something crashes.
+          exporters.coredumps  = true;
         };
 
         # The laptops take node_exporter and nothing else.  miralda and biene
