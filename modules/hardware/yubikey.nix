@@ -45,30 +45,13 @@ in
   # YubiKey udev rules (needed for non-root access)
   services.udev.packages = [ pkgs.yubikey-personalization ];
 
-  # Trust clan machine host keys system-wide (plain ed25519, no cert chain).
-  # Needed because lgo's SSH config forces HostKeyAlgorithms=ssh-ed25519 to
-  # avoid publickey-hostbound-v00@openssh.com, which causes gnupg 2.4.x to
-  # refuse signing with card-backed ed25519 keys.
-  # ZeroTier IPs are listed alongside the primary hostnames so that
-  # `clan machines update` (which connects via ZeroTier) doesn't prompt
-  # interactively — and so the HostKeyAlgorithms match block in lgo's SSH
-  # config (modules/users/lgo.nix) also covers those addresses.
-  programs.ssh.knownHosts = {
-    "miralda.goclan.org" = {
-      publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBRTHrUg5ftPBfhAgjRUB9N2OUBvFDERLcRgAUu/BHBx";
-    };
-    # miralda ZeroTier IPv6 — same host key, different network path
-    "fdda:106a:123a:d561:1099:93da:106a:123a" = {
-      publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBRTHrUg5ftPBfhAgjRUB9N2OUBvFDERLcRgAUu/BHBx";
-    };
-    # biene — covers clan machines update via ZeroTier
-    "biene.local" = {
-      publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJrXALvNnbJlC+oQCZ8bf7FRFCbL28GjumRkmKcWF09c";
-    };
-    "fdda:106a:123a:d561:1099:93da:ef5d:598c" = {
-      publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJrXALvNnbJlC+oQCZ8bf7FRFCbL28GjumRkmKcWF09c";
-    };
-  };
+  # Clan host keys used to be pinned here, by hand, for the two machines that
+  # existed at the time.  They are now generated for the whole fleet — including
+  # every ZeroTier address — from the committed vars, in
+  # modules/networking/clan-known-hosts.nix (imported fleet-wide by commonBase).
+  # Do not reintroduce a hand-written list: the two machines added after this
+  # one was written never got their ZeroTier entries, which broke deploys the
+  # moment ZeroTier won a reachability race.
 
   # Allow PC/SC access for SSH users — pcscd uses PolicyKit and by default
   # only permits "active" (local graphical) sessions. This rule grants access
