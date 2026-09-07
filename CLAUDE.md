@@ -6,10 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Clanarchy** is a NixOS declarative configuration using **clan-core** to manage five machines:
 
-- `miralda` — Framework 13 AMD, NixOS 26.05. Niri + UWSM + regreet Wayland desktop, ZFS + impermanence, YubiKey PIV for age encryption, clan vars for secrets. Daily driver for `lgo`.
-- `jens` — Framework 12 Intel (convertible 2-in-1), NixOS 26.05. Deliberately the same machine as `miralda` from the user's side: same Niri desktop, same Selenized Black theme and wallpapers, same ZFS + impermanence, same `lgo` toolchain. Differences are hardware only — Intel instead of AMD (`clanarchy.hardware.cpu`), a 1920×1200 panel, and `clanarchy.hardware.convertible.enable` for the accelerometer / auto-rotation / on-screen keyboard. No local Ollama: miralda's local-ai role is ROCm, which does not apply to an Intel iGPU. OpenCode is still there, reaching ernst's `qwen3-coder:30b` over a restricted SSH port-forward (`roles.opencode.…tunnel.enable`) rather than over an exposed ollama port.
+- `miralda` — Framework 13 AMD, NixOS 26.05. Niri + UWSM + regreet Wayland desktop, ZFS + impermanence, YubiKey PIV for age encryption, clan vars for secrets. Daily driver for `lgo`. Gruvbox Light Hard — the one machine in the fleet on a light palette (`clanarchy.theme`).
+- `jens` — Framework 12 Intel (convertible 2-in-1), NixOS 26.05. Deliberately the same machine as `miralda` from the user's side: same Niri desktop, same wallpapers, same ZFS + impermanence, same `lgo` toolchain. Differences are hardware — Intel instead of AMD (`clanarchy.hardware.cpu`), a 1920×1200 panel, and `clanarchy.hardware.convertible.enable` for the accelerometer / auto-rotation / on-screen keyboard — plus the palette: jens stayed on Selenized Black (`clanarchy.theme = "selenized-black"`) when miralda moved to Gruvbox Light Hard. No local Ollama: miralda's local-ai role is ROCm, which does not apply to an Intel iGPU. OpenCode is still there, reaching ernst's `qwen3-coder:30b` over a restricted SSH port-forward (`roles.opencode.…tunnel.enable`) rather than over an exposed ollama port.
 - `biene` — Lenovo laptop, NixOS 26.05. labwc + UWSM + regreet Wayland desktop with Noctalia shell (Sabine's machine), ZFS + impermanence, clan vars for secrets.
-- `birte` — Steam Deck OLED (Galileo). Jovian-NixOS Steam Gaming Mode by default; "Switch to Desktop" drops into KDE Plasma 6 via SDDM. Built entirely against `nixpkgs-unstable` (Jovian only supports unstable). Lives on branch `feat/birte-steamdeck` until merged.
+- `birte` — Steam Deck OLED (Galileo). Jovian-NixOS Steam Gaming Mode by default; "Switch to Desktop" drops into KDE Plasma 6 via SDDM. Built entirely against `nixpkgs-unstable` (Jovian only supports unstable). Fully on `main` — the `feat/birte-steamdeck` branch this used to live on merged in PR #4 (2026-07-12) and no longer exists.
 - `ernst` — AM5 / X870E homelab server. NAS + VM host + GPU compute; encrypted mirrored `zroot` + encrypted `zdata` raidz1. Carries **two** machine-type roles: `server` (headless baseline) plus `htpc` — a living-room Steam Big Picture / KDE Plasma session on the TV, switchable at runtime. Stable channel throughout (the gamescope session is stock nixpkgs, not Jovian).
 
 ## Development Environment
@@ -116,7 +116,7 @@ All modules are explicitly imported in `flake.nix` (no auto-discovery):
 | `yubikey_ed25519.pub`, `yubikey_rsa.pub`, `clanarchy_admin.pub` | Committed SSH pubkeys used across the clan |
 | `facter.json` | nixos-facter hardware fingerprint |
 
-miralda's theme and wallpapers used to live here as `stylix.nix` / `wallpapers.nix`. They are now `modules/themes/selenized-black.nix` and `modules/wallpapers/nix-anarchy.nix`, shared with `jens` — neither file ever contained anything machine-specific, and keeping two copies in step by hand was not going to work. `machines/biene/` and `machines/birte/` still carry their own `stylix.nix`, because they run a different palette.
+miralda's theme and wallpapers used to live here as `stylix.nix` / `wallpapers.nix`. They are now `modules/themes/` and `modules/wallpapers/nix-anarchy.nix`, shared with `jens` — neither file ever contained anything machine-specific, and keeping two copies in step by hand was not going to work. The palette itself *is* per-machine, but it is one word: `clanarchy.theme = "<key of modules/themes/palettes.nix>"` in `configuration.nix`. `machines/biene/` and `machines/birte/` still carry their own `stylix.nix` — not because of the palette, but because they generate their wallpaper at a machine-native resolution and birte has no regreet target.
 
 ### Machine Module Layout (`machines/jens/`)
 
@@ -126,7 +126,7 @@ miralda's theme and wallpapers used to live here as `stylix.nix` / `wallpapers.n
 | `disko.nix` | Thin wrapper over `modules/disko/base.nix` — NVMe device path, encryption on, no swap |
 | `facter.json` | nixos-facter hardware fingerprint |
 
-No `stylix.nix` or `wallpapers.nix`: `flake.nix` imports the shared `modules/themes/selenized-black.nix` + `modules/wallpapers/nix-anarchy.nix` for this machine, same as miralda.
+No `stylix.nix` or `wallpapers.nix`: `flake.nix` imports the shared `modules/themes` + `modules/wallpapers/nix-anarchy.nix` for this machine, same as miralda; the palette is picked by name with `clanarchy.theme` in `configuration.nix`.
 
 ### Machine Module Layout (`machines/biene/`)
 
@@ -178,7 +178,7 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | `virtualisation.nix` | libvirt / qemu / podman shared setup |
 | `wifi.nix` | NetworkManager wifi profile from clan var (imported by biene + birte) |
 | `caldav-sync.nix` | CalDAV sync helpers for shared calendar access |
-| `icon-theme.nix` | `clanarchy.iconTheme` option: Stylix-recolored Papirus-Dark |
+| `icon-theme.nix` | `clanarchy.iconTheme` option: Stylix-recolored Papirus. Source variant follows `stylix.polarity` — Papirus-Light on a light scheme, Papirus-Dark otherwise |
 | `stylix-base.nix` | Shared stylix baseline for headful machines: fonts (Monaspace), cursor (Adwaita), `targets.plymouth`, polarity |
 | `disko/base.nix` | Single-disk disko helper: 1G ESP + optional swap + ZFS `zroot`. Parameters: `device`, `enableSwap`, `swapSize`, `encryptSwap`, `enableEncryption` |
 | `disko/btrfs.nix` | Single-disk btrfs sibling of `base.nix`: 1G ESP + optional swap + `@root`/`@nix`/`@home`/`@persist`/`@games` subvols. No LUKS. Parameters: `device`, `enableSwap`, `swapSize`, `encryptSwap`, `gamesMountpoint` |
@@ -188,7 +188,9 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | `hardware/printing.nix` | CUPS + hplip + SANE |
 | `hardware/yubikey.nix` | pcscd + GnuPG agent (pinentry-qt wrapper) + polkit rule |
 | `hardware/convertible.nix` | `clanarchy.hardware.convertible` option: iio-sensor-proxy, a `niri msg`-driven auto-rotate user service, and wvkbd. Imported fleet-wide, inert on clamshells. Consumer: jens |
-| `themes/selenized-black.nix` | Shared Stylix theme (scheme + generated wallpaper + font sizes + regreet target) for miralda and jens |
+| `gaming-shortcuts.nix` | `clanarchy.gaming.shortcuts`: declarative non-Steam Steam-library entries. Merges into Steam's binary `shortcuts.vdf` at boot (before the display manager), matching on `name`, leaving hand-added entries and Steam's own per-entry state alone. Imported by `gaming-common.nix`. Consumer: the htpc role's media client |
+| `themes/default.nix` | Declares `clanarchy.theme` and applies the selected entry: scheme, polarity, font sizes, generated wallpaper, regreet target. Imported by miralda + jens |
+| `themes/palettes.nix` | The theme registry — one data entry (`scheme` + `polarity`, optional `fontSizes`) per known-good theme. Adding a theme is one entry here; switching is one line in a machine's `configuration.nix` |
 | `wallpapers/nix-anarchy.nix` | Shared per-workspace nix-anarchy SVG wallpapers, recolored to the active Stylix palette. Consumers: miralda, jens |
 | `desktop/desktop-common.nix` | Shared NixOS bits for all Noctalia-based Wayland compositors: regreet, pipewire, fonts, NetworkManager, Mullvad, Noctalia plugin runtime deps |
 | `desktop/noctalia-hm.nix` | Shared HM: Noctalia settings, starship, swayidle, packages, activation hooks |
@@ -200,7 +202,7 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | `desktop/kde.nix` | KDE Plasma 6 desktop: SDDM, Plasma packages (used by birte's "Switch to Desktop" session) |
 | `roles/laptop.nix` | Laptop role: fwupd (all laptops), thermald (Intel only), power-profiles-daemon, weekly Nix GC (14-day retention) |
 | `roles/server.nix` | Server role (headless): no GUI packages, no laptop-only services |
-| `roles/htpc.nix` | HTPC role: stock-nixpkgs gamescope Steam session + KDE Plasma behind one wrapper session, switched at runtime via `clanarchy-session-select` (and a `steamos-session-select` shim so Steam's own button works). Installs a couch media client (Jellyfin Media Player by default) — Plasma Bigscreen is not packaged in 26.05. Options: `user`, `defaultSession`, `autologin.enable`, `mediaClient.{enable,package}` |
+| `roles/htpc.nix` | HTPC role: stock-nixpkgs gamescope Steam session + KDE Plasma behind one wrapper session, switched at runtime via `clanarchy-session-select` (and a `steamos-session-select` shim so Steam's own button works). Installs a couch media client (Jellyfin Media Player by default) and adds it to the Steam library as a non-Steam shortcut with generated artwork, so it is launchable from Big Picture — Plasma Bigscreen is not packaged in 26.05. Options: `user`, `defaultSession`, `autologin.enable`, `mediaClient.{enable,package,name,exe,arguments,artwork,steamShortcut.enable}` |
 | `roles/vm.nix` | VM guest role: SPICE agent, QEMU guest tools |
 | `roles/rpi.nix` | Raspberry Pi role (unused; kept for future clan expansion) |
 | `users/admin.nix` | admin user: SSH keys, password, impermanence, HM stub |
@@ -276,6 +278,10 @@ The shared system-level persist set lives in `modules/rootfs.nix`: `/var/lib/nix
 **pkgs-unstable**: `nixpkgs-unstable` intentionally does NOT follow clan-core's nixpkgs — it's needed for Noctalia/Quickshell. Injected as a module arg via `_module.args` (see `mkModuleArgs` in `lib/mk-machine.nix`).
 
 **push function**: Reads gh token at runtime to construct HTTPS remote URL, enabling pushes from a machine where `~/.config/git` is a read-only impermanence bind mount.
+
+**Theme registry (`modules/themes/`)**: `palettes.nix` is data (one entry per known-good theme: `scheme`, `polarity`, optional `fontSizes`), `default.nix` is the mechanism (declares `clanarchy.theme` as an enum over those keys, then wires `stylix.{base16Scheme,polarity,image,fonts.sizes,targets.regreet}`). It replaced one ~75-line file per theme, of which ~65 lines were a byte-identical copy of the ImageMagick wallpaper generator. Adding a theme = one entry in `palettes.nix`; switching = one line in `machines/<name>/configuration.nix`; a typo names the valid alternatives instead of silently defaulting.
+
+**`stylix.polarity` is load-bearing, not cosmetic**: it is the single source of truth for which side of the palette the fleet is on, and three things outside Stylix read it. `modules/icon-theme.nix` picks the Papirus source variant from it; `modules/desktop/noctalia-hm.nix` derives `colorSchemes.darkMode` from it (Noctalia feeds that to gsettings `color-scheme`, so GTK apps get dark chrome on a light desktop if it disagrees); `modules/stylix-base.nix` sets it to `lib.mkDefault "dark"` precisely so a theme can override it. A new light theme must set `polarity = "light"` in its `palettes.nix` entry — the base16 scheme alone will not flip any of the above.
 
 **icon-theme.nix**: Declares `clanarchy.iconTheme.{name,package}` and installs the package via `environment.systemPackages`. Niri and labwc wire `gtk.iconTheme` in their respective `-hm.nix` modules via `osConfig`. Do **not** set `gtk.iconTheme` in `home-manager.sharedModules` — it conflicts with Stylix's GTK HM target and breaks the entire HM activation for affected users.
 

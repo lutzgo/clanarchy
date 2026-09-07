@@ -319,6 +319,53 @@ in
             count, which is where a small fleet's cardinality actually goes.
           '';
         };
+
+        containers = lib.mkOption {
+          type        = lib.types.bool;
+          default     = false;
+          description = ''
+            Export failed systemd units from inside this machine's
+            systemd-nspawn containers, via node_exporter's textfile collector.
+            Backs the `ContainerSystemdUnitFailed` alert.
+
+            THE `systemd` COLLECTOR ABOVE DOES NOT COVER THEM. It reads the
+            host's own systemd, and every container runs its own init with its
+            own unit namespace — so `SystemdUnitFailed` is blind to all of it.
+            Which is not theoretical: `soularr.service` in ernst's `arr`
+            container failed 1412 times over nine days without ever completing
+            a pass, and nothing alerted. It was found by hand, while chasing an
+            unrelated host alert.
+
+            Cheap, unlike the `systemd` collector: this exports ONLY failed
+            units, so the steady state is zero series. It is a timer on the
+            host writing a .prom file, not work done per scrape.
+          '';
+        };
+
+        coredumps = lib.mkOption {
+          type        = lib.types.bool;
+          default     = false;
+          description = ''
+            Export a rolling one-hour count of coredumps per executable, via
+            node_exporter's textfile collector. Backs the
+            `ProcessCrashLooping` alert.
+
+            A crashing PROCESS is not a failed UNIT, so nothing else here sees
+            it. Kodi aborted four times in six minutes in the couch session on
+            2026-09-04 and the role's relaunch loop simply restarted it each
+            time; the display manager never restarted and no unit ever entered
+            a failed state. The same blindness let a DrKonqi crash loop write
+            180363 coredumps — 3 GB — before anybody noticed, and tvheadend
+            237, and the two arr downloaders 71 between them.
+
+            Every one of those was found by hand, after the fact, by reading
+            `coredumpctl` for an unrelated reason.
+
+            Only executables with a nonzero count are emitted, so the steady
+            state is zero series. The query is `--since -1h` against the
+            journal, which is time-indexed: 8 ms on ernst.
+          '';
+        };
       };
     };
 
@@ -339,6 +386,119 @@ in
             (name: m: ztIpOf m.settings.zerotierInstance name)
             serverMachines);
           scrapeSources = serverZtIps ++ [ monContainerAddr ];
+
+          # Where the container-unit collector drops its .prom file.
+          #
+          # Under /var/lib and not /run: node_exporter reads whatever is in
+          # here at scrape time, and a tmpfs would mean every reboot has a
+          # window in which the file is absent and the metric silently missing
+          # rather than zero.
+          textfileDir = "/var/lib/prometheus-node-exporter-textfile";
+
+          # Failed units inside the nspawn containers, as Prometheus metrics.
+          #
+          # `systemctl -M <name>` talks to the container's init through
+          # machined — no exporter inside each container, no extra port, no
+          # per-container firewall rule. Measured at 2 ms per container on
+          # ernst, against seven of them.
+          #
+          # ONLY FAILED UNITS ARE EMITTED. The steady state is an empty file,
+          # so this costs nothing in cardinality, and an alert on
+          # `== 1` needs no `state=` matcher.
+          containerUnitsCollector = pkgs.writeShellApplication {
+            name = "clanarchy-container-units-collector";
+            runtimeInputs = [ pkgs.systemd pkgs.jq pkgs.gawk pkgs.coreutils ];
+            text = ''
+              out=${textfileDir}/container-units.prom
+              # Written aside and renamed. node_exporter reads this file
+              # whenever a scrape lands, and rename(2) is what stops it from
+              # ever seeing a half-written one.
+              tmp=$(mktemp "$out.XXXXXX")
+              trap 'rm -f "$tmp"' EXIT
+
+              {
+                echo "# HELP clanarchy_container_systemd_unit_failed A systemd unit inside an nspawn container is in the failed state."
+                echo "# TYPE clanarchy_container_systemd_unit_failed gauge"
+              } > "$tmp"
+
+              ok=1
+              for c in $(machinectl list --no-legend | awk '{print $1}'); do
+                # A container that is starting, stopping or wedged answers
+                # nothing. Do not treat that as "no failures" — that is the
+                # exact shape of a monitoring blind spot — mark the run bad and
+                # let the collector-health metric below carry it.
+                if units=$(systemctl -M "$c" list-units --state=failed \
+                             --no-legend --plain --no-pager -o json 2>/dev/null); then
+                  jq -r --arg c "$c" \
+                    '.[] | "clanarchy_container_systemd_unit_failed{container=\"\($c)\",name=\"\(.unit)\"} 1"' \
+                    <<< "$units" >> "$tmp"
+                else
+                  ok=0
+                fi
+              done
+
+              # Who watches the watcher. Same argument as the ZedNotRunning
+              # rule: the one thing a collector cannot report is its own
+              # failure, so it reports its own success and the absence of that
+              # is what alerts.
+              {
+                echo "# HELP clanarchy_container_units_collector_success Whether the last container-unit collection queried every container successfully."
+                echo "# TYPE clanarchy_container_units_collector_success gauge"
+                echo "clanarchy_container_units_collector_success $ok"
+              } >> "$tmp"
+
+              chmod 0644 "$tmp"
+              mv -f "$tmp" "$out"
+              trap - EXIT
+            '';
+          };
+
+          # Coredumps in the last hour, per executable, as Prometheus metrics.
+          #
+          # Read from the journal rather than from /var/lib/systemd/coredump,
+          # because the directory is vacuumed under storage pressure — which is
+          # exactly what a crash loop causes — so counting files there
+          # UNDERCOUNTS precisely when the number matters most. The journal
+          # entry survives the core file it describes.
+          #
+          # No collector-success metric here, unlike the container collector
+          # next door. That one deliberately swallows a per-container failure
+          # so one wedged container cannot hide the other six, which means its
+          # unit exits 0 and something else has to notice. This script has no
+          # such case: writeShellApplication sets -euo pipefail, so any failure
+          # fails the UNIT, and a failed host unit already trips
+          # SystemdUnitFailed.
+          coredumpCollector = pkgs.writeShellApplication {
+            name = "clanarchy-coredump-collector";
+            runtimeInputs = [ pkgs.systemd pkgs.jq pkgs.coreutils ];
+            text = ''
+              out=${textfileDir}/coredumps.prom
+              tmp=$(mktemp "$out.XXXXXX")
+              trap 'rm -f "$tmp"' EXIT
+
+              {
+                echo "# HELP clanarchy_coredumps_recent Coredumps written in the last hour, by executable and signal."
+                echo "# TYPE clanarchy_coredumps_recent gauge"
+
+                journalctl -t systemd-coredump --since "-1h" -o json \
+                  --output-fields=COREDUMP_EXE,COREDUMP_SIGNAL_NAME 2>/dev/null \
+                  | jq -r -s '
+                      map(select(.COREDUMP_EXE))
+                      | group_by([.COREDUMP_EXE, .COREDUMP_SIGNAL_NAME])
+                      | .[]
+                      | "clanarchy_coredumps_recent{exe="
+                        + ((.[0].COREDUMP_EXE | split("/") | last) | @json)
+                        + ",signal="
+                        + ((.[0].COREDUMP_SIGNAL_NAME // "unknown") | @json)
+                        + "} " + (length | tostring)
+                    '
+              } > "$tmp"
+
+              chmod 0644 "$tmp"
+              mv -f "$tmp" "$out"
+              trap - EXIT
+            '';
+          };
 
           # Ports this machine actually exposes.
           exposedPorts =
@@ -411,7 +571,87 @@ in
               "ipvs" "mdadm" "nfs" "nfsd" "nvme" "powersupplyclass" "rapl"
               "selinux" "softnet" "tapestats" "thermal_zone" "xfs"
             ] ++ lib.optional (!settings.exporters.arc) "zfs";
+
+            # The textfile collector is on by default in node_exporter, but it
+            # reads nothing until it is told where to look. One flag serves
+            # every feeder, so it is set if any of them is enabled.
+            extraFlags = lib.optional
+              (settings.exporters.containers || settings.exporters.coredumps)
+              "--collector.textfile.directory=${textfileDir}";
           };
+
+          ####################################################################
+          # Failed units inside the nspawn containers.
+          #
+          # A HOST timer, not an exporter per container. The alternative —
+          # node_exporter inside each of ernst's seven containers — is seven
+          # processes, seven ports and seven firewall rules to answer one
+          # question, and each one would then need its own scrape config that
+          # nobody would remember to add for container number eight.
+          #
+          # Every minute rather than on demand, because the textfile collector
+          # is a file read: node_exporter has no way to trigger this, so the
+          # file has to already be current when a scrape lands. A minute is
+          # well inside the 15m `for` on the alert.
+          ####################################################################
+          systemd.tmpfiles.rules = lib.optional
+            (settings.exporters.containers || settings.exporters.coredumps)
+            "d ${textfileDir} 0755 root root -";
+
+          systemd.services.clanarchy-container-units =
+            lib.mkIf settings.exporters.containers {
+              description = "Collect failed systemd units from nspawn containers";
+              serviceConfig = {
+                Type = "oneshot";
+                ExecStart = lib.getExe containerUnitsCollector;
+                # Talks to machined and to each container's init over D-Bus,
+                # and writes one file. It needs no network and no devices.
+                PrivateNetwork = true;
+                PrivateDevices = true;
+                ProtectHome = true;
+                ProtectSystem = "strict";
+                ReadWritePaths = [ textfileDir ];
+                NoNewPrivileges = true;
+              };
+            };
+
+          systemd.timers.clanarchy-container-units =
+            lib.mkIf settings.exporters.containers {
+              description = "Collect failed nspawn container units every minute";
+              wantedBy = [ "timers.target" ];
+              timerConfig = {
+                OnBootSec = "2m";
+                OnUnitActiveSec = "1m";
+                # No Persistent: a missed run is worthless, the next one in
+                # sixty seconds supersedes it entirely.
+              };
+            };
+
+          systemd.services.clanarchy-coredumps =
+            lib.mkIf settings.exporters.coredumps {
+              description = "Collect recent coredump counts for node_exporter";
+              serviceConfig = {
+                Type = "oneshot";
+                ExecStart = lib.getExe coredumpCollector;
+                # Reads the journal and writes one file.
+                PrivateNetwork = true;
+                PrivateDevices = true;
+                ProtectHome = true;
+                ProtectSystem = "strict";
+                ReadWritePaths = [ textfileDir ];
+                NoNewPrivileges = true;
+              };
+            };
+
+          systemd.timers.clanarchy-coredumps =
+            lib.mkIf settings.exporters.coredumps {
+              description = "Collect recent coredump counts every minute";
+              wantedBy = [ "timers.target" ];
+              timerConfig = {
+                OnBootSec = "2m";
+                OnUnitActiveSec = "1m";
+              };
+            };
 
           ####################################################################
           # zfs_exporter — pool health, capacity, fragmentation.
@@ -1906,6 +2146,77 @@ in
                           annotations = {
                             summary     = "{{ $labels.name }} has failed on {{ $labels.instance }}";
                             description = "systemd unit {{ $labels.name }} has been in the failed state for 15 minutes.";
+                          };
+                        }
+
+                        # ── any failed unit INSIDE an nspawn container ───
+                        #
+                        # SystemdUnitFailed above cannot see these. It is fed
+                        # by node_exporter's systemd collector, which reads
+                        # the HOST's systemd; every container runs its own
+                        # init with its own unit namespace.
+                        #
+                        # The gap was not hypothetical. soularr.service in
+                        # ernst's `arr` container failed 1412 times across
+                        # nine days, never once completing a pass, and
+                        # nothing alerted — a failed oneshot on a timer is
+                        # invisible unless something is watching for exactly
+                        # this.
+                        {
+                          alert = "ContainerSystemdUnitFailed";
+                          expr  = ''clanarchy_container_systemd_unit_failed == 1'';
+                          "for" = "15m";
+                          labels.severity = "warning";
+                          annotations = {
+                            summary     = "{{ $labels.name }} has failed in container {{ $labels.container }} on {{ $labels.instance }}";
+                            description = "systemd unit {{ $labels.name }} inside nspawn container {{ $labels.container }} has been in the failed state for 15 minutes. Inspect with: systemctl -M {{ $labels.container }} status {{ $labels.name }}";
+                          };
+                        }
+
+                        # ── a process is crash-looping ───────────────────
+                        #
+                        # A crashing PROCESS is not a failed UNIT, so neither
+                        # SystemdUnitFailed nor its container sibling can see
+                        # this at all.
+                        #
+                        # Threshold 3, chosen against the four crash loops
+                        # this machine has actually had rather than picked
+                        # round: DrKonqi 180363, tvheadend 237, the two arr
+                        # downloaders 71 — and Kodi FOUR, in six minutes, in
+                        # the couch session. Kodi is the one that sets the
+                        # bar: at 5 it would not have alerted, and Kodi is
+                        # the case where nothing else would ever have told
+                        # anyone, because the role's relaunch loop restarts
+                        # it and no unit changes state.
+                        #
+                        # A one-off segfault stays quiet, which is the point.
+                        {
+                          alert = "ProcessCrashLooping";
+                          expr  = ''clanarchy_coredumps_recent >= 3'';
+                          "for" = "5m";
+                          labels.severity = "warning";
+                          annotations = {
+                            summary     = "{{ $labels.exe }} has dumped core {{ $value }} times in an hour on {{ $labels.instance }}";
+                            description = "{{ $labels.exe }} is crash-looping with {{ $labels.signal }}. Inspect with: coredumpctl list {{ $labels.exe }}";
+                          };
+                        }
+
+                        # ── the container collector itself is broken ─────
+                        #
+                        # Its whole value is answering "is anything failing in
+                        # there", so a collector that silently answers "no"
+                        # because it could not reach machined is worse than
+                        # not having it. It publishes its own success and this
+                        # is what reads it — the same interlock argument as
+                        # ZedNotRunning immediately below.
+                        {
+                          alert = "ContainerUnitCollectorFailing";
+                          expr  = ''clanarchy_container_units_collector_success == 0'';
+                          "for" = "15m";
+                          labels.severity = "warning";
+                          annotations = {
+                            summary     = "Container unit collector could not query every container on {{ $labels.instance }}";
+                            description = "At least one nspawn container did not answer systemctl -M for 15 minutes, so ContainerSystemdUnitFailed is blind to it. Check `machinectl list` and journalctl -u clanarchy-container-units.";
                           };
                         }
 

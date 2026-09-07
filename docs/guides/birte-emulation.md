@@ -186,9 +186,11 @@ caveats, neither fatal:
   ROMs only.
 
 RomM also [exports ES-DE metadata][romm-exports]: with it enabled, a scan
-writes a `gamelist.xml` into each platform folder alongside `covers/` and
-`screenshots/`. RetroDECK's frontend *is* ES-DE, so scraping can happen once on
-the server and be consumed directly by the Deck instead of scraping per-device.
+writes a `gamelist.xml` into each platform folder alongside an `assets/` tree
+of `covers/` and `screenshots/`. RetroDECK's frontend *is* ES-DE, so scraping
+happens once on the server rather than per-device — but **the Deck does not
+read that export where RomM writes it**, and one module stands between them.
+See [Why the export needs a bridge](#why-the-export-needs-a-bridge).
 
 [romm]: https://romm.app/
 [romm-exports]: https://docs.romm.app/latest/reference/exports/
@@ -264,9 +266,51 @@ vars), but the folders must be **accepted once** in each machine's Syncthing UI.
   `config.yml` (in `/srv/state/romm/config`) rather than renaming anything on
   disk — the folder names on disk are what RetroDECK reads.
 - **ES-DE metadata export.** Enabling it in RomM's config writes a
-  `gamelist.xml` into each platform folder alongside `covers/` and
-  `screenshots/`. RetroDECK's frontend *is* ES-DE, so scraping happens once on
-  the server and the Deck consumes the result instead of scraping per-device.
+  `gamelist.xml` into each platform folder alongside an `assets/` tree. Scraping
+  therefore happens once on the server instead of per-device — but the Deck
+  cannot read the result as written; see below.
+
+### Why the export needs a bridge
+
+RetroDECK's frontend is ES-DE, and RomM exports "ES-DE metadata", so it is
+natural to assume the Deck picks the export up for free. **It does not.** The
+export lands in a layout ES-DE never looks at, and the symptom is a full
+library with correct ROMs, no names and no boxart:
+
+| | RomM writes | ES-DE reads |
+|---|---|---|
+| metadata | `roms/<sys>/gamelist.xml` | `ES-DE/gamelists/<sys>/gamelist.xml` |
+| artwork | `roms/<sys>/assets/covers/` | `ES-DE/downloaded_media/<sys>/covers/` |
+
+The metadata half is the `LegacyGamelistFileLocation` setting in
+`es_settings.xml`, which is `false`. **Flipping it is not enough**, because the
+artwork half is not a setting at all: ES-DE ignores the `<thumbnail>` and
+`<image>` paths inside `gamelist.xml` — its own generated gamelists do not even
+contain those tags — and locates media purely by directory convention. Flipping
+the setting alone yields metadata with no pictures.
+
+`machines/birte/romm-esde-bridge.nix` (`clanarchy.retrodeck.rommBridge`)
+publishes one layout into the other on a timer. It copies gamelists and
+symlinks media directories, and that asymmetry is deliberate: `es_settings.xml`
+has `SaveGamelistsMode = "always"`, so ES-DE rewrites `gamelist.xml` itself, and
+a symlink into the Syncthing-replicated ROM tree would let it clobber RomM's
+export and push the damage back to ernst.
+
+Two things worth knowing before changing it:
+
+- **Do not "skip systems that already have a gamelist".** Because
+  `SaveGamelistsMode` is `always`, ES-DE writes one for every system on first
+  launch, so that rule matches everything from then on and the bridge silently
+  stops updating — it looks like it worked once and then rotted. The refresh
+  rule is an mtime comparison against RomM's export instead.
+- **Systems you scrape in ES-DE itself go in `excludeSystems`.** An ES-DE
+  scrape carries descriptions, videos, manuals, miximages and 3D boxes, which
+  is richer than RomM's export; `atari2600` is excluded for exactly that reason
+  and its own media directories are left untouched.
+
+The media names are mapped from RomM's `ASSET_DIRS`, not hardcoded: most agree,
+`boxes`/`3dboxes` and `physical`/`physicalmedia` differ, and RomM's
+`miximages_v2` and `bezels` have no ES-DE equivalent and are left unlinked.
 
 ### Importing a downloaded collection into the library
 

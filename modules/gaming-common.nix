@@ -3,6 +3,11 @@ let
   cfg = config.clanarchy.gaming;
 in
 {
+  # `clanarchy.gaming.shortcuts` — non-Steam library entries, merged into
+  # Steam's binary shortcuts.vdf at boot.  Split out because that is a
+  # self-contained mechanism with a long explanation attached.
+  imports = [ ./gaming-shortcuts.nix ];
+
   options.clanarchy.gaming = {
     enable = lib.mkEnableOption "shared gaming stack (Steam + Proton-GE + gaming-user persistence)";
 

@@ -20,6 +20,11 @@
   clanarchy.hardware.cpu = "amd";
   clanarchy.display.scale = 1.25;
 
+  # Stylix palette + polarity. Valid names are the keys of
+  # modules/themes/palettes.nix; "selenized-black" is what this machine ran
+  # before, and reverting is this one word.
+  clanarchy.theme = "gruvbox-light-hard";
+
   # ZSA Voyager: udev rules for Oryx / Keymapp, plus Keymapp itself.
   # Oryx's *browser* features (live training, web flashing) need WebHID, which
   # librewolf and firefox do not implement — use chromium for those, or

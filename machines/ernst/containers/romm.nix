@@ -193,6 +193,92 @@ in
   ##############################################################################
 
   ##############################################################################
+  # Keep RetroDECK's internal symlinks out of the library.
+  ##############################################################################
+  #
+  # RetroDECK's bios/ tree is full of symlinks pointing back into its own data
+  # directory — absolute paths under /home/deck/retrodeck/… that mean something
+  # on birte and nothing here.  Syncthing replicates the *link*, not its
+  # target, so each one lands on ernst dangling:
+  #
+  #   /srv/roms/bios/dc/textures
+  #     -> /home/deck/retrodeck/texture_packs/retroarch-core/Flycast/textures
+  #
+  # RomM's scanner stats every entry and aborts the whole run on the first one
+  # it cannot open — "Scan failed: File not found: /romm/library/bios/dc/
+  # textures" — so a handful of broken links from the Deck stop the library
+  # scanning at all.  Observed 2026-09-04: twenty of them, across pcsx2,
+  # fbneo, Mupen64plus, pico-8, cemu, dc and HdPacks.  Note RetroDECK puts
+  # `/pcsx2/bios` in that set — a *symlink* named bios, not the BIOS files
+  # themselves, which live beside it and do sync.
+  #
+  # Ignored rather than deleted, and the order matters: the bios folder is
+  # sendreceive, so removing them on ernst would propagate the deletion to
+  # birte and take RetroDECK's texture packs with it.  An ignored path is not
+  # synced in *either* direction, which makes the local copies safe to remove
+  # afterwards.
+  #
+  # Listed by name rather than solved generically because Syncthing's ignore
+  # patterns match paths, not file types — there is no "ignore symlinks".  If
+  # RetroDECK grows another one, it shows up as the same scan failure naming
+  # the new path, and it goes in this list.
+  #
+  # ── sendonly, because a list of names is not a rule ─────────────────────
+  #
+  # The ignore list below is twenty paths that happened to exist on 2026-09-04.
+  # RetroDECK will add an emulator, that emulator will get its own symlinks,
+  # and the scan will break again naming a path nobody has written down yet.
+  # Enumerating symptoms does not stop the cause.
+  #
+  # The cause is that `bios` is sendreceive between a server that masters the
+  # library and a handheld that scribbles emulator state into the same tree.
+  # This file's header already calls ernst's copy the authoritative one, so
+  # make the sync say that: ernst sends, and simply does not accept what birte
+  # has to say about the BIOS folder. RetroDECK can then create whatever
+  # internal links it likes and none of them reach the server.
+  #
+  # The cost, stated plainly: a BIOS file dropped on the Deck no longer
+  # propagates up. Adding one now means putting it on ernst — which is where
+  # the library is curated anyway, and is the same direction ROMs already
+  # flow.
+  #
+  # `roms` is deliberately left sendreceive. The Deck is a legitimate source
+  # of ROMs, and RetroDECK does not litter that tree the way it does bios/.
+  #
+  # The ignores stay, and are not redundant. Under sendonly a local deletion
+  # is *propagated*, so without them removing those twenty stale links from
+  # ernst would have pushed the deletion to birte and taken RetroDECK's
+  # texture packs with it. Ignored paths are excluded in both directions,
+  # which is what made the cleanup safe.
+  # mkForce because the clan syncthing service sets `type` for every folder it
+  # declares (sendreceive); this is a deliberate per-folder override of that,
+  # not a second opinion.
+  services.syncthing.settings.folders.bios.type = lib.mkForce "sendonly";
+
+  services.syncthing.settings.folders.bios.ignorePatterns = [
+    "/HdPacks"
+    "/cemu/usr/save"
+    "/dc/textures"
+    "/fbneo/blend"
+    "/fbneo/cheats"
+    "/fbneo/ips"
+    "/fbneo/patched"
+    "/fbneo/romdata"
+    "/Mupen64plus/cache"
+    "/Mupen64plus/hires_texture"
+    "/pcsx2/bios"
+    "/pcsx2/cheats"
+    "/pcsx2/cheats_ni"
+    "/pcsx2/cheats_ws"
+    "/pcsx2/logs"
+    "/pcsx2/memcards"
+    "/pcsx2/shaders"
+    "/pcsx2/textures"
+    "/pico-8/carts"
+    "/pico-8/cdata"
+  ];
+
+  ##############################################################################
   # The group, and the one other principal that gets into it.
   ##############################################################################
 
@@ -427,6 +513,11 @@ in
   # which needs no account at all.  So this prompt never blocks a deploy on a
   # credential the operator does not have yet — press enter and revisit it with
   # `clan vars generate ernst --generator romm-metadata-keys --regenerate`.
+  #
+  # That optionality is NOT free: clan stores no secret for a blank answer, so
+  # the var's path becomes `/no-such-path`.  It only holds because romm-secrets
+  # reads these through `optional_secret` rather than a bare `cat` — see the
+  # comment there before changing either.
   clan.core.vars.generators.romm-metadata-keys = {
     files."steamgriddb-api-key".secret = true;
     files."igdb-client-id".secret      = true;
@@ -455,6 +546,66 @@ in
       # env file, where a newline would terminate the value early and leave the
       # next line looking like a stray assignment.
       for f in steamgriddb-api-key igdb-client-id igdb-client-secret; do
+        tr -d '\n' < "$prompts/$f" > "$out/$f"
+      done
+    '';
+  };
+
+  # ── The second-tier metadata providers ──────────────────────────────────
+  #
+  # A SEPARATE GENERATOR, DELIBERATELY.  Adding files to
+  # `romm-metadata-keys` above would change that generator, and clan re-runs a
+  # generator as a unit — so it would re-prompt for the IGDB and SteamGridDB
+  # credentials that are already stored and working.  Splitting keeps this an
+  # additive errand: answer the new prompts, leave the old ones untouched.
+  #
+  # WHY BOTHER, given IGDB is already enabled.  Measured on this library
+  # (2026-09-07, 37,896 ROMs): IGDB matched 24,301 and 22,860 got a summary —
+  # about 64%.  The missing third is not random.  It is ROM hacks, bad dumps
+  # and pirate multicarts — `100-in-1 Contra Function 16`, `[hM02]`, `[a1]`,
+  # `110-in-1 (Menu)` — which IGDB does not catalogue at all, because IGDB
+  # catalogues *published games*.  No amount of retrying IGDB reaches them.
+  #
+  # ScreenScraper is the one that does: it matches on file hash rather than
+  # name, and its corpus is community dumps, which is exactly this population.
+  # It needs a personal account *on top of* the dev credentials RomM ships
+  # (`SCREENSCRAPER_DEV_ID=zurdi15` is RomM's author, not us) — `ss_handler.py`
+  # gates on `bool(SCREENSCRAPER_USER and SCREENSCRAPER_PASSWORD)`, so without
+  # a user account the source reports enabled=false however good the dev
+  # credentials are.  That is why /api/heartbeat showed
+  # `"SS_API_ENABLED": false, "SS_DEV_CREDENTIALS_SET": true`.
+  #
+  # Same empty-answer contract as the generator above: blank leaves the source
+  # disabled and the deploy still succeeds.
+  clan.core.vars.generators.romm-metadata-keys-extra = {
+    files."screenscraper-user".secret        = true;
+    files."screenscraper-password".secret    = true;
+    files."retroachievements-api-key".secret = true;
+
+    prompts."screenscraper-user" = {
+      description = "ScreenScraper username (screenscraper.fr) — hash-based matching, best for hacks and multicarts IGDB misses; blank to leave disabled";
+      type        = "hidden";
+    };
+    prompts."screenscraper-password" = {
+      description = "ScreenScraper password — blank to leave disabled";
+      type        = "hidden";
+    };
+    # NO MOBYGAMES PROMPT, DELIBERATELY.  MobyGames' API is a paid tier and
+    # there is no key for this clan, so declaring the prompt only ever produces
+    # a blank answer — and a blank answer is not a stable state in clan: it
+    # stores no secret, so `clan machines update` re-prompts for it on every
+    # single deploy and aborts outright when there is no TTY (termios error out
+    # of clan_lib/vars/prompt.py).  Add the prompt back at the moment there is
+    # a key to type into it, not before.
+    prompts."retroachievements-api-key" = {
+      description = "RetroAchievements API key (retroachievements.org/controlpanel.php) — blank to leave disabled";
+      type        = "hidden";
+    };
+
+    runtimeInputs = [ pkgs.coreutils ];
+    script = ''
+      # Same newline strip as romm-metadata-keys: these land in an env file.
+      for f in screenscraper-user screenscraper-password retroachievements-api-key; do
         tr -d '\n' < "$prompts/$f" > "$out/$f"
       done
     '';
@@ -502,18 +653,50 @@ in
         sgdbKey = meta."steamgriddb-api-key".path;
         igdbId  = meta."igdb-client-id".path;
         igdbSec = meta."igdb-client-secret".path;
+        extra   = config.clan.core.vars.generators.romm-metadata-keys-extra.files;
+        ssUser  = extra."screenscraper-user".path;
+        ssPass  = extra."screenscraper-password".path;
+        raKey   = extra."retroachievements-api-key".path;
       in
       ''
         set -eu
         umask 077
         ${pkgs.coreutils}/bin/install -d -m 0700 -o root -g root ${secretsDir}
 
+        # ── Required secrets: a bare cat, so a genuine absence fails loudly ──
         auth=$(${pkgs.coreutils}/bin/cat ${authKey})
         dbpw=$(${pkgs.coreutils}/bin/cat ${dbPw})
         rootpw=$(${pkgs.coreutils}/bin/cat ${rootPw})
-        sgdb=$(${pkgs.coreutils}/bin/cat ${sgdbKey})
-        igdbid=$(${pkgs.coreutils}/bin/cat ${igdbId})
-        igdbsec=$(${pkgs.coreutils}/bin/cat ${igdbSec})
+
+        # ── Optional provider credentials ───────────────────────────────────
+        #
+        # BLANK IS A VALID ANSWER, AND IT HAS TO BE HANDLED HERE.  Both metadata
+        # generators tell the operator they may press enter to leave a source
+        # disabled.  That promise was false: clan does not store an empty answer
+        # to a prompt — it writes no secret file at all, and the var's `.path`
+        # then evaluates to the literal string `/no-such-path`.  Under `set -eu`
+        # a bare `cat` on that exits 1, this unit fails, and podman-romm.service
+        # and podman-romm-db.service never start because they order after it.
+        #
+        # That is exactly what happened on 2026-09-07: MobyGames is a paid tier,
+        # the prompt was answered blank as the comment invited, and RomM went
+        # down on the next deploy.  `ls vars/per-machine/ernst/…/mobygames-api-key`
+        # shows `machines users` where the answered ones show `machines secret
+        # users` — the missing `secret/` is the whole failure.
+        #
+        # An unset value is what RomM wants anyway: config/__init__.py reads each
+        # key with _get_env and every handler gates on bool(), so empty means
+        # "source disabled" rather than "misconfigured".
+        optional_secret() {
+          if [ -r "$1" ]; then ${pkgs.coreutils}/bin/cat "$1"; fi
+        }
+
+        sgdb=$(optional_secret "${sgdbKey}")
+        igdbid=$(optional_secret "${igdbId}")
+        igdbsec=$(optional_secret "${igdbSec}")
+        ssuser=$(optional_secret "${ssUser}")
+        sspass=$(optional_secret "${ssPass}")
+        rakey=$(optional_secret "${raKey}")
 
         ${pkgs.coreutils}/bin/install -m 0400 -o root -g root /dev/null ${secretsDir}/romm.env
         ${pkgs.coreutils}/bin/cat > ${secretsDir}/romm.env <<EOF
@@ -522,6 +705,9 @@ in
         STEAMGRIDDB_API_KEY=$sgdb
         IGDB_CLIENT_ID=$igdbid
         IGDB_CLIENT_SECRET=$igdbsec
+        SCREENSCRAPER_USER=$ssuser
+        SCREENSCRAPER_PASSWORD=$sspass
+        RETROACHIEVEMENTS_API_KEY=$rakey
         EOF
 
         ${pkgs.coreutils}/bin/install -m 0400 -o root -g root /dev/null ${secretsDir}/romm-db.env
@@ -595,6 +781,52 @@ in
       # generator below — the empty-prompt path leaves them unset, so a machine
       # whose owner has not signed up still deploys and still scans.
       HASHEOUS_API_ENABLED = "true";
+
+      # LaunchBox is the other source that costs nothing: `config/__init__.py`
+      # reads LAUNCHBOX_API_ENABLED as a plain bool and
+      # `launchbox_handler/handler.py` gates on it alone — there is no API key
+      # and no account.  Its corpus is the LaunchBox Games Database, which is
+      # retro-first and carries a lot of the regional and compilation releases
+      # IGDB does not, so it is enabled unconditionally alongside Hasheous.
+      LAUNCHBOX_API_ENABLED = "true";
+
+      # ── LaunchBox needs its dump imported, or it reports "Connection failed" ──
+      #
+      # LAUNCHBOX_API_ENABLED alone is not enough, and the UI says so honestly.
+      # LaunchBox is not a live API: `update_launchbox_metadata.py` downloads
+      # https://gamesdb.launchbox-app.com/Metadata.zip and folds it into a
+      # cache, and `handler.py:heartbeat()` returns
+      # `is_remote_store_populated()` with the comment "Cloud lookups read from
+      # a cache the metadata update task fills. Until it has run, every lookup
+      # returns nothing, so reporting healthy here would be a lie."
+      #
+      # The import only ever runs from the scheduled task, and that task is off
+      # by default — which is why enabling the source produced a red
+      # "Connection failed" rather than a working provider.  Turning the
+      # schedule on is the actual enablement; the cron default is 04:00 daily.
+      ENABLE_SCHEDULED_UPDATE_LAUNCHBOX_METADATA = "true";
+
+      # ── The three remaining no-credential sources ────────────────────────
+      #
+      # All plain bools in `config/__init__.py`, all with live HTTP heartbeats
+      # (no local store to populate first, unlike LaunchBox above), so they go
+      # healthy as soon as they are switched on:
+      #
+      #   Flashpoint Archive — web/Flash preservation corpus.
+      #   HowLongToBeat     — completion times.
+      #   PlayMatch         — a *match proxy* rather than a metadata source: it
+      #                       resolves a dump to a known game id, which is the
+      #                       same job Hasheous does, so it mainly helps the
+      #                       hacks and multicarts IGDB cannot name.
+      #                       PLAYMATCH_API_URL defaults to
+      #                       https://playmatch.retrorealm.dev/api/v2.
+      #
+      # Note these are not free at scan time: every extra source is another
+      # per-ROM round trip, on top of the IGDB/SteamGridDB/Hasheous calls that
+      # already put throughput at ~150 ROMs/hour/worker.  See SCAN_TIMEOUT below.
+      FLASHPOINT_API_ENABLED = "true";
+      HLTB_API_ENABLED       = "true";
+      PLAYMATCH_API_ENABLED  = "true";
 
       # ── Why these two are set, and what happens when they are not ──────────
       #

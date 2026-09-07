@@ -28,6 +28,11 @@
   # it wants the same treatment: 80×25 boot menu and a ter-v24n console font.
   clanarchy.display.scale = 1.25;
 
+  # Stylix palette + polarity — see modules/themes/palettes.nix for the
+  # registry. Stated explicitly rather than left to the option default so the
+  # two Niri workstations declare their palettes the same way.
+  clanarchy.theme = "selenized-black";
+
   # 2-in-1: accelerometer + auto-rotation + on-screen keyboard.
   # See modules/hardware/convertible.nix; the Niri bind that summons the OSK
   # (Mod+O) is guarded on this same option in modules/desktop/niri-hm.nix.

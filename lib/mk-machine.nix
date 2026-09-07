@@ -60,6 +60,11 @@ rec {
     ../modules/networking/mdns.nix
     ../modules/networking/resolved.nix
     ../modules/networking/initrd-ssh.nix
+    # Pins every clan machine's host key on every address it answers on,
+    # generated from committed vars. Fleet-wide because any machine may be the
+    # one running `clan machines update`, and the address clan picks depends on
+    # which path answers first.
+    ../modules/networking/clan-known-hosts.nix
     ../modules/hardware/cpu.nix
     ../modules/hardware/gpu.nix
     # ZSA keyboards (Voyager et al). Declares `clanarchy.hardware.zsa` and
