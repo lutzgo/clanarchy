@@ -60,8 +60,9 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M13 — media lifecycle | **done — deployed via [#102](https://github.com/lutzgo/clanarchy/pull/102), operator-confirmed 2026-08-27** | [#102](https://github.com/lutzgo/clanarchy/pull/102) | Deployed and confirmed working by lgo, with no deploy findings recorded — Janitorr stays in **dry-run** as the plan requires, so letting it delete is a deliberate later step, not part of this close. M16 (external ingress for Jellyseerr) is now unblocked. Jellyseerr (internal scope), Janitorr (dry-run) and Scraparr all land in the **existing** arr container; three M6 exporter targets, not four. **Janitorr publishes no artifact at all** — GitHub releases carry zero assets and the only channel is a Paketo OCI image — so it is the repo's first from-source **Gradle/Spring Boot 4** build, with a committed 350-artifact mitm-cache lock. **Three roadmap premises did not survive checking**: `services.jellyseerr` is now a renamed alias for **`services.seerr`**; **Ollama serves no `/metrics`** (404, measured), so its target is dropped and handed to M15 with the reasoning; and **Jellystat is deferred** — it needs PostgreSQL, and Janitorr's own docs now recommend `janitorr-stats` instead. Janitorr also has **no web UI**, so its port is bound to loopback and routed nowhere. Depends on M6. [M13](#m13-featernst-media-lifecycle) |
 | M14 — libraries | **done — deployed and merged 2026-08-29 ([#108](https://github.com/lutzgo/clanarchy/pull/108)); ONE VERIFICATION STILL OWED** | — | All six land: Lidarr + slskd + Soularr, Kapowarr, Questarr, Audiobookshelf, Storyteller. **The hardlink proof PASSED with its negative control, run pre-deploy** — the chain works iff slskd carries `UMask=0002`, and **the nixpkgs slskd module does not set one**, so every music import would have silently degraded to a copy. **Four premises did not survive checking**: Storyteller's upstream repo has **moved** (the roadmap's link is an archived namespace) and has no sane non-Docker build, so it takes the **podman tier** — the tier's second occupant; **Questarr publishes no release assets**, making it M14's only real build; **Audiobookshelf's port is 8000 in nixpkgs**, not the roadmap's 13378; and **`lidarr.nix` and `audiobookshelf.nix` ship NO hardening at all** — both measured at **9.0 UNSAFE** before, 1.6 OK after. Soulseek through the VPN exit measured reachable; **peer connectivity is the remaining go/no-go**. Depends on M12. [M14](#m14-featernst-libraries) |
 | M15 — Tdarr / space reclamation | **closed 2026-08-29 — measured, and NOTHING SHIPS: neither Muxarr nor Tdarr** | — | The Muxarr measurement the milestone required ran first, over the whole library (7,469 files, 20.94 TiB, per-stream sizes mostly from exact mkv statistics tags): a full track-strip pass reclaims **375 GiB — 1.7%** — against **57.6 TiB free** on a pool at 31%. And the "zero quality risk" premise was wrong for THIS household: 115 GiB of that figure is Japanese audio on anime, and **300 films carry no German or English track at all** — this library watches original-language versions, so language-stripping is a curation risk, not a free lunch. The transcode side dissolves with it: the h264 tier is 4,968 hours / 14.59 TiB, i.e. months of 16-core SVT-AV1 to reclaim ~5 TiB nobody is short of. **The GPU arbitration problem M15 existed to solve is not solved — it is UNPROVOKED**: no service claims the render node, so Ollama's 2 GB headroom stays uncontested. uid 3023 stays reserved-not-used; no router, no exporter. Re-open triggers recorded in the close-out. Depends on M12. [M15](#m15-featernst-tdarr) |
-| M16 — external ingress | **built 2026-08-29 — deploy, Cloudflare/UDM-Pro steps and the external negative controls are lgo's** | — | **(B) won — Cloudflare Tunnel**, on the fail-closed argument its brief predicted: the tunnel's ingress list names its hostnames, so `sonarr.goclan.org` and the rest are not refused from outside, they are **not there**. cloudflared runs in its **own nspawn container** (`10.0.90.21`, uid 3029, MAC `…:0d`) — microvm argued and rejected — with an **egress firewall** admitting only Traefik `:443` and Technitium `:53` on RFC1918, so a compromised tunnel can reach on the LAN exactly what the internet already reaches through it. **One premise did not survive implementation**: the test plan listed `auth.goclan.org` among the must-be-unreachable names, but forward-auth is a redirect protocol — **the portal must ride the tunnel or no external login can complete**; the corrected test plan is in the PR. The jellyseerr router **gains `authelia`** (both paths — a ClientIP split fails open, and an XFF-based bypass trusts the header this milestone exists to distrust); a `household` group + **sabine's account** make that survivable for non-admins. **Wizarr evaluated and dropped**: the accounts created numbered one. SN2 untriggered — the tunnel is outbound-only. Depends on M13. [M16](#m16-featernst-external-ingress) |
+| M16 — external ingress | **superseded 2026-09-03 by [M18](#m18-featernst-wan-ingress-direct)** — the tunnel is deleted; the two externally reachable hostnames and the auth posture are unchanged, only the mechanism | — | **(B) won — Cloudflare Tunnel**, on the fail-closed argument its brief predicted: the tunnel's ingress list names its hostnames, so `sonarr.goclan.org` and the rest are not refused from outside, they are **not there**. cloudflared runs in its **own nspawn container** (`10.0.90.21`, uid 3029, MAC `…:0d`) — microvm argued and rejected — with an **egress firewall** admitting only Traefik `:443` and Technitium `:53` on RFC1918, so a compromised tunnel can reach on the LAN exactly what the internet already reaches through it. **One premise did not survive implementation**: the test plan listed `auth.goclan.org` among the must-be-unreachable names, but forward-auth is a redirect protocol — **the portal must ride the tunnel or no external login can complete**; the corrected test plan is in the PR. The jellyseerr router **gains `authelia`** (both paths — a ClientIP split fails open, and an XFF-based bypass trusts the header this milestone exists to distrust); a `household` group + **sabine's account** make that survivable for non-admins. **Wizarr evaluated and dropped**: the accounts created numbered one. SN2 untriggered — the tunnel is outbound-only. Depends on M13. [M16](#m16-featernst-external-ingress) |
 | M17 — ebook acquisition | **done — deployed and operator-confirmed 2026-08-31; both owed verifications PASSED** | — | **Bindery v1.33.2 lands exactly as surveyed**: uid 3028 in the arr container, static Go binary from the upstream tarball (checksum verified against upstream's own `checksums.txt`), hardened unit written whole with all four M14 deploy-defect classes answered in place — including **one new trap found by running the binary: `BINDERY_DB_PATH` does not follow `BINDERY_DATA_DIR`**, so both are pinned or first start dies on `mkdir /config`. **The M14-era "Usenet-oriented, poor fit" note is resolved**: upstream's repo *description* still says SABnzbd — the stale artifact — while the README and settings at v1.33.2 carry qBittorrent/Transmission/Deluge/rTorrent and Torznab; the M17 survey re-checked and is right. Binds `0.0.0.0` (measured), so the container firewall is load-bearing, questarr-style. **Prowlarr wiring goes the Questarr way**: Bindery *consumes* Torznab feeds, it is not a Prowlarr application. Traefik router behind `authelia` + `protectedHosts` entry. `MemoryDenyWriteExecute = true` — the first unit in the arr container that can carry it (Go, no JIT). **Audiobook capability deliberately unrouted**: that pipeline belongs to Audiobookshelf + Storyteller. **Both owed verifications passed on deploy day**: the uid-3028 hardlink proof (same inode, link count 2) **with its negative control** (0644 file owned by uid 3017 refused `EPERM`, `fs.protected_hardlinks` confirmed enabled first), and `systemd-analyze security bindery` at **1.5 OK** — level with kapowarr/questarr, against the 9.0 UNSAFE lidarr and audiobookshelf shipped as. The firewall was confirmed load-bearing: `10.0.90.13:8787` times out from the LAN while the Traefik name redirects to Authelia. **One deploy-day defect, and it was in the manual steps rather than the code**: they omitted the Technitium record, which the roadmap requires for every new Traefik hostname *before anyone types the name* — the name was typed first, the NXDOMAIN cached, and `ERR_NAME_NOT_RESOLVED` survived the record's creation until `resolvectl flush-caches`. **The ABS integration was wired after the fact and stays read-only by enforcement**: `/srv/audiobooks` is mounted `ro` in Bindery's namespace (measured), so it catalogues but cannot move, rename or delete — letting it *acquire* audiobooks remains the thing to avoid. Depends on M14. [M17](#m17-featernst-bindery) |
+| M18 — WAN ingress, direct | **built 2026-09-03 — the deploy, the UDM-Pro forward, the public A records, the reboot and the off-net negative controls are lgo's** | — | **Cloudflare is gone.** lgo's decision: no VPS, no VPN, no third party in the data path. WAN `:443` DNATs to `10.0.90.12:8443` and terminates at Traefik; `containers/cloudflared.nix` is deleted. **The property M16 bought is reproduced with a SECOND ENTRYPOINT, not asserted**: `websecure` stays LAN-only with every pre-existing router untouched, `wan` is a new listener, and a router is internet-reachable iff it names `wan` — so creating a route does not expose it. **The central premise was TESTED ON A SCRATCH TRAEFIK BEFORE ANY CONFIG WAS WRITTEN, and it came back with a correction that changed the design**: a `websecure`-only router is genuinely unmatched on `wan` (404, no backend contact, against a 502 control) — but **a router that OMITS `entryPoints` is bound to EVERY entrypoint**, which is M16's fail-open objection reborn inside the replacement. Closed with `withWan`, an **evaluation-time throw** whose three branches were each verified to fire. Forgetting is a build failure. **Weaker than the tunnel in exactly one measured way, stated rather than smoothed**: a request to the bare public IP completes TLS and gets `404` + `CN=TRAEFIK DEFAULT CERT` — existence disclosure, not exposure. **CrowdSec runs INSIDE the Traefik netns**, because `br_netfilter` is not loaded on ernst (measured) so the host's netfilter never sees the DNATed frames at all — a bouncer anywhere else would drop nothing. **It ships in SIMULATION until Q2 is confirmed**: if the UDM-Pro SNATs, the first scanner gets the gateway banned and the house loses Jellyseerr. **nixpkgs' crowdsec modules were booted in a throwaway VM six times before the real config was written, and FOUR upstream defects fell out** — an agent that crash-loops forever on a first boot while `list-units --failed` stays EMPTY, a bouncer registration that can never succeed, `Restart=no` on both remediation units, and `DynamicUser` migrating a bind-mounted state directory. The ordering bug the brief predicted is **already fixed** in this channel. **SN2 is decided, not deferred**: (a) v4-only, with a mechanism — every entryPoint binds `0.0.0.0:`, no v6 forward, no `crowdsec6` table. **One alert, `ExposedAndUnprotected`** — not "many bans", because a busy ban list is the system working and the silent failure is the house being open with nothing watching. Depends on M5, M7, M16, M17. [M18](#m18-featernst-wan-ingress-direct) |
 
 ---
 
@@ -273,14 +274,78 @@ block above before believing otherwise.
   proven default-deny inbound, and maintained in parallel from then on — a
   standing cost, not a one-time one.
 
-**Not decided here.** Recorded as owed.
+### DECIDED 2026-09-03 by [M18](#m18-featernst-wan-ingress-direct): (a), and now with a mechanism
 
-**Triggers**, any of which forces it: [M16](#m16-featernst-external-ingress)
-choosing the port forward (the tunnel sidesteps v6 entirely); any milestone
-setting `IPv6AcceptRA = true` on VLAN 90; any UDM-Pro change enabling RAs or
-DHCPv6 on the Services network; any service needing v6 reachability from outside.
+**The trigger this note named fired.** It said the decision was forced by "M16
+choosing the port forward"; M16 chose the tunnel and deferred it, and **M18
+un-deferred it** by dropping the tunnel and opening a real WAN port. That ends
+the exemption the tunnel bought: with inbound ingress on the box, an unaudited
+v6 path is a *second* way in that bypasses the `wan` entrypoint — and therefore
+bypasses the entire fail-closed argument M18 is built on.
 
-Cross-referenced from [M16](#m16-featernst-external-ingress) and
+**The answer is (a): the WAN-facing path is IPv4-only BY CONSTRUCTION.**
+
+**What was measured, on ernst and in every container, 2026-09-03** — the
+baseline above, re-run as this note requires:
+
+```
+ip -6 addr show                       # on ernst
+  br0         fe80::b08b:e1ff:fef2:1e7c/64     link-local only
+  mon0        fdca:fe90::1/128                 M6's ULA, host end
+  ztzavl64zk  fdda:106a:…:711f/88              ZeroTier rfc4193
+  (no ISP-delegated address anywhere)
+
+ip -6 route show default              → nothing.  No RA has ever been accepted.
+cat /proc/sys/net/ipv6/conf/br0/accept_ra → 0
+
+nixos-container run <c> -- ip -6 addr show eth0
+  jellyfin fe80::ff:fe90:2   traefik fe80::ff:fe90:4   arr        fe80::ff:fe90:5
+  monitoring fe80::ff:fe90:6 authelia fe80::ff:fe90:7  tvheadend  fe80::ff:fe90:a
+ip netns exec <ns> ip -6 addr show    # the podman tier
+  tubesync fe80::ff:fe90:b  storyteller fe80::ff:fe90:c  romm fe80::ff:fe90:e
+```
+
+**Link-local only, everywhere. Still no GUA anywhere on VLAN 90, and ernst still
+holds no ISP-delegated v6 address at all.** The 2026-08-25 baseline reproduced
+exactly, eight days and four milestones later.
+
+**What CHANGED is that this is now enforced rather than observed.** The note's
+own complaint was that `IPv6AcceptRA = false` "propagated by copying" and that
+nothing defends the safe state. M18 adds three mechanisms, all greppable:
+
+- **every Traefik entryPoint binds `0.0.0.0:` and not `:`** — `web`,
+  `websecure`, `wan` and `metrics`. A bare `:443` binds the v6 wildcard too, so
+  the old config had four v6 listeners waiting for an address to arrive. Now
+  there are none, and the bind is the defence rather than the absence of a GUA;
+- **the WAN forward on the UDM-Pro is IPv4 only, and no v6 forward is created** —
+  it is in M18's manual steps as an explicit "do not";
+- **CrowdSec's remediation declares `nftables.ipv6.enabled = false`**, so there
+  is no `crowdsec6` table. A v6 ban chain that nothing can ever match is the
+  kind of rule that later reads as enforcement.
+
+**WHAT IS STILL NOT AUDITED, AND MUST NOT BE READ AS AUDITED.** The UDM-Pro's
+**IPv6 ruleset** was *not* inspected — Claude does not touch the UDM-Pro, and
+lgo's manual steps for M18 do not include it because the design was made not to
+need it. That is the honest scope of this decision: **(a) does not require the
+v6 ruleset to be correct; it requires there to be nothing listening on v6.** The
+two are different claims and only the second is made here.
+
+**The residual risk, stated plainly.** If ernst ever acquires a GUA *and* some
+future service binds `:port` rather than `0.0.0.0:port`, that service is exposed
+to whatever the UDM-Pro's unaudited v6 ruleset permits — the same hazard as
+before, now narrowed to "a service that ignores the bind convention". Nothing in
+the fleet monitors for an unexpected GUA, which remains true and remains the
+weakest part of this.
+
+**Triggers that re-open it**, now that it is decided: ernst or any container
+acquiring a **global** v6 address (re-run the block above — a GUA on VLAN 90 is
+an incident, not a note); any milestone setting `IPv6AcceptRA = true` on VLAN 90;
+any UDM-Pro change enabling RAs or DHCPv6 on the Services network; any service
+that must be reachable over v6 from outside, which would force the (b) branch
+and the standing cost that comes with it.
+
+Cross-referenced from [M16](#m16-featernst-external-ingress),
+[M18](#m18-featernst-wan-ingress-direct) and
 [Floating / backlog](#floating-backlog).
 
 ### SN3 — A broken instrument is indistinguishable from a bad result
@@ -380,7 +445,10 @@ Rows are retired only by the PR that actually removes the rule.
 | — | **M12 created no row, as predicted — confirmed 2026-08-26** | — | Everything in M12 landed inside the **existing** arr container and opened no port reachable outside it. The one thing it *did* touch is the explicit port list `containers/arr.nix` feeds to its `concatMapStrings` Traefik source-restriction, which gained `bazarr` 6767, `cleanuparr` 11011 and `mediathekarr` 5007 — plus three ordinary Traefik routers behind `authelia` and three names in `protectedHosts`, which are invariant #3 working as designed and not shims. **Four ports were deliberately kept OFF the list**: `flaresolverr` 8191 as before, MediathekArr's indexer 5008, and UmlautAdaptarr's 5005 and **5006**. All four bind `0.0.0.0`/`[::]`, so the container firewall is the only thing keeping them off VLAN 90 — and 5006 is an HTTP proxy, the same class of gift as 8191. Byparr, when [M12b](#m12b-featernst-byparr) lands, inherits FlareSolverr's exact posture | **permanent** — there is nothing interim here | not created |
 | L8 | TubeSync web UI port, mgmt-VLAN scoped | M9 (host/container firewall, v1) | Only if M9 lands before M5 — an admin UI with no proxy in front of it yet. Mgmt-scoped, so invariant #3 does not cover it | **M5** — replace with the Traefik route. Never created at all if M5 lands first | **RETIRED as never-created (M9 built 2026-08-27).** M5 landed long before M9, so TubeSync got an ordinary Traefik router behind `authelia` and opened no port at all. The row's own note already predicted this. What it did NOT predict is that the web UI needed a firewall anyway, in a place the ledger has no concept of: a bare network namespace handed to podman has no rules, and podman adds none, so `containers/tubesync.nix` installs them inside the namespace — 4848 from Traefik only. That is not an interim rule and gets no row; it is the same backend-side source restriction `containers/traefik.nix` applies everywhere else |
 | — | **M13's Jellyseerr and M15's Tdarr routes** | Traefik (`containers/traefik.nix`), M13 and M15 | Both are ordinary Traefik routers on names the M5 wildcard already covers, riding the permanent `Allow Traefik` rule. **Neither is a shim** — listed so nobody creates a ledger row for a route | **permanent** — this is invariant #3 working as designed, not an exception to it | not created. **M15's half is now moot**: the milestone closed 2026-08-29 without shipping, so the Tdarr router was never created (the guidance stands for any future service: `authelia` middleware, not `mgmt-only`, which M7 deleted per L5). M13's Jellyseerr router exists and deliberately carries **no** middleware (household service; its posture is Jellyseerr's own Jellyfin-account login — see M13). Copy the *arr routers for anything new. Adding a hostname to the middleware also means adding it to `access_control` in `containers/authelia.nix`, which is deny-by-default: a route with the middleware and no matching rule fails **closed** |
-| — | `WAN → jellyseerr.goclan.org` **+ `auth.goclan.org`**, via Cloudflare Tunnel | M16 — `containers/cloudflared.nix` | **This is a deliberate bypass of the "hosts on VLANs the UDM-Pro controls" threat model that every milestone before M16 assumed.** Architecture invariant #4 requires bypasses to be listed; this is it — the first thing in the fleet accepting connections from outside the home network. **Mechanism**: cloudflared (own nspawn container, `10.0.90.21`, outbound-only) declares exactly these two hostnames; two proxied CNAMEs at Cloudflare point them at `<tunnel-id>.cfargotunnel.com`; **no UDM-Pro inbound rule exists**, and the WAN ruleset showing none is part of the test plan. **Auth posture, in the same row as required**: the unauthenticated attack surface is **Authelia** — the jellyseerr router carries `forwardAuth`, policy `two_factor` for `admins` OR `household`, with Jellyseerr's own Jellyfin-account login kept underneath for the reason M6 kept Grafana's local admin. `auth.goclan.org` is on the tunnel **because forward-auth is a redirect protocol** — the portal IS the external attack surface, by design; what the internet meets there is Authelia's login form, per-user regulation (3/5min→15min ban) and mandatory 2FA. **Split horizon survives**: Technitium keeps resolving both names to `10.0.90.12` internally, so household traffic never transits Cloudflare. **The tunnel must NEVER grow a `jellyfin.goclan.org` hostname** — Cloudflare's terms and the header of `cloudflared.nix` both say why. **Invariant #4's Jellyfin exemption does not transfer**: it exists because TV and mobile clients cannot survive a forward-auth redirect, and Jellyseerr's only client is a browser | **permanent** — written as a `—` row, in the same shape as the qBittorrent WebUI row, so a future milestone does not mistake it for something to retire and "fix" by removing the restriction | **created 2026-08-29** (M16 built; the row is live once lgo runs the deploy + Cloudflare steps and the phone-on-mobile-data negative controls pass) |
+| — | `WAN → jellyseerr.goclan.org` **+ `auth.goclan.org`**, via the `wan` Traefik entryPoint | M18 — `containers/traefik.nix` (`wanExposed`) + a UDM-Pro DNAT | **THE SAME BYPASS AS M16'S ROW BELOW, THROUGH A DIFFERENT MECHANISM — it is not a new exposure and the hostname set has not grown.** Architecture invariant #4 requires bypasses to be listed; this is the live one. **Mechanism**: the UDM-Pro DNATs WAN `:443` → `10.0.90.12:8443`, which is Traefik's `wan` entryPoint; a router reaches it if and only if it names `wan`, and only `jellyseerr-wan` and `authelia-wan` do — copied by `withWan` from their LAN twins so rule, service and forward-auth cannot disagree between the two paths. **Two independent gates**: the entrypoint, and public DNS (only these two names have A records; everything else NXDOMAINs from outside). **Fail-closed by construction, with a mechanism and not a comment**: `withWan` THROWS at evaluation if any router omits `entryPoints` (Traefik binds such a router to every entrypoint — measured), if `wanExposed` names a router that does not exist, or if any router adds `wan` by hand. **Where this is weaker than the tunnel, stated**: a request to the bare public IP with any SNI completes a TLS handshake and gets `404` + `CN=TRAEFIK DEFAULT CERT` — an existence disclosure, not an exposure, and the case DNS cannot gate. **Auth posture unchanged from M16**: `two_factor` for `admins` OR `household` on jellyseerr, Jellyseerr's own Jellyfin login underneath, and `auth.goclan.org` external because forward-auth is a redirect protocol. **Plus what the tunnel never had**: `rateLimit` + `inFlightReq` on the wan routers only, and CrowdSec dropping at the packet layer. **:80 IS NOT FORWARDED** — ACME is DNS-01, HTTP-01 never runs, and this row is where that is written down so nobody opens it "for Let's Encrypt" | **permanent** — a `—` row, in the same shape as the qBittorrent WebUI row, so a future milestone does not mistake it for something to retire and "fix" by removing the restriction | **created 2026-09-03** (M18 built; live once lgo runs the UDM-Pro forward, the two public A records and the deploy, and the off-net negative controls pass) |
+| — | **CrowdSec ships in SIMULATION — provisional, and this row is the trigger** | M18 — `containers/crowdsec.nix`, `enforce = false` | **Detection is on; enforcement is off.** CrowdSec parses, fires scenarios and records decisions, but marks them simulated so the bouncer drops nothing. **Why**: every remediation here keys on the source address in Traefik's access log, and **Q2 — does the UDM-Pro's DNAT preserve the source, or SNAT it — is UNRESOLVED until measured from off-net.** If it SNATs, the first scanner gets `10.0.90.1` banned, which takes the whole house off Jellyseerr. A control that can do that must not be armed on a guess | **`enforce = true` once Q2 is CONFIRMED**, by one off-net request and `journalctl -u traefik -n 5 -o cat \| jq -r .ClientHost` showing the real external address. If it shows the gateway instead, the milestone needs `proxyProtocol` or a different forward mode and this row stays open | **created 2026-09-03**, provisional |
+| — | **CrowdSec fetches its hub over the network at every service start** | M18 — nixpkgs' `services.crowdsec`, `ExecStartPre` | **A real departure from this repo's hashed-inputs posture, recorded rather than glossed.** The module's setup script runs `cscli hub update` on every start, under `set -euo pipefail`, with no option to disable it — so parser and scenario content arrives unpinned, at service start, on the machine's ingress boundary. **Accepted because the hub IS the product** (a pinned scenario set is last year's attack patterns) **and because the failure is bounded and visible**: an unreachable hub fails the ExecStartPre, which fails the unit, which now retries — and the `ExposedAndUnprotected` alert fires on exactly that state. **It is also why no Traefik plugin is used**: the CrowdSec Traefik middleware is a Yaegi plugin fetched from `plugins.traefik.io` at *Traefik's* startup, and putting an unpinned fetch in the start path of the service every other service is behind is a strictly worse trade than putting one in CrowdSec's | **revisit if** a hub outage is ever observed holding the agent down after a WAN interruption, or if CrowdSec gains an offline/vendored hub mode. The fix then is `localConfig.parsers`/`scenarios` written in Nix, which the module already supports and which this file already uses for the RFC1918 whitelist | **created 2026-09-03**, permanent-unless-triggered |
+| — | `WAN → jellyseerr.goclan.org` **+ `auth.goclan.org`**, via Cloudflare Tunnel | M16 — `containers/cloudflared.nix` | **This is a deliberate bypass of the "hosts on VLANs the UDM-Pro controls" threat model that every milestone before M16 assumed.** Architecture invariant #4 requires bypasses to be listed; this is it — the first thing in the fleet accepting connections from outside the home network. **Mechanism**: cloudflared (own nspawn container, `10.0.90.21`, outbound-only) declares exactly these two hostnames; two proxied CNAMEs at Cloudflare point them at `<tunnel-id>.cfargotunnel.com`; **no UDM-Pro inbound rule exists**, and the WAN ruleset showing none is part of the test plan. **Auth posture, in the same row as required**: the unauthenticated attack surface is **Authelia** — the jellyseerr router carries `forwardAuth`, policy `two_factor` for `admins` OR `household`, with Jellyseerr's own Jellyfin-account login kept underneath for the reason M6 kept Grafana's local admin. `auth.goclan.org` is on the tunnel **because forward-auth is a redirect protocol** — the portal IS the external attack surface, by design; what the internet meets there is Authelia's login form, per-user regulation (3/5min→15min ban) and mandatory 2FA. **Split horizon survives**: Technitium keeps resolving both names to `10.0.90.12` internally, so household traffic never transits Cloudflare. **The tunnel must NEVER grow a `jellyfin.goclan.org` hostname** — Cloudflare's terms and the header of `cloudflared.nix` both say why. **Invariant #4's Jellyfin exemption does not transfer**: it exists because TV and mobile clients cannot survive a forward-auth redirect, and Jellyseerr's only client is a browser | **RETIRED 2026-09-03 by [M18](#m18-featernst-wan-ingress-direct)** — the trigger was not "tidiness" but lgo's decision to take the third party out of the TLS path | **RETIRED 2026-09-03.** `containers/cloudflared.nix` is DELETED, its clan var `cloudflared-jellyseerr` is deleted, and its MAC/address (`02:00:00:90:00:0d` / `10.0.90.21`) are marked free again in `machines/ernst/networking.nix`. **The bypass itself is NOT retired** — the same two hostnames are still internet-reachable, now through the `wan` entryPoint row above; only the mechanism changed. **What was gained**: Cloudflare no longer terminates TLS and can no longer read the Jellyfin credentials the Jellyseerr login form carries, and there is one fewer availability dependency. **What was paid**: the home IP is in public DNS, there is no volumetric DDoS absorption, and SN2 could no longer be deferred. **The tunnel-versus-forward argument that lived in that file's header is preserved in [M16](#m16-featernst-external-ingress) and in `containers/traefik.nix`'s TWO ENTRYPOINTS block** — a deleted rationale is a rationale that gets re-lost. **lgo revokes the Cloudflare tunnel token and deletes the tunnel AFTER the direct path is proven, not before; the ZONE STAYS** — ACME DNS-01 still uses it |
 
 ---
 
@@ -7155,6 +7223,34 @@ Constraints:
 
 ## M16 — `feat/ernst-external-ingress`
 
+!!! warning "SUPERSEDED 2026-09-03 by [M18](#m18-featernst-wan-ingress-direct) — the tunnel is gone, the property is not"
+
+    **What M18 changed:** the Cloudflare Tunnel was dropped for a UDM-Pro port
+    forward terminating at Traefik. `containers/cloudflared.nix` is deleted.
+    lgo's decision, taken to get a third party out of the TLS path.
+
+    **What M18 did NOT change:** the externally reachable set is still exactly
+    `jellyseerr.goclan.org` and `auth.goclan.org`; the auth posture is
+    unchanged (`two_factor`, `admins` OR `household`, Jellyseerr's own login
+    underneath); and the split horizon still keeps household traffic inside
+    the house.
+
+    **THIS SECTION IS KEPT IN FULL AND IS NOT HISTORY.** It carries the
+    tunnel-versus-forward argument — option (A) versus option (B) below — and
+    that argument is the thing M18 had to answer rather than the thing it
+    discarded. It used to live in `containers/cloudflared.nix`'s header; that
+    file is gone, so **this is now one of the two places it exists** (the other
+    is the TWO ENTRYPOINTS block in `machines/ernst/containers/traefik.nix`).
+    A deleted rationale is a rationale that gets re-lost, and the specific
+    thing that must not be re-lost is **why a plain port forward was refused
+    the first time**: it makes every Traefik router internet-reachable, gated
+    on middleware correctness, and a middleware one edit from wrong fails
+    OPEN. M18 does not disagree with that. It answers it — with a second
+    entryPoint that no existing router names, and an evaluation-time throw
+    that makes forgetting a build failure. Read
+    [M18](#m18-featernst-wan-ingress-direct) before concluding the objection
+    was dropped.
+
 **The milestone.** Make `jellyseerr.goclan.org` reachable **from the internet**,
 and **ONLY** that.
 
@@ -7694,6 +7790,265 @@ and a route with the middleware and no rule fails closed.
 **Prowlarr** gets it as a Torznab consumer. Note Questarr's shape here:
 **Questarr pulls from Prowlarr**, it is not a Prowlarr *application*. Establish
 which way Bindery goes before wiring either side.
+
+---
+
+## M18 — `feat/ernst-wan-ingress-direct`
+
+**The milestone.** Replace M16's Cloudflare Tunnel with a **UDM-Pro port
+forward terminating at Traefik**, *without* losing the property the tunnel was
+chosen for — and add the detection and remediation that a real WAN listener
+needs.
+
+**Depends on.** M5, M7, M16, M17, all deployed. **Risk.** High: it opens a port
+on the house, and it edits the one container every other service is behind.
+
+### The decision, and it was lgo's
+
+**Cloudflare goes.** No VPS, no VPN, no third party in the data path. WAN `:443`
+is opened on the UDM-Pro and terminates at Traefik. Not re-litigated here; the
+costs are recorded because a decision without its costs written down is one that
+gets re-made badly later.
+
+**Accepted:** (a) the home IP appears in public DNS; (b) no volumetric DDoS
+absorption; (c) [SN2](#sn2-ipv6-is-off-and-that-is-now-a-decision) can no longer
+be deferred.
+
+**Recovered:** TLS no longer terminates at a third party that could read every
+Jellyfin credential typed into the Jellyseerr login form, and one fewer
+availability dependency between the household and its own house.
+
+### What M16 bought with the tunnel, and how this reproduces it
+
+**NOT "hides the home IP"** — the address was already public and M3 recorded it.
+**NOT DDoS protection.** What M16 bought is **fail-closed-by-construction**: the
+tunnel's ingress list named two hostnames, so every other Traefik router was not
+*refused* from outside, it **was not there**. M16 rejected the port forward on
+exactly that ground — *"a middleware one edit from wrong fails OPEN."*
+
+**A plain WAN `:443` → `10.0.90.12:443` forward and nothing else would have
+reintroduced precisely that, and would not have been worth merging.** What
+ships instead:
+
+**A SECOND ENTRYPOINT.** `websecure` (`:443`) stays what it was — LAN-only,
+every pre-existing router untouched, not one line edited. `wan` is a new
+listener on `:8443`, reachable only via the UDM-Pro DNAT. **A router is
+internet-reachable if and only if it names `wan`.** Creating a Traefik route
+does not expose it; exposure is one entry in `wanExposed`, and
+`grep -n wan machines/ernst/containers/traefik.nix` is the complete audit —
+which is the property the tunnel's ingress list had and a middleware never can.
+
+**DNS is the second, independent gate.** Only `jellyseerr` and `auth` get public
+A records; Technitium keeps serving everything internally. The split horizon
+described in `traefik.nix`'s header survives intact and is doing more work than
+before, not less. Two gates, both explicit, neither sufficient alone.
+
+**The initial `wan` set is exactly what M16 shipped** — `jellyseerr.goclan.org`
+and `auth.goclan.org`. `auth.` is load-bearing for the same corrected reason M16
+recorded: forward-auth is a redirect protocol, so an external login cannot
+complete unless the portal resolves and routes externally.
+
+### Q1–Q9, answered by measurement
+
+Recorded M2b-style as CONFIRMED / FALSE / UNRESOLVED. The full transcripts are
+in the PR body.
+
+**Q1 — does a `websecure`-only router leak on `wan`? CONFIRMED (it does not),
+WITH ONE CORRECTION THAT CHANGED THE DESIGN.** Tested on a scratch Traefik
+3.7.10 before any config was written, because the milestone rests on it
+entirely:
+
+- a `websecure`-only router requested on `wan` is **unmatched**: `404`, no
+  backend contact. The control — the same request for a router that *does* name
+  `wan` — returned `502` from the absent backend, which is what proves routing
+  happens at all and the 404 is a real miss;
+- unknown SNI and no-SNI on `wan` also `404`;
+- **the TLS handshake completes first, with `CN=TRAEFIK DEFAULT CERT`.** So this
+  is 404-from-Traefik-with-a-cert, not "unrouted". Weaker than the tunnel, and
+  stated rather than smoothed over: anyone scanning the public IP learns a
+  Traefik is here. An existence disclosure, not an exposure;
+- the certificate store is **global and entrypoint-independent** — a certificate
+  attached to no entryPoint was served on both, selected by SNI alone. That is
+  why `wan` carries no `certResolver`: it serves the wildcard `websecure`'s
+  resolver already put in `acme.json`, and declaring a second request for the
+  same main+sans would risk a duplicate issuance against Let's Encrypt's
+  5-per-week limit.
+
+**THE CORRECTION, and it is the reason this milestone has code and not just a
+comment.** A router that **omits `entryPoints` is instantiated on EVERY
+entrypoint.** Measured: a router with no `entryPoints` line appeared as both
+`websecure-forgot-entrypoints@file` **and** `wan-forgot-entrypoints@file`, and
+proxied on `wan`. **So the entrypoint split alone is not fail-closed — the
+default for a forgotten line is exposure**, which is M16's objection reborn
+inside the replacement.
+
+Closed with `withWan`, which **throws at evaluation** if any router omits
+`entryPoints`, if `wanExposed` names a router that does not exist, or if any
+router adds `wan` by hand. All three branches were verified to fire against the
+real config. Forgetting is now a build failure, not a silent exposure.
+
+**Q2 — do real client IPs reach Traefik? UNRESOLVED, and deliberately so.** It
+cannot be answered without an off-net vantage point and a deployed forward,
+both of which are lgo's. **Everything downstream depends on it** — CrowdSec
+bans, Authelia regulation, both rate limits — and a CrowdSec ban on the gateway
+address would take the whole house off Jellyseerr. **CrowdSec therefore ships in
+SIMULATION** (`enforce = false` in `containers/crowdsec.nix`): it detects and
+records, and drops nothing. One edit arms it, after one measurement.
+
+**Q3 — does UniFi's DNAT preserve the source or SNAT? UNRESOLVED.** Same
+reason, and it is the same question as Q2 seen from the device rather than from
+the log. If it SNATs, the milestone needs `proxyProtocol` on the `wan`
+entryPoint or a different forward mode; the ledger row carries the trigger.
+Not assumed either way.
+
+**Q4 — is port 80 needed? CONFIRMED CLOSED.** ACME is DNS-01
+(`traefik.nix` says so explicitly), so HTTP-01 never runs. The `:80` → `:443`
+redirect is an internal convenience for a bare hostname typed on the LAN, and no
+external name is ever handed out as `http://`. **80 stays closed on the WAN**,
+it is an explicit "do not" in the manual steps, and it is in the ledger so
+nobody opens it "for Let's Encrypt".
+
+**Q5 — SN2. AUDITED AND DECIDED: (a), v4-only, now with a mechanism.** The full
+result is in [SN2](#sn2-ipv6-is-off-and-that-is-now-a-decision), updated in this
+PR from "owed" to "decided". Re-measured on ernst 2026-09-03: link-local only on
+`br0` and in all ten containers and netns, **no GUA anywhere on VLAN 90**, no v6
+default route, `accept_ra = 0`. What changed is enforcement: every Traefik
+entryPoint binds `0.0.0.0:` rather than `:` (a bare `:443` binds the v6 wildcard
+too), the UDM-Pro forward is v4-only, and CrowdSec declares
+`nftables.ipv6.enabled = false`. **Scope stated honestly: the UDM-Pro's v6
+ruleset was NOT audited** — Claude does not touch the UDM-Pro — and the decision
+is built not to need it. (a) does not require the v6 ruleset to be correct; it
+requires there to be nothing listening on v6.
+
+**Q6 — access log format. CONFIRMED SAFE TO SWITCH, now `json`.**
+`grep -rn accessLog` over the repo returns **one definition and two comments
+about timezone rendering** — nothing else parses this stream. The switch is
+worth it: `crowdsecurity/traefik-logs` has a CLF grok path and a JSON path, and
+the JSON path reads `ClientHost` — the field Q2 is about — directly, with nil
+guards, rather than re-deriving it from text. Destination is unchanged (stdout →
+journal), so this changes the format and not the plumbing. Request headers stay
+dropped except `User-Agent`, which the bad-user-agent scenario needs and which
+is now load-bearing in two directions.
+
+**Q7 — where does the agent run? ANSWERED BY MEASUREMENT: inside the Traefik
+container's netns, and it could not be anywhere else.** A WAN request goes
+UDM-Pro → trunk → `br0` → veth → the traefik netns, and `br0` forwards those
+frames at layer 2. On ernst, 2026-09-03: `br_netfilter` **not loaded**, and
+`net.bridge.bridge-nf-call-iptables` **does not exist**. **The host's netfilter
+never sees the packet at all**, so a bouncer on ernst could write every rule it
+liked and drop nothing. The only place with both the pre-DNAT source address and
+a hook the packet traverses is that netns — which is also where the log is. So
+agent, LAPI (loopback) and bouncer all live there, and
+`machines/ernst/containers/crowdsec.nix` co-defines `containers.traefik`.
+
+**Q8 — are the modules present, and is the ordering bug there? CONFIRMED
+PRESENT; THE NAMED BUG IS ALREADY FIXED; A DIFFERENT ONE IS NOT.** `crowdsec`
+1.7.7 and `crowdsec-firewall-bouncer` 0.0.34 are both in ernst's channel. The
+brief's expected defect — a bouncer unit lacking `After`/`PartOf` — **is not
+present in this channel**: measured `PartOf=nftables.service` and
+`After=… nftables.service crowdsec.service`. Restating it would have been a
+second source of truth for an ordering that is right, so it is left alone.
+
+**Four other defects were found instead, by booting the modules in a throwaway
+VM built from this flake's nixpkgs — six times — before writing the real
+config.** M14's four deploy-day defects are why. Each is fixed with a named
+override:
+
+1. **The agent crash-loops forever on a first boot, invisibly.** The module's
+   tmpfiles create `/var/lib/crowdsec/state` but not its parent, so the parent
+   lands `root:root`; the unprivileged agent registers itself in the database
+   and then cannot write its API credentials beside it; the setup script's guard
+   is "if the credentials file is absent, add the machine", so from then on it
+   retries an add that can only answer *"user already exist"*. Measured at
+   restart counter 28. **The unit is `activating`, not `failed`, so
+   `systemctl list-units --failed` is EMPTY the whole time.**
+2. **Bouncer registration can never succeed.** The register unit shells out to
+   the raw `cscli` with no `-c`, and the module never creates
+   `/etc/crowdsec/config.yaml` — it renders the config into the store. Without
+   the API key the bouncer dies at `LoadCredential` and there is no remediation
+   at all. Fixed with `environment.etc` generated from the same option.
+3. **Both remediation units ship `Restart=no`.** Measured: on a first boot the
+   bouncer starts before the LAPI is listening, dies on `connection refused`,
+   and stays dead. This is the hazard the brief predicted, one step further on
+   than expected — the ordering is right and the *retry* is missing. SN4's
+   shape.
+4. **`DynamicUser` + `StateDirectory` migrates the state directory.** Measured:
+   *"Found pre-existing public StateDirectory= directory /var/lib/crowdsec,
+   migrating to /var/lib/private/crowdsec."* That directory is a bind mount
+   here. Same trap `service-modules/local-ai.nix` hit with ollama.
+
+With the fixes, the VM reached: agent **active in 2 s**, bouncer registered,
+**1 line read → 1 line parsed** on a real Traefik JSON access-log line, and a
+decision landing in — and then being removed from — the nftables set.
+
+**Q9 — Traefik plugins? CONFIRMED: none, and the reasoning generalises.** The
+CrowdSec Traefik middleware is a Yaegi plugin Traefik fetches from
+`plugins.traefik.io` **at startup** — unpinned network access in the start path
+of the one service every other service is behind. The remediation is the
+nftables bouncer instead, which is strictly better: it drops before Traefik
+parses anything, so a banned scanner costs no TLS handshake. **The same
+objection does apply to CrowdSec's own `cscli hub update` at every agent start**,
+and that is accepted rather than hidden — it has a ledger row with a trigger.
+
+### One more finding worth carrying: `cscli explain` is the wrong instrument
+
+Copying a log line into a file and running `cscli explain -f line --type syslog`
+reported **`parser failure 🔴`** on a line the live pipeline parsed perfectly.
+It is not a parser failure: `explain` feeds the file's raw bytes — bare JSON —
+while the journalctl datasource supplies the syslog envelope `s00-raw` needs.
+Believing that red would mean rebuilding a working pipeline. **[SN3](#sn3-a-broken-instrument-is-indistinguishable-from-a-bad-result)
+pointing the other way: a broken instrument producing a damning result.**
+**The instrument is `cscli metrics show acquisition`** — lines read must equal
+lines parsed.
+
+### The uid 3029 collision, found in passing
+
+`machines/ernst/networking.nix` allocated **3029 twice**: to RomM in the
+allocated table, and to M16's cloudflared in the reserved block. Nothing broke,
+for a reason that is luck rather than design — cloudflared was stateless and got
+no `/srv/state` directory, so the two principals never named the same file on
+zdata. Deleting cloudflared resolves it. Recorded in that file rather than
+quietly cleaned up, because the lesson is about the table: **read both halves
+before picking a number.** CrowdSec took 3030; next free is 3031.
+
+### Shape
+
+**`traefik.nix`** — the `wan` entryPoint on `:8443`; `wanExposed` plus `withWan`
+generating `jellyseerr-wan` and `authelia-wan` **by copying their LAN twins**, so
+rule, service and forward-auth cannot disagree between the two paths; native
+`rateLimit` (50/s, burst 100) and `inFlightReq` (40) on the wan routers only;
+`accessLog` as JSON; all entryPoints bound `0.0.0.0:`. The container's firewall
+moves to **nftables**, and that switch is *for* the bouncer — in iptables mode a
+firewall reload silently orders `nixos-fw`'s ACCEPT ahead of the drop and every
+ban becomes inert, while in nftables mode the drop is its own base chain and
+ordering stops being a property anyone has to get right.
+
+**`crowdsec.nix`** — new, in `machines/ernst/` because it is one machine's
+container wired to one other file in the same directory and could not take a
+clan-service role without reaching into `traefik.nix` from outside. Journald
+acquisition, hub collection `crowdsecurity/traefik` plus the separately-required
+`crowdsecurity/syslog-logs` parser, LAPI on loopback, no CAPI and no console
+(the same "no third party" decision applied consistently), an RFC1918 whitelist
+written in Nix rather than pulled from the hub, and the nftables bouncer.
+Decisions state on **zdata** at `/srv/state/crowdsec` — on zroot every ban would
+evaporate at the next boot, and so would the credentials, putting defect (1) in
+the path of every reboot.
+
+**Monitoring** — a `crowdsec` scrape target (at Traefik's address, because that
+is the netns it lives in) and **one** alert, `ExposedAndUnprotected`. Not "many
+bans": a busy ban list is the system working. The thing nobody would notice is
+the house open to the internet with nothing watching it — every other failure in
+this milestone announces itself, and this one changes nothing observable. It
+fires when Traefik is up and either the agent is unreachable **or the bouncer
+has stopped pulling decisions**, the latter via
+`cs_lapi_bouncer_requests_total{route="/v1/decisions/stream"}` — a metric name
+read out of `/metrics` in the probe VM rather than inferred. `or vector(0)` so
+that a bouncer which never registered at all also fires. `promtool check rules`
+passes.
+
+**Deleted** — `containers/cloudflared.nix`, its flake wiring, its clan var, and
+its MAC/address freed back to the allocation table with a note saying what used
+it and why it went.
 
 ---
 

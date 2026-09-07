@@ -42,13 +42,121 @@
 #   fail loudly.  Note the ACME resolvers below are deliberately NOT Technitium
 #   — see SPLIT HORIZON.
 #
+# ── TWO ENTRYPOINTS, AND WHY THAT IS THE WHOLE SECURITY ARGUMENT ─────────────
+#
+#   M18 replaced the Cloudflare Tunnel with a UDM-Pro port forward.  The tunnel
+#   is gone and machines/ernst/containers/cloudflared.nix is deleted, so THIS
+#   COMMENT IS NOW THE ONLY PLACE THE ARGUMENT LIVES.  Read it before adding a
+#   router, and read docs/roadmap.md M16 for the tunnel-versus-forward history.
+#
+#   WHAT M16 BOUGHT, PRECISELY.  Not "hides the home IP" — the address was
+#   already public and M3 recorded it.  Not DDoS absorption.  What it bought is
+#   FAIL-CLOSED-BY-CONSTRUCTION: the tunnel's ingress list named two hostnames,
+#   so every OTHER router in this file was not refused from outside, it WAS NOT
+#   THERE.  M16 rejected the plain port forward on exactly that ground — with
+#   WAN :443 landing on `websecure`, every router here becomes
+#   internet-reachable, gated on nothing but middleware correctness, and a
+#   middleware one edit from wrong FAILS OPEN.
+#
+#   HOW THAT PROPERTY IS REPRODUCED HERE.  A SECOND ENTRYPOINT.
+#
+#     websecure  :443 on 10.0.90.12   LAN only.  Every router that existed
+#                                     before M18 names this and only this, and
+#                                     none of them was touched.
+#     wan        :8443 on 10.0.90.12  the UDM-Pro's DNAT target, and NOTHING
+#                                     else.  A router is internet-reachable if
+#                                     and only if it names `wan`.
+#
+#   Creating a Traefik route therefore does NOT expose it.  The default is
+#   invisible from outside, and exposure is an explicit, greppable act — one
+#   entry in `wanExposed` below — exactly as adding a hostname to the tunnel's
+#   ingress list was.
+#
+#   MEASURED, NOT ASSUMED (scratch Traefik 3.7.10, 2026-09-03).  The premise
+#   was tested before this config was written, because the milestone rests on
+#   it entirely:
+#
+#     - a `websecure`-only router requested on the `wan` entrypoint is
+#       UNMATCHED: 404, no backend contact.  The control — the same request for
+#       a router that DOES name `wan` — returned 502 from the (absent) backend,
+#       which is what proves routing happens at all and the 404 is a real miss;
+#     - unknown SNI and no-SNI on `wan` also 404;
+#     - the TLS handshake COMPLETES first, with `CN=TRAEFIK DEFAULT CERT`.  So
+#       this is 404-from-Traefik-with-a-cert, NOT "unrouted".  Stated plainly
+#       because it is the one place this is weaker than the tunnel: anyone
+#       scanning the public IP learns a Traefik is here.  That is an existence
+#       disclosure, not an exposure — no router, no backend, no name;
+#     - the certificate store is GLOBAL and entrypoint-independent: a
+#       certificate attached to no entrypoint was served on both, selected by
+#       SNI alone.  That is why the `wan` entrypoint below carries NO
+#       certResolver — it serves the wildcard `websecure`'s resolver already
+#       put in acme.json.  Declaring a second resolver request for the same
+#       main+sans would risk a duplicate issuance against Let's Encrypt's
+#       5-per-week limit, and the failure mode of NOT declaring it is loud and
+#       free (a browser warning naming TRAEFIK DEFAULT CERT).
+#
+#   THE FAIL-OPEN PATH, WHICH IS REAL AND IS DEFENDED IN CODE.  A router that
+#   OMITS `entryPoints` is instantiated by Traefik on EVERY entrypoint.
+#   Measured on the same scratch instance: a router with no `entryPoints` line
+#   appeared as BOTH `websecure-forgot-entrypoints@file` AND
+#   `wan-forgot-entrypoints@file`, and proxied on `wan`.  That is M16's
+#   objection reborn inside the entrypoint design, so the entrypoint split
+#   ALONE is not fail-closed — it is fail-closed plus `withWan`
+#   below, which THROWS AT EVALUATION if any router omits `entryPoints`, or if
+#   the set of routers naming `wan` is anything but the ones `wanExposed`
+#   generates.  Forgetting is a build error, not a silent exposure.  That is
+#   the mechanism; the comment is only the reason.
+#
+#   DNS IS THE SECOND, INDEPENDENT GATE, and it is unchanged.  Only
+#   `jellyseerr` and `auth` have public A records at the registrar; every other
+#   name exists solely inside Technitium, so from outside they NXDOMAIN.  Two
+#   gates, both explicit, neither sufficient alone — DNS does not gate a
+#   request to the bare public IP, which is what the entrypoint is for.
+#
+#   THE COSTS OF DROPPING THE TUNNEL, stated plainly, since cloudflared.nix's
+#   header used to carry the mirror image of this list:
+#
+#     - THE HOME IP APPEARS IN PUBLIC DNS.  Two A records now point at it.
+#     - NO VOLUMETRIC DDoS ABSORPTION.  The line is the line.  `rateLimit` and
+#       `inFlightReq` on the wan routers are application-layer limits and do
+#       not pretend otherwise; CrowdSec drops at the packet layer, which helps
+#       against a scanner and not against a flood.
+#     - SN2 CAN NO LONGER BE DEFERRED.  The tunnel was outbound-only, which is
+#       why SN2 could record IPv6 as un-audited and un-relied-upon.  Opening
+#       WAN ingress ends that exemption — see IPv4-ONLY BY CONSTRUCTION below.
+#
+#   AND WHAT IS RECOVERED, which is why the trade was taken: TLS no longer
+#   terminates at a third party that could read every Jellyfin credential
+#   typed into the Jellyseerr login form, and there is one fewer availability
+#   dependency between the household and its own house.
+#
+# ── IPv4-ONLY BY CONSTRUCTION (standing note SN2) ────────────────────────────
+#
+#   Every entryPoint below binds `0.0.0.0:` and not `:`.  A bare `:443` binds
+#   the v6 wildcard too, and SN2's hazard is precisely that: if the UDM-Pro's
+#   v6 ruleset ever permits inbound and this container ever acquires a global
+#   address, a v6 listener is a second path to every router that bypasses the
+#   UDM-Pro DNAT — and therefore bypasses the `wan` entrypoint entirely.
+#
+#   Measured on ernst 2026-09-03: link-local only on br0 and in all seven
+#   containers, no GUA anywhere on VLAN 90, no v6 default route, and
+#   `accept_ra = 0` on br0.  So this costs nothing today.  It is written down
+#   because "nothing has a GUA" is the state, not the defence — the bind is the
+#   defence, and it is one word per entryPoint.
+#
 # ── TLS: ACME DNS-01, wildcard, split horizon ────────────────────────────────
 #
 #   ONE wildcard certificate for *.goclan.org, issued over the DNS-01
-#   challenge.  DNS-01 specifically so that NOTHING here has to be reachable
-#   from the internet: the challenge is a TXT record lego writes and deletes at
-#   Cloudflare, and no inbound port is ever opened.  There is no HTTP-01, no
-#   port forward, and no WAN exposure of any kind.
+#   challenge.  DNS-01 specifically so that no inbound port is needed to PROVE
+#   DOMAIN CONTROL: the challenge is a TXT record lego writes and deletes at
+#   Cloudflare, and HTTP-01 never runs.
+#
+#   THAT IS WHY :80 IS NOT FORWARDED FROM THE WAN, and it is worth being
+#   explicit because "open 80 for Let's Encrypt" is the single most likely
+#   wrong edit to the UDM-Pro after this milestone.  Nothing external depends
+#   on :80: the `web` entryPoint below exists only to 308 a bare hostname typed
+#   on the LAN over to :443, and no external name is ever handed out as
+#   `http://`.  The ledger carries a row saying so.
 #
 #   SPLIT HORIZON — READ THIS BEFORE ASSUMING ANYTHING IS PUBLIC.
 #
@@ -171,6 +279,14 @@
 #   Nothing else persists.  Both configs are generated from this file into the
 #   Nix store on every deploy, so the container's own root holds no state worth
 #   keeping.
+#
+#   M18 ADDS A SECOND OCCUPANT OF THIS CONTAINER, and its state is its own:
+#   machines/ernst/containers/crowdsec.nix puts the CrowdSec agent, its local
+#   API and the firewall bouncer in THIS netns — because this netns is the only
+#   place that sees the pre-DNAT source address of a WAN request.  Its
+#   decisions database lives at /srv/state/crowdsec on zdata, bound separately.
+#   That file co-defines `containers.traefik.config`; read its header before
+#   assuming this file is the whole of what runs in here.
 { config, lib, pkgs, ... }:
 let
   ############################################################################
@@ -349,6 +465,131 @@ let
   # closes the gap this file's ACME block names — "there is no monitoring on
   # this until M6".
   metricsPort = 8082;
+
+  ############################################################################
+  # ── M18: THE `wan` ENTRYPOINT.  THE COMPLETE EXTERNAL SURFACE ─────────────
+  #
+  # Read the TWO ENTRYPOINTS block in the file header before touching anything
+  # below.  These four bindings and the guard under them are the whole of what
+  # replaced the Cloudflare Tunnel's ingress list.
+  ############################################################################
+
+  # The entryPoint name.  A router is internet-reachable if and only if it
+  # names this, so `grep -n 'wan' machines/ernst/containers/traefik.nix` is the
+  # complete audit — which is the property M16's ingress list had and a
+  # middleware never can.
+  wanEntryPoint = "wan";
+
+  # NOT 443.  The UDM-Pro DNATs WAN :443 → 10.0.90.12:8443, so `websecure`
+  # keeps :443 for the LAN and stays byte-for-byte the listener every internal
+  # client already talks to.  A shared port would mean one listener serving two
+  # trust levels, which is precisely the thing this milestone exists to avoid.
+  wanPort = 8443;
+
+  # THE COMPLETE EXTERNAL SURFACE, AS EXISTING ROUTER NAMES.
+  #
+  # Each entry names a router defined below.  `withWan` copies it onto the
+  # `wan` entrypoint as `<name>-wan`, INHERITING its rule, its service and its
+  # middlewares — see there for why inheritance rather than a second
+  # declaration.  `jellyseerr` and `authelia` are M16's two hostnames, and the
+  # set has not grown.
+  #
+  # ADDING A NAME HERE IS GROWING THE INTERNET-FACING SURFACE OF THE HOUSE.
+  # It needs: a public A record at the registrar, a row in docs/roadmap.md's
+  # ledger, and — for anything that is not Jellyseerr or the portal — an answer
+  # to why the unauthenticated attack surface should stop being Authelia.
+  #
+  # `authelia` IS LOAD-BEARING and is not padding.  Forward-auth is a REDIRECT
+  # protocol: an unauthenticated request to jellyseerr answers 302 to
+  # https://auth.goclan.org/?rd=…, so if the portal does not resolve and route
+  # externally, no external login can ever complete.  M16 recorded this as a
+  # corrected premise after its own test plan listed `auth` among the names
+  # that must be unreachable; do not re-derive it the hard way.
+  wanExposed = [ "jellyseerr" "authelia" ];
+
+  # ── THE GUARD AND THE GENERATOR, IN ONE FUNCTION ──────────────────────────
+  #
+  # MEASURED on a scratch Traefik 3.7.10 (see the header): a router that OMITS
+  # `entryPoints` is instantiated on EVERY entrypoint — it appeared as both
+  # `websecure-forgot-entrypoints@file` and `wan-forgot-entrypoints@file` and
+  # proxied on `wan`.  So the entrypoint split alone is NOT fail-closed: the
+  # default for a forgotten line is exposure.  This closes it at EVALUATION
+  # time, which is the only place a mistake can be caught before it is serving.
+  #
+  # THE WAN ROUTERS INHERIT FROM THEIR LAN TWINS, and that is not a shortcut —
+  # it removes a whole class of bug.  An earlier draft of this file declared
+  # each external router from scratch, derived its service name from the host
+  # label, and therefore pointed `auth.goclan.org` at a service called `auth`
+  # that does not exist (the service is `authelia`).  It evaluated fine.  It
+  # would have 404'd the portal on the external path only — i.e. it would have
+  # broken external logins and nothing else, which is exactly the failure that
+  # survives a LAN test.  Copying the twin makes the rule, the service and the
+  # forward-auth middleware identical BY CONSTRUCTION rather than by
+  # inspection, so the external and internal paths cannot disagree.
+  #
+  # THREE CHECKS, and each one is a mistake somebody will make:
+  #
+  #   (a) every router NAMES its entryPoints — the measured fail-open above;
+  #   (b) every name in `wanExposed` is a router that exists — a typo here
+  #       would otherwise silently expose nothing and read as if it had;
+  #   (c) NO router names `wan` by hand — so `entryPoints = [ "websecure"
+  #       "wan" ]` bolted onto some future admin UI fails the build rather
+  #       than the review.
+  #
+  # `throw` and not `assertions`: a throw fires wherever the config is
+  # evaluated, including `nix flake check` and the CI eval, and it cannot be
+  # demoted to a warning.
+  withWan = lanRouters:
+    let
+      names   = lib.attrNames lanRouters;
+      missing = lib.filter (n: !(lanRouters.${n} ? entryPoints)) names;
+      unknown = lib.filter (n: !(lanRouters ? ${n})) wanExposed;
+      stray   = lib.filter (n: lib.elem wanEntryPoint lanRouters.${n}.entryPoints) names;
+
+      # ── The order of the middlewares is deliberate ────────────────────────
+      #
+      # Rate limit and concurrency cap FIRST, then whatever the LAN twin
+      # carries (forward-auth, for everything but the portal).  A flood is shed
+      # here rather than being turned into one Authelia authz call per request:
+      # Authelia is a single container in the login path of every admin UI in
+      # the house, and letting the internet drive it at line rate would hand an
+      # attacker a lever on the household's own access.
+      mkWan = n: {
+        name  = "${n}-wan";
+        value = lanRouters.${n} // {
+          entryPoints = [ wanEntryPoint ];
+          middlewares =
+            [ "wan-ratelimit" "wan-inflight" ]
+            ++ (lanRouters.${n}.middlewares or [ ]);
+        };
+      };
+    in
+      if missing != [ ] then
+        throw ''
+          traefik.nix: these routers do not name their entryPoints, and Traefik
+          binds such a router to EVERY entrypoint — including `wan`, which is
+          the internet:
+            ${lib.concatStringsSep ", " missing}
+          Add `entryPoints = [ "websecure" ];` to each.  See the TWO
+          ENTRYPOINTS block in this file's header.
+        ''
+      else if unknown != [ ] then
+        throw ''
+          traefik.nix: `wanExposed` names routers that do not exist:
+            ${lib.concatStringsSep ", " unknown}
+          It takes ROUTER names (e.g. `authelia`), not host labels (`auth`).
+        ''
+      else if stray != [ ] then
+        throw ''
+          traefik.nix: these routers put themselves on the `wan` entrypoint by
+          hand:
+            ${lib.concatStringsSep ", " stray}
+          `wan` is the internet, and exposure is an edit to `wanExposed` plus a
+          public A record plus a ledger row — never an entryPoints list on an
+          existing router.  See the TWO ENTRYPOINTS block in this file's
+          header.
+        ''
+      else lanRouters // lib.listToAttrs (map mkWan wanExposed);
 
   # ── WHERE THE `mgmt-only` ipAllowList WENT ────────────────────────────────
   #
@@ -661,14 +902,60 @@ in
       # and leaves one obviously failed unit instead.
       systemd.network.wait-online.timeout = 20;
 
-      # The container's own firewall, in its own netns.
+      ##########################################################################
+      # THE FIREWALL IS nftables HERE, AND M18 IS WHY — argue before reverting.
       #
+      # Every other container in this fleet uses the iptables firewall with
+      # `extraCommands`.  This one moved, for one reason: the CrowdSec firewall
+      # bouncer (machines/ernst/containers/crowdsec.nix) has to enforce bans in
+      # THIS netns, and the two backends give materially different guarantees.
+      #
+      #   iptables mode.  The bouncer inserts `-I INPUT … -j DROP` above the
+      #     `-j nixos-fw` jump.  A firewall RELOAD re-inserts nixos-fw at the
+      #     top — and `PartOf=` does not propagate reload, only restart — so
+      #     after a reload nixos-fw ACCEPTs :443 before the drop is ever
+      #     reached, and every ban is silently inert.  A ban that is not
+      #     observed in the ruleset is not a ban (SN3), and this is the version
+      #     of that failure that leaves no trace at all.
+      #   nftables mode.  The drop lives in its OWN base chain in its OWN
+      #     table.  Both chains are traversed at the input hook and only `drop`
+      #     is terminal, so nixos-fw accepting :443 does not prevent the drop.
+      #     Ordering stops being a property anyone has to get right.
+      #
+      # It also makes the drop rule DECLARATIVE: with the bouncer in nftables
+      # mode the NixOS module emits `networking.nftables.tables.crowdsec` — the
+      # set and the `ip saddr @crowdsec-blacklists drop` chain are in the Nix
+      # config, greppable, and re-created by nftables.service, while the
+      # bouncer only manages set membership.  Measured in a throwaway VM on
+      # 2026-09-03 before any of this was written; the transcript and the four
+      # upstream defects it found are in crowdsec.nix's header.
+      #
+      # THE COST, stated: `networking.firewall.extraCommands` is REJECTED under
+      # nftables, so the M6 metrics rule below had to move to
+      # `extraInputRules`.  The comment that used to sit there said
+      # extraInputRules "would produce no rule and no warning" — true then,
+      # false now, and this is the edit that makes it false.
+      ##########################################################################
+      networking.nftables.enable = true;
+
       # 443 is the service.  80 exists ONLY to redirect to it (see the
       # entryPoint below) and is opened for that reason alone — a household
       # that types a bare hostname gets a redirect instead of a connection
       # refused, and nothing is ever served over it.  If you want to remove the
       # redirect, remove BOTH this port and the entryPoint; leaving the port
       # open with no listener is worse than either.
+      #
+      # 8443 IS THE WAN ENTRYPOINT and is the only listener the internet can
+      # reach — see TWO ENTRYPOINTS in the file header.  It is open to the
+      # whole Services VLAN here rather than to the gateway alone, deliberately
+      # and with the reason written down: the UDM-Pro DNATs to this address
+      # from the WAN, so the source it arrives from is whatever external client
+      # sent it and there is no stable inside source to filter on.  What gates
+      # this port is the ROUTER SET, not an address list.
+      #
+      # 80 IS NOT FORWARDED FROM THE WAN.  ACME is DNS-01, so HTTP-01 never
+      # runs — see the TLS block in the header, which exists so nobody opens it
+      # "for Let's Encrypt".
       #
       # No 8080: the Traefik dashboard/API is not enabled.  See the static
       # config below.
@@ -678,7 +965,7 @@ in
       # every route name, backend address and TLS setting in the house off an
       # unauthenticated endpoint, which is most of what the dashboard was
       # switched off to avoid.
-      networking.firewall.allowedTCPPorts = [ 80 443 ];
+      networking.firewall.allowedTCPPorts = [ 80 443 wanPort ];
 
       # M6: the metrics endpoint, source-restricted to the monitoring
       # container.  Same mechanism and the same reasoning as the backend
@@ -686,12 +973,11 @@ in
       # BYPASS HARDENING above — just pointing the other way: there, this
       # container is the permitted source; here, it is the protected one.
       #
-      # extraCommands and not extraInputRules: the latter is declared
-      # unconditionally in firewall-nftables.nix but consumed only under
-      # networking.nftables, which is off here, so it would produce no rule
-      # and no warning.
-      networking.firewall.extraCommands = ''
-        iptables -A nixos-fw -p tcp -s ${monitoringAddr}/32 --dport ${toString metricsPort} -j nixos-fw-accept
+      # `extraInputRules` now that the firewall is nftables — see the block
+      # above.  It lands in nixos-fw's input chain ahead of the terminal
+      # refuse, which is the same placement the old iptables append had.
+      networking.firewall.extraInputRules = ''
+        ip saddr ${monitoringAddr} tcp dport ${toString metricsPort} accept
       '';
 
       ##########################################################################
@@ -745,7 +1031,40 @@ in
           # where the ACME exchange and every routing decision are visible, and
           # it is the instrument the PR test plan uses.
           log.level     = "INFO";
-          accessLog.format = "common";
+
+          # ── M18: JSON, because CrowdSec reads this ─────────────────────────
+          #
+          # The access log was `common` (CLF) from M5 until M18.  It is now
+          # JSON, and the change was checked before it was made rather than
+          # after: `grep -rn accessLog` across this repo returns ONE definition
+          # and two comments about timezone rendering, so nothing else parses
+          # this stream and there is no second consumer to break.
+          #
+          # WHY JSON.  crowdsecurity/traefik-logs has two parsing paths and the
+          # JSON one is strictly better: the CLF path is a grok pattern that
+          # has to re-derive fields from a text line, while the JSON path reads
+          # `ClientHost` — the field Q2 is about — directly, plus `RouterName`,
+          # `DownstreamStatus` and the User-Agent header, with a nil guard on
+          # each.  A grok that stops matching after a Traefik bump is a silently
+          # blind detector, which is SN3's failure exactly.
+          #
+          # STILL ON stdout, so still in this container's journal: destination
+          # unchanged, format changed.  That is deliberately the smaller edit —
+          # a file would have needed a path, an owner, a rotation unit and a
+          # readable-by-crowdsec permission triangle, and every one of those is
+          # a way for the detector to read nothing while looking healthy.
+          #
+          # HEADERS ARE DROPPED except User-Agent, which is Traefik's default
+          # and is restated because it is now load-bearing in two directions:
+          # crowdsecurity/traefik-logs reads `request_User-Agent` (the
+          # http-bad-user-agent scenario is nothing without it), and a request
+          # header set that grew a `Cookie` would put session credentials into
+          # a log a second daemon reads.
+          accessLog = {
+            format = "json";
+            fields.headers.defaultMode  = "drop";
+            fields.headers.names."User-Agent" = "keep";
+          };
 
           # M6: Prometheus metrics, on the dedicated `metrics` entryPoint
           # below.  Entrypoint labels are on — that is what makes
@@ -770,11 +1089,17 @@ in
           # the one address every VLAN is now allowed to reach.  If it is ever
           # wanted, it belongs behind M7's forward-auth, not behind the
           # ipAllowList — an admin API is not a management-network problem.
+          #
+          # EVERY ADDRESS BELOW IS `0.0.0.0:` AND NOT `:` — see IPv4-ONLY BY
+          # CONSTRUCTION in the file header.  A bare `:443` binds the v6
+          # wildcard too, and a v6 listener is a path that bypasses the
+          # UDM-Pro's DNAT and therefore bypasses the `wan` entrypoint.
           entryPoints = {
-            # :80 does nothing but redirect.  `permanent = true` is a 308, so
-            # clients and TV apps cache it and stop asking.
+            # :80 does nothing but redirect, and is INTERNAL ONLY — it is not
+            # forwarded from the WAN and must not be.  `permanent = true` is a
+            # 308, so clients and TV apps cache it and stop asking.
             web = {
-              address = ":80";
+              address = "0.0.0.0:80";
               http.redirections.entryPoint = {
                 to        = "websecure";
                 scheme    = "https";
@@ -782,8 +1107,31 @@ in
               };
             };
 
+            # ── M18: THE INTERNET.  Nothing else on this box listens to it ───
+            #
+            # The UDM-Pro DNATs WAN :443 here.  A router reaches this listener
+            # if and only if it names `wan`, and `wanExposed` in the let block
+            # above is the complete list — see TWO ENTRYPOINTS in the header
+            # for the measurement that this is actually true, and for the one
+            # way it can be made false (a router that omits `entryPoints`),
+            # which `withWan` turns into a build failure.
+            #
+            # NO `http.tls.certResolver` AND NO `domains`, deliberately.  The
+            # certificate store is global and entrypoint-independent —
+            # measured — so this listener serves the same wildcard
+            # `websecure`'s resolver already obtained.  Declaring a second
+            # request for the same main+sans would put a duplicate issuance
+            # against Let's Encrypt's 5-per-week limit in the path of a
+            # milestone that cannot be tested before deploying; NOT declaring
+            # it fails loudly and for free, as a browser warning naming
+            # TRAEFIK DEFAULT CERT.  `http.tls = { }` still turns TLS on.
+            ${wanEntryPoint} = {
+              address  = "0.0.0.0:${toString wanPort}";
+              http.tls = { };
+            };
+
             websecure = {
-              address = ":443";
+              address = "0.0.0.0:443";
 
               # THE WILDCARD IS REQUESTED HERE, ONCE, at the entryPoint — not
               # per router.  This is the difference between one certificate and
@@ -816,7 +1164,7 @@ in
             # firewall rule above), the hop never leaves the host, and asking
             # the ACME resolver for a certificate here would put a fourth
             # name in the wildcard's place for no reader.
-            metrics.address = ":${toString metricsPort}";
+            metrics.address = "0.0.0.0:${toString metricsPort}";
           };
 
           certificatesResolvers.cloudflare.acme = {
@@ -952,9 +1300,70 @@ in
                 "Remote-Groups"
               ];
             };
+
+            # ── M18: the two limits, and they are on the wan routers ONLY ────
+            #
+            # Attached by `withWan` above and by nothing else, so the
+            # household's internal requests through `websecure` are not
+            # metered.  That is the entire reason the external routers are
+            # separate routers rather than a second entryPoint on the existing
+            # ones.
+            #
+            # BOTH OF THESE KEY ON THE PEER ADDRESS, and so does every CrowdSec
+            # decision.  `sourceCriterion` is left at its default — Traefik's
+            # ipStrategy with depth 0, i.e. the address the connection actually
+            # came from, NOT an X-Forwarded-For hop.  That is the same call
+            # `trustForwardHeader = false` makes above and for the same reason:
+            # nothing sits in front of this proxy, so any XFF header was
+            # written by the client.
+            #
+            # WHICH MAKES THEM WORTH EXACTLY AS MUCH AS Q2's ANSWER.  If the
+            # UDM-Pro SNATs the forward instead of preserving the source, every
+            # external request arrives from 10.0.90.1 and these become a single
+            # global cap that one client can exhaust for everyone — and a
+            # CrowdSec ban on the gateway address would take the whole house
+            # off Jellyseerr.  crowdsec.nix therefore ships in SIMULATION until
+            # Q2 is confirmed from the access log; read its header before
+            # flipping it.
+            #
+            # THE NUMBERS ARE A FIRST CUT and are stated as such.  Jellyseerr
+            # is a poster wall: one page view is dozens of image GETs, and the
+            # measured internal traffic through this proxy is ~2200 requests an
+            # hour across every service.  50/s average with a 100 burst is
+            # comfortably above one human browsing and far below a scanner.
+            # The trigger to change them is a household member being limited,
+            # or a flood that passes — not tidiness.
+            wan-ratelimit.rateLimit = {
+              average = 50;
+              burst   = 100;
+              period  = "1s";
+            };
+
+            # Concurrency, which the rate limit does not cover: 50/s of
+            # requests that each take 30 s is not a rate problem, it is 1500
+            # open connections to Jellyseerr's single-threaded Node process.
+            wan-inflight.inFlightReq.amount = 40;
           };
 
-          http.routers = {
+          # ── M18: THE GUARD.  Do not remove it to "fix" a build error ───────
+          #
+          # EVERY ROUTER BELOW IS LAN-ONLY AND UNTOUCHED BY M18.  `withWan`
+          # checks them (see the let block) and then ADDS the external routers
+          # by copying the ones `wanExposed` names onto the `wan` entrypoint —
+          # so `jellyseerr-wan` and `authelia-wan` do not appear in this block
+          # at all, and cannot disagree with their twins about rule, service or
+          # forward-auth.
+          #
+          # It throws at evaluation if a router omits `entryPoints` (Traefik
+          # would bind such a router to the internet), if `wanExposed` names a
+          # router that does not exist, or if any router puts itself on `wan`
+          # by hand.  The argument and the measurement are in the TWO
+          # ENTRYPOINTS block at the top of this file.
+          #
+          # If this throws: the fix is an `entryPoints` line on the new router,
+          # or an entry in `wanExposed` plus a public A record plus a ledger
+          # row.  It is never to delete the wrapper.
+          http.routers = withWan {
             # ── Jellyfin: the household route ──────────────────────────────
             #
             # NO MIDDLEWARE, and never a forward-auth one.  See "JELLYFIN KEEPS
@@ -981,6 +1390,16 @@ in
             # which after L5's retirement includes IoT.  What is exposed there
             # is a login form with a two_factor policy and regulation behind
             # it; see authelia.nix.
+            #
+            # M18: THIS ROUTER IS UNCHANGED AND IS STILL LAN-ONLY.  The portal
+            # reaches the internet through `auth-wan`, generated from
+            # `wanExposed` — a separate router on the `wan` entrypoint carrying
+            # the rate limits.  It is on the external set for the reason M16
+            # recorded as a corrected premise: forward-auth is a redirect
+            # protocol, so no external login can complete unless the portal
+            # resolves and routes from outside.  What the internet meets there
+            # is this login form, per-user regulation (3 failures / 5 min → 15
+            # min ban) and mandatory 2FA — which was the design intent.
             authelia = {
               rule        = "Host(`auth.${baseDomain}`)";
               entryPoints = [ "websecure" ];
@@ -1222,26 +1641,37 @@ in
               service     = "slskd";
             };
 
-            # ── Jellyseerr: the HOUSEHOLD route — posture changed by M16 ───
+            # ── Jellyseerr: the HOUSEHOLD route — posture set by M16 ───────
             #
             # M13 shipped this router with NO middleware, deliberately, and
             # its comment said M16 would be where the posture changes,
-            # reviewed as an ingress change.  This is that change: since M16
-            # this name is reachable FROM THE INTERNET through the Cloudflare
-            # Tunnel (containers/cloudflared.nix), and the milestone's
-            # requirement is that the unauthenticated attack surface on the
-            # external path is AUTHELIA, not Jellyseerr's Node application.
+            # reviewed as an ingress change.  M16 made that change, and M18
+            # kept it while replacing the mechanism underneath: the name is
+            # still reachable FROM THE INTERNET, now through the `wan`
+            # entrypoint rather than the Cloudflare Tunnel, and the
+            # requirement is unchanged — the unauthenticated attack surface on
+            # the external path is AUTHELIA, not Jellyseerr's Node
+            # application.
             #
-            # ONE ROUTER SERVES BOTH PATHS, so the middleware applies to the
-            # household's internal requests too.  That is accepted, not
-            # overlooked — the alternatives were worse in this repo's own
-            # terms:
+            # M18 SPLIT THE ROUTER, and the reason is narrower than it looks.
+            # `jellyseerr-wan` (copied by `withWan`) carries the same
+            # `authelia` middleware PLUS the two external limits; this router
+            # keeps forward-auth and no limits.  So the auth posture is
+            # identical on both paths — which was M16's decision and stands —
+            # and what differs is only that the household is not rate-limited
+            # in its own house.
+            #
+            # THE AUTH POSTURE IS STILL UNIFORM, and the alternatives M16
+            # rejected are still rejected.  Splitting on ENTRYPOINT is not the
+            # thing M16 refused; splitting on CLIENT IDENTITY is:
             #
             #   - a second, internal-only router keyed on ClientIP with no
             #     middleware FAILS OPEN: any request the internal matcher
             #     mis-classifies is served unauthenticated.  This shape fails
             #     CLOSED — a mis-classified internal request meets a login
-            #     form, which is an inconvenience, not an exposure;
+            #     form, which is an inconvenience, not an exposure.  An
+            #     entrypoint cannot be mis-classified: it is which socket the
+            #     packet arrived on;
             #   - an Authelia `networks`-based bypass rule for RFC1918
             #     sources trusts X-Forwarded-For arithmetic on the exact
             #     boundary this milestone exists to harden.

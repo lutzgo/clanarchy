@@ -991,6 +991,59 @@ in
         };
       };
 
+      # ── M18: CrowdSec, and the one alert that matters ─────────────────────
+      #
+      # Same shape as `authelia` above — an address that defaults to "" and
+      # disables the job — so this stays a clan-service module that HAPPENS to
+      # be pointed at an ingress boundary on ernst rather than one that
+      # requires one.
+      #
+      # THE ADDRESS IS TRAEFIK'S, and that is not a copy-paste.  CrowdSec runs
+      # INSIDE the Traefik container's network namespace, because that is the
+      # only namespace that sees the pre-DNAT source address of a WAN request —
+      # see machines/ernst/containers/crowdsec.nix.  So it shares 10.0.90.12
+      # and answers on a port of its own.
+      crowdsec = {
+        address = lib.mkOption {
+          type        = lib.types.str;
+          default     = "";
+          example     = "10.0.90.12";
+          description = ''
+            Address of the CrowdSec agent's Prometheus listener.  Empty
+            disables the scrape job AND the ExposedAndUnprotected alert.
+
+            Normally the same address as `proxyAddress`: CrowdSec lives in the
+            reverse proxy's netns, because that is where the pre-DNAT source
+            address of a WAN request is visible.
+
+            Its port must additionally be source-restricted to THIS
+            container's address on the far end; adding the target here alone
+            produces a job that times out.
+          '';
+        };
+
+        metricsPort = lib.mkOption {
+          type        = lib.types.port;
+          default     = 6060;
+          description = "CrowdSec's Prometheus listener (its own upstream default).";
+        };
+
+        # THERE IS NO `wanEntryPoint` OPTION, and its absence is deliberate.
+        #
+        # The obvious way to write "the wan entrypoint is up" is to match
+        # Traefik's `traefik_entrypoint_*{entrypoint="wan"}` series.  Those are
+        # per-listener COUNTERS: they do not exist until that listener has
+        # served a request, so an idle wan entrypoint has no series at all and
+        # an alert keyed on it would be quietly unable to fire — precisely the
+        # failure the alert exists to catch, reintroduced inside the alert.
+        #
+        # `up{job="traefik"} == 1` is the signal used instead, and it is sound
+        # rather than a fallback: the wan entryPoint is declared in Traefik's
+        # STATIC config, and Traefik exits if it cannot bind a declared
+        # entryPoint.  A Traefik that is answering scrapes is a Traefik whose
+        # wan listener is bound.
+      };
+
       zerotierInstance = lib.mkOption {
         type        = lib.types.str;
         default     = "zerotier";
@@ -1849,6 +1902,21 @@ in
                     labels.instance = "authelia";
                   } ];
                 }
+                # ── M18: CrowdSec ─────────────────────────────────────────
+                #
+                # Unlike the traefik and authelia jobs, this target DOES carry
+                # an alert — see ExposedAndUnprotected below.  The reason is
+                # the asymmetry M18 introduced: those two failing is an
+                # OUTAGE, which the household reports within minutes.
+                # CrowdSec failing is SILENT, and silent in the direction that
+                # matters — everything keeps working, including from outside.
+                ++ lib.optional (settings.crowdsec.address != "") {
+                  job_name = "crowdsec";
+                  static_configs = [ {
+                    targets = [ "${settings.crowdsec.address}:${toString settings.crowdsec.metricsPort}" ];
+                    labels.instance = "crowdsec";
+                  } ];
+                }
                 # ── M13's media-stack targets ──────────────────────────────
                 #
                 # Each conditional on its own address, so a fleet without a
@@ -1924,6 +1992,82 @@ in
                     groups = [ {
                       name = "clanarchy";
                       rules = [
+                      ] ++ lib.optional (settings.crowdsec.address != "") (
+                        # ── M18: EXPOSED AND UNPROTECTED ──────────────────
+                        #
+                        # THE ONLY ALERT M18 ADDS, and deliberately not "many
+                        # bans".  A busy ban list is the system working; the
+                        # thing nobody would ever notice is the opposite —
+                        # the house open to the internet with nothing
+                        # watching it.  Every other failure in this milestone
+                        # announces itself: Traefik down is an outage,
+                        # Authelia down is every admin UI down, a bad DNAT is
+                        # "Jellyseerr does not work from my phone".  CrowdSec
+                        # down changes NOTHING observable, from inside or
+                        # out.
+                        #
+                        # TWO DISJUNCTS, because there are two ways to be
+                        # unprotected and only one of them is obvious:
+                        #
+                        #   up{job="crowdsec"} == 0
+                        #     the agent or its whole netns is gone.
+                        #
+                        #   the bouncer has stopped pulling decisions
+                        #     the agent is alive, healthy, detecting and
+                        #     recording — and NOTHING IS BEING DROPPED.
+                        #     This is the one worth building the alert for.
+                        #     It is also a measured failure and not a
+                        #     hypothetical: in the probe VM the bouncer
+                        #     started before the local API was listening,
+                        #     died on "connection refused", and — with
+                        #     upstream's Restart=no — stayed dead while
+                        #     `systemctl list-units --failed` was empty.
+                        #
+                        # THE BOUNCER IS INVISIBLE TO node_exporter, which is
+                        # why this is not a SystemdUnitFailed rule: it is a
+                        # unit inside an nspawn container, and the systemd
+                        # collector runs on the host and sees the host's
+                        # units only.  The LAPI's own view is the only view
+                        # there is.
+                        #
+                        # `cs_lapi_bouncer_requests_total` VERIFIED BY
+                        # READING /metrics IN THE PROBE VM, not inferred:
+                        #   cs_lapi_bouncer_requests_total{
+                        #     bouncer="crowdsec-firewall-bouncer",
+                        #     method="GET", route="/v1/decisions/stream"}
+                        # The bouncer polls it every 10 s by default, so a
+                        # flat 10-minute rate means it is not pulling.
+                        #
+                        # `or vector(0)` MATTERS: if the bouncer never
+                        # registered at all the series does not exist, and a
+                        # bare rate() would return an empty vector that
+                        # cannot compare to 0 — the alert would be silent for
+                        # the worst case of all.  vector(0) makes "absent"
+                        # and "stopped" both fire.
+                        #
+                        # 15m so a deploy, a container restart or the
+                        # bouncer's own retry backoff does not page anyone.
+                        {
+                          alert = "ExposedAndUnprotected";
+                          expr = ''
+                            (
+                              (up{job="crowdsec"} == 0)
+                              or
+                              (
+                                (sum(rate(cs_lapi_bouncer_requests_total{route="/v1/decisions/stream"}[10m])) or vector(0))
+                                == 0
+                              )
+                            )
+                            and on() (up{job="traefik"} == 1)
+                          '';
+                          "for" = "15m";
+                          labels.severity = "critical";
+                          annotations = {
+                            summary     = "WAN ingress is up and CrowdSec is not protecting it";
+                            description = "Traefik is serving — which means the `wan` entryPoint is bound and reachable from the internet — while either the CrowdSec agent is not answering scrapes or the firewall bouncer has stopped pulling decisions. Bans are not being enforced. Check `nixos-container run traefik -- systemctl status crowdsec crowdsec-firewall-bouncer`.";
+                          };
+                        }
+                      ) ++ [
                         # ── host down ────────────────────────────────────
                         #
                         # always_on only.  A laptop with the lid shut is not

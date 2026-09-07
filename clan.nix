@@ -455,6 +455,23 @@
             oidc.issuerUrl = "https://auth.goclan.org";
           };
 
+          # M18.  CrowdSec, which watches the WAN entrypoint the same
+          # milestone opened.
+          #
+          # THE ADDRESS IS TRAEFIK'S, and that is deliberate rather than a
+          # copy-paste: CrowdSec runs INSIDE the traefik container's network
+          # namespace, because that is the only namespace that sees the
+          # pre-DNAT source address of a WAN request (br0 forwards those
+          # frames at layer 2 and br_netfilter is not loaded — measured on
+          # ernst 2026-09-03).  See machines/ernst/containers/crowdsec.nix.
+          #
+          # This is the one target that carries an alert, and the reason is
+          # the asymmetry M18 introduced: Traefik or Authelia going down is an
+          # outage somebody reports within minutes, while CrowdSec going down
+          # is silent — the house stays up, the internet stays reachable, and
+          # nothing is watching it.  Exposed and unprotected.
+          crowdsec.address = "10.0.90.12";
+
           # M13.  Four media-stack targets, all on VLAN 90 addresses from the
           # table in machines/ernst/networking.nix, except Ollama which is on
           # ernst itself.
