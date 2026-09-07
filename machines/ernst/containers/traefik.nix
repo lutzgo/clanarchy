@@ -158,11 +158,13 @@
 #
 #   What actually holds the line, in the order it is relied on:
 #
-#     1. NO IPv6 ADDRESS CAN EXIST IN THIS NETNS — `disable_ipv6` on `all`,
-#        `default` AND `eth0` (see the sysctl further down for why all three,
-#        and which one does the work).  The sockets are still dual-stack; they
-#        have nothing to be reached on, and no prefix can ever be accepted.
+#     1. NO IPv6 ADDRESS EXISTS IN THIS NETNS — `LinkLocalAddressing = "no"`
+#        on the 10-eth0 network unit, which is the repo's existing idiom and
+#        was simply missing here.  The sockets are still dual-stack; they have
+#        nothing to be reached on, and no prefix can ever be accepted.
 #        THE PROOF IS `ip -6 addr show` RETURNING NOTHING, not `ss -f inet6`.
+#        Two `boot.kernel.sysctl` attempts at this failed before it; the
+#        gravestone is where they used to be.
 #     2. No v6 forward on the UDM-Pro.  Outside Nix, and an explicit "do not"
 #        in M18's manual steps.  NOT audited — Claude does not touch it.
 #     3. No GUA anywhere on VLAN 90.  Measured 2026-08-25 and again
@@ -914,7 +916,26 @@ in
           DHCP         = "ipv4";
           DNS          = "10.0.5.3";
           Domains      = "~. skynet.lan";
-          IPv6AcceptRA = false;
+          # SN2's enforcement, and the ONLY thing that actually enforces it
+          # here.  `IPv6AcceptRA = false` alone stops a ROUTER ADVERTISEMENT
+          # being accepted; it does not stop networkd assigning a link-local
+          # address, because LinkLocalAddressing defaults to `ipv6`.
+          #
+          # THIS PAIR IS ALREADY THE REPO'S IDIOM — machines/ernst/networking.nix
+          # and the br0 port at the top of this file both carry both lines.
+          # This network unit had only the second, which is why the container
+          # kept fe80::ff:fe90:4/64 while every other interface on VLAN 90 has
+          # no v6 at all.  It was an omission, not a decision.
+          #
+          # Do NOT try to do this with `boot.kernel.sysctl` disable_ipv6.  That
+          # was tried twice and lost twice: systemd-sysctl runs before eth0
+          # exists, so the per-interface key is skipped, and networkd then
+          # writes `disable_ipv6 = 0` on every link it configures.  Measured —
+          # with LinkLocalAddressing=no in place, eth0 has NO v6 address while
+          # `net.ipv6.conf.eth0.disable_ipv6` still reads 0.  networkd owns the
+          # link, so networkd is the layer that decides.
+          LinkLocalAddressing = "no";
+          IPv6AcceptRA        = false;
         };
         dhcpV4Config = {
           UseDNS     = false;
@@ -1009,55 +1030,39 @@ in
         ip saddr ${monitoringAddr} tcp dport ${toString metricsPort} accept
       '';
 
-      # SN2's actual enforcement.  See IPv4-ONLY BY CONSTRUCTION in the header.
+      # SN2's enforcement is NOT here.  It is `LinkLocalAddressing = "no"` on
+      # the 10-eth0 network unit below — see the comment there.
       #
-      # THE SOCKETS ARE DUAL-STACK AND THEY STAY DUAL-STACK.  Two separate
-      # claims were made about this and BOTH were wrong before being measured;
-      # what follows is what the deployed system actually does.
+      # THERE WAS A `boot.kernel.sysctl` disable_ipv6 BLOCK IN THIS SPOT AND IT
+      # IS DELIBERATELY GONE, because it never worked and a setting that looks
+      # like a control but is not one is worse than nothing.  Two attempts,
+      # both deployed, both measured, both dead:
       #
-      #   Wrong claim 1: "every entryPoint binds 0.0.0.0: and not :, so nothing
-      #   listens on v6."  Go treats 0.0.0.0 as *unspecified*, and for any
-      #   wildcard listen `favoriteAddrFamily` returns AF_INET6 with
-      #   IPV6_V6ONLY=0.  The address written in the config makes no difference.
+      #   `all` alone            -> eth0 kept fe80::ff:fe90:4/64
+      #   `all`+`default`+`eth0` -> eth0 STILL kept it, and the key read back 0
       #
-      #   Wrong claim 2: "disabling v6 in this netns makes Go fall back to
-      #   AF_INET, so `ss -f inet6` comes back empty."  It does not.  Measured
-      #   on the deployed container with every v6 address gone:
+      # Two independent reasons, either of which is fatal on its own.
+      # systemd-sysctl runs before eth0 exists in this netns, so the
+      # per-interface key is silently skipped; and systemd-networkd writes
+      # `disable_ipv6 = 0` on every link it configures, so it would overwrite
+      # the key even if the write had landed.  networkd owns the link.
       #
-      #     ip -6 addr show    ->  (nothing)
-      #     ss -ltnH -f inet6  ->  *:80  *:443  *:8443  *:8082  *:6060
+      # THE SOCKETS ARE DUAL-STACK AND THEY STAY DUAL-STACK, whatever is done
+      # here.  Go treats `0.0.0.0` as *unspecified* and `favoriteAddrFamily`
+      # returns AF_INET6 with IPV6_V6ONLY=0 for any wildcard listen, so the
+      # address written in an entryPoint makes no difference either.  Measured
+      # on the deployed container with every v6 address gone:
       #
-      #   The socket family is available whenever the ipv6 module is loaded,
-      #   which is independent of whether any interface has an address.
+      #   ip -6 addr show    ->  (nothing)
+      #   ss -ltnH -f inet6  ->  *:80  *:443  *:8443  *:8082  *:6060
       #
-      # SO THE MECHANISM IS NOT "v4-only sockets".  It is that NO IPv6 ADDRESS
-      # CAN EXIST IN THIS NETNS, which makes the dual-stack sockets unreachable
-      # over v6 and — the part SN2 actually cares about — makes it impossible
-      # for a delegated prefix to ever be accepted on eth0.
+      # So the mechanism is not "v4-only sockets" and never could be.  It is
+      # that NO IPv6 ADDRESS EXISTS IN THIS NETNS: the dual-stack sockets have
+      # nothing to be reached on, and no delegated prefix can be accepted.
       #
-      # ALL THREE KEYS ARE REQUIRED, and which one does the work was measured
-      # rather than reasoned about:
-      #
-      #   `all` alone was deployed first and WAS NOT ENOUGH — eth0 kept
-      #   fe80::ff:fe90:4/64.  nspawn creates the veth and moves it into the
-      #   netns BEFORE this container's init runs, so by the time systemd-sysctl
-      #   applies anything the interface already exists with v6 up.  `default`
-      #   governs interfaces created afterwards and does not apply
-      #   retroactively, so `eth0` is the key that actually tears the address
-      #   down.  `default` is here for any interface added later and `all` for
-      #   symmetry with it.
-      #
-      # THE PROOF IS `ip -6 addr show`, NOT `ss`.  A future reader running
-      # `ss -f inet6` and finding listeners has not found a regression.
-      #
-      # Nothing here needs v6: ACME reaches Let's Encrypt over v4 and
-      # Technitium is v4-only.  Verified after the change with
-      # `curl --resolve jellyfin.goclan.org:443:10.0.90.12` -> 302.
-      boot.kernel.sysctl = {
-        "net.ipv6.conf.all.disable_ipv6"     = 1;
-        "net.ipv6.conf.default.disable_ipv6" = 1;
-        "net.ipv6.conf.eth0.disable_ipv6"    = 1;
-      };
+      # THE PROOF IS `ip -6 addr show` RETURNING NOTHING, NOT `ss`.  A future
+      # reader running `ss -f inet6`, finding five listeners and reporting a
+      # regression would be the fourth instance of this same mistake.
 
       ##########################################################################
       # Users.  Numeric ids are the interface across the nspawn boundary.

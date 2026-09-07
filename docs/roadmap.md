@@ -334,13 +334,42 @@ nothing defends the safe state. M18 adds three mechanisms, all greppable:
 > that was reasoned about rather than measured is a description.** The list
 > below is the corrected one.
 
-- **No IPv6 address can exist in the Traefik netns** — `disable_ipv6` on `all`,
-  `default` *and* `eth0`. Nothing there needs v6: ACME reaches Let's Encrypt
+- **No IPv6 address exists in the Traefik netns** — `LinkLocalAddressing = "no"`
+  on its `10-eth0` network unit. Nothing there needs v6: ACME reaches Let's Encrypt
   over v4 and Technitium is v4-only. **The proof is `ip -6 addr show` returning
   nothing.**
 
-  > **SECOND CORRECTION, 2026-09-07.** The first replacement for the bind claim
-  > was *also* wrong, and it is left on the record rather than quietly fixed.
+  > **THIRD CORRECTION, 2026-09-07.** This mechanism was stated wrong three
+  > times in one day. All three are left on the record rather than quietly
+  > fixed, because the pattern is the point.
+  >
+  > 1. *"Every entryPoint binds `0.0.0.0:`, so nothing listens on v6."* False —
+  >    Go treats `0.0.0.0` as unspecified and opens AF_INET6 with
+  >    `IPV6_V6ONLY=0` for any wildcard listen.
+  > 2. *"`disable_ipv6` makes Go fall back to `AF_INET`, so `ss -f inet6` comes
+  >    back empty."* False — the socket family is available whenever the module
+  >    is loaded, independent of addressing.
+  > 3. *"`all` + `default` + `eth0` disable_ipv6 removes the address."* False,
+  >    and deployed twice before being caught: systemd-sysctl runs **before**
+  >    `eth0` exists in the netns so the per-interface key is silently skipped,
+  >    **and** systemd-networkd writes `disable_ipv6 = 0` on every link it
+  >    configures. Either reason is fatal alone.
+  >
+  > **What works is `LinkLocalAddressing = "no"`, and the repo already had the
+  > idiom** — `machines/ernst/networking.nix` and the `br0` port in
+  > `containers/traefik.nix` both carry `LinkLocalAddressing` + `IPv6AcceptRA`
+  > together. The container's `10-eth0` had only the second, which is why it
+  > alone on VLAN 90 kept a link-local address. **It was an omission, not a
+  > decision, and three novel mechanisms were invented before anyone looked at
+  > what the neighbouring units already did.**
+  >
+  > Verified live: with `LinkLocalAddressing=no`, `ip -6 addr show` returns
+  > nothing while `net.ipv6.conf.eth0.disable_ipv6` still reads **0** — proof
+  > the sysctl was never the mechanism. `10.0.90.12` intact, Traefik serving.
+  >
+  > ---
+  >
+  > *Superseded detail from the second correction, kept for the record:*
   > It said `disable_ipv6` would make Go fall back to `AF_INET` so that
   > `ss -ltnH -f inet6` came back empty. **It does not.** Measured on the
   > deployed container with every v6 address gone:
