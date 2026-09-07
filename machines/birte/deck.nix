@@ -122,7 +122,9 @@
     #
     # Layout note: the tree RetroDECK creates here (roms/<system>/, bios/) is
     # deliberately also a valid RomM library root — see the ROM-library
-    # section in docs/guides/birte-emulation.md.
+    # section in docs/guides/birte-emulation.md.  Note that being a valid RomM
+    # library root does NOT make RomM's *metadata* export readable by ES-DE;
+    # that takes clanarchy.retrodeck.rommBridge, enabled below.
     # 0710 deck:roms for the same reason as /games above — traverse for the
     # group, no listing, nothing for other.  RetroDECK owns this outright as
     # `deck`; syncthing only ever passes through it.
@@ -146,6 +148,13 @@
 
     "L+ /home/deck/retrodeck - - - - /games/retrodeck"
   ];
+
+  # Syncthing brings RomM's ES-DE export down with the ROMs, but ES-DE reads
+  # neither the gamelist location nor the artwork layout RomM writes, so
+  # without this the Deck shows a full library with no names and no boxart.
+  # atari2600 is excluded because it was scraped in ES-DE itself, which is
+  # richer than the export — see machines/birte/romm-esde-bridge.nix.
+  clanarchy.retrodeck.rommBridge.enable = true;
 
   # The shared group above.  `deck` needs it to keep writing its own library;
   # `syncthing` needs it to land files from ernst at all.  This is the same

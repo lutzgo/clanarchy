@@ -255,6 +255,7 @@
           ./machines/birte/jovian.nix
           ./machines/birte/stylix.nix
           ./machines/birte/deck.nix
+          ./machines/birte/romm-esde-bridge.nix
         ];
       };
 
