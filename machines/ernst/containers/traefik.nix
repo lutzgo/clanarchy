@@ -132,17 +132,36 @@
 #
 # ── IPv4-ONLY BY CONSTRUCTION (standing note SN2) ────────────────────────────
 #
-#   Every entryPoint below binds `0.0.0.0:` and not `:`.  A bare `:443` binds
-#   the v6 wildcard too, and SN2's hazard is precisely that: if the UDM-Pro's
-#   v6 ruleset ever permits inbound and this container ever acquires a global
-#   address, a v6 listener is a second path to every router that bypasses the
-#   UDM-Pro DNAT — and therefore bypasses the `wan` entrypoint entirely.
+#   SN2's hazard: if the UDM-Pro's v6 ruleset ever permits inbound and this
+#   container ever acquires a global address, a v6 listener is a second path to
+#   every router that bypasses the UDM-Pro DNAT — and therefore bypasses the
+#   `wan` entrypoint entirely.  It is worse than it sounds, because the
+#   firewall bouncer declares `nftables.ipv6.enabled = false` and so there is
+#   no `ip6 crowdsec` table: over v6 the routers would be reachable AND
+#   unbannable at the same time.
 #
-#   Measured on ernst 2026-09-03: link-local only on br0 and in all seven
-#   containers, no GUA anywhere on VLAN 90, no v6 default route, and
-#   `accept_ra = 0` on br0.  So this costs nothing today.  It is written down
-#   because "nothing has a GUA" is the state, not the defence — the bind is the
-#   defence, and it is one word per entryPoint.
+#   THIS FILE USED TO CLAIM THE BIND WAS THE DEFENCE.  IT IS NOT, AND SAYING SO
+#   WAS WRONG.  Every entryPoint below is written `0.0.0.0:` rather than `:`,
+#   and it makes no difference whatsoever: Go treats `0.0.0.0` as *unspecified*
+#   and opens an AF_INET6 socket with IPV6_V6ONLY=0 for any wildcard listen.
+#   Measured on the deployed config 2026-09-07 — all four entryPoints, plus
+#   CrowdSec's metrics port, were accepting v6 on link-local.  A claim of this
+#   shape is worse than no claim: it reads like a control in review.
+#
+#   What actually holds the line, in the order it is relied on:
+#
+#     1. `net.ipv6.conf.all.disable_ipv6 = 1` in this netns (see the sysctl
+#        further down).  THIS is the mechanism; it makes Go fall back to
+#        AF_INET, and `ss -f inet6` comes back empty.
+#     2. No v6 forward on the UDM-Pro.  Outside Nix, and an explicit "do not"
+#        in M18's manual steps.  NOT audited — Claude does not touch it.
+#     3. No GUA anywhere on VLAN 90.  Measured 2026-08-25 and again
+#        2026-09-03: link-local only on br0 and in every container, no v6
+#        default route, `accept_ra = 0` on br0.
+#
+#   (3) is a state and not a defence, which is why M6 now alerts on it
+#   (`UnexpectedIPv6GlobalAddress`) instead of leaving it to be re-measured by
+#   hand — that alert is the tripwire for (1) and (2) being all that is left.
 #
 # ── TLS: ACME DNS-01, wildcard, split horizon ────────────────────────────────
 #
@@ -979,6 +998,23 @@ in
       networking.firewall.extraInputRules = ''
         ip saddr ${monitoringAddr} tcp dport ${toString metricsPort} accept
       '';
+
+      # SN2's actual enforcement.  See IPv4-ONLY BY CONSTRUCTION in the header:
+      # writing `0.0.0.0:` in an entryPoint address does NOT produce a v4-only
+      # socket, because Go treats 0.0.0.0 as *unspecified* and opens AF_INET6
+      # with IPV6_V6ONLY=0 for any wildcard listen.  Measured on ernst
+      # 2026-09-07, with every entryPoint already written as `0.0.0.0:`:
+      #
+      #   ss -ltnH -f inet   ->  127.0.0.1:8080  127.0.0.54:53  0.0.0.0:5355
+      #   ss -ltnH -f inet6  ->  *:80  *:443  *:8443  *:8082
+      #
+      # All four listeners were accepting v6.  Disabling v6 in this netns is
+      # what makes Go fall back to AF_INET, so the header's claim becomes a
+      # mechanism rather than a description.  Nothing here needs v6: ACME
+      # reaches Let's Encrypt over v4 and Technitium is v4-only.
+      #
+      # The proof is the same two commands — inet6 must come back EMPTY.
+      boot.kernel.sysctl."net.ipv6.conf.all.disable_ipv6" = 1;
 
       ##########################################################################
       # Users.  Numeric ids are the interface across the nspawn boundary.
