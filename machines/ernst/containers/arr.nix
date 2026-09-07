@@ -3547,13 +3547,18 @@ in
           # download can legitimately hold a pass for an hour; two hours clears
           # that with room and still turns "forever" into a bounded failure.
           #
-          # On expiry the unit goes to `failed` with Result=timeout — and note
-          # that the lock file described above is then LEFT BEHIND, which is
-          # the documented, deliberate failure direction: Soularr stays stopped
-          # until someone runs the `rm`.  That is a better resting place than
-          # the current one only because `failed` is a state something can
-          # eventually alert on; `activating` is not.  Nothing watches units
-          # inside this container yet, which is what makes that caveat matter.
+          # On expiry the unit goes to `failed` with Result=timeout, and the
+          # lock file described above is LEFT BEHIND.
+          #
+          # THAT USED TO BE THE DELIBERATE RESTING PLACE — "Soularr stays
+          # stopped until someone runs the `rm`" — on the grounds that
+          # `failed` is at least a state something can alert on.  IT IS NO
+          # LONGER, and both halves of the reasoning expired: M6 gained
+          # ContainerSystemdUnitFailed, so it does now page; and an
+          # interrupted pass turned out to be a DEPLOY far more often than a
+          # two-hour hang (measured 2026-09-07).  The ExecStartPre below
+          # clears the stale lock, so an interruption of any kind costs one
+          # skipped pass instead of every pass until a human intervenes.
           TimeoutStartSec = 7200;
 
           # See the render script: these are read by PID 1 as root and handed
@@ -3574,6 +3579,46 @@ in
           RuntimeDirectoryMode = "0700";
 
           ExecStartPre = [
+            # Clear a stale `.soularr.lock` before every pass.
+            #
+            # THIS IS THE CAVEAT IN THE TimeoutStartSec BLOCK ABOVE, CASHED IN.
+            # That block said the lock is "LEFT BEHIND ... Soularr stays
+            # stopped until someone runs the `rm`", and called it acceptable
+            # because "nothing watches units inside this container yet". Two
+            # things have changed: M6 gained ContainerSystemdUnitFailed, so it
+            # now pages; and the interruption that actually happened was not
+            # the timeout at all.
+            #
+            # MEASURED ON ernst 2026-09-07. A `clan machines update` restarted
+            # the container mid-pass, soularr took SIGTERM two minutes in
+            # (`code=killed, status=15/TERM`), and every run afterwards exited
+            # 1 in 260 ms having logged nothing at all — no traceback, no
+            # message, just an instant non-zero. The alert fired 15 minutes
+            # later and would have kept firing forever. Removing the lock by
+            # hand and starting the unit produced a normal pass, which is what
+            # confirmed the cause rather than merely fitting it.
+            #
+            # A DEPLOY IS A FAR MORE COMMON INTERRUPTION THAN A TWO-HOUR HANG,
+            # so the failure direction chosen there was tuned for the rarer
+            # event. Reboots and OOM kills land the same way.
+            #
+            # REMOVING IT UNCONDITIONALLY IS SAFE, and specifically it does not
+            # give up the overlap interlock the lock was for. systemd will not
+            # start a unit that is already active, so a timer firing during a
+            # long pass is refused by PID 1 before this script ever runs —
+            # meaning that whenever this line executes, no other pass is in
+            # flight and any lock present is by definition stale. The lock was
+            # only ever a second, weaker copy of a guarantee systemd already
+            # makes, and its sole remaining effect was to convert any unclean
+            # exit into a permanent stop.
+            "${pkgs.writeShellScript "soularr-clear-stale-lock" ''
+              set -euo pipefail
+              lock=/var/lib/soularr/.soularr.lock
+              if [ -e "$lock" ]; then
+                echo "soularr: clearing stale $lock left by an interrupted pass" >&2
+                rm -f "$lock"
+              fi
+            ''}"
             "${pkgs.writeShellScript "soularr-render-config" ''
               set -euo pipefail
 
