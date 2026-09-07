@@ -355,42 +355,20 @@ let
       '';
     };
 
-  # The OSMC skin, with nixpkgs' dead source pin repaired.
+  # `osmcSkinFor` USED TO BE HERE — a repair of nixpkgs' dead source pin for
+  # the OSMC skin (upstream renamed the tag, so the fetch 404'd). Both it and
+  # the skin were removed on 2026-09-07; see mediaClient.addons for why. The
+  # tag repair is not worth keeping for a package this role no longer builds,
+  # and the finding that mattered has a home of its own below:
   #
-  # nixpkgs 26.05 fetches tag `v21.1.1-August-update`, which upstream has
-  # since removed — the build dies on a 404 from GitHub, so the package is
-  # broken rather than merely unfree.
-  #
-  # Upstream renamed the tag rather than republishing: `v21.2.1-August-update`
-  # hashes to sha256-3BR6HfKefuyybDv9c/ZkkZMRDyWNZWpftulXyUAD9nY=, byte for
-  # byte what nixpkgs already expects from the old name. So this changes which
-  # name the archive is fetched under and nothing about its contents, which is
-  # why the hash below is copied unchanged from nixpkgs rather than being a
-  # new artefact anyone has to vouch for.
-  #
-  # Drop this the moment nixpkgs bumps its own pin.
-  #
-  # Takes the add-on set as an argument rather than reaching for
-  # `pkgs.kodiPackages`, and that is load-bearing. `withPackages` filters its
-  # selector's result with
-  #
-  #   hasKodiAddon = drv: drv ? kodiAddonFor && drv.kodiAddonFor == kodi;
-  #
-  # so an add-on built against a *different* Kodi than the one being wrapped
-  # is dropped — silently, with no error and no warning. Building this from
-  # `pkgs.kodiPackages` (which targets plain `kodi`) while wrapping
-  # `kodi-gbm` produced an environment byte-identical to one without the skin
-  # at all. Derive it from the set the selector is handed and the tag matches.
-  osmcSkinFor =
-    p:
-    p.osmc-skin.overrideAttrs (_: {
-      src = pkgs.fetchFromGitHub {
-        owner = "osmc";
-        repo = "skin.osmc";
-        tag = "v21.2.1-August-update";
-        hash = "sha256-3BR6HfKefuyybDv9c/ZkkZMRDyWNZWpftulXyUAD9nY=";
-      };
-    });
+  #   `withPackages` SILENTLY DROPS ADD-ONS BUILT AGAINST A DIFFERENT KODI.
+  #   Its filter is `drv ? kodiAddonFor && drv.kodiAddonFor == kodi`, so an
+  #   add-on taken from `pkgs.kodiPackages` (which targets plain `kodi`) while
+  #   wrapping `kodi-gbm` is discarded with no error and no warning — it
+  #   produced an environment byte-identical to one with no add-on at all.
+  #   Anything added to mediaClient.addons must come from the selector's own
+  #   argument `p`, never from `pkgs.kodiPackages`. Keep that in mind before
+  #   "just adding" a skin or PVR client here.
 
   # The client as Big Picture launches it: scaled for the couch.
   #
@@ -614,22 +592,31 @@ in
             # there is no keyboard in the living room by design.
             keymap
 
-            # The only skin nixpkgs packages. Everything else people reach
-            # for — Arctic Horizon, Arctic Zephyr, Aeon Nox — exists solely
-            # in Kodi's own repository, so it can be installed at runtime and
-            # will persist in ~/.kodi, but cannot be declared here.
+            # NO SKIN IS SHIPPED, and that is a change from how this role
+            # started. `osmc-skin` was here — the only skin nixpkgs packages —
+            # and it was REMOVED on 2026-09-07 because it breaks Kodi on
+            # ernst: once selected, the UI it draws cannot be used to select
+            # anything else, so the setting is unreachable from inside the
+            # program that owns it.
             #
-            # It is CC-BY-NC-SA, which nixpkgs classes as unfree, so it needs
-            # an entry in this role's allowUnfreePredicate below. Fine for a
-            # living room; the NC clause is why it is not simply free.
+            # That is a nastier failure than "a skin looks wrong". Kodi keeps
+            # the active skin in ~/.kodi as runtime state, so the bad choice
+            # survives every rebuild, and the only escape is editing
+            # guisettings.xml or deleting the profile. Shipping a skin that
+            # can trap the session is not worth the one skin nixpkgs has.
             #
-            # Installing it does not select it: Kodi keeps the active skin in
-            # ~/.kodi as runtime state. Settings -> Interface -> Skin.
+            # Kodi's built-in `skin.estuary` needs no package and cannot be
+            # uninstalled, so removing this leaves a working UI rather than
+            # none — see the dangling-skin repair unit below, which is what
+            # actually gets a trapped session back.
             #
-            # Repaired rather than taken straight from `p`: nixpkgs' own
-            # attribute is broken on a dead source URL. See osmcSkinFor above.
-          ]
-          ++ [ (osmcSkinFor p) ];
+            # EVERY OTHER SKIN — Arctic Reborn, Arctic Horizon, Arctic Zephyr,
+            # Aeon Nox — exists solely in Kodi's own or a third-party
+            # repository. They install at runtime and persist in ~/.kodi, and
+            # they CANNOT be declared here. Install one from Settings ->
+            # Add-ons once the UI is reachable; the repair unit leaves it
+            # alone, because by then the directory exists.
+          ];
         defaultText = lib.literalExpression ''
           p: with p; [ jellyfin inputstream-adaptive inputstreamhelper upnext a4ksubtitles keymap ]
         '';
@@ -1185,10 +1172,11 @@ in
         "steam-jupiter-unwrapped"
         "proton-ge-bin"
 
-        # The OSMC skin, CC-BY-NC-SA — see mediaClient.addons. Not a
-        # proprietary blob like the rest of this list; it is here purely
-        # because the non-commercial clause makes nixpkgs call it unfree.
-        "osmc-skin"
+        # NO "osmc-skin" ENTRY. It was here for the CC-BY-NC-SA clause while
+        # this role shipped that skin; the skin was removed 2026-09-07 (see
+        # mediaClient.addons) and the exemption went with it. Do not re-add
+        # one without re-adding the package — an unfree allowance for
+        # something nothing builds is a permission nobody can account for.
       ];
 
     # Point the display manager at the wrapper session rather than at
@@ -1303,6 +1291,102 @@ in
     # reboot — exactly the papercut impermanence is meant to make you notice
     # once and then fix for good.
     ++ lib.optional cfg.controller.enable "/var/lib/bluetooth";
+
+    # Kodi's selected skin, repaired when it points at something that is not
+    # installed.
+    #
+    # WHY THIS EXISTS. Kodi stores the active skin in ~/.kodi as runtime
+    # state, and it is the one setting whose failure removes the means of
+    # fixing it: a skin that draws an unusable UI cannot be changed from
+    # inside the UI it draws. That happened on ernst with `osmc-skin` on
+    # 2026-09-07 — the skin was removed from this role in response, and
+    # removing the PACKAGE does not touch the SETTING, so without this unit
+    # the next boot would come up naming a skin that is no longer there.
+    #
+    # Kodi does have its own fallback for a missing skin, and it is not
+    # trustworthy for this: it can present a modal on a machine whose input
+    # is a remote, which is the same trap one layer down.
+    #
+    # WHAT IT DOES, AND WHAT IT DELIBERATELY DOES NOT. It rewrites
+    # `lookandfeel.skin` to `skin.estuary` ONLY when the currently-named skin
+    # has no directory in either the Kodi package or ~/.kodi/addons. It is a
+    # DANGLING-REFERENCE REPAIR, not a pin:
+    #
+    #   - install Arctic Reborn (or any other) from Kodi's add-on browser and
+    #     select it, and this leaves it alone forever, because it exists;
+    #   - name a skin that was never installed or has been removed, and this
+    #     puts the UI back so the choice can be made again.
+    #
+    # A pin would be the wrong tool. The skin is a taste decision made from
+    # the sofa, and no skin but Estuary can be expressed in this file anyway
+    # (see mediaClient.addons).
+    #
+    # `skin.estuary` is Kodi's built-in default, shipped inside the binary's
+    # own addon directory and impossible to uninstall, so the fallback cannot
+    # itself dangle.
+    systemd.services.clanarchy-kodi-skin-repair = lib.mkIf cfg.mediaClient.enable {
+      description = "Reset Kodi's skin when it names one that is not installed";
+
+      # Same wiring and the same reasoning as clanarchy-steam-shortcuts in
+      # modules/gaming-shortcuts.nix: pulled in by the display manager as well
+      # as multi-user, and NOT RemainAfterExit, so that a `systemctl restart
+      # display-manager` re-runs it. That is exactly when it is wanted — the
+      # session is down, so guisettings.xml is safe to touch, and a redeploy
+      # that removed a skin has just landed. Otherwise it would take a full
+      # reboot to recover a trapped session.
+      wantedBy = [ "multi-user.target" "display-manager.service" ];
+      before   = [ "display-manager.service" ];
+
+      # tmpfiles as well as local-fs: ~/.kodi is restored by impermanence and
+      # persistenceDirectories above, so running before those have been set up
+      # means editing a guisettings.xml that is about to be replaced.
+      after = [ "local-fs.target" "systemd-tmpfiles-setup.service" ];
+
+      serviceConfig = {
+        Type = "oneshot";
+        User = cfg.user;
+        Group = config.users.users.${cfg.user}.group;
+        ExecStart = lib.getExe (pkgs.writeShellApplication {
+          name = "clanarchy-kodi-skin-repair";
+          runtimeInputs = [ pkgs.coreutils pkgs.gnused pkgs.gnugrep ];
+          text = ''
+            settings="$HOME/.kodi/userdata/guisettings.xml"
+
+            # No profile yet: a first boot, or a rollback that has not run
+            # Kodi since. Nothing to repair, and creating the file here would
+            # hand Kodi a config it did not write.
+            [ -f "$settings" ] || exit 0
+
+            current=$(sed -n 's:.*<setting id="lookandfeel.skin"[^>]*>\([^<]*\)</setting>.*:\1:p' \
+                        "$settings" | head -1)
+            [ -n "$current" ] || exit 0
+
+            # Estuary is inside the Kodi binary's own addon dir and always
+            # present; short-circuit so the common case does no work.
+            [ "$current" = "skin.estuary" ] && exit 0
+
+            # Two places a skin can legitimately live: built into the wrapped
+            # package, or installed at runtime by the user.
+            if [ -d "${cfg.mediaClient.package}/share/kodi/addons/$current" ] \
+               || [ -d "$HOME/.kodi/addons/$current" ]; then
+              echo "kodi skin '$current' is installed; leaving it alone"
+              exit 0
+            fi
+
+            echo "kodi skin '$current' is not installed - resetting to skin.estuary"
+            # Written aside and renamed: Kodi reads this file at start, and a
+            # half-written one is a profile reset.
+            tmp=$(mktemp "$settings.XXXXXX")
+            trap 'rm -f "$tmp"' EXIT
+            sed 's:\(<setting id="lookandfeel.skin"[^>]*>\)[^<]*\(</setting>\):\1skin.estuary\2:' \
+              "$settings" > "$tmp"
+            chmod --reference="$settings" "$tmp"
+            mv -f "$tmp" "$settings"
+            trap - EXIT
+          '';
+        });
+      };
+    };
 
     # Boot dispatcher.
     #

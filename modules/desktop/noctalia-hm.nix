@@ -560,7 +560,19 @@ in {
       };
 
       dock = {
-        enabled = true;
+        # OFF for lgo (miralda + jens), ON for sabine (biene).  Gated on the
+        # PER-USER check and not on isNiri, for the reason isLgo exists at all
+        # — the two select the same machines today and are not the same
+        # question.  lgo drives workspaces from niri keybinds and the dock was
+        # only ever occluding the bottom of windows on auto_hide.
+        #
+        # Everything below stays defined rather than being wrapped in a
+        # conditional: the settings file is a single merged attrset that
+        # Noctalia rewrites itself, so a key that disappears is a key Noctalia
+        # backfills with ITS default, not one that stays absent.  Turning the
+        # dock off and leaving its configuration intact is what makes flipping
+        # this back a one-word edit.
+        enabled = !isLgo;
         position = "bottom";
         displayMode = "auto_hide";
         dockType = "floating";
@@ -937,7 +949,13 @@ in {
           khal-agenda-widget     = mkPlugin;
           keybind-cheatsheet     = mkPlugin;
           mirror-mirror          = mkPlugin;
-          mullvad                = mkPlugin;
+          # NO `mullvad` PLUGIN.  The VPN is IVPN as of 2026-09-07, and the
+          # bar indicator for it is `network-manager-vpn` below: IVPN's
+          # WireGuard profiles are imported into NetworkManager, so the
+          # generic NM plugin sees connection state where a vendor-specific
+          # one would not.  Keeping the mullvad plugin alongside would put a
+          # permanently-disconnected VPN widget in the bar, which is worse
+          # than no widget — it is an indicator that always reads "off".
           network-manager-vpn    = mkPlugin;
           nvim-session-provider  = mkPlugin;
           obs-control            = mkPlugin;
@@ -1004,6 +1022,33 @@ in {
           '.states = ($seed[0].states + .states)' \
           "$_json" > "$_tmp" && mv "$_tmp" "$_json"
       fi
+
+      # RETIREMENT, which the merge above cannot express.
+      #
+      # `.states = ($seed[0].states + .states)` adds missing entries and lets
+      # the RUNTIME side win every conflict — deliberately, so a plugin
+      # enabled or configured from the UI is not stomped on each rebuild. The
+      # consequence is that DELETING a plugin from the seed list does nothing
+      # at all on a machine that already has it: the key is simply not in the
+      # seed to be merged, and the existing one stays enabled forever.
+      #
+      # Removing `mullvad` from the list above without this would therefore
+      # have left the widget exactly where it was, on both machines, while
+      # every file in the repo said it was gone.
+      #
+      # This list is the explicit counterpart: names here are DELETED from
+      # states, and their downloaded plugin directory is removed. Both are
+      # needed — an orphaned directory with no state entry is dead weight,
+      # and a state entry with no directory is a bar widget that fails to
+      # load. The plugins are public and re-downloadable from the UI, so
+      # this is reversible by the person sitting at the machine.
+      for _retired in mullvad; do
+        _tmp=$(mktemp)
+        ${pkgs.jq}/bin/jq --arg p "$_retired" 'del(.states[$p])' \
+          "$_json" > "$_tmp" && mv "$_tmp" "$_json"
+        rm -rf "$HOME/.config/noctalia/plugins/$_retired"
+      done
+      chmod 644 "$_json"
     '';
 
   # Convert Noctalia-managed symlinks to writable regular files after each activation.
