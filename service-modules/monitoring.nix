@@ -571,11 +571,19 @@ in
               # fd00::/8 is ULA. Matching on the first two hex digits covers
               # both fdca: (M6's monitoring net) and fdda: (ZeroTier) without
               # naming either, so a new ULA does not become a false alarm.
-              # `|| true` because grep -v exits 1 on an empty result, which is
-              # the GOOD case and must not fail the unit under -o pipefail.
+              #
+              # `grep -vc` and not `grep -v | wc -l`, because SC2126 is an
+              # error under writeShellApplication's lint pass and fails the
+              # DERIVATION rather than the run. (Do not open a comment line
+              # here with the linter's own name: it is read as a directive and
+              # SC1072 fails the build too. Both of these were found by
+              # BUILDING, which `nix eval` does not do.)
+              #
+              # The count still reaches stdout when it is zero — grep prints
+              # "0" and then exits 1 — so `|| true` is load-bearing under
+              # `set -o pipefail`, and zero is the GOOD case.
               n=$(ip -6 -o addr show scope global 2>/dev/null \
-                    | grep -viE 'inet6 f[cd][0-9a-f]{2}:' \
-                    | wc -l || true)
+                    | grep -vciE 'inet6 f[cd][0-9a-f]{2}:' || true)
 
               {
                 echo "# HELP clanarchy_ipv6_global_addresses IPv6 global-scope addresses present, excluding ULA. SN2 expects zero."
