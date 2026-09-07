@@ -45,8 +45,38 @@
   # greetd recovers (~44 s later).
   services.accounts-daemon.enable = true;
 
-  # Mullvad VPN — mullvad Noctalia plugin requires the daemon + mullvad CLI.
-  services.mullvad-vpn.enable = true;
+  # ── VPN.  Mullvad is gone as of 2026-09-07; IVPN runs through NetworkManager
+  #
+  #   The switch away from Mullvad is lgo's, on the grounds of who its
+  #   leadership funds politically.  It is not a technical judgement about the
+  #   client and nothing here should be read as one.
+  #
+  #   THERE IS DELIBERATELY NO `services.ivpn.enable` AND NO ivpn PACKAGE.
+  #   nixpkgs has all three (`ivpn`, `ivpn-service`, `ivpn-ui`) and they are
+  #   not used, because the daemon manages its own WireGuard interface outside
+  #   NetworkManager.  That would break the one thing that was asked for: the
+  #   bar indicator.
+  #
+  #   Noctalia shipped a vendor `mullvad` plugin and ships nothing for IVPN,
+  #   so the only widget that can follow this VPN is `network-manager-vpn` —
+  #   and it only sees NetworkManager connections.  Running ivpn-service
+  #   alongside would additionally give two things authority over the default
+  #   route, which is how a kill-switch turns into an outage nobody can
+  #   diagnose.
+  #
+  #   SO THE TUNNEL IS AN NM WIREGUARD PROFILE.  NetworkManager has had native
+  #   WireGuard support since 1.16 and `networkmanagerapplet` is already in
+  #   systemPackages below for exactly this.  Import the .conf files from
+  #   IVPN's account area with:
+  #
+  #       nmcli connection import type wireguard file ivpn-<server>.conf
+  #
+  #   THE TRADE, STATED SO NOBODY "FIXES" IT BACK: IVPN's own kill-switch,
+  #   multihop and AntiTracker are not in this path.  What is bought is a VPN
+  #   whose state the desktop can actually see, and one process in charge of
+  #   routing instead of two.  If the kill-switch is ever wanted more than the
+  #   indicator, the change is `services.ivpn.enable = true` here plus dropping
+  #   `network-manager-vpn` in noctalia-hm.nix — do both or neither.
 
   # Noctalia plugin runtime dependencies — packages required by specific Noctalia
   # plugins regardless of compositor.
