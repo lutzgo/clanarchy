@@ -177,31 +177,78 @@
 #   monitoring alert for exactly "the wan entrypoint is up and CrowdSec is
 #   not".  A ledger row carries this with a trigger.
 #
-# ── ENFORCEMENT IS OFF UNTIL Q2 IS ANSWERED.  READ THIS BEFORE FLIPPING IT ───
+# ── ENFORCEMENT IS ARMED.  Q2 WAS CONFIRMED 2026-09-07 ──────────────────────
 #
-#   `enforce = false` below puts CrowdSec in SIMULATION: it parses, it fires
-#   scenarios, it records decisions — and marks them simulated, so the bouncer
-#   never receives them and nothing is dropped.
+#   `enforce = false` used to sit below, putting CrowdSec in SIMULATION: it
+#   parsed, it fired scenarios, it recorded decisions — and marked them
+#   simulated, so the bouncer never received them and nothing was dropped.
 #
-#   THE REASON IS Q2, AND IT IS NOT A FORMALITY.  Everything downstream of the
-#   access log keys on the source address the log records.  If the UDM-Pro
-#   SNATs the port forward instead of preserving the source, every external
-#   request appears to come from 10.0.90.1, and the first scanner would get the
-#   DEFAULT GATEWAY banned — which takes the whole house off Jellyseerr, and
+#   THE REASON WAS Q2, AND IT WAS NOT A FORMALITY.  Everything downstream of
+#   the access log keys on the source address the log records.  If the UDM-Pro
+#   SNATed the port forward instead of preserving the source, every external
+#   request would appear to come from 10.0.90.1, and the first scanner would
+#   get the DEFAULT GATEWAY banned — taking the whole house off Jellyseerr, and
 #   possibly off more than that.  A remediation that can do that must not be
 #   armed on a guess.
 #
-#   TO ARM IT: make one request from a known external address, then
+#   IT WAS NOT ARMED ON A GUESS.  One request from a phone on mobile 5G,
+#   against the bare public IP, minutes after the UDM-Pro forward went up:
+#
+#       curl, client side:  Established connection to 78.94.91.74
+#                           from 10.136.183.244 port 46204
+#       traefik access log: {"ClientHost":"47.65.179.48",
+#                            "ClientAddr":"47.65.179.48:46204",
+#                            "entryPointName":"wan", ...}
+#
+#   THE SOURCE PORT MATCHES EXACTLY (46204).  10.136.183.244 is the carrier's
+#   CGNAT address on the handset; 47.65.179.48 is that carrier's public egress.
+#   Traefik saw the real public source, and the port surviving end to end is
+#   what makes this a measurement rather than an inference: UniFi is doing DNAT
+#   and NOT SNAT.  Q2 CONFIRMED, and Q3 with it.
+#
+#   IF THIS EVER STOPS BEING TRUE — a UDM-Pro firmware change, a different
+#   forward mode, a proxy inserted in front — the symptom is bans landing on
+#   one internal address.  Re-run the check:
 #
 #       nixos-container run traefik -- journalctl -u traefik -n 5 -o cat \
 #         | jq -r .ClientHost
 #
-#   If that prints the external address, Q2 is CONFIRMED — flip `enforce` to
-#   true and deploy.  If it prints 10.0.90.1, or the bridge, or the gateway,
-#   STOP: the milestone needs proxyProtocol on the wan entryPoint or a
-#   different forward mode on the UDM-Pro, and arming this would be actively
-#   harmful.  docs/roadmap.md M18 carries the answer as CONFIRMED / FALSE /
-#   UNRESOLVED; do not leave it as prose.
+#   If it prints 10.0.90.1, or the bridge, or the gateway, set `enforce = false`
+#   and deploy BEFORE investigating: the milestone would then need proxyProtocol
+#   on the wan entryPoint or a different forward mode on the UDM-Pro.
+#
+# ── THIS IP RECEIVES TRAFFIC FOR A DOMAIN THE HOUSE DOES NOT OWN ────────────
+#
+#   Measured within thirty minutes of the forward opening, 2026-09-07.  Four
+#   unsolicited external sources, all on the `wan` entryPoint, all 404:
+#
+#       47.65.179.48    78.94.91.74           /              (the test above)
+#       54.204.56.173   qbt.casago.xyz        /
+#       75.119.147.4    bazarr.casago.xyz     /
+#       34.66.214.40    casago.xyz            /.git/config
+#
+#   `casago.xyz`, `qbt.casago.xyz` and `bazarr.casago.xyz` all resolve to
+#   78.94.91.74 — this house's public address — on Cloudflare nameservers.
+#   The house does not own that domain.  The subdomain names are not a
+#   coincidence: qbt and bazarr are a self-hosted media stack, so the previous
+#   holder of this IPv4 address ran one and their DNS was never cleaned up.
+#
+#   WHY IT IS WRITTEN DOWN HERE RATHER THAN SHRUGGED AT: it makes a busy ban
+#   list the NORMAL state on this box, not an incident.  Somebody else's users,
+#   bots and monitoring will keep arriving indefinitely, every one of them will
+#   404, and `crowdsecurity/http-probing` counts distinct 404 paths.  A future
+#   reader finding fifty decisions in `cscli decisions list` should not go
+#   looking for an attack.
+#
+#   It is also why M18's one alert is `ExposedAndUnprotected` and NOT a
+#   threshold on ban volume.  Ban volume here is a property of the address's
+#   history.  The silent failure is the opposite: bans not being enforced at
+#   all while the `wan` entryPoint is up.
+#
+#   NOTHING IS DONE ABOUT THE DOMAIN, deliberately.  Those requests reach the
+#   `wan` entryPoint, match no router, and get 404 — which is the same answer
+#   they would get if the domain did not exist.  There is nothing to fix on
+#   this side, and the records are not the house's to delete.
 #
 # ── Storage layout on this host (see machines/ernst/disko.nix) ───────────────
 #
@@ -218,9 +265,12 @@
 { config, lib, pkgs, ... }:
 let
   ############################################################################
-  # THE ENFORCEMENT SWITCH.  See the block above — this is Q2's gate.
+  # THE ENFORCEMENT SWITCH.  See the block above — this was Q2's gate, and Q2
+  # was CONFIRMED by measurement on 2026-09-07 with the source port matching
+  # end to end.  Setting this back to false is the correct first move if bans
+  # ever start landing on an internal address.
   ############################################################################
-  enforce = false;
+  enforce = true;
 
   ############################################################################
   # Identity.
