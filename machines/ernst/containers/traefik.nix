@@ -148,11 +148,21 @@
 #   CrowdSec's metrics port, were accepting v6 on link-local.  A claim of this
 #   shape is worse than no claim: it reads like a control in review.
 #
+#   THE FIRST ATTEMPT AT A REPLACEMENT WAS ALSO WRONG, which is worth leaving
+#   on the record.  It said `disable_ipv6` would make Go fall back to AF_INET
+#   so that `ss -f inet6` came back empty.  It does not: the socket family is
+#   available whenever the ipv6 module is loaded, regardless of addressing.
+#   The listeners are dual-stack and stay dual-stack.  Two wrong mechanisms in
+#   a row, both from reasoning about Go and kernel semantics instead of running
+#   the command, is the actual lesson here.
+#
 #   What actually holds the line, in the order it is relied on:
 #
-#     1. `net.ipv6.conf.all.disable_ipv6 = 1` in this netns (see the sysctl
-#        further down).  THIS is the mechanism; it makes Go fall back to
-#        AF_INET, and `ss -f inet6` comes back empty.
+#     1. NO IPv6 ADDRESS CAN EXIST IN THIS NETNS — `disable_ipv6` on `all`,
+#        `default` AND `eth0` (see the sysctl further down for why all three,
+#        and which one does the work).  The sockets are still dual-stack; they
+#        have nothing to be reached on, and no prefix can ever be accepted.
+#        THE PROOF IS `ip -6 addr show` RETURNING NOTHING, not `ss -f inet6`.
 #     2. No v6 forward on the UDM-Pro.  Outside Nix, and an explicit "do not"
 #        in M18's manual steps.  NOT audited — Claude does not touch it.
 #     3. No GUA anywhere on VLAN 90.  Measured 2026-08-25 and again
@@ -999,22 +1009,55 @@ in
         ip saddr ${monitoringAddr} tcp dport ${toString metricsPort} accept
       '';
 
-      # SN2's actual enforcement.  See IPv4-ONLY BY CONSTRUCTION in the header:
-      # writing `0.0.0.0:` in an entryPoint address does NOT produce a v4-only
-      # socket, because Go treats 0.0.0.0 as *unspecified* and opens AF_INET6
-      # with IPV6_V6ONLY=0 for any wildcard listen.  Measured on ernst
-      # 2026-09-07, with every entryPoint already written as `0.0.0.0:`:
+      # SN2's actual enforcement.  See IPv4-ONLY BY CONSTRUCTION in the header.
       #
-      #   ss -ltnH -f inet   ->  127.0.0.1:8080  127.0.0.54:53  0.0.0.0:5355
-      #   ss -ltnH -f inet6  ->  *:80  *:443  *:8443  *:8082
+      # THE SOCKETS ARE DUAL-STACK AND THEY STAY DUAL-STACK.  Two separate
+      # claims were made about this and BOTH were wrong before being measured;
+      # what follows is what the deployed system actually does.
       #
-      # All four listeners were accepting v6.  Disabling v6 in this netns is
-      # what makes Go fall back to AF_INET, so the header's claim becomes a
-      # mechanism rather than a description.  Nothing here needs v6: ACME
-      # reaches Let's Encrypt over v4 and Technitium is v4-only.
+      #   Wrong claim 1: "every entryPoint binds 0.0.0.0: and not :, so nothing
+      #   listens on v6."  Go treats 0.0.0.0 as *unspecified*, and for any
+      #   wildcard listen `favoriteAddrFamily` returns AF_INET6 with
+      #   IPV6_V6ONLY=0.  The address written in the config makes no difference.
       #
-      # The proof is the same two commands — inet6 must come back EMPTY.
-      boot.kernel.sysctl."net.ipv6.conf.all.disable_ipv6" = 1;
+      #   Wrong claim 2: "disabling v6 in this netns makes Go fall back to
+      #   AF_INET, so `ss -f inet6` comes back empty."  It does not.  Measured
+      #   on the deployed container with every v6 address gone:
+      #
+      #     ip -6 addr show    ->  (nothing)
+      #     ss -ltnH -f inet6  ->  *:80  *:443  *:8443  *:8082  *:6060
+      #
+      #   The socket family is available whenever the ipv6 module is loaded,
+      #   which is independent of whether any interface has an address.
+      #
+      # SO THE MECHANISM IS NOT "v4-only sockets".  It is that NO IPv6 ADDRESS
+      # CAN EXIST IN THIS NETNS, which makes the dual-stack sockets unreachable
+      # over v6 and — the part SN2 actually cares about — makes it impossible
+      # for a delegated prefix to ever be accepted on eth0.
+      #
+      # ALL THREE KEYS ARE REQUIRED, and which one does the work was measured
+      # rather than reasoned about:
+      #
+      #   `all` alone was deployed first and WAS NOT ENOUGH — eth0 kept
+      #   fe80::ff:fe90:4/64.  nspawn creates the veth and moves it into the
+      #   netns BEFORE this container's init runs, so by the time systemd-sysctl
+      #   applies anything the interface already exists with v6 up.  `default`
+      #   governs interfaces created afterwards and does not apply
+      #   retroactively, so `eth0` is the key that actually tears the address
+      #   down.  `default` is here for any interface added later and `all` for
+      #   symmetry with it.
+      #
+      # THE PROOF IS `ip -6 addr show`, NOT `ss`.  A future reader running
+      # `ss -f inet6` and finding listeners has not found a regression.
+      #
+      # Nothing here needs v6: ACME reaches Let's Encrypt over v4 and
+      # Technitium is v4-only.  Verified after the change with
+      # `curl --resolve jellyfin.goclan.org:443:10.0.90.12` -> 302.
+      boot.kernel.sysctl = {
+        "net.ipv6.conf.all.disable_ipv6"     = 1;
+        "net.ipv6.conf.default.disable_ipv6" = 1;
+        "net.ipv6.conf.eth0.disable_ipv6"    = 1;
+      };
 
       ##########################################################################
       # Users.  Numeric ids are the interface across the nspawn boundary.
