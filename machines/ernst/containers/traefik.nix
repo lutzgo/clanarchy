@@ -162,7 +162,9 @@
 #        on the 10-eth0 network unit, which is the repo's existing idiom and
 #        was simply missing here.  The sockets are still dual-stack; they have
 #        nothing to be reached on, and no prefix can ever be accepted.
-#        THE PROOF IS `ip -6 addr show` RETURNING NOTHING, not `ss -f inet6`.
+#        THE PROOF IS `ip -6 addr show dev eth0` RETURNING NOTHING, not
+#        `ss -f inet6` and not a bare `ip -6 addr show` — `lo` keeps
+#        `::1/128 scope host`, which is loopback and is supposed to be there.
 #        Two `boot.kernel.sysctl` attempts at this failed before it; the
 #        gravestone is where they used to be.
 #     2. No v6 forward on the UDM-Pro.  Outside Nix, and an explicit "do not"
@@ -1060,8 +1062,19 @@ in
       # that NO IPv6 ADDRESS EXISTS IN THIS NETNS: the dual-stack sockets have
       # nothing to be reached on, and no delegated prefix can be accepted.
       #
-      # THE PROOF IS `ip -6 addr show` RETURNING NOTHING, NOT `ss`.  A future
-      # reader running `ss -f inet6`, finding five listeners and reporting a
+      # THE PROOF, EXACTLY, because two different wrong commands have already
+      # been written down as one:
+      #
+      #   ip -6 addr show dev eth0   ->  nothing        <- THIS is the check
+      #   ip -6 route show           ->  nothing        <- and this
+      #   ip -6 addr show            ->  ::1/128 on lo  <- EXPECTED, not a failure
+      #   ss -ltnH -f inet6          ->  five listeners <- EXPECTED, not a failure
+      #
+      # The bare `ip -6 addr show` form was accurate only while the deleted
+      # sysctl block existed, because `all = 1` covered `lo` too and took `::1`
+      # away with it.  Removing the sysctls brought `::1` back, which is
+      # correct and harmless: loopback is unreachable from outside this netns.
+      # A future reader running either of the last two commands and reporting a
       # regression would be the fourth instance of this same mistake.
 
       ##########################################################################
