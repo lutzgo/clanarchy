@@ -546,6 +546,65 @@ in
     '';
   };
 
+  # ── The second-tier metadata providers ──────────────────────────────────
+  #
+  # A SEPARATE GENERATOR, DELIBERATELY.  Adding files to
+  # `romm-metadata-keys` above would change that generator, and clan re-runs a
+  # generator as a unit — so it would re-prompt for the IGDB and SteamGridDB
+  # credentials that are already stored and working.  Splitting keeps this an
+  # additive errand: answer the new prompts, leave the old ones untouched.
+  #
+  # WHY BOTHER, given IGDB is already enabled.  Measured on this library
+  # (2026-09-07, 37,896 ROMs): IGDB matched 24,301 and 22,860 got a summary —
+  # about 64%.  The missing third is not random.  It is ROM hacks, bad dumps
+  # and pirate multicarts — `100-in-1 Contra Function 16`, `[hM02]`, `[a1]`,
+  # `110-in-1 (Menu)` — which IGDB does not catalogue at all, because IGDB
+  # catalogues *published games*.  No amount of retrying IGDB reaches them.
+  #
+  # ScreenScraper is the one that does: it matches on file hash rather than
+  # name, and its corpus is community dumps, which is exactly this population.
+  # It needs a personal account *on top of* the dev credentials RomM ships
+  # (`SCREENSCRAPER_DEV_ID=zurdi15` is RomM's author, not us) — `ss_handler.py`
+  # gates on `bool(SCREENSCRAPER_USER and SCREENSCRAPER_PASSWORD)`, so without
+  # a user account the source reports enabled=false however good the dev
+  # credentials are.  That is why /api/heartbeat showed
+  # `"SS_API_ENABLED": false, "SS_DEV_CREDENTIALS_SET": true`.
+  #
+  # Same empty-answer contract as the generator above: blank leaves the source
+  # disabled and the deploy still succeeds.
+  clan.core.vars.generators.romm-metadata-keys-extra = {
+    files."screenscraper-user".secret        = true;
+    files."screenscraper-password".secret    = true;
+    files."mobygames-api-key".secret         = true;
+    files."retroachievements-api-key".secret = true;
+
+    prompts."screenscraper-user" = {
+      description = "ScreenScraper username (screenscraper.fr) — hash-based matching, best for hacks and multicarts IGDB misses; blank to leave disabled";
+      type        = "hidden";
+    };
+    prompts."screenscraper-password" = {
+      description = "ScreenScraper password — blank to leave disabled";
+      type        = "hidden";
+    };
+    prompts."mobygames-api-key" = {
+      description = "MobyGames API key (mobygames.com/info/api) — blank to leave disabled";
+      type        = "hidden";
+    };
+    prompts."retroachievements-api-key" = {
+      description = "RetroAchievements API key (retroachievements.org/controlpanel.php) — blank to leave disabled";
+      type        = "hidden";
+    };
+
+    runtimeInputs = [ pkgs.coreutils ];
+    script = ''
+      # Same newline strip as romm-metadata-keys: these land in an env file.
+      for f in screenscraper-user screenscraper-password mobygames-api-key \
+               retroachievements-api-key; do
+        tr -d '\n' < "$prompts/$f" > "$out/$f"
+      done
+    '';
+  };
+
   clan.core.vars.generators.romm-db-root-password = {
     files."password".secret = true;
     runtimeInputs = [ pkgs.coreutils pkgs.openssl ];
@@ -588,6 +647,11 @@ in
         sgdbKey = meta."steamgriddb-api-key".path;
         igdbId  = meta."igdb-client-id".path;
         igdbSec = meta."igdb-client-secret".path;
+        extra   = config.clan.core.vars.generators.romm-metadata-keys-extra.files;
+        ssUser  = extra."screenscraper-user".path;
+        ssPass  = extra."screenscraper-password".path;
+        mobyKey = extra."mobygames-api-key".path;
+        raKey   = extra."retroachievements-api-key".path;
       in
       ''
         set -eu
@@ -600,6 +664,10 @@ in
         sgdb=$(${pkgs.coreutils}/bin/cat ${sgdbKey})
         igdbid=$(${pkgs.coreutils}/bin/cat ${igdbId})
         igdbsec=$(${pkgs.coreutils}/bin/cat ${igdbSec})
+        ssuser=$(${pkgs.coreutils}/bin/cat ${ssUser})
+        sspass=$(${pkgs.coreutils}/bin/cat ${ssPass})
+        moby=$(${pkgs.coreutils}/bin/cat ${mobyKey})
+        rakey=$(${pkgs.coreutils}/bin/cat ${raKey})
 
         ${pkgs.coreutils}/bin/install -m 0400 -o root -g root /dev/null ${secretsDir}/romm.env
         ${pkgs.coreutils}/bin/cat > ${secretsDir}/romm.env <<EOF
@@ -608,6 +676,10 @@ in
         STEAMGRIDDB_API_KEY=$sgdb
         IGDB_CLIENT_ID=$igdbid
         IGDB_CLIENT_SECRET=$igdbsec
+        SCREENSCRAPER_USER=$ssuser
+        SCREENSCRAPER_PASSWORD=$sspass
+        MOBYGAMES_API_KEY=$moby
+        RETROACHIEVEMENTS_API_KEY=$rakey
         EOF
 
         ${pkgs.coreutils}/bin/install -m 0400 -o root -g root /dev/null ${secretsDir}/romm-db.env
@@ -681,6 +753,14 @@ in
       # generator below — the empty-prompt path leaves them unset, so a machine
       # whose owner has not signed up still deploys and still scans.
       HASHEOUS_API_ENABLED = "true";
+
+      # LaunchBox is the other source that costs nothing: `config/__init__.py`
+      # reads LAUNCHBOX_API_ENABLED as a plain bool and
+      # `launchbox_handler/handler.py` gates on it alone — there is no API key
+      # and no account.  Its corpus is the LaunchBox Games Database, which is
+      # retro-first and carries a lot of the regional and compilation releases
+      # IGDB does not, so it is enabled unconditionally alongside Hasheous.
+      LAUNCHBOX_API_ENABLED = "true";
 
       # ── Why these two are set, and what happens when they are not ──────────
       #
