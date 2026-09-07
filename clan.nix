@@ -516,6 +516,14 @@
           # ever changing state.  The laptops have someone sitting in front of
           # them when something crashes.
           exporters.coredumps  = true;
+          # M18 follow-up.  SN2's IPv4-only decision, made observable instead
+          # of re-measured by hand.  ernst only, and not because the other
+          # machines do not matter: they ROAM, and a café network handing out
+          # a v6 prefix is normal there.  ernst never leaves VLAN 90, so a
+          # global address on ernst means the line itself changed — and after
+          # M18 that is the event that would make every router in the house
+          # reachable on a path the `wan` entryPoint does not gate.
+          exporters.ipv6Guard  = true;
         };
 
         # The laptops take node_exporter and nothing else.  miralda and biene

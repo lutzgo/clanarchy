@@ -62,7 +62,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M15 — Tdarr / space reclamation | **closed 2026-08-29 — measured, and NOTHING SHIPS: neither Muxarr nor Tdarr** | — | The Muxarr measurement the milestone required ran first, over the whole library (7,469 files, 20.94 TiB, per-stream sizes mostly from exact mkv statistics tags): a full track-strip pass reclaims **375 GiB — 1.7%** — against **57.6 TiB free** on a pool at 31%. And the "zero quality risk" premise was wrong for THIS household: 115 GiB of that figure is Japanese audio on anime, and **300 films carry no German or English track at all** — this library watches original-language versions, so language-stripping is a curation risk, not a free lunch. The transcode side dissolves with it: the h264 tier is 4,968 hours / 14.59 TiB, i.e. months of 16-core SVT-AV1 to reclaim ~5 TiB nobody is short of. **The GPU arbitration problem M15 existed to solve is not solved — it is UNPROVOKED**: no service claims the render node, so Ollama's 2 GB headroom stays uncontested. uid 3023 stays reserved-not-used; no router, no exporter. Re-open triggers recorded in the close-out. Depends on M12. [M15](#m15-featernst-tdarr) |
 | M16 — external ingress | **superseded 2026-09-03 by [M18](#m18-featernst-wan-ingress-direct)** — the tunnel is deleted; the two externally reachable hostnames and the auth posture are unchanged, only the mechanism | — | **(B) won — Cloudflare Tunnel**, on the fail-closed argument its brief predicted: the tunnel's ingress list names its hostnames, so `sonarr.goclan.org` and the rest are not refused from outside, they are **not there**. cloudflared runs in its **own nspawn container** (`10.0.90.21`, uid 3029, MAC `…:0d`) — microvm argued and rejected — with an **egress firewall** admitting only Traefik `:443` and Technitium `:53` on RFC1918, so a compromised tunnel can reach on the LAN exactly what the internet already reaches through it. **One premise did not survive implementation**: the test plan listed `auth.goclan.org` among the must-be-unreachable names, but forward-auth is a redirect protocol — **the portal must ride the tunnel or no external login can complete**; the corrected test plan is in the PR. The jellyseerr router **gains `authelia`** (both paths — a ClientIP split fails open, and an XFF-based bypass trusts the header this milestone exists to distrust); a `household` group + **sabine's account** make that survivable for non-admins. **Wizarr evaluated and dropped**: the accounts created numbered one. SN2 untriggered — the tunnel is outbound-only. Depends on M13. [M16](#m16-featernst-external-ingress) |
 | M17 — ebook acquisition | **done — deployed and operator-confirmed 2026-08-31; both owed verifications PASSED** | — | **Bindery v1.33.2 lands exactly as surveyed**: uid 3028 in the arr container, static Go binary from the upstream tarball (checksum verified against upstream's own `checksums.txt`), hardened unit written whole with all four M14 deploy-defect classes answered in place — including **one new trap found by running the binary: `BINDERY_DB_PATH` does not follow `BINDERY_DATA_DIR`**, so both are pinned or first start dies on `mkdir /config`. **The M14-era "Usenet-oriented, poor fit" note is resolved**: upstream's repo *description* still says SABnzbd — the stale artifact — while the README and settings at v1.33.2 carry qBittorrent/Transmission/Deluge/rTorrent and Torznab; the M17 survey re-checked and is right. Binds `0.0.0.0` (measured), so the container firewall is load-bearing, questarr-style. **Prowlarr wiring goes the Questarr way**: Bindery *consumes* Torznab feeds, it is not a Prowlarr application. Traefik router behind `authelia` + `protectedHosts` entry. `MemoryDenyWriteExecute = true` — the first unit in the arr container that can carry it (Go, no JIT). **Audiobook capability deliberately unrouted**: that pipeline belongs to Audiobookshelf + Storyteller. **Both owed verifications passed on deploy day**: the uid-3028 hardlink proof (same inode, link count 2) **with its negative control** (0644 file owned by uid 3017 refused `EPERM`, `fs.protected_hardlinks` confirmed enabled first), and `systemd-analyze security bindery` at **1.5 OK** — level with kapowarr/questarr, against the 9.0 UNSAFE lidarr and audiobookshelf shipped as. The firewall was confirmed load-bearing: `10.0.90.13:8787` times out from the LAN while the Traefik name redirects to Authelia. **One deploy-day defect, and it was in the manual steps rather than the code**: they omitted the Technitium record, which the roadmap requires for every new Traefik hostname *before anyone types the name* — the name was typed first, the NXDOMAIN cached, and `ERR_NAME_NOT_RESOLVED` survived the record's creation until `resolvectl flush-caches`. **The ABS integration was wired after the fact and stays read-only by enforcement**: `/srv/audiobooks` is mounted `ro` in Bindery's namespace (measured), so it catalogues but cannot move, rename or delete — letting it *acquire* audiobooks remains the thing to avoid. Depends on M14. [M17](#m17-featernst-bindery) |
-| M18 — WAN ingress, direct | **built 2026-09-03 — the deploy, the UDM-Pro forward, the public A records, the reboot and the off-net negative controls are lgo's** | — | **Cloudflare is gone.** lgo's decision: no VPS, no VPN, no third party in the data path. WAN `:443` DNATs to `10.0.90.12:8443` and terminates at Traefik; `containers/cloudflared.nix` is deleted. **The property M16 bought is reproduced with a SECOND ENTRYPOINT, not asserted**: `websecure` stays LAN-only with every pre-existing router untouched, `wan` is a new listener, and a router is internet-reachable iff it names `wan` — so creating a route does not expose it. **The central premise was TESTED ON A SCRATCH TRAEFIK BEFORE ANY CONFIG WAS WRITTEN, and it came back with a correction that changed the design**: a `websecure`-only router is genuinely unmatched on `wan` (404, no backend contact, against a 502 control) — but **a router that OMITS `entryPoints` is bound to EVERY entrypoint**, which is M16's fail-open objection reborn inside the replacement. Closed with `withWan`, an **evaluation-time throw** whose three branches were each verified to fire. Forgetting is a build failure. **Weaker than the tunnel in exactly one measured way, stated rather than smoothed**: a request to the bare public IP completes TLS and gets `404` + `CN=TRAEFIK DEFAULT CERT` — existence disclosure, not exposure. **CrowdSec runs INSIDE the Traefik netns**, because `br_netfilter` is not loaded on ernst (measured) so the host's netfilter never sees the DNATed frames at all — a bouncer anywhere else would drop nothing. **It ships in SIMULATION until Q2 is confirmed**: if the UDM-Pro SNATs, the first scanner gets the gateway banned and the house loses Jellyseerr. **nixpkgs' crowdsec modules were booted in a throwaway VM six times before the real config was written, and FOUR upstream defects fell out** — an agent that crash-loops forever on a first boot while `list-units --failed` stays EMPTY, a bouncer registration that can never succeed, `Restart=no` on both remediation units, and `DynamicUser` migrating a bind-mounted state directory. The ordering bug the brief predicted is **already fixed** in this channel. **SN2 is decided, not deferred**: (a) v4-only, with a mechanism — every entryPoint binds `0.0.0.0:`, no v6 forward, no `crowdsec6` table. **One alert, `ExposedAndUnprotected`** — not "many bans", because a busy ban list is the system working and the silent failure is the house being open with nothing watching. Depends on M5, M7, M16, M17. [M18](#m18-featernst-wan-ingress-direct) |
+| M18 — WAN ingress, direct | **built 2026-09-03 — the deploy, the UDM-Pro forward, the public A records, the reboot and the off-net negative controls are lgo's** | — | **Cloudflare is gone.** lgo's decision: no VPS, no VPN, no third party in the data path. WAN `:443` DNATs to `10.0.90.12:8443` and terminates at Traefik; `containers/cloudflared.nix` is deleted. **The property M16 bought is reproduced with a SECOND ENTRYPOINT, not asserted**: `websecure` stays LAN-only with every pre-existing router untouched, `wan` is a new listener, and a router is internet-reachable iff it names `wan` — so creating a route does not expose it. **The central premise was TESTED ON A SCRATCH TRAEFIK BEFORE ANY CONFIG WAS WRITTEN, and it came back with a correction that changed the design**: a `websecure`-only router is genuinely unmatched on `wan` (404, no backend contact, against a 502 control) — but **a router that OMITS `entryPoints` is bound to EVERY entrypoint**, which is M16's fail-open objection reborn inside the replacement. Closed with `withWan`, an **evaluation-time throw** whose three branches were each verified to fire. Forgetting is a build failure. **Weaker than the tunnel in exactly one measured way, stated rather than smoothed**: a request to the bare public IP completes TLS and gets `404` + `CN=TRAEFIK DEFAULT CERT` — existence disclosure, not exposure. **CrowdSec runs INSIDE the Traefik netns**, because `br_netfilter` is not loaded on ernst (measured) so the host's netfilter never sees the DNATed frames at all — a bouncer anywhere else would drop nothing. **It ships in SIMULATION until Q2 is confirmed**: if the UDM-Pro SNATs, the first scanner gets the gateway banned and the house loses Jellyseerr. **nixpkgs' crowdsec modules were booted in a throwaway VM six times before the real config was written, and FOUR upstream defects fell out** — an agent that crash-loops forever on a first boot while `list-units --failed` stays EMPTY, a bouncer registration that can never succeed, `Restart=no` on both remediation units, and `DynamicUser` migrating a bind-mounted state directory. The ordering bug the brief predicted is **already fixed** in this channel. **SN2 is decided, not deferred**: (a) v4-only, with a mechanism — and **the first mechanism claimed was measured FALSE on deploy day and replaced**: every entryPoint was written `0.0.0.0:` and every one of them was still accepting v6, because Go opens AF_INET6 with `IPV6_V6ONLY=0` for any wildcard listen. The real mechanism is `disable_ipv6 = 1` in the Traefik netns, proven by `ss -f inet6` returning empty; plus no v6 forward and no `crowdsec6` table. The residual weakness SN2 named — nothing watches for an unexpected GUA — is closed by **`UnexpectedIPv6GlobalAddress`**, ernst-only because the laptops roam. **One alert, `ExposedAndUnprotected`** — not "many bans", because a busy ban list is the system working and the silent failure is the house being open with nothing watching. Depends on M5, M7, M16, M17. [M18](#m18-featernst-wan-ingress-direct) |
 
 ---
 
@@ -313,15 +313,41 @@ exactly, eight days and four milestones later.
 own complaint was that `IPv6AcceptRA = false` "propagated by copying" and that
 nothing defends the safe state. M18 adds three mechanisms, all greppable:
 
-- **every Traefik entryPoint binds `0.0.0.0:` and not `:`** — `web`,
-  `websecure`, `wan` and `metrics`. A bare `:443` binds the v6 wildcard too, so
-  the old config had four v6 listeners waiting for an address to arrive. Now
-  there are none, and the bind is the defence rather than the absence of a GUA;
+> **CORRECTION 2026-09-07, ON DEPLOY DAY.** The first of the three mechanisms
+> below was **wrong**, and it was wrong in the direction that matters: it
+> claimed a control that did not exist. It read *"every Traefik entryPoint binds
+> `0.0.0.0:` and not `:` … the bind is the defence rather than the absence of a
+> GUA."* Measured against the deployed config on 2026-09-07, with every
+> entryPoint already written `0.0.0.0:`:
+>
+> ```
+> ss -ltnH -f inet   ->  127.0.0.1:8080  127.0.0.54:53  0.0.0.0:5355
+> ss -ltnH -f inet6  ->  *:80  *:443  *:8443  *:8082  *:6060
+> ```
+>
+> **All four entryPoints, plus CrowdSec's metrics port, were accepting IPv6.**
+> Go treats `0.0.0.0` as *unspecified* and opens an AF_INET6 socket with
+> `IPV6_V6ONLY=0` for any wildcard listen, so the bind convention did nothing
+> whatsoever. Not an exposure — link-local only, no GUA, no v6 route, no v6
+> forward — but a claim of this shape is worse than no claim, because it reads
+> like a control in review. **The lesson is the milestone's own: a mechanism
+> that was reasoned about rather than measured is a description.** The list
+> below is the corrected one.
+
+- **`net.ipv6.conf.all.disable_ipv6 = 1` inside the Traefik netns** — this is
+  the actual mechanism, and it is what makes Go fall back to `AF_INET`. Nothing
+  in that netns needs v6: ACME reaches Let's Encrypt over v4 and Technitium is
+  v4-only. **The proof is `ss -ltnH -f inet6` coming back empty**, which is a
+  command, not a convention;
 - **the WAN forward on the UDM-Pro is IPv4 only, and no v6 forward is created** —
   it is in M18's manual steps as an explicit "do not";
 - **CrowdSec's remediation declares `nftables.ipv6.enabled = false`**, so there
-  is no `crowdsec6` table. A v6 ban chain that nothing can ever match is the
-  kind of rule that later reads as enforcement.
+  is no `crowdsec6` table (`nft list table ip6 crowdsec` → `No such file or
+  directory`, confirmed on the deployed system). A v6 ban chain that nothing can
+  ever match is the kind of rule that later reads as enforcement. **Note the
+  sharper reading this correction forces**: while those sockets *were* dual
+  stack, "reachable over v6" and "unbannable over v6" were true at the same
+  time. Mechanism one is what makes the pair impossible, not merely unlikely.
 
 **WHAT IS STILL NOT AUDITED, AND MUST NOT BE READ AS AUDITED.** The UDM-Pro's
 **IPv6 ruleset** was *not* inspected — Claude does not touch the UDM-Pro, and
@@ -330,16 +356,33 @@ need it. That is the honest scope of this decision: **(a) does not require the
 v6 ruleset to be correct; it requires there to be nothing listening on v6.** The
 two are different claims and only the second is made here.
 
-**The residual risk, stated plainly.** If ernst ever acquires a GUA *and* some
-future service binds `:port` rather than `0.0.0.0:port`, that service is exposed
-to whatever the UDM-Pro's unaudited v6 ruleset permits — the same hazard as
-before, now narrowed to "a service that ignores the bind convention". Nothing in
-the fleet monitors for an unexpected GUA, which remains true and remains the
-weakest part of this.
+**The residual risk, stated plainly — and re-stated after the correction above.**
+The bind convention narrowed nothing, so the honest version is simpler than the
+one it replaces: **everything rests on mechanism one holding, per netns.** The
+Traefik netns has it. Any *future* service in another netns that must be reached
+from outside would need it too, and would not get it by copying a `0.0.0.0:`
+address into its config.
 
-**Triggers that re-open it**, now that it is decided: ernst or any container
-acquiring a **global** v6 address (re-run the block above — a GUA on VLAN 90 is
-an incident, not a note); any milestone setting `IPv6AcceptRA = true` on VLAN 90;
+The line about "nothing in the fleet monitors for an unexpected GUA" was the
+weakest part of this, and **it is now false**: `exporters.ipv6Guard` on ernst
+emits `clanarchy_ipv6_global_addresses` every five minutes and
+**`UnexpectedIPv6GlobalAddress`** fires on any non-ULA global address — or on
+the collector going silent, so it cannot fail closed-mouthed. The filter is
+proven in both directions: ernst's two real global-scope addresses (ZeroTier
+`fdda:`, M6's `mon0` `fdca:`) are ULA and yield **0**, while the same filter
+over a synthetic `2001:db8::` yields **1**.
+
+**ernst only, deliberately.** The four laptops roam, and a café network handing
+out a v6 prefix is routine there; the alert would fire constantly and correctly
+on those machines and be ignored within a week — which would teach everyone to
+ignore it on ernst too. ernst never leaves VLAN 90, so on ernst a global address
+means the **line** changed, which is exactly the event this watches for.
+
+**Triggers that re-open it**, now that it is decided: `UnexpectedIPv6GlobalAddress`
+firing (a GUA on VLAN 90 is an incident, not a note — this trigger used to say
+"re-run the block above", which is precisely the hand-measurement the alert
+replaces); `ss -ltnH -f inet6` in the Traefik netns returning anything at all;
+any milestone setting `IPv6AcceptRA = true` on VLAN 90;
 any UDM-Pro change enabling RAs or DHCPv6 on the Services network; any service
 that must be reachable over v6 from outside, which would force the (b) branch
 and the standing cost that comes with it.

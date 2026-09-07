@@ -366,6 +366,47 @@ in
             journal, which is time-indexed: 8 ms on ernst.
           '';
         };
+
+        ipv6Guard = lib.mkOption {
+          type        = lib.types.bool;
+          default     = false;
+          description = ''
+            Export a count of IPv6 GLOBAL-scope addresses on this machine, via
+            node_exporter's textfile collector. Backs the
+            `UnexpectedIPv6GlobalAddress` alert.
+
+            Standing note SN2 decided this fleet is IPv4-only. That decision
+            has exactly one fact underneath it — no interface anywhere has a
+            global IPv6 address — and until now that fact was established by
+            somebody typing `ip -6 addr` and reading the output. It was
+            re-measured by hand on 2026-08-25 and again on 2026-09-03, which is
+            the tell: a property re-measured by hand is not monitored.
+
+            It matters most on ernst, and specifically after M18. The Traefik
+            entryPoints are wildcard listens, so a global address arriving is
+            not "an address arrives" — it is every router in the house becoming
+            reachable on a second path that does not traverse the UDM-Pro DNAT,
+            and therefore does not traverse the `wan` entrypoint that decides
+            which two hostnames are public. The firewall bouncer also declares
+            `nftables.ipv6.enabled = false`, so there is no `ip6 crowdsec`
+            table: over v6 those routers would be reachable AND unbannable.
+
+            M18 disables IPv6 outright inside the Traefik netns, which is the
+            real mechanism. This is the tripwire for that mechanism being
+            removed, regressing, or being quietly undone by a channel bump —
+            and for the ISP starting to hand out a prefix, which is the change
+            nobody in the house would be told about.
+
+            Link-local and ULA are deliberately NOT counted. Both are expected:
+            every container has a link-local address and M6's own monitoring
+            network is a ULA. Counting them would make the steady state
+            nonzero, and a nonzero steady state is a threshold nobody dares
+            alert on. `scope global` excludes link-local; the ULA prefix is
+            filtered explicitly.
+
+            One `ip -6 addr` per run, no network access, sub-millisecond.
+          '';
+        };
       };
     };
 
@@ -500,6 +541,54 @@ in
             '';
           };
 
+          # IPv6 global-scope addresses, as a Prometheus metric.
+          #
+          # SN2's safe state, made observable. See the option description for
+          # why this is worth a timer: the property was previously established
+          # by a human typing `ip -6 addr` and reading it, twice, three weeks
+          # apart.
+          #
+          # `scope global` is doing the filtering. It excludes link-local
+          # (fe80::/10) by definition, which is what every container has. ULA
+          # IS scope global to the kernel, so M6's own fdca:fe90::/64
+          # monitoring network and ZeroTier's fd00::/8 rfc4193 addresses have
+          # to be dropped by prefix or the steady state would never be zero —
+          # and a metric whose steady state is "some" is one nobody alerts on.
+          #
+          # Emitted unconditionally, including the zero. Unlike the container
+          # and coredump collectors, whose steady state is an ABSENT series,
+          # this one's whole job is to assert a negative: an absent series here
+          # would be indistinguishable from the collector having died, and the
+          # alert would then be silent in exactly the case it exists for.
+          ipv6GuardCollector = pkgs.writeShellApplication {
+            name = "clanarchy-ipv6-guard-collector";
+            runtimeInputs = [ pkgs.iproute2 pkgs.gnugrep pkgs.coreutils ];
+            text = ''
+              out=${textfileDir}/ipv6-guard.prom
+              tmp=$(mktemp "$out.XXXXXX")
+              trap 'rm -f "$tmp"' EXIT
+
+              # fd00::/8 is ULA. Matching on the first two hex digits covers
+              # both fdca: (M6's monitoring net) and fdda: (ZeroTier) without
+              # naming either, so a new ULA does not become a false alarm.
+              # `|| true` because grep -v exits 1 on an empty result, which is
+              # the GOOD case and must not fail the unit under -o pipefail.
+              n=$(ip -6 -o addr show scope global 2>/dev/null \
+                    | grep -viE 'inet6 f[cd][0-9a-f]{2}:' \
+                    | wc -l || true)
+
+              {
+                echo "# HELP clanarchy_ipv6_global_addresses IPv6 global-scope addresses present, excluding ULA. SN2 expects zero."
+                echo "# TYPE clanarchy_ipv6_global_addresses gauge"
+                echo "clanarchy_ipv6_global_addresses ''${n:-0}"
+              } > "$tmp"
+
+              chmod 0644 "$tmp"
+              mv -f "$tmp" "$out"
+              trap - EXIT
+            '';
+          };
+
           # Ports this machine actually exposes.
           exposedPorts =
             [ ports.node ]
@@ -595,7 +684,8 @@ in
           # well inside the 15m `for` on the alert.
           ####################################################################
           systemd.tmpfiles.rules = lib.optional
-            (settings.exporters.containers || settings.exporters.coredumps)
+            (settings.exporters.containers || settings.exporters.coredumps
+             || settings.exporters.ipv6Guard)
             "d ${textfileDir} 0755 root root -";
 
           systemd.services.clanarchy-container-units =
@@ -650,6 +740,39 @@ in
               timerConfig = {
                 OnBootSec = "2m";
                 OnUnitActiveSec = "1m";
+              };
+            };
+
+          systemd.services.clanarchy-ipv6-guard =
+            lib.mkIf settings.exporters.ipv6Guard {
+              description = "Collect IPv6 global-address count for node_exporter";
+              serviceConfig = {
+                Type = "oneshot";
+                ExecStart = lib.getExe ipv6GuardCollector;
+                # NOT PrivateNetwork, unlike its two neighbours above. This one
+                # reads the network configuration, and a private netns would
+                # give it an empty one — it would report zero addresses
+                # forever, which is the answer the alert is looking for. A
+                # collector that cannot fail is not a collector.
+                PrivateDevices = true;
+                ProtectHome = true;
+                ProtectSystem = "strict";
+                ReadWritePaths = [ textfileDir ];
+                NoNewPrivileges = true;
+              };
+            };
+
+          systemd.timers.clanarchy-ipv6-guard =
+            lib.mkIf settings.exporters.ipv6Guard {
+              description = "Check for unexpected IPv6 global addresses every 5 minutes";
+              wantedBy = [ "timers.target" ];
+              timerConfig = {
+                OnBootSec = "2m";
+                # Five minutes, not one: a delegated prefix arriving is a
+                # change measured in ISP outages and router reboots, and the
+                # alert waits 15m anyway. There is nothing to gain from
+                # polling this at the rate of a crash loop.
+                OnUnitActiveSec = "5m";
               };
             };
 
@@ -2068,6 +2191,52 @@ in
                           };
                         }
                       ) ++ [
+                        # ── SN2's tripwire ───────────────────────────────
+                        #
+                        # SN2 decided the fleet is IPv4-only.  M18 enforces
+                        # that inside the Traefik netns with
+                        # `disable_ipv6 = 1`; this fires if the assumption
+                        # underneath the decision stops being true anywhere.
+                        #
+                        # ERNST ONLY, via `exporters.ipv6Guard` in clan.nix.
+                        # The tempting generalisation is that a delegated
+                        # prefix arrives on the LINE and therefore reaches
+                        # every machine at once, so every machine should watch
+                        # for it.  That is wrong for the four laptops: they
+                        # roam, and a café or a phone hotspot hands out a real
+                        # IPv6 GUA as a matter of course.  On those machines
+                        # this would fire constantly and correctly, and be
+                        # ignored within a week — which would also teach
+                        # everyone to ignore it on ernst.
+                        #
+                        # ernst never leaves VLAN 90, so on ernst a global
+                        # address means the LINE changed.  That is the event.
+                        #
+                        # `> 0` and not `>= 1` for readability only; the
+                        # metric is a count and the expected value is 0.
+                        # `absent()` is folded in because a collector that
+                        # stopped writing the file would otherwise leave this
+                        # silently unable to fire — the same failure mode the
+                        # ExposedAndUnprotected note above is about.
+                        #
+                        # 15m: a prefix that shows up and vanishes inside one
+                        # DHCPv6 lease is still worth knowing about, but not
+                        # worth paging for at 03:00 during an ISP flap.
+                        {
+                          alert = "UnexpectedIPv6GlobalAddress";
+                          expr = ''
+                            (clanarchy_ipv6_global_addresses > 0)
+                            or
+                            (absent(clanarchy_ipv6_global_addresses) == 1)
+                          '';
+                          "for" = "15m";
+                          labels.severity = "critical";
+                          annotations = {
+                            summary     = "IPv6 global address on {{ $labels.instance }} — SN2 assumed none exist";
+                            description = "An IPv6 global-scope address (non-ULA) appeared, or the collector stopped reporting. SN2's IPv4-only decision rests on there being none. On ernst this is urgent: Traefik's entryPoints are wildcard listens, so a global address makes every router reachable on a path that bypasses the UDM-Pro DNAT and therefore the `wan` entryPoint, and the firewall bouncer has no ip6 table so those routers would also be unbannable. Check `ip -6 addr show scope global` and `journalctl -u clanarchy-ipv6-guard`.";
+                          };
+                        }
+
                         # ── host down ────────────────────────────────────
                         #
                         # always_on only.  A laptop with the lid shut is not
