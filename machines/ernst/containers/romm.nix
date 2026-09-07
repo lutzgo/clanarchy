@@ -513,6 +513,11 @@ in
   # which needs no account at all.  So this prompt never blocks a deploy on a
   # credential the operator does not have yet — press enter and revisit it with
   # `clan vars generate ernst --generator romm-metadata-keys --regenerate`.
+  #
+  # That optionality is NOT free: clan stores no secret for a blank answer, so
+  # the var's path becomes `/no-such-path`.  It only holds because romm-secrets
+  # reads these through `optional_secret` rather than a bare `cat` — see the
+  # comment there before changing either.
   clan.core.vars.generators.romm-metadata-keys = {
     files."steamgriddb-api-key".secret = true;
     files."igdb-client-id".secret      = true;
@@ -541,6 +546,66 @@ in
       # env file, where a newline would terminate the value early and leave the
       # next line looking like a stray assignment.
       for f in steamgriddb-api-key igdb-client-id igdb-client-secret; do
+        tr -d '\n' < "$prompts/$f" > "$out/$f"
+      done
+    '';
+  };
+
+  # ── The second-tier metadata providers ──────────────────────────────────
+  #
+  # A SEPARATE GENERATOR, DELIBERATELY.  Adding files to
+  # `romm-metadata-keys` above would change that generator, and clan re-runs a
+  # generator as a unit — so it would re-prompt for the IGDB and SteamGridDB
+  # credentials that are already stored and working.  Splitting keeps this an
+  # additive errand: answer the new prompts, leave the old ones untouched.
+  #
+  # WHY BOTHER, given IGDB is already enabled.  Measured on this library
+  # (2026-09-07, 37,896 ROMs): IGDB matched 24,301 and 22,860 got a summary —
+  # about 64%.  The missing third is not random.  It is ROM hacks, bad dumps
+  # and pirate multicarts — `100-in-1 Contra Function 16`, `[hM02]`, `[a1]`,
+  # `110-in-1 (Menu)` — which IGDB does not catalogue at all, because IGDB
+  # catalogues *published games*.  No amount of retrying IGDB reaches them.
+  #
+  # ScreenScraper is the one that does: it matches on file hash rather than
+  # name, and its corpus is community dumps, which is exactly this population.
+  # It needs a personal account *on top of* the dev credentials RomM ships
+  # (`SCREENSCRAPER_DEV_ID=zurdi15` is RomM's author, not us) — `ss_handler.py`
+  # gates on `bool(SCREENSCRAPER_USER and SCREENSCRAPER_PASSWORD)`, so without
+  # a user account the source reports enabled=false however good the dev
+  # credentials are.  That is why /api/heartbeat showed
+  # `"SS_API_ENABLED": false, "SS_DEV_CREDENTIALS_SET": true`.
+  #
+  # Same empty-answer contract as the generator above: blank leaves the source
+  # disabled and the deploy still succeeds.
+  clan.core.vars.generators.romm-metadata-keys-extra = {
+    files."screenscraper-user".secret        = true;
+    files."screenscraper-password".secret    = true;
+    files."retroachievements-api-key".secret = true;
+
+    prompts."screenscraper-user" = {
+      description = "ScreenScraper username (screenscraper.fr) — hash-based matching, best for hacks and multicarts IGDB misses; blank to leave disabled";
+      type        = "hidden";
+    };
+    prompts."screenscraper-password" = {
+      description = "ScreenScraper password — blank to leave disabled";
+      type        = "hidden";
+    };
+    # NO MOBYGAMES PROMPT, DELIBERATELY.  MobyGames' API is a paid tier and
+    # there is no key for this clan, so declaring the prompt only ever produces
+    # a blank answer — and a blank answer is not a stable state in clan: it
+    # stores no secret, so `clan machines update` re-prompts for it on every
+    # single deploy and aborts outright when there is no TTY (termios error out
+    # of clan_lib/vars/prompt.py).  Add the prompt back at the moment there is
+    # a key to type into it, not before.
+    prompts."retroachievements-api-key" = {
+      description = "RetroAchievements API key (retroachievements.org/controlpanel.php) — blank to leave disabled";
+      type        = "hidden";
+    };
+
+    runtimeInputs = [ pkgs.coreutils ];
+    script = ''
+      # Same newline strip as romm-metadata-keys: these land in an env file.
+      for f in screenscraper-user screenscraper-password retroachievements-api-key; do
         tr -d '\n' < "$prompts/$f" > "$out/$f"
       done
     '';
@@ -588,18 +653,50 @@ in
         sgdbKey = meta."steamgriddb-api-key".path;
         igdbId  = meta."igdb-client-id".path;
         igdbSec = meta."igdb-client-secret".path;
+        extra   = config.clan.core.vars.generators.romm-metadata-keys-extra.files;
+        ssUser  = extra."screenscraper-user".path;
+        ssPass  = extra."screenscraper-password".path;
+        raKey   = extra."retroachievements-api-key".path;
       in
       ''
         set -eu
         umask 077
         ${pkgs.coreutils}/bin/install -d -m 0700 -o root -g root ${secretsDir}
 
+        # ── Required secrets: a bare cat, so a genuine absence fails loudly ──
         auth=$(${pkgs.coreutils}/bin/cat ${authKey})
         dbpw=$(${pkgs.coreutils}/bin/cat ${dbPw})
         rootpw=$(${pkgs.coreutils}/bin/cat ${rootPw})
-        sgdb=$(${pkgs.coreutils}/bin/cat ${sgdbKey})
-        igdbid=$(${pkgs.coreutils}/bin/cat ${igdbId})
-        igdbsec=$(${pkgs.coreutils}/bin/cat ${igdbSec})
+
+        # ── Optional provider credentials ───────────────────────────────────
+        #
+        # BLANK IS A VALID ANSWER, AND IT HAS TO BE HANDLED HERE.  Both metadata
+        # generators tell the operator they may press enter to leave a source
+        # disabled.  That promise was false: clan does not store an empty answer
+        # to a prompt — it writes no secret file at all, and the var's `.path`
+        # then evaluates to the literal string `/no-such-path`.  Under `set -eu`
+        # a bare `cat` on that exits 1, this unit fails, and podman-romm.service
+        # and podman-romm-db.service never start because they order after it.
+        #
+        # That is exactly what happened on 2026-09-07: MobyGames is a paid tier,
+        # the prompt was answered blank as the comment invited, and RomM went
+        # down on the next deploy.  `ls vars/per-machine/ernst/…/mobygames-api-key`
+        # shows `machines users` where the answered ones show `machines secret
+        # users` — the missing `secret/` is the whole failure.
+        #
+        # An unset value is what RomM wants anyway: config/__init__.py reads each
+        # key with _get_env and every handler gates on bool(), so empty means
+        # "source disabled" rather than "misconfigured".
+        optional_secret() {
+          if [ -r "$1" ]; then ${pkgs.coreutils}/bin/cat "$1"; fi
+        }
+
+        sgdb=$(optional_secret "${sgdbKey}")
+        igdbid=$(optional_secret "${igdbId}")
+        igdbsec=$(optional_secret "${igdbSec}")
+        ssuser=$(optional_secret "${ssUser}")
+        sspass=$(optional_secret "${ssPass}")
+        rakey=$(optional_secret "${raKey}")
 
         ${pkgs.coreutils}/bin/install -m 0400 -o root -g root /dev/null ${secretsDir}/romm.env
         ${pkgs.coreutils}/bin/cat > ${secretsDir}/romm.env <<EOF
@@ -608,6 +705,9 @@ in
         STEAMGRIDDB_API_KEY=$sgdb
         IGDB_CLIENT_ID=$igdbid
         IGDB_CLIENT_SECRET=$igdbsec
+        SCREENSCRAPER_USER=$ssuser
+        SCREENSCRAPER_PASSWORD=$sspass
+        RETROACHIEVEMENTS_API_KEY=$rakey
         EOF
 
         ${pkgs.coreutils}/bin/install -m 0400 -o root -g root /dev/null ${secretsDir}/romm-db.env
@@ -681,6 +781,52 @@ in
       # generator below — the empty-prompt path leaves them unset, so a machine
       # whose owner has not signed up still deploys and still scans.
       HASHEOUS_API_ENABLED = "true";
+
+      # LaunchBox is the other source that costs nothing: `config/__init__.py`
+      # reads LAUNCHBOX_API_ENABLED as a plain bool and
+      # `launchbox_handler/handler.py` gates on it alone — there is no API key
+      # and no account.  Its corpus is the LaunchBox Games Database, which is
+      # retro-first and carries a lot of the regional and compilation releases
+      # IGDB does not, so it is enabled unconditionally alongside Hasheous.
+      LAUNCHBOX_API_ENABLED = "true";
+
+      # ── LaunchBox needs its dump imported, or it reports "Connection failed" ──
+      #
+      # LAUNCHBOX_API_ENABLED alone is not enough, and the UI says so honestly.
+      # LaunchBox is not a live API: `update_launchbox_metadata.py` downloads
+      # https://gamesdb.launchbox-app.com/Metadata.zip and folds it into a
+      # cache, and `handler.py:heartbeat()` returns
+      # `is_remote_store_populated()` with the comment "Cloud lookups read from
+      # a cache the metadata update task fills. Until it has run, every lookup
+      # returns nothing, so reporting healthy here would be a lie."
+      #
+      # The import only ever runs from the scheduled task, and that task is off
+      # by default — which is why enabling the source produced a red
+      # "Connection failed" rather than a working provider.  Turning the
+      # schedule on is the actual enablement; the cron default is 04:00 daily.
+      ENABLE_SCHEDULED_UPDATE_LAUNCHBOX_METADATA = "true";
+
+      # ── The three remaining no-credential sources ────────────────────────
+      #
+      # All plain bools in `config/__init__.py`, all with live HTTP heartbeats
+      # (no local store to populate first, unlike LaunchBox above), so they go
+      # healthy as soon as they are switched on:
+      #
+      #   Flashpoint Archive — web/Flash preservation corpus.
+      #   HowLongToBeat     — completion times.
+      #   PlayMatch         — a *match proxy* rather than a metadata source: it
+      #                       resolves a dump to a known game id, which is the
+      #                       same job Hasheous does, so it mainly helps the
+      #                       hacks and multicarts IGDB cannot name.
+      #                       PLAYMATCH_API_URL defaults to
+      #                       https://playmatch.retrorealm.dev/api/v2.
+      #
+      # Note these are not free at scan time: every extra source is another
+      # per-ROM round trip, on top of the IGDB/SteamGridDB/Hasheous calls that
+      # already put throughput at ~150 ROMs/hour/worker.  See SCAN_TIMEOUT below.
+      FLASHPOINT_API_ENABLED = "true";
+      HLTB_API_ENABLED       = "true";
+      PLAYMATCH_API_ENABLED  = "true";
 
       # ── Why these two are set, and what happens when they are not ──────────
       #
