@@ -56,6 +56,7 @@ nav:
     - Impermanence: guides/impermanence.md
     - Remote unlock: guides/remote-unlock.md
     - ernst zdata datasets: guides/ernst-zdata-datasets.md
+    - ernst app-API ingress: guides/ernst-app-api-ingress.md
     - HTPC / Plasma Bigscreen: guides/htpc-bigscreen.md
     - HTPC / game controllers: guides/htpc-controllers.md
     - Emulation on birte: guides/birte-emulation.md

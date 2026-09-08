@@ -4007,10 +4007,28 @@ in
       ##########################################################################
       # M14 (c) — KAPOWARR.  Comics acquisition.
       #
-      # Komga and CWA already serve the READING side in this household; this is
-      # the acquisition half only.  ./pkgs/kapowarr.nix records why it was
-      # chosen over Mylar3 (short version: Mylar3 is Usenet-first and this fleet
-      # has measurably no Usenet).
+      # Komga and CWA serve the READING side; this is the acquisition half
+      # only.  ./pkgs/kapowarr.nix records why it was chosen over Mylar3 (short
+      # version: Mylar3 is Usenet-first and this fleet has measurably no
+      # Usenet).
+      #
+      # CORRECTED 2026-09-08.  This sentence used to read "Komga and CWA
+      # ALREADY serve", and it was not true when it was written: neither
+      # existed anywhere in this repo, on this host, or in Technitium.  It
+      # described an intention, and M14's placement argument for Kapowarr
+      # leaned on it as though it were a fact.  Both now exist — Komga is a
+      # unit in this container (see its block below) and CWA is on the podman
+      # tier (containers/cwa.nix) — so the claim is finally accurate.  Left
+      # annotated rather than silently fixed, because "already" was doing
+      # load-bearing work in an argument and the correction is the interesting
+      # part.
+      #
+      # NOTE THE HAND-OFF THAT DOES NOT EXIST YET: Kapowarr writes to
+      # /srv/media/library/comics and Komga READS that tree directly, so the
+      # comics path is complete.  The EBOOK path is not — Bindery writes to
+      # /srv/media/library/books, Komga reads it, and CWA owns a separate
+      # Calibre library it manages itself.  Wiring Bindery's output into CWA's
+      # ingest folder is a deliberate non-decision; see containers/cwa.nix.
       #
       # It re-executes itself to implement in-app restart, which is why the
       # derivation wraps a python env rather than patching a shebang — see its

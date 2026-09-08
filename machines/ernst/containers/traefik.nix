@@ -107,11 +107,32 @@
 #   generates.  Forgetting is a build error, not a silent exposure.  That is
 #   the mechanism; the comment is only the reason.
 #
-#   DNS IS THE SECOND, INDEPENDENT GATE, and it is unchanged.  Only
-#   `jellyseerr` and `auth` have public A records at the registrar; every other
-#   name exists solely inside Technitium, so from outside they NXDOMAIN.  Two
-#   gates, both explicit, neither sufficient alone — DNS does not gate a
-#   request to the bare public IP, which is what the entrypoint is for.
+#   DNS IS THE SECOND, INDEPENDENT GATE.  Every other name exists solely
+#   inside Technitium, so from outside they NXDOMAIN.  Two gates, both
+#   explicit, neither sufficient alone — DNS does not gate a request to the
+#   bare public IP, which is what the entrypoint is for.
+#
+#   THE PUBLIC SET IS NO LONGER TWO NAMES.  It was `jellyseerr` + `auth`
+#   through M18; `audiobookshelf` was added 2026-09-08 and `jellyfin`, `komga`,
+#   `navidrome` and `cwa` the same day.  Seven A records, all v4, all
+#   DNS-only.  `wanExposed` below is the authoritative list and the registrar
+#   must agree with it — the two are independent gates precisely because
+#   nothing makes them agree automatically.
+#
+#   A NAME IN `wanExposed` WITH NO PUBLIC RECORD IS INERT, AND THAT IS EXACTLY
+#   HOW audiobookshelf FAILED.  It was added to `wanExposed`, deployed
+#   correctly, and stayed unreachable from mobile data for the rest of the day
+#   because the A record was a separate manual step nobody had run.  The
+#   symptom was identical from an Android phone and a Linux laptop, which is
+#   what pointed at DNS rather than at either client.  If an exposed service
+#   is unreachable from outside, `dig +short <name>.goclan.org @1.1.1.1` is
+#   the first command, not the last.
+#
+#   NO AAAA RECORDS, EVER, while SN2 holds.  See IPv4-ONLY BY CONSTRUCTION
+#   above: there is no global v6 address anywhere on this path, so an AAAA
+#   would publish an address that cannot answer — and if one ever could, it
+#   would bypass the UDM-Pro DNAT and therefore the `wan` entrypoint, on a
+#   stack where the CrowdSec bouncer has no table.
 #
 #   THE COSTS OF DROPPING THE TUNNEL, stated plainly, since cloudflared.nix's
 #   header used to carry the mirror image of this list:
