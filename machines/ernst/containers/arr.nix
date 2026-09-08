@@ -919,6 +919,36 @@ in
     "d ${stateRoot}/komga          0700 ${toString komgaUid}          ${toString mediaGid}    -"
     "d ${stateRoot}/navidrome      0700 ${toString navidromeUid}      ${toString mediaGid}    -"
 
+    # ── THE BACKUP DIRECTORY IS NOT OPTIONAL, AND UPSTREAM DOES NOT MAKE IT ──
+    #
+    # navidrome.service failed to start on the first deploy with:
+    #
+    #   Failed to set up mount namespacing:
+    #     /var/lib/navidrome/backup: No such file or directory
+    #   Failed at step NAMESPACE ... status=226/NAMESPACE
+    #
+    # AN UPSTREAM GAP, not a mistake in the settings above.  nixpkgs' module
+    # adds `Backup.Path` to the unit's `BindPaths` whenever the setting exists:
+    #
+    #   BindPaths = optional (cfg.settings ? DataFolder) …
+    #            ++ optional (cfg.settings ? CacheFolder) …
+    #            ++ optional (cfg.settings ? Backup.Path) cfg.settings.Backup.Path;
+    #
+    # but its `tmpfiles.settings.navidromeDirs` creates only DataFolder,
+    # CacheFolder and MusicFolder.  `BindPaths` requires the source to EXIST —
+    # systemd will not create it — so merely CONFIGURING backups produces a
+    # unit that can never start.  Navidrome would create the directory itself
+    # at first backup, but it never gets to run.
+    #
+    # Created here rather than with a `systemd.tmpfiles` rule inside the
+    # container because /var/lib/navidrome IS this directory through the bind
+    # mount, and the host-side rules already run before container@arr starts.
+    # One place, and it is the place the dataset actually lives.
+    #
+    # 0700 like its parent: backups of the database are exactly as sensitive
+    # as the database.
+    "d ${stateRoot}/navidrome/backup 0700 ${toString navidromeUid} ${toString mediaGid} -"
+
     # M17 — Bindery's state.  Owned by the service uid so there is no
     # ownership transition on the FIRST run for tmpfiles to deadlock on —
     # the lidarr lesson above, applied pre-emptively to a service whose

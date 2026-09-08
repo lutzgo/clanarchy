@@ -169,7 +169,36 @@ let
 
   netns     = "cwa";
   vethHost  = "vb-cwa";
-  vethNs    = "eth0";
+
+  # ── `cw0`, NOT `eth0`.  THIS FILE SHIPPED WITH `eth0` AND IT DID NOT WORK ──
+  #
+  # containers/storyteller.nix states the rule at length under "THE RULE FOR
+  # THE NEXT ONE": every podman-tier namespace must use a UNIQUE interface
+  # name, and "a third service must not be called `eth0` or `st0` either".
+  # This was the fourth, it was called `eth0`, and it reproduced the documented
+  # failure exactly — including the log line that file quotes verbatim:
+  #
+  #   cwa-dhcp.service: Deactivated successfully.
+  #   dhcpcd[769633]: sending commands to dhcpcd process
+  #
+  # dhcpcd keys its pidfile and control socket on the INTERFACE NAME
+  # (/run/dhcpcd/eth0-4.sock), and these units differ only in their NETWORK
+  # namespace — `NetworkNamespacePath=` does not change the mount namespace, so
+  # they all see the same /run.  TubeSync owns `eth0`; this instance found its
+  # socket, handed over its arguments as a client and exited 0.  The lease was
+  # applied in TubeSync's namespace, where it is a no-op.
+  #
+  # THE FAILURE IS SILENT IN THE WORST WAY, which is why the name is worth this
+  # much comment: the unit SUCCEEDS, the container starts and reports healthy,
+  # the veth is up with the right MAC on the right VLAN — and `ip -4 addr show`
+  # in the namespace is empty, so Traefik 502s. `Restart = on-failure` cannot
+  # help because nothing failed.
+  #
+  # `eth0` was copied from the nspawn containers, where it IS correct —
+  # container-init renames host0 to eth0 and each has its own mount namespace,
+  # so there is no shared /run to collide in. The two tiers look alike here and
+  # are not. A FIFTH podman service must not be `eth0`, `st0`, `rm0` or `cw0`.
+  vethNs    = "cw0";
   mac       = "02:00:00:90:00:0d";   # reused from M16's cloudflared — see header
   vlanId    = 90;
 
