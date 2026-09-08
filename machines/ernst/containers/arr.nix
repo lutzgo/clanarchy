@@ -919,6 +919,36 @@ in
     "d ${stateRoot}/komga          0700 ${toString komgaUid}          ${toString mediaGid}    -"
     "d ${stateRoot}/navidrome      0700 ${toString navidromeUid}      ${toString mediaGid}    -"
 
+    # ── THE BACKUP DIRECTORY IS NOT OPTIONAL, AND UPSTREAM DOES NOT MAKE IT ──
+    #
+    # navidrome.service failed to start on the first deploy with:
+    #
+    #   Failed to set up mount namespacing:
+    #     /var/lib/navidrome/backup: No such file or directory
+    #   Failed at step NAMESPACE ... status=226/NAMESPACE
+    #
+    # AN UPSTREAM GAP, not a mistake in the settings above.  nixpkgs' module
+    # adds `Backup.Path` to the unit's `BindPaths` whenever the setting exists:
+    #
+    #   BindPaths = optional (cfg.settings ? DataFolder) …
+    #            ++ optional (cfg.settings ? CacheFolder) …
+    #            ++ optional (cfg.settings ? Backup.Path) cfg.settings.Backup.Path;
+    #
+    # but its `tmpfiles.settings.navidromeDirs` creates only DataFolder,
+    # CacheFolder and MusicFolder.  `BindPaths` requires the source to EXIST —
+    # systemd will not create it — so merely CONFIGURING backups produces a
+    # unit that can never start.  Navidrome would create the directory itself
+    # at first backup, but it never gets to run.
+    #
+    # Created here rather than with a `systemd.tmpfiles` rule inside the
+    # container because /var/lib/navidrome IS this directory through the bind
+    # mount, and the host-side rules already run before container@arr starts.
+    # One place, and it is the place the dataset actually lives.
+    #
+    # 0700 like its parent: backups of the database are exactly as sensitive
+    # as the database.
+    "d ${stateRoot}/navidrome/backup 0700 ${toString navidromeUid} ${toString mediaGid} -"
+
     # M17 — Bindery's state.  Owned by the service uid so there is no
     # ownership transition on the FIRST run for tmpfiles to deadlock on —
     # the lidarr lesson above, applied pre-emptively to a service whose
@@ -4554,6 +4584,39 @@ in
         # drops the chroot cannot silently make the music library writable.
         ProtectSystem  = "strict";
         ReadWritePaths = [ "/var/lib/navidrome" ];
+
+        # ── PrivateTmp IS LOAD-BEARING, AND `ProtectSystem = "strict"` ABOVE ──
+        #    IS WHY
+        #
+        # Without it the scan runs, reports success, and imports NOTHING:
+        #
+        #   level=warning msg="gotaglib: Error reading metadata from file.
+        #     Skipping" error="init module: get runtime once: create directory
+        #     /tmp/go-taglib-wasm: mkdir /tmp: read-only file system"
+        #   Scanner: Completed processing folder audioCount=526 tracksImported=0
+        #
+        # `audioCount=526 tracksImported=0` is the shape of this failure: 526
+        # files seen, every one skipped, scan "Completed", exit status fine,
+        # unit active.  The only symptom is an empty library.
+        #
+        # Since 0.60 Navidrome reads tags through a WASM taglib that
+        # materialises its runtime under /tmp — the same WASM engine the
+        # module's own `MemoryDenyWriteExecute = false` comment is about.
+        # Upstream sets that one and not this one, because upstream does not
+        # set `ProtectSystem` at all: with the module alone /tmp is writable
+        # and the problem does not arise.
+        #
+        # SO THIS IS A COST OF THE LINE ABOVE, NOT AN UPSTREAM BUG.  Keeping
+        # ProtectSystem = "strict" is still right — it is what stops a future
+        # nixpkgs bump that drops the chroot from silently making the music
+        # library writable — but it has to come with somewhere to write.
+        #
+        # PrivateTmp rather than adding /tmp to ReadWritePaths: this gets a
+        # private tmpfs that dies with the unit, instead of a handle on the
+        # container's shared /tmp.  For a service whose whole purpose here is
+        # to read a tree it must never modify, the isolated option is the one
+        # to take.
+        PrivateTmp     = true;
 
         ProtectProc    = "invisible";
         RemoveIPC      = true;

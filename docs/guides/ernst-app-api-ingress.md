@@ -153,6 +153,64 @@ Then, **before anything else reaches these hostnames**, create the admin
 account on each of Komga, Navidrome and CWA. Their first-run flows are
 unauthenticated by construction.
 
+### 1b. If a Navidrome scan ever fails, it poisons its own scan state
+
+Worth knowing before you need it, because it happened on the first deploy and
+the symptom is silence.
+
+A scan that fails **per file** — bad permissions, an unreadable `/tmp`, a
+missing codec — still records the folders as processed. The scan "Completes",
+the unit stays `active`, the exit status is clean, and every subsequent
+incremental scan correctly sees no mtime change and skips everything:
+
+```
+Scanner: Starting scan fullScan=false
+Scanner: Finished scanning all libraries duration=10.1ms
+```
+
+Fixing the underlying cause is **not enough**. Restarting is not enough. The
+library stays empty until something forces a full rescan.
+
+The tell is `audioCount` non-zero with `tracksImported=0` on the *original*
+failing run. Note that plain `journalctl -u navidrome | grep tracksImported`
+replays the whole history and will show you those old lines forever — use
+`--since` or you will diagnose a fixed problem:
+
+```bash
+nixos-container run arr -- journalctl -u navidrome --since '10 min ago' \
+  --no-pager | grep tracksImported
+```
+
+Recovery, non-destructive — do **not** delete the database:
+
+```bash
+nixos-container run arr -- systemctl stop navidrome
+
+nixos-container run arr -- systemd-run --quiet --wait --collect --pipe \
+  -p User=navidrome -p Group=media -p PrivateTmp=yes \
+  <navidrome>/bin/navidrome scan --full \
+    --configfile <the unit's --configfile path> \
+    --datafolder /var/lib/navidrome --nobanner
+
+nixos-container run arr -- systemctl start navidrome
+```
+
+Three things about that invocation are load-bearing:
+
+- **`--datafolder /var/lib/navidrome` is required.** `DataFolder` is
+  deliberately unset in the Nix config (it defaults to the module's
+  WorkingDirectory, which the bind mount puts on zdata). The CLI does not
+  inherit that default — it falls back to `.` — so without this flag the scan
+  builds a *different, empty* database in the current directory and reports
+  success.
+- **`-p User=navidrome -p Group=media`.** Running it as root leaves
+  root-owned WAL/journal files in a 0700 directory the service cannot then
+  write.
+- **`-p PrivateTmp=yes`.** The unit has it for the taglib reason above; the
+  CLI needs it for the same reason, and does not get it from the unit.
+
+Expect `tracksImported` to equal `audioCount` for every folder.
+
 ### 2. Navidrome users
 
 ```bash
@@ -291,11 +349,40 @@ name on `wan` — not there, rather than refused.
 exposed it. `sonarr` is strictly better: it carries forward-auth, so a leak
 would be caught twice.
 
+### Never test a backend directly — it hangs, and that is correct
+
+```bash
+curl http://10.0.90.21:8083/     # CWA   — HANGS
+curl http://10.0.90.13:25600/    # Komga — HANGS
+```
+
+Every backend's own netns firewall accepts its port from `10.0.90.12`
+(Traefik) and nothing else, with policy `DROP` — so a probe from ernst itself
+(VLAN 50) or from a laptop times out rather than being refused. That is the
+backend-bypass hardening working, not a broken service.
+
+`traefik.nix` states this for the pre-existing backends under "DEBUGGING
+CONSEQUENCE"; it applies identically to everything added since. **Always test
+through Traefik**:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' https://cwa.goclan.org/
+```
+
+To reach a backend directly for debugging, go in via loopback, which is always
+trusted:
+
+```bash
+nixos-container run arr -- curl -sS localhost:25600/     # Komga
+podman exec cwa curl -sS localhost:8083/                 # CWA
+```
+
 ### Failure-mode key
 
 | Symptom | Cause |
 |---|---|
 | `NXDOMAIN` | missing public A record |
+| a **backend address** hangs | expected — see above, test through Traefik |
 | connection **refused** | reached the house, no listener — check the DNAT |
 | connection **times out** | firewall drop, or PMTUD blackhole |
 | TLS **hangs** after ClientHello | MTU/PMTUD — verify ICMPv6 "Packet Too Big" is not dropped |
