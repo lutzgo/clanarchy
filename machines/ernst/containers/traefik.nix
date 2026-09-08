@@ -538,7 +538,39 @@ let
   # externally, no external login can ever complete.  M16 recorded this as a
   # corrected premise after its own test plan listed `auth` among the names
   # that must be unreachable; do not re-derive it the hard way.
-  wanExposed = [ "jellyseerr" "authelia" ];
+  #
+  # ── audiobookshelf, ADDED 2026-09-08.  READ THIS BEFORE ADDING A FOURTH ────
+  #
+  #   It is the FIRST internet-facing name here that is NOT behind Authelia.
+  #   `jellyseerr` and `authelia` both are — an unauthenticated external
+  #   request to jellyseerr answers 302 to the portal, which is why the portal
+  #   had to be exposed alongside it.  This one answers the application.
+  #
+  #   THE ANSWER TO "WHY SHOULD THE UNAUTHENTICATED SURFACE STOP BEING
+  #   AUTHELIA", which the paragraph above demands: it already had.  The LAN
+  #   router has carried a permanent forward-auth bypass since M14, on the
+  #   client-compatibility clause — Audiobookshelf's mobile apps cannot
+  #   complete a forward-auth redirect, so putting Authelia in front makes the
+  #   apps the thing that breaks.  This milestone does not create that
+  #   exemption; it moves an existing one from the LAN to the WAN.
+  #
+  #   WHAT THAT COSTS, PLAINLY.  Audiobookshelf's own accounts become the
+  #   entire boundary against the internet, and there is NO SECOND FACTOR on
+  #   this name: Authelia's per-user regulation and 2FA do not apply.  The
+  #   `wan-ratelimit` and `wan-inflight` middlewares are inherited and are the
+  #   only rate limiting in front of the login form; CrowdSec sees its 401s in
+  #   the access log and can ban on them, which is now the main thing standing
+  #   between this and credential stuffing.
+  #
+  #   TWO PRECONDITIONS, NEITHER OF WHICH THIS FILE CAN ENFORCE:
+  #     1. THE ADMIN ACCOUNT MUST ALREADY EXIST.  Audiobookshelf's first-run
+  #        wizard is unauthenticated by construction and hands the root account
+  #        to whoever loads it first.  On the LAN that window was survivable;
+  #        on the WAN it is not.  The router block below carries this warning
+  #        for the LAN case and it is strictly more urgent here.
+  #     2. THE ADMIN PASSWORD MUST BE STRONG.  It is now an
+  #        internet-reachable, single-factor login.
+  wanExposed = [ "jellyseerr" "authelia" "audiobookshelf" ];
 
   # ── THE GUARD AND THE GENERATOR, IN ONE FUNCTION ──────────────────────────
   #
