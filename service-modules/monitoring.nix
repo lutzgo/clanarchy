@@ -976,6 +976,69 @@ in
           '';
         };
 
+        navidromeAddress = lib.mkOption {
+          type        = lib.types.str;
+          default     = "";
+          example     = "10.0.90.13";
+          description = ''
+            Address of the container running Navidrome on the Services VLAN.
+            Empty disables the `navidrome` job.
+
+            THE SAME ADDRESS AS `arrAddress` in this deployment — Navidrome is
+            a unit inside the arr container, not a container of its own — but
+            it is a SEPARATE option because that is a placement decision and
+            not a property of the module.  A fleet that moved Navidrome
+            somewhere else should not have to move the *arr with it.
+
+            NO EXPORTER.  Navidrome serves Prometheus metrics natively when
+            `Prometheus.Enabled` is set.
+
+            THIS TARGET IS AUTHENTICATED, and it is the only one here that is.
+            The endpoint demands HTTP Basic as user `navidrome` — measured
+            against 0.63.2, which answers 401 without credentials and 200 with
+            them — because the metrics ride the ORDINARY application port
+            rather than a separate listener. So `navidromeMetricsPasswordFile`
+            below is not optional: without it the job authenticates as nobody
+            and reports up=0 with a 401, which looks exactly like the service
+            being down.
+          '';
+        };
+
+        navidromePort = lib.mkOption {
+          type        = lib.types.port;
+          default     = 4533;
+          description = ''
+            Navidrome's HTTP port.  Metrics share it with the Subsonic API and
+            the web UI rather than getting a listener of their own, which is
+            why permitting this scrape necessarily permits more than a scrape
+            — the same trade containers/jellyfin.nix states plainly for its
+            own metrics endpoint.
+          '';
+        };
+
+        navidromeMetricsPasswordFile = lib.mkOption {
+          type        = lib.types.nullOr lib.types.path;
+          default     = null;
+          example     = "/run/monitoring-secrets/navidrome-metrics-password";
+          description = ''
+            Path INSIDE the monitoring container to a file containing the bare
+            Navidrome metrics password, for Prometheus' `basic_auth`.
+
+            BARE VALUE, NOT `KEY=value`.  Prometheus reads the file's entire
+            contents as the password, so a systemd-style environment file
+            would authenticate as the literal string
+            `ND_PROMETHEUS_PASSWORD=…`.  The generator in
+            machines/ernst/containers/arr.nix emits both forms from one
+            secret for exactly this reason — `metrics.env` for Navidrome's
+            EnvironmentFile and `password` for this.
+
+            Null while `navidromeAddress` is set produces a job with no
+            credentials, which will 401.  That combination is rejected by an
+            assertion rather than deployed, because the failure presents as
+            the service being down.
+          '';
+        };
+
         qbittorrentAddress = lib.mkOption {
           type        = lib.types.str;
           default     = "";
@@ -1309,6 +1372,24 @@ in
           grafanaPwFile  = "${secretsDir}/grafana-admin-password";
           grafanaKeyFile = "${secretsDir}/grafana-secret-key";
 
+          # Navidrome's metrics password, staged for Prometheus' basic_auth.
+          #
+          # THE BARE-VALUE FILE, not the KEY=value one the same generator
+          # emits for Navidrome's own EnvironmentFile.  Prometheus reads the
+          # whole file as the password.
+          navidromePwFile = "${secretsDir}/navidrome-metrics-password";
+
+          # Guarded the same way grafanaGen and the ntfy generator are: naming
+          # a generator that does not exist yet is an EVALUATION error, and an
+          # evaluation error names an attribute rather than the command a
+          # human forgot to run.  This one lives in
+          # machines/ernst/containers/arr.nix, so a fleet without a media
+          # stack never defines it at all.
+          navidromeMetricsGen =
+            if config.clan.core.vars.generators ? navidrome-metrics
+            then config.clan.core.vars.generators.navidrome-metrics
+            else { files."password".path = "/no-such-path"; };
+
           # Guarded rather than selected directly.  Without the guard, a
           # machine holding this role with `clanarchy.zfs.ntfy.enable = false`
           # fails evaluation on a missing attribute, and the error names a
@@ -1376,6 +1457,25 @@ in
                 modules/observability/zfs-ntfy.nix — one alerting path, not two.
                 Set `clanarchy.zfs.ntfy.enable = true` on this machine and run
                 `clan vars generate <machine>`.
+              '';
+            }
+            {
+              # A target without its credential is WORSE than no target: the
+              # job reports up=0 with a 401, which is indistinguishable from
+              # Navidrome being down and will be investigated as an outage.
+              # Fail the build instead.
+              assertion =
+                settings.mediaStack.navidromeAddress == ""
+                || settings.mediaStack.navidromeMetricsPasswordFile != null;
+              message = ''
+                @clanarchy/monitoring: mediaStack.navidromeAddress is set but
+                mediaStack.navidromeMetricsPasswordFile is null.  Navidrome's
+                /metrics demands HTTP Basic, so the scrape would 401 and the
+                job would report up=0 — which reads as the service being down
+                rather than as a missing credential.
+                Point it at the staged bare-value file (see the option's
+                description, and the navidrome-metrics generator in
+                machines/ernst/containers/arr.nix).
               '';
             }
           ];
@@ -1494,6 +1594,29 @@ in
               # directory — see the secretsDir comment.
               install -m 0400 -o ${toString grafanaUid} -g ${toString grafanaGid} \
                 ${grafanaGen.files."admin-password".path} ${grafanaPwFile}
+
+              # ── Navidrome's metrics password, for Prometheus basic_auth ──
+              #
+              # Owned by the PROMETHEUS uid: prometheus opens it itself,
+              # unprivileged, through `basic_auth.password_file`.  Same shape
+              # as the grafana pair above and for the same reason.
+              #
+              # Staged unconditionally but tolerantly — an absent generator
+              # leaves an EMPTY file rather than failing this unit.  This unit
+              # is `requiredBy` container@monitoring, so failing here takes
+              # the whole monitoring stack down; losing every dashboard and
+              # every alert because ONE scrape credential is missing is a
+              # wildly disproportionate failure.  With an empty file the
+              # navidrome job 401s and everything else keeps working, and the
+              # `up == 0` on that job is the signal.
+              if [ -r ${navidromeMetricsGen.files."password".path} ]; then
+                install -m 0400 -o ${toString prometheusUid} -g ${toString prometheusGid} \
+                  ${navidromeMetricsGen.files."password".path} ${navidromePwFile}
+              else
+                echo "monitoring-secrets: no Navidrome metrics password at ${navidromeMetricsGen.files."password".path} — run 'clan vars generate ernst'. Staging an empty file; the navidrome scrape will 401 until it exists." >&2
+                install -m 0400 -o ${toString prometheusUid} -g ${toString prometheusGid} \
+                  /dev/null ${navidromePwFile}
+              fi
 
               # ── Grafana secret_key ──────────────────────────────────────
               #
@@ -2068,6 +2191,27 @@ in
                   static_configs = [ {
                     targets = [ "${settings.mediaStack.jellyfinAddress}:${toString settings.mediaStack.jellyfinPort}" ];
                     labels.instance = "jellyfin";
+                  } ];
+                }
+                # Navidrome, and the only authenticated scrape in this file.
+                #
+                # `basic_auth.password_file` reads the file's CONTENTS as the
+                # password, which is why the generator emits a bare-value file
+                # alongside the KEY=value one Navidrome's EnvironmentFile
+                # wants.  Getting that backwards authenticates as the literal
+                # string `ND_PROMETHEUS_PASSWORD=…` and 401s.
+                #
+                # The username is not configurable in Navidrome — it checks
+                # for `navidrome` and any password matching the setting.
+                ++ lib.optional (settings.mediaStack.navidromeAddress != "") {
+                  job_name = "navidrome";
+                  basic_auth = {
+                    username      = "navidrome";
+                    password_file = settings.mediaStack.navidromeMetricsPasswordFile;
+                  };
+                  static_configs = [ {
+                    targets = [ "${settings.mediaStack.navidromeAddress}:${toString settings.mediaStack.navidromePort}" ];
+                    labels.instance = "navidrome";
                   } ];
                 }
                 ++ lib.optional (settings.mediaStack.qbittorrentAddress != "") {
