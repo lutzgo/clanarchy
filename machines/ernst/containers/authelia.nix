@@ -395,6 +395,18 @@ let
   # calls back to <root_url>/login/generic_oauth, and root_url is set from the
   # same domain in service-modules/monitoring.nix.
   grafanaRedirectUri = "https://grafana.${baseDomain}/login/generic_oauth";
+
+  # CWA's OIDC callback.  DERIVED FROM THE v4.0.6 SOURCE, not from
+  # documentation: `cps/oauth_bb.py` builds the redirect as
+  # `f"{host}/login/{provider_name}/authorized"` and registers the OAuth
+  # blueprint with `url_prefix="/login"` under the provider name `generic`.
+  #
+  # The `{host}` half comes from CWA's own `config_oauth_redirect_host`
+  # setting, which must be set to this hostname in the admin UI — if it is
+  # left empty the code takes a fallback branch that omits `redirect_url`
+  # entirely and the callback is built from the request, which behind a proxy
+  # produces an http:// URI Authelia will refuse.  That is in the checklist.
+  cwaRedirectUri = "https://cwa.${baseDomain}/login/generic/authorized";
 in
 {
   ##############################################################################
@@ -630,6 +642,50 @@ in
         echo "          - 'profile'"
         echo "          - 'groups'"
         echo "          - 'email'"
+
+        # ── CWA.  The WEB UI only — the app protocols never come here ───────
+        #
+        # cwa.goclan.org carries NO forward-auth (it is in `appApiHosts`), so
+        # OPDS, /kobo/<token>/** and /kosync/** reach the application directly
+        # and authenticate against CWA's own accounts.  This client covers the
+        # BROWSER path and nothing else: it is what gets the web UI real
+        # two-factor and Authelia's per-user regulation without putting a
+        # middleware in front of a Kobo e-reader that has no browser.
+        #
+        # `two_factor`, matching Grafana and the jellyseerr rule.  The web UI
+        # is where an admin changes library paths and user permissions, so it
+        # gets the same policy as every other admin surface even though the
+        # vhost around it is deliberately open.
+        #
+        # REDIRECT URI DERIVED FROM THE SOURCE, not from a docs page.  In
+        # v4.0.6 `cps/oauth_bb.py` builds it as
+        #     f"{host}/login/{provider_name}/authorized"
+        # and registers the blueprint with `url_prefix="/login"` under the
+        # provider name `generic`.  Hence /login/generic/authorized.
+        #
+        # THE CWA SIDE IS MANUAL and there is no way around it: CWA has no
+        # config file and no OAuth environment variables, so the client id,
+        # this secret's PLAINTEXT and the metadata URL are typed into Admin →
+        # Edit Basic Configuration once.  A mismatch here shows up as
+        # `invalid_client` at the portal, not as a CWA error.
+        echo "      - client_id: 'cwa'"
+        echo "        client_name: 'Calibre-Web-Automated'"
+        printf "        client_secret: '"
+        tr -d '[:space:]' < ${oidcGen.files."cwa-client-secret-digest".path}
+        echo "'"
+        echo "        public: false"
+        echo "        authorization_policy: 'two_factor'"
+        echo "        require_pkce: true"
+        echo "        pkce_challenge_method: 'S256'"
+        echo "        consent_mode: 'implicit'"
+        echo "        token_endpoint_auth_method: 'client_secret_basic'"
+        echo "        redirect_uris:"
+        echo "          - '${cwaRedirectUri}'"
+        echo "        scopes:"
+        echo "          - 'openid'"
+        echo "          - 'profile'"
+        echo "          - 'groups'"
+        echo "          - 'email'"
       } > ${oidcClientFile}.new
       chown ${toString autheliaUid}:${toString autheliaGid} ${oidcClientFile}.new
       chmod 0400 ${oidcClientFile}.new
@@ -850,26 +906,65 @@ in
     files."grafana-client-secret-digest".restartUnits =
       [ "authelia-secrets.service" "container@authelia.service" ];
 
+    # ── CWA's client secret ─────────────────────────────────────────────────
+    #
+    # SAME PAIR SHAPE AS GRAFANA'S, and the pair is the point: Authelia stores
+    # a PBKDF2 DIGEST and the relying party sends the PLAINTEXT, so both have
+    # to come out of one generation or they cannot possibly match.
+    #
+    # THE PLAINTEXT HALF IS CONSUMED BY A HUMAN HERE, WHICH GRAFANA'S IS NOT.
+    # Grafana reads its copy from a staged file (see monitoring.nix).  CWA has
+    # NO configuration file and NO environment variable for OAuth — verified by
+    # grepping every `os.environ` read in the v4.0.6 source, where the only
+    # OAuth-related variable is `OAUTH_SSL_STRICT`.  The client id, secret and
+    # metadata URL are rows in CWA's app.db, entered through Admin → Edit Basic
+    # Configuration.
+    #
+    # So the plaintext is generated here, kept in sops like every other
+    # secret, and READ ONCE by whoever configures CWA:
+    #
+    #     clan vars get ernst authelia-oidc/cwa-client-secret
+    #
+    # That is a manual step and it cannot be automated away without writing
+    # into a database the application owns.  It is in the deploy checklist in
+    # docs/guides/ernst-app-api-ingress.md.
+    files."cwa-client-secret".secret        = true;
+    files."cwa-client-secret-digest".secret = true;
+
+    files."cwa-client-secret-digest".restartUnits =
+      [ "authelia-secrets.service" "container@authelia.service" ];
+
     runtimeInputs = [ pkgs.authelia pkgs.gnused pkgs.coreutils ];
 
     script = ''
       set -euo pipefail
 
-      secret=$(authelia crypto rand --length 72 --charset alphanumeric \
-                 | sed -n 's/^Random Value: //p' | tr -d '\n')
-      if [ -z "$secret" ]; then
-        echo "  ✗ authelia crypto rand produced no client secret" >&2
-        exit 1
-      fi
-      printf '%s' "$secret" > "$out/grafana-client-secret"
+      # One helper, two clients.  Written as a loop rather than duplicated so
+      # a third client cannot get a subtly different generation — the digest
+      # and the plaintext must come from one `rand` call each, and that is the
+      # only invariant here worth protecting.
+      mkclient() {
+        name="$1"
 
-      digest=$(authelia crypto hash generate pbkdf2 --variant sha512 --password "$secret" \
-                 | sed -n 's/^Digest: //p')
-      if [ -z "$digest" ]; then
-        echo "  ✗ pbkdf2 hashing produced no digest for the Grafana client secret" >&2
-        exit 1
-      fi
-      printf '%s' "$digest" > "$out/grafana-client-secret-digest"
+        secret=$(authelia crypto rand --length 72 --charset alphanumeric \
+                   | sed -n 's/^Random Value: //p' | tr -d '\n')
+        if [ -z "$secret" ]; then
+          echo "  ✗ authelia crypto rand produced no client secret for $name" >&2
+          exit 1
+        fi
+        printf '%s' "$secret" > "$out/$name-client-secret"
+
+        digest=$(authelia crypto hash generate pbkdf2 --variant sha512 --password "$secret" \
+                   | sed -n 's/^Digest: //p')
+        if [ -z "$digest" ]; then
+          echo "  ✗ pbkdf2 hashing produced no digest for the $name client secret" >&2
+          exit 1
+        fi
+        printf '%s' "$digest" > "$out/$name-client-secret-digest"
+      }
+
+      mkclient grafana
+      mkclient cwa
     '';
   };
 
