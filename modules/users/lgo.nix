@@ -606,6 +606,39 @@ in
           text = "disable-ccid\n";
         };
 
+        # Seed the sops/age YubiKey identity stub into keys.txt on first login, so a new
+        # machine can decrypt clan vars without the manual `age-plugin-yubikey --identity
+        # >> ~/.config/sops/age/keys.txt` step (see docs/guides/yubikey.md). The stub is
+        # NOT the private key — it never leaves the hardware token, it's just a serial+slot
+        # reference telling age-plugin-yubikey which card to talk to, so decryption still
+        # requires the physical YubiKey, PIN, and a touch. Same trust level as the
+        # age1yubikey1... recipient already committed in sops/users/lgo/key.json.
+        #
+        # This is append-if-missing, NOT a `home.file` overwrite: keys.txt on miralda also
+        # carries lgo's plain (non-hardware) recovery age key, whose private key material is
+        # genuinely secret and must never be templated into a Nix store path. A static
+        # `home.file` would replace the whole file on every activation and silently destroy
+        # that line. Regenerate the stub with `age-plugin-yubikey --identity` if the PIV
+        # slot is ever reprovisioned, and update the block below to match.
+        home.activation.seedYubikeyAgeIdentity = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+          _keys="$HOME/.config/sops/age/keys.txt"
+          _stub="AGE-PLUGIN-YUBIKEY-1TVCZWQVZPWKDMTQDQ0P3V"
+          mkdir -p "$HOME/.config/sops/age"
+          touch "$_keys"
+          if ! grep -qF "$_stub" "$_keys"; then
+            {
+              echo "#       Serial: 19345499, Slot: 1"
+              echo "#         Name: Clanarchy"
+              echo "#      Created: Mon, 11 Aug 2025 20:29:38 +0000"
+              echo "#   PIN policy: Once   (A PIN is required once per session, if set)"
+              echo "# Touch policy: Cached (A physical touch is required for decryption, and is cached for 15 seconds)"
+              echo "#    Recipient: age1yubikey1qw86lycmkeart5sh5mrhrpcr7qwfceemu7aw22veqclmeu3m2wsqwnqw7zg"
+              echo "$_stub"
+            } >> "$_keys"
+          fi
+          chmod 600 "$_keys"
+        '';
+
         home.packages = [ fzf-zellij ] ++ (with pkgs; [
           htop
           ripgrep

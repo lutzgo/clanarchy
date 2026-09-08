@@ -225,6 +225,7 @@
         imports = [ (mkModuleArgs { }) ] ++ commonHeadful ++ [
           ./modules/themes
           ./modules/wallpapers/nix-anarchy.nix
+          ./modules/wifi.nix
           ./machines/jens/configuration.nix
           ./machines/jens/disko.nix
         ];

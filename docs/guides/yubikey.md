@@ -98,7 +98,7 @@ The YubiKey PIV applet holds an **age recipient** via `age-plugin-yubikey`. This
 | Key | Public key | Location |
 |-----|-----------|----------|
 | lgo regular age key | `age1dja6qmtqlxhul8xdtj3tsgj8qwzc07yasauy767fq9k2knaa2q5sj0wxv8` | `~/.config/sops/age/keys.txt` |
-| lgo YubiKey age key | `age1yubikey1qw86lycmkeart5sh5mrhrpcr7qwfceemu7aw22veqclmeu3m2wsqwnqw7zg` | YubiKey Serial 19345499, Slot 1 |
+| lgo YubiKey age key | `age1yubikey1qw86lycmkeart5sh5mrhrpcr7qwfceemu7aw22veqclmeu3m2wsqwnqw7zg` | YubiKey Serial 19345499, Slot 1 — identity stub seeded into `keys.txt` automatically by `home.activation.seedYubikeyAgeIdentity` in `modules/users/lgo.nix` |
 | miralda machine key | `age1c2982jjusdhrdzua0wrj5c8q8knxz6gja975kt42j3e8rdstwfusr0wse6` | `sops/machines/miralda/key.json` |
 
 ### Recipient policy
@@ -137,12 +137,17 @@ If the YubiKey PIV slot is reset or a new key is generated:
 # Generate a new age key on the YubiKey (Slot 1)
 age-plugin-yubikey --generate --slot 1
 
-# Append the new identity stub to keys.txt
-age-plugin-yubikey --identity >> ~/.config/sops/age/keys.txt
-
-# Get the new public key
-age-plugin-yubikey --list
+# Get the new identity stub + public key
+age-plugin-yubikey --identity
 ```
+
+Update the stub (`AGE-PLUGIN-YUBIKEY-...` and its comment block) baked into
+`home.activation.seedYubikeyAgeIdentity` in `modules/users/lgo.nix` with the
+new output, so every machine picks it up on next `clan machines update`. (The
+grep-and-append guard there is one-shot per string match, so the *old* stub
+line is not automatically removed from an already-seeded `keys.txt` — delete
+it by hand on each machine, or just leave it: a stale, deprovisioned stub is
+inert, not a security hole.)
 
 Then update `sops/users/lgo/key.json` with the new `age1yubikey1...` public key and re-encrypt all sops secrets:
 
