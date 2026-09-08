@@ -4585,6 +4585,39 @@ in
         ProtectSystem  = "strict";
         ReadWritePaths = [ "/var/lib/navidrome" ];
 
+        # ── PrivateTmp IS LOAD-BEARING, AND `ProtectSystem = "strict"` ABOVE ──
+        #    IS WHY
+        #
+        # Without it the scan runs, reports success, and imports NOTHING:
+        #
+        #   level=warning msg="gotaglib: Error reading metadata from file.
+        #     Skipping" error="init module: get runtime once: create directory
+        #     /tmp/go-taglib-wasm: mkdir /tmp: read-only file system"
+        #   Scanner: Completed processing folder audioCount=526 tracksImported=0
+        #
+        # `audioCount=526 tracksImported=0` is the shape of this failure: 526
+        # files seen, every one skipped, scan "Completed", exit status fine,
+        # unit active.  The only symptom is an empty library.
+        #
+        # Since 0.60 Navidrome reads tags through a WASM taglib that
+        # materialises its runtime under /tmp — the same WASM engine the
+        # module's own `MemoryDenyWriteExecute = false` comment is about.
+        # Upstream sets that one and not this one, because upstream does not
+        # set `ProtectSystem` at all: with the module alone /tmp is writable
+        # and the problem does not arise.
+        #
+        # SO THIS IS A COST OF THE LINE ABOVE, NOT AN UPSTREAM BUG.  Keeping
+        # ProtectSystem = "strict" is still right — it is what stops a future
+        # nixpkgs bump that drops the chroot from silently making the music
+        # library writable — but it has to come with somewhere to write.
+        #
+        # PrivateTmp rather than adding /tmp to ReadWritePaths: this gets a
+        # private tmpfs that dies with the unit, instead of a handle on the
+        # container's shared /tmp.  For a service whose whole purpose here is
+        # to read a tree it must never modify, the isolated option is the one
+        # to take.
+        PrivateTmp     = true;
+
         ProtectProc    = "invisible";
         RemoveIPC      = true;
         ProtectHostname = true;
