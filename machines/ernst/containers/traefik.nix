@@ -455,11 +455,11 @@ let
   # UDM-Pro rule.  Only CWA (below) is an opaque image and therefore had to
   # take the podman tier.
   #
-  #   komga      25600  the module's `port` option has NO default in nixpkgs
-  #                     (verified by evaluating it: `attribute 'default'
-  #                     missing`), so it MUST be set explicitly or the config
-  #                     does not evaluate.  25600 is Komga's own upstream
-  #                     default and what every client's setup doc assumes.
+  #   komga      25600  set on the far end through `settings.server.port` —
+  #                     the top-level `services.komga.port` is a renamed alias
+  #                     at this pin and warns at eval.  25600 is Komga's own
+  #                     upstream default and what every client's setup doc
+  #                     assumes.
   #   navidrome   4533  the module default, and the Subsonic ecosystem's
   #                     conventional port.  Kept rather than moved.
   komgaPort          = 25600;

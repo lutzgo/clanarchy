@@ -286,6 +286,28 @@ let
   # uid, not this one).  media PRIMARY, the kapowarr shape.
   binderyUid        = 3028;
 
+  # ── 2026-09-08.  Two READERS, and neither is a writer ────────────────────
+  #
+  # Both are in group `media` and both are READ-ONLY consumers of the library
+  # the *arr fill.  That makes them a shape this file has not had before —
+  # every previous `media` member here either imports into the hardlink domain
+  # (the *arr trio, slskd, bindery) or owns a tree of its own outside it
+  # (audiobookshelf).  These two only read.
+  #
+  # GROUP MEMBERSHIP IS THEREFORE NOT THE THING THAT KEEPS THEM READ-ONLY, and
+  # that is worth being blunt about, because `media` is a WRITE grant: the
+  # library directories are 2770 root:media, so anything in the group can
+  # write.  What actually enforces read-only is systemd, per unit, at the mount
+  # layer — see each service's block below.  A comment saying "read-only" over
+  # a group that grants write is exactly the kind of claim this repo has been
+  # burned by (see the SN2 gravestones in containers/traefik.nix), so the
+  # mechanism is named at both ends.
+  #
+  # Next free was 3031 per the table in machines/ernst/networking.nix; that
+  # table is updated in the same commit.
+  komgaUid          = 3031;
+  navidromeUid      = 3032;
+
   # Fixed on the HOST in machines/ernst/containers/jellyfin.nix, which owns
   # `users.groups.media`.  Restated numerically here (and by name only inside
   # the container, where this file does declare the group) so that nothing in
@@ -401,6 +423,26 @@ let
   # rule below is load-bearing for it too.  BINDERY_PORT is what sets it.
   # Reachable through Traefik: a browser UI a human opens more than once.
   binderyPort        = 8787;
+
+  # ── 2026-09-08 ports ──────────────────────────────────────────────────────
+  #
+  #   komga      25600  set through `settings.server.port`.  The top-level
+  #                     `services.komga.port` most documentation shows is a
+  #                     RENAMED ALIAS at this pin and warns at eval; it also
+  #                     carries no default, which is why querying it returns
+  #                     "attribute 'default' missing".  25600 is Komga's own
+  #                     upstream default and what Komelia's and Mihon's setup
+  #                     docs assume.
+  #   navidrome   4533  the module default and the Subsonic ecosystem's
+  #                     conventional port.  Left alone rather than moved.
+  #
+  # BOTH ALSO NEED THEIR LISTEN ADDRESS SET, for the reason audiobookshelf's
+  # block records: the modules default to loopback (navidrome's `Address`
+  # defaults to 127.0.0.1) or to a value that is not reachable from another
+  # container, and Traefik is in a different netns entirely.  The container
+  # firewall below is what restricts them, as everywhere else in this file.
+  komgaPort          = 25600;
+  navidromePort      = 4533;
   #
   # ── THE SYSCALL FILTER FOR EVERY UNIT IN THIS CONTAINER ──────────────────
   #
@@ -669,6 +711,35 @@ let
     if config.clan.core.vars.generators ? janitorr-jellyfin
     then config.clan.core.vars.generators.janitorr-jellyfin
     else { files."credentials.env".path = "/no-such-path"; };
+
+  # ── 2026-09-08.  Navidrome's Prometheus scrape credential ─────────────────
+  #
+  # Same staging shape as janitorr's above and for the identical reason: a
+  # bind of /run/secrets would keep exposing a DELETED sops generation after
+  # the next deploy, because that path is a symlink to a per-generation
+  # directory that is replaced wholesale.  A directory we own has a stable
+  # identity and is rewritten in place.
+  #
+  # WHY THIS IS AN ENVIRONMENT FILE AND NOT A `settings` VALUE.  Navidrome's
+  # `settings` are rendered to a JSON file in the NIX STORE, which is
+  # world-readable on every machine that ever builds this config.  A metrics
+  # password there is a password published.  `ND_PROMETHEUS_PASSWORD` is read
+  # by systemd as PID 1 from a 0400 file before it drops privileges, so the
+  # navidrome uid never needs to read it either.
+  #
+  # GENERATED WITH THE SAME VALUE ON BOTH ENDS.  Prometheus lives in the
+  # MONITORING container and must present this password to scrape; Navidrome
+  # lives in the arr container and must check it.  Both read the one generator
+  # below — see service-modules/monitoring.nix for the consuming half.  One
+  # generator and two staging units, rather than two secrets that have to be
+  # kept equal by hand.
+  navidromeSecretsDir = "/run/navidrome-secrets";
+  navidromeEnvFile    = "${navidromeSecretsDir}/navidrome.env";
+
+  navidromeMetricsGen =
+    if config.clan.core.vars.generators ? navidrome-metrics
+    then config.clan.core.vars.generators.navidrome-metrics
+    else { files."metrics.env".path = "/no-such-path"; };
 in
 {
   ##############################################################################
@@ -833,6 +904,20 @@ in
     "d ${stateRoot}/kapowarr       0700 ${toString kapowarrUid}       ${toString mediaGid}    -"
     "d ${stateRoot}/questarr       0700 ${toString questarrUid}       ${toString questarrGid} -"
     "d ${stateRoot}/audiobookshelf 0700 ${toString audiobookshelfUid} ${toString mediaGid}    -"
+
+    # 2026-09-08 — Komga's and Navidrome's state, on zdata for the reason
+    # everything else here is: zroot ROLLS BACK on every boot (invariant #7),
+    # and both of these hold a SQLite database that is not cheap to rebuild.
+    #
+    # Navidrome's especially: the DB is not just an index of the library, it
+    # holds play counts, star ratings, playlists, per-user progress and the
+    # per-player transcoding assignments.  Rebuilding it from a rescan
+    # recovers the music and loses everything the household actually created.
+    # That is also why it gets a backup schedule of its own — a rollback is
+    # not the only way to lose it, and ZFS snapshots of this dataset are NOT
+    # currently running (see the note in the navidrome block below).
+    "d ${stateRoot}/komga          0700 ${toString komgaUid}          ${toString mediaGid}    -"
+    "d ${stateRoot}/navidrome      0700 ${toString navidromeUid}      ${toString mediaGid}    -"
 
     # M17 — Bindery's state.  Owned by the service uid so there is no
     # ownership transition on the FIRST run for tmpfiles to deadlock on —
@@ -1136,6 +1221,74 @@ in
     '';
   };
 
+  # ── 2026-09-08.  The Navidrome metrics password ───────────────────────────
+  #
+  # ROTATING IT needs a restart of BOTH containers, not just a deploy — the
+  # janitorr-secrets caveat, doubled, because two services share this value:
+  #     systemctl restart navidrome-secrets container@arr
+  #     systemctl restart monitoring-secrets container@monitoring
+  # Restarting only one leaves Prometheus scraping with the old password and
+  # the `navidrome` job reporting up=0 with a 401 — which looks like Navidrome
+  # being down rather than a half-finished rotation.
+  systemd.services.navidrome-secrets = {
+    description = "Stage Navidrome's Prometheus password for container@arr";
+    after       = [ "local-fs.target" ];
+    before      = [ "container@arr.service" ];
+    wantedBy    = [ "container@arr.service" ];
+    serviceConfig = {
+      Type            = "oneshot";
+      RemainAfterExit = true;
+    };
+    # Stage an EMPTY file rather than failing when the var is absent, the
+    # soularr-secrets pattern.  systemd treats a MISSING EnvironmentFile as a
+    # fatal unit error, so a first deploy before `clan vars generate ernst`
+    # would take Navidrome down entirely rather than merely leaving its
+    # metrics unauthenticated.  With an empty file the service starts, serves
+    # music, and only the scrape fails — which is the right thing to break.
+    script = ''
+      ${pkgs.coreutils}/bin/install -d -m 0700 -o root -g root ${navidromeSecretsDir}
+      if [ -r ${navidromeMetricsGen.files."metrics.env".path} ]; then
+        ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
+          ${navidromeMetricsGen.files."metrics.env".path} ${navidromeEnvFile}
+      else
+        echo "navidrome-secrets: no metrics password at ${navidromeMetricsGen.files."metrics.env".path} — run 'clan vars generate ernst'. Staging an empty file so Navidrome still starts; its /metrics will refuse the scrape." >&2
+        ${pkgs.coreutils}/bin/install -m 0400 -o root -g root /dev/null ${navidromeEnvFile}
+      fi
+    '';
+  };
+
+  # The generator itself.  A generated password, NOT a prompt: nothing human
+  # ever types this — Prometheus reads it from a file and Navidrome reads it
+  # from an environment variable — so prompting for it would only invite a
+  # weak one and add a question to every `clan vars generate ernst` run.
+  #
+  # Two files from one generator, deliberately.  `metrics.env` is the
+  # KEY=value form systemd's EnvironmentFile wants; `password` is the bare
+  # value, because Prometheus' `basic_auth.password_file` reads the file
+  # CONTENTS as the password and would otherwise authenticate as the literal
+  # string "ND_PROMETHEUS_PASSWORD=…".  Deriving both here is what keeps the
+  # two consumers from disagreeing about format.
+  clan.core.vars.generators.navidrome-metrics = {
+    files."metrics.env".secret = true;
+    files."password".secret    = true;
+
+    runtimeInputs = [ pkgs.coreutils pkgs.openssl ];
+
+    script = ''
+      set -euo pipefail
+
+      # 32 bytes base64.  No prompt, no human in the loop, so there is no
+      # reason for it to be shorter or memorable.
+      pw=$(openssl rand -base64 32 | tr -d '\n')
+
+      printf '%s' "$pw" > "$out/password"
+
+      # No quoting: systemd's EnvironmentFile parser keeps quotes as part of
+      # the value, which is the mistake the traefik-acme generator records.
+      printf 'ND_PROMETHEUS_PASSWORD=%s\n' "$pw" > "$out/metrics.env"
+    '';
+  };
+
   # The same staging, for slskd's API key — see soularrSecretsDir above for why
   # soularr cannot read the clan var's own path from inside the container.
   #
@@ -1344,6 +1497,13 @@ in
         isReadOnly = true;
       };
 
+      # The THIRD: Navidrome's Prometheus password.  Same shape and the same
+      # reason as the two above — see navidromeSecretsDir in the let block.
+      "${navidromeSecretsDir}" = {
+        hostPath   = navidromeSecretsDir;
+        isReadOnly = true;
+      };
+
       # ── M14 ──────────────────────────────────────────────────────────────
       #
       # Per-service state, each at its package's upstream default path so
@@ -1373,6 +1533,27 @@ in
       };
       "/var/lib/audiobookshelf" = {
         hostPath   = "${stateRoot}/audiobookshelf";
+        isReadOnly = false;
+      };
+
+      # 2026-09-08.  Komga's and Navidrome's state, remapped onto each
+      # module's own default path so neither needs a directory override —
+      # the same trick lidarr's bind above uses, and jellyfin.nix for
+      # /var/lib/jellyfin.
+      #
+      #   komga      services.komga.stateDir defaults to /var/lib/komga
+      #              (verified by evaluating the option).
+      #   navidrome  the module hard-codes WorkingDirectory=/var/lib/navidrome
+      #              and StateDirectory=navidrome, and DataFolder defaults to
+      #              the WorkingDirectory.  So this bind is what puts the
+      #              database on zdata, and DataFolder is deliberately LEFT
+      #              UNSET below rather than pointed somewhere else.
+      "/var/lib/komga" = {
+        hostPath   = "${stateRoot}/komga";
+        isReadOnly = false;
+      };
+      "/var/lib/navidrome" = {
+        hostPath   = "${stateRoot}/navidrome";
         isReadOnly = false;
       };
 
@@ -1704,11 +1885,44 @@ in
           # key (401 without one, measured) — defence the three above don't
           # all have, noted but NOT leaned on.
           binderyPort
+
+          # ── 2026-09-08: TWO MORE THROUGH TRAEFIK, AND THESE TWO FACE THE ──
+          #    INTERNET
+          #
+          # Same rule, same source restriction, but the consequence is not the
+          # same and it should not be read as routine.  Every other port in
+          # this list is reachable from the LAN through a Traefik router that
+          # names `websecure` only.  Komga and Navidrome are in `wanExposed`
+          # (containers/traefik.nix), so requests arriving here can have come
+          # from the public internet by way of the UDM-Pro DNAT.
+          #
+          # THIS RULE IS UNCHANGED BY THAT AND IS STILL CORRECT.  The source
+          # is Traefik's address either way — the proxy is what connects to
+          # this port, never the external client — so restricting to
+          # traefikAddr is exactly as tight as it was.  What changes is
+          # what stands behind it: for these two the application's own user
+          # database is the boundary, not Authelia.  See ingress-policy.nix.
+          #
+          # Both bind 0.0.0.0 by configuration below (Komga's `server.servlet`
+          # address and Navidrome's `Address`), for the audiobookshelf reason:
+          # loopback would make them unreachable from Traefik in another netns
+          # while adding no protection this rule does not already give.
+          komgaPort
+          navidromePort
         ]
         + lib.concatMapStrings (port: ''
           iptables -A nixos-fw -p tcp -s ${monitoringAddr}/32 --dport ${toString port} -j nixos-fw-accept
         '') [
           scraparrPort
+
+          # Navidrome's /metrics rides its ORDINARY port rather than getting a
+          # listener of its own, so this opens the whole application to the
+          # monitoring container — the same trade containers/jellyfin.nix
+          # states plainly for its own metrics.  It is acceptable here for the
+          # same reason: the far end is a container on this host that already
+          # scrapes every other service, and the endpoint itself demands HTTP
+          # Basic (measured: 401 without, 200 with — see the block below).
+          navidromePort
         ];
 
       ##########################################################################
@@ -1914,6 +2128,38 @@ in
       # situation.  It declares the `audiobookshelf` GROUP only when group ==
       # "audiobookshelf"; it is "media" below, so no stray group appears.
       users.users.audiobookshelf.uid = audiobookshelfUid;
+
+      # ── 2026-09-08: KOMGA and NAVIDROME.  media PRIMARY, READ-ONLY BY UNIT ─
+      #
+      # `media` because the library directories are 2770 root:media, i.e. mode
+      # 0 for world — there is no way to read them from outside the group, so
+      # group membership is not optional.
+      #
+      # THAT GRANT IS WRITE, AND IT IS TAKEN BACK PER UNIT.  2770 means group
+      # write, so `media` alone would let either of these modify the library
+      # the *arr manage.  Neither should ever do that: Komga can delete book
+      # files from its UI, and Navidrome is explicitly required not to touch
+      # the tree Lidarr owns.  What enforces it is a read-only bind in each
+      # unit's own mount namespace (`BindReadOnlyPaths` / `ReadOnlyPaths`
+      # below), which the process cannot undo — not the group, and not a
+      # setting inside the application that a future admin could toggle.
+      #
+      # Both modules declare their user WITHOUT a uid, so pinning one here is
+      # a merge and needs no mkForce (the bazarr/audiobookshelf situation, not
+      # the sonarr one).  Both declare their private group only when
+      # `group == "<name>"`; it is "media" for both, so no stray group appears.
+      users.users.komga = {
+        isSystemUser = true;
+        uid          = komgaUid;
+        group        = "media";
+        home         = "/var/lib/komga";
+      };
+      users.users.navidrome = {
+        isSystemUser = true;
+        uid          = navidromeUid;
+        group        = "media";
+        home         = "/var/lib/navidrome";
+      };
 
       # QUESTARR: own group, no media — the prowlarr shape.  It talks to IGDB
       # and Prowlarr over REST and writes only to /srv/games/questarr, which is
@@ -4004,6 +4250,313 @@ in
         # television library and this is the line that says so.
       };
 
+      ##########################################################################
+      # KOMGA — the comics and ebook READER.  Kapowarr's consumer.
+      #
+      # containers/traefik.nix's kapowarr block said "Komga and CWA already
+      # serve the READING side in this household".  They did not: there was no
+      # Komga anywhere in this repo, no container on ernst, and no Technitium
+      # record.  The claim described an intention.  This is the service that
+      # makes it true, and it is greenfield — nothing is migrated, no library
+      # is restructured, and Kapowarr's output path is untouched.
+      #
+      # ── WHAT IT IS POINTED AT, AND WHAT IT MUST NOT DO ───────────────────
+      #
+      # /srv/media/library/comics  Kapowarr's output.  237 series as of today.
+      # /srv/media/library/books   Bindery's output.  Empty as of today, which
+      #                            is expected — M17 landed the acquisition
+      #                            half and nothing has been filed yet.
+      #
+      # BOTH READ-ONLY, ENFORCED BY THE UNIT.  Komga's UI can delete book files
+      # and can rewrite embedded metadata; neither is acceptable against a tree
+      # the *arr and Kapowarr manage, because their databases are the source of
+      # truth for what is in it.  `ProtectSystem = "strict"` makes the whole
+      # filesystem read-only and `ReadWritePaths` names ONLY its own state, so
+      # the library is read-only by omission rather than by a setting.
+      #
+      # That is deliberately not "trust the group": komga is in `media`, the
+      # library is 2770 root:media, so the group grants write.  The unit is
+      # what takes it away, and the process cannot undo its own mount
+      # namespace.
+      ##########################################################################
+      services.komga = {
+        enable   = true;
+        user     = "komga";
+        group    = "media";        # for /srv/media/library/**, read-only per above
+        stateDir = "/var/lib/komga";
+
+        # `settings.server.port`, NOT the top-level `port`.  The latter still
+        # works and is what most documentation shows, but it is a RENAMED
+        # ALIAS at this pin and emits an eval warning telling you so.  It is
+        # also why the option appeared to have "no default" when queried
+        # directly — an alias carries none.
+        #
+        # `settings` is a freeform YAML passthrough rendered to Komga's
+        # application.yml, so anything Komga accepts can go here.
+        settings.server = {
+          port = komgaPort;
+
+          # 0.0.0.0 for the audiobookshelf reason: Traefik is in a different
+          # netns, so loopback would make it unreachable.  The container
+          # firewall above restricts the port to Traefik's address.
+          address = "0.0.0.0";
+        };
+
+        openFirewall = false;      # explicit list above
+      };
+
+      systemd.services.komga.serviceConfig = {
+        # ── ONE DIRECTIVE, AND IT IS THE ONE THAT MATTERS ──────────────────
+        #
+        # nixpkgs' komga module is the OPPOSITE of the audiobookshelf and
+        # lidarr cases this file is used to: it already ships CapabilityBounding
+        # Set="", NoNewPrivileges, PrivateUsers, PrivateDevices, ProtectProc,
+        # RestrictNamespaces, a syscall filter and fifteen more — read at
+        # ernst's pin.  Restating any of that here would be noise that drifts.
+        #
+        # WHAT IT GETS WRONG FOR THIS DEPLOYMENT IS `ProtectSystem = "full"`,
+        # AND IT IS NOT A DETAIL.  `full` makes /usr, /boot and /etc read-only
+        # AND NOTHING ELSE.  /srv is untouched — so under the module's own
+        # setting, komga (in group `media`, against a 2770 root:media tree)
+        # CAN DELETE THE COMICS LIBRARY from its own UI.  `strict` makes the
+        # entire filesystem read-only and `ReadWritePaths` opens back exactly
+        # its own state directory.
+        #
+        # mkForce because the module sets it as a plain definition rather than
+        # a mkDefault, so a bare value is a conflict and not an override.  That
+        # conflict is how this was found; it is worth the friction, because a
+        # silent merge would have left the library writable.
+        ProtectSystem  = lib.mkForce "strict";
+        ReadWritePaths = [ "/var/lib/komga" ];
+
+        # NOT a SystemCallFilter override.  The module ships
+        # [ "@system-service" ]; arrSyscallFilter would MERGE with it (lists
+        # concatenate) rather than replace it, and the result would be a
+        # filter neither list describes.  Komga needs nothing arrSyscallFilter
+        # adds — it writes only into its own StateDirectory and never chowns.
+        #
+        # NOT MemoryDenyWriteExecute: the JVM JITs.  The module does not set
+        # it and must not; fourth runtime in this file with this property,
+        # after Mono, .NET and Node.
+      };
+
+      ##########################################################################
+      # NAVIDROME — the Subsonic / OpenSubsonic server over Lidarr's library.
+      #
+      # ── THE LIBRARY IS LIDARR'S AND STAYS LIDARR'S ───────────────────────
+      #
+      # /srv/media/library/music, 55 GB across 6 artists as of today, owned
+      # uid 3017 (lidarr) : gid media, 2770.  Navidrome READS it and must never
+      # write into it — a scrobble, a rating or a playlist must never become a
+      # file in a tree whose contents Lidarr's database claims to know.
+      #
+      # ENFORCED IN TWO PLACES, ONE OF WHICH IS UPSTREAM'S:
+      #
+      #   1. The nixpkgs module runs this unit with RootDirectory=/run/navidrome
+      #      and bind-mounts `MusicFolder` in through `BindReadOnlyPaths`.  So
+      #      the read-only property is structural and comes for free — verified
+      #      by reading the module at ernst's pin, not assumed.
+      #   2. `ProtectSystem = "strict"` plus a `ReadWritePaths` naming only its
+      #      own state, restated here so the guarantee does not silently depend
+      #      on an upstream module keeping a sandbox directive it could drop.
+      #
+      # Again: NOT the group.  navidrome is in `media` because 2770 leaves no
+      # other way to read the tree at all.
+      #
+      # ── TRANSCODING: WHAT IS DECLARATIVE HERE AND WHAT CANNOT BE ─────────
+      #
+      # `EnableTranscodingConfig` exposes the transcoding editor in the UI.
+      # The PROFILES THEMSELVES ARE DATABASE ROWS, NOT CONFIGURATION, and that
+      # is a property of Navidrome rather than of this module — verified by
+      # inspecting a freshly created 0.63.2 database, which ships four seeded
+      # rows (mp3 192, opus 128, aac 256, flac) in a `transcoding` table, and a
+      # `player` table whose `transcoding_id` and `max_bit_rate` columns are
+      # written when a client first connects.
+      #
+      # So the Opus ~96 kbps mobile profile ASKED FOR HERE CANNOT BE SET IN
+      # NIX.  It is: the seeded `opus audio` profile, plus a per-player
+      # assignment made once in the UI after the phone has connected.  The
+      # steps are in docs/guides/ernst-app-api-ingress.md.  Writing the row
+      # directly into the SQLite file from an activation script was considered
+      # and rejected — it is a second writer to a database the application
+      # owns, and the failure mode is a corrupted library rather than a wrong
+      # bitrate.
+      #
+      # THE LAN PATH STAYS UNTRANSCODED because no player gets an assignment
+      # until someone makes one; the default is raw.  That is the desired
+      # behaviour and it is the default, so there is nothing to configure.
+      #
+      # NOTE FOR WHOEVER DEBUGS A BITRATE COMPLAINT: since 0.61 transcoding is
+      # SERVER-MANAGED.  Clients no longer negotiate the format — the server
+      # decides from the player row.  A client-side "audio quality" setting
+      # that appears to do nothing is not broken; it is this.
+      #
+      # ffmpeg is ALREADY in the package's runtime path — its startup log
+      # prints `Found ffmpeg path=/nix/store/…-ffmpeg-headless-…/bin/ffmpeg`
+      # with nothing added.  No `path` entry is needed and adding one would
+      # shadow the wrapper.
+      ##########################################################################
+      services.navidrome = {
+        enable = true;
+        user   = "navidrome";
+        group  = "media";          # for /srv/media/library/music, read-only per above
+
+        # The Prometheus scrape credential.  It is `ND_PROMETHEUS_PASSWORD` in
+        # this file rather than `Prometheus.Password` in `settings` below for
+        # one reason: `settings` is rendered to a JSON file IN THE NIX STORE,
+        # which is world-readable.  The env var is read from a 0400 file
+        # staged out of a clan var.  Verified that the override works at
+        # 0.63.2 — /metrics answers 401 without it and 200 with it.
+        environmentFile = navidromeEnvFile;
+
+        settings = {
+          # 0.0.0.0 for the audiobookshelf reason; the module defaults to
+          # 127.0.0.1, which Traefik in another netns cannot reach.
+          Address = "0.0.0.0";
+          Port    = navidromePort;
+
+          MusicFolder = "/srv/media/library/music";
+
+          # DataFolder DELIBERATELY UNSET.  It defaults to the module's
+          # WorkingDirectory, /var/lib/navidrome, which the bind mount above
+          # puts on zdata.  Setting it explicitly would add a second place the
+          # path is written and a second thing to keep in step with the bind.
+
+          # ── Telemetry: OFF, EXPLICITLY ────────────────────────────────────
+          #
+          # The nixpkgs module already defaults this to false, so this line is
+          # redundant TODAY and is here anyway: the upstream BINARY defaults it
+          # ON (a bare `navidrome` logs "Starting Insight Collector"), so the
+          # safe state depends entirely on a module default that could change.
+          # Stated explicitly, it cannot.  Confirmed by the startup log
+          # reading "Insight Collector is DISABLED".
+          EnableInsightsCollector = false;
+
+          # ── Scanning: a schedule AND a watcher, which are not redundant ───
+          #
+          # The watcher catches Lidarr's imports within seconds, which is the
+          # normal path and the one that matters for "I just downloaded an
+          # album and it is not there".  The periodic scan is the backstop for
+          # everything inotify structurally misses: a file whose mtime changed
+          # without an inotify event this process saw, anything written while
+          # the service was down, and tag edits made in bulk outside the
+          # library.
+          #
+          # 12h rather than hourly because a full scan walks 55 GB and reads
+          # tags, and the watcher already covers the interactive case — the
+          # schedule exists for correctness over days, not for latency.
+          #
+          # `Scanner.Schedule`, NOT the top-level `ScanSchedule`.  THIS IS A
+          # TRAP AND IT IS MEASURED: at 0.63.2 the old key is accepted
+          # silently, produces no error and no warning, and the startup log
+          # reads "Periodic scan is DISABLED".  A config that looks correct in
+          # review and never rescans.  Verified both spellings against the
+          # running binary before this was written.
+          Scanner = {
+            Schedule       = "@every 12h";
+            WatcherEnabled = true;
+          };
+
+          # ── Transcoding: the UI editor on; profiles are DB rows ───────────
+          # See the long note above for why the Opus profile is not here.
+          EnableTranscodingConfig = true;
+
+          # ── Prometheus ────────────────────────────────────────────────────
+          #
+          # Metrics ride the ordinary port; there is no separate listener to
+          # bind.  The endpoint demands HTTP Basic as user `navidrome` with
+          # the password from the environment file above — measured, not
+          # inferred from documentation.
+          Prometheus = {
+            Enabled     = true;
+            MetricsPath = "/metrics";
+          };
+
+          # ── SQLite backups ────────────────────────────────────────────────
+          #
+          # ALONGSIDE ZFS SNAPSHOTS IS THE INTENT, BUT READ THIS: zdata/state
+          # currently has NO SNAPSHOTS AT ALL.  `disko.nix` declares
+          # com.sun:auto-snapshot=true on it, but disko does not apply
+          # properties to datasets on an existing pool, and the live pool has
+          # the property unset — measured on ernst 2026-09-08, where only
+          # zdata/audiobooks and zdata/roms carry it.
+          #
+          # So today this backup IS the protection for this database, not a
+          # supplement to one.  Turning the snapshots on is one `zfs set` and
+          # it is in the deploy checklist; until it is run, do not read the
+          # word "alongside" as describing reality.
+          #
+          # 04:00 daily, keep 14.  Navidrome's backup is a consistent SQLite
+          # copy, so it is safe to take live — which a raw file copy of a WAL
+          # database is not, and is why this uses the application's own
+          # mechanism rather than a tmpfiles/rsync job.
+          Backup = {
+            Path     = "/var/lib/navidrome/backup";
+            Schedule = "0 4 * * *";
+            Count    = 14;
+          };
+
+          # ── ListenBrainz: PREPARED, NOT ENABLED ───────────────────────────
+          #
+          # TODO(listenbrainz): point BaseURL at the self-hosted instance when
+          # it exists.  IT DOES NOT EXIST YET — that service is out of scope
+          # here and is not on the roadmap as built.
+          #
+          # `Enabled = false` deliberately, and it is the important half: the
+          # BaseURL below is upstream's PUBLIC endpoint, which is also the
+          # built-in default.  Enabling the scrobbler before the self-hosted
+          # instance exists would send the household's complete listening
+          # history to listenbrainz.org — which is a reasonable thing to
+          # choose and a very unreasonable thing to do by accident while
+          # "preparing" for a local one.
+          #
+          # When the local instance lands: change BaseURL, set Enabled = true,
+          # and each user links their own token in Settings — the token is
+          # per-user and is not a server credential, so nothing here needs a
+          # clan var for it.
+          ListenBrainz = {
+            Enabled = false;
+            BaseURL = "https://api.listenbrainz.org/1/";
+          };
+        };
+
+        openFirewall = false;      # explicit list above
+      };
+
+      systemd.services.navidrome.serviceConfig = {
+        # The module's own hardening is unusually complete for nixpkgs — it
+        # already sets RootDirectory, BindReadOnlyPaths, PrivateUsers,
+        # CapabilityBoundingSet="" and a syscall filter.  What follows is the
+        # small remainder, plus one restatement that is load-bearing.
+        #
+        # ProtectSystem/ReadWritePaths RESTATED: the module achieves read-only
+        # music through RootDirectory + BindReadOnlyPaths, which is a stronger
+        # mechanism than this one but is also an upstream implementation
+        # detail.  Naming the property here means a future nixpkgs bump that
+        # drops the chroot cannot silently make the music library writable.
+        ProtectSystem  = "strict";
+        ReadWritePaths = [ "/var/lib/navidrome" ];
+
+        ProtectProc    = "invisible";
+        RemoveIPC      = true;
+        ProtectHostname = true;
+
+        # NOT MemoryDenyWriteExecute — the module explicitly sets it false
+        # with a comment ("0.60.0 Taglib introduces WASM JIT that requires
+        # this"), and overriding that would break tag reading on every scan.
+        # Fifth runtime in this file that JITs; do not add it.
+        #
+        # NOT a SystemCallFilter override.  The module already ships
+        # "@system-service" + "~@privileged", which is the same shape as
+        # arrSyscallFilter WITHOUT the trailing "@chown" re-permit.  Navidrome
+        # never chowns anything — it writes only into its own StateDirectory,
+        # which systemd has already created with the right ownership — so
+        # adding the re-permit would widen the filter for no caller.  The
+        # audiobookshelf incident this file records (killed at startup by the
+        # filter, status=31/SYS) was a service that DID need it; this one does
+        # not, and the difference is worth stating rather than copying the
+        # binding out of habit.
+      };
       ##########################################################################
       # M17 — BINDERY.  Ebooks: the last media class with no acquisition
       # automation.  Readarr is archived (its metadata backend died);
