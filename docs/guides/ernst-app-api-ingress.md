@@ -137,7 +137,36 @@ name that is configured.
 ### Internal — Technitium (10.0.5.3), every service
 
 One A record per hostname → **`10.0.90.12`** (Traefik). Every `*.goclan.org`
-service name needs one, exposed externally or not.
+service name needs one, exposed externally or not. The established shape is a
+small **zone per service name** with an `@ A` record, matching the existing
+entries.
+
+#### FLUSH BEFORE YOU CONCLUDE ANYTHING
+
+A lookup made *before* the zone existed leaves a cached **NXDOMAIN**, and the
+zone's SOA minimum is **900 s** — so a correct record can keep failing for up
+to fifteen minutes and look like a broken zone. This has already burned one
+debugging round here, and it is the same mechanism `traefik.nix` documents at
+length for ACME, where a premature query poisoned a public resolver for thirty
+minutes.
+
+Two caches, and clearing one does not clear the other:
+
+```bash
+resolvectl flush-caches          # systemd-resolved, on the client
+```
+```
+chrome://net-internals/#dns  →  Clear host cache      # Chrome's own
+```
+
+Then verify against Technitium directly before believing anything downstream:
+
+```bash
+dig +short @10.0.5.3 <name>.goclan.org     # must answer 10.0.90.12
+dig +short <name>.goclan.org               # your resolver, post-flush
+```
+
+If the first answers and the second does not, it is cache — not config.
 
 ### Public — Cloudflare, only the externally reachable set
 
@@ -284,15 +313,73 @@ OAuth-related variable is `OAUTH_SSL_STRICT`. This is typed in once.
 clan vars get ernst authelia-oidc-cwa/cwa-client-secret
 ```
 
-Then **Admin → Edit Basic Configuration → OAuth**:
+#### Finding the settings — THERE IS NO "OAuth" SECTION
+
+This cost several rounds of looking, so it is written down precisely.
+
+Go to **Admin → Edit Basic Configuration**. The OAuth fields are **not** a
+section of their own and are **not** visible when the page loads. They are a
+collapsed block under **Feature Configuration**, revealed only by changing one
+dropdown:
+
+```
+Server Configuration
+Logfile Configuration
+Feature Configuration
+  … uploads, anonymous browsing, public registration
+  … Kobo sync, Goodreads, Hardcover
+  … Allow Reverse Proxy Authentication
+  … Auto-create users from reverse proxy    ← last thing before it
+  ▼ Login type            ← SET THIS to "Use OAuth (requires HTTPS)"
+  ▼ OAuth provider fields ← appear only once that is selected
+External binaries
+Security Settings
+```
+
+**The decoy:** a panel headed **"OAuth & API Integrations"** exists, contains
+one "Hardcover API Token" field, and is *not this*. It lives in
+`user_edit.html` — **Admin → Users → edit a user** — and is a per-user metadata
+token. Sharing a word with what you want is the whole of its relevance.
+
+If the Login type dropdown is genuinely absent rather than merely scrolled
+past, the template gates it on `feature_support['oauth']`, which is set by
+`from . import oauth_bb` succeeding — and the failure is logged at **debug**
+level, so an INFO-level log shows nothing. Check it directly:
+
+```bash
+podman exec cwa sh -c 'cd /app/calibre-web-automated && python3 -c "from cps import oauth_bb"'
+```
+
+Silence means the section is there and you have not scrolled far enough.
+
+#### The fields
 
 | Field | Value |
 |---|---|
-| Provider | Generic / OIDC |
-| Metadata URL | `https://auth.goclan.org/.well-known/openid-configuration` |
+| Login type | **Use OAuth (requires HTTPS)** |
+| Metadata URL (auto-discovery) | `https://auth.goclan.org/.well-known/openid-configuration` |
+| Use Manual Endpoint URLs | leave **unchecked** — auto-discovery fills the rest |
 | Client ID | `cwa` |
 | Client secret | the value from `clan vars get` |
 | OAuth redirect host | `https://cwa.goclan.org` |
+| Admin group name | `admins` |
+
+**"requires HTTPS" is satisfied** even though Traefik speaks plain HTTP to the
+container: CWA runs `ProxyFix` with `x_proto` and logs
+`ProxyFix configured to trust 1 proxy(ies)` at startup, so `X-Forwarded-Proto`
+from Traefik is honoured. Do **not** set `TRUSTED_PROXY_COUNT` — the default of
+1 is exactly right, because nothing sits in front of Traefik.
+
+**The admin group name is not optional here.** Security Settings ships with
+*"Enable OAuth Group-Based Admin Role Management"* **ticked**, which means the
+OIDC group claim decides admin rights on every login. Left empty with that box
+ticked, an OIDC login can revoke your own admin. `admins` matches the group
+`authelia.nix` puts lgo and go in.
+
+**Leave "Disable Standard Login" OFF** until a full OIDC round-trip has
+succeeded. Its own help text says so, and the recovery from getting it wrong is
+editing `config_login_type` back to `0` in `/srv/state/cwa/config/app.db` by
+hand.
 
 **The redirect host is not optional.** Left empty, CWA takes a fallback branch
 that omits `redirect_url` and builds the callback from the request, which
