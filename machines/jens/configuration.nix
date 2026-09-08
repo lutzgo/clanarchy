@@ -16,7 +16,18 @@
   };
 
   # machine-type and desktop roles are assigned via inventory.instances in clan.nix.
-  # wifi networks are provisioned via the clan wifi service (inventory.instances.wifi).
+  # Home wifi is provisioned via the clan wifi service (inventory.instances.wifi).
+  # EDUDUS (university WPA2-Enterprise) is jens-specific — managed via the
+  # bespoke modules/wifi.nix, same pattern as biene's Fritz!Box network.
+  # Declarative NM profile lives in /run (regenerated every boot), so unlike a
+  # GUI-added connection it isn't lost to the ZFS rollback of /etc on reboot.
+  # Run `clan vars generate jens --generator wifi-edudus` to store identity
+  # + password. No CA certificate is configured (matches "no CA certificate
+  # required" on the phone this already works on) — add one here if EDUDUS
+  # publishes a RADIUS server cert and stricter validation is wanted.
+  clanarchy.wifi.networks = [
+    { ssid = "EDUDUS"; varName = "wifi-edudus"; auth = "peap"; }
+  ];
   #
   # Framework Laptop 12 is Intel (Raptor Lake U) where miralda is AMD.  That
   # single line does more than microcode: modules/roles/laptop.nix reads it to
