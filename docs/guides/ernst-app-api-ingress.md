@@ -187,7 +187,7 @@ grepping every `os.environ` read in the v4.0.6 source, where the only
 OAuth-related variable is `OAUTH_SSL_STRICT`. This is typed in once.
 
 ```bash
-clan vars get ernst authelia-oidc/cwa-client-secret
+clan vars get ernst authelia-oidc-cwa/cwa-client-secret
 ```
 
 Then **Admin → Edit Basic Configuration → OAuth**:

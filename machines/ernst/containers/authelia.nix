@@ -133,6 +133,13 @@
 #     authelia-oidc      Grafana's client secret, generated ONCE as a pair: the
 #                        plaintext for Grafana and the pbkdf2 digest for the
 #                        client block here, so the two cannot drift apart.
+#     authelia-oidc-cwa  CWA's client secret, the same pair shape.  ITS OWN
+#                        GENERATOR RATHER THAN TWO MORE FILES IN THE ONE ABOVE,
+#                        because a clan vars generator is ATOMIC — adding a
+#                        file makes clan re-run the whole script, which would
+#                        rotate Grafana's working secret as a side effect of
+#                        adding an unrelated client.  One generator per
+#                        relying party; see the block at the bottom.
 #
 #   STAGED, not bound out of /run/secrets: that path is a symlink to a
 #   per-generation directory REPLACED on every deploy, so an nspawn bind
@@ -390,6 +397,7 @@ let
   secretsGen = config.clan.core.vars.generators.authelia-secrets;
   usersGen   = config.clan.core.vars.generators.authelia-users;
   oidcGen    = config.clan.core.vars.generators.authelia-oidc;
+  oidcCwaGen = config.clan.core.vars.generators.authelia-oidc-cwa;
 
   # Grafana's OIDC redirect target.  Grafana's generic_oauth provider always
   # calls back to <root_url>/login/generic_oauth, and root_url is set from the
@@ -671,7 +679,7 @@ in
         echo "      - client_id: 'cwa'"
         echo "        client_name: 'Calibre-Web-Automated'"
         printf "        client_secret: '"
-        tr -d '[:space:]' < ${oidcGen.files."cwa-client-secret-digest".path}
+        tr -d '[:space:]' < ${oidcCwaGen.files."cwa-client-secret-digest".path}
         echo "'"
         echo "        public: false"
         echo "        authorization_policy: 'two_factor'"
@@ -906,28 +914,74 @@ in
     files."grafana-client-secret-digest".restartUnits =
       [ "authelia-secrets.service" "container@authelia.service" ];
 
-    # ── CWA's client secret ─────────────────────────────────────────────────
-    #
-    # SAME PAIR SHAPE AS GRAFANA'S, and the pair is the point: Authelia stores
-    # a PBKDF2 DIGEST and the relying party sends the PLAINTEXT, so both have
-    # to come out of one generation or they cannot possibly match.
-    #
-    # THE PLAINTEXT HALF IS CONSUMED BY A HUMAN HERE, WHICH GRAFANA'S IS NOT.
-    # Grafana reads its copy from a staged file (see monitoring.nix).  CWA has
-    # NO configuration file and NO environment variable for OAuth — verified by
-    # grepping every `os.environ` read in the v4.0.6 source, where the only
-    # OAuth-related variable is `OAUTH_SSL_STRICT`.  The client id, secret and
-    # metadata URL are rows in CWA's app.db, entered through Admin → Edit Basic
-    # Configuration.
-    #
-    # So the plaintext is generated here, kept in sops like every other
-    # secret, and READ ONCE by whoever configures CWA:
-    #
-    #     clan vars get ernst authelia-oidc/cwa-client-secret
-    #
-    # That is a manual step and it cannot be automated away without writing
-    # into a database the application owns.  It is in the deploy checklist in
-    # docs/guides/ernst-app-api-ingress.md.
+    runtimeInputs = [ pkgs.authelia pkgs.gnused pkgs.coreutils ];
+
+    script = ''
+      set -euo pipefail
+
+      secret=$(authelia crypto rand --length 72 --charset alphanumeric \
+                 | sed -n 's/^Random Value: //p' | tr -d '\n')
+      if [ -z "$secret" ]; then
+        echo "  ✗ authelia crypto rand produced no client secret" >&2
+        exit 1
+      fi
+      printf '%s' "$secret" > "$out/grafana-client-secret"
+
+      digest=$(authelia crypto hash generate pbkdf2 --variant sha512 --password "$secret" \
+                 | sed -n 's/^Digest: //p')
+      if [ -z "$digest" ]; then
+        echo "  ✗ pbkdf2 hashing produced no digest for the Grafana client secret" >&2
+        exit 1
+      fi
+      printf '%s' "$digest" > "$out/grafana-client-secret-digest"
+    '';
+  };
+
+  ##############################################################################
+  # CWA's OIDC client secret — A SEPARATE GENERATOR, AND THAT IS THE POINT.
+  #
+  # The obvious thing was to add two more files to `authelia-oidc` above.  It
+  # was written that way first and then split, because A CLAN VARS GENERATOR IS
+  # ATOMIC: its script runs once and produces all of its files together.  Add a
+  # file to an existing generator and clan must re-run the whole thing, which
+  # would have handed Grafana a NEW client secret as a side effect of adding an
+  # unrelated one.
+  #
+  # That would have self-healed — both halves of Grafana's pair carry
+  # restartUnits, so Authelia and the monitoring container restage together on
+  # the same deploy — but "it recovers" is not a reason to rotate a working
+  # credential nobody asked to rotate.  It would also have been invisible in
+  # review: the diff adds a client, and the consequence is a Grafana login blip
+  # nothing in the diff mentions.
+  #
+  # ONE GENERATOR PER RELYING PARTY is therefore the rule here.  The next OIDC
+  # client gets its own too, rather than joining either of these.
+  #
+  # THE PAIR WITHIN A GENERATOR IS STILL ATOMIC, which is the property that
+  # actually matters: Authelia stores a PBKDF2 DIGEST and the relying party
+  # sends the PLAINTEXT, so the two must come out of one `rand` call or they
+  # cannot possibly match.  Splitting BETWEEN clients is safe; splitting a
+  # client's own pair across two generators would not be.
+  #
+  # ── THE PLAINTEXT HALF IS CONSUMED BY A HUMAN, WHICH GRAFANA'S IS NOT ──────
+  #
+  # Grafana reads its copy from a staged file (see monitoring.nix).  CWA has NO
+  # configuration file and NO environment variable for OAuth — verified by
+  # grepping every `os.environ` read in the v4.0.6 source, where the only
+  # OAuth-related variable is `OAUTH_SSL_STRICT`.  The client id, secret and
+  # metadata URL are rows in CWA's app.db, entered through Admin → Edit Basic
+  # Configuration.
+  #
+  # So the plaintext is generated here, kept in sops like every other secret,
+  # and READ ONCE by whoever configures CWA:
+  #
+  #     clan vars get ernst authelia-oidc-cwa/cwa-client-secret
+  #
+  # That is a manual step and it cannot be automated away without writing into
+  # a database the application owns.  It is in the deploy checklist in
+  # docs/guides/ernst-app-api-ingress.md.
+  ##############################################################################
+  clan.core.vars.generators.authelia-oidc-cwa = {
     files."cwa-client-secret".secret        = true;
     files."cwa-client-secret-digest".secret = true;
 
@@ -939,32 +993,21 @@ in
     script = ''
       set -euo pipefail
 
-      # One helper, two clients.  Written as a loop rather than duplicated so
-      # a third client cannot get a subtly different generation — the digest
-      # and the plaintext must come from one `rand` call each, and that is the
-      # only invariant here worth protecting.
-      mkclient() {
-        name="$1"
+      secret=$(authelia crypto rand --length 72 --charset alphanumeric \
+                 | sed -n 's/^Random Value: //p' | tr -d '\n')
+      if [ -z "$secret" ]; then
+        echo "  ✗ authelia crypto rand produced no client secret for CWA" >&2
+        exit 1
+      fi
+      printf '%s' "$secret" > "$out/cwa-client-secret"
 
-        secret=$(authelia crypto rand --length 72 --charset alphanumeric \
-                   | sed -n 's/^Random Value: //p' | tr -d '\n')
-        if [ -z "$secret" ]; then
-          echo "  ✗ authelia crypto rand produced no client secret for $name" >&2
-          exit 1
-        fi
-        printf '%s' "$secret" > "$out/$name-client-secret"
-
-        digest=$(authelia crypto hash generate pbkdf2 --variant sha512 --password "$secret" \
-                   | sed -n 's/^Digest: //p')
-        if [ -z "$digest" ]; then
-          echo "  ✗ pbkdf2 hashing produced no digest for the $name client secret" >&2
-          exit 1
-        fi
-        printf '%s' "$digest" > "$out/$name-client-secret-digest"
-      }
-
-      mkclient grafana
-      mkclient cwa
+      digest=$(authelia crypto hash generate pbkdf2 --variant sha512 --password "$secret" \
+                 | sed -n 's/^Digest: //p')
+      if [ -z "$digest" ]; then
+        echo "  ✗ pbkdf2 hashing produced no digest for the CWA client secret" >&2
+        exit 1
+      fi
+      printf '%s' "$digest" > "$out/cwa-client-secret-digest"
     '';
   };
 
