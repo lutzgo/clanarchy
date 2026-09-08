@@ -121,13 +121,34 @@ reservation are both UniFi-managed configuration that survives firmware
 upgrades. Only hand-written `iptables`/`ip` commands need `on_boot.d`, and this
 change adds none. Recorded so nobody adds one defensively.
 
-## Public DNS
+## DNS — BOTH halves, and forgetting either one has now bitten twice
+
+Split horizon means **two** records per service, in two different places, and
+neither is created by this repo. They fail in opposite directions:
+
+| Missing | Symptom |
+|---|---|
+| Public A record at Cloudflare | NXDOMAIN from outside. Service works perfectly on the LAN. *(This is what kept Audiobookshelf unreachable on 5G.)* |
+| Internal record in Technitium | the LAN resolver **recurses to the public view**, gets the WAN IP, and the request hairpins at the UDM-Pro — which does not work here, so it **hangs**. Not NXDOMAIN, not refused: a timeout that looks like a dead backend. *(This is what made Navidrome unreachable from the LAN while its router was working fine.)* |
+
+The second is the nastier of the two, because a name that resolves feels like a
+name that is configured.
+
+### Internal — Technitium (10.0.5.3), every service
+
+One A record per hostname → **`10.0.90.12`** (Traefik). Every `*.goclan.org`
+service name needs one, exposed externally or not.
+
+### Public — Cloudflare, only the externally reachable set
 
 A records only, **DNS-only (grey cloud)**, all → `78.94.91.74`:
 
 ```
 audiobookshelf   auth   cwa   jellyfin   jellyseerr   komga   navidrome
 ```
+
+Add each one only *after* that service's admin credential is set — see the
+credential table above.
 
 **Never add AAAA.** Nothing on the path has a global IPv6 address. An AAAA
 record is the fastest way to reproduce the outage this work started from.
@@ -149,9 +170,24 @@ this runs, Navidrome's own SQLite backup is the *only* protection for its
 database, not a supplement to one. This affects every service's state on ernst,
 not just Navidrome.
 
-Then, **before anything else reaches these hostnames**, create the admin
-account on each of Komga, Navidrome and CWA. Their first-run flows are
-unauthenticated by construction.
+Then, **before a public A record exists for any of these names**, deal with
+each service's initial credential. The three are NOT the same shape, and
+treating them as one is how the wrong one gets left open:
+
+| Service | Initial state | What "unauthenticated" means |
+|---|---|---|
+| Komga | no account at all | first visitor is offered **Create the first user**, and it is an admin |
+| Navidrome | no account at all | first visitor gets the **create-admin** form; the API advertises `firstTime: true` to anyone who asks |
+| **CWA** | **`admin` / `admin123` already exists** | **not a wizard — a DEFAULT CREDENTIAL.** `cps/constants.py:132` sets `DEFAULT_PASSWORD = "admin123"` and `cps/ub.py:1175` creates the account automatically |
+
+CWA is the dangerous one, because there is no window that closes by itself.
+Komga and Navidrome are unowned until someone claims them; CWA is owned from
+first boot by a password that is in the source code and in every guide on the
+internet. **Change it before `cwa.goclan.org` resolves publicly**, not after.
+
+The ordering rule that follows: add the public A record for a service only
+*after* its admin credential is set. `komga` and `cwa` deliberately have no
+public record yet for exactly this reason.
 
 ### 1b. If a Navidrome scan ever fails, it poisons its own scan state
 
