@@ -304,16 +304,28 @@
   #   02:00:00:90:00:0a   tvheadend container eth0  (M8  — allocated)  10.0.90.18
   #   02:00:00:90:00:0b   tubesync netns eth0       (M9  — allocated)  10.0.90.19
   #   02:00:00:90:00:0c   storyteller netns eth0    (M14 — allocated)  10.0.90.20
-  #   02:00:00:90:00:0d   —  FREE AGAIN (M18)                          10.0.90.21
-  #                       Held by M16's cloudflared container, the Cloudflare
-  #                       Tunnel that was this fleet's only WAN ingress from
-  #                       2026-08-29.  M18 dropped the tunnel for a UDM-Pro
-  #                       port forward terminating at Traefik, deleted
-  #                       containers/cloudflared.nix, and this pair went with
-  #                       it.  The DHCP reservation on the UDM-Pro should be
-  #                       deleted too — a reservation for a MAC nothing uses
-  #                       is how an address gets handed out twice later.
-  #                       Reusable; the next container may take it.
+  #   02:00:00:90:00:0d   cwa netns eth0    (cwa — REUSED)             10.0.90.21
+  #                       Calibre-Web-Automated, containers/cwa.nix, the
+  #                       podman tier's fourth occupant.
+  #
+  #                       THIS PAIR WAS FREED AND IS NOW TAKEN BACK.  It held
+  #                       M16's cloudflared container — the Cloudflare Tunnel
+  #                       that was this fleet's only WAN ingress from
+  #                       2026-08-29 until M18 dropped it for a UDM-Pro port
+  #                       forward terminating at Traefik and deleted
+  #                       containers/cloudflared.nix.  The row then read FREE
+  #                       AGAIN, and said the next container may take it.
+  #                       This is that container.
+  #
+  #                       CONSEQUENCE FOR THE UDM-Pro, and it is the reason
+  #                       this is spelled out rather than just edited: the MAC
+  #                       is UNCHANGED, so if cloudflared's DHCP reservation
+  #                       was never deleted it is already correct and there is
+  #                       nothing to do.  If it WAS deleted, recreate it for
+  #                       this MAC against 10.0.90.21.  What must not happen
+  #                       is a SECOND reservation for the same address on a
+  #                       different MAC, which is precisely the
+  #                       handed-out-twice failure the old row warned about.
   #   02:00:00:90:00:0e   romm netns rm0            (romm — allocated) 10.0.90.22
   #
   #   M18 ADDED NO MAC AND NO ADDRESS, which is worth stating because it is a
@@ -634,7 +646,31 @@
   #                              cloudflared: a uid was taken by editing the
   #                              RESERVED block while the ALLOCATED block above
   #                              already held it.  Read both halves before
-  #                              picking a number.  Next free is 3031.
+  #                              picking a number.  Next free is 3034.
+  #   uid 3031  komga        (containers/arr.nix — group media, READ-ONLY
+  #                           against the library.  The group is a WRITE grant
+  #                           (2770 root:media) and is taken back per unit with
+  #                           ProtectSystem=strict + ReadWritePaths; nixpkgs'
+  #                           komga module ships ProtectSystem="full", which
+  #                           does NOT cover /srv, so the mkForce to "strict"
+  #                           in that file is load-bearing rather than tidy)
+  #   uid 3032  navidrome    (containers/arr.nix — group media, READ-ONLY
+  #                           against Lidarr's music tree by the same
+  #                           mechanism, plus the upstream module's own
+  #                           RootDirectory + BindReadOnlyPaths chroot)
+  #   uid 3033  cwa          (containers/cwa.nix — Calibre-Web-Automated on the
+  #                           PODMAN tier, so the number is literal on zdata
+  #                           like tubesync's, storyteller's and romm's.
+  #
+  #                           OWN group 3033, NOT media, deliberately: CWA
+  #                           writes only into trees it owns outright (its own
+  #                           Calibre library and its own ingest folder) and
+  #                           has no hardlink relationship with anything the
+  #                           *arr manage.  It is also internet-facing without
+  #                           forward-auth, so a write handle on the film and
+  #                           television library would be a grant it could
+  #                           never use and an attacker could)
+  #   gid 3033  cwa          (containers/cwa.nix)
   #
   #   uid 3026  tvheadend       M8 LANDED 2026-08-27 AND TOOK THIS — moved up
   #                              into the allocated table, as shape (ii): OWN

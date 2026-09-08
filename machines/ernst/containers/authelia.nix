@@ -133,6 +133,13 @@
 #     authelia-oidc      Grafana's client secret, generated ONCE as a pair: the
 #                        plaintext for Grafana and the pbkdf2 digest for the
 #                        client block here, so the two cannot drift apart.
+#     authelia-oidc-cwa  CWA's client secret, the same pair shape.  ITS OWN
+#                        GENERATOR RATHER THAN TWO MORE FILES IN THE ONE ABOVE,
+#                        because a clan vars generator is ATOMIC — adding a
+#                        file makes clan re-run the whole script, which would
+#                        rotate Grafana's working secret as a side effect of
+#                        adding an unrelated client.  One generator per
+#                        relying party; see the block at the bottom.
 #
 #   STAGED, not bound out of /run/secrets: that path is a symlink to a
 #   per-generation directory REPLACED on every deploy, so an nspawn bind
@@ -345,120 +352,34 @@ let
   adminGroup     = "admins";
   householdGroup = "household";
 
-  # The one name a NON-admin may reach through forward-auth — Jellyseerr,
-  # whose router gained the `authelia` middleware in M16 when the name became
-  # internet-reachable through the Cloudflare Tunnel.  Its OWN list and its
-  # OWN rule below, deliberately kept out of protectedHosts: that list feeds
-  # the admins-only rule, and merging them would either hand `household`
-  # every admin UI or lock admins' families out of the request page,
-  # depending on which end you merged toward.
-  householdHosts = [
-    "jellyseerr.${baseDomain}"
-  ];
+  # ── THE HOSTNAME LISTS NOW LIVE IN ./ingress-policy.nix ───────────────────
+  #
+  # They used to be declared here, in full, with a comment admitting the
+  # problem:
+  #
+  #   "The two files have to agree, and there is no mechanism that makes them"
+  #
+  # There is one now.  Both lists are defined once in ./ingress-policy.nix and
+  # imported by this file AND by containers/traefik.nix, and traefik.nix throws
+  # at evaluation if any router's middlewares disagree with the classification
+  # there — including the fail-open direction, a protected name whose router
+  # forgot the middleware, which `default_policy = "deny"` does NOT catch
+  # (the middleware is what consults Authelia at all).
+  #
+  # The RomM 403 that comment predicted, and that happened anyway, is now a
+  # build error naming the file to edit.  The per-service reasoning that used
+  # to sit inline here moved with the lists; read ingress-policy.nix before
+  # adding a name to either.
+  #
+  # WHY AN `import` AND NOT A MODULE OPTION: both containers are configured
+  # from the same machines/ernst evaluation, but each `containers.<n>.config`
+  # is its OWN NixOS evaluation with no access to the host's option tree.  A
+  # plain function call crosses that boundary; an option would have to be
+  # threaded through `containers.<n>.config` by hand, which is the coupling
+  # this is trying to remove.
+  ingressPolicy = import ./ingress-policy.nix { inherit baseDomain; };
 
-  # The names forward-auth protects.  Kept as one list because it is used
-  # twice — once for the access-control rule here, once as the thing the
-  # Traefik middleware is attached to in containers/traefik.nix.  The two files
-  # have to agree, and there is no mechanism that makes them; if a route is
-  # added there without a domain here, Authelia's default_policy = "deny"
-  # refuses it, which is the right direction to fail in.
-  protectedHosts = [
-    "prowlarr.${baseDomain}"
-    "sonarr.${baseDomain}"
-    "radarr.${baseDomain}"
-    "grafana.${baseDomain}"
-
-    # M12.  Three more admin UIs in the existing arr container.  All three are
-    # browser-only and admin-facing, i.e. the case forward-auth is for — none
-    # of them has a TV or mobile client that a redirect would break, so the
-    # Jellyfin exemption does not come into it.
-    #
-    # These MUST stay in step with the routers in containers/traefik.nix.  The
-    # comment above says what happens otherwise and it is worth repeating in
-    # the direction that actually bites: a route added THERE without a name
-    # HERE hits default_policy = "deny" and returns 403 to a user who has just
-    # logged in successfully, which reads like an Authelia fault and is a
-    # missing line in a list.
-    "bazarr.${baseDomain}"
-    "cleanuparr.${baseDomain}"
-    "mediathekarr.${baseDomain}"
-
-    # M8.  Tvheadend's web UI — admin-facing, browser-only, no client that a
-    # redirect could break (the household watches Live TV through Jellyfin,
-    # which stays exempt).  Must stay in step with the tvheadend router in
-    # containers/traefik.nix, same as every name above.
-    "tvheadend.${baseDomain}"
-    # M9.  TubeSync's web UI — admin-facing and browser-only, so the same
-    # argument applies.  Note its own HTTP_USER/HTTP_PASS basic auth is
-    # deliberately left UNSET rather than layered underneath this: it would
-    # answer in the `Authorization` header, which this service consumes as its
-    # own credential and rejects.  See containers/tubesync.nix.
-    "tubesync.${baseDomain}"
-
-    # ── M14.  Four more admin UIs ──────────────────────────────────────────
-    #
-    # The ordinary case — admin-facing browser UIs in the existing arr
-    # container (lidarr, kapowarr, questarr) or its own podman netns
-    # (storyteller).  No TV or mobile client that a redirect would break, so
-    # the Jellyfin exemption does not come into it, same as every name above.
-    #
-    # AUDIOBOOKSHELF IS DELIBERATELY ABSENT, and this is the second name in the
-    # fleet to be absent on purpose rather than by oversight (Jellyfin is the
-    # first).  Jellyseerr used to be the third; since M16 it is protected
-    # after all — via `householdHosts` and its own rule below, NOT this list,
-    # because this list feeds the admins-only rule and Jellyseerr is the one
-    # protected name a non-admin must reach.
-    #
-    # It has native mobile and TV clients, and app support is a stated
-    # requirement for that library — so it falls under architecture invariant
-    # #4's client-compatibility clause exactly as Jellyfin does: an app that
-    # talks to a REST API with a bearer token has no browser to follow a 302 to
-    # this portal, and every request fails looking like a broken server.
-    #
-    # ITS ROUTER THEREFORE CARRIES NO MIDDLEWARE, and the two files have to
-    # agree.  Listing it here without the middleware would be inert — this list
-    # only decides what `access_control` permits for requests that REACH
-    # Authelia — but an inert entry is exactly the kind of thing someone later
-    # "fixes" by adding the middleware back, which is how the app would break
-    # months from now with nothing to point at.  Absent in both places, with
-    # the reason written down in both.
-    #
-    # The full argument, including what carries the authentication instead and
-    # the first-run hazard that follows, is on the router in
-    # containers/traefik.nix.  It is a PERMANENT bypass with a `—` row in
-    # docs/roadmap.md's ledger, not a shim.
-    "lidarr.${baseDomain}"
-    "kapowarr.${baseDomain}"
-    "questarr.${baseDomain}"
-    "storyteller.${baseDomain}"
-
-    # M14, added after the fact.  slskd's web UI lives in the microvm guest
-    # and was the only admin surface in this fleet without a Traefik route —
-    # see the slskd router in containers/traefik.nix for why that had to
-    # change.  Same treatment as every other operator tool here.
-    "slskd.${baseDomain}"
-
-    # M17.  Bindery — ebook acquisition in the arr container.  The ordinary
-    # case: operator-facing, browser-only, no client a redirect could break.
-    # The household reads in Audiobookshelf/Storyteller and never opens this.
-    "bindery.${baseDomain}"
-
-    # RomM — the ROM library manager in its own podman netns.  The ordinary
-    # case again: operator-facing, browser-only.  It has an in-browser
-    # EmulatorJS player, but that is a browser and follows redirects like one;
-    # the Deck does NOT read its games through this route, it plays a
-    # Syncthing replica off local disk, so there is no native client here
-    # whose bearer token a 302 could break.  That is what keeps it out of the
-    # Jellyfin/Audiobookshelf exemption.
-    #
-    # This line was MISSING on the first deploy, and the failure was exactly
-    # the one the comment at the top of this list describes: the router in
-    # containers/traefik.nix carried the `authelia` middleware, this list did
-    # not carry the name, and romm.<domain> answered 403 — which reads as an
-    # Authelia fault and is a missing line in a list.  Left recorded here
-    # because the comment predicted it and it happened anyway.
-    "romm.${baseDomain}"
-  ];
+  inherit (ingressPolicy) householdHosts protectedHosts;
 
   ############################################################################
   # Secrets staging.
@@ -476,11 +397,24 @@ let
   secretsGen = config.clan.core.vars.generators.authelia-secrets;
   usersGen   = config.clan.core.vars.generators.authelia-users;
   oidcGen    = config.clan.core.vars.generators.authelia-oidc;
+  oidcCwaGen = config.clan.core.vars.generators.authelia-oidc-cwa;
 
   # Grafana's OIDC redirect target.  Grafana's generic_oauth provider always
   # calls back to <root_url>/login/generic_oauth, and root_url is set from the
   # same domain in service-modules/monitoring.nix.
   grafanaRedirectUri = "https://grafana.${baseDomain}/login/generic_oauth";
+
+  # CWA's OIDC callback.  DERIVED FROM THE v4.0.6 SOURCE, not from
+  # documentation: `cps/oauth_bb.py` builds the redirect as
+  # `f"{host}/login/{provider_name}/authorized"` and registers the OAuth
+  # blueprint with `url_prefix="/login"` under the provider name `generic`.
+  #
+  # The `{host}` half comes from CWA's own `config_oauth_redirect_host`
+  # setting, which must be set to this hostname in the admin UI — if it is
+  # left empty the code takes a fallback branch that omits `redirect_url`
+  # entirely and the callback is built from the request, which behind a proxy
+  # produces an http:// URI Authelia will refuse.  That is in the checklist.
+  cwaRedirectUri = "https://cwa.${baseDomain}/login/generic/authorized";
 in
 {
   ##############################################################################
@@ -711,6 +645,50 @@ in
         echo "        token_endpoint_auth_method: 'client_secret_basic'"
         echo "        redirect_uris:"
         echo "          - '${grafanaRedirectUri}'"
+        echo "        scopes:"
+        echo "          - 'openid'"
+        echo "          - 'profile'"
+        echo "          - 'groups'"
+        echo "          - 'email'"
+
+        # ── CWA.  The WEB UI only — the app protocols never come here ───────
+        #
+        # cwa.goclan.org carries NO forward-auth (it is in `appApiHosts`), so
+        # OPDS, /kobo/<token>/** and /kosync/** reach the application directly
+        # and authenticate against CWA's own accounts.  This client covers the
+        # BROWSER path and nothing else: it is what gets the web UI real
+        # two-factor and Authelia's per-user regulation without putting a
+        # middleware in front of a Kobo e-reader that has no browser.
+        #
+        # `two_factor`, matching Grafana and the jellyseerr rule.  The web UI
+        # is where an admin changes library paths and user permissions, so it
+        # gets the same policy as every other admin surface even though the
+        # vhost around it is deliberately open.
+        #
+        # REDIRECT URI DERIVED FROM THE SOURCE, not from a docs page.  In
+        # v4.0.6 `cps/oauth_bb.py` builds it as
+        #     f"{host}/login/{provider_name}/authorized"
+        # and registers the blueprint with `url_prefix="/login"` under the
+        # provider name `generic`.  Hence /login/generic/authorized.
+        #
+        # THE CWA SIDE IS MANUAL and there is no way around it: CWA has no
+        # config file and no OAuth environment variables, so the client id,
+        # this secret's PLAINTEXT and the metadata URL are typed into Admin →
+        # Edit Basic Configuration once.  A mismatch here shows up as
+        # `invalid_client` at the portal, not as a CWA error.
+        echo "      - client_id: 'cwa'"
+        echo "        client_name: 'Calibre-Web-Automated'"
+        printf "        client_secret: '"
+        tr -d '[:space:]' < ${oidcCwaGen.files."cwa-client-secret-digest".path}
+        echo "'"
+        echo "        public: false"
+        echo "        authorization_policy: 'two_factor'"
+        echo "        require_pkce: true"
+        echo "        pkce_challenge_method: 'S256'"
+        echo "        consent_mode: 'implicit'"
+        echo "        token_endpoint_auth_method: 'client_secret_basic'"
+        echo "        redirect_uris:"
+        echo "          - '${cwaRedirectUri}'"
         echo "        scopes:"
         echo "          - 'openid'"
         echo "          - 'profile'"
@@ -956,6 +934,80 @@ in
         exit 1
       fi
       printf '%s' "$digest" > "$out/grafana-client-secret-digest"
+    '';
+  };
+
+  ##############################################################################
+  # CWA's OIDC client secret — A SEPARATE GENERATOR, AND THAT IS THE POINT.
+  #
+  # The obvious thing was to add two more files to `authelia-oidc` above.  It
+  # was written that way first and then split, because A CLAN VARS GENERATOR IS
+  # ATOMIC: its script runs once and produces all of its files together.  Add a
+  # file to an existing generator and clan must re-run the whole thing, which
+  # would have handed Grafana a NEW client secret as a side effect of adding an
+  # unrelated one.
+  #
+  # That would have self-healed — both halves of Grafana's pair carry
+  # restartUnits, so Authelia and the monitoring container restage together on
+  # the same deploy — but "it recovers" is not a reason to rotate a working
+  # credential nobody asked to rotate.  It would also have been invisible in
+  # review: the diff adds a client, and the consequence is a Grafana login blip
+  # nothing in the diff mentions.
+  #
+  # ONE GENERATOR PER RELYING PARTY is therefore the rule here.  The next OIDC
+  # client gets its own too, rather than joining either of these.
+  #
+  # THE PAIR WITHIN A GENERATOR IS STILL ATOMIC, which is the property that
+  # actually matters: Authelia stores a PBKDF2 DIGEST and the relying party
+  # sends the PLAINTEXT, so the two must come out of one `rand` call or they
+  # cannot possibly match.  Splitting BETWEEN clients is safe; splitting a
+  # client's own pair across two generators would not be.
+  #
+  # ── THE PLAINTEXT HALF IS CONSUMED BY A HUMAN, WHICH GRAFANA'S IS NOT ──────
+  #
+  # Grafana reads its copy from a staged file (see monitoring.nix).  CWA has NO
+  # configuration file and NO environment variable for OAuth — verified by
+  # grepping every `os.environ` read in the v4.0.6 source, where the only
+  # OAuth-related variable is `OAUTH_SSL_STRICT`.  The client id, secret and
+  # metadata URL are rows in CWA's app.db, entered through Admin → Edit Basic
+  # Configuration.
+  #
+  # So the plaintext is generated here, kept in sops like every other secret,
+  # and READ ONCE by whoever configures CWA:
+  #
+  #     clan vars get ernst authelia-oidc-cwa/cwa-client-secret
+  #
+  # That is a manual step and it cannot be automated away without writing into
+  # a database the application owns.  It is in the deploy checklist in
+  # docs/guides/ernst-app-api-ingress.md.
+  ##############################################################################
+  clan.core.vars.generators.authelia-oidc-cwa = {
+    files."cwa-client-secret".secret        = true;
+    files."cwa-client-secret-digest".secret = true;
+
+    files."cwa-client-secret-digest".restartUnits =
+      [ "authelia-secrets.service" "container@authelia.service" ];
+
+    runtimeInputs = [ pkgs.authelia pkgs.gnused pkgs.coreutils ];
+
+    script = ''
+      set -euo pipefail
+
+      secret=$(authelia crypto rand --length 72 --charset alphanumeric \
+                 | sed -n 's/^Random Value: //p' | tr -d '\n')
+      if [ -z "$secret" ]; then
+        echo "  ✗ authelia crypto rand produced no client secret for CWA" >&2
+        exit 1
+      fi
+      printf '%s' "$secret" > "$out/cwa-client-secret"
+
+      digest=$(authelia crypto hash generate pbkdf2 --variant sha512 --password "$secret" \
+                 | sed -n 's/^Digest: //p')
+      if [ -z "$digest" ]; then
+        echo "  ✗ pbkdf2 hashing produced no digest for the CWA client secret" >&2
+        exit 1
+      fi
+      printf '%s' "$digest" > "$out/cwa-client-secret-digest"
     '';
   };
 

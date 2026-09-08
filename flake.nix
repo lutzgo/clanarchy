@@ -282,6 +282,17 @@
           # occupant.  Masters the library that Syncthing replicates to
           # birte's RetroDECK; see docs/guides/birte-emulation.md.
           ./machines/ernst/containers/romm.nix
+          # Calibre-Web-Automated — ebooks, OPDS, the Kobo endpoint and the
+          # KOReader progress-sync server.  The podman tier's FOURTH occupant,
+          # and on this tier for a hard reason rather than a preference: CWA is
+          # NOT in nixpkgs.  `pkgs.calibre-web` is the upstream project, a
+          # different codebase without the ingest pipeline, the Kobo endpoint
+          # or the KOReader sync this deployment is for.
+          #
+          # It reuses M16's freed cloudflared MAC/address (…:0d / 10.0.90.21)
+          # rather than allocating a new pair; the DHCP reservation on the
+          # UDM-Pro must be RE-POINTED, not added alongside.
+          ./machines/ernst/containers/cwa.nix
           # M18.  CrowdSec, INSIDE the traefik container's netns — the only
           # place that sees the pre-DNAT source of a WAN request.  It
           # co-defines containers.traefik; read its header before assuming

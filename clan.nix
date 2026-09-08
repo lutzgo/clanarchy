@@ -488,6 +488,25 @@
             arrAddress         = "10.0.90.13";
             jellyfinAddress    = "10.0.90.10";
             qbittorrentAddress = "10.0.90.11";
+
+            # Navidrome, added 2026-09-08.  THE SAME ADDRESS AS arrAddress —
+            # it is a unit inside the arr container, not a container of its
+            # own — but a separate option, because placement is a decision
+            # here and not a property of the module.
+            #
+            # THE ONLY AUTHENTICATED SCRAPE IN THIS FLEET.  Navidrome's
+            # /metrics rides the ordinary application port and demands HTTP
+            # Basic, so the password file is not optional; monitoring.nix
+            # asserts on the pair rather than letting the job 401, because a
+            # 401 presents as `up == 0` and reads as an outage.
+            #
+            # The path is INSIDE the monitoring container, staged there by
+            # monitoring-secrets from the `navidrome-metrics` generator that
+            # machines/ernst/containers/arr.nix declares.  One generator, two
+            # containers, two staging units — see that file for why the same
+            # secret is emitted in two formats.
+            navidromeAddress             = "10.0.90.13";
+            navidromeMetricsPasswordFile = "/run/monitoring-secrets/navidrome-metrics-password";
           };
         };
 

@@ -495,6 +495,100 @@ in
               };
             }
           ];
+
+          ##################################################################
+          # THE APP-API 401 SCENARIO.
+          #
+          # ── WHY THE HUB'S SCENARIOS DO NOT COVER THIS ────────────────────
+          #
+          # `crowdsecurity/traefik` brings http-probing, http-crawl-non_statics
+          # and http-generic-bf.  The first two key on 404s — a scanner walking
+          # paths that do not exist — and catch the scanners this box actually
+          # sees, which is what SN3 was satisfied by.  Neither fires on
+          # credential stuffing, because a POST to a real login endpoint with a
+          # wrong password is not a 404: it is a 200 with an error body, or a
+          # 401, against a path that exists.
+          #
+          # http-generic-bf is closer but is scoped to the hub's own list of
+          # known login paths, which does not include Audiobookshelf's,
+          # Komga's, Navidrome's or CWA's.
+          #
+          # ── WHY IT MATTERS MORE HERE THAN ANYWHERE ELSE ──────────────────
+          #
+          # Every hostname in `appApiHosts` (containers/ingress-policy.nix) is
+          # answered by the APPLICATION, not by Authelia.  Authelia's per-user
+          # regulation — three failures in five minutes, then a fifteen-minute
+          # ban — protects none of them, because Authelia is never consulted.
+          # `wan-login-ratelimit` in traefik.nix slows an attacker to ~6
+          # attempts a minute; THIS is what stops them.  The two are designed
+          # to compose and neither is sufficient alone.
+          #
+          # It also covers the case the login rate limiter structurally cannot:
+          # Subsonic (/rest/**) and Komga's HTTP Basic put the credential on
+          # EVERY request, so there is no distinct login path to rate-limit.
+          # A status-based scenario does not care about the path, which is
+          # exactly why it is the right instrument for those two.
+          #
+          # ── THE NUMBERS, AND THE ONE THAT IS DELIBERATELY GENEROUS ───────
+          #
+          # 10 in 5 minutes.  Higher than it could be, on purpose:
+          # 401s are NORMAL TRAFFIC for these services in a way they are not
+          # for a browser app.  A Subsonic client with a stale token retries;
+          # a Kobo reconnecting after a password change will 401 several times
+          # before its user notices; KOReader syncs per-book and can emit a
+          # burst.  Set to 3 this would ban the household's own devices, and a
+          # ban here costs the whole proxy, not just one service.
+          #
+          # The RFC1918 whitelist above runs at s02 and so already exempts
+          # every inside address — but these services are reached from
+          # OUTSIDE, which is the entire point, so the whitelist does not
+          # cover the household when it is on mobile data.  That is the real
+          # reason for 10 rather than 3.
+          #
+          # WRITTEN LOCALLY, like the whitelist, and for the same reason: the
+          # thresholds are tuned to this household's clients and must not
+          # change under us on a `cscli hub update`.
+          #
+          # NOTE ON WHAT IT WATCHES: `evt.Meta.http_status` is set by
+          # crowdsecurity/http-logs, which the traefik collection pulls in.
+          # If the traefik parser is ever removed this scenario silently stops
+          # matching — the same SN3 shape the syslog-logs note above warns
+          # about, and `cscli metrics show scenarios` is the instrument.
+          ##################################################################
+          localConfig.scenarios = [
+            {
+              type          = "leaky";
+              name          = "clanarchy/app-api-auth-bf";
+              description   = "Brute force against a forward-auth-exempt app API";
+              filter        = "evt.Meta.log_type == 'http_access-log' && evt.Meta.http_status in ['401', '403']";
+              groupby       = "evt.Meta.source_ip";
+              capacity      = 10;
+              leakspeed     = "5m";
+              blackhole     = "5m";
+              labels = {
+                # `remediation: true` is what makes this produce a DECISION
+                # rather than only an alert.  Without it the scenario fires,
+                # appears in `cscli alerts list`, and bans nothing — which is
+                # the failure mode that looks like success.
+                #
+                # THE BAN DURATION IS NOT SET HERE and cannot be: it comes
+                # from the PROFILE, and this deployment declares none, so the
+                # package's default `default_ip_remediation` applies —
+                # `Alert.Remediation == true && Alert.GetScope() == "Ip"` for
+                # a 4h ban.  That is the same path every hub scenario takes,
+                # which is why arming this needs no profile work.  If a
+                # profile is ever added to localConfig.profiles it REPLACES
+                # the default rather than adding to it, and this scenario
+                # stops banning unless the new profile matches it too.
+                remediation  = true;
+                type         = "bruteforce";
+                service      = "http";
+                confidence   = 2;
+                spoofable    = 0;
+                behavior     = "http:bruteforce";
+              };
+            }
+          ];
         };
 
         ######################################################################
