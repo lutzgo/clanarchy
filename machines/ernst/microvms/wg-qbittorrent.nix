@@ -1686,6 +1686,13 @@ in
       };
 
       systemd.services.qbittorrent = {
+        # The start limit the `Restart=always` below leans on.  Five starts in
+        # five minutes; exceed it and the unit lands in `failed`, which is the
+        # state M6 alerts on.  Without this a permanently-broken qBittorrent
+        # would restart forever and stay just as invisible as it is today.
+        startLimitIntervalSec = 300;
+        startLimitBurst       = 5;
+
         # Start after the tunnel, but do not depend on it: `wants`, not
         # `requires`.  If wg0 fails, qBittorrent should still come up so the
         # WebUI can say so — it is bound to wg0 at the application level and
@@ -1740,6 +1747,53 @@ in
         ];
 
         serviceConfig = {
+          # ── A CLEAN EXIT IS A FAILURE FOR THIS SERVICE ─────────────────────
+          #
+          # qbittorrent-nox is meant to run until stopped.  If it returns at
+          # all it has failed, whatever its exit code — so `Restart=always`,
+          # not `on-failure`.  `on-failure` is the trap here and would change
+          # nothing: the observed failure exits **0**, which systemd calls
+          # success, so it would never fire.
+          #
+          # THE FAILURE THIS ANSWERS, RECURRED ON ernst 2026-09-08.  It is the
+          # one described at length in the RequiresMountsFor block above:
+          # qbittorrent.service starts at boot, exits 0 after about a second
+          # having printed nothing at all, and systemd marks it
+          # "Deactivated successfully".  The WebUI never binds.  Measured:
+          #
+          #   qbittorrent:  inactive  Result=success  ExecMainStatus=0
+          #                 NRestarts=0
+          #   start 13:19:48 UTC -> stop 13:19:49 UTC
+          #   listeners: sshd:22, slskd:5030+50300, qbit-exp:8000 — no 8080
+          #
+          # THE ORDERING HYPOTHESIS ABOVE IS NOW FALSIFIED, and it is left in
+          # place rather than deleted because the reasoning is still sound and
+          # the ordering is still correct on its own merits.  But it was
+          # written as "A HYPOTHESIS FOR THAT FAILURE, STATED AS ONE ... not
+          # been caught in the act", and `RequiresMountsFor` was deployed and
+          # the failure happened anyway.  Whatever the race is, it is not
+          # (only) the virtiofs shares.
+          #
+          # WHY THIS IS THE RIGHT FIX EVEN THOUGH THE CAUSE IS STILL UNKNOWN.
+          # Every previous recovery was "run it again and it works" — by hand
+          # on 2026-08-26, and `systemctl start` on 2026-09-08, both first
+          # time.  That is the signature of a startup race, and restarting is
+          # precisely the remedy for a race that loses occasionally.
+          #
+          # AND IT CONVERTS THE SILENT FAILURE INTO A LOUD ONE, which matters
+          # more than the recovery.  Today the symptom was a user noticing the
+          # WebUI was gone, roughly sixteen hours after a reboot; nothing in
+          # the fleet reported it, because an inactive unit with Result=success
+          # is invisible to `systemctl --failed` and therefore to M6's
+          # SystemdUnitFailed.  With a start limit, a cause that is NOT a race
+          # exhausts the burst and leaves the unit `failed` — which M6 does
+          # see, and which pages.
+          #
+          # Five attempts in five minutes: comfortably more than a race needs,
+          # and far too few to hammer a genuinely broken configuration.
+          Restart    = "always";
+          RestartSec = "10s";
+
           # THE line that makes M4's hardlinks possible.  0002 → files 0664,
           # so a host-side arr in group media has the write bit
           # fs.protected_hardlinks demands before it will link a file it does
