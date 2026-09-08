@@ -345,120 +345,34 @@ let
   adminGroup     = "admins";
   householdGroup = "household";
 
-  # The one name a NON-admin may reach through forward-auth — Jellyseerr,
-  # whose router gained the `authelia` middleware in M16 when the name became
-  # internet-reachable through the Cloudflare Tunnel.  Its OWN list and its
-  # OWN rule below, deliberately kept out of protectedHosts: that list feeds
-  # the admins-only rule, and merging them would either hand `household`
-  # every admin UI or lock admins' families out of the request page,
-  # depending on which end you merged toward.
-  householdHosts = [
-    "jellyseerr.${baseDomain}"
-  ];
+  # ── THE HOSTNAME LISTS NOW LIVE IN ./ingress-policy.nix ───────────────────
+  #
+  # They used to be declared here, in full, with a comment admitting the
+  # problem:
+  #
+  #   "The two files have to agree, and there is no mechanism that makes them"
+  #
+  # There is one now.  Both lists are defined once in ./ingress-policy.nix and
+  # imported by this file AND by containers/traefik.nix, and traefik.nix throws
+  # at evaluation if any router's middlewares disagree with the classification
+  # there — including the fail-open direction, a protected name whose router
+  # forgot the middleware, which `default_policy = "deny"` does NOT catch
+  # (the middleware is what consults Authelia at all).
+  #
+  # The RomM 403 that comment predicted, and that happened anyway, is now a
+  # build error naming the file to edit.  The per-service reasoning that used
+  # to sit inline here moved with the lists; read ingress-policy.nix before
+  # adding a name to either.
+  #
+  # WHY AN `import` AND NOT A MODULE OPTION: both containers are configured
+  # from the same machines/ernst evaluation, but each `containers.<n>.config`
+  # is its OWN NixOS evaluation with no access to the host's option tree.  A
+  # plain function call crosses that boundary; an option would have to be
+  # threaded through `containers.<n>.config` by hand, which is the coupling
+  # this is trying to remove.
+  ingressPolicy = import ./ingress-policy.nix { inherit baseDomain; };
 
-  # The names forward-auth protects.  Kept as one list because it is used
-  # twice — once for the access-control rule here, once as the thing the
-  # Traefik middleware is attached to in containers/traefik.nix.  The two files
-  # have to agree, and there is no mechanism that makes them; if a route is
-  # added there without a domain here, Authelia's default_policy = "deny"
-  # refuses it, which is the right direction to fail in.
-  protectedHosts = [
-    "prowlarr.${baseDomain}"
-    "sonarr.${baseDomain}"
-    "radarr.${baseDomain}"
-    "grafana.${baseDomain}"
-
-    # M12.  Three more admin UIs in the existing arr container.  All three are
-    # browser-only and admin-facing, i.e. the case forward-auth is for — none
-    # of them has a TV or mobile client that a redirect would break, so the
-    # Jellyfin exemption does not come into it.
-    #
-    # These MUST stay in step with the routers in containers/traefik.nix.  The
-    # comment above says what happens otherwise and it is worth repeating in
-    # the direction that actually bites: a route added THERE without a name
-    # HERE hits default_policy = "deny" and returns 403 to a user who has just
-    # logged in successfully, which reads like an Authelia fault and is a
-    # missing line in a list.
-    "bazarr.${baseDomain}"
-    "cleanuparr.${baseDomain}"
-    "mediathekarr.${baseDomain}"
-
-    # M8.  Tvheadend's web UI — admin-facing, browser-only, no client that a
-    # redirect could break (the household watches Live TV through Jellyfin,
-    # which stays exempt).  Must stay in step with the tvheadend router in
-    # containers/traefik.nix, same as every name above.
-    "tvheadend.${baseDomain}"
-    # M9.  TubeSync's web UI — admin-facing and browser-only, so the same
-    # argument applies.  Note its own HTTP_USER/HTTP_PASS basic auth is
-    # deliberately left UNSET rather than layered underneath this: it would
-    # answer in the `Authorization` header, which this service consumes as its
-    # own credential and rejects.  See containers/tubesync.nix.
-    "tubesync.${baseDomain}"
-
-    # ── M14.  Four more admin UIs ──────────────────────────────────────────
-    #
-    # The ordinary case — admin-facing browser UIs in the existing arr
-    # container (lidarr, kapowarr, questarr) or its own podman netns
-    # (storyteller).  No TV or mobile client that a redirect would break, so
-    # the Jellyfin exemption does not come into it, same as every name above.
-    #
-    # AUDIOBOOKSHELF IS DELIBERATELY ABSENT, and this is the second name in the
-    # fleet to be absent on purpose rather than by oversight (Jellyfin is the
-    # first).  Jellyseerr used to be the third; since M16 it is protected
-    # after all — via `householdHosts` and its own rule below, NOT this list,
-    # because this list feeds the admins-only rule and Jellyseerr is the one
-    # protected name a non-admin must reach.
-    #
-    # It has native mobile and TV clients, and app support is a stated
-    # requirement for that library — so it falls under architecture invariant
-    # #4's client-compatibility clause exactly as Jellyfin does: an app that
-    # talks to a REST API with a bearer token has no browser to follow a 302 to
-    # this portal, and every request fails looking like a broken server.
-    #
-    # ITS ROUTER THEREFORE CARRIES NO MIDDLEWARE, and the two files have to
-    # agree.  Listing it here without the middleware would be inert — this list
-    # only decides what `access_control` permits for requests that REACH
-    # Authelia — but an inert entry is exactly the kind of thing someone later
-    # "fixes" by adding the middleware back, which is how the app would break
-    # months from now with nothing to point at.  Absent in both places, with
-    # the reason written down in both.
-    #
-    # The full argument, including what carries the authentication instead and
-    # the first-run hazard that follows, is on the router in
-    # containers/traefik.nix.  It is a PERMANENT bypass with a `—` row in
-    # docs/roadmap.md's ledger, not a shim.
-    "lidarr.${baseDomain}"
-    "kapowarr.${baseDomain}"
-    "questarr.${baseDomain}"
-    "storyteller.${baseDomain}"
-
-    # M14, added after the fact.  slskd's web UI lives in the microvm guest
-    # and was the only admin surface in this fleet without a Traefik route —
-    # see the slskd router in containers/traefik.nix for why that had to
-    # change.  Same treatment as every other operator tool here.
-    "slskd.${baseDomain}"
-
-    # M17.  Bindery — ebook acquisition in the arr container.  The ordinary
-    # case: operator-facing, browser-only, no client a redirect could break.
-    # The household reads in Audiobookshelf/Storyteller and never opens this.
-    "bindery.${baseDomain}"
-
-    # RomM — the ROM library manager in its own podman netns.  The ordinary
-    # case again: operator-facing, browser-only.  It has an in-browser
-    # EmulatorJS player, but that is a browser and follows redirects like one;
-    # the Deck does NOT read its games through this route, it plays a
-    # Syncthing replica off local disk, so there is no native client here
-    # whose bearer token a 302 could break.  That is what keeps it out of the
-    # Jellyfin/Audiobookshelf exemption.
-    #
-    # This line was MISSING on the first deploy, and the failure was exactly
-    # the one the comment at the top of this list describes: the router in
-    # containers/traefik.nix carried the `authelia` middleware, this list did
-    # not carry the name, and romm.<domain> answered 403 — which reads as an
-    # Authelia fault and is a missing line in a list.  Left recorded here
-    # because the comment predicted it and it happened anyway.
-    "romm.${baseDomain}"
-  ];
+  inherit (ingressPolicy) householdHosts protectedHosts;
 
   ############################################################################
   # Secrets staging.

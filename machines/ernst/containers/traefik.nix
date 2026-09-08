@@ -447,6 +447,24 @@ let
   # (2026-08-29): BINDERY_PORT, default 8787, kept.
   binderyPort        = 8787;
 
+  # ── 2026-09-08: two more ports on the arr container's ONE address ─────────
+  #
+  # Same placement argument M14 made and for the same reason: both are plain
+  # NixOS units with upstream modules, so they went into the existing container
+  # and needed no network work at all — no new MAC, no DHCP reservation, no
+  # UDM-Pro rule.  Only CWA (below) is an opaque image and therefore had to
+  # take the podman tier.
+  #
+  #   komga      25600  the module's `port` option has NO default in nixpkgs
+  #                     (verified by evaluating it: `attribute 'default'
+  #                     missing`), so it MUST be set explicitly or the config
+  #                     does not evaluate.  25600 is Komga's own upstream
+  #                     default and what every client's setup doc assumes.
+  #   navidrome   4533  the module default, and the Subsonic ecosystem's
+  #                     conventional port.  Kept rather than moved.
+  komgaPort          = 25600;
+  navidromePort      = 4533;
+
   # Storyteller, the podman tier's SECOND occupant, on its own address.
   # 02:00:00:90:00:0c → 10.0.90.20, following the 8 + <seq> convention in
   # machines/ernst/networking.nix.
@@ -457,6 +475,24 @@ let
   # Its netns firewall accepts this address and no other on ${toString rommPort}.
   rommAddr = "10.0.90.22";
   rommPort = 8080;
+
+  # Calibre-Web-Automated — the podman tier's FOURTH occupant, and the only
+  # one of this round's three additions that needed an address of its own.
+  #
+  # WHY PODMAN AND NOT THE arr CONTAINER: CWA is not in nixpkgs.  nixpkgs has
+  # `calibre-web` 0.6.26, which is the UPSTREAM project, not the
+  # crocodilestick/Calibre-Web-Automated fork — a different codebase with the
+  # ingest pipeline, the Kobo endpoint and the KOReader sync this deployment is
+  # for.  So it is an opaque image, which is exactly the line invariant #1 and
+  # containers/romm.nix draw for the podman tier.
+  #
+  # 02:00:00:90:00:0d / 10.0.90.21 — REUSED, not new.  This pair was M16's
+  # cloudflared container and was marked FREE AGAIN by M18 when the tunnel was
+  # deleted.  The allocation table in machines/ernst/networking.nix is updated
+  # to say so; a DHCP reservation for the old MAC must be re-pointed rather
+  # than added alongside, or the address gets handed out twice.
+  cwaAddr = "10.0.90.21";
+  cwaPort = 8083;
 
   # slskd's web UI, in the MICROVM guest — the first backend here that is not
   # an nspawn container or a podman netns.
@@ -570,7 +606,131 @@ let
   #        for the LAN case and it is strictly more urgent here.
   #     2. THE ADMIN PASSWORD MUST BE STRONG.  It is now an
   #        internet-reachable, single-factor login.
-  wanExposed = [ "jellyseerr" "authelia" "audiobookshelf" ];
+  #
+  # ── jellyfin, komga, navidrome, cwa, ADDED 2026-09-08 ─────────────────────
+  #
+  #   Four more, and they are all the SAME KIND of name as audiobookshelf
+  #   rather than four separate arguments: every one of them is in
+  #   `ingressPolicy.appApiHosts`, i.e. answered by the application because its
+  #   native clients cannot follow a forward-auth redirect.  The reasoning is
+  #   in ingress-policy.nix, once, instead of being restated four times here
+  #   and drifting.
+  #
+  #   `jellyfin` IS A REVERSAL AND SHOULD BE READ AS ONE.  It was deliberately
+  #   NOT exposed by M18, and it was M18's NEGATIVE CONTROL: the proof that the
+  #   `wan` entrypoint is fail-closed was "jellyfin.goclan.org returns 404 with
+  #   RouterName null on wan while matching jellyfin@file on websecure three
+  #   minutes earlier".  That control is spent now — deliberately, on lgo's
+  #   decision that the household needs Jellyfin from outside.
+  #
+  #   THE REPLACEMENT CONTROL, so the property does not stop being testable:
+  #   use any router NOT in `wanExposed` — `sonarr` is the obvious one, and it
+  #   is strictly a better control than jellyfin ever was, because it carries
+  #   the `authelia` middleware and so a leak there would be caught twice.  The
+  #   verification checklist in docs/guides/ernst-app-api-ingress.md uses it.
+  #
+  #   THE OLD "NEVER EXPOSE JELLYFIN" NOTE WAS CLOUDFLARE'S, NOT OURS.  M16's
+  #   cloudflared.nix header forbade a jellyfin hostname on the TUNNEL because
+  #   proxying video through Cloudflare violates their terms of service.  M18
+  #   deleted the tunnel; the constraint went with it.  Written down because
+  #   the prohibition outlived its reason in two files and would otherwise read
+  #   as a security rule being overridden.
+  wanExposed = [
+    "jellyseerr"
+    "authelia"
+    "audiobookshelf"
+    "jellyfin"
+    "komga"
+    "navidrome"
+    "cwa"
+  ];
+
+  # ── THE LOGIN PATHS, PER SERVICE, AND WHAT THIS DOES NOT COVER ────────────
+  #
+  # Router name -> the Traefik path matcher for that service's credential-
+  # accepting endpoints.  `withWan` generates a SECOND wan router per entry,
+  # `<name>-wan-login`, identical to the ordinary wan router except that it
+  # carries `wan-login-ratelimit` instead of `wan-ratelimit` and outranks it on
+  # priority.  Everything else about the vhost keeps the browsing limit.
+  #
+  # Only services in `appApiHosts` appear here, and that is the point: the
+  # forward-auth names already have Authelia's per-user regulation in front of
+  # their login, which is strictly better than a rate limit because it counts
+  # per identity rather than per source address.
+  #
+  # ── WHERE THIS GENUINELY DOES NOT HELP, STATED RATHER THAN IMPLIED ────────
+  #
+  #   Two of these protocols carry the credential on EVERY request instead of
+  #   exchanging it once for a token:
+  #
+  #     Subsonic (navidrome /rest/**)  — user + token/salt in the query string
+  #                                      of every call, by protocol definition.
+  #     Komga (/api/**, /opds/**)      — HTTP Basic on every call.
+  #
+  #   For those, "the login path" is not a distinct path, and rate-limiting the
+  #   API would break streaming and page-turning for legitimate clients.  So
+  #   the entries below cover the BROWSER login forms only, and brute force
+  #   against the API is left to CrowdSec's 401 scenario
+  #   (containers/crowdsec.nix), which keys on response status and not on path
+  #   and is therefore the control that actually covers this case.
+  #
+  #   Writing that down because a `wan-login-ratelimit` in the config reads
+  #   like full coverage, and it is not.  The honest claim is: it closes the
+  #   form-login path cheaply, and CrowdSec is what closes the rest.
+  #
+  # PATH MATCHING IS CASE-SENSITIVE in Traefik while several of these
+  # applications route case-insensitively.  The matchers below use the casing
+  # the official clients actually send, which is what matters for the limit to
+  # bite on a real attack tool replaying a real client's requests.
+  wanLoginPaths = {
+    # Jellyfin's token exchange.  Every app — TV, mobile, Chromecast sender —
+    # POSTs here once and then carries an access token.
+    jellyfin = "PathPrefix(`/Users/AuthenticateByName`)";
+
+    # Audiobookshelf's form login.  Its apps POST here and then hold a bearer
+    # token, so this is the whole credential surface for the mobile clients.
+    audiobookshelf = "PathPrefix(`/login`)";
+
+    # Komga's cookie-session login, used by the web UI and by Komelia's
+    # initial handshake.  NOT /api/** — see the caveat above.
+    komga = "PathPrefix(`/api/v1/login`)";
+
+    # Navidrome's native web-UI login.  NOT /rest/** — see the caveat above.
+    # Navidrome additionally ships its own limiter (5 attempts / 2 min,
+    # observed in its startup log at 0.63.2), so this is the second of two.
+    navidrome = "PathPrefix(`/auth/login`)";
+
+    # CWA has three credential endpoints and they are genuinely distinct
+    # paths, so all three are covered: the web form, KOReader's progress-sync
+    # auth, and the Kobo device-token handshake.
+    cwa = "(PathPrefix(`/login`) || PathPrefix(`/kosync/users/auth`) || PathPrefix(`/kobo_auth`))";
+  };
+
+  ############################################################################
+  # ── THE INGRESS POLICY, AND THE GUARD THAT ENFORCES IT ────────────────────
+  #
+  # `appApiHosts`, `protectedHosts`, `householdHosts` and `portalHost` are
+  # defined ONCE in ./ingress-policy.nix and consumed by both this file and
+  # containers/authelia.nix.  Read that file before changing a middleware on
+  # any router below — it carries the whole argument for which names may be
+  # answered by the application instead of by Authelia.
+  ############################################################################
+  ingressPolicy = import ./ingress-policy.nix { inherit baseDomain; };
+
+  # Extract the Host(`x`) literal from a router's rule, so the guard can check
+  # a router against the policy without a second hand-maintained mapping from
+  # router name to hostname.  Deriving it is the point: a hand-maintained map
+  # is exactly the kind of list that goes stale, and the RomM 403 in
+  # ingress-policy.nix's header is what that looks like in production.
+  #
+  # Every rule in this file is a bare Host(`…`) or a Host(`…`) && something.
+  # A rule this cannot parse returns null and is REPORTED by the guard rather
+  # than skipped — a router the policy cannot see is the failure mode this
+  # whole mechanism exists to prevent.
+  hostOfRule = rule:
+    let m = builtins.match ".*Host\\(`([^`]+)`\\).*" rule;
+    in if m == null then null else builtins.head m;
+  ############################################################################
 
   # ── THE GUARD AND THE GENERATOR, IN ONE FUNCTION ──────────────────────────
   #
@@ -611,6 +771,62 @@ let
       unknown = lib.filter (n: !(lanRouters ? ${n})) wanExposed;
       stray   = lib.filter (n: lib.elem wanEntryPoint lanRouters.${n}.entryPoints) names;
 
+      # ── CHECKS (d)–(f): THE INGRESS POLICY, ENFORCED ─────────────────────
+      #
+      # See ./ingress-policy.nix for why this is a mechanism rather than a
+      # fourth comment.  The short version: the same decision used to be
+      # written in three files and enforced in none, and it cost a production
+      # 403 on RomM.
+      #
+      # These run over the LAN routers, BEFORE `mkWan` copies any of them —
+      # so a policy violation is caught whether or not the name is exposed.
+      # A wrong middleware on a LAN-only router is still wrong; it just has a
+      # smaller blast radius until someone adds it to `wanExposed`.
+      hostOf   = n: hostOfRule lanRouters.${n}.rule;
+      hasAuth  = n: lib.elem "authelia" (lanRouters.${n}.middlewares or [ ]);
+
+      # (d) a rule this cannot parse is a router the policy cannot see.
+      unparsable = lib.filter (n: hostOf n == null) names;
+
+      # (e) an appApi host that carries forward-auth.  This is the regression
+      #     the whole file exists to prevent: it breaks every native client of
+      #     that service, and it breaks them with an opaque network error
+      #     rather than a login prompt, so it does not look like an auth
+      #     change when it is reported.
+      wronglyProtected = lib.filter
+        (n: hostOf n != null && lib.elem (hostOf n) ingressPolicy.appApiHosts && hasAuth n)
+        names;
+
+      # (f) a routed hostname that is in NONE of the policy lists.  Left
+      #     unchecked this is the RomM failure exactly — the router exists,
+      #     Authelia has never heard of the name, and the user gets a 403
+      #     after a successful login.  Catching it here turns a support
+      #     ticket into a build error that names the file to edit.
+      unclassified = lib.filter
+        (n:
+          let host = hostOf n; in
+          host != null
+          && !(lib.elem host ingressPolicy.appApiHosts)
+          && !(lib.elem host ingressPolicy.protectedHosts)
+          && !(lib.elem host ingressPolicy.householdHosts)
+          && host != ingressPolicy.portalHost)
+        names;
+
+      # (g) the mirror of (e): a host the policy says is protected, whose
+      #     router forgot the middleware.  Authelia's default_policy = "deny"
+      #     does NOT save this case — the middleware is what sends the request
+      #     to Authelia at all, so a missing one means the request goes
+      #     straight to the backend unauthenticated.  This is the fail-OPEN
+      #     direction and is the more dangerous of the two.
+      wronglyOpen = lib.filter
+        (n:
+          let host = hostOf n; in
+          host != null
+          && (lib.elem host ingressPolicy.protectedHosts
+              || lib.elem host ingressPolicy.householdHosts)
+          && !(hasAuth n))
+        names;
+
       # ── The order of the middlewares is deliberate ────────────────────────
       #
       # Rate limit and concurrency cap FIRST, then whatever the LAN twin
@@ -628,6 +844,43 @@ let
             ++ (lanRouters.${n}.middlewares or [ ]);
         };
       };
+
+      # ── The login routers, generated the same way and for the same reason ─
+      #
+      # Generated HERE rather than declared by hand next to their twins,
+      # because a hand-declared router naming `wan` is exactly what check (c)
+      # forbids — and it forbids it for a good reason.  Generating them keeps
+      # the rule, the service and the forward-auth state inherited from the
+      # LAN twin, so the login path and the ordinary path cannot disagree
+      # about which backend they reach or whether they are authenticated.
+      #
+      # PRIORITY IS EXPLICIT.  Traefik's default priority is the rule's
+      # length, and `Host(x) && PathPrefix(y)` is longer than `Host(x)`, so
+      # these would win anyway today — but that is an accident of string
+      # length, not a guarantee, and it silently inverts the day someone
+      # lengthens a Host rule.  An explicit high priority makes it a property.
+      #
+      # Only generated for names that are BOTH exposed and listed in
+      # `wanLoginPaths`; an entry for an unexposed service is inert rather
+      # than an error, since the point of the list is the wan surface.
+      mkWanLogin = n: {
+        name  = "${n}-wan-login";
+        value = lanRouters.${n} // {
+          entryPoints = [ wanEntryPoint ];
+          rule        = "${lanRouters.${n}.rule} && ${wanLoginPaths.${n}}";
+          priority    = 1000;
+          middlewares =
+            [ "wan-login-ratelimit" "wan-inflight" ]
+            ++ (lanRouters.${n}.middlewares or [ ]);
+        };
+      };
+
+      wanLoginNames = lib.filter (n: wanLoginPaths ? ${n}) wanExposed;
+
+      # A `wanLoginPaths` entry whose router does not exist is a typo that
+      # would otherwise silently protect nothing — same failure shape as check
+      # (b), so it gets the same treatment.
+      unknownLogin = lib.filter (n: !(lanRouters ? ${n})) (lib.attrNames wanLoginPaths);
     in
       if missing != [ ] then
         throw ''
@@ -654,7 +907,66 @@ let
           existing router.  See the TWO ENTRYPOINTS block in this file's
           header.
         ''
-      else lanRouters // lib.listToAttrs (map mkWan wanExposed);
+      else if unparsable != [ ] then
+        throw ''
+          traefik.nix: the ingress-policy guard cannot find a Host(`…`) literal
+          in the rule of these routers, so it cannot tell whether they are
+          allowed to carry forward-auth:
+            ${lib.concatStringsSep ", " unparsable}
+          Every router here must match on a literal hostname.  If you genuinely
+          need a different matcher, extend `hostOfRule` — do NOT skip the
+          check, which is the one thing that keeps this file and
+          containers/authelia.nix from disagreeing.
+        ''
+      else if wronglyProtected != [ ] then
+        throw ''
+          traefik.nix: these routers carry the `authelia` forward-auth
+          middleware, but their hostnames are in `appApiHosts`:
+            ${lib.concatStringsSep ", " wronglyProtected}
+          THIS BREAKS EVERY NATIVE CLIENT OF THAT SERVICE.  forward-auth is a
+          redirect protocol; an app with a bearer token has no browser to
+          follow a 302 to the portal, so it fails with an opaque network error
+          that reads as a broken server rather than a login prompt.
+          If you are ADDING auth deliberately, the hostname must move out of
+          `appApiHosts` in ./ingress-policy.nix — and read the block there
+          first, because each entry is in that list for a measured reason.
+        ''
+      else if wronglyOpen != [ ] then
+        throw ''
+          traefik.nix: these routers are missing the `authelia` middleware, but
+          their hostnames are declared protected in ./ingress-policy.nix:
+            ${lib.concatStringsSep ", " wronglyOpen}
+          THIS IS THE FAIL-OPEN DIRECTION.  Authelia's default_policy = "deny"
+          does not save it: the middleware is what sends the request to
+          Authelia at all, so without it the request reaches the backend
+          unauthenticated and Authelia is never consulted.
+          Add `middlewares = [ "authelia" ];`, or move the hostname into
+          `appApiHosts` with an argument for why a native client needs it.
+        ''
+      else if unclassified != [ ] then
+        throw ''
+          traefik.nix: these routers serve hostnames that appear in NO list in
+          ./ingress-policy.nix:
+            ${lib.concatStringsSep ", " unclassified}
+          Every routed hostname must be classified, because Authelia derives
+          its access_control rules from the same file.  A name routed here and
+          absent there returns 403 to a user who has just logged in
+          successfully — which reads as an Authelia fault and is a missing line
+          in a list.  That is not hypothetical; it is what happened to RomM.
+          Add the hostname to `appApiHosts`, `protectedHosts` or
+          `householdHosts`.
+        ''
+      else if unknownLogin != [ ] then
+        throw ''
+          traefik.nix: `wanLoginPaths` names routers that do not exist:
+            ${lib.concatStringsSep ", " unknownLogin}
+          An entry here that matches nothing produces no login rate limit and
+          reads in review as though it does.  It takes ROUTER names.
+        ''
+      else
+        lanRouters
+        // lib.listToAttrs (map mkWan wanExposed)
+        // lib.listToAttrs (map mkWanLogin wanLoginNames);
 
   # ── WHERE THE `mgmt-only` ipAllowList WENT ────────────────────────────────
   #
@@ -1472,6 +1784,44 @@ in
             # requests that each take 30 s is not a rate problem, it is 1500
             # open connections to Jellyseerr's single-threaded Node process.
             wan-inflight.inFlightReq.amount = 40;
+
+            # ── 2026-09-08: THE LOGIN LIMIT.  A DIFFERENT NUMBER, DELIBERATELY ─
+            #
+            # `wan-ratelimit` above is sized for BROWSING — 50/s, because a
+            # Jellyseerr poster wall is dozens of image GETs per page view and
+            # a Jellyfin client polls.  That number is useless against
+            # credential stuffing: 50 password guesses per second is 4.3
+            # million a day.
+            #
+            # Authentication has the opposite shape.  A human logs in once and
+            # then does not log in again for weeks; an app stores its token.
+            # So the login paths get their own routers (below) carrying this
+            # instead, and the two limits stop having to be one compromise
+            # number.
+            #
+            # THIS IS THE COMPENSATION FOR `appApiHosts` BEING UNAUTHENTICATED
+            # AT THE PROXY.  Those names are answered by the application, so
+            # Authelia's per-user regulation — three failures in five minutes
+            # then a fifteen-minute ban — does not apply to any of them.  This
+            # is the nearest equivalent that works without a browser, and it
+            # is the reason the login routers exist at all.
+            #
+            # 1 per 10 s average, burst 5.  Sized so a human fat-fingering a
+            # password twice never notices, and a script gets ~6 attempts in
+            # the first minute and 6/min thereafter.  That is slow enough that
+            # CrowdSec's 401 scenario (containers/crowdsec.nix) reaches its
+            # threshold and bans at the packet layer long before a wordlist
+            # goes anywhere.  The two controls are meant to compose: this one
+            # slows, CrowdSec stops.
+            #
+            # period is 10s with average 1 rather than average 0.1/1s, because
+            # Traefik's rateLimit takes an integer average — a fractional rate
+            # is expressed by lengthening the period.
+            wan-login-ratelimit.rateLimit = {
+              average = 1;
+              burst   = 5;
+              period  = "10s";
+            };
           };
 
           # ── M18: THE GUARD.  Do not remove it to "fix" a build error ───────
@@ -1728,6 +2078,87 @@ in
               entryPoints = [ "websecure" ];
               service     = "audiobookshelf";
             };
+
+            # ── Komga: app-API tier, no forward-auth ──────────────────────
+            #
+            # In `appApiHosts` (./ingress-policy.nix), so the guard above
+            # REFUSES TO BUILD if anyone adds `middlewares = [ "authelia" ]`
+            # here.  That is deliberate and the argument is worth having in
+            # front of the router as well as in the policy file:
+            #
+            #   Komelia (Android), Mihon's Komga source extension and every
+            #   OPDS reader authenticate with HTTP Basic or an API key against
+            #   /api/** and /opds/**.  None of them has a browser.  A 302 to
+            #   the portal is not a login prompt to any of them, it is a
+            #   malformed response.
+            #
+            # THE KIDS' LIBRARIES ARE NOT BYPASSED BY THIS, which is the one
+            # question exposing Komga actually raises.  Komga enforces
+            # per-user library grants, age restrictions and label filtering
+            # INSIDE the application, on every API and OPDS path, keyed on the
+            # authenticated principal — not on which vhost the request arrived
+            # through.  There is no "internal" code path that skips them.  So
+            # a public vhost changes WHO CAN REACH THE LOGIN, not what a given
+            # account may see once past it.  Verify after deploy by logging in
+            # as a restricted account through the external name and confirming
+            # the library list is short; that check is in the PR test plan
+            # because it is the one that must not be assumed.
+            #
+            # NO SEPARATE ADMIN SURFACE TO KEEP OFF THIS VHOST.  Komga's
+            # administration is a role on an ordinary account reached through
+            # the same origin, with no distinct port or path prefix to split.
+            # Stated because "keep admin surfaces off the public vhost" is the
+            # policy elsewhere in this file and cannot be honoured here; the
+            # compensation is that the admin account is a strong credential
+            # and Komga has no first-run window (it creates no account until
+            # one is posted).
+            komga = {
+              rule        = "Host(`komga.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              service     = "komga";
+            };
+
+            # ── Navidrome: app-API tier, no forward-auth ──────────────────
+            #
+            # The Subsonic API at /rest/** puts the credential in the query
+            # string of every request — that is the protocol, not a Navidrome
+            # choice — and Tempo, Symfonium, play:Sub and the rest speak only
+            # that.  Forward-auth cannot be expressed in it at all.
+            #
+            # SERVER-SENT EVENTS: Navidrome pushes scan progress and now-
+            # playing over SSE on /api/events.  Traefik does NOT buffer
+            # responses unless a `buffering` middleware is attached, and none
+            # is attached here or inherited by the wan routers — so SSE works
+            # through this proxy with no special configuration.  Recorded as a
+            # PROPERTY TO PRESERVE rather than a setting: adding a `buffering`
+            # middleware to this router later, or to the wan chain, would
+            # break the event stream and present as "the UI stops updating"
+            # rather than as an error.
+            navidrome = {
+              rule        = "Host(`navidrome.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              service     = "navidrome";
+            };
+
+            # ── CWA: app-API tier, no forward-auth on this router ─────────
+            #
+            # THREE app protocols, none of which can follow a redirect: OPDS
+            # (basic auth), the Kobo sync endpoint (a device token embedded in
+            # the URL path — a Kobo e-reader has no browser at all), and
+            # /kosync (KOReader's progress protocol, custom header auth).
+            #
+            # THE WEB UI IS A DIFFERENT QUESTION AND GETS A DIFFERENT ANSWER.
+            # CWA speaks OIDC natively, so the browser surface is wired to
+            # Authelia's OIDC provider INSIDE the application rather than to
+            # forward-auth at the proxy — see containers/cwa.nix.  That gets
+            # the web UI real 2FA-backed authentication without a middleware
+            # the e-reader would choke on, which is the outcome a
+            # proxy-level bypass alone cannot reach.
+            cwa = {
+              rule        = "Host(`cwa.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              service     = "cwa";
+            };
             storyteller = {
               rule        = "Host(`storyteller.${baseDomain}`)";
               entryPoints = [ "websecure" ];
@@ -1938,6 +2369,12 @@ in
             kapowarr.loadBalancer.servers       = [ { url = "http://${arrAddr}:${toString kapowarrPort}/"; } ];
             questarr.loadBalancer.servers       = [ { url = "http://${arrAddr}:${toString questarrPort}/"; } ];
             audiobookshelf.loadBalancer.servers = [ { url = "http://${arrAddr}:${toString audiobookshelfPort}/"; } ];
+
+            # 2026-09-08.  Two more on the arr container's existing address,
+            # and one on the podman tier.
+            komga.loadBalancer.servers          = [ { url = "http://${arrAddr}:${toString komgaPort}/"; } ];
+            navidrome.loadBalancer.servers      = [ { url = "http://${arrAddr}:${toString navidromePort}/"; } ];
+            cwa.loadBalancer.servers            = [ { url = "http://${cwaAddr}:${toString cwaPort}/"; } ];
 
             # M17 — a fifth port on the arr container's address.
             bindery.loadBalancer.servers        = [ { url = "http://${arrAddr}:${toString binderyPort}/"; } ];
