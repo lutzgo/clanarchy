@@ -167,7 +167,7 @@ let
     alertmanager = 9093;
     ntfyBridge  = 8000;   # alertmanager-ntfy, loopback only
     grafana     = 3000;
-    llama       = 11436;  # llama-server's router (M19), via the mon0 proxy
+    llama       = 11434;  # llama-swap (M19), via the mon0 proxy
   };
 
   ############################################################################
@@ -1263,26 +1263,22 @@ in
           binds loopback and a container cannot reach that
         '';
 
-        model = lib.mkOption {
-          type        = lib.types.str;
-          default     = "";
-          example     = "qwen3-coder-30b";
-          description = ''
-            Model name to pass as `?model=` on the scrape.
-
-            NOT OPTIONAL, AND NOT COSMETIC.  llama-server in router mode answers
-            a bare `GET /metrics` with HTTP 400 "model name is missing from the
-            request" — measured on ernst 2026-09-09 — and returns a real body
-            only for `GET /metrics?model=<name>`.  A job without this parameter
-            is a permanent `up == 0`, which reads as an outage and is exactly
-            the shape M13 refused to ship for ollama.
-
-            It must name a key in that machine's `roles.models`.  The assertion
-            catches an empty value; it cannot catch a wrong one, so check:
-
-              curl -s 'http://[fdca:fe90::1]:11436/metrics?model=<name>' | head
-          '';
-        };
+        # THERE IS NO `model` OPTION, and its absence is the point.
+        #
+        # There was one: the scrape used to target llama-server's ROUTER, whose
+        # /metrics answers HTTP 400 "model name is missing from the request"
+        # unless `?model=<name>` is given.  That made a model name mandatory
+        # here — and made the job report `up == 0` whenever that one model's
+        # file was absent, which reads as an outage rather than as "no model is
+        # loaded".  It was observed doing exactly that while the coder model
+        # was still downloading.
+        #
+        # M19 dropped the router (llama-swap has no externally-managed-backend
+        # mode, so it spawns llama-server itself).  llama-swap's own /metrics is
+        # a plain scrape: HTTP 200, `llamaswap_*` series, no parameter, up
+        # whether or not a model is resident.  Nothing per-model belongs here.
+        #
+        #   curl -s 'http://[fdca:fe90::1]:11434/metrics' | head
       };
 
       zerotierInstance = lib.mkOption {
@@ -1523,17 +1519,6 @@ in
                 Point it at the staged bare-value file (see the option's
                 description, and the navidrome-metrics generator in
                 machines/ernst/containers/arr.nix).
-              '';
-            }
-            {
-              assertion = !settings.localAi.enable || settings.localAi.model != "";
-              message = ''
-                @clanarchy/monitoring: localAi.enable is true but
-                localAi.model is empty.  llama-server in router mode answers a
-                bare GET /metrics with HTTP 400 "model name is missing from the
-                request", so the job would be a permanent up == 0 and would
-                read as the inference server being down.  Name a model from
-                that machine's roles.models.
               '';
             }
           ];
@@ -2279,27 +2264,34 @@ in
                     labels.instance = "qbittorrent";
                   } ];
                 }
-                # M19 — llama-server, replacing the ollama job that never
+                # M19 — the inference stack, replacing the ollama job that never
                 # existed.  Ollama 0.32.3 answered 404 on /metrics, so M13
                 # deliberately shipped three media-stack targets rather than
-                # four; llama-server serves real metrics and this closes it.
+                # four; this closes it.
                 #
-                # `params.model` IS LOAD-BEARING.  In router mode a bare
-                # GET /metrics is HTTP 400 "model name is missing from the
-                # request"; only /metrics?model=<name> returns a body.  Without
-                # it this job would be a permanent up == 0 — the exact failure
-                # shape M13 declined to introduce.
+                # THE TARGET IS llama-swap, NOT llama-server, and that changed
+                # late.  The first cut scraped llama-server's router, whose
+                # /metrics answers HTTP 400 "model name is missing from the
+                # request" unless `params.model` names a model — and then
+                # reports `up == 0` whenever that model's file is absent, which
+                # reads as an outage rather than as "nothing is loaded".  It was
+                # measured at exactly that: up == 0 while the coder model was
+                # still downloading.
                 #
-                # The address is monHostAddr, not a configured one: llama-server
-                # is on ernst itself and binds loopback, so the mon0 proxy on
-                # the host end of this container's own veth is how it is
-                # reached.  See metricsProxy in service-modules/local-ai.nix.
+                # llama-swap serves a plain /metrics with `llamaswap_*` series,
+                # no parameter, up whether or not a model is resident.  That is
+                # the right semantics for "is the inference stack alive", and it
+                # needs no per-model configuration here at all.
+                #
+                # The address is monHostAddr, not a configured one: the stack is
+                # on ernst itself and binds loopback, so the mon0 proxy on the
+                # host end of this container's own veth is how it is reached.
+                # See metricsProxy in service-modules/local-ai.nix.
                 ++ lib.optional settings.localAi.enable {
                   job_name = "llama";
-                  params.model = [ settings.localAi.model ];
                   static_configs = [ {
                     targets = [ "[${monHostAddr}]:${toString ports.llama}" ];
-                    labels.instance = "llama-server";
+                    labels.instance = "llama-swap";
                   } ];
                 }
                 ++ [

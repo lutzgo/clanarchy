@@ -8449,7 +8449,51 @@ Sequential, for the arms outside the interleaved set:
 because f16 at 64k spilled on Ollama; on llama.cpp f16 at 32768 — the window
 ernst declares — fits with 2761 MiB to spare.
 
-### 4. Both layers are needed, and here are the measurements
+### 4b. CORRECTION — the two-layer design does not exist, and §4 is superseded
+
+**Found on the deployed system, 2026-09-09, and §4 below is left standing as the
+record of the reasoning rather than deleted.** The conclusion it reaches is
+wrong, and the way it went wrong is the point.
+
+llama-swap cannot proxy to an externally-managed backend. Its `proxy` field is
+not "forward to this service" — its own documentation calls it *"the URL where
+llama-swap routes API requests"*, meaning where the process it **starts** will
+listen, and `cmd` is mandatory. The first real chat request returned:
+
+```
+HTTP 500 {"src":"llama-swap","error":"unable to get sanitized command: empty command"}
+```
+
+So llama-swap spawns `llama-server` per model, with that model's context and KV
+type on the command line — **and the router is then redundant**. Both of §4's
+arguments for keeping it evaporate rather than being answered: its missing idle
+unload no longer matters because nothing defers to it, and its phantom `default`
+model never exists. llama.cpp's "experimental … not recommended in untrusted
+environments" warning stops applying too.
+
+**§4's facts about the router are all correct. Its conclusion was not, because
+it reasoned about a composition that had never been tested.** Phase 0's
+exclusivity proof used `cmd`-spawned models — the one-layer shape — so the
+evidence had always been for the design that shipped in the end. The two-layer
+write-up ran ahead of the measurement, which is precisely the failure
+[SN3](#sn3--a-broken-instrument-is-indistinguishable-from-a-bad-result) is about,
+seen from a third side: not a broken instrument and not a bad result, but a
+correct measurement generalised to an arrangement it did not cover.
+
+Two consequences worth carrying:
+
+- **The metrics target got simpler.** The router's `/metrics` needs
+  `?model=<name>` and reports `up == 0` when that model's file is absent —
+  observed doing exactly that while the coder model downloaded. llama-swap's own
+  `/metrics` is a plain scrape, `llamaswap_*`, up whether or not a model is
+  resident. The `params.model` plumbing and its assertion are gone.
+- **llama-swap's sandbox is now the models' sandbox.** It forks them, so every
+  ROCm requirement moved onto that unit — including `MemoryDenyWriteExecute =
+  false`, which nixpkgs' module sets to `true`. That scored a ✓ on
+  systemd-analyze while being actively fatal to a ROCm child, which is the kind
+  of green that means nothing.
+
+### 4. Both layers are needed, and here are the measurements *(SUPERSEDED — see 4b)*
 
 **(a) llama-server's router never frees VRAM when idle.** Its only unload path
 is `unload_lru()`, driven solely by `--models-max` being reached

@@ -669,21 +669,19 @@
             navidromeMetricsPasswordFile = "/run/monitoring-secrets/navidrome-metrics-password";
           };
 
-          # M19.  llama-server — THE TARGET M13 WANTED AND COULD NOT HAVE.
+          # M19.  The inference stack — THE TARGET M13 WANTED AND COULD NOT
+          # HAVE.
           #
           # M13 asked for four media-stack targets and shipped three, because
           # ollama 0.32.3 answered 404 on /metrics and a job for it could only
-          # ever be `up == 0`.  llama.cpp serves real metrics, so the fourth
+          # ever be `up == 0`.  llama-swap serves real metrics, so the fourth
           # arrives here instead.
           #
-          # No address: llama-server is on ernst itself and monitoring.nix
-          # already knows how this container reaches the host.  The model name
-          # is required — a bare /metrics on the router is HTTP 400, and the
-          # name must match a key in roles.models above.
-          localAi = {
-            enable = true;
-            model  = "qwen3-coder-30b";
-          };
+          # No address and no model name: the stack is on ernst itself and
+          # monitoring.nix already knows how this container reaches the host,
+          # and llama-swap's /metrics is a plain scrape that is up whether or
+          # not a model is resident.
+          localAi.enable = true;
         };
 
         # ernst is also a client, and the only one carrying the three optional

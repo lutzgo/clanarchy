@@ -12,7 +12,7 @@ the LAN only, and no part of this is exposed to the internet.
 | Component | Package | Role |
 |-----------|---------|------|
 | [llama-swap](https://github.com/mostlygeek/llama-swap) | `pkgs.llama-swap` | Front door on `127.0.0.1:11434`. Owns GPU arbitration and idle unload |
-| [llama.cpp](https://github.com/ggml-org/llama.cpp) | `pkgs.llama-cpp` (ROCm, gfx1100) | `llama-server` in **router mode** on `127.0.0.1:11436`. LLM↔LLM swapping, per-model context |
+| [llama.cpp](https://github.com/ggml-org/llama.cpp) | `pkgs.llama-cpp` (ROCm, gfx1100) | `llama-server`, **spawned per model by llama-swap** on an ephemeral loopback port. No router — see below |
 | [whisper.cpp](https://github.com/ggml-org/whisper.cpp) | `pkgs.whisper-cpp` | `whisper-server` with an OpenAI-shaped `/v1/audio/transcriptions` |
 | [Open WebUI](https://openwebui.com) | `pkgs.open-webui` | Browser client, nspawn container on VLAN 90, behind Traefik + Authelia |
 | ComfyUI | *(podman, opt-in)* | Image generation. No first-party image exists — see below |
@@ -24,7 +24,7 @@ Everything ships in nixpkgs 26.05 — **no external flake input**.
 
 | Role | What it does |
 |------|-------------|
-| `inference` | llama-swap + llama-server router, loopback only. Optionally authorises one restricted key for an SSH forward, and one mon0-only metrics listener |
+| `inference` | llama-swap, loopback only; it spawns `llama-server` per model. Optionally authorises one restricted key for an SSH forward, and one mon0-only metrics listener |
 | `models` | Declarative model set: `{ url, hash, contextLength, kvCacheType }`. Fetched to `/srv/state/local-ai/models` on zdata, hash-verified at every boot |
 | `speech` | Whisper STT, registered as a llama-swap backend |
 | `imagegen` | ComfyUI on the podman tier, exclusive with the LLM on the GPU |
@@ -123,33 +123,60 @@ Two more measurements worth not rediscovering:
   (57.1 tok/s vs ~100) to save 887 MiB. Quantise both or neither — which is why
   `kvCacheType` is one option and not two.
 
-## Why two layers, and not just llama-server's router
+## Why ONE layer — and how that corrected a Phase 0 conclusion
 
-The obvious objection is that llama-server's router already swaps models. Two
-measurements say llama-swap is not redundant.
+**llama-swap spawns `llama-server` per model. There is no router.** That is a
+correction: this module shipped a two-layer design first, and the deployed
+system rejected it on the first real request.
 
-**(a) The router never frees VRAM when idle.** Its only unload path is
-`unload_lru()`, driven solely by `--models-max` being reached. There is no idle
-timeout anywhere in it. So an idle coder model holds 21.8 GiB forever, and a
-**non-LLM** consumer — ComfyUI — can never displace it, because it is not a
-router "model" at all. llama-swap's per-model `ttl` plus an `exclusive` group is
-that missing mechanism.
+### What the two-layer design was, and why it cannot work
 
-**(b) The router advertises a phantom model that recurses.** `/v1/models` on the
-router lists `default` alongside the declared set, built from the router's own
-argv. Requesting it makes the router **spawn a child of itself in router mode**
-and wait forever; the request hangs with no response:
+The plan was `llama-swap → llama-server --models-preset` in router mode, with
+llama-swap owning LLM↔non-LLM exclusion and the router owning LLM↔LLM swapping
+and per-model context. llama-swap entries used `proxy` + `useModelName` and no
+`cmd`. The first chat request returned:
 
 ```
-srv  ensure_model: waiting until model name=default is fully loaded...
-[34753] srv  main: starting router server, no model will be loaded in this process
+HTTP 500 {"src":"llama-swap","error":"unable to get sanitized command: empty command"}
 ```
 
-Clients that pick the first entry from `/v1/models` — several do — hang.
-llama-swap's `/v1/models` is its declared map and nothing else, and an
-undeclared name is a clean 404. llama.cpp itself calls router mode
-*"experimental … not recommended in untrusted environments"*, which is a third
-reason not to make it the front door.
+`proxy` is **not** "forward to this external service". llama-swap's own
+documentation calls it *"the URL where llama-swap routes API requests"* — where
+the process it **starts** will listen — and `cmd` is mandatory
+(`internal/config/config.go` returns `empty command` otherwise). There is no
+externally-managed-backend mode. The `/v1/models` listing worked, which is why
+this survived review: the shape was only wrong on the path that starts a model.
+
+### And the router turned out to be redundant
+
+Once llama-swap spawns `llama-server` itself, each model gets its own `-c`,
+`--cache-type-k/v`, `--jinja` and `--mmproj` on the command line, and both of
+Phase 0's arguments for the router evaporate:
+
+- **Its lack of an idle unload no longer matters.** The router's only unload
+  path is `unload_lru()`, driven solely by `--models-max`; there is no idle
+  timeout in it. That was the case for llama-swap's `ttl` *in front of* it —
+  now nothing defers to it at all.
+- **Its phantom `default` model simply never exists.** In router mode
+  `/v1/models` listed `default` alongside the declared set, built from the
+  router's own argv, and requesting it made the router **spawn a child of
+  itself in router mode** and wait forever — the request hung with no response:
+
+  ```
+  srv  ensure_model: waiting until model name=default is fully loaded...
+  [34753] srv  main: starting router server, no model will be loaded in this process
+  ```
+
+  Confirmed in production before the router was removed: `default` was present
+  on the router's port and absent through llama-swap.
+
+llama.cpp's own warning that router mode is *"experimental … not recommended in
+untrusted environments"* stops applying too. One layer, not two.
+
+**This is the shape Phase 0 actually proved.** The exclusivity measurement below
+used `cmd`-spawned models, not a router — so the evidence was always for the
+one-layer design, and the two-layer write-up was reasoning that ran ahead of
+what had been tested.
 
 ### Proven exclusivity
 
@@ -438,51 +465,16 @@ curl -s localhost:11434/running | jq -c '.running[] | {model, state}'
 # VRAM, without rocm-smi (which is not on ernst's PATH):
 echo $(( $(cat /sys/class/drm/card1/device/mem_info_vram_used) / 1048576 )) MiB
 
-# Metrics — the model name is MANDATORY; a bare /metrics is HTTP 400:
-curl -s 'http://127.0.0.1:11436/metrics?model=qwen3-coder-30b' | head
+# Metrics — llama-swap's own. A plain scrape: no parameter, and up whether or
+# not a model is resident.
+curl -s http://127.0.0.1:11434/metrics | head
 
 # Logs:
-journalctl -u llama-swap -f
-journalctl -u llama-router -f
+journalctl -u llama-swap -f          # includes the spawned llama-server output
 journalctl -u llama-models-fetch     # the fetch/verify oneshot
 ```
 
 ### Troubleshooting
-
-**A request hangs forever with no response** — you asked for `default`. That is
-the router's phantom model and it recurses; ask llama-swap (11434) rather than
-the router (11436), where the entry does not exist.
-
-**`up == 0` on the `llama` Prometheus job** — the scrape is missing
-`?model=<name>`. A bare `/metrics` on the router is HTTP 400 `model name is
-missing from the request`, which presents as the service being down.
-
-**HTTP 500 `model name=<x> failed to load` from `/metrics?model=<x>`** — the
-model's file is missing or incomplete, usually a `.part` still downloading.
-`ls /srv/state/local-ai/models/` and check `llama-models-fetch`. The job is
-legitimately `up == 0` until the file lands, and that is the target doing its
-job rather than a false alarm.
-
-### The metrics scrape does NOT pin the model in VRAM
-
-Worth stating, because the opposite would have been a serious defect: scraping
-`/metrics?model=<x>` **auto-loads the model** in the sense that it starts the
-backend process — so a naive reading says Prometheus would keep a 21.8 GiB model
-permanently resident on a scrape interval, defeating llama-swap's `ttl` and
-fighting the exclusive group on every scrape.
-
-**Measured on ernst 2026-09-09, and it does not:**
-
-```
-scrape 1  HTTP=200  1.401 s      VRAM 411 MiB, flat across 12 one-second samples
-scrape 2  HTTP=200  0.0012 s     VRAM 411 MiB
-router /models afterwards: all three models "unloaded"
-```
-
-The process spins up (1.4 s cold, ~1 ms warm) but **weights are not offloaded to
-the GPU until a completion request arrives**. So the scrape is cheap and does not
-disturb GPU arbitration. Re-check this if the scrape interval is ever shortened
-or llama.cpp changes when it offloads.
 
 **A model 404s that clearly exists on disk** — it is fetched but not declared,
 or declared under a different key than the client asks for. `/v1/models` is the
@@ -494,7 +486,7 @@ after working out which of the two is wrong.
 
 **A newly added model 404s after a deploy** — expected. The fetch is off the
 deploy path (above), so it has not run yet. `systemctl start
-llama-models-fetch`; it restarts the router itself when it completes.
+llama-models-fetch`; it restarts llama-swap itself when it completes.
 
 **`clan machines update` appears to hang on this machine** — check
 `systemctl list-jobs` on ernst before assuming a fault. If

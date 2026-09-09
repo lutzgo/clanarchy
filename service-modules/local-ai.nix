@@ -132,18 +132,13 @@
         '';
       };
 
-      routerPort = lib.mkOption {
-        type        = lib.types.port;
-        default     = 11436;
-        description = ''
-          Loopback port llama-server's router listens on.  llama-swap is its
-          only client; nothing else should ever be pointed here.
-
-          Not 11435 — that is the port the opencode role's SSH forward binds on
-          a CLIENT machine, and reusing the number across the two ends of a
-          tunnel is how somebody eventually debugs the wrong process.
-        '';
-      };
+      # THERE IS NO `routerPort`.  It named the port llama-server's router
+      # listened on, back when this module ran a router and pointed llama-swap
+      # at it.  llama-swap has no externally-managed-backend mode — `cmd` is
+      # mandatory — so it spawns llama-server itself, which made the router
+      # redundant and 11436 unused.  Recorded rather than silently dropped
+      # because docs/roadmap.md §M19 and PHASE0-NOTES.md both describe the
+      # two-layer shape, and this is where it stopped being true.
 
       swapPortRange = lib.mkOption {
         type        = lib.types.port;
@@ -250,7 +245,7 @@
     perInstance = { settings, roles, machine, ... }: {
       nixosModule = { config, pkgs, lib, ... }:
         let
-          inherit (settings) stateDir user port routerPort;
+          inherit (settings) stateDir user port;
           modelsDir = "${stateDir}/models";
 
           # ROCm llama.cpp, built from the flake's OWN nixpkgs — no new input,
@@ -300,29 +295,29 @@
           # not in one global environment variable that a model-tag edit can
           # silently invalidate.
           ####################################################################
-          presetIni = pkgs.writeText "llama-models.ini" (''
-            version = 1
-
-            ; Global defaults.  Anything here is overridden by a model's own
-            ; section.  --jinja is not optional: it is what makes llama.cpp use
-            ; the GGUF's embedded chat template, which for qwen3-coder is the
-            ; template that renders the <tools> block at all.
-            [*]
-            jinja = true
-            flash-attn = on
-            n-gpu-layers = 999
-
-          '' + lib.concatStringsSep "\n" (map (name:
-            let m = declared.${name}; in ''
-              [${name}]
-              model = ${fileOf name}
-              c = ${toString m.contextLength}
-              cache-type-k = ${m.kvCacheType}
-              cache-type-v = ${m.kvCacheType}
-              ${lib.optionalString (m.mmproj != null)
-                "mmproj = ${modelsDir}/${m.mmproj}"}
-              ${lib.concatStringsSep "\n" m.extraArgs}
-            '') modelNames));
+          # One llama-server invocation per declared model.  `${PORT}` is
+          # llama-swap's own macro, escaped here so Nix leaves it alone.
+          #
+          # --jinja is not optional: it is what makes llama.cpp use the GGUF's
+          # embedded chat template, which for qwen3-coder is the template that
+          # renders the <tools> block at all.  -fa on is not cosmetic either —
+          # measured 1667 MiB saved at 32k, unlike on ollama where flash
+          # attention was a measured no-op.
+          llamaCmd = name:
+            let m = declared.${name}; in
+            lib.concatStringsSep " " ([
+              "${llamaCpp}/bin/llama-server"
+              "--host 127.0.0.1 --port \${PORT}"
+              "-m ${fileOf name}"
+              "-c ${toString m.contextLength}"
+              "--cache-type-k ${m.kvCacheType}"
+              "--cache-type-v ${m.kvCacheType}"
+              "-ngl 999 -fa on --jinja"
+              "--alias ${name}"
+              "--metrics"
+            ]
+            ++ lib.optional (m.mmproj != null) "--mmproj ${modelsDir}/${m.mmproj}"
+            ++ m.extraArgs);
 
           ####################################################################
           # llama-swap's config.
@@ -368,16 +363,41 @@
             startPort          = settings.swapPortRange;
 
             models =
-              # Every declared LLM is proxied to the ROUTER, not spawned:
-              # llama-server's router owns LLM<->LLM swapping and per-model
-              # context, and duplicating that here would give two components an
-              # opinion about the same thing.  `proxy` + `useModelName` is
-              # llama-swap's pass-through shape.
+              # ── llama-swap SPAWNS each model. THERE IS NO ROUTER. ──────────
+              #
+              # The first cut of this module ran `llama-server` in ROUTER mode
+              # and pointed llama-swap at it with `proxy` + `useModelName`,
+              # reasoning that the router owns LLM<->LLM swapping and llama-swap
+              # owns LLM<->non-LLM.  THAT IS NOT A SHAPE llama-swap SUPPORTS,
+              # and it failed on the first real request:
+              #
+              #   HTTP 500 {"src":"llama-swap",
+              #     "error":"unable to get sanitized command: empty command"}
+              #
+              # `proxy` is not "forward to this external service".  Its own
+              # documentation calls it "the URL where llama-swap routes API
+              # requests" — i.e. where the process it STARTS will listen, and
+              # `cmd` is mandatory (config.go returns "empty command"
+              # otherwise).  There is no externally-managed-backend mode.
+              #
+              # So llama-swap spawns llama-server per model, with that model's
+              # own context and KV type on the command line. This is exactly the
+              # shape Phase 0's exclusivity proof used, so it is measured rather
+              # than hoped: coder resident 21797 MiB -> other member 19118 MiB
+              # -> coder back at 21797 MiB.
+              #
+              # AND IT MAKES THE ROUTER REDUNDANT, which corrects a Phase 0
+              # conclusion rather than working around it. The two arguments for
+              # the router both evaporate: its lack of an idle unload no longer
+              # matters because nothing defers to it, and its phantom `default`
+              # model — which recursed into a child router and hung the request
+              # — simply never exists. llama.cpp's own warning that router mode
+              # is "experimental ... not recommended in untrusted environments"
+              # stops applying too. One layer, not two.
               lib.listToAttrs (map (name: {
                 inherit name;
                 value = {
-                  proxy         = "http://127.0.0.1:${toString routerPort}";
-                  useModelName  = name;
+                  cmd           = llamaCmd name;
                   ttl           = settings.idleTtl;
                   checkEndpoint = "/health";
                   name          = declared.${name}.description;
@@ -497,141 +517,17 @@
           # wrong kernels for a card that already has correct ones.  The
           # override belongs only on APUs whose target is absent from stock
           # ROCm — miralda's gfx1103 — and this role does not run there.
+          #
+          # THERE IS NO `llama-router` UNIT ANY MORE.  It ran llama-server in
+          # router mode and llama-swap proxied to it; llama-swap cannot do that
+          # (see the `models` note above) and the router turned out to be
+          # redundant once llama-swap spawns each model itself.  Everything the
+          # router unit carried — the ROCm environment, the device access, the
+          # hardening, and the note about what it cannot carry — now lives on
+          # llama-swap, because llama-swap is the process that forks
+          # llama-server and its children inherit that unit's sandbox.
           ##################################################################
-          systemd.services.llama-router = {
-            description = "llama-server (router mode) for ${machine.name}";
-            wantedBy    = [ "multi-user.target" ];
-
-            # ── IT DOES NOT REQUIRE THE FETCH, AND THAT IS THE FIX ──────────
-            #
-            # It used to `requires` + `wants` it.  That put a 25 GiB download on
-            # the ACTIVATION CRITICAL PATH: `clan machines update ernst` sat for
-            # thirteen minutes on the first deploy with no progress output,
-            # which is indistinguishable from a hang — and it is exactly the
-            # failure shape this repo keeps writing notes about, except here the
-            # deploy looked broken while working correctly.  Measured on the
-            # first real deploy, 2026-09-09: llama-models-fetch was the only
-            # running job while multi-user.target and graphical.target waited.
-            #
-            # It cost on EVERY deploy, not just the first: the fetcher re-hashes
-            # the whole model store on each run, which is ~1 minute of blocking
-            # for a store that has not changed.
-            #
-            # The router does not need the models at startup.  It is a ROUTER —
-            # it reads the preset INI, lists the models, and opens no weights
-            # until a request names one (measured: VRAM stays at idle after
-            # start, and only rises on the first chat request).  So a missing
-            # file is a per-request error, not a startup failure, and the
-            # correct dependency is ordering-only.
-            #
-            # NOT EVEN `after`.  The first attempt at this fix kept an ordering
-            # dependency on the fetch, reasoning that it was free because
-            # `After=` does not pull a unit in.  IT IS NOT FREE: `After=` also
-            # applies when the other unit is ALREADY RUNNING, so a deploy that
-            # started while a download was in progress left llama-router
-            # `inactive` with its start job **waiting** — queued behind a
-            # 40-minute download, which is the same blocked deploy the previous
-            # commit set out to fix, reintroduced one line lower down.
-            # Measured on ernst 2026-09-09, twice.
-            #
-            # There is nothing to order.  The router opens no weights at
-            # startup, and llama-models-fetch calls `systemctl try-restart
-            # llama-router` when it completes, which is the only coupling the
-            # two actually need and it points the other way.
-            after = [ "network.target" "local-fs.target" ];
-
-            environment = {
-              ROCR_VISIBLE_DEVICES = "0";
-              HOME                 = stateDir;
-              LLAMA_CACHE          = "${stateDir}/cache";
-            };
-
-            serviceConfig = {
-              ExecStart = lib.concatStringsSep " " [
-                "${llamaCpp}/bin/llama-server"
-                "--host 127.0.0.1"
-                "--port ${toString routerPort}"
-                "--models-preset ${presetIni}"
-                # ONE resident model at a time.  The card holds 24560 MiB and
-                # the coder model alone is 21.8 GiB at 32k; two would spill and
-                # M11 measured what spilling costs.
-                "--models-max 1"
-                "--metrics"
-              ];
-              User       = user;
-              Group      = user;
-              Restart    = "always";
-              RestartSec = "10s";
-
-              # Hardening.  Kept to what a process that mmaps 18 GiB from a
-              # zdata path and talks to /dev/kfd can actually carry.
-              # MemoryDenyWriteExecute is ABSENT ON PURPOSE: the ROCm runtime
-              # JITs GPU kernels and dies under it.  Stated rather than
-              # silently omitted, per the roadmap's hardening note.
-              NoNewPrivileges      = true;
-              PrivateTmp           = true;
-              PrivateDevices       = false;   # needs /dev/kfd + /dev/dri
-              DeviceAllow          = [ "/dev/kfd rw" "/dev/dri rw" ];
-              ProtectSystem        = "strict";
-              ProtectHome          = true;
-              ReadWritePaths       = [ stateDir ];
-              ProtectKernelTunables = true;
-              ProtectKernelModules  = true;
-              ProtectControlGroups  = true;
-              RestrictNamespaces    = true;
-              RestrictSUIDSGID      = true;
-              RestrictRealtime      = true;
-              LockPersonality       = true;
-              RemoveIPC             = true;
-              SystemCallArchitectures = "native";
-              # AF_UNIX for the ROCm/KFD ioctl helpers, AF_INET for the
-              # listener.  No AF_NETLINK, no AF_PACKET.
-              RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" "AF_INET6" ];
-
-              # ── The second pass, after the first deploy scored 6.0 MEDIUM ──
-              #
-              # The settings above are the ones that were obvious; systemd-
-              # analyze scored them at 6.0, against a target of <= 2.0. Almost
-              # all of the remaining cost was two omissions worth 0.1-0.3 each:
-              # no capability bounding set at all, and no system-call filter.
-              # Neither is difficult for this process — it opens a socket, reads
-              # files and talks to /dev/kfd — so they are added rather than
-              # excused.
-              CapabilityBoundingSet = [ "" ];
-              AmbientCapabilities   = [ "" ];
-              SystemCallFilter      = [ "@system-service" "~@resources" "~@privileged" ];
-              SystemCallErrorNumber = "EPERM";
-              ProtectProc           = "invisible";
-              ProcSubset            = "pid";
-              ProtectClock          = true;
-              ProtectHostname       = true;
-              ProtectKernelLogs     = true;
-              UMask                 = "0077";
-              # Loopback only. The listener is 127.0.0.1 and the one remote
-              # thing this process does is nothing at all — models arrive via
-              # llama-models-fetch, not through here.
-              IPAddressDeny         = "any";
-              IPAddressAllow        = [ "localhost" ];
-
-              # ── WHAT IT STILL CANNOT CARRY, AND WHY ───────────────────────
-              #
-              # MemoryDenyWriteExecute — ABSENT DELIBERATELY. The ROCm runtime
-              #   JITs GPU kernels through libamd_comgr, which requires W+X
-              #   mappings. Setting it makes the process die on first GPU use.
-              #   This is the one the roadmap's hardening note says to state
-              #   rather than silently omit.
-              # PrivateDevices / DeviceAllow — /dev/kfd and /dev/dri ARE the
-              #   point of this unit. DeviceAllow above narrows it to those two.
-              # PrivateNetwork — it is a network listener (0.5, the single
-              #   largest remaining item, and irreducible).
-              # PrivateUsers — breaks /dev/kfd access under ROCm.
-              # RootDirectory — no benefit beside ProtectSystem=strict here,
-              #   and it would need the whole ROCm closure re-bound inside.
-            };
-          };
-
-          ##################################################################
-          # llama-swap — the front door.
+          # llama-swap — the front door, and now the only layer.
           ##################################################################
           services.llama-swap = {
             enable = true;
@@ -651,43 +547,75 @@
           };
 
           systemd.services.llama-swap = {
-            after    = [ "llama-router.service" ];
-            wants    = [ "llama-router.service" ];
+            # No ordering on the fetch, for the reason the fetch unit records:
+            # `After=` also applies to an already-running unit, so it would
+            # queue a deploy behind a 25 GiB download.  llama-swap starts fine
+            # with no models on disk; a request for one that is missing fails
+            # per-request, which is the correct granularity.
+
+            environment = {
+              ROCR_VISIBLE_DEVICES = "0";
+              HOME                 = stateDir;
+            };
+
             serviceConfig = {
               User  = lib.mkForce user;
               Group = lib.mkForce user;
-              # llama-swap FORKS THE BACKENDS, so it needs the same device
-              # access they do — whisper-server and any future spawned backend
-              # inherit this unit's namespace.
+
+              # ── llama-swap FORKS llama-server, SO ITS SANDBOX IS THEIRS ────
+              #
+              # This is the consequence of dropping the router: the model
+              # processes are now CHILDREN of this unit and inherit everything
+              # set here.  Every ROCm requirement that used to live on
+              # llama-router has to live here instead, and getting that wrong
+              # would not fail at deploy — it would fail on the first GPU
+              # request, which is much later and much less obvious.
               PrivateDevices = false;
               DeviceAllow    = [ "/dev/kfd rw" "/dev/dri rw" ];
               ReadWritePaths = [ stateDir ];
               NoNewPrivileges = true;
               ProtectHome     = true;
+
+              # THE IMPORTANT ONE.  nixpkgs' llama-swap module sets
+              # MemoryDenyWriteExecute=true — correct for a Go proxy that
+              # spawns nothing, wrong the moment it spawns a ROCm process.
+              # The ROCm runtime JITs GPU kernels through libamd_comgr and
+              # needs W+X mappings; inherited, this kills every model on first
+              # GPU use. It scored a ✓ on systemd-analyze while being actively
+              # harmful, which is exactly the kind of green that means nothing.
+              MemoryDenyWriteExecute = lib.mkForce false;
+
+              # Same reasoning: the module's syscall filter is sized for the
+              # proxy, and the children need the ROCm ioctl surface.
+              # @system-service covers ioctl; the two subtractions are kept
+              # because nothing in this tree legitimately needs them.
+              SystemCallFilter = lib.mkForce [ "@system-service" "~@privileged" ];
             };
           };
 
           ##################################################################
           # The metrics path.
           #
-          # llama-server's /metrics is NOT a plain scrape: on the router it
-          # answers HTTP 400 "model name is missing from the request" unless a
-          # model is named in the query string.  Measured 2026-09-09.  The
-          # matching Prometheus job therefore carries `params.model`; see
-          # service-modules/monitoring.nix.  A plain /metrics job would be a
-          # permanent up == 0, which is exactly the shape M13 refused to add
-          # for ollama.
+          # llama-swap's OWN /metrics, not llama-server's, and dropping the
+          # router made this simpler rather than harder.
+          #
+          # The router's /metrics answered HTTP 400 "model name is missing from
+          # the request" unless a model was named in the query string, so the
+          # Prometheus job needed `params.model` and reported `up == 0` whenever
+          # that model's file was absent.  llama-swap serves a plain /metrics on
+          # its own port: HTTP 200, `llamaswap_*` series, no parameter, and it
+          # is up whether or not any model is loaded — which is the right
+          # semantics for "is the inference stack alive".
           ##################################################################
           systemd.services.llama-metrics-proxy =
             lib.mkIf settings.metricsProxy.enable {
-              description = "Expose llama-server /metrics to the monitoring container over mon0";
-              after       = [ "llama-router.service" ];
-              wants       = [ "llama-router.service" ];
+              description = "Expose llama-swap /metrics to the monitoring container over mon0";
+              after       = [ "llama-swap.service" ];
               wantedBy    = [ "multi-user.target" ];
               serviceConfig = {
                 ExecStart = lib.concatStringsSep " " [
                   "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd"
-                  "127.0.0.1:${toString routerPort}"
+                  "127.0.0.1:${toString port}"
                 ];
                 Restart    = "always";
                 RestartSec = "10s";
@@ -700,7 +628,7 @@
                 RestrictAddressFamilies = [ "AF_INET6" "AF_UNIX" ];
 
                 # Second pass: this scored 7.0 on the first deploy, almost all
-                # of it the same two omissions as llama-router — no capability
+                # of it the same two omissions as llama-swap — no capability
                 # set and no syscall filter.  A socket proxy is the easiest
                 # process on this machine to lock down: it moves bytes between
                 # two file descriptors and needs nothing else.
@@ -738,7 +666,7 @@
                 # A LITERAL ADDRESS, never a wildcard.  This is the whole
                 # containment: the only peer of that /128 is the monitoring
                 # container.
-                ListenStream  = "[${settings.metricsProxy.address}]:${toString routerPort}";
+                ListenStream  = "[${settings.metricsProxy.address}]:${toString port}";
                 BindIPv6Only  = "ipv6-only";
               };
             };
@@ -976,7 +904,7 @@
           ##################################################################
           # ── STARTED BY A TIMER, NOT BY multi-user.target ──────────────────
           #
-          # See the long note on llama-router: as a `wantedBy` unit this put a
+          # See the long note in the inference role: as a `wantedBy` unit this put a
           # 25 GiB download on the activation critical path and made the first
           # deploy look like a hang for thirteen minutes.  A .timer is pulled in
           # by timers.target, and starting a timer completes instantly, so
@@ -1049,7 +977,7 @@
               RestrictSUIDSGID      = true;
               LockPersonality       = true;
               RemoveIPC             = true;
-              # 0077 is safe here even though llama-router reads these files:
+              # 0077 is safe here even though llama-swap and its children read these files:
               # both units run as the same `llama` user, so 0600 is sufficient.
               UMask                 = "0077";
               # NO IPAddressDeny — this is the one unit that legitimately talks
@@ -1124,7 +1052,7 @@
             # the router is deliberately stopped rather than something that
             # starts it behind an operator's back. `-` prefixed so a failure
             # here cannot turn a completed 25 GiB download into a failed unit.
-            postStart = "-${pkgs.systemd}/bin/systemctl try-restart llama-router.service";
+            postStart = "-${pkgs.systemd}/bin/systemctl try-restart llama-swap.service";
           };
         };
     };
