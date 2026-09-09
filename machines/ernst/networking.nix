@@ -327,6 +327,7 @@
   #                       different MAC, which is precisely the
   #                       handed-out-twice failure the old row warned about.
   #   02:00:00:90:00:0e   romm netns rm0            (romm — allocated) 10.0.90.22
+  #   02:00:00:90:00:0f   openwebui container eth0  (M19 — allocated)  10.0.90.23
   #
   #   M18 ADDED NO MAC AND NO ADDRESS, which is worth stating because it is a
   #   milestone that opened the house to the internet.  CrowdSec runs INSIDE
@@ -646,7 +647,7 @@
   #                              cloudflared: a uid was taken by editing the
   #                              RESERVED block while the ALLOCATED block above
   #                              already held it.  Read both halves before
-  #                              picking a number.  Next free is 3034.
+  #                              picking a number.  Next free is 3035 (M19 took 3034 for open-webui).
   #   uid 3031  komga        (containers/arr.nix — group media, READ-ONLY
   #                           against the library.  The group is a WRITE grant
   #                           (2770 root:media) and is taken back per unit with
@@ -671,6 +672,28 @@
   #                           television library would be a grant it could
   #                           never use and an attacker could)
   #   gid 3033  cwa          (containers/cwa.nix)
+  #
+  #   uid 3034  open-webui   (service-modules/local-ai.nix — M19, the web chat
+  #                           client, in an NSPAWN container on VLAN 90.
+  #
+  #                           OWN group 3034, NOT media, and it is not a close
+  #                           call: this service has no business anywhere near
+  #                           the library.  Its whole state is a SQLite
+  #                           database of conversations under
+  #                           /srv/state/open-webui, and its only outbound
+  #                           dependency is llama-swap over a point-to-point
+  #                           veth — not the pool, not the *arr, not /srv/media.
+  #
+  #                           It is browser-only, so it takes forward-auth AND
+  #                           OIDC (the Grafana pattern) rather than either
+  #                           alone.  See roles.webui in local-ai.nix)
+  #   gid 3034  open-webui   (service-modules/local-ai.nix)
+  #
+  #   NEXT FREE IS 3035, and it is spoken for but NOT taken: M19's `imagegen`
+  #   role (ComfyUI, podman tier) is written and unenabled, because there is no
+  #   first-party ComfyUI container image and pinning a community one by digest
+  #   on the machine that fronts the array is an operator decision rather than a
+  #   module default.  Enabling it takes 3035 and a verified digest together.
   #
   #   uid 3026  tvheadend       M8 LANDED 2026-08-27 AND TOOK THIS — moved up
   #                              into the allocated table, as shape (ii): OWN
@@ -700,9 +723,27 @@
   # and the coding agent runs as `lgo` on the CLIENT, not as a service here.
   # M11 changes ernst's attack surface not at all.
   #
-  # PORT NOTE FOR M11, recorded here because it is a FLEET fact and not a
-  # milestone detail: 11434 IS ALREADY TAKEN ON MIRALDA by its own local
-  # ollama.  The tunnel to ernst uses local port 11435:
+  #   *** M19 SUPERSEDES THAT LAST SENTENCE, AND IT MUST NOT BE READ AS STILL
+  #   TRUE.  Ollama is gone from ernst; llama-swap took its place and its port.
+  #   The inference listeners are still loopback-only, and the SSH forward is
+  #   unchanged down to the `permitopen` string — but M19 adds:
+  #
+  #     * a SECOND LISTENER on the mon0 ULA (fdca:fe90::1), a socket proxy that
+  #       lets the monitoring container scrape llama-server's /metrics.  Not on
+  #       any VLAN; the only peer of that /128 is the monitoring container.
+  #     * an nspawn container on VLAN 90 with a MAC, an address and a public
+  #       hostname behind Traefik + Authelia (Open WebUI, below).
+  #
+  #   So M19 DOES change ernst's attack surface, in two named places, and both
+  #   have ledger rows in docs/roadmap.md.  The M11 sentence above is kept as
+  #   the record of what was true then, not as a claim about now. ***
+  #
+  # PORT NOTE, recorded here because it is a FLEET fact and not a milestone
+  # detail: 11434 IS ALREADY TAKEN ON MIRALDA by its own local ollama — which
+  # M19 deliberately did NOT migrate.  The tunnel to ernst uses local port
+  # 11435, and ernst's end is still 11434 because llama-swap took exactly the
+  # port ollama had, precisely so that this note and jens's `permitopen` did
+  # not have to change:
   #
   #     ssh -N -L 11435:127.0.0.1:11434 root@10.0.50.10
   #
@@ -711,7 +752,11 @@
   # 4096 context and gets a plausible, wrong answer.  Check what you are
   # talking to before trusting anything it says:
   #
-  #     curl -s localhost:11435/api/tags | jq -r '.models[].name'
+  #     curl -s localhost:11435/v1/models | jq -r '.data[].id'
+  #
+  # (/v1/models, not /api/tags — the far end is llama-swap since M19 and has no
+  # ollama API.  miralda's LOCAL ollama on 11434 still answers /api/tags, which
+  # is a second way to tell the two apart if the port ever confuses you.)
   #
   #---------------------------------------------------------------------------
   # MAC / ADDRESS RESERVATIONS on VLAN 90.  Far fewer than the uid list,
@@ -737,12 +782,15 @@
   # slskd needed none either, for a different reason: it went into the EXISTING
   # microvm guest, which already has 02:00:00:90:00:03.
   #
-  # Next free sequence number is 0f; next free address is 10.0.90.23 — but 0d
-  # / 10.0.90.21 is ALSO free again since M18 deleted the cloudflared container,
-  # and a reused pair is better than a growing table.  See its row above.
+  # M19 TOOK 0f / 10.0.90.23 for the Open WebUI container — moved up into the
+  # allocated table.  NEXT FREE SEQUENCE NUMBER IS NOW 10; next free address is
+  # 10.0.90.24.
+  #
+  # (0d / 10.0.90.21 was the free-again cloudflared pair and CWA reused it, as
+  # the note below intended.  There is no free gap left in the sequence.)
   # (0e → 10.0.90.22 went to RomM, the podman tier's THIRD occupant.  Note for
   # whoever takes 0f: containers/storyteller.nix's rule about UNIQUE namespace
-  # interface names still binds — `eth0`, `st0` and `rm0` are all taken.)
+  # interface names still binds — `eth0`, `st0` and `rm0` are all taken. M19's Open WebUI is an NSPAWN container, not a podman netns, so it uses plain `eth0` inside its own namespace and adds nothing to that list.)
   # (08/.16 and 09/.17 below are LAPSED reservations, kept as history so the
   # gap in the sequence reads as a decision rather than an oversight.)
   #   02:00:00:90:00:08   tdarr container eth0      (M15 — LAPSED: the
