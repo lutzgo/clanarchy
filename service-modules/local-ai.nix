@@ -571,7 +571,29 @@
               # would not fail at deploy — it would fail on the first GPU
               # request, which is much later and much less obvious.
               PrivateDevices = false;
-              DeviceAllow    = [ "/dev/kfd rw" "/dev/dri rw" ];
+
+              # ── `char-drm`, NOT `/dev/dri` ────────────────────────────────
+              #
+              # /dev/dri is a DIRECTORY, not a device node.  Naming it in
+              # DeviceAllow grants nothing — and because *any* DeviceAllow
+              # entry switches the cgroup to allow-list mode, listing it
+              # DENIED every render node under it.  `char-drm` is the device
+              # group that actually covers /dev/dri/*.
+              #
+              # HOW THIS PRESENTED, because it is the worst kind: the unit
+              # started clean, systemd logged nothing, systemd-analyze scored it
+              # no worse, and llama-server fell back to CPU **silently**.  The
+              # only symptom was 6.7 tok/s instead of ~100 and VRAM that never
+              # moved off idle.  Bisected on ernst 2026-09-09:
+              #
+              #   DeviceAllow=/dev/kfd + /dev/dri   -> no GPU
+              #   DeviceAllow=/dev/kfd + char-drm   -> ROCm0: RX 7900 XTX
+              #
+              # Same shape as MemoryDenyWriteExecute below: a hardening setting
+              # that looks correct, measures as correct, and quietly removes the
+              # entire point of the machine.
+              DeviceAllow    = [ "/dev/kfd rw" "char-drm rw" ];
+
               ReadWritePaths = [ stateDir ];
               NoNewPrivileges = true;
               ProtectHome     = true;
