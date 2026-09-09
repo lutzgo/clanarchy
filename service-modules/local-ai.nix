@@ -459,10 +459,37 @@
                 };
               };
 
-            groups.gpu = {
-              swap      = true;
-              exclusive = true;
-              members   = swapMembers;
+            groups = {
+              # The card. One member resident at a time, and loading one here
+              # evicts anything in another group.
+              gpu = {
+                swap      = true;
+                exclusive = true;
+                members   = swapMembers;
+              };
+            }
+            # ── CPU BACKENDS NEED AN EXPLICIT NON-EXCLUSIVE GROUP ────────────
+            #
+            # Leaving whisper out of `gpu` was meant to stop a CPU workload from
+            # evicting the 18.5 GiB coder model. IT DID THE OPPOSITE, because a
+            # model in no explicit group falls into llama-swap's implicit
+            # `(default)` group — and that group is built with
+            # `Exclusive: true` (internal/config/config.go:562). So an
+            # un-grouped model evicts EVERY other group.
+            #
+            # Measured on ernst 2026-09-09 before the fix: one STT request took
+            # VRAM from 21065 MiB to 402 MiB and unloaded qwen3-coder-30b, so
+            # dictating a sentence cost a full ~15 s model reload — precisely
+            # the cost the exclusion was supposed to avoid.
+            #
+            # `exclusive = false` is the whole fix; `swap = false` lets several
+            # CPU backends coexist if more are ever added.
+            // lib.optionalAttrs speechEnabled {
+              cpu = {
+                swap      = false;
+                exclusive = false;
+                members   = [ "whisper" ];
+              };
             };
           };
 
