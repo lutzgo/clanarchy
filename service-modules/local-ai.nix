@@ -632,14 +632,30 @@
           systemd.services.llama-metrics-proxy =
             lib.mkIf settings.metricsProxy.enable {
               description = "Expose llama-swap /metrics to the monitoring container over mon0";
-              after       = [ "llama-swap.service" ];
-              wantedBy    = [ "multi-user.target" ];
+              after       = [ "llama-swap.service" "llama-metrics-proxy.socket" ];
+
+              # ── SOCKET-ACTIVATED: NO `wantedBy`, and that is load-bearing ──
+              #
+              # It had `wantedBy = multi-user.target` and `Restart = always`,
+              # which makes systemd start it DIRECTLY — without the listening
+              # file descriptor the .socket unit exists to hand it:
+              #
+              #   systemd-socket-proxyd: Didn't get any sockets passed in.
+              #   status=1/FAILURE  (then restart, forever)
+              #
+              # The socket unit is what pulls this in, on the first connection.
+              requires = [ "llama-metrics-proxy.socket" ];
+
               serviceConfig = {
                 ExecStart = lib.concatStringsSep " " [
                   "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd"
                   "127.0.0.1:${toString port}"
                 ];
-                Restart    = "always";
+                # on-failure, not always: with socket activation the socket
+                # unit restarts this on the next connection, and `always`
+                # combined with a wantedBy is what produced the restart loop
+                # above.
+                Restart    = "on-failure";
                 RestartSec = "10s";
                 DynamicUser = true;
                 NoNewPrivileges = true;
@@ -647,7 +663,21 @@
                 ProtectSystem   = "strict";
                 ProtectHome     = true;
                 MemoryDenyWriteExecute = true;
-                RestrictAddressFamilies = [ "AF_INET6" "AF_UNIX" ];
+
+                # ── AF_INET IS REQUIRED, and its absence was silent ───────────
+                #
+                # The LISTENING socket is AF_INET6 (the mon0 ULA) and is created
+                # by the .socket unit, i.e. by systemd — but this process has to
+                # DIAL 127.0.0.1, which is AF_INET. Without it:
+                #
+                #   systemd-socket-proxyd: Failed to get remote socket:
+                #     Address family not supported by protocol
+                #
+                # and every scrape times out. RestrictAddressFamilies gates the
+                # socket() call, so the family of the *upstream* matters as much
+                # as the family of the listener — easy to miss when the listener
+                # is the one you wrote down.
+                RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
 
                 # Second pass: this scored 7.0 on the first deploy, almost all
                 # of it the same two omissions as llama-swap — no capability
