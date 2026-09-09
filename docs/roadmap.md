@@ -63,7 +63,9 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M16 — external ingress | **superseded 2026-09-03 by [M18](#m18-featernst-wan-ingress-direct)** — the tunnel is deleted; the two externally reachable hostnames and the auth posture are unchanged, only the mechanism | — | **(B) won — Cloudflare Tunnel**, on the fail-closed argument its brief predicted: the tunnel's ingress list names its hostnames, so `sonarr.goclan.org` and the rest are not refused from outside, they are **not there**. cloudflared runs in its **own nspawn container** (`10.0.90.21`, uid 3029, MAC `…:0d`) — microvm argued and rejected — with an **egress firewall** admitting only Traefik `:443` and Technitium `:53` on RFC1918, so a compromised tunnel can reach on the LAN exactly what the internet already reaches through it. **One premise did not survive implementation**: the test plan listed `auth.goclan.org` among the must-be-unreachable names, but forward-auth is a redirect protocol — **the portal must ride the tunnel or no external login can complete**; the corrected test plan is in the PR. The jellyseerr router **gains `authelia`** (both paths — a ClientIP split fails open, and an XFF-based bypass trusts the header this milestone exists to distrust); a `household` group + **sabine's account** make that survivable for non-admins. **Wizarr evaluated and dropped**: the accounts created numbered one. SN2 untriggered — the tunnel is outbound-only. Depends on M13. [M16](#m16-featernst-external-ingress) |
 | M17 — ebook acquisition | **done — deployed and operator-confirmed 2026-08-31; both owed verifications PASSED** | — | **Bindery v1.33.2 lands exactly as surveyed**: uid 3028 in the arr container, static Go binary from the upstream tarball (checksum verified against upstream's own `checksums.txt`), hardened unit written whole with all four M14 deploy-defect classes answered in place — including **one new trap found by running the binary: `BINDERY_DB_PATH` does not follow `BINDERY_DATA_DIR`**, so both are pinned or first start dies on `mkdir /config`. **The M14-era "Usenet-oriented, poor fit" note is resolved**: upstream's repo *description* still says SABnzbd — the stale artifact — while the README and settings at v1.33.2 carry qBittorrent/Transmission/Deluge/rTorrent and Torznab; the M17 survey re-checked and is right. Binds `0.0.0.0` (measured), so the container firewall is load-bearing, questarr-style. **Prowlarr wiring goes the Questarr way**: Bindery *consumes* Torznab feeds, it is not a Prowlarr application. Traefik router behind `authelia` + `protectedHosts` entry. `MemoryDenyWriteExecute = true` — the first unit in the arr container that can carry it (Go, no JIT). **Audiobook capability deliberately unrouted**: that pipeline belongs to Audiobookshelf + Storyteller. **Both owed verifications passed on deploy day**: the uid-3028 hardlink proof (same inode, link count 2) **with its negative control** (0644 file owned by uid 3017 refused `EPERM`, `fs.protected_hardlinks` confirmed enabled first), and `systemd-analyze security bindery` at **1.5 OK** — level with kapowarr/questarr, against the 9.0 UNSAFE lidarr and audiobookshelf shipped as. The firewall was confirmed load-bearing: `10.0.90.13:8787` times out from the LAN while the Traefik name redirects to Authelia. **One deploy-day defect, and it was in the manual steps rather than the code**: they omitted the Technitium record, which the roadmap requires for every new Traefik hostname *before anyone types the name* — the name was typed first, the NXDOMAIN cached, and `ERR_NAME_NOT_RESOLVED` survived the record's creation until `resolvectl flush-caches`. **The ABS integration was wired after the fact and stays read-only by enforcement**: `/srv/audiobooks` is mounted `ro` in Bindery's namespace (measured), so it catalogues but cannot move, rename or delete — letting it *acquire* audiobooks remains the thing to avoid. Depends on M14. [M17](#m17-featernst-bindery) |
 | M18 — WAN ingress, direct | **built 2026-09-03 — the deploy, the UDM-Pro forward, the public A records, the reboot and the off-net negative controls are lgo's** | — | **Cloudflare is gone.** lgo's decision: no VPS, no VPN, no third party in the data path. WAN `:443` DNATs to `10.0.90.12:8443` and terminates at Traefik; `containers/cloudflared.nix` is deleted. **The property M16 bought is reproduced with a SECOND ENTRYPOINT, not asserted**: `websecure` stays LAN-only with every pre-existing router untouched, `wan` is a new listener, and a router is internet-reachable iff it names `wan` — so creating a route does not expose it. **The central premise was TESTED ON A SCRATCH TRAEFIK BEFORE ANY CONFIG WAS WRITTEN, and it came back with a correction that changed the design**: a `websecure`-only router is genuinely unmatched on `wan` (404, no backend contact, against a 502 control) — but **a router that OMITS `entryPoints` is bound to EVERY entrypoint**, which is M16's fail-open objection reborn inside the replacement. Closed with `withWan`, an **evaluation-time throw** whose three branches were each verified to fire. Forgetting is a build failure. **RE-PROVEN ON THE DEPLOYED SYSTEM 2026-09-07 with a positive control**: from a phone on mobile 5G, `jellyfin.goclan.org` on `wan` returned `RouterName null` / 404 while the same hostname on `websecure` three minutes earlier matched `jellyfin@file` / 200. Not matched-then-refused — **not there**, which is precisely what M16's ingress list bought. `jellyfin` was chosen because it carries a permanent forward-auth bypass, so a leak there would have been unauthenticated. **Weaker than the tunnel in exactly one measured way, stated rather than smoothed**: a request to the bare public IP completes TLS and gets `404` + `CN=TRAEFIK DEFAULT CERT` — existence disclosure, not exposure. **CrowdSec runs INSIDE the Traefik netns**, because `br_netfilter` is not loaded on ernst (measured) so the host's netfilter never sees the DNATed frames at all — a bouncer anywhere else would drop nothing. **It ships in SIMULATION until Q2 is confirmed**: if the UDM-Pro SNATs, the first scanner gets the gateway banned and the house loses Jellyseerr. **nixpkgs' crowdsec modules were booted in a throwaway VM six times before the real config was written, and FOUR upstream defects fell out** — an agent that crash-loops forever on a first boot while `list-units --failed` stays EMPTY, a bouncer registration that can never succeed, `Restart=no` on both remediation units, and `DynamicUser` migrating a bind-mounted state directory. The ordering bug the brief predicted is **already fixed** in this channel. **SN2 is decided, not deferred**: (a) v4-only, with a mechanism — and **the first mechanism claimed was measured FALSE on deploy day and replaced**: every entryPoint was written `0.0.0.0:` and every one of them was still accepting v6, because Go opens AF_INET6 with `IPV6_V6ONLY=0` for any wildcard listen. The replacement mechanism was **also** wrong and was corrected a second time on deploy day: `disable_ipv6` does not make Go fall back to AF_INET, so the listeners are dual-stack and stay dual-stack. The *third* attempt — `disable_ipv6` on `all`+`default`+`eth0` — was wrong too and was deployed twice before being caught: systemd-sysctl runs before `eth0` exists so the per-interface key is skipped, **and** systemd-networkd writes `disable_ipv6 = 0` on every link it configures. **What works is one line the repo already had**: `LinkLocalAddressing = "no"` on the container's `10-eth0` unit, the same pair `networking.nix` and the `br0` port have carried all along — the container had only `IPv6AcceptRA`, which blocks an RA but not link-local assignment. **Proven by `ip -6 addr show dev eth0` returning nothing and `ip -6 route show` being empty**, not by `ss` and not by a bare `ip -6 addr show`; plus no v6 forward and no `crowdsec6` table. The residual weakness SN2 named — nothing watches for an unexpected GUA — is closed by **`UnexpectedIPv6GlobalAddress`**, ernst-only because the laptops roam. **One alert, `ExposedAndUnprotected`** — not "many bans", because a busy ban list is the system working and the silent failure is the house being open with nothing watching. **SN3 SATISFIED BY PRODUCTION TRAFFIC, NOT A STAGED PROBE**: within hours of arming, `crowdsecurity/http-probing` and `http-crawl-non_statics` banned three real scanners, and two were observed as live elements of `nft list set ip crowdsec crowdsec-blacklists` — log → parser → scenario → decision → LAPI → bouncer → kernel, unattended. The fast proof is a direct consequence of `casago.xyz` (a previous holder of this IPv4 still points service-shaped names at it), so the quirk that makes a busy ban list normal here is the quirk that supplied the evidence. **Two marginal claims stay UNVERIFIED by choice**: that the drop times out rather than refuses, and that `cscli decisions delete` clears the set element — both need lgo's own machine banned from the two public names, and he declined on 2026-09-08 rather than take a self-inflicted outage for a chain already proven. Depends on M5, M7, M16, M17. [M18](#m18-featernst-wan-ingress-direct) |
-| M19 — llama.cpp on ernst | **built 2026-09-09 — Phase 0 passed its gate; the deploy, the Technitium record and `clan vars generate` are lgo's** | — | **Ollama is gone from ernst**, replaced by llama-swap in front of `llama-server` in router mode. Taken on measurement, not preference: context overflow stops being silent (**HTTP 400 naming both numbers**, where ollama returned HTTP 200 with the head of the prompt discarded and a **fabricated MAC** in its place), which closes [SN1](#sn1--the-model-tag-silently-sets-the-context-window)'s core hazard at the mechanism. Decode −3.1% at f16; **`q8_0` lost its reason to exist** and the fleet default reverts to f16. The `<tool_call>` reinforcement **stays** — llama.cpp's independent Jinja parser fails identically (26/30 dropped-tag at baseline, **zero** "present but unparsed" in eight cells across both servers), so the defect is the model's and the four-line rule is still 100%. Adds voice (whisper.cpp, **CPU — a measured packaging gap**), vision, and Open WebUI on VLAN 90 behind Traefik + Authelia. `imagegen` is **written and not enabled**: no first-party ComfyUI image exists. **M19 changes ernst's attack surface in two named places** (L9, L10) — unlike M11, which changed it not at all. [M19](#m19-featernst-local-ai-llamacpp) |
+| M19 — llama.cpp on ernst | **DEPLOYED AND FULLY VERIFIED 2026-09-09** | — | **Ollama is gone from ernst**, replaced by llama-swap in front of `llama-server` in router mode. Taken on measurement, not preference: context overflow stops being silent (**HTTP 400 naming both numbers**, where ollama returned HTTP 200 with the head of the prompt discarded and a **fabricated MAC** in its place), which closes [SN1](#sn1--the-model-tag-silently-sets-the-context-window)'s core hazard at the mechanism. Decode −3.1% at f16; **`q8_0` lost its reason to exist** and the fleet default reverts to f16. The `<tool_call>` reinforcement **stays** — llama.cpp's independent Jinja parser fails identically (26/30 dropped-tag at baseline, **zero** "present but unparsed" in eight cells across both servers), so the defect is the model's and the four-line rule is still 100%. Adds voice (whisper.cpp, **CPU — a measured packaging gap**), vision, and Open WebUI on VLAN 90 behind Traefik + Authelia. `imagegen` is **written and not enabled**: no first-party ComfyUI image exists. **M19 changes ernst's attack surface in two named places** (L9, L10) — unlike M11, which changed it not at all. [M19](#m19-featernst-local-ai-llamacpp) |
+| M20 — SearXNG / web search | **open — requested 2026-09-09** | — | Straight out of using M19: asked to *"do a web research… rate your sources"*, the model answered from weights and cited nothing, because **the stack has no internet access by design**. M19 proved tool calling at **20/20**, so the model can reliably call a search tool — the missing half is something to call. **The milestone is about the TIER, not the packaging**: SearXNG would be the first service here to talk to the open internet *on its own behalf*, which [invariant #1](#architecture-invariants) says moves a service up a tier. nspawn / podman / microvm must be argued, not inherited. Also open: whether the LLM gets the tool or Open WebUI runs the search itself, and what SearXNG's egress may reach. [M20](#m20-featernst-searxng) |
+| M21 — image generation | **open — requested 2026-09-09; the Nix already exists** | — | `roles.imagegen` shipped **written and unenabled** in M19: podman tier, `/dev/kfd` + `/dev/dri`, state on zdata, registered as a llama-swap backend, and an assertion refusing any image not pinned by digest. **The GPU arbitration is already proven** (M19 measured evict-and-reload at 21022 → 8288 → 21022 MiB), so this is not a build — it is **two decisions**. (1) There is **no first-party ComfyUI image**, so enabling it means pinning a community build by digest on the box that fronts the array, with `/dev/kfd`; the alternative is a hand-rolled derivation per the M12/M14 pattern, and "do not ship it" is a legitimate third outcome (M15's precedent). (2) The checkpoint weights go on zdata via **`roles.models`, reused not reinvented** — it already carries `servedByLlama = false` for exactly this. uid 3035 and seq 10 are a shared claim with [M20](#m20-featernst-searxng). [M21](#m21-featernst-imagegen) |
 
 ---
 
@@ -8315,9 +8317,10 @@ unproven claim and a false one.
 
 ## M19 — `feat/ernst-local-ai-llamacpp`
 
-**Status: built 2026-09-09. Phase 0 passed its gate.** The deploy, the
-Technitium record, `clan vars generate ernst` and the post-deploy proofs are
-lgo's — see [manual steps](#m19-manual-steps--lgos-and-required-before-the-deploy).
+**Status: DEPLOYED AND FULLY VERIFIED on ernst, 2026-09-09.** Phase 0 passed
+its gate; the deploy then found seven defects that no amount of reading the diff
+would have caught, and every proof the milestone owed is now green on the
+running system — see [7d](#7d-the-deployed-system-fully-verified--and-seven-defects-the-deploy-found).
 
 **Goal.** Replace Ollama on ernst with a llama.cpp stack that serves the same
 clients over the same OpenAI-compatible surface, manages model swapping
@@ -8675,6 +8678,52 @@ across twelve one-second samples, with all models reported `unloaded`
 afterwards. Weights are not offloaded to the GPU until a completion request
 arrives, so the scrape does not disturb GPU arbitration.
 
+### 7d. The deployed system, fully verified — and seven defects the deploy found
+
+**Every proof this milestone owed is now green on ernst**, 2026-09-09:
+
+| Proof | Result |
+|---|---|
+| tool calls, deployed stack | baseline 3/10 and 5/10 → **reinforced 20/20**, all failures `XML_NO_OPEN`, zero `XML_OPEN` |
+| decode, deployed model | **109 / 110 / 109 tok/s** at 21026 MiB (Phase 0 predicted 107.5) |
+| exclusivity, real models | coder 21022 MiB → vision evicts to 8288 → coder back to 21022; one member in `/running` throughout |
+| vision-in | a real photograph through Open WebUI, described correctly, answered by the VL model and not the coder |
+| STT | correct transcription, and **the coder stays resident** (21021 MiB before and after) |
+| `/v1/models` | exactly the two chat models; whisper hidden |
+| Prometheus | `up{job="llama"} == 1`, `llamaswap_cpu_util_percent{core="0"}` read live |
+| container firewall | `HTTP=000 exit=28` from VLAN 90 |
+| `systemd-analyze` | llama-swap **1.5 OK**, the bridges hardened to match |
+
+**Nothing about that was found by reading the diff.** Seven defects surfaced
+only by exercising the deployed system, and they share a shape worth naming:
+
+| Symptom | Actual cause |
+|---|---|
+| deploy hung 13 min | 25 GiB fetch on the activation critical path |
+| 8.8 GiB re-downloaded | no `--continue-at` |
+| `start-limit-hit` | `listenAddress` given a host:port pair |
+| deploy hung again | `After=` also applies to an already-running unit |
+| 502 Bad Gateway | `DynamicUser` + `StateDirectory` + bind mount |
+| "email or password incorrect" | PKCE required by the issuer, not sent by the client |
+| **6.7 tok/s, VRAM never moved** | **`DeviceAllow=/dev/dri` — a directory, not a device node** |
+| **"No models available"** | **nothing listening on the webui container's veth** |
+
+**Two of those are the ones to remember, because they measured as correct.**
+`MemoryDenyWriteExecute=true` and `DeviceAllow=/dev/dri` both scored a ✓ (or no
+worse) on `systemd-analyze` while being, respectively, fatal to a ROCm child and
+sufficient to deny the GPU entirely. The only evidence in either case was a 15x
+throughput gap and idle VRAM. **Hardening that scores well and removes the point
+of the machine is the exact inverse of
+[SN3](#sn3--a-broken-instrument-is-indistinguishable-from-a-bad-result): not a
+broken instrument reporting a bad result, but a healthy instrument reporting a
+good one about a system that is not doing its job.**
+
+And one epistemic error worth recording plainly: `up{job="llama"} == 0` was
+reported as "correct for now, the model is still downloading". That was **one**
+of three causes; the metrics proxy had never worked at any point. A metric
+reading zero for an expected reason is precisely when a second, unexpected
+reason hides.
+
 ### 8. Left for later, explicitly
 
 - **miralda is out of scope and stays on Ollama.** Its gfx1103 iGPU running a 7B
@@ -8684,6 +8733,36 @@ arrives, so the scrape does not disturb GPU arbitration.
   live on that machine.
 - **`imagegen` needs a verified digest** before it can be enabled.
 - **Whisper on the GPU** if nixpkgs' whisper-cpp gains a loadable HIP backend.
+
+- **Switching models mid-conversation with an image in the history fails**, and
+  it is correct behaviour rather than a defect. `qwen3-coder-30b` has no vision
+  tower, Open WebUI resends the whole history including the image, and
+  llama.cpp answers *"image input is not supported — hint: if this is
+  unexpected, you may need to provide the mmproj"*. The hint is generic and
+  misleading here: no projector would help, because the weights cannot see.
+  Start a new chat when switching to the coder. Nothing in this repo can fix
+  it — it is Open WebUI replaying multimodal history to a text-only model.
+
+- **There is no web access, and therefore no research.** Asked to "do a web
+  research", the model answers from weights alone and cites nothing. Open WebUI
+  supports web search, but wiring it means a search backend (SearXNG being the
+  self-hosted candidate) AND a decision under
+  [invariant #1](#architecture-invariants): *"a service moves up a tier when it
+  starts talking to the internet on its own behalf"*. That is a milestone, not a
+  toggle — and it composes with the tool calling this one proved at 20/20.
+
+- **An Android client is a `protectedHosts` question, not an app question.**
+  `chat.goclan.org` carries forward-auth, and
+  [containers/ingress-policy.nix](../machines/ernst/containers/ingress-policy.nix)
+  states the test: a native client cannot render a login page or follow a 302,
+  so forward-auth breaks it. Open WebUI is a PWA and works today because a
+  browser can. A native app would need the host moved to `appApiHosts` — leaving
+  Open WebUI's own accounts as the entire boundary — which is a decision to
+  argue for, not to slide in. **Home Assistant is the better path anyway**: HA
+  2026.8 ships a native `llama.cpp` integration taking an OpenAI-compatible base
+  URL, the companion app can take Android's assistant role (Google Assistant was
+  retired 2026-09-04), and HA reaches llama-swap over the LAN as a third
+  `exposeOn` bridge rather than through the proxied hostname.
 
 ### M19 manual steps — lgo's, and required BEFORE the deploy
 
@@ -8768,6 +8847,210 @@ curl -m 5 http://10.0.90.23:8080/    # expect timeout
 `/srv/state/local-ai/models` and `/srv/state/open-webui` have never been tested
 against a real rollback, and the model store is 25 GiB that must not need
 re-fetching.
+
+---
+
+## M20 — `feat/ernst-searxng`
+
+**Status: open — requested 2026-09-09 by lgo, straight out of using
+[M19](#m19-featernst-local-ai-llamacpp).**
+
+**Goal.** Give the local AI stack the ability to *look things up*, by adding a
+self-hosted SearXNG and wiring Open WebUI's web search to it.
+
+**Depends on.** M5 (Traefik), M7 (Authelia), M19. **Risk.** Moderate, and it is
+**not** in the packaging — it is in [invariant #1](#architecture-invariants).
+
+### Why this milestone exists, in one screenshot
+
+M19's first real conversation asked the model to *"do a web research: how safe is
+it to add a vitamin D source… Rate your sources."* It answered from weights
+alone and cited nothing, because **this stack has no internet access at all** —
+by design. That is the correct behaviour of what was built and the wrong
+behaviour for the question, and the gap is worth closing deliberately rather
+than by pointing the model at an API key.
+
+The timing is good: M19 proved tool calling at **20/20 with the `<tool_call>`
+reinforcement**, so the model can reliably *call* a search tool. The missing
+half is something to call.
+
+### The decision this milestone is actually about
+
+**SearXNG is the first service in this fleet that talks to the open internet on
+its own behalf, outbound, on behalf of a household user's typed query.**
+Invariant #1 says a service moves *up* a tier when it does that. So the tier is
+the milestone's central question, not a detail:
+
+- **nspawn** — where every trusted, storage-heavy service lives. Cheapest to
+  build, consistent with Jellyfin/arr/Traefik/Authelia/monitoring, and the
+  weakest containment.
+- **podman** — the escape hatch, and SearXNG's upstream distribution is an image.
+- **microvm** — its own kernel, which is what M3's VPN guest got *precisely
+  because* it is internet-facing. SearXNG's threat model is different from
+  qBittorrent's (it fetches HTML from arbitrary search engines rather than
+  peering with strangers), but it is the same direction of travel.
+
+**Argue it explicitly. Do not inherit the nspawn default because everything
+else is nspawn.**
+
+### What must be decided, not assumed
+
+- **Does the LLM get the search tool, or does Open WebUI?** Open WebUI's own web
+  search runs the query itself and injects results as context — no tool call
+  needed, and the model never chooses to search. A tool-calling design lets the
+  model decide, which is more capable and more surface. M19 measured the tool
+  path at 100% *with* the reinforcement; that is an argument it would work, not
+  that it should be used.
+- **Egress.** SearXNG must reach the internet; nothing else in the M19 stack
+  does. Whether that egress is unrestricted, proxied, or forced through the
+  existing wg-qbittorrent guest is a real choice with a real answer.
+- **Who can query it.** If it gets a hostname, it is `protectedHosts` — it is a
+  browser-only UI. If only Open WebUI ever talks to it, it needs no hostname at
+  all, which is strictly better and should be the default position.
+- **Rate limits and identification.** A search proxy that upstream engines
+  fingerprint as a bot gets blocked; SearXNG's engine set and its
+  `limiter`/`botdetection` settings are configuration with operational
+  consequences, not defaults to accept.
+
+### Ports, uid and address
+
+**Nothing is allocated yet, deliberately** — the tier decides whether it needs a
+MAC and an address at all. If it does, the tables in
+[machines/ernst/networking.nix](../machines/ernst/networking.nix) say the next
+free sequence number is **10** (→ `10.0.90.24`) and the next free uid is
+**3035** — which `imagegen` is also holding a claim on, so whichever lands first
+takes it and updates the table.
+
+If it needs to reach llama-swap (it should not — the traffic goes the other
+way), that is a third `exposeOn` entry in `clan.nix`, not a new mechanism.
+
+### What NOT to do
+
+- **No hosted search API.** The point of this fleet is that nothing leaves the
+  house that does not have to; swapping "no search" for "every query to a
+  third party with an API key" would invert the milestone.
+- **Do not put SearXNG behind the same forward-auth Open WebUI uses and then
+  have Open WebUI call it.** Machine-to-machine traffic through a login portal
+  is the RomM 403 in a new costume — see
+  [containers/ingress-policy.nix](../machines/ernst/containers/ingress-policy.nix).
+
+### Verification it will owe
+
+- A query typed in Open WebUI that returns results **with sources**, and the
+  same query answered without search, side by side.
+- `curl` from a VLAN 90 host that is not the permitted client: **times out**.
+- SearXNG's own outbound path confirmed — which interface, which address, and
+  whether it can reach anything on the LAN it should not (it should reach
+  nothing).
+- `systemd-analyze security` on whatever units it adds, at the tier chosen.
+- The M19 question repeated: *"How safe is it to add a vitamin D source to the
+  table? Rate your sources."* — and the sources actually checked.
+
+---
+
+## M21 — `feat/ernst-imagegen`
+
+**Status: open — requested 2026-09-09 by lgo. The Nix already exists.**
+
+**Goal.** Turn on image generation in the local AI stack: ComfyUI on the podman
+tier, arbitrated against the LLM on the one GPU, reachable from Open WebUI.
+
+**Depends on.** [M19](#m19-featernst-local-ai-llamacpp). **Risk.** Low in the
+code and concentrated in exactly two places, both of which are decisions rather
+than work.
+
+### What is already done, so this milestone does not redo it
+
+`roles.imagegen` shipped **written and deliberately unenabled** in M19
+(`service-modules/local-ai.nix`). It already has: the podman-tier container with
+`/dev/kfd` and `/dev/dri`, state on zdata under `/srv/state/comfyui`, loopback
+binding, registration as a llama-swap backend, and an assertion that refuses any
+`image` reference not pinned by digest.
+
+**The GPU arbitration it needs is proven, not hypothetical.** M19 measured the
+exclusive group evicting and reloading on demand:
+
+```
+14:22:55  VRAM=21022 MiB  coder resident
+14:22:58  VRAM= 8288 MiB  other member -> coder EVICTED
+14:23:02  VRAM=21022 MiB  coder back
+```
+
+Adding ComfyUI to `swapMembers` is one line, and it makes it a third member of
+that group. The 24 GiB card cannot hold the 30B and a diffusion model together;
+that is the whole reason the group exists.
+
+### Blocker 1 — there is no first-party ComfyUI image, and that is the milestone
+
+Checked 2026-09-09: ComfyUI publishes no official container image. Every
+candidate is a community build. So enabling this means **pinning a third-party
+image by digest on the machine that fronts the NAS array, and handing it
+`/dev/kfd`** — which is a trust decision an operator makes explicitly, and is
+exactly why the role has no default `image` and asserts on `@sha256:`.
+
+Options, to be argued rather than defaulted:
+
+- **Pin a community image by digest.** Fastest. Inherits whatever that build
+  contains, forever, until someone re-pins.
+- **Build it.** ComfyUI is Python; the M12/M14 hand-rolled-derivation pattern
+  applies, and nixpkgs has the ROCm PyTorch stack. Much more work, no opaque
+  blob, and it stops being the podman tier's fourth occupant.
+- **Do not ship it.** A legitimate outcome, and M15 is the precedent — that
+  milestone closed on a measurement rather than shipping.
+
+**`skopeo inspect docker://<ref> | jq -r .Digest` before anything is written
+down.** M19 verified four model URLs and hashes that way and this repo has
+shipped a nonexistent model reference twice.
+
+### Blocker 2 — the weights, and where they live
+
+Diffusion checkpoints are GiB-scale and belong on zdata under
+`/srv/state/comfyui/models`, never in the store and never on `zroot`
+([invariant #7](#architecture-invariants)).
+
+**Reuse `roles.models`, do not invent a second fetcher.** M19's model role is
+already a `{url, hash, filename}` attrset with a hash-verifying, resumable
+oneshot, and it already carries `servedByLlama = false` for exactly this case —
+weights the GPU tier loads that `llama-server` does not. A checkpoint is that
+same shape. A second download mechanism would be two sources of truth for "what
+is on disk".
+
+Which checkpoint is an open question with a VRAM answer: SDXL and Flux have very
+different footprints, and whatever is chosen has to coexist — by eviction, not
+concurrently — with a 21 GiB coder model.
+
+### Wiring, which is already written
+
+Open WebUI's side is three env vars the `webui` role sets from one option:
+`ENABLE_IMAGE_GENERATION`, `IMAGE_GENERATION_ENGINE = "comfyui"`,
+`COMFYUI_BASE_URL`. Setting `roles.webui…imageUrl` is the whole client change,
+and it points at the **same `exposeOn` bridge** chat and STT already use — no
+new listener, no new firewall rule.
+
+### uid and address
+
+uid **3035** is reserved for it in
+[machines/ernst/networking.nix](../machines/ernst/networking.nix) — shared claim
+with [M20](#m20-featernst-searxng), so whichever lands first takes it and
+updates the table. Podman-tier occupants get a netns, a MAC and an address of
+their own; next free sequence number is **10** (→ `10.0.90.24`). Note
+`containers/storyteller.nix`'s rule: namespace interface names must be unique,
+and `eth0`, `st0` and `rm0` are taken.
+
+### Verification it will owe
+
+- **The exclusivity proof M19 could not finish**: LLM resident by `rocm-smi`
+  (or amdgpu sysfs) → image request → **LLM evicted, image produced** → chat
+  request → **LLM back**, with timestamps. M19 proved the mechanism with a
+  stand-in; this proves it with the real second claimant.
+- An image generated **from Open WebUI**, not from ComfyUI's own UI.
+- `curl` to ComfyUI's port from a VLAN 90 host that is not permitted: times out.
+- `systemd-analyze security` on the podman unit, with what it cannot carry
+  stated — it will not carry `MemoryDenyWriteExecute` for the same ROCm-JIT
+  reason M19 records, and that is worth writing down again rather than
+  rediscovering.
+- Swap latency measured, since the LLM↔image round trip is now the interactive
+  cost a user actually feels.
 
 ---
 
