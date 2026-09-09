@@ -1675,11 +1675,88 @@
       imageUrl = lib.mkOption {
         type    = lib.types.nullOr lib.types.str;
         default = null;
-        description = "ComfyUI base URL. Null disables image generation.";
+        description = ''
+          ComfyUI base URL. Null disables image generation.
+
+          For llama-swap this must carry the `/upstream/<model>` prefix —
+          Open WebUI speaks ComfyUI's own API, which has no model name in it
+          for llama-swap to dispatch on.
+        '';
+      };
+
+      # ── THE THREE SETTINGS M21 SHIPPED WITHOUT, AND WHY THEY MATTER ──────
+      #
+      # M21 set ENABLE_IMAGE_GENERATION, IMAGE_GENERATION_ENGINE and
+      # COMFYUI_BASE_URL and stopped there, on the roadmap's claim that Open
+      # WebUI's side is "three env vars".  It is not, and the missing ones do
+      # not fail loudly:
+      #
+      #   IMAGE_GENERATION_MODEL  defaults to ''  (config.py:1314)
+      #   IMAGE_SIZE              defaults to '512x512'
+      #   IMAGE_STEPS             defaults to 50
+      #
+      # Open WebUI's built-in ComfyUI workflow is a CheckpointLoaderSimple
+      # whose `ckpt_name` is the placeholder "model.safetensors", substituted
+      # with IMAGE_GENERATION_MODEL.  Empty, ComfyUI is asked for a checkpoint
+      # that does not exist.
+      #
+      # AND THEY CANNOT BE SET IN THE UI, which is the part that makes them
+      # belong here.  This container runs ENABLE_PERSISTENT_CONFIG = "False"
+      # deliberately (see the note on it below), so the environment is
+      # authoritative on every boot: a value typed into Admin Panel -> Images
+      # works until the next restart and is then silently reverted.  That is
+      # the setting working as intended, and the reason these are options.
+      imageModel = lib.mkOption {
+        type    = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "sd_xl_base_1.0.safetensors";
+        description = ''
+          `IMAGE_GENERATION_MODEL` — the checkpoint filename ComfyUI loads,
+          as it appears in ComfyUI's `checkpoints` category.
+
+          Required when `imageUrl` is set, and ASSERTED against the model set:
+          it must name a `roles.models` entry declared with
+          `subdir = "checkpoints"` on this machine.  A name that is merely
+          plausible is the failure mode this module has paid for twice —
+          `qwen3-coder:8b` sat in a restart loop for months — and here it
+          would present as an image request that fails inside ComfyUI, three
+          layers from the typo.
+        '';
+      };
+
+      imageSize = lib.mkOption {
+        type    = lib.types.str;
+        default = "1024x1024";
+        description = ''
+          `IMAGE_SIZE`, substituted into the workflow's EmptyLatentImage.
+
+          1024x1024, NOT Open WebUI's 512x512 default, and this is a property
+          of the checkpoint rather than a preference: SDXL is trained at
+          1024x1024 and is known to degrade at 512.  Left at the default it
+          would have produced working-but-poor images — worse than a clean
+          failure, because nothing would say anything was wrong.
+
+          A non-SDXL checkpoint may well want a different value; it belongs
+          next to whatever `imageModel` names.
+        '';
+      };
+
+      imageSteps = lib.mkOption {
+        type    = lib.types.ints.positive;
+        default = 20;
+        description = ''
+          `IMAGE_STEPS`, substituted into the workflow's KSampler.
+
+          20 matches the value in Open WebUI's own bundled workflow; the env
+          default of 50 overrides that with 2.5x the sampling work. Which is
+          actually better on this card and this checkpoint is a question for a
+          measurement rather than for this description — 20 is the
+          conservative starting point, not a claim.
+        '';
       };
     };
 
-    perInstance = { settings, machine, ... }: {
+    perInstance = { settings, roles, machine, ... }: {
       nixosModule = { config, pkgs, lib, ... }:
         let
           oidcGen = config.clan.core.vars.generators.authelia-oidc-openwebui;
@@ -1689,8 +1766,61 @@
           aiHost   = settings.inferenceAddress;
           aiCont   = "fdca:fe91::2";
           swapUrl  = "http://[${aiHost}]:11434";
+
+          # Checkpoints this machine actually declares, read out of the SAME
+          # attrset the fetcher and ComfyUI's extra_model_paths.yaml are built
+          # from — so "is that file on disk" and "does Open WebUI name it"
+          # cannot answer differently.
+          #
+          # `subdir = "checkpoints"` is part of the test, not a detail: ComfyUI
+          # resolves `ckpt_name` inside its `checkpoints` category, so a model
+          # declared with any other subdir is fetched and hash-verified and
+          # still invisible to the loader.
+          declaredCheckpoints = lib.mapAttrsToList (_: m: m.filename)
+            (lib.filterAttrs (_: m: m.subdir == "checkpoints")
+              (roles.models.machines.${machine.name}.settings.models or { }));
         in
         {
+          assertions = lib.optionals (settings.imageUrl != null) [
+            {
+              assertion = settings.imageModel != null;
+              message = ''
+                @clanarchy/local-ai: ${machine.name} sets roles.webui…imageUrl
+                but not imageModel.
+
+                Open WebUI's IMAGE_GENERATION_MODEL defaults to the EMPTY
+                STRING, and its bundled ComfyUI workflow substitutes that into
+                a CheckpointLoaderSimple.  So image generation would appear
+                enabled in the UI and fail inside ComfyUI on every request,
+                with nothing on the Open WebUI side saying why.
+
+                Set it to a checkpoint declared in roles.models with
+                `subdir = "checkpoints"`, e.g. "sd_xl_base_1.0.safetensors".
+              '';
+            }
+            {
+              assertion =
+                settings.imageModel == null
+                || lib.elem settings.imageModel declaredCheckpoints;
+              message = ''
+                @clanarchy/local-ai: ${machine.name} sets
+                roles.webui…imageModel = "${toString settings.imageModel}",
+                which is not a checkpoint this machine declares.
+
+                Declared with `subdir = "checkpoints"` in roles.models:
+                  ${if declaredCheckpoints == [ ]
+                    then "(none — declare one before enabling image generation)"
+                    else lib.concatStringsSep "\n  " declaredCheckpoints}
+
+                A model is fetched, hash-verified and offered to ComfyUI from
+                ONE attrset; naming something else here is the same class of
+                mistake as an ollama tag that never existed, which sat in a
+                restart loop for months.  Caught at build time rather than as
+                a failed image request three layers away.
+              '';
+            }
+          ];
+
           ##################################################################
           # The OIDC client secret. ITS OWN GENERATOR.
           #
@@ -2050,6 +2180,15 @@
                   ENABLE_IMAGE_GENERATION = "True";
                   IMAGE_GENERATION_ENGINE = "comfyui";
                   COMFYUI_BASE_URL        = settings.imageUrl;
+
+                  # The three that M21 left at their defaults.  See the options
+                  # for why each one is not optional; in short, the model name
+                  # defaults to EMPTY and the size defaults to a resolution
+                  # SDXL degrades at, and neither can be fixed in the UI while
+                  # ENABLE_PERSISTENT_CONFIG is False.
+                  IMAGE_GENERATION_MODEL  = settings.imageModel;
+                  IMAGE_SIZE              = settings.imageSize;
+                  IMAGE_STEPS             = toString settings.imageSteps;
                 };
               };
             };
