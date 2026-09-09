@@ -1271,6 +1271,52 @@
               # to the internet, and the model hosts are a CDN with no stable
               # address range worth pinning.  The hash check is the control that
               # matters here, not the address.
+
+              # Pick llama-swap up once the models are actually on disk.
+              #
+              # Needed because it renders each backend's command at startup: a
+              # model whose file did not exist yet is listed but unusable until
+              # it re-reads. `try-restart` and not `restart`, so this is a no-op
+              # when it is deliberately stopped rather than something that
+              # starts it behind an operator's back.
+              #
+              # ── `ExecStartPost`, NOT `postStart`, AND THE `-` IS WHY ───────
+              #
+              # This was `postStart = "-…/systemctl try-restart …"`, and the `-`
+              # was there to make exactly the failure it caused impossible.
+              #
+              # `-` is a SYSTEMD UNIT-FILE PREFIX, honoured at the start of an
+              # `ExecStartPost=` value, where it means "ignore a non-zero exit".
+              # NixOS's `postStart` is not that: it wraps the string in a
+              # GENERATED BASH SCRIPT under `set -e`, so the `-` became the
+              # first character of a command NAME and bash went looking for a
+              # binary called `-/nix/store/…/systemctl`:
+              #
+              #   llama-models-fetch-post-start: line 4:
+              #     -/nix/store/…-systemd-260.2/bin/systemctl: No such file or
+              #     directory
+              #   llama-models-fetch.service: Control process exited,
+              #     code=exited, status=127/n/a
+              #   Failed to start Fetch and verify declared local-ai models.
+              #
+              # So the guard inverted itself: rather than preventing a failed
+              # unit after a completed download, it GUARANTEED one. Every run
+              # since M19 introduced it (fd8ac45) has ended `failed` on ernst
+              # with every model correctly on disk — ExecStart exits 0/SUCCESS
+              # and the journal shows `done`/`ok` for each file immediately
+              # above the 127.
+              #
+              # AND NOTHING SAID SO, which is standing note SN4 exactly: a
+              # failed oneshot on a timer is silent. It surfaced only because
+              # M21 added a model, which made somebody run the unit by hand and
+              # watch it. That is the concrete case for the "alert on failed
+              # timer units" backlog item.
+              #
+              # In list form the prefix lands where systemd parses it, so the
+              # original intent — a completed fetch is a success even if the
+              # restart cannot be delivered — is what now happens.
+              ExecStartPost =
+                [ "-${pkgs.systemd}/bin/systemctl try-restart llama-swap.service" ];
             };
 
             script = ''
@@ -1335,15 +1381,6 @@
               ) jobs}
             '';
 
-            # Pick the router up once the models are actually on disk.
-            #
-            # Needed because the router reads its preset INI at startup: a model
-            # whose file did not exist yet is listed but unusable until it
-            # re-reads. `try-restart` and not `restart`, so this is a no-op when
-            # the router is deliberately stopped rather than something that
-            # starts it behind an operator's back. `-` prefixed so a failure
-            # here cannot turn a completed 25 GiB download into a failed unit.
-            postStart = "-${pkgs.systemd}/bin/systemctl try-restart llama-swap.service";
           };
         };
     };
