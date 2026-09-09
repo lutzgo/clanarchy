@@ -8946,6 +8946,95 @@ way), that is a third `exposeOn` entry in `clan.nix`, not a new mechanism.
 - The M19 question repeated: *"How safe is it to add a vitamin D source to the
   table? Rate your sources."* — and the sources actually checked.
 
+
+### The prompt for M20
+
+````text
+Read CLAUDE.md fully before doing anything. Then read, in this order:
+docs/roadmap.md §M20 + §M19 + invariant #1 + invariant #3 + the
+interim-rule ledger, service-modules/local-ai.nix (the `webui` role and
+`exposeOn`), machines/ernst/containers/ingress-policy.nix IN FULL, and
+machines/ernst/networking.nix (MAC/uid allocation tables).
+
+Work in the clanarchy repo on miralda. Branch: feat/ernst-searxng.
+Milestone: M20 (already has a roadmap section — extend it, do not rewrite it).
+
+GOAL. Give the local AI stack the ability to look things up: a self-hosted
+SearXNG, and Open WebUI's web search wired to it. Nothing may reach a hosted
+search API.
+
+THE MILESTONE IS THE TIER DECISION, NOT THE PACKAGING. SearXNG would be the
+first service in this fleet that talks to the OPEN INTERNET ON ITS OWN
+BEHALF, on behalf of a household user's typed query. Invariant #1 says a
+service moves UP a tier when it does that. So:
+
+  - argue nspawn vs podman vs microvm explicitly, in the file header;
+  - do NOT inherit nspawn because everything else is nspawn;
+  - M3's VPN guest got a microvm precisely because it is internet-facing.
+    SearXNG's threat model differs (it fetches HTML from search engines
+    rather than peering with strangers) but the direction is the same.
+    If you choose nspawn, say what makes it safe HERE.
+
+DECIDE, DO NOT ASSUME:
+  - Does the LLM get a search TOOL, or does Open WebUI run the search and
+    inject results as context? The second needs no tool call and the model
+    never chooses to search. M19 measured tool calling at 20/20 WITH the
+    <tool_call> reinforcement — that is evidence the tool path would work,
+    not that it should be taken. Argue it.
+  - Egress. SearXNG must reach the internet; nothing else in the M19 stack
+    does. Unrestricted, proxied, or through the existing wg-qbittorrent
+    guest? Name the answer and the mechanism.
+  - Who may query it. If only Open WebUI ever talks to it, it needs NO
+    hostname at all — that is strictly better and is the default position.
+    A hostname means `protectedHosts` (it is a browser-only UI).
+  - Engine set, `limiter` and `botdetection`. A search proxy that upstream
+    engines fingerprint as a bot gets blocked. These are operational
+    configuration, not defaults to accept.
+
+REUSE, DO NOT REINVENT:
+  - If it needs to reach llama-swap (it should not — traffic goes the other
+    way), that is a third `exposeOn` entry in clan.nix. Not a new mechanism.
+  - Machine-to-machine traffic must NOT go through Authelia forward-auth.
+    That is the RomM 403 in a new costume; see ingress-policy.nix.
+
+ALLOCATION. Nothing is reserved yet, deliberately — the tier decides whether
+it needs a MAC and an address at all. If it does: next free sequence number
+is 10 (-> 10.0.90.24) and next free uid is 3035, BUT 3035 is a shared claim
+with M21 (imagegen). Whichever lands first takes it and updates the tables in
+machines/ernst/networking.nix in the same PR.
+
+CONSTRAINTS:
+- Never commit to main. Branch first, PR via `gh pr create`.
+- No new flake inputs. No changes to ernst's channel (invariant #6).
+- Consumer VLANs get exactly ONE permanent rule, -> traefik:443
+  (invariant #3). Anything else is an interim rule with a ledger row and a
+  removal trigger.
+- State on zdata under /srv/state (invariant #7).
+- Claude does NOT deploy. `clan machines update ernst` is lgo's step.
+- Verify by evaluation: `nix flake check` and
+  `nix eval --no-update-lock-file --raw
+   '.#nixosConfigurations.ernst.config.system.build.toplevel.drvPath'`.
+- When probing inside a container over SSH, use
+  `systemd-run --machine=<c> --collect` — without --collect a failed probe
+  lingers and fires ContainerSystemdUnitFailed to lgo's phone. M19 did this
+  wrong and paged him five times.
+
+VERIFICATION OWED (proofs, not descriptions):
+  - The M19 question repeated, side by side with and without search:
+    "How safe is it to add a vitamin D source to the table? Rate your
+    sources." — and the sources actually checked for existence.
+  - curl to SearXNG from a VLAN 90 host that is not the permitted client:
+    TIMES OUT.
+  - SearXNG's outbound path confirmed: which interface, which address, and
+    that it can reach nothing on the LAN it should not.
+  - `systemd-analyze security` per new unit at the chosen tier; target <=
+    2.0 for anything that can carry it, with rejected settings listed and
+    WHY. M19's lesson: `DeviceAllow=/dev/dri` and
+    `MemoryDenyWriteExecute=true` both SCORED WELL while breaking the
+    system. Exercise the thing, do not only measure the config.
+  - Update docs/roadmap.md §M20 with what shipped, the tier argument, and
+    any premise that turned out false.
+````
 ---
 
 ## M21 — `feat/ernst-imagegen`
@@ -9052,6 +9141,98 @@ and `eth0`, `st0` and `rm0` are taken.
 - Swap latency measured, since the LLM↔image round trip is now the interactive
   cost a user actually feels.
 
+
+### The prompt for M21
+
+````text
+Read CLAUDE.md fully before doing anything. Then read, in this order:
+docs/roadmap.md §M21 + §M19 + invariant #1 + invariant #5 + invariant #7,
+service-modules/local-ai.nix IN FULL (roles.imagegen ALREADY EXISTS — read
+it before writing anything), service-modules/local-ai.md, and
+machines/ernst/networking.nix (MAC/uid allocation tables).
+
+Work in the clanarchy repo on miralda. Branch: feat/ernst-imagegen.
+Milestone: M21 (already has a roadmap section — extend it, do not rewrite it).
+
+GOAL. Turn on image generation: ComfyUI on the podman tier, arbitrated
+against the LLM on the one GPU, reachable from Open WebUI.
+
+MOST OF THIS IS ALREADY BUILT. DO NOT REDO IT. `roles.imagegen` shipped in
+M19 written and deliberately unenabled, with: the podman container, /dev/kfd
++ /dev/dri, state on zdata at /srv/state/comfyui, loopback binding,
+registration as a llama-swap backend, and an assertion refusing any `image`
+not pinned by digest. The GPU arbitration is MEASURED, not hypothetical —
+M19 recorded evict-and-reload at 21022 -> 8288 -> 21022 MiB. Adding comfyui
+to `swapMembers` is one line.
+
+SO THIS MILESTONE IS TWO DECISIONS AND A MEASUREMENT.
+
+DECISION 1 — THE IMAGE. There is NO first-party ComfyUI container image
+(checked 2026-09-09). Every candidate is a community build, and enabling
+this means pinning a third party by digest on the machine that fronts the
+NAS array and handing it /dev/kfd. Argue one of:
+  (a) pin a community image by digest — fastest, inherits that build forever;
+  (b) build it — ComfyUI is Python, the M12/M14 hand-rolled-derivation
+      pattern applies, nixpkgs has the ROCm PyTorch stack. More work, no
+      opaque blob, and it stops being a podman-tier occupant;
+  (c) DO NOT SHIP IT. A legitimate outcome. M15 closed on a measurement
+      rather than shipping and that is the precedent.
+VERIFY ANY DIGEST BEFORE WRITING IT DOWN:
+  skopeo inspect docker://<ref> | jq -r .Digest
+This repo has shipped a nonexistent model reference twice. M19 verified four
+model URLs and hashes that way.
+
+DECISION 2 — THE WEIGHTS. Diffusion checkpoints are GiB-scale and go on
+zdata under /srv/state/comfyui/models (invariant #7). REUSE `roles.models`,
+do NOT write a second fetcher: it is already a {url, hash, filename} attrset
+with hash verification and a resumable oneshot, and it already carries
+`servedByLlama = false` for exactly this case. Which checkpoint is an open
+question with a VRAM answer — SDXL and Flux differ a lot, and whatever is
+chosen must coexist BY EVICTION, not concurrently, with a 21 GiB coder model.
+
+WIRING IS ALREADY WRITTEN. Open WebUI needs `roles.webui…imageUrl` set; it
+points at the SAME `exposeOn` bridge chat and STT already use. No new
+listener, no new firewall rule. If you find yourself adding one, re-read.
+
+ALLOCATION. uid 3035 and sequence number 10 (-> 10.0.90.24) are a SHARED
+claim with M20 (SearXNG) — whichever lands first takes them and updates the
+tables in machines/ernst/networking.nix in the same PR. Podman-tier
+occupants get their own netns, MAC and address. containers/storyteller.nix's
+rule still binds: namespace interface names must be UNIQUE, and eth0, st0
+and rm0 are taken.
+
+CONSTRAINTS:
+- Never commit to main. Branch first, PR via `gh pr create`.
+- No new flake inputs. No changes to ernst's channel (invariant #6).
+- NEVER VFIO-bind the 7900 XTX (invariant #5). It is shared with the HTPC
+  session and with llama-swap; exclusive binding is the outcome clan.nix
+  explicitly rejects.
+- Claude does NOT deploy. `clan machines update ernst` is lgo's step.
+- Verify by evaluation: `nix flake check` and the ernst drvPath eval.
+- When probing inside a container over SSH, use
+  `systemd-run --machine=<c> --collect` — without --collect a failed probe
+  lingers and fires ContainerSystemdUnitFailed to lgo's phone.
+
+VERIFICATION OWED (proofs, not descriptions):
+  - THE EXCLUSIVITY PROOF M19 COULD NOT FINISH: LLM resident (VRAM from
+    /sys/class/drm/card1/device/mem_info_vram_used) -> image request -> LLM
+    EVICTED and image PRODUCED -> chat request -> LLM back. With timestamps.
+    M19 proved the mechanism with a stand-in; this proves it with the real
+    second claimant.
+  - An image generated FROM OPEN WEBUI, not from ComfyUI's own UI.
+  - curl to ComfyUI's port from a VLAN 90 host that is not permitted: TIMES
+    OUT.
+  - `systemd-analyze security` on the podman unit, with what it CANNOT carry
+    stated: it will not take MemoryDenyWriteExecute, for the same ROCm-JIT
+    reason M19 records. Say so rather than letting it be rediscovered.
+  - Swap latency measured — the LLM<->image round trip is now an interactive
+    cost a user feels.
+  - M19's WARNING, which cost a day: `DeviceAllow=/dev/dri` is a DIRECTORY
+    and grants nothing while DENYING every render node, and it scored fine
+    on systemd-analyze. Use `char-drm`. Exercise the GPU and check VRAM
+    actually moves; a correct answer at 6 tok/s is a CPU fallback.
+  - Update docs/roadmap.md §M21 with what shipped and any false premise.
+````
 ---
 
 ## Packaging — the constraint shaping M12, M14, M15 and M17
