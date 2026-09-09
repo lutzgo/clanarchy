@@ -961,9 +961,26 @@
                   return 1
                 fi
 
-                echo "fetch   $file"
+                # RESUMABLE, and it has to be.  Measured on the first deploy:
+                # HuggingFace served the first three files at ~29 MB/s and then
+                # throttled the 18 GiB one to 2 MB/s — a 77-minute tail.  A
+                # download that long WILL be interrupted, by a deploy, a reboot
+                # or an operator, and without --continue-at every interruption
+                # discarded everything: `fetch` tests for the FINAL name, so a
+                # rerun re-opened "$dest.part" and started from zero.  8.8 GiB
+                # was nearly thrown away exactly that way.
+                #
+                # `--continue-at -` resumes from the current .part length. If
+                # the server ignores Range, curl fails loudly rather than
+                # silently appending to a truncated file — and the hash check
+                # below is the backstop for anything subtler.
+                if [ -f "$dest.part" ]; then
+                  echo "resume  $file (from $(${pkgs.coreutils}/bin/stat -c %s "$dest.part") bytes)"
+                else
+                  echo "fetch   $file"
+                fi
                 ${pkgs.curl}/bin/curl -fSL --retry 5 --retry-delay 10 \
-                  -o "$dest.part" "$url"
+                  --continue-at - -o "$dest.part" "$url"
                 local got
                 got=$(${pkgs.nix}/bin/nix hash file --type sha256 --sri "$dest.part")
                 if [ "$got" != "$want" ]; then
