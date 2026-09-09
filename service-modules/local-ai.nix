@@ -1697,6 +1697,29 @@
                   OPENID_REDIRECT_URI        = "https://${settings.hostName}/oauth/oidc/login/callback";
                   OAUTH_PROVIDER_NAME        = "Authelia";
                   OAUTH_SCOPES               = "openid email profile groups";
+
+                  # ── PKCE, AND IT IS NOT OPTIONAL HERE ──────────────────────
+                  #
+                  # The Authelia client block for this app sets
+                  # `require_pkce: true` (copied from Grafana's, which works
+                  # because Grafana sends PKCE by default). Open WebUI's authlib
+                  # client does NOT send a code_challenge unless told to, so the
+                  # first login attempt failed with Authelia refusing the
+                  # authorize request:
+                  #
+                  #   invalid_request: Clients must include a 'code_challenge'
+                  #   when performing the authorize code flow, but it is missing
+                  #
+                  # Open WebUI surfaces that as "The email or password provided
+                  # is incorrect", which is its generic OAuth failure message
+                  # and says nothing about the actual cause — the real error is
+                  # only in the container's journal, under a Python traceback.
+                  #
+                  # This sets client_kwargs['code_challenge_method'] = 'S256'
+                  # (config.py). Fixed on the app side rather than by dropping
+                  # require_pkce on the issuer: PKCE is worth keeping, and the
+                  # asymmetry was ours, not Authelia's.
+                  OAUTH_CODE_CHALLENGE_METHOD = "S256";
                   # The local password form STAYS, and it is break-glass, not
                   # laziness: monitoring.nix makes the same call for Grafana.
                   # If Authelia is down, every admin UI in the house is down,
