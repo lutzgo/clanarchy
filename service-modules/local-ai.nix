@@ -576,6 +576,46 @@
               # AF_UNIX for the ROCm/KFD ioctl helpers, AF_INET for the
               # listener.  No AF_NETLINK, no AF_PACKET.
               RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" "AF_INET6" ];
+
+              # ── The second pass, after the first deploy scored 6.0 MEDIUM ──
+              #
+              # The settings above are the ones that were obvious; systemd-
+              # analyze scored them at 6.0, against a target of <= 2.0. Almost
+              # all of the remaining cost was two omissions worth 0.1-0.3 each:
+              # no capability bounding set at all, and no system-call filter.
+              # Neither is difficult for this process — it opens a socket, reads
+              # files and talks to /dev/kfd — so they are added rather than
+              # excused.
+              CapabilityBoundingSet = [ "" ];
+              AmbientCapabilities   = [ "" ];
+              SystemCallFilter      = [ "@system-service" "~@resources" "~@privileged" ];
+              SystemCallErrorNumber = "EPERM";
+              ProtectProc           = "invisible";
+              ProcSubset            = "pid";
+              ProtectClock          = true;
+              ProtectHostname       = true;
+              ProtectKernelLogs     = true;
+              UMask                 = "0077";
+              # Loopback only. The listener is 127.0.0.1 and the one remote
+              # thing this process does is nothing at all — models arrive via
+              # llama-models-fetch, not through here.
+              IPAddressDeny         = "any";
+              IPAddressAllow        = [ "localhost" ];
+
+              # ── WHAT IT STILL CANNOT CARRY, AND WHY ───────────────────────
+              #
+              # MemoryDenyWriteExecute — ABSENT DELIBERATELY. The ROCm runtime
+              #   JITs GPU kernels through libamd_comgr, which requires W+X
+              #   mappings. Setting it makes the process die on first GPU use.
+              #   This is the one the roadmap's hardening note says to state
+              #   rather than silently omit.
+              # PrivateDevices / DeviceAllow — /dev/kfd and /dev/dri ARE the
+              #   point of this unit. DeviceAllow above narrows it to those two.
+              # PrivateNetwork — it is a network listener (0.5, the single
+              #   largest remaining item, and irreducible).
+              # PrivateUsers — breaks /dev/kfd access under ROCm.
+              # RootDirectory — no benefit beside ProtectSystem=strict here,
+              #   and it would need the whole ROCm closure re-bound inside.
             };
           };
 
@@ -1548,6 +1588,39 @@
                 uid   = settings.uid;
               };
               users.groups.open-webui.gid = settings.uid;
+
+              # ── DynamicUser OFF.  THE SAME TRAP THIS MODULE ALREADY ────────
+              #    DOCUMENTED FOR OLLAMA, IN A SECOND FORM.
+              #
+              # nixpkgs' open-webui module ships `DynamicUser = true` with
+              # `StateDirectory = "open-webui"`.  That combination is
+              # incompatible with a bind-mounted state directory, and it fails
+              # in a way that names neither:
+              #
+              #   Found pre-existing public StateDirectory= directory
+              #     /var/lib/open-webui, migrating to /var/lib/private/open-webui.
+              #   Apparently, service previously had DynamicUser= turned off,
+              #     and has now turned it on.
+              #   Failed to set up special execution directory in /var/lib:
+              #     Device or resource busy
+              #   status=238/STATE_DIRECTORY
+              #
+              # systemd wants to MOVE /var/lib/open-webui under /var/lib/private
+              # so the per-boot dynamic uid can own it.  It is a bind mount, so
+              # the move is EBUSY and the unit never starts — which presents at
+              # the front door as Traefik's "Bad Gateway", three layers away.
+              #
+              # The `ollama` role in this same file carries the other half of
+              # this lesson: DynamicUser + a persisted directory means the
+              # per-boot uid cannot write to a root-owned 0700 path. Same root
+              # cause, different symptom. A STATIC uid is the answer in both
+              # cases — here it also has to match the ownership the host-side
+              # tmpfiles rule sets on ${settings.stateDir}.
+              systemd.services.open-webui.serviceConfig = {
+                DynamicUser = lib.mkForce false;
+                User        = "open-webui";
+                Group       = "open-webui";
+              };
 
               services.open-webui = {
                 enable   = true;
