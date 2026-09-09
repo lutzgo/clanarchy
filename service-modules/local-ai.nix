@@ -698,6 +698,35 @@
                 ProtectHome     = true;
                 MemoryDenyWriteExecute = true;
                 RestrictAddressFamilies = [ "AF_INET6" "AF_UNIX" ];
+
+                # Second pass: this scored 7.0 on the first deploy, almost all
+                # of it the same two omissions as llama-router — no capability
+                # set and no syscall filter.  A socket proxy is the easiest
+                # process on this machine to lock down: it moves bytes between
+                # two file descriptors and needs nothing else.
+                CapabilityBoundingSet = [ "" ];
+                AmbientCapabilities   = [ "" ];
+                SystemCallFilter      = [ "@system-service" "~@resources" "~@privileged" ];
+                SystemCallErrorNumber = "EPERM";
+                SystemCallArchitectures = "native";
+                ProtectProc           = "invisible";
+                ProcSubset            = "pid";
+                ProtectClock          = true;
+                ProtectHostname       = true;
+                ProtectKernelLogs     = true;
+                ProtectKernelTunables = true;
+                ProtectKernelModules  = true;
+                ProtectControlGroups  = true;
+                RestrictNamespaces    = true;
+                RestrictRealtime      = true;
+                RestrictSUIDSGID      = true;
+                LockPersonality       = true;
+                RemoveIPC             = true;
+                UMask                 = "0077";
+                # Both ends are on this host: loopback for the router, and the
+                # mon0 ULA for the container.  Nothing else is reachable.
+                IPAddressDeny         = "any";
+                IPAddressAllow        = [ "localhost" "${settings.metricsProxy.address}/128" "fdca:fe90::/64" ];
               };
             };
 
@@ -997,6 +1026,36 @@
               ReadWritePaths  = [ stateDir ];
               MemoryDenyWriteExecute = true;
               RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+
+              # Second pass: 7.2 on the first deploy, same two omissions again.
+              # This one downloads over TLS and hashes files, so it keeps the
+              # internet address families and cannot carry IPAddressDeny — but
+              # everything else is free.
+              CapabilityBoundingSet = [ "" ];
+              AmbientCapabilities   = [ "" ];
+              SystemCallFilter      = [ "@system-service" "~@resources" "~@privileged" ];
+              SystemCallErrorNumber = "EPERM";
+              SystemCallArchitectures = "native";
+              ProtectProc           = "invisible";
+              ProcSubset            = "pid";
+              ProtectClock          = true;
+              ProtectHostname       = true;
+              ProtectKernelLogs     = true;
+              ProtectKernelTunables = true;
+              ProtectKernelModules  = true;
+              ProtectControlGroups  = true;
+              RestrictNamespaces    = true;
+              RestrictRealtime      = true;
+              RestrictSUIDSGID      = true;
+              LockPersonality       = true;
+              RemoveIPC             = true;
+              # 0077 is safe here even though llama-router reads these files:
+              # both units run as the same `llama` user, so 0600 is sufficient.
+              UMask                 = "0077";
+              # NO IPAddressDeny — this is the one unit that legitimately talks
+              # to the internet, and the model hosts are a CDN with no stable
+              # address range worth pinning.  The hash check is the control that
+              # matters here, not the address.
             };
 
             script = ''
