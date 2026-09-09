@@ -395,6 +395,41 @@ ComfyUI category.
 the GGUFs were correctly ignored. It defaults to `""`, so **no existing model
 path moves.**
 
+### Generating an image is a UI toggle, not a prompt — and one step is runtime state
+
+**Asking the chat model for a picture does not generate one.** It is a text
+model and will politely tell you it cannot, which looks like a broken
+deployment and is not. Image generation is a separate feature that runs
+alongside whichever chat model is selected — which is also why `comfyui` is
+`unlisted` in `/v1/models`: it is not something to converse with.
+
+Two entry points, both in the UI:
+
+- the **integrations menu** beside the message input — an **Image** toggle
+  (`MessageInput/IntegrationsMenu.svelte`), then send the prompt;
+- the **image button on an assistant message**, which generates from that
+  response's text (`Messages/ResponseMessage.svelte`).
+
+**The toggle is hidden unless the selected model declares the
+`image_generation` capability**, which is the non-obvious part
+(`MessageInput.svelte:681`):
+
+```
+showImageGenerationButton =
+  selectedModelIds.length === imageGenerationCapableModels.length &&
+  $config?.features?.enable_image_generation &&
+  ($_user.role === 'admin' || $_user?.permissions?.features?.image_generation)
+```
+
+So `ENABLE_IMAGE_GENERATION = "True"` is necessary and **not sufficient**: the
+chat model must also be flagged image-generation-capable in
+**Admin Panel → Settings → Models → *(model)* → Capabilities**. That is a
+per-model record in Open WebUI's own database, not app config, so **this module
+cannot set it** — the same category as Kodi's web-server credentials in
+`clan.nix`. It is a one-time manual step after the first deploy, and unlike the
+image settings above it is unaffected by `ENABLE_PERSISTENT_CONFIG = "False"`,
+which governs the config table rather than model records.
+
 ### Open WebUI reaches it at `/upstream/comfyui`
 
 Open WebUI's ComfyUI client speaks ComfyUI's own API (`POST /prompt`,

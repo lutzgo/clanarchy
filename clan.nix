@@ -645,6 +645,21 @@
           # an `f'{base_url}/...'` append — so a base URL carrying a path
           # prefix works throughout rather than only for the first call.
           imageUrl = "http://[fdca:fe91::1]:11434/upstream/comfyui";
+
+          # The checkpoint Open WebUI asks ComfyUI to load.  ASSERTED against
+          # roles.models above — it must name an entry declared there with
+          # `subdir = "checkpoints"`, so a typo is a build error rather than an
+          # image request that fails inside ComfyUI.
+          #
+          # Without it, IMAGE_GENERATION_MODEL is the empty string and Open
+          # WebUI's bundled workflow asks for a checkpoint that does not exist.
+          imageModel = "sd_xl_base_1.0.safetensors";
+
+          # 1024x1024 because that is what SDXL is trained at.  Open WebUI
+          # defaults to 512x512, which this checkpoint degrades at — it would
+          # have produced working-but-poor images, which is worse than a clean
+          # failure because nothing reports it.
+          imageSize = "1024x1024";
         };
 
         # ── miralda: unchanged, and out of scope ────────────────────────
