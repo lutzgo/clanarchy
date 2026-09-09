@@ -524,10 +524,21 @@
             # file is a per-request error, not a startup failure, and the
             # correct dependency is ordering-only.
             #
-            # `after` without `wants` means: if both are queued in the same
-            # transaction, run the fetch first; otherwise do not pull it in at
-            # all.  The timer below is what actually runs it.
-            after = [ "network.target" "local-fs.target" "llama-models-fetch.service" ];
+            # NOT EVEN `after`.  The first attempt at this fix kept an ordering
+            # dependency on the fetch, reasoning that it was free because
+            # `After=` does not pull a unit in.  IT IS NOT FREE: `After=` also
+            # applies when the other unit is ALREADY RUNNING, so a deploy that
+            # started while a download was in progress left llama-router
+            # `inactive` with its start job **waiting** — queued behind a
+            # 40-minute download, which is the same blocked deploy the previous
+            # commit set out to fix, reintroduced one line lower down.
+            # Measured on ernst 2026-09-09, twice.
+            #
+            # There is nothing to order.  The router opens no weights at
+            # startup, and llama-models-fetch calls `systemctl try-restart
+            # llama-router` when it completes, which is the only coupling the
+            # two actually need and it points the other way.
+            after = [ "network.target" "local-fs.target" ];
 
             environment = {
               ROCR_VISIBLE_DEVICES = "0";
