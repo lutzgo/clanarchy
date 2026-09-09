@@ -15,7 +15,7 @@ the LAN only, and no part of this is exposed to the internet.
 | [llama.cpp](https://github.com/ggml-org/llama.cpp) | `pkgs.llama-cpp` (ROCm, gfx1100) | `llama-server`, **spawned per model by llama-swap** on an ephemeral loopback port. No router — see below |
 | [whisper.cpp](https://github.com/ggml-org/whisper.cpp) | `pkgs.whisper-cpp` | `whisper-server` with an OpenAI-shaped `/v1/audio/transcriptions` |
 | [Open WebUI](https://openwebui.com) | `pkgs.open-webui` | Browser client, nspawn container on VLAN 90, behind Traefik + Authelia |
-| ComfyUI | *(podman, opt-in)* | Image generation. No first-party image exists — see below |
+| [ComfyUI](https://github.com/Comfy-Org/ComfyUI) | `service-modules/pkgs/comfyui` (hand-rolled, ROCm) | Image generation, **spawned by llama-swap** like `llama-server`. Built rather than pinned — see below |
 | [OpenCode](https://opencode.ai) | `pkgs.opencode` | Terminal coding agent, local or tunnelled |
 
 Everything ships in nixpkgs 26.05 — **no external flake input**.
@@ -25,9 +25,9 @@ Everything ships in nixpkgs 26.05 — **no external flake input**.
 | Role | What it does |
 |------|-------------|
 | `inference` | llama-swap, loopback only; it spawns `llama-server` per model. Optionally authorises one restricted key for an SSH forward, and one mon0-only metrics listener |
-| `models` | Declarative model set: `{ url, hash, contextLength, kvCacheType }`. Fetched to `/srv/state/local-ai/models` on zdata, hash-verified at every boot |
+| `models` | Declarative model set: `{ url, hash, contextLength, kvCacheType, subdir }`. Fetched to `/srv/state/local-ai/models` on zdata, hash-verified at every boot |
 | `speech` | Whisper STT, registered as a llama-swap backend |
-| `imagegen` | ComfyUI on the podman tier, exclusive with the LLM on the GPU |
+| `imagegen` | ComfyUI, spawned by llama-swap, exclusive with the LLM on the GPU. Settings only — it produces no units, exactly like `speech` |
 | `webui` | Open WebUI in an nspawn container on VLAN 90 |
 | `opencode` | `pkgs.opencode` + `~/.config/opencode/config.json`, local or over an SSH forward |
 | `ollama` | **Legacy. miralda only.** See below |
@@ -333,14 +333,102 @@ Speech API path costs no VRAM on a card this milestone is already arbitrating,
 and needs no additional service. Recorded as a decision, not an oversight —
 revisit if a packaged Kokoro or Piper HTTP server appears.
 
-## Image generation — written, not enabled
+## Image generation — built, not pinned (M21)
 
-There is **no first-party ComfyUI container image** (checked 2026-09-09), so
-every candidate is a community build. Pinning a third-party image by digest on
-the machine that fronts the NAS array, with `/dev/kfd` handed to it, is an
-operator decision rather than a module default — which is why `imagegen` has no
-default `image` and asserts that whatever is given is pinned by digest, not by
-tag. Enabling it is one block in `clan.nix` plus a verified digest.
+M19 wrote `imagegen` for the podman tier against a digest-pinned community
+image and left it disabled, pending an image worth pinning. **M21 found none,
+and found that the tier could not have worked anyway.**
+
+### Every candidate image failed, for three different reasons
+
+Surveyed with `skopeo` on 2026-09-09:
+
+| Candidate | Provenance | Verdict |
+|---|---|---|
+| `docker.io/rocm/comfyui` | **AMD's own**, from the ROCm docs | `PYTORCH_ROCM_ARCH=gfx942;gfx950` — **Instinct only, no kernels for gfx1100.** The most first-party option cannot run on this card |
+| `docker.io/yanwk/comfyui-boot:rocm` | 1647★, 1.34M pulls — by far the best | Copies ComfyUI out of the image into a persistent volume on first start with `cp --archive --update=none`, then sources a root-run `pre-start.sh` from that volume with `PIP_USER=true`. **The digest pins the first install and nothing that runs after it** |
+| `docker.io/selcarpa/comfyui-rocm` | 1★, 2703 pulls, one person | The only image that both ships ComfyUI and carries gfx1100 kernels |
+
+### And llama-swap could never have arbitrated a container
+
+This is the finding that settled it, and it is structural rather than a matter
+of taste. **Eviction is llama-swap killing the backend on ttl — there is no
+other unload path.** `llama-swap.service` runs as the unprivileged `llama`
+user; ernst's podman tier is rootful. A non-root process cannot start or stop a
+rootful container, so ComfyUI could have been *reached* but never *arbitrated*
+— and arbitration is the entire point.
+
+The registration M19 shipped could not have run either: it set `proxy` with no
+`cmd`, which is the same "empty command" shape this module already documents
+for the abandoned router arrangement. `doStart()` requires both
+(`internal/process/process_command.go:358-364`). Nothing caught it because the
+role was never enabled.
+
+### What it is now
+
+A hand-rolled derivation in [`pkgs/comfyui/`](pkgs/comfyui/), spawned by
+llama-swap as an ordinary child process exactly as `llama-server` and
+`whisper-server` are. It inherits that unit's ROCm sandbox — `/dev/kfd` +
+`char-drm`, `MemoryDenyWriteExecute=false` — eviction is a plain process kill,
+and **M21 took no uid, no MAC and no address**; uid 3035, sequence 10 and
+`10.0.90.24` all went back to M20.
+
+The cost the roadmap expected — compiling the ROCm PyTorch stack — **does not
+exist.** Verified against `cache.nixos.org`: `torch`, `torchvision` and
+`torchaudio` are all substitutable, and `rocmPackages.clr.gpuTargets` already
+contains `gfx1100`. The catch is the *shape* of the override — see
+`pkgs/comfyui/default.nix`, which reproduces those cached paths by overriding
+the **package set** rather than one package's `torch` argument.
+
+### Weights come from `roles.models`, through a third consumer
+
+Checkpoints are declared like every other model — one fetcher, one
+hash-verified tree — with `servedByLlama = false` and a `subdir`. ComfyUI
+discovers models by **scanning category directories** rather than being handed
+a path, so a generated `extra_model_paths.yaml` maps the store into it, and
+that mapping is *derived from the declarations*: a model's `subdir` IS its
+ComfyUI category.
+
+`subdir` exists because a flat store is wrong in a subtle way here:
+`folder_paths.py`'s `supported_pt_extensions` includes `.bin`, so Whisper's
+`ggml-large-v3-turbo-q5_0.bin` would be offered as a diffusion checkpoint while
+the GGUFs were correctly ignored. It defaults to `""`, so **no existing model
+path moves.**
+
+### Open WebUI reaches it at `/upstream/comfyui`
+
+Open WebUI's ComfyUI client speaks ComfyUI's own API (`POST /prompt`,
+`GET /history/<id>`, `GET /view`, and a websocket at `/ws`) — **none of which
+carry a model name** for llama-swap to dispatch on.
+`/upstream/<model>/<path>` is llama-swap's answer: it proxies any request to
+that backend, starting it through the normal swap path first, so the exclusive
+group still evicts the LLM (`internal/server/api.go`, registered at
+`server.go:230`). The websocket survives it because Open WebUI builds its
+socket URL by string-replacing the scheme on the same base
+(`utils/images/comfyui.py:190`) and every HTTP call is an `f'{base_url}/…'`
+append.
+
+It uses the **same `fdca:fe91::1` bridge** chat and STT already use — no new
+listener, no new firewall rule.
+
+### What is deliberately absent
+
+- **`comfy-angle`** — a prebuilt binary wheel with no sdist, imported by one
+  optional node pack (`comfy_extras/nodes_glsl.py`). Its absence is a startup
+  warning and one unregistered node pack; confirmed by running the built
+  package, not assumed.
+- **`comfy-aimdo`'s native offloader** — the pure-Python wheel is taken (see
+  `pkgs/comfyui/comfy-aimdo.nix`), so dynamic weight offloading is off. It has
+  nothing to relieve here: the LLM is evicted before ComfyUI starts, so the
+  card is not shared at the moment of use. **That reasoning expires** if a
+  checkpoint is ever declared that does not fit alone.
+- **`comfy-kitchen`'s compiled kernels** — eager (plain PyTorch) is what runs.
+  Measured, not assumed: the `hip` backend reports *"HIP extension not built
+  (no _C module in backends/hip)"*, so it is a compiled extension the platform
+  wheels carry rather than a runtime JIT.
+- **470 MB of template preview media**, and **ComfyUI-Manager**. Custom nodes
+  cannot be installed at runtime against a read-only store, which is a property
+  rather than a gap: a node that is wanted becomes a derivation.
 
 ## Open WebUI
 

@@ -491,6 +491,54 @@
             kvCacheType   = "f16";
             servedByLlama = false;
           };
+
+          # ── M21: the diffusion checkpoint, in the SAME store ────────────
+          #
+          # SDXL base 1.0.  Declared here rather than by a second fetcher for
+          # the reason the whisper entry above gives — one hash-verified tree,
+          # one place to look when a file is missing — and `servedByLlama =
+          # false` is the same escape hatch: llama-server cannot load a
+          # safetensors checkpoint and a preset section pointing at one would
+          # be a load error per request.
+          #
+          # `subdir` (added by M21) is what keeps ComfyUI's directory scan
+          # honest.  ComfyUI discovers models by category directory, and
+          # `folder_paths.py`'s supported_pt_extensions includes `.bin` — so
+          # against a flat store it would offer Whisper's
+          # ggml-large-v3-turbo-q5_0.bin as a diffusion checkpoint while
+          # correctly ignoring the GGUFs.  The subdirectory name IS the
+          # ComfyUI category, and the generated extra_model_paths.yaml is
+          # derived from these declarations rather than written out again.
+          #
+          # WHY SDXL AND NOT FLUX.  Two reasons, one of them fatal to Flux
+          # here.  Flux.1-dev is GATED on HuggingFace — the fetcher would meet
+          # a token wall, not a file, and the failure would look like a broken
+          # URL.  And the VRAM budget only works by eviction: the card is
+          # 24560 MiB and the coder model holds 21799 of it, so whatever is
+          # declared has to fit ALONE after the exclusive group evicts the LLM.
+          # SDXL at 6.9 GiB does so with room for the VAE and a large latent;
+          # a 17 GiB single-file Flux would fit but leaves nothing spare and
+          # buys a slower first token on every image.
+          #
+          # VERIFIED TWICE, 2026-09-09, because this repo has shipped a
+          # nonexistent model reference twice: `nix store prefetch-file`
+          # returned the hash below, and its base16 form
+          # (31e35c80fc4829d14f90153f4c74cd59c90b779f6afe05a74cd6120b893f7e5b)
+          # matches HuggingFace's own LFS oid for the file.  Two independent
+          # sources agreeing, not one download trusted.
+          sdxl-base-1_0 = {
+            url  = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors";
+            hash = "sha256-MeNcgPxIKdFPkBU/THTNWckLd59q/gWnTNYSC4k/fls=";
+            filename    = "sd_xl_base_1.0.safetensors";
+            subdir      = "checkpoints";
+            description = "Stable Diffusion XL base 1.0";
+            # Neither applies to a diffusion model; both are required options,
+            # deliberately, so that nothing can be declared without a stated
+            # window.  Same non-answer the whisper entry gives.
+            contextLength = 1;
+            kvCacheType   = "f16";
+            servedByLlama = false;
+          };
         };
 
         # ── ernst: voice ────────────────────────────────────────────────
@@ -511,19 +559,36 @@
 
         # ── ernst: image generation ─────────────────────────────────────
         #
-        # NOT ENABLED HERE, and that is a decision rather than an omission.
-        # There is no first-party ComfyUI container image — checked 2026-09-09
-        # — so every candidate is a community build, and this role deliberately
-        # has no default `image`: pinning a third-party image by digest on the
-        # machine that fronts the array, with /dev/kfd handed to it, is an
-        # operator decision that must be made explicitly.  The role is written
-        # and asserts on a digest pin; enabling it is one block here plus a
-        # verified digest, and the uid is already reserved.
+        # ENABLED BY M21, and it is three lines because the milestone spent
+        # itself on the two decisions rather than on configuration.
         #
-        #   roles.imagegen.machines.ernst.settings = {
-        #     image = "docker.io/<repo>@sha256:<digest>";   # VERIFY FIRST
-        #     uid   = 3035;
-        #   };
+        # THE IMAGE DECISION WENT THE OTHER WAY.  M19 left this unset pending
+        # a digest to pin; the survey found nothing worth pinning.  AMD's own
+        # docker.io/rocm/comfyui is built PYTORCH_ROCM_ARCH=gfx942;gfx950 and
+        # has no kernels for this card at all; the best-provenance community
+        # image copies ComfyUI into a volume on first run so its digest pins
+        # only the first install; the one image that fits has a single GitHub
+        # star.  And llama-swap — unprivileged — could never have started or
+        # stopped a rootful container, which is what eviction requires.
+        #
+        # So ComfyUI is BUILT (service-modules/pkgs/comfyui) and spawned by
+        # llama-swap like every other backend.  It is not on the podman tier,
+        # takes no uid, no MAC and no address, and uid 3035 / sequence 10 /
+        # 10.0.90.24 went back to M20.  Full argument in docs/roadmap.md §M21.
+        roles.imagegen.machines.ernst.settings = {
+          # Only what ComfyUI itself writes — outputs, inputs, temp, user
+          # settings, an empty custom_nodes.  On zdata (invariant #7).  The
+          # WEIGHTS are not here: they are declared in roles.models above and
+          # live in the one hash-verified model store, which ComfyUI is
+          # pointed at through a generated extra_model_paths.yaml.
+          stateDir = "/srv/state/comfyui";
+
+          # extraArgs stays empty deliberately.  --lowvram and friends are for
+          # a card that has to share, and this one does not: the exclusive
+          # group evicts the 21799 MiB coder model before ComfyUI is spawned,
+          # so SDXL gets essentially the whole 24560 MiB.  Reaching for them
+          # here would be treating a broken exclusion as a memory problem.
+        };
 
         # ── ernst: the web client ───────────────────────────────────────
         roles.webui.machines.ernst.settings = {
@@ -554,8 +619,32 @@
           # second, unaccounted consumer.
           speechUrl = "http://[fdca:fe91::1]:11434";
 
-          # Image generation stays null until roles.imagegen is enabled above.
-          # imageUrl = "http://[fdca:fe91::1]:11434";
+          # Image out.  SAME bridge as chat and STT — no new listener, no new
+          # firewall rule, which is what the exposeOn list above already
+          # provides.
+          #
+          # ── THE `/upstream/comfyui` SUFFIX IS LOAD-BEARING ────────────────
+          #
+          # llama-swap normally picks a backend by reading a `model` field out
+          # of an OpenAI-shaped request body.  Open WebUI's ComfyUI client
+          # speaks ComfyUI's OWN API instead — POST /prompt, GET /history/<id>,
+          # GET /view, and a websocket at /ws — none of which carry a model
+          # name anywhere llama-swap could find one.
+          #
+          # `/upstream/<model>/<path>` is llama-swap's answer: it proxies ANY
+          # request to that backend, starting it through the normal swap path
+          # first, so the exclusive group still evicts the LLM
+          # (internal/server/api.go's handleUpstream, registered at
+          # server.go:230).  Without the suffix every image request would be a
+          # 404 from a router that could not tell what it was for.
+          #
+          # It survives the websocket too, which was checked rather than
+          # hoped: Open WebUI builds its socket URL as
+          # `base_url.replace('http://','ws://') + '/ws?clientId=...'`
+          # (utils/images/comfyui.py:190), and every HTTP endpoint it uses is
+          # an `f'{base_url}/...'` append — so a base URL carrying a path
+          # prefix works throughout rather than only for the first call.
+          imageUrl = "http://[fdca:fe91::1]:11434/upstream/comfyui";
         };
 
         # ── miralda: unchanged, and out of scope ────────────────────────
