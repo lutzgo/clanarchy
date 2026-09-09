@@ -447,6 +447,22 @@
                   ttl           = settings.idleTtl;
                   checkEndpoint = "/health";
                   name          = "Whisper (speech to text)";
+
+                  # HIDDEN FROM /v1/models, because it is not a chat model.
+                  #
+                  # Open WebUI builds its model picker from /v1/models, so
+                  # whisper appeared there as something to converse with — and
+                  # picking it fails, since whisper-server answers
+                  # /v1/audio/transcriptions and not /v1/chat/completions. A
+                  # menu entry whose only behaviour is to break is worse than no
+                  # entry.
+                  #
+                  # `unlisted` skips the listing ONLY (internal/server/api.go:52
+                  # `if mc.Unlisted { continue }`); routing by model name is
+                  # untouched, so the STT path keeps working — Open WebUI names
+                  # `whisper` explicitly in AUDIO_STT_MODEL rather than
+                  # discovering it.
+                  unlisted = true;
                 };
               }
               // lib.optionalAttrs imagegenEnabled {
