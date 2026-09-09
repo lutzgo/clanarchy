@@ -500,12 +500,34 @@
           ##################################################################
           systemd.services.llama-router = {
             description = "llama-server (router mode) for ${machine.name}";
-            after       = [ "network.target" "local-fs.target" ];
             wantedBy    = [ "multi-user.target" ];
-            # Fetch first: a router that starts before its models exist logs a
-            # missing-file error per model and serves an empty catalogue.
-            requires    = [ "llama-models-fetch.service" ];
-            wants       = [ "llama-models-fetch.service" ];
+
+            # ── IT DOES NOT REQUIRE THE FETCH, AND THAT IS THE FIX ──────────
+            #
+            # It used to `requires` + `wants` it.  That put a 25 GiB download on
+            # the ACTIVATION CRITICAL PATH: `clan machines update ernst` sat for
+            # thirteen minutes on the first deploy with no progress output,
+            # which is indistinguishable from a hang — and it is exactly the
+            # failure shape this repo keeps writing notes about, except here the
+            # deploy looked broken while working correctly.  Measured on the
+            # first real deploy, 2026-09-09: llama-models-fetch was the only
+            # running job while multi-user.target and graphical.target waited.
+            #
+            # It cost on EVERY deploy, not just the first: the fetcher re-hashes
+            # the whole model store on each run, which is ~1 minute of blocking
+            # for a store that has not changed.
+            #
+            # The router does not need the models at startup.  It is a ROUTER —
+            # it reads the preset INI, lists the models, and opens no weights
+            # until a request names one (measured: VRAM stays at idle after
+            # start, and only rises on the first chat request).  So a missing
+            # file is a per-request error, not a startup failure, and the
+            # correct dependency is ordering-only.
+            #
+            # `after` without `wants` means: if both are queued in the same
+            # transaction, run the fetch first; otherwise do not pull it in at
+            # all.  The timer below is what actually runs it.
+            after = [ "network.target" "local-fs.target" "llama-models-fetch.service" ];
 
             environment = {
               ROCR_VISIBLE_DEVICES = "0";
@@ -865,11 +887,41 @@
           # file alone — never a silent overwrite, because the thing on the
           # other side of a wrong model is an agent that sounds fine.
           ##################################################################
+          # ── STARTED BY A TIMER, NOT BY multi-user.target ──────────────────
+          #
+          # See the long note on llama-router: as a `wantedBy` unit this put a
+          # 25 GiB download on the activation critical path and made the first
+          # deploy look like a hang for thirteen minutes.  A .timer is pulled in
+          # by timers.target, and starting a timer completes instantly, so
+          # activation returns while the fetch runs behind it.
+          #
+          # restartIfChanged = false is the other half.  Without it, ADDING a
+          # model changes this unit's script, switch-to-configuration restarts
+          # it, and the whole download is back on the critical path — the exact
+          # defect, reintroduced by the exact edit most likely to trigger it.
+          systemd.timers.llama-models-fetch = {
+            description = "Fetch declared local-ai models shortly after boot";
+            wantedBy    = [ "timers.target" ];
+            timerConfig = {
+              OnBootSec   = "30s";
+              AccuracySec = "5s";
+              Unit        = "llama-models-fetch.service";
+            };
+          };
+
           systemd.services.llama-models-fetch = {
             description = "Fetch and verify declared local-ai models";
             after       = [ "network-online.target" ];
             wants       = [ "network-online.target" ];
-            wantedBy    = [ "multi-user.target" ];
+
+            # Deliberately NOT wantedBy multi-user.target — the timer above owns
+            # starting it.  A deploy that ADDS a model therefore does not fetch
+            # it immediately; run `systemctl start llama-models-fetch` (it is
+            # idempotent) or wait for the next boot.  That is the documented
+            # cost of keeping deploys non-blocking, and it is the right trade:
+            # adding a model is rare and deliberate, deploying is neither.
+            restartIfChanged = false;
+            stopIfChanged    = false;
 
             serviceConfig = {
               Type            = "oneshot";
@@ -929,6 +981,16 @@
                 ''fetch ${lib.escapeShellArg j.file} ${lib.escapeShellArg j.url} ${lib.escapeShellArg j.hash}''
               ) jobs}
             '';
+
+            # Pick the router up once the models are actually on disk.
+            #
+            # Needed because the router reads its preset INI at startup: a model
+            # whose file did not exist yet is listed but unusable until it
+            # re-reads. `try-restart` and not `restart`, so this is a no-op when
+            # the router is deliberately stopped rather than something that
+            # starts it behind an operator's back. `-` prefixed so a failure
+            # here cannot turn a completed 25 GiB download into a failed unit.
+            postStart = "-${pkgs.systemd}/bin/systemctl try-restart llama-router.service";
           };
         };
     };

@@ -238,6 +238,34 @@ file is skipped on every boot, and a **mismatch is a hard failure that leaves
 the existing file alone** — never a silent overwrite, because the thing on the
 other side of a wrong model is an agent that sounds fine.
 
+### The fetch is deliberately OFF the deploy path
+
+`llama-models-fetch` is started by a **timer** (`OnBootSec=30s`), not by
+`multi-user.target`, and it carries `restartIfChanged = false`.
+
+It was originally `wantedBy = multi-user.target` with `llama-router` requiring
+it, and the first real deploy showed why that is wrong: `clan machines update
+ernst` sat for **thirteen minutes** with no progress output while a 25 GiB
+download completed, which is indistinguishable from a hang. It cost on every
+subsequent deploy too — the fetcher re-hashes the whole store each run, roughly
+a minute of blocking for a store that has not changed.
+
+**The router does not need the models at startup.** It is a router: it reads the
+preset INI, lists the models, and opens no weights until a request names one. A
+missing file is a per-request error, not a startup failure. So the dependency is
+ordering-only (`after`, no `wants`), and the fetch calls `systemctl try-restart
+llama-router` when it finishes so newly-arrived files are picked up.
+
+`restartIfChanged = false` is the other half: without it, **adding a model**
+changes the unit's script, `switch-to-configuration` restarts it, and the
+download is back on the critical path — the same defect, reintroduced by the one
+edit most likely to trigger it.
+
+**The cost, stated:** a deploy that adds a model does not fetch it immediately.
+Run `systemctl start llama-models-fetch` (idempotent) or wait for the next boot.
+That is the right trade — adding a model is rare and deliberate, deploying is
+neither.
+
 ## Voice — whisper.cpp, and it runs on the CPU
 
 **Speaches was the intended choice and is not taken.** It is not in nixpkgs at
@@ -436,6 +464,17 @@ truth.
 **`llama-models-fetch` fails with `MISMATCH`** — the file on disk does not match
 the declared hash. It is deliberately **not** overwritten. Move it aside by hand
 after working out which of the two is wrong.
+
+**A newly added model 404s after a deploy** — expected. The fetch is off the
+deploy path (above), so it has not run yet. `systemctl start
+llama-models-fetch`; it restarts the router itself when it completes.
+
+**`clan machines update` appears to hang on this machine** — check
+`systemctl list-jobs` on ernst before assuming a fault. If
+`llama-models-fetch.service` is the running job you are watching a download, not
+a hang; `ls -la /srv/state/local-ai/models/*.part` shows progress. This should
+no longer happen on deploy, only if the unit was started manually in the same
+window.
 
 **Tool calling suddenly at ~13%** — the `<tool_call>` instructions file is no
 longer reaching the model. Check `instructions` in

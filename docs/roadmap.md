@@ -8556,6 +8556,46 @@ body. The Prometheus job carries `params.model` for that reason; without it the
 job would be a permanent `up == 0` — the shape M13 refused to introduce. Metric
 names were read off a live scrape, not out of the binary's strings.
 
+### 7b. What the first deploy found — the fetch was on the critical path
+
+**Found on the real deploy, 2026-09-09, and fixed in the same PR.** The
+milestone's own model fetcher was `wantedBy = multi-user.target` with
+`llama-router` requiring it, which put a **25 GiB download on the activation
+critical path**. `clan machines update ernst` sat for thirteen minutes with no
+progress output while `systemctl list-jobs` showed exactly one running job and
+both `multi-user.target` and `graphical.target` waiting.
+
+**Nothing was broken — and that is the problem.** A correct deploy that is
+indistinguishable from a hang is the same failure class this document keeps
+recording from the other direction: [SN1](#sn1--the-model-tag-silently-sets-the-context-window)'s
+truncation looks like success, the recyclarr timer looked green, and this looked
+broken while working. All three are the instrument disagreeing with the state.
+
+It was not first-deploy-only either: the fetcher re-hashes the entire model store
+on every run, so **every** subsequent deploy would have blocked for about a
+minute verifying files that had not changed.
+
+**The fix rests on a property of the router that had already been measured and
+not connected to this.** llama-server in router mode opens no weights at startup
+— it reads the preset INI, lists the models, and loads on first request (VRAM
+stays at idle after start; it only rises on the first chat). So a missing model
+file is a per-request error, not a startup failure, and the router never needed
+to *require* the fetch at all. Now:
+
+- the fetch is started by a **timer** (`OnBootSec=30s`), not by
+  `multi-user.target`, so activation returns while it runs behind;
+- `llama-router` keeps `After=` for ordering and drops `Requires=`/`Wants=`;
+- the fetch calls `systemctl try-restart llama-router` on completion, so
+  newly-arrived files are picked up;
+- `restartIfChanged = false` on the fetch, because without it **adding a model**
+  changes the unit's script, `switch-to-configuration` restarts it, and the
+  download is back on the critical path — the same defect reintroduced by the
+  one edit most likely to trigger it.
+
+**The cost, stated rather than discovered later:** a deploy that adds a model
+does not fetch it immediately. Run `systemctl start llama-models-fetch`
+(idempotent) or wait for the next boot.
+
 ### 8. Left for later, explicitly
 
 - **miralda is out of scope and stays on Ollama.** Its gfx1103 iGPU running a 7B
