@@ -91,7 +91,11 @@
 #               cannot exist in one and not the other.
 #   opencode  — the CLI agent, pointed at llama-swap (local or tunnelled).
 #   speech    — whisper.cpp STT on an OpenAI-shaped endpoint.
-#   imagegen  — ComfyUI, podman tier.
+#   imagegen  — ComfyUI, BUILT from source and spawned by llama-swap (M21).
+#               It was written for the podman tier in M19 and moved off it in
+#               M21: no usable image exists for this card, and an unprivileged
+#               llama-swap could never have started or stopped a rootful
+#               container — which eviction requires.  See the role.
 #   webui     — Open WebUI in an nspawn container on VLAN 90.
 #
 {
@@ -308,7 +312,15 @@
 
           # Where a declared model's file lands.  Derived, never configured:
           # two names for one path is how the fetcher and the INI drift.
-          fileOf = name: "${modelsDir}/${declared.${name}.filename}";
+          #
+          # `subdir` (M21) is applied HERE as well as in the fetcher, and the
+          # two must stay in step — the fetcher's `relOf` is the same
+          # expression.  A model with a subdirectory whose server path omitted
+          # it would download correctly and then fail to load, per request,
+          # with a file-not-found naming a path nothing ever wrote.
+          relOf = m: file: if m.subdir == "" then file else "${m.subdir}/${file}";
+          fileOf = name:
+            let m = declared.${name}; in "${modelsDir}/${relOf m m.filename}";
 
           ####################################################################
           # The router's preset INI.
@@ -341,7 +353,7 @@
               "--alias ${name}"
               "--metrics"
             ]
-            ++ lib.optional (m.mmproj != null) "--mmproj ${modelsDir}/${m.mmproj}"
+            ++ lib.optional (m.mmproj != null) "--mmproj ${modelsDir}/${relOf m m.mmproj}"
             ++ m.extraArgs);
 
           ####################################################################
@@ -381,6 +393,64 @@
           imagegenRole = roles.imagegen.machines.${machine.name}.settings or null;
           speechEnabled   = speechRole   != null;
           imagegenEnabled = imagegenRole != null;
+
+          ####################################################################
+          # ComfyUI — spawned by llama-swap, not run beside it.
+          #
+          # See the `comfyui` entry in swapConfig.models for why this is a
+          # command rather than a container, and service-modules/pkgs/comfyui
+          # for why it is a derivation rather than a pinned image.
+          ####################################################################
+          comfyuiPkg = pkgs.callPackage ./pkgs/comfyui { };
+
+          # ── ONE MODEL STORE, TWO NAMING CONVENTIONS, NO SECOND FETCHER ────
+          #
+          # roles.models fetches and hash-verifies everything the GPU tier
+          # loads, including diffusion checkpoints (`servedByLlama = false`,
+          # the same escape hatch whisper's weights use).  ComfyUI, though,
+          # DISCOVERS models by scanning category directories rather than being
+          # handed a path — so it needs to be told that the store exists and
+          # which category each part of it holds.
+          #
+          # The mapping is DERIVED FROM THE DECLARATIONS, not written out
+          # again: a model's `subdir` IS its ComfyUI category, so declaring
+          # `subdir = "checkpoints"` in clan.nix is the whole of adding a
+          # checkpoint, and a category with nothing declared in it never
+          # appears here.  That is the same one-attrset-two-consumers property
+          # the preset INI has, extended to a third consumer.
+          comfyModelCategories = lib.unique
+            (lib.filter (s: s != "")
+              (lib.mapAttrsToList (_: m: m.subdir) declared));
+
+          # JSON is valid YAML, exactly as it is for llama-swap's config above.
+          comfyExtraModelPaths = pkgs.writeText "comfyui-extra-model-paths.yaml"
+            (builtins.toJSON {
+              clanarchy = {
+                base_path = modelsDir;
+                # FALSE deliberately.  `is_default` marks these as the
+                # preferred directories for anything that WRITES a model, and
+                # nothing should ever write into a hash-verified store managed
+                # by the fetcher.  Reads are unaffected — the paths are
+                # searched either way.
+                is_default = false;
+              } // lib.listToAttrs (map (c: {
+                name  = c;
+                value = c;
+              }) comfyModelCategories);
+            });
+
+          comfyuiCmd = lib.concatStringsSep " " ([
+            "${comfyuiPkg}/bin/comfyui"
+            "--listen 127.0.0.1 --port \${PORT}"
+
+            # THE STORE COPY IS READ-ONLY AND ComfyUI EXPECTS TO WRITE.  This
+            # one flag relocates models, custom_nodes, input, output, temp and
+            # user in a single move (comfy/cli_args.py); without it ComfyUI
+            # tries to create them next to main.py in /nix/store and dies.
+            "--base-directory ${imagegenRole.stateDir}"
+
+            "--extra-model-paths-config ${comfyExtraModelPaths}"
+          ] ++ imagegenRole.extraArgs);
 
           swapConfig = {
             healthCheckTimeout = 300;
@@ -467,12 +537,51 @@
               }
               // lib.optionalAttrs imagegenEnabled {
                 comfyui = {
-                  # Already running under podman; llama-swap only needs to know
-                  # it exists so the exclusive group can evict the LLM for it.
-                  proxy         = "http://127.0.0.1:${toString imagegenRole.port}";
+                  # ── M19 WROTE THIS ENTRY IN THE ONE SHAPE llama-swap ───────
+                  #    DOES NOT SUPPORT, AND M21 IS WHERE IT WAS CAUGHT.
+                  #
+                  # It shipped as `proxy` with NO `cmd`, on the reasoning that
+                  # ComfyUI was already running under podman and llama-swap
+                  # only needed to know it existed.  That is EXACTLY the
+                  # externally-managed-backend shape the `models` note above
+                  # records as impossible — and the failure is identical:
+                  #
+                  #   HTTP 500 {"src":"llama-swap",
+                  #     "error":"unable to get sanitized command: empty command"}
+                  #
+                  # doStart() requires BOTH (process_command.go:358-364): a
+                  # non-empty Proxy, then SanitizedCommand(), which returns
+                  # "empty command" for an empty Cmd.  The role was never
+                  # enabled, so nothing exercised it.  The roadmap's "adding
+                  # ComfyUI to swapMembers is one line" was false.
+                  #
+                  # ── AND THE FIX IS WHY M21 LEFT THE PODMAN TIER ───────────
+                  #
+                  # llama-swap MUST own the process, because killing it on ttl
+                  # is the ONLY thing that hands the VRAM back.  This unit runs
+                  # as the unprivileged `${user}` user and ernst's podman tier
+                  # is rootful, so it could never have started or stopped a
+                  # container.  Built instead, ComfyUI is an ordinary child of
+                  # this unit and inherits its ROCm sandbox — the same
+                  # arrangement llama-server's model processes already use.
+                  cmd = comfyuiCmd;
+
+                  # `${PORT}` is llama-swap's macro (escaped so Nix leaves it
+                  # alone): it allocates the port from `startPort` and puts the
+                  # same number in both the command and the proxy target.
+                  proxy         = "http://127.0.0.1:\${PORT}";
                   ttl           = settings.idleTtl;
                   checkEndpoint = "/system_stats";
                   name          = "ComfyUI (image generation)";
+
+                  # HIDDEN FROM /v1/models, for the reason whisper is — read
+                  # that note above; this is the same defect with a different
+                  # backend.  Open WebUI builds its model picker from
+                  # /v1/models, and ComfyUI answers none of the chat API, so an
+                  # entry here would be a menu item whose only behaviour is to
+                  # fail.  Routing by name is untouched, which is what
+                  # /upstream/comfyui below depends on.
+                  unlisted = true;
                 };
               };
 
@@ -563,6 +672,32 @@
             # Many ROCm utilities hard-code /opt/rocm/hip.  Inherited from the
             # ollama era and still required.
             "L+ /opt/rocm/hip - - - - ${pkgs.rocmPackages.clr}"
+          ]
+          # ComfyUI's writable tree, owned by the SAME user llama-swap runs as
+          # — it is a child of that unit, not a service with an identity of its
+          # own.  Created here rather than in roles.imagegen because that role
+          # produces no units at all (see the note on its perInstance), and
+          # because the ownership is a fact about THIS role's user.
+          #
+          # ── custom_nodes IS NOT OPTIONAL, AND ComfyUI DOES NOT CREATE IT ──
+          #
+          # ComfyUI creates input/, output/, temp/ and user/ under the base
+          # directory itself, but `execute_prestartup_script()` runs BEFORE any
+          # of that and does a bare `os.listdir(custom_node_path)` on a path
+          # nothing has made yet (main.py:201).  With the directory absent it
+          # dies during startup:
+          #
+          #   FileNotFoundError: [Errno 2] No such file or directory:
+          #     '<base>/custom_nodes'
+          #
+          # Found by running the built package, not by reading it — which is
+          # the only reason it is here rather than in a journal on ernst after
+          # the first image request.  It is created EMPTY and stays that way:
+          # see the note in service-modules/pkgs/comfyui/default.nix on why
+          # custom nodes are a derivation here rather than a runtime install.
+          ++ lib.optionals imagegenEnabled [
+            "d ${imagegenRole.stateDir} 0750 ${user} ${user} -"
+            "d ${imagegenRole.stateDir}/custom_nodes 0750 ${user} ${user} -"
           ];
 
           ##################################################################
@@ -650,7 +785,12 @@
               # entire point of the machine.
               DeviceAllow    = [ "/dev/kfd rw" "char-drm rw" ];
 
-              ReadWritePaths = [ stateDir ];
+              # ComfyUI's base directory is a SECOND writable path, and its
+              # absence would not fail here — it would fail inside a spawned
+              # child, as a Python traceback about a directory it could not
+              # create, at first image request rather than at deploy.
+              ReadWritePaths = [ stateDir ]
+                ++ lib.optional imagegenEnabled imagegenRole.stateDir;
               NoNewPrivileges = true;
               ProtectHome     = true;
 
@@ -855,6 +995,36 @@
             default     = baseNameOf name;
             description = "Name the file is stored under in the model directory.";
           };
+
+          subdir = lib.mkOption {
+            type        = lib.types.str;
+            default     = "";
+            example     = "checkpoints";
+            description = ''
+              Directory BELOW the model directory this file is stored in, or ""
+              for the model directory itself.
+
+              ADDED BY M21, AND IT EXISTS FOR ONE CONSUMER'S CONVENTIONS.
+              llama-server does not care where a GGUF sits — it is handed a
+              path.  ComfyUI does: it discovers models by SCANNING category
+              directories (`checkpoints`, `loras`, `vae`, …) and offers
+              whatever it finds in the matching node's dropdown.
+
+              Pointed at a flat store, that scan is wrong in a way that is
+              annoying rather than fatal: `folder_paths.py`'s
+              `supported_pt_extensions` includes `.bin`, so Whisper's
+              `ggml-large-v3-turbo-q5_0.bin` would be offered as a diffusion
+              checkpoint.  (The GGUFs would not — `.gguf` is not in that set —
+              which is exactly the kind of half-right that is worse than
+              either.)
+
+              So this is a layout option, not a second store.  ONE FETCHER,
+              ONE HASH-VERIFIED DIRECTORY TREE, still: `extraFiles` inherit
+              this subdirectory, and the inference role's preset INI derives
+              its paths from the same value, so the fetcher and the server
+              cannot disagree about where a file is.
+            '';
+          };
           description = lib.mkOption {
             type        = lib.types.str;
             default     = name;
@@ -977,12 +1147,19 @@
           user      = if inf != null then inf.user else "llama";
           modelsDir = "${stateDir}/models";
 
+          # Path of a file RELATIVE to the model directory.  Derived in one
+          # place and used by every consumer, for the reason `fileOf` in the
+          # inference role gives: two names for one path is how the fetcher and
+          # the server drift.  extraFiles deliberately inherit the model's
+          # subdirectory — a projector lives beside its weights.
+          relOf = m: file: if m.subdir == "" then file else "${m.subdir}/${file}";
+
           # One fetch job per file: the model itself plus anything in
           # extraFiles.  Flattened here so the script below is a plain loop
           # rather than nested shell.
           jobs = lib.flatten (lib.mapAttrsToList (name: m:
-            [ { file = m.filename; inherit (m) url hash; } ]
-            ++ lib.mapAttrsToList (fn: f: { file = fn; inherit (f) url hash; }) m.extraFiles
+            [ { file = relOf m m.filename; inherit (m) url hash; } ]
+            ++ lib.mapAttrsToList (fn: f: { file = relOf m fn; inherit (f) url hash; }) m.extraFiles
           ) settings.models);
         in
         {
@@ -1103,6 +1280,10 @@
               fetch() {
                 local file="$1" url="$2" want="$3"
                 local dest="${modelsDir}/$file"
+
+                # `file` may carry a subdirectory (roles.models' `subdir`), so
+                # the parent is created per-file rather than once above.
+                mkdir -p "$(${pkgs.coreutils}/bin/dirname "$dest")"
 
                 if [ -f "$dest" ]; then
                   local have
@@ -1257,97 +1438,92 @@
   };
 
   ##############################################################################
-  # roles.imagegen — ComfyUI on the podman tier
+  # roles.imagegen — ComfyUI, spawned by llama-swap
+  #
+  # ── THIS ROLE LEFT THE PODMAN TIER IN M21, AND THAT IS THE MILESTONE ──────
+  #
+  # M19 wrote it as a digest-pinned community image on the podman tier, with
+  # `image`, `uid`, `/dev/kfd` and an assertion refusing any tag.  All of that
+  # is gone.  Two findings removed it, and both are recorded at length in
+  # service-modules/pkgs/comfyui/default.nix and docs/roadmap.md §M21:
+  #
+  #   1. NO USABLE IMAGE EXISTS.  AMD's own docker.io/rocm/comfyui is built
+  #      PYTORCH_ROCM_ARCH=gfx942;gfx950 — Instinct only, no kernels for
+  #      ernst's gfx1100.  The best-provenance community image (yanwk, 1647
+  #      stars) copies ComfyUI out of the image into a persistent volume with
+  #      `cp --update=none` and then runs a root pre-start.sh from that volume,
+  #      so its digest pins the first install and nothing afterwards.  The only
+  #      image that both ships ComfyUI and targets gfx1100 has one GitHub star.
+  #
+  #   2. llama-swap COULD NEVER HAVE ARBITRATED A CONTAINER.  Eviction is
+  #      llama-swap killing the backend on ttl — there is no other unload path.
+  #      llama-swap runs as an unprivileged user and ernst's podman tier is
+  #      rootful, so it could not have started or stopped the container.  The
+  #      registration M19 shipped could not even have run: `proxy` with no
+  #      `cmd` is the "empty command" shape this module already documents.
+  #
+  # So ComfyUI is now BUILT (service-modules/pkgs/comfyui) and spawned by
+  # llama-swap as an ordinary child, exactly as llama-server and whisper-server
+  # are.  It inherits that unit's ROCm sandbox, eviction is a process kill, and
+  # M21 takes NO uid, NO MAC and NO ADDRESS — the numbers M19 reserved for it
+  # (uid 3035, sequence 10, 10.0.90.24) were released back to M20.
   ##############################################################################
   roles.imagegen = {
-    description = "ComfyUI image generation, podman tier, exclusive with the LLM on the GPU.";
+    description = "ComfyUI image generation, spawned by llama-swap, exclusive with the LLM on the GPU.";
 
     interface.options = {
-      image = lib.mkOption {
-        type        = lib.types.str;
-        description = ''
-          Fully-qualified ComfyUI ROCm image reference, DIGEST-PINNED.
-
-          NO DEFAULT, AND THAT IS THE POINT.  There is no first-party ComfyUI
-          container image — checked 2026-09-09 — so every candidate is a
-          community build, and pinning one by digest on the machine that fronts
-          the array is a trust decision an operator has to make explicitly
-          rather than inherit from a module default.  It is also why this role
-          is opt-in: a machine that does not set `image` gets no ComfyUI.
-
-          Verify a digest before writing it:
-            skopeo inspect docker://<ref> | jq -r .Digest
-        '';
-      };
-      port = lib.mkOption {
-        type        = lib.types.port;
-        default     = 8188;
-        description = "Loopback port ComfyUI listens on. llama-swap is its only client.";
-      };
       stateDir = lib.mkOption {
         type        = lib.types.path;
         default     = "/srv/state/comfyui";
-        description = "Models, outputs and custom nodes. On zdata, invariant #7.";
-      };
-      uid = lib.mkOption {
-        type        = lib.types.int;
         description = ''
-          Static uid, allocated in the table in machines/ernst/networking.nix.
-          podman passes uids through unmapped for the rootful tier, so a number
-          chosen here IS a uid on the pool.
+          ComfyUI's `--base-directory`: outputs, inputs, temp, user settings
+          and custom_nodes.  On zdata, per architecture invariant #7.
+
+          NOT the model store.  Weights are declared in roles.models and live
+          in the inference role's model directory, which ComfyUI is pointed at
+          through a generated extra_model_paths.yaml — one fetcher, one
+          hash-verified tree, three consumers.  What lands HERE is only what
+          ComfyUI itself writes.
+
+          It is created and owned by the inference role's user, because ComfyUI
+          runs as a child of llama-swap.service and has no identity of its own.
+        '';
+      };
+
+      extraArgs = lib.mkOption {
+        type        = lib.types.listOf lib.types.str;
+        default     = [ ];
+        example     = [ "--lowvram" ];
+        description = ''
+          Extra arguments appended to ComfyUI's command line, verbatim.
+
+          Mostly empty on purpose.  The VRAM-pressure flags (`--lowvram`,
+          `--novram`, `--disable-smart-memory`) exist for cards that must share,
+          and this one does not have to: llama-swap's exclusive group evicts the
+          coder model BEFORE ComfyUI is spawned, so ComfyUI gets the whole card.
+          Reaching for `--lowvram` here is usually a sign that the exclusion is
+          not working and should be diagnosed rather than papered over.
+
+          DO NOT PUT `--listen`, `--port`, `--base-directory` OR
+          `--extra-model-paths-config` HERE.  Those are set from this role's
+          settings and llama-swap's `${"\${PORT}"}` macro; a second copy would
+          win or lose depending on argparse order, which is not a thing to
+          discover at runtime.
         '';
       };
     };
 
-    perInstance = { settings, ... }: {
-      nixosModule = { config, pkgs, lib, ... }: {
-        assertions = [ {
-          assertion = lib.hasInfix "@sha256:" settings.image;
-          message = ''
-            @clanarchy/local-ai: roles.imagegen.image must be pinned by DIGEST
-            (contain "@sha256:"), not by tag.  A tag is a moving reference to
-            a community-built image with GPU device access on the machine that
-            fronts the array; M9 pinned by digest for the same reason and this
-            role does not get to be the exception.
-          '';
-        } ];
-
-        systemd.tmpfiles.rules = [
-          "d ${settings.stateDir} 0750 ${toString settings.uid} ${toString settings.uid} -"
-          "d ${settings.stateDir}/models 0750 ${toString settings.uid} ${toString settings.uid} -"
-          "d ${settings.stateDir}/output 0750 ${toString settings.uid} ${toString settings.uid} -"
-        ];
-
-        virtualisation.oci-containers.containers.comfyui = {
-          image = settings.image;
-          # ROOTFUL, like the rest of the podman tier on ernst (M9). /dev/kfd
-          # cannot be handed to a rootless container without a device rule that
-          # amounts to the same access with more moving parts.
-          extraOptions = [
-            "--device=/dev/kfd"
-            "--device=/dev/dri"
-            "--group-add=keep-groups"
-            "--security-opt=seccomp=unconfined"   # ROCm's ioctls
-            # LOOPBACK ONLY. The container publishes to 127.0.0.1 and llama-swap
-            # is its only client; nothing on any VLAN reaches it.
-            "--network=host"
-          ];
-          environment = {
-            # No HSA override: gfx1100 is natively supported (invariant #5's
-            # card). See the inference role for the full reasoning.
-            HSA_OVERRIDE_GFX_VERSION = "";
-            COMFYUI_PORT = toString settings.port;
-          };
-          volumes = [
-            "${settings.stateDir}/models:/root/comfy/ComfyUI/models:rw"
-            "${settings.stateDir}/output:/root/comfy/ComfyUI/output:rw"
-          ];
-          cmd = [
-            "--listen" "127.0.0.1"
-            "--port" (toString settings.port)
-          ];
-        };
-      };
+    perInstance = { ... }: {
+      # Deliberately empty — the SAME arrangement roles.speech uses, for the
+      # same reason, and the reason is the whole point of both roles.
+      #
+      # ComfyUI must be SPAWNED BY llama-swap rather than run beside it.  A
+      # unit of its own would sit outside the exclusive group, hold VRAM while
+      # the coder model wanted it, and could not be killed to give it back —
+      # which is precisely the failure the group exists to prevent.  So this
+      # role carries settings, and the inference role reads them and builds the
+      # backend entry.  A unit here would be a second, competing owner.
+      nixosModule = { ... }: { };
     };
   };
 

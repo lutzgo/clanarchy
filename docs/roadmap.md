@@ -65,7 +65,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M18 — WAN ingress, direct | **built 2026-09-03 — the deploy, the UDM-Pro forward, the public A records, the reboot and the off-net negative controls are lgo's** | — | **Cloudflare is gone.** lgo's decision: no VPS, no VPN, no third party in the data path. WAN `:443` DNATs to `10.0.90.12:8443` and terminates at Traefik; `containers/cloudflared.nix` is deleted. **The property M16 bought is reproduced with a SECOND ENTRYPOINT, not asserted**: `websecure` stays LAN-only with every pre-existing router untouched, `wan` is a new listener, and a router is internet-reachable iff it names `wan` — so creating a route does not expose it. **The central premise was TESTED ON A SCRATCH TRAEFIK BEFORE ANY CONFIG WAS WRITTEN, and it came back with a correction that changed the design**: a `websecure`-only router is genuinely unmatched on `wan` (404, no backend contact, against a 502 control) — but **a router that OMITS `entryPoints` is bound to EVERY entrypoint**, which is M16's fail-open objection reborn inside the replacement. Closed with `withWan`, an **evaluation-time throw** whose three branches were each verified to fire. Forgetting is a build failure. **RE-PROVEN ON THE DEPLOYED SYSTEM 2026-09-07 with a positive control**: from a phone on mobile 5G, `jellyfin.goclan.org` on `wan` returned `RouterName null` / 404 while the same hostname on `websecure` three minutes earlier matched `jellyfin@file` / 200. Not matched-then-refused — **not there**, which is precisely what M16's ingress list bought. `jellyfin` was chosen because it carries a permanent forward-auth bypass, so a leak there would have been unauthenticated. **Weaker than the tunnel in exactly one measured way, stated rather than smoothed**: a request to the bare public IP completes TLS and gets `404` + `CN=TRAEFIK DEFAULT CERT` — existence disclosure, not exposure. **CrowdSec runs INSIDE the Traefik netns**, because `br_netfilter` is not loaded on ernst (measured) so the host's netfilter never sees the DNATed frames at all — a bouncer anywhere else would drop nothing. **It ships in SIMULATION until Q2 is confirmed**: if the UDM-Pro SNATs, the first scanner gets the gateway banned and the house loses Jellyseerr. **nixpkgs' crowdsec modules were booted in a throwaway VM six times before the real config was written, and FOUR upstream defects fell out** — an agent that crash-loops forever on a first boot while `list-units --failed` stays EMPTY, a bouncer registration that can never succeed, `Restart=no` on both remediation units, and `DynamicUser` migrating a bind-mounted state directory. The ordering bug the brief predicted is **already fixed** in this channel. **SN2 is decided, not deferred**: (a) v4-only, with a mechanism — and **the first mechanism claimed was measured FALSE on deploy day and replaced**: every entryPoint was written `0.0.0.0:` and every one of them was still accepting v6, because Go opens AF_INET6 with `IPV6_V6ONLY=0` for any wildcard listen. The replacement mechanism was **also** wrong and was corrected a second time on deploy day: `disable_ipv6` does not make Go fall back to AF_INET, so the listeners are dual-stack and stay dual-stack. The *third* attempt — `disable_ipv6` on `all`+`default`+`eth0` — was wrong too and was deployed twice before being caught: systemd-sysctl runs before `eth0` exists so the per-interface key is skipped, **and** systemd-networkd writes `disable_ipv6 = 0` on every link it configures. **What works is one line the repo already had**: `LinkLocalAddressing = "no"` on the container's `10-eth0` unit, the same pair `networking.nix` and the `br0` port have carried all along — the container had only `IPv6AcceptRA`, which blocks an RA but not link-local assignment. **Proven by `ip -6 addr show dev eth0` returning nothing and `ip -6 route show` being empty**, not by `ss` and not by a bare `ip -6 addr show`; plus no v6 forward and no `crowdsec6` table. The residual weakness SN2 named — nothing watches for an unexpected GUA — is closed by **`UnexpectedIPv6GlobalAddress`**, ernst-only because the laptops roam. **One alert, `ExposedAndUnprotected`** — not "many bans", because a busy ban list is the system working and the silent failure is the house being open with nothing watching. **SN3 SATISFIED BY PRODUCTION TRAFFIC, NOT A STAGED PROBE**: within hours of arming, `crowdsecurity/http-probing` and `http-crawl-non_statics` banned three real scanners, and two were observed as live elements of `nft list set ip crowdsec crowdsec-blacklists` — log → parser → scenario → decision → LAPI → bouncer → kernel, unattended. The fast proof is a direct consequence of `casago.xyz` (a previous holder of this IPv4 still points service-shaped names at it), so the quirk that makes a busy ban list normal here is the quirk that supplied the evidence. **Two marginal claims stay UNVERIFIED by choice**: that the drop times out rather than refuses, and that `cscli decisions delete` clears the set element — both need lgo's own machine banned from the two public names, and he declined on 2026-09-08 rather than take a self-inflicted outage for a chain already proven. Depends on M5, M7, M16, M17. [M18](#m18-featernst-wan-ingress-direct) |
 | M19 — llama.cpp on ernst | **DEPLOYED AND FULLY VERIFIED 2026-09-09** | — | **Ollama is gone from ernst**, replaced by llama-swap in front of `llama-server` in router mode. Taken on measurement, not preference: context overflow stops being silent (**HTTP 400 naming both numbers**, where ollama returned HTTP 200 with the head of the prompt discarded and a **fabricated MAC** in its place), which closes [SN1](#sn1--the-model-tag-silently-sets-the-context-window)'s core hazard at the mechanism. Decode −3.1% at f16; **`q8_0` lost its reason to exist** and the fleet default reverts to f16. The `<tool_call>` reinforcement **stays** — llama.cpp's independent Jinja parser fails identically (26/30 dropped-tag at baseline, **zero** "present but unparsed" in eight cells across both servers), so the defect is the model's and the four-line rule is still 100%. Adds voice (whisper.cpp, **CPU — a measured packaging gap**), vision, and Open WebUI on VLAN 90 behind Traefik + Authelia. `imagegen` is **written and not enabled**: no first-party ComfyUI image exists. **M19 changes ernst's attack surface in two named places** (L9, L10) — unlike M11, which changed it not at all. [M19](#m19-featernst-local-ai-llamacpp) |
 | M20 — SearXNG / web search | **open — requested 2026-09-09** | — | Straight out of using M19: asked to *"do a web research… rate your sources"*, the model answered from weights and cited nothing, because **the stack has no internet access by design**. M19 proved tool calling at **20/20**, so the model can reliably call a search tool — the missing half is something to call. **The milestone is about the TIER, not the packaging**: SearXNG would be the first service here to talk to the open internet *on its own behalf*, which [invariant #1](#architecture-invariants) says moves a service up a tier. nspawn / podman / microvm must be argued, not inherited. Also open: whether the LLM gets the tool or Open WebUI runs the search itself, and what SearXNG's egress may reach. [M20](#m20-featernst-searxng) |
-| M21 — image generation | **open — requested 2026-09-09; the Nix already exists** | — | `roles.imagegen` shipped **written and unenabled** in M19: podman tier, `/dev/kfd` + `/dev/dri`, state on zdata, registered as a llama-swap backend, and an assertion refusing any image not pinned by digest. **The GPU arbitration is already proven** (M19 measured evict-and-reload at 21022 → 8288 → 21022 MiB), so this is not a build — it is **two decisions**. (1) There is **no first-party ComfyUI image**, so enabling it means pinning a community build by digest on the box that fronts the array, with `/dev/kfd`; the alternative is a hand-rolled derivation per the M12/M14 pattern, and "do not ship it" is a legitimate third outcome (M15's precedent). (2) The checkpoint weights go on zdata via **`roles.models`, reused not reinvented** — it already carries `servedByLlama = false` for exactly this. uid 3035 and seq 10 are a shared claim with [M20](#m20-featernst-searxng). [M21](#m21-featernst-imagegen) |
+| M21 — image generation | **shipped 2026-09-09 — BUILT, not pinned; both premises were false** | — | ComfyUI is **built from source** (`service-modules/pkgs/comfyui`, eight derivations) and **spawned by llama-swap** like `llama-server`, inheriting its ROCm sandbox — so eviction is a process kill and the exclusive `gpu` group now holds three members. It is **not on the podman tier**, and this milestone planned to put it there. Both of its premises were false: the `roles.imagegen` M19 "already built" could not have run (it registered `proxy` with no `cmd` — the "empty command" shape M19 itself documented), and there was no image worth pinning (**AMD's own `rocm/comfyui` is `gfx942;gfx950` — it cannot use this card**; the 1647★ community image's digest pins only its first install; the one that fits has 1 star). Underneath both: an unprivileged llama-swap could never have started or stopped a rootful container, which eviction requires. The ROCm torch stack turned out to be **cache-substitutable**, so building cost far less than assumed. Weights via `roles.models` as planned, plus a new `subdir`; SDXL base 1.0, hash verified twice. **uid 3035 / seq 10 / 10.0.90.24 released back to [M20](#m20-featernst-searxng)** — M21 took no uid, MAC or address. Still owed: the exclusivity proof on the real card, which needs a deploy. [M21](#m21-featernst-imagegen) |
 
 ---
 
@@ -9039,7 +9039,9 @@ VERIFICATION OWED (proofs, not descriptions):
 
 ## M21 — `feat/ernst-imagegen`
 
-**Status: open — requested 2026-09-09 by lgo. The Nix already exists.**
+**Status: SHIPPED 2026-09-09 — but not as this section describes. Both
+premises below were false, and the section is kept as written with a
+[correction appended](#what-actually-shipped-and-what-was-wrong).**
 
 **Goal.** Turn on image generation in the local AI stack: ComfyUI on the podman
 tier, arbitrated against the LLM on the one GPU, reachable from Open WebUI.
@@ -9233,6 +9235,135 @@ VERIFICATION OWED (proofs, not descriptions):
     actually moves; a correct answer at 6 tok/s is a CPU fallback.
   - Update docs/roadmap.md §M21 with what shipped and any false premise.
 ````
+
+### What actually shipped, and what was wrong
+
+Everything above is left as written, because the two things it was most
+confident about are the two things that turned out to be false, and that is
+worth more as a record than a tidy section would be.
+
+**FALSE PREMISE 1 — "most of this is already built; adding ComfyUI to
+`swapMembers` is one line."** The `roles.imagegen` M19 shipped could not have
+run. It registered ComfyUI with llama-swap as `proxy` with **no `cmd`**, which
+is the same "externally-managed backend" shape `service-modules/local-ai.nix`
+already documents as unsupported — `doStart()` requires a non-empty `Proxy`
+*and* a non-empty `Cmd` (`internal/process/process_command.go:358-364`), and an
+empty one fails with `unable to get sanitized command: empty command`. M19
+discovered that defect for the router arrangement, wrote it down, and then
+wrote the imagegen entry in the same shape. Nothing caught it because the role
+was never enabled. **A role that is written but never exercised is not "already
+built".**
+
+**FALSE PREMISE 2 — "this is a decision about which image to pin."** It was
+not a choice between community images; there was nothing to choose. Surveyed
+with `skopeo` on 2026-09-09:
+
+| Candidate | Provenance | Why it failed |
+|---|---|---|
+| `docker.io/rocm/comfyui` | **AMD's own** | `PYTORCH_ROCM_ARCH=gfx942;gfx950` — **Instinct only.** No kernels for gfx1100 at all. The section's claim that "there is no first-party image" was wrong in an unhelpful direction: AMD publishes one, and it cannot use this card |
+| `yanwk/comfyui-boot:rocm` | 1647★, 1.34M pulls | Copies ComfyUI out of the image into a persistent volume on first start with `cp --archive --update=none`, then sources a root-run `pre-start.sh` from that volume with `PIP_USER=true`. **The digest pins the first install and nothing afterwards** — i.e. the one property the pin was for |
+| `selcarpa/comfyui-rocm` | **1★, 2703 pulls, one person** | The only image that both ships ComfyUI and carries gfx1100 kernels |
+
+**And underneath both: the podman tier could never have arbitrated this.**
+Eviction is llama-swap killing the backend on ttl — there is no other unload
+path. `llama-swap.service` runs as the unprivileged `llama` user and ernst's
+podman tier is rootful, so it could have *reached* a container and never
+*evicted* one. The GPU arbitration M19 measured was real; the plan for
+attaching a third claimant to it was not.
+
+So the milestone took option **(b), build it** — and the cost the section
+priced as "much more work" is mostly not there.
+
+**What was measured, against `cache.nixos.org`:**
+
+```
+python3.13-torch-2.11.0        SUBSTITUTABLE
+python3.13-torchvision-0.26.0  SUBSTITUTABLE
+python3.13-torchaudio-2.11.0   SUBSTITUTABLE
+rocmPackages.clr.gpuTargets    [ … gfx1100 … ]   already includes the card
+```
+
+Nine derivations build; the whole ROCm stack is fetched. **But the shape of the
+override decides that**, and the obvious spelling is the wrong one:
+`torchvision.override { torch = torchWithRocm; }` leaves the cache *and* can
+put two torches on one PYTHONPATH. Overriding the package **set** — mirroring
+nixpkgs' own `torchWithRocm` body, taking `triton-no-cuda` from `prev` rather
+than `final` to avoid infinite recursion — reproduces the cached paths
+byte-for-byte. That is recorded at length in
+`service-modules/pkgs/comfyui/default.nix`.
+
+**What shipped:**
+
+- `service-modules/pkgs/comfyui/` — eight derivations: ComfyUI v0.35.0 plus the
+  seven Python dependencies nixpkgs does not carry.
+- `roles.imagegen` **rewritten as a settings-only role**, producing no units at
+  all — the same arrangement `roles.speech` uses, for the same reason. ComfyUI
+  is spawned by llama-swap and inherits its ROCm sandbox.
+- `roles.models` gained **`subdir`** (default `""`, so no existing model path
+  moves). ComfyUI discovers models by scanning category directories, and
+  `folder_paths.py`'s `supported_pt_extensions` includes `.bin` — so against a
+  flat store it would have offered Whisper's `ggml-large-v3-turbo-q5_0.bin` as a
+  diffusion checkpoint while correctly ignoring the GGUFs. The generated
+  `extra_model_paths.yaml` is **derived from the declarations**: a model's
+  `subdir` is its ComfyUI category.
+- **SDXL base 1.0**, `sha256-MeNcgPxIKdFPkBU/THTNWckLd59q/gWnTNYSC4k/fls=`,
+  verified twice — `nix store prefetch-file`, and its base16 form checked
+  against HuggingFace's own LFS oid. Flux was rejected on a fact rather than a
+  preference: **Flux.1-dev is HF-gated**, so the hash-verifying fetcher would
+  have met a token wall, not a file.
+- Open WebUI points at **`/upstream/comfyui`** on the existing `fdca:fe91::1`
+  bridge. That suffix is load-bearing: Open WebUI speaks ComfyUI's own API,
+  which carries no model name for llama-swap to dispatch on.
+- **No uid, no MAC, no address.** uid 3035, sequence 10 and `10.0.90.24` were
+  released back to [M20](#m20-featernst-searxng), and
+  `machines/ernst/networking.nix` says so.
+
+**Allocation note for M20:** the shared claim is resolved in M20's favour
+without M20 doing anything. Take 3035 and sequence 10 freely.
+
+**Verified by evaluation and by execution, on miralda:**
+
+- `nix flake check` — passes.
+- ernst `toplevel.drvPath` — evaluates.
+- The generated `extra_model_paths.yaml` — realised, and its store path matches
+  the expected content byte-for-byte.
+- llama-swap's exclusive `gpu` group now reads
+  `["qwen2.5-vl-7b", "qwen3-coder-30b", "comfyui"]`, with whisper still in the
+  non-exclusive `cpu` group.
+- `systemd-analyze security --offline` on `llama-swap.service`, the unit
+  ComfyUI now inherits: **1.5 OK**, against the ≤2.0 target. What it cannot
+  carry, and why: `PrivateDevices=`/`DeviceAllow=` (it needs `/dev/kfd` and
+  `char-drm` — and note M19's trap, `/dev/dri` is a *directory* and grants
+  nothing while denying every render node); `MemoryDenyWriteExecute=` (the ROCm
+  runtime JITs kernels through libamd_comgr and needs W+X — it scores a ✓ while
+  being actively harmful); `PrivateNetwork=`/`RestrictAddressFamilies=` (it is
+  an HTTP server). `UMask=0077` is an available 0.1 that was deliberately **not**
+  taken here — it would change file modes on an existing deployment, which is
+  not this milestone's business.
+- **ComfyUI was actually run**, which is how two things were found that reading
+  would not have: `execute_prestartup_script()` does a bare
+  `os.listdir('<base>/custom_nodes')` before anything creates it (`main.py:201`)
+  — so a tmpfiles rule creates it, or ComfyUI dies at startup — and
+  `comfy_kitchen`'s `hip` backend reports *"HIP extension not built"* rather
+  than JIT-compiling, so **eager is what runs**. Startup is otherwise clean:
+  one warning, `nodes_glsl.py` needing the deliberately-omitted `comfy-angle`.
+
+**STILL OWED, and it needs the card — Claude does not deploy.** Everything
+above was verified on miralda by evaluation and by a CPU-forced run. The
+milestone's headline proof is untouched:
+
+- **The exclusivity proof**, with the real second claimant: LLM resident by
+  `/sys/class/drm/card1/device/mem_info_vram_used` → image request → LLM
+  evicted and image produced → chat request → LLM back, with timestamps.
+- **An image generated from Open WebUI**, not from ComfyUI's own UI.
+- **`curl` to ComfyUI from a VLAN 90 host**: there is no ComfyUI port to reach
+  any more — it listens on an ephemeral loopback port llama-swap chose — so the
+  test that means something now is the bridge itself, from a host that is not
+  `fdca:fe91::2`.
+- **Swap latency**, and **whether eager `comfy_kitchen` is fast enough to
+  live with**. M19's warning applies to both: a plausible result at a bad
+  throughput is a fallback, and only VRAM and wall-clock say which path ran.
+
 ---
 
 ## Packaging — the constraint shaping M12, M14, M15 and M17

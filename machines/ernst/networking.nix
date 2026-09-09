@@ -689,11 +689,31 @@
   #                           alone.  See roles.webui in local-ai.nix)
   #   gid 3034  open-webui   (service-modules/local-ai.nix)
   #
-  #   NEXT FREE IS 3035, and it is spoken for but NOT taken: M19's `imagegen`
-  #   role (ComfyUI, podman tier) is written and unenabled, because there is no
-  #   first-party ComfyUI container image and pinning a community one by digest
-  #   on the machine that fronts the array is an operator decision rather than a
-  #   module default.  Enabling it takes 3035 and a verified digest together.
+  #   NEXT FREE IS 3035, AND IT IS NOW UNCLAIMED — M21 GAVE IT BACK.
+  #
+  #   It was spoken for by M19's `imagegen` role (ComfyUI, podman tier), on the
+  #   assumption that enabling image generation meant a digest-pinned community
+  #   container.  M21 shipped image generation WITHOUT TAKING IT, and the
+  #   reason is worth keeping because it is the same shape as the byparr row
+  #   below: a component with no identity of its own has no reason to hold a
+  #   uid, and taking one anyway is not free.
+  #
+  #   ComfyUI is now BUILT (service-modules/pkgs/comfyui) and SPAWNED BY
+  #   llama-swap as an ordinary child process, exactly as llama-server and
+  #   whisper-server are.  It therefore runs as the `llama` user that already
+  #   exists on this machine, writes only into a directory owned by that user,
+  #   and is not a container at all — so there is no unmapped uid landing on
+  #   the pool, no netns, no MAC and no DHCP reservation.
+  #
+  #   Two findings forced that and both are recorded in docs/roadmap.md §M21:
+  #   no usable image exists (AMD's own rocm/comfyui is gfx942;gfx950 — no
+  #   kernels for this card; the best-provenance community image's digest pins
+  #   only its first install), and llama-swap runs unprivileged while this
+  #   machine's podman tier is rootful, so it could never have started or
+  #   stopped the container — which is what eviction requires.
+  #
+  #   So 3035 is free for whoever needs it next, and M20 (SearXNG) is the
+  #   milestone that was sharing the claim.
   #
   #   uid 3026  tvheadend       M8 LANDED 2026-08-27 AND TOOK THIS — moved up
   #                              into the allocated table, as shape (ii): OWN
@@ -785,6 +805,15 @@
   # M19 TOOK 0f / 10.0.90.23 for the Open WebUI container — moved up into the
   # allocated table.  NEXT FREE SEQUENCE NUMBER IS NOW 10; next free address is
   # 10.0.90.24.
+  #
+  # M21 NEEDED NONE, and it is stated here for the same reason M12's row is:
+  # so nobody creates a veth, a MAC and a reservation out of symmetry.  Image
+  # generation shipped as a process spawned by llama-swap rather than as a
+  # podman-tier container, so it has no network namespace to name and nothing
+  # to reserve — it is reached over the EXISTING fdca:fe91::1 bridge that Open
+  # WebUI already uses for chat and STT, through llama-swap's
+  # `/upstream/comfyui` path.  No new listener and no new firewall rule.
+  # Sequence 10 / 10.0.90.24 therefore remain free.
   #
   # (0d / 10.0.90.21 was the free-again cloudflared pair and CWA reused it, as
   # the note below intended.  There is no free gap left in the sequence.)
