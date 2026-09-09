@@ -198,62 +198,63 @@
         '';
       };
 
-      metricsProxy = {
-        enable = lib.mkEnableOption ''
-          a loopback-to-mon0 socket proxy so the monitoring container can scrape
-          llama-server's /metrics
+      exposeOn = lib.mkOption {
+        default = [ ];
+        description = ''
+          Point-to-point ULA addresses to expose llama-swap on, one per
+          container that needs it.  Each entry gets a systemd socket, a
+          socket-activated proxy to llama-swap's loopback port, and ONE
+          firewall accept for its declared peer.
 
-          THIS IS A DELIBERATE, NARROW EXPOSURE CHANGE AND IT MUST BE READ AS
-          ONE.  M11 recorded that it "changes ernst's attack surface not at
-          all"; M19 no longer gets to say that, and pretending otherwise would
-          be exactly the kind of claim this repo makes a point of not making.
+          WHY THIS EXISTS AT ALL.  llama-swap binds 127.0.0.1 and stays there;
+          a container cannot reach the host's loopback.  M6 solved the same
+          problem for Prometheus with a point-to-point veth (mon0), and every
+          consumer here needs the same shape: its own /128 pair, its own accept
+          rule, and no VLAN exposure whatsoever.
 
-          What it actually is: llama-server stays bound to 127.0.0.1.  A
-          separate systemd-socket-proxyd unit listens on the HOST END OF mon0 —
-          the point-to-point IPv6 ULA veth whose only peer is the monitoring
-          container — and forwards to the router's loopback port.  Nothing on
-          any VLAN can reach it; the monitoring container can.  That container
-          already holds Grafana and an Authelia OIDC client secret, so it is
-          not a new trust boundary, but it IS a second listener where there was
-          one, and the ledger row says so
+          WHY A LIST RATHER THAN TWO OPTIONS.  There were two consumers by the
+          end of the first deploy — the monitoring container scraping /metrics
+          and the Open WebUI container doing chat and STT — and the second was
+          MISSED because the first had its own bespoke option and the second
+          quietly had nothing listening on its address.  Open WebUI's voice
+          input span forever and chat had no path either.  One mechanism, one
+          list, so adding a consumer cannot half-happen.
+
+          Each entry needs THREE things and all three are load-bearing:
+            * a socket on `address` — binding is not enough on its own;
+            * a firewall accept for `allowedSource` — ernst's host firewall
+              drops anything unmatched, silently, and the proxy never sees the
+              packet so it logs nothing;
+            * the consumer pointed at `address`, not at localhost.
         '';
-
-        address = lib.mkOption {
-          type        = lib.types.str;
-          default     = "";
-          example     = "fdca:fe90::1";
-          description = ''
-            Host end of the monitoring veth (mon0) to bind the proxy to.  Must
-            match `monHostAddr` in service-modules/monitoring.nix.  Empty with
-            `enable = true` is an evaluation error rather than a proxy on a
-            wildcard address.
-          '';
-        };
-
-        allowedSource = lib.mkOption {
-          type        = lib.types.str;
-          default     = "fdca:fe90::2";
-          description = ''
-            The ONE address permitted to reach the metrics port — the
-            monitoring container's end of mon0 (`monContainerAddr` in
-            service-modules/monitoring.nix).
-
-            A firewall rule is required and its absence is silent.  Binding the
-            proxy to the mon0 address is not enough: ernst's host firewall drops
-            anything without an explicit accept, so the scrape times out, the
-            proxy logs NOTHING (the packet never reaches it), and Prometheus
-            reports `up == 0` — which reads as the inference stack being down.
-            Observed on ernst 2026-09-09.
-
-            node_exporter works over the same link because
-            service-modules/monitoring.nix emits its own per-(source, port)
-            accept rules for the exporters IT manages.  This port is opened by
-            this module because this module is what listens on it — the same
-            backend-side source restriction containers/arr.nix and
-            containers/tubesync.nix apply.
-          '';
-        };
+        type = lib.types.listOf (lib.types.submodule {
+          options = {
+            name = lib.mkOption {
+              type        = lib.types.str;
+              example     = "monitoring";
+              description = "Unit-name suffix. Must be unique and systemd-safe.";
+            };
+            address = lib.mkOption {
+              type        = lib.types.str;
+              example     = "fdca:fe90::1";
+              description = ''
+                HOST end of the veth to listen on — a literal address, never a
+                wildcard. This is the whole containment: the only peer of that
+                /128 is the container named below.
+              '';
+            };
+            allowedSource = lib.mkOption {
+              type        = lib.types.str;
+              example     = "fdca:fe90::2";
+              description = ''
+                CONTAINER end, and the one address permitted to connect.
+                Its absence is silent — the scrape or request simply times out.
+              '';
+            };
+          };
+        });
       };
+
 
       remoteClients.enable = lib.mkEnableOption ''
         accepting SSH port-forwards from clan machines that have no usable local
@@ -513,7 +514,7 @@
               lib.removeSuffix "\n" (builtins.readFile tunnelPubKeyPath)
             else null;
         in
-        {
+        lib.mkMerge [ {
           assertions = [
             {
               assertion = declared != { };
@@ -524,18 +525,6 @@
                 fetcher and llama-server's preset INI cannot disagree, and an
                 inference server with an empty model set is a configuration
                 mistake rather than a valid state.
-              '';
-            }
-            {
-              assertion = !settings.metricsProxy.enable
-                          || settings.metricsProxy.address != "";
-              message = ''
-                @clanarchy/local-ai: metricsProxy.enable is true on
-                ${machine.name} but metricsProxy.address is empty.  It must be
-                the host end of mon0 (see monHostAddr in
-                service-modules/monitoring.nix).  Refusing to default it: an
-                empty bind address is a wildcard, and a wildcard here would put
-                the inference API on every VLAN.
               '';
             }
           ];
@@ -666,46 +655,59 @@
             };
           };
 
-          ##################################################################
-          # The metrics path.
+        } {
+          # Loopback bridges — one per container that needs llama-swap.
           #
-          # llama-swap's OWN /metrics, not llama-server's, and dropping the
-          # router made this simpler rather than harder.
+          # llama-swap binds 127.0.0.1 and stays there.  A container cannot
+          # reach the host's loopback, so each consumer gets its own
+          # point-to-point ULA veth, a socket-activated proxy on the HOST end,
+          # and exactly one firewall accept for the container end.  Nothing is
+          # on any VLAN.
           #
-          # The router's /metrics answered HTTP 400 "model name is missing from
-          # the request" unless a model was named in the query string, so the
-          # Prometheus job needed `params.model` and reported `up == 0` whenever
-          # that model's file was absent.  llama-swap serves a plain /metrics on
-          # its own port: HTTP 200, `llamaswap_*` series, no parameter, and it
-          # is up whether or not any model is loaded — which is the right
-          # semantics for "is the inference stack alive".
+          # THIS IS GENERATED FROM A LIST BECAUSE IT WAS TWO HAND-WRITTEN
+          # BLOCKS AND THE SECOND ONE WAS NEVER WRITTEN.  The monitoring
+          # container had a bespoke `metricsProxy` option; Open WebUI was
+          # pointed at fdca:fe91::1 and nothing ever listened there.  The
+          # symptom was not an error — it was "No models available" in the
+          # model picker and a voice recording that span forever, three layers
+          # from the cause.  One mechanism, one list, so a consumer cannot be
+          # half-added.
+          #
+          # Each entry needs all three parts, and each is silent when missing:
+          #   * the socket      — nothing listens, connections time out;
+          #   * the accept rule — the host firewall drops it, and the proxy
+          #                       logs nothing because it never sees the packet;
+          #   * the consumer    — pointed at this address, not at localhost.
           ##################################################################
-          systemd.services.llama-metrics-proxy =
-            lib.mkIf settings.metricsProxy.enable {
-              description = "Expose llama-swap /metrics to the monitoring container over mon0";
-              after       = [ "llama-swap.service" "llama-metrics-proxy.socket" ];
+          systemd.sockets = lib.listToAttrs (map (b: {
+            name  = "llama-bridge-${b.name}";
+            value = {
+              description = "llama-swap listener for the ${b.name} container";
+              wantedBy    = [ "sockets.target" ];
+              socketConfig = {
+                # A LITERAL ADDRESS, never a wildcard.  This is the whole
+                # containment: the only peer of that /128 is one container.
+                ListenStream = "[${b.address}]:${toString port}";
+                BindIPv6Only = "ipv6-only";
+              };
+            };
+          }) settings.exposeOn);
 
-              # ── SOCKET-ACTIVATED: NO `wantedBy`, and that is load-bearing ──
-              #
-              # It had `wantedBy = multi-user.target` and `Restart = always`,
-              # which makes systemd start it DIRECTLY — without the listening
-              # file descriptor the .socket unit exists to hand it:
-              #
-              #   systemd-socket-proxyd: Didn't get any sockets passed in.
-              #   status=1/FAILURE  (then restart, forever)
-              #
-              # The socket unit is what pulls this in, on the first connection.
-              requires = [ "llama-metrics-proxy.socket" ];
+          systemd.services = lib.listToAttrs (map (b: {
+            name  = "llama-bridge-${b.name}";
+            value = {
+              description = "Proxy llama-swap to the ${b.name} container";
+              after    = [ "llama-swap.service" "llama-bridge-${b.name}.socket" ];
+              # SOCKET-ACTIVATED: no `wantedBy`.  With one, systemd starts this
+              # directly and systemd-socket-proxyd exits 1 with "Didn't get any
+              # sockets passed in", then restart-loops.
+              requires = [ "llama-bridge-${b.name}.socket" ];
 
               serviceConfig = {
                 ExecStart = lib.concatStringsSep " " [
                   "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd"
                   "127.0.0.1:${toString port}"
                 ];
-                # on-failure, not always: with socket activation the socket
-                # unit restarts this on the next connection, and `always`
-                # combined with a wantedBy is what produced the restart loop
-                # above.
                 Restart    = "on-failure";
                 RestartSec = "10s";
                 DynamicUser = true;
@@ -715,26 +717,13 @@
                 ProtectHome     = true;
                 MemoryDenyWriteExecute = true;
 
-                # ── AF_INET IS REQUIRED, and its absence was silent ───────────
-                #
-                # The LISTENING socket is AF_INET6 (the mon0 ULA) and is created
-                # by the .socket unit, i.e. by systemd — but this process has to
-                # DIAL 127.0.0.1, which is AF_INET. Without it:
-                #
-                #   systemd-socket-proxyd: Failed to get remote socket:
-                #     Address family not supported by protocol
-                #
-                # and every scrape times out. RestrictAddressFamilies gates the
-                # socket() call, so the family of the *upstream* matters as much
-                # as the family of the listener — easy to miss when the listener
-                # is the one you wrote down.
+                # AF_INET IS REQUIRED and its absence is silent.  The LISTENER
+                # is AF_INET6 and is created by systemd in the .socket unit;
+                # this process has to DIAL 127.0.0.1, which is AF_INET.  Without
+                # it: "Failed to get remote socket: Address family not supported
+                # by protocol", and every request times out.
                 RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
 
-                # Second pass: this scored 7.0 on the first deploy, almost all
-                # of it the same two omissions as llama-swap — no capability
-                # set and no syscall filter.  A socket proxy is the easiest
-                # process on this machine to lock down: it moves bytes between
-                # two file descriptors and needs nothing else.
                 CapabilityBoundingSet = [ "" ];
                 AmbientCapabilities   = [ "" ];
                 SystemCallFilter      = [ "@system-service" "~@resources" "~@privileged" ];
@@ -754,44 +743,27 @@
                 LockPersonality       = true;
                 RemoveIPC             = true;
                 UMask                 = "0077";
-                # Both ends are on this host: loopback for the router, and the
-                # mon0 ULA for the container.  Nothing else is reachable.
-                IPAddressDeny         = "any";
-                IPAddressAllow        = [ "localhost" "${settings.metricsProxy.address}/128" "fdca:fe90::/64" ];
+                # Both ends are on this host: loopback upstream, the veth /64
+                # downstream.
+                IPAddressDeny  = "any";
+                IPAddressAllow = [ "localhost" "${b.address}/128" "${b.allowedSource}/128" ];
               };
             };
+          }) settings.exposeOn);
 
-          # The one accept rule that makes the scrape reachable.
+          # One accept per bridge, appended to nixos-fw so it lands after
+          # allowedTCPPorts and before the catch-all refuse — the placement
+          # monitoring.nix and containers/arr.nix rely on.  The chain is flushed
+          # and rebuilt on every start, so extraStopCommands needs nothing.
           #
-          # Appended to nixos-fw, so it lands after allowedTCPPorts and before
-          # the catch-all refuse — the same placement monitoring.nix and
-          # containers/arr.nix rely on, and the chain is flushed and rebuilt on
-          # every start, so nothing is needed in extraStopCommands.
-          #
-          # ip6tables, because mon0 is an IPv6 ULA point-to-point link. One
-          # source, one port. Nothing on any VLAN can reach this.
-          #
-          # If `up{job="llama"}` is 0 while the stack is demonstrably alive,
-          # check this first:
-          #   ip6tables -L nixos-fw -n --line-numbers | grep 11434
+          # If a consumer times out while the stack is demonstrably alive:
+          #   ip6tables -L nixos-fw -n --line-numbers | grep ${toString port}
           networking.firewall.extraCommands =
-            lib.mkIf settings.metricsProxy.enable ''
-              ip6tables -A nixos-fw -s ${settings.metricsProxy.allowedSource}/128 \
+            lib.concatMapStrings (b: ''
+              ip6tables -A nixos-fw -s ${b.allowedSource}/128 \
                 -p tcp -m tcp --dport ${toString port} -j nixos-fw-accept
-            '';
-
-          systemd.sockets.llama-metrics-proxy =
-            lib.mkIf settings.metricsProxy.enable {
-              description = "mon0-only listener for llama-server metrics";
-              wantedBy    = [ "sockets.target" ];
-              socketConfig = {
-                # A LITERAL ADDRESS, never a wildcard.  This is the whole
-                # containment: the only peer of that /128 is the monitoring
-                # container.
-                ListenStream  = "[${settings.metricsProxy.address}]:${toString port}";
-                BindIPv6Only  = "ipv6-only";
-              };
-            };
+            '') settings.exposeOn;
+        } {
 
           ##################################################################
           # The SSH forward jens uses.
@@ -819,7 +791,7 @@
             so no key has been authorised and the tunnel will be refused. Run
             `clan vars generate <the client machine>`, then redeploy this one.
           '';
-        };
+        } ];
     };
   };
 

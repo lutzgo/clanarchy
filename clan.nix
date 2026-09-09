@@ -391,13 +391,29 @@
           # `permitopen` restriction needs no edit at all.
           remoteClients.enable = true;
 
-          # Let the monitoring container scrape llama-server.  This is the
-          # target M13 declined to add because ollama served no /metrics; it
-          # now exists.  It is ALSO the one place M19 widens ernst's attack
-          # surface — a second listener on the mon0 ULA, whose only peer is the
-          # monitoring container.  Recorded in the interim-rule ledger.
-          metricsProxy.enable  = true;
-          metricsProxy.address = "fdca:fe90::1";
+          # ── The two containers that need llama-swap ────────────────────
+          #
+          # llama-swap binds 127.0.0.1 and stays there, so each consumer gets
+          # its own point-to-point ULA veth, a proxy on the host end, and one
+          # firewall accept for the container end.  Nothing on any VLAN.
+          #
+          # BOTH ENTRIES ARE REQUIRED AND THE SECOND WAS MISSED ONCE.
+          # `monitoring` had a bespoke option and worked; `webui` was pointed at
+          # fdca:fe91::1 with nothing listening, so Open WebUI showed "No models
+          # available" and voice input span forever — three layers from the
+          # cause.  One list now, so a consumer cannot be half-added.
+          #
+          # These are also where M19 widens ernst's attack surface, and the
+          # interim-rule ledger says so: two extra listeners, each on a /128
+          # whose only peer is one container.
+          exposeOn = [
+            # M6's mon0. Prometheus scrapes llama-swap's /metrics here — the
+            # target M13 declined to add because ollama served none.
+            { name = "monitoring"; address = "fdca:fe90::1"; allowedSource = "fdca:fe90::2"; }
+            # ai0, one /64 along so the two links cannot be confused in a
+            # routing table. Carries Open WebUI's chat AND its STT.
+            { name = "webui";      address = "fdca:fe91::1"; allowedSource = "fdca:fe91::2"; }
+          ];
         };
 
         # ── ernst: the model set ────────────────────────────────────────
