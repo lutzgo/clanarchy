@@ -9520,6 +9520,15 @@ evidence supplies.
 unit state on every machine, so this is an alert rule rather than new
 infrastructure. Owed by `soularr` and `recyclarr` today.
 
+**This stopped being hypothetical on 2026-09-09.** `llama-models-fetch` had
+been ending `failed` on ernst after every *successful* fetch since M19
+introduced it — a `postStart` whose `-` prefix was silently a command name
+rather than a systemd ignore-failure prefix, exiting 127 after all the models
+were correctly on disk. **Nobody noticed for the entire life of the unit.** It
+surfaced only because M21 added a model, which made somebody run the unit by
+hand and watch its exit status. The bug is fixed; the reason it survived is
+this backlog item, and a timer-unit alert would have caught it on day one.
+
 **`user activation for go failed` on every ernst deploy.** Activation reports
 `Failed to start user unit basic.target … Did not receive a reply`, five times,
 then `activation returned 4 — retrying`, and the retry succeeds. So every deploy
