@@ -8596,6 +8596,41 @@ to *require* the fetch at all. Now:
 does not fetch it immediately. Run `systemctl start llama-models-fetch`
 (idempotent) or wait for the next boot.
 
+### 7c. Deploy-day verifications that PASSED, and one defect found
+
+Run on ernst 2026-09-09 with the stack live and the coder model still
+downloading:
+
+| Proof | Result |
+|---|---|
+| llama-swap `/v1/models` is exactly the declared set | **PASS** — `qwen2.5-vl-7b`, `qwen3-coder-30b`, `whisper`; **no phantom `default`** |
+| the router's own `/v1/models` DOES carry the phantom | **CONFIRMED IN PRODUCTION** — `default`, `qwen2.5-vl-7b`, `qwen3-coder-30b` |
+| an undeclared model is refused, not redirected | **PASS** — HTTP 404 from llama-swap |
+| bare `/metrics` on the router | **HTTP 400**, as measured in Phase 0 |
+| `/metrics?model=<present model>` | **HTTP 200** with a live body |
+| `/metrics?model=<absent model>` | HTTP 500 `failed to load` — correct while the file is still a `.part` |
+
+**The phantom-`default` result is the one worth keeping.** Phase 0 predicted that
+llama-swap would hide it; production shows exactly that, on the same machine, at
+the same moment — the router lists it and llama-swap does not. That is the
+two-layer argument confirmed rather than asserted.
+
+**One defect found and fixed on the day.** `services.llama-swap.listenAddress`
+is a HOST and `port` is a separate option; the module concatenates them.
+`listenAddress = "127.0.0.1:11434"` rendered
+`--listen=127.0.0.1:11434:8080`, llama-swap exited 1 with *"too many colons in
+address"*, restarted five times and then presented as **`start-limit-hit`** —
+three failures removed from the cause, which is why the real error is quoted in
+the commit rather than the systemd summary.
+
+**And one risk retired by measurement.** Since `/metrics?model=` starts the
+backend, a naive reading says Prometheus would hold a 21.8 GiB model resident on
+every scrape interval, defeating the `ttl` and fighting the exclusive group.
+Measured: scrape is **1.4 s cold, 1.2 ms warm, and VRAM stays flat at 411 MiB**
+across twelve one-second samples, with all models reported `unloaded`
+afterwards. Weights are not offloaded to the GPU until a completion request
+arrives, so the scrape does not disturb GPU arbitration.
+
 ### 8. Left for later, explicitly
 
 - **miralda is out of scope and stays on Ollama.** Its gfx1103 iGPU running a 7B

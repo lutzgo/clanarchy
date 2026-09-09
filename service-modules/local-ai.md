@@ -457,6 +457,33 @@ the router (11436), where the entry does not exist.
 `?model=<name>`. A bare `/metrics` on the router is HTTP 400 `model name is
 missing from the request`, which presents as the service being down.
 
+**HTTP 500 `model name=<x> failed to load` from `/metrics?model=<x>`** — the
+model's file is missing or incomplete, usually a `.part` still downloading.
+`ls /srv/state/local-ai/models/` and check `llama-models-fetch`. The job is
+legitimately `up == 0` until the file lands, and that is the target doing its
+job rather than a false alarm.
+
+### The metrics scrape does NOT pin the model in VRAM
+
+Worth stating, because the opposite would have been a serious defect: scraping
+`/metrics?model=<x>` **auto-loads the model** in the sense that it starts the
+backend process — so a naive reading says Prometheus would keep a 21.8 GiB model
+permanently resident on a scrape interval, defeating llama-swap's `ttl` and
+fighting the exclusive group on every scrape.
+
+**Measured on ernst 2026-09-09, and it does not:**
+
+```
+scrape 1  HTTP=200  1.401 s      VRAM 411 MiB, flat across 12 one-second samples
+scrape 2  HTTP=200  0.0012 s     VRAM 411 MiB
+router /models afterwards: all three models "unloaded"
+```
+
+The process spins up (1.4 s cold, ~1 ms warm) but **weights are not offloaded to
+the GPU until a completion request arrives**. So the scrape is cheap and does not
+disturb GPU arbitration. Re-check this if the scrape interval is ever shortened
+or llama.cpp changes when it offloads.
+
 **A model 404s that clearly exists on disk** — it is fetched but not declared,
 or declared under a different key than the client asks for. `/v1/models` is the
 truth.
