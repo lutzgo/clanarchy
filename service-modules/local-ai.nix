@@ -583,8 +583,15 @@
           # llama-swap — the front door.
           ##################################################################
           services.llama-swap = {
-            enable        = true;
-            listenAddress = "127.0.0.1:${toString port}";
+            enable = true;
+            # HOST ONLY, and the port is a SEPARATE option.  The module renders
+            # `--listen=${listenAddress}:${port}`, so a host:port pair here
+            # becomes `--listen=127.0.0.1:11434:8080` and llama-swap exits 1
+            # with "too many colons in address" — which then trips the restart
+            # limit and presents as `start-limit-hit`, three failures away from
+            # the actual cause.  Deployed and hit on 2026-09-09.
+            listenAddress = "127.0.0.1";
+            port          = port;
             # openFirewall stays false.  There is no case in which this port
             # should be reachable off the host; clients that are not on ernst
             # arrive through the SSH forward below.
