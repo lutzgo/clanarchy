@@ -229,6 +229,30 @@
             wildcard address.
           '';
         };
+
+        allowedSource = lib.mkOption {
+          type        = lib.types.str;
+          default     = "fdca:fe90::2";
+          description = ''
+            The ONE address permitted to reach the metrics port — the
+            monitoring container's end of mon0 (`monContainerAddr` in
+            service-modules/monitoring.nix).
+
+            A firewall rule is required and its absence is silent.  Binding the
+            proxy to the mon0 address is not enough: ernst's host firewall drops
+            anything without an explicit accept, so the scrape times out, the
+            proxy logs NOTHING (the packet never reaches it), and Prometheus
+            reports `up == 0` — which reads as the inference stack being down.
+            Observed on ernst 2026-09-09.
+
+            node_exporter works over the same link because
+            service-modules/monitoring.nix emits its own per-(source, port)
+            accept rules for the exporters IT manages.  This port is opened by
+            this module because this module is what listens on it — the same
+            backend-side source restriction containers/arr.nix and
+            containers/tubesync.nix apply.
+          '';
+        };
       };
 
       remoteClients.enable = lib.mkEnableOption ''
@@ -709,6 +733,25 @@
                 IPAddressAllow        = [ "localhost" "${settings.metricsProxy.address}/128" "fdca:fe90::/64" ];
               };
             };
+
+          # The one accept rule that makes the scrape reachable.
+          #
+          # Appended to nixos-fw, so it lands after allowedTCPPorts and before
+          # the catch-all refuse — the same placement monitoring.nix and
+          # containers/arr.nix rely on, and the chain is flushed and rebuilt on
+          # every start, so nothing is needed in extraStopCommands.
+          #
+          # ip6tables, because mon0 is an IPv6 ULA point-to-point link. One
+          # source, one port. Nothing on any VLAN can reach this.
+          #
+          # If `up{job="llama"}` is 0 while the stack is demonstrably alive,
+          # check this first:
+          #   ip6tables -L nixos-fw -n --line-numbers | grep 11434
+          networking.firewall.extraCommands =
+            lib.mkIf settings.metricsProxy.enable ''
+              ip6tables -A nixos-fw -s ${settings.metricsProxy.allowedSource}/128 \
+                -p tcp -m tcp --dport ${toString port} -j nixos-fw-accept
+            '';
 
           systemd.sockets.llama-metrics-proxy =
             lib.mkIf settings.metricsProxy.enable {
