@@ -497,6 +497,20 @@ let
   rommAddr = "10.0.90.22";
   rommPort = 8080;
 
+  # Open WebUI — the local-AI web client (M19), in an NSPAWN container on
+  # 02:00:00:90:00:0f → 10.0.90.23, following the 8 + <seq> convention in
+  # machines/ernst/networking.nix.  Its container firewall accepts THIS proxy's
+  # address and no other on ${toString openWebuiPort}, so a backend-bypass
+  # attempt from elsewhere on VLAN 90 — including the qBittorrent microvm one
+  # layer-2 hop away — times out rather than reaching the app.
+  #
+  # It is declared by service-modules/local-ai.nix rather than by a file in
+  # this directory, because it is one role of a fleet service module and not a
+  # machine-specific container.  The address and port are restated here for the
+  # same reason every other backend's are: this file cannot import that one.
+  openWebuiAddr = "10.0.90.23";
+  openWebuiPort = 8080;
+
   # Calibre-Web-Automated — the podman tier's FOURTH occupant, and the only
   # one of this round's three additions that needed an address of its own.
   #
@@ -2206,6 +2220,24 @@ in
               service     = "romm";
             };
 
+            # Open WebUI (M19) — the local-AI chat client.
+            #
+            # `websecure` ONLY, deliberately: this is not in traefik.nix's
+            # `wanExposed` set and must not be.  It is an unauthenticated-by-
+            # design conversation surface onto a model with tool access, and the
+            # milestone that added it opened no WAN path — reaching it from
+            # outside is what wg-travel is for.
+            #
+            # `authelia` like every other admin surface. It ALSO speaks OIDC to
+            # the same provider (see containers/authelia.nix); the middleware
+            # decides whether the request arrives, OIDC decides whose it is.
+            openwebui = {
+              rule        = "Host(`chat.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "openwebui";
+            };
+
             # slskd's web UI — in the microvm guest, not a container.  Behind
             # `authelia` like every other admin surface; its own login exists
             # but is a single shared operator account, not per-user.
@@ -2403,6 +2435,7 @@ in
             # … and one more podman netns of its own, the tier's second.
             storyteller.loadBalancer.servers    = [ { url = "http://${storytellerAddr}:${toString storytellerPort}/"; } ];
             romm.loadBalancer.servers           = [ { url = "http://${rommAddr}:${toString rommPort}/"; } ];
+            openwebui.loadBalancer.servers      = [ { url = "http://${openWebuiAddr}:${toString openWebuiPort}/"; } ];
 
             # … and one in the microvm guest, the first non-container backend.
             slskd.loadBalancer.servers          = [ { url = "http://${slskdAddr}:${toString slskdPort}/"; } ];

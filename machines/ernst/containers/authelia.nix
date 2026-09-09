@@ -415,6 +415,29 @@ let
   # entirely and the callback is built from the request, which behind a proxy
   # produces an http:// URI Authelia will refuse.  That is in the checklist.
   cwaRedirectUri = "https://cwa.${baseDomain}/login/generic/authorized";
+
+  # Open WebUI's OIDC callbacks (M19).  DERIVED FROM THE 0.11.0 SOURCE, like
+  # CWA's above: `main.py` registers the callback twice —
+  #
+  #   @app.get('/oauth/{provider}/login/callback')   # current
+  #   @app.get('/oauth/{provider}/callback')         # marked "Legacy endpoint"
+  #
+  # — and `config.py` registers the SSO provider under the literal key `oidc`
+  # (`OAUTH_PROVIDERS['oidc'] = …`), so the provider segment is `oidc`, NOT the
+  # OAUTH_PROVIDER_NAME label shown on the button.
+  #
+  # BOTH ARE REGISTERED, deliberately.  Authelia matches redirect_uri exactly,
+  # and Open WebUI sends whichever `OPENID_REDIRECT_URI` names — currently the
+  # first.  Listing both means an upstream flip between them is a no-op here
+  # rather than an `invalid_request` at the portal that looks like an Authelia
+  # fault.  Neither is `/oauth/clients/<id>/callback`: that is Open WebUI acting
+  # as a client TO an MCP server, a different feature entirely.
+  openWebuiRedirectUris = [
+    "https://chat.${baseDomain}/oauth/oidc/login/callback"
+    "https://chat.${baseDomain}/oauth/oidc/callback"
+  ];
+
+  oidcOpenWebuiGen = config.clan.core.vars.generators.authelia-oidc-openwebui;
 in
 {
   ##############################################################################
@@ -689,6 +712,37 @@ in
         echo "        token_endpoint_auth_method: 'client_secret_basic'"
         echo "        redirect_uris:"
         echo "          - '${cwaRedirectUri}'"
+        echo "        scopes:"
+        echo "          - 'openid'"
+        echo "          - 'profile'"
+        echo "          - 'groups'"
+        echo "          - 'email'"
+
+        # ── Open WebUI (M19).  Browser-only, so it gets BOTH halves ────────
+        #
+        # chat.goclan.org is in `protectedHosts`, so a request reaches the app
+        # only after forward-auth — and this client is what tells the app WHO
+        # arrived, so conversations belong to an identity rather than to
+        # whoever Traefik let past. That is the Grafana arrangement, not CWA's:
+        # CWA takes OIDC INSTEAD of forward-auth because its Kobo and OPDS
+        # clients cannot follow a redirect. Do not merge the two reasonings.
+        #
+        # `two_factor`, matching every other admin surface. This one has tool
+        # access to a model that can read the repository, which is a stronger
+        # argument for it than Grafana had.
+        echo "      - client_id: 'open-webui'"
+        echo "        client_name: 'Open WebUI'"
+        printf "        client_secret: '"
+        tr -d '[:space:]' < ${oidcOpenWebuiGen.files."openwebui-client-secret-digest".path}
+        echo "'"
+        echo "        public: false"
+        echo "        authorization_policy: 'two_factor'"
+        echo "        require_pkce: true"
+        echo "        pkce_challenge_method: 'S256'"
+        echo "        consent_mode: 'implicit'"
+        echo "        token_endpoint_auth_method: 'client_secret_basic'"
+        echo "        redirect_uris:"
+        ${lib.concatMapStringsSep "\n" (u: "echo \"          - '${u}'\"") openWebuiRedirectUris}
         echo "        scopes:"
         echo "          - 'openid'"
         echo "          - 'profile'"

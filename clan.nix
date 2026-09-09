@@ -354,67 +354,227 @@
         };
       };
 
-      # ── Local AI: Ollama + OpenCode ───────────────────────────────────────
+      # ── Local AI: llama.cpp inference, voice, vision, image (M19) ─────────
+      #
+      # OLLAMA IS GONE FROM ernst.  It was replaced by llama-swap in front of
+      # llama-server in router mode, and the replacement was measured before it
+      # was taken — see docs/roadmap.md §M19 and
+      # ~/.local/share/m19-llamacpp/PHASE0-NOTES.md.  The decisive result is
+      # that context overflow stops being silent: ollama answers an over-long
+      # prompt with HTTP 200, a truncated head and a fabricated answer, where
+      # llama-server answers HTTP 400 naming both numbers.  That is standing
+      # note SN1's core hazard removed at the mechanism.
+      #
+      # MIRALDA STILL RUNS ITS OWN OLLAMA and is deliberately out of scope: its
+      # gfx1103 iGPU is a different problem with a different answer, and
+      # migrating it is not this milestone's business.  It keeps
+      # `roles.ollama`, which is why that role still exists in the module.
       local-ai = {
         module.input = "self";
         module.name  = "@clanarchy/local-ai";
-        # miralda: Phoenix iGPU (gfx1103) is missing from stock ROCm kernel
-        # libraries, hence the override.
+
+        # ── ernst: the inference server ──────────────────────────────────
+        #
+        # RX 7900 XTX (gfx1100) is natively supported by ROCm, so there is NO
+        # HSA override — forcing one selects the wrong kernels for a card that
+        # already has correct ones.  The card is shared with the HTPC gaming
+        # session rather than passed through to a VM: VFIO would bind it to
+        # vfio-pci and take it away from the host (invariant #5), making
+        # inference and gaming mutually exclusive.  Sharing means they merely
+        # compete for VRAM, which is a far better failure mode — and since M19
+        # that competition is arbitrated rather than hoped about.
+        roles.inference.machines.ernst.settings = {
+          # Accept the SSH forward jens uses (see roles.opencode.machines.jens).
+          # llama-swap stays bound to loopback — this authorises one key
+          # restricted to forwarding 127.0.0.1:11434 and nothing else.  The
+          # port is unchanged from the ollama era ON PURPOSE, so jens's
+          # `permitopen` restriction needs no edit at all.
+          remoteClients.enable = true;
+
+          # Let the monitoring container scrape llama-server.  This is the
+          # target M13 declined to add because ollama served no /metrics; it
+          # now exists.  It is ALSO the one place M19 widens ernst's attack
+          # surface — a second listener on the mon0 ULA, whose only peer is the
+          # monitoring container.  Recorded in the interim-rule ledger.
+          metricsProxy.enable  = true;
+          metricsProxy.address = "fdca:fe90::1";
+        };
+
+        # ── ernst: the model set ────────────────────────────────────────
+        #
+        # ONE ATTRSET, TWO CONSUMERS — the fetcher and llama-server's preset
+        # INI are both rendered from this, so a model cannot be downloaded but
+        # undeclared, or declared but never fetched.  That is the structural
+        # answer to the ollama era's two failures: a registry tag that never
+        # existed, and a context window that moved when the tag was edited.
+        #
+        # EVERY url AND hash BELOW WAS FETCHED AND VERIFIED before it was
+        # written down, on 2026-09-09.  Do not add an entry any other way.
+        roles.models.machines.ernst.settings.models = {
+          # The coder model.  Same family and quantisation class as the ollama
+          # blob it replaces, so M11's and M19's numbers still describe it.
+          qwen3-coder-30b = {
+            url  = "https://huggingface.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/resolve/main/Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf";
+            hash = "sha256-KEGqMU2RZDSGDPuJkDR1KNzf5cNQ28udFGHb7oj/JTM=";
+            filename    = "Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf";
+            description = "Qwen3 Coder 30B (A3B, UD-Q4_K_XL)";
+
+            # SN1 LIVES HERE NOW, and that is the point of the placement: the
+            # window sits on the model, is required, and moves only when
+            # somebody edits this line.  Under ollama it was derived from the
+            # tag and set by one global env var, so editing which model was
+            # served silently changed the context for every client.
+            #
+            # 32768 measured: 21799 MiB resident of 24560, f16, 107.5 tok/s.
+            contextLength = 32768;
+
+            # f16, REVERSING ernst's ollama-era q8_0 — and the reversal is a
+            # measurement, not a preference.  q8_0 existed only because f16 at
+            # 65536 spilled on ollama.  On llama.cpp f16 at 32768 fits with
+            # 2761 MiB to spare and q8_0 would cost 14.7% of decode (94.6 vs
+            # 107.5 tok/s, interleaved, n=5) to buy nothing at this window.
+            kvCacheType = "f16";
+          };
+
+          # Vision.  A SECOND model rather than a bigger one: the coder model
+          # has no vision tower, and llama-swap's exclusive group means the two
+          # are never resident together, so this costs disk rather than VRAM.
+          # QUOTED, and it has to be: `qwen2.5-vl-7b = …` is a DOTTED PATH in
+          # Nix and would silently declare `qwen2."5-vl-7b"` — a model named
+          # "5-vl-7b" nested under one named "qwen2", which type-checks and is
+          # wrong.
+          "qwen2.5-vl-7b" = {
+            url  = "https://huggingface.co/ggml-org/Qwen2.5-VL-7B-Instruct-GGUF/resolve/main/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf";
+            hash = "sha256-kli/BbEmhtCX/ztrGNloqzk2SXgKorPNZ/7EPVBVQ5I=";
+            filename    = "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf";
+            description = "Qwen2.5-VL 7B (vision)";
+            contextLength = 16384;
+            kvCacheType   = "f16";
+            # llama.cpp needs the projector and the weights as TWO files.
+            mmproj = "mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf";
+            extraFiles."mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf" = {
+              url  = "https://huggingface.co/ggml-org/Qwen2.5-VL-7B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf";
+              hash = "sha256-wkp/X8/GgobwohcCO2c45zvqTxF4ekPoI41LsbhgTN4=";
+            };
+          };
+
+          # Whisper's weights.  Declared here rather than in roles.speech so
+          # there is ONE fetcher and one hash-verified store for everything the
+          # GPU tier loads — the speech role names the filename and nothing
+          # else.  It is not a GGUF and llama-server never loads it; the
+          # inference role skips non-LLM entries when rendering the preset INI.
+          whisper-large-v3-turbo = {
+            url  = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin";
+            hash = "sha256-OUIhcJzVrR9AxG5gMcphvOiJMebgiMGIKUxtWlX/p+I=";
+            filename    = "ggml-large-v3-turbo-q5_0.bin";
+            description = "Whisper large-v3-turbo (q5_0)";
+            # Unused for this entry — whisper-server takes neither — but the
+            # option is required, deliberately, so that no model can be
+            # declared without someone stating its window.
+            contextLength = 1;
+            kvCacheType   = "f16";
+            servedByLlama = false;
+          };
+        };
+
+        # ── ernst: voice ────────────────────────────────────────────────
+        #
+        # whisper.cpp, NOT Speaches.  Speaches is not in nixpkgs at all, and
+        # its STT path runs through CTranslate2, whose GPU backend is CUDA — on
+        # a 7900 XTX that is a CPU path with extra steps.  pkgs.whisper-cpp
+        # builds with rocmSupport for gfx1100 out of the flake's own nixpkgs,
+        # and whisper-server takes --inference-path, so it is OpenAI-shaped
+        # with no wrapper and no new flake input.
+        roles.speech.machines.ernst.settings = {
+          model    = "ggml-large-v3-turbo-q5_0.bin";
+          # "auto" rather than "de": this household dictates German prose with
+          # English package names in it, and pinning the language gets the
+          # second half wrong.
+          language = "auto";
+        };
+
+        # ── ernst: image generation ─────────────────────────────────────
+        #
+        # NOT ENABLED HERE, and that is a decision rather than an omission.
+        # There is no first-party ComfyUI container image — checked 2026-09-09
+        # — so every candidate is a community build, and this role deliberately
+        # has no default `image`: pinning a third-party image by digest on the
+        # machine that fronts the array, with /dev/kfd handed to it, is an
+        # operator decision that must be made explicitly.  The role is written
+        # and asserts on a digest pin; enabling it is one block here plus a
+        # verified digest, and the uid is already reserved.
+        #
+        #   roles.imagegen.machines.ernst.settings = {
+        #     image = "docker.io/<repo>@sha256:<digest>";   # VERIFY FIRST
+        #     uid   = 3035;
+        #   };
+
+        # ── ernst: the web client ───────────────────────────────────────
+        roles.webui.machines.ernst.settings = {
+          # MAC / address / uid allocated in the tables in
+          # machines/ernst/networking.nix.  The DHCP reservation for
+          # 02:00:00:90:00:0f → 10.0.90.23 lives on the UDM-Pro and must exist
+          # BEFORE this is deployed.
+          mac = "02:00:00:90:00:0f";
+          uid = 3034;
+
+          # Technitium record required BEFORE the name is typed anywhere —
+          # M17's NXDOMAIN lesson.  Also in `protectedHosts` in
+          # containers/ingress-policy.nix, in the same commit.
+          hostName = "chat.goclan.org";
+
+          # OIDC against Authelia, the Grafana pattern: forward-auth at the
+          # edge AND real OIDC inside, so the app knows who the user is rather
+          # than merely that Traefik let them past.
+          oidc.enable = true;
+
+          # Host end of THIS container's veth to ernst.  fdca:fe91::/64, one
+          # /64 along from monitoring's fdca:fe90::/64, so the two
+          # point-to-point links cannot be confused in a routing table.
+          inferenceAddress = "fdca:fe91::1";
+
+          # Voice in.  Points at llama-swap, so Whisper's VRAM is arbitrated
+          # by the same exclusive group as everything else rather than being a
+          # second, unaccounted consumer.
+          speechUrl = "http://[fdca:fe91::1]:11434";
+
+          # Image generation stays null until roles.imagegen is enabled above.
+          # imageUrl = "http://[fdca:fe91::1]:11434";
+        };
+
+        # ── miralda: unchanged, and out of scope ────────────────────────
+        # Phoenix iGPU (gfx1103) is missing from stock ROCm kernel libraries,
+        # hence the override.  Migrating this machine to llama.cpp is a
+        # separate question with a different answer — an iGPU running out of
+        # shared system RAM is not the case M19 measured.
         roles.ollama.machines.miralda.settings = {
           # qwen3-coder publishes only 30b/480b — there is no 8b, which is why
           # ollama-model-loader had been failing since this was configured.
-          # 30b would run here, but only out of shared system RAM on the 780M
-          # iGPU; the smaller dedicated coder model keeps it interactive.
           models = [ "qwen2.5-coder:7b" ];
           hsaOverrideGfxVersion = "11.0.3";
           # 4096 is what this tag derives on its own; pinning it says so out
-          # loud so a future model bump cannot move it silently.  It must NOT
-          # inherit ernst's 32768 — this model runs out of shared system RAM on
-          # the 780M, not out of 24 GiB of VRAM.  Left at f16: a quantised KV
-          # cache buys nothing worth having at a 4096 window and costs
-          # tool-call reliability (see kvCacheType).
+          # loud so a future model bump cannot move it silently.
           contextLength = 4096;
         };
-        # ernst: RX 7900 XTX (gfx1100) is natively supported by ROCm, so no
-        # override — forcing one would select the wrong kernels.  The card is
-        # shared with the HTPC gaming session rather than passed through to a
-        # VM: VFIO would bind it to vfio-pci and take it away from the host,
-        # making Ollama and gaming mutually exclusive.  Sharing means they
-        # merely compete for VRAM, which is a far better failure mode.
-        roles.ollama.machines.ernst.settings = {
-          # 24 GiB of VRAM on the 7900 XTX fits the 30B MoE comfortably.
-          models = [ "qwen3-coder:30b" ];
-          # Both measured, not chosen: M11 Phase 0 walked the context/KV matrix
-          # on this exact card.  32768 is what this tag derives anyway — pinned
-          # so that editing `models` cannot move it without a diff.  q8_0 keeps
-          # a 64k window fully resident (22482 MiB) where f16 spills to system
-          # RAM, and makes the 32k window here cost 20757 MiB instead of 22361.
-          #
-          # q8_0 is safe ONLY because the client reinforces the <tool_call>
-          # wrapper in its system prompt.  Without that it halves tool-call
-          # reliability — the interaction is measured in the kvCacheType option
-          # description and explained in service-modules/local-ai.md.  A client
-          # added here that does not send that reinforcement wants f16.
-          contextLength = 32768;
-          kvCacheType   = "q8_0";
-
-          # Accept the SSH forward jens uses to reach this model (see
-          # roles.opencode.machines.jens below).  ollama itself stays bound to
-          # loopback — this authorises one key restricted to forwarding
-          # 127.0.0.1:11434 and nothing else.
-          remoteClients.enable = true;
+        roles.opencode.machines.miralda.settings = {
+          user  = "lgo";
+          # miralda talks to its OWN ollama, so the provider id and model name
+          # are ollama's, not llama-swap's.
+          providerName = "ollama";
+          model        = "ollama/qwen2.5-coder:7b";
         };
-        roles.opencode.machines.miralda.settings.user  = "lgo";
 
-        # jens has no ollama of its own: its iGPU is Intel, where the ROCm
-        # stack the ollama role is built around does not apply, and a 30B MoE
-        # on CPU is not something to sit in front of.  So opencode here talks
-        # to ernst's card over an SSH forward, with ollama still listening only
-        # on ernst's loopback at both ends of the tunnel.
+        # jens has no local inference: its iGPU is Intel, where the ROCm stack
+        # this module is built around does not apply, and a 30B MoE on CPU is
+        # not something to sit in front of.  So opencode here talks to ernst's
+        # card over an SSH forward, with the listener staying loopback-only at
+        # both ends of the tunnel.
         roles.opencode.machines.jens.settings = {
           user  = "lgo";
-          # Must match what ernst's ollama role actually pulls, above.
-          model = "ollama/qwen3-coder:30b";
+          # Must match a KEY in ernst's roles.models above — no longer an
+          # ollama registry tag, which is the class of mistake that put
+          # `qwen3-coder:8b` into a restart loop for months.
+          model = "local/qwen3-coder-30b";
           tunnel.enable = true;
         };
       };
@@ -507,6 +667,22 @@
             # secret is emitted in two formats.
             navidromeAddress             = "10.0.90.13";
             navidromeMetricsPasswordFile = "/run/monitoring-secrets/navidrome-metrics-password";
+          };
+
+          # M19.  llama-server — THE TARGET M13 WANTED AND COULD NOT HAVE.
+          #
+          # M13 asked for four media-stack targets and shipped three, because
+          # ollama 0.32.3 answered 404 on /metrics and a job for it could only
+          # ever be `up == 0`.  llama.cpp serves real metrics, so the fourth
+          # arrives here instead.
+          #
+          # No address: llama-server is on ernst itself and monitoring.nix
+          # already knows how this container reaches the host.  The model name
+          # is required — a bare /metrics on the router is HTTP 400, and the
+          # name must match a key in roles.models above.
+          localAi = {
+            enable = true;
+            model  = "qwen3-coder-30b";
           };
         };
 

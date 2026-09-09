@@ -167,6 +167,7 @@ let
     alertmanager = 9093;
     ntfyBridge  = 8000;   # alertmanager-ntfy, loopback only
     grafana     = 3000;
+    llama       = 11436;  # llama-server's router (M19), via the mon0 proxy
   };
 
   ############################################################################
@@ -1238,6 +1239,52 @@ in
         # wan listener is bound.
       };
 
+      ##########################################################################
+      # M19 — llama-server.  THE TARGET M13 COULD NOT ADD.
+      #
+      # M13 wanted four media-stack targets and shipped three, because ollama
+      # 0.32.3 answers 404 on /metrics (measured on ernst, 2026-08-26) and a job
+      # for it could only ever be `up == 0`.  llama-server serves real metrics,
+      # so the gap closes here.
+      #
+      # NO ADDRESS OPTION, and that is the point: llama-server runs on ernst
+      # ITSELF, so the address this container reaches it on is already known to
+      # this module as `monHostAddr`.  A hand-typed address would be a second
+      # source of truth for a number the module already computes — which is the
+      # specific bug M6's prompt forbids.
+      ##########################################################################
+      localAi = {
+        enable = lib.mkEnableOption ''
+          scraping llama-server's metrics over mon0
+
+          Requires `metricsProxy.enable` on the same machine's
+          @clanarchy/local-ai `inference` role, with `metricsProxy.address` set
+          to this module's monHostAddr (fdca:fe90::1) — llama-server itself
+          binds loopback and a container cannot reach that
+        '';
+
+        model = lib.mkOption {
+          type        = lib.types.str;
+          default     = "";
+          example     = "qwen3-coder-30b";
+          description = ''
+            Model name to pass as `?model=` on the scrape.
+
+            NOT OPTIONAL, AND NOT COSMETIC.  llama-server in router mode answers
+            a bare `GET /metrics` with HTTP 400 "model name is missing from the
+            request" — measured on ernst 2026-09-09 — and returns a real body
+            only for `GET /metrics?model=<name>`.  A job without this parameter
+            is a permanent `up == 0`, which reads as an outage and is exactly
+            the shape M13 refused to ship for ollama.
+
+            It must name a key in that machine's `roles.models`.  The assertion
+            catches an empty value; it cannot catch a wrong one, so check:
+
+              curl -s 'http://[fdca:fe90::1]:11436/metrics?model=<name>' | head
+          '';
+        };
+      };
+
       zerotierInstance = lib.mkOption {
         type        = lib.types.str;
         default     = "zerotier";
@@ -1476,6 +1523,17 @@ in
                 Point it at the staged bare-value file (see the option's
                 description, and the navidrome-metrics generator in
                 machines/ernst/containers/arr.nix).
+              '';
+            }
+            {
+              assertion = !settings.localAi.enable || settings.localAi.model != "";
+              message = ''
+                @clanarchy/monitoring: localAi.enable is true but
+                localAi.model is empty.  llama-server in router mode answers a
+                bare GET /metrics with HTTP 400 "model name is missing from the
+                request", so the job would be a permanent up == 0 and would
+                read as the inference server being down.  Name a model from
+                that machine's roles.models.
               '';
             }
           ];
@@ -2221,8 +2279,29 @@ in
                     labels.instance = "qbittorrent";
                   } ];
                 }
-                # NO OLLAMA JOB.  Ollama 0.32.3 serves no /metrics — measured
-                # on ernst, see the note in the mediaStack options above.
+                # M19 — llama-server, replacing the ollama job that never
+                # existed.  Ollama 0.32.3 answered 404 on /metrics, so M13
+                # deliberately shipped three media-stack targets rather than
+                # four; llama-server serves real metrics and this closes it.
+                #
+                # `params.model` IS LOAD-BEARING.  In router mode a bare
+                # GET /metrics is HTTP 400 "model name is missing from the
+                # request"; only /metrics?model=<name> returns a body.  Without
+                # it this job would be a permanent up == 0 — the exact failure
+                # shape M13 declined to introduce.
+                #
+                # The address is monHostAddr, not a configured one: llama-server
+                # is on ernst itself and binds loopback, so the mon0 proxy on
+                # the host end of this container's own veth is how it is
+                # reached.  See metricsProxy in service-modules/local-ai.nix.
+                ++ lib.optional settings.localAi.enable {
+                  job_name = "llama";
+                  params.model = [ settings.localAi.model ];
+                  static_configs = [ {
+                    targets = [ "[${monHostAddr}]:${toString ports.llama}" ];
+                    labels.instance = "llama-server";
+                  } ];
+                }
                 ++ [
                   # The stack watching itself.  All on loopback inside this
                   # netns, so none of these needs a port opened.

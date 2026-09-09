@@ -173,6 +173,18 @@ rec {
     (h "slskd")
     (h "bindery")
     (h "romm")
+
+    # Open WebUI (M19).  Browser-only by construction — it IS a web chat client
+    # — so it passes the test at the top of this file without argument and gets
+    # forward-auth like any other admin surface.
+    #
+    # IT ALSO CARRIES OIDC, which is not a contradiction and is the Grafana
+    # pattern rather than a new one: forward-auth decides whether the request
+    # reaches the app at all, and OIDC tells the app WHO the user is so
+    # conversations belong to an identity instead of to a shared session. CWA
+    # takes OIDC *without* forward-auth for the opposite reason — its Kobo and
+    # OPDS clients have no browser — and the two must not be confused.
+    (h "chat")
   ];
 
   ############################################################################
