@@ -583,11 +583,48 @@
           # pointed at through a generated extra_model_paths.yaml.
           stateDir = "/srv/state/comfyui";
 
-          # extraArgs stays empty deliberately.  --lowvram and friends are for
-          # a card that has to share, and this one does not: the exclusive
-          # group evicts the 21799 MiB coder model before ComfyUI is spawned,
-          # so SDXL gets essentially the whole 24560 MiB.  Reaching for them
-          # here would be treating a broken exclusion as a memory problem.
+          # ── THE ONE FLAG WITHOUT WHICH THE PROMPT IS IGNORED ───────────
+          #
+          # PyTorch's SDPA cross-attention is SILENTLY WRONG on this stack
+          # (torch 2.11 + ROCm 7.2.3, gfx1100).  Not slow, not an error — it
+          # returns garbage for the cross-attention shapes SDXL uses, which is
+          # where the text conditioning enters the UNet.  Self-attention is
+          # unaffected, so the images come out sharp, detailed and coherent
+          # and have NOTHING TO DO WITH THE PROMPT.
+          #
+          # BISECTED ON ernst 2026-09-10, same checkpoint / seed / workflow,
+          # prompt "a photograph of a red apple on a white table":
+          #
+          #   GPU, pytorch attention (default)      -> psychedelic poster
+          #   GPU, --fp32-text-enc                  -> a landscape
+          #   CPU (--cpu)                           -> A RED APPLE
+          #   GPU, --use-split-cross-attention      -> A RED APPLE
+          #
+          # The CPU arm is what proves it is not the packaging: identical
+          # derivation, identical pure-Python comfy-kitchen and comfy-aimdo
+          # wheels, identical everything but the device.  And --fp32-text-enc
+          # rules out text-encoder precision, which was the obvious suspect
+          # and the wrong one.
+          #
+          # THIS IS EXACTLY THE SHAPE M19 WARNS ABOUT and it is worth saying
+          # again: the deployment looked correct at every level anyone would
+          # check.  ROCm reported `Device: cuda:0 AMD Radeon RX 7900 XTX :
+          # native`, VRAM moved, the LLM was evicted and restored, the
+          # exclusive group worked, generation took seconds rather than
+          # minutes — every signal said "working GPU path", and the only
+          # symptom was that the pictures were of the wrong thing.
+          #
+          # Do NOT drop this flag on a llama.cpp/ROCm bump without re-running
+          # the apple test above.  It costs some speed and it is the
+          # difference between image generation and an expensive random image
+          # generator.
+          extraArgs = [ "--use-split-cross-attention" ];
+
+          # NOTHING ELSE BELONGS HERE.  --lowvram and friends are for a card
+          # that has to share, and this one does not: the exclusive group
+          # evicts the 21799 MiB coder model before ComfyUI is spawned, so
+          # SDXL gets essentially the whole 24560 MiB.  Reaching for them
+          # would be treating a broken exclusion as a memory problem.
         };
 
         # ── ernst: the web client ───────────────────────────────────────

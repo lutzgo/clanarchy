@@ -395,6 +395,46 @@ ComfyUI category.
 the GGUFs were correctly ignored. It defaults to `""`, so **no existing model
 path moves.**
 
+### `--use-split-cross-attention` is mandatory on ROCm, and its absence is silent
+
+**PyTorch's SDPA cross-attention returns garbage on torch 2.11 + ROCm 7.2.3 /
+gfx1100.** Self-attention is unaffected, so images come out sharp, detailed and
+coherent — and have nothing to do with the prompt, because cross-attention is
+where text conditioning enters the UNet.
+
+Bisected on ernst 2026-09-10. Same checkpoint, same seed, same workflow, prompt
+*"a photograph of a red apple on a white table"*:
+
+| arm | result |
+|---|---|
+| GPU, pytorch attention (default) | a psychedelic poster with gibberish text |
+| GPU, `--fp32-text-enc` | a landscape |
+| **CPU** (`--cpu`) | **a red apple** |
+| **GPU, `--use-split-cross-attention`** | **a red apple** |
+
+The CPU arm is what proves it is not the packaging: identical derivation,
+identical pure-Python `comfy-kitchen` and `comfy-aimdo` wheels, identical
+everything but the device. `--fp32-text-enc` rules out text-encoder precision,
+which was the obvious suspect and the wrong one.
+
+**Every signal said the GPU path was working.** ROCm reported
+`Device: cuda:0 AMD Radeon RX 7900 XTX : native`, VRAM moved, the LLM was
+evicted and restored, generation took seconds rather than minutes. The only
+symptom was that the pictures were of the wrong thing — which is why M19's
+warning is worth restating: *exercise the thing, do not only measure the
+config.* Here even exercising it produced an image; you had to look at the
+image and know what you asked for.
+
+Ruled out along the way, each with evidence rather than reasoning: Open WebUI's
+substitution (direct API calls failed identically), the checkpoint name
+(ComfyUI listed it), CPU fallback (ROCm reported the card), tokenization (token
+ids exactly correct), CLIP output (finite, distinct, `(1, 77, 2048)`),
+positive/negative wiring, `comfy_kitchen` attention (int8-only path, unused),
+and `comfy_aimdo` (raises loudly when its native lib is absent; ComfyUI falls
+back).
+
+**Do not drop the flag on a torch/ROCm bump without re-running the apple test.**
+
 ### `COMFYUI_WORKFLOW_NODES` is what makes the other image settings reach ComfyUI
 
 Open WebUI does not inspect the workflow it posts. `_apply_workflow_nodes()`
