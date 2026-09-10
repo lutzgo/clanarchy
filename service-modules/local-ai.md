@@ -506,11 +506,41 @@ POST …/upstream/comfyui/api/upload/image
   -> {"name": "testupload.png", "subfolder": "", "type": "input"}
 ```
 
+### Every per-model setting is PER MODEL, and there are three of them
+
+**This is the trap that costs the most time, so it comes first.** Open WebUI
+stores capabilities and parameters in a `model` row *per model id*. Configuring
+one model configures nothing else. Read the live state rather than guessing:
+
+```
+sqlite3 /srv/state/open-webui/data/webui.db \
+  "select id, json_extract(meta,'\$.capabilities'),
+          json_extract(params,'\$.function_calling') from model;"
+```
+
+On ernst, 2026-09-10, that returned **exactly one row** — `qwen3-coder-30b` —
+while `qwen2.5-vl-7b` had no record at all, and so had none of the settings
+somebody had carefully applied in the UI.
+
+Each model that should generate or edit images needs **all three**, and none
+of them can be set from Nix:
+
+| setting | where | without it |
+|---|---|---|
+| `image_generation` capability | Models → *(model)* → Capabilities | the **Image** toggle never appears |
+| Function Calling = **Legacy** | Models → *(model)* → Advanced Params | the forced handler never runs; the model answers in prose about Photoshop |
+| `vision` capability | Models → *(model)* → Capabilities | governs whether attachments are *expected* to work — see below |
+
+A related wart in that same row: `qwen3-coder-30b` had `"vision": true`, which
+is false — it has no vision tower. That is why attaching an image to it
+produced a silent HTTP 500 rather than a warning.
+
 ### Editing an image requires selecting the VISION model, not the coder
 
-**Pick `qwen2.5-vl-7b` before attaching a picture to edit.** With
-`qwen3-coder-30b` selected the edit itself succeeds and the result is thrown
-away, replaced by an error. Measured on ernst 2026-09-10:
+**Pick `qwen2.5-vl-7b` before attaching a picture to edit — and configure it
+per the table above first.** With `qwen3-coder-30b` selected the edit itself
+succeeds and the result is thrown away, replaced by an error. Measured on ernst
+2026-09-10:
 
 ```
 09:25:53  comfyui_edit_image: WebSocket connection established
