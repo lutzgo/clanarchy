@@ -328,6 +328,31 @@
   #                       handed-out-twice failure the old row warned about.
   #   02:00:00:90:00:0e   romm netns rm0            (romm — allocated) 10.0.90.22
   #   02:00:00:90:00:0f   openwebui container eth0  (M19 — allocated)  10.0.90.23
+  #   02:00:00:90:00:10   searxng container eth0    (M20 — allocated)  10.0.90.24
+  #                       SearXNG, service-modules/local-ai.nix roles.search.
+  #                       nspawn, and the tier was the milestone — see the role
+  #                       header for why not podman and why not a microvm.
+  #
+  #                       THIS ONE HAS NO HOSTNAME AND NO TRAEFIK ROUTE, which
+  #                       is deliberate and is the only entry in this table for
+  #                       which that is true of a container on VLAN 90.  Open
+  #                       WebUI (.23) is the sole client and reaches it
+  #                       directly; the container's own firewall accepts .23
+  #                       and drops the rest of the VLAN, so there is nothing
+  #                       for a name to point at and nothing for Authelia to
+  #                       protect.
+  #
+  #                       IT HAS A VLAN 90 LEG FOR EGRESS, not for ingress.
+  #                       SearXNG is the one service in the local-AI stack that
+  #                       must reach the open internet, and it does so the
+  #                       ordinary way — DHCP default route to the UDM-Pro —
+  #                       so its outbound is subject to the same zone policy as
+  #                       every other container and is visible at the gateway.
+  #                       The point-to-point-veth-plus-host-SNAT alternative
+  #                       (the mon0 shape) was rejected: it would have hidden
+  #                       that traffic behind ernst's own address, and
+  #                       `networking.nat.externalInterface` is a single string
+  #                       already claimed by monitoring.nix for "zt+".
   #
   #   M18 ADDED NO MAC AND NO ADDRESS, which is worth stating because it is a
   #   milestone that opened the house to the internet.  CrowdSec runs INSIDE
@@ -647,7 +672,8 @@
   #                              cloudflared: a uid was taken by editing the
   #                              RESERVED block while the ALLOCATED block above
   #                              already held it.  Read both halves before
-  #                              picking a number.  Next free is 3035 (M19 took 3034 for open-webui).
+  #                              picking a number.  Next free is 3036 (M19 took
+  #                              3034 for open-webui, M20 took 3035 for searx).
   #   uid 3031  komga        (containers/arr.nix — group media, READ-ONLY
   #                           against the library.  The group is a WRITE grant
   #                           (2770 root:media) and is taken back per unit with
@@ -712,8 +738,34 @@
   #   machine's podman tier is rootful, so it could never have started or
   #   stopped the container — which is what eviction requires.
   #
-  #   So 3035 is free for whoever needs it next, and M20 (SearXNG) is the
-  #   milestone that was sharing the claim.
+  #   So 3035 was free for whoever needed it next, and M20 (SearXNG) was the
+  #   milestone sharing the claim.  M20 LANDED AND TOOK IT — see below.
+  #
+  #   uid 3035  searx        (service-modules/local-ai.nix — M20, SearXNG, in an
+  #                           NSPAWN container on VLAN 90 with no hostname.
+  #
+  #                           OWN group 3035, NOT media, and this entry is the
+  #                           odd one in this table: IT OWNS NOTHING.  SearXNG
+  #                           is stateless — nixpkgs' searx module declares no
+  #                           StateDirectory, regenerates its settings into
+  #                           /run/searx on every start, and the container
+  #                           bind-mounts only its secret, read-only.  There is
+  #                           no /srv/state directory and no file on zdata with
+  #                           this number on it.
+  #
+  #                           It is pinned anyway, and the reason is the one
+  #                           this table's header gives: nspawn passes uids
+  #                           through unmapped, so a container-chosen number IS
+  #                           a number on the pool.  Pinning it means a process
+  #                           seen from the host is attributable to a service
+  #                           rather than to whatever the container happened to
+  #                           allocate — and it means that if SearXNG ever does
+  #                           acquire state (the favicon cache is the obvious
+  #                           candidate), the identity is already reserved
+  #                           instead of being invented at that moment.
+  #
+  #                           NEXT FREE IS 3036.)
+  #   gid 3035  searx        (service-modules/local-ai.nix)
   #
   #   uid 3026  tvheadend       M8 LANDED 2026-08-27 AND TOOK THIS — moved up
   #                              into the allocated table, as shape (ii): OWN
