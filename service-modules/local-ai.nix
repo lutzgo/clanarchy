@@ -1741,6 +1741,63 @@
         '';
       };
 
+      imageWorkflowNodes = lib.mkOption {
+        type    = lib.types.listOf (lib.types.attrsOf lib.types.anything);
+        description = ''
+          `COMFYUI_WORKFLOW_NODES` — which node of the ComfyUI workflow each
+          generation parameter is written into.
+
+          ── WITHOUT THIS, NOTHING IS SUBSTITUTED AND THE REQUEST IS A 400 ──
+
+          Open WebUI does not inspect the workflow.  `_apply_workflow_nodes()`
+          (utils/images/comfyui.py:147) iterates THIS LIST and writes each
+          value into the node id it names; the list defaults to an EMPTY
+          STRING, which `json.loads` turns into `[]` (config.py:1456), and an
+          empty list means the loop body never runs.
+
+          So the bundled workflow is POSTed with its placeholders intact —
+          `ckpt_name: "model.safetensors"`, 512x512, and the literal prompt
+          text `"Prompt"` — and ComfyUI rejects the unknown checkpoint:
+
+            POST /upstream/comfyui/prompt -> 400 Bad Request
+
+          Open WebUI surfaces that as "An error occurred while generating an
+          image" and logs only `ClientResponseError: 400`, never the body,
+          so the reason is invisible from its side.  Measured on ernst
+          2026-09-10: replaying the SAME workflow with the substitutions
+          applied by hand was accepted (`{"prompt_id": …, "node_errors": {}}`),
+          which is what isolated it to this list rather than to the workflow,
+          the checkpoint, the bridge or llama-swap — all four of which were
+          working.
+
+          The node ids below are those of Open WebUI's own bundled workflow
+          (`COMFYUI_DEFAULT_WORKFLOW`, config.py):
+
+            3  KSampler                5  EmptyLatentImage   7  CLIPTextEncode (neg)
+            4  CheckpointLoaderSimple  6  CLIPTextEncode     8  VAEDecode / 9 SaveImage
+
+          This role does NOT override `COMFYUI_WORKFLOW`, so these ids refer to
+          the workflow Open WebUI ships.  **Anything that replaces that
+          workflow has to replace this list in the same change** — the ids are
+          positional references into one specific document, and a workflow
+          whose ids differ silently writes parameters into the wrong nodes, or
+          into nodes that do not exist.
+        '';
+        default = [
+          { type = "model";           key = "ckpt_name";  node_ids = [ "4" ]; }
+          { type = "prompt";          key = "text";       node_ids = [ "6" ]; }
+          { type = "negative_prompt"; key = "text";       node_ids = [ "7" ]; }
+          { type = "width";           key = "width";      node_ids = [ "5" ]; }
+          { type = "height";          key = "height";     node_ids = [ "5" ]; }
+          { type = "n";               key = "batch_size"; node_ids = [ "5" ]; }
+          { type = "steps";           key = "steps";      node_ids = [ "3" ]; }
+          # `seed` has no fallback key in _apply_workflow_nodes — unlike the
+          # others it is indexed with `node.key` directly, so omitting the key
+          # here is a KeyError rather than a default.
+          { type = "seed";            key = "seed";       node_ids = [ "3" ]; }
+        ];
+      };
+
       imageSteps = lib.mkOption {
         type    = lib.types.ints.positive;
         default = 20;
@@ -2189,6 +2246,14 @@
                   IMAGE_GENERATION_MODEL  = settings.imageModel;
                   IMAGE_SIZE              = settings.imageSize;
                   IMAGE_STEPS             = toString settings.imageSteps;
+
+                  # The one that makes the other three reach the workflow at
+                  # all.  Empty, Open WebUI substitutes NOTHING and posts the
+                  # bundled workflow with `ckpt_name: "model.safetensors"`
+                  # still in it — a 400 from ComfyUI that Open WebUI reports
+                  # only as "An error occurred while generating an image".
+                  COMFYUI_WORKFLOW_NODES  =
+                    builtins.toJSON settings.imageWorkflowNodes;
                 };
               };
             };

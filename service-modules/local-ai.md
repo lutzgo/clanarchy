@@ -395,6 +395,39 @@ ComfyUI category.
 the GGUFs were correctly ignored. It defaults to `""`, so **no existing model
 path moves.**
 
+### `COMFYUI_WORKFLOW_NODES` is what makes the other image settings reach ComfyUI
+
+Open WebUI does not inspect the workflow it posts. `_apply_workflow_nodes()`
+(`utils/images/comfyui.py:147`) iterates `COMFYUI_WORKFLOW_NODES` and writes
+each parameter into the node id it names. That variable defaults to an empty
+string, which `json.loads` turns into `[]` (`config.py:1456`) — **so the loop
+body never runs and nothing is substituted at all.**
+
+The bundled workflow then goes out with its placeholders intact and ComfyUI
+rejects it. Measured on ernst, 2026-09-10, by replaying the exact payload:
+
+```json
+{"error": {"type": "prompt_outputs_failed_validation"},
+ "node_errors": {"4": {"errors": [{"type": "value_not_in_list",
+   "details": "ckpt_name: 'model.safetensors' not in ['sd_xl_base_1.0.safetensors']",
+   "received_value": "model.safetensors"}]}}}
+```
+
+Open WebUI reports that as **"An error occurred while generating an image"**
+and logs only `ClientResponseError: 400` — never the body — so from its side
+the reason is invisible. Replaying the *same* workflow with substitutions
+applied by hand was accepted (`{"prompt_id": …, "node_errors": {}}`), which is
+what isolated it to this list rather than to the checkpoint, the bridge,
+llama-swap or ComfyUI, all four of which were already working.
+
+The ids in `imageWorkflowNodes` refer to **Open WebUI's own bundled workflow**
+(`COMFYUI_DEFAULT_WORKFLOW`), which this role does not override: `4` is the
+`CheckpointLoaderSimple`, `5` the `EmptyLatentImage`, `6`/`7` the positive and
+negative `CLIPTextEncode`, `3` the `KSampler`. They are positional references
+into that one document — **anything that replaces the workflow has to replace
+this list in the same change**, or parameters land in the wrong nodes, or in
+nodes that do not exist.
+
 ### Generating an image is a UI toggle, not a prompt — and one step is runtime state
 
 **Asking the chat model for a picture does not generate one.** It is a text
