@@ -209,19 +209,24 @@ let
   # ROUTED through the UDM-Pro rather than taking the one-L2-hop br0 path the
   # other two do.
   #
-  # THAT SECOND ENFORCEMENT POINT IS NOT OPEN, AND THIS FILE CANNOT OPEN IT.
-  # Measured 2026-09-10, after this rule was deployed: SYNs leave the host on
-  # br0 toward 10.0.90.18:9982 and retransmit six times with no SYN-ACK and no
-  # RST, while the accept rule below stays at zero packets — so the UDM-Pro is
-  # silently dropping them before the container ever sees them. Reaching
-  # 10.0.90.12:443 from the host does NOT generalise; that one flow is
-  # permitted and this one is not.
+  # THAT SECOND ENFORCEMENT POINT HAD TO BE OPENED SEPARATELY, and this file
+  # could not do it. When this rule first deployed the flow still failed:
+  # measured 2026-09-10, SYNs left the host on br0 toward 10.0.90.18:9982 and
+  # retransmitted six times with no SYN-ACK and no RST while the accept rule
+  # below stayed at ZERO packets — the UDM-Pro was dropping them before the
+  # container ever saw them, under the `Internal → Services: Block All` zone
+  # default. (Reaching 10.0.90.12:443 from the host does NOT generalise: that
+  # one flow has its own M5 policy. Assuming otherwise cost a round here.)
   #
-  # So this rule is NECESSARY BUT NOT SUFFICIENT. Live TV needs an inter-VLAN
-  # allow on the UDM-Pro for 10.0.50.10 -> 10.0.90.18 tcp/9982 as well, which
-  # is hand-made state on the router and belongs to nobody in this repo. Keep
-  # this rule anyway: without it the container refuses the connection even
-  # once the router permits it, and debugging that from the sofa is miserable.
+  # Resolved by ZBF policy `Allow Kodi to Tvheadend HTSP`, added by lgo on
+  # 2026-09-10 — roadmap ledger row L12. Verified after: 9982 connects and
+  # the accept rule below moves off zero.
+  #
+  # BOTH HALVES ARE LOAD-BEARING, in opposite directions. Without the router
+  # policy nothing arrives; without this rule the container refuses what does.
+  # And since that policy is written broadly — whole `Servers` network to any
+  # Services host on 9982 — the /32 here is the only thing that keeps HTSP to
+  # Kodi. See the firewall block for why that matters more than it looks.
   kodiHostAddr = "10.0.50.10";
 
   # The FRITZ!Box on the dedicated segment.  Static on both sides: the
@@ -427,13 +432,35 @@ in
       #              Kodi now ships pvr-hts (modules/roles/htpc.nix), so this is
       #              that deliberate widening, made by lgo on 2026-09-10.
       #
-      #              It is narrower than it looks, and deliberately NOT the same
-      #              decision as 9981 above.  9981 fronts an admin UI that is
-      #              unauthenticated once Authelia is cleared, which is why the
-      #              note above forbids widening it.  HTSP authenticates on its
-      #              own — it takes a Tvheadend user and password from the
-      #              client — so opening it does not hand anyone an anonymous
-      #              admin surface.  One source address, one port, one client.
+      #              THIS RULE IS THE GATE.  It is not a second line of defence
+      #              behind Tvheadend's own auth, because THERE IS NO SUCH AUTH
+      #              HERE.  An earlier revision of this comment claimed HTSP
+      #              "authenticates on its own — it takes a Tvheadend user and
+      #              password", and used that to argue the widening was safe.
+      #              That claim was FALSE as this instance is configured, and it
+      #              was written before anyone checked.  Measured 2026-09-10:
+      #              /srv/state/tvheadend has NO accesscontrol and NO passwd
+      #              directory — zero access entries, which in Tvheadend means
+      #              everyone gets full rights — and `curl` to
+      #              10.0.90.18:9981/api/serverinfo from an allowed source
+      #              answers with no credentials at all.
+      #
+      #              So HTSP here is ANONYMOUS AND FULL-RIGHTS, exactly like the
+      #              9981 admin UI the note above refuses to widen.  What makes
+      #              this line defensible is not the protocol, it is the /32:
+      #              one source address, one port, one client.  Widen the source
+      #              and there is nothing else in the way.
+      #
+      #              THE UDM-Pro RULE IS BROADER THAN THIS ONE.  `Allow Kodi to
+      #              Tvheadend HTSP` (added 2026-09-10) permits the whole
+      #              `Servers` network to any Services-zone host on 9982, so the
+      #              /32 below — not the router — is what actually restricts
+      #              this to Kodi.  Do not relax it on the assumption that the
+      #              router is also filtering; for this flow it is not.
+      #
+      #              If a second HTSP client ever appears, give Tvheadend a real
+      #              access entry FIRST.  Adding a second address here without
+      #              one hands full rights to another machine.
       #   udp from the FRITZ!Box — the RTP/RTCP return path.  Interleaved-TCP
       #              is rejected by this box (461, measured), so media arrives
       #              as unicast UDP on client-chosen ephemeral ports; a static
