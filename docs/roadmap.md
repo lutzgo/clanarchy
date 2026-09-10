@@ -9208,9 +9208,33 @@ dropping engines as IPs rotate — while looking strict. The containment that
 actually holds is the inbound firewall plus this container being on **no veth to
 the host**, which is what row 5 of the table above proves.
 
-### Still outstanding
+### Re-deploy confirmed 2026-09-10 — and what the fix actually bought
 
-- [ ] Re-deploy for the two fixes above (`clan machines update ernst`).
+Both fixes verified live after lgo's second deploy: `searx.service` and
+`searx-init.service` both **1.1 OK**, `keep_only` holding the measured five, and
+a real query returning **181 results** including `nhs.uk`, `examine.com` and
+Wikipedia. **The zero-result failure is closed.**
+
+One quality finding worth recording, because it is the kind of thing someone
+will later try to "fix": **every engine spends a slot on every query.**
+`searchResultCount` sends the model only the top five by score, and SearXNG's
+scores here are nearly all `1.0` — so ranking gives almost no discrimination and
+the top five is effectively a round-robin across engines.
+
+**Bing reads the word "safe" as the SAFe acronym**, reproducibly —
+`framework.scaledagile.com` lands in the top five for both *"how safe is a
+vitamin D supplement"* and *"is it safe to take magnesium daily"*. Checked
+before writing it off: *"how to bake sourdough bread"* returns sourdough sites,
+so the query is reaching bing and the engine is not broken. It is genuinely
+bing's reading of a common English word, which makes it unfixable from here.
+Bing is **kept** for coverage — it answers every time, and without it two of the
+remaining four are intermittent.
+
+If the top five is ever too noisy in practice, **raise `searchResultCount`
+before removing an engine**: extra slots cost a few hundred tokens and reach
+past the round-robin, whereas dropping an engine loses whatever it alone found.
+
+### Still outstanding
 - [ ] The M19 question end to end in the browser: *"How safe is it to add a
       vitamin D source to the table? Rate your sources."* — with search on and
       off, side by side, and **the cited sources checked for existence**, not

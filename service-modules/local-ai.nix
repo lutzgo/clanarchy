@@ -1841,6 +1841,40 @@
           they contributed nothing to this consumer at any point and were pure
           latency.  A different client that reads infoboxes would want them back.
 
+          ── RESULT QUALITY, MEASURED AFTER THE FIX.  KNOWN AND ACCEPTED ───
+
+          The set above returns 181 results for "how safe is a vitamin D
+          supplement", which is not the interesting number.  `searchResultCount`
+          on the webui role sends the model only the top FIVE by score, and
+          SearXNG's scores here are nearly all 1.0 — position-and-count based,
+          with each engine contributing its own list.  So ranking gives almost
+          no discrimination and the top five is effectively a round-robin across
+          engines: EVERY ENGINE IN THIS LIST SPENDS A SLOT ON EVERY QUERY.  That
+          is the real cost of adding one, and it is not visible in a result
+          count.
+
+          BING READS THE WORD "safe" AS THE SAFe ACRONYM, reproducibly.  Both
+          "how safe is a vitamin D supplement" and "is it safe to take magnesium
+          daily" put framework.scaledagile.com and the German Wikipedia article
+          on Scaled Agile Framework into the top five.
+
+          IT IS NOT A BROKEN ENGINE and was checked before being written off:
+          "how to bake sourdough bread" returns sourdough sites and "linux
+          kernel scheduler" returns Linux sites, so the query IS reaching bing.
+          It is genuinely bing's reading of a common English word — which makes
+          it unfixable from here, and the reason this is a note rather than a
+          removal.  Bing is kept for coverage: it answers every time, and the
+          alternative is a set of four in which two are intermittent.
+
+          The engines are NOT equal in quality, measured over health queries:
+          yandex is consistently the best (nhs.uk, verywellhealth.com), mwmbl is
+          better than its low profile suggests (examine.com, greatist.com), and
+          encyclosearch is reliable for anything factual.  If the top five is
+          ever too noisy in practice, RAISE `searchResultCount` before removing
+          an engine — a sixth and seventh slot cost a few hundred tokens and
+          reach past the round-robin, whereas dropping an engine loses whatever
+          it alone was finding.
+
           RE-MEASURE AFTER ANY CHANGE, and after a few months regardless —
           engine blocking moves.  Anything listed here that shows up in
           `unresponsive_engines` on every query is contributing nothing:
