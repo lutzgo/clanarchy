@@ -506,6 +506,49 @@ POST …/upstream/comfyui/api/upload/image
   -> {"name": "testupload.png", "subfolder": "", "type": "input"}
 ```
 
+### Editing an image requires selecting the VISION model, not the coder
+
+**Pick `qwen2.5-vl-7b` before attaching a picture to edit.** With
+`qwen3-coder-30b` selected the edit itself succeeds and the result is thrown
+away, replaced by an error. Measured on ernst 2026-09-10:
+
+```
+09:25:53  comfyui_edit_image: WebSocket connection established
+09:25:53  queue_prompt
+09:26:09  get_history                        <- 16 s later, image produced
+09:26:13  ERROR ... model=qwen3-coder-30b
+          image input is not supported - hint: ... provide the mmproj
+```
+
+**The img2img ran and finished.** What failed is the *chat* turn afterwards:
+Open WebUI sends the conversation — including the attached image — to the
+selected model for the text reply, and the coder model has no vision tower, so
+llama-server answers HTTP 500 and Open WebUI surfaces that instead of the
+edited image.
+
+Nothing prevents this on the client side, and two details in the frontend are
+why (`Chat.svelte:2891`):
+
+```js
+hasImages &&
+!(model.info?.meta?.capabilities?.vision ?? true) &&
+!imageGenerationEnabled
+```
+
+- **`?? true`** — vision is assumed *present* when the capability is unset, so
+  no warning fires for a model nobody has explicitly marked non-vision;
+- **`&& !imageGenerationEnabled`** — the check is skipped entirely whenever the
+  Image toggle is on, which is exactly when editing happens;
+- and it is a `toast.error` either way — **it never aborts the request.**
+
+It cannot be fixed at the proxy either: llama-swap's `stripParams` operates on
+top-level request parameters (`temperature`, …) and cannot reach into
+`messages[].content[]`.
+
+So this is a model-selection fact, not a configuration one. Verified that the
+vision model handles it — the same image through llama-swap to
+`qwen2.5-vl-7b` returns *"Red apple on surface."*
+
 ### Reading images needs a manual model switch, and that cannot be automated
 
 **Open WebUI has no automatic model routing.** Attaching an image to a model
