@@ -3659,6 +3659,34 @@
         description = "Provider id written into OpenCode's config.";
       };
 
+      contextBudgetTokens = lib.mkOption {
+        type        = lib.types.ints.positive;
+        default     = 1000;
+        description = ''
+          Ceiling, in tokens, on the context govim's opencode.nvim integration
+          will inject into a prompt (`vim.g.opencode_context_budget_tokens`).
+
+          THIS IS THE SAME DECISION AS THE SERVED CONTEXT WINDOW, which is why
+          it is set at the call site in clan.nix next to the endpoint's
+          `contextLength` / `roles.models` rather than buried in the editor
+          config — the two numbers are only meaningful read together.
+
+          Over budget, the integration REFUSES to send. That is the point, and
+          it is SN1: an over-long prompt does not fail loudly, it comes back
+          HTTP 200 with a truncated head and a confidently fabricated answer.
+          A review of a diff the model never fully saw looks exactly like a
+          real one.
+
+          The default of 1000 matches govim's own fail-closed default, sized
+          for the SMALLEST window in the fleet — miralda's 4096, which the
+          opencode system prompt and tool definitions have already eaten into.
+          Restate it explicitly per machine rather than inheriting it: a host
+          with a 32768 window (jens, via llama-swap) that silently keeps 1000
+          refuses most real diffs — govim's own working diff measures ~2521
+          estimated tokens.
+        '';
+      };
+
       tunnel = {
         enable = lib.mkEnableOption ''
           reaching a REMOTE inference server over an SSH port-forward instead of
@@ -3734,9 +3762,27 @@
     };
 
     perInstance = { settings, ... }: {
-      nixosModule = { config, pkgs, lib, ... }:
+      nixosModule = { config, pkgs, pkgs-unstable, lib, ... }:
         let
           gen = config.clan.core.vars.generators.ollama-tunnel-ssh;
+
+          # Is govim actually in this user's HM generation?
+          #
+          # modules/users/lgo.nix imports the nvf module only when
+          # `clanarchy.users.<user>.editor = "govim"`, and setting an
+          # UNDECLARED option is an eval error — so flipping that one line to
+          # "helix" would otherwise break every deploy of this machine, a trap
+          # laid by a role with no business knowing which editor is selected.
+          #
+          # The `or null` also covers a user who has no editor option at all
+          # (nobody today, but this role's `user` is a free-form string).
+          #
+          # Checked here on NixOS config and NOT with `options ? programs.nvf`
+          # inside the HM module: using `options` to decide a module's own
+          # attribute structure is infinite recursion, because the structure
+          # is an input to collecting the options being queried.
+          govimActive =
+            (config.clanarchy.users.${settings.user}.editor or null) == "govim";
 
           baseURL =
             if settings.tunnel.enable then
@@ -3775,7 +3821,19 @@
         lib.mkMerge [
 
           {
-            environment.systemPackages = [ pkgs.opencode ];
+            # FROM UNSTABLE, DELIBERATELY, and this is the copy that wins.
+            #
+            # clan-core's 26.05 pin carries opencode 1.15.10; nixpkgs-unstable
+            # has 1.18.16. opencode.nvim 0.14.0 tests against 1.17.4 and
+            # `:checkhealth opencode` warns on anything older, so the stable
+            # pin is three minor versions behind its own client.
+            #
+            # It has to be fixed HERE and not in govim: nvf APPENDS to $PATH
+            # (mnw does `PATH = PATH .. ":" .. extraBinPath`), so a
+            # system-wide opencode always shadows the one govim bundles. The
+            # bundled copy is unreachable as long as this line exists, which
+            # means this line is the only place the version can be chosen.
+            environment.systemPackages = [ pkgs-unstable.opencode ];
 
             home-manager.users.${settings.user} = { lib, ... }: {
               # ~/.config is persisted for lgo (modules/users/lgo.nix), so this
@@ -3803,6 +3861,20 @@
                 };
                 instructions = [ "${toolCallRule}" ];
               };
+            }
+            # ── Context budget for govim's opencode.nvim integration ────────
+            # See `govimActive` above for why this is conditional.
+            //
+            lib.optionalAttrs govimActive {
+              # mkForce, and it is not optional: govim sets this global to a
+              # bare `1000`, NOT `mkDefault`, so any value from here is a
+              # merge CONFLICT rather than an override. Without mkForce the
+              # deploy fails outright on jens — and would keep "working" on
+              # miralda only because 1000 happens to equal 1000, which is the
+              # kind of coincidence that hides the breakage until the day
+              # someone raises the budget.
+              programs.nvf.settings.vim.globals.opencode_context_budget_tokens =
+                lib.mkForce settings.contextBudgetTokens;
             };
           }
 

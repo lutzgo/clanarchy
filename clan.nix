@@ -783,6 +783,13 @@
           # are ollama's, not llama-swap's.
           providerName = "ollama";
           model        = "ollama/qwen2.5-coder:7b";
+          # Restated, not inherited. This is the 4096-token window declared
+          # by `contextLength` just above, minus what opencode's system
+          # prompt and tool definitions already spend — the number the default was
+          # sized for in the first place. Writing it here means the window and
+          # the budget can be checked against each other in one glance, and a
+          # future `contextLength` bump has a visible partner to move.
+          contextBudgetTokens = 1000;
         };
 
         # jens has no local inference: its iGPU is Intel, where the ROCm stack
@@ -797,6 +804,14 @@
           # `qwen3-coder:8b` into a restart loop for months.
           model = "local/qwen3-coder-30b";
           tunnel.enable = true;
+          # ernst serves this model at 32768 (roles.models above), so the
+          # fleet default of 1000 — sized for miralda's 4096 — is not
+          # conservative here, it is broken: govim's own working diff measures
+          # ~2521 estimated tokens, so 1000 would refuse most real reviews and
+          # the refusal would look like a config fault rather than a budget.
+          # 8000 leaves ample room for the system prompt, the tools and the
+          # reply inside 32768.
+          contextBudgetTokens = 8000;
         };
       };
 
