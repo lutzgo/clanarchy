@@ -486,6 +486,28 @@ Verified on ernst 2026-09-10: a photo of a red apple plus *"turn the cat bright
 orange, oil painting style"* returned the same table, same lighting, same
 shadow, transformed subject.
 
+**The input is rescaled to ~1 MP before encoding, and that node is not
+optional.** img2img has no `EmptyLatentImage`, so the latent is whatever the
+upload dictates — and a phone camera uploads 3024×4032, which is a 378×504
+latent that asks SDXL's attention for **42 GiB on a 24 GiB card**. Measured on
+ernst 2026-09-10:
+
+```
+exception_type: torch.OutOfMemoryError
+"CUDA out of memory. Tried to allocate 42.25 GiB.
+ GPU 0 has a total capacity of 23.98 GiB"
+node_id: "3"  node_type: "KSampler"
+executed: ["10","4","6","7","11"]     <- everything except the sampler
+```
+
+**And it is completely silent at the front door.** ComfyUI reports it only in
+its history status; `_ws_get_images` returns an empty list; Open WebUI logs
+nothing, still emits its *"Image created"* status, and the model narrates an
+image that does not exist. The only visible symptom is a reply with no picture
+in it. An `ImageScaleToTotalPixels` at 1.0 MP (`resolution_steps = 64`, lanczos)
+between `LoadImage` and `VAEEncode` fixes it — and 1 MP is SDXL's native
+training scale anyway, so it is a quality fix as much as a memory one.
+
 Two omissions in the node map are deliberate and both would break it:
 
 - **`steps` must not be mapped.** The edit caller builds its payload without

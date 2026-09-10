@@ -1917,8 +1917,47 @@
             inputs.image = "example.png";
             class_type = "LoadImage";
           };
+          # ── THE NODE WITHOUT WHICH A PHONE PHOTO OOMs THE CARD ──────────
+          #
+          # img2img has no EmptyLatentImage, so the latent is whatever the
+          # UPLOAD dictates — and a phone camera uploads 3024x4032. That is a
+          # 378x504 latent, and SDXL's attention over it asks for 42 GiB on a
+          # 24 GiB card.  Measured on ernst 2026-09-10, at the KSampler:
+          #
+          #   exception_type: torch.OutOfMemoryError
+          #   "CUDA out of memory. Tried to allocate 42.25 GiB. GPU 0 has a
+          #    total capacity of 23.98 GiB"
+          #   executed: ["10","4","6","7","11"]   <- everything BUT the sampler
+          #
+          # AND THE FAILURE IS COMPLETELY SILENT AT THE FRONT DOOR, which is
+          # why this needs a node rather than a note.  ComfyUI reports it only
+          # in its history status; `_ws_get_images` returns an empty list; Open
+          # WebUI logs nothing at all, still emits its "Image created" status,
+          # and the model happily narrates an image that does not exist.  The
+          # only visible symptom is a reply with no picture in it.
+          #
+          # 1.0 megapixel is SDXL's native training scale, so this is not only
+          # a memory fix — an SDXL latent far from ~1 MP degrades anyway.
+          # `resolution_steps = 64` keeps both sides a multiple of 64, which
+          # the 8x VAE downsample and the UNet's own strides want; lanczos
+          # because this is always a downscale and it is the sharpest of the
+          # offered filters.
+          #
+          # Verified with the same 3024x4032 JPEG that produced the OOM above:
+          # `status_str: success`, image written.
+          "12" = {
+            inputs = {
+              image = [ "10" 0 ];
+              upscale_method = "lanczos";
+              megapixels = 1.0;
+              resolution_steps = 64;
+            };
+            class_type = "ImageScaleToTotalPixels";
+          };
           "11" = {
-            inputs = { pixels = [ "10" 0 ]; vae = [ "4" 2 ]; };
+            # pixels comes from the RESCALE (12), never straight from
+            # LoadImage (10) — that edge is the entire fix.
+            inputs = { pixels = [ "12" 0 ]; vae = [ "4" 2 ]; };
             class_type = "VAEEncode";
           };
         };
