@@ -697,6 +697,12 @@
           # have produced working-but-poor images, which is worse than a clean
           # failure because nothing reports it.
           imageSize = "1024x1024";
+
+          # img2img: upload a picture with a prompt and transform it. Same
+          # ComfyUI, same bridge, same checkpoint — Open WebUI just keeps
+          # editing as a separate subsystem with its own enable flag, and
+          # ships no default workflow for it, so the graph lives in the role.
+          imageEditEnable = true;
         };
 
         # ── miralda: unchanged, and out of scope ────────────────────────
