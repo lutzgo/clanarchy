@@ -1830,6 +1830,138 @@
           conservative starting point, not a claim.
         '';
       };
+
+      ##########################################################################
+      # Image EDITING (img2img) — a separate subsystem in Open WebUI, with its
+      # own engine, model, base URL, workflow and node map.  Enabling image
+      # GENERATION does not enable it.
+      ##########################################################################
+      imageEditEnable = lib.mkEnableOption ''
+        image editing (img2img): upload a picture with a prompt and transform it
+
+        Points at the SAME ComfyUI as generation, over the same bridge — no new
+        listener and no new firewall rule.  Open WebUI uploads the source image
+        to ComfyUI's `/api/upload/image` and passes back the filename it is
+        given, which the workflow's LoadImage node consumes
+      '';
+
+      imageEditWorkflow = lib.mkOption {
+        type = lib.types.attrsOf (lib.types.attrsOf lib.types.anything);
+        description = ''
+          The img2img workflow, as a ComfyUI prompt graph.
+
+          UNLIKE GENERATION, OPEN WEBUI SHIPS NO DEFAULT HERE.
+          `IMAGES_EDIT_COMFYUI_WORKFLOW` defaults to the empty string
+          (config.py:1506), so an edit request against an unset workflow posts
+          nothing usable.  The graph below therefore has to exist in this repo
+          rather than being a couple of env vars over an upstream default.
+
+          It is the generation graph with the latent source swapped: instead of
+          an `EmptyLatentImage`, a `LoadImage` (10) feeds a `VAEEncode` (11)
+          which feeds the sampler's `latent_image`.  That is the whole of
+          img2img.
+
+          `denoise` is the parameter that matters and it is baked in at 0.75:
+          1.0 ignores the input entirely (it is then plain generation), and low
+          values return the input barely touched.  0.75 transforms the subject
+          while keeping composition, lighting and shadows — verified on ernst
+          2026-09-10 by editing a photo of a red apple with "turn the cat
+          bright orange, oil painting style" and getting the same object, same
+          table, same shadow, different subject.
+
+          NO `EmptyLatentImage` MEANS NO width/height, deliberately: the output
+          size comes from the input image, which is what img2img should do.
+          `IMAGE_EDIT_SIZE` is left unset for the same reason.
+        '';
+        default = {
+          "3" = {
+            inputs = {
+              seed = 0;
+              steps = 20;
+              cfg = 7;
+              sampler_name = "dpmpp_2m";
+              scheduler = "karras";
+              # See the option description. This is the img2img knob.
+              denoise = 0.75;
+              model = [ "4" 0 ];
+              positive = [ "6" 0 ];
+              negative = [ "7" 0 ];
+              # The one edge that differs from the generation graph.
+              latent_image = [ "11" 0 ];
+            };
+            class_type = "KSampler";
+          };
+          "4" = {
+            # Overwritten from `imageEditModel` via the node map below.
+            inputs.ckpt_name = "model.safetensors";
+            class_type = "CheckpointLoaderSimple";
+          };
+          "6" = {
+            inputs = { text = "Prompt"; clip = [ "4" 1 ]; };
+            class_type = "CLIPTextEncode";
+          };
+          "7" = {
+            inputs = { text = ""; clip = [ "4" 1 ]; };
+            class_type = "CLIPTextEncode";
+          };
+          "8" = {
+            inputs = { samples = [ "3" 0 ]; vae = [ "4" 2 ]; };
+            class_type = "VAEDecode";
+          };
+          "9" = {
+            inputs = { filename_prefix = "ComfyUI"; images = [ "8" 0 ]; };
+            class_type = "SaveImage";
+          };
+          "10" = {
+            # Overwritten with the uploaded filename via the node map.
+            inputs.image = "example.png";
+            class_type = "LoadImage";
+          };
+          "11" = {
+            inputs = { pixels = [ "10" 0 ]; vae = [ "4" 2 ]; };
+            class_type = "VAEEncode";
+          };
+        };
+      };
+
+      imageEditWorkflowNodes = lib.mkOption {
+        type = lib.types.listOf (lib.types.attrsOf lib.types.anything);
+        description = ''
+          `IMAGES_EDIT_COMFYUI_WORKFLOW_NODES` — the same substitution
+          mechanism generation uses, and the same consequence if it is empty:
+          nothing is substituted and the placeholders are posted verbatim.
+
+          ── IT IS DELIBERATELY SHORTER THAN THE GENERATION MAP ────────────
+
+          `steps` IS OMITTED ON PURPOSE, and this is not tidiness.  The edit
+          caller builds its payload without one (routers/images.py: only
+          `image`, `prompt` and optionally `width`/`height`/`n`), so
+          `payload.steps` is None — and `_apply_workflow_nodes` writes whatever
+          it finds:
+
+            workflow[node_id]['inputs']['steps'] = payload.steps   # -> null
+
+          A `steps` entry here would therefore put JSON `null` into the
+          KSampler on every edit and ComfyUI would reject the graph.  `seed` is
+          safe by contrast, because that branch substitutes a random value when
+          the payload has none.
+
+          `width`/`height` are omitted for a different reason: there is no
+          `EmptyLatentImage` in an img2img graph, so there is nothing for them
+          to set — the size comes from the uploaded image.
+
+          `image` carries the filename ComfyUI returned from its own upload
+          endpoint, and the payload is a LIST, so `node_ids` is indexed
+          positionally against it (`payload.image[idx]`).  One LoadImage, one
+          entry.
+        '';
+        default = [
+          { type = "model";  key = "ckpt_name"; node_ids = [ "4" ]; }
+          { type = "prompt"; key = "text";      node_ids = [ "6" ]; }
+          { type = "image";  key = "image";     node_ids = [ "10" ]; }
+          { type = "seed";   key = "seed";      node_ids = [ "3" ]; }
+        ];
+      };
     };
 
     perInstance = { settings, roles, machine, ... }: {
@@ -2273,6 +2405,42 @@
                   # only as "An error occurred while generating an image".
                   COMFYUI_WORKFLOW_NODES  =
                     builtins.toJSON settings.imageWorkflowNodes;
+                } // lib.optionalAttrs
+                       (settings.imageUrl != null && settings.imageEditEnable) {
+                  # ── img2img: SAME ComfyUI, SAME bridge, separate subsystem ─
+                  #
+                  # Open WebUI keeps editing entirely apart from generation —
+                  # its own enable flag, engine, model and workflow — and
+                  # `ENABLE_IMAGE_EDIT` defaults to false, so turning on
+                  # generation does not turn this on.
+                  #
+                  # It points at `imageUrl`, i.e. the same `/upstream/comfyui`
+                  # path on the same veth. VERIFIED that the upload endpoint
+                  # survives that prefix (ernst, 2026-09-10):
+                  #
+                  #   POST …/upstream/comfyui/api/upload/image
+                  #     -> {"name": "testupload.png", "subfolder": "",
+                  #         "type": "input"}
+                  #
+                  # which matters because it is a multipart POST to a path
+                  # llama-swap only forwards, and it was the one part of this
+                  # feature that could not be established by reading.
+                  ENABLE_IMAGE_EDIT             = "True";
+                  IMAGE_EDIT_ENGINE             = "comfyui";
+                  IMAGE_EDIT_MODEL              = settings.imageModel;
+                  IMAGES_EDIT_COMFYUI_BASE_URL  = settings.imageUrl;
+
+                  # A JSON STRING, not an object: Open WebUI types this field
+                  # as `workflow: str` and calls json.loads on it itself
+                  # (ComfyUIWorkflow in utils/images/comfyui.py).
+                  IMAGES_EDIT_COMFYUI_WORKFLOW  =
+                    builtins.toJSON settings.imageEditWorkflow;
+                  IMAGES_EDIT_COMFYUI_WORKFLOW_NODES =
+                    builtins.toJSON settings.imageEditWorkflowNodes;
+
+                  # IMAGE_EDIT_SIZE is deliberately left unset — see
+                  # imageEditWorkflow. An img2img graph has no
+                  # EmptyLatentImage, so the output size is the input's.
                 };
               };
             };

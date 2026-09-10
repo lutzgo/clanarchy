@@ -468,6 +468,56 @@ into that one document — **anything that replaces the workflow has to replace
 this list in the same change**, or parameters land in the wrong nodes, or in
 nodes that do not exist.
 
+### Image editing (img2img) is a separate subsystem
+
+Enabling generation does **not** enable editing. Open WebUI keeps them apart —
+own enable flag, engine, model, base URL, workflow and node map — and
+`ENABLE_IMAGE_EDIT` defaults to false.
+
+**And unlike generation, upstream ships no default workflow**:
+`IMAGES_EDIT_COMFYUI_WORKFLOW` defaults to the empty string
+(`config.py:1506`), so the graph has to live here. It is the generation graph
+with the latent source swapped: a `LoadImage` (10) feeds a `VAEEncode` (11)
+which feeds the sampler's `latent_image`, instead of an `EmptyLatentImage`.
+
+`denoise = 0.75` is the parameter that matters — 1.0 ignores the input
+entirely (that is just generation), low values return it barely touched.
+Verified on ernst 2026-09-10: a photo of a red apple plus *"turn the cat bright
+orange, oil painting style"* returned the same table, same lighting, same
+shadow, transformed subject.
+
+Two omissions in the node map are deliberate and both would break it:
+
+- **`steps` must not be mapped.** The edit caller builds its payload without
+  one (`routers/images.py` passes only `image`, `prompt` and optionally
+  `width`/`height`/`n`), so `payload.steps` is `None` and
+  `_apply_workflow_nodes` would write JSON `null` into the KSampler on every
+  edit. `seed` is safe by contrast — that branch substitutes a random value
+  when the payload has none. Step count is baked into the workflow instead.
+- **`width`/`height` must not be mapped.** An img2img graph has no
+  `EmptyLatentImage`, so there is nothing for them to set; output size comes
+  from the uploaded image. `IMAGE_EDIT_SIZE` is left unset for the same reason.
+
+The upload path was the one part that could not be established by reading —
+it is a multipart POST to a path llama-swap only forwards. Verified:
+
+```
+POST …/upstream/comfyui/api/upload/image
+  -> {"name": "testupload.png", "subfolder": "", "type": "input"}
+```
+
+### Reading images needs a manual model switch, and that cannot be automated
+
+**Open WebUI has no automatic model routing.** Attaching an image to a model
+without the `vision` capability produces a toast — `Model {{modelName}} is not
+vision capable` (`Chat.svelte:2892`) — and nothing else: no fallback, no
+auto-switch, nowhere in the request path.
+
+So reading an image means selecting `qwen2.5-vl-7b` by hand. The alternative is
+making the VL model the default for every chat, which trades the 30B's text
+quality for occasional image reading — a bad deal, and llama-swap makes the
+manual switch cheap anyway since it is a model swap rather than a restart.
+
 ### Generating an image is a UI toggle, not a prompt — and one step is runtime state
 
 **Asking the chat model for a picture does not generate one.** It is a text
