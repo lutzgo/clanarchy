@@ -1756,13 +1756,12 @@
       engineKeepOnly = lib.mkOption {
         type    = lib.types.listOf lib.types.str;
         default = [
-          "duckduckgo"
-          "brave"
-          "startpage"
-          "mojeek"
-          "qwant"
-          "wikipedia"
-          "wikidata"
+          # MEASURED ON ernst 2026-09-10, not chosen. See the description.
+          "bing"           # 10 results, every attempt. The reliable primary
+          "yandex"         # 15, the best quality measured — nhs.uk et al
+          "encyclosearch"  # 15, encyclopedic (wikipedia, handwiki)
+          "mwmbl"          # 30, independent open crawler
+          "brave"          # INTERMITTENT — see below. Free when it fails
         ];
         description = ''
           The engines this instance may contact, as SearXNG `name` fields.
@@ -1786,36 +1785,92 @@
           hostile response can reach a Python parser through, so it is an
           edit that deserves the same attention as opening a port.
 
-          GOOGLE IS DELIBERATELY ABSENT.  It is enabled in upstream's defaults
-          (its `categories` is null, which falls through to `general`), and it
-          is the engine most likely to answer a self-hosted metasearcher with a
-          CAPTCHA.  One engine returning a challenge page degrades results;
-          this list is meant to survive that rather than depend on the worst
-          offender.
+          ── THIS LIST IS MEASURED.  THE FIRST ONE SHIPPED WAS NOT, AND IT
+             RETURNED ZERO RESULTS FOR EVERY QUERY ──────────────────────────
 
-          WHICH OF THESE ACTUALLY WORK FROM ernst's IP IS A MEASUREMENT, and it
-          has not been taken — this is a starting set, not a verified one.
-          After deploy, check per engine rather than trusting the list:
+          M20 first shipped `duckduckgo, brave, startpage, mojeek, qwant,
+          wikipedia, wikidata`, reasoned from what a household instance "should"
+          use and explicitly flagged as unverified.  Every one of the four real
+          web engines in it is blocked from ernst's address.  Measured
+          2026-09-10, first request after a clean restart:
 
-            systemd-run --machine=searxng --collect --pipe -q -- \
-              curl -s 'http://127.0.0.1:8888/search?q=test&format=json' \
-              | jq -r '.unresponsive_engines'
+            duckduckgo   CAPTCHA
+            startpage    CAPTCHA
+            qwant        access denied  (403)
+            brave        too many requests  (429)
+            mojeek       access denied  (403)
 
-          An engine that blocks ernst shows up there, and the fix is to remove
-          it from this list rather than to leave it failing on every query.
+          `number_of_results: 0`, three times in a row, twenty seconds apart.
+          The feature was fully deployed, healthy, firewalled correctly, JSON
+          enabled — and answered nothing.  Exactly the shape M21's six defects
+          had.
+
+          The replacements were found by enabling ~26 candidates and querying
+          each one alone.  What actually answers:
+
+            bing           10 results, every attempt      ← the primary
+            yandex         15, best quality measured
+            encyclosearch  15, encyclopedic
+            mwmbl          30, independent crawler
+            wiby           12, but old-web pages — poor relevance for health
+            quark          10, mostly Chinese-language
+            searchmysite    7, personal websites only — very niche
+
+          GOOGLE IS ABSENT, AND NOT FOR THE REASON FIRST GIVEN.  The original
+          note said it was excluded because it is the engine most likely to
+          CAPTCHA a self-hosted metasearcher.  That reasoning was sound and the
+          conclusion was untested; when tested, Google returns `results: 0` with
+          NO entry in `unresponsive_engines` at all — it answers, and the parser
+          extracts nothing.  It is absent because it does not work, which is a
+          stronger reason than the one guessed.
+
+          BRAVE IS KEPT DESPITE BEING UNRELIABLE, deliberately.  It 429s under
+          any sustained use, but immediately after a `searx.service` restart it
+          answered with the best sources in the whole exercise (Mayo Clinic,
+          Cleveland Clinic, NIH ODS).  A 429 comes back fast and SearXNG just
+          lists it unresponsive, so an engine that sometimes works and never
+          costs more than a fast rejection is worth carrying.  Do not read its
+          presence as a claim that it is dependable.
+
+          WIKIPEDIA AND WIKIDATA WERE REMOVED, and this one is not about
+          blocking — it is about the consumer.  They answer, but they return
+          their content in `infoboxes`, NOT in `results`, and Open WebUI reads
+          `payload.get('results', [])` and nothing else
+          (retrieval/web/searxng.py).  Verified directly: `?q=Vitamin D
+          &engines=wikipedia` returns `results: 0` with a populated infobox.  So
+          they contributed nothing to this consumer at any point and were pure
+          latency.  A different client that reads infoboxes would want them back.
+
+          RE-MEASURE AFTER ANY CHANGE, and after a few months regardless —
+          engine blocking moves.  Anything listed here that shows up in
+          `unresponsive_engines` on every query is contributing nothing:
+
+            systemd-run --machine=openwebui --collect --pipe -q -- \
+              curl -s 'http://10.0.90.24:8888/search?q=test&format=json' \
+              | jq -rc '{n:(.results|length), unresp:.unresponsive_engines}'
         '';
       };
 
       engineOverrides = lib.mkOption {
         type    = lib.types.listOf (lib.types.attrsOf lib.types.anything);
         default = [
-          # Both are `disabled: true` in upstream's settings.yml and are
-          # general-category engines worth having: mojeek is an independent
-          # index (not a Bing/Google reseller, so it fails independently) and
-          # qwant is EU-hosted with its own crawler.  Re-enabling is a merge by
-          # name over the kept set — see engineKeepOnly.
-          { name = "mojeek"; disabled = false; }
-          { name = "qwant";  disabled = false; }
+          # FOUR OF THE FIVE ENGINES THIS INSTANCE USES ARE `disabled: true` IN
+          # UPSTREAM'S settings.yml, so without these lines `keep_only` would
+          # leave a set that is present but never queried — a second way to
+          # arrive at zero results, and one that reports NOTHING in
+          # `unresponsive_engines` because an engine that was never asked
+          # cannot be unresponsive.  Checked per engine against the shipped
+          # settings.yml rather than assumed:
+          #
+          #   bing           disabled: true    categories: null (→ general)
+          #   yandex         disabled: true    categories: [general]
+          #   encyclosearch  disabled: true    categories: [general]
+          #   mwmbl          disabled: true    categories: null (→ general)
+          #   brave          disabled: FALSE   — already on, no entry needed
+          { name = "bing";          disabled = false; }
+          { name = "yandex";        disabled = false; }
+          { name = "encyclosearch"; disabled = false; }
+          { name = "mwmbl";         disabled = false; }
         ];
         description = ''
           Per-engine overrides, merged BY NAME over whatever `engineKeepOnly`
@@ -2045,6 +2100,118 @@
                 uid   = settings.uid;
               };
               users.groups.searx.gid = settings.uid;
+
+              ##############################################################
+              # HARDENING.  nixpkgs' searx module ships essentially none —
+              # measured on ernst 2026-09-10, the units as deployed scored:
+              #
+              #   searx.service       9.2 UNSAFE
+              #   searx-init.service  9.2 UNSAFE
+              #
+              # against M20's stated target of <= 2.0.  With the block below,
+              # both land at 1.1 OK.
+              #
+              # ── EXERCISED, NOT ONLY SCORED ───────────────────────────────
+              #
+              # M19's lesson is that `DeviceAllow=/dev/dri` and
+              # MemoryDenyWriteExecute both SCORED WELL WHILE BREAKING THE
+              # SYSTEM, so this set was applied as a runtime drop-in on the
+              # live container and a real query was run through it before it
+              # was written here: 20 results, sources including mayoclinic.org,
+              # my.clevelandclinic.org and ods.od.nih.gov.  A search that still
+              # works is the evidence; 1.1 is just the number.
+              #
+              # MemoryDenyWriteExecute IS INCLUDED and is the one to suspect
+              # first if a future searxng bump fails to start: CPython itself
+              # is fine with W^X, but a C extension that JITs would not be.
+              # It was verified working here rather than assumed safe.
+              #
+              # ── WHAT IS DELIBERATELY NOT SET ─────────────────────────────
+              #
+              #   PrivateNetwork      — obviously not.  Reaching the internet
+              #                         IS this service's whole function.
+              #   IPAddressDeny/Allow — the one systemd-analyze still flags.
+              #                         An allow-list would have to enumerate
+              #                         every address of five search engines,
+              #                         which are CDN-hosted and change without
+              #                         notice; the rule would fail open in
+              #                         practice (silently dropping engines as
+              #                         IPs rotate) while looking strict.  The
+              #                         containment that actually holds is the
+              #                         INBOUND firewall plus the fact that
+              #                         this container is on no veth to the
+              #                         host — proven by the reachability
+              #                         matrix in docs/roadmap.md §M20, where
+              #                         every LAN target times out.
+              #   ProtectSystem=strict is safe here BECAUSE searx writes
+              #                         nothing: searx-init regenerates
+              #                         /run/searx/settings.yml, and
+              #                         RuntimeDirectory= already grants that
+              #                         path.  If favicons are ever enabled
+              #                         they need a ReadWritePaths= entry, and
+              #                         the failure will be a clean EROFS.
+              ##############################################################
+              systemd.services.searx.serviceConfig = {
+                NoNewPrivileges       = true;
+                ProtectSystem         = "strict";
+                ProtectHome           = true;
+                PrivateTmp            = true;
+                PrivateDevices        = true;
+                PrivateUsers          = true;
+                ProtectKernelTunables = true;
+                ProtectKernelModules  = true;
+                ProtectKernelLogs     = true;
+                ProtectControlGroups  = true;
+                ProtectClock          = true;
+                ProtectHostname       = true;
+                ProtectProc           = "invisible";
+                ProcSubset            = "pid";
+                RestrictNamespaces    = true;
+                RestrictRealtime      = true;
+                RestrictSUIDSGID      = true;
+                LockPersonality       = true;
+                MemoryDenyWriteExecute = true;
+                RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+                SystemCallArchitectures = "native";
+                SystemCallFilter = [ "@system-service" "~@privileged" "~@resources" ];
+                CapabilityBoundingSet = [ "" ];
+                AmbientCapabilities   = [ "" ];
+                UMask                 = "0077";
+              };
+
+              # searx-init runs envsubst and writes one file into its own
+              # RuntimeDirectory. It needs even less than searx does, but it
+              # handles the SECRET, so it gets the same treatment rather than
+              # less. ProtectSystem is "full" and not "strict" here: the unit's
+              # whole job is to write /run/searx, and RuntimeDirectory= plus
+              # RuntimeDirectoryPreserve=yes are set by the upstream module —
+              # "strict" would need that path restated as ReadWritePaths and
+              # buys nothing over "full" once /home and /etc are covered.
+              systemd.services.searx-init.serviceConfig = {
+                NoNewPrivileges       = true;
+                ProtectSystem         = "full";
+                ProtectHome           = true;
+                PrivateTmp            = true;
+                PrivateDevices        = true;
+                ProtectKernelTunables = true;
+                ProtectKernelModules  = true;
+                ProtectKernelLogs     = true;
+                ProtectControlGroups  = true;
+                ProtectClock          = true;
+                ProtectHostname       = true;
+                ProtectProc           = "invisible";
+                ProcSubset            = "pid";
+                RestrictNamespaces    = true;
+                RestrictRealtime      = true;
+                RestrictSUIDSGID      = true;
+                LockPersonality       = true;
+                RestrictAddressFamilies = [ "AF_UNIX" ];
+                SystemCallArchitectures = "native";
+                SystemCallFilter = [ "@system-service" "~@privileged" "~@resources" ];
+                CapabilityBoundingSet = [ "" ];
+                AmbientCapabilities   = [ "" ];
+                UMask                 = "0077";
+              };
 
               services.searx = {
                 enable = true;

@@ -64,7 +64,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M17 — ebook acquisition | **done — deployed and operator-confirmed 2026-08-31; both owed verifications PASSED** | — | **Bindery v1.33.2 lands exactly as surveyed**: uid 3028 in the arr container, static Go binary from the upstream tarball (checksum verified against upstream's own `checksums.txt`), hardened unit written whole with all four M14 deploy-defect classes answered in place — including **one new trap found by running the binary: `BINDERY_DB_PATH` does not follow `BINDERY_DATA_DIR`**, so both are pinned or first start dies on `mkdir /config`. **The M14-era "Usenet-oriented, poor fit" note is resolved**: upstream's repo *description* still says SABnzbd — the stale artifact — while the README and settings at v1.33.2 carry qBittorrent/Transmission/Deluge/rTorrent and Torznab; the M17 survey re-checked and is right. Binds `0.0.0.0` (measured), so the container firewall is load-bearing, questarr-style. **Prowlarr wiring goes the Questarr way**: Bindery *consumes* Torznab feeds, it is not a Prowlarr application. Traefik router behind `authelia` + `protectedHosts` entry. `MemoryDenyWriteExecute = true` — the first unit in the arr container that can carry it (Go, no JIT). **Audiobook capability deliberately unrouted**: that pipeline belongs to Audiobookshelf + Storyteller. **Both owed verifications passed on deploy day**: the uid-3028 hardlink proof (same inode, link count 2) **with its negative control** (0644 file owned by uid 3017 refused `EPERM`, `fs.protected_hardlinks` confirmed enabled first), and `systemd-analyze security bindery` at **1.5 OK** — level with kapowarr/questarr, against the 9.0 UNSAFE lidarr and audiobookshelf shipped as. The firewall was confirmed load-bearing: `10.0.90.13:8787` times out from the LAN while the Traefik name redirects to Authelia. **One deploy-day defect, and it was in the manual steps rather than the code**: they omitted the Technitium record, which the roadmap requires for every new Traefik hostname *before anyone types the name* — the name was typed first, the NXDOMAIN cached, and `ERR_NAME_NOT_RESOLVED` survived the record's creation until `resolvectl flush-caches`. **The ABS integration was wired after the fact and stays read-only by enforcement**: `/srv/audiobooks` is mounted `ro` in Bindery's namespace (measured), so it catalogues but cannot move, rename or delete — letting it *acquire* audiobooks remains the thing to avoid. Depends on M14. [M17](#m17-featernst-bindery) |
 | M18 — WAN ingress, direct | **built 2026-09-03 — the deploy, the UDM-Pro forward, the public A records, the reboot and the off-net negative controls are lgo's** | — | **Cloudflare is gone.** lgo's decision: no VPS, no VPN, no third party in the data path. WAN `:443` DNATs to `10.0.90.12:8443` and terminates at Traefik; `containers/cloudflared.nix` is deleted. **The property M16 bought is reproduced with a SECOND ENTRYPOINT, not asserted**: `websecure` stays LAN-only with every pre-existing router untouched, `wan` is a new listener, and a router is internet-reachable iff it names `wan` — so creating a route does not expose it. **The central premise was TESTED ON A SCRATCH TRAEFIK BEFORE ANY CONFIG WAS WRITTEN, and it came back with a correction that changed the design**: a `websecure`-only router is genuinely unmatched on `wan` (404, no backend contact, against a 502 control) — but **a router that OMITS `entryPoints` is bound to EVERY entrypoint**, which is M16's fail-open objection reborn inside the replacement. Closed with `withWan`, an **evaluation-time throw** whose three branches were each verified to fire. Forgetting is a build failure. **RE-PROVEN ON THE DEPLOYED SYSTEM 2026-09-07 with a positive control**: from a phone on mobile 5G, `jellyfin.goclan.org` on `wan` returned `RouterName null` / 404 while the same hostname on `websecure` three minutes earlier matched `jellyfin@file` / 200. Not matched-then-refused — **not there**, which is precisely what M16's ingress list bought. `jellyfin` was chosen because it carries a permanent forward-auth bypass, so a leak there would have been unauthenticated. **Weaker than the tunnel in exactly one measured way, stated rather than smoothed**: a request to the bare public IP completes TLS and gets `404` + `CN=TRAEFIK DEFAULT CERT` — existence disclosure, not exposure. **CrowdSec runs INSIDE the Traefik netns**, because `br_netfilter` is not loaded on ernst (measured) so the host's netfilter never sees the DNATed frames at all — a bouncer anywhere else would drop nothing. **It ships in SIMULATION until Q2 is confirmed**: if the UDM-Pro SNATs, the first scanner gets the gateway banned and the house loses Jellyseerr. **nixpkgs' crowdsec modules were booted in a throwaway VM six times before the real config was written, and FOUR upstream defects fell out** — an agent that crash-loops forever on a first boot while `list-units --failed` stays EMPTY, a bouncer registration that can never succeed, `Restart=no` on both remediation units, and `DynamicUser` migrating a bind-mounted state directory. The ordering bug the brief predicted is **already fixed** in this channel. **SN2 is decided, not deferred**: (a) v4-only, with a mechanism — and **the first mechanism claimed was measured FALSE on deploy day and replaced**: every entryPoint was written `0.0.0.0:` and every one of them was still accepting v6, because Go opens AF_INET6 with `IPV6_V6ONLY=0` for any wildcard listen. The replacement mechanism was **also** wrong and was corrected a second time on deploy day: `disable_ipv6` does not make Go fall back to AF_INET, so the listeners are dual-stack and stay dual-stack. The *third* attempt — `disable_ipv6` on `all`+`default`+`eth0` — was wrong too and was deployed twice before being caught: systemd-sysctl runs before `eth0` exists so the per-interface key is skipped, **and** systemd-networkd writes `disable_ipv6 = 0` on every link it configures. **What works is one line the repo already had**: `LinkLocalAddressing = "no"` on the container's `10-eth0` unit, the same pair `networking.nix` and the `br0` port have carried all along — the container had only `IPv6AcceptRA`, which blocks an RA but not link-local assignment. **Proven by `ip -6 addr show dev eth0` returning nothing and `ip -6 route show` being empty**, not by `ss` and not by a bare `ip -6 addr show`; plus no v6 forward and no `crowdsec6` table. The residual weakness SN2 named — nothing watches for an unexpected GUA — is closed by **`UnexpectedIPv6GlobalAddress`**, ernst-only because the laptops roam. **One alert, `ExposedAndUnprotected`** — not "many bans", because a busy ban list is the system working and the silent failure is the house being open with nothing watching. **SN3 SATISFIED BY PRODUCTION TRAFFIC, NOT A STAGED PROBE**: within hours of arming, `crowdsecurity/http-probing` and `http-crawl-non_statics` banned three real scanners, and two were observed as live elements of `nft list set ip crowdsec crowdsec-blacklists` — log → parser → scenario → decision → LAPI → bouncer → kernel, unattended. The fast proof is a direct consequence of `casago.xyz` (a previous holder of this IPv4 still points service-shaped names at it), so the quirk that makes a busy ban list normal here is the quirk that supplied the evidence. **Two marginal claims stay UNVERIFIED by choice**: that the drop times out rather than refuses, and that `cscli decisions delete` clears the set element — both need lgo's own machine banned from the two public names, and he declined on 2026-09-08 rather than take a self-inflicted outage for a chain already proven. Depends on M5, M7, M16, M17. [M18](#m18-featernst-wan-ingress-direct) |
 | M19 — llama.cpp on ernst | **DEPLOYED AND FULLY VERIFIED 2026-09-09** | — | **Ollama is gone from ernst**, replaced by llama-swap in front of `llama-server` in router mode. Taken on measurement, not preference: context overflow stops being silent (**HTTP 400 naming both numbers**, where ollama returned HTTP 200 with the head of the prompt discarded and a **fabricated MAC** in its place), which closes [SN1](#sn1--the-model-tag-silently-sets-the-context-window)'s core hazard at the mechanism. Decode −3.1% at f16; **`q8_0` lost its reason to exist** and the fleet default reverts to f16. The `<tool_call>` reinforcement **stays** — llama.cpp's independent Jinja parser fails identically (26/30 dropped-tag at baseline, **zero** "present but unparsed" in eight cells across both servers), so the defect is the model's and the four-line rule is still 100%. Adds voice (whisper.cpp, **CPU — a measured packaging gap**), vision, and Open WebUI on VLAN 90 behind Traefik + Authelia. `imagegen` is **written and not enabled**: no first-party ComfyUI image exists. **M19 changes ernst's attack surface in two named places** (L9, L10) — unlike M11, which changed it not at all. [M19](#m19-featernst-local-ai-llamacpp) |
-| M20 — SearXNG / web search | **built, evaluates clean, NOT YET DEPLOYED — the whole verification list is outstanding** | [#171](https://github.com/lutzgo/clanarchy/pull/171) | SearXNG on **nspawn**, VLAN 90, **no hostname and no Traefik route** — Open WebUI is the only client and the container firewall accepts one address. **The milestone's own central premise was false**: this is *not* the fleet's first service to talk to the open internet on its own behalf. Prowlarr fetches from indexers, tubesync pulls arbitrary YouTube URLs, and **FlareSolverr renders hostile indexer pages in a real browser engine on the *podman* tier** — one step *down*. Read against how the repo has actually applied it, [invariant #1](#architecture-invariants)'s line is a **killswitch requirement**, which search does not have; the VPN-guest egress was rejected on arr.nix's own eztvx.to measurement (a datacenter exit makes fetches *fail* that otherwise succeed). **The LLM gets no tool, deliberately**: Open WebUI registers `search_web` and `fetch_url` under one flag, so the tool path would hand *Open WebUI* arbitrary outbound HTTP — and M19's 20/20 does not transfer, because that was measured with the `<tool_call>` reinforcement the **opencode** role injects and Open WebUI ships nothing of the kind. Snippets only, no embedding: the default would have pulled an **unpinned, un-hash-verified** `all-MiniLM-L6-v2` off HuggingFace at runtime. Two facts that would each have failed silently: SearXNG ships **`formats: [html]`**, so JSON is off by default and every query would 403; and the limiter's botdetection would have **blocked the only client**, whose UA is literally `Open WebUI … RAG Bot`. Takes **uid 3035 / seq 10 / 10.0.90.24**, the pair M21 gave back. [M20](#m20-featernst-searxng) |
+| M20 — SearXNG / web search | **deployed 2026-09-10 and verified — TWO DEFECTS FOUND AFTER DEPLOY, both fixed, re-deploy pending** | [#171](https://github.com/lutzgo/clanarchy/pull/171) | **The infrastructure was right on the first try and the feature still did nothing.** Every structural check passed — container up on `10.0.90.24`, JSON `200`, non-permitted VLAN 90 hosts time out (exit 28), nine LAN targets unreachable including both llama-swap veths, egress confirmed as the house WAN `78.94.91.74`. But **the engine set returned `number_of_results: 0` for every query**: `duckduckgo`/`startpage` CAPTCHA, `qwant`/`mojeek` 403, `brave` 429. That set was reasoned rather than measured and **the PR said so** — which is the only reason it was caught. Replaced with a measured one (`bing` 10, `yandex` 15, `encyclosearch` 15, `mwmbl` 30, `brave` intermittent → **68 results** combined, NHS and NIH among them); **four of the five are `disabled: true` upstream**, a second silent route to zero. Two things learned by testing rather than reasoning: **Google answers and its parser extracts nothing** (absent for a better reason than the one guessed), and **Wikipedia/Wikidata return `infoboxes`, which Open WebUI never reads** — dead weight from day one. Second defect: units shipped at **9.2 UNSAFE** vs a stated ≤ 2.0 target → **1.1 OK**, exercised with a live query, not just re-scored. **The design, unchanged by any of the above:** SearXNG on **nspawn**, VLAN 90, **no hostname and no Traefik route** — Open WebUI is the only client and the container firewall accepts one address. **The milestone's own central premise was false**: this is *not* the fleet's first service to talk to the open internet on its own behalf. Prowlarr fetches from indexers, tubesync pulls arbitrary YouTube URLs, and **FlareSolverr renders hostile indexer pages in a real browser engine on the *podman* tier** — one step *down*. Read against how the repo has actually applied it, [invariant #1](#architecture-invariants)'s line is a **killswitch requirement**, which search does not have; the VPN-guest egress was rejected on arr.nix's own eztvx.to measurement (a datacenter exit makes fetches *fail* that otherwise succeed). **The LLM gets no tool, deliberately**: Open WebUI registers `search_web` and `fetch_url` under one flag, so the tool path would hand *Open WebUI* arbitrary outbound HTTP — and M19's 20/20 does not transfer, because that was measured with the `<tool_call>` reinforcement the **opencode** role injects and Open WebUI ships nothing of the kind. Snippets only, no embedding: the default would have pulled an **unpinned, un-hash-verified** `all-MiniLM-L6-v2` off HuggingFace at runtime. Two facts that would each have failed silently: SearXNG ships **`formats: [html]`**, so JSON is off by default and every query would 403; and the limiter's botdetection would have **blocked the only client**, whose UA is literally `Open WebUI … RAG Bot`. Takes **uid 3035 / seq 10 / 10.0.90.24**, the pair M21 gave back. [M20](#m20-featernst-searxng) |
 | M21 — image generation | **done — verified working 2026-09-10; BUILT not pinned, and SIX defects surfaced after "shipped"** | — | ComfyUI is **built from source** (`service-modules/pkgs/comfyui`, eight derivations) and **spawned by llama-swap** like `llama-server`, inheriting its ROCm sandbox — so eviction is a process kill and the exclusive `gpu` group now holds three members. It is **not on the podman tier**, and this milestone planned to put it there. Both of its premises were false: the `roles.imagegen` M19 "already built" could not have run (it registered `proxy` with no `cmd` — the "empty command" shape M19 itself documented), and there was no image worth pinning (**AMD's own `rocm/comfyui` is `gfx942;gfx950` — it cannot use this card**; the 1647★ community image's digest pins only its first install; the one that fits has 1 star). Underneath both: an unprivileged llama-swap could never have started or stopped a rootful container, which eviction requires. The ROCm torch stack turned out to be **cache-substitutable**, so building cost far less than assumed. Weights via `roles.models` as planned, plus a new `subdir`; SDXL base 1.0, hash verified twice. **uid 3035 / seq 10 / 10.0.90.24 released back to [M20](#m20-featernst-searxng)** — M21 took no uid, MAC or address. **The exclusivity proof is done** (evict → image → reload, ~10 s). Image EDITING ships too (#167/#169). But six defects surfaced after this was first called shipped — a fetch unit that had failed since M19, three missing/empty Open WebUI env vars, ROCm SDPA, and an img2img OOM on any phone photo — **every one of them deploying green and several running to completion**. The verification line the milestone lacked: *state what you asked for and say whether you got it*. [M21](#m21-featernst-imagegen) |
 
 ---
@@ -8853,11 +8853,14 @@ re-fetching.
 
 ## M20 — `feat/ernst-searxng`
 
-**Status: BUILT AND EVALUATING CLEAN 2026-09-10, NOT DEPLOYED.
-[#171](https://github.com/lutzgo/clanarchy/pull/171).** Everything below the
-"Verification it will owe" heading is still owed — none of it can be taken
-without a deploy, and M21's lesson is that a green evaluation is not a working
-feature. Originally requested 2026-09-09 by lgo, straight out of using
+**Status: DEPLOYED 2026-09-10 and VERIFIED — with TWO DEFECTS FOUND AFTER THE
+DEPLOY, both fixed and awaiting a re-deploy.
+[#171](https://github.com/lutzgo/clanarchy/pull/171).** Everything structural
+passed on the first attempt; **the engine set — the one thing the PR shipped
+explicitly flagged as unmeasured — returned zero results for every query**, and
+the units scored 9.2 UNSAFE against a stated target of 2.0. The full account is
+under [Verification](#verification--taken-2026-09-10-after-lgos-deploy) below.
+Originally requested 2026-09-09 by lgo, straight out of using
 [M19](#m19-featernst-local-ai-llamacpp).
 
 ### What shipped
@@ -9104,53 +9107,119 @@ the second, loudly and by name.
    with an empty cookie-signing key.
 3. Then `clan machines update ernst`.
 
-### Verification it will owe
+### Verification — taken 2026-09-10, after lgo's deploy
 
-**NONE OF THIS IS DONE.** The milestone evaluates clean (`nix flake check`
-passes; ernst's toplevel `drvPath` realises) and that is *all* that has been
-established. M21's closing line is the standard this list is held to: **state
-what you asked for and say whether you got it.**
+**The deploy worked and the feature did not.** Everything structural passed on
+the first try; the part that was shipped unmeasured returned **zero results for
+every query**. Held to M21's standard — *state what you asked for and say
+whether you got it* — the honest summary is: infrastructure ✅, function ❌ until
+the engine set was replaced with a measured one.
 
-- [ ] A query typed in Open WebUI that returns results **with sources**, and the
-      same query answered without search, side by side.
-- [ ] `curl` from a VLAN 90 host that is not the permitted client: **times out**.
-- [ ] SearXNG's own outbound path confirmed — which interface, which address, and
-      whether it can reach anything on the LAN it should not (it should reach
-      nothing).
-- [ ] `systemd-analyze security` on whatever units it adds, at the tier chosen.
-- [ ] The M19 question repeated: *"How safe is it to add a vitamin D source to the
-      table? Rate your sources."* — and the sources actually checked **for
-      existence**, not merely read off the reply.
+| # | Asked for | Got |
+|---|---|---|
+| 1 | Container healthy, address correct | ✅ `10.0.90.24/24`, default via `10.0.90.1`. No failed units on the host **or inside the container** (checked separately — the host being clean proves nothing) |
+| 2 | JSON enabled, not 403 | ✅ `200` from the permitted client |
+| 3 | `curl` from a non-permitted VLAN 90 host **times out** | ✅ Exit 28, HTTP `000` — from the ernst host *and* from the `arr` container at `10.0.90.13`, one L2 hop away. Timeout, not refusal |
+| 4 | Outbound path confirmed | ✅ `eth0` → `10.0.90.1` (UDM-Pro), egress IP **`78.94.91.74`** — the house WAN, not a VPN |
+| 5 | Reaches nothing on the LAN it should not | ✅ **Nine targets, all `000`** — both llama-swap veths, open-webui, arr, jellyfin, traefik, and the mgmt-VLAN host. `example.com` returns `200` |
+| 6 | `systemd-analyze security` ≤ 2.0 | ❌ **9.2 UNSAFE as shipped** → fixed, see below |
+| 7 | Which engines answer | ❌ **None of them.** See below |
+| 8 | The vitamin D question, sourced vs unsourced | ⏳ Outstanding — needs the re-deploy below |
 
-Two additions this build earned, both because they are the failures it would
-actually have:
+### DEFECT 1 — the curated engine set returned zero results
 
-- [ ] **Which engines answer from ernst's IP.** The curated set of seven is a
-      starting position and has never been measured. Any engine listed under
-      `unresponsive_engines` is contributing nothing and should be removed
-      rather than left failing on every query:
+The set shipped in the first commit — `duckduckgo, brave, startpage, mojeek,
+qwant, wikipedia, wikidata` — was reasoned from what a household instance
+"should" use and **explicitly flagged in the PR as never measured**. It was
+measured, and every real web engine in it is blocked from ernst's address. First
+request after a clean `searx.service` restart, so not cascading suspension:
 
-      ```
-      systemd-run --machine=searxng --collect --pipe -q -- \
-        curl -s 'http://127.0.0.1:8888/search?q=test&format=json' \
-        | jq -r '.unresponsive_engines'
-      ```
+```
+duckduckgo   CAPTCHA          startpage  CAPTCHA
+qwant        access denied    brave      too many requests
+mojeek       access denied
+```
 
-- [ ] **That JSON is actually enabled.** The single most likely cause of "web
-      search does nothing", and it returns 403 rather than an error that names
-      itself. Prove the format directly, from the one host allowed to ask:
+`number_of_results: 0`, three times, twenty seconds apart. **The feature was
+fully deployed, healthy, correctly firewalled, JSON enabled — and answered
+nothing.** That is precisely the shape of M21's six post-"shipped" defects, and
+it is the reason the PR wrote this item as an unticked box rather than a claim.
 
-      ```
-      systemd-run --machine=openwebui --collect --pipe -q -- \
-        curl -s -o /dev/null -w '%{http_code}\n' \
-        'http://10.0.90.24:8888/search?q=test&format=json'
-      ```
+Found by enabling ~26 candidates and querying each **alone** (a broad
+`engines=` probe is misleading: an unknown engine name makes SearXNG silently
+query the whole default set, which shows up as an implausible 95+ result count).
+What actually answers, per single-engine query:
 
-      `200` is the answer. `403` means `search.formats` lost its `json` entry.
+| Engine | Results | Note |
+|---|---|---|
+| **bing** | 10 | Every attempt. The reliable primary |
+| **yandex** | 15 | Best quality measured — `nhs.uk`, `verywellfit.com` |
+| **encyclosearch** | 15 | Encyclopedic — wikipedia, handwiki |
+| **mwmbl** | 30 | Independent open crawler |
+| **brave** | 0–10 | **Intermittent** — 429s under load, but answered with mayoclinic / clevelandclinic / NIH immediately after a restart |
+| wiby | 12 | Rejected — old-web pages, poor relevance |
+| quark | 10 | Rejected — mostly Chinese-language |
+| searchmysite | 7 | Rejected — personal websites only |
 
-Note the `--collect` on both: without it a failed probe leaves a lingering unit
-that fires `ContainerSystemdUnitFailed` to lgo's phone. M19 did this wrong and
-paged him five times.
+Combined, the new set returns **68 results** for the vitamin D query with NHS
+and NIH among them.
+
+Three things worth keeping from this:
+
+- **Google is absent, but not for the reason first given.** The original comment
+  excluded it as "most likely to CAPTCHA a self-hosted metasearcher" — sound
+  reasoning, untested conclusion. Tested, Google returns `results: 0` with **no
+  entry in `unresponsive_engines` at all**: it answers and the parser extracts
+  nothing. It does not work, which is a stronger reason than the guess.
+- **Wikipedia and Wikidata were dead weight from day one, and not because of
+  blocking.** They answer — but in `infoboxes`, and Open WebUI reads
+  `payload.get('results', [])` and nothing else. Verified: `?q=Vitamin D
+  &engines=wikipedia` → `results: 0`, populated infobox. They could never have
+  contributed to *this* consumer.
+- **Four of the five replacements are `disabled: true` upstream.** Without
+  explicit `engineOverrides` entries, `keep_only` would leave a set that is
+  present but never queried — a second route to zero results, and a worse one,
+  because an engine that was never asked reports nothing in
+  `unresponsive_engines`.
+
+**Yandex is included by operator decision (lgo, 2026-09-10)**, having been
+raised as a trade rather than defaulted: it was the best-quality engine
+measured, and SearXNG forwards the household's typed query text to a Russian
+company. ernst's IP is what Yandex sees, not the household's.
+
+### DEFECT 2 — no hardening, 9.2 UNSAFE
+
+nixpkgs' searx module ships essentially none, and M20's target was ≤ 2.0. Both
+units measured **9.2 UNSAFE** as deployed. With the block now in the role, both
+land at **1.1 OK**.
+
+**Exercised, not merely re-scored** — M19's lesson is that `DeviceAllow=/dev/dri`
+and `MemoryDenyWriteExecute` both scored well *while breaking the system*. The
+set was applied as a runtime drop-in on the live container and a real query run
+through it: **20 results**, sources including `mayoclinic.org`,
+`my.clevelandclinic.org`, `ods.od.nih.gov`. `MemoryDenyWriteExecute=true` is
+included and verified working rather than assumed safe; it is the first thing to
+suspect if a future searxng bump fails to start.
+
+`IPAddressDeny` is the one thing `systemd-analyze` still flags and is
+deliberately not set: an allow-list would have to enumerate every address of
+five CDN-hosted search engines, so it would fail open in practice — silently
+dropping engines as IPs rotate — while looking strict. The containment that
+actually holds is the inbound firewall plus this container being on **no veth to
+the host**, which is what row 5 of the table above proves.
+
+### Still outstanding
+
+- [ ] Re-deploy for the two fixes above (`clan machines update ernst`).
+- [ ] The M19 question end to end in the browser: *"How safe is it to add a
+      vitamin D source to the table? Rate your sources."* — with search on and
+      off, side by side, and **the cited sources checked for existence**, not
+      read off the reply. This is the only item that needs a human at the UI;
+      everything else above was provable from a shell.
+
+Note the `--collect` on every probe used here: without it a failed probe leaves
+a lingering unit that fires `ContainerSystemdUnitFailed` to lgo's phone. M19 did
+this wrong and paged him five times.
 
 
 ### The prompt for M20
