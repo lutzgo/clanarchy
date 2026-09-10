@@ -1534,10 +1534,29 @@
         description = ''
           Extra arguments appended to ComfyUI's command line, verbatim.
 
-          Mostly empty on purpose.  The VRAM-pressure flags (`--lowvram`,
-          `--novram`, `--disable-smart-memory`) exist for cards that must share,
-          and this one does not have to: llama-swap's exclusive group evicts the
-          coder model BEFORE ComfyUI is spawned, so ComfyUI gets the whole card.
+          NOT a tuning knob, and one entry in it is load-bearing.
+
+          ── `--use-split-cross-attention` IS NOT OPTIONAL ON ROCm ─────────
+
+          PyTorch's SDPA cross-attention is SILENTLY WRONG on torch 2.11 +
+          ROCm 7.2.3 / gfx1100.  Self-attention is fine, so images come out
+          sharp and coherent — and completely unrelated to the prompt, because
+          cross-attention is where the text conditioning enters the UNet.
+          Bisected on ernst 2026-09-10 against a CPU control that used the
+          same derivation and produced the correct image; see the settings in
+          clan.nix for the full arm-by-arm record.
+
+          It is set per-machine rather than defaulted here because it is a
+          property of a GPU stack, not of the role — but any ROCm consumer
+          almost certainly needs it, and a machine that omits it will not
+          fail, it will just generate the wrong pictures.
+
+          ── EVERYTHING ELSE ──────────────────────────────────────────────
+
+          The VRAM-pressure flags (`--lowvram`, `--novram`,
+          `--disable-smart-memory`) exist for cards that must share, and this
+          one does not have to: llama-swap's exclusive group evicts the coder
+          model BEFORE ComfyUI is spawned, so ComfyUI gets the whole card.
           Reaching for `--lowvram` here is usually a sign that the exclusion is
           not working and should be diagnosed rather than papered over.
 

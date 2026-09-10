@@ -9348,6 +9348,60 @@ without M20 doing anything. Take 3035 and sequence 10 freely.
   than JIT-compiling, so **eager is what runs**. Startup is otherwise clean:
   one warning, `nodes_glsl.py` needing the deliberately-omitted `comfy-angle`.
 
+### The deploy found a third false premise, and it is the worst kind
+
+**M21 shipped a GPU path that produced the wrong pictures, and every check
+said it was working.** Found 2026-09-10, after the milestone was recorded as
+shipped.
+
+`--use-split-cross-attention` is mandatory on this stack and was not set.
+**PyTorch's SDPA cross-attention returns garbage on torch 2.11 + ROCm 7.2.3 /
+gfx1100.** Self-attention is unaffected, so images came out sharp, detailed and
+coherent — and completely unrelated to the prompt, because cross-attention is
+where the text conditioning enters the UNet.
+
+Bisected with one prompt, *"a photograph of a red apple on a white table"*,
+same checkpoint / seed / workflow throughout:
+
+| arm | result |
+|---|---|
+| GPU, pytorch attention (as shipped) | a psychedelic poster with gibberish text |
+| GPU, `--fp32-text-enc` | a landscape |
+| **CPU** (`--cpu`) | **a red apple** |
+| **GPU, `--use-split-cross-attention`** | **a red apple** |
+
+The CPU arm is the one that matters: identical derivation, identical
+pure-Python `comfy-kitchen` and `comfy-aimdo` wheels, identical everything but
+the device. So the packaging this milestone spent itself on is correct, and the
+defect is one flag.
+
+**WHY THIS IS THE WORST SHAPE, and why the verification list above did not
+catch it.** Everything that milestone said to check, checked out. ROCm
+reported `Device: cuda:0 AMD Radeon RX 7900 XTX : native`. VRAM moved. The LLM
+was evicted and came back. The exclusive group worked. Generation took seconds,
+not minutes — so the "a correct answer at 6 tok/s is a CPU fallback" heuristic
+M19 bequeathed says *nothing* here, because this was fast AND on the GPU AND
+wrong. An image was produced from Open WebUI, which is literally one of the
+proofs this section demanded.
+
+**The missing check was: look at the image and ask whether it is what you asked
+for.** No amount of instrumentation substitutes for that, and the milestone's
+verification list had no line for it. Add one to the next milestone that ships
+a generative model: *state what you asked for, and whether you got it.*
+
+Ruled out along the way, each with evidence rather than reasoning: Open WebUI's
+substitution (direct API calls failed identically), the checkpoint name
+(ComfyUI listed it), CPU fallback, tokenization (token ids exactly correct),
+CLIP output (finite, distinct, correctly shaped), positive/negative wiring,
+`comfy_kitchen` (int8-only path, unused), `comfy_aimdo` (raises loudly without
+its native lib; ComfyUI falls back).
+
+A related discovery worth recording: with `ROCR_VISIBLE_DEVICES` unset, ComfyUI
+enumerates **two** ROCm devices on ernst — `cuda:0` the RX 7900 XTX and
+`cuda:1` the 9950X. The deployed unit pins device 0, so this is not a live
+hazard, but anything run by hand on that box is not seeing what the service
+sees.
+
 **STILL OWED, and it needs the card — Claude does not deploy.** Everything
 above was verified on miralda by evaluation and by a CPU-forced run. The
 milestone's headline proof is untouched:
