@@ -114,10 +114,17 @@
 #
 #   THE PUBLIC SET IS NO LONGER TWO NAMES.  It was `jellyseerr` + `auth`
 #   through M18; `audiobookshelf` was added 2026-09-08 and `jellyfin`, `komga`,
-#   `navidrome` and `cwa` the same day.  Seven A records, all v4, all
-#   DNS-only.  `wanExposed` below is the authoritative list and the registrar
-#   must agree with it — the two are independent gates precisely because
-#   nothing makes them agree automatically.
+#   `navidrome` and `cwa` the same day; `chat` on 2026-09-10.  EIGHT A records,
+#   all v4, all DNS-only.  `wanExposed` below is the authoritative list and the
+#   registrar must agree with it — the two are independent gates precisely
+#   because nothing makes them agree automatically.
+#
+#   "DNS-only" IS LOAD-BEARING AND NOT A PREFERENCE.  These records must not be
+#   proxied (Cloudflare's orange cloud off).  A proxied record would make every
+#   request arrive from a Cloudflare address, and CrowdSec — which reads
+#   Traefik's access log and bans at the packet layer — would then see one
+#   source for the whole internet.  Its bans would be useless at best and
+#   self-inflicted outages at worst.  See containers/crowdsec.nix.
 #
 #   A NAME IN `wanExposed` WITH NO PUBLIC RECORD IS INERT, AND THAT IS EXACTLY
 #   HOW audiobookshelf FAILED.  It was added to `wanExposed`, deployed
@@ -670,6 +677,54 @@ let
   #   deleted the tunnel; the constraint went with it.  Written down because
   #   the prohibition outlived its reason in two files and would otherwise read
   #   as a security rule being overridden.
+  # ── openwebui, ADDED 2026-09-10 — AND IT IS A REVERSAL, LIKE jellyfin ─────
+  #
+  #   M19 shipped `chat` deliberately NOT exposed, and the router comment and
+  #   ledger row L10 both said "must not be".  This is lgo's decision to
+  #   reverse that, and it is recorded as a reversal rather than edited in
+  #   quietly — the same treatment `jellyfin` got above.
+  #
+  #   THE OBJECTION M19 RECORDED, AND WHY IT DOES NOT SURVIVE CONTACT WITH THE
+  #   MECHANISM.  L10 called this "an unauthenticated-by-design conversation
+  #   surface onto a model with tool access".  The first half is not true of
+  #   this deployment: `chat` is in `ingressPolicy.protectedHosts`, so its LAN
+  #   router carries the `authelia` middleware, and `mkWan` COPIES THE LAN
+  #   ROUTER'S MIDDLEWARES onto the wan twin.  Exposing it therefore yields
+  #
+  #       internet → wan-ratelimit → wan-inflight → authelia → Open WebUI
+  #
+  #   i.e. admins-only forward-auth with Authelia's mandatory 2FA in front,
+  #   which is a STRICTLY STRONGER posture than the five `appApiHosts` names
+  #   already on this list — those are answered by the application with
+  #   Authelia never consulted at all.  This is the `jellyseerr`/`auth` shape,
+  #   not the `jellyfin` shape.
+  #
+  #   NO `wanLoginPaths` ENTRY, deliberately.  That list is for `appApiHosts`
+  #   names only, and the reason is in its own header: a forward-auth name
+  #   already has Authelia's PER-IDENTITY regulation in front of its login,
+  #   which beats a per-source-address rate limit.  Adding one here would
+  #   rate-limit Authelia's portal rather than Open WebUI's form and would
+  #   contradict that reasoning.
+  #
+  #   WHAT IS GENUINELY WIDENED, stated rather than implied.  Two settings in
+  #   service-modules/local-ai.nix become internet-relevant, both bounded by
+  #   the forward-auth above rather than by themselves:
+  #
+  #     ENABLE_OAUTH_SIGNUP = "True"  — anyone who clears Authelia gets an
+  #        Open WebUI account created for them automatically.  Bounded because
+  #        `protectedHosts` maps to Authelia's ADMINS-ONLY rule, so the set of
+  #        people who can trigger it is the set who could already log in.
+  #     ENABLE_LOGIN_FORM = "True"    — the break-glass local password form.
+  #        It is deliberate (monitoring.nix makes the same call for Grafana:
+  #        if Authelia is down, every admin UI in the house is down).  On the
+  #        wan path it sits BEHIND forward-auth, so it is not a second door
+  #        from the internet — it is a second door for anyone who is already
+  #        through the first.  Keep it; know it is there.
+  #
+  #   And the impact side, which no middleware changes: this vhost holds the
+  #   household's conversation history and can drive the GPU (image generation)
+  #   and outbound search.  Exposing it raises what an Authelia compromise is
+  #   worth.  That is the trade being made, not a risk being dismissed.
   wanExposed = [
     "jellyseerr"
     "authelia"
@@ -678,6 +733,7 @@ let
     "komga"
     "navidrome"
     "cwa"
+    "openwebui"
   ];
 
   # ── THE LOGIN PATHS, PER SERVICE, AND WHAT THIS DOES NOT COVER ────────────
@@ -2222,15 +2278,26 @@ in
 
             # Open WebUI (M19) — the local-AI chat client.
             #
-            # `websecure` ONLY, deliberately: this is not in traefik.nix's
-            # `wanExposed` set and must not be.  It is an unauthenticated-by-
-            # design conversation surface onto a model with tool access, and the
-            # milestone that added it opened no WAN path — reaching it from
-            # outside is what wg-travel is for.
+            # THIS ROUTER STILL NAMES `websecure` ONLY, AND IT IS NOW EXPOSED
+            # ANYWAY.  Those are not in conflict and the distinction is the
+            # whole design: exposure is never an entryPoints edit here — it is
+            # an entry in `wanExposed`, which makes `mkWan` generate a SECOND
+            # router (`openwebui-wan`) on the `wan` entrypoint.  Adding "wan"
+            # to this list by hand would throw at evaluation.
+            #
+            # M19 shipped this deliberately unexposed and said "must not be";
+            # lgo reversed that 2026-09-10.  The full argument is on the
+            # `wanExposed` list above — in short, the objection recorded in
+            # L10 ("unauthenticated-by-design") is not true of this deployment:
+            # `chat` is in `protectedHosts`, so the middleware below is
+            # inherited by the wan twin and the public path is admins-only
+            # forward-auth with 2FA.
             #
             # `authelia` like every other admin surface. It ALSO speaks OIDC to
             # the same provider (see containers/authelia.nix); the middleware
             # decides whether the request arrives, OIDC decides whose it is.
+            # BOTH now matter on an internet-facing path, which is the reason
+            # the pairing was worth having before it was needed.
             openwebui = {
               rule        = "Host(`chat.${baseDomain}`)";
               entryPoints = [ "websecure" ];

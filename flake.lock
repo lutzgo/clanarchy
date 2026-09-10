@@ -333,11 +333,11 @@
         "systems": "systems_2"
       },
       "locked": {
-        "lastModified": 1787135283,
-        "narHash": "sha256-nZ7Chz0M6okVM2iZjrAYnCLJbtpYovycvM8ufeqrkf4=",
+        "lastModified": 1789041336,
+        "narHash": "sha256-XRdB0ATC/NpsUdhLhqv2P8nkdTH6Fb2H7UfEa/YL7o4=",
         "owner": "lutzgo",
         "repo": "govim",
-        "rev": "3187edf8cccd7cf0339c9bfae25953dff08e5a83",
+        "rev": "2637b9d7983473dd99d431ea1446287158b3b401",
         "type": "github"
       },
       "original": {
