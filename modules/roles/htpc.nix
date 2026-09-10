@@ -612,16 +612,22 @@ in
             # add-on nags on every start. It is here because live TV is now
             # wanted, which was the stated condition for adding it — so the
             # nag is a task, not a surprise. Clear it in Settings -> Add-ons
-            # -> PVR clients: host 10.0.90.18, port 9982, plus a Tvheadend
-            # user. That is runtime state this file cannot set.
+            # -> PVR clients: host 10.0.90.18, port 9982, and LEAVE THE
+            # USERNAME AND PASSWORD BLANK — this Tvheadend has no access
+            # entries at all, so there is no credential to give it and
+            # supplying one is more likely to fail than to help (measured
+            # 2026-09-10; see containers/tvheadend.nix). Runtime state this
+            # file cannot set either way.
             #
-            # THE PATH TO THE SERVER IS ONLY HALF OPEN. HTSP was firewalled
-            # to nobody at all; tvheadend.nix now admits the ernst host
-            # (10.0.50.10) to 9982, but the UDM-Pro still drops that flow
-            # between VLAN 50 and VLAN 90 (measured 2026-09-10), and no file
-            # here can change a router. Until an inter-VLAN allow exists for
-            # 10.0.50.10 -> 10.0.90.18 tcp/9982, this add-on is installed and
-            # cannot connect — it will nag, and the nag will be correct.
+            # THE PATH TO THE SERVER TOOK TWO FIREWALLS, both now open and
+            # neither expressible from here alone. HTSP was firewalled to
+            # nobody; containers/tvheadend.nix admits the ernst host
+            # (10.0.50.10) to 9982, and the UDM-Pro needed its own inter-VLAN
+            # policy on top — VLAN 50 to VLAN 90 was `Block All` by default
+            # and silently dropped the flow until `Allow Kodi to Tvheadend
+            # HTSP` was added (2026-09-10, roadmap ledger L12). If live TV
+            # ever goes dark, check BOTH, and check the router first: its
+            # failure mode is a silent drop with no RST.
             pvr-hts
 
             # NO SKIN IS SHIPPED, and that is a change from how this role
