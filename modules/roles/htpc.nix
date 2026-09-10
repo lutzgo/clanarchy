@@ -592,6 +592,38 @@ in
             # there is no keyboard in the living room by design.
             keymap
 
+            # YouTube. Plays through inputstream-adaptive, which is already
+            # above for Jellyfin's HLS — the same dependency, so this adds no
+            # new plumbing.
+            #
+            # NEEDS RUNTIME SETUP AND WILL NOT WORK WITHOUT IT. The add-on
+            # ships no usable API credentials: quota is per-key, Google
+            # revokes the shared ones, so it needs a personal API key
+            # (Settings -> API) and a sign-in for anything account-specific.
+            # That is runtime state this file cannot set, and until it is
+            # done the add-on installs cleanly and then fails at play time.
+            youtube
+
+            # The Tvheadend HTSP client — live TV and the DVR, against the
+            # Tvheadend ernst already runs.
+            #
+            # THIS WAS DELIBERATELY EXCLUDED UNTIL NOW, and the reason it was
+            # excluded has not gone away: an enabled-but-unconfigured PVR
+            # add-on nags on every start. It is here because live TV is now
+            # wanted, which was the stated condition for adding it — so the
+            # nag is a task, not a surprise. Clear it in Settings -> Add-ons
+            # -> PVR clients: host 10.0.90.18, port 9982, plus a Tvheadend
+            # user. That is runtime state this file cannot set.
+            #
+            # THE PATH TO THE SERVER IS ONLY HALF OPEN. HTSP was firewalled
+            # to nobody at all; tvheadend.nix now admits the ernst host
+            # (10.0.50.10) to 9982, but the UDM-Pro still drops that flow
+            # between VLAN 50 and VLAN 90 (measured 2026-09-10), and no file
+            # here can change a router. Until an inter-VLAN allow exists for
+            # 10.0.50.10 -> 10.0.90.18 tcp/9982, this add-on is installed and
+            # cannot connect — it will nag, and the nag will be correct.
+            pvr-hts
+
             # NO SKIN IS SHIPPED, and that is a change from how this role
             # started. `osmc-skin` was here — the only skin nixpkgs packages —
             # and it was REMOVED on 2026-09-07 because it breaks Kodi on
@@ -618,7 +650,7 @@ in
             # alone, because by then the directory exists.
           ];
         defaultText = lib.literalExpression ''
-          p: with p; [ jellyfin inputstream-adaptive inputstreamhelper upnext a4ksubtitles keymap ]
+          p: with p; [ jellyfin inputstream-adaptive inputstreamhelper upnext a4ksubtitles keymap youtube pvr-hts ]
         '';
         description = ''
           Add-ons built into the client package, as a `withPackages` selector.
@@ -636,9 +668,16 @@ in
             back, so this mostly adds a second scrobbler racing the first.
           - `netflix` — needs Widevine and a login; DRM plumbing this role
             has no business carrying.
-          - `pvr-hts` — the Tvheadend client, and ernst does run Tvheadend.
-            Left out only because an enabled-but-unconfigured PVR add-on
-            nags on every start; add it here the day live TV is wanted.
+
+          `pvr-hts` USED TO BE ON THAT LIST — held back only until live TV
+          was actually wanted, because an unconfigured PVR add-on nags on
+          every start. That day came, so it is now in the set above; the nag
+          is cleared by pointing it at Tvheadend, not by removing it.
+
+          Both `youtube` and `pvr-hts` need runtime configuration that this
+          file cannot express (an API key and a server address respectively).
+          They are inert-but-installed until that is done — see the comments
+          on each in the default above.
         '';
       };
 
