@@ -627,6 +627,42 @@
           # would be treating a broken exclusion as a memory problem.
         };
 
+        # ── ernst: web search (M20) ─────────────────────────────────────
+        #
+        # The stack's only door to the open internet, and the milestone was
+        # about WHERE IT SITS rather than about SearXNG.  nspawn, argued in
+        # full in the role header in service-modules/local-ai.nix — short
+        # version: the roadmap's premise that this would be the fleet's first
+        # outbound-on-its-own-behalf service is false (Prowlarr, tubesync and a
+        # whole browser engine in FlareSolverr got there first, the last of
+        # them on a LOWER tier), and invariant #1's real line — as the repo has
+        # actually applied it — is a killswitch requirement, which search does
+        # not have.  Routing it through M3's VPN guest was considered and
+        # rejected on arr.nix's own eztvx.to measurement: a datacenter exit
+        # makes fetches fail that otherwise succeed, and search engines are
+        # harsher about it than indexers are.
+        #
+        # NO HOSTNAME.  It is in neither containers/traefik.nix nor
+        # containers/ingress-policy.nix, because only Open WebUI ever talks to
+        # it — the roadmap's own "strictly better" default position.  Nothing
+        # to route, nothing to protect, and no chance of the RomM 403 shape,
+        # since machine-to-machine traffic never meets Authelia.
+        roles.search.machines.ernst.settings = {
+          # MAC / address / uid allocated in the tables in
+          # machines/ernst/networking.nix.  The DHCP reservation for
+          # 02:00:00:90:00:10 → 10.0.90.24 lives on the UDM-Pro and must exist
+          # BEFORE this is deployed.  M20 took sequence 10 and uid 3035 — the
+          # pair M21 released back when ComfyUI turned out to need neither.
+          mac = "02:00:00:90:00:10";
+          uid = 3035;
+
+          # The ONE address allowed to reach it: the Open WebUI container.
+          # Everything else on VLAN 90 — including the qBittorrent microvm one
+          # layer-2 hop away, whose frames never pass the UDM-Pro — is dropped
+          # by the container's own firewall.
+          allowedSource = "10.0.90.23";
+        };
+
         # ── ernst: the web client ───────────────────────────────────────
         roles.webui.machines.ernst.settings = {
           # MAC / address / uid allocated in the tables in
@@ -703,6 +739,28 @@
           # editing as a separate subsystem with its own enable flag, and
           # ships no default workflow for it, so the graph lives in the role.
           imageEditEnable = true;
+
+          # ── M20: web search ───────────────────────────────────────────
+          #
+          # Over VLAN 90 to the searxng container, NOT over the ai0 veth —
+          # that link carries traffic to llama-swap on the host and SearXNG is
+          # not on it.  This is the only address in this block that is not
+          # llama-swap.
+          #
+          # THE `/search` PATH IS REQUIRED.  Open WebUI hands this string
+          # straight to its HTTP client and appends nothing; a bare base URL
+          # fetches the HTML landing page and fails to decode as JSON.
+          searchUrl = "http://10.0.90.24:8888/search";
+
+          # Snippets only, no embedding — both defaults, restated here because
+          # they ARE the milestone's egress decision and should be visible at
+          # the call site rather than only in the role.  Open WebUI does not
+          # fetch result pages, so SearXNG is the single process in this stack
+          # that makes outbound connections; and nothing pulls an unpinned
+          # embedding model off HuggingFace at runtime.  Full argument on the
+          # `searchFetchesPages` / `searchEmbedsResults` options.
+          searchFetchesPages  = false;
+          searchEmbedsResults = false;
         };
 
         # ── miralda: unchanged, and out of scope ────────────────────────

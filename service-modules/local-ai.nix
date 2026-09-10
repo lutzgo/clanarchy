@@ -1584,6 +1584,575 @@
   };
 
   ##############################################################################
+  # roles.search — SearXNG, the stack's only door to the open internet (M20)
+  #
+  # ── THE TIER ARGUMENT, WHICH IS WHAT THIS MILESTONE IS ACTUALLY ABOUT ───────
+  #
+  # docs/roadmap.md §M20 opens with a premise, and the premise is FALSE:
+  #
+  #   "SearXNG would be the first service here to talk to the open internet
+  #    on its own behalf"
+  #
+  # It would not, and this is checkable in the repo rather than a matter of
+  # opinion.  containers/arr.nix already says of its own occupants: "Prowlarr
+  # fetches from indexers, Sonarr/Radarr fetch metadata" — outbound, on their
+  # own behalf, on nspawn.  tubesync pulls arbitrary videos off YouTube.  And
+  # FlareSolverr, in that same file, RENDERS DELIBERATELY HOSTILE PAGES FROM
+  # TORRENT INDEXERS IN A REAL BROWSER ENGINE and sits on the PODMAN tier, one
+  # step *down* from nspawn, with the measurement that justified it attached.
+  #
+  # So invariant #1's "moves up a tier when it starts talking to the internet
+  # on its own behalf" cannot mean bare internet contact — half the fleet would
+  # be in microvms.  Read against how it has actually been applied, the line it
+  # draws is a KILLSWITCH REQUIREMENT: M3's guest is a microvm because
+  # qBittorrent's traffic must never egress on the house IP, and a kernel of
+  # its own is what makes that enforceable.  arr.nix says exactly this in its
+  # own words — "never talk to the internet on their own behalf IN A WAY THAT
+  # NEEDS A KILLSWITCH".
+  #
+  # SearXNG has no killswitch requirement.  A household member's search query
+  # leaving on the house IP is what happens when they open a browser; there is
+  # no privacy or legal property that a VPN egress would preserve and a direct
+  # one would destroy.  Routing it through M3's guest was considered and
+  # rejected on evidence already in this repo: arr.nix measured eztvx.to
+  # returning HTTP 200 from the home WAN and HTTP 451 from the IVPN exit, so
+  # the VPN path makes fetches FAIL that otherwise succeed.  Search engines
+  # treat datacenter exits far more harshly than indexers do — a VPN egress is
+  # the configuration most likely to get this instance CAPTCHA'd into
+  # uselessness.
+  #
+  #   microvm — rejected.  Its distinguishing property is a killswitch and a
+  #             separate kernel; this workload wants neither, would still need
+  #             the same egress, and would pay a kernel's worth of memory and
+  #             boot time for a boundary that protects nothing here.
+  #   podman  — rejected, and this is the one that had a real case.  Upstream
+  #             SearXNG distributes an image, and the podman tier exists for
+  #             exactly that.  But nixpkgs carries a full `services.searx`
+  #             module, so the image buys nothing and costs the thing M21 just
+  #             paid for in public: a digest to pin, re-pin, and verify against
+  #             a card/arch it was never built for.  M21's conclusion — "there
+  #             was no image worth pinning" — applies again.
+  #   nspawn  — TAKEN.  Real NixOS view, so `services.searx` is used as-is with
+  #             its upstream unit; systemd hardening available; no image.
+  #
+  # WHAT MAKES nspawn SAFE *HERE*, specifically, since the invariant says say
+  # so rather than assume it:
+  #
+  #   1. THE URL SET IS DECLARED, NOT ARBITRARY.  `engineKeepOnly` below is a
+  #      `keep_only` list, so this instance can contact the engines named there
+  #      and no others.  That is a materially smaller surface than tubesync
+  #      (any YouTube URL) or FlareSolverr (any indexer's page), both of which
+  #      are already on nspawn or below.
+  #   2. IT HOLDS NOTHING.  No media access, no state directory, no database,
+  #      no uid on the media group, and the only secret it carries is its own
+  #      cookie-signing key.  Compromising it yields the ability to make
+  #      outbound HTTP — which it already had — and sight of the queries.
+  #   3. IT CANNOT REACH THE STACK IT SERVES.  Traffic goes one way: Open WebUI
+  #      dials SearXNG.  SearXNG has no route to llama-swap (that is a veth it
+  #      is not on) and its own firewall accepts one address.
+  #   4. IT PARSES HTML WITH PYTHON, NOT WITH A BROWSER.  The realistic exploit
+  #      is a parser bug in a response.  FlareSolverr does the same job with a
+  #      whole Chromium and is a tier down, with that trade recorded.
+  #
+  # ── EGRESS: THE NORMAL PATH, DELIBERATELY ───────────────────────────────────
+  #
+  # A VLAN 90 leg with a DHCP reservation, exactly like every other container,
+  # so its outbound goes through the UDM-Pro where the household's zone policy
+  # applies and where it is VISIBLE.  The alternative considered was a
+  # point-to-point veth with host SNAT — the mon0 shape — and it was rejected
+  # for two concrete reasons: `networking.nat.externalInterface` is a single
+  # string already claimed by monitoring.nix for "zt+", so a second SNAT domain
+  # would mean hand-rolling nftables beside the module (a new mechanism, which
+  # the milestone forbids), and it would hide SearXNG's egress behind ernst's
+  # own LAN address — the opposite of the "which interface, which address"
+  # answer M20 owes.
+  #
+  # ── NO HOSTNAME, AND THAT IS THE POINT ──────────────────────────────────────
+  #
+  # This service appears in NEITHER traefik.nix NOR ingress-policy.nix.  Only
+  # Open WebUI ever talks to it, so it needs no name, no route, no certificate
+  # and no forward-auth — which is the roadmap's own stated default position
+  # and is strictly better than protecting a name that need not exist.  It also
+  # sidesteps the RomM 403 by construction: machine-to-machine traffic that
+  # never meets Authelia cannot be broken by it.
+  ##############################################################################
+  roles.search = {
+    description = "SearXNG in an nspawn container on VLAN 90. No hostname; one permitted client.";
+
+    interface.options = {
+      mac = lib.mkOption {
+        type        = lib.types.str;
+        example     = "02:00:00:90:00:10";
+        description = ''
+          Container eth0 MAC, allocated in the table in
+          machines/ernst/networking.nix.  The UDM-Pro DHCP reservation keys on
+          this, and the reservation must be INSIDE the 10.0.90.6–.254 pool —
+          UniFi accepts one outside it and then silently hands out a pool lease
+          instead, which M2b, M5 and M6 each lost a round to.
+        '';
+      };
+      uid = lib.mkOption {
+        type        = lib.types.int;
+        description = ''
+          Static uid/gid, allocated in machines/ernst/networking.nix.
+
+          NOTHING ON THE HOST IS OWNED BY IT, which is worth saying because
+          every other uid in that table exists to own something.  THIS ROLE HAS
+          NO `stateDir` OPTION AT ALL — nixpkgs' searx module declares no
+          StateDirectory, regenerates its settings into /run/searx on every
+          start, and the container bind-mounts only its secret, read-only.  It
+          is pinned anyway so that a process visible on the host
+          — nspawn passes uids through unmapped — is attributable to a service
+          rather than to an arbitrary number the container allocated.
+        '';
+      };
+      vlan = lib.mkOption {
+        type    = lib.types.int;
+        default = 90;
+        description = "Services VLAN.";
+      };
+      bridge = lib.mkOption {
+        type    = lib.types.str;
+        default = "br0";
+        description = "Host bridge the container's eth0 is enslaved to.";
+      };
+      resolver = lib.mkOption {
+        type    = lib.types.str;
+        default = "10.0.5.3";
+        description = "Technitium. Declared, not inherited from DHCP.";
+      };
+      searchDomain = lib.mkOption {
+        type    = lib.types.str;
+        default = "skynet.lan";
+        description = "Search suffix inside the container.";
+      };
+      port = lib.mkOption {
+        type    = lib.types.port;
+        default = 8888;
+        description = ''
+          SearXNG's listener inside the container.  8888 is upstream's own
+          default and there is no reason to move it — nothing else lives in
+          this netns.
+        '';
+      };
+      allowedSource = lib.mkOption {
+        type        = lib.types.str;
+        example     = "10.0.90.23";
+        description = ''
+          The ONE address permitted to reach `port`.  Open WebUI's VLAN 90
+          address, and nothing else on that VLAN — including the qBittorrent
+          microvm, which is one layer-2 hop away on this same bridge and whose
+          frames therefore never pass the UDM-Pro where a gateway rule could
+          filter them.  Same reasoning as `proxyAddress` on the webui role and
+          as traefikAddr in containers/arr.nix.
+
+          ernst's host firewall drops unmatched traffic silently, so a wrong
+          value here presents as a search that times out with nothing logged on
+          either side.
+        '';
+      };
+
+      # ── ENGINE SET: CONFIGURATION WITH CONSEQUENCES, NOT A DEFAULT ──────────
+      engineKeepOnly = lib.mkOption {
+        type    = lib.types.listOf lib.types.str;
+        default = [
+          "duckduckgo"
+          "brave"
+          "startpage"
+          "mojeek"
+          "qwant"
+          "wikipedia"
+          "wikidata"
+        ];
+        description = ''
+          The engines this instance may contact, as SearXNG `name` fields.
+          Rendered into `use_default_settings.engines.keep_only`, which
+          FILTERS THE DEFAULT SET DOWN rather than adding to it: engines not
+          named here do not exist in the running instance at all.
+
+          Verified against the shipped `searx/settings.yml` and
+          `searx/settings_loader.py` in this nixpkgs' searxng
+          (0-unstable-2026-05-16), not from a docs page.  `keep_only` matches on
+          `engine.get('name')` — the NAME, not the shortcut — and it is applied
+          BEFORE the user `engines` list is merged, which is why the two
+          default-disabled entries below can be re-enabled in `engineOverrides`
+          only because they also appear here.  An engine named here that does
+          not exist upstream is silently dropped, so a typo removes an engine
+          rather than failing the build.
+
+          THIS IS THE FIRST OF THE TWO THINGS THAT MAKE nspawn DEFENSIBLE for a
+          service that fetches from the internet: the set of hosts it can reach
+          is declared here and is short.  Adding an engine widens what a
+          hostile response can reach a Python parser through, so it is an
+          edit that deserves the same attention as opening a port.
+
+          GOOGLE IS DELIBERATELY ABSENT.  It is enabled in upstream's defaults
+          (its `categories` is null, which falls through to `general`), and it
+          is the engine most likely to answer a self-hosted metasearcher with a
+          CAPTCHA.  One engine returning a challenge page degrades results;
+          this list is meant to survive that rather than depend on the worst
+          offender.
+
+          WHICH OF THESE ACTUALLY WORK FROM ernst's IP IS A MEASUREMENT, and it
+          has not been taken — this is a starting set, not a verified one.
+          After deploy, check per engine rather than trusting the list:
+
+            systemd-run --machine=searxng --collect --pipe -q -- \
+              curl -s 'http://127.0.0.1:8888/search?q=test&format=json' \
+              | jq -r '.unresponsive_engines'
+
+          An engine that blocks ernst shows up there, and the fix is to remove
+          it from this list rather than to leave it failing on every query.
+        '';
+      };
+
+      engineOverrides = lib.mkOption {
+        type    = lib.types.listOf (lib.types.attrsOf lib.types.anything);
+        default = [
+          # Both are `disabled: true` in upstream's settings.yml and are
+          # general-category engines worth having: mojeek is an independent
+          # index (not a Bing/Google reseller, so it fails independently) and
+          # qwant is EU-hosted with its own crawler.  Re-enabling is a merge by
+          # name over the kept set — see engineKeepOnly.
+          { name = "mojeek"; disabled = false; }
+          { name = "qwant";  disabled = false; }
+        ];
+        description = ''
+          Per-engine overrides, merged BY NAME over whatever `engineKeepOnly`
+          left standing (`update_settings` in searx/settings_loader.py).  An
+          entry whose name survived the filter is merged into it; an entry
+          whose name did not is APPENDED as a new engine definition, which is
+          almost never what is wanted — so keep the two lists in step.
+        '';
+      };
+
+      requestTimeout = lib.mkOption {
+        type    = lib.types.float;
+        default = 5.0;
+        description = ''
+          `outgoing.request_timeout`, seconds.
+
+          This is a latency budget for a human waiting on a chat reply, not a
+          correctness setting: SearXNG returns whatever answered in time and
+          lists the rest under `unresponsive_engines`, so a slow engine costs
+          results rather than the query.  Upstream's default is 3.0, which
+          drops engines that would have answered; 5.0 trades a slower worst
+          case for fewer holes.
+        '';
+      };
+    };
+
+    perInstance = { settings, ... }: {
+      nixosModule = { config, pkgs, lib, ... }:
+        let
+          vethName   = "vb-searxng";
+          secretsDir = "/run/searxng-secrets";
+          secretGen  = config.clan.core.vars.generators.searxng-secret;
+        in
+        {
+          ####################################################################
+          # The cookie-signing key.  ITS OWN GENERATOR, per invariant #8 and
+          # per the rule containers/authelia.nix states: a clan vars generator
+          # is ATOMIC, so adding a file to an existing one re-runs the whole
+          # script and rotates every other secret in it as a side effect.
+          #
+          # SearXNG uses `server.secret_key` to sign the preferences cookie.
+          # The only client here is a bot that sends no cookies, so this
+          # protects very little — but upstream ships the literal string
+          # "ultrasecretkey" as its default and a deployment that keeps it is
+          # the kind of thing that is embarrassing to explain later.
+          ####################################################################
+          clan.core.vars.generators.searxng-secret = {
+            files."searxng-secret".secret = true;
+            files."searxng-secret".restartUnits =
+              [ "searxng-secrets.service" "container@searxng.service" ];
+
+            runtimeInputs = [ pkgs.openssl pkgs.coreutils ];
+            script = ''
+              set -euo pipefail
+              # hex, not base64: this value is substituted into a YAML document
+              # by envsubst, and an alphabet with no quoting-significant
+              # characters cannot produce a settings.yml that parses
+              # differently than intended.
+              openssl rand -hex 32 | tr -d '\n' > "$out/searxng-secret"
+            '';
+          };
+
+          ####################################################################
+          # Stage the secret host-side, then bind-mount it in.
+          #
+          # NEVER point an in-container unit at /run/secrets/vars/… — clan var
+          # paths do not exist inside an nspawn container's mount namespace and
+          # the failure is a silent 243/CREDENTIALS.  Same shape as
+          # open-webui-secrets above.
+          #
+          # The rendered file is an EnvironmentFile for searx-init, whose
+          # envsubst pass turns `$SEARXNG_SECRET` in the settings into the real
+          # value at runtime — so the key never enters the Nix store.  That is
+          # the whole reason this goes through `environmentFile` rather than
+          # being written into `settings.server.secret_key` directly, which the
+          # nixpkgs module warns is world-readable.
+          ####################################################################
+          systemd.services.searxng-secrets = {
+            description = "Stage SearXNG's secret key for its container";
+            wantedBy    = [ "multi-user.target" ];
+            before      = [ "container@searxng.service" ];
+            serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
+            script = ''
+              set -euo pipefail
+
+              # ── WHY THIS IS A CHECK AND NOT A BARE `cat` ────────────────
+              #
+              # Before `clan vars generate ernst` has run, this generator's
+              # `.path` evaluates to the literal string /no-such-path — it is
+              # not a placeholder that fails at build time, it is a path that
+              # reaches the deployed unit.  This repo has already taken an
+              # outage from exactly that: a bare `cat` on it under `set -eu`
+              # took RomM down on 2026-09-07.
+              #
+              # Failing here, by name, is the whole point.  Without the check
+              # the quiet outcome is worse than the loud one: envsubst
+              # substitutes an UNSET variable with the EMPTY STRING, so
+              # SearXNG would come up with `secret_key: ""` and look healthy.
+              secret_file=${secretGen.files."searxng-secret".path}
+              if [ ! -s "$secret_file" ]; then
+                echo "  ✗ SearXNG secret missing or empty at $secret_file" >&2
+                echo "    Run: clan vars generate ernst" >&2
+                exit 1
+              fi
+
+              install -d -m 0750 -o ${toString settings.uid} -g ${toString settings.uid} ${secretsDir}
+              umask 077
+              printf 'SEARXNG_SECRET=%s\n' "$(cat "$secret_file")" \
+                > ${secretsDir}/searxng.env.new
+              chown ${toString settings.uid}:${toString settings.uid} ${secretsDir}/searxng.env.new
+              chmod 0400 ${secretsDir}/searxng.env.new
+              mv -f ${secretsDir}/searxng.env.new ${secretsDir}/searxng.env
+            '';
+          };
+
+          # FAIL CLOSED.  `before=` alone only orders the two units — it does
+          # not stop the container when staging fails, and nspawn would then
+          # start SearXNG with no EnvironmentFile, envsubst would substitute
+          # the empty string, and the instance would run with an empty
+          # cookie-signing key while reporting itself healthy.  `requires=`
+          # turns that into a container that does not start, which is the
+          # outcome worth having.
+          systemd.services."container@searxng" = {
+            requires = [ "searxng-secrets.service" ];
+            after    = [ "searxng-secrets.service" ];
+          };
+
+          ####################################################################
+          # Host side of the Services-VLAN veth.  Identical shape to the webui
+          # container's: KeepMaster because nspawn creates and enslaves the
+          # link itself, no L3 because a bridge port carries none, "enslaved"
+          # because a bridge port never reaches routable and waiting for it
+          # hangs boot.
+          ####################################################################
+          systemd.network.networks."60-${vethName}" = {
+            matchConfig.Name = vethName;
+            networkConfig = {
+              KeepMaster          = true;
+              LinkLocalAddressing = "no";
+              IPv6AcceptRA        = false;
+            };
+            bridgeVLANs = [ {
+              VLAN           = settings.vlan;
+              PVID           = settings.vlan;
+              EgressUntagged = settings.vlan;
+            } ];
+            linkConfig.RequiredForOnline = "enslaved";
+          };
+
+          # Re-assert the VLAN after nspawn has created the veth — the same
+          # real race as vb-jellyfin / vb-arr / vb-traefik / vb-monitoring /
+          # vb-openwebui.  networkd applies [BridgeVLAN] only once it observes
+          # the link's master, and nspawn sets that master out of band.
+          # Idempotent, "-" prefixed so a backstop cannot become a new failure.
+          systemd.services."container@searxng".serviceConfig.ExecStartPost = [
+            "-${pkgs.iproute2}/bin/bridge vlan add dev ${vethName} vid ${toString settings.vlan} pvid untagged"
+          ];
+
+          containers.searxng = {
+            autoStart = true;
+            ephemeral = false;
+
+            privateNetwork  = true;
+            hostBridge      = settings.bridge;
+            localMacAddress = settings.mac;
+
+            # NO SECOND VETH, and its absence is load-bearing.  The webui
+            # container has `ai0` to reach llama-swap; this one has no path to
+            # the host's loopback at all, so a compromised SearXNG cannot
+            # reach the inference stack, the metrics proxy, or anything else
+            # ernst binds locally.  Traffic in this feature goes one way only.
+            bindMounts = {
+              ${secretsDir} = {
+                hostPath   = secretsDir;
+                isReadOnly = true;
+              };
+            };
+
+            # NO STATE BIND MOUNT, deliberately, and this is a real property
+            # rather than an omission.  nixpkgs' searx module declares no
+            # StateDirectory: settings are regenerated into /run/searx on every
+            # start by searx-init, and the only persistent thing SearXNG can
+            # own is the favicon cache, which `faviconsSettings` would have to
+            # opt into and which is not enabled here.  So invariant #7 has
+            # nothing to bind — there is no service data to put on zdata.  If a
+            # future change enables favicons or any other cache, it acquires a
+            # /srv/state bind in the same edit.
+
+            config = { config, lib, pkgs, ... }: {
+              system.stateVersion = "26.05";
+
+              # Matches the host, for the reason arr.nix, monitoring.nix and
+              # the webui container all give: every timestamp a human reads is
+              # local time, and a container that defaults to UTC makes each of
+              # them a two-hour question.
+              time.timeZone = "Europe/Berlin";
+
+              networking.useHostResolvConf = false;
+              networking.useNetworkd       = true;
+              services.resolved.enable     = true;
+
+              systemd.network.networks."10-eth0" = {
+                matchConfig.Name = "eth0";
+                networkConfig = {
+                  DHCP         = "ipv4";
+                  DNS          = settings.resolver;
+                  Domains      = "~. ${settings.searchDomain}";
+                  IPv6AcceptRA = false;
+                };
+                dhcpV4Config = { UseDNS = false; UseDomains = false; };
+                linkConfig.RequiredForOnline = "routable";
+              };
+              systemd.network.wait-online.timeout = 20;
+
+              # NOTHING is unconditionally open.  One source, one port.
+              networking.firewall = {
+                enable = true;
+                extraCommands = ''
+                  iptables -A nixos-fw -p tcp --dport ${toString settings.port} \
+                    -s ${settings.allowedSource} -j nixos-fw-accept
+                '';
+              };
+
+              users.users.searx = {
+                isSystemUser = true;
+                group = "searx";
+                uid   = settings.uid;
+              };
+              users.groups.searx.gid = settings.uid;
+
+              services.searx = {
+                enable = true;
+
+                # searx-init reads this to envsubst `$SEARXNG_SECRET` into the
+                # generated settings.yml.  The nixpkgs module puts it on BOTH
+                # searx-init and searx, which is what makes the substitution
+                # and the runtime agree.
+                environmentFile = "${secretsDir}/searxng.env";
+
+                # OFF, and this is not laziness — it is the decision the
+                # milestone asked to be made rather than inherited.
+                #
+                # SearXNG's limiter exists to protect a PUBLIC instance from
+                # abuse.  This one is reachable from exactly one address,
+                # enforced one layer down by the firewall above, so there is no
+                # abuse population for it to limit.
+                #
+                # Turning it on would also require a valkey/redis daemon
+                # (`redisCreateLocally`, which the module makes a precondition)
+                # for no benefit — and, worse, its botdetection would BLOCK THE
+                # ONLY CLIENT: Open WebUI identifies itself with
+                #   User-Agent: Open WebUI (…) RAG Bot
+                # (retrieval/web/searxng.py, `_SEARXNG_HEADERS`).  A bot filter
+                # in front of a service whose sole user is a self-declared bot
+                # is a way to build an outage on purpose.
+                redisCreateLocally = false;
+
+                settings = {
+                  # ── THE ONE SETTING WITHOUT WHICH NONE OF THIS WORKS ──────
+                  #
+                  # Upstream ships `search.formats: [html]` — JSON IS NOT
+                  # ENABLED BY DEFAULT (searx/settings.yml, line 84).  Open
+                  # WebUI requests `format=json` unconditionally
+                  # (retrieval/web/searxng.py), and SearXNG answers a
+                  # disallowed format with 403.
+                  #
+                  # So without this line the feature deploys green, the
+                  # container is healthy, the firewall is right, and every
+                  # search fails — which is the exact failure shape this repo
+                  # keeps paying for.  It is one word and it is the single most
+                  # likely reason for a future "web search does nothing".
+                  #
+                  # `html` is kept alongside it on purpose: this service has no
+                  # hostname and no UI consumer, but a human debugging it over
+                  # an SSH forward wants the search page and the /stats view,
+                  # and the response format is not the boundary — the firewall
+                  # is.  Dropping `html` would harden nothing and cost the only
+                  # way in when something is wrong.
+                  search.formats = [ "html" "json" ];
+
+                  # Autocomplete off.  This RESTATES upstream's own default
+                  # (settings.yml:46 and settings_defaults.py both ship "") and
+                  # is here as a pin rather than a change: autocomplete is a
+                  # per-keystroke outbound request to a search engine, for a UI
+                  # nobody uses on this instance, and it is exactly the kind of
+                  # thing a future default flip would turn on silently.
+                  search.autocomplete = "";
+
+                  server = {
+                    port         = settings.port;
+                    # 0.0.0.0 with the firewall above as the boundary — the
+                    # same shape the webui container uses, and for the same
+                    # reason: the container's address is a DHCP lease, so
+                    # binding it specifically means binding something this
+                    # module does not know at build time.
+                    bind_address = "0.0.0.0";
+
+                    # Substituted by searx-init's envsubst from
+                    # environmentFile, so the value is never in the store.
+                    secret_key   = "$SEARXNG_SECRET";
+
+                    limiter         = false;   # see redisCreateLocally above
+                    public_instance = false;
+
+                    # OFF.  The image proxy makes SearXNG fetch every result
+                    # thumbnail itself — outbound requests to arbitrary hosts,
+                    # which is precisely the unbounded egress this design is
+                    # built to avoid.  Open WebUI asks for `image_proxy=0` per
+                    # request anyway; this makes it true instance-wide rather
+                    # than dependent on the client asking nicely.
+                    image_proxy = false;
+                  };
+
+                  # The engine set, filtered down.  See engineKeepOnly.
+                  use_default_settings.engines.keep_only = settings.engineKeepOnly;
+
+                  outgoing.request_timeout = settings.requestTimeout;
+
+                  # A UA suffix would let an engine operator identify this
+                  # instance; there is nothing to gain by it here and it is one
+                  # more thing that makes the traffic fingerprintable.
+                  outgoing.useragent_suffix = "";
+                }
+                # Merged by name over the kept set. Kept as a separate
+                # attribute rather than folded above so the two lists read
+                # together — see engineOverrides.
+                // lib.optionalAttrs (settings.engineOverrides != [ ]) {
+                  engines = settings.engineOverrides;
+                };
+              };
+            };
+          };
+        };
+    };
+  };
+
+  ##############################################################################
   # roles.webui — Open WebUI in an nspawn container on the Services VLAN
   ##############################################################################
   roles.webui = {
@@ -1690,6 +2259,127 @@
         type    = lib.types.nullOr lib.types.str;
         default = null;
         description = "OpenAI-shaped STT base URL, normally llama-swap. Null disables voice input.";
+      };
+
+      ##########################################################################
+      # Web search (M20) — and the decision the milestone asked to be argued
+      # rather than assumed lives here, because it is expressed entirely in
+      # which of these env vars are set.
+      ##########################################################################
+      searchUrl = lib.mkOption {
+        type    = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "http://10.0.90.24:8888/search";
+        description = ''
+          SearXNG's `/search` endpoint — `SEARXNG_QUERY_URL`.  Null disables
+          web search entirely.
+
+          MUST INCLUDE THE `/search` PATH.  Open WebUI passes this string
+          straight to `session.get()` with the query as parameters
+          (retrieval/web/searxng.py); it appends nothing.  A base URL without
+          the path gets SearXNG's landing page, which is HTML, and the JSON
+          decode fails with an error that names neither.
+
+          The `<query>` placeholder some upstream docs show is legacy — 0.11.0
+          strips everything from `?` onward if it sees one — so do not write it.
+        '';
+      };
+
+      searchResultCount = lib.mkOption {
+        type    = lib.types.ints.positive;
+        default = 5;
+        description = ''
+          `WEB_SEARCH_RESULT_COUNT` — how many results are put in front of the
+          model.  Upstream's default is 3.
+
+          This is a CONTEXT BUDGET, and on this machine the budget is real and
+          enforced: the coder model runs a 32768-token window and llama.cpp
+          answers an over-long prompt with HTTP 400 rather than silently
+          truncating it the way ollama did (see the header of this file).  Five
+          snippets is a few hundred tokens and leaves the window to the
+          conversation; it is raisable, but raise it knowing what it spends.
+        '';
+      };
+
+      searchFetchesPages = lib.mkOption {
+        type    = lib.types.bool;
+        default = false;
+        description = ''
+          Whether OPEN WEBUI itself fetches the full text of each result page,
+          rather than passing SearXNG's snippets to the model.
+
+          FALSE, AND THIS IS THE EGRESS DECISION M20 OWES AN ANSWER TO.
+
+          The roadmap frames the milestone as "SearXNG must reach the internet;
+          nothing else in the M19 stack does".  That is only achievable at
+          false.  Open WebUI's default is the opposite — `BYPASS_WEB_SEARCH_WEB_LOADER`
+          defaults to False (config.py:1145), meaning the web loader runs — and
+          at that default the container holding the household's conversation
+          history, its OIDC client secret and the only veth to llama-swap also
+          acquires arbitrary outbound HTTP to whatever hosts the results name.
+          SearXNG, by contrast, holds nothing.  Two internet-facing services
+          where the milestone intended one, and the wrong one gained it.
+
+          THE HONEST COUNTERWEIGHT, because the case is not one-sided: Open
+          WebUI 0.11.0 does defend that path.  `validate_url` rejects non-global
+          addresses unless `ENABLE_LOCAL_WEB_FETCH` (default False), blocks the
+          cloud metadata endpoints, rejects parser-confusing characters, and
+          `_SSRFSafeResolver`/`_SSRFSafeAdapter` re-check the IP at connect time
+          to close DNS rebinding and redirect-based pivots
+          (retrieval/web/utils.py).  This is not the unguarded fetcher it might
+          have been, and the argument below does not rest on pretending it is.
+
+          It rests on two things that hold anyway:
+
+            1. SCOPE.  Snippets-only means exactly one process in this stack
+               makes outbound connections, and its reachable set is the
+               declared engine list.  That is a boundary that can be stated in
+               one sentence and checked with one command, which is worth more
+               than a defended-but-unbounded one.
+            2. CONTEXT.  Full page text for five results routinely exceeds the
+               32768-token window.  M19 made that failure loud rather than
+               silent (HTTP 400 naming both numbers), so the symptom would be
+               searches that fail outright once the pages happen to be long —
+               an intermittent, content-dependent break.
+
+          WHAT IT COSTS, stated plainly rather than buried: the model sees
+          title, URL and SearXNG's snippet per result — not the page.  For
+          "rate your sources", which is the question that opened this
+          milestone, that is enough to judge and cite a source and NOT enough
+          to have read it.  If answers turn out to need the page text, this is
+          the one option to flip, and flipping it is a deliberate widening of
+          egress rather than a tuning change.
+        '';
+      };
+
+      searchEmbedsResults = lib.mkOption {
+        type    = lib.types.bool;
+        default = false;
+        description = ''
+          Whether search results go through the embedding/vector-DB path
+          instead of straight into the model's context.
+
+          FALSE, and unlike `searchFetchesPages` this one is barely a trade.
+
+          At Open WebUI's default (`BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL`
+          = False) the results are embedded into a per-query vector collection
+          first.  That needs an embedding model, and the default one is
+          `sentence-transformers/all-MiniLM-L6-v2` with
+          `RAG_EMBEDDING_MODEL_AUTO_UPDATE` defaulting to True
+          (config.py:990-996) — i.e. an UNPINNED, UN-HASH-VERIFIED DOWNLOAD
+          FROM HUGGINGFACE, fetched at runtime, into a container, on first use.
+
+          This repo has a mechanism for exactly that problem and it is
+          `roles.models`: every weight the GPU tier loads is a URL and a hash,
+          verified at fetch and again at boot, because "a model reference that
+          was merely plausible" has cost this project twice.  Turning this on
+          would reintroduce the failure mode that role exists to make
+          unrepresentable — and it would do it for a 90 MB model whose only job
+          is to rank five snippets that are already ranked by relevance score.
+
+          At false there is no embedding model, no vector collection, and no
+          startup dependency on HuggingFace being reachable.
+        '';
       };
       imageUrl = lib.mkOption {
         type    = lib.types.nullOr lib.types.str;
@@ -2423,6 +3113,70 @@
                   # /v1/audio/speech, and the Web Speech API costs no VRAM on a
                   # card this milestone is already arbitrating.
                   AUDIO_TTS_ENGINE              = "";
+                } // lib.optionalAttrs (settings.searchUrl != null) {
+                  # ── M20: web search, via SearXNG and nothing else ─────────
+                  #
+                  # THE LLM DOES NOT GET A TOOL, AND THAT IS A DECISION.
+                  #
+                  # Open WebUI 0.11.0 supports both shapes and picks between
+                  # them on one value: with native function calling it registers
+                  # `search_web` as a builtin tool and the model chooses when to
+                  # search; with `function_calling == 'legacy'` it runs the
+                  # search itself and injects the results
+                  # (utils/middleware.py:2552, utils/tools.py:672).
+                  #
+                  # The injection path is taken here, for three reasons in
+                  # descending order of weight:
+                  #
+                  #   1. THE TOOL PATH FORCES THE EGRESS THIS MILESTONE IS
+                  #      TRYING TO CONTAIN.  `search_web` is not registered
+                  #      alone — `builtin_functions.extend([search_web,
+                  #      fetch_url])` adds both under ONE category flag, and
+                  #      `fetch_url` retrieves a model-supplied URL.  There is
+                  #      no configuration that takes the first without the
+                  #      second, so choosing the tool path means Open WebUI gets
+                  #      arbitrary outbound HTTP no matter what
+                  #      `searchFetchesPages` says.
+                  #
+                  #   2. M19's 20/20 TOOL-CALLING RESULT DOES NOT TRANSFER, and
+                  #      the roadmap's own note that it is "evidence the tool
+                  #      path would work, not that it should be taken" is
+                  #      understated.  That 20/20 was measured WITH the
+                  #      `<tool_call>` reinforcement, and that reinforcement is
+                  #      injected by the opencode role — `instructions =
+                  #      [ "${"\${toolCallRule}"}" ]` in this same file, into
+                  #      opencode's config.json.  Open WebUI ships nothing of
+                  #      the kind.  Without it the measured baseline on this
+                  #      model is 4/30 to 21/30 depending on the phrasing.
+                  #
+                  #   3. IT REMOVES THE FAILURE THAT OPENED THE MILESTONE.
+                  #      M20 exists because the model answered from weights and
+                  #      cited nothing.  On the tool path "the model chose not
+                  #      to search" stays a possible outcome, and at a 13-70%
+                  #      call rate a likely one.  Here the toggle means the
+                  #      search happened.
+                  ENABLE_WEB_SEARCH = "True";
+                  WEB_SEARCH_ENGINE = "searxng";
+                  SEARXNG_QUERY_URL = settings.searchUrl;
+                  WEB_SEARCH_RESULT_COUNT = toString settings.searchResultCount;
+
+                  # See the two options for the full argument. In short:
+                  # snippets only, so SearXNG is the one process here that
+                  # talks to the internet; and no embedding, so nothing
+                  # downloads an unpinned model from HuggingFace at runtime.
+                  BYPASS_WEB_SEARCH_WEB_LOADER =
+                    if settings.searchFetchesPages then "False" else "True";
+                  BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL =
+                    if settings.searchEmbedsResults then "False" else "True";
+
+                  # Belt and braces on the SSRF guard rather than a load-bearing
+                  # control: at `searchFetchesPages = false` nothing in this
+                  # path fetches a URL at all, so this only matters if that flag
+                  # is ever flipped. False is also upstream's default; it is
+                  # stated explicitly because it is the setting that decides
+                  # whether a fetch may reach 10.0.90.0/24, and a default that
+                  # important should not be invisible.
+                  ENABLE_LOCAL_WEB_FETCH = "False";
                 } // lib.optionalAttrs (settings.imageUrl != null) {
                   ENABLE_IMAGE_GENERATION = "True";
                   IMAGE_GENERATION_ENGINE = "comfyui";
