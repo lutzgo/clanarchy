@@ -200,7 +200,29 @@ let
   traefikAddr  = "10.0.90.12";   # web UI via tvheadend.goclan.org (authelia)
   jellyfinAddr = "10.0.90.10";   # M3U tuner + XMLTV guide + stream pulls
   httpPort     = 9981;
-  htspPort     = 9982;           # bound, never opened — see the firewall block
+  htspPort     = 9982;           # see the firewall block — opened to exactly one address
+
+  # The ernst HOST, and the only thing permitted to speak HTSP.
+  #
+  # NOT a VLAN-90 peer, which is why it is separated from the two above: Kodi
+  # runs on the host, whose only address is on VLAN 50, so this traffic is
+  # ROUTED through the UDM-Pro rather than taking the one-L2-hop br0 path the
+  # other two do.
+  #
+  # THAT SECOND ENFORCEMENT POINT IS NOT OPEN, AND THIS FILE CANNOT OPEN IT.
+  # Measured 2026-09-10, after this rule was deployed: SYNs leave the host on
+  # br0 toward 10.0.90.18:9982 and retransmit six times with no SYN-ACK and no
+  # RST, while the accept rule below stays at zero packets — so the UDM-Pro is
+  # silently dropping them before the container ever sees them. Reaching
+  # 10.0.90.12:443 from the host does NOT generalise; that one flow is
+  # permitted and this one is not.
+  #
+  # So this rule is NECESSARY BUT NOT SUFFICIENT. Live TV needs an inter-VLAN
+  # allow on the UDM-Pro for 10.0.50.10 -> 10.0.90.18 tcp/9982 as well, which
+  # is hand-made state on the router and belongs to nobody in this repo. Keep
+  # this rule anyway: without it the container refuses the connection even
+  # once the router permits it, and debugging that from the sofa is miserable.
+  kodiHostAddr = "10.0.50.10";
 
   # The FRITZ!Box on the dedicated segment.  Static on both sides: the
   # container takes .2 (outside the FRITZ's default DHCP pool, .20–.200), and
@@ -396,10 +418,22 @@ in
       #
       #   9981/tcp   ONLY from Traefik (web UI, behind authelia) and Jellyfin
       #              (M3U + XMLTV + the stream URLs inside the playlist).
-      #   9982/tcp   HTSP — bound by the daemon but opened to NOBODY.  Jellyfin
-      #              consumes M3U-over-HTTP, not HTSP; the protocol's clients
-      #              (Kodi's pvr.hts) do not exist in this fleet.  If one
-      #              appears, this is the line to widen — deliberately, then.
+      #   9982/tcp   HTSP — ONLY from the ernst host (10.0.50.10).
+      #
+      #              This line used to open to NOBODY, on the grounds that the
+      #              protocol's clients (Kodi's pvr.hts) did not exist in this
+      #              fleet, and said that if one appeared this was the line to
+      #              widen — deliberately, then.  One appeared: the htpc role's
+      #              Kodi now ships pvr-hts (modules/roles/htpc.nix), so this is
+      #              that deliberate widening, made by lgo on 2026-09-10.
+      #
+      #              It is narrower than it looks, and deliberately NOT the same
+      #              decision as 9981 above.  9981 fronts an admin UI that is
+      #              unauthenticated once Authelia is cleared, which is why the
+      #              note above forbids widening it.  HTSP authenticates on its
+      #              own — it takes a Tvheadend user and password from the
+      #              client — so opening it does not hand anyone an anonymous
+      #              admin surface.  One source address, one port, one client.
       #   udp from the FRITZ!Box — the RTP/RTCP return path.  Interleaved-TCP
       #              is rejected by this box (461, measured), so media arrives
       #              as unicast UDP on client-chosen ephemeral ports; a static
@@ -414,6 +448,7 @@ in
       networking.firewall.extraCommands = ''
         iptables -A nixos-fw -p tcp -s ${traefikAddr}/32  --dport ${toString httpPort} -j nixos-fw-accept
         iptables -A nixos-fw -p tcp -s ${jellyfinAddr}/32 --dport ${toString httpPort} -j nixos-fw-accept
+        iptables -A nixos-fw -p tcp -s ${kodiHostAddr}/32 --dport ${toString htspPort} -j nixos-fw-accept
         iptables -A nixos-fw -p udp -s ${fritzAddr}/32 -j nixos-fw-accept
       '';
 
