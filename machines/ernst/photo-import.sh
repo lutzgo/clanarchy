@@ -60,12 +60,22 @@ photo-import — import the retired Arch server's photographs into Immich.
 
   photo-import survey [DIR...]   what is under each tree, by kind and size
   photo-import check             prove the server answers and the key is valid
-  photo-import lgo  [-n] [-c]    import lgo's trees
-  photo-import sgo  [-n] [-c]    import Sarinah's trees
+  photo-import lgo  [-n] [-c] [-j N]    import lgo's trees
+  photo-import sgo  [-n] [-c] [-j N]    import Sarinah's trees
 
 options
-  -n   dry run — immich-go reports what it would upload and uploads nothing
-  -c   continue past errors instead of stopping at the first one
+  -n     dry run — immich-go reports what it would upload and uploads nothing
+  -c     continue past errors instead of stopping at the first one
+  -j N   concurrent uploads (default 8; immich-go's own default of 32 broke
+         the server mid-import on 2026-09-11 — see the comment in the source)
+
+A DRY RUN DOES NOT PROVE A REAL RUN WILL WORK. It never contacts the album or
+upload endpoints, so every server-side failure mode — album creation, capacity,
+connection resets — is invisible to it. The first real run found 136 errors
+after a dry run that reported zero.
+
+Re-running after a failure is the designed recovery, not a workaround: Immich
+deduplicates on content hash, so already-uploaded assets are skipped.
 
 THE API KEY SELECTS THE ACCOUNT.  Export the key of the account you are
 importing INTO, minted in Immich under Account Settings -> API Keys:
@@ -81,9 +91,6 @@ It never changes WHERE the photos land — IMMICH_API_KEY decides that.
 
 Every asset is tagged `import/server001`, so a bad run can be found and
 removed in the UI as a group rather than hunted for by date.
-
-Re-running is safe: Immich deduplicates on content hash, so an interrupted
-import is resumed by running the same command again, not restarted.
 USAGE
 }
 
@@ -194,11 +201,12 @@ cmd_check() {
 ##############################################################################
 cmd_import() {
   local account=$1; shift
-  local dry=0 onerr="stop" opt
-  while getopts 'nc' opt; do
+  local dry=0 onerr="stop" jobs=8 opt
+  while getopts 'ncj:' opt; do
     case "$opt" in
       n) dry=1 ;;
       c) onerr="continue" ;;
+      j) jobs="$OPTARG" ;;
       *) usage; exit 1 ;;
     esac
   done
@@ -254,6 +262,32 @@ cmd_import() {
     --manage-heic-jpeg StackCoverJPG
 
     --on-errors "$onerr"
+
+    # ── CONCURRENCY, AND WHY THE DEFAULT IS 8 AND NOT immich-go's 32 ────────
+    #
+    # MEASURED ON ERNST 2026-09-11, on the first real run. At immich-go's own
+    # default the import uploaded 12,286 of 15,209 assets and then DIED:
+    #
+    #   14:44-14:50   1-4 errors/min   (album creates only)
+    #   14:51            10 errors
+    #   14:52             9
+    #   14:53           100            <- "server error", "context canceled"
+    #   14:54         AssetUpload ... write: connection reset by peer
+    #
+    # The server degraded under sustained load and then the connection was
+    # reset mid-body. Not a bad file, not a timeout (Traefik has no
+    # respondingTimeouts set), and NOT CrowdSec — its decision list held only
+    # external scanners, no entry for this host. Checked, because a
+    # self-inflicted ban was the obvious first suspect.
+    #
+    # Note what it is NOT: the background queues WERE paused (that is why
+    # 19,000 metadataExtraction jobs had piled up waiting by the end). The load
+    # came from the ingest path itself — 32 concurrent multipart uploads plus
+    # the Postgres writes and storage-template moves each one triggers.
+    #
+    # 8 is a starting point chosen to be obviously gentler, not a measured
+    # optimum. `-j` exists so the next person can find one without editing Nix.
+    --concurrent-tasks "$jobs"
   )
 
   # ── JOB PAUSING IS OFF UNLESS AN ADMIN KEY IS SUPPLIED ────────────────────
