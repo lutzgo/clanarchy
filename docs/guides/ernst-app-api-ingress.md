@@ -25,7 +25,7 @@ browser to render the portal, so it reports an opaque network error and the
 user concludes the server is broken. If someone reports *"works in the browser,
 fails in the app"*, check this first — it is almost always the cause.
 
-### The exempt five
+### The exempt six
 
 | Host | Clients that force the exemption |
 |---|---|
@@ -34,8 +34,33 @@ fails in the app"*, check this first — it is almost always the cause.
 | `komga` | Komelia, Mihon's Komga extension, OPDS v1/v2 readers |
 | `navidrome` | every Subsonic client — the credential is a **query parameter**, by protocol definition |
 | `cwa` | OPDS (basic auth), Kobo (device token **in the URL path**), KOReader `/kosync` (RFC 7617) |
+| `photos` | the Immich app on two phones (bearer token), the Kodi add-on on the TV (`x-api-key`), **and shared album links** |
 
 A Kobo e-reader is the clearest case: there is no browser on the device at all.
+
+#### `photos` is the sixth, and it breaks the pattern of the other five
+
+Every other name in that table answers only to a **credential**. Immich answers
+a **shared album link** to an anonymous caller — that is the feature, and it is
+how a family member with no account here sees an album at all. Forward-auth
+would not degrade it, it would remove it.
+
+So the usual sentence — *"the application's own accounts are now the entire
+boundary"* — is not the whole truth for this one. The accurate version:
+
+- **the library** is bounded by Immich's accounts;
+- **anything explicitly shared** is bounded by possession of a URL, from
+  anywhere on the internet, until the link is revoked in the UI.
+
+Those links are 128-bit random keys, which is the real control. Immich also
+supports a **per-link expiry and password** — use both for anything that is not
+meant to be world-readable, because nothing in this repo can set them and no
+middleware in front of it can help.
+
+`photos` is also the one name here whose first-run window is closed by a
+**mechanism** rather than by speed: `IMMICH_ALLOW_SETUP` is `false` in
+`containers/immich.nix`, and the public A record is created only after both
+accounts exist. See the post-deploy checklist below.
 
 ## It is enforced, not documented
 
@@ -173,11 +198,12 @@ If the first answers and the second does not, it is cache — not config.
 A records only, **DNS-only (grey cloud)**, all → `78.94.91.74`:
 
 ```
-audiobookshelf   auth   cwa   jellyfin   jellyseerr   komga   navidrome
+audiobookshelf   auth   cwa   jellyfin   jellyseerr   komga   navidrome   photos
 ```
 
 Add each one only *after* that service's admin credential is set — see the
-credential table above.
+credential table above. `photos` is the strictest case of that rule and the
+reason it is worth stating as a rule at all: see step 1c.
 
 **Never add AAAA.** Nothing on the path has a global IPv6 address. An AAAA
 record is the fastest way to reproduce the outage this work started from.
@@ -217,6 +243,36 @@ internet. **Change it before `cwa.goclan.org` resolves publicly**, not after.
 The ordering rule that follows: add the public A record for a service only
 *after* its admin credential is set. `komga` and `cwa` deliberately have no
 public record yet for exactly this reason.
+
+### 1c. Immich (M22) — a first-run window closed by a flag, not by hurrying
+
+Immich is the fourth shape in that table, and the only one where the repo holds
+a switch:
+
+| Service | Initial state | What "unauthenticated" means |
+|---|---|---|
+| **Immich** | no account, **and signup disabled** | `/auth/admin-sign-up` is **off** until `adminSetupOpen` is flipped, so there is no window to lose a race in |
+
+`containers/immich.nix` ships `adminSetupOpen = false` → `IMMICH_ALLOW_SETUP=false`.
+Opening it is a deploy, not a restart. In order:
+
+1. Edit `adminSetupOpen = true` in `machines/ernst/containers/immich.nix`,
+   `clan machines update ernst`.
+2. On the LAN, open `https://photos.goclan.org` and create the **admin**
+   account (lgo). Then create **sgo** from the admin's user-management page —
+   Immich's signup endpoint only ever creates the *first* account, so every
+   later user is made by an admin and there is no second window.
+3. Set `adminSetupOpen = false` again, `clan machines update ernst`. Confirm
+   the signup endpoint is gone before continuing.
+4. **Only now** add the public `photos` A record.
+
+Steps 3 and 4 are independently sufficient, which is why both are here. Immich
+additionally refuses a second signup once an admin exists, so after step 2 all
+three controls are redundant — which is exactly when nobody is watching.
+
+**Then set strong passwords on both accounts.** They are about to become
+internet-reachable single-factor logins, and unlike the other five names on
+that list, this one also serves anonymous shared-album URLs by design.
 
 ### 1b. If a Navidrome scan ever fails, it poisons its own scan state
 

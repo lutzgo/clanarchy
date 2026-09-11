@@ -354,6 +354,37 @@
   #                       `networking.nat.externalInterface` is a single string
   #                       already claimed by monitoring.nix for "zt+".
   #
+  #   02:00:00:90:00:11   immich container eth0     (M22 — allocated)  10.0.90.25
+  #                       Immich, the household photo library,
+  #                       machines/ernst/containers/immich.nix.  nspawn —
+  #                       `services.immich` is a first-class NixOS module at
+  #                       this pin, so there is no image to escape to and the
+  #                       podman tier does not apply.
+  #
+  #                       PUBLIC.  `photos.goclan.org` rides BOTH entrypoints
+  #                       and carries NO forward-auth — the fleet's SIXTH
+  #                       appApiHosts name, on the client-compatibility clause
+  #                       (two phone apps and the TV add-on), plus one property
+  #                       none of the other five has: SHARED ALBUM LINKS ARE
+  #                       ANSWERED ANONYMOUSLY BY DESIGN.  See
+  #                       containers/ingress-policy.nix.
+  #
+  #                       ITS FIREWALL ADMITS EXACTLY TWO ADDRESSES and one of
+  #                       them is the surprise: Traefik (.12) on 2283, and the
+  #                       monitoring container (.14) on 8081.  The TV is NOT
+  #                       among them — Kodi runs on the ernst host and reaches
+  #                       this service through `photos.goclan.org`, i.e. via
+  #                       .12 under M5's existing `Allow Traefik` policy.
+  #
+  #                       THAT IS THE OPPOSITE CHOICE FROM M8's HTSP AND IT WAS
+  #                       MADE ON PURPOSE.  Tvheadend's Kodi client speaks a
+  #                       binary protocol that cannot go through a reverse
+  #                       proxy, so it needed a direct VLAN 50 → VLAN 90 hop,
+  #                       which needed ledger row L12's UDM-Pro policy — a rule
+  #                       broader than the flow it permits.  The Immich add-on
+  #                       speaks ordinary HTTPS, so it needs none of that:
+  #                       M22 adds NO UDM-Pro rule and NO ledger row.
+  #
   #   M18 ADDED NO MAC AND NO ADDRESS, which is worth stating because it is a
   #   milestone that opened the house to the internet.  CrowdSec runs INSIDE
   #   the traefik container's netns (containers/crowdsec.nix) — it is the only
@@ -767,6 +798,47 @@
   #                           NEXT FREE IS 3036.)
   #   gid 3035  searx        (service-modules/local-ai.nix)
   #
+  #   uid 3036  immich       (containers/immich.nix — M22, the household photo
+  #                           library, in an NSPAWN container on VLAN 90.
+  #
+  #                           OWN group 3036, NOT media, and it is not a close
+  #                           call: this service has no hardlink relationship
+  #                           with anything in /srv/media, nothing else reads
+  #                           its files, and it is reachable from the internet.
+  #                           Its tree is 0700 immich:immich — no setgid, no
+  #                           shared group — which is the whole difference from
+  #                           the 2770 root:media trees.
+  #
+  #                           IT OWNS A WHOLE DATASET, which only jellyfin and
+  #                           the *arr can otherwise say: zdata/photos, mounted
+  #                           at /srv/photos and bound in at /var/lib/immich —
+  #                           the module's own default, so mediaLocation and
+  #                           StateDirectory agree with nothing overridden.
+  #                           Its DATABASE is elsewhere, on /srv/state/immich,
+  #                           because a 1M recordsize is right for photographs
+  #                           and wrong for PostgreSQL.
+  #
+  #                           PINNING IT IS LOAD-BEARING, not hygiene.  The
+  #                           nixpkgs module creates `immich` with NO uid, so
+  #                           the number would be whatever the container's
+  #                           useradd happened to pick — and nspawn passes ids
+  #                           through unmapped, so that number goes onto every
+  #                           file in the photo library.  Adding an unrelated
+  #                           user to this container could then change the
+  #                           owner of 200 GB of photographs.
+  #
+  #                           NEXT FREE IS 3037.)
+  #   gid 3036  immich       (containers/immich.nix — M22)
+  #
+  #   uid   71  postgres     NOT ALLOCATED HERE, and listed so nobody allocates
+  #                           it.  Immich's PostgreSQL runs inside its container
+  #                           and lands on zdata unmapped like every other
+  #                           container uid, but 71 is a WELL-KNOWN NixOS static
+  #                           id (`ids.uids.postgres`) rather than one of ours.
+  #                           It appears on /srv/state/immich/postgresql.  The
+  #                           3000-block convention does not apply to it and it
+  #                           must not be renumbered into the block.
+  #
   #   uid 3026  tvheadend       M8 LANDED 2026-08-27 AND TOOK THIS — moved up
   #                              into the allocated table, as shape (ii): OWN
   #                              group, NO media access.  The conditional
@@ -866,6 +938,11 @@
   # WebUI already uses for chat and STT, through llama-swap's
   # `/upstream/comfyui` path.  No new listener and no new firewall rule.
   # Sequence 10 / 10.0.90.24 therefore remain free.
+  #
+  # M20 TOOK SEQUENCE 10 / 10.0.90.24 — moved up into the allocated table.
+  # M22 TOOK SEQUENCE 11 → 02:00:00:90:00:11 / 10.0.90.25 for Immich, also
+  # moved up.  NEXT FREE SEQUENCE NUMBER IS 12; next free address is
+  # 10.0.90.26, keeping the 8 + <seq> correspondence (8 + 0x12 = 26).
   #
   # (0d / 10.0.90.21 was the free-again cloudflared pair and CWA reused it, as
   # the note below intended.  There is no free gap left in the sequence.)

@@ -95,5 +95,11 @@ rec {
     ../modules/hardware/display.nix
     ../modules/networking/skynet-dns-nm.nix
     ../modules/apps
+    # M22. The darktable end of the photo pipeline: a watched export folder
+    # pushed to Immich on ernst. Imported here and INERT until enabled, the
+    # same shape as hardware/convertible.nix in commonBase — it declares
+    # `clanarchy.immich.upload` and does nothing at all until a machine turns
+    # it on. Consumers: miralda, jens.
+    ../modules/immich-upload.nix
   ];
 }

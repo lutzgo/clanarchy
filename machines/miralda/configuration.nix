@@ -52,6 +52,33 @@
   clanarchy.apps.flatpak.enable = true;
   clanarchy.apps.desktopTools.enable = true;
 
+  # M22 — the darktable end of the photo pipeline.  Finished JPEG exports
+  # dropped into ~/Pictures/immich-inbox are pushed to Immich on ernst by a
+  # timer; see modules/immich-upload.nix.
+  #
+  # ── OFF, AND IT IS TURNED ON IN A SECOND STEP.  THIS IS NOT A TODO ────────
+  #
+  # Enabling this declares the `immich-api-key` generator, whose value is an
+  # Immich API key — and an Immich API key CANNOT EXIST until Immich is
+  # deployed and the accounts have been created in its web UI.
+  #
+  # That is not an ordering hazard, it is a DEADLOCK, because
+  # `clan machines update` runs the generators for EVERY MACHINE IN THE FLAKE
+  # and not just the one being updated (clan_cli/machines/update.py:
+  # `all_machines = list(flake.list_machines_full().values())`).  So a pending
+  # prompt here blocks the ERNST deploy that would make the key obtainable —
+  # measured on 2026-09-11, which is how this line came to be `false`.  See
+  # standing note SN5 in docs/roadmap.md.
+  #
+  # TO TURN IT ON, once ernst is up and the accounts exist:
+  #
+  #     # flip this to true, then, at a terminal:
+  #     clan vars generate miralda --generator immich-api-key
+  #     clan machines update miralda
+  #
+  # In that order.  The prompt needs a TTY and must NOT be answered blank.
+  clanarchy.immich.upload.enable = false;
+
   # Mount the ESP by PARTUUID, not by the partlabel disko assigns.
   #
   # Every machine in this clan uses disko's disk name `main`, so every ESP in
