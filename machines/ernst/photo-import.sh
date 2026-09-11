@@ -233,8 +233,10 @@ cmd_import() {
   local -a args=(
     upload from-folder
     --server "$SERVER"
-    --api-key "$IMMICH_API_KEY"
     --no-ui
+
+    # NO --api-key HERE.  It goes in a 0600 config file written below, and
+    # the reason is not style — see "THE KEYS DO NOT GO IN argv".
 
     # THE SECOND FILTER, and the one that does not depend on the source list
     # being right.  Even if a directory holding PDFs, spreadsheets or a job
@@ -319,7 +321,7 @@ cmd_import() {
   # destination library, and conflating them would silently import into the
   # admin's library instead.
   if [ -n "${IMMICH_ADMIN_API_KEY:-}" ]; then
-    args+=(--admin-api-key "$IMMICH_ADMIN_API_KEY" --pause-immich-jobs=TRUE)
+    args+=(--pause-immich-jobs=TRUE)
     jobs_note="paused via admin key"
   else
     args+=(--pause-immich-jobs=FALSE)
@@ -356,7 +358,65 @@ cmd_import() {
   _workdir=$(mktemp -d)
   cd "$_workdir"
 
-  immich-go "${args[@]}" "${sources[@]}"
+  ##########################################################################
+  # ── THE KEYS DO NOT GO IN argv ─────────────────────────────────────────
+  #
+  # The first version of this tool passed `--api-key` and `--admin-api-key`
+  # on the command line. That puts both credentials in /proc/<pid>/cmdline,
+  # WHICH IS WORLD-READABLE. Found by running `pgrep -a immich-go` during a
+  # live import on 2026-09-11 — both keys printed in full, no privilege
+  # needed.
+  #
+  # THAT IS NOT A THEORETICAL EXPOSURE ON THIS MACHINE. ernst carries `go`,
+  # the couch account that AUTOLOGINS on the television without a password
+  # (see modules/roles/htpc.nix). Any process that account can run could
+  # read the admin key out of the process table and then do anything the
+  # admin can — including to Sarinah's library, which she has no other way
+  # to grant or revoke.
+  #
+  # It also defeats the reason the keys are kept in root-only files at all:
+  # careful storage means nothing if the consumer broadcasts them.
+  #
+  # immich-go has no environment-variable binding for these (immich-cli
+  # does; this is a different program). What it does have is `--config`.
+  # So the credentials go in a 0600 file inside this private mktemp
+  # directory, which the EXIT trap removes.
+  #
+  # ── THE SHAPE BELOW IS GENERATED, NOT INFERRED, AND THE FIRST ATTEMPT
+  #    WAS INFERRED AND WRONG ────────────────────────────────────────────
+  #
+  # The first version wrote flat `api_key:` / `admin_api_key:` keys, taken
+  # from mapstructure tags found by grepping the binary. immich-go ignored
+  # the file completely and died with
+  #
+  #     missing the parameter --api-key and/or --admin-api-key
+  #
+  # …which, because this tool had just been "fixed", meant an import that
+  # ran zero files while looking like it had run. The real layout is
+  # NESTED under `upload:` and HYPHENATED, and the way to learn it is to
+  # ask the program rather than to read its strings:
+  #
+  #     immich-go upload from-folder --api-key X --save-config … .
+  #     cat ./immich-go.yaml
+  #
+  # `upload.from-folder.*` also exists for subcommand options; only the
+  # credentials are set here, so every other flag stays on the command line
+  # where it is visible in the log line this tool prints.
+  #
+  # `umask 077` before the redirect, not chmod after: a chmod leaves a
+  # window in which the file exists world-readable, which is the same class
+  # of mistake as putting the key in argv.
+  ##########################################################################
+  local cfg="$_workdir/immich-go.yaml"
+  ( umask 077
+    printf 'upload:\n' > "$cfg"
+    printf '    api-key: %s\n' "$IMMICH_API_KEY" >> "$cfg"
+    if [ -n "${IMMICH_ADMIN_API_KEY:-}" ]; then
+      printf '    admin-api-key: %s\n' "$IMMICH_ADMIN_API_KEY" >> "$cfg"
+    fi
+  )
+
+  immich-go --config "$cfg" "${args[@]}" "${sources[@]}"
 }
 
 ##############################################################################
