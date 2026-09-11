@@ -33,6 +33,27 @@
 
 die() { printf 'photo-import: %s\n' "$*" >&2; exit 1; }
 
+# ── THE SCRATCH DIRECTORY, AND WHY IT IS NOT `local` ────────────────────────
+#
+# immich-go reads ./immich-go.yaml if one happens to be in the working
+# directory, which would silently override the flags assembled below depending
+# on where an operator happened to be standing.  Running from a fresh empty
+# directory makes that impossible rather than unlikely.
+#
+# IT IS A GLOBAL DELIBERATELY.  The first version declared it `local` inside
+# cmd_import, with `trap 'rm -rf "$work"' EXIT` beside it.  The trap fires when
+# the SCRIPT exits — by which time cmd_import has returned and a local is out
+# of scope — so under `set -u` the cleanup itself failed:
+#
+#     photo-import: line 1: work: unbound variable
+#
+# Measured 2026-09-11, printed as the last line of a completely successful dry
+# run of 18,801 assets.  Harmless, and exactly the kind of harmless that gets
+# read as "the import broke at the end".
+_workdir=""
+cleanup_workdir() { if [ -n "$_workdir" ]; then rm -rf "$_workdir"; fi; }
+trap cleanup_workdir EXIT
+
 usage() {
   cat <<'USAGE'
 photo-import — import the retired Arch server's photographs into Immich.
@@ -52,6 +73,11 @@ importing INTO, minted in Immich under Account Settings -> API Keys:
     export IMMICH_API_KEY=...
     photo-import lgo -n        # read the summary before doing it for real
     photo-import lgo
+
+Optionally also export IMMICH_ADMIN_API_KEY (the `admin` account's key, which
+is NOT lgo's or sgo's).  It only lets immich-go pause Immich's background
+workers during the upload, which is faster; without it they keep running.
+It never changes WHERE the photos land — IMMICH_API_KEY decides that.
 
 Every asset is tagged `import/server001`, so a bad run can be found and
 removed in the UI as a group rather than hunted for by date.
@@ -230,6 +256,42 @@ cmd_import() {
     --on-errors "$onerr"
   )
 
+  # ── JOB PAUSING IS OFF UNLESS AN ADMIN KEY IS SUPPLIED ────────────────────
+  #
+  # immich-go pauses Immich's background workers during an upload by default,
+  # and THAT IS AN ADMIN OPERATION.  This deployment has a dedicated `admin`
+  # account that is nobody's daily login, so `lgo` and `sgo` are ordinary
+  # users and their keys cannot do it.  Left at the default, the binary stops
+  # with:
+  #
+  #   can't pause immich background jobs: pass an administrator key with the
+  #   flag --admin-api-key or disable the jobs pausing with the flag
+  #   --pause-immich-jobs=FALSE
+  #
+  # (read out of the immich-go 0.31.0 binary, 2026-09-11 — before the first
+  # real run rather than after it).
+  #
+  # So the default here is OFF, because the tool must work with exactly the
+  # credential the account being imported into actually owns.  What that costs
+  # is real but bounded: thumbnail generation and CPU-only ML run concurrently
+  # with the ingest instead of being deferred, so both are slower and the
+  # machine is busier.  For a one-off migration that is a fine trade.
+  #
+  # To get the faster behaviour, export an ADMIN key as well:
+  #
+  #     export IMMICH_ADMIN_API_KEY=...
+  #
+  # It is separate from IMMICH_API_KEY on purpose: that one still selects the
+  # destination library, and conflating them would silently import into the
+  # admin's library instead.
+  if [ -n "${IMMICH_ADMIN_API_KEY:-}" ]; then
+    args+=(--admin-api-key "$IMMICH_ADMIN_API_KEY" --pause-immich-jobs=TRUE)
+    jobs_note="paused via admin key"
+  else
+    args+=(--pause-immich-jobs=FALSE)
+    jobs_note="left running (no IMMICH_ADMIN_API_KEY)"
+  fi
+
   local p
   lines_to_array "$BAN"
   for p in "${_out[@]}"; do
@@ -250,17 +312,15 @@ cmd_import() {
   printf 'server:   %s\n' "$SERVER"
   if [ "$dry" = 1 ]; then printf 'dry run:  yes\n'; else printf 'dry run:  NO\n'; fi
   printf 'log:      %s\n' "$log"
+  printf 'bg jobs:  %s\n' "$jobs_note"
   printf 'sources:\n'
   for d in "${sources[@]}"; do printf '  %s\n' "$d"; done
   printf '\n'
 
-  # Run from an empty directory.  immich-go reads ./immich-go.yaml if one
-  # happens to be in the working directory, which would silently override
-  # flags set above depending on where an operator happened to be standing.
-  local work
-  work=$(mktemp -d)
-  trap 'rm -rf "$work"' EXIT
-  cd "$work"
+  # Run from an empty directory — see `_workdir` at the top of this file for
+  # why it is a global and what the `local` version cost.
+  _workdir=$(mktemp -d)
+  cd "$_workdir"
 
   immich-go "${args[@]}" "${sources[@]}"
 }

@@ -558,7 +558,7 @@
   #
   #   `nofail` here   -> a missing or mis-propertied zdata/photos costs
   #                      Immich, not sshd, not Jellyfin, not the VPN guest.
-  #   `photos-tree`   -> in containers/immich.nix, and unlike its audiobooks
+  #   `immich-dirs`   -> in containers/immich.nix, and unlike its audiobooks
   #                      counterpart it is `requires` + `requiredBy` on
   #                      container@immich rather than mere ordering.  An
   #                      Immich that starts without its media location is not

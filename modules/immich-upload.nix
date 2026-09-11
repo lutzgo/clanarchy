@@ -55,17 +55,40 @@
 #     is no "the moment it runs" to hand it a credential at, so the credential
 #     has to be at rest, which is what invariant #8 means by a clan var.
 #
-#   GENERATE BEFORE YOU DEPLOY — the traefik-acme rule, and it bites harder
-#   here because the key cannot exist before ernst is up.  clan-core cannot
-#   know a sops secret's path until the secret exists; until then
-#   `files.<n>.path` evaluates to the literal "/no-such-path" and THAT is what
-#   gets baked into the unit below.  A deploy that runs before
-#   `clan vars generate <machine>` produces a timer that can never succeed
-#   however often it fires, and it has to be rebuilt rather than restarted.
+#   THIS OPTION DEFAULTS TO OFF AND MUST BE ENABLED IN A SECOND STEP.  That is
+#   not caution, it is the only arrangement that works, and the first attempt
+#   at M22 got it wrong — measured on ernst, 2026-09-11.
 #
-#   The failure is at least loud and fail-closed: EnvironmentFile= on a missing
-#   path fails the unit, so it shows up in `systemctl --failed` rather than
-#   uploading nothing quietly.  The ordered steps are in docs/roadmap.md M22.
+#   The obvious design is the traefik-acme one: declare the generator, and tell
+#   the operator to GENERATE BEFORE YOU DEPLOY.  That rule works for the
+#   Cloudflare token because the token exists INDEPENDENTLY OF THIS FLEET — you
+#   can go and mint one at any time.  An Immich API key cannot: it is issued by
+#   a web UI served by a container that does not exist until ernst has been
+#   deployed.
+#
+#   And `clan machines update` RUNS THE GENERATORS FOR EVERY MACHINE IN THE
+#   FLAKE, not just the one being updated:
+#
+#       all_machines = list(flake.list_machines_full().values())
+#       run_generators(all_machines, full_closure=False)
+#           — clan_cli/machines/update.py
+#
+#   So a pending prompt on a LAPTOP blocks the ERNST deploy that would make the
+#   key obtainable.  Not an ordering hazard — a deadlock, and one that also
+#   takes out every unrelated deploy in the fleet until it is broken.  It is
+#   recorded as standing note SN5 in docs/roadmap.md, because the next person
+#   to add a prompted var will not be reading this file.
+#
+#   The sequence that does work: deploy ernst -> create the accounts -> mint a
+#   key -> set `enable = true` -> `clan vars generate <machine> --generator
+#   immich-api-key` -> deploy the laptop.
+#
+#   Once it IS enabled and the var exists, the old warning still applies to a
+#   REGENERATION: clan-core cannot know a sops secret's path until the secret
+#   exists, so `files.<n>.path` is the literal "/no-such-path" until then and
+#   that is what gets baked into the unit.  The failure is at least loud and
+#   fail-closed — EnvironmentFile= on a missing path fails the unit, so it
+#   appears in `systemctl --failed` rather than uploading nothing quietly.
 #
 #   ROOT READS IT, NOT ${cfg.user}.  systemd opens EnvironmentFile= as PID 1,
 #   before it drops to User=, so the clan var stays 0400 root:root and the

@@ -414,26 +414,38 @@ in
   # Host side — the state tree, the media-location guard, and the veth.
   ##############################################################################
 
-  # The database and the ML model cache.  NUMERIC ids on purpose: `immich` and
-  # `postgres` are container users and the host has no matching passwd entries.
-  # Same shape containers/traefik.nix uses for uid 3005.
+  # ── THERE ARE NO tmpfiles RULES IN THIS FILE, AND THE FIRST DEPLOY IS WHY ──
   #
-  # 0700 on both.  Nothing outside this container has any business in either,
-  # and unlike /srv/media there is no shared `media` group here — Immich
-  # hardlinks nothing, shares nothing, and is read by no other service.
+  # This container has FOUR host-side directories — the library on
+  # zdata/photos, and the database, the ML cache and their parent on
+  # zdata/state.  The first shipped as a unit (below) and the other three
+  # shipped as `systemd.tmpfiles.rules`, on the reasoning that only the
+  # library needs its dataset verified.
   #
-  # /srv/photos is DELIBERATELY ABSENT from this list.  It is created by the
-  # unit below instead, and the distinction is the one containers/arr.nix
-  # spells out for /srv/audiobooks: tmpfiles runs early and unconditionally, so
-  # a rule here would cheerfully create the photo library ON zroot whenever
-  # zdata/photos is not mounted.
-  systemd.tmpfiles.rules = [
-    "d ${stateRoot}            0700 ${toString immichUid}   ${toString immichGid}   -"
-    "d ${stateRoot}/postgresql 0700 ${toString postgresUid} ${toString postgresGid} -"
-    "d ${stateRoot}/ml-cache   0700 ${toString immichUid}   ${toString immichGid}   -"
-  ];
+  # THAT SPLIT DOES NOT SURVIVE A DEPLOY.  Measured on ernst 2026-09-11:
+  #
+  #     systemd-nspawn[15491]: Failed to clone /srv/state/immich/ml-cache:
+  #                            No such file or directory
+  #
+  # …five times, into the start limit.  The rules were correctly written into
+  # /etc/tmpfiles.d, and `systemd-tmpfiles-setup.service` was still showing the
+  # run from the previous BOOT, three days earlier: activating a new
+  # configuration does not re-run it in time for a container that the same
+  # activation starts.  So nspawn was asked to bind-mount a path that nothing
+  # had created yet.
+  #
+  # containers/arr.nix already carries this lesson for /srv/audiobooks — "a
+  # tmpfiles rule alone races the mount", and "THESE THREE ARE NOT tmpfiles
+  # RULES" — and this file took half of it.  All four directories now belong to
+  # the ordered unit below, which is `requiredBy` the container, so the
+  # ordering is a dependency rather than a hope.
+  #
+  # They are NOT also declared as tmpfiles rules as a belt-and-braces measure.
+  # Two declarations for one path is the M3 defect: tmpfiles enforces mode and
+  # ownership on EVERY run, so two that disagree take turns winning, silently,
+  # one per deploy.
 
-  # ── Verify zdata/photos is mounted, then create the library root ──────────
+  # ── Verify the datasets are mounted, then create every host-side directory ─
   #
   # The audiobooks-tree pattern from containers/arr.nix, with ONE deliberate
   # difference: this unit BLOCKS ITS CONTAINER, and that one does not.
@@ -454,11 +466,14 @@ in
   #
   # It FAILS rather than repairing itself, for the reason arr.nix gives: a unit
   # that silently fixes storage layout hides the fact that the layout was wrong.
-  systemd.services.photos-tree = {
-    description = "Verify zdata/photos is mounted and create Immich's media location";
+  systemd.services.immich-dirs = {
+    description = "Verify Immich's datasets are mounted and create its directories";
     wantedBy   = [ "multi-user.target" ];
-    after      = [ "srv-photos.mount" ];
-    requires   = [ "srv-photos.mount" ];
+    # BOTH mounts, because this unit now owns directories on both datasets —
+    # the library on zdata/photos and the database on zdata/state.  Missing the
+    # second would reintroduce the race in the other direction.
+    after      = [ "srv-photos.mount" "srv-state.mount" ];
+    requires   = [ "srv-photos.mount" "srv-state.mount" ];
     before     = [ "container@immich.service" ];
     requiredBy = [ "container@immich.service" ];
     serviceConfig = {
@@ -477,7 +492,7 @@ in
       fstype=$(findmnt --noheadings --output FSTYPE --target ${photosRoot} || true)
 
       if [ "$src" != "zdata/photos" ] || [ "$fstype" != "zfs" ]; then
-        echo "photos-tree: ${photosRoot} is NOT zdata/photos." >&2
+        echo "immich-dirs: ${photosRoot} is NOT zdata/photos." >&2
         echo "  found: source='$src' fstype='$fstype'" >&2
         echo "" >&2
         echo "  Refusing to create it, because doing so would put the family's" >&2
@@ -497,11 +512,52 @@ in
         exit 1
       fi
 
+      # The same check for the state dataset.  /srv/state has no `nofail`, so a
+      # failure here is a much rarer bird than the one above — but the database
+      # landing on zroot is the same class of disaster as the library doing so,
+      # and "much rarer" is not a reason to find out the hard way.
+      #
+      # THE TARGET IS THE PARENT, NOT ${stateRoot}, and that is not tidiness.
+      # `findmnt --target` on a path that DOES NOT EXIST YET returns nothing —
+      # it does not walk up to the nearest existing ancestor — so checking
+      # ${stateRoot} here fails on every first run, before this unit has had a
+      # chance to create it.  Measured on ernst 2026-09-11: this guard refused
+      # its own first deploy, reporting an empty source.
+      #
+      # (Do not write that empty string as a quoted literal in this comment.
+      # Two single quotes close a Nix indented string, so the file stops
+      # parsing — which is the SECOND thing this line cost.)
+      #
+      # The check above gets away with the direct form only because
+      # /srv/photos is itself a mount point and therefore always exists.  The
+      # question being asked is in any case about the DATASET, which is
+      # /srv/state.
+      ssrc=$(findmnt --noheadings --output SOURCE --target /srv/state || true)
+      if [ "$ssrc" != "zdata/state" ]; then
+        echo "immich-dirs: /srv/state is not zdata/state (found '$ssrc')." >&2
+        echo "  Refusing to create Immich's database directory, because it" >&2
+        echo "  would land on zroot and be rolled back on the next boot." >&2
+        exit 1
+      fi
+
       # 0700 immich:immich, matching what the module's own tmpfiles rule
       # asserts for mediaLocation.  No `media` group and no setgid: nothing
       # else on this machine reads these files, which is the whole difference
       # from the 2770 root:media trees under /srv/media.
       install -d -o ${toString immichUid} -g ${toString immichGid} -m 0700 ${photosRoot}
+
+      # The three on zdata/state, in parent-first order.  NUMERIC ids on
+      # purpose: `immich` and `postgres` are container users and the host has
+      # no matching passwd entries — the same shape containers/traefik.nix
+      # uses for uid 3005.
+      #
+      # postgres' 71 is NOT one of ours: it is a well-known NixOS static id,
+      # and nspawn passes ids through unmapped, so it lands on zdata as 71.
+      # 0700 is not cosmetic on that one — PostgreSQL refuses to start if its
+      # data directory is group- or world-readable.
+      install -d -o ${toString immichUid}   -g ${toString immichGid}   -m 0700 ${stateRoot}
+      install -d -o ${toString postgresUid} -g ${toString postgresGid} -m 0700 ${stateRoot}/postgresql
+      install -d -o ${toString immichUid}   -g ${toString immichGid}   -m 0700 ${stateRoot}/ml-cache
     '';
   };
 
@@ -727,17 +783,45 @@ in
           # "true"/"false".
           IMMICH_ALLOW_SETUP = lib.boolToString adminSetupOpen;
 
-          # Prometheus telemetry on ${toString metricsPort}.  UNVERIFIED AT
-          # WRITE TIME and it must not be reported as working until it has been
-          # looked at: this was read off the built server's env-var table
-          # (`IMMICH_API_METRICS_PORT || 8081`) rather than measured against a
-          # running instance.  M13 dropped Ollama's scrape target for exactly
-          # this reason — it was assumed to serve /metrics and answered 404.
-          # The M22 test plan checks for `immich_*` series in Prometheus and
-          # says so either way.
+          # Prometheus telemetry on ${toString metricsPort}.
+          #
+          # WRITTEN UNVERIFIED, THEN VERIFIED — and both halves are worth
+          # keeping.  The port and this variable were read off the built
+          # server's env-var table (`IMMICH_API_METRICS_PORT || 8081`) rather
+          # than measured, which is EXACTLY the evidence M13 had for Ollama's
+          # /metrics before it turned out to answer 404.  So it shipped labelled
+          # as a guess.
+          #
+          # MEASURED ON ERNST 2026-09-11, after the first successful deploy:
+          # HTTP 200 from the monitoring container, **985 `immich_*` series**
+          # out of 1384 sample lines, and `up{job="immich"} == 1` in Prometheus.
+          # The guess was right; the labelling was still the right thing to do,
+          # because the alternative was a claim nobody would have checked.
           IMMICH_TELEMETRY_INCLUDE = "all";
         };
       };
+
+      # ── 0700 ON THE LIBRARY, AND IT TAKES THESE TWO LINES ────────────────
+      #
+      # Upstream tries to do this and is overridden by systemd.  The module
+      # ships a tmpfiles rule whose comment says installs that made the media
+      # storage world-readable were "a privacy risk" — and then sets
+      # `StateDirectory = "immich"` on the same unit, which systemd creates and
+      # enforces at its DEFAULT 0755, after tmpfiles has run.
+      #
+      # MEASURED, not reasoned: the first deploy of this container produced
+      # `drwxr-xr-x 3036 3036 /srv/photos` on the host, despite this file's own
+      # `install -d -m 0700` in immich-dirs AND upstream's `e … 0700` rule.
+      # systemd wins both.
+      #
+      # It matters here more than on a single-user box: /srv and /srv/state are
+      # 0755 root-owned, so the traversal path is open, and ernst carries `go` —
+      # the couch account that AUTOLOGINS on the television without a password.
+      # At 0755 that session can read the entire family photo library straight
+      # off the filesystem, bypassing every account and share-link control this
+      # milestone is built out of.
+      systemd.services.immich-server.serviceConfig.StateDirectoryMode = "0700";
+      systemd.services.immich-machine-learning.serviceConfig.CacheDirectoryMode = "0700";
 
       # Pin the ids.  The module creates `immich` with no uid, which would make
       # it whatever the container's useradd picks — and nspawn passes ids
