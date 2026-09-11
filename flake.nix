@@ -304,6 +304,16 @@
           # in docs/roadmap.md M16 — a deleted rationale is a rationale that
           # gets re-lost.
           ./machines/ernst/containers/crowdsec.nix
+          # M22.  Immich — the household photo library, on the NSPAWN tier
+          # because `services.immich` is a first-class NixOS module at this
+          # pin and there is no image to escape to.  Owns zdata/photos, and
+          # declares the `photo-import` command that moves the retired Arch
+          # server's photographs out of /srv/unsorted.
+          #
+          # Public on `photos.goclan.org` with NO forward-auth — two phone
+          # apps, the TV add-on, and shared album links that are answered
+          # anonymously by design.  See containers/ingress-policy.nix.
+          ./machines/ernst/containers/immich.nix
           # microvm.nix's host module, and the one guest that uses it (M3).
           # The import lives here rather than inside wg-qbittorrent.nix
           # because `inputs` reaches a machine module via _module.args, and

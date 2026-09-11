@@ -133,6 +133,24 @@ rec {
     # Its WEB UI is a different matter and goes to Authelia's OIDC provider
     # instead — see containers/cwa.nix.
     (h "cwa")
+
+    # Immich (M22).  THREE client classes, and the third is why this entry is
+    # not simply "another mobile app".
+    #
+    #   The mobile app (FP5, FP4) posts to /api/auth/login and then carries a
+    #   bearer token.  The ordinary appApiHosts argument, same as Jellyfin's.
+    #   The Kodi add-on on the TV speaks `x-api-key` over http.client, with no
+    #   cookie jar and no browser at all.
+    #   A SHARED ALBUM LINK is answered to an ANONYMOUS caller BY DESIGN.  That
+    #   is the feature — it is how Sabine, who has no account here, sees the
+    #   albums lgo sends her — and forward-auth would break it completely.
+    #
+    # So part of this vhost is MEANT to be unauthenticated, which no other
+    # entry in this list is true of.  The honest statement of the posture is in
+    # containers/immich.nix's header: Immich's accounts bound the LIBRARY, and
+    # possession of a link bounds anything explicitly shared.  Shared links
+    # take an expiry and a password in the UI; use them.
+    (h "photos")
   ];
 
   ############################################################################

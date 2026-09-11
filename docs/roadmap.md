@@ -66,6 +66,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M19 — llama.cpp on ernst | **DEPLOYED AND FULLY VERIFIED 2026-09-09** | — | **Ollama is gone from ernst**, replaced by llama-swap in front of `llama-server` in router mode. Taken on measurement, not preference: context overflow stops being silent (**HTTP 400 naming both numbers**, where ollama returned HTTP 200 with the head of the prompt discarded and a **fabricated MAC** in its place), which closes [SN1](#sn1--the-model-tag-silently-sets-the-context-window)'s core hazard at the mechanism. Decode −3.1% at f16; **`q8_0` lost its reason to exist** and the fleet default reverts to f16. The `<tool_call>` reinforcement **stays** — llama.cpp's independent Jinja parser fails identically (26/30 dropped-tag at baseline, **zero** "present but unparsed" in eight cells across both servers), so the defect is the model's and the four-line rule is still 100%. Adds voice (whisper.cpp, **CPU — a measured packaging gap**), vision, and Open WebUI on VLAN 90 behind Traefik + Authelia. `imagegen` is **written and not enabled**: no first-party ComfyUI image exists. **M19 changes ernst's attack surface in two named places** (L9, L10) — unlike M11, which changed it not at all. [M19](#m19-featernst-local-ai-llamacpp) |
 | M20 — SearXNG / web search | **done — deployed and fully verified 2026-09-10, end to end; TWO DEFECTS found after the first deploy, both fixed and confirmed live** | [#171](https://github.com/lutzgo/clanarchy/pull/171) | **The infrastructure was right on the first try and the feature still did nothing.** Every structural check passed — container up on `10.0.90.24`, JSON `200`, non-permitted VLAN 90 hosts time out (exit 28), nine LAN targets unreachable including both llama-swap veths, egress confirmed as the house WAN `78.94.91.74`. But **the engine set returned `number_of_results: 0` for every query**: `duckduckgo`/`startpage` CAPTCHA, `qwant`/`mojeek` 403, `brave` 429. That set was reasoned rather than measured and **the PR said so** — which is the only reason it was caught. Replaced with a measured one (`bing` 10, `yandex` 15, `encyclosearch` 15, `mwmbl` 30, `brave` intermittent → **68 results** combined, NHS and NIH among them); **four of the five are `disabled: true` upstream**, a second silent route to zero. Two things learned by testing rather than reasoning: **Google answers and its parser extracts nothing** (absent for a better reason than the one guessed), and **Wikipedia/Wikidata return `infoboxes`, which Open WebUI never reads** — dead weight from day one. Second defect: units shipped at **9.2 UNSAFE** vs a stated ≤ 2.0 target → **1.1 OK**, exercised with a live query, not just re-scored. **End to end in the browser the milestone's own question now returns 12 sources with NIH and Cleveland Clinic cited inline** — the M19 failure that opened M20, closed. With search off the model *declines* to rate rather than fabricating, which is the honest failure mode. One caveat recorded rather than smoothed: `drberg.com` made the source list and the model called the set "reputable" — retrieval quality and rating quality are not the same thing. **The design, unchanged by any of the above:** SearXNG on **nspawn**, VLAN 90, **no hostname and no Traefik route** — Open WebUI is the only client and the container firewall accepts one address. **The milestone's own central premise was false**: this is *not* the fleet's first service to talk to the open internet on its own behalf. Prowlarr fetches from indexers, tubesync pulls arbitrary YouTube URLs, and **FlareSolverr renders hostile indexer pages in a real browser engine on the *podman* tier** — one step *down*. Read against how the repo has actually applied it, [invariant #1](#architecture-invariants)'s line is a **killswitch requirement**, which search does not have; the VPN-guest egress was rejected on arr.nix's own eztvx.to measurement (a datacenter exit makes fetches *fail* that otherwise succeed). **The LLM gets no tool, deliberately**: Open WebUI registers `search_web` and `fetch_url` under one flag, so the tool path would hand *Open WebUI* arbitrary outbound HTTP — and M19's 20/20 does not transfer, because that was measured with the `<tool_call>` reinforcement the **opencode** role injects and Open WebUI ships nothing of the kind. Snippets only, no embedding: the default would have pulled an **unpinned, un-hash-verified** `all-MiniLM-L6-v2` off HuggingFace at runtime. Two facts that would each have failed silently: SearXNG ships **`formats: [html]`**, so JSON is off by default and every query would 403; and the limiter's botdetection would have **blocked the only client**, whose UA is literally `Open WebUI … RAG Bot`. Takes **uid 3035 / seq 10 / 10.0.90.24**, the pair M21 gave back. [M20](#m20-featernst-searxng) |
 | M21 — image generation | **done — verified working 2026-09-10; BUILT not pinned, and SIX defects surfaced after "shipped"** | — | ComfyUI is **built from source** (`service-modules/pkgs/comfyui`, eight derivations) and **spawned by llama-swap** like `llama-server`, inheriting its ROCm sandbox — so eviction is a process kill and the exclusive `gpu` group now holds three members. It is **not on the podman tier**, and this milestone planned to put it there. Both of its premises were false: the `roles.imagegen` M19 "already built" could not have run (it registered `proxy` with no `cmd` — the "empty command" shape M19 itself documented), and there was no image worth pinning (**AMD's own `rocm/comfyui` is `gfx942;gfx950` — it cannot use this card**; the 1647★ community image's digest pins only its first install; the one that fits has 1 star). Underneath both: an unprivileged llama-swap could never have started or stopped a rootful container, which eviction requires. The ROCm torch stack turned out to be **cache-substitutable**, so building cost far less than assumed. Weights via `roles.models` as planned, plus a new `subdir`; SDXL base 1.0, hash verified twice. **uid 3035 / seq 10 / 10.0.90.24 released back to [M20](#m20-featernst-searxng)** — M21 took no uid, MAC or address. **The exclusivity proof is done** (evict → image → reload, ~10 s). Image EDITING ships too (#167/#169). But six defects surfaced after this was first called shipped — a fetch unit that had failed since M19, three missing/empty Open WebUI env vars, ROCm SDPA, and an img2img OOM on any phone photo — **every one of them deploying green and several running to completion**. The verification line the milestone lacked: *state what you asked for and say whether you got it*. [M21](#m21-featernst-imagegen) |
+| M22 — Immich | **built 2026-09-11 — the deploy, the `zfs create`, the DHCP reservation, both DNS records, the accounts and the import are lgo's** | — | The household photo library: `services.immich` 2.7.5 in an **nspawn** container on `02:00:00:90:00:11` → `10.0.90.25`, uid/gid **3036**, seq **11**. **TWO DATASETS, AND THE SPLIT IS THE DESIGN**: `zdata/photos` (recordsize 1M, auto-snapshot, the library) and `/srv/state/immich` (128K, PostgreSQL + the ML model cache) — the same service's data wanting opposite recordsizes is the whole reason it is not one dataset. **THE MILESTONE'S OWN BRIEF BUDGETED A CLAN VAR AND A STAGING UNIT AND NEITHER IS NEEDED**: PostgreSQL and Redis are both reached over unix sockets, and the module asserts a `secretsFile` is required *only* when postgres is not — so every failure mode a staged secret would have introduced (a var generated after the deploy, a stale copy, a blank prompt) is absent by construction rather than handled. **`photos.goclan.org` is the fleet's SIXTH `appApiHosts` name and the first whose exemption is not only about clients**: two phone apps and the Kodi add-on cannot follow a 302, but a **shared album link is answered anonymously by design** — that is how Sabine sees an album without an account, and it means "the app's own accounts are the boundary" is only half true here (ledger **L13**). **The first-run window is closed by a MECHANISM, not by being quick** — `IMMICH_ALLOW_SETUP=false` plus the public A record created last — where M14's Audiobookshelf had only "create the account immediately". **NO UDM-Pro RULE AND NO NEW LEDGER SHIM**, against the L12 precedent: the TV reaches Immich through Traefik because the add-on speaks HTTPS, so the container firewall admits two addresses and the television is not one of them. **GPU: NONE, deliberately** — `accelerationDevices = [ ]` becomes `PrivateDevices=true`, keeping this off both the 7900 XTX (llama-swap's exclusive `gpu` group) and the iGPU (Jellyfin's VAAPI), per invariant #5. **The Kodi add-on is out-of-tree third-party code** (`vladd11/immich-kodi`, pinned to `prerelease-7`), and the `withPackages` silent-drop trap was **proven avoided by inspecting the built env**, not assumed. **THE IMPORT TOOL FOUND THREE DEFECTS IN ITS OWN SOURCE LISTS BEFORE ANY DATA MOVED** — a directory that does not exist, and 39 GB of encrypted Signal backups in two folders that looked like photo trees. **Two things are shipped UNVERIFIED and say so**: the Prometheus target (port read off the binary, the M13/Ollama evidence exactly) and the container-vs-upstream-hardening interaction. [M22](#m22-featernst-immich) |
 
 ---
 
@@ -109,6 +110,26 @@ Jellyseerr is unprotected too, but on a *different* argument (its posture is a
 Jellyfin-account login, so removing forward-auth swaps one login for another).
 Do not merge the two reasonings — a future service with a browser-only client
 gets the middleware however household-facing it is.
+
+**Since M22 there is a THIRD reasoning, and it is not the client clause.**
+`photos.goclan.org` (Immich) carries no forward-auth for the usual reason —
+two phone apps and the TV add-on, none of which can follow a 302 — but it is
+also the first name in this fleet where **part of the surface is meant to be
+unauthenticated**. An Immich shared album link is a URL the server answers to
+an anonymous caller by design; that is how a family member with no account
+here sees an album at all. Forward-auth would not weaken that feature, it
+would delete it.
+
+So for this one name the honest statement is not *"the application's own
+accounts are the boundary"*. It is: **accounts bound the library, and
+possession of a URL bounds anything explicitly shared** — from anywhere on the
+internet, until the link is revoked. Immich offers a per-link expiry and
+password and they are runtime state; nothing in this repo can set them.
+
+The complete, enforced list of exempt names lives in
+`machines/ernst/containers/ingress-policy.nix`, not here — that file is
+consumed by both `traefik.nix` and `authelia.nix`, and `withWan` throws at
+evaluation if a router disagrees with it.
 
 **5 — GPU allocation on ernst is fixed, and passthrough is rejected.**
 
@@ -593,6 +614,7 @@ Rows are retired only by the PR that actually removes the rule.
 | L10 | `chat.goclan.org` — Open WebUI on `10.0.90.23`, VLAN 90 | M19 (`service-modules/local-ai.nix`, `roles.webui`) | The milestone's web client. An ordinary Traefik backend, not a shim | **None — this is the permanent shape**, not an interim rule. It has a row only because it is the second half of the attack-surface change L9 begins, and the two should be read together. Invariant #3 is satisfied without exception: consumer VLANs reach it through `traefik:443` and nothing else, and the container's own firewall accepts `10.0.90.12` only | **ACTIVE — created by M19; WAN-EXPOSED 2026-09-10 on lgo's decision.** M19 deliberately kept it out of `wanExposed`, calling it "an unauthenticated-by-design conversation surface onto a model with tool access". **That objection did not survive contact with the mechanism**: `chat` is in `protectedHosts`, so its router carries `authelia`, and `mkWan` *copies the LAN router's middlewares* onto the wan twin. Verified on the evaluated config — `openwebui-wan` is `["wan-ratelimit","wan-inflight","authelia"]`, and Authelia's `access_control` puts `chat.goclan.org` under the **admins-only `two_factor`** rule. So the public path is rate-limited → forward-auth → 2FA → OIDC, which is **stronger than the five `appApiHosts` names already exposed**, where Authelia is never consulted at all. M19's own advice was followed to the letter: it stays in `protectedHosts` and did **not** move to `appApiHosts`. What genuinely widens: `ENABLE_OAUTH_SIGNUP` auto-creates an account for anyone clearing Authelia (bounded to admins by that rule), the break-glass `ENABLE_LOGIN_FORM` becomes a second door for anyone already through the first, and an Authelia compromise is now worth more — it reaches the household's conversation history, the GPU and outbound search. Eighth A record; **DNS-only, no proxy**, or CrowdSec sees one source for the whole internet |
 | L11 | SearXNG on `10.0.90.24:8888`, VLAN 90, **no hostname** — plus the outbound path that is the actual change | M20 (`service-modules/local-ai.nix`, `roles.search`) | The stack's only door to the open internet. **The inbound half is the smaller half**: one listener, reachable from `10.0.90.23` and nothing else, enforced by the container's own firewall. **The outbound half is why this row exists** — a container that initiates connections to third parties on a household user's typed query, which nothing in the M19 stack did | **None — this is the permanent shape**, like L10 and for the same reason: it is recorded because it changes ernst's attack surface, not because it is a shim. Invariant #3 is untouched — **no consumer VLAN rule was added at all**, and no UDM-Pro policy changed. Revisit if it ever acquires a hostname, which would make it `protectedHosts` (browser-only UI) and a Traefik route | **ACTIVE on deploy — created by M20, NOT YET DEPLOYED.** Two things worth reading next to L9/L10. First, the **egress is deliberately the ordinary path** — DHCP default route to the UDM-Pro, so it is subject to the same zone policy as every other container and is *visible* at the gateway; host SNAT would have hidden it behind ernst's own address, and `networking.nat.externalInterface` is a single string already claimed for `"zt+"`. Second, **the reachable set is declared**: a `keep_only` engine list, so this contacts seven named engines and no others — a smaller surface than tubesync's or FlareSolverr's, both already at or below this tier. It is **not** on the `ai0` veth, so a compromised SearXNG has no route to llama-swap; that absence is structural, not a rule that could be edited away |
 | L12 | `Servers (50)` → Tvheadend HTSP `10.0.90.18:9982/tcp` | UDM-Pro ZBF policy `Allow Kodi to Tvheadend HTSP` (added 2026-09-10) **plus** a `-s 10.0.50.10/32 --dport 9982` accept in `machines/ernst/containers/tvheadend.nix` | The htpc role's Kodi gained the `pvr-hts` add-on, and **HTSP is not HTTP** — no Traefik route can front it, so the client must reach the container directly. Kodi runs on the **host**, whose `br0` is a member of VLAN 50 only, so the flow is routed by the UDM-Pro and lands on the `Internal → Services` zone pair | **None — this is the permanent shape**, like L10 and L11 and for the same reason: it is recorded because it changes ernst's attack surface, not because it is a shim. A reverse proxy cannot retire it; only dropping live TV would | **ACTIVE — created 2026-09-10** with [#175](https://github.com/lutzgo/clanarchy/pull/175) (container half) and by lgo on the UDM-Pro (policy half). **Both halves are load-bearing, in opposite directions**: without the policy nothing arrives — the `Internal → Services: Block All` default dropped it silently, six SYN retransmits with no RST while the container's accept rule stayed at zero packets, which is the M5 shape all over again; without the container rule the container refuses what does arrive. **THE PART TO READ BEFORE TOUCHING THIS**: the policy as entered is BROADER than this row's title — source is the whole `Servers` network and destination is `Any` in the Services zone, so the `/32` in `tvheadend.nix` is the only thing restricting HTSP to Kodi. That matters more than it looks, because **this Tvheadend has no access control at all** — measured 2026-09-10, `/srv/state/tvheadend` has no `accesscontrol` and no `passwd` directory (zero access entries means full rights for everyone), and `/api/serverinfo` answers with no credentials. So HTSP here is anonymous and full-rights, exactly like the 9981 admin UI the container file refuses to widen. An earlier revision of that file claimed HTSP "authenticates on its own" and used that to argue the widening was safe; it was written before anyone checked, and is corrected in the same PR as this row. **If a second HTSP client ever appears, give Tvheadend a real access entry FIRST** — adding a second address without one hands full rights to another machine |
+| L13 | `photos.goclan.org` — Immich on `10.0.90.25`, VLAN 90, **on the `wan` entrypoint** | M22 (`machines/ernst/containers/immich.nix` + the router in `containers/traefik.nix`) | The household photo library, reachable by two phone apps from outside the house — which is the requirement, not a side effect. An ordinary Traefik backend, not a shim | **None — this is the permanent shape.** Recorded because the `wanExposed` header requires a ledger row for every name added to the internet-facing set, not because anything here is temporary. **Two things make this row worth reading rather than counting.** First, the exposure is real and is argued in `ingress-policy.nix`: no forward-auth, Immich's own accounts, and — uniquely in this fleet — an **anonymous-by-design shared-link surface**, which is the feature that lets Sabine see an album without an account and is also the one thing no middleware in front of it can bound. Second, **M22 ADDS NO UDM-Pro RULE AT ALL**, which is the opposite of what the nearest precedent would predict: L12 gave Kodi a bespoke ZBF policy to reach Tvheadend over HTSP, because that protocol cannot traverse a reverse proxy. The Immich add-on speaks ordinary HTTPS, so the TV reaches it through `photos.goclan.org` under M5's existing `Allow Traefik` policy. The container firewall admits exactly two addresses — Traefik on 2283 and the monitoring container on 8081 — and the television is not one of them |
 | — | **M13's Jellyseerr and M15's Tdarr routes** | Traefik (`containers/traefik.nix`), M13 and M15 | Both are ordinary Traefik routers on names the M5 wildcard already covers, riding the permanent `Allow Traefik` rule. **Neither is a shim** — listed so nobody creates a ledger row for a route | **permanent** — this is invariant #3 working as designed, not an exception to it | not created. **M15's half is now moot**: the milestone closed 2026-08-29 without shipping, so the Tdarr router was never created (the guidance stands for any future service: `authelia` middleware, not `mgmt-only`, which M7 deleted per L5). M13's Jellyseerr router exists and deliberately carries **no** middleware (household service; its posture is Jellyseerr's own Jellyfin-account login — see M13). Copy the *arr routers for anything new. Adding a hostname to the middleware also means adding it to `access_control` in `containers/authelia.nix`, which is deny-by-default: a route with the middleware and no matching rule fails **closed** |
 | — | `WAN → jellyfin` **+ `komga` + `navidrome` + `cwa`**, via the `wan` Traefik entryPoint, **none of them behind Authelia** | 2026-09-08 — `containers/ingress-policy.nix` (`appApiHosts`) + `containers/traefik.nix` (`wanExposed`) + four public A records | **THE LARGEST SINGLE GROWTH OF THE INTERNET-FACING SURFACE SINCE M18, and the first time the unauthenticated surface is the rule rather than the exception.** Before this the external set was `jellyseerr` + `auth` (both behind Authelia) + `audiobookshelf` (the one bypass). It is now seven names, **five of which answer the application rather than the portal**. **Why each is exempt**: forward-auth is a redirect protocol and none of these has a client that can follow a 302 — TV/Chromecast/DLNA (jellyfin), bearer-token mobile apps (audiobookshelf), Komelia + Mihon + OPDS (komga), the Subsonic protocol which carries the credential as a **query parameter** (navidrome), and OPDS + a Kobo device token **in the URL path** + KOReader `/kosync` (cwa — a Kobo e-reader has no browser at all). **`jellyfin` IS A REVERSAL**: M18 deliberately kept it off `wan` AND used it as the negative control proving the entrypoint is fail-closed. That control is spent, by lgo's decision; the replacement control is `sonarr`, which is strictly better because it carries forward-auth so a leak would be caught twice. The old "never expose jellyfin" note was **Cloudflare's terms of service**, not a security rule, and died with the tunnel in M18. **What is NEW here and did not exist for audiobookshelf's row above**: the exemption is now a **MECHANISM, not a comment**. `ingress-policy.nix` is the single source both traefik.nix and authelia.nix read, and `withWan` gained four evaluation-time throws — an appApi host given forward-auth, a protected host **missing** it (the fail-OPEN direction, which `default_policy = "deny"` does NOT catch), a routed hostname classified nowhere, and an unparsable rule. All three new branches were verified to fire. The RomM 403 that `authelia.nix` predicted in prose and then suffered anyway is now a build error. **Compensation, since Authelia's 2FA and per-user regulation protect none of these**: `wan-login-ratelimit` (1/10s, burst 5) on higher-priority `<name>-wan-login` routers — because `wan-ratelimit` at 50/s is sized for browsing and is 4.3M password guesses a day — plus the local CrowdSec scenario `clanarchy/app-api-auth-bf` (10× 401/403 in 5 min → ban), which is the ONLY control covering Subsonic and Komga's HTTP Basic, where the credential is on every request and there is no distinct login path to limit. **Residual exposure, stated rather than buried**: no second factor on any of the five; Komga has no separate admin surface to keep off the public vhost and no brute-force limiter of its own; **no geo-restriction** — asked for and deliberately not built, because the only route is a Yaegi plugin fetched unpinned from plugins.traefik.io at Traefik's startup, which traefik.nix rejects on stronger grounds than the thing it would defend against. **Preconditions no file can enforce**: strong accounts on all five, and admin accounts created IMMEDIATELY on komga/navidrome/cwa — their first-run flows are unauthenticated by construction, which on the WAN is not a survivable window. **NO AAAA RECORDS, and this is load-bearing**: there is no GUA anywhere on this path, the CrowdSec bouncer has `nftables.ipv6.enabled = false`, and a v6 path would bypass the DNAT and therefore the `wan` entrypoint while being unbannable — SN2 unchanged | **permanent** — a `—` row, in the same shape as the audiobookshelf and qBittorrent WebUI rows, so a future milestone does not mistake it for something to retire and "fix" by adding the middleware back. `withWan` check (e) now makes that attempt a build failure rather than an outage | **created 2026-09-08** (built and evaluated; live once lgo deploys, the four A records resolve — `jellyfin` and `navidrome` already do — and the off-net checks in docs/guides/ernst-app-api-ingress.md pass) |
 | — | `WAN → jellyseerr.goclan.org` **+ `auth.goclan.org`**, via the `wan` Traefik entryPoint | M18 — `containers/traefik.nix` (`wanExposed`) + a UDM-Pro DNAT | **THE SAME BYPASS AS M16'S ROW BELOW, THROUGH A DIFFERENT MECHANISM — it is not a new exposure and the hostname set has not grown.** Architecture invariant #4 requires bypasses to be listed; this is the live one. **Mechanism**: the UDM-Pro DNATs WAN `:443` → `10.0.90.12:8443`, which is Traefik's `wan` entryPoint; a router reaches it if and only if it names `wan`, and only `jellyseerr-wan` and `authelia-wan` do — copied by `withWan` from their LAN twins so rule, service and forward-auth cannot disagree between the two paths. **Two independent gates**: the entrypoint, and public DNS (only these two names have A records; everything else NXDOMAINs from outside). **Fail-closed by construction, with a mechanism and not a comment**: `withWan` THROWS at evaluation if any router omits `entryPoints` (Traefik binds such a router to every entrypoint — measured), if `wanExposed` names a router that does not exist, or if any router adds `wan` by hand. **Where this is weaker than the tunnel, stated**: a request to the bare public IP with any SNI completes a TLS handshake and gets `404` + `CN=TRAEFIK DEFAULT CERT` — an existence disclosure, not an exposure, and the case DNS cannot gate. **Auth posture unchanged from M16**: `two_factor` for `admins` OR `household` on jellyseerr, Jellyseerr's own Jellyfin login underneath, and `auth.goclan.org` external because forward-auth is a redirect protocol. **Plus what the tunnel never had**: `rateLimit` + `inFlightReq` on the wan routers only, and CrowdSec dropping at the packet layer. **:80 IS NOT FORWARDED** — ACME is DNS-01, HTTP-01 never runs, and this row is where that is written down so nobody opens it "for Let's Encrypt" | **permanent** — a `—` row, in the same shape as the qBittorrent WebUI row, so a future milestone does not mistake it for something to retire and "fix" by removing the restriction | **created 2026-09-03** (M18 built; live once lgo runs the UDM-Pro forward, the two public A records and the deploy, and the off-net negative controls pass) |
@@ -9823,6 +9845,387 @@ to curl any more — it listens on an ephemeral loopback port llama-swap
 chooses), and **whether eager `comfy_kitchen` is fast enough to live with**,
 which has no number yet. M19's warning still applies to the latter: a plausible
 result at a bad throughput is a fallback.
+
+---
+
+## M22 — `feat/ernst-immich`
+
+The household photo library, and the two workflows that feed and read it. Built
+2026-09-11 in one session; **the deploy and every step that touches the live
+pool, the router or an account is lgo's** and is listed below in order.
+
+This section is a build close-out rather than a session prompt. It is written
+the way the open milestones' prompts are — decisions stated, premises marked as
+measured or not — because the next person to touch Immich will read this before
+they read any file.
+
+### What it is for, stated before anything technical
+
+Four requirements, from lgo, and every design decision below serves one of them:
+
+| | |
+|---|---|
+| the old server's photographs get a home | `/srv/unsorted` is the retired `tomala-server001`, and its photo trees are the last copy once that box is wiped |
+| two phones back up, from anywhere | lgo's FP5 and Sarinah's FP4. **From anywhere** is what puts a hostname on the `wan` entrypoint |
+| the living room can look at them | Kodi on the TV, which ernst already boots into |
+| finished darktable exports land automatically | Sony ILCE → darktable on miralda/jens → Immich. **Exports, not raws** |
+
+Sabine (biene, lgo's mother) is **not** a user of this system and deliberately
+has no account: she is sent shared album links. That single fact is load-bearing
+for the auth design and is why the posture below is not the one Audiobookshelf
+got.
+
+### What shipped
+
+| File | What |
+|---|---|
+| `machines/ernst/containers/immich.nix` | The container, the veth, the media-location guard, and `photo-import`'s source lists |
+| `machines/ernst/photo-import.sh` | The body of `photo-import` — `rom-import`'s split, for the same reason |
+| `machines/ernst/disko.nix` | `zdata/photos`, plus its `nofail` and the argument for it |
+| `docs/guides/ernst-zdata-datasets.md` | The `zfs create` for it. **M14 skipped this step and put ernst in emergency**; it is not optional |
+| `machines/ernst/networking.nix` | MAC/address row for seq 11, uid rows for 3036 and for postgres' 71 |
+| `machines/ernst/containers/ingress-policy.nix` | `photos` in `appApiHosts`, with the shared-link argument |
+| `machines/ernst/containers/traefik.nix` | Backend, router, `wanExposed`, `wanLoginPaths` |
+| `modules/roles/pkgs/immich-kodi.nix` | The Kodi add-on, out-of-tree, pinned |
+| `modules/roles/htpc.nix` | It, in the add-on set, built from the selector's own `p` |
+| `modules/immich-upload.nix` | The darktable timer, its clan var, and why it is a timer |
+| `service-modules/monitoring.nix`, `clan.nix` | The scrape target, marked unverified |
+| `docs/guides/ernst-app-api-ingress.md` | The exempt **six**, and step 1c |
+
+### Decisions settled before any code was written
+
+Asked and answered rather than assumed, because each changes the build:
+
+- **Storage: a new `zdata/photos` that Immich owns.** Not an external library
+  over `/srv/unsorted` in place. Immich copies an upload into its own
+  storage-template path and owns the result; the old tree stays until a human
+  deletes it.
+- **Public on `wan`, with Immich's own auth** — an invariant #4 bypass, argued
+  below.
+- **Accounts: `lgo` and `sgo`.** Sabine gets links.
+- **RAW: the existing DNGs yes, new ARWs no.** The ~6.1k DNGs already on the old
+  server are the only copy of those shots. The ILCE's new ARWs are working files
+  with a finished export beside them, and Immich is a library, not a raw
+  archive. `modules/immich-upload.nix` states this at the top because it is the
+  decision a later reader is most likely to "fix".
+- **Kodi: package a community add-on**, specifically `vladd11/immich-kodi`, over
+  the alternative of pointing Kodi at the library path as a plain Pictures
+  source.
+
+### Five premises that did not survive checking
+
+**1. The DB password clan var is not needed, and neither is the staging unit.**
+The brief budgeted an `immich-db-password` generator and an `immich-secrets`
+oneshot in the `traefik-secrets` shape. `services.immich` asserts
+
+```
+assertion = !isPostgresUnixSocket -> cfg.secretsFile != null;
+```
+
+so with PostgreSQL and Redis both on their unix sockets — the module's own
+defaults — there is no secret to stage. **Every failure mode the staged secret
+would have introduced is absent by construction rather than handled**: a var
+generated after the deploy so `.path` is `/no-such-path`, a staged copy going
+stale until someone restarts the unit, a blank prompt stored as an empty
+credential. The one credential this service does involve — an API key — cannot
+exist before the first deploy, so it is not a clan var *on ernst* either; see
+"two opposite answers" below.
+
+**2. `photo-import`'s own source lists were wrong, and its `survey` subcommand
+is what found it.** Run against the real trees on ernst before any data moved:
+
+| tree | images | videos | other | size | verdict |
+|---|---|---|---|---|---|
+| `Bilder` | 15,628 | 129 | 100 | 67 GB | keep |
+| `Lutz/Pictures` | 3,434 | 0 | 58 | 25 GB | keep |
+| `Lutz/Signal` | **1** | 0 | **3** | **36 GB** | **removed** |
+| `Sarinah/Bilder` | 13,811 | 658 | 20 | 80 GB | keep |
+| `Sarinah/Sarinah` | — | — | — | — | **does not exist** |
+| `Sarinah/WhatsApp` | 6,381 | 261 | 1 | 2.5 GB | keep |
+| `Sarinah/20200711_sg_motog5s_bak` | 3,146 | 183 | 0 | 11 GB | keep |
+| `Sarinah/Videos` | 0 | 52 | 0 | 1.4 GB | keep |
+| `Sarinah/Signal` | **0** | **0** | 1 | 3.2 GB | **removed** |
+
+The two `Signal` directories are **encrypted Signal application backups** —
+three `signal-2021-…​.backup` blobs of 13 GB each in lgo's. They sit next to
+`Pictures` in a per-year layout and look exactly like a photo tree from a
+directory listing. `Sarinah/Sarinah` never existed: it came from misreading
+`find -maxdepth 1 -type d`, which prints the start directory as well as its
+children, so a tree appeared to be a subdirectory of itself.
+
+Nothing would have been uploaded either way — `--include-extensions` refuses
+`.backup`, the second filter doing its job — but immich-go would have walked
+39 GB of opaque blobs to find one PNG. **The lesson is narrower and more useful
+than "a directory was removed": a source list written from a directory LISTING
+looks right and is wrong; one written from a directory's CONTENTS is not.**
+That is the entire reason `photo-import survey` exists and why it is documented
+as the thing to run before adding a line.
+
+**3. The corpus is not a photo corpus.** `/srv/unsorted/Bilder` is a picture
+folder that also became a scratch space: 302 files and ~580 MB of wallpaper,
+icon sets, avatars, ASCII art and GIFs, all of them real `.jpg` and `.png`
+files that no extension filter can distinguish from a photograph. Only a path
+rule can, which is what `importBan` is. And `/srv/unsorted/Sarinah` interleaves
+photographs with `Bewerbung` (job applications), spreadsheets and personal
+records throughout — which is why that list is conservative, names only the
+unambiguous trees, and leaves eight plausible ones **out pending her own
+decision** rather than having an agent sweep them in.
+
+**4. Immich hands the server to whoever loads the signup page first — and
+unlike Audiobookshelf, there is a switch for it.** `IMMICH_ALLOW_SETUP ?? true`
+in the built 2.7.5 server. M14/M18 answered this class of problem with "create
+the account immediately", i.e. with speed. This ships `adminSetupOpen = false`
+and creates the public A record last. Either alone is sufficient; both are used
+because the cost is a boolean and an ordering line.
+
+**5. The TV needs no UDM-Pro rule, and the nearest precedent says it should.**
+L12 gave Kodi a bespoke ZBF policy — plus a `/32` in Tvheadend's own firewall —
+because Kodi runs on the ernst host on VLAN 50, a direct hop to VLAN 90 is
+routed through the UDM-Pro, and `Internal → Services: Block All` drops it
+silently with no RST. The first HTSP deploy failed with SYNs retransmitting
+into nothing.
+
+HTSP cannot traverse a reverse proxy. **The Immich add-on speaks ordinary
+HTTPS**, so it uses `photos.goclan.org` like every other client, and
+host → `10.0.90.12:443` is M5's existing `Allow Traefik` policy. Consequences:
+no new UDM-Pro rule, no ledger shim for the TV path, TLS and the same rate
+limits as any other client, and a container firewall with exactly two addresses
+in it. **Do not "simplify" this later by pointing the add-on at
+`10.0.90.25:2283`** — that trade was already made once, in the other direction,
+and it cost a policy broader than the flow it permits.
+
+### The auth posture, and why it is a third kind of argument
+
+`photos.goclan.org` is in `appApiHosts`, so `withWan` **refuses to build** if
+anyone attaches `authelia` to its router. Three client classes force it:
+
+- the Immich app on two phones — posts to `/api/auth/login`, then a bearer
+  token;
+- the Kodi add-on — `x-api-key` over `http.client`, no cookie jar, no browser;
+- **a shared album link — answered to an anonymous caller, by design.**
+
+The third is new to this fleet. Every other `appApiHosts` name answers only to
+a credential. So the usual sentence — *"the application's own accounts are now
+the entire boundary"* — is **only half true here**, and the accurate version is:
+accounts bound the library; possession of a URL bounds anything explicitly
+shared, from anywhere, until it is revoked. Those links are 128-bit random keys,
+which is the real control, and Immich offers a per-link expiry and password that
+are runtime state nothing here can set.
+
+What compensates on the public path is unchanged from the other five:
+`wan-ratelimit` + `wan-inflight` on every wan request, `wan-login-ratelimit` on
+`/api/auth/login` and `/api/auth/change-password` via a higher-priority router,
+and CrowdSec on the 401s in Traefik's access log.
+
+### Two opposite answers to the same question, on purpose
+
+The API key is a clan var on the laptops and is **not** one on ernst:
+
+| | `photo-import` on ernst | `immich-upload` on miralda/jens |
+|---|---|---|
+| who runs it | a human at a terminal, a handful of times | a timer, when nobody is present |
+| where the key comes from | `$IMMICH_API_KEY`, exported for the run | clan var `immich-api-key` |
+| why | **the key selects the account** — lgo's imports into lgo's library, sgo's into Sarinah's — so a stored one would have to be a stored set, and the account should be explicit at the moment it matters | there is no "moment it runs" to hand a credential at, so it has to be at rest (invariant #8) |
+
+The laptop var gets the `traefik-acme` treatment: **generate before you deploy**,
+because clan-core cannot know a sops path until the secret exists and
+`/no-such-path` is what gets baked into the unit otherwise.
+
+### GPU: none, and it is invariant #5 rather than a preference
+
+Immich would want a GPU for two different things and is denied both for two
+different reasons. ML (CLIP search, face detection) would want the RX 7900 XTX
+— llama-swap's ROCm card and the member of an **exclusive** `gpu` group since
+M21, and a photo indexer that wakes whenever a phone uploads is the worst
+possible third claimant. Video thumbnailing would want the Granite Ridge iGPU —
+Jellyfin's VAAPI device, the one job here where a stall is visible on a
+television.
+
+`accelerationDevices = [ ]` is not "unset": the module turns it into
+`PrivateDevices = true`, so the container cannot reach a render node by
+accident. The cost is bounded and real — the initial smart-search and
+face-detection pass over ~35k images is hours of 16-core AM5, once, in the
+background.
+
+**The ML models are fetched from HuggingFace at runtime**, and that is accepted
+rather than dodged, which needs saying because this repo has rejected the
+pattern twice (M20's embedding model, Traefik's Yaegi plugins). The difference
+is blast radius, not mechanism: it is not in the start path, a failure degrades
+search rather than stopping the server, the cache is on zdata so it is a
+first-run event, and closing it properly means repackaging ONNX models with no
+upstream expression. The escape route — pre-seed
+`/srv/state/immich/ml-cache` — is recorded in the container file.
+
+### The Kodi add-on, and the trap it could have tripped
+
+nixpkgs has no Immich add-on at any channel and Immich endorses no Kodi client.
+Three unofficial ones exist; `vladd11/immich-kodi` was lgo's choice, pinned to
+`prerelease-7` (`a325601`, 2026-03-01 — the repository's `pushed_at` is the same
+timestamp, so the tag is the tip of `main`). Pure stdlib Python, MIT, 66 stars.
+
+**`withPackages` SILENTLY DROPS an add-on built against a different Kodi** — its
+filter is `drv.kodiAddonFor == kodi`, so one taken from `pkgs.kodiPackages`
+while wrapping `kodi-gbm` produces an environment byte-identical to one with no
+add-on at all. `htpc.nix` has carried that warning since the OSMC skin was
+removed, and this is the first add-on there that could actually trip it. It is
+built from the selector's own `p` via `p.callPackage`, and **the result was
+checked rather than assumed**: `plugin.video.immich` is present under
+`share/kodi/addons/` in the built `kodi-21.3-env`.
+
+`namespace` must stay `plugin.video.immich` even though the add-on
+`<provides>image</provides>` and appears under Pictures — Kodi keys the
+installed directory, the settings and every `plugin://` URL on upstream's id.
+
+### What is shipped UNVERIFIED, and must not be reported as working
+
+Stated here rather than discovered, which is the line M21 closed on:
+
+1. **The Prometheus target.** Port 8081 and `IMMICH_TELEMETRY_INCLUDE` were read
+   off the **built** server's env-var table, not measured against a running one.
+   That is exactly the evidence M13 had for Ollama's `/metrics`, which answered
+   404 — so M13 shipped three media-stack targets instead of four and said why.
+   The test plan checks for `immich_*` series. **If they are not there, delete
+   the job** rather than leaving a target at `up == 0` that reads as an outage
+   (SN3).
+2. **Upstream's hardening inside nspawn.** The immich module sets
+   `PrivateUsers`, `RestrictNamespaces`, `ProtectKernelTunables`,
+   `ProtectControlGroups` and `PrivateTmp` **unconditionally** — it is not
+   container-aware. `containers/jellyfin.nix` records that the jellyfin module
+   deliberately disables several of these under `!config.boot.isContainer`
+   because they conflict with nspawn's mount-namespace setup. Upstream is not
+   overridden here on a guess; the first deploy is the test.
+3. **CPU-only ML throughput.** "Hours, once" is an estimate, not a measurement.
+
+### Manual steps — lgo's, and the order is not advisory
+
+**Before the first deploy:**
+
+1. **Create the dataset.** disko does not create datasets on an existing pool;
+   it only emits the `fileSystems` entry that mounts them. The exact command is
+   in `docs/guides/ernst-zdata-datasets.md` and `-o mountpoint=legacy` is
+   load-bearing — a dataset without it cannot be mounted by `mount(8)` at all,
+   which is how M14 put this machine in emergency.
+
+    ```bash
+    ssh root@ernst.skynet.lan
+    zfs create -o mountpoint=legacy -o recordsize=1M \
+      -o exec=off -o setuid=off -o devices=off -o atime=off \
+      -o com.sun:auto-snapshot=true zdata/photos
+    ```
+
+2. **UDM-Pro: a DHCP reservation for `02:00:00:90:00:11` → `10.0.90.25`.** It
+   must be inside the pool (`10.0.90.6–.254`); UniFi accepts an address from the
+   `.2–.5` range the cutover runbook set aside and then silently hands out a pool
+   lease instead. **No ZBF policy is needed** — see premise 5.
+
+3. **Technitium: `photos.goclan.org` → `10.0.90.12`** (Traefik), **before the
+   name is typed anywhere**. M17 skipped this, the name was typed first, the
+   NXDOMAIN was cached, and `ERR_NAME_NOT_RESOLVED` outlived the record's
+   creation until `resolvectl flush-caches`.
+
+4. `clan machines update ernst`.
+
+**Then, in this order — the accounts before the internet:**
+
+5. Edit `adminSetupOpen = true` in `machines/ernst/containers/immich.nix`,
+   `clan machines update ernst`.
+6. On the LAN, open `https://photos.goclan.org`, create the **admin** account
+   (lgo), then create **sgo** from the admin's user-management page. Immich's
+   signup endpoint only ever creates the first account. **Strong passwords on
+   both** — they are about to be internet-reachable single-factor logins.
+7. Set `adminSetupOpen = false`, `clan machines update ernst`, and confirm the
+   signup endpoint is gone.
+8. **Only now**: the public A record `photos` → `78.94.91.74`, DNS-only (grey
+   cloud). **Never AAAA** — nothing on the path has a global IPv6 address.
+
+**Then the import:**
+
+9. Mint an API key for lgo (Account Settings → API Keys), then on ernst:
+
+    ```bash
+    export IMMICH_API_KEY=...
+    photo-import check          # prints the account the import will land in
+    photo-import survey         # read this before trusting the source lists
+    photo-import lgo -n         # dry run
+    photo-import lgo
+    ```
+
+   Repeat with **sgo's own key** for `photo-import sgo`. Everything lands tagged
+   `import/server001`, so a bad run is a tag to delete rather than a date range
+   to reconstruct. Re-running is safe — Immich deduplicates on content hash, so
+   an interrupted import is resumed, not restarted. **Nothing in `/srv/unsorted`
+   is deleted by any of this**, and it should stay until the library has been
+   looked at and the snapshots have caught up.
+
+**Then the laptops:**
+
+10. Mint a key per laptop (scope it to upload — the CLI checks permissions), and
+    **before deploying either machine**:
+
+    ```bash
+    clan vars generate miralda --generator immich-api-key
+    clan vars generate jens    --generator immich-api-key
+    clan machines update miralda
+    clan machines update jens
+    ```
+
+    Deploying first bakes `/no-such-path` into the unit's `EnvironmentFile=` and
+    produces a timer that can never succeed however often it fires — it has to
+    be rebuilt, not restarted.
+
+11. In darktable, point the export module at `~/Pictures/immich-inbox`. Nothing
+    else changes.
+
+**Then the TV:** Kodi → the Immich add-on's settings → server
+`https://photos.goclan.org` (**not** the container's address) and an API key.
+Runtime state, the same as the YouTube add-on's key and `pvr-hts`'s server
+address; the add-on opens its own settings dialog on first launch when no URL
+is set.
+
+**And the phones:** the Immich app on the FP5 and FP4, server
+`https://photos.goclan.org`, auto-backup on.
+
+### Test plan
+
+Each row states what was asked for and what answer counts — the verification
+line M21 closed on.
+
+| # | Check | Pass |
+|---|---|---|
+| 1 | Container healthy | `10.0.90.25/24`, default via `10.0.90.1`; no failed units **on the host and inside the container, checked separately** — the host being clean proves nothing |
+| 2 | `/srv/photos` is the dataset | `findmnt /srv/photos` → `zdata/photos`, `zfs`. `photos-tree.service` active, and `container@immich` **did not start** in a deliberate test where the mount was absent |
+| 3 | No IPv6 | `ip -6 addr show dev eth0` returns **nothing** and `ip -6 route show` is empty. Not `ss`, and not a bare `ip -6 addr show` (SN2, M18) |
+| 4 | Backend bypass refused | `curl -m 5 http://10.0.90.25:2283/` from the arr container at `10.0.90.13` **times out** (exit 28) — one L2 hop away, so this is the container firewall and nothing else |
+| 5 | Metrics reachable by exactly one host | the same curl to `:8081` times out; Prometheus shows the `immich` target |
+| 6 | **`immich_*` series exist** | `up{job="immich"} == 1` **and** at least one `immich_*` series in Prometheus. **If not: delete the job and record that the endpoint does not exist.** See "unverified" above |
+| 7 | LAN path works | `photos.goclan.org` loads and logs in from the LAN |
+| 8 | wan is fail-closed for something else | from mobile data, `sonarr.goclan.org` returns `RouterName null` / 404 — the replacement control M18 nominated, strictly better than jellyfin because it also carries forward-auth |
+| 9 | wan path works for this name | from the same mobile connection, `photos.goclan.org` serves the app and the phone completes a backup |
+| 10 | No forward-auth on it | the wan request is answered by Immich, **not** redirected to `auth.goclan.org` |
+| 11 | Signup is closed | `POST /api/auth/admin-sign-up` is refused after step 7 |
+| 12 | Shared link works for a non-user | a link opened on a device with no Immich account renders the album |
+| 13 | Import landed in the right library | the `import/server001` tag is on lgo's assets in **lgo's** account and on Sarinah's in **hers**, and neither contains the other's |
+| 14 | Nothing but photographs | spot-check the library for PDFs, `.ods` or `.backup` files — there must be none, and the two independent filters are why |
+| 15 | darktable path | export a JPEG into `~/Pictures/immich-inbox`; within ~15 min it is on the server and the local file has moved to `~/Pictures/immich-uploaded/<date>/` |
+| 16 | A half-written export is not uploaded | `truncate`/`dd` a file into the inbox and keep touching it; it must **not** be claimed while it is being modified |
+| 17 | TV | the Immich add-on browses albums and the timeline on the television, over `photos.goclan.org` |
+| 18 | Reboot (invariant #7) | after a real reboot: container back on `.25`, the library and the database intact, `clanarchy-impermanence-check` green |
+
+### Left for later, deliberately
+
+- **The eight ambiguous `Sarinah/*` trees** (`DIY`, `Haekeln`, `Makrame`,
+  `Stricken`, `Pflanzen`, `Shopping`, `Käthes Geb`, `anderen schicken wa`,
+  ~2.9 GB). They are her files; `photo-import survey` each and add a line.
+- **Deleting the imported originals from `/srv/unsorted`.** Not until the
+  library has been used for a while. `zdata/photos` carries auto-snapshot and
+  `zdata/unsorted` does too, so there is no hurry.
+- **A storage-template decision.** Immich's default layout is fine for an
+  app-only workflow; it would matter if the library ever needed to be readable
+  as a plain directory tree.
+- **The second metrics listener** on 8082 (the job workers). One target per
+  service until there is a question the first cannot answer.
+- **Pre-seeding the ML model cache** from a hash-verified fetch, which is what
+  would close the one runtime network fetch this milestone accepts.
 
 ---
 

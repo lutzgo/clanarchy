@@ -73,8 +73,15 @@ PAGES: dict[str, dict] = {
     },
     "apps": {
         "title": "Apps",
-        "intro": "Optional application bundles. Enable the sets that apply to a machine.",
-        "prefixes": ["clanarchy.apps."],
+        "intro": (
+            "Optional application bundles, and the per-machine service options that go "
+            "with them. Enable the sets that apply to a machine."
+        ),
+        # `clanarchy.immich.` is here rather than on a page of its own because it is
+        # exactly what this page describes: an optional per-machine opt-in, inert
+        # until a machine turns it on. It is NOT an app bundle, hence the widened
+        # intro above rather than a silent mismatch.
+        "prefixes": ["clanarchy.apps.", "clanarchy.immich."],
     },
 }
 

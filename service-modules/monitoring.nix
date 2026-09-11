@@ -977,6 +977,56 @@ in
           '';
         };
 
+        immichAddress = lib.mkOption {
+          type        = lib.types.str;
+          default     = "";
+          example     = "10.0.90.25";
+          description = ''
+            Address of the Immich container on the Services VLAN (M22).  Empty
+            disables the `immich` job.
+
+            NO EXPORTER.  Immich serves Prometheus metrics natively when
+            `IMMICH_TELEMETRY_INCLUDE` is set, which
+            machines/ernst/containers/immich.nix does.
+
+            ── THIS TARGET IS UNVERIFIED AND MUST NOT BE REPORTED AS WORKING
+            UNTIL SOMEBODY LOOKS ──
+
+            The port and the enabling variable were read off the BUILT server
+            (`IMMICH_API_METRICS_PORT || 8081`, and the env-var table that
+            declares `IMMICH_TELEMETRY_INCLUDE`), not measured against a
+            running instance.  That is exactly the evidence M13 had for
+            Ollama's metrics endpoint, which then answered 404 — so M13 shipped
+            three media-stack targets instead of four and said why.
+
+            The M22 test plan checks for `immich_*` series in Prometheus after
+            deploy.  If the endpoint does not answer, DELETE THIS JOB and
+            record that it does not exist, rather than leaving a target at
+            up=0 that reads as an outage.  A broken instrument is
+            indistinguishable from a bad result — see standing note SN3.
+          '';
+        };
+
+        immichMetricsPort = lib.mkOption {
+          type        = lib.types.port;
+          default     = 8081;
+          description = ''
+            Immich's API-metrics listener.
+
+            A SEPARATE PORT FROM THE APPLICATION, unlike Jellyfin's and
+            Navidrome's, which is the one genuinely good thing about this
+            target: permitting the scrape permits a scrape and nothing else.
+            The container firewall admits the monitoring container on this port
+            and Traefik on 2283, and the two sets do not overlap.
+
+            Immich runs a SECOND metrics listener on 8082
+            (`IMMICH_MICROSERVICES_METRICS_PORT`) from the same process, for
+            the background-job workers.  It is deliberately not scraped or
+            firewalled: one target per service until there is a question the
+            first one cannot answer.
+          '';
+        };
+
         navidromeAddress = lib.mkOption {
           type        = lib.types.str;
           default     = "";
@@ -2234,6 +2284,16 @@ in
                   static_configs = [ {
                     targets = [ "${settings.mediaStack.jellyfinAddress}:${toString settings.mediaStack.jellyfinPort}" ];
                     labels.instance = "jellyfin";
+                  } ];
+                }
+                # Immich (M22).  See the option's description: this target is
+                # UNVERIFIED at write time and the test plan's job is to
+                # confirm `immich_*` series exist or delete it.
+                ++ lib.optional (settings.mediaStack.immichAddress != "") {
+                  job_name = "immich";
+                  static_configs = [ {
+                    targets = [ "${settings.mediaStack.immichAddress}:${toString settings.mediaStack.immichMetricsPort}" ];
+                    labels.instance = "immich";
                   } ];
                 }
                 # Navidrome, and the only authenticated scrape in this file.

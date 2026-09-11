@@ -630,6 +630,32 @@ in
             # failure mode is a silent drop with no RST.
             pvr-hts
 
+            # Immich (M22) — the household photo library on the TV.
+            #
+            # BUILT FROM THE SELECTOR'S OWN `p`, WHICH IS THE ENTIRE POINT OF
+            # WRITING IT THIS WAY.  nixpkgs has no Immich add-on, so this is an
+            # out-of-tree derivation (modules/roles/pkgs/immich-kodi.nix) — and
+            # `p.callPackage` is what makes it a `kodi-gbm` add-on.  Taking it
+            # from `pkgs.kodiPackages` instead would build it against plain
+            # `kodi`, and `withPackages` would then DISCARD IT SILENTLY: its
+            # filter is `drv.kodiAddonFor == kodi`, so the result would be an
+            # environment byte-identical to one with no add-on at all.  That
+            # warning is at the top of this file for a reason; this is the
+            # first add-on here that can actually trip it.
+            #
+            # UNOFFICIAL THIRD-PARTY CODE, pinned to a tag.  Immich endorses no
+            # Kodi client and this one's API compatibility is nobody's
+            # contract — see the package file for what that costs and why it is
+            # contained (a break here loses the TV browser and nothing else).
+            #
+            # NEEDS RUNTIME SETUP AND WILL NOT WORK WITHOUT IT, like `youtube`
+            # and `pvr-hts` above: a server URL and an API key, in the add-on's
+            # own settings. The URL is `https://photos.goclan.org` — THROUGH
+            # TRAEFIK, not the container's VLAN-90 address, which is also why
+            # this needed no UDM-Pro rule where `pvr-hts` needed two firewalls.
+            # See machines/ernst/containers/immich.nix.
+            (p.callPackage ./pkgs/immich-kodi.nix { })
+
             # NO SKIN IS SHIPPED, and that is a change from how this role
             # started. `osmc-skin` was here — the only skin nixpkgs packages —
             # and it was REMOVED on 2026-09-07 because it breaks Kodi on
@@ -656,7 +682,11 @@ in
             # alone, because by then the directory exists.
           ];
         defaultText = lib.literalExpression ''
-          p: with p; [ jellyfin inputstream-adaptive inputstreamhelper upnext a4ksubtitles keymap youtube pvr-hts ]
+          p: with p; [
+            jellyfin inputstream-adaptive inputstreamhelper upnext a4ksubtitles
+            keymap youtube pvr-hts
+            (p.callPackage ./pkgs/immich-kodi.nix { })
+          ]
         '';
         description = ''
           Add-ons built into the client package, as a `withPackages` selector.
@@ -680,10 +710,15 @@ in
           every start. That day came, so it is now in the set above; the nag
           is cleared by pointing it at Tvheadend, not by removing it.
 
-          Both `youtube` and `pvr-hts` need runtime configuration that this
-          file cannot express (an API key and a server address respectively).
-          They are inert-but-installed until that is done — see the comments
-          on each in the default above.
+          `youtube`, `pvr-hts` and the Immich add-on all need runtime
+          configuration that this file cannot express (an API key, a server
+          address, and both respectively). They are inert-but-installed until
+          that is done — see the comments on each in the default above.
+
+          The Immich one is additionally the only add-on here that is NOT from
+          nixpkgs: it is an out-of-tree derivation built from this selector's
+          own argument, which is what keeps it a `kodi-gbm` add-on rather than
+          one `withPackages` discards without a word.
         '';
       };
 

@@ -518,6 +518,21 @@ let
   openWebuiAddr = "10.0.90.23";
   openWebuiPort = 8080;
 
+  # Immich (M22) — the household photo library, in an NSPAWN container on
+  # 02:00:00:90:00:11 → 10.0.90.25, following the 8 + <seq> convention in
+  # machines/ernst/networking.nix.  Its container firewall accepts THIS proxy's
+  # address and no other on ${toString immichPort}.
+  #
+  # THAT RESTRICTION IS TIGHTER THAN IT LOOKS AND IS LOAD-BEARING FOR THE TV.
+  # Kodi runs on the ernst host, on VLAN 50, and reaches this service through
+  # `photos.goclan.org` — i.e. through here, under M5's existing `Allow
+  # Traefik` policy — rather than over a direct VLAN-90 hop.  M8 took the other
+  # route for Tvheadend's HTSP and paid for it with a bespoke UDM-Pro policy
+  # (ledger L12) that is broader than the flow it permits.  See
+  # containers/immich.nix's "THE KODI PATH".
+  immichAddr = "10.0.90.25";
+  immichPort = 2283;
+
   # Calibre-Web-Automated — the podman tier's FOURTH occupant, and the only
   # one of this round's three additions that needed an address of its own.
   #
@@ -725,6 +740,36 @@ let
   #   household's conversation history and can drive the GPU (image generation)
   #   and outbound search.  Exposing it raises what an Authelia compromise is
   #   worth.  That is the trade being made, not a risk being dismissed.
+  # ── immich, ADDED 2026-09-11 (M22).  THE SAME KIND OF NAME AS audiobookshelf,
+  #    WITH ONE PROPERTY NONE OF THE OTHERS HAS ────────────────────────────────
+  #
+  #   It is in `ingressPolicy.appApiHosts`, so the reasoning is the one in that
+  #   file rather than a new argument: the Immich mobile app on two phones and
+  #   the Kodi add-on on the TV are native clients that cannot complete a
+  #   forward-auth redirect, and lgo's requirement is explicitly that the phones
+  #   back up FROM OUTSIDE THE HOUSE, which is what puts the name here rather
+  #   than leaving it LAN-only.
+  #
+  #   WHAT IS GENUINELY NEW, AND IT IS NOT A MOBILE-CLIENT ARGUMENT: part of
+  #   this vhost is UNAUTHENTICATED ON PURPOSE.  An Immich shared album link is
+  #   a URL that the server answers to an anonymous caller — that is the
+  #   feature, and it is the whole reason lgo can send his mother an album
+  #   without her having an account here.  Every other appApiHosts name answers
+  #   only to a credential of some kind; this one answers a link to anybody who
+  #   holds it, from anywhere on the internet, until it is revoked.
+  #
+  #   That is not an objection to exposing it — a shared link that only works
+  #   on the house LAN is not a shared link — but it changes what "the
+  #   application's own accounts are the boundary" means, so it is stated here
+  #   rather than inherited from the audiobookshelf paragraph above.  Immich
+  #   supports an expiry and a password per link; those are the controls, they
+  #   are runtime state, and nothing in this repo can set them.
+  #
+  #   THE FIRST-RUN WINDOW IS CLOSED BY MECHANISM HERE, unlike Audiobookshelf's
+  #   which was closed by being quick.  `IMMICH_ALLOW_SETUP` is FALSE in
+  #   containers/immich.nix, and the public A record is created only after both
+  #   accounts exist — see that file's "THE FIRST-RUN WINDOW" and M22's manual
+  #   steps, which put the record last deliberately.
   wanExposed = [
     "jellyseerr"
     "authelia"
@@ -734,6 +779,7 @@ let
     "navidrome"
     "cwa"
     "openwebui"
+    "immich"
   ];
 
   # ── THE LOGIN PATHS, PER SERVICE, AND WHAT THIS DOES NOT COVER ────────────
@@ -795,6 +841,21 @@ let
     # paths, so all three are covered: the web form, KOReader's progress-sync
     # auth, and the Kobo device-token handshake.
     cwa = "(PathPrefix(`/login`) || PathPrefix(`/kosync/users/auth`) || PathPrefix(`/kobo_auth`))";
+
+    # Immich's login and its API-key-issuing endpoint.  The app and the web UI
+    # both POST to /api/auth/login and then carry a bearer token, so this is
+    # the whole form-credential surface for every client that has one.
+    #
+    # `/api/auth/change-password` is included for a different reason than rate
+    # limiting a login: it is the endpoint an attacker with a stolen session
+    # would use to take the account, and it is cheap to make slow.
+    #
+    # WHAT THIS DOES NOT COVER, stated for the same reason the Navidrome and
+    # Komga entries state theirs: a SHARED ALBUM LINK is not a credential
+    # endpoint at all, so nothing here limits guessing at share URLs.  Those
+    # are 128-bit random keys, which is the actual control; CrowdSec's 401
+    # scenario is what sees a campaign of wrong ones.
+    immich = "(PathPrefix(`/api/auth/login`) || PathPrefix(`/api/auth/change-password`))";
   };
 
   ############################################################################
@@ -2305,6 +2366,39 @@ in
               service     = "openwebui";
             };
 
+            # ── Immich (M22): app-API tier, no forward-auth ────────────────
+            #
+            # In `ingressPolicy.appApiHosts`, so the guard above REFUSES TO
+            # BUILD if anyone attaches `authelia` here.  Three client classes
+            # make that the only workable answer, and the third is the one
+            # worth reading twice:
+            #
+            #   the mobile app on two phones — bearer tokens, no browser;
+            #   the Kodi add-on on the TV — `x-api-key` over http.client;
+            #   A SHARED ALBUM LINK — answered to an ANONYMOUS caller, by
+            #   design, which is how a family member with no account here
+            #   sees an album at all.
+            #
+            # UPLOADS COME THROUGH THIS ROUTER, WHICH IS THE ONE OPERATIONAL
+            # THING TO KNOW ABOUT IT.  Phone auto-backup and the darktable
+            # push from the laptops both POST whole files, and a 4K video off
+            # a phone is not a small request.  Traefik does not buffer request
+            # bodies unless a `buffering` middleware is attached and none is
+            # attached here or inherited by the wan router — so large uploads
+            # stream through with no special configuration.
+            #
+            # RECORDED AS A PROPERTY TO PRESERVE, the way the Navidrome router
+            # records its SSE dependency: adding a `buffering` middleware to
+            # this router later, or to the wan chain every wan router
+            # inherits, would make big uploads fail in a way that presents as
+            # "the phone stopped backing up" rather than as an error anyone
+            # sees.
+            immich = {
+              rule        = "Host(`photos.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              service     = "immich";
+            };
+
             # slskd's web UI — in the microvm guest, not a container.  Behind
             # `authelia` like every other admin surface; its own login exists
             # but is a single shared operator account, not per-user.
@@ -2503,6 +2597,9 @@ in
             storyteller.loadBalancer.servers    = [ { url = "http://${storytellerAddr}:${toString storytellerPort}/"; } ];
             romm.loadBalancer.servers           = [ { url = "http://${rommAddr}:${toString rommPort}/"; } ];
             openwebui.loadBalancer.servers      = [ { url = "http://${openWebuiAddr}:${toString openWebuiPort}/"; } ];
+
+            # M22 — its own nspawn container on .25.
+            immich.loadBalancer.servers         = [ { url = "http://${immichAddr}:${toString immichPort}/"; } ];
 
             # … and one in the microvm guest, the first non-container backend.
             slskd.loadBalancer.servers          = [ { url = "http://${slskdAddr}:${toString slskdPort}/"; } ];

@@ -52,6 +52,22 @@
   clanarchy.apps.flatpak.enable = true;
   clanarchy.apps.desktopTools.enable = true;
 
+  # M22 — the darktable end of the photo pipeline.  Finished JPEG exports
+  # dropped into ~/Pictures/immich-inbox are pushed to Immich on ernst by a
+  # timer; see modules/immich-upload.nix, which explains why this is a timer
+  # rather than `immich upload --watch` and why no raw format is in its
+  # extension list.
+  #
+  # NEEDS ITS CLAN VAR BEFORE THE FIRST DEPLOY THAT CARRIES THIS LINE:
+  #
+  #     clan vars generate miralda --generator immich-api-key
+  #
+  # The key is minted in Immich's UI, so it cannot exist until ernst is up and
+  # the accounts have been created.  Deploying before it is generated bakes
+  # "/no-such-path" into the unit's EnvironmentFile= — a timer that can never
+  # succeed and has to be rebuilt, not restarted.  Ordered steps: docs/roadmap.md M22.
+  clanarchy.immich.upload.enable = true;
+
   # Mount the ESP by PARTUUID, not by the partlabel disko assigns.
   #
   # Every machine in this clan uses disko's disk name `main`, so every ESP in

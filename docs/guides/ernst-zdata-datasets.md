@@ -148,6 +148,36 @@ zfs create \
   zdata/roms
 ```
 
+```bash
+# /srv/photos — M22.  Immich's media location (containers/immich.nix): the
+# originals it owns plus the thumbnails, previews and encoded videos it
+# derives from them.
+#
+# A SIBLING of zdata/media, never a child — invariant #2 forbids a dataset
+# boundary inside the hardlink domain, and nothing here is hardlinked anyway
+# (Immich copies an upload into its own storage-template path and owns it).
+#
+# NOT a subdirectory of /srv/state either.  Immich's DATABASE lives there;
+# its LIBRARY lives here, because the two want opposite recordsizes.
+#
+# recordsize=1M MUST be set at creation — JPEGs, 25–40 MB DNGs and video.
+# It only applies to new writes and cannot be fixed retroactively.
+#
+# com.sun:auto-snapshot=true, and this is the least negotiable one in this
+# file.  These are the family's photographs, and this is the one library on
+# the pool that PEOPLE DELETE FROM — from a phone, with a swipe.  Immich's
+# trash is a database flag with a retention period, not a filesystem undo.
+zfs create \
+  -o mountpoint=legacy \
+  -o recordsize=1M \
+  -o exec=off \
+  -o setuid=off \
+  -o devices=off \
+  -o atime=off \
+  -o com.sun:auto-snapshot=true \
+  zdata/photos
+```
+
 `compression=zstd` and encryption are inherited from the pool root and
 should not be restated.
 
@@ -163,7 +193,7 @@ Property audit — every value below must match what was requested above:
 zfs get -H -o value \
   mountpoint,recordsize,exec,setuid,devices,atime,compression,encryption \
   zdata/media zdata/media/movies zdata/media/tvshows zdata/state zdata/games \
-  zdata/roms
+  zdata/roms zdata/photos
 ```
 
 Expected:
@@ -176,6 +206,7 @@ Expected:
 | `zdata/state`         | legacy | 128K       | on   | off    | off     | off   | zstd     | aes-256-gcm  |
 | `zdata/games`         | legacy | 128K       | on   | off    | off     | off   | zstd     | aes-256-gcm  |
 | `zdata/roms`          | legacy | 1M         | off  | off    | off     | off   | zstd     | aes-256-gcm  |
+| `zdata/photos`        | legacy | 1M         | off  | off    | off     | off   | zstd     | aes-256-gcm  |
 
 ## Deploy
 

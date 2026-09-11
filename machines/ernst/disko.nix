@@ -428,6 +428,68 @@
           };
         };
 
+        # /srv/photos — M22.  Immich's media location: the ORIGINALS it owns,
+        #   plus the thumbnails, previews and encoded videos it derives from
+        #   them.  See machines/ernst/containers/immich.nix.
+        #
+        # A SIBLING OF /srv/media, NOT A CHILD — the audiobooks argument,
+        # repeated because it is the one mistake invariant #2 is written to
+        # prevent.  A sub-dataset under /srv/media would put a dataset boundary
+        # inside the hardlink domain and silently turn every *arr import into a
+        # copy.  Nothing here is hardlinked from anywhere: Immich ingests by
+        # COPYING an upload into its own storage-template path and then owns
+        # that file outright, so there is no chain to break.
+        #
+        # AND NOT A SUBDIRECTORY OF /srv/state EITHER, which is the other place
+        # this could plausibly have gone.  /srv/state holds service databases
+        # and config — small, random-write, 128K recordsize, snapshotted for
+        # config churn.  This is 150–200 GB of large sequential-read originals
+        # with a completely different access pattern and a completely different
+        # snapshot argument.  Immich's DATABASE does live on /srv/state; its
+        # LIBRARY lives here.  Keeping them apart is what lets each carry the
+        # properties it actually wants.
+        #
+        # recordsize=1M: dominated by JPEGs of several MB, DNGs of 25–40 MB and
+        #   video.  ZFS uses variable block sizes up to the recordsize, so the
+        #   small generated thumbnails are not padded out to 1M.  SET AT
+        #   CREATION — it only applies to new writes and cannot be fixed
+        #   retroactively for data already on the dataset.
+        # exec/setuid/devices=off: user photographs, never executable.  The
+        #   /srv/media reasoning, and it applies with force here because this
+        #   dataset accepts uploads from two phones over the internet.
+        # com.sun:auto-snapshot=true, and this is the least negotiable one in
+        #   this file.  /srv/media and /srv/games opt out as re-acquirable;
+        #   these are the family's photographs.  Once the retired Arch server
+        #   is wiped, the copy here and the copy in /srv/unsorted are all there
+        #   is — and the import in containers/immich.nix is what makes the
+        #   second one redundant, so the snapshots are what is left.
+        #
+        #   IT ALSO COVERS A DELETE PATH THE OTHER DATASETS DO NOT HAVE.  Every
+        #   other library on this pool is written by a service and read by
+        #   people.  This one is DELETED FROM BY PEOPLE, from a phone, with a
+        #   swipe — and Immich's trash is a database flag with a retention
+        #   period, not a filesystem-level undo.  A snapshot is the only thing
+        #   that survives "emptied the trash" on a device in someone's pocket.
+        #
+        # CREATED BY HAND ONCE, like every other dataset in this block — see
+        # docs/guides/ernst-zdata-datasets.md.  disko does not create datasets
+        # on an existing pool; it only emits the fileSystems entry that mounts
+        # them.  M14 shipped a dataset without adding that runbook section and
+        # put this machine in emergency; do not repeat it.
+        photos = {
+          type = "zfs_fs";
+          mountpoint = "/srv/photos";
+          options = {
+            mountpoint = "legacy";
+            recordsize = "1M";
+            exec       = "off";
+            setuid     = "off";
+            devices    = "off";
+            atime      = "off";
+            "com.sun:auto-snapshot" = "true";
+          };
+        };
+
         # zdata/backup — reserved.  Not created here; when the backup strategy
         # is chosen we may want a very different recordsize / compression /
         # (perhaps) encryption story, so add it deliberately at that point.
@@ -478,4 +540,36 @@
   #   mkForce, and `defaults,nofail` is what reaches the mount unit.
   ##############################################################################
   fileSystems."/srv/audiobooks".options = [ "nofail" ];
+
+  ##############################################################################
+  # `nofail` on /srv/photos — M22, and the same argument, applied deliberately
+  # rather than by symmetry.
+  #
+  # The section above says this is "deliberately narrow" and names /srv/media
+  # and /srv/state as the two that must NOT have it, because a service writing
+  # to an unmounted /srv/state scribbles onto zroot and loses it at the next
+  # boot.  That objection applies here in full: Immich writing to an unmounted
+  # /srv/photos would put the family's photo library on a filesystem that rolls
+  # back.
+  #
+  # It gets `nofail` anyway, and the objection is answered the same way M14
+  # answered it — by moving the loud failure OUT of local-fs.target and INTO a
+  # unit that only stops the one service:
+  #
+  #   `nofail` here   -> a missing or mis-propertied zdata/photos costs
+  #                      Immich, not sshd, not Jellyfin, not the VPN guest.
+  #   `photos-tree`   -> in containers/immich.nix, and unlike its audiobooks
+  #                      counterpart it is `requires` + `requiredBy` on
+  #                      container@immich rather than mere ordering.  An
+  #                      Immich that starts without its media location is not
+  #                      a degraded Immich showing an empty library — it is a
+  #                      NEW, EMPTY library that will happily accept a phone's
+  #                      entire camera roll onto zroot and lose it on the next
+  #                      reboot, while the mobile app reports success.
+  #
+  # That is the Storyteller distinction from containers/storyteller.nix, not
+  # the Audiobookshelf one, and it is why this dataset's consumer is blocked by
+  # its check while the arr container's is not.
+  ##############################################################################
+  fileSystems."/srv/photos".options = [ "nofail" ];
 }

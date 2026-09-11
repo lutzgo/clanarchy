@@ -903,6 +903,19 @@
             # secret is emitted in two formats.
             navidromeAddress             = "10.0.90.13";
             navidromeMetricsPasswordFile = "/run/monitoring-secrets/navidrome-metrics-password";
+
+            # Immich, added 2026-09-11 (M22).  Its own container, its own
+            # address, and — unlike Jellyfin's and Navidrome's — its own
+            # METRICS PORT separate from the application, so permitting this
+            # scrape permits a scrape and nothing more.
+            #
+            # UNVERIFIED WHEN ADDED, and that is recorded rather than smoothed.
+            # 8081 and the enabling variable were read out of the built Immich
+            # server, not measured against a running one — which is precisely
+            # the evidence M13 had for the Ollama target that turned out to be
+            # a 404.  M22's test plan checks for `immich_*` series; if they are
+            # not there, this line comes out again and says so.
+            immichAddress = "10.0.90.25";
           };
 
           # M19.  The inference stack — THE TARGET M13 WANTED AND COULD NOT
