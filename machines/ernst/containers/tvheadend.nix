@@ -487,8 +487,58 @@ in
       # The container's firewall — the only enforcement point for br0-local
       # traffic (one L2 hop; the UDM-Pro never sees it).
       #
-      #   9981/tcp   ONLY from Traefik (web UI, behind authelia) and Jellyfin
-      #              (M3U + XMLTV + the stream URLs inside the playlist).
+      #   9981/tcp   Traefik (web UI, behind authelia), Jellyfin (M3U + XMLTV +
+      #              the stream URLs inside the playlist), and — since
+      #              2026-09-11 — the ernst HOST, for Kodi's channel icons.
+      #
+      #              ── WHY KODI NEEDS THE *HTTP* PORT, WHICH IS NOT OBVIOUS ──
+      #
+      #              It already has HTSP on 9982, and one might reasonably
+      #              assume channel icons ride that connection. They do not.
+      #              For HTSP version >= 15 `htsp_image()` (src/htsp_server.c)
+      #              sends a RELATIVE path — literally `imagecache/42` — and
+      #              the CLIENT builds the absolute URL from its own
+      #              connection settings. So pvr.hts turns that into
+      #              `http://10.0.90.18:9981/imagecache/42` and fetches it
+      #              over plain HTTP, out of band from HTSP entirely.
+      #
+      #              ── WHAT HAPPENED WHEN IT COULD NOT ───────────────────
+      #
+      #              M22's picon work gave all 198 channels an icon. Before
+      #              that they had none, so Kodi never made these requests and
+      #              the missing rule was invisible. Afterwards, every icon
+      #              fetch hit this firewall and timed out after 30 s, on four
+      #              threads, in a loop — and KODI'S UI WEDGED. Measured
+      #              2026-09-11: a single kodi.bin spinning at 11% CPU for 23
+      #              hours, its log solid with
+      #
+      #                CCurlFile::Open - <http://10.0.90.18:9981/imagecache/18>
+      #                  Failed with code 0: Timeout was reached(28)
+      #
+      #              It could not even be exited from the menu. The TV was
+      #              unusable, and nothing in `systemctl --failed` said so.
+      #
+      #              ── THE COST, STATED RATHER THAN BURIED ───────────────
+      #
+      #              9981 IS THE UNAUTHENTICATED ADMIN UI. `--noacl` is set
+      #              (see AUTHENTICATION above), so whoever reaches this port
+      #              is an admin. This rule hands that to every account on the
+      #              ernst host — including `go`, which AUTOLOGINS on the
+      #              television with no password.
+      #
+      #              What makes it defensible is that it is not a new class of
+      #              access: the same /32 already has 9982, and this file
+      #              already records that HTSP here is "ANONYMOUS AND
+      #              FULL-RIGHTS, exactly like the 9981 admin UI". So the
+      #              marginal grant is a web UI on top of an equivalent binary
+      #              protocol, to one address that already had it.
+      #
+      #              IF THAT TRADE IS EVER REFUSED, the alternative is not to
+      #              re-close this line — it is to give Tvheadend real access
+      #              entries (an anonymous full-rights entry per permitted
+      #              address, the escape route the AUTHENTICATION section
+      #              already sketches) so that neither port is open to
+      #              anonymous admin in the first place.
       #   9982/tcp   HTSP — ONLY from the ernst host (10.0.50.10).
       #
       #              This line used to open to NOBODY, on the grounds that the
@@ -542,6 +592,7 @@ in
         iptables -A nixos-fw -p tcp -s ${traefikAddr}/32  --dport ${toString httpPort} -j nixos-fw-accept
         iptables -A nixos-fw -p tcp -s ${jellyfinAddr}/32 --dport ${toString httpPort} -j nixos-fw-accept
         iptables -A nixos-fw -p tcp -s ${kodiHostAddr}/32 --dport ${toString htspPort} -j nixos-fw-accept
+        iptables -A nixos-fw -p tcp -s ${kodiHostAddr}/32 --dport ${toString httpPort} -j nixos-fw-accept
         iptables -A nixos-fw -p udp -s ${fritzAddr}/32 -j nixos-fw-accept
       '';
 

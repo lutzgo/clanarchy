@@ -630,6 +630,27 @@ in
             # failure mode is a silent drop with no RST.
             pvr-hts
 
+            # THE JOYSTICK DRIVER.  Without this a controller does nothing in
+            # Kodi, and the way that presents is "the pad works in Steam but
+            # not in Kodi" — which sounds like a pairing problem and is not.
+            #
+            # Kodi ships `kodi.binary.instance.peripheral`, and it is easy to
+            # read that as joystick support already being present. It is not:
+            # that is the API DECLARATION — the interface an add-on plugs
+            # into — and `game.controller.*` are BUTTON-LAYOUT PROFILES. The
+            # actual driver that opens /dev/input and turns events into Kodi
+            # input is `peripheral.joystick`, which is this attribute, and
+            # nothing was pulling it in.
+            #
+            # Found 2026-09-11 by pairing an Xbox pad: xpadneo bound it
+            # correctly on the host (`gamepad detected`, js0/js1 present, the
+            # rumble handshake ran) and Steam drove it fine, while Kodi had no
+            # driver to see it with.
+            #
+            # From `p` like everything else here — see the withPackages trap at
+            # the top of this file.
+            joystick
+
             # Immich (M22) — the household photo library on the TV.
             #
             # BUILT FROM THE SELECTOR'S OWN `p`, WHICH IS THE ENTIRE POINT OF
