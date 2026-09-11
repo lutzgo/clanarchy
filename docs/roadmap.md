@@ -66,7 +66,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M19 — llama.cpp on ernst | **DEPLOYED AND FULLY VERIFIED 2026-09-09** | — | **Ollama is gone from ernst**, replaced by llama-swap in front of `llama-server` in router mode. Taken on measurement, not preference: context overflow stops being silent (**HTTP 400 naming both numbers**, where ollama returned HTTP 200 with the head of the prompt discarded and a **fabricated MAC** in its place), which closes [SN1](#sn1--the-model-tag-silently-sets-the-context-window)'s core hazard at the mechanism. Decode −3.1% at f16; **`q8_0` lost its reason to exist** and the fleet default reverts to f16. The `<tool_call>` reinforcement **stays** — llama.cpp's independent Jinja parser fails identically (26/30 dropped-tag at baseline, **zero** "present but unparsed" in eight cells across both servers), so the defect is the model's and the four-line rule is still 100%. Adds voice (whisper.cpp, **CPU — a measured packaging gap**), vision, and Open WebUI on VLAN 90 behind Traefik + Authelia. `imagegen` is **written and not enabled**: no first-party ComfyUI image exists. **M19 changes ernst's attack surface in two named places** (L9, L10) — unlike M11, which changed it not at all. [M19](#m19-featernst-local-ai-llamacpp) |
 | M20 — SearXNG / web search | **done — deployed and fully verified 2026-09-10, end to end; TWO DEFECTS found after the first deploy, both fixed and confirmed live** | [#171](https://github.com/lutzgo/clanarchy/pull/171) | **The infrastructure was right on the first try and the feature still did nothing.** Every structural check passed — container up on `10.0.90.24`, JSON `200`, non-permitted VLAN 90 hosts time out (exit 28), nine LAN targets unreachable including both llama-swap veths, egress confirmed as the house WAN `78.94.91.74`. But **the engine set returned `number_of_results: 0` for every query**: `duckduckgo`/`startpage` CAPTCHA, `qwant`/`mojeek` 403, `brave` 429. That set was reasoned rather than measured and **the PR said so** — which is the only reason it was caught. Replaced with a measured one (`bing` 10, `yandex` 15, `encyclosearch` 15, `mwmbl` 30, `brave` intermittent → **68 results** combined, NHS and NIH among them); **four of the five are `disabled: true` upstream**, a second silent route to zero. Two things learned by testing rather than reasoning: **Google answers and its parser extracts nothing** (absent for a better reason than the one guessed), and **Wikipedia/Wikidata return `infoboxes`, which Open WebUI never reads** — dead weight from day one. Second defect: units shipped at **9.2 UNSAFE** vs a stated ≤ 2.0 target → **1.1 OK**, exercised with a live query, not just re-scored. **End to end in the browser the milestone's own question now returns 12 sources with NIH and Cleveland Clinic cited inline** — the M19 failure that opened M20, closed. With search off the model *declines* to rate rather than fabricating, which is the honest failure mode. One caveat recorded rather than smoothed: `drberg.com` made the source list and the model called the set "reputable" — retrieval quality and rating quality are not the same thing. **The design, unchanged by any of the above:** SearXNG on **nspawn**, VLAN 90, **no hostname and no Traefik route** — Open WebUI is the only client and the container firewall accepts one address. **The milestone's own central premise was false**: this is *not* the fleet's first service to talk to the open internet on its own behalf. Prowlarr fetches from indexers, tubesync pulls arbitrary YouTube URLs, and **FlareSolverr renders hostile indexer pages in a real browser engine on the *podman* tier** — one step *down*. Read against how the repo has actually applied it, [invariant #1](#architecture-invariants)'s line is a **killswitch requirement**, which search does not have; the VPN-guest egress was rejected on arr.nix's own eztvx.to measurement (a datacenter exit makes fetches *fail* that otherwise succeed). **The LLM gets no tool, deliberately**: Open WebUI registers `search_web` and `fetch_url` under one flag, so the tool path would hand *Open WebUI* arbitrary outbound HTTP — and M19's 20/20 does not transfer, because that was measured with the `<tool_call>` reinforcement the **opencode** role injects and Open WebUI ships nothing of the kind. Snippets only, no embedding: the default would have pulled an **unpinned, un-hash-verified** `all-MiniLM-L6-v2` off HuggingFace at runtime. Two facts that would each have failed silently: SearXNG ships **`formats: [html]`**, so JSON is off by default and every query would 403; and the limiter's botdetection would have **blocked the only client**, whose UA is literally `Open WebUI … RAG Bot`. Takes **uid 3035 / seq 10 / 10.0.90.24**, the pair M21 gave back. [M20](#m20-featernst-searxng) |
 | M21 — image generation | **done — verified working 2026-09-10; BUILT not pinned, and SIX defects surfaced after "shipped"** | — | ComfyUI is **built from source** (`service-modules/pkgs/comfyui`, eight derivations) and **spawned by llama-swap** like `llama-server`, inheriting its ROCm sandbox — so eviction is a process kill and the exclusive `gpu` group now holds three members. It is **not on the podman tier**, and this milestone planned to put it there. Both of its premises were false: the `roles.imagegen` M19 "already built" could not have run (it registered `proxy` with no `cmd` — the "empty command" shape M19 itself documented), and there was no image worth pinning (**AMD's own `rocm/comfyui` is `gfx942;gfx950` — it cannot use this card**; the 1647★ community image's digest pins only its first install; the one that fits has 1 star). Underneath both: an unprivileged llama-swap could never have started or stopped a rootful container, which eviction requires. The ROCm torch stack turned out to be **cache-substitutable**, so building cost far less than assumed. Weights via `roles.models` as planned, plus a new `subdir`; SDXL base 1.0, hash verified twice. **uid 3035 / seq 10 / 10.0.90.24 released back to [M20](#m20-featernst-searxng)** — M21 took no uid, MAC or address. **The exclusivity proof is done** (evict → image → reload, ~10 s). Image EDITING ships too (#167/#169). But six defects surfaced after this was first called shipped — a fetch unit that had failed since M19, three missing/empty Open WebUI env vars, ROCm SDPA, and an img2img OOM on any phone photo — **every one of them deploying green and several running to completion**. The verification line the milestone lacked: *state what you asked for and say whether you got it*. [M21](#m21-featernst-imagegen) |
-| M22 — Immich | **built 2026-09-11 — the deploy, the `zfs create`, the DHCP reservation, both DNS records, the accounts and the import are lgo's** | — | The household photo library: `services.immich` 2.7.5 in an **nspawn** container on `02:00:00:90:00:11` → `10.0.90.25`, uid/gid **3036**, seq **11**. **TWO DATASETS, AND THE SPLIT IS THE DESIGN**: `zdata/photos` (recordsize 1M, auto-snapshot, the library) and `/srv/state/immich` (128K, PostgreSQL + the ML model cache) — the same service's data wanting opposite recordsizes is the whole reason it is not one dataset. **THE MILESTONE'S OWN BRIEF BUDGETED A CLAN VAR AND A STAGING UNIT AND NEITHER IS NEEDED**: PostgreSQL and Redis are both reached over unix sockets, and the module asserts a `secretsFile` is required *only* when postgres is not — so every failure mode a staged secret would have introduced (a var generated after the deploy, a stale copy, a blank prompt) is absent by construction rather than handled. **`photos.goclan.org` is the fleet's SIXTH `appApiHosts` name and the first whose exemption is not only about clients**: two phone apps and the Kodi add-on cannot follow a 302, but a **shared album link is answered anonymously by design** — that is how Sabine sees an album without an account, and it means "the app's own accounts are the boundary" is only half true here (ledger **L13**). **The first-run window is closed by a MECHANISM, not by being quick** — `IMMICH_ALLOW_SETUP=false` plus the public A record created last — where M14's Audiobookshelf had only "create the account immediately". **NO UDM-Pro RULE AND NO NEW LEDGER SHIM**, against the L12 precedent: the TV reaches Immich through Traefik because the add-on speaks HTTPS, so the container firewall admits two addresses and the television is not one of them. **GPU: NONE, deliberately** — `accelerationDevices = [ ]` becomes `PrivateDevices=true`, keeping this off both the 7900 XTX (llama-swap's exclusive `gpu` group) and the iGPU (Jellyfin's VAAPI), per invariant #5. **The Kodi add-on is out-of-tree third-party code** (`vladd11/immich-kodi`, pinned to `prerelease-7`), and the `withPackages` silent-drop trap was **proven avoided by inspecting the built env**, not assumed. **THE IMPORT TOOL FOUND THREE DEFECTS IN ITS OWN SOURCE LISTS BEFORE ANY DATA MOVED** — a directory that does not exist, and 39 GB of encrypted Signal backups in two folders that looked like photo trees. **The laptop half ships DISABLED and that was forced by deploy day**: a prompted clan var for a key only Immich can issue DEADLOCKS every deploy in the fleet, because `clan machines update` runs every machine's generators before updating the one named — promoted to **SN5**. **Two things are shipped UNVERIFIED and say so**: the Prometheus target (port read off the binary, the M13/Ollama evidence exactly) and the container-vs-upstream-hardening interaction. [M22](#m22-featernst-immich) |
+| M22 — Immich | **DONE — deployed, both libraries imported, and 5G upload confirmed 2026-09-11** | [#177](https://github.com/lutzgo/clanarchy/pull/177) [#179](https://github.com/lutzgo/clanarchy/pull/179) [#180](https://github.com/lutzgo/clanarchy/pull/180) | The household photo library: `services.immich` 2.7.5 in an **nspawn** container on `02:00:00:90:00:11` → `10.0.90.25`, uid/gid **3036**, seq **11**. **LIVE**: lgo 15,110+129 (78 GB, 211 albums), sgo 17,455+1,104 (84 GB, 358 albums), 174 GB on `zdata/photos`; both phones backing up, **the FP5 confirmed over 5G** — which closes the one verification M18-era WAN work always owed a real client. **TWO DATASETS, AND THE SPLIT IS THE DESIGN**: `zdata/photos` (1M recordsize, auto-snapshot, the library) and `/srv/state/immich` (128K, PostgreSQL + ML cache). **THE BRIEF BUDGETED A CLAN VAR AND A STAGING UNIT AND NEITHER IS NEEDED** — Postgres and Redis are both on unix sockets, so the module's `secretsFile` assertion never fires. **`photos.goclan.org` is the fleet's SIXTH `appApiHosts` name and the first whose exemption is not only about clients**: a shared album link is answered anonymously BY DESIGN (ledger **L13**). **The first-run window is closed by MECHANISM** (`IMMICH_ALLOW_SETUP=false` + the public A record created last), where M14's Audiobookshelf had only "be quick". **NO UDM-Pro RULE**, against the L12 precedent — the TV reaches Immich through Traefik because the add-on speaks HTTPS. **GPU: NONE** (`accelerationDevices = [ ]` → `PrivateDevices=true`), per invariant #5. **NINE DEFECTS WERE FOUND BY RUNNING IT, NOT BY READING IT** — three that stopped the container starting (SN5's deploy deadlock, a tmpfiles/unit race, a world-readable library), three in the import tooling (API keys in `argv`, a fix that shipped broken, and a verification that passed with the instrument absent), and three about the import itself (immich-go's 32-way default collapsing the server, album creation failing under load but converging on re-run, and a summary that reported `Errors: 0` for a run whose log held 257). **The laptop uploader ships DISABLED** — a prompted clan var for a key only Immich can issue deadlocks every deploy in the fleet (**SN5**). [M22](#m22-featernst-immich) |
 
 ---
 
@@ -10422,6 +10422,138 @@ line M21 closed on.
 | 17 | TV | the Immich add-on browses albums and the timeline on the television, over `photos.goclan.org` |
 | 18 | Reboot (invariant #7) | after a real reboot: container back on `.25`, the library and the database intact, `clanarchy-impermanence-check` green |
 
+### Results, 2026-09-11 — what actually passed
+
+Measured on the deployed system the same day. `—` means not yet exercised, and
+it is left as `—` rather than assumed.
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Container healthy | ✅ `10.0.90.25/24`, default via `10.0.90.1`, no failed units on host or inside — **after three failed deploys**, see below |
+| 2 | Both datasets are the datasets | ✅ `immich-dirs.service` active; all four directories with the right owners, `71` on `postgresql` |
+| 3 | No IPv6 | ✅ `ip -6 addr show dev eth0` empty |
+| 4 | Backend bypass refused | ✅ from the arr container one L2 hop away: **exit 28, HTTP 000** |
+| 5 | Metrics reachable by exactly one host | ✅ 200 from the monitoring container |
+| 6 | **`immich_*` series exist** | ✅ **985 `immich_*` series** of 1384 sample lines; `up{job="immich"} == 1`. **The guess was right and it still deserved to ship labelled as a guess** |
+| 7 | LAN path works | ✅ 200, `{"res":"pong"}` |
+| 8 | wan is fail-closed for something else | ✅ `sonarr` on `wan` → 404 while `jellyfin` → 302, both from the same probe |
+| 9 | **wan path works for this name** | ✅ **CONFIRMED ON 5G by lgo.** The FP5 completes backups off the house LAN |
+| 10 | No forward-auth on it | ✅ answered by Immich, no redirect to `auth.goclan.org` |
+| 11 | Signup is closed | ✅ `IMMICH_ALLOW_SETUP=false` in the running unit's environment. **The original row was a worthless test** — see defect 5 |
+| 12 | Shared link works for a non-user | — |
+| 13 | Import landed in the right library | ✅ lgo 15,110+129, sgo 17,455+1,104, **admin 0** — nothing in the wrong account |
+| 14 | Nothing but photographs | ✅ the two independent filters held; the `.backup` blobs never entered |
+| 15 | darktable path | — (`clanarchy.immich.upload.enable = false` on both laptops; see SN5) |
+| 16 | A half-written export is not uploaded | — (same reason) |
+| 17 | TV | — |
+| 18 | Reboot (invariant #7) | — |
+
+**Final state**: lgo 15,110 + 129 (78 GB, 211 albums), sgo 17,455 + 1,104
+(84 GB, 358 albums), 174 GB on `zdata/photos` against 44.3 TB free. Both phones
+configured; the FP5 uploads at ~42 assets/min.
+
+### Import day — what the imports actually cost
+
+**The first run died at 81%.** 12,286 of 15,209 assets, then
+`write: connection reset by peer` after an error curve of 1–4/min → 10 → 9 →
+**100** → death. Three suspects were checked and cleared before anything was
+changed:
+
+- **not CrowdSec** — its decision list held six external scanners and no entry
+  for `10.0.50.10`. The obvious first guess, and wrong;
+- **not a Traefik timeout** — no `respondingTimeouts` are configured, so the
+  defaults impose no limit on a request body;
+- **not memory** — 224 of 249 GB "used" was 195 GB of reclaimable ZFS ARC, with
+  `immich-server` itself at 2.3 GB RSS.
+
+And **not the background queues**, which would have been the convenient answer:
+they *were* paused, which is precisely why 19,000 `metadataExtraction` jobs had
+accumulated by the time it died. The load was the ingest path itself at
+immich-go's default of **32 concurrent uploads**. Capped at 8, tunable with
+`-j`. The re-run at `-j 4` completed the remaining 2,950 with **zero errors**.
+
+**Album creation is markedly more fragile than asset upload, and it converges
+by re-running.** Immich returns `400 Bad Request` on `POST /api/albums` under
+load — creating the *same* name by hand afterwards returns `201`, so it is
+capacity and not the name. Since assets deduplicate on content hash, a re-run
+costs only hashing and re-attempts the albums:
+
+| pass | `-j` | albums | album-create errors |
+|---|---|---|---|
+| 1 | 4 | 148 / 357 | 221 |
+| 2 | 2 | 329 / 357 | 27 |
+| 3 | 1 | **356 / 357** | **0** |
+
+**Nine "file does not exist" errors are empty source directories.**
+`--folder-as-album PATH` asks for an album per folder; nine folders in the
+corpus hold no files. Benign, and worth knowing so nobody hunts for missing
+photographs.
+
+**immich-go's summary under-reports.** It printed `Errors: 0` for a run whose
+log held **257**, because that counter covers *asset* errors only. Read the log,
+not the summary.
+
+**`--dry-run` does not prove a real run will work.** It never contacts the album
+or upload endpoints, so album failures, capacity limits and connection resets
+are all invisible to it. The dry run reported 0 errors; the real run found 136.
+Recorded in the tool's own `--help`.
+
+**The ML "failures" were not failures.** `Unable to run job handler
+(AssetDetectFaces): Machine learning request … failed for all URLs` appeared
+repeatedly in `immich-server`'s journal — but the service was healthy the whole
+time (`/ping` 200 in 9 ms, models loaded, `NRestarts 0`), merely saturated at
+168% CPU on one worker. Immich retried and succeeded: every queue reports
+**`failed=0`**. No retry is owed. A log line that says "failed" is not a failed
+job.
+
+**The ML backlog GROWS while a phone is backing up**, which is correct and not a
+fault: each upload enqueues thumbnail, face, OCR and smart-search work, and one
+CPU-bound worker is slower than a phone on wifi. It converges when the initial
+backup finishes. This is the cost invariant #5 buys, taken deliberately.
+
+### Three deploy-day defects in the tooling, all found by running it
+
+**1. The API keys were in `argv`, i.e. world-readable.** `pgrep -a immich-go`
+printed both credentials in full. `/proc/<pid>/cmdline` is world-readable, and
+ernst carries `go` — the couch account that autologins on the television with no
+password — so that account could read the *admin* key and reach Sarinah's
+library. Fixed by moving them into a 0600 `--config` file in the private mktemp
+directory, `umask 077` before the write rather than `chmod` after.
+
+**2. The first attempt at that fix shipped broken.** It wrote flat `api_key:`
+keys inferred from mapstructure tags grepped out of the binary; immich-go
+ignored the file and died with `missing the parameter --api-key`, so Sarinah's
+import ran **zero files while appearing to run**. The real layout is nested
+under `upload:` and hyphenated — and the way to learn it is `--save-config` and
+read the result, not `strings`.
+
+**3. The check meant to prove that fix lied.** It grepped `argv` for a key
+pattern, found no `immich-go` process because the run had already failed, and
+reported **PASS**. That is [SN3](#sn3--a-broken-instrument-is-indistinguishable-from-a-bad-result)
+inside the artefact written to prevent it. It now counts processes first and
+exits non-zero when there is nothing to inspect.
+
+**Both exposed keys were revoked and reissued by lgo**; the stale files were
+shredded. `sgo`'s key was never exposed and was correctly left alone.
+
+### Three container defects before it would start at all
+
+**`clan machines update ernst` never built anything** — it stopped prompting for
+**jens**'s `immich-api-key` and died on `termios.error`. Promoted to
+[SN5](#sn5--a-prompted-clan-var-blocks-every-deploy-in-the-fleet-not-just-its-own-machine).
+
+**The container crash-looped five times** on `Failed to clone
+/srv/state/immich/ml-cache: No such file or directory`. The rules were correctly
+in `/etc/tmpfiles.d` and had not run — `systemd-tmpfiles-setup.service` still
+showed the previous boot, three days earlier. `containers/arr.nix` already
+carries this lesson for `/srv/audiobooks`; this file had taken half of it.
+
+**The photo library shipped world-readable** — `drwxr-xr-x` on `/srv/photos`.
+The immich module ships a tmpfiles rule whose own comment calls that "a privacy
+risk", then sets `StateDirectory`, which systemd creates and enforces at 0755
+*after* tmpfiles has run. systemd beat both upstream's rule and this file's own
+`install -d -m 0700`. Closed with `StateDirectoryMode`.
+
 ### Left for later, deliberately
 
 - **The eight ambiguous `Sarinah/*` trees** (`DIY`, `Haekeln`, `Makrame`,
@@ -10429,7 +10561,14 @@ line M21 closed on.
   ~2.9 GB). They are her files; `photo-import survey` each and add a line.
 - **Deleting the imported originals from `/srv/unsorted`.** Not until the
   library has been used for a while. `zdata/photos` carries auto-snapshot and
-  `zdata/unsorted` does too, so there is no hurry.
+  `zdata/unsorted` does too, so there is no hurry. **Nothing in this milestone
+  deleted anything** — every import was a copy.
+- **The laptop uploader**, which ships disabled. Enabling it is: set
+  `clanarchy.immich.upload.enable = true`, `clan vars generate <machine>
+  --generator immich-api-key`, deploy — **in that order**, per SN5.
+- **Test-plan rows 12, 15, 16, 17 and 18** — shared links, the darktable path,
+  the settle check, the TV add-on and the reboot. Left as `—` rather than
+  assumed.
 - **A storage-template decision.** Immich's default layout is fine for an
   app-only workflow; it would matter if the library ever needed to be readable
   as a plain directory tree.
