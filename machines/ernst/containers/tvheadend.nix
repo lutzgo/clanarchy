@@ -177,6 +177,43 @@
 #   depth, but that entry is hand-made UI state that a lost state dir takes
 #   with it).  Neither is better by inspection — they trade different things.
 #
+# ── CHANNEL LOGOS (picons) — DECLARATIVE DATA, RUNTIME SETTING ─────────────
+#
+#   The logos themselves are a pinned package (pkgs/picons.nix), bind-mounted
+#   read-only at the stable path /picons.  The two settings that make
+#   Tvheadend USE them are runtime state in /srv/state/tvheadend/config and
+#   cannot be declared here — the same situation as the access entries above
+#   and the tuner configuration.
+#
+#   Configuration -> General -> Base, with "Expert" view level showing:
+#
+#     Channel icon path         file:///picons/%C.png
+#     Channel icon name scheme  Service name picons
+#
+#   IT IS THE *CHANNEL ICON* PATH, NOT THE *PICON* PATH, and getting that
+#   wrong is the single easiest way to end up with no logos and no error.
+#   Tvheadend has both, and they drive different schemes:
+#
+#     chiconpath + chiconscheme  name-based.  %C is substituted with the
+#                                channel name run through svcnamepicons(),
+#                                which is what pkgs/picons.nix renames to.
+#     piconpath  + piconscheme   service-REFERENCE based (`1_0_1_…`), keyed to
+#                                a satellite bouquet's service refs.  This is
+#                                DVB-C off a FRITZ!Box, so those refs do not
+#                                match anything in any published pack.
+#
+#   Most guides on the internet describe the second and call it "picons",
+#   which is why this note exists.  `chiconscheme` = 2 (CHICON_SVCNAME,
+#   src/tvheadend.h:106) is the value that matters.
+#
+#   COVERAGE, measured against the 198 channels this instance carries
+#   (2026-09-11): 104/117 TV (88%), 49/81 radio (60%), 153/198 overall.
+#   Radio is the weak half and structurally will be — the pack is built for
+#   satellite TV bouquets.
+#
+#   Kodi gets these for free: pvr.hts pulls channel icons over HTSP from this
+#   server, so there is nothing to configure on the TV side.
+#
 # ── STORAGE ─────────────────────────────────────────────────────────────────
 #
 #   /srv/state/tvheadend (zdata) → /var/lib/tvheadend in the container, the
@@ -189,6 +226,11 @@ let
   # Built from source; see pkgs/tvheadend.nix for why nixpkgs cannot supply
   # this and what must never be dropped from its configure flags.
   tvheadend = pkgs.callPackage ./pkgs/tvheadend.nix { };
+
+  # Channel logos, renamed to the scheme THIS Tvheadend generates.  See
+  # pkgs/picons.nix — the rename is not cosmetic, it is worth 27 channels, and
+  # the package's header carries the measurement.
+  picons = pkgs.callPackage ./pkgs/picons.nix { };
 
   tvheadendUid = 3026;   # allocated in machines/ernst/networking.nix
   tvheadendGid = 3026;
@@ -367,6 +409,30 @@ in
       "/var/lib/tvheadend" = {
         hostPath   = "/srv/state/tvheadend";
         isReadOnly = false;
+      };
+
+      # ── Channel logos, at a STABLE PATH, and that is the whole point ──────
+      #
+      # A bind mount rather than referencing the store path directly, even
+      # though /nix/store is already visible in this container and the direct
+      # reference would work today.
+      #
+      # THE REASON IS THAT THE CONSUMER IS RUNTIME STATE.  Tvheadend's
+      # "Channel icon path" lives in /srv/state/tvheadend/config — it is a UI
+      # setting, exactly like the access entries and the tuner config this
+      # file already discusses, and nothing here can declare it.  Point that
+      # setting at a store path and it is correct until the next time the
+      # package changes, at which point the path stops existing and every logo
+      # silently disappears — with the stale value still sitting in the config
+      # file looking perfectly reasonable.
+      #
+      # /picons never moves.  Updating the pack is then a deploy and nothing
+      # else: the mount source changes, the setting does not.
+      #
+      # Read-only: Tvheadend reads these and has no business writing them.
+      "/picons" = {
+        hostPath   = "${picons}/picons";
+        isReadOnly = true;
       };
     };
 
