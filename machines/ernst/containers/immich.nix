@@ -408,6 +408,65 @@ let
     /srv/unsorted/Sarinah/20200711_sg_motog5s_bak
     /srv/unsorted/Sarinah/Videos
   '';
+
+  ##############################################################################
+  # M22b — the hosted Nextcloud instance (citizengo.io), lgo's account.
+  #
+  # THE SECOND RETIRED SERVER, and the same shape of problem as the first: a
+  # machine that is going away, holding the only copy of some photographs.  It
+  # gets the same treatment — staged onto /srv/unsorted, surveyed, then imported
+  # by a named set with its own provenance tag.
+  #
+  # ── NOTHING IN THIS REPOSITORY DOWNLOADS IT ────────────────────────────────
+  #
+  # The pull is a manual, one-off rclone WebDAV sync, and that is deliberate on
+  # the same grounds the Immich API key is not a clan var (see the header of
+  # photo-import.sh): it needs a Nextcloud app password, it runs once, and a
+  # credential stored for a one-time migration is a credential that outlives its
+  # purpose.  The layout below is what that sync is expected to produce, and
+  # `photo-import` refuses to run against a source that is not there — so a
+  # forgotten or half-finished staging step fails loudly instead of importing a
+  # fraction of the corpus and reporting success.
+  #
+  # ── TWO TREES, BECAUSE NEXTCLOUD ALBUMS ARE NOT DIRECTORIES ────────────────
+  #
+  # Nextcloud's Photos app stores albums as database rows referencing files in
+  # the file tree; only the DAV albums endpoint presents them as directories.
+  # So the corpus is pulled twice, from two endpoints:
+  #
+  #   files/    remote.php/dav/files/<user>/…    every photograph, as foldered
+  #   albums/   remote.php/dav/photos/<user>/albums/   the curated membership
+  #
+  # The bytes overlap almost entirely.  That is not waste: the `files` pass
+  # carries the assets, and the `albums` pass carries the only copy of a
+  # decision a human made about them, which no amount of folder structure
+  # reconstructs.  See "two passes" in `photo-import --help` for the ordering.
+  #
+  # ── THESE ARE THE STAGING ROOTS, AND THAT IS PROVISIONAL ───────────────────
+  #
+  # Every other list in this file names MEASURED directories, because
+  # /srv/unsorted's trees interleave photographs with coursework, job
+  # applications and 36 GB of encrypted Signal backups.  These two name the
+  # staging roots instead, which is a weaker guarantee and is called out rather
+  # than glossed: it is only defensible if the staged tree is uniformly
+  # photographic.
+  #
+  # THAT IS A MEASUREMENT, NOT AN ASSUMPTION, and it has not been taken yet.
+  # Run `photo-import survey /srv/unsorted/nextcloud/lgo/files` after staging.
+  # If OTHER is small and the directories are what they claim, these stay as
+  # they are.  If the account was also used as general file storage, replace
+  # them with named subdirectories exactly as the server001 lists were built —
+  # that is the whole lesson of `Lutz/Signal` above.
+  importSourcesLgoNextcloud = ''
+    /srv/unsorted/nextcloud/lgo/files
+  '';
+
+  # The albums endpoint, one directory per album.  Imported with
+  # --folder-as-album FOLDER so an album keeps the name its owner gave it;
+  # PATH here would prefix every one of them with `albums / `.
+  importSourcesLgoNextcloudAlbums = ''
+    /srv/unsorted/nextcloud/lgo/albums
+  '';
 in
 {
   ##############################################################################
@@ -628,6 +687,8 @@ in
         BAN="${importBan}"
         SRC_LGO="${importSourcesLgo}"
         SRC_SGO="${importSourcesSgo}"
+        SRC_LGO_NEXTCLOUD="${importSourcesLgoNextcloud}"
+        SRC_LGO_NEXTCLOUD_ALBUMS="${importSourcesLgoNextcloudAlbums}"
 
         ${builtins.readFile ../photo-import.sh}
       '';

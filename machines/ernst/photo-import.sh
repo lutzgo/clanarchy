@@ -1,8 +1,9 @@
 # machines/ernst/photo-import.sh
 #
 # Body of the `photo-import` command.  NOT standalone: containers/immich.nix
-# prepends the deployment constants (SERVER, EXTENSIONS, BAN, SRC_LGO, SRC_SGO,
-# LOGDIR) and wraps this in writeShellApplication, which supplies the shebang
+# prepends the deployment constants (SERVER, EXTENSIONS, BAN, LOGDIR, and one
+# SRC_* per import set) and wraps this in writeShellApplication, which
+# supplies the shebang
 # and `set -euo pipefail` and runs shellcheck at build time.  Keeping those
 # constants on the Nix side is the point — the source lists are a REVIEWED
 # DECISION about whose photographs go where, and they belong in a file that
@@ -56,12 +57,17 @@ trap cleanup_workdir EXIT
 
 usage() {
   cat <<'USAGE'
-photo-import — import the retired Arch server's photographs into Immich.
+photo-import — import retired servers' photographs into Immich.
 
   photo-import survey [DIR...]   what is under each tree, by kind and size
   photo-import check             prove the server answers and the key is valid
-  photo-import lgo  [-n] [-c] [-j N]    import lgo's trees
-  photo-import sgo  [-n] [-c] [-j N]    import Sarinah's trees
+
+import sets — each carries its own source trees, provenance tag and album mode
+
+  photo-import lgo  [-n] [-c] [-j N]    lgo's trees on the retired Arch server
+  photo-import sgo  [-n] [-c] [-j N]    Sarinah's trees on the same
+  photo-import lgo-nextcloud        [...]   lgo's staged Nextcloud file tree
+  photo-import lgo-nextcloud-albums [...]   lgo's staged Nextcloud albums
 
 options
   -n     dry run — immich-go reports what it would upload and uploads nothing
@@ -89,8 +95,48 @@ is NOT lgo's or sgo's).  It only lets immich-go pause Immich's background
 workers during the upload, which is faster; without it they keep running.
 It never changes WHERE the photos land — IMMICH_API_KEY decides that.
 
-Every asset is tagged `import/server001`, so a bad run can be found and
-removed in the UI as a group rather than hunted for by date.
+Every asset is tagged with its set's provenance tag (`import/server001` or
+`import/nextcloud`), so a bad run can be found and removed in the UI as a group
+rather than hunted for by date. Note that a photograph already on the server
+keeps the tag it arrived with and does NOT gain the new one; see the comment on
+--tag in the source. The tag answers "what did this run ADD".
+
+staging — THIS TOOL DOWNLOADS NOTHING
+
+  The *-nextcloud sets read a tree that must already be on local disk. Pulling
+  it out of the hosted Nextcloud is a separate, one-off step, deliberately not
+  wrapped here: it needs a credential this tool has no business holding, and it
+  runs once. The expected layout, which the source lists in
+  machines/ernst/containers/immich.nix hard-code:
+
+    /srv/unsorted/nextcloud/lgo/files/    the photo directories, as folders
+    /srv/unsorted/nextcloud/lgo/albums/   the Photos-app albums, one dir each
+
+  Run `photo-import survey` on both before importing either.
+
+two passes, and why the albums one is second
+
+  Nextcloud albums are database rows that REFERENCE files in the file tree, so
+  the albums endpoint serves the same bytes a second time. Import the file tree
+  first (every photograph, foldered by PATH), then the albums (the curated
+  membership, named by FOLDER). The second pass uploads almost nothing — those
+  assets are already there — but immich-go still performs album assignment for
+  an asset it recognises, which is exactly the enrichment wanted.
+
+  Run the albums pass with -c. Re-adding an asset that is already in an album
+  has been seen to return a server 500 (simulot/immich-go#792).
+
+A FILE CAN BE SKIPPED WITHOUT BEING A DUPLICATE
+
+  immich-go decides what to upload from NAME + DATE + SIZE, not from content
+  (simulot/immich-go#962). Immich's own checksum dedup never sees a file
+  immich-go declined to send. So two DIFFERENT photographs that share a
+  filename and timestamp — `DSC_0001.jpg` after a card format, the same-named
+  shot off two phones — end with only the first in the library, silently.
+
+  This is the one failure mode of this tool that does not announce itself. The
+  log records every skip and its reason; a run whose skip count is far above
+  the overlap you expected is worth reading before the source tree is deleted.
 USAGE
 }
 
@@ -200,7 +246,7 @@ cmd_check() {
 # The import itself.
 ##############################################################################
 cmd_import() {
-  local account=$1; shift
+  local setname=$1; shift
   local dry=0 onerr="stop" jobs=8 opt
   while getopts 'ncj:' opt; do
     case "$opt" in
@@ -213,12 +259,49 @@ cmd_import() {
 
   need_key
 
+  # ── A SET IS (sources, tag, album mode), NOT JUST A SOURCE LIST ───────────
+  #
+  # The first version of this tool had one corpus, so `lgo` and `sgo` meant
+  # "which trees" and the tag and album mode were hardcoded constants further
+  # down.  M22b added a SECOND corpus — the retired Nextcloud instance — and
+  # that is what showed the three are one decision rather than three:
+  #
+  #   THE TAG IS PROVENANCE.  Adding the Nextcloud trees to SRC_LGO would have
+  #   tagged them `import/server001`, which is simply false, and would have
+  #   destroyed the one property that tag exists for: `import/server001` is
+  #   what you select in the UI to undo a bad run.  A tag that names the wrong
+  #   origin is worse than no tag, because it will be trusted.
+  #
+  #   THE ALBUM MODE IS THE SHAPE OF THE SOURCE.  PATH is right for a folder
+  #   tree, where the leaf alone (`2019`) collides with every other year
+  #   directory in the corpus.  FOLDER is right for the Nextcloud albums
+  #   endpoint, where each directory IS an album and already carries the name
+  #   a human gave it — PATH there would produce `albums / Hochzeit` instead
+  #   of `Hochzeit`.
+  #
+  # Sources stay on the Nix side (they are the reviewed decision about whose
+  # photographs go where); the tag and mode live here because they are a
+  # property of the set's SHAPE, which is decided by the same pull request.
   local -a sources
-  case "$account" in
-    lgo) lines_to_array "$SRC_LGO"; sources=("${_out[@]}") ;;
-    sgo) lines_to_array "$SRC_SGO"; sources=("${_out[@]}") ;;
-    *)   die "unknown account '$account' (expected lgo or sgo)" ;;
+  local tag albummode
+  case "$setname" in
+    lgo)
+      lines_to_array "$SRC_LGO"
+      tag="import/server001"; albummode="PATH" ;;
+    sgo)
+      lines_to_array "$SRC_SGO"
+      tag="import/server001"; albummode="PATH" ;;
+    lgo-nextcloud)
+      lines_to_array "$SRC_LGO_NEXTCLOUD"
+      tag="import/nextcloud"; albummode="PATH" ;;
+    lgo-nextcloud-albums)
+      lines_to_array "$SRC_LGO_NEXTCLOUD_ALBUMS"
+      tag="import/nextcloud"; albummode="FOLDER" ;;
+    *)
+      die "unknown set '$setname' (expected lgo, sgo, lgo-nextcloud or
+  lgo-nextcloud-albums)" ;;
   esac
+  sources=("${_out[@]}")
 
   local d
   for d in "${sources[@]}"; do
@@ -226,7 +309,10 @@ cmd_import() {
       die "source directory does not exist: $d
   The source lists live in machines/ernst/containers/immich.nix.  If a tree was
   renamed during triage, fix it there rather than here — this tool is
-  regenerated from that file."
+  regenerated from that file.
+
+  For a *-nextcloud set this most likely means the tree has not been STAGED
+  yet.  Nothing in this tool downloads anything; see 'staging' in --help."
     fi
   done
 
@@ -245,15 +331,28 @@ cmd_import() {
     # photographs throughout, so this is not a hypothetical.
     --include-extensions "$EXTENSIONS"
 
-    # Albums from the full relative path rather than the leaf, so an album
-    # reads `Bilder / 2019` instead of a bare `2019` that collides with every
-    # other year directory in the corpus.
-    --folder-as-album PATH
+    # PATH or FOLDER, chosen by the set — see the case statement above.
+    --folder-as-album "$albummode"
 
     # Provenance, and an undo.  Everything this tool uploads carries one tag,
     # so a run that went wrong is a tag to select and delete in the UI rather
     # than a date range to reconstruct.
-    --tag import/server001
+    #
+    # ── THE TAG LANDS ON NEW ASSETS ONLY, AND THAT IS CORRECT ───────────────
+    #
+    # immich-go does NOT tag an asset it recognised as already present
+    # (simulot/immich-go#1069 — a duplicate gains albums but no tags).  So an
+    # `import/nextcloud` run over a photograph that already arrived with the
+    # server001 import leaves it tagged `import/server001` and nothing else.
+    #
+    # That reads like a bug and is the behaviour you want: the tag answers
+    # "what did THIS run add", which is exactly the set a bad run needs to
+    # delete.  Deleting an asset that server001 supplied because a later
+    # Nextcloud pass also saw it would be destroying the wrong copy.
+    #
+    # The consequence to remember is on the counting side: the number of
+    # assets carrying the tag is NOT the number of files the run processed.
+    --tag "$tag"
 
     # The DNGs are in scope (lgo's decision: the ~6.1k existing ones are the
     # only copy of those shots) but they are WORKING FILES next to their
@@ -341,11 +440,13 @@ cmd_import() {
   mkdir -p "$LOGDIR"
   local stamp log
   stamp=$(date +%Y%m%d-%H%M%S)
-  log="$LOGDIR/${account}-${stamp}.log"
+  log="$LOGDIR/${setname}-${stamp}.log"
   args+=(--log-file "$log")
 
-  printf 'account:  %s\n' "$account"
+  printf 'set:      %s\n' "$setname"
   printf 'server:   %s\n' "$SERVER"
+  printf 'tag:      %s\n' "$tag"
+  printf 'albums:   from %s\n' "$albummode"
   if [ "$dry" = 1 ]; then printf 'dry run:  yes\n'; else printf 'dry run:  NO\n'; fi
   printf 'log:      %s\n' "$log"
   printf 'bg jobs:  %s\n' "$jobs_note"
@@ -430,7 +531,8 @@ cmd=$1; shift
 case "$cmd" in
   survey)      cmd_survey "$@" ;;
   check)       cmd_check "$@" ;;
-  lgo|sgo)     cmd_import "$cmd" "$@" ;;
+  lgo|sgo|lgo-nextcloud|lgo-nextcloud-albums)
+               cmd_import "$cmd" "$@" ;;
   -h|--help)   usage ;;
   *)           usage; exit 1 ;;
 esac
