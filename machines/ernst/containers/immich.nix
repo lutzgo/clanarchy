@@ -442,28 +442,96 @@ let
   # decision a human made about them, which no amount of folder structure
   # reconstructs.  See "two passes" in `photo-import --help` for the ordering.
   #
-  # ── THESE ARE THE STAGING ROOTS, AND THAT IS PROVISIONAL ───────────────────
+  # ── THE ACCOUNT IS NOT A PHOTO BACKUP, AND THE SURVEY IS WHY WE KNOW ───────
   #
-  # Every other list in this file names MEASURED directories, because
-  # /srv/unsorted's trees interleave photographs with coursework, job
-  # applications and 36 GB of encrypted Signal backups.  These two name the
-  # staging roots instead, which is a weaker guarantee and is called out rather
-  # than glossed: it is only defensible if the staged tree is uniformly
-  # photographic.
+  # The first draft of this list named the staging ROOT, on the assumption that
+  # an account described as "where I backed up my pictures" would be pictures.
+  # It is a general-purpose Nextcloud: Calendar, Deck, notes, obsidian, tasks,
+  # bookmarks, super-productivity, journal, Contacts-Backup.  Importing the
+  # root would have walked all of it.
   #
-  # THAT IS A MEASUREMENT, NOT AN ASSUMPTION, and it has not been taken yet.
-  # Run `photo-import survey /srv/unsorted/nextcloud/lgo/files` after staging.
-  # If OTHER is small and the directories are what they claim, these stay as
-  # they are.  If the account was also used as general file storage, replace
-  # them with named subdirectories exactly as the server001 lists were built —
-  # that is the whole lesson of `Lutz/Signal` above.
+  # MEASURED 2026-09-13, remotely with `rclone lsf -R` before anything was
+  # downloaded — the survey moved in front of the transfer precisely because
+  # the transfer is the expensive step here:
+  #
+  #   Go/Bilder          36,346 files  567.9 GB   32,786 photos  309.8 GB
+  #   Go/Videos           2,541 files  274.5 GB    2,430 videos  273.8 GB
+  #   LGo/Pictures           78 files    0.7 GB       77 photos    0.7 GB
+  #   InstantUpload          88 files    0.8 GB       88 photos    0.8 GB
+  #
+  # NOT LISTED, each with a precedent above it in this file:
+  #
+  #   LGo/Biologie, Chemie, Informatik, Biochemie, SchulOrga, Moderation,
+  #                    `Drawing Course`  — coursework.  Their "photos" are
+  #                    lecture scans and slides.  `Lutz/Biochemie` is the same
+  #                    call on the server001 side.
+  #   LGo/Assets       396 photos, 16.3 GB of design assets.  The same category
+  #                    as the wallpaper/ icons/ avatars/ ban entries: a
+  #                    wallpaper is a real .jpg and still is not a photograph.
+  #   Go/eBooks        167 "photos" — book covers.
+  #   Go/Dokumente, Go/dokumente, Go/ernaehrung — documents.
+  #   +                503 photos among 73,242 files.  Textbook `Lutz/Signal`.
+  #   LGo/obsidian, Omnivore, nvim-flake, neovim-flake, norg-specs,
+  #                    mdtable2csv, Wiki, …  — notes and source repositories.
+  #
+  # DEFERRED BY lgo RATHER THAN REJECTED, and the difference matters because
+  # someone will read this list later and wonder:
+  #
+  #   LGo/tosort       2,003 photos / 15.7 GB inside 57.5 GB of other things.
+  #                    The name says nobody has sorted it.  It gets backed up
+  #                    separately and can be added as one line afterwards.
+  #   SGo              3,224 photos / 3.5 GB, and Sarinah's.  It needs its own
+  #                    set and HER api key, not lgo's — the same split the
+  #                    server001 import made.  Second pass.
   importSourcesLgoNextcloud = ''
-    /srv/unsorted/nextcloud/lgo/files
+    /srv/unsorted/nextcloud/lgo/files/Go/Bilder
+    /srv/unsorted/nextcloud/lgo/files/Go/Videos
+    /srv/unsorted/nextcloud/lgo/files/LGo/Pictures
+    /srv/unsorted/nextcloud/lgo/files/InstantUpload
   '';
+
+  # ── Go/Bilder IS A DARKTABLE ARCHIVE, AND 256 GB OF IT IS NOT IMPORTED ─────
+  #
+  # 567.9 GB in that tree against 309.8 GB of importable photographs.  The gap
+  # is not slack, it is a working raw archive, measured 2026-09-13:
+  #
+  #   .arw     2,145 files   256.6 GB    Sony ILCE raws
+  #   .xmp     1,250 files             darktable sidecars (the edits)
+  #   .dtstyle    54 files             darktable styles
+  #   .cube       17 files             colour LUTs
+  #
+  # `importExtensions` above has no `.arw`, and this corpus is the case that
+  # reasoning was written for: Immich takes finished images, darktable keeps
+  # the negatives.  Sidecars, styles and LUTs are meaningless without the
+  # application that reads them and would be junk in a photo library.
+  #
+  # SO THEY ARE STAGED SEPARATELY AND DELIBERATELY, not filtered away: the
+  # hosted instance is being retired, and dropping 256 GB of raws on the floor
+  # because the photo importer has no use for them would be destroying the one
+  # copy that exists.  Not imported is not the same as not kept.  They land in
+  #
+  #   /srv/unsorted/nextcloud/lgo/darktable-archive/
+  #
+  # which is NOT in any source list and is not meant to be.  A proper dataset
+  # for it is a later decision, left open the same way `zdata/backup` is in
+  # docs/guides/ernst-zdata-datasets.md rather than guessed at now.
+  #
+  # `.hif` — 25 files, 0.2 GB, Sony's HEIF extension — is NOT in
+  # importExtensions either, which lists `.heif` but not the camera's spelling.
+  # Too small to hold up the import and named here so it is a decision.
 
   # The albums endpoint, one directory per album.  Imported with
   # --folder-as-album FOLDER so an album keeps the name its owner gave it;
   # PATH here would prefix every one of them with `albums / `.
+  #
+  # CONFIRMED PRESENT 2026-09-13: 16 albums, carrying names no folder structure
+  # encodes — `2026-07-Zeeland`, `Go2Indonesia`, `Strandtag 🏖️👨‍👨‍👦♥️📷🖼️💾`.
+  # That last one is why `lines_to_array` in photo-import.sh takes values
+  # rather than word-splitting, and it is not a hypothetical any more: album
+  # names here contain spaces, emoji and ZWJ sequences.
+  #
+  # The endpoint also serves `.link-<id>` pseudo-albums for share links.  They
+  # are excluded at the rclone stage, so nothing dotted reaches this tree.
   importSourcesLgoNextcloudAlbums = ''
     /srv/unsorted/nextcloud/lgo/albums
   '';
