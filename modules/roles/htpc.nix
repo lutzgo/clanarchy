@@ -844,6 +844,41 @@ in
         '';
       };
 
+      pinAddonUpdates = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Hold Kodi's `general.addonupdates` at "never check for updates", so
+          that `mediaClient.addons` above is what actually runs.
+
+          WITHOUT THIS THE ADD-ON SET IN THIS FILE IS ADVISORY, and the way
+          that presents is worse than it sounds: nothing errors, nothing
+          warns, and `nix` still builds exactly what is declared. Kodi simply
+          prefers a newer copy in `~/.kodi/addons` over the one in the wrapped
+          package, and its default is to install updates from
+          repository.xbmc.org automatically. So a declared add-on silently
+          stops being the one in use, the version in the config is not the
+          version on the TV, and `~/.kodi` is in `persistenceDirectories`, so
+          the shadow survives every rebuild.
+
+          Found on ernst 2026-09-13: `plugin.video.youtube` was declared at
+          nixpkgs' 7.4.3 and running a self-installed 7.4.4 from
+          `~/.kodi/addons`, which had been the live copy since 2026-09-10.
+
+          Note what this does NOT do. It stops NEW shadows; it cannot remove
+          one that already exists, because the runtime copy keeps winning on
+          version regardless of whether updates are checked. Clearing an
+          existing shadow is a one-time manual step — stop the session, delete
+          the directory under `~/.kodi/addons` (and its cached zip under
+          `~/.kodi/addons/packages`), start it again. `~/.kodi/userdata` holds
+          add-on settings and logins and must NOT be touched.
+
+          Set false to let Kodi manage its own add-on updates, and accept that
+          `mediaClient.addons` then describes a starting point rather than a
+          state.
+        '';
+      };
+
       exe = lib.mkOption {
         type = lib.types.str;
         default = "/run/current-system/sw/bin/kodi-standalone";
@@ -1488,6 +1523,95 @@ in
         });
       };
     };
+
+    # Kodi's add-on auto-update, held off so that mediaClient.addons is what
+    # actually runs.
+    #
+    # A PIN, NOT A REPAIR — the opposite of the skin unit directly above, and
+    # the difference is deliberate. The skin is a taste decision made from the
+    # sofa, so that unit only fixes dangling references and otherwise leaves
+    # whatever was chosen alone. Which add-ons are installed is not a taste
+    # decision: it is declared in this file, and `general.addonupdates` is the
+    # one setting that decides whether that declaration means anything. So
+    # this one re-asserts its value on every start and does not care what the
+    # UI last wrote.
+    #
+    # WHAT IT IS DEFENDING AGAINST is silent, which is why it is worth a unit.
+    # Kodi prefers a newer copy in ~/.kodi/addons over the one in the wrapped
+    # package, and its default (`0`) is to install updates automatically. The
+    # result is a declared add-on that is not the running add-on, with no
+    # error anywhere and `~/.kodi` persisted so it survives rebuilds. See
+    # mediaClient.pinAddonUpdates for the case that found this.
+    #
+    # ONLY WHEN THE SESSION IS DOWN. Kodi rewrites guisettings.xml from memory
+    # on exit, so editing it under a running Kodi is writing to a file that is
+    # about to be overwritten. Hence `before = display-manager.service` and
+    # the same not-RemainAfterExit wiring as the skin unit: a `systemctl
+    # restart display-manager` re-runs this at exactly the moment it is safe.
+    systemd.services.clanarchy-kodi-addon-update-pin =
+      lib.mkIf (cfg.mediaClient.enable && cfg.mediaClient.pinAddonUpdates) {
+        description = "Hold Kodi's add-on auto-update off so the declared add-on set is authoritative";
+
+        wantedBy = [ "multi-user.target" "display-manager.service" ];
+        before   = [ "display-manager.service" ];
+        after    = [ "local-fs.target" "systemd-tmpfiles-setup.service" ];
+
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.user;
+          Group = config.users.users.${cfg.user}.group;
+          ExecStart = lib.getExe (pkgs.writeShellApplication {
+            name = "clanarchy-kodi-addon-update-pin";
+            runtimeInputs = [ pkgs.coreutils pkgs.gnused pkgs.gnugrep ];
+            text = ''
+              settings="$HOME/.kodi/userdata/guisettings.xml"
+
+              # No profile yet. Same reasoning as the skin unit: creating this
+              # file here would hand Kodi a config it did not write. Kodi
+              # authors it on first exit and this runs again next start.
+              [ -f "$settings" ] || exit 0
+
+              # `2` = never check for updates. `0` (install automatically) is
+              # Kodi's default and the value that causes the shadowing.
+              current=$(sed -n 's:.*<setting id="general.addonupdates"[^>]*>\([^<]*\)</setting>.*:\1:p' \
+                          "$settings" | head -1)
+              [ "$current" = "2" ] && exit 0
+
+              tmp=$(mktemp "$settings.XXXXXX")
+              trap 'rm -f "$tmp"' EXIT
+
+              if [ -n "$current" ]; then
+                echo "kodi addon updates are '$current' - pinning to 2 (never)"
+                # The whole element is replaced, not just the text: Kodi writes
+                # `default="true"` on a setting still at its default, and
+                # leaving that attribute on a non-default value makes Kodi
+                # ignore the value and use the built-in default instead.
+                sed 's:<setting id="general.addonupdates"[^>]*>[^<]*</setting>:<setting id="general.addonupdates">2</setting>:' \
+                  "$settings" > "$tmp"
+              else
+                echo "kodi addon updates setting absent - inserting it, pinned to 2 (never)"
+                # Inserted directly after the root open tag rather than before
+                # the close: guisettings.xml is NOT a flat list — nested blocks
+                # (<viewstates>, <audio>) follow the <setting> elements, and an
+                # entry appended after those is harder to read and easy to
+                # mistake for a child of one of them.
+                sed '0,\:<settings[^>]*>:s::&\n    <setting id="general.addonupdates">2</setting>:' \
+                  "$settings" > "$tmp"
+              fi
+
+              # Non-empty guard before the rename. A sed that matched nothing
+              # still produces a file; a sed that failed mid-write produces a
+              # truncated one, and a truncated guisettings.xml is a profile
+              # reset — the exact trap the skin unit's comment warns about.
+              [ -s "$tmp" ] || { echo "refusing to install an empty guisettings.xml" >&2; exit 1; }
+
+              chmod --reference="$settings" "$tmp"
+              mv -f "$tmp" "$settings"
+              trap - EXIT
+            '';
+          });
+        };
+      };
 
     # Boot dispatcher.
     #
