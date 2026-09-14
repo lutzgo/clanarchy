@@ -141,6 +141,16 @@ let
     in
     "~" + builtins.replaceStrings [ "." ] [ "\\." ] prefix + ".*";
 
+  # The ALSA *card* behind those nodes. Same address arithmetic, different
+  # object: profiles are a property of the card, nodes are what a profile
+  # produces, so mediaClient.audioProfile cannot match on tvAudioNodeMatch
+  # above. Exact rather than a regex — there is one card at one address.
+  tvAudioCardName =
+    let
+      audioAddress = (lib.removeSuffix ".0" cfg.display.gpuPciAddress) + ".1";
+    in
+    "alsa_card.pci-" + builtins.replaceStrings [ ":" ] [ "_" ] audioAddress;
+
   waitForDisplay = lib.optionalString (cfg.display.gpuPciAddress != null) ''
     drmDir=/sys/bus/pci/devices/${cfg.display.gpuPciAddress}/drm
     set -- "$drmDir"/card[0-9]*
@@ -838,16 +848,21 @@ in
       #   videoscreen.delayrefreshchange did not help. amdgpu/EGL, not
       #   config. Revisit on a kernel or Kodi bump; until then 24p judders.
       #
-      # audiooutput.eac3passthrough = true  ← this is the Atmos switch
-      #   Atmos rides inside Dolby Digital Plus on streaming sources, so
-      #   E-AC3 passthrough is what puts Atmos on the receiver; TrueHD is a
-      #   different, rarer carrier. Kodi does not even offer
-      #   truehdpassthrough here, because it reaches the TV through a
-      #   PipeWire hdmi-stereo sink and TrueHD needs 8-channel HBR. Leave it
-      #   off. audiooutput.ac3transcode = true is a useful backstop for
-      #   sources whose codec cannot be passed through: Kodi re-encodes to
-      #   DD 5.1 rather than collapsing to stereo, which is what the TV's
-      #   ELD would otherwise force (it advertises LPCM 2ch only).
+      # The audio settings that were here are now DECLARED, not described —
+      # machines/ernst/htpc.nix sets them via mediaClient.guiSettings, because
+      # they are facts about one living room's HDMI chain rather than about
+      # the role. What was written here was also, by 2026-09-14, wrong:
+      #
+      #   "the TV's ELD advertises LPCM 2ch only"      — no longer true
+      #   "Kodi does not even offer truehdpassthrough" — it does now
+      #
+      # Both were accurate when ernst's dGPU drove the TV directly. An HDMI
+      # audio extractor now sits in that path, feeding a soundbar on its own
+      # branch, and it synthesises the EDID the GPU reads. The ELD went from
+      # 4 SADs (LPCM 2ch, AC-3, E-AC3, TrueHD) to 7, gaining DTS, DTS-HD and
+      # LPCM 8ch. The lesson worth keeping is not the numbers: it is that
+      # EVERY AUDIO CAPABILITY STATEMENT HERE IS ABOUT THE CABLE CHAIN, and a
+      # box added between GPU and TV invalidates all of them at once.
       persistenceDirectories = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ".kodi" ];
@@ -950,6 +965,47 @@ in
           Set false to hand every one of these back to Kodi and the UI, and
           accept that this file then describes a starting point rather than a
           state.
+        '';
+      };
+
+      audioProfile = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "output:hdmi-surround71-extra3";
+        description = ''
+          ALSA card profile to hold the TV's audio card on, or null to let
+          WirePlumber choose.
+
+          WHY THIS IS NOT COSMETIC. WirePlumber picks a profile from what the
+          sink's EDID advertised AT PROBE TIME, and on an HDMI chain that is
+          whatever the display claimed when the session started. Pick up a
+          stereo profile and the consequences reach much further than channel
+          count: Kodi enumerates that sink with
+          `m_streamTypes : No passthrough capabilities` and NO bitstreaming is
+          possible at all. Measured on ernst 2026-09-14 — the same sink
+          reported no passthrough on `hdmi-stereo-extra3` and
+          `STREAM_TYPE_AC3,STREAM_TYPE_EAC3,STREAM_TYPE_TRUEHD` on
+          `hdmi-surround71-extra3`. Atmos rides in E-AC3, so the profile is
+          what decides whether this machine can do Atmos.
+
+          IT ALSO FAILS SILENTLY AND ASYMMETRICALLY. A wrong profile is not an
+          error; it is a working stereo TV. And WirePlumber stores a manual
+          choice in ~/.local/state/wireplumber, which IS persisted for the
+          couch user — so fixing it once by hand looks permanent and then
+          comes back stereo on the next fresh install, taking passthrough with
+          it and giving no clue why.
+
+          Changing the profile RENAMES THE SINK (`hdmi-stereo-extra3` ->
+          `hdmi-surround71-extra3`), which dangles Kodi's stored
+          `audiooutput.audiodevice`. Set both together — see
+          machines/ernst/htpc.nix, where this option and the matching
+          guiSettings entries are declared as one unit.
+
+          The value is an ACP profile name as WirePlumber spells it. The
+          `-extraN` suffix identifies the HDMI connector, so it is specific to
+          which port the cable is in; `wpctl status` and
+          `pw-dump | grep EnumProfile` list what a card actually offers, and
+          `available=yes` on a surround profile depends on the EDID.
         '';
       };
 
@@ -1281,6 +1337,34 @@ in
             actions.update-props = {
               "priority.session" = 2000;
               "priority.driver" = 2000;
+            };
+          }
+        ];
+      };
+
+    # Hold the TV's audio card on one profile — see mediaClient.audioProfile
+    # for why this is the setting that decides whether passthrough exists.
+    #
+    # A DEVICE rule, not a node rule, which is why it cannot join the block
+    # above: profiles belong to the card, and the nodes that block matches are
+    # what a profile produces.
+    #
+    # `api.acp.auto-profile = false` is half the fix and the easy half to
+    # miss. Without it ACP keeps re-choosing on its own whenever the EDID
+    # changes underneath it — which on a chain with an HDMI switch in it means
+    # every time the TV is turned off and on again.
+    #
+    # Verified on ernst 2026-09-14 rather than assumed: the card was forced to
+    # `hdmi-stereo-extra3`, the session restarted, and it came up on
+    # `hdmi-surround71-extra3`.
+    services.pipewire.wireplumber.extraConfig."52-htpc-tv-audio-profile" =
+      lib.mkIf (cfg.display.gpuPciAddress != null && cfg.mediaClient.audioProfile != null) {
+        "monitor.alsa.rules" = [
+          {
+            matches = [ { "device.name" = tvAudioCardName; } ];
+            actions.update-props = {
+              "api.acp.auto-profile" = false;
+              "device.profile" = cfg.mediaClient.audioProfile;
             };
           }
         ];
