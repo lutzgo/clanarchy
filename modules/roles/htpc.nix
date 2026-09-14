@@ -680,6 +680,35 @@ in
             # the top of this file.
             joystick
 
+            # MediathekView — catch-up TV for the German-language public
+            # broadcasters, which is the same ARD/ZDF/3sat/arte material
+            # `pvr-hts` above receives live. Live TV and the Mediatheken are
+            # the two halves of the same content, so they belong together.
+            #
+            # UNUSUALLY FOR THIS LIST, IT NEEDS NO RUNTIME SETUP. `youtube`,
+            # `pvr-hts` and the Immich add-on all do; this one does not. The
+            # Mediatheken are open, so there is no key, no account and no
+            # server address to hand it.
+            #
+            # WHAT IT DOES NEED IS DISK, and that is worth knowing before the
+            # first launch looks like a hang. It keeps its own copy of the
+            # MediathekView film list — `dbtype` defaults to `0`, the internal
+            # SQLite store — and the initial import takes a while and is not
+            # small. That lands in ~/.kodi/userdata/addon_data, which is
+            # inside `persistenceDirectories`, so it is imported once rather
+            # than on every boot. On a machine that rolls back its root this
+            # is the difference between a working add-on and one that re-syncs
+            # a database every time the TV is switched on.
+            #
+            # `dbtype` can also point at an external MySQL/MariaDB — that is
+            # what the myconnpy dependency is for. Not worth it here: one
+            # client, one living room, and it would add a database service to
+            # ernst for no gain.
+            #
+            # From `p` like everything else here — see the withPackages trap
+            # at the top of this file.
+            mediathekview
+
             # Immich (M22) — the household photo library on the TV.
             #
             # BUILT FROM THE SELECTOR'S OWN `p`, WHICH IS THE ENTIRE POINT OF
@@ -734,7 +763,7 @@ in
         defaultText = lib.literalExpression ''
           p: with p; [
             jellyfin inputstream-adaptive inputstreamhelper upnext a4ksubtitles
-            keymap youtube pvr-hts
+            keymap youtube pvr-hts joystick mediathekview
             (p.callPackage ./pkgs/immich-kodi.nix { })
           ]
         '';
