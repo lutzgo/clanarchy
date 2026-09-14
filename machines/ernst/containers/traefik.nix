@@ -1721,10 +1721,73 @@ in
             ${wanEntryPoint} = {
               address  = "0.0.0.0:${toString wanPort}";
               http.tls = { };
+
+              # See THE 60-SECOND CEILING on `websecure` below.  30 minutes
+              # here rather than an hour, and the difference is the threat
+              # model rather than the file sizes: this listener is the
+              # internet, and readTimeout is the only thing bounding a client
+              # that opens a request and dribbles a body at one byte per
+              # second.  What makes raising it acceptable at all is that such
+              # a client must hold a slot to do it, and `wan-inflight` caps
+              # the slots at 40 — so the cost of the attack is bounded by a
+              # control that already exists, not by this number.
+              #
+              # It is raised rather than left alone because the phones are
+              # the case that matters: an FP5 backing up a video over mobile
+              # upstream is the client most likely to need more than a minute,
+              # and Immich's mobile upload is a single POST with no resume.
+              transport.respondingTimeouts.readTimeout = "1800s";
             };
 
             websecure = {
               address = "0.0.0.0:443";
+
+              # ── THE 60-SECOND CEILING ON EVERY UPLOAD, AND IT WAS INVISIBLE ─
+              #
+              # Traefik v3 defaults `respondingTimeouts.readTimeout` to 60s,
+              # and readTimeout bounds "the maximum duration for reading the
+              # ENTIRE REQUEST, INCLUDING THE BODY".  Not the headers, not the
+              # idle time — the whole upload.  So any POST that takes longer
+              # than a minute to transfer is killed mid-body no matter how
+              # healthy both ends are, and Traefik logs it as 499 (client
+              # closed) because the client is what gets cut off.
+              #
+              # NOT CONFIGURING IT IS NOT THE SAME AS NOT HAVING ONE, which is
+              # the trap this file fell into.  `respondingTimeouts` appeared
+              # nowhere here, and machines/ernst/photo-import.sh recorded on
+              # 2026-09-11 that a mid-import collapse was "not a timeout
+              # (Traefik has no respondingTimeouts set)".  That inference was
+              # backwards: unset means the default, and in v3 the default is
+              # 60s.  The 2026-09-11 failure at --concurrent-tasks 32 is most
+              # likely this same ceiling, since more concurrency means less
+              # throughput per stream and therefore MORE files crossing 60s.
+              #
+              # MEASURED 2026-09-14, which is what turned it from a theory into
+              # a number.  A 1.1 GB video died with:
+              #
+              #   DownstreamStatus 499   Duration 59999986474 ns   (= 60.000 s)
+              #   RequestContentSize 897340887                     (856 MB sent)
+              #
+              # Exactly 60.000 seconds, 856 MB of 1.1 GB transferred.  The
+              # eight other errors in that run share the same END instant but
+              # have durations of 39 s, 3.4 s and 125 ms — they are immich-go's
+              # --on-errors=stop cancelling what was in flight, not nine
+              # independent failures.  One root cause wearing nine hats.
+              #
+              # AN HOUR, AND WHY IT IS NOT UNBOUNDED.  The staged Nextcloud
+              # corpus holds 14 files over 2 GB and a 5 GB maximum; at the
+              # ~14 MB/s a single stream gets alongside seven others, 5 GB
+              # needs ~6 minutes, and a slower link needs more.  3600s covers
+              # that with room.  `0` would disable the timeout entirely and is
+              # the wrong shape of fix — a wedged connection should eventually
+              # die, and "no limit" is how the next person inherits a hang with
+              # no number to reason about.
+              #
+              # THIS IS NOT AN IMPORT SETTING.  It is in front of every upload
+              # this proxy carries — Immich from both phones, CWA, Jellyfin —
+              # and the import is merely what made a pre-existing ceiling
+              # visible.
+              transport.respondingTimeouts.readTimeout = "3600s";
 
               # THE WILDCARD IS REQUESTED HERE, ONCE, at the entryPoint — not
               # per router.  This is the difference between one certificate and

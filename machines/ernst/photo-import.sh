@@ -376,10 +376,31 @@ cmd_import() {
     #   14:54         AssetUpload ... write: connection reset by peer
     #
     # The server degraded under sustained load and then the connection was
-    # reset mid-body. Not a bad file, not a timeout (Traefik has no
-    # respondingTimeouts set), and NOT CrowdSec — its decision list held only
-    # external scanners, no entry for this host. Checked, because a
+    # reset mid-body. Not a bad file, and NOT CrowdSec — its decision list held
+    # only external scanners, no entry for this host. Checked, because a
     # self-inflicted ban was the obvious first suspect.
+    #
+    # ── "NOT A TIMEOUT" WAS WRONG, AND IT STAYED WRONG FOR THREE DAYS ────────
+    #
+    # This paragraph used to rule out a timeout "(Traefik has no
+    # respondingTimeouts set)". Unset is not absent: Traefik v3 DEFAULTS
+    # readTimeout to 60s, and readTimeout bounds reading the entire request
+    # INCLUDING THE BODY. So every upload always had a 60-second ceiling, and
+    # the one measurement that would have shown it — the access log's
+    # `Duration` field — was never looked at.
+    #
+    # It was found on 2026-09-14 by the Nextcloud import, where a 1.1 GB video
+    # died at Duration 59999986474 ns, i.e. 60.000 seconds exactly, having sent
+    # 856 MB. At --concurrent-tasks 32 each stream gets a fraction of the
+    # throughput, so MORE files cross 60s — which fits the collapse above
+    # better than "degraded under load" does, and was fixed in traefik.nix by
+    # setting the timeout explicitly rather than inheriting a default nobody
+    # had read.
+    #
+    # The lesson worth keeping is not about Traefik. A configuration option
+    # that is ABSENT FROM THE REPOSITORY still has a value, and reasoning from
+    # "we never set it" to "it is not in play" is how this survived a whole
+    # milestone with a measurement sitting in the access log the entire time.
     #
     # Note what it is NOT: the background queues WERE paused (that is why
     # 19,000 metadataExtraction jobs had piled up waiting by the end). The load
