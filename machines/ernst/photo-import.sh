@@ -68,6 +68,7 @@ import sets — each carries its own source trees, provenance tag and album mode
   photo-import sgo  [-n] [-c] [-j N]    Sarinah's trees on the same
   photo-import lgo-nextcloud        [...]   lgo's staged Nextcloud file tree
   photo-import lgo-nextcloud-albums [...]   lgo's staged Nextcloud albums
+  photo-import sgo-nextcloud        [...]   Sarinah's tree from that account
 
 options
   -n     dry run — immich-go reports what it would upload and uploads nothing
@@ -111,8 +112,23 @@ staging — THIS TOOL DOWNLOADS NOTHING
 
     /srv/unsorted/nextcloud/lgo/files/    the photo directories, as folders
     /srv/unsorted/nextcloud/lgo/albums/   the Photos-app albums, one dir each
+    /srv/unsorted/nextcloud/sgo/files/    Sarinah's tree, pulled from lgo's
+                                          account but bound for HER library
 
-  Run `photo-import survey` on both before importing either.
+  Run `photo-import survey` on each before importing it.
+
+sgo-nextcloud SPLITS ACROSS TWO CREDENTIALS, AND THEY ARE NOT THE SAME PERSON'S
+
+  Sarinah's photographs live in a folder inside LGO'S Nextcloud account, so:
+
+    staging   uses lgo's Nextcloud app password  — it is his account
+    importing uses SARINAH'S Immich API key      — it is her library
+
+  Nothing in this tool can detect the mistake of using lgo's key here, because
+  from the API's side it is a perfectly valid import into a perfectly valid
+  account — just the wrong one, with 3,224 of someone else's photographs in it
+  and no undo beyond deleting them by tag. `photo-import check` prints the
+  account the key resolves to, and for this set reading it is not optional.
 
 two passes, and why the albums one is second
 
@@ -297,9 +313,17 @@ cmd_import() {
     lgo-nextcloud-albums)
       lines_to_array "$SRC_LGO_NEXTCLOUD_ALBUMS"
       tag="import/nextcloud"; albummode="FOLDER" ;;
+    # Sarinah's tree out of the SAME Nextcloud account — see the source list in
+    # containers/immich.nix for why that is not a contradiction.  There is no
+    # `sgo-nextcloud-albums` twin and there should not be: the DAV albums
+    # endpoint is per-account, and the account is lgo's, so those albums are
+    # his.  Her photographs carry folder structure and nothing else.
+    sgo-nextcloud)
+      lines_to_array "$SRC_SGO_NEXTCLOUD"
+      tag="import/nextcloud"; albummode="PATH" ;;
     *)
-      die "unknown set '$setname' (expected lgo, sgo, lgo-nextcloud or
-  lgo-nextcloud-albums)" ;;
+      die "unknown set '$setname' (expected lgo, sgo, lgo-nextcloud,
+  lgo-nextcloud-albums or sgo-nextcloud)" ;;
   esac
   sources=("${_out[@]}")
 
@@ -583,7 +607,7 @@ cmd=$1; shift
 case "$cmd" in
   survey)      cmd_survey "$@" ;;
   check)       cmd_check "$@" ;;
-  lgo|sgo|lgo-nextcloud|lgo-nextcloud-albums)
+  lgo|sgo|lgo-nextcloud|lgo-nextcloud-albums|sgo-nextcloud)
                cmd_import "$cmd" "$@" ;;
   -h|--help)   usage ;;
   *)           usage; exit 1 ;;
