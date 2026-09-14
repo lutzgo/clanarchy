@@ -474,15 +474,24 @@ let
   #   LGo/obsidian, Omnivore, nvim-flake, neovim-flake, norg-specs,
   #                    mdtable2csv, Wiki, …  — notes and source repositories.
   #
-  # DEFERRED BY lgo RATHER THAN REJECTED, and the difference matters because
-  # someone will read this list later and wonder:
+  # ── LGo/tosort WAS DEFERRED AND IS NOW REJECTED ────────────────────────────
   #
-  #   LGo/tosort       2,003 photos / 15.7 GB inside 57.5 GB of other things.
-  #                    The name says nobody has sorted it.  It gets backed up
-  #                    separately and can be added as one line afterwards.
-  #   SGo              3,224 photos / 3.5 GB, and Sarinah's.  It needs its own
-  #                    set and HER api key, not lgo's — the same split the
-  #                    server001 import made.  Second pass.
+  #   2,003 photos / 15.7 GB inside 57.5 GB of other things.  It was held open
+  #   through the first import because the numbers could not settle it: 2,003
+  #   photographs is a real quantity, and no folder name said what they were.
+  #
+  #   THE SURVEY COULD NOT ANSWER THIS ONE AND THAT IS THE POINT.  Every other
+  #   tree here was decided by counting — `Bilder` is photographs, `Bewerbung`
+  #   is not.  A directory literally named "tosort" defeats that method by
+  #   construction, so the deciding evidence was a sample of the FILENAMES,
+  #   which lgo read on 2026-09-14: a downloads folder, not a camera's output.
+  #
+  #   Out, therefore, on the same grounds as `Assets` and `+`: the extension
+  #   filter cannot tell a saved image from a photograph, and only a human
+  #   looking at the names could.  NOT to be added back by a later reading of
+  #   the photo count, which has not changed and never was the question.
+  #
+  #   SGo moved the other way and now has its own set below.
   importSourcesLgoNextcloud = ''
     /srv/unsorted/nextcloud/lgo/files/Go/Bilder
     /srv/unsorted/nextcloud/lgo/files/Go/Videos
@@ -534,6 +543,46 @@ let
   # are excluded at the rclone stage, so nothing dotted reaches this tree.
   importSourcesLgoNextcloudAlbums = ''
     /srv/unsorted/nextcloud/lgo/albums
+  '';
+
+  ##############################################################################
+  # Sarinah's tree out of the same Nextcloud account (`sgo-nextcloud`).
+  #
+  # ── THE STAGING PATH SAYS `sgo` AND THE SOURCE SAYS `SGo`, FROM LGO'S ──────
+  #    ACCOUNT.  THAT IS NOT A MISTAKE.
+  #
+  # `SGo` is a folder INSIDE lgo's Nextcloud.  So this one tree is pulled with
+  # HIS credential and imported with HERS, and the two halves answer different
+  # questions: whose account holds the bytes, and whose library they belong in.
+  # The staging root is `/srv/unsorted/nextcloud/sgo/` rather than under `lgo/`
+  # because a path that grouped it by ORIGIN would put Sarinah's photographs in
+  # a directory named after someone else, and the destination is the fact that
+  # matters every later time anyone reads this.
+  #
+  # THE API KEY IS THE ONLY THING THAT ENFORCES THIS and it is supplied by hand
+  # at import time.  Nothing in this file can check it.  `photo-import check`
+  # prints the resolved account precisely so the check happens before 3,224
+  # photographs land somewhere they cannot be recalled from.
+  #
+  # MEASURED 2026-09-13 with the remote survey, before anything was downloaded:
+  #
+  #   SGo   3,242 files   3.5 GB   3,224 photos   3.5 GB
+  #
+  # NAMED WHOLE, unlike `Go` and `LGo`, and the numbers are why: 3,224 of 3,242
+  # files are photographs and they account for the entire 3.5 GB.  Eighteen
+  # files are not, and the extension filter refuses them.  This is the cleanest
+  # tree in the account, and the only one where naming the directory itself is
+  # as conservative as naming its children would be.
+  #
+  # STILL RUN `photo-import survey` ON THE STAGED TREE FIRST.  The measurement
+  # above is of the REMOTE, taken through a different tool; it is evidence that
+  # the list is right, not proof that the copy was complete.
+  #
+  # NO ALBUMS SET, and that is a property of the source rather than an omission:
+  # the DAV albums endpoint is per-account and the account is lgo's, so every
+  # album it serves is his.  Her photographs carry folder structure only.
+  importSourcesSgoNextcloud = ''
+    /srv/unsorted/nextcloud/sgo/files/SGo
   '';
 in
 {
@@ -757,6 +806,7 @@ in
         SRC_SGO="${importSourcesSgo}"
         SRC_LGO_NEXTCLOUD="${importSourcesLgoNextcloud}"
         SRC_LGO_NEXTCLOUD_ALBUMS="${importSourcesLgoNextcloudAlbums}"
+        SRC_SGO_NEXTCLOUD="${importSourcesSgoNextcloud}"
 
         ${builtins.readFile ../photo-import.sh}
       '';
