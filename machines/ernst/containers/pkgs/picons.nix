@@ -59,6 +59,30 @@
 #   empty keys on both sides is what makes the honest number **153 / 198**
 #   rather than 158 — the five "extra" matches were all wrong.
 #
+#   DROPPING THE KEY FIXES THE WRONG LOGO AND CREATES A PERMANENT 404, which
+#   is the better failure but is still a failure, and it is NOT fixable from
+#   this file.  Tvheadend resolves those five channels to `file:///picons/.png`
+#   regardless of what the pack contains, collapses them onto ONE imagecache
+#   id, and then answers `GET /imagecache/49 -- 404` every time any client
+#   loads the channel list.  Kodi on the TV does that on every start and every
+#   EPG refresh: 75 logged 404s over two days, and five entries named `.`
+#   through `.....` sitting in the channel list — one of them at NUMBER 1,
+#   because its provider LCN is 0.
+#
+#   THE FIX IS RUNTIME STATE, APPLIED 2026-09-13: the five channels are
+#   DISABLED in Tvheadend (`enabled: false` in
+#   /srv/state/tvheadend/channel/config/<uuid>), which is where channel
+#   enablement lives and which this file cannot reach.  Their services are
+#   real DVB services — provider "Vodafone Free" / "KD Home", service types
+#   0x16 and 0x19, LCNs 0 and 125-128, still seen on every mux scan — but the
+#   provider never named them and the FRITZ!Box's own 213-channel list does
+#   not publish a single one of them.  They are placeholders.
+#
+#   IF THEY COME BACK, this is why: they are auto-mapped from the SDT, so a
+#   service rescan can recreate them.  The tell is `/imagecache/<id> -- 404`
+#   in the Tvheadend journal with `file:///picons/.png` as the meta url.  Do
+#   not chase it in this derivation — disable the channels again.
+#
 #   Broken down, which is the number worth knowing:
 #
 #       TV channels    104 / 117   (88%)
