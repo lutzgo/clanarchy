@@ -454,6 +454,37 @@ cmd_import() {
   for d in "${sources[@]}"; do printf '  %s\n' "$d"; done
   printf '\n'
 
+  # ── A STALE TMPDIR IS THE NORMAL CASE HERE, NOT AN EXOTIC ONE ─────────────
+  #
+  # `mktemp -d` honours $TMPDIR, and this tool is run by a human from whatever
+  # shell they happen to be in.  On ernst that is routinely a `nix-shell`,
+  # which sets TMPDIR to a scratch directory it DELETES ON EXIT — while the
+  # variable survives in anything started from inside it, such as the tmux
+  # session the operator left running.  The result, measured 2026-09-14 at the
+  # start of a 35,000-asset import:
+  #
+  #   mktemp: failed to create directory via template
+  #   '/tmp/nix-shell-2402963-1593491410/tmp.XXXXXXXXXX': No such file or
+  #   directory
+  #
+  # It fails immediately and loudly, which is the good half.  The bad half is
+  # that the message names mktemp and a template, so it reads like a broken
+  # tool or a full disk rather than "a variable your shell inherited points at
+  # a directory that no longer exists" — and the fix, `unset TMPDIR`, is not
+  # guessable from it.
+  #
+  # Falling back is safe precisely because of what this directory is for: it
+  # is an EMPTY working directory, chosen for its emptiness (see `_workdir` at
+  # the top of this file), not a location anyone configured on purpose.  There
+  # is nothing for a deliberate TMPDIR to express here, so honouring a dead one
+  # buys nothing.  A TMPDIR that exists is still used unchanged.
+  if [ -n "${TMPDIR:-}" ] && [ ! -d "$TMPDIR" ]; then
+    printf 'photo-import: TMPDIR points at %s, which does not exist — using /tmp.\n' \
+      "$TMPDIR" >&2
+    printf '  (usually a nix-shell scratch dir that was cleaned up; run "unset TMPDIR" to silence.)\n' >&2
+    unset TMPDIR
+  fi
+
   # Run from an empty directory — see `_workdir` at the top of this file for
   # why it is a global and what the `local` version cost.
   _workdir=$(mktemp -d)
