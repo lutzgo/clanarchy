@@ -55,6 +55,12 @@
     # `niri-hm.nix` injects raw KDL into the final config.kdl behind this flag.
     blur.enable = lib.mkEnableOption "background blur behind translucent windows and Noctalia layer surfaces" // {default = true;};
 
+    # Xwayland. Niri has no built-in X server; without xwayland-satellite an
+    # X11-only app sees no DISPLAY at all and dies at XOpenDisplay. Wired the
+    # same way as blur — niri-flake's schema has no `xwayland-satellite { }`
+    # node either, so `niri-hm.nix` injects it as raw KDL.
+    xwayland.enable = lib.mkEnableOption "Xwayland for X11-only applications, via xwayland-satellite" // {default = true;};
+
     wallpaper.workspaceColors = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = ["red" "blue" "green" "purple" "orange"];

@@ -313,14 +313,40 @@
     };
   };
 
-  # Blur (niri v26.04+). niri-flake's Nix schema has no `blur { }` or
-  # `background-effect { }` nodes at the current pin, so we take the string
-  # niri-flake generated (`programs.niri.finalConfig`), append raw KDL, and
-  # re-run `niri validate` before installing.
-  xdg.configFile.niri-config.source = lib.mkIf osConfig.clanarchy.desktop.niri.blur.enable (lib.mkForce (
+  # Raw KDL injection. niri-flake's Nix schema has no `blur { }`,
+  # `background-effect { }` or `xwayland-satellite { }` nodes at the current
+  # pin, so we take the string niri-flake generated
+  # (`programs.niri.finalConfig`), append raw KDL, and re-run `niri validate`
+  # before installing.
+  xdg.configFile.niri-config.source = lib.mkIf (
+    osConfig.clanarchy.desktop.niri.blur.enable
+    || osConfig.clanarchy.desktop.niri.xwayland.enable
+  ) (lib.mkForce (
     pkgs.runCommand "config.kdl" {
       passAsFile = ["config"];
-      config = config.programs.niri.finalConfig + ''
+      config =
+        config.programs.niri.finalConfig
+        + lib.optionalString osConfig.clanarchy.desktop.niri.xwayland.enable ''
+
+        // ---- injected by modules/desktop/niri-hm.nix (xwayland.enable) ----
+
+        // X11 support. niri opens the X11 sockets itself and spawns
+        // xwayland-satellite lazily on the first X client connection, so
+        // DISPLAY is allocated from session start and costs nothing until
+        // something actually uses it. Pinned to the store path rather than
+        // relying on a PATH lookup, so the binary is a closure dependency of
+        // this config file.
+        //
+        // niri only exports DISPLAY to processes it spawns itself. That covers
+        // the keybinds here — `uwsm app` launches apps as a scope, ie. as a
+        // fork of the caller, so foot and everything started from it inherit
+        // it. Anything launched from a systemd user unit instead (environment
+        // from the user manager, not from niri) will not see DISPLAY.
+        xwayland-satellite {
+            path "${pkgs.xwayland-satellite}/bin/xwayland-satellite"
+        }
+      ''
+        + lib.optionalString osConfig.clanarchy.desktop.niri.blur.enable ''
 
         // ---- injected by modules/desktop/niri-hm.nix (blur.enable) ----
 
