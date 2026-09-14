@@ -141,6 +141,16 @@ let
     in
     "~" + builtins.replaceStrings [ "." ] [ "\\." ] prefix + ".*";
 
+  # The ALSA *card* behind those nodes. Same address arithmetic, different
+  # object: profiles are a property of the card, nodes are what a profile
+  # produces, so mediaClient.audioProfile cannot match on tvAudioNodeMatch
+  # above. Exact rather than a regex — there is one card at one address.
+  tvAudioCardName =
+    let
+      audioAddress = (lib.removeSuffix ".0" cfg.display.gpuPciAddress) + ".1";
+    in
+    "alsa_card.pci-" + builtins.replaceStrings [ ":" ] [ "_" ] audioAddress;
+
   waitForDisplay = lib.optionalString (cfg.display.gpuPciAddress != null) ''
     drmDir=/sys/bus/pci/devices/${cfg.display.gpuPciAddress}/drm
     set -- "$drmDir"/card[0-9]*
@@ -422,6 +432,25 @@ let
     exec = "${sessionSelect}/bin/clanarchy-session-select kodi";
     categories = [ "AudioVideo" ];
   };
+
+  # Kodi settings this role owns. See mediaClient.guiSettings for what each
+  # one is and why it is not left to the UI; the short version is that all
+  # three are silent when wrong and persisted, so a fresh install starts
+  # broken and stays broken.
+  #
+  # Values are the on-disk strings, because that is what guisettings.xml
+  # holds.
+  baselineGuiSettings = {
+    "general.addonupdates" = "2";
+    "videoplayer.useprimedecoder" = "false";
+    "videoplayer.adjustrefreshrate" = "0";
+  };
+
+  # The user's entries win per-id, and may add ids the baseline says nothing
+  # about. `//` rather than a merged option default on purpose: a default
+  # attrset is REPLACED wholesale by any definition, so declaring one setting
+  # would silently drop the other three.
+  effectiveGuiSettings = baselineGuiSettings // cfg.mediaClient.guiSettings;
 in
 {
   imports = [
@@ -819,16 +848,21 @@ in
       #   videoscreen.delayrefreshchange did not help. amdgpu/EGL, not
       #   config. Revisit on a kernel or Kodi bump; until then 24p judders.
       #
-      # audiooutput.eac3passthrough = true  ← this is the Atmos switch
-      #   Atmos rides inside Dolby Digital Plus on streaming sources, so
-      #   E-AC3 passthrough is what puts Atmos on the receiver; TrueHD is a
-      #   different, rarer carrier. Kodi does not even offer
-      #   truehdpassthrough here, because it reaches the TV through a
-      #   PipeWire hdmi-stereo sink and TrueHD needs 8-channel HBR. Leave it
-      #   off. audiooutput.ac3transcode = true is a useful backstop for
-      #   sources whose codec cannot be passed through: Kodi re-encodes to
-      #   DD 5.1 rather than collapsing to stereo, which is what the TV's
-      #   ELD would otherwise force (it advertises LPCM 2ch only).
+      # The audio settings that were here are now DECLARED, not described —
+      # machines/ernst/htpc.nix sets them via mediaClient.guiSettings, because
+      # they are facts about one living room's HDMI chain rather than about
+      # the role. What was written here was also, by 2026-09-14, wrong:
+      #
+      #   "the TV's ELD advertises LPCM 2ch only"      — no longer true
+      #   "Kodi does not even offer truehdpassthrough" — it does now
+      #
+      # Both were accurate when ernst's dGPU drove the TV directly. An HDMI
+      # audio extractor now sits in that path, feeding a soundbar on its own
+      # branch, and it synthesises the EDID the GPU reads. The ELD went from
+      # 4 SADs (LPCM 2ch, AC-3, E-AC3, TrueHD) to 7, gaining DTS, DTS-HD and
+      # LPCM 8ch. The lesson worth keeping is not the numbers: it is that
+      # EVERY AUDIO CAPABILITY STATEMENT HERE IS ABOUT THE CABLE CHAIN, and a
+      # box added between GPU and TV invalidates all of them at once.
       persistenceDirectories = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ".kodi" ];
@@ -841,6 +875,137 @@ in
           paired with, the login, the library cache, every setting — under
           `~/.kodi`. Without this the client comes up as a fresh install after
           each reboot and someone has to re-add the server from the sofa.
+        '';
+      };
+
+      guiSettings = lib.mkOption {
+        type = lib.types.attrsOf lib.types.str;
+        default = { };
+        example = lib.literalExpression ''
+          {
+            "audiooutput.passthrough" = "true";
+            "general.addonupdates" = "1";   # override a baseline entry
+          }
+        '';
+        description = ''
+          Kodi settings this role owns, as setting-id → value, written into
+          `~/.kodi/userdata/guisettings.xml` before the session starts.
+
+          THIS FILE USED TO SAY THESE COULD NOT BE DECLARED, and that was
+          wrong rather than merely incomplete. The reasoning was "Kodi
+          rewrites guisettings.xml on exit, so nothing here can own them" —
+          true about the rewrite, false about the conclusion. Kodi READS the
+          file at start and WRITES it at exit, so a unit ordered
+          `before = display-manager.service`, while the session is down, owns
+          every one of them. The settings below were carried as prose for
+          exactly as long as that reasoning went unchallenged.
+
+          Merged OVER a baseline this role sets (see `baselineGuiSettings`),
+          so an entry here overrides the role's value for that id and any
+          other id is added. The baseline is:
+
+          - `general.addonupdates = 2` — never check for updates, so that
+            `mediaClient.addons` is what actually runs. Without it Kodi
+            prefers a newer copy in `~/.kodi/addons` over the one in the
+            wrapped package and installs updates from repository.xbmc.org
+            automatically, so a declared add-on silently stops being the
+            running add-on: nothing errors, `nix` still builds what is
+            declared, and `~/.kodi` is persisted so the shadow survives every
+            rebuild. Found on ernst 2026-09-13, where `plugin.video.youtube`
+            was declared at 7.4.3 and had been running a self-installed 7.4.4
+            since 2026-09-10.
+
+          - `videoplayer.useprimedecoder = false` — Kodi's DRMPRIME decoder
+            returns no buffer at all for 10-bit content on this GPU
+            (`GetPicture - videoBuffer:nullptr format:yuv420p10le`). The
+            symptom is vicious: audio plays, the receiver lights up, and the
+            screen shows only the Kodi UI, which looks like a rendering
+            problem rather than a decoder one.
+
+          - `videoplayer.adjustrefreshrate = 0` — has to stay off. It works,
+            and then the modeset tears down the EGL surface and Kodi aborts
+            (`OnLostDisplay`, `eglSwapBuffers failed (EGL_BAD_ALLOC)`): four
+            SIGABRTs in six minutes, one per play. amdgpu/EGL, not config.
+            Revisit on a kernel or Kodi bump.
+
+          VALUES ARE THE ON-DISK STRINGS, not Nix types — `"true"`, `"2"`,
+          `"false"` — because that is what the XML holds and a bool here
+          would just have to be converted back. Enum settings are integers
+          whose meaning is Kodi's; check an existing guisettings.xml rather
+          than guessing.
+
+          Set an id to the value Kodi already has and the unit does nothing;
+          it only rewrites what disagrees.
+        '';
+      };
+
+      pinGuiSettings = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Whether to enforce `guiSettings` at all.
+
+          These are settings whose WRONG value is silent. Nothing errors,
+          nothing warns, and `nix` still builds exactly what is declared — the
+          machine just quietly behaves differently from its own config, and
+          `~/.kodi` is in `persistenceDirectories`, so a wrong value outlives
+          every rebuild rather than being corrected by one. Each entry in the
+          baseline cost an evening to find, and a fresh install starts from
+          the wrong value on all of them.
+
+          WHAT ENFORCEMENT CANNOT DO, for the add-on case specifically: it
+          stops NEW shadows, not one that already exists. A copy already
+          sitting in `~/.kodi/addons` keeps winning on version whether or not
+          updates are checked. Clearing one is a one-time manual step — stop
+          the session, delete the directory under `~/.kodi/addons` and its
+          cached zip under `~/.kodi/addons/packages`, start it again.
+          `~/.kodi/userdata` holds add-on settings and logins and must NOT be
+          touched.
+
+          Set false to hand every one of these back to Kodi and the UI, and
+          accept that this file then describes a starting point rather than a
+          state.
+        '';
+      };
+
+      audioProfile = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "output:hdmi-surround71-extra3";
+        description = ''
+          ALSA card profile to hold the TV's audio card on, or null to let
+          WirePlumber choose.
+
+          WHY THIS IS NOT COSMETIC. WirePlumber picks a profile from what the
+          sink's EDID advertised AT PROBE TIME, and on an HDMI chain that is
+          whatever the display claimed when the session started. Pick up a
+          stereo profile and the consequences reach much further than channel
+          count: Kodi enumerates that sink with
+          `m_streamTypes : No passthrough capabilities` and NO bitstreaming is
+          possible at all. Measured on ernst 2026-09-14 — the same sink
+          reported no passthrough on `hdmi-stereo-extra3` and
+          `STREAM_TYPE_AC3,STREAM_TYPE_EAC3,STREAM_TYPE_TRUEHD` on
+          `hdmi-surround71-extra3`. Atmos rides in E-AC3, so the profile is
+          what decides whether this machine can do Atmos.
+
+          IT ALSO FAILS SILENTLY AND ASYMMETRICALLY. A wrong profile is not an
+          error; it is a working stereo TV. And WirePlumber stores a manual
+          choice in ~/.local/state/wireplumber, which IS persisted for the
+          couch user — so fixing it once by hand looks permanent and then
+          comes back stereo on the next fresh install, taking passthrough with
+          it and giving no clue why.
+
+          Changing the profile RENAMES THE SINK (`hdmi-stereo-extra3` ->
+          `hdmi-surround71-extra3`), which dangles Kodi's stored
+          `audiooutput.audiodevice`. Set both together — see
+          machines/ernst/htpc.nix, where this option and the matching
+          guiSettings entries are declared as one unit.
+
+          The value is an ACP profile name as WirePlumber spells it. The
+          `-extraN` suffix identifies the HDMI connector, so it is specific to
+          which port the cable is in; `wpctl status` and
+          `pw-dump | grep EnumProfile` list what a card actually offers, and
+          `available=yes` on a surround profile depends on the EDID.
         '';
       };
 
@@ -1177,6 +1342,34 @@ in
         ];
       };
 
+    # Hold the TV's audio card on one profile — see mediaClient.audioProfile
+    # for why this is the setting that decides whether passthrough exists.
+    #
+    # A DEVICE rule, not a node rule, which is why it cannot join the block
+    # above: profiles belong to the card, and the nodes that block matches are
+    # what a profile produces.
+    #
+    # `api.acp.auto-profile = false` is half the fix and the easy half to
+    # miss. Without it ACP keeps re-choosing on its own whenever the EDID
+    # changes underneath it — which on a chain with an HDMI switch in it means
+    # every time the TV is turned off and on again.
+    #
+    # Verified on ernst 2026-09-14 rather than assumed: the card was forced to
+    # `hdmi-stereo-extra3`, the session restarted, and it came up on
+    # `hdmi-surround71-extra3`.
+    services.pipewire.wireplumber.extraConfig."52-htpc-tv-audio-profile" =
+      lib.mkIf (cfg.display.gpuPciAddress != null && cfg.mediaClient.audioProfile != null) {
+        "monitor.alsa.rules" = [
+          {
+            matches = [ { "device.name" = tvAudioCardName; } ];
+            actions.update-props = {
+              "api.acp.auto-profile" = false;
+              "device.profile" = cfg.mediaClient.audioProfile;
+            };
+          }
+        ];
+      };
+
     # Kill Plasma's screen locker on the TV.
     #
     # Written to /etc/xdg rather than the couch user's ~/.config for two
@@ -1488,6 +1681,134 @@ in
         });
       };
     };
+
+    # The Kodi settings this role owns, re-asserted before every session start.
+    #
+    # A PIN, NOT A REPAIR — the opposite of the skin unit directly above, and
+    # the difference is deliberate. The skin is a taste decision made from the
+    # sofa, so that unit only fixes dangling references and otherwise leaves
+    # whatever was chosen alone. These are not taste: each is a value the
+    # machine needs in order to behave the way this file says it does, so this
+    # one re-asserts them and does not care what the UI last wrote.
+    #
+    # WHAT IT IS DEFENDING AGAINST IS SILENCE. Every setting in the baseline
+    # fails quietly when wrong — a declared add-on that is not the running
+    # add-on, a decoder that returns no picture while audio plays fine, a
+    # refresh-rate switch that aborts the player. None of them errors, `nix`
+    # still builds what is declared, and ~/.kodi is persisted, so a wrong
+    # value outlives the rebuild that should have fixed it.
+    #
+    # ONLY WHEN THE SESSION IS DOWN, which is the whole reason this is
+    # possible at all. Kodi READS guisettings.xml at start and REWRITES it
+    # from memory at exit, so editing it under a running Kodi writes to a file
+    # about to be overwritten — which is why this file long claimed these
+    # settings could not be declared. Ordered before display-manager.service,
+    # with the same not-RemainAfterExit wiring as the skin unit, a `systemctl
+    # restart display-manager` re-runs it at exactly the moment it is safe.
+    systemd.services.clanarchy-kodi-guisettings =
+      lib.mkIf (cfg.mediaClient.enable
+                && cfg.mediaClient.pinGuiSettings
+                && effectiveGuiSettings != { }) {
+        description = "Apply the Kodi settings this role declares, before the session starts";
+
+        wantedBy = [ "multi-user.target" "display-manager.service" ];
+        before   = [ "display-manager.service" ];
+        after    = [ "local-fs.target" "systemd-tmpfiles-setup.service" ];
+
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.user;
+          Group = config.users.users.${cfg.user}.group;
+          ExecStart = lib.getExe (pkgs.writeShellApplication {
+            name = "clanarchy-kodi-guisettings";
+            runtimeInputs = [ pkgs.coreutils pkgs.gnused pkgs.gnugrep ];
+            text = ''
+              settings="$HOME/.kodi/userdata/guisettings.xml"
+
+              # No profile yet. Same reasoning as the skin unit: creating this
+              # file here would hand Kodi a config it did not write. Kodi
+              # authors it on first exit and this runs again next start.
+              [ -f "$settings" ] || exit 0
+
+              apply() {
+                id="$1"; want="$2"
+
+                # The id goes into a sed ADDRESS and the value into a sed
+                # REPLACEMENT, so each needs its own escaping. Setting ids are
+                # dotted ("general.addonupdates"), and an unescaped dot is
+                # "any character" — harmless here only by luck. Values can
+                # legitimately contain the delimiter and `&`: the audio device
+                # is written as
+                #   PIPEWIRE:alsa_output.pci-...|Navi 31 HDMI/DP Audio...
+                # which carries both `:` and `|`, so no choice of delimiter
+                # escapes this by itself.
+                idre=$(printf '%s' "$id" | sed 's:[].[^$*\\/]:\\&:g')
+
+                # XML-escape the value BEFORE anything else. This file is XML
+                # and a bare `&` makes it unparseable, which Kodi treats as a
+                # corrupt profile and resets — a worse outcome than the wrong
+                # setting, and one the non-empty guard below cannot catch
+                # because the file is the right size and complete garbage.
+                # Escaping is invisible in the common cases ("2", "false") and
+                # load-bearing the first time a value carries an ampersand.
+                # `&` first: escaping it after `<` would re-escape the `&` in
+                # the `&lt;` just written.
+                xml=$(printf '%s' "$want" | sed -e 's:&:\&amp;:g' -e 's:<:\&lt;:g' -e 's:>:\&gt;:g')
+
+                # Then escape for sed's REPLACEMENT side, which is a separate
+                # problem: values legitimately contain the delimiter and `&`.
+                # The audio device is written as
+                #   PIPEWIRE:alsa_output.pci-...|Navi 31 HDMI/DP Audio...
+                # which carries both `:` and `|`, so no choice of delimiter
+                # escapes this by itself.
+                val=$(printf '%s' "$xml" | sed 's:[\\&:]:\\&:g')
+
+                # Compared against the XML-escaped form, because that is what
+                # is actually on disk — comparing the raw value would rewrite
+                # an already-correct setting on every boot.
+                current=$(sed -n "s:.*<setting id=\"$idre\"[^>]*>\([^<]*\)</setting>.*:\1:p" \
+                            "$settings" | head -1)
+                [ "$current" = "$xml" ] && return 0
+
+                tmp=$(mktemp "$settings.XXXXXX")
+                trap 'rm -f "$tmp"' RETURN
+
+                if [ -n "$current" ]; then
+                  echo "kodi $id is '$current' - setting to '$xml'"
+                  # The whole element is replaced, not just the text: Kodi
+                  # writes `default="true"` on a setting still at its default,
+                  # and leaving that attribute on a non-default value makes
+                  # Kodi ignore the value and use the built-in default.
+                  sed "s:<setting id=\"$idre\"[^>]*>[^<]*</setting>:<setting id=\"$id\">$val</setting>:" \
+                    "$settings" > "$tmp"
+                else
+                  echo "kodi $id absent - inserting it as '$xml'"
+                  # Inserted directly after the root open tag rather than
+                  # before the close: guisettings.xml is NOT a flat list —
+                  # nested blocks (<viewstates>, <audio>) follow the <setting>
+                  # elements, and an entry appended after those is harder to
+                  # read and easy to mistake for a child of one of them.
+                  sed "0,\:<settings[^>]*>:s::&\n    <setting id=\"$id\">$val</setting>:" \
+                    "$settings" > "$tmp"
+                fi
+
+                # Non-empty guard before the rename. A sed that matched
+                # nothing still produces a file; one that failed mid-write
+                # produces a truncated one, and a truncated guisettings.xml is
+                # a profile reset — the exact trap the skin unit warns about.
+                [ -s "$tmp" ] || { echo "refusing to install an empty guisettings.xml" >&2; return 1; }
+
+                chmod --reference="$settings" "$tmp"
+                mv -f "$tmp" "$settings"
+              }
+
+              ${lib.concatStringsSep "\n" (lib.mapAttrsToList
+                  (id: value: "apply ${lib.escapeShellArg id} ${lib.escapeShellArg value}")
+                  effectiveGuiSettings)}
+            '';
+          });
+        };
+      };
 
     # Boot dispatcher.
     #

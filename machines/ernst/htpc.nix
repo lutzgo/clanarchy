@@ -59,6 +59,88 @@
     ];
   };
 
+  # ── THE LIVING-ROOM AUDIO CHAIN, and the settings it forces ──────────────
+  #
+  # Declared here rather than in modules/roles/htpc.nix because every value
+  # below is a fact about ONE set of cables. The role owns the mechanism
+  # (mediaClient.audioProfile, mediaClient.guiSettings); this owns the answer.
+  #
+  #   ernst dGPU HDMI ──> FeinTech AX211 audio extractor ──> LG TV  (HDMI 2.1,
+  #                              │                                  4K120 path)
+  #                              └──> Yamaha YSP-5600  (HDMI **IN 1**)
+  #                                        └──> LG TV, second input
+  #
+  # THE EXTRACTOR'S DIP SWITCHES ARE AT 000 — "copy video EDID, synthesise
+  # 7.1 DTS/Dolby/HD audio". That is load-bearing and not the factory
+  # position. At 111 (copy/copy) the GPU is offered whatever the TV claims,
+  # which is what the extractor exists to stop: the LG advertises no DTS at
+  # all and only 2-channel LPCM. Before/after on the ELD, measured:
+  #
+  #   111  4 SADs: LPCM 2ch, AC-3 6ch, E-AC3 8ch, TrueHD 8ch, no DTS
+  #   000  7 SADs: + LPCM 8ch, + DTS 8ch, + DTS-HD 8ch, all to 192 kHz
+  #
+  # THE SOUNDBAR MUST BE ON HDMI **IN 1**, and this is worth writing down
+  # because getting it wrong costs an evening: the YSP's other HDMI socket is
+  # OUT (ARC), and an output into an output negotiates nothing. The failure
+  # looks like a dead extractor — its Amp LED never lights — and survives
+  # every eARC and DIP permutation you try, because none of them are the
+  # problem. IN 1 is also the HDCP 2.2 port.
+  #
+  # eARC IS OFF ON THE EXTRACTOR, deliberately. eARC reverses the direction of
+  # the Amp output: instead of extracting audio from ernst, the box waits for
+  # a return feed from the TV. Nothing here can supply that — the YSP-5600 is
+  # a 2015 HDMI 2.0 device, ARC only — and switching it on silences
+  # everything, since the TV also drops its own speakers. It is only worth
+  # having if the TV's OWN apps need to reach the soundbar. They do not; the
+  # source is ernst.
+  #
+  # DTS IS NOT BITSTREAMED even though the EDID offers it. Kodi's PipeWire
+  # sink reports AC3/E-AC3/TrueHD only, so DTS decodes to 7.1 LPCM instead —
+  # which the soundbar takes happily. Hence dtspassthrough stays off; turning
+  # it on would claim a path that does not exist.
+  clanarchy.roles.htpc.mediaClient = {
+    # Without this the sink comes up stereo and Kodi reports "No passthrough
+    # capabilities" — no Atmos, no bitstreaming, and no error to explain it.
+    audioProfile = "output:hdmi-surround71-extra3";
+
+    guiSettings =
+      let
+        # Exactly as Kodi stores it: the PipeWire node name, "|", the display
+        # name. Both halves must match a device Kodi enumerated, and the
+        # `-extra3`/"(HDMI 4)" tail is the connector the cable is in — so this
+        # and audioProfile above change together or not at all.
+        device =
+          "PIPEWIRE:alsa_output.pci-0000_03_00.1.hdmi-surround71-extra3"
+          + "|Navi 31 HDMI/DP Audio Digital Surround 7.1 (HDMI 4)";
+      in
+      {
+        "audiooutput.audiodevice" = device;
+        "audiooutput.passthroughdevice" = device;
+
+        # 10 = AE_CH_LAYOUT_7_1. The enum is Kodi's own, from
+        # share/kodi/system/settings/settings.xml in the package — read there,
+        # not guessed, because the numbering has no relation to channel count.
+        "audiooutput.channels" = "10";
+
+        # THE MASTER GATE. With this false the per-codec toggles below are
+        # inert, which is a confusing way to have no Atmos while every setting
+        # that appears to control Atmos reads "true".
+        "audiooutput.passthrough" = "true";
+
+        # Atmos rides inside Dolby Digital Plus on streaming sources, so E-AC3
+        # is the switch that actually puts Atmos on the soundbar. TrueHD is
+        # the rarer disc-era carrier and now works too — it needs 8-channel
+        # HBR, which the stereo profile could not offer.
+        "audiooutput.ac3passthrough" = "true";
+        "audiooutput.eac3passthrough" = "true";
+        "audiooutput.truehdpassthrough" = "true";
+
+        # Backstop for sources whose codec cannot be bitstreamed: re-encode to
+        # DD 5.1 rather than collapsing to stereo.
+        "audiooutput.ac3transcode" = "true";
+      };
+  };
+
   # The library itself belongs on the bulk pool, not on zroot: zdata/games
   # already exists for exactly this (see machines/ernst/disko.nix, "future
   # Steam library"), and a mirrored 960 GB system pool is the wrong place for
