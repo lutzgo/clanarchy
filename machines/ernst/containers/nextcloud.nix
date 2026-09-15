@@ -594,6 +594,57 @@ in
           # Required for the Contacts app's phone-number handling; without it
           # every admin page carries a warning about it.
           default_phone_region = "DE";
+
+          # ── THE LINE WITHOUT WHICH OIDC CANNOT WORK AT ALL, AND THE ──────
+          #    SECURITY TRADE IT MAKES
+          #
+          # MEASURED ON ERNST 2026-09-15, on the first attempt to log in:
+          #
+          #     OCP\Http\Client\LocalServerException
+          #     Host "10.0.90.12" (auth.goclan.org:80) violates local access rules
+          #
+          # …and Nextcloud rendered it as a plain 404 on
+          # /index.php/apps/user_oidc/login/1, which reads as "the app is
+          # broken" rather than as a refusal.  The provider row was correct,
+          # the discovery endpoint answered 200 to `curl` from inside this very
+          # container, and the login still failed — because the block is in
+          # Nextcloud's OWN HTTP client (`DnsPinMiddleware`), not in the
+          # network.
+          #
+          # WHAT IT IS: Nextcloud refuses server-side requests to RFC1918
+          # addresses as SSRF protection.  `auth.goclan.org` resolves to
+          # 10.0.90.12 — Traefik, on VLAN 90 — so both the discovery fetch and
+          # the token exchange are refused before a packet leaves.
+          #
+          # THERE IS NO NARROWER FORM.  Nextcloud offers a boolean and no
+          # per-host allowlist, and every path to Authelia is RFC1918: it is
+          # reached through Traefik, and Traefik is on the same private VLAN.
+          # Pointing the issuer at the public name would need a NAT hairpin on
+          # the UDM-Pro for a request that never leaves the box.
+          #
+          # WHAT IT COSTS, stated plainly because it is a real widening:
+          # Nextcloud features that fetch a URL on the server's behalf —
+          # federated sharing, "add remote share", link previews — can now
+          # reach the LAN, and this vhost is on the `wan` entrypoint with
+          # app-level accounts as its only boundary.
+          #
+          # WHAT BOUNDS IT: this changes what the APPLICATION will refuse, not
+          # what the container can reach.  Its firewall is inbound-only — the
+          # `curl` above proves egress was never restricted — so a shell in
+          # here could always have probed VLAN 90.  What is new is that an
+          # AUTHENTICATED Nextcloud user can now aim that at a URL of their
+          # choosing.  Accounts here are household members, and that is the
+          # whole of the argument; if this vhost ever gains self-registration
+          # or a public guest flow, re-read this paragraph first.
+          allow_local_remote_servers = true;
+
+          # The module's default is `https://localhost`, which is what
+          # `occ config:system:get overwrite.cli.url` returned on the first
+          # deploy.  Anything Nextcloud generates OUTSIDE a request — cron,
+          # activity emails, share notifications — builds its links from this,
+          # so left alone the household would receive mail pointing at
+          # localhost.  Not a security property; just wrong.
+          "overwrite.cli.url" = "https://${hostName}";
         };
 
         # ── The apps, from nixpkgs' curated set ───────────────────────────
