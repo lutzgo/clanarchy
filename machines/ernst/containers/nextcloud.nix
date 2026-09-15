@@ -268,14 +268,48 @@ in
       # and the host has no matching passwd entries.  Same shape traefik.nix
       # uses for uid 3005.
       #
-      # 0700 on the store — nothing else on this machine reads it, and ernst
-      # carries `go`, the couch account that autologins on the television
-      # without a password.  At 0755 that session could read the household's
-      # documents straight off the filesystem.
+      # ── 0700 IS ASKED FOR HERE AND 0750 IS WHAT LANDS.  MEASURED. ────────
+      #
+      # On the first deploy (2026-09-15) the store came out `drwxr-x---` on
+      # the host despite this line.  The nixpkgs module ships its own tmpfiles
+      # rules INSIDE the container —
+      #
+      #     d /var/lib/nextcloud            0750 nextcloud nextcloud
+      #     d /var/lib/nextcloud/config     0750 nextcloud nextcloud
+      #     d /var/lib/nextcloud/data       0750 nextcloud nextcloud
+      #     d /var/lib/nextcloud/store-apps 0750 nextcloud nextcloud
+      #
+      # — and those run on every container start, against the same inodes this
+      # line created, through the bind mount.  It is the Immich
+      # `StateDirectoryMode` finding in a different costume: upstream re-asserts
+      # a mode after we have set ours, and upstream wins.
+      #
+      # IT IS NOT FORCED BACK, and the two reasons are worth keeping apart.
+      #
+      #   The cheap one: fixing it would mean declaring a competing tmpfiles
+      #   rule for a path the module already declares, and two rules for one
+      #   path that disagree about mode take turns winning, one per deploy.
+      #   That is the M3 defect, which this file warns about twenty lines up.
+      #
+      #   The real one: 0750 IS NOT AN EXPOSURE HERE, and the check is
+      #   specific rather than reassuring.  The group is gid 3037, and
+      #   `getent group 3037` ON THE HOST RETURNS NOTHING — no host user is in
+      #   it.  `go`, the couch account that autologins on the television
+      #   without a password, is `uid=1001 gid=100(users)` plus audio, video
+      #   and input, and is not.  So the group bit grants nobody anything.
+      #
+      #   THAT IS EXACTLY WHERE THIS DIFFERS FROM IMMICH, and why that file
+      #   spends two lines forcing its mode and this one does not: /srv/photos
+      #   came out 0755, and the o+r bit is what `go` could have used.  0750
+      #   has no o+r bit.  If a host-side group 3037 is ever created, or a user
+      #   is ever added to it, this paragraph stops being true — re-read it
+      #   then rather than trusting it.
       install -d -o ${toString nextcloudUid} -g ${toString nextcloudGid} -m 0700 ${dataRoot}
 
-      # 0700 is not cosmetic on the PostgreSQL one: it refuses to start if its
-      # data directory is group- or world-readable.
+      # The same applies to PostgreSQL's directory, which also settles at 0750.
+      # That one is fine by upstream's own rules: PostgreSQL refuses to start
+      # on a world-readable data directory, but has accepted group-readable
+      # (0750) since version 11.  It is running, which is the proof.
       install -d -o ${toString nextcloudUid} -g ${toString nextcloudGid} -m 0700 ${stateRoot}
       install -d -o ${toString postgresUid}  -g ${toString postgresGid}  -m 0700 ${stateRoot}/postgresql
     '';
