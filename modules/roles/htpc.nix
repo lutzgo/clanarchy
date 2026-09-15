@@ -631,7 +631,21 @@ in
             # (Settings -> API) and a sign-in for anything account-specific.
             # That is runtime state this file cannot set, and until it is
             # done the add-on installs cleanly and then fails at play time.
-            youtube
+            #
+            # PATCHED, NOT TAKEN AS-IS, and the patch is load-bearing rather
+            # than cosmetic: the stock add-on plays about 70 seconds of any
+            # video and then stops, because YouTube now demands a GVS
+            # proof-of-origin token for the ANDROID_VR client it reaches for
+            # and it has none. No released version fixes this — do not try a
+            # version bump as the cure. See pkgs/youtube-kodi.nix for the log
+            # signature, the upstream issues, and what dropping that client
+            # costs (watch history).
+            #
+            # `p.callPackage` for the same reason the Immich add-on below
+            # uses it: the override has to be built against the same kodi
+            # this list is being wrapped for, or `withPackages` discards it
+            # without a word.
+            (p.callPackage ./pkgs/youtube-kodi.nix { })
 
             # The Tvheadend HTSP client — live TV and the DVR, against the
             # Tvheadend ernst already runs.
@@ -705,9 +719,15 @@ in
             # client, one living room, and it would add a database service to
             # ernst for no gain.
             #
+            # PATCHED to drop the "Results Limited / Only the first 1000
+            # results are shown." notification, which upstream fires on
+            # ordinary browsing and offers no way to switch off. See
+            # pkgs/mediathekview-kodi.nix for why the row cap is left where
+            # it is rather than raised.
+            #
             # From `p` like everything else here — see the withPackages trap
             # at the top of this file.
-            mediathekview
+            (p.callPackage ./pkgs/mediathekview-kodi.nix { })
 
             # Immich (M22) — the household photo library on the TV.
             #
@@ -763,7 +783,9 @@ in
         defaultText = lib.literalExpression ''
           p: with p; [
             jellyfin inputstream-adaptive inputstreamhelper upnext a4ksubtitles
-            keymap youtube pvr-hts joystick mediathekview
+            keymap pvr-hts joystick
+            (p.callPackage ./pkgs/youtube-kodi.nix { })
+            (p.callPackage ./pkgs/mediathekview-kodi.nix { })
             (p.callPackage ./pkgs/immich-kodi.nix { })
           ]
         '';
