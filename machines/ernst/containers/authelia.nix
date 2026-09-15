@@ -438,6 +438,23 @@ let
   ];
 
   oidcOpenWebuiGen = config.clan.core.vars.generators.authelia-oidc-openwebui;
+
+  # Nextcloud's OIDC callbacks (M23).  The `user_oidc` app registers one route,
+  # `/code`, under its own app prefix — so the path is `/apps/user_oidc/code`.
+  #
+  # BOTH FORMS ARE REGISTERED, for the reason the Open WebUI list above gives
+  # and not out of caution: Authelia matches redirect_uri EXACTLY, and which of
+  # the two Nextcloud emits depends on whether its URL generator is producing
+  # pretty URLs or the `index.php`-prefixed fallback — which is a property of
+  # `htaccess.RewriteBase` and the nginx rewrite rules, not something this file
+  # can see.  Listing both means the difference is a no-op here rather than an
+  # `invalid_redirect_uri` at the portal that reads as an Authelia fault.
+  nextcloudRedirectUris = [
+    "https://cloud.${baseDomain}/apps/user_oidc/code"
+    "https://cloud.${baseDomain}/index.php/apps/user_oidc/code"
+  ];
+
+  oidcNextcloudGen = config.clan.core.vars.generators.authelia-oidc-nextcloud;
 in
 {
   ##############################################################################
@@ -743,6 +760,50 @@ in
         echo "        token_endpoint_auth_method: 'client_secret_basic'"
         echo "        redirect_uris:"
         ${lib.concatMapStringsSep "\n" (u: "echo \"          - '${u}'\"") openWebuiRedirectUris}
+        echo "        scopes:"
+        echo "          - 'openid'"
+        echo "          - 'profile'"
+        echo "          - 'groups'"
+        echo "          - 'email'"
+
+        # ── Nextcloud (M23).  The WEB UI only — CWA's arrangement ──────────
+        #
+        # cloud.goclan.org carries NO forward-auth (it is in `appApiHosts`), so
+        # WebDAV, CalDAV and CardDAV reach the application directly and
+        # authenticate against Nextcloud's own app passwords.  This client
+        # covers the BROWSER path and nothing else: it is what gets the web UI
+        # real two-factor and Authelia's per-user regulation without putting a
+        # middleware in front of a headless vdirsyncer timer.
+        #
+        # THIS IS CWA's REASONING AND NOT GRAFANA's OR OPEN WEBUI's.  Those two
+        # are behind forward-auth AND take OIDC — the middleware decides whether
+        # the request arrives, OIDC decides whose it is.  Here OIDC is INSTEAD
+        # OF the middleware, because the middleware would break three clients.
+        # Do not merge the two.
+        #
+        # `two_factor`, matching every other name here.  The web UI is where a
+        # user creates app passwords and share links, so it gets the same policy
+        # as the admin surfaces even though the vhost around it is deliberately
+        # open.
+        #
+        # UNLIKE CWA, THE NEXTCLOUD SIDE IS NOT MANUAL: the plaintext half of
+        # this pair is staged into the Nextcloud container and applied by
+        # `nextcloud-occ user_oidc:provider` on every deploy.  A mismatch still
+        # shows up as `invalid_client` at THIS portal rather than as a Nextcloud
+        # error, so that is where to look first.
+        echo "      - client_id: 'nextcloud'"
+        echo "        client_name: 'Nextcloud'"
+        printf "        client_secret: '"
+        tr -d '[:space:]' < ${oidcNextcloudGen.files."nextcloud-client-secret-digest".path}
+        echo "'"
+        echo "        public: false"
+        echo "        authorization_policy: 'two_factor'"
+        echo "        require_pkce: true"
+        echo "        pkce_challenge_method: 'S256'"
+        echo "        consent_mode: 'implicit'"
+        echo "        token_endpoint_auth_method: 'client_secret_basic'"
+        echo "        redirect_uris:"
+        ${lib.concatMapStringsSep "\n" (u: "echo \"          - '${u}'\"") nextcloudRedirectUris}
         echo "        scopes:"
         echo "          - 'openid'"
         echo "          - 'profile'"
@@ -1062,6 +1123,65 @@ in
         exit 1
       fi
       printf '%s' "$digest" > "$out/cwa-client-secret-digest"
+    '';
+  };
+
+  ##############################################################################
+  # `authelia-oidc-nextcloud` — the Nextcloud relying party (M23).
+  #
+  # ONE GENERATOR PER RELYING PARTY, which is this file's rule and not a
+  # stylistic preference: a clan vars generator is ATOMIC — its script runs once
+  # and produces all of its files together — so adding these two files to
+  # `authelia-oidc-cwa` would make clan re-run that whole generator and hand CWA
+  # a NEW client secret as a side effect of adding Nextcloud.
+  #
+  # ── THE PLAINTEXT HALF IS CONSUMED BY A MACHINE HERE, UNLIKE CWA'S ─────────
+  #
+  # CWA has no configuration file, so its plaintext is read once by a human and
+  # typed into an admin form.  Nextcloud keeps its provider registration in the
+  # DATABASE, which is equally unreachable from Nix — but it is reachable from
+  # `occ`, so containers/nextcloud.nix stages this plaintext into
+  # /run/nextcloud-secrets and a provisioning unit runs
+  # `nextcloud-occ user_oidc:provider` with it on every deploy.  No human step,
+  # and rotating the secret is a `clan vars generate` away rather than a visit
+  # to two admin UIs.
+  #
+  # BOTH SIDES THEREFORE RESTART ON ROTATION, and the restartUnits below are
+  # only half of that: the digest restarts Authelia (here), and the plaintext
+  # restarts the Nextcloud staging unit and its container (declared beside the
+  # staging unit in containers/nextcloud.nix, because restartUnits belongs with
+  # the consumer).
+  ##############################################################################
+  clan.core.vars.generators.authelia-oidc-nextcloud = {
+    files."nextcloud-client-secret".secret        = true;
+    files."nextcloud-client-secret-digest".secret = true;
+
+    files."nextcloud-client-secret-digest".restartUnits =
+      [ "authelia-secrets.service" "container@authelia.service" ];
+
+    files."nextcloud-client-secret".restartUnits =
+      [ "nextcloud-secrets.service" "container@nextcloud.service" ];
+
+    runtimeInputs = [ pkgs.authelia pkgs.gnused pkgs.coreutils ];
+
+    script = ''
+      set -euo pipefail
+
+      secret=$(authelia crypto rand --length 72 --charset alphanumeric \
+                 | sed -n 's/^Random Value: //p' | tr -d '\n')
+      if [ -z "$secret" ]; then
+        echo "  ✗ authelia crypto rand produced no client secret for Nextcloud" >&2
+        exit 1
+      fi
+      printf '%s' "$secret" > "$out/nextcloud-client-secret"
+
+      digest=$(authelia crypto hash generate pbkdf2 --variant sha512 --password "$secret" \
+                 | sed -n 's/^Digest: //p')
+      if [ -z "$digest" ]; then
+        echo "  ✗ pbkdf2 hashing produced no digest for the Nextcloud client secret" >&2
+        exit 1
+      fi
+      printf '%s' "$digest" > "$out/nextcloud-client-secret-digest"
     '';
   };
 

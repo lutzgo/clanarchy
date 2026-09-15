@@ -1,10 +1,20 @@
 # ernst: creating the zdata datasets
 
-`machines/ernst/disko.nix` declares five datasets on `zdata` — `media`,
-`media/movies`, `media/tvshows`, `state`, `games` — and disko emits the
-corresponding NixOS `fileSystems` entries so `/srv/media`,
-`/srv/media/library/movies`, `/srv/media/library/tvshows`, `/srv/state`,
-`/srv/games` mount declaratively on every boot.
+`machines/ernst/disko.nix` declares nine datasets on `zdata` — `media`,
+`state`, `games`, `roms`, `unsorted`, `gardens`, `audiobooks`, `photos`,
+`nextcloud` — and disko emits the corresponding NixOS `fileSystems` entries so
+`/srv/media`, `/srv/state`, `/srv/games`, `/srv/roms`, `/srv/unsorted`,
+`/srv/gardens`, `/srv/audiobooks`, `/srv/photos` and `/srv/nextcloud` mount
+declaratively on every boot.
+
+> **`zdata/media/movies` and `zdata/media/tvshows` are gone**, and this file
+> described them for a year after they stopped existing. They were **collapsed
+> into plain subdirectories** of `zdata/media` in
+> [#20](https://github.com/lutzgo/clanarchy/pull/20): hardlinks cannot cross a
+> ZFS dataset boundary, and the \*arr import path depends on them. That is
+> architecture invariant #2 — **no dataset boundary inside the hardlink
+> domain** — and it is why `audiobooks`, `roms` and `photos` below are all
+> SIBLINGS of `zdata/media` rather than children. Do not re-create them.
 
 Disko itself only runs at first install; on the already-provisioned
 pool the datasets have to be created once by hand. This is that
@@ -38,27 +48,9 @@ zfs create \
   -o atime=off \
   zdata/media
 
-# /srv/media/library/movies + /srv/media/library/tvshows — dedicated
-# sub-datasets so the imported Jellyfin database's absolute paths land
-# on stable per-collection dataset boundaries (and Nextcloud can later
-# quota/snapshot/audit each collection independently). recordsize=1M
-# MUST be set at creation — it only applies to new writes and cannot be
-# reset retroactively. devices=off is inherited from zdata/media.
-zfs create \
-  -o mountpoint=legacy \
-  -o recordsize=1M \
-  -o exec=off \
-  -o setuid=off \
-  -o atime=off \
-  zdata/media/movies
-
-zfs create \
-  -o mountpoint=legacy \
-  -o recordsize=1M \
-  -o exec=off \
-  -o setuid=off \
-  -o atime=off \
-  zdata/media/tvshows
+# NOTE: there is no `zfs create zdata/media/movies` or `.../tvshows` here.
+# They existed once and were collapsed into plain subdirectories — see the
+# note at the top of this file. Invariant #2.
 
 # /srv/state — per-service config and state. Layout below: /srv/state/<svc>.
 # recordsize left at the 128K default (small random writes from SQLite etc.
@@ -178,6 +170,80 @@ zfs create \
   zdata/photos
 ```
 
+```bash
+# /srv/unsorted + /srv/gardens — the rescued Arch server (#66). Added to this
+# file retroactively: both were created correctly at the time, but neither had
+# a section here, which is the same gap that put ernst in emergency on
+# 2026-08-28. They are written down now so a rebuild does not have to
+# reverse-engineer them from `disko.nix`.
+#
+# acltype=posix on BOTH, and it is not defensive: the source tree arrived
+# carrying POSIX ACLs from the old box's Nextcloud/Samba setup, and acltype
+# cannot be added usefully after the fact. Note that the NEW Nextcloud below
+# does NOT get it — it keeps its sharing model in its own database.
+#
+# recordsize differs between them, which is the whole reason they are two
+# datasets and not one: /srv/unsorted is a decade of photographs, video and
+# archives (1M), and /srv/gardens is thousands of small markdown notes written
+# a few KB at a time (the 128K default — 1M would turn every note save into a
+# read-modify-write).
+zfs create \
+  -o mountpoint=legacy \
+  -o recordsize=1M \
+  -o exec=off \
+  -o setuid=off \
+  -o devices=off \
+  -o atime=off \
+  -o acltype=posix \
+  -o com.sun:auto-snapshot=true \
+  zdata/unsorted
+
+zfs create \
+  -o mountpoint=legacy \
+  -o exec=off \
+  -o setuid=off \
+  -o devices=off \
+  -o atime=off \
+  -o acltype=posix \
+  -o com.sun:auto-snapshot=true \
+  zdata/gardens
+```
+
+```bash
+# /srv/nextcloud — M23.  Nextcloud's `home` (containers/nextcloud.nix): its
+# config/, its store-apps/ and the household's synced files under data/.
+#
+# A SIBLING of zdata/media, never a child — invariant #2, same as photos.
+# Nextcloud reads /srv/media as READ-ONLY external storage and never writes
+# into it, so there is no hardlink relationship to preserve either way.
+#
+# NOT a subdirectory of /srv/state, for the reason photos is not: the DATABASE
+# lives on /srv/state/nextcloud (128K, small random writes from PostgreSQL) and
+# the FILE STORE lives here (1M). Two opposite recordsizes, two datasets.
+#
+# recordsize=1M MUST be set at creation. recordsize is a MAXIMUM, so the small
+# files in config/ cost nothing; what it buys is that a 4 GB upload is not
+# 32,768 records. Nextcloud writes user files whole over WebDAV PUT and never
+# partially rewrites a large one, which is the access pattern that would make
+# 1M wrong.
+#
+# com.sun:auto-snapshot=true, as non-negotiable here as it is on photos and for
+# a sharper reason: SYNC IS NOT BACKUP AND IT IS NOT ONE-DIRECTIONAL. A file
+# deleted on a laptop is deleted here moments later, and Nextcloud's trash is a
+# database flag with a retention period, not a filesystem-level undo.
+#
+# NO acltype=posix, unlike unsorted and gardens above — see the note there.
+zfs create \
+  -o mountpoint=legacy \
+  -o recordsize=1M \
+  -o exec=off \
+  -o setuid=off \
+  -o devices=off \
+  -o atime=off \
+  -o com.sun:auto-snapshot=true \
+  zdata/nextcloud
+```
+
 `compression=zstd` and encryption are inherited from the pool root and
 should not be restated.
 
@@ -190,23 +256,33 @@ the backup strategy is decided; its properties will likely diverge
 Property audit — every value below must match what was requested above:
 
 ```bash
-zfs get -H -o value \
-  mountpoint,recordsize,exec,setuid,devices,atime,compression,encryption \
-  zdata/media zdata/media/movies zdata/media/tvshows zdata/state zdata/games \
-  zdata/roms zdata/photos
+zfs get -H -o name,property,value \
+  mountpoint,recordsize,exec,setuid,devices,atime,acltype,compression,encryption,com.sun:auto-snapshot \
+  zdata/media zdata/state zdata/games zdata/roms zdata/unsorted zdata/gardens \
+  zdata/audiobooks zdata/photos zdata/nextcloud
 ```
 
 Expected:
 
-| Dataset               | mp     | recordsize | exec | setuid | devices | atime | compress | encrypt      |
-| --------------------- | ------ | ---------- | ---- | ------ | ------- | ----- | -------- | ------------ |
-| `zdata/media`         | legacy | 1M         | off  | off    | off     | off   | zstd     | aes-256-gcm  |
-| `zdata/media/movies`  | legacy | 1M         | off  | off    | off     | off   | zstd     | aes-256-gcm  |
-| `zdata/media/tvshows` | legacy | 1M         | off  | off    | off     | off   | zstd     | aes-256-gcm  |
-| `zdata/state`         | legacy | 128K       | on   | off    | off     | off   | zstd     | aes-256-gcm  |
-| `zdata/games`         | legacy | 128K       | on   | off    | off     | off   | zstd     | aes-256-gcm  |
-| `zdata/roms`          | legacy | 1M         | off  | off    | off     | off   | zstd     | aes-256-gcm  |
-| `zdata/photos`        | legacy | 1M         | off  | off    | off     | off   | zstd     | aes-256-gcm  |
+| Dataset            | mp     | recordsize | exec | setuid | devices | atime | acltype | snapshot | compress | encrypt     |
+| ------------------ | ------ | ---------- | ---- | ------ | ------- | ----- | ------- | -------- | -------- | ----------- |
+| `zdata/media`      | legacy | 1M         | off  | off    | off     | off   | off     | —        | zstd     | aes-256-gcm |
+| `zdata/state`      | legacy | 128K       | on   | off    | off     | off   | off     | true     | zstd     | aes-256-gcm |
+| `zdata/games`      | legacy | 128K       | on   | off    | off     | off   | off     | —        | zstd     | aes-256-gcm |
+| `zdata/roms`       | legacy | 1M         | off  | off    | off     | off   | off     | true     | zstd     | aes-256-gcm |
+| `zdata/unsorted`   | legacy | 1M         | off  | off    | off     | off   | posix   | true     | zstd     | aes-256-gcm |
+| `zdata/gardens`    | legacy | 128K       | off  | off    | off     | off   | posix   | true     | zstd     | aes-256-gcm |
+| `zdata/audiobooks` | legacy | 1M         | off  | off    | off     | off   | off     | true     | zstd     | aes-256-gcm |
+| `zdata/photos`     | legacy | 1M         | off  | off    | off     | off   | off     | true     | zstd     | aes-256-gcm |
+| `zdata/nextcloud`  | legacy | 1M         | off  | off    | off     | off   | off     | true     | zstd     | aes-256-gcm |
+
+> **`com.sun:auto-snapshot` is the column that silently does nothing if it is
+> wrong.** `services.zfs.autoSnapshot` is on fleet-wide, but it only touches
+> datasets carrying this property — and, exactly like `mountpoint=legacy`, disko
+> applies it at CREATION and never reconciles it afterwards. A dataset created
+> without it is not snapshotted and nothing says so. Fix on an existing dataset
+> with `zfs set com.sun:auto-snapshot=true <dataset>`; see
+> `docs/runbooks/zfs-auto-snapshot-optin.md`.
 
 ## Deploy
 
@@ -228,6 +304,17 @@ mount | grep '/srv/'
 
 findmnt /srv/media  # confirms device=zdata/media, fstype=zfs
 ```
+
+The three datasets that carry `nofail` — `/srv/audiobooks`, `/srv/photos` and
+`/srv/nextcloud` — will **not** fail the boot if they are missing or
+mis-propertied. Their consumers refuse to start instead, which is the point.
+Check those directly rather than trusting a clean boot:
+
+```bash
+systemctl status audiobooks-tree immich-dirs nextcloud-dirs
+```
+
+Each prints the exact `zfs create` line to run if its dataset is wrong.
 
 ## If it goes wrong
 

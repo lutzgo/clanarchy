@@ -314,6 +314,18 @@
           # apps, the TV add-on, and shared album links that are answered
           # anonymously by design.  See containers/ingress-policy.nix.
           ./machines/ernst/containers/immich.nix
+          # M23.  Nextcloud — the household file-sync / CalDAV / CardDAV
+          # server, on the NSPAWN tier for the same reason Immich is:
+          # `services.nextcloud` is a first-class NixOS module.  Owns
+          # zdata/nextcloud, and is what lets the hosted instance at
+          # citizengo.io be turned off.
+          #
+          # Public on `cloud.goclan.org` with NO forward-auth — the desktop
+          # sync client, DAVx5 and a headless vdirsyncer timer all speak
+          # WebDAV with app passwords and none can follow a 302.  The browser
+          # path takes Authelia's OIDC provider instead, which is CWA's
+          # arrangement.  See containers/ingress-policy.nix.
+          ./machines/ernst/containers/nextcloud.nix
           # microvm.nix's host module, and the one guest that uses it (M3).
           # The import lives here rather than inside wg-qbittorrent.nix
           # because `inputs` reaches a machine module via _module.args, and

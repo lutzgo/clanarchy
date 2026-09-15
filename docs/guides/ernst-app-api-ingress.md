@@ -1,6 +1,6 @@
 # App-API ingress: the services apps talk to
 
-Five hostnames on ernst are reachable from the public internet **without
+Seven hostnames on ernst are reachable from the public internet **without
 Authelia in front of them**. This page is why, what compensates, and how to
 verify it works.
 
@@ -25,7 +25,7 @@ browser to render the portal, so it reports an opaque network error and the
 user concludes the server is broken. If someone reports *"works in the browser,
 fails in the app"*, check this first — it is almost always the cause.
 
-### The exempt six
+### The exempt seven
 
 | Host | Clients that force the exemption |
 |---|---|
@@ -35,6 +35,7 @@ fails in the app"*, check this first — it is almost always the cause.
 | `navidrome` | every Subsonic client — the credential is a **query parameter**, by protocol definition |
 | `cwa` | OPDS (basic auth), Kobo (device token **in the URL path**), KOReader `/kosync` (RFC 7617) |
 | `photos` | the Immich app on two phones (bearer token), the Kodi add-on on the TV (`x-api-key`), **and shared album links** |
+| `cloud` | the Nextcloud desktop sync client on three laptops, DAVx5 on the phones, and **vdirsyncer on a headless user timer** — all app passwords over `/remote.php/dav/**` |
 
 A Kobo e-reader is the clearest case: there is no browser on the device at all.
 
@@ -61,6 +62,35 @@ middleware in front of it can help.
 **mechanism** rather than by speed: `IMMICH_ALLOW_SETUP` is `false` in
 `containers/immich.nix`, and the public A record is created only after both
 accounts exist. See the post-deploy checklist below.
+
+#### `cloud` is the seventh, and it is back to the ordinary case
+
+Nextcloud (M23) is in this list for the plain client-compatibility reason, not
+for Immich's unusual one: **nothing on `cloud.goclan.org` is anonymous by
+design.** Public share links exist, but they are off until somebody creates
+one, and the exemption does not depend on them — it rests entirely on three
+clients that cannot follow a 302, one of which (vdirsyncer, from a user timer
+on miralda) has no display at all.
+
+Two things about it are worth knowing before an incident:
+
+- **The browser half is not unauthenticated.** `cloud` carries an Authelia
+  **OIDC client** with `two_factor` — CWA's arrangement, where OIDC replaces
+  the middleware rather than sitting beside it. If the login page shows only
+  the local password form, the `nextcloud-provision` unit inside the container
+  is what failed.
+- **The compensating control that carries the most weight here is Nextcloud's
+  own per-account brute-force throttle, and it has a prerequisite.** It keys on
+  the client address, so `settings.trusted_proxies` in
+  `containers/nextcloud.nix` must name Traefik — otherwise every request looks
+  like `10.0.90.12` and one attacker locks out the household. Verify it by
+  failing a login on purpose and checking which address Nextcloud reports.
+
+`cloud` is also the one name in this table with **no `wanLoginPaths` entry**,
+deliberately: `/remote.php/dav/**` is every sync request rather than a login,
+and `/login/v2/**` is the poll the desktop client makes while a user adds an
+account. Both matchers would break a client instead of an attacker. The
+argument is written out at the `wanLoginPaths` map in `traefik.nix`.
 
 ## It is enforced, not documented
 
@@ -98,12 +128,19 @@ rest:
 4. **CrowdSec `clanarchy/app-api-auth-bf`** — 10× 401/403 in 5 minutes → ban at
    the packet layer.
 5. **The services' own limiters** — Navidrome ships 5 attempts / 2 min;
-   Audiobookshelf has failed-login backoff. **Komga has neither.**
+   Audiobookshelf has failed-login backoff; **Nextcloud has a per-account
+   throttle that is on by default, and it is the strongest of the three — but
+   only if `trusted_proxies` names Traefik, otherwise it throttles the proxy.**
+   **Komga has neither.**
 
 ### Residual exposure — the honest list
 
-- **No second factor on any of the five.** Authelia's 2FA and per-user
-  regulation do not apply, because Authelia is never consulted.
+- **No second factor on five of the seven.** Authelia's 2FA and per-user
+  regulation do not apply, because Authelia is never consulted. **`cwa` and
+  `cloud` are the exceptions and only on the browser path**: both register an
+  Authelia OIDC client with `two_factor`, so a browser login gets the full
+  policy while the app protocols still reach the application directly. That is
+  OIDC *instead of* the middleware — do not read it as forward-auth.
 - **The login rate limiter does not cover Subsonic or Komga's HTTP Basic.**
   Those carry the credential on *every* request, so there is no distinct login
   path. CrowdSec's status-based scenario is the only control there.
@@ -198,7 +235,7 @@ If the first answers and the second does not, it is cache — not config.
 A records only, **DNS-only (grey cloud)**, all → `78.94.91.74`:
 
 ```
-audiobookshelf   auth   cwa   jellyfin   jellyseerr   komga   navidrome   photos
+audiobookshelf   auth   cloud   cwa   jellyfin   jellyseerr   komga   navidrome   photos
 ```
 
 Add each one only *after* that service's admin credential is set — see the

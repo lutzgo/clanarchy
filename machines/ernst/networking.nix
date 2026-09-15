@@ -385,6 +385,32 @@
   #                       speaks ordinary HTTPS, so it needs none of that:
   #                       M22 adds NO UDM-Pro rule and NO ledger row.
   #
+  #   02:00:00:90:00:12   nextcloud container eth0  (M23 — allocated)  10.0.90.26
+  #                       Nextcloud, the household file-sync / CalDAV / CardDAV
+  #                       server, machines/ernst/containers/nextcloud.nix.
+  #                       nspawn — `services.nextcloud` is a first-class NixOS
+  #                       module, so the podman tier does not apply.
+  #
+  #                       PUBLIC.  `cloud.goclan.org` rides BOTH entrypoints and
+  #                       carries NO forward-auth — the fleet's SEVENTH
+  #                       appApiHosts name, on the client-compatibility clause:
+  #                       the desktop sync client on three laptops, DAVx5 on the
+  #                       phones, and vdirsyncer on a headless user timer all
+  #                       authenticate with app passwords over
+  #                       /remote.php/dav/** and none of them has a browser.
+  #                       The BROWSER path takes Authelia's OIDC provider
+  #                       instead, which is CWA's arrangement and NOT Grafana's.
+  #
+  #                       ITS FIREWALL ADMITS EXACTLY ONE ADDRESS: Traefik (.12)
+  #                       on 80.  Not the monitoring container — Nextcloud's
+  #                       serverinfo endpoint is token-authenticated JSON and
+  #                       not an OpenMetrics exposition, so there is no scrape
+  #                       to permit.  Failed units inside it are still seen, via
+  #                       `machinectl` and the container-units collector.
+  #
+  #                       LIKE M22 IT ADDS NO UDM-PRO RULE AND NO LEDGER ROW for
+  #                       VLAN 50 → 90: every client arrives through .12.
+  #
   #   M18 ADDED NO MAC AND NO ADDRESS, which is worth stating because it is a
   #   milestone that opened the house to the internet.  CrowdSec runs INSIDE
   #   the traefik container's netns (containers/crowdsec.nix) — it is the only
@@ -827,15 +853,56 @@
   #                           user to this container could then change the
   #                           owner of 200 GB of photographs.
   #
-  #                           NEXT FREE IS 3037.)
+  #                           M23 TOOK 3037; NEXT FREE IS 3038.)
   #   gid 3036  immich       (containers/immich.nix — M22)
+  #
+  #   uid 3037  nextcloud    (containers/nextcloud.nix — M23, the household
+  #                           file-sync / CalDAV / CardDAV server, in an NSPAWN
+  #                           container on VLAN 90.  It is what lets the hosted
+  #                           instance at citizengo.io be turned off.
+  #
+  #                           OWN group 3037, with `media` as a SECONDARY
+  #                           membership — which is the one place this row
+  #                           differs from Immich's.  Immich shares nothing;
+  #                           Nextcloud reads /srv/media read-only as external
+  #                           storage, and jellyfin.nix created group 3000
+  #                           anticipating exactly that ("a group-add, not a
+  #                           chown").  Its OWN tree is 0700 nextcloud:nextcloud
+  #                           on zdata/nextcloud — no setgid, no shared group,
+  #                           same as Immich's.  Making `media` PRIMARY would
+  #                           put gid 3000 on every file the household syncs,
+  #                           which is the opposite of what the secondary
+  #                           membership is for.
+  #
+  #                           IT OWNS A WHOLE DATASET: zdata/nextcloud, mounted
+  #                           at /srv/nextcloud and bound in at
+  #                           /var/lib/nextcloud — the module's own `home`, so
+  #                           `datadir` and its tmpfiles rules agree with
+  #                           nothing overridden.  Its DATABASE is elsewhere, on
+  #                           /srv/state/nextcloud, for the reason Immich's is:
+  #                           a 1M recordsize is right for a bulk file store and
+  #                           wrong for PostgreSQL.
+  #
+  #                           PINNING IT IS LOAD-BEARING for the same reason as
+  #                           3036.  The nixpkgs module creates `nextcloud` with
+  #                           `isSystemUser = true` and NO uid, so the number
+  #                           would be whatever the container's useradd picked —
+  #                           and it would then be the owner of the household's
+  #                           entire document store on the pool.
+  #
+  #                           NEXT FREE IS 3038.)
+  #   gid 3037  nextcloud    (containers/nextcloud.nix — M23)
   #
   #   uid   71  postgres     NOT ALLOCATED HERE, and listed so nobody allocates
   #                           it.  Immich's PostgreSQL runs inside its container
   #                           and lands on zdata unmapped like every other
   #                           container uid, but 71 is a WELL-KNOWN NixOS static
   #                           id (`ids.uids.postgres`) rather than one of ours.
-  #                           It appears on /srv/state/immich/postgresql.  The
+  #                           It appears on /srv/state/immich/postgresql and,
+  #                           since M23, on /srv/state/nextcloud/postgresql —
+  #                           two separate databases in two separate containers
+  #                           that happen to share a number, which is fine
+  #                           precisely because neither tree is shared.  The
   #                           3000-block convention does not apply to it and it
   #                           must not be renumbered into the block.
   #
@@ -941,8 +1008,10 @@
   #
   # M20 TOOK SEQUENCE 10 / 10.0.90.24 — moved up into the allocated table.
   # M22 TOOK SEQUENCE 11 → 02:00:00:90:00:11 / 10.0.90.25 for Immich, also
-  # moved up.  NEXT FREE SEQUENCE NUMBER IS 12; next free address is
-  # 10.0.90.26, keeping the 8 + <seq> correspondence (8 + 0x12 = 26).
+  # moved up.
+  # M23 TOOK SEQUENCE 12 → 02:00:00:90:00:12 / 10.0.90.26 for Nextcloud, also
+  # moved up.  NEXT FREE SEQUENCE NUMBER IS 13; next free address is
+  # 10.0.90.27, keeping the 8 + <seq> correspondence (8 + 0x13 = 27).
   #
   # (0d / 10.0.90.21 was the free-again cloudflared pair and CWA reused it, as
   # the note below intended.  There is no free gap left in the sequence.)

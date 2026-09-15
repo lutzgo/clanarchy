@@ -533,6 +533,19 @@ let
   immichAddr = "10.0.90.25";
   immichPort = 2283;
 
+  # Nextcloud (M23) — the household file-sync / CalDAV / CardDAV server, in an
+  # NSPAWN container on 02:00:00:90:00:12 → 10.0.90.26.  Its container firewall
+  # accepts THIS proxy's address and no other, on port 80.
+  #
+  # PORT 80 IS NOT A MISTAKE AND NOT A DOWNGRADE.  The container runs the
+  # nixpkgs module's own nginx, which terminates plain HTTP; TLS is terminated
+  # once, here, with the *.goclan.org wildcard this file already holds.  The
+  # hop from 10.0.90.12 to 10.0.90.26 is one layer-2 frame on br0 inside VLAN
+  # 90, which is the same trust boundary every other backend on this list sits
+  # behind — jellyfin, komga and the arr suite are all plain HTTP too.
+  nextcloudAddr = "10.0.90.26";
+  nextcloudPort = 80;
+
   # Calibre-Web-Automated — the podman tier's FOURTH occupant, and the only
   # one of this round's three additions that needed an address of its own.
   #
@@ -780,6 +793,12 @@ let
     "cwa"
     "openwebui"
     "immich"
+
+    # Nextcloud (M23).  Off-LAN reach is most of the reason to run it: a phone
+    # that only syncs on the home wifi is a phone that syncs when the photos
+    # are already safe.  Same three separate acts as every other name here —
+    # this entry, a public A record, and the ledger row in docs/roadmap.md.
+    "nextcloud"
   ];
 
   # ── THE LOGIN PATHS, PER SERVICE, AND WHAT THIS DOES NOT COVER ────────────
@@ -856,6 +875,39 @@ let
     # are 128-bit random keys, which is the actual control; CrowdSec's 401
     # scenario is what sees a campaign of wrong ones.
     immich = "(PathPrefix(`/api/auth/login`) || PathPrefix(`/api/auth/change-password`))";
+
+    # ── NEXTCLOUD IS DELIBERATELY ABSENT FROM THIS MAP (M23) ────────────────
+    #
+    # It is in `appApiHosts` and it is in `wanExposed`, so by the pattern above
+    # it should be here too.  It is not, because both candidate matchers are
+    # wrong, in opposite directions:
+    #
+    #   /remote.php/dav/**  is not a login path.  It is EVERY request the
+    #                       desktop sync client, DAVx5 and vdirsyncer make —
+    #                       the credential rides along on all of them, which is
+    #                       the Komga/Subsonic caveat above in its sharpest
+    #                       form.  One request per ten seconds would not slow an
+    #                       attacker down noticeably and WOULD stop sync.
+    #   /login/v2/**        is Login Flow v2, which the desktop client POLLS
+    #                       while the user completes the browser half of adding
+    #                       an account.  A strict limit there breaks enrolment
+    #                       itself — the one operation a household member
+    #                       performs exactly once and cannot debug.
+    #
+    # So the honest coverage statement for this vhost is the one the caveat
+    # above already makes for Navidrome and Komga, minus the cheap half: this
+    # name is protected by `wan-ratelimit` + `wan-inflight`, by CrowdSec's
+    # status-based 401 scenario, and by NEXTCLOUD'S OWN brute-force throttle,
+    # which is on by default and is per-account rather than per-source.
+    #
+    # THAT LAST CONTROL IS THE REAL ONE AND IT HAS A PREREQUISITE: it keys on
+    # the client address, so it is worth nothing unless
+    # `settings.trusted_proxies` in containers/nextcloud.nix names this proxy.
+    # If that line is ever removed, one attacker locks out the household and
+    # this comment is where to look.
+    #
+    # Revisit if CrowdSec's metrics show enough 401s on this vhost to argue for
+    # a matcher narrower than either of the two above.
   };
 
   ############################################################################
@@ -2462,6 +2514,35 @@ in
               service     = "immich";
             };
 
+            # ── Nextcloud (M23) — NO forward-auth, and the reason is in ────
+            #    containers/ingress-policy.nix under `(h "cloud")`.
+            #
+            # Short form: the desktop sync client, DAVx5 and vdirsyncer all
+            # authenticate with app passwords over /remote.php/dav/** and none
+            # of them can render a login page or follow a 302.  The BROWSER
+            # path is not left open by that — it goes through Authelia's OIDC
+            # provider, registered by containers/nextcloud.nix's provisioning
+            # unit.  CWA's arrangement, not Grafana's.
+            #
+            # TWO PROPERTIES OF THIS ROUTER TO PRESERVE, both the same class of
+            # invisible-if-broken as the Immich note above:
+            #
+            #   NO `buffering` MIDDLEWARE, here or on the wan chain this router
+            #   inherits.  Nextcloud is a file-sync server; buffering whole
+            #   request bodies would make large uploads fail in a way that
+            #   presents as "sync is stuck" rather than as an error.
+            #
+            #   THE readTimeout ON `websecure` (3600s) AND `wan` (1800s) IS
+            #   WHAT LETS BIG UPLOADS FINISH.  Those were raised on 2026-09-14
+            #   after a 1.1 GB Immich upload died at exactly 60.000 s against
+            #   the default; the same ceiling bounds a PUT to this backend,
+            #   because it covers the entire request including the body.
+            nextcloud = {
+              rule        = "Host(`cloud.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              service     = "nextcloud";
+            };
+
             # slskd's web UI — in the microvm guest, not a container.  Behind
             # `authelia` like every other admin surface; its own login exists
             # but is a single shared operator account, not per-user.
@@ -2663,6 +2744,10 @@ in
 
             # M22 — its own nspawn container on .25.
             immich.loadBalancer.servers         = [ { url = "http://${immichAddr}:${toString immichPort}/"; } ];
+
+            # M23 — its own nspawn container on .26, answering on plain 80
+            # from the module's own nginx.
+            nextcloud.loadBalancer.servers      = [ { url = "http://${nextcloudAddr}:${toString nextcloudPort}/"; } ];
 
             # … and one in the microvm guest, the first non-container backend.
             slskd.loadBalancer.servers          = [ { url = "http://${slskdAddr}:${toString slskdPort}/"; } ];
