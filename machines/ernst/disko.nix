@@ -490,6 +490,53 @@
           };
         };
 
+        # zdata/nextcloud — the household file store (M23).
+        #
+        # recordsize=1M, and the argument is NOT "it is a library so copy
+        # photos".  recordsize is a MAXIMUM, not a quantum: the small files in
+        # config/ and store-apps/ still occupy what they occupy.  What 1M buys
+        # is that a 4 GB upload is not 32,768 records of metadata, and the
+        # access pattern that would make it the wrong answer — in-place partial
+        # rewrites of large files — is not one Nextcloud has.  It writes user
+        # files WHOLE, over WebDAV PUT.  The database, which does do partial
+        # rewrites and wants 128K, is deliberately NOT on this dataset; it is on
+        # zdata/state, exactly as Immich's is.
+        #
+        # exec/setuid/devices=off: household documents, never executable, and
+        # this dataset accepts uploads from the internet.
+        #
+        # com.sun:auto-snapshot=true, and it is as non-negotiable here as it is
+        # on zdata/photos, for a reason this dataset shares with that one and
+        # with nothing else on the pool: IT IS DELETED FROM BY PEOPLE.  Sync is
+        # not backup — a file deleted on a laptop is deleted here moments later,
+        # and Nextcloud's trash is a database flag with a retention period, not
+        # a filesystem-level undo.  A snapshot is what survives an emptied trash.
+        #
+        # NO acltype=posix, unlike /srv/unsorted and /srv/gardens.  Those two
+        # carry POSIX ACLs because the source tree arrived with them from the
+        # old box's Nextcloud/Samba setup.  THIS Nextcloud keeps its sharing
+        # model in its own database and writes plain 0700 nextcloud:nextcloud —
+        # enabling acltype here would add a property nothing reads.
+        #
+        # CREATED BY HAND ONCE, like every other dataset in this block — see
+        # docs/guides/ernst-zdata-datasets.md.  disko does not create datasets
+        # on an existing pool; it only emits the fileSystems entry that mounts
+        # them.  M14 shipped a dataset without adding that runbook section and
+        # put this machine in emergency; do not repeat it.
+        nextcloud = {
+          type = "zfs_fs";
+          mountpoint = "/srv/nextcloud";
+          options = {
+            mountpoint = "legacy";
+            recordsize = "1M";
+            exec       = "off";
+            setuid     = "off";
+            devices    = "off";
+            atime      = "off";
+            "com.sun:auto-snapshot" = "true";
+          };
+        };
+
         # zdata/backup — reserved.  Not created here; when the backup strategy
         # is chosen we may want a very different recordsize / compression /
         # (perhaps) encryption story, so add it deliberately at that point.
@@ -572,4 +619,27 @@
   # its check while the arr container's is not.
   ##############################################################################
   fileSystems."/srv/photos".options = [ "nofail" ];
+
+  ##############################################################################
+  # `nofail` on /srv/nextcloud — M23, third and last application of the same
+  # argument, and it is the strongest case of the three.
+  #
+  # Both preconditions from the /srv/photos section hold here.  The objection
+  # holds: Nextcloud writing to an unmounted /srv/nextcloud would put the
+  # household's documents, calendars and contacts on a filesystem that rolls
+  # back, while every sync client reported success.  And the answer holds:
+  # `nextcloud-dirs` in containers/nextcloud.nix is `requires` + `requiredBy` on
+  # container@nextcloud, so that failure costs Nextcloud and nothing else.
+  #
+  # WHAT MAKES IT THE STRONGEST CASE is the direction of the damage.  An Immich
+  # that comes up empty is a library that stops showing photographs; the phones
+  # keep their originals.  A Nextcloud that comes up empty is a SYNC SOURCE that
+  # claims every file was deleted, and the clients on miralda, jens and biene
+  # will faithfully propagate that — sync is not backup, and it is not
+  # one-directional.  Keeping this dataset out of local-fs.target's hard
+  # dependency chain is therefore not only about protecting sshd; it is about
+  # making sure the service that could do that damage cannot start at all
+  # unless its storage is the storage it thinks it is.
+  ##############################################################################
+  fileSystems."/srv/nextcloud".options = [ "nofail" ];
 }

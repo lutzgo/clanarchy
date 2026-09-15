@@ -67,6 +67,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M20 — SearXNG / web search | **done — deployed and fully verified 2026-09-10, end to end; TWO DEFECTS found after the first deploy, both fixed and confirmed live** | [#171](https://github.com/lutzgo/clanarchy/pull/171) | **The infrastructure was right on the first try and the feature still did nothing.** Every structural check passed — container up on `10.0.90.24`, JSON `200`, non-permitted VLAN 90 hosts time out (exit 28), nine LAN targets unreachable including both llama-swap veths, egress confirmed as the house WAN `78.94.91.74`. But **the engine set returned `number_of_results: 0` for every query**: `duckduckgo`/`startpage` CAPTCHA, `qwant`/`mojeek` 403, `brave` 429. That set was reasoned rather than measured and **the PR said so** — which is the only reason it was caught. Replaced with a measured one (`bing` 10, `yandex` 15, `encyclosearch` 15, `mwmbl` 30, `brave` intermittent → **68 results** combined, NHS and NIH among them); **four of the five are `disabled: true` upstream**, a second silent route to zero. Two things learned by testing rather than reasoning: **Google answers and its parser extracts nothing** (absent for a better reason than the one guessed), and **Wikipedia/Wikidata return `infoboxes`, which Open WebUI never reads** — dead weight from day one. Second defect: units shipped at **9.2 UNSAFE** vs a stated ≤ 2.0 target → **1.1 OK**, exercised with a live query, not just re-scored. **End to end in the browser the milestone's own question now returns 12 sources with NIH and Cleveland Clinic cited inline** — the M19 failure that opened M20, closed. With search off the model *declines* to rate rather than fabricating, which is the honest failure mode. One caveat recorded rather than smoothed: `drberg.com` made the source list and the model called the set "reputable" — retrieval quality and rating quality are not the same thing. **The design, unchanged by any of the above:** SearXNG on **nspawn**, VLAN 90, **no hostname and no Traefik route** — Open WebUI is the only client and the container firewall accepts one address. **The milestone's own central premise was false**: this is *not* the fleet's first service to talk to the open internet on its own behalf. Prowlarr fetches from indexers, tubesync pulls arbitrary YouTube URLs, and **FlareSolverr renders hostile indexer pages in a real browser engine on the *podman* tier** — one step *down*. Read against how the repo has actually applied it, [invariant #1](#architecture-invariants)'s line is a **killswitch requirement**, which search does not have; the VPN-guest egress was rejected on arr.nix's own eztvx.to measurement (a datacenter exit makes fetches *fail* that otherwise succeed). **The LLM gets no tool, deliberately**: Open WebUI registers `search_web` and `fetch_url` under one flag, so the tool path would hand *Open WebUI* arbitrary outbound HTTP — and M19's 20/20 does not transfer, because that was measured with the `<tool_call>` reinforcement the **opencode** role injects and Open WebUI ships nothing of the kind. Snippets only, no embedding: the default would have pulled an **unpinned, un-hash-verified** `all-MiniLM-L6-v2` off HuggingFace at runtime. Two facts that would each have failed silently: SearXNG ships **`formats: [html]`**, so JSON is off by default and every query would 403; and the limiter's botdetection would have **blocked the only client**, whose UA is literally `Open WebUI … RAG Bot`. Takes **uid 3035 / seq 10 / 10.0.90.24**, the pair M21 gave back. [M20](#m20-featernst-searxng) |
 | M21 — image generation | **done — verified working 2026-09-10; BUILT not pinned, and SIX defects surfaced after "shipped"** | — | ComfyUI is **built from source** (`service-modules/pkgs/comfyui`, eight derivations) and **spawned by llama-swap** like `llama-server`, inheriting its ROCm sandbox — so eviction is a process kill and the exclusive `gpu` group now holds three members. It is **not on the podman tier**, and this milestone planned to put it there. Both of its premises were false: the `roles.imagegen` M19 "already built" could not have run (it registered `proxy` with no `cmd` — the "empty command" shape M19 itself documented), and there was no image worth pinning (**AMD's own `rocm/comfyui` is `gfx942;gfx950` — it cannot use this card**; the 1647★ community image's digest pins only its first install; the one that fits has 1 star). Underneath both: an unprivileged llama-swap could never have started or stopped a rootful container, which eviction requires. The ROCm torch stack turned out to be **cache-substitutable**, so building cost far less than assumed. Weights via `roles.models` as planned, plus a new `subdir`; SDXL base 1.0, hash verified twice. **uid 3035 / seq 10 / 10.0.90.24 released back to [M20](#m20-featernst-searxng)** — M21 took no uid, MAC or address. **The exclusivity proof is done** (evict → image → reload, ~10 s). Image EDITING ships too (#167/#169). But six defects surfaced after this was first called shipped — a fetch unit that had failed since M19, three missing/empty Open WebUI env vars, ROCm SDPA, and an img2img OOM on any phone photo — **every one of them deploying green and several running to completion**. The verification line the milestone lacked: *state what you asked for and say whether you got it*. [M21](#m21-featernst-imagegen) |
 | M22 — Immich | **DONE — deployed, both libraries imported, and 5G upload confirmed 2026-09-11** | [#177](https://github.com/lutzgo/clanarchy/pull/177) [#179](https://github.com/lutzgo/clanarchy/pull/179) [#180](https://github.com/lutzgo/clanarchy/pull/180) | The household photo library: `services.immich` 2.7.5 in an **nspawn** container on `02:00:00:90:00:11` → `10.0.90.25`, uid/gid **3036**, seq **11**. **LIVE**: lgo 15,110+129 (78 GB, 211 albums), sgo 17,455+1,104 (84 GB, 358 albums), 174 GB on `zdata/photos`; both phones backing up, **the FP5 confirmed over 5G** — which closes the one verification M18-era WAN work always owed a real client. **TWO DATASETS, AND THE SPLIT IS THE DESIGN**: `zdata/photos` (1M recordsize, auto-snapshot, the library) and `/srv/state/immich` (128K, PostgreSQL + ML cache). **THE BRIEF BUDGETED A CLAN VAR AND A STAGING UNIT AND NEITHER IS NEEDED** — Postgres and Redis are both on unix sockets, so the module's `secretsFile` assertion never fires. **`photos.goclan.org` is the fleet's SIXTH `appApiHosts` name and the first whose exemption is not only about clients**: a shared album link is answered anonymously BY DESIGN (ledger **L13**). **The first-run window is closed by MECHANISM** (`IMMICH_ALLOW_SETUP=false` + the public A record created last), where M14's Audiobookshelf had only "be quick". **NO UDM-Pro RULE**, against the L12 precedent — the TV reaches Immich through Traefik because the add-on speaks HTTPS. **GPU: NONE** (`accelerationDevices = [ ]` → `PrivateDevices=true`), per invariant #5. **NINE DEFECTS WERE FOUND BY RUNNING IT, NOT BY READING IT** — three that stopped the container starting (SN5's deploy deadlock, a tmpfiles/unit race, a world-readable library), three in the import tooling (API keys in `argv`, a fix that shipped broken, and a verification that passed with the instrument absent), and three about the import itself (immich-go's 32-way default collapsing the server, album creation failing under load but converging on re-run, and a summary that reported `Errors: 0` for a run whose log held 257). **The laptop uploader ships DISABLED** — a prompted clan var for a key only Immich can issue deadlocks every deploy in the fleet (**SN5**). [M22](#m22-featernst-immich) |
+| M23 — Nextcloud | **DEPLOYED 2026-09-15; OIDC WORKS END TO END after TWO defects found by using it; the BROWSER and SYNC-CLIENT halves both verified; only the off-LAN, large-upload and brute-force-attribution checks remain** | — | The household file-sync / CalDAV / CardDAV server: `services.nextcloud` 33 in an **nspawn** container on `02:00:00:90:00:12` → `10.0.90.26`, uid/gid **3037**, seq **12**. It is what lets the hosted instance at `citizengo.io` be turned off — M22b already took its photographs into Immich; this takes the rest. **IT STANDS UP EMPTY**, deliberately: migrating the remaining file corpus is its own milestone, for the reason M22b was one. **TWO DATASETS, THE SAME SPLIT AS M22**: `zdata/nextcloud` (1M recordsize, auto-snapshot, `nofail`, the store) and `/srv/state/nextcloud` (128K, PostgreSQL). **NO DATABASE CLAN VAR AND NO DB STAGING UNIT** — Postgres and Redis are both on unix sockets, exactly as M22 found. **`cloud.goclan.org` is the fleet's SEVENTH `appApiHosts` name**, and unlike M22's its exemption is the ordinary one: the desktop sync client on three laptops, DAVx5, and a **headless vdirsyncer timer** all speak WebDAV with app passwords and none can follow a 302 — nothing here is anonymous by design. **The browser path takes Authelia OIDC instead of forward-auth**, which is CWA's arrangement and not Grafana's; the `user_oidc` registration is applied by `occ` from a staged plaintext on every deploy, so unlike CWA there is no human step. **`wanLoginPaths` is deliberately EMPTY for this name** and the file argues why: `/remote.php/dav/**` is every sync request, and `/login/v2/**` is the enrolment poll — both matchers break a client rather than an attacker. What compensates is `wan-ratelimit`, CrowdSec, and **Nextcloud's own per-account throttle, which is worthless unless `trusted_proxies` names Traefik** (ledger **L14**). **NO UDM-Pro RULE**, following L13. **No Prometheus target**, stated rather than omitted — serverinfo is token-authenticated JSON, not an exposition, so a job could only ever be `up == 0` (M13's Ollama lesson); failed units inside it are still seen through `machinectl`. **`notify_push` is deliberately absent**: its self-test needs `https://cloud.goclan.org` to resolve locally to a listener that does not exist, because TLS is Traefik's. **One premise did not survive evaluation**: the build first pinned `nextcloud32` on the oldest-supported-major argument and the module warned about a legacy install on every eval — that argument is for an existing instance and this one starts empty, so it takes the `stateVersion` default (33) explicitly. **DEPLOY-DAY RESULT: it came up on the first try and the server-side test plan passes** — `status.php` 200 with `installed:true` and NO redirect to the portal (the `appApiHosts` entry is right), `/.well-known/caldav` 301, `trusted_proxies` reading `10.0.90.12`, the OIDC provider registered as ID 1, the `/Media` external mount created and a write to it refused by the KERNEL (`Read-only file system`), and zero failed units in any container. **ONE PREMISE DID NOT SURVIVE THE DEPLOY**: `install -d -m 0700` on the store lands as **0750**, because the nixpkgs module ships its own `d /var/lib/nextcloud 0750` tmpfiles rules that run inside the container against the same inodes — the Immich `StateDirectoryMode` finding in a different costume. **It is not forced back**, and the check is specific rather than reassuring: `getent group 3037` on the host returns nothing and `go` is `gid=100(users)`, so the group bit grants nobody anything — which is exactly where this differs from Immich, whose 0755 had an o+r bit `go` could have used. **TWO DEFECTS FOUND BY USING IT, AT DIFFERENT STAGES OF THE SAME FLOW, AND NEITHER WAS WHERE IT LOOKED.** (1) EVERY LOCALISING CHECK CAME BACK CLEAN: "Login with Authelia" bounced back to the login page, while the provider row was correct, `curl` to the discovery endpoint FROM INSIDE THE CONTAINER returned 200 in 10 ms, and the app's `/code` route answered 403 — only `/login/1` gave 404. It was a REFUSAL rendered as a 404: `LocalServerException — Host "10.0.90.12" violates local access rules`, i.e. Nextcloud's own `DnsPinMiddleware` SSRF guard blocking a server-side fetch to an RFC1918 address, since Authelia is reached through Traefik on VLAN 90. Fixed with `allow_local_remote_servers = true` — a boolean with no per-host allowlist and no narrower form — verified at runtime (404 → 303, authorize URL correct, redirect_uri the PRETTY form, which is why registering both variants mattered) before being written into Nix. The trade is recorded: it widens what the APPLICATION will fetch, not what the container can reach. `overwrite.cli.url` was also found at the module default `https://localhost`. (2) With that fixed the login reached the portal, passed 2FA, and died on the CALLBACK: `invalid_client` — the client block was a copy of CWA's and carried `client_secret_basic`, but user_oidc 8.10.1 unconditionally switches to `client_secret_post` when the DISCOVERY DOCUMENT advertises it, and Authelia's discovery lists what the SERVER supports rather than what this client is registered for, so no Nextcloud-side setting can win. Proven with a two-arm control against /api/oidc/token (post → `invalid_client`, basic → `invalid_grant`, i.e. client auth succeeding), which is what separated "wrong method" from "wrong secret" or "wrong redirect_uri". **THE LESSON, PAID FOR TWICE: CWA's arrangement is the right SHAPE for appApiHosts + OIDC, but the client's own parameters belong to the relying party and must be read out of ITS source.** **OIDC NOW VERIFIED END TO END** — landed as account `lgo`, not a hash-named second account, so `--unique-uid=0` + `--mapping-uid=preferred_username` do what they were set for. **VERIFIED SINCE**: `ncadmin` password login — the recovery path exercised rather than merely configured — and an app password + desktop sync client, which is the whole appApiHosts argument end to end. Reconciled by a want-vs-have drift check after the deploy. **Still owed**: off-LAN from mobile data, a >2 GB upload, and the deliberate-failed-login check that proves the throttle sees the real address. Depends on M5, M7, M18, M22. [M23](#m23-featernst-nextcloud) |
 
 ---
 
@@ -690,6 +691,7 @@ Rows are retired only by the PR that actually removes the rule.
 | L11 | SearXNG on `10.0.90.24:8888`, VLAN 90, **no hostname** — plus the outbound path that is the actual change | M20 (`service-modules/local-ai.nix`, `roles.search`) | The stack's only door to the open internet. **The inbound half is the smaller half**: one listener, reachable from `10.0.90.23` and nothing else, enforced by the container's own firewall. **The outbound half is why this row exists** — a container that initiates connections to third parties on a household user's typed query, which nothing in the M19 stack did | **None — this is the permanent shape**, like L10 and for the same reason: it is recorded because it changes ernst's attack surface, not because it is a shim. Invariant #3 is untouched — **no consumer VLAN rule was added at all**, and no UDM-Pro policy changed. Revisit if it ever acquires a hostname, which would make it `protectedHosts` (browser-only UI) and a Traefik route | **ACTIVE on deploy — created by M20, NOT YET DEPLOYED.** Two things worth reading next to L9/L10. First, the **egress is deliberately the ordinary path** — DHCP default route to the UDM-Pro, so it is subject to the same zone policy as every other container and is *visible* at the gateway; host SNAT would have hidden it behind ernst's own address, and `networking.nat.externalInterface` is a single string already claimed for `"zt+"`. Second, **the reachable set is declared**: a `keep_only` engine list, so this contacts seven named engines and no others — a smaller surface than tubesync's or FlareSolverr's, both already at or below this tier. It is **not** on the `ai0` veth, so a compromised SearXNG has no route to llama-swap; that absence is structural, not a rule that could be edited away |
 | L12 | `Servers (50)` → Tvheadend HTSP `10.0.90.18:9982/tcp` | UDM-Pro ZBF policy `Allow Kodi to Tvheadend HTSP` (added 2026-09-10) **plus** a `-s 10.0.50.10/32 --dport 9982` accept in `machines/ernst/containers/tvheadend.nix` | The htpc role's Kodi gained the `pvr-hts` add-on, and **HTSP is not HTTP** — no Traefik route can front it, so the client must reach the container directly. Kodi runs on the **host**, whose `br0` is a member of VLAN 50 only, so the flow is routed by the UDM-Pro and lands on the `Internal → Services` zone pair | **None — this is the permanent shape**, like L10 and L11 and for the same reason: it is recorded because it changes ernst's attack surface, not because it is a shim. A reverse proxy cannot retire it; only dropping live TV would | **ACTIVE — created 2026-09-10** with [#175](https://github.com/lutzgo/clanarchy/pull/175) (container half) and by lgo on the UDM-Pro (policy half). **Both halves are load-bearing, in opposite directions**: without the policy nothing arrives — the `Internal → Services: Block All` default dropped it silently, six SYN retransmits with no RST while the container's accept rule stayed at zero packets, which is the M5 shape all over again; without the container rule the container refuses what does arrive. **THE PART TO READ BEFORE TOUCHING THIS**: the policy as entered is BROADER than this row's title — source is the whole `Servers` network and destination is `Any` in the Services zone, so the `/32` in `tvheadend.nix` is the only thing restricting HTSP to Kodi. That matters more than it looks, because **this Tvheadend has no access control at all** — measured 2026-09-10, `/srv/state/tvheadend` has no `accesscontrol` and no `passwd` directory (zero access entries means full rights for everyone), and `/api/serverinfo` answers with no credentials. So HTSP here is anonymous and full-rights, exactly like the 9981 admin UI the container file refuses to widen. An earlier revision of that file claimed HTSP "authenticates on its own" and used that to argue the widening was safe; it was written before anyone checked, and is corrected in the same PR as this row. **If a second HTSP client ever appears, give Tvheadend a real access entry FIRST** — adding a second address without one hands full rights to another machine |
 | L13 | `photos.goclan.org` — Immich on `10.0.90.25`, VLAN 90, **on the `wan` entrypoint** | M22 (`machines/ernst/containers/immich.nix` + the router in `containers/traefik.nix`) | The household photo library, reachable by two phone apps from outside the house — which is the requirement, not a side effect. An ordinary Traefik backend, not a shim | **None — this is the permanent shape.** Recorded because the `wanExposed` header requires a ledger row for every name added to the internet-facing set, not because anything here is temporary. **Two things make this row worth reading rather than counting.** First, the exposure is real and is argued in `ingress-policy.nix`: no forward-auth, Immich's own accounts, and — uniquely in this fleet — an **anonymous-by-design shared-link surface**, which is the feature that lets Sabine see an album without an account and is also the one thing no middleware in front of it can bound. Second, **M22 ADDS NO UDM-Pro RULE AT ALL**, which is the opposite of what the nearest precedent would predict: L12 gave Kodi a bespoke ZBF policy to reach Tvheadend over HTSP, because that protocol cannot traverse a reverse proxy. The Immich add-on speaks ordinary HTTPS, so the TV reaches it through `photos.goclan.org` under M5's existing `Allow Traefik` policy. The container firewall admits exactly two addresses — Traefik on 2283 and the monitoring container on 8081 — and the television is not one of them |
+| L14 | `cloud.goclan.org` — Nextcloud on `10.0.90.26`, VLAN 90, **on the `wan` entrypoint** | M23 (`machines/ernst/containers/nextcloud.nix` + the router in `containers/traefik.nix`) | The household file-sync / CalDAV / CardDAV server, reachable from outside the house — which is the requirement and not a side effect: a phone that only syncs on the home wifi syncs when the files are already safe | **None — this is the permanent shape.** Recorded because the `wanExposed` header requires a ledger row for every name added to the internet-facing set, not because anything here is temporary. **Three things make this row worth reading rather than counting.** First, the exposure is argued in `ingress-policy.nix` and it is the *ordinary* `appApiHosts` argument rather than L13's unusual one: no forward-auth because the desktop sync client, DAVx5 and a headless vdirsyncer timer cannot follow a 302 — **nothing here is anonymous by design**, which is the whole difference from Immich's row. Second, **the browser path is not left open by that**: `cloud.goclan.org` carries an Authelia **OIDC** client with `two_factor`, which is CWA's arrangement (OIDC *instead of* the middleware) and not Grafana's (OIDC *as well as* it). Third, **the compensating control that actually matters is Nextcloud's own brute-force throttle, and it has a prerequisite**: it keys on the client address, so it is worth nothing unless `settings.trusted_proxies` in `containers/nextcloud.nix` names Traefik. `wanLoginPaths` is deliberately EMPTY for this name — both candidate matchers (`/remote.php/dav/**`, `/login/v2/**`) would break sync or enrolment rather than an attacker. **NO UDM-Pro RULE**, following L13 and not L12: every client arrives through `10.0.90.12`, and the container firewall admits that one address on port 80 and nothing else |
 | — | **M13's Jellyseerr and M15's Tdarr routes** | Traefik (`containers/traefik.nix`), M13 and M15 | Both are ordinary Traefik routers on names the M5 wildcard already covers, riding the permanent `Allow Traefik` rule. **Neither is a shim** — listed so nobody creates a ledger row for a route | **permanent** — this is invariant #3 working as designed, not an exception to it | not created. **M15's half is now moot**: the milestone closed 2026-08-29 without shipping, so the Tdarr router was never created (the guidance stands for any future service: `authelia` middleware, not `mgmt-only`, which M7 deleted per L5). M13's Jellyseerr router exists and deliberately carries **no** middleware (household service; its posture is Jellyseerr's own Jellyfin-account login — see M13). Copy the *arr routers for anything new. Adding a hostname to the middleware also means adding it to `access_control` in `containers/authelia.nix`, which is deny-by-default: a route with the middleware and no matching rule fails **closed** |
 | — | `WAN → jellyfin` **+ `komga` + `navidrome` + `cwa`**, via the `wan` Traefik entryPoint, **none of them behind Authelia** | 2026-09-08 — `containers/ingress-policy.nix` (`appApiHosts`) + `containers/traefik.nix` (`wanExposed`) + four public A records | **THE LARGEST SINGLE GROWTH OF THE INTERNET-FACING SURFACE SINCE M18, and the first time the unauthenticated surface is the rule rather than the exception.** Before this the external set was `jellyseerr` + `auth` (both behind Authelia) + `audiobookshelf` (the one bypass). It is now seven names, **five of which answer the application rather than the portal**. **Why each is exempt**: forward-auth is a redirect protocol and none of these has a client that can follow a 302 — TV/Chromecast/DLNA (jellyfin), bearer-token mobile apps (audiobookshelf), Komelia + Mihon + OPDS (komga), the Subsonic protocol which carries the credential as a **query parameter** (navidrome), and OPDS + a Kobo device token **in the URL path** + KOReader `/kosync` (cwa — a Kobo e-reader has no browser at all). **`jellyfin` IS A REVERSAL**: M18 deliberately kept it off `wan` AND used it as the negative control proving the entrypoint is fail-closed. That control is spent, by lgo's decision; the replacement control is `sonarr`, which is strictly better because it carries forward-auth so a leak would be caught twice. The old "never expose jellyfin" note was **Cloudflare's terms of service**, not a security rule, and died with the tunnel in M18. **What is NEW here and did not exist for audiobookshelf's row above**: the exemption is now a **MECHANISM, not a comment**. `ingress-policy.nix` is the single source both traefik.nix and authelia.nix read, and `withWan` gained four evaluation-time throws — an appApi host given forward-auth, a protected host **missing** it (the fail-OPEN direction, which `default_policy = "deny"` does NOT catch), a routed hostname classified nowhere, and an unparsable rule. All three new branches were verified to fire. The RomM 403 that `authelia.nix` predicted in prose and then suffered anyway is now a build error. **Compensation, since Authelia's 2FA and per-user regulation protect none of these**: `wan-login-ratelimit` (1/10s, burst 5) on higher-priority `<name>-wan-login` routers — because `wan-ratelimit` at 50/s is sized for browsing and is 4.3M password guesses a day — plus the local CrowdSec scenario `clanarchy/app-api-auth-bf` (10× 401/403 in 5 min → ban), which is the ONLY control covering Subsonic and Komga's HTTP Basic, where the credential is on every request and there is no distinct login path to limit. **Residual exposure, stated rather than buried**: no second factor on any of the five; Komga has no separate admin surface to keep off the public vhost and no brute-force limiter of its own; **no geo-restriction** — asked for and deliberately not built, because the only route is a Yaegi plugin fetched unpinned from plugins.traefik.io at Traefik's startup, which traefik.nix rejects on stronger grounds than the thing it would defend against. **Preconditions no file can enforce**: strong accounts on all five, and admin accounts created IMMEDIATELY on komga/navidrome/cwa — their first-run flows are unauthenticated by construction, which on the WAN is not a survivable window. **NO AAAA RECORDS, and this is load-bearing**: there is no GUA anywhere on this path, the CrowdSec bouncer has `nftables.ipv6.enabled = false`, and a v6 path would bypass the DNAT and therefore the `wan` entrypoint while being unbannable — SN2 unchanged | **permanent** — a `—` row, in the same shape as the audiobookshelf and qBittorrent WebUI rows, so a future milestone does not mistake it for something to retire and "fix" by adding the middleware back. `withWan` check (e) now makes that attempt a build failure rather than an outage | **created 2026-09-08** (built and evaluated; live once lgo deploys, the four A records resolve — `jellyfin` and `navidrome` already do — and the off-net checks in docs/guides/ernst-app-api-ingress.md pass) |
 | — | `WAN → jellyseerr.goclan.org` **+ `auth.goclan.org`**, via the `wan` Traefik entryPoint | M18 — `containers/traefik.nix` (`wanExposed`) + a UDM-Pro DNAT | **THE SAME BYPASS AS M16'S ROW BELOW, THROUGH A DIFFERENT MECHANISM — it is not a new exposure and the hostname set has not grown.** Architecture invariant #4 requires bypasses to be listed; this is the live one. **Mechanism**: the UDM-Pro DNATs WAN `:443` → `10.0.90.12:8443`, which is Traefik's `wan` entryPoint; a router reaches it if and only if it names `wan`, and only `jellyseerr-wan` and `authelia-wan` do — copied by `withWan` from their LAN twins so rule, service and forward-auth cannot disagree between the two paths. **Two independent gates**: the entrypoint, and public DNS (only these two names have A records; everything else NXDOMAINs from outside). **Fail-closed by construction, with a mechanism and not a comment**: `withWan` THROWS at evaluation if any router omits `entryPoints` (Traefik binds such a router to every entrypoint — measured), if `wanExposed` names a router that does not exist, or if any router adds `wan` by hand. **Where this is weaker than the tunnel, stated**: a request to the bare public IP with any SNI completes a TLS handshake and gets `404` + `CN=TRAEFIK DEFAULT CERT` — an existence disclosure, not an exposure, and the case DNS cannot gate. **Auth posture unchanged from M16**: `two_factor` for `admins` OR `household` on jellyseerr, Jellyseerr's own Jellyfin login underneath, and `auth.goclan.org` external because forward-auth is a redirect protocol. **Plus what the tunnel never had**: `rateLimit` + `inFlightReq` on the wan routers only, and CrowdSec dropping at the packet layer. **:80 IS NOT FORWARDED** — ACME is DNS-01, HTTP-01 never runs, and this row is where that is written down so nobody opens it "for Let's Encrypt" | **permanent** — a `—` row, in the same shape as the qBittorrent WebUI row, so a future milestone does not mistake it for something to retire and "fix" by removing the restriction | **created 2026-09-03** (M18 built; live once lgo runs the UDM-Pro forward, the two public A records and the deploy, and the off-net negative controls pass) |
@@ -10576,6 +10578,432 @@ risk", then sets `StateDirectory`, which systemd creates and enforces at 0755
   service until there is a question the first cannot answer.
 - **Pre-seeding the ML model cache** from a hash-verified fetch, which is what
   would close the one runtime network fetch this milestone accepts.
+
+---
+
+## M23 — `feat/ernst-nextcloud`
+
+The household file-sync, calendar and contacts server, and the retirement of the
+last hosted service the fleet still depends on. Built 2026-09-15 in one session;
+**the dataset creation, the deploy, the DHCP reservation, both DNS records and
+every verification are lgo's** and are listed below in order.
+
+This section is a build close-out rather than a session prompt, written the way
+M22's is: decisions stated, premises marked as measured or not. **Nothing in it
+is verified on hardware yet** — that is the honest status, and the test plan at
+the end is what closes it.
+
+### What it is for, stated before anything technical
+
+Three requirements, from lgo:
+
+| | |
+|---|---|
+| `citizengo.io` can be turned off | M22b took its photographs into Immich. What is left is the file tree the sync clients point at and the CalDAV endpoint `modules/caldav-sync.nix` pushes to |
+| files sync, from anywhere | The desktop client already exists on miralda, jens and biene (`modules/desktop/noctalia-hm.nix` installs it unconditionally on Niri). **From anywhere** is what puts a hostname on the `wan` entrypoint |
+| calendars and contacts come home | CalDAV and CardDAV, plus the Tasks app that lgo's org VTODOs land in |
+
+Plus one thing `jellyfin.nix` has been anticipating in a comment since #20:
+**Nextcloud external storage over `/srv/media`**, read-only, reached by group
+membership rather than by a chown.
+
+### What shipped
+
+| File | What |
+|---|---|
+| `machines/ernst/containers/nextcloud.nix` | The container, the veth, the dataset guard, the secrets staging, the admin generator, and the `occ` provisioning unit |
+| `machines/ernst/disko.nix` | `zdata/nextcloud`, plus its `nofail` and the argument for it |
+| `docs/guides/ernst-zdata-datasets.md` | The `zfs create` for it — **and the repairs that file needed anyway** (see below) |
+| `machines/ernst/networking.nix` | MAC/address row for seq 12, uid rows for 3037, and both NEXT FREE markers advanced |
+| `machines/ernst/containers/ingress-policy.nix` | `cloud` in `appApiHosts`, with the three-client argument |
+| `machines/ernst/containers/traefik.nix` | Backend, router, `wanExposed`, and the *absence* of a `wanLoginPaths` entry, argued in place |
+| `machines/ernst/containers/authelia.nix` | `authelia-oidc-nextcloud`, both redirect URIs, and the OIDC client block |
+| `flake.nix` | The import |
+
+### Decisions settled before any code was written
+
+- **nspawn, not podman.** `services.nextcloud` is a first-class NixOS module.
+  The test is the one M22 and RomM both state: the podman tier is for upstreams
+  that ship only an image. An internet-facing service does not move up a tier
+  for being internet-facing.
+- **`appApiHosts` + Authelia OIDC** — CWA's shape. Forward-auth would break the
+  desktop client, DAVx5 and vdirsyncer, and it would break them in the worst
+  way: an opaque network error rather than a login prompt.
+- **WAN-exposed.** A phone that only syncs on the home wifi syncs when the
+  files are already safe.
+- **Stands up empty.** The `citizengo.io` file corpus is a triage decision, not
+  a script — M22b's lesson, applied before it could be re-learned.
+- **Storage: a new `zdata/nextcloud` that Nextcloud owns**, with the database
+  on `/srv/state/nextcloud`. The same two-recordsize split M22 made, for the
+  same reason.
+- **The admin account is generated, not prompted**, and it is the recovery
+  path. `allow_multiple_user_backends` stays on so the local password form
+  survives the OIDC registration — when the portal is what is broken, that is
+  the way back in.
+
+### Premises that did not survive checking
+
+- **`nextcloud32` on the oldest-supported-major argument.** The module warned
+  about a legacy install on every evaluation. That argument is for an existing
+  instance; this one starts empty, so there is nothing to upgrade and the
+  warning was pure noise — the kind of always-red deploy the backlog already
+  complains about. It takes the `stateVersion` default, **33**, written out
+  explicitly so a future `stateVersion` edit cannot move a Nextcloud major as a
+  side effect.
+- **`notify_push` would just work.** It does not: `nextcloudUrl` defaults to
+  `https://cloud.goclan.org` and its `bendDomainToLocalhost` escape points that
+  name at 127.0.0.1, where nothing listens on 443 — the container's nginx is
+  plain HTTP on 80 because TLS is Traefik's. Deferred with the reason written
+  down, not omitted.
+- **`docs/guides/ernst-zdata-datasets.md` was current.** It documented
+  `zdata/media/movies` and `zdata/media/tvshows`, **collapsed into plain
+  subdirectories in #20 a year ago** (invariant #2 — hardlinks cannot cross a
+  dataset boundary), and had no `zfs create` section for `zdata/unsorted` or
+  `zdata/gardens` at all. All three are fixed here. This is the same gap that
+  put ernst in emergency on 2026-08-28, found by reading the file rather than
+  by another outage.
+
+### The trap this file is written around
+
+`containers/immich.nix` records it and this container is built to it: **a
+`systemd.tmpfiles.rules` entry cannot be relied on to have run before a
+container the same activation starts.** Every host-side directory here belongs
+to `nextcloud-dirs.service`, ordered `requires` + `requiredBy` on
+`container@nextcloud`, and **none of them is also a tmpfiles rule** — two
+declarations for one path is the M3 defect.
+
+The guard is blocking rather than advisory, and the argument is sharper than
+Immich's. An Immich that comes up on an unmounted dataset is a library that
+stops showing photographs; the phones keep their originals. **A Nextcloud that
+comes up empty is a sync source that claims every file was deleted**, and the
+clients on three laptops will propagate that faithfully. Sync is not backup and
+it is not one-directional.
+
+### Manual steps, in order
+
+Two of them gate the deploy and the ordering is not cosmetic.
+
+1. **Create the dataset**, from
+   [the runbook](guides/ernst-zdata-datasets.md):
+
+   ```bash
+   ssh root@10.0.50.10
+   zfs create -o mountpoint=legacy -o recordsize=1M \
+     -o exec=off -o setuid=off -o devices=off -o atime=off \
+     -o com.sun:auto-snapshot=true zdata/nextcloud
+   ```
+
+   Omitting `-o mountpoint=legacy` is what put this machine in emergency mode
+   on 2026-08-28. `nofail` means it would not do so again — `nextcloud-dirs`
+   fails loudly instead — but the dataset still has to be right.
+
+2. **`clan vars generate ernst`**, before the first deploy. Skipping it bakes
+   the literal `/no-such-path` into the activation script, and the staging unit
+   can then never succeed however often it is restarted.
+
+3. **DHCP reservation** on the UDM-Pro: `02:00:00:90:00:12` → `10.0.90.26`.
+
+4. **Technitium record** for `cloud.goclan.org` → `10.0.90.12` (Traefik).
+   **Before anyone types the name** — M17 typed it first, cached the NXDOMAIN,
+   and spent the afternoon on `ERR_NAME_NOT_RESOLVED` after the record existed.
+
+5. `clan machines update ernst`.
+
+6. **Public A record for `cloud.goclan.org`, created LAST.** A name in
+   `wanExposed` with no public record is inert, which is how audiobookshelf
+   silently failed — and creating it last means the first-run window is closed
+   by the time the internet can reach the name at all.
+
+7. Read the admin password out of sops and log in:
+   `clan vars get ernst nextcloud-admin/admin-pass`.
+
+8. Create the household accounts, then an app password per client.
+
+### Test plan — server side PASSED 2026-09-15, client side still owed
+
+Deployed on the first attempt. What was checked and what came back:
+
+| Check | Result |
+|---|---|
+| `findmnt /srv/nextcloud` | `zdata/nextcloud zfs`, `noexec,nosuid,nodev,noatime` |
+| Ownership | `/srv/nextcloud` and `/srv/state/nextcloud` are `3037`; `postgresql` is `71` |
+| `nextcloud-dirs`, `nextcloud-secrets`, `container@nextcloud` | all active |
+| Failed units, every container | **zero**, including `nextcloud` |
+| `nextcloud-provision` | succeeded — `allow_multiple_user_backends=1`, `files_external` enabled, storage id 1 |
+| `occ user_oidc:provider` | provider **ID 1 `Authelia`**, discovery `https://auth.goclan.org/.well-known/openid-configuration`, client id `nextcloud` |
+| `curl -sI https://cloud.goclan.org/status.php` | **200, and NOT a 302 to the portal** — the `appApiHosts` entry is right |
+| `status.php` body | `installed:true`, `maintenance:false`, `needsDbUpgrade:false`, `33.0.7` |
+| `/.well-known/caldav` | `301 → /remote.php/dav/` — DAVx5 and vdirsyncer discovery works |
+| `trusted_proxies` | `10.0.90.12` — **the load-bearing one** |
+| `overwriteprotocol` / `trusted_domains` | `https` / `cloud.goclan.org` |
+| Backend direct from the host (VLAN 50) | times out — the container firewall is load-bearing, as intended |
+| `/Media` external storage | mount id 1, `datadir: /srv/media`, applicable to All |
+| Write to `/srv/media` as `nextcloud` | **`Read-only file system`** — refused by the KERNEL, not by an app setting |
+| `id nextcloud` inside | `uid=3037 gid=3037 groups=3037,3000(media)` |
+
+### OIDC took TWO defects to work, and neither was where it looked
+
+Both were found by using it, not by reading it, and they failed at different
+stages of the same flow — the first before the browser ever left Nextcloud, the
+second after the portal and after 2FA. **It is verified end to end now**: portal
+→ 2FA → callback → token exchange → landed as account **`lgo`** with display
+name `Lutz` and the email claim mapped, which is `--unique-uid=0` +
+`--mapping-uid=preferred_username` doing precisely what they were set for. The
+account id is the Authelia username, **not** an opaque subject hash, so an OIDC
+login lands on the same account a local user would.
+
+#### Defect 1 — the SSRF guard, rendered as a 404
+
+**Clicking "Login with Authelia" returned the user to the login page.** The
+button rendered, so the provider was registered; the round-trip was what failed.
+Every check that would normally localise this came back clean, which is what
+made it worth writing down:
+
+- the provider row was correct in `oc_user_oidc_providers` — id 1, `Authelia`,
+  the right discovery endpoint and client id;
+- `curl https://auth.goclan.org/.well-known/openid-configuration` **from inside
+  the container** returned **200 in 10 ms**;
+- `getent hosts auth.goclan.org` inside the container resolved to `10.0.90.12`;
+- `/index.php/apps/user_oidc/code` answered **403**, proving the app's routes
+  were live, while `/index.php/apps/user_oidc/login/1` answered **404**.
+
+A 404 on one route of a working app, with the network demonstrably fine, reads
+as "the app is broken". It was a **refusal**, rendered as a 404. The container's
+journal had it (`log_type` is `syslog`, which is why `data/nextcloud.log` does
+not exist and the first look for it found nothing):
+
+```
+OCP\Http\Client\LocalServerException
+Host "10.0.90.12" (auth.goclan.org:80) violates local access rules
+```
+
+**The block is in Nextcloud's own HTTP client** (`DnsPinMiddleware`), not in the
+network: it refuses server-side requests to RFC1918 addresses as SSRF
+protection. `auth.goclan.org` is Traefik on VLAN 90, so both the discovery fetch
+and the token exchange were refused before a packet left. `curl` succeeding from
+the same container is the measurement that proves the two are different things —
+and is exactly why it was checked.
+
+**The fix is `allow_local_remote_servers = true`, and there is no narrower
+form.** Nextcloud offers a boolean and no per-host allowlist, and every path to
+Authelia is private — it is reached through Traefik, which is on the same VLAN.
+It was **verified at runtime before being written into Nix**: the route went
+`404 → 303`, and the authorize URL it builds checks out end to end —
+
+```
+https://auth.goclan.org/api/oidc/authorization?client_id=nextcloud
+  redirect_uri=https://cloud.goclan.org/apps/user_oidc/code
+  scope=openid profile email groups
+  code_challenge_method=S256
+  claims={"id_token":{...,"preferred_username":{"essential":true}},...}
+```
+
+— matching `require_pkce`/`S256` on the Authelia side and
+`--mapping-uid=preferred_username` on the Nextcloud side. **Note which redirect
+URI it actually sent: the PRETTY form**, `/apps/user_oidc/code`. Registering
+both that and the `index.php` variant was not caution, it was the thing that
+made this work on the first correct attempt.
+
+**What the setting costs, stated rather than smoothed.** Nextcloud features that
+fetch a URL on the server's behalf — federated sharing, "add remote share", link
+previews — can now reach the LAN, and this vhost is on `wan` with app-level
+accounts as its only boundary. **What bounds it**: this changes what the
+*application* refuses, not what the container can reach. Its firewall is
+inbound-only and the `curl` above proves egress was never restricted, so a shell
+in the container could always have probed VLAN 90. What is new is that an
+*authenticated* user can aim that at a URL of their choosing. Accounts here are
+household members, and that is the whole of the argument — if this vhost ever
+gains self-registration or a public guest flow, that argument expires.
+
+**Found alongside it**: `overwrite.cli.url` was the module default
+`https://localhost`, so anything Nextcloud generates outside a request — cron,
+activity emails, share notifications — would have linked the household to
+localhost. Not a security property, just wrong. Both are now declarative.
+
+#### Defect 2 — the token auth method, copied in from CWA
+
+With defect 1 fixed the login reached the portal, completed 2FA, came back to
+the callback and died there:
+
+```
+invalid_client — The request was determined to be using
+'token_endpoint_auth_method' method 'client_secret_post', however the
+OAuth 2.0 client registration does not allow this method.
+```
+
+The Nextcloud client block in `containers/authelia.nix` shipped as a copy of
+CWA's, `client_secret_basic` and all. **`user_oidc` 8.10.1 does not honour
+that**, and the code says so plainly
+(`lib/Controller/LoginController.php:454-465`): it defaults to
+`client_secret_basic`, honours a `config.php` override — and then, **after
+both**, unconditionally switches to `client_secret_post` if the DISCOVERY
+DOCUMENT advertises it. Authelia's discovery lists
+`["client_secret_basic","client_secret_post","client_secret_jwt","private_key_jwt","none"]`
+because that list describes what the **server** supports, not what this client
+is registered for. So the last branch always fires, no Nextcloud-side setting
+can win, and the only place to fix it is the registration.
+
+**PROVEN WITH A TWO-ARM CONTROL** against `/api/oidc/token` with a bogus code,
+run before anything was changed — which is what separated "wrong method" from
+"wrong secret" or "wrong redirect_uri", the two things it equally resembled:
+
+| method | before | after |
+|---|---|---|
+| `client_secret_post` | `invalid_client` (the message above) | `invalid_grant` |
+| `client_secret_basic` | `invalid_grant` | — |
+
+`invalid_grant` means **client authentication succeeded** and only the fake code
+was rejected. The secret and the redirect URI were right all along.
+
+**Not a downgrade worth arguing about**: both forms send the same shared secret
+over the same TLS connection, `post` in the request body where `basic` uses an
+Authorization header, and Traefik logs neither. RFC 6749 §2.3.1 prefers basic
+and explicitly permits post. The other three clients keep `client_secret_basic`;
+Nextcloud is the only relying party here that takes the choice out of our hands.
+
+**The general lesson, since this file copied a block twice and paid for it
+twice:** CWA's arrangement is the right *shape* for `appApiHosts` + OIDC, but
+the client's own parameters — auth method, redirect URI form, claim mapping —
+belong to the relying party and must be read out of its source, not inherited
+from the neighbour it was pasted from. The redirect URIs survived only because
+both variants were registered.
+
+**The one premise that did not survive the deploy.** `install -d -m 0700` on
+the store lands as **0750**: the nixpkgs module ships its own
+`d /var/lib/nextcloud 0750 nextcloud nextcloud` tmpfiles rules (and three
+siblings), which run inside the container on every start against the same
+inodes through the bind mount. That is the Immich `StateDirectoryMode` finding
+in a different costume — upstream re-asserts a mode after we set ours, and
+upstream wins.
+
+**It is not forced back**, for two reasons kept apart in
+`containers/nextcloud.nix`: declaring a competing tmpfiles rule for a path the
+module already owns is the M3 defect, and **0750 is not an exposure here** —
+`getent group 3037` on the host returns nothing, and `go`, the autologin couch
+account, is `uid=1001 gid=100(users)` plus audio/video/input. The group bit
+grants nobody anything. **That is precisely where this differs from Immich**,
+which came out 0755 and whose `o+r` bit `go` genuinely could have used.
+
+**A note on the deploy output, because it looked worse than it was.** The switch
+reported two failed units and `activation returned 4 — retrying`. Both failures
+were **transient podman healthcheck services for `cwa` and `romm-db`**, caught
+at `health_status=starting` while their containers were coming back up; both
+containers report `(healthy)` now and the retry pass was clean. Nothing
+Nextcloud-related failed at any point.
+
+### Verified, and what is left
+
+**Reconciled after the fixes.** Both defects above were fixed at runtime first
+so they could be proven before being written down; the deploy that followed
+brought the machine back to the branch. Confirmed by a want-vs-have drift check
+rather than by assuming — `nix eval …toplevel.outPath` and
+`readlink /run/current-system` on ernst returned the same store path — and by
+reading the values back out of the running container: `allow_local_remote_servers
+= true`, `overwrite.cli.url = https://cloud.goclan.org`, and
+`/run/authelia-secrets/oidc-clients.yml` regenerated by the deploy rather than
+still carrying the hand-patch used to test it.
+
+- [x] **Browser OIDC, end to end — PASSED after the two defects above.** Portal
+      → 2FA → callback → token exchange, landing as account **`lgo`** (display
+      name `Lutz`, email claim mapped). `occ user:list` shows `lgo` and
+      `ncadmin` and no third, hash-named account — which is the whole point of
+      `--unique-uid=0` + `--mapping-uid=preferred_username`.
+- [x] **`ncadmin` logs in with its password — the recovery path is exercised,
+      not merely configured.** `allow_multiple_user_backends=1` keeps the local
+      form on the page beside the Authelia button, and that is what gets you
+      back in when the portal, the client registration or Traefik is what is
+      broken.
+- [x] **An app password and a desktop sync client.** One `oc_authtoken` row of
+      type 1 in the database. This is the whole `appApiHosts` argument
+      exercised end to end: a native client authenticating over
+      `/remote.php/dav/**` with no browser and no forward-auth in its way.
+- [ ] Off-LAN from mobile data: account add (Login Flow v2), a file upload,
+      DAVx5 syncing a calendar.
+- [ ] A >2 GB upload through the WAN path.
+- [ ] **A deliberate failed login attributed to the real client address, not
+      `10.0.90.12`.** `trusted_proxies` is set correctly, but that it reaches
+      the brute-force throttle is inference until a real attempt is logged.
+- [ ] Household accounts beyond `ncadmin`, which is the only user so far.
+
+The commands below are what produced the table above; kept so they can be
+re-run after any change.
+
+**Evaluation**: `withWan` throws at eval on a router with no
+`entryPoints`, a hostname in no policy list, or an `appApiHosts` name carrying
+`authelia`. All five machines evaluate.
+
+**Storage is what we think it is** — the guard should have refused otherwise,
+but check directly rather than trusting a clean boot:
+
+```bash
+ssh root@10.0.50.10 'findmnt -no SOURCE,FSTYPE /srv/nextcloud'
+ssh root@10.0.50.10 'zfs get com.sun:auto-snapshot,recordsize zdata/nextcloud'
+ssh root@10.0.50.10 'systemctl status nextcloud-dirs nextcloud-secrets'
+ssh root@10.0.50.10 'ls -lan /srv/nextcloud /srv/state/nextcloud'   # 3037 and 71
+```
+
+**Container health**, including the failed-unit path nspawn gets for free:
+
+```bash
+ssh root@10.0.50.10 'machinectl list; systemctl -M nextcloud list-units --state=failed'
+ssh root@10.0.50.10 'systemctl -M nextcloud status nextcloud-provision'
+```
+
+**The vhost is answered by Nextcloud, not by Authelia** — this is the one that
+would break every native client if it came back wrong:
+
+```bash
+curl -sI https://cloud.goclan.org/status.php          # 200, NOT a 302 to auth.
+curl -s  https://cloud.goclan.org/status.php | jq     # installed:true, 33.x
+curl -sI https://cloud.goclan.org/.well-known/caldav  # 301 -> /remote.php/dav/
+```
+
+**DAV with an app password**, i.e. the thing forward-auth would have killed:
+
+```bash
+curl -su 'lgo:<app-password>' -X PROPFIND \
+  https://cloud.goclan.org/remote.php/dav/files/lgo/ -H 'Depth: 1' | head
+```
+
+**The backend is reachable from Traefik and from nowhere else**: `10.0.90.26:80`
+must time out from the LAN while the hostname answers.
+
+**Browser path**: open the site, pick the Authelia provider, confirm the
+redirect to `auth.goclan.org`, 2FA, and landing back logged in **as the existing
+account** rather than a second empty one — that is what `--unique-uid=0` and
+`--mapping-uid=preferred_username` are for, and it is the half most likely to be
+wrong. A mismatch shows as `invalid_client` at the portal, not as a Nextcloud
+error. Then confirm `ncadmin` can still log in with its password.
+
+**The brute-force throttle sees the real client, not Traefik.** Fail a login
+deliberately from a known address and check Nextcloud reports that address.
+If it reports `10.0.90.12`, `trusted_proxies` is not working and one attacker
+can lock out the household — the compensating control L14 leans on.
+
+**External storage**: `occ files_external:list`, then confirm the Media mount
+lists content in the web UI **and that a write is refused** — the read-only
+bind is the enforcement, not the app setting.
+
+**Off-LAN**, from a phone on mobile data: account add (Login Flow v2), a file
+upload, and DAVx5 syncing a calendar.
+
+**Upload ceiling**, because that is what the `readTimeout` fix was for: push a
+file over 2 GB through the WAN path and confirm it completes rather than dying
+at a round number of seconds.
+
+### Left for later
+
+- **The `citizengo.io` file corpus.** Its own milestone. Survey first, as M22b
+  did; nothing in this repository downloads from that host.
+- **Repointing `modules/caldav-sync.nix`** from `citizengo.io` to
+  `cloud.goclan.org` — one line in `modules/users/lgo.nix` plus a regenerated
+  `caldav-app-password`. Deliberately **not** in this milestone: it touches
+  miralda and jens, and `clan machines update` applies a branch's whole config
+  rather than a diff, so deploying a laptop from this branch would revert
+  anything else unmerged.
+- **`notify_push`**, if a second local listener earns its keep.
+- **Turning `citizengo.io` off.** Not until the two items above are done and
+  the library has been used for a while.
 
 ---
 

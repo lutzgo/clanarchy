@@ -151,6 +151,30 @@ rec {
     # possession of a link bounds anything explicitly shared.  Shared links
     # take an expiry and a password in the UI; use them.
     (h "photos")
+
+    # Nextcloud (M23).  THREE client classes, none of which can follow a 302,
+    # and one of them is not a phone app:
+    #
+    #   The DESKTOP SYNC CLIENT on miralda, jens and biene — already installed
+    #   by modules/desktop/noctalia-hm.nix — authenticates with an app password
+    #   over /remote.php/dav/** and polls it continuously.
+    #   DAVx5 on the phones speaks the same WebDAV/CalDAV/CardDAV endpoints with
+    #   no browser anywhere in the process.
+    #   vdirsyncer runs from a HEADLESS USER TIMER on miralda
+    #   (modules/caldav-sync.nix) and has no way to display a portal, let alone
+    #   a second factor.  Its failure mode under forward-auth would be a timer
+    #   that quietly reports success while syncing Authelia's login page.
+    #
+    # THE WEB UI IS A DIFFERENT MATTER and goes to Authelia's OIDC provider
+    # instead — see containers/nextcloud.nix and the client block in
+    # containers/authelia.nix.  That is CWA's arrangement (OIDC INSTEAD OF the
+    # middleware), not Grafana's or Open WebUI's (OIDC AS WELL AS it).
+    #
+    # UNLIKE photos, NOTHING HERE IS MEANT TO BE ANONYMOUS.  Nextcloud does have
+    # public share links, but they are off unless somebody creates one, and this
+    # entry does not depend on them the way Immich's does — the argument here is
+    # purely the three clients above.
+    (h "cloud")
   ];
 
   ############################################################################
