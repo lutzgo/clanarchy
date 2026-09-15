@@ -801,7 +801,42 @@ in
         echo "        require_pkce: true"
         echo "        pkce_challenge_method: 'S256'"
         echo "        consent_mode: 'implicit'"
-        echo "        token_endpoint_auth_method: 'client_secret_basic'"
+
+        # ── THE ONE CLIENT HERE THAT IS NOT client_secret_basic, AND IT ────
+        #    IS NOT A PREFERENCE
+        #
+        # MEASURED ON ERNST 2026-09-15.  This block shipped as a copy of CWA's,
+        # `client_secret_basic` and all, and the login failed at the TOKEN
+        # EXCHANGE — after the portal, after 2FA, on the callback:
+        #
+        #     invalid_client — The request was determined to be using
+        #     'token_endpoint_auth_method' method 'client_secret_post', however
+        #     the OAuth 2.0 client registration does not allow this method.
+        #
+        # user_oidc 8.10.1 picks the method like this
+        # (lib/Controller/LoginController.php:454-465): it defaults to
+        # `client_secret_basic`, honours a config.php override — and then, AFTER
+        # both, unconditionally switches to `client_secret_post` if the
+        # DISCOVERY DOCUMENT advertises it.  Authelia's discovery lists all of
+        # basic, post, client_secret_jwt, private_key_jwt and none, because that
+        # list describes what the SERVER supports rather than what this client
+        # is registered for.  So the config knob cannot win; the last branch
+        # always fires and the only place to fix it is here.
+        #
+        # PROVEN WITH A TWO-ARM CONTROL against /api/oidc/token with a bogus
+        # code, before anything was changed: `client_secret_post` returned
+        # `invalid_client` with the message above, while `client_secret_basic`
+        # returned `invalid_grant` — i.e. client auth SUCCEEDED and only the
+        # fake code was rejected.  That is what proved the secret and the
+        # redirect_uri were both already right and the method was the whole
+        # defect.
+        #
+        # SECURITY: not a downgrade worth arguing about.  Both forms send the
+        # same shared secret over the same TLS connection; `post` puts it in
+        # the request body where `basic` puts it in an Authorization header, and
+        # Traefik logs neither.  RFC 6749 §2.3.1 prefers basic and explicitly
+        # permits post.
+        echo "        token_endpoint_auth_method: 'client_secret_post'"
         echo "        redirect_uris:"
         ${lib.concatMapStringsSep "\n" (u: "echo \"          - '${u}'\"") nextcloudRedirectUris}
         echo "        scopes:"
