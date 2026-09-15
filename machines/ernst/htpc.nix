@@ -114,6 +114,45 @@
           + "|Navi 31 HDMI/DP Audio Digital Surround 7.1 (HDMI 4)";
       in
       {
+        # WHICH CONNECTOR KODI DRAWS ON. Runtime state until 2026-09-15,
+        # when it stopped being enough.
+        #
+        # Kodi in GBM mode picks a CARD before it reads this: CDRMUtils::
+        # OpenDrm takes the first DRM device with any connected connector,
+        # and only then does FindConnector look for this name WITHIN that
+        # card — falling back to any connected connector there if the name
+        # is absent. ernst has two cards with outputs on them (the iGPU and
+        # the dGPU the TV hangs off), so "first device with something
+        # plugged in" is not a decision, it is a coin flip.
+        #
+        # It landed wrong on 2026-09-15. Same hardware, no hotplug in seven
+        # days of uptime, two consecutive runs of the same binary:
+        #
+        #   Sep 14  using connector: HDMI-A-1  'LG Electronics' 'LG TV SSCR2'
+        #   Sep 15  using connector: HDMI-A-2  'PNP(GLI)'       'GLKVM'
+        #
+        # — a KVM capture dongle on the iGPU's HDMI port. Kodi was fine:
+        # skin loaded, PVR started, widgets populated, rendering every frame
+        # into a dongle nobody was watching. FROM THE SOFA THAT IS A HANG,
+        # and it was diagnosed as one twice before the log was read. The
+        # setting was ALREADY "HDMI-A-1" at the time and was powerless,
+        # because the wrong card had been chosen before it was consulted.
+        #
+        # So this pin does not fix that, and must not be mistaken for the
+        # fix: what fixes it is having only one card with an output on it,
+        # or having both outputs on the SAME card, where this name then
+        # decides correctly. The pin's job is narrower and still worth
+        # having — Kodi rewrites guisettings.xml on exit, so a single
+        # fallback to the wrong connector would persist the wrong value and
+        # survive every rebuild after it.
+        #
+        # IF THE TV GOES DARK WHILE KODI IS CLEARLY ALIVE, read
+        # ~/.kodi/temp/kodi.log for `FindConnector` and `[display-info]`
+        # before touching anything else. Those two lines name the screen it
+        # is actually drawing on, and they answer in one second a question
+        # that otherwise looks like a hung session.
+        "videoscreen.monitor" = "HDMI-A-1";
+
         "audiooutput.audiodevice" = device;
         "audiooutput.passthroughdevice" = device;
 
