@@ -29,8 +29,11 @@
 #    ID  Name              Subnet          On this trunk
 #     1  LAN ("Family")    10.0.10.0/24    tagged
 #     5  DNS-Container     10.0.5.0/24     tagged   (Technitium 10.0.5.3)
-#    20  IoT               10.0.20.0/24    tagged
-#    30  HA                10.0.30.0/24    NOT carried
+#    20  IoT               10.0.20.0/24    tagged   (M24 hass iot0 — the first
+#                                                    thing to use it)
+#    30  HA                10.0.30.0/24    NOT carried  (see below — M24
+#                                                        deliberately did NOT
+#                                                        use it)
 #    40  Guest             10.0.40.0/24    NOT carried
 #    50  Servers           10.0.50.0/24    UNTAGGED / PVID  ← ernst itself
 #    60  Matter            10.0.60.0/24    NOT carried
@@ -55,6 +58,22 @@
 #   switch-port change.  30/40/60/70/80 are deliberately absent: a VLAN that is
 #   not on the trunk cannot be reached by a typo in a future container unit.
 #   Travel reaches services through Traefik (M5), not by riding this trunk.
+#
+#   VLAN 30 IS NAMED "HA" AND M24 PUT HOME ASSISTANT SOMEWHERE ELSE.  That is
+#   the kind of thing someone re-derives from scratch two years later, so: 30
+#   is where the Raspberry Pi instance lived, it is NOT on this trunk, and
+#   carrying it would cost a port-profile edit on USW Pro 24 PoE port 6.  It
+#   buys nothing — the leg that matters is the one on the segment the DEVICES
+#   are on, and the household's wifi devices are on 20, which is already
+#   tagged.  VLAN 30 retires with the Pi.  See containers/home-assistant.nix.
+#
+#   AND VLAN 20 NOW HAS A PORT ON THIS BRIDGE, which it did not when the notes
+#   below were written.  It is the hass container's `iot0`, and it exists for
+#   DISCOVERY: mDNS and SSDP are link-local, so a hub on VLAN 90 can open a
+#   socket to any IoT device (Internal → Internal: Allow All on the UDM-Pro)
+#   and still never SEE one.  Note 3's warning is untouched by this — the port
+#   is a member of VLAN 20, br0 itself is not, so the host holds no address
+#   there and Avahi's unpinned reflector stays off that segment.
 #
 # ── What is load-bearing ──────────────────────────────────────────────────
 #
@@ -411,6 +430,74 @@
   #                       LIKE M22 IT ADDS NO UDM-PRO RULE AND NO LEDGER ROW for
   #                       VLAN 50 → 90: every client arrives through .12.
   #
+  #   02:00:00:90:00:13   hass container eth0       (M24 — allocated)  10.0.90.27
+  #                       Home Assistant, the household's home-automation hub,
+  #                       machines/ernst/containers/home-assistant.nix.  nspawn
+  #                       — `services.home-assistant` is a first-class NixOS
+  #                       module, so the podman tier does not apply.
+  #
+  #                       THE MACHINE IS `hass`, NOT `home-assistant`, and that
+  #                       is a hard constraint rather than a preference: nspawn
+  #                       names the host side of the veth `vb-<container>` and
+  #                       a Linux interface name caps at 15 characters, so
+  #                       `vb-home-assistant` (17) cannot be created at all.
+  #
+  #                       PUBLIC.  `ha.goclan.org` rides BOTH entrypoints and
+  #                       carries NO forward-auth — the fleet's EIGHTH
+  #                       appApiHosts name.  The companion app exchanges
+  #                       credentials once and then holds a WEBSOCKET, and a
+  #                       302 on an HTTP upgrade is not a login prompt an app
+  #                       can act on.  Unlike M23 there is no OIDC path behind
+  #                       it either; HA's own ip_ban + TOTP are the boundary.
+  #
+  #                       ITS FIREWALL ADMITS EXACTLY ONE ADDRESS on eth0:
+  #                       Traefik (.12) on 8123.  Not the monitoring container
+  #                       — HA's /api/prometheus is bearer-token gated, so
+  #                       there is no scrape to permit.  Failed units inside it
+  #                       are still seen, via the container-units collector.
+  #
+  #                       LIKE M22 AND M23 IT ADDS NO UDM-PRO RULE for VLAN 50
+  #                       → 90: every client arrives through .12.  It DOES take
+  #                       ledger row L15, for the WAN exposure.
+  #
+  #                       IT IS THE THIRD CONTAINER WITH A SECOND INTERFACE and
+  #                       the FIRST to put one on a second skynet VLAN — see
+  #                       the VLAN 20 table below.
+  #
+  #   NEXT FREE SEQUENCE NUMBER IS 14; next free address is 10.0.90.28, keeping
+  #   the 8 + <seq> correspondence (8 + 0x14 = 28).  There is no free gap left
+  #   in the sequence — 08 and 09 lapsed and were never reclaimed, and 0d was
+  #   taken back by CWA.
+  #
+  # ── MAC ALLOCATIONS ON VLAN 20 (IoT) ────────────────────────────────────────
+  #
+  #   A SECOND TABLE, OPENED BY M24, and the reason it is separate is the
+  #   convention itself: the second octet-group of 02:00:00:<vlan>:00:<seq> is
+  #   the VLAN, so a VLAN-20 interface cannot take a number from the table
+  #   above without lying about which segment it is on.
+  #
+  #   02:00:00:20:00:01   hass container iot0       (M24 — allocated)  DHCP
+  #                       Home Assistant's DISCOVERY leg.  mDNS and SSDP are
+  #                       link-local, and this repo refuses to relay them across
+  #                       a firewall boundary (M8's session prompt, and note 3
+  #                       above) — so the hub sits ON the segment its wifi
+  #                       devices are on instead.  Unicast to VLAN 20 needed no
+  #                       leg at all; discovery is the whole reason for it.
+  #
+  #                       NO 8 + <seq> CORRESPONDENCE HERE.  10.0.20.0/24 is a
+  #                       populated household segment with an established DHCP
+  #                       pool and devices already in it, not a services VLAN
+  #                       this repo laid out — so the reservation is whatever
+  #                       free address lgo picks, and the correspondence that
+  #                       makes a typo visible on VLAN 90 cannot apply.  Read
+  #                       the reservation off the UDM-Pro, not off this table.
+  #
+  #                       THE MAC IS PINNED IN THE CONTAINER'S OWN networkd,
+  #                       not on `extraVeths`, which has no option for it.  See
+  #                       the `20-iot0` unit in containers/home-assistant.nix.
+  #
+  #   NEXT FREE SEQUENCE NUMBER ON VLAN 20 IS 02.
+  #
   #   M18 ADDED NO MAC AND NO ADDRESS, which is worth stating because it is a
   #   milestone that opened the house to the internet.  CrowdSec runs INSIDE
   #   the traefik container's netns (containers/crowdsec.nix) — it is the only
@@ -427,7 +514,15 @@
   # DHCP client because it has no networkd in it.  Pattern C, and that file is
   # the worked example.
   #
-  # TWO CONTAINERS HAVE A SECOND INTERFACE.  The tvheadend container's
+  # THREE CONTAINERS HAVE A SECOND INTERFACE, and M24's is the only one on a
+  # second SKYNET VLAN — which is why it is the only one of the three that
+  # needed a MAC, a DHCP reservation and a row in a table.  The hass container's
+  # `iot0` is a veth onto br0 carrying VLAN 20, so the hub can see the mDNS and
+  # SSDP its wifi devices emit; the other two never leave ernst or never leave
+  # the FRITZ segment.  Its host-side unit uses `Bridge = "br0"` rather than
+  # `KeepMaster`, because --network-veth-extra creates the pair and enslaves
+  # NOTHING — so networkd owns that enslavement and nothing competes for it.
+  # The tvheadend container's
   # `fritz0` (M8) is a veth onto `br-fritz`, the two-port bridge that joins
   # enp12s0's direct FRITZ!Box link — static 192.168.178.2/24 on the FRITZ's
   # own subnet, no DHCP, no gateway, no reservation; see
@@ -890,8 +985,48 @@
   #                           and it would then be the owner of the household's
   #                           entire document store on the pool.
   #
-  #                           NEXT FREE IS 3038.)
+  #                           NEXT FREE IS 3038, AND M24 DID NOT TAKE IT — see
+  #                           the note on uid 286 below.)
   #   gid 3037  nextcloud    (containers/nextcloud.nix — M23)
+  #
+  #   uid 286   hass         (containers/home-assistant.nix — M24, the
+  #   gid 286   hass          household's home-automation hub, in an NSPAWN
+  #                           container on VLAN 90 with a second leg on VLAN 20.
+  #
+  #                           NOT FROM THE 3000 BLOCK, AND THAT IS THE POINT.
+  #                           This row exists because the file was first written
+  #                           with 3038 on exactly the argument rows 3036 and
+  #                           3037 make — nixpkgs creates the user with no uid,
+  #                           nspawn passes ids through unmapped, so whatever
+  #                           useradd picks owns the data.  IT FAILED AT
+  #                           EVALUATION:
+  #
+  #                             error: The option
+  #                             `containers.hass.users.users.hass.uid' has
+  #                             conflicting definition values: 286 / 3038
+  #
+  #                           `hass` is a WELL-KNOWN NixOS STATIC ID —
+  #                           `ids.uids.hass` and `ids.gids.hass` are both 286 —
+  #                           so the number is fixed by nixpkgs upstream and
+  #                           cannot drift.  It is the same situation as
+  #                           PostgreSQL's uid 71 further down: the 3000-block
+  #                           convention does not apply, and it must NOT be
+  #                           renumbered into the block.
+  #
+  #                           THE HALF OF THE ARGUMENT THAT STILL HOLDS is the
+  #                           one that matters for the bind mount: 286 is what
+  #                           lands on every file in /srv/state/home-assistant,
+  #                           so hass-dirs chowns to it numerically.
+  #
+  #                           IT OWNS NO DATASET.  Its state — the .storage
+  #                           tree that holds accounts and integrations, and the
+  #                           recorder's SQLite database — is small random
+  #                           writes, which is what zdata/state already is
+  #                           (128K, auto-snapshot on).  A dedicated dataset
+  #                           would carry identical properties and add a mount
+  #                           that can fail.
+  #
+  #                           NEXT FREE IN THE 3000 BLOCK REMAINS 3038.)
   #
   #   uid   71  postgres     NOT ALLOCATED HERE, and listed so nobody allocates
   #                           it.  Immich's PostgreSQL runs inside its container
@@ -1010,8 +1145,12 @@
   # M22 TOOK SEQUENCE 11 → 02:00:00:90:00:11 / 10.0.90.25 for Immich, also
   # moved up.
   # M23 TOOK SEQUENCE 12 → 02:00:00:90:00:12 / 10.0.90.26 for Nextcloud, also
-  # moved up.  NEXT FREE SEQUENCE NUMBER IS 13; next free address is
-  # 10.0.90.27, keeping the 8 + <seq> correspondence (8 + 0x13 = 27).
+  # moved up.
+  # M24 TOOK SEQUENCE 13 → 02:00:00:90:00:13 / 10.0.90.27 for Home Assistant,
+  # also moved up — AND OPENED A SECOND TABLE, for VLAN 20, with
+  # 02:00:00:20:00:01 as its only entry.  NEXT FREE SEQUENCE NUMBER ON VLAN 90
+  # IS 14; next free address is 10.0.90.28, keeping the 8 + <seq>
+  # correspondence (8 + 0x14 = 28).
   #
   # (0d / 10.0.90.21 was the free-again cloudflared pair and CWA reused it, as
   # the note below intended.  There is no free gap left in the sequence.)

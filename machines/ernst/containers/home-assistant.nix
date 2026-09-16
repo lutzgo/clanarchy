@@ -1,0 +1,820 @@
+# machines/ernst/containers/home-assistant.nix
+#
+# Home Assistant — the household's home-automation hub (M24 in
+# docs/roadmap.md).  An nspawn container with TWO legs on br0, serving
+# `ha.goclan.org` through Traefik on both entrypoints, with its own accounts
+# and no forward-auth.
+#
+# ── WHAT THIS REPLACES ──────────────────────────────────────────────────────
+#
+#   A Home Assistant instance on a Raspberry Pi, outside this repo and outside
+#   every control the rest of ernst has: no monitoring, no CrowdSec, no
+#   impermanence, no ZFS snapshots, and no way to say what it is running.  The
+#   desktop has been pointing a Noctalia `hassio` bar widget at it for months
+#   (modules/desktop/noctalia-hm.nix) without the repo ever describing it.
+#
+#   IT STANDS UP EMPTY.  Nothing is migrated from the Pi — no configuration,
+#   no history, no Zigbee network.  Devices are re-paired.  That was lgo's
+#   call and it is the cheaper half of a decision whose expensive half is
+#   below, under "IF RE-PAIRING TURNS OUT TO BE TOO MUCH".
+#
+# ── WHY THE nspawn TIER ─────────────────────────────────────────────────────
+#
+#   `services.home-assistant` is a first-class NixOS module, so architecture
+#   invariant #1 puts it here: the podman tier exists for upstreams that ship
+#   only an OCI image (storyteller, cwa, romm, tubesync), and this is not one.
+#   A service moves UP a tier when it starts talking to the internet on its own
+#   behalf with a killswitch requirement, not when it merely becomes reachable
+#   from outside — containers/nextcloud.nix and containers/immich.nix both
+#   argue this and this file takes the same side.
+#
+# ── TWO LEGS, AND THE SECOND ONE IS THE WHOLE POINT ─────────────────────────
+#
+#   eth0  VLAN 90 (Services)  — Traefik reaches the web UI here.  The ordinary
+#                               shape every other container on this bridge has.
+#   iot0  VLAN 20 (IoT)       — the segment the household's wifi devices are
+#                               on.  This leg exists for DISCOVERY.
+#
+#   Unicast to VLAN 20 needs no leg at all: the UDM-Pro has all of LAN, IoT,
+#   HA, DNS-Container, Servers and Matter in the `Internal` zone with
+#   `Internal -> Internal: Allow All`, so a VLAN-90 address can already open a
+#   socket to any IoT device.  What is NOT routable is mDNS and SSDP, which are
+#   link-local by definition — and this repo has refused to relay them across a
+#   firewall boundary twice, in writing:
+#
+#     "the fix for that is emphatically NOT to enable an SSDP/mDNS relay
+#      across a firewall boundary to save one config field"
+#         — M8's session prompt, docs/roadmap.md
+#
+#     "Add a VLAN here only if the host itself needs to speak on it — which
+#      would also put Avahi's unpinned mDNS reflector onto that VLAN ... so it
+#      is not a free change."
+#         — machines/ernst/networking.nix, note 3
+#
+#   A second veth is the answer that is consistent with both: Home Assistant is
+#   ON the segment it discovers, and no multicast crosses a boundary.  VLAN 20
+#   is already tagged on ernst's trunk, so this costs no switch-port change.
+#
+#   WHY NOT VLAN 30, WHICH IS LITERALLY NAMED "HA".  It exists on the UDM-Pro
+#   (10.0.30.0/24) and is deliberately NOT carried on ernst's trunk.  Carrying
+#   it means a port-profile edit on USW Pro 24 PoE port 6, and it buys nothing:
+#   the leg that matters is the one on the segment the DEVICES are on, and the
+#   wifi devices are on 20.  VLAN 30 retires with the Pi.
+#
+# ── NO forward-auth ON THIS HOSTNAME ────────────────────────────────────────
+#
+#   `ha.goclan.org` is in `appApiHosts` (containers/ingress-policy.nix).  The
+#   test that file states is whether EVERY client can render a login page and
+#   follow a 302, and the companion app cannot: it exchanges credentials once
+#   at /auth/token and then holds an authenticated WebSocket at /api/websocket
+#   for the life of the session, with no browser anywhere in the process.  It
+#   is also the endpoint the app PUSHES location to, in the background, with no
+#   user present to log in to anything.
+#
+#   The compensations are unusually strong for a name in that list, and they
+#   are named rather than assumed: Home Assistant ships `ip_ban_enabled` — a
+#   real per-source ban written to ip_bans.yaml — and native TOTP MFA on its
+#   own accounts.  Both are configured below.  `wan-ratelimit`,
+#   `wan-login-ratelimit` and CrowdSec sit in front of them.
+#
+#   THE ip_ban CONTROL HAS A PREREQUISITE and it is one line: `trusted_proxies`
+#   must name Traefik, or every request appears to come from 10.0.90.12 and the
+#   ban either never fires or locks out the entire household at once.  This is
+#   ledger row L14's lesson (containers/nextcloud.nix) in a second costume.
+#
+# ── THREAD AND MATTER ARE NOT IN THIS FILE.  DELIBERATELY. ──────────────────
+#
+#   Two Nabu Casa ZBT-2 radios are plugged into ernst.  One runs Zigbee through
+#   ZHA, below.  The other is bound and aliased here and opened by nothing,
+#   because the Thread half is M25 and it brings conflicts that do not belong
+#   in the first deploy of a new container:
+#
+#     * `services.openthread-border-router` sets
+#       net.ipv6.conf.<backbone>.accept_ra = 2 and
+#       net.ipv6.conf.all.forwarding = 1 — a deliberate exception to standing
+#       note SN2, which is why every interface in this file says otherwise;
+#     * otbr-agent needs /dev/net/tun plus CAP_NET_ADMIN and CAP_NET_RAW inside
+#       an nspawn container, which nothing on this host has yet;
+#     * it wants avahi PUBLISHING inside the container, where this file wants
+#       avahi nowhere near it;
+#     * and the second ZBT-2 has to be reflashed with OpenThread RCP firmware,
+#       a manual step outside the repo that would gate the whole deploy.
+#
+#   Binding the radio now costs nothing and makes M25 a service addition rather
+#   than a container restart.
+#
+# ── THE CONTAINER IS CALLED `hass`, NOT `home-assistant` ────────────────────
+#
+#   Not a preference.  systemd-nspawn's --network-bridge names the host side of
+#   the veth `vb-<container>`, and a Linux interface name is capped at 15
+#   characters (IFNAMSIZ - 1).  `vb-home-assistant` is 17 and the link cannot
+#   be created at all.  `vb-hass` is 7.
+#
+#   So: the FILE is home-assistant.nix, the SERVICE is home-assistant.service
+#   inside, and the MACHINE is `hass` —
+#   `machinectl`, `nixos-container run hass`, `systemctl restart container@hass`.
+#
+# ── WHAT IS DELIBERATELY NOT HERE ───────────────────────────────────────────
+#
+#   A clan vars generator.  Home Assistant creates its owner account through
+#   the onboarding flow in the browser and keeps credentials in .storage; there
+#   is nothing to seed and therefore no /run/hass-secrets staging unit.  Stated
+#   so the absence reads as a decision.
+#
+#   A Prometheus scrape target.  Home Assistant's /api/prometheus is behind a
+#   long-lived bearer token, so a job pointed at it without one could only ever
+#   be `up == 0` — M13's Ollama lesson, and service-modules/monitoring.nix is
+#   disciplined about not adding targets that cannot work.  What this container
+#   DOES get for free, because it is nspawn and machinectl can see it, is
+#   `ContainerSystemdUnitFailed`: any failed unit inside it becomes a host-side
+#   metric within a minute.  If HA metrics are wanted later, the pattern to
+#   copy is the Navidrome basic_auth.password_file job in that file.
+#
+#   Zigbee2MQTT and an MQTT broker.  ZHA is in-process, needs no broker, no
+#   second port and no second web UI to route or explain.  The ZBT-2 is Nabu
+#   Casa's own dongle and is first-class in ZHA.  Z2M's wider device support is
+#   the reason to revisit this, and the migration is a re-pair either way.
+#
+# ── IF RE-PAIRING TURNS OUT TO BE TOO MUCH ──────────────────────────────────
+#
+#   ZHA can restore a coordinator backup — PAN ID, extended PAN ID and network
+#   key — from the Pi's coordinator onto the ZBT-2, and every device keeps
+#   working without being touched.  That is a change of PLAN, not of design:
+#   nothing in this file moves, only the manual step that forms the network.
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
+
+let
+  ##############################################################################
+  # Identity.
+  ##############################################################################
+
+  # ── 286 IS NOT OURS TO CHOOSE, AND THAT IS THE POINT ──────────────────────
+  #
+  # This file was first written with 3038 — the next free number in the
+  # 3000-block registry in machines/ernst/networking.nix — on the argument
+  # Immich's and Nextcloud's rows there make: the nixpkgs module creates its
+  # user with `isSystemUser` and no fixed uid, nspawn passes ids through
+  # UNMAPPED, so whatever the container's useradd happens to pick is the number
+  # that lands on every file on zdata.
+  #
+  # THAT ARGUMENT DOES NOT APPLY HERE.  It failed at evaluation:
+  #
+  #     error: The option `containers.hass.users.users.hass.uid' has
+  #            conflicting definition values: 286 / 3038
+  #
+  # `hass` is a WELL-KNOWN NixOS STATIC ID — `ids.uids.hass` and
+  # `ids.gids.hass` are both 286 — so the number is already fixed by nixpkgs
+  # and cannot drift.  It is the same situation as PostgreSQL's uid 71 in
+  # containers/nextcloud.nix: the 3000-block convention does not apply to it,
+  # and it must not be renumbered into the block.
+  #
+  # So M24 CONSUMES NO NUMBER FROM THE 3000 BLOCK.  The registry in
+  # machines/ernst/networking.nix records 286 alongside 71 for that reason, and
+  # NEXT FREE there stays at 3038.
+  #
+  # What is still true is the half that matters for the bind mount: 286 is what
+  # lands on every file in /srv/state/home-assistant, so hass-dirs below chowns
+  # to it numerically.
+  hassUid = 286;
+  hassGid = 286;
+
+  ##############################################################################
+  # Peers, ports and paths.
+  ##############################################################################
+
+  # The one VLAN-90 peer allowed to reach this service.  Every client — browser
+  # and companion app, on the LAN and from the internet — arrives through the
+  # proxy.  Naming a peer's address here is the deliberate opposite of the rule
+  # this file follows for its own; see the "BACKEND BYPASS HARDENING" section of
+  # containers/traefik.nix, which owns that argument.
+  traefikAddr = "10.0.90.12";
+
+  # Home Assistant's own listener.  Plain HTTP; TLS is Traefik's.
+  hassPort = 8123;
+
+  # State: the configuration tree, the .storage blobs that hold accounts and
+  # integration config, and the recorder's SQLite database.
+  #
+  # ON THE EXISTING zdata/state DATASET, NOT A NEW ONE, and that is a decision
+  # rather than a shortcut.  docs/guides/ernst-zdata-datasets.md splits
+  # datasets by WRITE PROFILE: 1M recordsize for large sequential media, the
+  # 128K default for small random writes.  A SQLite recorder DB and a tree of
+  # small JSON blobs is the second case exactly, which is what zdata/state
+  # already is — measured on the host as recordsize=128K, exec=on,
+  # com.sun:auto-snapshot=true.  A dedicated dataset would carry identical
+  # properties and add a mount that can fail.
+  stateRoot = "/srv/state/home-assistant";
+
+  # Home Assistant's own default configDir, bound to stateRoot.  Using the
+  # module's default rather than overriding it means `configDir`, the systemd
+  # StateDirectory and the module's own tmpfiles rules all agree with nothing
+  # overridden — the same trick as Immich's /var/lib/immich and Nextcloud's
+  # /var/lib/nextcloud.
+  configDir = "/var/lib/hass";
+
+  ##############################################################################
+  # The radios.
+  ##############################################################################
+
+  # TWO Nabu Casa ZBT-2 dongles, and they are the same product:
+  #
+  #     /dev/ttyACM0  Nabu_Casa ZBT-2  303a:831a  ID_SERIAL_SHORT=1CDBD45E613C
+  #     /dev/ttyACM1  Nabu_Casa ZBT-2  303a:831a  ID_SERIAL_SHORT=DCB4D90E9BD0
+  #
+  # IDENTICAL VENDOR AND PRODUCT ID.  A udev rule matching on VID/PID alone
+  # would create BOTH symlinks on BOTH devices, and ZHA would form its network
+  # against whichever won the race — differently on different boots.
+  # ID_SERIAL_SHORT is the only thing that tells them apart.
+  #
+  # And ttyACM0/ttyACM1 is enumeration order, which can flip on a kernel bump
+  # or a USB reset.  This is containers/jellyfin.nix's renderD12{8,9} argument
+  # in its sharpest form: there, a flip silently handed the container the wrong
+  # GPU; here it would silently point ZHA at the Thread radio.
+  #
+  # The aliases are colon-free, which also matters: systemd-nspawn's
+  # --bind=SRC:DST parser tokenizes on ':' and rejects source paths carrying
+  # extra colons.  /dev/serial/by-id/usb-Nabu_Casa_ZBT-2_1CDBD45E613C-if00
+  # happens to be colon-free and would work, but it encodes the serial in a
+  # path that reads as noise at every use site.
+  zigbeeSerial = "1CDBD45E613C";
+  threadSerial = "DCB4D90E9BD0";
+
+  zigbeeNode = "/dev/zigbee-coordinator";
+  threadNode = "/dev/thread-radio";
+in
+{
+  ##############################################################################
+  # Host side — the udev aliases, the state directory, and the two veths.
+  ##############################################################################
+
+  # Stable, colon-free aliases for the two radios, keyed on SERIAL.  The
+  # SYMLINK+= form adds an alias alongside the stock by-id/by-path links, so
+  # nothing else on the host loses a name it already had.
+  services.udev.extraRules = ''
+    SUBSYSTEM=="tty", ENV{ID_VENDOR_ID}=="303a", ENV{ID_MODEL_ID}=="831a", ENV{ID_SERIAL_SHORT}=="${zigbeeSerial}", SYMLINK+="${lib.removePrefix "/dev/" zigbeeNode}"
+    SUBSYSTEM=="tty", ENV{ID_VENDOR_ID}=="303a", ENV{ID_MODEL_ID}=="831a", ENV{ID_SERIAL_SHORT}=="${threadSerial}", SYMLINK+="${lib.removePrefix "/dev/" threadNode}"
+  '';
+
+  # Belt-and-braces: block container start until the aliases exist.
+  #
+  # On a normal boot udev fires the rules above when cdc_acm enumerates the
+  # dongles, and the symlinks are there long before any application service
+  # starts, so this is redundant.  Where it earns its keep is the corner case
+  # containers/jellyfin.nix measured: a runtime udev-rules reload
+  # (`nixos-rebuild switch`, i.e. every deploy that touches this file) does NOT
+  # re-fire "add" events against already-enumerated devices, so on the FIRST
+  # deploy the rule never runs, the symlink never appears, and container@hass
+  # dies with
+  #
+  #     systemd-nspawn: Failed to clone /dev/zigbee-coordinator:
+  #                     No such file or directory
+  #
+  # five times into its start limit.
+  #
+  # The explicit trigger means a reload-then-start deploy does not have to wait
+  # out the settle timeout; on a normal boot it is a no-op and the whole unit
+  # completes in well under a second.
+  #
+  # `--exit-if-exists` takes ONE path, so there are two settle calls.  The
+  # Thread radio is waited for even though nothing opens it: it is bind-mounted
+  # below, and a bind source that does not exist fails the container start just
+  # as hard as one that is never used.
+  systemd.services.hass-radio-symlinks = {
+    description = "Ensure the ZBT-2 radio aliases exist for container@hass";
+    wantedBy    = [ "container@hass.service" ];
+    before      = [ "container@hass.service" ];
+    after       = [ "systemd-udevd.service" ];
+    serviceConfig = {
+      Type            = "oneshot";
+      RemainAfterExit = false;
+      ExecStart = [
+        "${pkgs.systemd}/bin/udevadm trigger --subsystem-match=tty --action=add"
+        "${pkgs.systemd}/bin/udevadm settle --exit-if-exists=${zigbeeNode} --timeout=30"
+        "${pkgs.systemd}/bin/udevadm settle --exit-if-exists=${threadNode} --timeout=30"
+      ];
+    };
+  };
+
+  # ── NO tmpfiles RULES IN THIS FILE, AND containers/immich.nix IS WHY ───────
+  #
+  # That file records the measured failure: three of its four host-side
+  # directories shipped as `systemd.tmpfiles.rules` and the container died five
+  # times into its start limit, because activating a new configuration does not
+  # re-run systemd-tmpfiles-setup.service in time for a container the same
+  # activation starts.  Every host-side directory this container binds belongs
+  # to the ordered unit below, and none of them is also a tmpfiles rule — two
+  # declarations for one path is the M3 defect, where two rules that disagree
+  # about mode take turns winning, one per deploy.
+  systemd.services.hass-dirs = {
+    description = "Verify /srv/state is mounted and create Home Assistant's directories";
+    wantedBy   = [ "multi-user.target" ];
+    after      = [ "srv-state.mount" ];
+    requires   = [ "srv-state.mount" ];
+    before     = [ "container@hass.service" ];
+    requiredBy = [ "container@hass.service" ];
+    serviceConfig = {
+      Type            = "oneshot";
+      RemainAfterExit = true;
+    };
+    path = [ pkgs.util-linux pkgs.coreutils ];
+
+    # BLOCKING (`requires` + `requiredBy`), not advisory, and for Nextcloud's
+    # reason rather than arr's: a Home Assistant that starts without its state
+    # is not a degraded Home Assistant, it is a NEW, EMPTY one on zroot.  It
+    # will run the onboarding wizard again, accept an owner account, pair
+    # devices, and lose all of it at the next boot — while reporting success
+    # the entire time.
+    #
+    # It FAILS rather than repairing itself: a unit that silently fixes storage
+    # layout hides the fact that the layout was wrong.
+    script = ''
+      set -eu
+
+      # findmnt, not `mountpoint`: this has to check WHAT is mounted, not just
+      # that something is.
+      #
+      # THE TARGET IS THE PARENT, NOT ${stateRoot}, and that is not tidiness.
+      # `findmnt --target` on a path that DOES NOT EXIST YET returns nothing —
+      # it does not walk up to the nearest existing ancestor — so checking
+      # ${stateRoot} here would fail on every first run, before this unit has
+      # had a chance to create it.  immich-dirs refused its own first deploy
+      # that way on 2026-09-11.
+      ssrc=$(findmnt --noheadings --output SOURCE --target /srv/state || true)
+      if [ "$ssrc" != "zdata/state" ]; then
+        echo "hass-dirs: /srv/state is not zdata/state (found '$ssrc')." >&2
+        echo "  Refusing to create Home Assistant's state directory, because" >&2
+        echo "  it would land on zroot and be rolled back on the next boot —" >&2
+        echo "  taking the owner account and every paired device with it." >&2
+        echo "  See docs/guides/ernst-zdata-datasets.md." >&2
+        exit 1
+      fi
+
+      # NUMERIC ids on purpose: `hass` is a CONTAINER user and the host has no
+      # matching passwd entry.  Same shape traefik.nix uses for uid 3005.
+      #
+      # 0700 IS ASKED FOR AND 0750 MAY BE WHAT LANDS, the way it did for
+      # Nextcloud and Immich: the nixpkgs module ships its own tmpfiles rules
+      # INSIDE the container, they run on every start against the same inodes
+      # through the bind mount, and upstream wins.  It is NOT forced back —
+      # declaring a competing rule for a path the module already declares is
+      # the M3 defect.  The check that makes it harmless is specific rather
+      # than reassuring: `getent group 286` ON THE HOST must return nothing,
+      # so the group bit grants nobody anything.  `go`, the couch account that
+      # autologins on the television without a password, is gid 100(users).
+      # If a host-side group 286 is ever created, re-read this paragraph
+      # rather than trusting it.
+      install -d -o ${toString hassUid} -g ${toString hassGid} -m 0700 ${stateRoot}
+
+      # ── SEED THE UI-MANAGED INCLUDE FILES ───────────────────────────────
+      #
+      # configuration.yaml below carries `automation: !include automations.yaml`
+      # and its two siblings, which is what keeps the browser's automation,
+      # script and scene editors working while configuration.yaml itself stays
+      # declarative and read-only.
+      #
+      # Home Assistant does NOT tolerate a missing !include target — it raises
+      # at startup and refuses to boot.  Home Assistant OS ships these files
+      # pre-created for exactly this reason; nothing here would create them, so
+      # this does.
+      #
+      # `-e` guarded, never truncating: after the first deploy these files are
+      # owned by the UI editors and rewriting them would delete every
+      # automation in the house.
+      #
+      # The empty values match what each domain expects — a list for
+      # automations and scenes, a mapping for scripts.
+      for f in automations.yaml scenes.yaml; do
+        if [ ! -e "${stateRoot}/$f" ]; then
+          echo "[]" > "${stateRoot}/$f"
+          chown ${toString hassUid}:${toString hassGid} "${stateRoot}/$f"
+          chmod 0600 "${stateRoot}/$f"
+        fi
+      done
+      if [ ! -e "${stateRoot}/scripts.yaml" ]; then
+        echo "{}" > "${stateRoot}/scripts.yaml"
+        chown ${toString hassUid}:${toString hassGid} "${stateRoot}/scripts.yaml"
+        chmod 0600 "${stateRoot}/scripts.yaml"
+      fi
+    '';
+  };
+
+  ##############################################################################
+  # The two veths.
+  ##############################################################################
+
+  # Leg 1 — the host side of eth0, a VLAN-90 port on br0.  Identical rationale
+  # to vb-nextcloud / vb-immich / vb-jellyfin; see containers/traefik.nix for
+  # the long form of KeepMaster-not-Bridge and why a bridge port carries no
+  # address of its own.
+  systemd.network.networks."60-vb-hass" = {
+    matchConfig.Name = "vb-hass";
+    networkConfig = {
+      KeepMaster          = true;
+      LinkLocalAddressing = "no";
+      IPv6AcceptRA        = false;
+    };
+    bridgeVLANs = [ { VLAN = 90; PVID = 90; EgressUntagged = 90; } ];
+    linkConfig.RequiredForOnline = "enslaved";
+  };
+
+  # Leg 2 — the host side of iot0, a VLAN-20 port on br0.
+  #
+  # `Bridge = "br0"`, NOT `KeepMaster`, and the difference is not cosmetic.
+  # nspawn's --network-bridge creates the eth0 veth AND enslaves it, so
+  # networkd must be told to keep its hands off the master (KeepMaster, leg 1).
+  # --network-veth-extra, which is what `extraVeths` below becomes, creates the
+  # pair and enslaves NOTHING — so here networkd owns the enslavement and
+  # nothing competes for it.  This is machines/ernst/networking.nix's Pattern A
+  # and it is the same shape containers/tvheadend.nix uses for fritz0.
+  #
+  # NOTE THE NAME.  --network-veth-extra names BOTH ends identically, so this
+  # matches the plain `iot0` and not `vb-iot0`.
+  systemd.network.networks."60-iot0" = {
+    matchConfig.Name = "iot0";
+    networkConfig = {
+      Bridge              = "br0";
+      LinkLocalAddressing = "no";
+      IPv6AcceptRA        = false;
+    };
+    bridgeVLANs = [ { VLAN = 20; PVID = 20; EgressUntagged = 20; } ];
+    # A bridge port's terminal state is "enslaved"; it never becomes routable.
+    linkConfig.RequiredForOnline = "enslaved";
+  };
+
+  # Same VLAN race, same idempotent backstop, same "-" prefix as every other
+  # nspawn container on br0: networkd applies [BridgeVLAN] only once it observes
+  # the link's master, and nspawn sets that master out of band.  With
+  # DefaultPVID = "none" on br0 a miss is fail-CLOSED — the port is dead rather
+  # than silently joining VLAN 50.
+  #
+  # `bridge vlan show dev vb-hass` and `bridge vlan show dev iot0` are the
+  # checks.
+  systemd.services."container@hass".serviceConfig.ExecStartPost = [
+    "-${pkgs.iproute2}/bin/bridge vlan add dev vb-hass vid 90 pvid untagged"
+    "-${pkgs.iproute2}/bin/bridge vlan add dev iot0 vid 20 pvid untagged"
+  ];
+
+  # Avahi must not discover the IoT segment through this veth.  The host side
+  # holds no address, so avahi has nothing to bind and would skip it anyway —
+  # but containers/tvheadend.nix states the same exclusion rather than relying
+  # on that accident, and during M8's Phase 0 the accident did not hold: a
+  # briefly-addressed interface had ernst's mDNS on a foreign segment within
+  # seconds.  modules/networking/mdns.nix runs the reflector with no interface
+  # pinning, which is what makes this worth stating.
+  services.avahi.denyInterfaces = [ "iot0" ];
+
+  ##############################################################################
+  # The container.
+  ##############################################################################
+  containers.hass = {
+    autoStart = true;
+    ephemeral = false;
+
+    # Leg 1 — eth0 on br0 / VLAN 90.  MAC from the allocation table in
+    # machines/ernst/networking.nix; the DHCP reservation 10.0.90.27 on the
+    # UDM-Pro keys on it (manual step).  Sequence 13, and the last octet is
+    # 8 + seq as everywhere else on this bridge.
+    privateNetwork  = true;
+    hostBridge      = "br0";
+    localMacAddress = "02:00:00:90:00:13";
+
+    # Leg 2 — iot0 on br0 / VLAN 20.  Same mechanism as tvheadend's fritz0 and
+    # the monitoring container's mon0: nspawn --network-veth-extra names both
+    # ends iot0.
+    #
+    # NO ADDRESS AND NO MAC HERE.  `extraVeths` has no MAC option at all, and
+    # `localAddress` would be applied by container-init before networkd starts
+    # and then fight it over the same interface — tvheadend.nix records that.
+    # Both are set by the container's own networkd, below.
+    extraVeths.iot0 = { };
+
+    # ── THE eBPF DEVICE FILTER: GROUP FORM, NOT PATH FORM ─────────────────
+    #
+    # NixOS passes these straight through to systemd's DeviceAllow=
+    # (nixos-containers.nix:341).  containers/jellyfin.nix names a PATH there
+    # and that is right for a DRM render node, whose major:minor is fixed by
+    # PCI topology.  It would be WRONG here: systemd stat()s the path once to
+    # derive major:minor, and a USB-serial minor changes when the device
+    # re-enumerates.  The filter would be correct at start and wrong after a
+    # replug, denying a device that is plainly present.
+    #
+    # `char-ttyACM` is the device-node GROUP — major 166, confirmed in ernst's
+    # /proc/devices — and covers every minor.  It is also exactly what the
+    # nixpkgs home-assistant module emits for itself when a serial component is
+    # enabled, so the two layers of filter agree instead of racing.
+    #
+    # The trap avoided here is service-modules/local-ai.nix's: naming a
+    # DIRECTORY grants nothing, and because ANY DeviceAllow turns the filter
+    # on, it takes access away.
+    allowedDevices = [
+      { node = "char-ttyACM"; modifier = "rw"; }
+    ];
+
+    bindMounts = {
+      # The state tree, bound at the module's OWN default so configDir, the
+      # StateDirectory and the module's tmpfiles rules all agree.
+      "${configDir}" = {
+        hostPath   = stateRoot;
+        isReadOnly = false;
+      };
+
+      # The radios.  nspawn resolves the source, so the container gets a real
+      # character device at a stable name rather than a dangling symlink.
+      #
+      # The Thread radio is bound and opened by nothing — see the header.
+      #
+      # ── THIS MOUNT DOES NOT FOLLOW RE-ENUMERATION.  KNOWN. ──────────────
+      #
+      # The bind is established once, at container start, and there is no udev
+      # inside these containers to notice a replug.  If a dongle re-enumerates
+      # while Home Assistant is running, the node in here keeps pointing at the
+      # old major:minor and ZHA reports I/O errors against a device that looks
+      # present.  Recovery is one command:
+      #
+      #     systemctl restart container@hass
+      #
+      # No precedent in this repo automates that, and it is deliberately not
+      # built here: a host udev RUN+= that restarts the container is the
+      # obvious fix and is its own failure mode against a flapping device.
+      # These dongles are permanently seated in a server; build it if it bites.
+      "${zigbeeNode}" = {
+        hostPath   = zigbeeNode;
+        isReadOnly = false;
+      };
+      "${threadNode}" = {
+        hostPath   = threadNode;
+        isReadOnly = false;
+      };
+    };
+
+    config = { config, pkgs, lib, ... }: {
+      system.stateVersion = "26.05";
+
+      ##########################################################################
+      # Networking — two legs, one netns.
+      ##########################################################################
+      networking.useHostResolvConf = false;
+      networking.useNetworkd = true;
+      services.resolved.enable = true;
+
+      # eth0 — VLAN 90.  The same block as every sibling container: DHCP
+      # against the UDM-Pro reservation, resolver declared rather than
+      # inherited.
+      systemd.network.networks."10-eth0" = {
+        matchConfig.Name = "eth0";
+        networkConfig = {
+          DHCP         = "ipv4";
+          DNS          = "10.0.5.3";
+          Domains      = "~. skynet.lan";
+          IPv6AcceptRA = false;
+          # SN2: v4 only.  M18 measured that IPv6AcceptRA alone blocks an RA
+          # but NOT link-local assignment; this is the line that actually makes
+          # `ip -6 addr show dev eth0` empty.
+          LinkLocalAddressing = "no";
+        };
+        dhcpV4Config = {
+          UseDNS     = false;
+          UseDomains = false;
+        };
+        linkConfig.RequiredForOnline = "routable";
+      };
+
+      # iot0 — VLAN 20, the discovery leg.
+      systemd.network.networks."20-iot0" = {
+        matchConfig.Name = "iot0";
+        networkConfig = {
+          DHCP                = "ipv4";
+          IPv6AcceptRA        = false;
+          LinkLocalAddressing = "no";
+        };
+
+        # ── UseGateway = false IS LOAD-BEARING ────────────────────────────
+        #
+        # Both legs take DHCP, and both DHCP servers hand out a default route.
+        # Without this, the container ends up with TWO `default via` entries
+        # and its path to the internet is decided by whichever lease was
+        # applied last — which is a coin toss on every boot, and a coin toss
+        # that changes which VLAN Home Assistant's outbound traffic (updates,
+        # weather, the companion app's push relay) is seen leaving on.
+        #
+        # UseRoutes = false for the same reason one level down: a classless
+        # static route option on VLAN 20 would install routes here that belong
+        # to the other leg's routing decision.  VLAN 20 is ON-LINK for this
+        # interface, and on-link is the whole job — the /24 route networkd
+        # derives from the address is all this leg needs.
+        #
+        # DNS stays on eth0's Technitium (10.0.5.3), so UseDNS/UseDomains are
+        # off for the same non-negotiable reason they are off there: an IoT
+        # VLAN's DHCP server is not this container's resolver.
+        dhcpV4Config = {
+          UseDNS     = false;
+          UseDomains = false;
+          UseGateway = false;
+          UseRoutes  = false;
+        };
+
+        # THE MAC IS PINNED HERE because `extraVeths` has no option for it and
+        # the UDM-Pro reservation has to key on a value this repo chose rather
+        # than on whatever nspawn derives from the machine name.  First entry
+        # in the VLAN 20 allocation table in machines/ernst/networking.nix.
+        linkConfig = {
+          MACAddress       = "02:00:00:20:00:01";
+          # NOT "routable".  A DHCP problem on the IoT VLAN must leave a
+          # RUNNING container with one failed unit and a working web UI, not a
+          # host-side restart loop that takes the whole hub down because a
+          # lease did not arrive.
+          RequiredForOnline = "no";
+        };
+      };
+
+      # Same 20 s cap as every sibling: a DHCP failure must leave a RUNNING
+      # container with one failed unit, not a host-side restart loop.
+      systemd.network.wait-online.timeout = 20;
+
+      # ── The container firewall — the only enforcement point for br0-local
+      #    traffic, since those frames are one L2 hop and the UDM-Pro never
+      #    sees them.
+      #
+      #   8123/tcp  from Traefik ONLY.  Every client of the web UI and of the
+      #             companion app's API arrives through the proxy.
+      #   5353/udp  mDNS, ON iot0 ONLY.
+      #   1900/udp  SSDP, ON iot0 ONLY.
+      #
+      # THE TWO UDP RULES ARE THE WHOLE REASON THE SECOND LEG EXISTS.  Both
+      # protocols work by the client LISTENING for multicast responses, so
+      # without an inbound accept python-zeroconf and the ssdp component send
+      # queries and hear nothing — and the leg is decorative while looking
+      # correct.  That failure mode is silent: discovery simply finds nothing,
+      # which is indistinguishable from a household with no discoverable
+      # devices.
+      #
+      # `-i iot0` rather than the `-s <addr>/32` form every other container in
+      # this repo uses, and the difference is deliberate: the sources here are
+      # multicast groups (224.0.0.251, 239.255.255.250) and every device on the
+      # segment, so there is no address to name.  The INTERFACE is the
+      # restriction — nothing on VLAN 90 gains a port from these two lines.
+      #
+      # extraCommands, not extraInputRules: the latter is declared
+      # unconditionally but consumed only under networking.nftables, so here it
+      # would produce no rule and no warning.  containers/traefik.nix is the
+      # only nftables container on this machine.
+      networking.firewall.allowedTCPPorts = [ ];
+      networking.firewall.extraCommands = ''
+        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32 --dport ${toString hassPort} -j nixos-fw-accept
+        iptables -A nixos-fw -i iot0 -p udp --dport 5353 -j nixos-fw-accept
+        iptables -A nixos-fw -i iot0 -p udp --dport 1900 -j nixos-fw-accept
+      '';
+
+      ##########################################################################
+      # The service.
+      ##########################################################################
+      services.home-assistant = {
+        enable = true;
+        inherit configDir;
+
+        # `zha` is what puts the ZBT-2 to work, and it is also what makes the
+        # nixpkgs module do the in-container half of the device plumbing for
+        # us: it is in that module's `componentsUsingSerialDevices` list, so
+        # home-assistant.service is emitted with
+        #
+        #     DeviceAllow      = char-ttyACM rw, char-ttyAMA rw, char-ttyUSB rw
+        #     SupplementaryGroups = dialout
+        #
+        # `dialout` is statically gid 27 in nixpkgs' ids.nix, on the host and
+        # in here alike, so the bound node's root:dialout 0660 ownership
+        # resolves across the bind mount with nothing to reconcile by hand.
+        # That is the one thing about this passthrough that needed no work.
+        #
+        # The rest are the ordinary household set.  `default_config` below
+        # pulls in most integrations; these are the ones it does not, or that
+        # must be present before the UI can offer them.
+        extraComponents = [
+          "zha"           # Zigbee, via the ZBT-2 on /dev/zigbee-coordinator
+          "mobile_app"    # the companion app's registration + push endpoint
+          "zeroconf"      # mDNS discovery — the iot0 leg's reason to exist
+          "ssdp"          # SSDP discovery, same
+          "met"           # weather, met.no: no API key, no account
+          "radio_browser" # offered by the onboarding wizard; absent = a 404
+          "backup"        # HA's own backup UI, onto the state tree
+        ];
+
+        # ── configuration.yaml IS DECLARATIVE AND READ-ONLY ────────────────
+        #
+        # `configWritable` is left at its `false` default, so the file is a
+        # symlink into the store and the browser cannot edit it.  That is the
+        # intent: what this file declares should be what is running.
+        #
+        # It does NOT make Home Assistant a read-only appliance.  Integrations,
+        # devices, entities, users, dashboards and helpers all live in
+        # .storage/ and are managed entirely through the UI — which is how Home
+        # Assistant is meant to be used, and none of it belongs in Nix.
+        config = {
+          # The meta-integration: ~40 components including recorder, history,
+          # logbook, the energy dashboard, and config-flow discovery.
+          default_config = { };
+
+          homeassistant = {
+            name = "Home";
+            time_zone = "Europe/Berlin";
+            unit_system = "metric";
+            temperature_unit = "C";
+
+            # BOTH URLs ARE THE SAME NAME, and that is correct here rather than
+            # lazy.  containers/traefik.nix serves `goclan.org` split-horizon:
+            # Technitium answers ha.goclan.org with Traefik's VLAN-90 address
+            # inside the house, and the public zone answers it with the WAN
+            # address outside.  One name, two answers, so a single value is
+            # right for both — and it is the value that has to appear in the
+            # companion app's QR codes and in every notification link.
+            external_url = "https://ha.goclan.org";
+            internal_url = "https://ha.goclan.org";
+          };
+
+          http = {
+            # SN2 — v4 ONLY, stated rather than inherited.  The module's
+            # default for this option is [ "0.0.0.0" "::" ], and the rendered
+            # configuration.yaml carries both unless it is overridden here.
+            #
+            # Nothing could reach the v6 listener today: no interface in this
+            # container has an IPv6 address, because both `.network` units above
+            # set LinkLocalAddressing = "no".  It is dropped anyway, for the
+            # reason containers/traefik.nix spends a paragraph on its own
+            # wildcard listeners — a socket that shows up in `ss -ltn` and that
+            # the iptables rules below do not cover is a question someone has to
+            # answer later, and the answer being "harmless" does not save them
+            # the work of establishing it.
+            server_host = [ "0.0.0.0" ];
+
+            # ── THE LINE THAT TURNS A CONTROL INTO A DECORATION ────────────
+            #
+            # Every request arrives from Traefik, so without these two Home
+            # Assistant sees 10.0.90.12 as the client for all of them.  The
+            # consequences are not subtle:
+            #
+            #   * ip_ban_enabled below counts failures per source address, so
+            #     it would either never fire (one proxy, never enough failures
+            #     attributed to a real attacker) or fire once and ban THE PROXY
+            #     — taking the entire household offline in a single stroke;
+            #   * the logbook, the mobile_app's device tracking and every
+            #     access log entry would name the proxy instead of the client.
+            #
+            # This is ledger row L14's Nextcloud lesson in a second costume,
+            # and it is the reason that row says to re-read it here.  Verify it
+            # rather than trusting it: two deliberate bad logins from a phone
+            # must put THE PHONE'S address in ip_bans.yaml's counters, never
+            # 10.0.90.12.
+            use_x_forwarded_for = true;
+            trusted_proxies = [ traefikAddr ];
+
+            # Home Assistant's own brute-force control, and the first of the
+            # compensations containers/ingress-policy.nix demands for a name
+            # that Authelia never sees.  A source that fails this many logins
+            # is written to ip_bans.yaml and refused at the application layer,
+            # permanently, until a human removes the line.
+            #
+            # It is per-SOURCE and not per-account, which is the opposite of
+            # Nextcloud's throttle — so the two names in appApiHosts are
+            # defended differently and neither file should be read as
+            # describing the other.
+            ip_ban_enabled = true;
+            login_attempts_threshold = 5;
+          };
+
+          # ── THE UI EDITORS, KEPT WORKING ──────────────────────────────────
+          #
+          # `!include` rather than inline values.  These three domains are the
+          # ones Home Assistant's browser editors write to, and pointing them
+          # at files under configDir is what lets the household build an
+          # automation without a deploy.
+          #
+          # The nixpkgs module unquotes a leading-bang string into a real YAML
+          # tag when it renders configuration.yaml, which is why these are
+          # plain strings.
+          #
+          # THE FILES MUST EXIST — Home Assistant raises on a missing !include
+          # target and refuses to start.  hass-dirs above seeds all three, once,
+          # and never truncates them afterwards.
+          automation = "!include automations.yaml";
+          scene      = "!include scenes.yaml";
+          script     = "!include scripts.yaml";
+        };
+      };
+
+      # NO `users.users.hass.uid` HERE.  The nixpkgs module already sets it from
+      # `ids.uids.hass`, and restating the same number is an option conflict
+      # rather than a no-op — see the note on `hassUid` in the let block above,
+      # which is where the number this container's files carry is documented.
+
+      # `curl` is the test plan's instrument for proving this backend is
+      # reachable from Traefik and from nowhere else.
+      environment.systemPackages = with pkgs; [ curl ];
+      documentation.enable       = false;
+      documentation.nixos.enable = false;
+    };
+  };
+}

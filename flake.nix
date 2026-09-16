@@ -326,6 +326,25 @@
           # path takes Authelia's OIDC provider instead, which is CWA's
           # arrangement.  See containers/ingress-policy.nix.
           ./machines/ernst/containers/nextcloud.nix
+          # M24.  Home Assistant — the household's home-automation hub, on the
+          # NSPAWN tier because `services.home-assistant` is a first-class
+          # NixOS module.  Replaces an undeclared instance on a Raspberry Pi.
+          #
+          # THE ONLY CONTAINER ON THIS HOST WITH TWO LEGS ON br0: eth0 on
+          # VLAN 90 for Traefik, and iot0 on VLAN 20 because mDNS and SSDP are
+          # link-local and this repo refuses to relay them across a firewall
+          # boundary.  It is also the first to pass a USB device through —
+          # two Nabu Casa ZBT-2 radios, told apart by serial because they
+          # share a vendor and product ID.  The Thread one is bound and idle
+          # until M25.
+          #
+          # Public on `ha.goclan.org` with NO forward-auth — the companion app
+          # holds a bearer token over a WebSocket and has no browser to render
+          # a portal with.  See containers/ingress-policy.nix.
+          #
+          # The machine is `hass`, not `home-assistant`: nspawn names the host
+          # veth `vb-<container>` and an interface name caps at 15 characters.
+          ./machines/ernst/containers/home-assistant.nix
           # microvm.nix's host module, and the one guest that uses it (M3).
           # The import lives here rather than inside wg-qbittorrent.nix
           # because `inputs` reaches a machine module via _module.args, and

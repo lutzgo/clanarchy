@@ -175,6 +175,49 @@ rec {
     # entry does not depend on them the way Immich's does — the argument here is
     # purely the three clients above.
     (h "cloud")
+
+    # Home Assistant (M24).  ONE client class, and it fails the test at the top
+    # of this file more completely than anything else in this list.
+    #
+    #   The companion app on the phones walks /auth/login_flow once, exchanges
+    #   the result for a token at /auth/token, and then holds an authenticated
+    #   WEBSOCKET open at /api/websocket for the life of the session.  There is
+    #   no browser anywhere in that, and no cookie jar for forward-auth to set.
+    #
+    # THE WEBSOCKET IS WHY THIS IS NOT MERELY "ANOTHER MOBILE APP".  Every other
+    # entry here speaks request/response, so the worst forward-auth could do is
+    # break each call the same way.  A 302 on an HTTP UPGRADE is not a login
+    # prompt the app can act on — it is a handshake that never completes, and
+    # what the household sees is a hub that is permanently "connecting".
+    #
+    # AND THE APP IS A SENSOR, NOT JUST A CLIENT.  Presence detection and zone
+    # triggers work by the phone POSTing location to this hostname in the
+    # background, with no user present.  There is nobody there to log in even
+    # if something could render the form.
+    #
+    # WHAT DEFENDS IT, since Authelia never sees this name — and note this is
+    # NOT Nextcloud's or CWA's arrangement, because there is no OIDC path
+    # behind it either (core Home Assistant does not ship OIDC at this version,
+    # and the local account is the recovery path for a house whose lights are
+    # on this server):
+    #
+    #   * `ip_ban_enabled` + `login_attempts_threshold = 5`, configured in
+    #     containers/home-assistant.nix.  A real per-SOURCE ban, written to
+    #     ip_bans.yaml and refused at the application layer until a human
+    #     removes the line.  It is the opposite key from Nextcloud's per-ACCOUNT
+    #     throttle, so do not read either file as describing the other.
+    #   * Native TOTP MFA on Home Assistant's own accounts, enrolled as a deploy
+    #     step rather than offered as an option — docs/guides/ernst-app-api-
+    #     ingress.md.
+    #   * `wan-login-ratelimit` on /auth/login_flow and /auth/token, which is a
+    #     clean match here because this application's credential path and its
+    #     data path are genuinely different URLs.
+    #
+    # THAT FIRST CONTROL HAS A PREREQUISITE and it is one line: `trusted_proxies`
+    # must name Traefik, or every request looks like it came from 10.0.90.12 and
+    # the ban either never fires or takes the whole household offline at once.
+    # Ledger row L14's lesson, in a second costume.
+    (h "ha")
   ];
 
   ############################################################################

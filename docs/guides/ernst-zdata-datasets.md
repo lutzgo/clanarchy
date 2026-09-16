@@ -56,6 +56,14 @@ zfs create \
 # recordsize left at the 128K default (small random writes from SQLite etc.
 # are hurt by 1M). exec stays ON — some services drop and invoke helper
 # scripts inside their state dir.
+#
+# This is also where a service lands when it needs NO dataset of its own.
+# M24's Home Assistant (/srv/state/home-assistant) is the worked example and
+# the reason to state it: its whole state is a .storage tree of small JSON
+# blobs plus the recorder's SQLite database, which is this dataset's write
+# profile exactly. A dedicated dataset would carry identical properties and
+# add one more mount that can fail. The test for a new service is the write
+# profile, not the size of the service.
 zfs create \
   -o mountpoint=legacy \
   -o setuid=off \
@@ -313,6 +321,11 @@ Check those directly rather than trusting a clean boot:
 ```bash
 systemctl status audiobooks-tree immich-dirs nextcloud-dirs
 ```
+
+`hass-dirs` guards `/srv/state` the same way but is not in that list, because
+it has no dataset of its own to check — it verifies that `/srv/state` really is
+`zdata/state` before creating Home Assistant's directory under it, and refuses
+rather than writing the hub's accounts and paired devices onto zroot.
 
 Each prints the exact `zfs create` line to run if its dataset is wrong.
 
