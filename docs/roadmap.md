@@ -11245,8 +11245,10 @@ Steps 1–2 gate the deploy.
 | Both VLANs tagged | `bridge vlan show dev vb-hass; bridge vlan show dev iot0` | `90 PVID Untagged` / `20 PVID Untagged` |
 | Two addresses, **one** default route | `nixos-container run hass -- ip -4 a; nixos-container run hass -- ip route` | `10.0.90.27` + a `10.0.20.x`; exactly one `default via` |
 | SN2 holds | `nixos-container run hass -- ip -6 addr` | empty |
-| HA answers Traefik | `curl -s -o /dev/null -w '%{http_code}' http://10.0.90.27:8123/` | `200` |
-| Closed to everything else | from miralda: `curl --max-time 5 http://10.0.90.27:8123/` | times out |
+| HA answers **through Traefik** | `curl -sI -k -H 'Host: ha.goclan.org' https://10.0.90.12/` | `302`, `location: /onboarding.html` — HA's own first-run redirect |
+| The listener is alive | `nixos-container run hass -- curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8123/` | `302` |
+| Closed to everything else, **including the ernst host** | on ernst: `curl --max-time 5 http://10.0.90.27:8123/` | fails — the accept rule is `-s 10.0.90.12/32` and ernst is `10.0.50.10`. **A direct `curl` from ernst to `.27:8123` is SUPPOSED to fail**; an earlier draft of this table asked for `200` there and was wrong |
+| Only one mDNS socket in the netns | `nixos-container run hass -- ss -lunp \| grep 5353` | **only** `.hass-wrapped`. If `systemd-resolve` is there too, `services.resolved.settings.Resolve.MulticastDNS` has regressed |
 | Proxy header trusted | `nixos-container run hass -- grep -A2 trusted_proxies /var/lib/hass/configuration.yaml` | `10.0.90.12` |
 | **Ban is per-client, not per-proxy** | two deliberate bad logins from a phone, then `nixos-container run hass -- cat /var/lib/hass/ip_bans.yaml` after the fifth | the **phone's** address, never `10.0.90.12` |
 | Forward-auth absent | `curl -sI https://ha.goclan.org/` from the LAN | `200`, **no** `302 → auth.goclan.org` |

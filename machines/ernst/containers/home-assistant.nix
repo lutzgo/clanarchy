@@ -562,6 +562,47 @@ in
       networking.useNetworkd = true;
       services.resolved.enable = true;
 
+      # ── resolved MUST NOT HOLD :5353, AND MUST NOT ANSWER ON THE IoT VLAN ──
+      #
+      # Measured on the first deploy (2026-09-16), inside the running container:
+      #
+      #     ss -lunp | grep 5353
+      #       0.0.0.0:5353   users:((".hass-wrapped",pid=282))
+      #       0.0.0.0:5353   users:(("systemd-resolve",pid=65))
+      #       [::]:5353      users:(("systemd-resolve",pid=65))
+      #
+      # TWO mDNS SOCKETS IN ONE NETNS.  Per-link mDNS was already off —
+      # `resolvectl status` showed `-mDNS` on both eth0 and iot0, because
+      # neither .network unit sets MulticastDNS — so resolved was not answering
+      # or querying, and this is precautionary rather than a measured failure.
+      # What it closes is narrow and would be miserable to debug: multicast
+      # responses are delivered to EVERY socket joined to 224.0.0.251, so
+      # python-zeroconf gets those regardless, but a UNICAST mDNS response
+      # (what a QU query asks for) is load-balanced between the two sockets by
+      # SO_REUSEPORT. The symptom would be discovery that finds most devices
+      # most of the time, which reads as a flaky network rather than as a
+      # second listener.
+      #
+      # Turning it off at the daemon rather than per-link is what makes
+      # resolved release the socket entirely — and it takes the stray `[::]`
+      # listener with it, which is an SN2 tidy-up this container otherwise gets
+      # right everywhere else.
+      #
+      # LLMNR goes too, for containers/tvheadend.nix's reason rather than this
+      # one: it was `+LLMNR` on BOTH links, so the container was answering name
+      # queries on the household IoT segment. Nothing here wants that, and a
+      # hub that responds to broadcast name lookups on the VLAN it is meant to
+      # be quietly observing is the opposite of the posture the avahi
+      # `denyInterfaces` line on the host takes.
+      #
+      # Nothing is lost: this container resolves through Technitium on eth0,
+      # declared explicitly below, and Home Assistant brings its own mDNS
+      # stack (python-zeroconf) which is the one doing the discovery.
+      services.resolved.settings.Resolve = {
+        MulticastDNS = "no";
+        LLMNR        = "no";
+      };
+
       # eth0 — VLAN 90.  The same block as every sibling container: DHCP
       # against the UDM-Pro reservation, resolver declared rather than
       # inherited.

@@ -476,7 +476,7 @@
   #   the VLAN, so a VLAN-20 interface cannot take a number from the table
   #   above without lying about which segment it is on.
   #
-  #   02:00:00:20:00:01   hass container iot0       (M24 — allocated)  DHCP
+  #   02:00:00:20:00:01   hass container iot0       (M24 — allocated)  10.0.20.27
   #                       Home Assistant's DISCOVERY leg.  mDNS and SSDP are
   #                       link-local, and this repo refuses to relay them across
   #                       a firewall boundary (M8's session prompt, and note 3
@@ -484,13 +484,21 @@
   #                       devices are on instead.  Unicast to VLAN 20 needed no
   #                       leg at all; discovery is the whole reason for it.
   #
-  #                       NO 8 + <seq> CORRESPONDENCE HERE.  10.0.20.0/24 is a
+  #                       THE 8 + <seq> CORRESPONDENCE DOES NOT APPLY HERE, and
+  #                       .27 matching this container's VLAN-90 address is a
+  #                       MNEMONIC RATHER THAN A RULE.  10.0.20.0/24 is a
   #                       populated household segment with an established DHCP
   #                       pool and devices already in it, not a services VLAN
-  #                       this repo laid out — so the reservation is whatever
-  #                       free address lgo picks, and the correspondence that
-  #                       makes a typo visible on VLAN 90 cannot apply.  Read
-  #                       the reservation off the UDM-Pro, not off this table.
+  #                       this repo laid out, so the address was simply a free
+  #                       one — chosen to match .27 because two legs of one
+  #                       container sharing a last octet is easier to hold in
+  #                       the head than two unrelated numbers.
+  #
+  #                       DO NOT DERIVE A SECOND VLAN-20 ADDRESS FROM ITS SEQ.
+  #                       The correspondence that makes a mis-typed reservation
+  #                       visible on VLAN 90 has nothing to check against here;
+  #                       the UDM-Pro is the source of truth for this segment
+  #                       and this row is a copy of it.
   #
   #                       THE MAC IS PINNED IN THE CONTAINER'S OWN networkd,
   #                       not on `extraVeths`, which has no option for it.  See
