@@ -989,6 +989,18 @@ in
     #
     #   library/      finished audiobooks.  Audiobookshelf scans this.
     #   ebooks/       the DRM-free ebook halves, staged by hand.
+    #
+    #                 A WARNING EARNED ON 2026-09-17: this directory is a
+    #                 STAGING POOL AND NOTHING SCANS IT.  Storyteller takes its
+    #                 input through its own web UI, so anything left here is
+    #                 inert until a human picks it up — and the entire Calibre
+    #                 library restored from the old Arch server (4472 books,
+    #                 12.4 GB) sat in it unnoticed for weeks precisely because
+    #                 this comment reads like a description of a pipeline.  It
+    #                 is not one.  Those books now live in CWA's library at
+    #                 /srv/media/library/calibre; see containers/cwa.nix, "THE
+    #                 LIBRARY IS NO LONGER EMPTY".  The directory is empty
+    #                 again and still belongs to Storyteller.
     #   storyteller/  Storyteller's ENTIRE /data volume — its database, the
     #                 originals it has been given, and the synced EPUB3s it
     #                 produces.  It is here rather than under ${stateRoot}
