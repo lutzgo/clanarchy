@@ -1,6 +1,6 @@
 # App-API ingress: the services apps talk to
 
-Seven hostnames on ernst are reachable from the public internet **without
+Eight hostnames on ernst are reachable from the public internet **without
 Authelia in front of them**. This page is why, what compensates, and how to
 verify it works.
 
@@ -25,7 +25,7 @@ browser to render the portal, so it reports an opaque network error and the
 user concludes the server is broken. If someone reports *"works in the browser,
 fails in the app"*, check this first — it is almost always the cause.
 
-### The exempt seven
+### The exempt eight
 
 | Host | Clients that force the exemption |
 |---|---|
@@ -36,6 +36,7 @@ fails in the app"*, check this first — it is almost always the cause.
 | `cwa` | OPDS (basic auth), Kobo (device token **in the URL path**), KOReader `/kosync` (RFC 7617) |
 | `photos` | the Immich app on two phones (bearer token), the Kodi add-on on the TV (`x-api-key`), **and shared album links** |
 | `cloud` | the Nextcloud desktop sync client on three laptops, DAVx5 on the phones, and **vdirsyncer on a headless user timer** — all app passwords over `/remote.php/dav/**` |
+| `ha` | the Home Assistant companion app — a bearer token over a **long-lived WebSocket**, and a background location reporter with no user present |
 
 A Kobo e-reader is the clearest case: there is no browser on the device at all.
 
@@ -91,6 +92,48 @@ deliberately: `/remote.php/dav/**` is every sync request rather than a login,
 and `/login/v2/**` is the poll the desktop client makes while a user adds an
 account. Both matchers would break a client instead of an attacker. The
 argument is written out at the `wanLoginPaths` map in `traefik.nix`.
+
+#### `ha` is the eighth, and it is the only one where a 302 breaks a *handshake*
+
+Home Assistant (M24) fails the one rule more completely than anything else in
+the table. Every other entry speaks request/response, so the worst forward-auth
+could do is break each call the same way. The companion app authenticates once
+at `/auth/token` and then holds a **WebSocket** open at `/api/websocket` for the
+life of the session — and a 302 on an HTTP `Upgrade` is not a login prompt an
+app can act on. It is a handshake that never completes, and what the household
+sees is a hub permanently stuck on "connecting".
+
+**The app is also a sensor, not just a client.** Presence detection and zone
+triggers work by the phone POSTing location to this hostname *while it is away
+from the house* — which is precisely when it is off the LAN, and when nobody is
+there to log in even if something could render a form. That is why `ha` is in
+`wanExposed` at all: a hub reachable only on the home wifi cannot know anyone
+has left it.
+
+Two things about it are worth knowing before an incident:
+
+- **Unlike `cloud` and `cwa`, there is no OIDC path behind it either.** Those
+  two hand the browser half to Authelia's OIDC provider; core Home Assistant
+  does not ship OIDC at this version, and the local account is the recovery
+  path for a house whose lights are on this server. So Home Assistant's own
+  accounts are the *entire* boundary, browser included — which makes the TOTP
+  step in the checklist below a requirement rather than a suggestion.
+- **The compensating control that carries the most weight is HA's own
+  `ip_ban_enabled`, and it has the same prerequisite `cloud`'s throttle has.**
+  It keys on the client address, so `http.trusted_proxies` in
+  `containers/home-assistant.nix` must name Traefik. Note the two are keyed
+  differently and do not describe each other: Nextcloud's throttle is
+  **per-account**, so a misconfigured proxy locks out the household; HA's ban is
+  **per-source**, so a misconfigured proxy bans the proxy — and takes the whole
+  house offline in a single stroke. Verify by failing two logins on purpose from
+  a phone and checking which address HA counted.
+
+`ha` **does** carry a `wanLoginPaths` entry, and it is the cleanest match in
+that map: `/auth/login_flow` and `/auth/token` are genuinely distinct from the
+data path, because everything else rides the one WebSocket. `/api/websocket`
+must never be added to it — one request per ten seconds is fine for a login and
+fatal for the reconnect storm after a network blip, when every client in the
+house retries at once.
 
 ## It is enforced, not documented
 
@@ -280,6 +323,49 @@ internet. **Change it before `cwa.goclan.org` resolves publicly**, not after.
 The ordering rule that follows: add the public A record for a service only
 *after* its admin credential is set. `komga` and `cwa` deliberately have no
 public record yet for exactly this reason.
+
+### 1d. Home Assistant (M24) — a wizard, and nothing closes it but you
+
+Home Assistant is the fifth shape in that table, and it is **Komga's shape, not
+Immich's**: there is no flag in the repo holding the door shut.
+
+| Service | Initial state | What "unauthenticated" means |
+|---|---|---|
+| **Home Assistant** | no account at all | the first visitor gets the **onboarding wizard** and becomes the **owner** — the account that can add users, install integrations, and read every secret the hub holds |
+
+So the ordering rule at the top of this section is not advice here, it is the
+control:
+
+1. `clan machines update ernst`.
+2. **On the LAN**, open `https://ha.goclan.org` and complete onboarding. Create
+   the owner account with a strong password.
+3. **Enrol TOTP immediately** — Settings -> People -> *(the owner)* ->
+   Multi-factor authentication -> Authenticator app. This is the step with no
+   substitute: there is no Authelia behind this name and no OIDC either, so
+   until it is done the hub is one password away from anyone who finds the
+   hostname.
+4. Add the ZHA integration. Adapter type is **EZSP** (Silicon Labs EmberZNet) —
+   the ZBT-2 is an EFR32MG24.
+
+   **Do not pick a port from the dropdown.** HA enumerates it from
+   `/sys/class/tty/`, which shows `ttyACM0` and `ttyACM1` inside the container
+   — but those nodes **do not exist** in there, because only the two udev
+   aliases are bind-mounted. Both entries are labelled identically as *ZBT-2*
+   (the two radios share a vendor and product ID), and both fail to open.
+   Choose **Enter manually** and type:
+
+   ```
+   /dev/zigbee-coordinator
+   ```
+
+   That alias is pinned to serial `1CDBD45E613C` by udev, so it follows that
+   specific dongle whatever `ttyACM` number the kernel gave it. The ZBT-2 runs
+   at **460800** baud — if the form pre-fills 115200, change it.
+
+   Then form the Zigbee network.
+5. **Only then** create the public A record for `ha.goclan.org`.
+
+Step 5 last, for the same reason `komga` and `cwa` still have no public record.
 
 ### 1c. Immich (M22) — a first-run window closed by a flag, not by hurrying
 

@@ -546,6 +546,28 @@ let
   nextcloudAddr = "10.0.90.26";
   nextcloudPort = 80;
 
+  # Home Assistant (M24) — the household's home-automation hub, in an NSPAWN
+  # container on 02:00:00:90:00:13 → 10.0.90.27.  Its container firewall accepts
+  # THIS proxy's address and no other on ${toString homeassistantPort}.
+  #
+  # IT HAS A SECOND LEG THIS PROXY CANNOT SEE AND MUST NOT ROUTE TO.  The
+  # container also holds an address on VLAN 20 (`iot0`), so that mDNS and SSDP
+  # discovery of the household's wifi devices happens on the segment those
+  # devices are on rather than across a firewall boundary.  Nothing here routes
+  # to it: that leg exists for the hub to talk OUT, and its firewall admits only
+  # multicast discovery in.  See containers/home-assistant.nix.
+  #
+  # THE BACKEND IS A LONG-LIVED WEBSOCKET, which is the one operational thing to
+  # know about this route.  The companion app authenticates once at /auth/token
+  # and then holds /api/websocket open for the life of the session; the browser
+  # UI does the same.  So the `websecure` readTimeout (3600s) and the `wan`
+  # readTimeout (1800s) are what bound how long a client goes before a
+  # reconnect.  A reconnect is not a failure — Home Assistant's clients handle
+  # it — but lowering either value makes this route flap, and that is worth
+  # knowing before someone tunes a timeout for an unrelated backend.
+  homeassistantAddr = "10.0.90.27";
+  homeassistantPort = 8123;
+
   # Calibre-Web-Automated — the podman tier's FOURTH occupant, and the only
   # one of this round's three additions that needed an address of its own.
   #
@@ -799,6 +821,17 @@ let
     # are already safe.  Same three separate acts as every other name here —
     # this entry, a public A record, and the ledger row in docs/roadmap.md.
     "nextcloud"
+
+    # Home Assistant (M24).  Off-LAN reach is the requirement rather than a
+    # side effect, and in a sharper form than Nextcloud's: the companion app is
+    # not only a client, it is a SENSOR.  Presence detection, zone triggers and
+    # background location all work by the phone POSTing to this hostname while
+    # it is away from the house — which is precisely when it is off the LAN.  A
+    # hub reachable only on the home wifi cannot know anyone has left it.
+    #
+    # Same three separate acts as every other name here: this entry, a public A
+    # record, and the ledger row (L15) in docs/roadmap.md.
+    "homeassistant"
   ];
 
   # ── THE LOGIN PATHS, PER SERVICE, AND WHAT THIS DOES NOT COVER ────────────
@@ -875,6 +908,29 @@ let
     # are 128-bit random keys, which is the actual control; CrowdSec's 401
     # scenario is what sees a campaign of wrong ones.
     immich = "(PathPrefix(`/api/auth/login`) || PathPrefix(`/api/auth/change-password`))";
+
+    # Home Assistant's two credential endpoints (M24).  `/auth/login_flow` is
+    # the multi-step login the browser and the companion app both walk —
+    # username/password, then the TOTP step — and `/auth/token` is where the
+    # resulting authorization code becomes an access token.
+    #
+    # THIS ONE IS A CLEAN CASE, unlike the three caveats above, and it is worth
+    # saying why: Home Assistant's credential path and its DATA path are
+    # genuinely different URLs.  Everything else the app does rides
+    # `/api/websocket`, which is opened once and then stays open, so a limit
+    # here cannot touch it.  That is exactly the property Nextcloud's
+    # `/remote.php/dav/**` lacks, and why this entry exists while that one
+    # deliberately does not.
+    #
+    # `/api/websocket` MUST NOT BE MATCHED.  One request per ten seconds is
+    # fine for a login and fatal for a reconnect storm after a network blip,
+    # which is when every client in the house tries at once.
+    #
+    # `/auth/token` is also the REFRESH endpoint — the app trades its refresh
+    # token for a new access token roughly every half hour.  A burst of 5 at
+    # 1/10s covers a household of phones comfortably; it would not cover a
+    # household of hundreds, which this is not.
+    homeassistant = "(PathPrefix(`/auth/login_flow`) || PathPrefix(`/auth/token`))";
 
     # ── NEXTCLOUD IS DELIBERATELY ABSENT FROM THIS MAP (M23) ────────────────
     #
@@ -2543,6 +2599,38 @@ in
               service     = "nextcloud";
             };
 
+            # ── Home Assistant (M24) — NO forward-auth, and the reason is in ─
+            #    containers/ingress-policy.nix under `(h "ha")`.
+            #
+            # Short form: the companion app exchanges credentials once at
+            # /auth/token and then holds an authenticated WebSocket open at
+            # /api/websocket for the life of the session.  It has no browser,
+            # so a 302 to the portal reaches it as an opaque network error.  It
+            # is also the endpoint the app PUSHES location to, in the
+            # background, with no user present to log in to anything.
+            #
+            # UNLIKE Nextcloud AND CWA, THE BROWSER PATH IS NOT HANDED TO
+            # AUTHELIA'S OIDC PROVIDER EITHER, and that is worth stating rather
+            # than leaving as a gap.  Home Assistant's OIDC support at this
+            # version is community-supplied rather than core, and the local
+            # account is the recovery path for a house whose lights are on this
+            # server.  What defends it instead is named and configured in
+            # containers/home-assistant.nix: HA's own `ip_ban_enabled`
+            # (per-source, written to ip_bans.yaml) and native TOTP MFA, plus
+            # `wan-login-ratelimit` below.  Revisit when core OIDC lands.
+            #
+            # ONE PROPERTY OF THIS ROUTER TO PRESERVE, the same class of
+            # invisible-if-broken as the Immich and Nextcloud notes above: NO
+            # `buffering` MIDDLEWARE, here or on the wan chain this router
+            # inherits.  A buffering middleware consumes the response before
+            # forwarding it, which would break the WebSocket upgrade and
+            # present as "the app never connects" rather than as an error.
+            homeassistant = {
+              rule        = "Host(`ha.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              service     = "homeassistant";
+            };
+
             # slskd's web UI — in the microvm guest, not a container.  Behind
             # `authelia` like every other admin surface; its own login exists
             # but is a single shared operator account, not per-user.
@@ -2748,6 +2836,11 @@ in
             # M23 — its own nspawn container on .26, answering on plain 80
             # from the module's own nginx.
             nextcloud.loadBalancer.servers      = [ { url = "http://${nextcloudAddr}:${toString nextcloudPort}/"; } ];
+
+            # M24 — its own nspawn container on .27.  Plain HTTP, and a
+            # WebSocket rides the same backend; Traefik proxies the upgrade with
+            # no configuration as long as nothing buffers.
+            homeassistant.loadBalancer.servers  = [ { url = "http://${homeassistantAddr}:${toString homeassistantPort}/"; } ];
 
             # … and one in the microvm guest, the first non-container backend.
             slskd.loadBalancer.servers          = [ { url = "http://${slskdAddr}:${toString slskdPort}/"; } ];
