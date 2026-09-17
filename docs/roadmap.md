@@ -11564,8 +11564,18 @@ works**, which is the correct blast radius for a dashboard credential.
    Immich API key scoped **`server.statistics` only**; a Home Assistant
    long-lived access token; Nextcloud's NC-Token from Administration settings →
    System.
-3. `clan vars generate ernst` — note this **re-prompts every password in
-   `autheliaUsers`**, not only the new generator.
+3. `clan vars generate ernst --generator homepage-tokens`.
+
+   **Scoped with `-g` deliberately, and the unscoped form is NOT equivalent in
+   the way it matters.** `clan vars generate` runs only generators whose vars
+   are MISSING unless `--regenerate` is passed, so a bare
+   `clan vars generate ernst` would also be correct today — it would find
+   `authelia-users` already satisfied and leave it alone. The naming of the
+   generator is what makes that a guarantee rather than a property of the
+   current state: `containers/authelia.nix` warns that re-running
+   `authelia-users` re-prompts EVERY password in `autheliaUsers`, and a prompt
+   for a password you thought was settled reads like a bug at the worst
+   possible moment. `-g` means that cannot happen by accident.
 4. `clan machines update ernst`.
 5. **Cloudflare**, last: `home` A → `78.94.91.74`, **DNS-only / grey, never
    AAAA** (SN2 — a v6 path bypasses the DNAT and therefore the `wan`
