@@ -270,6 +270,23 @@ rec {
     # takes OIDC *without* forward-auth for the opposite reason — its Kobo and
     # OPDS clients have no browser — and the two must not be confused.
     (h "chat")
+
+    # The service index (M26).  The EASIEST case this file has, and it is worth
+    # saying so explicitly because the name goes on the internet and the recent
+    # additions to that set have all been exemptions.
+    #
+    # It passes the test at the top of this file without argument: the only
+    # client is a browser, there is no native application, no bearer token, no
+    # WebSocket and no OPDS reader — so there is nothing a 302 could break and
+    # no reason to reach for appApiHosts.  Chat's posture, not Home
+    # Assistant's.
+    #
+    # WHAT IS BEHIND THE DOOR IS A MAP, NOT A KEY.  Homepage fetches every
+    # statistic server-side and sends the browser rendered numbers, so the ten
+    # credentials it holds never cross this boundary in either direction.  That
+    # is why one door is enough here and would not be enough for a service that
+    # handed the browser a session on something else.
+    (h "home")
   ];
 
   ############################################################################

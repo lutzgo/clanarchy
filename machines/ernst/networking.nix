@@ -450,11 +450,21 @@
   #                       can act on.  Unlike M23 there is no OIDC path behind
   #                       it either; HA's own ip_ban + TOTP are the boundary.
   #
-  #                       ITS FIREWALL ADMITS EXACTLY ONE ADDRESS on eth0:
-  #                       Traefik (.12) on 8123.  Not the monitoring container
-  #                       — HA's /api/prometheus is bearer-token gated, so
-  #                       there is no scrape to permit.  Failed units inside it
-  #                       are still seen, via the container-units collector.
+  #                       ITS FIREWALL ADMITTED EXACTLY ONE ADDRESS on eth0
+  #                       until M26: Traefik (.12) on 8123.  Not the monitoring
+  #                       container — HA's /api/prometheus is bearer-token
+  #                       gated, so there is no scrape to permit.  Failed units
+  #                       inside it are still seen, via the container-units
+  #                       collector.
+  #
+  #                       M26 ADDED A SECOND: the arr container (.13) on the
+  #                       same port, because the service index runs in there
+  #                       and reads /api/states with a long-lived token.  The
+  #                       claim above is corrected rather than deleted — it was
+  #                       true when written and the interesting part is that it
+  #                       stopped being true.  See the firewall block in
+  #                       containers/home-assistant.nix for why .13 must NOT be
+  #                       added to `http.trusted_proxies` to go with it.
   #
   #                       LIKE M22 AND M23 IT ADDS NO UDM-PRO RULE for VLAN 50
   #                       → 90: every client arrives through .12.  It DOES take
@@ -463,6 +473,18 @@
   #                       IT IS THE THIRD CONTAINER WITH A SECOND INTERFACE and
   #                       the FIRST to put one on a second skynet VLAN — see
   #                       the VLAN 20 table below.
+  #
+  #   M26 TOOK NOTHING FROM THIS TABLE, and that is recorded rather than left
+  #   to inference.  The service index (containers/homepage.nix) runs INSIDE
+  #   the arr container — it co-defines containers.arr the way crowdsec.nix
+  #   co-defines containers.traefik — so it has no L2 identity of its own, no
+  #   DHCP reservation, and nothing for the UDM-Pro to know about.  It listens
+  #   on 8082 on 10.0.90.13, behind that container's existing firewall.
+  #
+  #   A milestone that DECLINES a number has to say so here, for the same
+  #   reason M24 wrote the uid note below: a reader who finds a new service in
+  #   flake.nix and no row in this table has to be able to tell "recorded as
+  #   taking none" apart from "somebody forgot".
   #
   #   NEXT FREE SEQUENCE NUMBER IS 14; next free address is 10.0.90.28, keeping
   #   the 8 + <seq> correspondence (8 + 0x14 = 28).  There is no free gap left
@@ -1033,6 +1055,18 @@
   #                           (128K, auto-snapshot on).  A dedicated dataset
   #                           would carry identical properties and add a mount
   #                           that can fail.
+  #
+  #                           M26 DID NOT TAKE 3038 EITHER, and for a different
+  #                           reason from M24's — not a collision with an
+  #                           upstream static id, but because the service index
+  #                           has no id at all.  The nixpkgs module runs it
+  #                           under DynamicUser with its configuration in /etc
+  #                           and its cache in a CacheDirectory, so it writes
+  #                           nothing to zdata and there is no number for this
+  #                           table to pin.  A service with no persistent state
+  #                           is the one shape that belongs in NEITHER half of
+  #                           this file, and that is worth a line so the next
+  #                           reader does not go looking for its row.
   #
   #                           NEXT FREE IN THE 3000 BLOCK REMAINS 3038.)
   #

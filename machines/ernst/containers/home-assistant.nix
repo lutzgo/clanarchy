@@ -194,6 +194,12 @@ let
   # containers/traefik.nix, which owns that argument.
   traefikAddr = "10.0.90.12";
 
+  # M26.  The arr container, because that is where the service index runs —
+  # see containers/homepage.nix.  Named for the dashboard rather than for the
+  # container so that grepping `dashboardAddr` across machines/ernst finds
+  # every widening M26 made, in one pass.
+  dashboardAddr = "10.0.90.13";
+
   # Home Assistant's own listener.  Plain HTTP; TLS is Traefik's.
   hassPort = 8123;
 
@@ -681,8 +687,25 @@ in
       #    traffic, since those frames are one L2 hop and the UDM-Pro never
       #    sees them.
       #
-      #   8123/tcp  from Traefik ONLY.  Every client of the web UI and of the
-      #             companion app's API arrives through the proxy.
+      #   8123/tcp  from Traefik, and — since M26 — from the arr container.
+      #             Every client of the web UI and of the companion app's API
+      #             arrives through the proxy.
+      #
+      #             THE SECOND SOURCE IS THE SERVICE INDEX (containers/
+      #             homepage.nix), reading /api/states with a long-lived access
+      #             token to render lights-on and people-home counts.  It is
+      #             worth more than one line, because this one interacts with
+      #             the control this container leans on: HA's `ip_ban_enabled`
+      #             keys on the client address, and `http.trusted_proxies`
+      #             names Traefik — so requests arriving from .13 are NOT a
+      #             trusted proxy and are banned on their own address if the
+      #             token is wrong.  That is the correct behaviour and the
+      #             right blast radius (a wrong token bans the dashboard, not
+      #             the house), but it means a 403 on this tile after a token
+      #             rotation may be a BAN and not an auth failure.  Clear it
+      #             with `ip_bans.yaml`, not by widening trusted_proxies —
+      #             adding .13 there would let a compromised dashboard forge
+      #             X-Forwarded-For and evade the ban entirely.
       #   5353/udp  mDNS, ON iot0 ONLY.
       #   1900/udp  SSDP, ON iot0 ONLY.
       #
@@ -706,7 +729,8 @@ in
       # only nftables container on this machine.
       networking.firewall.allowedTCPPorts = [ ];
       networking.firewall.extraCommands = ''
-        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32 --dport ${toString hassPort} -j nixos-fw-accept
+        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32   --dport ${toString hassPort} -j nixos-fw-accept
+        iptables -A nixos-fw -p tcp -s ${dashboardAddr}/32 --dport ${toString hassPort} -j nixos-fw-accept
         iptables -A nixos-fw -i iot0 -p udp --dport 5353 -j nixos-fw-accept
         iptables -A nixos-fw -i iot0 -p udp --dport 1900 -j nixos-fw-accept
       '';

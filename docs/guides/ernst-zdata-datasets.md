@@ -64,6 +64,21 @@ zfs create \
 # profile exactly. A dedicated dataset would carry identical properties and
 # add one more mount that can fail. The test for a new service is the write
 # profile, not the size of the service.
+#
+# M26's service index is the case one step further out: it lands HERE EITHER,
+# because it has no persistent state at all. gethomepage is configured
+# entirely from /etc (the nixpkgs module renders every YAML file from Nix),
+# runs under DynamicUser, and keeps its only writable directory — a Next.js
+# build cache the module clears on every start — under CacheDirectory. So
+# there is no /srv/state/<svc> directory, no bind mount, no <svc>-dirs.service
+# and no numeric uid on the pool.
+#
+# That makes it the one shape this file's question does not apply to, and it
+# is worth naming so nobody goes looking for its row: the question here is
+# "which dataset does this service's state belong on", and the answer can be
+# "it has none". The check to make before believing that of a new service is
+# whether anything under its StateDirectory survives a restart and matters —
+# for the index, losing the cache costs one slow first page load.
 zfs create \
   -o mountpoint=legacy \
   -o setuid=off \
