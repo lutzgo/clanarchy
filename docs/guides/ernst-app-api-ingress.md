@@ -344,8 +344,25 @@ control:
    substitute: there is no Authelia behind this name and no OIDC either, so
    until it is done the hub is one password away from anyone who finds the
    hostname.
-4. Add the ZHA integration against `/dev/zigbee-coordinator` and form the Zigbee
-   network.
+4. Add the ZHA integration. Adapter type is **EZSP** (Silicon Labs EmberZNet) —
+   the ZBT-2 is an EFR32MG24.
+
+   **Do not pick a port from the dropdown.** HA enumerates it from
+   `/sys/class/tty/`, which shows `ttyACM0` and `ttyACM1` inside the container
+   — but those nodes **do not exist** in there, because only the two udev
+   aliases are bind-mounted. Both entries are labelled identically as *ZBT-2*
+   (the two radios share a vendor and product ID), and both fail to open.
+   Choose **Enter manually** and type:
+
+   ```
+   /dev/zigbee-coordinator
+   ```
+
+   That alias is pinned to serial `1CDBD45E613C` by udev, so it follows that
+   specific dongle whatever `ttyACM` number the kernel gave it. The ZBT-2 runs
+   at **460800** baud — if the form pre-fills 115200, change it.
+
+   Then form the Zigbee network.
 5. **Only then** create the public A record for `ha.goclan.org`.
 
 Step 5 last, for the same reason `komga` and `cwa` still have no public record.
