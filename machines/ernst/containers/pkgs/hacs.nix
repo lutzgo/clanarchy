@@ -105,6 +105,65 @@ buildHomeAssistantComponent rec {
     aiogithubapi
   ];
 
+  # ── THE PHANTOM INTEGRATIONS.  FOUND BY DEPLOYING, NOT BY BUILDING. ───────
+  #
+  #   First deploy, 2026-09-17.  ${configDir}/custom_components came back with
+  #   THREE symlinks where one was expected:
+  #
+  #       hacs            -> .../custom_components/hacs
+  #       frontend_es5    -> .../custom_components/hacs/hacs_frontend/frontend_es5
+  #       frontend_latest -> .../custom_components/hacs/hacs_frontend/frontend_latest
+  #
+  #   and Home Assistant duly tried to load the last two as integrations:
+  #
+  #       ERROR [homeassistant.loader] Error loading integration: frontend_latest
+  #       ERROR [homeassistant.loader] Error loading integration: frontend_es5
+  #           ... return self.manifest["domain"]
+  #
+  #   THE CAUSE IS IN THE NixOS MODULE, NOT HERE.  Its copyCustomComponents runs
+  #   `find "$component" -name manifest.json` and symlinks every PARENT
+  #   DIRECTORY it finds (home-assistant.nix:947-949) — a bare -name over the
+  #   whole tree, with nothing scoping it to a component root.  HACS's webpack
+  #   output happens to put a file of that name in each frontend bundle, mapping
+  #   `entrypoint.js` to its content-hashed filename, and those two are not
+  #   Home Assistant manifests at all: no `domain`, no `version`, no
+  #   `__init__.py` beside them.
+  #
+  #   nixpkgs KNOWS ABOUT THIS FILENAME COLLISION AND FIXED THE OTHER HALF.
+  #   Issue #429790 reports it — against HACS, from this same release zip, at
+  #   this same hash — and PR #432385 closed it by path-scoping the find in
+  #   `manifest-requirements-check-hook.sh`.  That is why THIS DERIVATION BUILDS
+  #   CLEANLY and the defect only appears on a running hub: the build-time half
+  #   is repaired and the module-side half is not.  Do not read a green build as
+  #   evidence that this is fixed upstream.
+  #
+  #   DELETING THEM IS SAFE, AND THAT WAS CHECKED RATHER THAN ASSUMED.  Nothing
+  #   in HACS reads them: the only two Python files mentioning "manifest.json"
+  #   are enums.py and repositories/integration.py, both concerned with the
+  #   manifests of repositories HACS DOWNLOADS.  The browser never needs them
+  #   either, because the hashes the maps contain are already inlined in
+  #   hacs_frontend/entrypoint.js, which hardcodes
+  #   `/hacsfiles/frontend/frontend_latest/entrypoint.bb9d28f38e9fba76.js` and
+  #   its es5 sibling.  The maps are a build artefact that shipped.
+  #
+  #   THE SECOND HALF IS A TRIPWIRE, and it is the part worth keeping.  Deleting
+  #   two known paths would silently stop working if a future HACS put a stray
+  #   manifest.json somewhere else — and the failure would again be invisible at
+  #   build time and visible only as a phantom integration in a production log.
+  #   So anything nested that survives fails the derivation instead.
+  postInstall = ''
+    find "$out/custom_components/${domain}/hacs_frontend" -name manifest.json -delete
+
+    strays=$(find "$out/custom_components/${domain}" -mindepth 2 -name manifest.json)
+    if [ -n "$strays" ]; then
+      echo "hacs: nested manifest.json files remain, and the NixOS module will" >&2
+      echo "  symlink each one's parent into custom_components/ as an" >&2
+      echo "  integration Home Assistant cannot load:" >&2
+      echo "$strays" >&2
+      exit 1
+    fi
+  '';
+
   meta = {
     description = "Home Assistant Community Store — browse and install community integrations, themes and Lovelace cards";
     homepage = "https://hacs.xyz/";
