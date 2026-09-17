@@ -11560,10 +11560,42 @@ works**, which is the correct blast radius for a dashboard credential.
    hairpins at the UDM-Pro and **hangs**, which reads exactly like a dead
    backend. `resolvectl flush-caches` before concluding anything; SOA minimum
    is 900 s.
-2. **Mint the four tokens first**, in each service's own UI: Jellyfin API key;
-   Immich API key scoped **`server.statistics` only**; a Home Assistant
-   long-lived access token; Nextcloud's NC-Token from Administration settings →
-   System.
+2. **Mint the four tokens first.** Three are minted in a web UI: a Jellyfin API
+   key (Dashboard → Advanced → API Keys); an Immich API key scoped
+   **`server.statistics` only**; a Home Assistant long-lived access token
+   (Profile → Security).
+
+   **THE NEXTCLOUD ONE IS NOT IN ANY UI, and looking for it is a dead end** —
+   found the hard way on 2026-09-17, after this step told the operator to copy
+   it from Administration settings → System. There is nothing there to copy.
+   The serverinfo app reads its token from app config and **never generates
+   one**; on ernst it was simply unset (`config:app:get serverinfo token`
+   returned empty and exited 1). Upstream's documented route is the only
+   route:
+
+   ```bash
+   ssh root@10.0.50.10 'TOKEN=$(head -c 24 /dev/urandom | base64 | tr -d "=+/"); \
+     echo "NC-Token: $TOKEN"; \
+     nixos-container run nextcloud -- nextcloud-occ config:app:set serverinfo token --value "$TOKEN"'
+   ```
+
+   `openssl` is not in that container; `base64` is. Undo with
+   `config:app:delete serverinfo token`.
+
+   **Why not the app password the widget also accepts**, which is reachable in
+   the UI and therefore the tempting answer: the serverinfo endpoint requires
+   **admin**, so that path means giving the dashboard an admin app password —
+   a credential that can do anything that user can. The NC-Token authorises the
+   serverinfo app and cannot log in, which is the whole reason this milestone
+   leaves Nextcloud's `trusted_proxies` argument untouched. Taking the app
+   password would quietly invalidate the comment in `containers/nextcloud.nix`.
+
+   **Worth knowing while you are in there**: the Nextcloud `admin` group
+   contains only `ncadmin`. `lgo` is an ordinary user, which is why that
+   account's avatar menu has no "Administration settings" entry at all. Not a
+   problem for this milestone — the token is set over occ as root — but it is
+   the first thing to trip over next time something needs the Nextcloud admin
+   UI.
 3. `clan vars generate ernst --generator homepage-tokens`.
 
    **Scoped with `-g` deliberately, and the unscoped form is NOT equivalent in
