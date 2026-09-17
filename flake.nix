@@ -345,6 +345,28 @@
           # The machine is `hass`, not `home-assistant`: nspawn names the host
           # veth `vb-<container>` and an interface name caps at 15 characters.
           ./machines/ernst/containers/home-assistant.nix
+          # M26.  gethomepage — the fleet's SERVICE INDEX at `home.goclan.org`,
+          # and NOT a second Grafana: it answers "what exists, where is it, is
+          # it up", with no history, no alerting and nothing stored.
+          #
+          # IT CO-DEFINES containers.arr, the way crowdsec.nix co-defines
+          # containers.traefik — so arr.nix is NOT the whole of what listens on
+          # 10.0.90.13.  Read its header before assuming otherwise.  It is
+          # there because that is where `arr-api-keys.service` stages the six
+          # *arr keys it renders: those keys are EXTRACTED from each service's
+          # own config at runtime, so a copy in a second namespace would be a
+          # second source of truth that goes stale the moment somebody rotates
+          # one in a web UI.
+          #
+          # Consumes NO MAC, NO ADDRESS and NO UID — the three NEXT FREE
+          # markers in machines/ernst/networking.nix are unchanged, and that
+          # file records the non-consumption so the next milestone does not
+          # assume they moved.
+          #
+          # Public on `home.goclan.org` WITH forward-auth, admins only — the
+          # first name added to `wanExposed` since M19's `chat` that is not an
+          # appApiHosts exemption.  See containers/ingress-policy.nix.
+          ./machines/ernst/containers/homepage.nix
           # microvm.nix's host module, and the one guest that uses it (M3).
           # The import lives here rather than inside wg-qbittorrent.nix
           # because `inputs` reaches a machine module via _module.args, and

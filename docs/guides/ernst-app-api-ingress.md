@@ -38,6 +38,25 @@ fails in the app"*, check this first — it is almost always the cause.
 | `cloud` | the Nextcloud desktop sync client on three laptops, DAVx5 on the phones, and **vdirsyncer on a headless user timer** — all app passwords over `/remote.php/dav/**` |
 | `ha` | the Home Assistant companion app — a bearer token over a **long-lived WebSocket**, and a background location reporter with no user present |
 
+### `home` is public and is NOT one of them
+
+The service index (M26) is on the internet and is in **`protectedHosts`**, so
+Authelia is in front of it on both entrypoints. It is named here because this
+page is where someone goes to ask "which public names skip the portal", and a
+public name absent from both the table above and this sentence looks like an
+oversight.
+
+It fails the one rule in the easy direction: its only client is a browser, so
+there is no bearer token, no OPDS reader and no WebSocket a 302 could break.
+The recent additions to the public set have all been exemptions — `photos`,
+`cloud`, `ha` — so it is worth saying plainly that this one reverses the trend:
+the public path is rate-limit → forward-auth → 2FA before the application sees
+a byte, which is `chat`'s posture.
+
+**The exempt count stays at eight.** If a future milestone adds a ninth, it
+goes in the table; `home` does not, and moving it there would be a decision to
+stop authenticating the index, not a tidy-up.
+
 A Kobo e-reader is the clearest case: there is no browser on the device at all.
 
 #### `photos` is the sixth, and it breaks the pattern of the other five
@@ -278,8 +297,18 @@ If the first answers and the second does not, it is cache — not config.
 A records only, **DNS-only (grey cloud)**, all → `78.94.91.74`:
 
 ```
-audiobookshelf   auth   cloud   cwa   jellyfin   jellyseerr   komga   navidrome   photos
+audiobookshelf   auth   chat   cloud   cwa   ha   home   jellyfin   jellyseerr   komga   navidrome   photos
 ```
+
+**This list was wrong until 2026-09-17** and is worth a note rather than a
+silent fix: it named nine hosts and omitted `chat` (M19) and `ha` (M24), both
+of which have been in `wanExposed` since their milestones landed. A name in
+`wanExposed` with no public record is inert — which is exactly how
+Audiobookshelf failed once — so an *under*-stated list here is the benign
+direction, but it still means this page cannot be used to audit the external
+surface. The authority is `wanExposed` in
+`machines/ernst/containers/traefik.nix`; this list is a copy and should be
+diffed against it whenever either changes.
 
 Add each one only *after* that service's admin credential is set — see the
 credential table above. `photos` is the strictest case of that rule and the

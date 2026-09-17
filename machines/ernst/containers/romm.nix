@@ -125,6 +125,12 @@ let
   # slskd microvm, one layer-2 hop away.
   traefikAddr = "10.0.90.12";
 
+  # M26.  The arr container, because that is where the service index runs —
+  # see containers/homepage.nix.  Named for the dashboard rather than for the
+  # container so that grepping `dashboardAddr` across machines/ernst finds
+  # every widening M26 made, in one pass.
+  dashboardAddr = "10.0.90.13";
+
   # ── Storage: the library and the state are deliberately separate ──────────
   #
   # The LIBRARY is content: large, replaceable only by re-dumping, and the one
@@ -376,8 +382,17 @@ in
       # from nowhere else.
       ip netns exec '${netns}' iptables -A INPUT -i lo -j ACCEPT
       ip netns exec '${netns}' iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-      # The web UI, from Traefik and nothing else.
+      # The web UI, from Traefik.
       ip netns exec '${netns}' iptables -A INPUT -p tcp -s ${traefikAddr}/32 --dport ${toString webPort} -j ACCEPT
+      # M26 — and from the service index, which reads the platform and ROM
+      # counts.  RomM's homepage widget takes NO credential (upstream documents
+      # none), so this rule is the entire authorisation for that read: whatever
+      # the widget's endpoint answers, it answers to anything on .13.  That is
+      # acceptable for a count of platforms and games and would not be for
+      # anything else on this port, which is the reason it is written here in
+      # full rather than appended to the line above.  See containers/
+      # homepage.nix.
+      ip netns exec '${netns}' iptables -A INPUT -p tcp -s ${dashboardAddr}/32 --dport ${toString webPort} -j ACCEPT
       # DHCP replies from the UDM-Pro (the client below runs in here).
       ip netns exec '${netns}' iptables -A INPUT -p udp --sport 67 --dport 68 -j ACCEPT
       # ICMP, so the thing is diagnosable at all.

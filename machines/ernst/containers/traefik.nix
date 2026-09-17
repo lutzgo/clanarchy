@@ -438,6 +438,18 @@ let
   mediathekarrPort = 5007;   # the downloader's SABnzbd API and setup wizard
   jellyseerrPort   = 5055;   # M13 — the household's request UI
 
+  # M26.  The service index, and a backend on `arrAddr` for a reason unlike
+  # M12's: those three were services that happened to be installed in that
+  # container, while this one is there BECAUSE that is where the *arr API keys
+  # it renders are staged.  containers/homepage.nix argues it at length and
+  # co-defines containers.arr the way containers/crowdsec.nix co-defines this
+  # one — so `arr.nix` is not the whole of what listens on this address.
+  #
+  # 8082 collides by NUMBER with the metrics entryPoint below and by nothing
+  # else: that listener is in THIS container's namespace, this one is in the
+  # arr container's, and no socket is shared between them.
+  homepagePort = 8082;
+
   # M8.  Tvheadend, in its OWN container (nspawn, vb-tvheadend, VLAN 90) — it
   # needed a second network leg to the FRITZ!Box, which the arr container has
   # no business having.  Only the web UI routes through here; Jellyfin pulls
@@ -832,6 +844,31 @@ let
     # Same three separate acts as every other name here: this entry, a public A
     # record, and the ledger row (L15) in docs/roadmap.md.
     "homeassistant"
+
+    # The service index (M26).  Off-LAN reach is the modest half of the case
+    # and the honest one: an index of the house's services is most useful from
+    # a phone that is not in the house, which is where you are when you cannot
+    # remember what the ebook server is called.
+    #
+    # IT IS THE FIRST NAME ADDED TO THIS LIST SINCE M19'S `openwebui` THAT IS
+    # NOT AN EXEMPTION, and that is the thing to read rather than the count.
+    # L13, L14 and L15 each put an appApiHosts name on the internet with
+    # Authelia never consulted, because each had a native client that cannot
+    # follow a 302.  This name is in `protectedHosts`, so `mkWan` copies the
+    # `authelia` middleware onto the wan twin and the public path is
+    # rate-limit → forward-auth → 2FA before the application sees a byte.
+    # Chat's posture (ledger row L10), not Home Assistant's.
+    #
+    # NO `wanLoginPaths` ENTRY, and its absence is correct rather than an
+    # oversight: that mechanism exists to give appApiHosts names a credential-
+    # endpoint rate limit in place of the per-identity regulation they never
+    # get.  This name goes through Authelia, which already has it — 3 attempts
+    # in 5 minutes, 15 minute ban, per user rather than per path.  There is
+    # also no login endpoint on this backend to point a matcher at.
+    #
+    # Same three separate acts as every other name here: this entry, a public A
+    # record, and the ledger row (L16) in docs/roadmap.md.
+    "homepage"
   ];
 
   # ── THE LOGIN PATHS, PER SERVICE, AND WHAT THIS DOES NOT COVER ────────────
@@ -2727,6 +2764,28 @@ in
               middlewares = [ "authelia" ];
               service     = "grafana";
             };
+
+            # ── The service index (M26): admin route, behind Authelia ──────
+            #
+            # An ordinary protected router, and the only thing worth a note is
+            # what it points AT: the arr container's address on a port that
+            # containers/arr.nix does not mention, because the service is
+            # declared in containers/homepage.nix instead.  A reader chasing
+            # `homepageAddr` through arr.nix will not find it; that file's
+            # header and this comment are the two places that say where to
+            # look.
+            #
+            # `authelia`, and this name is in `protectedHosts` in the same
+            # commit — a route carrying the middleware with no matching domain
+            # in authelia.nix's deny-by-default access_control returns 403 to a
+            # user who has just logged in successfully, which is the RomM
+            # failure.  The guard below catches the reverse direction too.
+            homepage = {
+              rule        = "Host(`home.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "homepage";
+            };
           };
 
           # Backends are plain HTTP over VLAN 90 — the hop from here to them is
@@ -2803,6 +2862,9 @@ in
 
             # M13 — same container, same address, one more port.
             jellyseerr.loadBalancer.servers   = [ { url = "http://${arrAddr}:${toString jellyseerrPort}/"; } ];
+
+            # M26 — the same address again, from containers/homepage.nix.
+            homepage.loadBalancer.servers     = [ { url = "http://${arrAddr}:${toString homepagePort}/"; } ];
 
             # M8 — its own container on .18.
             tvheadend.loadBalancer.servers    = [ { url = "http://${tvheadendAddr}:${toString tvheadendPort}/"; } ];

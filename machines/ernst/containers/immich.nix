@@ -249,6 +249,13 @@ let
   # phones, the TV, a browser, the import tool — arrives through it.
   traefikAddr = "10.0.90.12";
 
+  # M26.  The arr container, because that is where the service index runs —
+  # see containers/homepage.nix, which explains why the dashboard lives in
+  # somebody else's namespace.  Named for the dashboard rather than for the
+  # container so that grepping `dashboardAddr` across machines/ernst finds
+  # every widening M26 made, in one pass.
+  dashboardAddr = "10.0.90.13";
+
   # The monitoring container (M6), and the only thing permitted to read the
   # telemetry endpoint.  Separate from the line above because it is a different
   # port with a different justification, not because it is a different kind of
@@ -894,11 +901,22 @@ in
       #    traffic, since those frames are one L2 hop and the UDM-Pro never
       #    sees them.
       #
-      #   2283/tcp  ONLY from Traefik.  Every client of this service arrives
-      #             through the proxy, including the TV — see "THE KODI PATH"
-      #             in the file header for why that is a design decision and
-      #             not an accident of convenience.  This is the backend-bypass
-      #             hardening M5 calls mechanism (a).
+      #   2283/tcp  From Traefik, and — since M26 — from the arr container.
+      #             Every HUMAN client arrives through the proxy, including the
+      #             TV: see "THE KODI PATH" in the file header for why that is
+      #             a design decision and not an accident of convenience.  This
+      #             is the backend-bypass hardening M5 calls mechanism (a).
+      #
+      #             THE SECOND SOURCE IS THE SERVICE INDEX (containers/
+      #             homepage.nix), which fetches photo/video/storage counts
+      #             server-side with a `server.statistics`-scoped API key.  It
+      #             is NOT a human path and must not become one — the tile it
+      #             renders links to photos.goclan.org, through the proxy, like
+      #             everything else.  This is stated rather than folded into
+      #             the line above because it is a real widening: an API key
+      #             held by another container now reaches this port directly,
+      #             and the M5 claim that every client arrives through Traefik
+      #             is no longer true without qualification.
       #   8081/tcp  ONLY from the monitoring container.  Immich's telemetry
       #             endpoint carries no authentication of its own.
       #
@@ -910,6 +928,7 @@ in
       networking.firewall.extraCommands = ''
         iptables -A nixos-fw -p tcp -s ${traefikAddr}/32    --dport ${toString immichPort}  -j nixos-fw-accept
         iptables -A nixos-fw -p tcp -s ${monitoringAddr}/32 --dport ${toString metricsPort} -j nixos-fw-accept
+        iptables -A nixos-fw -p tcp -s ${dashboardAddr}/32  --dport ${toString immichPort}  -j nixos-fw-accept
       '';
 
       ##########################################################################
