@@ -615,6 +615,14 @@ Upstream's own warning, logged when you enable it:
 the library, so doing this before the library fills is nearly free; doing it
 afterwards means a slow first start with the web UI blocking on `metadata.db`.
 
+> **This step is already done, and the library is no longer empty.** KOReader
+> sync is on, and the 4472-book import on 2026-09-17 took the backfill with it:
+> 5268 format rows processed in under a minute, 5195 queued, 0 failed, 73
+> skipped. The 73 are dangling `data` rows whose files were already missing on
+> the old Arch server — not import damage. Kept as written because the toggle is
+> still a manual step on any rebuild from scratch, and the warning above is the
+> reason to do it first.
+
 Confirm the plugin page serves:
 
 ```bash
@@ -758,9 +766,15 @@ playing the same track must produce **no** ffmpeg line at all.
 - **The UDM-Pro forward.** `10.0.90.12:8443` is unreachable from a consumer
   VLAN (the ZBF rule permits `:443` only) and hairpin NAT to the public IP
   times out from inside. Relies on M18's 2026-09-07 measurement from 5G.
-- **Everything about CWA's runtime.** No instance has ever run here. The
-  KOReader and OIDC behaviour above is read from the v4.0.6 source, which is
-  better than documentation but is not a running system.
+- **~~Everything about CWA's runtime.~~ PARTLY SETTLED 2026-09-17.** This said
+  "no instance has ever run here"; one has since 2026-09-08, and the 4472-book
+  import exercised it. Now measured on the running system: the KOReader backfill
+  (5268 rows, under a minute), a **schema-25 Calibre database migrating cleanly
+  under 4.0.6** — the case `containers/cwa.nix` argued would never arise here —
+  `/` answering 302 and `/opds` answering 401 through Traefik unauthenticated.
+  **The OIDC behaviour above is still source-read, not exercised**: nobody has
+  logged in through Authelia against this instance, so the redirect-host and
+  `client_secret_*` traps below remain untested here rather than disproven.
 - **Komga and Navidrome have never started on ernst.** In particular the
   `PrivateUsers = true` that both upstream modules set, combined with
   `Group = media`, is expected to work — the unit's primary GID is what gets

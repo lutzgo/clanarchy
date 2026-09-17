@@ -16,6 +16,11 @@
 #   bump, and no 3.x→4.x migration to perform, because there is no 3.x here to
 #   migrate from.  It starts at 4.0.6 with an empty library.
 #
+#   THAT LAST SENTENCE STOPPED BEING TRUE ON 2026-09-17 — see "THE LIBRARY IS
+#   NO LONGER EMPTY" below.  The greenfield paragraph above is kept as written
+#   because it is the record of how this was BUILT, and every argument in it
+#   still holds; what changed is the contents, not the deployment.
+#
 # ── TIER: PODMAN, and the reason is not a preference ────────────────────────
 #
 #   CWA IS NOT IN nixpkgs.  What nixpkgs has is `calibre-web` 0.6.26 — the
@@ -106,9 +111,15 @@
 #      stop a running backfill."
 #
 #   So on a library of any size the first start after enabling is slow and the
-#   web UI may block on metadata.db while it runs.  On an EMPTY library — which
-#   is what this deploys with — the backfill is trivial, which is a good reason
-#   to turn it on now rather than after the library fills.
+#   web UI may block on metadata.db while it runs.  On an EMPTY library the
+#   backfill is trivial, which was the reason to turn it on before the library
+#   filled rather than after.
+#
+#   THAT ADVICE WAS TAKEN AND THE BILL HAS NOW BEEN PAID, which is worth a
+#   measurement rather than a worry: the 2026-09-17 import (below) triggered a
+#   backfill over all 5268 format rows and it completed in UNDER A MINUTE —
+#   5195 queued, 0 failed, 73 skipped.  "Slow first start" is real but the
+#   scale here was seconds, not the outage the warning implies.
 #
 #   IT IS A UI TOGGLE (`cwa_settings.html`, "Enable KOReader Sync (CWA
 #   Plugin)"), stored in app.db, with no environment override.  A web search
@@ -133,11 +144,65 @@
 #
 #     /srv/media/library/books    Bindery writes, Komga reads.  UNCHANGED.
 #     /srv/media/library/comics   Kapowarr writes, Komga reads.  UNCHANGED.
-#     /srv/media/library/calibre  CWA owns entirely.  New, empty.
+#     /srv/media/library/calibre  CWA owns entirely.  Started empty; holds the
+#                                 old Arch server's library since 2026-09-17.
 #     /srv/media/ingest/cwa       CWA's watch folder.  Files are DELETED after
 #                                 processing — that is upstream's documented
 #                                 behaviour, so nothing that matters may be the
 #                                 only copy in here.
+#
+#   ── THE LIBRARY IS NO LONGER EMPTY (2026-09-17) ──────────────────────────
+#
+#   /srv/media/library/calibre now holds 4472 BOOKS, 12.4 GB, 1759 author
+#   directories.  They came from the old Arch server.
+#
+#   WHERE THEY WERE, AND WHY NOBODY FOUND THEM: the whole Calibre library —
+#   metadata.db, the Author/Title (id) tree, metadata_db_prefs_backup.json —
+#   had been restored into /srv/audiobooks/ebooks, which containers/arr.nix
+#   declares as "the DRM-free ebook halves, staged by hand" for Storyteller.
+#   NOTHING SCANS THAT DIRECTORY — Storyteller takes its input through its own
+#   web UI — so a complete library sat inert in it for weeks while this file
+#   described itself as empty.  arr.nix's comment is corrected alongside.
+#
+#   HOW IT WAS MOVED, and the two options that were rejected:
+#
+#     REJECTED — pour the files through /cwa-book-ingest.  5268 files, one
+#       ebook-convert each, and the curated metadata re-fetched from scratch
+#       rather than kept.  Days of CPU for a WORSE library, and ingest deletes
+#       what it processes.
+#     REJECTED — repoint this file's libraryDir at /srv/audiobooks/ebooks.  One
+#       line and no copy, but CWA restructures a tree in place and that tree is
+#       on another service's dataset — the same argument the section above
+#       makes against /srv/media/library/books, for the same reason.
+#     DONE — rsync the library wholesale into the root CWA already owns, chown
+#       to cwa:cwa.  A Calibre library is self-contained, so CWA adopted it
+#       with no import step at all: metadata, series, tags and covers intact.
+#
+#   THE SCHEMA MIGRATION THIS FILE SAID WOULD NEVER HAPPEN, DID.  The header's
+#   4.0.x paragraph argues that starting empty means "none of those migration
+#   paths is ever exercised here".  The imported database is Calibre schema
+#   user_version 25, so 4.0.6 was handed exactly the case that paragraph
+#   expected to avoid.  IT WENT THROUGH CLEANLY — no migration error, no
+#   sqlite3.OperationalError, 4472 books readable afterwards.  Recorded as a
+#   measurement, not as a reason to relax the pin.
+#
+#   73 DANGLING FORMAT ROWS CAME WITH IT, and they are NOT import damage.  The
+#   backfill logged 73 "SKIP: File not found"; each one was checked against the
+#   SOURCE tree and is missing there too — rows in the old metadata.db whose
+#   files were lost on the Arch server long before this copy.  Do not go
+#   looking for them in a snapshot of /srv/media; the copy is byte-complete and
+#   was verified file-by-file against the source before the source was emptied.
+#
+#   /srv/audiobooks/ebooks IS NOW EMPTY and remains Storyteller's staging pool,
+#   still created by arr.nix's audiobooks-tree.service as 2770 root:media.  The
+#   12 GB it gave up does not return to the pool immediately: zdata/audiobooks
+#   carries com.sun:auto-snapshot=true, so the data is pinned in the auto-snaps
+#   until retention rolls over.
+#
+#   THE PRE-IMPORT STATE IS KEPT at /srv/state/cwa/pre-import-backup-20260917/
+#   — the one-book metadata.db this deployment had accumulated, plus its Dune
+#   test import.  DELETABLE once nobody is nervous; it is not referenced by
+#   anything and CWA does not read it.
 #
 #   WIRING BINDERY'S OUTPUT INTO CWA'S INGEST IS DELIBERATELY NOT DONE.  It is
 #   a one-line change to Bindery's destination and it is somebody's decision,
@@ -249,9 +314,15 @@ let
   # (4.0.1), SQLAlchemy 2.x InvalidRequestError during migrations and Calibre 9
   # schema changes (4.0.2), a metadata.db rebuild-from-OPF recovery path
   # (4.0.4), and WAL-mode handling for network shares (4.0.5).  Starting at
-  # 4.0.6 with an empty library means none of those migration paths is ever
-  # exercised here — which is the one genuine advantage of having had no
-  # earlier deployment.
+  # 4.0.6 with an empty library was supposed to mean none of those migration
+  # paths is ever exercised here.
+  #
+  # IT NO LONGER MEANS THAT, and the correction matters more than the original
+  # claim did: the 2026-09-17 import handed 4.0.6 a schema-25 Calibre database
+  # of 4472 books, which is precisely the migration case the 4.0.1–4.0.5 fixes
+  # are about.  It was clean — but "this deployment never migrates" is no
+  # longer a reason to be relaxed about a version bump.  See "THE LIBRARY IS NO
+  # LONGER EMPTY" in the header.
   ############################################################################
   cwaTag    = "v4.0.6";
   cwaDigest = "sha256:c31a738b6d5ec6982c050063dd3f063b6943eb1051fc81144789f840d9093a8d";
