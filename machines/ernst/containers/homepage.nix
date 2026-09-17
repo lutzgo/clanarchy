@@ -71,7 +71,10 @@
 #       audit.  Every other container on VLAN 90 admits 10.0.90.12 and nothing
 #       else, so a homepage anywhere else would be REFUSED AT EVERY SINGLE
 #       BACKEND until each one was widened.  Placing it here reduces the set
-#       of widenings this milestone makes from nineteen to four.
+#       of widenings this milestone makes from nineteen to THREE — Immich,
+#       Home Assistant and RomM. Jellyfin already admitted this address (M13,
+#       for Jellyseerr and Janitorr), and Nextcloud is reached through Traefik
+#       by name rather than directly, so neither needed a rule.
 #
 #   WHAT THE PLACEMENT COSTS, stated rather than discovered:  homepage
 #   restarts when container@arr restarts, and a `nixos-container` operation on
@@ -201,10 +204,14 @@ let
   rommPort      = 8080;
   immichAddr    = "10.0.90.25";
   immichPort    = 2283;
-  nextcloudAddr = "10.0.90.26";
-  nextcloudPort = 80;
   hassAddr      = "10.0.90.27";
   hassPort      = 8123;
+
+  # NEXTCLOUD HAS NO ENTRY HERE ON PURPOSE.  Its widget is the one that goes
+  # through Traefik by name, because Nextcloud refuses a Host header that is
+  # not in `trusted_domains` — see the long note on that widget below.  An
+  # address constant here would only invite somebody to "fix" the
+  # inconsistency and re-break it.
 
   ############################################################################
   # Co-resident ports, on 127.0.0.1.
@@ -427,13 +434,30 @@ in
           # noise that looks like information.
           statusStyle = "dot";
 
-          layout = {
-            "Media automation" = { style = "row"; columns = 3; };
-            "Libraries"        = { style = "row"; columns = 4; };
-            "Household"        = { style = "row"; columns = 3; };
-            "Infrastructure"   = { style = "row"; columns = 4; };
-            "Fleet"            = { style = "row"; columns = 4; };
-          };
+          # ── A LIST, NOT AN ATTRSET, AND THAT IS LOAD-BEARING ────────────
+          #
+          # Homepage sorts the groups on the page by the order they appear in
+          # this block. An attrset cannot express an order: Nix sorts attribute
+          # names, and `pkgs.formats.yaml` emits them in that sorted order — so
+          # the first deploy rendered Fleet, Household, Infrastructure,
+          # Libraries, Media automation, which is alphabetical and is not what
+          # was written. Nothing warns; the page just looks arbitrary.
+          #
+          # Upstream supports a list of single-key maps for exactly this, and a
+          # Nix list preserves order through the YAML generator. Verified on
+          # ernst 2026-09-17 — the attrset form is what produced the wrong
+          # order, the list form fixes it.
+          #
+          # The order below is by how often it is looked at, not by importance:
+          # the *arr are what a human opens this page to check, and the fleet
+          # tiles are links into Grafana that nobody needs above the fold.
+          layout = [
+            { "Media automation" = { style = "row"; columns = 3; }; }
+            { "Household"        = { style = "row"; columns = 3; }; }
+            { "Libraries"        = { style = "row"; columns = 4; }; }
+            { "Infrastructure"   = { style = "row"; columns = 4; }; }
+            { "Fleet"            = { style = "row"; columns = 5; }; }
+          ];
         };
 
         # The top bar.  `search` renders a form the BROWSER submits, so it
@@ -701,10 +725,56 @@ in
                   description = "Files, calendars and contacts";
                   widget = {
                     type = "nextcloud";
-                    url  = "http://${nextcloudAddr}:${toString nextcloudPort}";
+                    # ── THE ONE WIDGET THAT GOES THROUGH TRAEFIK ──────────
+                    #
+                    # Every other entry in this group names a backend address
+                    # directly.  This one names the PUBLIC HOSTNAME, and it is
+                    # not an inconsistency to tidy up — it is the only thing
+                    # that works.
+                    #
+                    # Nextcloud validates the Host header against
+                    # `trusted_domains`, which holds `cloud.goclan.org` and
+                    # nothing else.  A request to http://10.0.90.26 therefore
+                    # never reaches the serverinfo app at all; it is refused by
+                    # Nextcloud's bootstrap with a bare 400 and an HTML body
+                    # about an untrusted domain.  Measured on ernst
+                    # 2026-09-17, with a correct token on both requests:
+                    #
+                    #   via 10.0.90.26        400
+                    #   via cloud.goclan.org  200, valid OCS JSON
+                    #
+                    # THE ALTERNATIVE WAS ADDING 10.0.90.26 TO trusted_domains
+                    # AND IT WAS REJECTED.  That list is a defence against
+                    # host-header poisoning — it is what makes every absolute
+                    # URL Nextcloud generates (password resets, share links,
+                    # federation) unforgeable.  Widening it so a dashboard can
+                    # skip one layer-2 hop trades a real control for nothing.
+                    #
+                    # WHAT THIS COSTS: the request leaves this container, is
+                    # answered by Traefik and comes back — still one hop inside
+                    # br0 on this host, never touching the UDM-Pro, plus a TLS
+                    # handshake. And it makes the tile depend on Traefik, which
+                    # is not a new dependency: if Traefik is down, nobody can
+                    # load this page to look at the tile.
+                    #
+                    # IT ALSO MEANS containers/nextcloud.nix NEEDS NO RULE FOR
+                    # US, and that file's "every client arrives through the
+                    # proxy" claim stays true. Do not re-add one.
+                    #
+                    # Forward-auth is not in the way: `cloud` is an
+                    # appApiHosts name, so its router carries no `authelia`
+                    # middleware and this request is passed straight through.
+                    # It would NOT work for a protectedHosts name — the call
+                    # would collect a 302 to the portal instead of JSON.
+                    url  = pub "cloud";
                     # The serverinfo NC-Token, not a user password.  Both are
                     # accepted by the widget and only one of them is a
                     # credential that can log in.
+                    #
+                    # NOT SETTABLE FROM ANY UI, and the admin System page is a
+                    # dead end: the serverinfo app reads this from app config
+                    # and never generates one.  It is set once, by hand:
+                    #   nextcloud-occ config:app:set serverinfo token --value …
                     key  = "{{HOMEPAGE_VAR_NEXTCLOUD_KEY}}";
                   };
                 };

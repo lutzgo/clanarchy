@@ -122,12 +122,6 @@ let
   # it.  This is M5's backend-bypass hardening, mechanism (a).
   traefikAddr = "10.0.90.12";
 
-  # M26.  The arr container, because that is where the service index runs —
-  # see containers/homepage.nix.  Named for the dashboard rather than for the
-  # container so that grepping `dashboardAddr` across machines/ernst finds
-  # every widening M26 made, in one pass.
-  dashboardAddr = "10.0.90.13";
-
   # Plain HTTP on 80, terminated by the container's own nginx.  TLS is
   # Traefik's, once, at the edge, with the *.goclan.org wildcard it already
   # holds — nothing here requests a certificate.
@@ -494,18 +488,8 @@ in
       #    traffic, since those frames are one L2 hop and the UDM-Pro never
       #    sees them.
       #
-      #   80/tcp  From Traefik, and — since M26 — from the arr container.
-      #           Every HUMAN client arrives through the proxy.
-      #
-      #           THE SECOND SOURCE IS THE SERVICE INDEX (containers/
-      #           homepage.nix), which reads the serverinfo endpoint with an
-      #           NC-Token to render free space and user counts.  Worth one
-      #           note beyond "it is a widening", because of what the token is:
-      #           an NC-Token is NOT a user password and cannot log in — it
-      #           authorises the serverinfo app and nothing else — which is why
-      #           this file's `trusted_proxies` argument is untouched by it.
-      #           The brute-force throttle still keys on the client address and
-      #           still only ever sees Traefik.
+      #   80/tcp  ONLY from Traefik.  Every client of this service arrives
+      #           through the proxy.
       #
       # extraCommands, not extraInputRules: the latter is declared
       # unconditionally but consumed only under networking.nftables, so here it
@@ -513,8 +497,7 @@ in
       # only nftables container on this machine.
       networking.firewall.allowedTCPPorts = [ ];
       networking.firewall.extraCommands = ''
-        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32   --dport ${toString nextcloudPort} -j nixos-fw-accept
-        iptables -A nixos-fw -p tcp -s ${dashboardAddr}/32 --dport ${toString nextcloudPort} -j nixos-fw-accept
+        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32 --dport ${toString nextcloudPort} -j nixos-fw-accept
       '';
 
       ##########################################################################
