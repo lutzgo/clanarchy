@@ -114,6 +114,59 @@
 #   inside, and the MACHINE is `hass` —
 #   `machinectl`, `nixos-container run hass`, `systemctl restart container@hass`.
 #
+# ── HACS, AND THE LINE IT DRAWS THROUGH THIS CONTAINER ──────────────────────
+#
+#   The Home Assistant Community Store is installed, as a declarative custom
+#   component: ./pkgs/hacs.nix builds it and `customComponents` below is the one
+#   line that wires it in.  HACS ITSELF is therefore under the same control as
+#   everything else on this host — a version in a file, a hash over the bytes,
+#   and an update that is a deploy.
+#
+#   WHAT HACS DOWNLOADS IS NOT.  That is the whole trade and it should be made
+#   out loud rather than discovered: HACS browses GitHub and writes what you
+#   pick into ${configDir}/custom_components (integrations) and
+#   ${configDir}/www/community (themes and Lovelace cards), at runtime, from the
+#   browser.  Those files are STATE.  They land on zdata/state next to .storage,
+#   they are covered by that dataset's snapshots, and nothing in this repo says
+#   what they are.  `ls /srv/state/home-assistant/custom_components` on the host
+#   is the only inventory there is.
+#
+#   THE TWO HALVES BEHAVE DIFFERENTLY AND THE DIFFERENCE IS NOT OBVIOUS:
+#
+#     * FRONTEND — themes and Lovelace cards.  Pure JavaScript served out of
+#       www/community, no Python, nothing to reconcile.  These work exactly as
+#       they do on Home Assistant OS, and they are the half nixpkgs has no
+#       equivalent for at all.
+#
+#     * INTEGRATIONS — Python, and here there is a catch with teeth.  nixpkgs
+#       builds Home Assistant with `--skip-pip`, so the runtime
+#       `pip install --target deps` that satisfies a downloaded integration's
+#       manifest requirements NEVER RUNS.  An integration whose requirements are
+#       not already in the Python environment fails to set up, and the log line
+#       is about a missing module rather than about pip.
+#
+#       The fix is one option, not a redesign:
+#
+#           services.home-assistant.extraPackages = ps: [ ps.<thedep> ];
+#
+#       in this file, then redeploy.  Requirements with no nixpkgs packaging are
+#       the case where the answer is to package the integration properly in
+#       ./pkgs and drop it from HACS — which is the same work `customComponents`
+#       exists for, arrived at from the other direction.
+#
+#   HACS CANNOT UPDATE ITSELF.  Its `update.hacs` entity rewrites
+#   custom_components/hacs, which here is a symlink into the store.  Pressing
+#   Install fails.  Bumping ./pkgs/hacs.nix is the upgrade path, and the failing
+#   button is left visible on purpose — see that file.
+#
+#   SETUP IS A MANUAL STEP AND CANNOT BE OTHERWISE.  HACS authenticates to
+#   GitHub through the device flow: Settings → Devices & Services → Add
+#   Integration → HACS, then a code typed into github.com/login/device under a
+#   GitHub account.  The token it receives is written to .storage, so it
+#   survives deploys and reboots but is not in this repo and not in clan vars —
+#   there is nothing to seed, which is the same reason the owner account has no
+#   generator (below).
+#
 # ── WHAT IS DELIBERATELY NOT HERE ───────────────────────────────────────────
 #
 #   A clan vars generator.  Home Assistant creates its owner account through
@@ -558,7 +611,21 @@ in
       };
     };
 
-    config = { config, pkgs, lib, ... }: {
+    config = { config, pkgs, lib, ... }: let
+      # HACS — the Home Assistant Community Store.  The derivation, and the
+      # reasons it is built from the release zip rather than the git tag, are in
+      # ./pkgs/hacs.nix; what its presence means for this container is in the
+      # "HACS" section of this file's header.
+      #
+      # `home-assistant.python3Packages.callPackage`, not the bare `pkgs` one,
+      # and that is the same scope nixpkgs uses for everything under
+      # `pkgs.home-assistant-custom-components`.  It matters twice: the
+      # `aiogithubapi` the component propagates has to come from the SAME Python
+      # set Home Assistant itself is built against or the module would install
+      # two incompatible copies, and buildHomeAssistantComponent's
+      # manifest-requirements check runs under that set's interpreter.
+      hacs = pkgs.home-assistant.python3Packages.callPackage ./pkgs/hacs.nix { };
+    in {
       system.stateVersion = "26.05";
 
       ##########################################################################
@@ -767,6 +834,26 @@ in
           "radio_browser" # offered by the onboarding wizard; absent = a 404
           "backup"        # HA's own backup UI, onto the state tree
         ];
+
+        # ── HACS ──────────────────────────────────────────────────────────
+        #
+        # One entry, and the module does the rest: it symlinks
+        # $out/custom_components/hacs into ${configDir}/custom_components, adds
+        # `hacs` to the component list, and — the part that is easy to miss —
+        # folds the component's propagated `aiogithubapi` into the Home
+        # Assistant Python environment (home-assistant.nix:135).  That last one
+        # is not a nicety; see ./pkgs/hacs.nix on `--skip-pip`.
+        #
+        # THE ACTIVATION IS SAFE FOR WHAT HACS DOWNLOADS.  The module's
+        # preStart sweeps ${configDir}/custom_components, but it only unlinks
+        # entries that are SYMLINKS POINTING INTO THE STORE
+        # (home-assistant.nix:937-942).  Everything HACS fetches is a real
+        # directory of real files, so a deploy walks straight past it.  A
+        # component that later gains a nixpkgs packaging is therefore a
+        # two-step migration and not a collision: remove it in HACS first, add
+        # it here second, because a store symlink and a downloaded directory
+        # cannot occupy the same name.
+        customComponents = [ hacs ];
 
         # ── configuration.yaml IS DECLARATIVE AND READ-ONLY ────────────────
         #
