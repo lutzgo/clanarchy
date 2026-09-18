@@ -141,11 +141,33 @@
 #     * INTEGRATIONS — Python, and here there is a catch with teeth.  nixpkgs
 #       builds Home Assistant with `--skip-pip`, so the runtime
 #       `pip install --target deps` that satisfies a downloaded integration's
-#       manifest requirements NEVER RUNS.  An integration whose requirements are
-#       not already in the Python environment fails to set up, and the log line
-#       is about a missing module rather than about pip.
+#       manifest requirements NEVER RUNS.
 #
-#       The fix is one option, not a redesign:
+#       AND IT IS WORSE THAN THAT, WHICH IS WHY THERE IS A CHECKER BELOW.
+#       Requirement checking sits behind THE SAME FLAG:
+#
+#           # homeassistant/requirements.py:167
+#           if not self.hass.config.skip_pip:
+#               await self._async_process_integration(integration, done)
+#
+#       So Home Assistant does not merely fail to install a missing
+#       requirement — it never looks.  No RequirementsNotFound, no log line
+#       naming pip, no repair issue.  The integration is loaded, it does
+#       `import pyfoo`, and the first evidence is an ImportError raised from
+#       inside somebody else's code.  For an integration that imports lazily
+#       that can be days after the download, when a device is first used.
+#
+#       THERE IS THEREFORE NO UPSTREAM SIGNAL TO ALERT ON, so this file
+#       manufactures one: `hass-hacs-deps.service` below reads the downloaded
+#       manifests and resolves every requirement against the live environment.
+#       It is hooked to home-assistant.service's start rather than to a timer,
+#       because a newly downloaded integration does nothing until Home
+#       Assistant is restarted — so the restart IS the moment the answer can
+#       change.  A failure becomes a host-side metric within the minute through
+#       the container-unit collector, and `hacs-deps-check` run by hand prints
+#       the same report with the `extraPackages` block already filled in.
+#
+#       The fix it names is one option, not a redesign:
 #
 #           services.home-assistant.extraPackages = ps: [ ps.<thedep> ];
 #
@@ -625,6 +647,67 @@ in
       # two incompatible copies, and buildHomeAssistantComponent's
       # manifest-requirements check runs under that set's interpreter.
       hacs = pkgs.home-assistant.python3Packages.callPackage ./pkgs/hacs.nix { };
+
+      # ── THE REQUIREMENTS CHECKER ────────────────────────────────────────
+      #
+      # Why it exists at all is in the "HACS" section of the header: under
+      # `--skip-pip` Home Assistant never checks a downloaded integration's
+      # requirements, so there is no upstream failure to alert on and one has
+      # to be manufactured.
+      #
+      # THE INTERPRETER IS THE WHOLE POINT.  A checker that answers "is pyfoo
+      # importable?" against any Python other than the one
+      # home-assistant.service runs under is answering a different question,
+      # and answering it confidently.  So it is the same interpreter, with
+      # PYTHONPATH set to the same `package.pythonPath` the module hands the
+      # service (home-assistant.nix:983) — what this can import is by
+      # construction what Home Assistant can import.
+      #
+      # `packaging` has to be added explicitly.  It is NOT in the runtime
+      # PYTHONPATH — checked, 168 entries and none of them packaging — which is
+      # a little surprising for a requirements checker to need and exactly the
+      # kind of thing that would otherwise be discovered as an ImportError in
+      # the alerting path itself.
+      #
+      # ── READ THE PATH OFF THE SERVICE, NOT OFF THE PACKAGE OPTION ────────
+      #
+      # `config.services.home-assistant.package.pythonPath` IS THE WRONG
+      # ANSWER, and it is wrong in the direction that does real damage.  The
+      # module does not run the package named by that option: it runs a LOCAL
+      # override of it (home-assistant.nix:126-137) that folds in
+      # `extraComponents`, `extraPackages`, and every custom component's
+      # propagated inputs.  `cfg.package` is the input to that override, not
+      # its result, so its pythonPath is missing all of them.
+      #
+      # Caught by testing the checker against a synthetic library rather than
+      # by reading the module: it reported `aiogithubapi` — HACS's own
+      # requirement, which this file demonstrably installs and which
+      # `systemctl show` confirms is on the service's path — as NOT INSTALLED.
+      # A checker that fails on a healthy hub is worse than no checker, because
+      # its alert trains you to ignore it.
+      #
+      # `systemd.services.home-assistant.environment.PYTHONPATH` is the value
+      # the module assigns from the overridden package (home-assistant.nix:983),
+      # so it is the literal string the running service gets — the only
+      # definition of "what Home Assistant can import" that cannot drift.
+      hassPythonPath = config.systemd.services.home-assistant.environment.PYTHONPATH;
+
+      # The interpreter itself is safe to take from the option: an override
+      # that adds packages does not change the Python VERSION, and this is only
+      # used to pick the matching `packaging`.
+      checkPython =
+        config.services.home-assistant.package.python3Packages.python.withPackages
+          (ps: [ ps.packaging ]);
+
+      hacsDepsCheck = pkgs.writeShellApplication {
+        name = "hacs-deps-check";
+        runtimeInputs = [ ];
+        text = ''
+          export PYTHONPATH=${hassPythonPath}
+          exec ${checkPython}/bin/python3 \
+            ${./hacs-deps-check.py} "''${1:-${configDir}/custom_components}"
+        '';
+      };
     in {
       system.stateVersion = "26.05";
 
@@ -962,9 +1045,66 @@ in
       # rather than a no-op — see the note on `hassUid` in the let block above,
       # which is where the number this container's files carry is documented.
 
+      ##########################################################################
+      # The HACS requirements checker.
+      ##########################################################################
+
+      # ── HOOKED TO HOME ASSISTANT'S START, NOT TO A TIMER ──────────────────
+      #
+      # A timer would be the reflex and it would be worse in both directions:
+      # noisier, because the answer cannot change between restarts, and slower,
+      # because a download made at 09:00 would wait for the next firing.
+      #
+      # The answer changes at exactly one moment.  A HACS download is inert
+      # until Home Assistant is restarted — that is why HACS itself puts a
+      # "restart required" notice on every install — so the restart is both the
+      # moment new state takes effect and the moment it becomes checkable.
+      # `wantedBy` + `after` on home-assistant.service puts the check there.
+      #
+      # WantedBy, NOT RequiredBy, and the asymmetry is deliberate: Home
+      # Assistant must not be held up or taken down by its own checker.  A
+      # `Wants=` dependency lets this fail on its own while the hub runs, which
+      # is the correct blast radius for a report about an integration that was
+      # already not going to work.
+      #
+      # IT IS SUPPOSED TO FAIL LOUDLY.  A failed unit here is not an
+      # inconvenience to be suppressed — it is the entire signal, because the
+      # thing it reports has no upstream signal at all.  ernst's container-unit
+      # collector walks `machinectl list` on a one-minute timer and turns it
+      # into `clanarchy_container_systemd_unit_failed{container="hass"}` →
+      # `ContainerSystemdUnitFailed` (service-modules/monitoring.nix, added by
+      # PR #139 after soularr.service failed 1,412 times over nine days inside
+      # the arr container without ever alerting).  A failed ONESHOT is the
+      # exact case that PR was written for: nothing stays in a bad state long
+      # enough to be noticed any other way.
+      systemd.services.hass-hacs-deps = {
+        description = "Check HACS-downloaded integrations for unsatisfiable Python requirements";
+        wantedBy = [ "home-assistant.service" ];
+        after    = [ "home-assistant.service" ];
+        serviceConfig = {
+          Type            = "oneshot";
+          RemainAfterExit = true;
+          ExecStart       = "${hacsDepsCheck}/bin/hacs-deps-check ${configDir}/custom_components";
+
+          # Read-only, and as the service user rather than root: it inspects
+          # the same tree home-assistant.service owns and has no business being
+          # able to change it.
+          User            = "hass";
+          Group           = "hass";
+          ProtectSystem   = "strict";
+          ProtectHome     = true;
+          PrivateTmp      = true;
+          NoNewPrivileges = true;
+        };
+      };
+
       # `curl` is the test plan's instrument for proving this backend is
-      # reachable from Traefik and from nowhere else.
-      environment.systemPackages = with pkgs; [ curl ];
+      # reachable from Traefik and from nowhere else.  `hacs-deps-check` is the
+      # same report the unit above emits, on demand and with the
+      # `extraPackages` block already filled in:
+      #
+      #     nixos-container run hass -- hacs-deps-check
+      environment.systemPackages = with pkgs; [ curl hacsDepsCheck ];
       documentation.enable       = false;
       documentation.nixos.enable = false;
     };

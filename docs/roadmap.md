@@ -68,7 +68,8 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M21 — image generation | **done — verified working 2026-09-10; BUILT not pinned, and SIX defects surfaced after "shipped"** | — | ComfyUI is **built from source** (`service-modules/pkgs/comfyui`, eight derivations) and **spawned by llama-swap** like `llama-server`, inheriting its ROCm sandbox — so eviction is a process kill and the exclusive `gpu` group now holds three members. It is **not on the podman tier**, and this milestone planned to put it there. Both of its premises were false: the `roles.imagegen` M19 "already built" could not have run (it registered `proxy` with no `cmd` — the "empty command" shape M19 itself documented), and there was no image worth pinning (**AMD's own `rocm/comfyui` is `gfx942;gfx950` — it cannot use this card**; the 1647★ community image's digest pins only its first install; the one that fits has 1 star). Underneath both: an unprivileged llama-swap could never have started or stopped a rootful container, which eviction requires. The ROCm torch stack turned out to be **cache-substitutable**, so building cost far less than assumed. Weights via `roles.models` as planned, plus a new `subdir`; SDXL base 1.0, hash verified twice. **uid 3035 / seq 10 / 10.0.90.24 released back to [M20](#m20-featernst-searxng)** — M21 took no uid, MAC or address. **The exclusivity proof is done** (evict → image → reload, ~10 s). Image EDITING ships too (#167/#169). But six defects surfaced after this was first called shipped — a fetch unit that had failed since M19, three missing/empty Open WebUI env vars, ROCm SDPA, and an img2img OOM on any phone photo — **every one of them deploying green and several running to completion**. The verification line the milestone lacked: *state what you asked for and say whether you got it*. [M21](#m21-featernst-imagegen) |
 | M22 — Immich | **DONE — deployed, both libraries imported, and 5G upload confirmed 2026-09-11** | [#177](https://github.com/lutzgo/clanarchy/pull/177) [#179](https://github.com/lutzgo/clanarchy/pull/179) [#180](https://github.com/lutzgo/clanarchy/pull/180) | The household photo library: `services.immich` 2.7.5 in an **nspawn** container on `02:00:00:90:00:11` → `10.0.90.25`, uid/gid **3036**, seq **11**. **LIVE**: lgo 15,110+129 (78 GB, 211 albums), sgo 17,455+1,104 (84 GB, 358 albums), 174 GB on `zdata/photos`; both phones backing up, **the FP5 confirmed over 5G** — which closes the one verification M18-era WAN work always owed a real client. **TWO DATASETS, AND THE SPLIT IS THE DESIGN**: `zdata/photos` (1M recordsize, auto-snapshot, the library) and `/srv/state/immich` (128K, PostgreSQL + ML cache). **THE BRIEF BUDGETED A CLAN VAR AND A STAGING UNIT AND NEITHER IS NEEDED** — Postgres and Redis are both on unix sockets, so the module's `secretsFile` assertion never fires. **`photos.goclan.org` is the fleet's SIXTH `appApiHosts` name and the first whose exemption is not only about clients**: a shared album link is answered anonymously BY DESIGN (ledger **L13**). **The first-run window is closed by MECHANISM** (`IMMICH_ALLOW_SETUP=false` + the public A record created last), where M14's Audiobookshelf had only "be quick". **NO UDM-Pro RULE**, against the L12 precedent — the TV reaches Immich through Traefik because the add-on speaks HTTPS. **GPU: NONE** (`accelerationDevices = [ ]` → `PrivateDevices=true`), per invariant #5. **NINE DEFECTS WERE FOUND BY RUNNING IT, NOT BY READING IT** — three that stopped the container starting (SN5's deploy deadlock, a tmpfiles/unit race, a world-readable library), three in the import tooling (API keys in `argv`, a fix that shipped broken, and a verification that passed with the instrument absent), and three about the import itself (immich-go's 32-way default collapsing the server, album creation failing under load but converging on re-run, and a summary that reported `Errors: 0` for a run whose log held 257). **The laptop uploader ships DISABLED** — a prompted clan var for a key only Immich can issue deadlocks every deploy in the fleet (**SN5**). [M22](#m22-featernst-immich) |
 | M23 — Nextcloud | **DEPLOYED 2026-09-15; OIDC WORKS END TO END after TWO defects found by using it; ALL VERIFICATION DONE BAR ONE — browser OIDC, sync client, off-LAN, and the brute-force attribution check all pass; only a >2 GB upload remains** | — | The household file-sync / CalDAV / CardDAV server: `services.nextcloud` 33 in an **nspawn** container on `02:00:00:90:00:12` → `10.0.90.26`, uid/gid **3037**, seq **12**. It is what lets the hosted instance at `citizengo.io` be turned off — M22b already took its photographs into Immich; this takes the rest. **IT STANDS UP EMPTY**, deliberately: migrating the remaining file corpus is its own milestone, for the reason M22b was one. **TWO DATASETS, THE SAME SPLIT AS M22**: `zdata/nextcloud` (1M recordsize, auto-snapshot, `nofail`, the store) and `/srv/state/nextcloud` (128K, PostgreSQL). **NO DATABASE CLAN VAR AND NO DB STAGING UNIT** — Postgres and Redis are both on unix sockets, exactly as M22 found. **`cloud.goclan.org` is the fleet's SEVENTH `appApiHosts` name**, and unlike M22's its exemption is the ordinary one: the desktop sync client on three laptops, DAVx5, and a **headless vdirsyncer timer** all speak WebDAV with app passwords and none can follow a 302 — nothing here is anonymous by design. **The browser path takes Authelia OIDC instead of forward-auth**, which is CWA's arrangement and not Grafana's; the `user_oidc` registration is applied by `occ` from a staged plaintext on every deploy, so unlike CWA there is no human step. **`wanLoginPaths` is deliberately EMPTY for this name** and the file argues why: `/remote.php/dav/**` is every sync request, and `/login/v2/**` is the enrolment poll — both matchers break a client rather than an attacker. What compensates is `wan-ratelimit`, CrowdSec, and **Nextcloud's own per-account throttle, which is worthless unless `trusted_proxies` names Traefik** (ledger **L14**). **NO UDM-Pro RULE**, following L13. **No Prometheus target**, stated rather than omitted — serverinfo is token-authenticated JSON, not an exposition, so a job could only ever be `up == 0` (M13's Ollama lesson); failed units inside it are still seen through `machinectl`. **`notify_push` is deliberately absent**: its self-test needs `https://cloud.goclan.org` to resolve locally to a listener that does not exist, because TLS is Traefik's. **One premise did not survive evaluation**: the build first pinned `nextcloud32` on the oldest-supported-major argument and the module warned about a legacy install on every eval — that argument is for an existing instance and this one starts empty, so it takes the `stateVersion` default (33) explicitly. **DEPLOY-DAY RESULT: it came up on the first try and the server-side test plan passes** — `status.php` 200 with `installed:true` and NO redirect to the portal (the `appApiHosts` entry is right), `/.well-known/caldav` 301, `trusted_proxies` reading `10.0.90.12`, the OIDC provider registered as ID 1, the `/Media` external mount created and a write to it refused by the KERNEL (`Read-only file system`), and zero failed units in any container. **ONE PREMISE DID NOT SURVIVE THE DEPLOY**: `install -d -m 0700` on the store lands as **0750**, because the nixpkgs module ships its own `d /var/lib/nextcloud 0750` tmpfiles rules that run inside the container against the same inodes — the Immich `StateDirectoryMode` finding in a different costume. **It is not forced back**, and the check is specific rather than reassuring: `getent group 3037` on the host returns nothing and `go` is `gid=100(users)`, so the group bit grants nobody anything — which is exactly where this differs from Immich, whose 0755 had an o+r bit `go` could have used. **TWO DEFECTS FOUND BY USING IT, AT DIFFERENT STAGES OF THE SAME FLOW, AND NEITHER WAS WHERE IT LOOKED.** (1) EVERY LOCALISING CHECK CAME BACK CLEAN: "Login with Authelia" bounced back to the login page, while the provider row was correct, `curl` to the discovery endpoint FROM INSIDE THE CONTAINER returned 200 in 10 ms, and the app's `/code` route answered 403 — only `/login/1` gave 404. It was a REFUSAL rendered as a 404: `LocalServerException — Host "10.0.90.12" violates local access rules`, i.e. Nextcloud's own `DnsPinMiddleware` SSRF guard blocking a server-side fetch to an RFC1918 address, since Authelia is reached through Traefik on VLAN 90. Fixed with `allow_local_remote_servers = true` — a boolean with no per-host allowlist and no narrower form — verified at runtime (404 → 303, authorize URL correct, redirect_uri the PRETTY form, which is why registering both variants mattered) before being written into Nix. The trade is recorded: it widens what the APPLICATION will fetch, not what the container can reach. `overwrite.cli.url` was also found at the module default `https://localhost`. (2) With that fixed the login reached the portal, passed 2FA, and died on the CALLBACK: `invalid_client` — the client block was a copy of CWA's and carried `client_secret_basic`, but user_oidc 8.10.1 unconditionally switches to `client_secret_post` when the DISCOVERY DOCUMENT advertises it, and Authelia's discovery lists what the SERVER supports rather than what this client is registered for, so no Nextcloud-side setting can win. Proven with a two-arm control against /api/oidc/token (post → `invalid_client`, basic → `invalid_grant`, i.e. client auth succeeding), which is what separated "wrong method" from "wrong secret" or "wrong redirect_uri". **THE LESSON, PAID FOR TWICE: CWA's arrangement is the right SHAPE for appApiHosts + OIDC, but the client's own parameters belong to the relying party and must be read out of ITS source.** **OIDC NOW VERIFIED END TO END** — landed as account `lgo`, not a hash-named second account, so `--unique-uid=0` + `--mapping-uid=preferred_username` do what they were set for. **VERIFIED SINCE**: `ncadmin` password login — the recovery path exercised rather than merely configured — and an app password + desktop sync client, which is the whole appApiHosts argument end to end. Reconciled by a want-vs-have drift check after the deploy. **ALSO VERIFIED**: off-LAN from mobile data (Login Flow v2 enrolment completing is what retires the worry that argued `wanLoginPaths` empty), and the brute-force attribution check — two deliberate failed logins moved miralda's counter 13 → 15 while Traefik's stayed at 0, so `trusted_proxies` is a demonstrated control and not merely a correct setting. **A TRAP FOUND DOING IT**: `oc_bruteforce_attempts` is EMPTY while the throttle works, because `configureRedis` puts the state in Redis — checking the obvious table would say protection is off. **Still owed**: a >2 GB upload through `wan`, whose readTimeout is 1800s against websecure's 3600s and bounds the whole request body. Depends on M5, M7, M18, M22. [M23](#m23-featernst-nextcloud) |
-| M24 — Home Assistant | **DEPLOYED 2026-09-16 AND VERIFIED; it came up on the first try. Zigbee network formed, owner account on TOTP, both legs up. TWO DEFECTS FOUND BY DEPLOYING, one of them in this document** | [#196](https://github.com/lutzgo/clanarchy/pull/196) | The household's home-automation hub, and the retirement of the last service the fleet depends on that this repo has never described: `services.home-assistant` 2026.5.4 in an **nspawn** container on `02:00:00:90:00:13` → `10.0.90.27`, seq **13**. **IT REPLACES AN INSTANCE ON A RASPBERRY PI** that has no monitoring, no CrowdSec, no impermanence and no ZFS snapshots — while `modules/desktop/noctalia-hm.nix` has been shipping a `hassio` bar widget pointing at it for months. **IT STANDS UP EMPTY AND DEVICES ARE RE-PAIRED**, which was lgo's call; the escape hatch if that turns out to be too much household work is a ZHA coordinator backup/restore, which changes one manual step and no code. **THE ONLY CONTAINER ON THIS HOST WITH TWO LEGS ON br0, AND THE FIRST ON A SECOND SKYNET VLAN**: `eth0` on VLAN 90 for Traefik, `iot0` on VLAN 20 because **mDNS and SSDP are link-local**. Unicast to VLAN 20 needed no leg at all — `Internal → Internal: Allow All` already permits it — so the leg is bought entirely for DISCOVERY, and it is the option this repo has twice refused a relay for in writing (M8's session prompt; `networking.nix` note 3). **VLAN 30 IS LITERALLY NAMED "HA" AND IS DELIBERATELY NOT USED**: it is not on ernst's trunk, carrying it costs a port-profile edit on USW Pro 24 PoE port 6, and it buys nothing because the leg that matters is the one on the segment the DEVICES are on. It retires with the Pi. **FIRST USB PASSTHROUGH IN THE FLEET.** Two **Nabu Casa ZBT-2** radios with **IDENTICAL VID/PID (`303a:831a`)** — so the udev aliases match on `ID_SERIAL_SHORT` and nothing else; a VID/PID rule would create both symlinks on both devices and ZHA would form its network against whichever won the race, differently on different boots. **`allowedDevices` TAKES THE GROUP FORM `char-ttyACM`, NOT A PATH**, which is where this departs from jellyfin.nix on purpose: `DeviceAllow=` is keyed on major:minor and a USB-serial minor changes on re-enumeration, so a path entry would be correct at start and wrong after a replug. **`ha.goclan.org` IS THE FLEET'S EIGHTH `appApiHosts` NAME** and the only one where forward-auth would break a *handshake* rather than a request: the companion app holds a WebSocket, and a 302 on an HTTP `Upgrade` is a connection that never completes. **Unlike M23 and CWA there is no OIDC path behind it either** — core HA does not ship OIDC at this version and the local account is the recovery path for a house whose lights are on this server — so HA's own `ip_ban_enabled` + native TOTP are the entire boundary, and `trusted_proxies` naming Traefik is what makes the first of those real (L14's lesson, keyed per-SOURCE here instead of per-account, so a misconfigured proxy bans the PROXY). **NO NEW DATASET AND NO `disko.nix` CHANGE**: a `.storage` tree and a SQLite recorder DB is `zdata/state`'s write profile exactly (128K, auto-snapshot on, measured on the host). **NO UDM-Pro FIREWALL RULE**, following L13/L14 and not L12 — every client arrives through `10.0.90.12`. It does take ledger row **L15**, for the WAN exposure. **NO PROMETHEUS JOB**, stated rather than omitted: `/api/prometheus` is bearer-token gated, so a job without one could only ever be `up == 0` (M13's Ollama lesson); failed units inside it are still seen through `machinectl`. **THREAD AND MATTER ARE SPLIT OUT TO M25** and the second radio is bound, aliased and opened by nothing — because otbr-agent sets `accept_ra = 2` and `forwarding = 1` (a deliberate exception to **SN2**), needs `/dev/net/tun` + `CAP_NET_ADMIN` in nspawn, wants avahi publishing *inside* the container, and requires an RCP firmware flash that would gate the whole deploy. **TWO PREMISES DID NOT SURVIVE THE BUILD, both caught by evaluation rather than by review.** (1) The container cannot be called `home-assistant`: nspawn names the host veth `vb-<container>` and an interface name caps at 15 characters, so `vb-home-assistant` (17) cannot be created at all — **the machine is `hass`**. (2) The uid was written as **3038** on exactly the argument rows 3036 and 3037 make, and evaluation refused it: `hass` is a **well-known NixOS static id** (`ids.uids.hass` = **286**), the same situation as PostgreSQL's 71, so **M24 consumes no number from the 3000 block and NEXT FREE there stays at 3038**. **DEPLOY-DAY RESULT: it came up on the first try and the whole test plan passes** — both aliases resolving to distinct nodes with the right serials behind them, the `char-ttyACM` filter permitting an open, both VLANs `PVID Untagged`, `10.0.90.27` + `10.0.20.27` with exactly ONE default route and zero IPv6, `302 → /onboarding.html` through Traefik, state on `zdata/state` owned by 286, and zero failed units in host or container. ZHA formed its network against `/dev/zigbee-coordinator` — the alias, not a `ttyACM` — and the owner account is on TOTP. **TWO MORE DEFECTS FOUND BY DEPLOYING, AND ONE OF THEM WAS IN THIS DOCUMENT.** (1) `systemd-resolved` was holding `:5353` alongside python-zeroconf inside the container. Per-link mDNS was already off (`-mDNS` on both links), so it was neither answering nor querying — precautionary rather than measured — but two sockets on `:5353` under `SO_REUSEPORT` split **unicast** mDNS responses, and the symptom would have been discovery finding most devices most of the time, which reads as a flaky network rather than as a second listener. Closed at the daemon (`settings.Resolve.MulticastDNS = "no"`), which releases the socket and takes a stray `[::]:5353` with it; LLMNR went too, because the container was answering name queries on the household IoT segment. (2) **THE TEST PLAN ASKED FOR A 200 THAT CAN ONLY EVER FAIL** — `curl http://10.0.90.27:8123/` run *on ernst*, when the accept rule is `-s 10.0.90.12/32` and ernst is `10.0.50.10`. A direct curl from the host is refused BY DESIGN; the rows that prove the path are the 302 through Traefik and the listener answering on `127.0.0.1` inside. **THE LESSON: a test plan written from the design rather than from the running thing encodes the author's assumption about who the client is, and a check that cannot pass is worse than no check** — it sends the next person hunting a fault that is the firewall working. Depends on M5, M7, M18. [M24](#m24-featernst-home-assistant) |
+| M24 — Home Assistant | **DEPLOYED 2026-09-16 AND VERIFIED; it came up on the first try. Zigbee network formed, owner account on TOTP, both legs up. TWO DEFECTS FOUND BY DEPLOYING, one of them in this document** — and HACS added on top as [M24b](#m24b-feathass-hacs) on 2026-09-18 | [#196](https://github.com/lutzgo/clanarchy/pull/196) | The household's home-automation hub, and the retirement of the last service the fleet depends on that this repo has never described: `services.home-assistant` 2026.5.4 in an **nspawn** container on `02:00:00:90:00:13` → `10.0.90.27`, seq **13**. **IT REPLACES AN INSTANCE ON A RASPBERRY PI** that has no monitoring, no CrowdSec, no impermanence and no ZFS snapshots — while `modules/desktop/noctalia-hm.nix` has been shipping a `hassio` bar widget pointing at it for months. **IT STANDS UP EMPTY AND DEVICES ARE RE-PAIRED**, which was lgo's call; the escape hatch if that turns out to be too much household work is a ZHA coordinator backup/restore, which changes one manual step and no code. **THE ONLY CONTAINER ON THIS HOST WITH TWO LEGS ON br0, AND THE FIRST ON A SECOND SKYNET VLAN**: `eth0` on VLAN 90 for Traefik, `iot0` on VLAN 20 because **mDNS and SSDP are link-local**. Unicast to VLAN 20 needed no leg at all — `Internal → Internal: Allow All` already permits it — so the leg is bought entirely for DISCOVERY, and it is the option this repo has twice refused a relay for in writing (M8's session prompt; `networking.nix` note 3). **VLAN 30 IS LITERALLY NAMED "HA" AND IS DELIBERATELY NOT USED**: it is not on ernst's trunk, carrying it costs a port-profile edit on USW Pro 24 PoE port 6, and it buys nothing because the leg that matters is the one on the segment the DEVICES are on. It retires with the Pi. **FIRST USB PASSTHROUGH IN THE FLEET.** Two **Nabu Casa ZBT-2** radios with **IDENTICAL VID/PID (`303a:831a`)** — so the udev aliases match on `ID_SERIAL_SHORT` and nothing else; a VID/PID rule would create both symlinks on both devices and ZHA would form its network against whichever won the race, differently on different boots. **`allowedDevices` TAKES THE GROUP FORM `char-ttyACM`, NOT A PATH**, which is where this departs from jellyfin.nix on purpose: `DeviceAllow=` is keyed on major:minor and a USB-serial minor changes on re-enumeration, so a path entry would be correct at start and wrong after a replug. **`ha.goclan.org` IS THE FLEET'S EIGHTH `appApiHosts` NAME** and the only one where forward-auth would break a *handshake* rather than a request: the companion app holds a WebSocket, and a 302 on an HTTP `Upgrade` is a connection that never completes. **Unlike M23 and CWA there is no OIDC path behind it either** — core HA does not ship OIDC at this version and the local account is the recovery path for a house whose lights are on this server — so HA's own `ip_ban_enabled` + native TOTP are the entire boundary, and `trusted_proxies` naming Traefik is what makes the first of those real (L14's lesson, keyed per-SOURCE here instead of per-account, so a misconfigured proxy bans the PROXY). **NO NEW DATASET AND NO `disko.nix` CHANGE**: a `.storage` tree and a SQLite recorder DB is `zdata/state`'s write profile exactly (128K, auto-snapshot on, measured on the host). **NO UDM-Pro FIREWALL RULE**, following L13/L14 and not L12 — every client arrives through `10.0.90.12`. It does take ledger row **L15**, for the WAN exposure. **NO PROMETHEUS JOB**, stated rather than omitted: `/api/prometheus` is bearer-token gated, so a job without one could only ever be `up == 0` (M13's Ollama lesson); failed units inside it are still seen through `machinectl`. **THREAD AND MATTER ARE SPLIT OUT TO M25** and the second radio is bound, aliased and opened by nothing — because otbr-agent sets `accept_ra = 2` and `forwarding = 1` (a deliberate exception to **SN2**), needs `/dev/net/tun` + `CAP_NET_ADMIN` in nspawn, wants avahi publishing *inside* the container, and requires an RCP firmware flash that would gate the whole deploy. **TWO PREMISES DID NOT SURVIVE THE BUILD, both caught by evaluation rather than by review.** (1) The container cannot be called `home-assistant`: nspawn names the host veth `vb-<container>` and an interface name caps at 15 characters, so `vb-home-assistant` (17) cannot be created at all — **the machine is `hass`**. (2) The uid was written as **3038** on exactly the argument rows 3036 and 3037 make, and evaluation refused it: `hass` is a **well-known NixOS static id** (`ids.uids.hass` = **286**), the same situation as PostgreSQL's 71, so **M24 consumes no number from the 3000 block and NEXT FREE there stays at 3038**. **DEPLOY-DAY RESULT: it came up on the first try and the whole test plan passes** — both aliases resolving to distinct nodes with the right serials behind them, the `char-ttyACM` filter permitting an open, both VLANs `PVID Untagged`, `10.0.90.27` + `10.0.20.27` with exactly ONE default route and zero IPv6, `302 → /onboarding.html` through Traefik, state on `zdata/state` owned by 286, and zero failed units in host or container. ZHA formed its network against `/dev/zigbee-coordinator` — the alias, not a `ttyACM` — and the owner account is on TOTP. **TWO MORE DEFECTS FOUND BY DEPLOYING, AND ONE OF THEM WAS IN THIS DOCUMENT.** (1) `systemd-resolved` was holding `:5353` alongside python-zeroconf inside the container. Per-link mDNS was already off (`-mDNS` on both links), so it was neither answering nor querying — precautionary rather than measured — but two sockets on `:5353` under `SO_REUSEPORT` split **unicast** mDNS responses, and the symptom would have been discovery finding most devices most of the time, which reads as a flaky network rather than as a second listener. Closed at the daemon (`settings.Resolve.MulticastDNS = "no"`), which releases the socket and takes a stray `[::]:5353` with it; LLMNR went too, because the container was answering name queries on the household IoT segment. (2) **THE TEST PLAN ASKED FOR A 200 THAT CAN ONLY EVER FAIL** — `curl http://10.0.90.27:8123/` run *on ernst*, when the accept rule is `-s 10.0.90.12/32` and ernst is `10.0.50.10`. A direct curl from the host is refused BY DESIGN; the rows that prove the path are the 302 through Traefik and the listener answering on `127.0.0.1` inside. **THE LESSON: a test plan written from the design rather than from the running thing encodes the author's assumption about who the client is, and a check that cannot pass is worse than no check** — it sends the next person hunting a fault that is the firewall working. Depends on M5, M7, M18. [M24](#m24-featernst-home-assistant) |
+| M24b — HACS | **DEPLOYED AND FULLY VERIFIED 2026-09-18. TWO DEFECTS FOUND BY TESTING RATHER THAN BY READING, and the second one would have made the alerting worse than useless** | [#200](https://github.com/lutzgo/clanarchy/pull/200) | The Home Assistant Community Store on top of [M24](#m24-featernst-home-assistant), as a declarative custom component: `machines/ernst/containers/pkgs/hacs.nix` builds it and one `customComponents` line wires it in, so **HACS ITSELF** is a version in a file and a hash over the bytes like everything else on this host. **WHAT HACS DOWNLOADS IS NOT, AND THAT IS THE WHOLE TRADE** — downloaded integrations and cards are state on `zdata/state`, and `ls /srv/state/home-assistant/custom_components` is the only inventory there is. **THE RELEASE ZIP, NOT THE GIT TAG**: the compiled frontend is ~19 MB of a ~19 MB artifact and is not in the repository, so `fetchFromGitHub` on tag 2.0.5 builds a HACS whose panel is a 404 and whose manifest reads the placeholder `"version": "0.0.0"`. **DEFECT 1, FOUND BY DEPLOYING**: the first deploy created THREE symlinks in `custom_components/` where one was expected, and Home Assistant tried to load two of them as integrations — the module's `copyCustomComponents` runs a bare `find -name manifest.json` and symlinks every parent it finds, and HACS's webpack bundles each contain a file of that name. **nixpkgs KNOWS ABOUT THIS COLLISION AND FIXED ONLY THE OTHER HALF** ([#429790](https://github.com/NixOS/nixpkgs/issues/429790) reports it against HACS at this exact hash; [#432385](https://github.com/NixOS/nixpkgs/pull/432385) path-scoped the *check hook* and left the module alone), **which is precisely why the derivation built green and the defect appeared only on a running hub** — a clean `nix build` is not evidence a custom component is wired correctly. **THE `--skip-pip` HIT IS WORSE THAN FIRST WRITTEN AND IS NOW ALERTED ON**: requirement checking sits behind the same flag (`requirements.py:167`), so Home Assistant does not fail to install a missing requirement, it **never looks** — no `RequirementsNotFound`, no log line naming pip, and for a lazily-importing integration the first evidence is an ImportError days later when a device is first used. With no upstream signal to alert on, `hass-hacs-deps.service` manufactures one, hooked to home-assistant.service's **start** rather than to a timer because a HACS download is inert until restart. **DEFECT 2, FOUND BY TESTING THE CHECKER AGAINST A SYNTHETIC LIBRARY**: built the obvious way it reported `aiogithubapi` — HACS's own requirement, demonstrably installed — as MISSING, because `cfg.package.pythonPath` is the INPUT to the module's local override (`home-assistant.nix:126-137`) and not its result. **A checker that fails on a healthy hub is worse than no checker, because its alert trains you to ignore it**; the fix reads the path off `systemd.services.home-assistant.environment.PYTHONPATH`, the literal string the service gets. **VERIFIED WITH A NEGATIVE CONTROL AND NOT ONLY A HAPPY PATH**: a probe integration with an unsatisfiable requirement took the unit to `Result=exit-code`, surfaced as `clanarchy_container_systemd_unit_failed{container="hass",name="hass-hacs-deps.service"} 1` on the host, and cleared on removal — the chain PR #139 built, exercised end to end. Depends on M24. [M24b](#m24b-feathass-hacs) |
 | M26 — the service index | **DEPLOYED AND FULLY VERIFIED 2026-09-17, same day. It came up on the first try. TWO DEFECTS FOUND BY DEPLOYING, and the first one REMOVED a firewall rule rather than adding one** | [#197](https://github.com/lutzgo/clanarchy/pull/197) | gethomepage at `home.goclan.org`. **The structural decision is that it runs INSIDE `containers.arr`**, co-defining it the way `crowdsec.nix` co-defines `containers.traefik` — because `arr-api-keys.service` stages the six *arr keys it renders, and those keys are EXTRACTED from each service's own config rather than chosen, so a copy in a second namespace is a second source of truth that goes stale when somebody rotates one in a UI. Consequence: **no MAC, no address, no uid** — all three NEXT FREE markers unchanged, and `machines/ernst/networking.nix` records the non-consumption. `protectedHosts` + `wanExposed`, so it is the first name on the internet since M19's `chat` that is **not** an appApiHosts exemption; ledger row L16. Widens exactly four container firewalls (`dashboardAddr`); Jellyfin needed none, having admitted `.13` since M13. **It is not Grafana and must not become it** — no history, no alerting, nothing stored. Depends on M5, M6, M7, M13, M18. [M26](#m26-featernst-homepage) |
 
 ---
@@ -11398,6 +11399,235 @@ VLAN 60 is not on ernst's trunk.
   whole config rather than a diff.
 - **Turning the Raspberry Pi off.** Not until the Zigbee network is re-formed
   and the hub has been used for a while.
+
+---
+
+## M24b — `feat/hass-hacs`
+
+**Split off [M24](#m24-featernst-home-assistant) on 2026-09-17** as a follow-on
+rather than a milestone of its own — no new container, no new VLAN, no new
+address, no ledger row. Deployed and fully verified 2026-09-18 via
+[#200](https://github.com/lutzgo/clanarchy/pull/200).
+
+**Goal.** Install the Home Assistant Community Store, so the household can add
+community integrations, themes and Lovelace cards without a deploy — and do it
+without giving up the property that makes this host worth having.
+
+### The line this draws, and why it is the interesting part
+
+**HACS itself is declarative.** `machines/ernst/containers/pkgs/hacs.nix` builds
+it, one `customComponents` line wires it in, and it is a version in a file plus a
+hash over the bytes like everything else here. Updating it is a deploy.
+
+**What HACS downloads is not, and that is the trade.** HACS is not a store in the
+app-store sense; it is a DOWNLOADER. It writes what you pick into
+`custom_components/` and `www/community/` at runtime, from the browser, and those
+files are state: they land on `zdata/state` next to `.storage`, they are covered
+by that dataset's snapshots, and nothing in this repo says what they are.
+`ls /srv/state/home-assistant/custom_components` is the only inventory there is.
+
+That is stated in the container header out loud rather than left to be
+discovered, because it is the first thing on ernst where the answer to "what is
+running here" is *not* in the repository.
+
+### Two halves that behave differently, and the difference is not obvious
+
+- **Frontend** — themes and Lovelace cards. Pure JavaScript out of
+  `www/community`, no Python, nothing to reconcile. These work exactly as they do
+  on Home Assistant OS, and they are the half **nixpkgs has no equivalent for at
+  all** — `customComponents` covers integrations and nothing else.
+- **Integrations** — Python, and the catch has teeth. See below; it turned out to
+  be worse than the first write-up of it.
+
+### The release zip, not the git tag
+
+`fetchFromGitHub` on tag `2.0.5` builds a HACS **whose web panel is a 404**. The
+compiled frontend (`hacs_frontend/`, ~19 MB of a ~19 MB artifact) is not in the
+repository — it is pulled from the `hacs-frontend` PyPI package and folded in by
+the release workflow. The manifest carries the same tell: in git it reads
+`"version": "0.0.0"`, the placeholder the workflow substitutes.
+
+`stripRoot = false`, because the zip unpacks flat — which is exactly the layout
+`buildHomeAssistantComponent`'s installPhase probes for when it tests
+`[[ -f ./manifest.json ]]`.
+
+**`2.0.5` is genuinely current despite its 2025-01-28 date.** It is the top tag
+and main was last committed 2026-09-05. Upstream is alive and has simply not cut
+a release since 2.0. Do not go looking for a newer tag on the assumption that one
+must exist.
+
+### Defect 1 — the phantom integrations, found by deploying
+
+The first deploy put **three** symlinks in `custom_components/` where one was
+expected:
+
+```
+hacs            -> .../custom_components/hacs
+frontend_es5    -> .../hacs/hacs_frontend/frontend_es5
+frontend_latest -> .../hacs/hacs_frontend/frontend_latest
+```
+
+```
+ERROR [homeassistant.loader] Error loading integration: frontend_latest
+ERROR [homeassistant.loader] Error loading integration: frontend_es5
+    ... return self.manifest["domain"]
+```
+
+**The cause is in the NixOS module, not in the package.** `copyCustomComponents`
+runs a bare `find "$component" -name manifest.json` and symlinks every PARENT
+DIRECTORY it finds (`home-assistant.nix:947-949`). HACS's webpack output puts a
+file of that name in each frontend bundle, mapping `entrypoint.js` to its
+content-hashed filename — not Home Assistant manifests at all: no `domain`, no
+`version`, no `__init__.py` beside them.
+
+**nixpkgs knows about this collision and fixed only the other half.** Issue
+[#429790](https://github.com/NixOS/nixpkgs/issues/429790) reports it — against
+HACS, from this same release zip, at this same hash — and PR
+[#432385](https://github.com/NixOS/nixpkgs/pull/432385) closed it by path-scoping
+the find in `manifest-requirements-check-hook.sh`. The **module-side** find was
+left alone.
+
+**Which is exactly why the derivation built green and the defect appeared only on
+a running hub.** The lesson generalises past this package: *a clean `nix build`
+is not evidence that a custom component is wired correctly*, because the
+build-time and activation-time halves of `buildHomeAssistantComponent` do not
+agree with each other. It is the same shape as M24's own `vb-home-assistant`
+finding — eval proves one thing and the running system proves another — arriving
+one layer up.
+
+Deleting the maps is safe and that was **checked rather than assumed**: the only
+HACS Python files mentioning `manifest.json` are `enums.py` and
+`repositories/integration.py`, both about repositories HACS *downloads*, and the
+hashes the maps contain are already inlined in `hacs_frontend/entrypoint.js`.
+
+The `postInstall` that does it carries a **tripwire**, and that is the part worth
+keeping. Deleting two known paths would silently stop working if a future HACS
+put a stray `manifest.json` somewhere else — and that failure would again be
+invisible at build time and visible only as a phantom integration in a production
+log. Anything nested that survives now fails the derivation.
+
+### The `--skip-pip` hit is worse than first written, and is now alerted on
+
+nixpkgs builds Home Assistant with `--skip-pip`, so the runtime
+`pip install --target deps` that satisfies a downloaded integration's manifest
+requirements never runs. That much was in the first draft of the container
+header. **It understated the problem.** Requirement checking sits behind the
+*same flag*:
+
+```python
+# homeassistant/requirements.py:167
+if not self.hass.config.skip_pip:
+    await self._async_process_integration(integration, done)
+```
+
+So Home Assistant does not fail to install a missing requirement — **it never
+looks**. No `RequirementsNotFound`, no log line naming pip, no repair issue. The
+integration is loaded, it does `import pyfoo`, and the first evidence is an
+ImportError raised from inside somebody else's code. For an integration that
+imports lazily that can be **days** after the download, when a device is first
+used.
+
+**There is therefore no upstream signal to alert on, so one is manufactured.**
+`hass-hacs-deps.service` reads the downloaded manifests and resolves every
+requirement against the live environment, and exits non-zero if any cannot be
+satisfied. Design notes worth keeping:
+
+- **Hooked to `home-assistant.service`'s start, not to a timer.** A timer is the
+  reflex and it is worse in both directions: noisier, because the answer cannot
+  change between restarts, and slower, because a download made at 09:00 waits for
+  the next firing. A HACS download is inert until Home Assistant is restarted —
+  that is why HACS puts a "restart required" notice on every install — so the
+  restart is both when new state takes effect and when it becomes checkable.
+- **`WantedBy`, not `RequiredBy`.** The hub must not be held up or taken down by
+  its own checker.
+- **It is supposed to fail loudly.** A failed unit here is not an inconvenience to
+  be suppressed, it is the entire signal. ernst's container-unit collector turns
+  it into `clanarchy_container_systemd_unit_failed{container="hass"}` →
+  `ContainerSystemdUnitFailed` within the minute — the mechanism PR #139 added
+  after `soularr.service` failed 1,412 times over nine days inside the arr
+  container without ever alerting. **A failed oneshot is the exact case that PR
+  was written for.**
+- **It deliberately does not check a manifest's `dependencies`.** Those name
+  other Home Assistant integrations, and that failure mode is *not* silent —
+  Home Assistant reports it loudly and by name. This exists only for the failure
+  that has no reporting at all.
+- **Store symlinks are skipped, not re-checked.** Their requirements were proven
+  at build time by `manifestRequirementsCheckHook`, which fails the derivation on
+  a miss.
+
+The same report is available on demand, with the remediation block already filled
+in: `nixos-container run hass -- hacs-deps-check`.
+
+### Defect 2 — the checker was wrong in the direction that does real damage
+
+Built the obvious way — `config.services.home-assistant.package.pythonPath` — the
+checker reported **`aiogithubapi` as MISSING**. That is HACS's own requirement,
+which this file demonstrably installs and which `systemctl show` confirms is on
+the service's path.
+
+**`cfg.package` is the INPUT to the module's local override, not its result.** The
+module does not run the package named by that option: it runs an override
+(`home-assistant.nix:126-137`) that folds in `extraComponents`, `extraPackages`,
+and every custom component's propagated inputs. Reading `pythonPath` off the
+option misses all of them.
+
+**A checker that fails on a healthy hub is worse than no checker, because its
+alert trains you to ignore it** — and this one would have fired on every single
+downloaded integration, on a hub where nothing was wrong. It is the
+fails-by-succeeding shape inverted: an instrument that is confidently,
+consistently wrong.
+
+The fix reads the path off
+`systemd.services.home-assistant.environment.PYTHONPATH` — the value the module
+assigns *from the overridden package* (`home-assistant.nix:983`), and so the
+literal string the running service gets. It is the only definition of "what Home
+Assistant can import" that cannot drift.
+
+**Found by testing the checker against a synthetic library, not by reading the
+module.** Six cases in one directory — a store symlink, an integration with no
+requirements, one satisfied, one missing, one present at the wrong version, and
+one behind a `sys_platform == "darwin"` marker — and the satisfied case was the
+one that caught it.
+
+### Verified
+
+Both halves, and the second one with a negative control rather than only a happy
+path — M24's own deploy-day lesson was that *a test plan written from the design
+rather than from the running thing encodes the author's assumption*, and "the
+checker passes" proves nothing about whether it can fail.
+
+- `custom_components/` holds exactly one entry, `hacs ->` the store path; zero
+  `Error loading integration` lines; `journalctl -p err` empty inside the
+  container.
+- `find $out -name manifest.json` returns exactly
+  `custom_components/hacs/manifest.json`.
+- `hass-hacs-deps.service` runs after `home-assistant.service`, `Result=success`,
+  reporting `1 declared in Nix, 0 downloaded`.
+- **Negative control:** a probe integration carrying an unsatisfiable requirement
+  took the unit to `Result=exit-code`, surfaced on the HOST as
+  `clanarchy_container_systemd_unit_failed{container="hass",name="hass-hacs-deps.service"} 1`,
+  and cleared on removal. The chain PR #139 built, exercised end to end for the
+  first time since it was built.
+- The six-case synthetic library classifies correctly: DECLARED / OK (no
+  requirements) / OK (resolved to `aiogithubapi 26.0.0`) / MISSING / VERSION /
+  N/A (marker).
+
+### Left for later
+
+- **An inventory of what HACS has downloaded.** Deliberately absent: there is
+  nothing to declare until something is downloaded, and inventing a format before
+  there is a single entry would be guessing. `hacs-deps-check` already lists them;
+  if the list grows enough to matter, the answer is to package the ones that earn
+  it under `./pkgs` and drop them from HACS — which is the same work
+  `customComponents` exists for, arrived at from the other direction.
+- **Reporting the module-side find upstream.** #429790 is closed and its fix is
+  real but partial; the module half deserves its own issue. Not done here because
+  it is nixpkgs work rather than clan work, and the `postInstall` above makes this
+  host correct either way.
+- **HACS self-update stays broken, on purpose.** Its `update.hacs` entity rewrites
+  `custom_components/hacs`, which is a symlink into the store. The failing button
+  is left visible rather than suppressed: hiding it would mean the next person
+  rediscovers the constraint from a stack trace.
 
 ---
 
