@@ -114,6 +114,81 @@
 #   inside, and the MACHINE is `hass` —
 #   `machinectl`, `nixos-container run hass`, `systemctl restart container@hass`.
 #
+# ── HACS, AND THE LINE IT DRAWS THROUGH THIS CONTAINER ──────────────────────
+#
+#   The Home Assistant Community Store is installed, as a declarative custom
+#   component: ./pkgs/hacs.nix builds it and `customComponents` below is the one
+#   line that wires it in.  HACS ITSELF is therefore under the same control as
+#   everything else on this host — a version in a file, a hash over the bytes,
+#   and an update that is a deploy.
+#
+#   WHAT HACS DOWNLOADS IS NOT.  That is the whole trade and it should be made
+#   out loud rather than discovered: HACS browses GitHub and writes what you
+#   pick into ${configDir}/custom_components (integrations) and
+#   ${configDir}/www/community (themes and Lovelace cards), at runtime, from the
+#   browser.  Those files are STATE.  They land on zdata/state next to .storage,
+#   they are covered by that dataset's snapshots, and nothing in this repo says
+#   what they are.  `ls /srv/state/home-assistant/custom_components` on the host
+#   is the only inventory there is.
+#
+#   THE TWO HALVES BEHAVE DIFFERENTLY AND THE DIFFERENCE IS NOT OBVIOUS:
+#
+#     * FRONTEND — themes and Lovelace cards.  Pure JavaScript served out of
+#       www/community, no Python, nothing to reconcile.  These work exactly as
+#       they do on Home Assistant OS, and they are the half nixpkgs has no
+#       equivalent for at all.
+#
+#     * INTEGRATIONS — Python, and here there is a catch with teeth.  nixpkgs
+#       builds Home Assistant with `--skip-pip`, so the runtime
+#       `pip install --target deps` that satisfies a downloaded integration's
+#       manifest requirements NEVER RUNS.
+#
+#       AND IT IS WORSE THAN THAT, WHICH IS WHY THERE IS A CHECKER BELOW.
+#       Requirement checking sits behind THE SAME FLAG:
+#
+#           # homeassistant/requirements.py:167
+#           if not self.hass.config.skip_pip:
+#               await self._async_process_integration(integration, done)
+#
+#       So Home Assistant does not merely fail to install a missing
+#       requirement — it never looks.  No RequirementsNotFound, no log line
+#       naming pip, no repair issue.  The integration is loaded, it does
+#       `import pyfoo`, and the first evidence is an ImportError raised from
+#       inside somebody else's code.  For an integration that imports lazily
+#       that can be days after the download, when a device is first used.
+#
+#       THERE IS THEREFORE NO UPSTREAM SIGNAL TO ALERT ON, so this file
+#       manufactures one: `hass-hacs-deps.service` below reads the downloaded
+#       manifests and resolves every requirement against the live environment.
+#       It is hooked to home-assistant.service's start rather than to a timer,
+#       because a newly downloaded integration does nothing until Home
+#       Assistant is restarted — so the restart IS the moment the answer can
+#       change.  A failure becomes a host-side metric within the minute through
+#       the container-unit collector, and `hacs-deps-check` run by hand prints
+#       the same report with the `extraPackages` block already filled in.
+#
+#       The fix it names is one option, not a redesign:
+#
+#           services.home-assistant.extraPackages = ps: [ ps.<thedep> ];
+#
+#       in this file, then redeploy.  Requirements with no nixpkgs packaging are
+#       the case where the answer is to package the integration properly in
+#       ./pkgs and drop it from HACS — which is the same work `customComponents`
+#       exists for, arrived at from the other direction.
+#
+#   HACS CANNOT UPDATE ITSELF.  Its `update.hacs` entity rewrites
+#   custom_components/hacs, which here is a symlink into the store.  Pressing
+#   Install fails.  Bumping ./pkgs/hacs.nix is the upgrade path, and the failing
+#   button is left visible on purpose — see that file.
+#
+#   SETUP IS A MANUAL STEP AND CANNOT BE OTHERWISE.  HACS authenticates to
+#   GitHub through the device flow: Settings → Devices & Services → Add
+#   Integration → HACS, then a code typed into github.com/login/device under a
+#   GitHub account.  The token it receives is written to .storage, so it
+#   survives deploys and reboots but is not in this repo and not in clan vars —
+#   there is nothing to seed, which is the same reason the owner account has no
+#   generator (below).
+#
 # ── WHAT IS DELIBERATELY NOT HERE ───────────────────────────────────────────
 #
 #   A clan vars generator.  Home Assistant creates its owner account through
@@ -558,7 +633,82 @@ in
       };
     };
 
-    config = { config, pkgs, lib, ... }: {
+    config = { config, pkgs, lib, ... }: let
+      # HACS — the Home Assistant Community Store.  The derivation, and the
+      # reasons it is built from the release zip rather than the git tag, are in
+      # ./pkgs/hacs.nix; what its presence means for this container is in the
+      # "HACS" section of this file's header.
+      #
+      # `home-assistant.python3Packages.callPackage`, not the bare `pkgs` one,
+      # and that is the same scope nixpkgs uses for everything under
+      # `pkgs.home-assistant-custom-components`.  It matters twice: the
+      # `aiogithubapi` the component propagates has to come from the SAME Python
+      # set Home Assistant itself is built against or the module would install
+      # two incompatible copies, and buildHomeAssistantComponent's
+      # manifest-requirements check runs under that set's interpreter.
+      hacs = pkgs.home-assistant.python3Packages.callPackage ./pkgs/hacs.nix { };
+
+      # ── THE REQUIREMENTS CHECKER ────────────────────────────────────────
+      #
+      # Why it exists at all is in the "HACS" section of the header: under
+      # `--skip-pip` Home Assistant never checks a downloaded integration's
+      # requirements, so there is no upstream failure to alert on and one has
+      # to be manufactured.
+      #
+      # THE INTERPRETER IS THE WHOLE POINT.  A checker that answers "is pyfoo
+      # importable?" against any Python other than the one
+      # home-assistant.service runs under is answering a different question,
+      # and answering it confidently.  So it is the same interpreter, with
+      # PYTHONPATH set to the same `package.pythonPath` the module hands the
+      # service (home-assistant.nix:983) — what this can import is by
+      # construction what Home Assistant can import.
+      #
+      # `packaging` has to be added explicitly.  It is NOT in the runtime
+      # PYTHONPATH — checked, 168 entries and none of them packaging — which is
+      # a little surprising for a requirements checker to need and exactly the
+      # kind of thing that would otherwise be discovered as an ImportError in
+      # the alerting path itself.
+      #
+      # ── READ THE PATH OFF THE SERVICE, NOT OFF THE PACKAGE OPTION ────────
+      #
+      # `config.services.home-assistant.package.pythonPath` IS THE WRONG
+      # ANSWER, and it is wrong in the direction that does real damage.  The
+      # module does not run the package named by that option: it runs a LOCAL
+      # override of it (home-assistant.nix:126-137) that folds in
+      # `extraComponents`, `extraPackages`, and every custom component's
+      # propagated inputs.  `cfg.package` is the input to that override, not
+      # its result, so its pythonPath is missing all of them.
+      #
+      # Caught by testing the checker against a synthetic library rather than
+      # by reading the module: it reported `aiogithubapi` — HACS's own
+      # requirement, which this file demonstrably installs and which
+      # `systemctl show` confirms is on the service's path — as NOT INSTALLED.
+      # A checker that fails on a healthy hub is worse than no checker, because
+      # its alert trains you to ignore it.
+      #
+      # `systemd.services.home-assistant.environment.PYTHONPATH` is the value
+      # the module assigns from the overridden package (home-assistant.nix:983),
+      # so it is the literal string the running service gets — the only
+      # definition of "what Home Assistant can import" that cannot drift.
+      hassPythonPath = config.systemd.services.home-assistant.environment.PYTHONPATH;
+
+      # The interpreter itself is safe to take from the option: an override
+      # that adds packages does not change the Python VERSION, and this is only
+      # used to pick the matching `packaging`.
+      checkPython =
+        config.services.home-assistant.package.python3Packages.python.withPackages
+          (ps: [ ps.packaging ]);
+
+      hacsDepsCheck = pkgs.writeShellApplication {
+        name = "hacs-deps-check";
+        runtimeInputs = [ ];
+        text = ''
+          export PYTHONPATH=${hassPythonPath}
+          exec ${checkPython}/bin/python3 \
+            ${./hacs-deps-check.py} "''${1:-${configDir}/custom_components}"
+        '';
+      };
+    in {
       system.stateVersion = "26.05";
 
       ##########################################################################
@@ -768,6 +918,26 @@ in
           "backup"        # HA's own backup UI, onto the state tree
         ];
 
+        # ── HACS ──────────────────────────────────────────────────────────
+        #
+        # One entry, and the module does the rest: it symlinks
+        # $out/custom_components/hacs into ${configDir}/custom_components, adds
+        # `hacs` to the component list, and — the part that is easy to miss —
+        # folds the component's propagated `aiogithubapi` into the Home
+        # Assistant Python environment (home-assistant.nix:135).  That last one
+        # is not a nicety; see ./pkgs/hacs.nix on `--skip-pip`.
+        #
+        # THE ACTIVATION IS SAFE FOR WHAT HACS DOWNLOADS.  The module's
+        # preStart sweeps ${configDir}/custom_components, but it only unlinks
+        # entries that are SYMLINKS POINTING INTO THE STORE
+        # (home-assistant.nix:937-942).  Everything HACS fetches is a real
+        # directory of real files, so a deploy walks straight past it.  A
+        # component that later gains a nixpkgs packaging is therefore a
+        # two-step migration and not a collision: remove it in HACS first, add
+        # it here second, because a store symlink and a downloaded directory
+        # cannot occupy the same name.
+        customComponents = [ hacs ];
+
         # ── configuration.yaml IS DECLARATIVE AND READ-ONLY ────────────────
         #
         # `configWritable` is left at its `false` default, so the file is a
@@ -875,9 +1045,66 @@ in
       # rather than a no-op — see the note on `hassUid` in the let block above,
       # which is where the number this container's files carry is documented.
 
+      ##########################################################################
+      # The HACS requirements checker.
+      ##########################################################################
+
+      # ── HOOKED TO HOME ASSISTANT'S START, NOT TO A TIMER ──────────────────
+      #
+      # A timer would be the reflex and it would be worse in both directions:
+      # noisier, because the answer cannot change between restarts, and slower,
+      # because a download made at 09:00 would wait for the next firing.
+      #
+      # The answer changes at exactly one moment.  A HACS download is inert
+      # until Home Assistant is restarted — that is why HACS itself puts a
+      # "restart required" notice on every install — so the restart is both the
+      # moment new state takes effect and the moment it becomes checkable.
+      # `wantedBy` + `after` on home-assistant.service puts the check there.
+      #
+      # WantedBy, NOT RequiredBy, and the asymmetry is deliberate: Home
+      # Assistant must not be held up or taken down by its own checker.  A
+      # `Wants=` dependency lets this fail on its own while the hub runs, which
+      # is the correct blast radius for a report about an integration that was
+      # already not going to work.
+      #
+      # IT IS SUPPOSED TO FAIL LOUDLY.  A failed unit here is not an
+      # inconvenience to be suppressed — it is the entire signal, because the
+      # thing it reports has no upstream signal at all.  ernst's container-unit
+      # collector walks `machinectl list` on a one-minute timer and turns it
+      # into `clanarchy_container_systemd_unit_failed{container="hass"}` →
+      # `ContainerSystemdUnitFailed` (service-modules/monitoring.nix, added by
+      # PR #139 after soularr.service failed 1,412 times over nine days inside
+      # the arr container without ever alerting).  A failed ONESHOT is the
+      # exact case that PR was written for: nothing stays in a bad state long
+      # enough to be noticed any other way.
+      systemd.services.hass-hacs-deps = {
+        description = "Check HACS-downloaded integrations for unsatisfiable Python requirements";
+        wantedBy = [ "home-assistant.service" ];
+        after    = [ "home-assistant.service" ];
+        serviceConfig = {
+          Type            = "oneshot";
+          RemainAfterExit = true;
+          ExecStart       = "${hacsDepsCheck}/bin/hacs-deps-check ${configDir}/custom_components";
+
+          # Read-only, and as the service user rather than root: it inspects
+          # the same tree home-assistant.service owns and has no business being
+          # able to change it.
+          User            = "hass";
+          Group           = "hass";
+          ProtectSystem   = "strict";
+          ProtectHome     = true;
+          PrivateTmp      = true;
+          NoNewPrivileges = true;
+        };
+      };
+
       # `curl` is the test plan's instrument for proving this backend is
-      # reachable from Traefik and from nowhere else.
-      environment.systemPackages = with pkgs; [ curl ];
+      # reachable from Traefik and from nowhere else.  `hacs-deps-check` is the
+      # same report the unit above emits, on demand and with the
+      # `extraPackages` block already filled in:
+      #
+      #     nixos-container run hass -- hacs-deps-check
+      environment.systemPackages = with pkgs; [ curl hacsDepsCheck ];
       documentation.enable       = false;
       documentation.nixos.enable = false;
     };
