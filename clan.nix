@@ -413,6 +413,16 @@
             # ai0, one /64 along so the two links cannot be confused in a
             # routing table. Carries Open WebUI's chat AND its STT.
             { name = "webui";      address = "fdca:fe91::1"; allowedSource = "fdca:fe91::2"; }
+            # M27's karakeep container, one /64 further along again.  Auto-
+            # tagging and summarisation of every saved page.
+            #
+            # IT COSTS NO VRAM, which is why it is a third consumer rather than
+            # an argument about the budget: containers/karakeep.nix names
+            # `qwen3-coder-30b` as its text model — the one llama-swap already
+            # holds resident for the coding agent — so nothing is evicted and
+            # nothing is loaded twice.  Naming any other text model there would
+            # turn every bookmark into an eviction and stall the agent.
+            { name = "karakeep";   address = "fdca:fe92::1"; allowedSource = "fdca:fe92::2"; }
           ];
         };
 
@@ -916,6 +926,23 @@
             # a 404.  M22's test plan checks for `immich_*` series; if they are
             # not there, this line comes out again and says so.
             immichAddress = "10.0.90.25";
+
+            # Miniflux, added with M27.  Its own container, its own address,
+            # and — like Jellyfin's and Navidrome's, unlike Immich's — metrics
+            # on the SAME port as the application.
+            #
+            # WHAT MAKES THAT ACCEPTABLE HERE is a second gate the others do
+            # not have: Miniflux's own `METRICS_ALLOWED_NETWORKS` names this
+            # container and nothing else, so opening the port to it opens
+            # /metrics to it and not the reader API.  Both halves are set in
+            # containers/miniflux.nix, and a missing second half presents as
+            # `up == 0` with a silent container — check it first.
+            #
+            # M27'S OTHER SERVICE GETS NO TARGET, stated so the asymmetry is
+            # not read as an omission: Karakeep exposes no metrics endpoint,
+            # and SN3 is the rule against pointing a job at one that does not
+            # exist.
+            minifluxAddress = "10.0.90.28";
           };
 
           # M19.  The inference stack — THE TARGET M13 WANTED AND COULD NOT
@@ -988,6 +1015,36 @@
       software = {
         module.input = "self";
         module.name  = "@clanarchy/software";
+        # ── M27's two extensions, for LibreWolf on lgo's machines ───────────
+        #
+        # Karakeep saves a page to karakeep.goclan.org; Floccus syncs the
+        # browser's own bookmark tree into the same Karakeep.  The other three
+        # browsers get the same pair through three other mechanisms — see the
+        # header of machines/miralda/home-modules/browsers.nix for the table of
+        # which and why.
+        #
+        # THE IDs ARE WebExtension IDs, not AMO slugs, and they are the values
+        # NUR's rycee.firefox-addons records for the same two add-ons — so the
+        # Firefox and LibreWolf halves of this milestone install identical
+        # extensions by two different routes.
+        #
+        # biene/sabine KEEPS THE DEFAULT `[ ]` and that is deliberate: Sabine
+        # has no Karakeep account and no reason for either.  An empty list also
+        # leaves `pkgs.librewolf` un-overridden there, so biene keeps the
+        # cached binary rather than rebuilding a wrapper for two policy lines.
+        roles.librewolf.machines.miralda.settings.extensions =
+          let amo = id: "https://addons.mozilla.org/firefox/downloads/latest/${id}/latest.xpi";
+          in [
+            { id = "addon@karakeep.app";        installUrl = amo "addon@karakeep.app"; }
+            { id = "floccus@handmadeideas.org"; installUrl = amo "floccus@handmadeideas.org"; }
+          ];
+        roles.librewolf.machines.jens.settings.extensions =
+          let amo = id: "https://addons.mozilla.org/firefox/downloads/latest/${id}/latest.xpi";
+          in [
+            { id = "addon@karakeep.app";        installUrl = amo "addon@karakeep.app"; }
+            { id = "floccus@handmadeideas.org"; installUrl = amo "floccus@handmadeideas.org"; }
+          ];
+
         # browsers — lgo
         roles.librewolf.machines.miralda.settings.user  = "lgo";
         roles.firefox.machines.miralda.settings.user    = "lgo";

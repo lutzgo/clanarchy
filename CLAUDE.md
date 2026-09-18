@@ -111,7 +111,7 @@ All modules are explicitly imported in `flake.nix` (no auto-discovery):
 |------|---------|
 | `configuration.nix` | Hostname, timezone, ZFS/systemd-boot, SSH daemon, per-user overrides |
 | `disko.nix` | Thin wrapper over `modules/disko/base.nix` — NVMe device path, encryption on |
-| `home-modules/browsers.nix` | HM: Chromium/LibreWolf per-user config |
+| `home-modules/browsers.nix` | HM: the four-browser stack. **Shared, despite the path** — nothing in `flake.nix` imports it; `modules/users/lgo.nix` does, so jens gets it too and one edit changes both. Its header carries the table of which extension mechanism each browser admits, and why each is the only one that works |
 | `home-modules/console-desktop.nix` | HM: TTY / console-only fallback session for `lgo` |
 | `yubikey_ed25519.pub`, `yubikey_rsa.pub`, `clanarchy_admin.pub` | Committed SSH pubkeys used across the clan |
 | `facter.json` | nixos-facter hardware fingerprint |
@@ -157,6 +157,8 @@ No `stylix.nix` or `wallpapers.nix`: `flake.nix` imports the shared `modules/the
 | `hardware-configuration.nix` | Bootloader + kernel modules for the AM5 / X870E board |
 | `htpc.nix` | `go` user (couch account, deliberately not in `wheel`) + password vars generator; Steam library symlinked onto `zdata/games` |
 | `containers/romm.nix` | RomM — ROM library manager, podman tier's third occupant. Masters `zdata/roms`, which Syncthing replicates to birte's RetroDECK. Also declares the `rom-import` command. See [docs/guides/birte-emulation.md](docs/guides/birte-emulation.md) |
+| `containers/miniflux.nix` | Miniflux — the feed reader (M27). nspawn, `10.0.90.28`, local PostgreSQL on `/srv/state/miniflux`. Takes **no uid** (DynamicUser). `appApiHosts` + native OIDC, **LAN-only** — the one exempt name not in `wanExposed`. The fleet's first real Prometheus application target since M19 |
+| `containers/karakeep.nix` | Karakeep — bookmarks, page archives and search (M27). nspawn, `10.0.90.29`, uid/gid 3038. The **Floccus backend** for miralda's and jens's browsers, and what retires the Linkwarden `browsers.nix` referred to and that never existed. A second leg (`ai0`, `fdca:fe92::`) to llama-swap for auto-tagging against the model already resident. Public, ledger row L17 |
 | `rom-import.sh` | Body of `rom-import` (moving finished downloads into the ROM library). Not standalone — `containers/romm.nix` prepends the uid/gid/path constants and wraps it in `writeShellApplication`, so the tool cannot drift from the deployment |
 
 ### Shared Module Layout (`modules/`)
@@ -231,8 +233,8 @@ Custom clan-service modules registered in `clan.nix` under `modules."@clanarchy/
 | `@clanarchy/users` | User dispatch: `lgo` / `sabine` (imports the matching `modules/users/*.nix`) | miralda + jens (lgo), biene (sabine) |
 | `@clanarchy/yubikey` | Imports `modules/hardware/yubikey.nix` on target machines | miralda, jens |
 | `@clanarchy/printing` | Imports `modules/hardware/printing.nix` on target machines | miralda, jens |
-| `@clanarchy/software` | Per-user browser + email software dispatch (librewolf, firefox, chromium, chrome, edge, thunderbird) | miralda + jens (lgo), biene (sabine), birte (deck — chromium + chrome, for Desktop Mode) |
-| `@clanarchy/local-ai` | Ollama + OpenCode (self-hosted LLM stack). `opencode` can reach a remote ollama over a restricted SSH port-forward rather than needing one locally | ollama: miralda, ernst; opencode: miralda (local), jens (tunnelled to ernst) |
+| `@clanarchy/software` | Per-user browser + email software dispatch (librewolf, firefox, chromium, chrome, edge, thunderbird). The `librewolf` role also takes `extensions`, installed as an `ExtensionSettings` policy merged into the wrapped package — see `service-modules/software.md` for why neither `/etc` policies nor `nixExtensions` work there | miralda + jens (lgo), biene (sabine), birte (deck — chromium + chrome, for Desktop Mode) |
+| `@clanarchy/local-ai` | Self-hosted LLM stack + OpenCode. **ernst has not run Ollama since M19** — llama-swap in front of `llama-server` took its place and its port (11434); the role is still named `ollama` for continuity. miralda keeps a real local Ollama (ROCm). llama-swap binds loopback only, so in-container consumers reach it through `exposeOn`: a per-consumer point-to-point /128 ULA with its own socket proxy and one firewall accept — monitoring (`fdca:fe90::`), Open WebUI (`fdca:fe91::`), Karakeep (`fdca:fe92::`). `opencode` reaches ernst over a restricted SSH port-forward rather than needing a local model | ollama role: miralda, ernst; opencode: miralda (local), jens (tunnelled to ernst) |
 | `@clanarchy/monitoring` | `client`: node_exporter (+ optional zfs / smartctl / systemd) on every machine. `server`: Prometheus + Alertmanager + Grafana in one nspawn container. **Scrape targets are derived from `roles.client` membership**, so adding a machine to the role is the only step needed to monitor it | client: all five; server: ernst |
 
 Plus stock clan services used verbatim: `sshd`, `zerotier`, `syncthing`, `wifi`.

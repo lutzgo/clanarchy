@@ -367,6 +367,47 @@
           # first name added to `wanExposed` since M19's `chat` that is not an
           # appApiHosts exemption.  See containers/ingress-policy.nix.
           ./machines/ernst/containers/homepage.nix
+          # M27, first half.  Miniflux — the feed reader, on the NSPAWN tier
+          # because `services.miniflux` is a first-class NixOS module.  A Go
+          # binary and a PostgreSQL database; no dataset of its own, because a
+          # database is `zdata/state`'s write profile exactly.
+          #
+          # It is the INTAKE half of the reading stack; karakeep.nix below is
+          # the keep half.  There is no runtime coupling between them at all —
+          # no shared database, no API call either way — and they ship together
+          # because each is useless alone, not because either needs the other
+          # to run.
+          #
+          # `miniflux.goclan.org` with NO forward-auth (the Fever and Google
+          # Reader APIs carry credentials in the request and have no cookie
+          # jar), and LAN-ONLY: it is the one appApiHosts name on this host
+          # that is deliberately absent from `wanExposed`.
+          #
+          # TAKES NO uid FROM THE 3000 BLOCK — the daemon runs under
+          # DynamicUser and the only id that lands on zdata is PostgreSQL's
+          # well-known 71.  machines/ernst/networking.nix records the
+          # non-consumption rather than leaving a gap.
+          ./machines/ernst/containers/miniflux.nix
+          # M27, second half.  Karakeep — bookmarks, full-page archives and the
+          # search over both, on the NSPAWN tier because `services.karakeep` is
+          # a first-class NixOS module (four units plus Meilisearch).
+          #
+          # IT IS THE FLOCCUS BACKEND, which is what makes this a stack: the
+          # browser add-on is installed declaratively for lgo on miralda and
+          # jens, so the browsers' own bookmark trees and the archived copies
+          # land in ONE database.  It also retires the Linkwarden that browsers.nix
+          # has referred to since it was written and that has never existed here.
+          #
+          # A SECOND LEG, like home-assistant.nix but not on a VLAN: a
+          # point-to-point /128 veth to the host's llama-swap, so auto-tagging
+          # runs against the model the coding agent already has resident.  The
+          # peer is declared in clan.nix's `@clanarchy/local-ai` instance;
+          # without that entry there is a socket nothing listens on.
+          #
+          # Public on `karakeep.goclan.org` with NO forward-auth — the browser
+          # extension and the Floccus adapter both carry bearer tokens and
+          # neither has a UI.  Ledger row L17.
+          ./machines/ernst/containers/karakeep.nix
           # microvm.nix's host module, and the one guest that uses it (M3).
           # The import lives here rather than inside wg-qbittorrent.nix
           # because `inputs` reaches a machine module via _module.args, and

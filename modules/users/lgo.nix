@@ -5,7 +5,16 @@ let
   editorDesc = if cfg.editor == "govim" then "Neovim" else "Helix";
 
   # CRX install via first_run_tabs: patched chromium reads /etc/chromium/initial_preferences;
-  # --extension-mime-request-handling=always-prompt-for-install (baked in clan.nix overlay).
+  # --extension-mime-request-handling=always-prompt-for-install (baked in the
+  # lib/overlays.nix overlay, applied through clan.nix's pkgsForSystem).
+  #
+  # THIS IS THE SECOND OF TWO CHROMIUM MECHANISMS, and the belt-and-braces one.
+  # The first is `programs.chromium.extensions` in
+  # machines/miralda/home-modules/browsers.nix, which writes External
+  # Extensions JSON and installs silently.  This one opens a tab per CRX on
+  # first run so a human sees and confirms each install.  THE TWO LISTS HAVE
+  # DRIFTED — SideTab Pro is over there and not here — and that drift predates
+  # M27 and is not fixed by it.  New entries go in both.
   crxUrl = id:
     "https://clients2.google.com/service/update2/crx"
     + "?response=redirect&acceptformat=crx2,crx3"
@@ -18,7 +27,41 @@ let
     (crxUrl "oboonakemofpalcgghocfoadofidjkkk") # KeePassXC-Browser
     (crxUrl "dbepggeogbaibhgnhhndojpepiihcmeb") # Vimium
     (crxUrl "efobhjmgoddhfdhaflheioeagkcknoji") # Vertical Tabs (nicedoc.io)
+    (crxUrl "kgcjekpmcjjogibpjebkhaanilehneje") # Karakeep (M27)
+    (crxUrl "fnaicdffflnofjppbagibeoednhnbjhg") # floccus bookmarks sync (M27)
   ];
+
+  # ── google-chrome's extensions, which need a THIRD mechanism (M27) ─────────
+  #
+  # Chrome is the one browser here where neither of the two above works:
+  # home-manager asserts against `programs.chromium.extensions` for
+  # google-chrome on Linux, and `initial_preferences` is a NixOS-patched
+  # chromium behaviour that stock Chrome does not have.  What stock Chrome DOES
+  # honour, and ungoogled-chromium does not, is the enterprise policy tree —
+  # so this is the one place in the fleet where an ExtensionSettings policy is
+  # the right answer rather than a dead letter.
+  #
+  # `normal_installed`, NOT `force_installed`.  Both install the extension;
+  # force_installed additionally makes it impossible to disable or remove from
+  # chrome://extensions.  Nothing here is a security control that has to
+  # survive its own user — these are two conveniences — and an extension a
+  # human cannot turn off is a support problem waiting to happen.
+  #
+  # ONLY M27's TWO.  Chrome's stated role in this fleet is "work, DRM and SSO
+  # that Chromium refuses" and it deliberately carries no hardening; uBlock,
+  # KeePassXC and Vimium are NOT added here, because widening what Chrome is
+  # for is a separate decision from keeping one bookmark tree consistent
+  # across browsers.
+  chromeManagedExtensions = {
+    "kgcjekpmcjjogibpjebkhaanilehneje" = {   # Karakeep
+      installation_mode = "normal_installed";
+      update_url        = "https://clients2.google.com/service/update2/crx";
+    };
+    "fnaicdffflnofjppbagibeoednhnbjhg" = {   # floccus bookmarks sync
+      installation_mode = "normal_installed";
+      update_url        = "https://clients2.google.com/service/update2/crx";
+    };
+  };
 in
 {
   imports = [ ../caldav-sync.nix ];
@@ -120,6 +163,31 @@ in
     # The extension list is lgo-specific and lives here.
     environment.etc."chromium/initial_preferences".text =
       builtins.toJSON { first_run_tabs = chromiumFirstRunTabs; };
+
+    # google-chrome's managed policy (M27).  See `chromeManagedExtensions` in
+    # the let block for why Chrome needs a third mechanism and why these are
+    # `normal_installed`.
+    #
+    # /etc/opt/chrome/policies/managed/ IS CHROME'S PATH, not Chromium's.  The
+    # two trees are separate and a policy in the wrong one is silently ignored
+    # — `chrome://policy` showing an empty table is what that looks like.  The
+    # Chromium tree (/etc/chromium/policies/managed/privacy.json) is written by
+    # the chromium role in service-modules/software.nix and is untouched by
+    # this.
+    #
+    # A SEPARATE FILE RATHER THAN A `default.json`: the managed directory is
+    # read as a whole and the files are merged, so a distinct name keeps this
+    # user-scoped list from colliding with anything a future machine-wide
+    # Chrome policy wants to set.
+    #
+    # NOTE THE SCOPE MISMATCH, which is pre-existing and shared with
+    # initial_preferences above: /etc is machine-wide while this list is
+    # lgo-specific.  It is harmless on miralda and jens, which are lgo's
+    # machines; it would not be on a machine with a second Chrome user, and
+    # that is the point at which this moves into the software role with a
+    # `user` setting.
+    environment.etc."opt/chrome/policies/managed/lgo-extensions.json".text =
+      builtins.toJSON { ExtensionSettings = chromeManagedExtensions; };
 
     # Reset ~/.config/chromium/First Run on extension list change (hash in /persist).
     systemd.services.chromiumFirstRun = {

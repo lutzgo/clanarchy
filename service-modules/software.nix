@@ -23,26 +23,128 @@
   # ═══════════════════════════════════════════════════════════════════════════
 
   # ── LibreWolf ──────────────────────────────────────────────────────────────
-  # System package + privacy overrides + KeePassXC native-messaging manifest.
-  # No HM module exists for LibreWolf; configuration is via home.file.
+  # System package + privacy overrides + KeePassXC native-messaging manifest,
+  # plus (since M27) declaratively installed extensions.
+  #
+  # ── A CORRECTION THIS BLOCK USED TO CARRY ─────────────────────────────────
+  #
+  # It said "No HM module exists for LibreWolf; configuration is via
+  # home.file."  The first half is FALSE at this pin — home-manager 26.05 ships
+  # `programs.librewolf`, built from the same `mkFirefoxModule` as Firefox, with
+  # `profiles.<n>.extensions.packages` and `policies` both available.
+  #
+  # THE SECOND HALF IS KEPT ANYWAY, and deliberately.  Adopting the HM module
+  # would mean:
+  #
+  #   * `programs.librewolf.settings` generates
+  #     ~/.librewolf/librewolf.overrides.cfg — EXACTLY the file the home.file
+  #     below writes.  The two cannot both own it.
+  #   * `programs.librewolf.enable` puts a second, separately-wrapped LibreWolf
+  #     in `home.packages` beside the systemPackages one here.
+  #
+  # That is a migration of working configuration for no gain, on two users'
+  # daily browser.  Extensions get a mechanism that does not touch any of it —
+  # see `extensions` below.
   roles.librewolf = {
-    description = "LibreWolf browser: system package, privacy overrides, KeePassXC native messaging.";
+    description = "LibreWolf browser: system package, privacy overrides, KeePassXC native messaging, policy-installed extensions.";
     interface.options.user = lib.mkOption {
       type        = lib.types.str;
       default     = "sabine";
       description = "Home Manager user to configure LibreWolf for.";
     };
 
+    # ── Extensions, as an ExtensionSettings policy (M27) ─────────────────────
+    #
+    # MACHINE-WIDE, NOT PER-USER, which is why this is a sibling of `user`
+    # rather than something under it.  A Firefox-family policy lives in the
+    # wrapped PACKAGE, and `environment.systemPackages` installs one package
+    # for the whole machine.  That matches how the `chromium` role's managed
+    # policies already work here, and it is fine because the machines this is
+    # set on have one LibreWolf user each.
+    interface.options.extensions = lib.mkOption {
+      default = [ ];
+      description = ''
+        Extensions to install into LibreWolf via an `ExtensionSettings`
+        enterprise policy.  Empty (the default) changes nothing.
+
+        WHY A POLICY AND NOT `nixExtensions`.  nixpkgs' `wrapFirefox` has a
+        `nixExtensions` argument that store-pins the .xpi, which would be
+        strictly better — except that it also emits
+        `ExtensionSettings."*".installation_mode = "blocked"` with the message
+        "You can't have manual extension mixed with nix extensions".  On these
+        machines uBlock Origin, KeePassXC-Browser and Vimium are installed BY
+        HAND in LibreWolf, so that setting would uninstall the browser's
+        existing extensions as a side effect of adding one.
+
+        WHY THIS MERGES CLEANLY.  LibreWolf ships its own
+        distribution/policies.json containing an `ExtensionSettings` block —
+        a `"*"` rule set to `allowed`, a `normal_installed` entry for uBlock
+        Origin, and blocks on Mozilla's bundled search engines.  `wrapFirefox`
+        combines that file with the policies generated from `extraPolicies`
+        using `jq -s '.[0] * .[1]'`, a DEEP merge, so entries added here land
+        beside LibreWolf's own rather than replacing them.
+
+        WHY NOT /etc/librewolf/policies/policies.json, which looks simpler: a
+        policy file in /etc REPLACES the distribution one instead of merging
+        with it, so it would silently discard LibreWolf's entire shipped policy
+        set — telemetry blocks, search-engine removals and all.
+
+        WHAT IT COSTS.  `installUrl` is fetched at first launch rather than
+        pinned in the store, so this is declarative in the sense the Chromium
+        External Extensions mechanism is, not in the sense the Firefox NUR
+        packages are.  Point `installUrl` at a `file://` path under a
+        NUR-fetched .xpi if that ever matters more than the convenience.
+      '';
+      type = lib.types.listOf (lib.types.submodule {
+        options = {
+          id = lib.mkOption {
+            type        = lib.types.str;
+            example     = "floccus@handmadeideas.org";
+            description = ''
+              The WebExtension ID from the add-on's manifest — NOT the AMO slug
+              and not a Chrome Web Store ID.  A wrong value here installs
+              nothing and reports nothing; `about:debugging` on an installed
+              copy is where to read the real one.
+            '';
+          };
+          installUrl = lib.mkOption {
+            type        = lib.types.str;
+            example     = "https://addons.mozilla.org/firefox/downloads/latest/floccus@handmadeideas.org/latest.xpi";
+            description = ''
+              Where the .xpi comes from.  AMO's `latest` URL is the same form
+              LibreWolf itself uses for uBlock Origin, and it follows upstream
+              releases; a `file://` path into the Nix store pins it instead.
+            '';
+          };
+        };
+      });
+    };
+
     perInstance = { settings, ... }: {
-      nixosModule = { pkgs, ... }:
+      nixosModule = { pkgs, lib, ... }:
         let
           # Capture the NixOS-level keepassxc path for the native-messaging manifest.
           # Using a let-binding so the HM module can reference it via closure without
           # receiving a separate pkgs argument.
           keepassxcProxy = "${pkgs.keepassxc}/bin/keepassxc-proxy";
+
+          # `.override` on the WRAPPER, which is what `pkgs.librewolf` is
+          # (`wrapFirefox librewolf-unwrapped`).  Overriding the unwrapped
+          # package would do nothing — policies are a property of the wrapper.
+          librewolfPackage =
+            if settings.extensions == [ ] then pkgs.librewolf
+            else pkgs.librewolf.override {
+              extraPolicies.ExtensionSettings = lib.listToAttrs (map (e: {
+                name  = e.id;
+                value = {
+                  installation_mode = "normal_installed";
+                  install_url       = e.installUrl;
+                };
+              }) settings.extensions);
+            };
         in
         {
-          environment.systemPackages = [ pkgs.librewolf pkgs.keepassxc ];
+          environment.systemPackages = [ librewolfPackage pkgs.keepassxc ];
 
           home-manager.users.${settings.user} = { ... }: {
 

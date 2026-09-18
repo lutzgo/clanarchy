@@ -14,6 +14,27 @@
 # Extension first-run tabs and the chromiumFirstRun reset service
 # are in modules/users/lgo.nix (lgo-specific extension list).
 #
+# ── THIS FILE IS SHARED, DESPITE ITS PATH ───────────────────────────────
+#
+# It lives under machines/miralda/ for historical reasons only.  Nothing in
+# flake.nix imports it; modules/users/lgo.nix does, so every machine carrying
+# `roles.lgo` gets it — miralda AND jens.  One edit here changes both.
+#
+# ── FOUR BROWSERS, FOUR DIFFERENT EXTENSION MECHANISMS ──────────────────
+#
+# That is not untidiness waiting to be unified; each is the only thing that
+# works for its browser, and the reasons are written at each site:
+#
+#   ungoogled-chromium  External Extensions JSON (the forcelist policy is
+#                       ignored by this fork), fetched from the Web Store
+#   Firefox             NUR-packaged .xpi, STORE-PINNED and hash-verified
+#   LibreWolf           an ExtensionSettings policy merged into the wrapper's
+#                       own distribution/policies.json, fetched from AMO
+#                       (service-modules/software.nix, values in clan.nix)
+#   google-chrome       an ExtensionSettings managed policy in /etc
+#                       (modules/users/lgo.nix — HM asserts against setting
+#                       `programs.chromium.extensions` for Chrome on Linux)
+#
 # ============================================================
 { pkgs, inputs, ... }:
 
@@ -73,28 +94,32 @@ in
 
     # ── Extensions ────────────────────────────────────────────────────
     #
-    # Strategy: programs.chromium.extensions generates an
-    # ExtensionInstallForcelist managed policy.  Each entry needs an
-    # updateUrl; omitting it falls back to Google's CWS update server
-    # (https://clients2.google.com/service/update2/crx), which
-    # ungoogled-chromium can still reach.
+    # THE MECHANISM IS External Extensions, NOT ExtensionInstallForcelist.
+    # This block used to carry two stacked comments that contradicted each
+    # other on exactly that point; the forcelist one was wrong twice over.
     #
-    # chromium-web-store is listed first; it bootstraps the Store UI so
-    # that additional extensions can also be installed manually without
-    # touching this file.
+    #   What HM actually does: `programs.chromium.extensions` writes
+    #   ~/.config/chromium/External Extensions/<id>.json per entry, each
+    #   containing an `external_update_url`.  Chromium reads that directory on
+    #   startup and installs what it finds.
     #
-    # IDs marked ⚠ were supplied in the spec and match the expected
-    # Chrome Web Store format but could not be confirmed via a live Store
-    # lookup at generation time.  If an extension fails to auto-install,
-    # open the (bootstrapped) Web Store UI and search by name to find the
-    # correct ID, then update this file.
-    # ── Extensions ────────────────────────────────────────────────────
+    #   Why the forcelist would not work here even if HM emitted one:
+    #   ungoogled-chromium IGNORES ExtensionInstallForcelist entirely
+    #   (ungoogled-software/ungoogled-chromium#2523) — the policy depends on
+    #   Web Store update infrastructure the fork removes, and the symptom is
+    #   nothing at all in chrome://extensions and nothing in the log.
     #
-    # HM writes ~/.config/chromium/External Extensions/<id>.json per entry.
-    # ungoogled-chromium blocks external extension installation by default;
-    # --extension-mime-request-handling=always-prompt-for-install (in
-    # commandLineArgs below) re-enables the External Extensions mechanism
-    # so that CWS entries auto-install on next launch.
+    # ungoogled-chromium blocks the External Extensions mechanism by default
+    # too; `--extension-mime-request-handling=always-prompt-for-install`
+    # re-enables it.  That flag is baked into the binary by the overlay in
+    # lib/overlays.nix — NOT by a `commandLineArgs` in this file, which an
+    # earlier version of this comment claimed and which would be ignored,
+    # since clan-core force-sets `nixpkgs.pkgs` before any module runs.
+    #
+    # THE SECOND LIST.  modules/users/lgo.nix carries a parallel set of CRX
+    # URLs in `chromiumFirstRunTabs`, a belt-and-braces path that prompts on
+    # first run.  THE TWO HAVE DRIFTED — that list is missing SideTab Pro, and
+    # the drift predates M27 and is not fixed here.  New entries go in both.
     #
     # IDs marked ⚠ were spec-provided and could not be confirmed against the
     # live Web Store — if one fails to install, open chrome://extensions and
@@ -110,8 +135,6 @@ in
       # KeePassXC-Browser — verified CWS: oboonakemofpalcgghocfoadofidjkkk
       { id = "oboonakemofpalcgghocfoadofidjkkk"; }
       # Vimium — verified CWS: dbepggeogbaibhgnhhndojpepiihcmeb
-      # After first launch: Options → Custom key mappings →
-      #   map <a-b> createTab https://YOUR_LINKWARDEN_INSTANCE/links
       { id = "dbepggeogbaibhgnhhndojpepiihcmeb"; }
       # SideTab Pro (vertical tabs) — ⚠ ID spec-provided, unverified
       { id = "fehfojhhnbfbclgpffmffigfgngbpnmj"; }
@@ -122,8 +145,26 @@ in
       # — monitor upstream; extension is on Chrome 146 which fixes the
       # Chrome-side bug. If sidebar stops rendering, check issue tracker.
       { id = "efobhjmgoddhfdhaflheioeagkcknoji"; }
-      # Linkwarden — ⚠ ID spec-provided, unverified
-      { id = "pnidmkljnhbjfffciajlenmpaoemnjlo"; }
+
+      # ── M27's reading stack ─────────────────────────────────────────
+      #
+      # THESE TWO REPLACE A LINKWARDEN ENTRY THAT POINTED AT NOTHING.  This
+      # list carried `pnidmkljnhbjfffciajlenmpaoemnjlo`, marked "⚠ ID
+      # spec-provided, unverified", alongside comments elsewhere in this file
+      # that doubted whether the Firefox listing existed and a Vimium
+      # keybinding whose target was the literal string
+      # YOUR_LINKWARDEN_INSTANCE.  There has never been a Linkwarden server
+      # anywhere in this fleet.  All of it is deleted rather than finally
+      # built, because Karakeep takes the role — see
+      # machines/ernst/containers/karakeep.nix.
+      #
+      # Karakeep — verified CWS: kgcjekpmcjjogibpjebkhaanilehneje
+      # Saves the current page to karakeep.goclan.org.
+      { id = "kgcjekpmcjjogibpjebkhaanilehneje"; }
+      # floccus bookmarks sync — verified CWS: fnaicdffflnofjppbagibeoednhnbjhg
+      # Syncs THIS browser's own bookmark tree into the same Karakeep, which
+      # is what makes the two halves one stack rather than two tools.
+      { id = "fnaicdffflnofjppbagibeoednhnbjhg"; }
     ];
 
   };
@@ -153,15 +194,16 @@ in
   home.file.".config/chromium/NativeMessagingHosts/org.keepassxc.keepassxc_browser.json".text =
     keepassxcChromeManifest [ "chrome-extension://oboonakemofpalcgghocfoadofidjkkk/" ];
 
-  # ── Vimium: Linkwarden keyboard shortcut ──────────────────────────────
+  # ── Vimium: a keyboard shortcut to the bookmark library ───────────────
   #
-  # Vimium settings cannot be managed declaratively via Chromium policy.
-  # After first launch, open the Vimium options page and add the following
-  # to the "Custom key mappings" field:
+  # Vimium settings cannot be managed declaratively via Chromium policy, so
+  # this is a manual step and stays one.  After first launch, open the Vimium
+  # options page and add the following to "Custom key mappings":
   #
-  #   map <a-b> createTab https://YOUR_LINKWARDEN_INSTANCE/links
+  #   map <a-b> createTab https://karakeep.goclan.org/dashboard/bookmarks
   #
-  # Replace YOUR_LINKWARDEN_INSTANCE with your Linkwarden server URL.
+  # This used to name YOUR_LINKWARDEN_INSTANCE, a placeholder for a server
+  # that was never built (M27).
 
 
   # ============================================================
@@ -188,17 +230,27 @@ in
   # Managed by the @clanarchy/software librewolf role (service-modules/software.nix).
   # lgo is assigned to that role in clan.nix → configs are generated there.
 
-  # ── Manual extension install — LibreWolf ──────────────────────────────
+  # ── Extensions — LibreWolf ────────────────────────────────────────────
   #
-  # LibreWolf has no declarative extension installation mechanism.
-  # Install on first launch from the AMO (addons.mozilla.org):
+  # PARTLY DECLARATIVE SINCE M27, and this comment used to say flatly that no
+  # mechanism existed.  Karakeep and Floccus are installed by the `librewolf`
+  # role's `extensions` setting in service-modules/software.nix — an
+  # `ExtensionSettings` policy merged into the wrapper's own
+  # distribution/policies.json, which is the same mechanism LibreWolf itself
+  # uses to ship uBlock Origin.  The values are in clan.nix.
+  #
+  # THE OLDER THREE ARE STILL MANUAL, deliberately: they are already installed
+  # and already configured on both machines, and moving a working extension
+  # from "installed by hand" to "installed by policy" is a migration with no
+  # benefit.  New ones go through the role.  On a fresh machine, install these
+  # on first launch from the AMO (addons.mozilla.org):
   #
   #   uBlock Origin      https://addons.mozilla.org/firefox/addon/ublock-origin/
   #   Vimium-FF          https://addons.mozilla.org/firefox/addon/vimium-ff/
   #   KeePassXC-Browser  https://addons.mozilla.org/firefox/addon/keepassxc-browser/
-  #   Linkwarden         https://addons.mozilla.org/firefox/addon/linkwarden/
-  #                      (verify this AMO listing exists — the extension may be
-  #                       Chrome-only; check the Linkwarden project repository)
+  #
+  # (A Linkwarden line used to sit here, with a note doubting whether the AMO
+  # listing existed.  It did not, and neither did the server — M27.)
   #
   # uBlock Origin medium mode setup (after first launch):
   #   uBO dashboard → My rules → add:
@@ -359,16 +411,38 @@ in
 
       # ── Extensions ──────────────────────────────────────────────────
       #
-      # Installed declaratively via NUR (nur.repos.rycee.firefox-addons).
-      # NUR overlay is applied in desktop.nix via home-manager.sharedModules.
-      # Linkwarden is Chrome-only; install from AMO manually if an
-      # official Firefox listing appears.
+      # Installed declaratively via NUR (nur.repos.rycee.firefox-addons), and
+      # STORE-PINNED: each entry is a fetched, hash-verified .xpi in the Nix
+      # store, not a runtime download.  That is the one place Firefox's
+      # arrangement here is strictly stronger than Chromium's and LibreWolf's,
+      # both of which fetch from a live store on first launch.
+      #
+      # `inputs.nur` is reached directly rather than through an overlay.  A
+      # comment here used to say the overlay was applied "in desktop.nix via
+      # home-manager.sharedModules"; no file in this repo applies a NUR overlay
+      # at all, and none can — `home-manager.useGlobalPkgs` makes HM's `pkgs`
+      # the overlay-frozen instance clan-core builds, so `nixpkgs.overlays`
+      # inside an HM module is a no-op.  The flake input is the working route.
       extensions.packages =
         let nurPkgs = inputs.nur.legacyPackages.${pkgs.stdenv.hostPlatform.system};
         in with nurPkgs.repos.rycee.firefox-addons; [
           ublock-origin
           keepassxc-browser
           vimium  # AMO slug is "vimium-ff" but NUR rycee attr is "vimium"
+
+          # ── M27's reading stack ───────────────────────────────────────
+          #
+          # Karakeep saves a page to karakeep.goclan.org; Floccus syncs THIS
+          # browser's own bookmark tree into the same Karakeep, which is what
+          # makes them one stack.  Both replace a Linkwarden that never
+          # existed — see the Chromium list above.
+          #
+          # BOTH NEED A SERVER URL AND AN API KEY ENTERED BY HAND on first
+          # use, in every browser, on both machines.  Neither exposes a
+          # managed-storage schema, so there is nothing for a policy to set.
+          # That is eight small manual steps and no way around them.
+          karakeep
+          floccus
         ];
 
       # ── Search engines ───────────────────────────────────────────────
@@ -410,7 +484,18 @@ in
   #
   # Package is installed in apps.nix (system level) alongside the
   # allowUnfreePredicate entry for "google-chrome".
-  # No extensions, no policies — intentionally minimal.
+  #
+  # STILL MINIMAL, WITH ONE EXCEPTION SINCE M27.  Karakeep and Floccus are
+  # installed here too, because the point of Floccus is that the SAME bookmark
+  # tree is present in every browser and a browser left out of the sync is a
+  # browser whose bookmarks silently diverge — which is worse than not having
+  # it at all.  Nothing else about this browser's posture changed: no
+  # hardening, no privacy policies, still not for privacy-sensitive browsing.
+  #
+  # The mechanism is NOT `programs.chromium.extensions`: home-manager asserts
+  # against setting that for google-chrome on Linux.  It is an
+  # `ExtensionSettings` managed policy under /etc/opt/chrome, declared in
+  # modules/users/lgo.nix beside the other lgo-specific extension list.
 
   # ── KeePassXC native messaging host for google-chrome ────────────────
   # Managed by the @clanarchy/software chrome role (service-modules/software.nix).

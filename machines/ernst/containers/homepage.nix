@@ -207,6 +207,16 @@ let
   hassAddr      = "10.0.90.27";
   hassPort      = 8123;
 
+  # M27 added two more, so the count in the comment above is now SIX rather
+  # than four — corrected here rather than in that paragraph, because the
+  # paragraph is a true statement about M26 and this is a true statement about
+  # what the file holds today.  Each still costs exactly one accept rule in its
+  # own container file, commented there with this file's address.
+  minifluxAddr  = "10.0.90.28";
+  minifluxPort  = 8080;
+  karakeepAddr  = "10.0.90.29";
+  karakeepPort  = 3000;
+
   # NEXTCLOUD HAS NO ENTRY HERE ON PURPOSE.  Its widget is the one that goes
   # through Traefik by name, because Nextcloud refuses a Host header that is
   # not in `trusted_domains` — see the long note on that widget below.  An
@@ -319,13 +329,33 @@ in
       description = "Nextcloud serverinfo NC-Token (Administration settings → System → 'Copy token'). NOT a user password.";
       type = "hidden";
     };
+    prompts."miniflux-key" = {
+      description = "Miniflux API key for the dashboard (Settings → API keys → Create). Per-user; there is no password to use instead.";
+      type = "hidden";
+    };
+    prompts."karakeep-key" = {
+      description = "Karakeep API key for the dashboard (Settings → API keys). Make a SEPARATE one labelled 'homepage' — revoking the extension's or Floccus's key stops bookmark sync silently.";
+      type = "hidden";
+    };
 
+    # ── ADDING A PROMPT TO THIS GENERATOR RE-RUNS ALL OF IT ────────────────
+    #
+    # A clan vars generator is ATOMIC, so M27's two prompts mean the next
+    # `clan vars generate ernst` asks for all SIX — including the four that
+    # already have values.  That is harmless here and it is worth knowing
+    # before it surprises someone: these are prompts, not generated secrets, so
+    # re-entering them changes nothing, and none of the four is a shared secret
+    # some other party also holds.  containers/authelia.nix takes the opposite
+    # route (one generator per relying party) because there the atomicity WOULD
+    # hand a third party a new credential as a side effect.
     script = ''
       {
         printf 'HOMEPAGE_VAR_JELLYFIN_KEY=%s\n'  "$(cat "$prompts/jellyfin-key")"
         printf 'HOMEPAGE_VAR_IMMICH_KEY=%s\n'    "$(cat "$prompts/immich-key")"
         printf 'HOMEPAGE_VAR_HASS_TOKEN=%s\n'    "$(cat "$prompts/homeassistant-token")"
         printf 'HOMEPAGE_VAR_NEXTCLOUD_KEY=%s\n' "$(cat "$prompts/nextcloud-token")"
+        printf 'HOMEPAGE_VAR_MINIFLUX_KEY=%s\n'  "$(cat "$prompts/miniflux-key")"
+        printf 'HOMEPAGE_VAR_KARAKEEP_KEY=%s\n'  "$(cat "$prompts/karakeep-key")"
       } > "$out/tokens.env"
     '';
     runtimeInputs = [ pkgs.coreutils ];
@@ -799,6 +829,38 @@ in
                   widget = {
                     type = "romm";
                     url  = "http://${rommAddr}:${toString rommPort}";
+                  };
+                };
+              }
+              {
+                "Miniflux" = {
+                  icon        = "miniflux.png";
+                  href        = pub "miniflux";
+                  description = "Feeds — the reading intake";
+                  widget = {
+                    type = "miniflux";
+                    url  = "http://${minifluxAddr}:${toString minifluxPort}";
+                    # A per-user API key, made in Miniflux's own Settings →
+                    # API keys.  NOT a password: Miniflux has none here, since
+                    # `DISABLE_LOCAL_AUTH` leaves Authelia as the only login.
+                    key  = "{{HOMEPAGE_VAR_MINIFLUX_KEY}}";
+                  };
+                };
+              }
+              {
+                "Karakeep" = {
+                  icon        = "karakeep.png";
+                  href        = pub "karakeep";
+                  description = "Bookmarks and page archives — the reading keep";
+                  widget = {
+                    type = "karakeep";
+                    url  = "http://${karakeepAddr}:${toString karakeepPort}";
+                    # An API key from Karakeep's Settings → API keys.  The SAME
+                    # kind of key the browser extension and the Floccus adapter
+                    # hold, which is worth knowing before rotating one: revoke
+                    # the wrong row and bookmark sync stops silently on two
+                    # laptops.  Make the dashboard its own and label it.
+                    key  = "{{HOMEPAGE_VAR_KARAKEEP_KEY}}";
                   };
                 };
               }

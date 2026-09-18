@@ -218,6 +218,58 @@ rec {
     # the ban either never fires or takes the whole household offline at once.
     # Ledger row L14's lesson, in a second costume.
     (h "ha")
+
+    # Miniflux (M27).  The feed reader's OWN web UI is browser-only and would
+    # pass the test at the top of this file — but the vhost also answers two
+    # native-reader protocols, and those are what put it here:
+    #
+    #   /fever/            the Fever API, credentials in the POST body;
+    #   /reader/api/0/**   the Google Reader API, a token in every request.
+    #
+    # Reeder, NetNewsWire, FocusReader and every other third-party reader speak
+    # one of those two and nothing else.  Neither has a cookie jar, so neither
+    # can act on a 302 to a portal.
+    #
+    # THE BROWSER PATH IS NOT LEFT UNPROTECTED: Miniflux has NO local password
+    # login at all here (`DISABLE_LOCAL_AUTH`, containers/miniflux.nix) and
+    # Authelia is its only identity provider, so the web UI still gets a second
+    # factor — CWA's and Nextcloud's arrangement, OIDC INSTEAD OF the
+    # middleware, rather than Grafana's OIDC AS WELL AS it.
+    #
+    # LAN-ONLY.  Unlike every other entry in this list it is not in
+    # `wanExposed`, so the only way to reach it at all is from inside the
+    # house.  That is the bulk of what defends it.
+    (h "miniflux")
+
+    # Karakeep (M27).  Bookmarks, archives and the search over them — and the
+    # clients that fail the 302 test are ones THIS REPO INSTALLS:
+    #
+    #   the Karakeep browser extension on all four of lgo's browsers, which
+    #   posts to /api/v1/bookmarks with a bearer token;
+    #   the FLOCCUS adapter (service-modules/software.nix and
+    #   machines/miralda/home-modules/browsers.nix install it on miralda and
+    #   jens), syncing the browsers' own bookmark trees with the same token
+    #   and no UI whatsoever;
+    #   the mobile apps, same again.
+    #
+    # THAT IS UNUSUAL FOR THIS LIST AND WORTH SAYING PLAINLY.  Every other
+    # exemption here is argued from a client somebody might install; this one
+    # is argued from clients declared in this repository, on machines this
+    # repository deploys.  Moving this name to protectedHosts would break a
+    # sync that runs unattended and would show up as bookmarks silently
+    # failing to propagate between two laptops.
+    #
+    # WHAT DEFENDS IT, since it IS on the internet (`wanExposed`, ledger row
+    # L17) while Miniflux is not:
+    #
+    #   * Karakeep's own accounts with password auth DISABLED ENTIRELY
+    #     (`DISABLE_PASSWORD_AUTH` + `DISABLE_SIGNUPS`), so the only way to
+    #     obtain a session is through Authelia with a second factor, and the
+    #     only way to obtain an API token is from inside such a session.
+    #   * `wan-ratelimit` + `wan-inflight` at the edge.
+    #   * `wan-login-ratelimit` on the credential path.
+    #   * CrowdSec reading Traefik's access log.
+    (h "karakeep")
   ];
 
   ############################################################################

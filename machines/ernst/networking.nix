@@ -486,8 +486,56 @@
   #   flake.nix and no row in this table has to be able to tell "recorded as
   #   taking none" apart from "somebody forgot".
   #
-  #   NEXT FREE SEQUENCE NUMBER IS 14; next free address is 10.0.90.28, keeping
-  #   the 8 + <seq> correspondence (8 + 0x14 = 28).  There is no free gap left
+  #   02:00:00:90:00:14   miniflux container eth0   (M27 — allocated)  10.0.90.28
+  #                       The feed reader, machines/ernst/containers/
+  #                       miniflux.nix.  nspawn — `services.miniflux` is a
+  #                       first-class NixOS module, so the podman tier does not
+  #                       apply.
+  #
+  #                       ITS FIREWALL ADMITS THREE ADDRESSES on eth0, which is
+  #                       one more than most containers here: Traefik (.12) for
+  #                       every human and reader client, the arr container
+  #                       (.13) because the service index reads its unread count,
+  #                       and the MONITORING container (.14) — which is the
+  #                       unusual one.  Miniflux serves a genuine OpenMetrics
+  #                       /metrics, unlike Nextcloud's and Home Assistant's
+  #                       token-gated JSON, so it is the first service since
+  #                       M19 to get a real Prometheus job rather than a note
+  #                       explaining why it cannot have one.
+  #
+  #                       NOT PUBLIC, and it is the only appApiHosts name on
+  #                       this host that is not.  See the note beside
+  #                       `karakeep` in containers/traefik.nix's `wanExposed`
+  #                       for why the two halves of one milestone differ.
+  #                       NO UDM-PRO RULE and NO LEDGER ROW.
+  #
+  #   02:00:00:90:00:15   karakeep container eth0   (M27 — allocated)  10.0.90.29
+  #                       Bookmarks, page archives and the search over both,
+  #                       machines/ernst/containers/karakeep.nix.  nspawn, same
+  #                       reason.
+  #
+  #                       IT IS THE FOURTH CONTAINER WITH A SECOND INTERFACE
+  #                       and the first whose second leg is on NO VLAN AT ALL:
+  #                       `ai0`, a point-to-point /128 ULA pair (fdca:fe92::1
+  #                       host, ::2 container) to llama-swap, declared as a peer
+  #                       in clan.nix's `@clanarchy/local-ai` instance.  It is
+  #                       therefore NOT in this table's VLAN sense and has no
+  #                       MAC, no reservation and nothing for the UDM-Pro to
+  #                       know — see the M19/M6 entries in the ULA discussion
+  #                       further down.
+  #
+  #                       PUBLIC.  `karakeep.goclan.org` rides both entrypoints
+  #                       and carries NO forward-auth — the fleet's NINTH
+  #                       appApiHosts name, and the first whose 302-incapable
+  #                       clients are ones THIS REPOSITORY INSTALLS (the
+  #                       Karakeep extension and the Floccus adapter, on
+  #                       miralda and jens).  It DOES take ledger row L17.
+  #
+  #                       LIKE M22, M23 AND M24 IT ADDS NO UDM-PRO RULE for
+  #                       VLAN 50 → 90: every client arrives through .12.
+  #
+  #   NEXT FREE SEQUENCE NUMBER IS 16; next free address is 10.0.90.30, keeping
+  #   the 8 + <seq> correspondence (8 + 0x16 = 30).  There is no free gap left
   #   in the sequence — 08 and 09 lapsed and were never reclaimed, and 0d was
   #   taken back by CWA.
   #
@@ -1016,8 +1064,61 @@
   #                           entire document store on the pool.
   #
   #                           NEXT FREE IS 3038, AND M24 DID NOT TAKE IT — see
-  #                           the note on uid 286 below.)
+  #                           the note on uid 286 below.  M27 DID.)
   #   gid 3037  nextcloud    (containers/nextcloud.nix — M23)
+  #
+  #   uid 3038  karakeep     (containers/karakeep.nix — M27, bookmarks, full-page
+  #   gid 3038  karakeep      archives and the search over both, in an NSPAWN
+  #                           container on VLAN 90.  It is the Floccus backend
+  #                           for miralda's and jens's browsers, and it retires
+  #                           the Linkwarden that browsers.nix has referred to
+  #                           since it was written and that never existed.
+  #
+  #                           OWN group, and NOT `media` even as a secondary —
+  #                           which is where this row differs from Nextcloud's
+  #                           above.  containers/romm.nix states the test and it
+  #                           answers cleanly here: `media` (gid 3000) is the
+  #                           *arr suite's shared HARDLINK domain, and a service
+  #                           that hardlinks nothing and never opens a path
+  #                           under /srv/media has no business in it.
+  #
+  #                           NO DATASET OF ITS OWN.  Its DATA_DIR — the SQLite
+  #                           database AND the archived page assets, which
+  #                           upstream keeps in one tree and says should not be
+  #                           split — lives at /srv/state/karakeep on
+  #                           `zdata/state` (128K, auto-snapshot ON).  The
+  #                           snapshot property is the load-bearing half: a
+  #                           crawled copy of a page that has since gone dark is
+  #                           not re-acquirable from anywhere, which is the
+  #                           argument disko.nix makes about Nextcloud in the
+  #                           words "it is deleted from by people".
+  #
+  #                           MEILISEARCH DELIBERATELY TAKES NO NUMBER HERE, and
+  #                           that is the interesting half of this row.  The
+  #                           nixpkgs module runs it under DynamicUser with a
+  #                           StateDirectory, so binding its index out to zdata
+  #                           would put a systemd-ALLOCATED id — one nobody
+  #                           chose and nothing records — on the pool, which is
+  #                           exactly what this table exists to prevent.  The
+  #                           index stays on the container rootfs because it is
+  #                           DERIVED: Karakeep rebuilds it from the SQLite
+  #                           database on demand.  Losing it costs a reindex.
+  #
+  #                           PINNING 3038 IS LOAD-BEARING for the same reason
+  #                           as 3036 and 3037 — nixpkgs creates `karakeep` with
+  #                           `isSystemUser = true` and no uid — and it was
+  #                           checked against `ids.uids` BEFORE being written
+  #                           down, which is the step M24 skipped and paid for.
+  #
+  #                           NEXT FREE IN THE 3000 BLOCK IS 3039.)
+  #
+  #   NO uid FOR miniflux, and it is recorded rather than left to inference.
+  #   M27's other container (containers/miniflux.nix) runs the daemon under
+  #   DynamicUser — upstream's own choice, kept — and stores everything in
+  #   PostgreSQL, so the only id that lands on zdata from it is 71, below.
+  #   That is M26's shape (a service with no id of its own) rather than M24's
+  #   (a collision with an upstream static id), and the two are worth telling
+  #   apart because only one of them is a trap.
   #
   #   uid 286   hass         (containers/home-assistant.nix — M24, the
   #   gid 286   hass          household's home-automation hub, in an NSPAWN
@@ -1068,18 +1169,24 @@
   #                           this file, and that is worth a line so the next
   #                           reader does not go looking for its row.
   #
-  #                           NEXT FREE IN THE 3000 BLOCK REMAINS 3038.)
+  #                           NEXT FREE IN THE 3000 BLOCK REMAINS 3038.
+  #
+  #                           M27 TOOK 3038 — for Karakeep, whose row is above;
+  #                           its other container, Miniflux, took nothing, for
+  #                           M26's reason rather than M24's.  NEXT FREE IS NOW
+  #                           3039.)
   #
   #   uid   71  postgres     NOT ALLOCATED HERE, and listed so nobody allocates
   #                           it.  Immich's PostgreSQL runs inside its container
   #                           and lands on zdata unmapped like every other
   #                           container uid, but 71 is a WELL-KNOWN NixOS static
   #                           id (`ids.uids.postgres`) rather than one of ours.
-  #                           It appears on /srv/state/immich/postgresql and,
-  #                           since M23, on /srv/state/nextcloud/postgresql —
-  #                           two separate databases in two separate containers
+  #                           It appears on /srv/state/immich/postgresql, on
+  #                           /srv/state/nextcloud/postgresql since M23, and on
+  #                           /srv/state/miniflux/postgresql since M27 — three
+  #                           separate databases in three separate containers
   #                           that happen to share a number, which is fine
-  #                           precisely because neither tree is shared.  The
+  #                           precisely because no tree is shared.  The
   #                           3000-block convention does not apply to it and it
   #                           must not be renumbered into the block.
   #

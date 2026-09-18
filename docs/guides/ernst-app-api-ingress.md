@@ -25,7 +25,7 @@ browser to render the portal, so it reports an opaque network error and the
 user concludes the server is broken. If someone reports *"works in the browser,
 fails in the app"*, check this first — it is almost always the cause.
 
-### The exempt eight
+### The exempt ten
 
 | Host | Clients that force the exemption |
 |---|---|
@@ -37,6 +37,34 @@ fails in the app"*, check this first — it is almost always the cause.
 | `photos` | the Immich app on two phones (bearer token), the Kodi add-on on the TV (`x-api-key`), **and shared album links** |
 | `cloud` | the Nextcloud desktop sync client on three laptops, DAVx5 on the phones, and **vdirsyncer on a headless user timer** — all app passwords over `/remote.php/dav/**` |
 | `ha` | the Home Assistant companion app — a bearer token over a **long-lived WebSocket**, and a background location reporter with no user present |
+| `miniflux` | every third-party feed reader — the **Fever API** (`/fever/`, credentials in the POST body) and the **Google Reader API** (`/reader/api/0/**`, a token per request). **LAN-only**, and the only exempt name that is |
+| `karakeep` | the Karakeep browser extension and the **Floccus** bookmark-sync adapter — bearer tokens, no cookie jar, and **this repository installs both** |
+
+**`karakeep` is the one row to read twice.** Every other exemption above is
+argued from a client somebody *might* install. This one is argued from clients
+declared in this repository, on machines it deploys —
+`service-modules/software.nix`, `clan.nix` and
+`machines/miralda/home-modules/browsers.nix` put the Karakeep extension and
+Floccus into all four of lgo's browsers on miralda and jens. Moving the name to
+`protectedHosts` would break an **unattended** sync between two laptops, and
+the symptom is bookmarks quietly failing to propagate rather than an error
+anyone sees.
+
+**`miniflux` is the one exempt name that is not public.** It has a Technitium
+record and no Cloudflare one, is absent from `wanExposed`, and has no ledger
+row. Its milestone's other service is on the internet and it is not, on
+purpose: bookmark sync has to work away from the house, feed reading can wait
+for the LAN. If it is ever added, the three edits that go together are the
+`wanExposed` entry, the public A record, and the `wanLoginPaths` matcher that
+`containers/traefik.nix` records in its place today.
+
+**Neither has a local password**, which is unusual for this list: `cwa`,
+`cloud` and `ha` all keep their own accounts as a second credential store.
+Miniflux sets `DISABLE_LOCAL_AUTH` and Karakeep sets `DISABLE_PASSWORD_AUTH` +
+`DISABLE_SIGNUPS`, so Authelia's OIDC is the only way to obtain a session and
+an API token can only be minted from inside one. The recovery path if Authelia
+is down is to fix Authelia — accepted because nothing in the house depends on
+either service, which is precisely the argument `ha` cannot make.
 
 ### `home` is public and is NOT one of them
 
@@ -297,8 +325,12 @@ If the first answers and the second does not, it is cache — not config.
 A records only, **DNS-only (grey cloud)**, all → `78.94.91.74`:
 
 ```
-audiobookshelf   auth   chat   cloud   cwa   ha   home   jellyfin   jellyseerr   komga   navidrome   photos
+audiobookshelf   auth   chat   cloud   cwa   ha   home   jellyfin   jellyseerr   karakeep   komga   navidrome   photos
 ```
+
+`miniflux` is deliberately **not** in that list while it is in the internal one.
+It is currently the only name on this host in that position, and M27's ledger
+row (L17) is where the asymmetry is argued.
 
 **This list was wrong until 2026-09-17** and is worth a note rather than a
 silent fix: it named nine hosts and omitted `chat` (M19) and `ha` (M24), both

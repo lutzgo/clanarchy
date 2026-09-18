@@ -1027,6 +1027,48 @@ in
           '';
         };
 
+        minifluxAddress = lib.mkOption {
+          type        = lib.types.str;
+          default     = "";
+          example     = "10.0.90.28";
+          description = ''
+            Address of the Miniflux container on the Services VLAN (M27).
+            Empty disables the `miniflux` job.
+
+            NO EXPORTER.  Miniflux serves a genuine OpenMetrics exposition on
+            its own HTTP port when `METRICS_COLLECTOR=1`, which
+            machines/ernst/containers/miniflux.nix sets.
+
+            ── TWO GATES, NOT ONE, AND THE SECOND IS INSIDE THE APPLICATION ──
+
+            The container firewall must admit this container (it does), AND
+            Miniflux's own `METRICS_ALLOWED_NETWORKS` must name it.  That
+            setting defaults to 127.0.0.1/8, so with only the firewall opened
+            the scrape is refused BY MINIFLUX, the job reads up=0, and nothing
+            in the container's log says why.  Both halves are set together in
+            containers/miniflux.nix; if this job ever goes red, check the
+            second one before the first.
+
+            THIS IS THE FIRST REAL APPLICATION TARGET ADDED SINCE M19, and
+            that is worth noting because the three services before it —
+            Nextcloud, Home Assistant and Karakeep — each got a written
+            explanation of why they CANNOT have one instead.  Miniflux is the
+            case where the endpoint genuinely exists.
+          '';
+        };
+
+        minifluxPort = lib.mkOption {
+          type        = lib.types.port;
+          default     = 8080;
+          description = ''
+            Miniflux's HTTP port.  Metrics share it with the application and
+            with the reader APIs rather than getting a listener of their own —
+            Jellyfin's situation rather than Immich's — which is why
+            `METRICS_ALLOWED_NETWORKS` matters: it is what makes permitting
+            this scrape not also permit reading somebody's feeds.
+          '';
+        };
+
         navidromeAddress = lib.mkOption {
           type        = lib.types.str;
           default     = "";
@@ -2294,6 +2336,24 @@ in
                   static_configs = [ {
                     targets = [ "${settings.mediaStack.immichAddress}:${toString settings.mediaStack.immichMetricsPort}" ];
                     labels.instance = "immich";
+                  } ];
+                }
+                # M27 — Miniflux.  A real OpenMetrics endpoint, unlike the two
+                # services this milestone's neighbours declined to scrape.
+                #
+                # NO JOB FOR KARAKEEP, and it is written here rather than left
+                # as an absence: Karakeep exposes no metrics endpoint at all,
+                # so a target pointed at it could only ever read `up == 0`.
+                # That is M13's Ollama lesson and standing note SN3 — a broken
+                # instrument is indistinguishable from a bad result.  Failed
+                # units inside that container are still seen, through
+                # `machinectl` and the container-units collector below, which
+                # is the same alerting story Nextcloud and Home Assistant have.
+                ++ lib.optional (settings.mediaStack.minifluxAddress != "") {
+                  job_name = "miniflux";
+                  static_configs = [ {
+                    targets = [ "${settings.mediaStack.minifluxAddress}:${toString settings.mediaStack.minifluxPort}" ];
+                    labels.instance = "miniflux";
                   } ];
                 }
                 # Navidrome, and the only authenticated scrape in this file.
