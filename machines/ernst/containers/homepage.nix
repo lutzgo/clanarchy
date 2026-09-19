@@ -311,6 +311,36 @@ in
   clan.core.vars.generators.homepage-tokens = {
     files."tokens.env" = {
       secret = true;
+
+      # ── WITHOUT THIS, REGENERATING THESE TOKENS DOES NOTHING.  MEASURED. ──
+      #
+      # Found on 2026-09-19, after M27 added two prompts and regenerated:
+      # `clan vars get` showed all six in the repo, and the STAGED file on
+      # ernst still had four.  `systemctl show homepage-secrets` gave
+      # `ExecMainStartTimestamp` two days and several deploys earlier.
+      #
+      # The mechanism is the one containers/nextcloud.nix states for its own
+      # generators and this one predates: the staging script embeds the sops
+      # PATH, not the contents.  Rewriting the encrypted file leaves the unit's
+      # script byte-identical, so systemd sees no change — and because the unit
+      # is `Type=oneshot` with `RemainAfterExit = true`, it is permanently
+      # "active" and is never re-run.  The stale file simply persists.
+      #
+      # THE FAILURE IS SILENT AND PRESENTS TWO DIFFERENT WAYS, which is what
+      # made it worth chasing rather than shrugging at: with the variable
+      # missing, gethomepage substitutes nothing and sends the LITERAL
+      # `{{HOMEPAGE_VAR_KARAKEEP_KEY}}` as the credential.  Karakeep rejects
+      # that and the tile says "API Error"; Miniflux answers in a shape the
+      # widget parses to `NaN`.  Neither says "token missing", and nothing logs
+      # one.
+      #
+      # `homepage-secrets.service` ONLY, deliberately — NOT `container@arr`,
+      # which every other generator in this repo would list here.  That
+      # container holds Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, Navidrome,
+      # Komga and the rest, and bouncing all of them to pick up a DASHBOARD
+      # credential is a cure worse than the disease.  The script below restarts
+      # the one unit that actually reads the file instead.
+      restartUnits = [ "homepage-secrets.service" ];
     };
 
     prompts."jellyfin-key" = {
@@ -422,6 +452,26 @@ in
         echo "homepage-secrets: no tokens at ${tokensGen.files."tokens.env".path} — run 'clan vars generate ernst'. Staging an empty file so the dashboard starts and reports the missing widgets by name." >&2
         ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
           /dev/null ${homepageSecretsDir}/tokens.env
+      fi
+
+      # ── Make the new file actually reach the process that reads it ────────
+      #
+      # `tokens.env` is an EnvironmentFile, so homepage-dashboard reads it ONCE
+      # at start.  Rewriting it under a running service changes nothing until
+      # that service restarts, which is the second half of the silent failure
+      # the generator's `restartUnits` comment describes: clan re-runs THIS
+      # unit, the file becomes correct, and the dashboard keeps serving the old
+      # credentials until something happens to bounce it.
+      #
+      # ONE UNIT INSIDE ONE CONTAINER, not `container@arr` — see the generator.
+      #
+      # `|| true` is load-bearing on the COLD path: this unit is ordered
+      # `before container@arr`, so on a boot or a first deploy the container is
+      # not running and there is nothing to restart.  That is not an error, and
+      # failing here would keep the container from starting at all, which is
+      # precisely backwards.
+      if ${pkgs.systemd}/bin/machinectl show arr >/dev/null 2>&1; then
+        ${pkgs.systemd}/bin/systemctl -M arr restart homepage-dashboard.service || true
       fi
     '';
   };
