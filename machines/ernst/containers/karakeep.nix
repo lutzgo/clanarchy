@@ -76,10 +76,10 @@
 #   acceptable recovery path, and it is a much better answer than a second
 #   credential store reachable from the internet.
 #
-#   `DISABLE_SIGNUPS` IS CURRENTLY "false" AND THAT IS A TEMPORARY STATE.  It
-#   gates OAuth account creation as well as the password form — measured, not
-#   assumed; see the long note at the setting.  It must go back to "true" once
-#   lgo's account exists, and M27's manual steps carry both halves as one step.
+#   `DISABLE_SIGNUPS` gates OAuth account creation as well as the password form
+#   — measured 2026-09-19, not assumed.  It is "true", which means ADDING A
+#   PERSON HERE IS A TWO-DEPLOY OPERATION and there is no other route: no
+#   password form, no admin invite, no CLI.  See the long note at the setting.
 #
 # ── THE SECOND LEG, AND WHY IT COSTS NO VRAM ────────────────────────────────
 #
@@ -538,39 +538,43 @@ in
 
           # ── DISABLE_SIGNUPS GATES OAUTH TOO.  MEASURED, NOT ASSUMED. ──────
           #
-          # This shipped as `"true"`, on the reading that signup-disabling
-          # governs the PASSWORD form while OAuth provisioning is governed by
-          # the account-linking flag below.  THAT READING IS WRONG.  On the
-          # first login attempt (2026-09-19) Authelia authenticated fine and
-          # Karakeep refused the callback:
+          # THIS IS THE PERMANENT STATE.  It was briefly `"false"` on
+          # 2026-09-19 for exactly one login, and the reason is worth keeping
+          # because the next person to stand this service up will hit it.
+          #
+          # It shipped as `"true"` on the reading that signup-disabling governs
+          # the PASSWORD form while OAuth provisioning is governed by the
+          # account-linking flag below.  THAT READING IS WRONG — the flag gates
+          # BOTH.  Authelia authenticated fine and Karakeep refused the
+          # callback:
           #
           #     OAuth login failed: Signups are disabled in server config
           #
           # — on an instance with no local password, no signup form and no
-          # accounts, i.e. a service nobody could ever get into.  The roadmap
-          # flagged this as an unverified upstream-flag assumption with a
-          # one-line fallback; this is that fallback, and the flag stays
-          # visible rather than being quietly reasoned about again.
+          # accounts, i.e. a service nobody could ever get into.
           #
-          # ── THE WINDOW THIS OPENS, AND WHY IT IS SMALL ────────────────────
+          # ── HOW TO ADD AN ACCOUNT, INCLUDING THE FIRST ONE ───────────────
           #
-          # While this is `"false"`, ANY Authelia identity that can pass
-          # two_factor gets a Karakeep account created on first login.  Three
-          # things bound that:
+          # There is no other route: no password form, no admin "invite user",
+          # no CLI.  So adding a person here is a two-deploy operation and
+          # always will be:
           #
-          #   * `karakeep.goclan.org` IS NOT IN PUBLIC DNS YET.  The Cloudflare
-          #     record is step 12 of M27's manual steps, deliberately last, so
-          #     this window is reachable from the house and nowhere else.  That
-          #     ordering was fixed for a different reason and pays off here.
-          #   * The OIDC client requires `two_factor`, so it is not "anyone who
-          #     knows a password".
-          #   * It is meant to last one login.  Set it back to `"true"` and
-          #     deploy again as soon as the account exists — M27's manual steps
-          #     carry both halves as one step.
+          #   1. `DISABLE_SIGNUPS = "false"` here, `clan machines update ernst`
+          #   2. that person signs in once through Authelia — the account is
+          #      created on the callback
+          #   3. back to `"true"`, `clan machines update ernst` again
+          #
+          # WHILE IT IS "false", ANY Authelia identity that can pass
+          # `two_factor` gets an account on first login.  On 2026-09-19 that
+          # window was LAN-only, because the Cloudflare record is step 12 of
+          # M27's manual steps and had deliberately not been created yet.  IT
+          # WILL NOT BE LAN-ONLY NEXT TIME — the name is public now, so a
+          # future repeat of this dance is a window on the internet.  Keep it
+          # to minutes, and do it when nobody is waiting on a deploy.
           #
           # Left as a literal rather than an option: an option would invite
           # leaving it on.
-          DISABLE_SIGNUPS = "false";
+          DISABLE_SIGNUPS = "true";
 
           # Karakeep links an OAuth identity to an existing local account only
           # with this set.  It is NOT what admits the first user — the line

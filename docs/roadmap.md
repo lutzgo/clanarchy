@@ -12369,18 +12369,23 @@ TWICE and the first pass leaves them blank on purpose.
    `token_endpoint_auth_method` and M24's `ids.uids.hass`, and the pattern is
    the same each time: a flag's NAME was read as its scope.
 
-   **The fix, which is two deploys:**
+   **The fix was two deploys, and it worked:**
 
-   1. `DISABLE_SIGNUPS = "false"` in `containers/karakeep.nix` (already
-      committed), `clan machines update ernst`.
-   2. Sign in with Authelia. The account is created on the callback.
-   3. Set it back to `"true"` and `clan machines update ernst` again.
+   1. `DISABLE_SIGNUPS = "false"`, `clan machines update ernst`.
+   2. Sign in with Authelia — the account is created on the callback. ✅
+   3. Back to `"true"`, `clan machines update ernst` again.
 
-   **The window is LAN-only, and that is not luck.** While signups are on, any
-   Authelia identity that can pass `two_factor` gets a Karakeep account on
-   first login. `karakeep.goclan.org` is not in public DNS yet because the
-   Cloudflare record is step 12 — an ordering fixed earlier in this list for a
-   different reason, which pays off here. **Do not do step 12 before step 7.3.**
+   **The window was LAN-only, and that was not luck.** While signups are on,
+   any Authelia identity that can pass `two_factor` gets a Karakeep account on
+   first login. `karakeep.goclan.org` was not in public DNS, because the
+   Cloudflare record is step 12 — an ordering fixed earlier in this list for an
+   unrelated reason, which paid off here.
+
+   **THIS IS NOW THE PERMANENT SHAPE OF ADDING A PERSON**, not a one-off:
+   there is no password form, no admin invite and no CLI, so every future
+   account is the same three steps. **And the next one will NOT be LAN-only** —
+   the name is public once step 12 is done, so a repeat is a signup window on
+   the internet. Keep it to minutes.
 
 8. **Make the two dashboard API keys**, now that accounts exist.
    Miniflux → Settings → API keys. Karakeep → Settings → API keys.
