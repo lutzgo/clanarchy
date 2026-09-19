@@ -12283,30 +12283,62 @@ same alerting story Nextcloud and Home Assistant have.
 | `modules/users/lgo.nix` | two first-run CRX tabs, the Chrome managed policy |
 | `service-modules/software.nix` + `.md` | the `librewolf` role's `extensions` setting |
 
-### Manual steps — lgo's, and before the deploy means anything
+### Manual steps — lgo's, and the order is not advisory
 
-1. **Technitium (10.0.5.3)**: A records `miniflux` → `10.0.90.12` and
-   `karakeep` → `10.0.90.12`. **Both**, whether public or not.
-2. **Cloudflare**: A record `karakeep` → `78.94.91.74`, **DNS-only (grey
-   cloud), no AAAA**. Miniflux gets none — that is the point of L17's first
-   paragraph.
-3. **UDM-Pro**: DHCP reservations `02:00:00:90:00:14` → `10.0.90.28` and
-   `02:00:00:90:00:15` → `10.0.90.29`.
-4. `clan vars generate ernst`. Three generators are involved and **two of the
-   six homepage prompts are new, which re-asks all six** — a generator is
-   atomic. Harmless here (they are prompts, not secrets), but a blank answer is
-   still not "skip": SN5, and it took RomM down on 2026-09-07.
-5. **Validate the Authelia config before restarting the portal** — this is the
-   one step in this milestone that can take authentication down for the whole
-   fleet, because `claims_policies` is a key this staging script has never
-   emitted before and a rejected config means `authelia-main` does not start.
+**Two orderings in this list are load-bearing and an earlier draft got both
+wrong.** The public A record goes LAST, after the OIDC login is proven and
+password auth is confirmed off — M22's precedent, for the same reason: a name in
+public DNS before the application's auth posture is verified is a first-run
+window on the internet. And the two dashboard API keys **cannot exist** until
+the services are up and somebody has logged in, so the vars generator runs
+TWICE and the first pass leaves them blank on purpose.
+
+1. **UDM-Pro**: DHCP reservations `02:00:00:90:00:14` → `10.0.90.28`
+   (miniflux) and `02:00:00:90:00:15` → `10.0.90.29` (karakeep).
+   Before the deploy — the containers DHCP on first start.
+
+2. **Technitium (10.0.5.3)**: A records `miniflux` → `10.0.90.12` and
+   `karakeep` → `10.0.90.12`. **Both**, whether the name goes public or not.
+   Flush before concluding anything: a lookup made before the zone existed
+   leaves a cached NXDOMAIN for up to the SOA minimum (900 s).
+
+3. **`clan vars generate ernst`** — and read this before running it.
+
+   Three generators are involved. Two are ordinary
+   (`authelia-oidc-miniflux`, `authelia-oidc-karakeep`: generated, not
+   prompted). The third is `homepage-tokens`, and it has a wrinkle:
+
+   **It gained two prompts, and a generator is ATOMIC, so it re-asks all
+   six.** The four existing answers are not remembered. Recover them first or
+   they come back blank:
+
+   ```bash
+   clan vars get ernst homepage-tokens/tokens.env
+   ```
+
+   **Leave `miniflux-key` and `karakeep-key` EMPTY on this pass.** Neither
+   service exists yet, so neither key can. Empty is safe here specifically —
+   the script writes every line unconditionally, so a blank answer yields
+   `HOMEPAGE_VAR_MINIFLUX_KEY=` and the staging unit still succeeds. That is
+   the shape SN5 demands, and it is why this generator can be run before the
+   services exist at all. It is **not** safe in general: a blank prompt whose
+   file is referenced by path stores nothing, `.path` becomes the literal
+   `/no-such-path`, and that took RomM down on 2026-09-07.
+
+4. **`clan machines update ernst`.**
+
+5. **Validate the Authelia config, immediately** — the one step in this
+   milestone that can take authentication down for the whole fleet.
+   `claims_policies` is a key this staging script has never emitted, and a
+   rejected config means `authelia-main` does not start, which means nothing
+   behind forward-auth can be logged into.
 
    **Validate the WHOLE set, not the staged fragment.** `oidc-clients.yml` on
-   its own is not a valid Authelia configuration — it has no session, no
-   storage, no notifier — so `validate-config` pointed at it alone fails on
-   missing required keys and tells you nothing about the thing you changed. The
-   unit passes three files as one comma-separated `--config`, so take the list
-   from the unit rather than retyping store paths that change every rebuild:
+   its own is not a valid Authelia configuration — no session, no storage, no
+   notifier — so `validate-config` pointed at it alone fails on missing
+   required keys and tells you nothing about what changed. The unit passes
+   three files as one comma-separated `--config`; take the list from the unit
+   rather than retyping store paths that change every rebuild:
 
    ```bash
    ssh root@10.0.50.10 '
@@ -12317,19 +12349,66 @@ same alerting story Nextcloud and Home Assistant have.
      nixos-container run authelia -- authelia validate-config --config "$CFG"'
    ```
 
-   Run it **after** `clan machines update ernst` has staged the new generation
-   but before concluding the deploy succeeded; if it fails, the portal is
-   already down and the message names the offending key.
-6. `clan machines update ernst`, then `miralda`, then `jens`.
-7. **Per browser, once, eight times in total**: open the Karakeep extension,
-   point it at `https://karakeep.goclan.org`, paste an API key from Karakeep's
-   Settings. Then Floccus → new account → Karakeep → same URL and key. Neither
-   extension exposes a managed-storage schema, so there is nothing a policy can
-   set. This is genuinely manual and the milestone does not pretend otherwise.
-8. Make the two dashboard API keys (Miniflux Settings → API keys; Karakeep
-   Settings → API keys). **Label Karakeep's `homepage`** — revoking the
-   extension's or Floccus's key instead stops bookmark sync silently on two
-   laptops.
+   If it fails, the portal is already down and the message names the offending
+   key. `systemctl -M authelia status authelia-main` is the confirmation either
+   way.
+
+6. **First login to Miniflux, from the LAN**: `https://miniflux.goclan.org` →
+   Authelia → 2FA. `OAUTH2_USER_CREATION=1` is what creates the account, and
+   it is the only way an account can exist here (`DISABLE_LOCAL_AUTH`).
+
+7. **First login to Karakeep, and this is the step most likely to need a
+   workaround.** `https://karakeep.goclan.org` → Authelia → 2FA.
+
+   **UNVERIFIED RISK, stated rather than discovered:** the config sets
+   `DISABLE_SIGNUPS = "true"` and `OAUTH_ALLOW_DANGEROUS_EMAIL_ACCOUNT_LINKING
+   = "true"`, on the reading that signup-disabling governs the password form
+   while OAuth provisioning is governed by the linking flag. **If
+   `DISABLE_SIGNUPS` also gates OAuth account creation, the first login lands
+   on an empty instance with no way in** — no local password, no signup, no
+   account.
+
+   The fallback is one line and costs one deploy: set
+   `DISABLE_SIGNUPS = "false"` in `containers/karakeep.nix`,
+   `clan machines update ernst`, log in once to create the account, then put it
+   back to `"true"` and deploy again. **Whichever way this goes, record it in
+   this section** — it is exactly the class of upstream-flag assumption M23 and
+   M24 each paid for once.
+
+8. **Make the two dashboard API keys**, now that accounts exist.
+   Miniflux → Settings → API keys. Karakeep → Settings → API keys.
+
+   **Label Karakeep's `homepage`.** The extensions and Floccus hold keys of the
+   same kind from the same page; revoking the wrong row stops bookmark sync
+   silently on two laptops.
+
+9. **`clan vars generate ernst` again**, answering all six homepage prompts —
+   the four recovered in step 3 plus the two just made. Then
+   **`clan machines update ernst`**. Both tiles should stop reporting API
+   errors.
+
+10. **`clan machines update miralda`, then `clan machines update jens`.**
+
+11. **Per browser, once — eight times in total** (four browsers × two
+    machines): open the Karakeep extension, point it at
+    `https://karakeep.goclan.org`, paste an API key. Then Floccus → new account
+    → Karakeep → same URL and key.
+
+    Neither extension exposes a managed-storage schema, so there is nothing a
+    policy can set and no way to shorten this. Make these keys separate from
+    the dashboard's, and from each other's, so one revocation has one
+    consequence.
+
+12. **Cloudflare, LAST**: A record `karakeep` → `78.94.91.74`, **DNS-only (grey
+    cloud), no AAAA**.
+
+    Only after steps 7 and 8 have proven that Authelia is the only way in. This
+    is M22's ordering and its reason: `karakeep.goclan.org` carries no
+    forward-auth, so from the moment this record exists the application's own
+    auth posture is the entire boundary.
+
+    **Miniflux gets no record here.** That is the point of ledger row L17's
+    first paragraph, not an omission.
 
 ### Test plan — and the negative controls are the point
 
