@@ -272,6 +272,41 @@ DNS-01 and HTTP-01 never runs.
    UniFi accepts an address from the `.2–.5` range and then silently hands out
    an ordinary pool lease instead.
 
+### VPN clients land on VLAN 70 and cannot reach VLAN 90 by default
+
+**Measured 2026-09-19**, from a UniFi WireGuard client at `10.0.70.2`:
+
+| Target | VLAN | Result |
+|---|---|---|
+| `10.0.5.3` (Technitium) | 5 | ✅ reachable — so DNS over the tunnel works |
+| `10.0.50.10` (ernst) | 50 | ✅ reachable — so SSH over the tunnel works |
+| `10.0.90.12` (Traefik) | **90** | ❌ **no route** |
+| `10.0.90.29` (Karakeep) | 90 | ❌ no route |
+
+So **every `*.goclan.org` name is unreachable while the VPN is up**, which is
+the exact opposite of what a VPN is for and reads as a service outage rather
+than a firewall policy. It is worse than it sounds, because the *public* path
+is unavailable at the same time: a full-tunnel client egresses from the house's
+own WAN address, so connecting to `78.94.91.74` is a NAT hairpin the UDM-Pro
+does not perform. **Both paths fail at once, and neither failure names the
+cause.**
+
+The fix is one zone-based firewall policy, and it should be narrow:
+
+> **Allow `VPN (70)` → `10.0.90.12:443/tcp`**
+
+Traefik on 443 and nothing else — the same shape as the permanent
+`Allow Traefik` policy that replaced L1/L2, and for the same reason: the VPN
+needs the *proxy*, not the Services VLAN. Do not permit VLAN 70 → VLAN 90
+wholesale; that would hand every tunnelled device the backends directly and
+undo M5's backend-bypass hardening for exactly the clients most likely to be
+someone else's laptop.
+
+**This is not in the repo and cannot be.** It is listed here because the
+symptom — "the VPN is up and nothing resolves to anything useful" — sends
+people to DNS, to Traefik and to the container firewalls in that order, and it
+is none of them.
+
 ### `on_boot.d`
 
 **No new entries.** Nothing added here needs one — the DNAT and the DHCP

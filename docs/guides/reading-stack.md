@@ -453,3 +453,48 @@ it to minutes.
 | Weekly | Drain Inbox harder; check **Link rot** and **Untagged** |
 | Monthly | Unsubscribe dead feeds; sweep browser bookmarks; export OPML |
 | Yearly | Export OPML from Miniflux |
+
+---
+
+## Reaching this from another network
+
+Two paths, and they fail in confusingly similar ways.
+
+**The public path** — `miniflux.goclan.org` and `karakeep.goclan.org` are both
+on the `wan` entrypoint. Miniflux is behind Authelia's forward-auth (you get
+the portal, then 2FA); Karakeep answers its own sign-in page and sends you to
+Authelia from there. Nothing to set up: open the URL.
+
+**The VPN path** — the UniFi WireGuard server. Import the client config into
+NetworkManager so Noctalia's `network-manager-vpn` widget can toggle it; that
+is the same arrangement `modules/desktop/desktop-common.nix` describes for
+IVPN, and the widget only ever sees NetworkManager connections.
+
+```bash
+nmcli connection import type wireguard file skynetvpn.conf
+nmcli connection modify skynetvpn connection.autoconnect no
+```
+
+`autoconnect no` matters — a full tunnel coming up on the home LAN is not what
+you want. **Do not run it alongside IVPN**: both are `AllowedIPs = 0.0.0.0/0`,
+and two things with authority over the default route is how a kill-switch
+becomes an outage nobody can diagnose.
+
+### The trap: with the VPN up, BOTH paths break
+
+Measured 2026-09-19. A tunnelled client gets an address on **VLAN 70**, and:
+
+- it **cannot reach VLAN 90 at all** — not Traefik, not any backend — because
+  the UDM-Pro has no policy permitting it. DNS works (VLAN 5 is reachable) and
+  SSH to ernst works (VLAN 50 is reachable), which makes it look like the
+  services are down rather than unreachable;
+- the **public** path is simultaneously unavailable, because a full-tunnel
+  client egresses from the house's own WAN address, and connecting to
+  `78.94.91.74` from inside is a NAT hairpin the UDM-Pro does not do.
+
+So the VPN takes away the path that was working and does not supply the one it
+promised. The fix is one UDM-Pro policy — `VPN (70)` → `10.0.90.12:443/tcp` —
+and it is written up in
+[the app-API ingress guide](ernst-app-api-ingress.md#vpn-clients-land-on-vlan-70-and-cannot-reach-vlan-90-by-default).
+
+**Until that rule exists, turn the VPN off to reach these two services.**
