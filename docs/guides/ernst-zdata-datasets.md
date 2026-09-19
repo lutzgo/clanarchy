@@ -79,6 +79,44 @@ zfs create \
 # "it has none". The check to make before believing that of a new service is
 # whether anything under its StateDirectory survives a restart and matters —
 # for the index, losing the cache costs one slow first page load.
+#
+# M27 PUT TWO MORE SERVICES HERE AND CREATED NO DATASET, which is worth a line
+# because one of them looks at first like a bulk store and is not:
+#
+#   /srv/state/miniflux   PostgreSQL and nothing else.  Miniflux keeps article
+#                         text in the database and downloads no media.  The
+#                         easy case, identical in shape to Home Assistant's.
+#
+#   /srv/state/karakeep   The interesting one.  Its DATA_DIR holds a SQLite
+#                         database AND the archived page assets — crawled HTML,
+#                         screenshots, PDFs — in ONE tree, because upstream
+#                         says splitting DATA_DIR is "possible but not
+#                         supported".  So the mixed profile cannot be separated
+#                         even in principle, and 128K is the right answer for
+#                         the half that would otherwise argue for 1M: these are
+#                         page-sized files, not films.  Promote it to its own
+#                         dataset if the archive ever grows past a few tens of
+#                         GB — and note that doing so afterwards is a COPY, not
+#                         a rename.
+#
+# THE SNAPSHOT PROPERTY IS LOAD-BEARING FOR KARAKEEP, more than for anything
+# else on this dataset.  disko.nix's argument for opting zdata/nextcloud in is
+# "it is deleted from by people"; the same is true here, and worse — a crawled
+# copy of a page that has since gone dark cannot be re-acquired from ANYWHERE.
+# A dataset without com.sun:auto-snapshot=true would be silently unsnapshotted,
+# and this is one of the trees where that would eventually cost something
+# irreplaceable.
+#
+# ONE THING M27 DELIBERATELY DID NOT PUT HERE: Meilisearch's search index,
+# which Karakeep's module pulls in.  It stays on the container rootfs under
+# /var/lib/nixos-containers/karakeep.  The reason is an id rather than a write
+# profile — the nixpkgs meilisearch module runs under DynamicUser with a
+# StateDirectory, so binding it out would land a systemd-ALLOCATED uid on zdata,
+# which is exactly what the uid table in machines/ernst/networking.nix exists
+# to prevent.  The index is DERIVED data (Karakeep rebuilds it from the SQLite
+# database on demand), so losing it costs a reindex and not a byte.  That is a
+# third answer to this file's question, beside "its own dataset" and "here":
+# "nowhere, because it can be rebuilt".
 zfs create \
   -o mountpoint=legacy \
   -o setuid=off \

@@ -455,6 +455,20 @@ let
   ];
 
   oidcNextcloudGen = config.clan.core.vars.generators.authelia-oidc-nextcloud;
+
+  # ── M27's two relying parties ─────────────────────────────────────────────
+  #
+  # Both callback paths are the APPLICATION'S, read out of each application's
+  # own documentation rather than inferred from the other.  That is M23's
+  # lesson stated as a habit, and these two make the point by disagreeing about
+  # everything: Miniflux uses a hand-rolled path under /oauth2/, Karakeep uses
+  # NextAuth's `/api/auth/callback/<provider-id>` where the provider id is the
+  # literal string `custom`.
+  minifluxRedirectUri = "https://miniflux.${baseDomain}/oauth2/oidc/callback";
+  karakeepRedirectUri = "https://karakeep.${baseDomain}/api/auth/callback/custom";
+
+  oidcMinifluxGen = config.clan.core.vars.generators.authelia-oidc-miniflux;
+  oidcKarakeepGen = config.clan.core.vars.generators.authelia-oidc-karakeep;
 in
 {
   ##############################################################################
@@ -671,6 +685,31 @@ in
       {
         echo "identity_providers:"
         echo "  oidc:"
+
+        # ── A CLAIMS POLICY, FOR EXACTLY ONE RELYING PARTY (M27) ───────────
+        #
+        # A SIBLING of `clients:`, not a member of it — which is why it is
+        # emitted here, before the list opens, rather than beside the client
+        # that references it.  Getting that wrong produces valid YAML that
+        # Authelia rejects at startup, i.e. the portal for the whole fleet does
+        # not come up.  `authelia validate-config` against the staged file is
+        # the check, and it is a deploy step rather than a hope.
+        #
+        # WHAT IT IS FOR.  Karakeep does not retrieve claims the way OpenID
+        # Connect 1.0 specifies — it reads `email` off the ID TOKEN instead of
+        # calling the userinfo endpoint for it — so with a spec-compliant
+        # provider it authenticates successfully and then fails to work out who
+        # just logged in.  Authelia's own integration documentation calls this
+        # a "configuration escape hatch" and supplies exactly this block.
+        #
+        # SCOPED AS NARROWLY AS THE MECHANISM ALLOWS: one policy, named after
+        # the one client that opts into it, adding one claim.  Every other
+        # relying party on this host keeps the default behaviour, which is the
+        # point of a named policy rather than a global setting.
+        echo "    claims_policies:"
+        echo "      karakeep:"
+        echo "        id_token: ['email']"
+
         echo "    clients:"
         echo "      - client_id: 'grafana'"
         echo "        client_name: 'Grafana'"
@@ -843,6 +882,81 @@ in
         echo "          - 'openid'"
         echo "          - 'profile'"
         echo "          - 'groups'"
+        echo "          - 'email'"
+
+        # ── Miniflux (M27) ────────────────────────────────────────────────
+        #
+        # THE WEB UI AND NOTHING ELSE.  miniflux.goclan.org carries no
+        # forward-auth (it is in `appApiHosts`), so the Fever and Google Reader
+        # APIs reach the application directly — but unlike CWA, the thing they
+        # authenticate against is NOT a second password store: Miniflux has no
+        # local login at all here (`DISABLE_LOCAL_AUTH`,
+        # containers/miniflux.nix), and its API clients use per-user API keys
+        # minted from inside a session this client is the only way to obtain.
+        # So this block is not one of two ways in; it is the only one.
+        #
+        # `client_secret_basic`, which is Authelia's own documented value for
+        # this relying party AND the default for every client here except
+        # Nextcloud.  Read out of Miniflux's side rather than copied from its
+        # neighbour — see the note on the Nextcloud block above for what
+        # copying costs.
+        #
+        # NO `groups` SCOPE, unlike Grafana's and Nextcloud's: Miniflux has no
+        # concept of a group and would ignore the claim.  Asking for a claim
+        # nothing reads is a claim in an ID token for no reason.
+        echo "      - client_id: 'miniflux'"
+        echo "        client_name: 'Miniflux'"
+        printf "        client_secret: '"
+        tr -d '[:space:]' < ${oidcMinifluxGen.files."miniflux-client-secret-digest".path}
+        echo "'"
+        echo "        public: false"
+        echo "        authorization_policy: 'two_factor'"
+        echo "        require_pkce: true"
+        echo "        pkce_challenge_method: 'S256'"
+        echo "        consent_mode: 'implicit'"
+        echo "        token_endpoint_auth_method: 'client_secret_basic'"
+        echo "        redirect_uris:"
+        echo "          - '${minifluxRedirectUri}'"
+        echo "        scopes:"
+        echo "          - 'openid'"
+        echo "          - 'profile'"
+        echo "          - 'email'"
+
+        # ── Karakeep (M27) ────────────────────────────────────────────────
+        #
+        # THE ONLY CLIENT ON THIS HOST WITH A `claims_policy`, and the block it
+        # names is emitted above `clients:` — see the note there for what
+        # Karakeep does that needs it.
+        #
+        # `require_pkce` IS FALSE HERE, ALONE AMONG THESE CLIENTS, and that is
+        # taken from Authelia's own integration document for this relying party
+        # rather than chosen.  It is the same class of fact as Nextcloud's
+        # token_endpoint_auth_method: a property of the CLIENT's implementation,
+        # which no amount of reasoning about the server can supply.  If a later
+        # Karakeep release adds PKCE support this line should flip — and the
+        # symptom of flipping it too early is a failure at the token exchange,
+        # after the portal and after 2FA, which reads as an Authelia fault.
+        #
+        # `userinfo_signed_response_alg: 'none'` for the same provenance: the
+        # client expects an unsigned JSON userinfo response, and Authelia's
+        # default of a signed JWT would be rejected by it.
+        echo "      - client_id: 'karakeep'"
+        echo "        client_name: 'Karakeep'"
+        printf "        client_secret: '"
+        tr -d '[:space:]' < ${oidcKarakeepGen.files."karakeep-client-secret-digest".path}
+        echo "'"
+        echo "        public: false"
+        echo "        authorization_policy: 'two_factor'"
+        echo "        claims_policy: 'karakeep'"
+        echo "        require_pkce: false"
+        echo "        consent_mode: 'implicit'"
+        echo "        token_endpoint_auth_method: 'client_secret_basic'"
+        echo "        userinfo_signed_response_alg: 'none'"
+        echo "        redirect_uris:"
+        echo "          - '${karakeepRedirectUri}'"
+        echo "        scopes:"
+        echo "          - 'openid'"
+        echo "          - 'profile'"
         echo "          - 'email'"
       } > ${oidcClientFile}.new
       chown ${toString autheliaUid}:${toString autheliaGid} ${oidcClientFile}.new
@@ -1217,6 +1331,94 @@ in
         exit 1
       fi
       printf '%s' "$digest" > "$out/nextcloud-client-secret-digest"
+    '';
+  };
+
+  ##############################################################################
+  # `authelia-oidc-miniflux` — the Miniflux relying party (M27).
+  #
+  # ONE GENERATOR PER RELYING PARTY, for the reason the Nextcloud block above
+  # states: a generator is atomic, so folding two more files into an existing
+  # one would hand its current owner a new client secret as a side effect.
+  #
+  # THE PLAINTEXT IS CONSUMED BY A MACHINE, like Nextcloud's and unlike CWA's,
+  # but by a simpler route than either: Miniflux takes its client credentials
+  # from the ENVIRONMENT, so containers/miniflux.nix stages this half into an
+  # `EnvironmentFile` and no provisioning unit, admin form or `occ` invocation
+  # is involved at all.
+  ##############################################################################
+  clan.core.vars.generators.authelia-oidc-miniflux = {
+    files."miniflux-client-secret".secret        = true;
+    files."miniflux-client-secret-digest".secret = true;
+
+    files."miniflux-client-secret-digest".restartUnits =
+      [ "authelia-secrets.service" "container@authelia.service" ];
+
+    files."miniflux-client-secret".restartUnits =
+      [ "miniflux-secrets.service" "container@miniflux.service" ];
+
+    runtimeInputs = [ pkgs.authelia pkgs.gnused pkgs.coreutils ];
+
+    script = ''
+      set -euo pipefail
+
+      secret=$(authelia crypto rand --length 72 --charset alphanumeric \
+                 | sed -n 's/^Random Value: //p' | tr -d '\n')
+      if [ -z "$secret" ]; then
+        echo "  ✗ authelia crypto rand produced no client secret for Miniflux" >&2
+        exit 1
+      fi
+      printf '%s' "$secret" > "$out/miniflux-client-secret"
+
+      digest=$(authelia crypto hash generate pbkdf2 --variant sha512 --password "$secret" \
+                 | sed -n 's/^Digest: //p')
+      if [ -z "$digest" ]; then
+        echo "  ✗ pbkdf2 hashing produced no digest for the Miniflux client secret" >&2
+        exit 1
+      fi
+      printf '%s' "$digest" > "$out/miniflux-client-secret-digest"
+    '';
+  };
+
+  ##############################################################################
+  # `authelia-oidc-karakeep` — the Karakeep relying party (M27).
+  #
+  # Same rule, same shape, same reason.  Staged into an `EnvironmentFile` by
+  # containers/karakeep.nix exactly as Miniflux's is.
+  #
+  # THIS IS THE ONE RELYING PARTY ON THIS HOST THAT NEEDS AN ESCAPE HATCH IN
+  # THE CLIENT BLOCK ITSELF — see `claims_policies` in the staging script.
+  ##############################################################################
+  clan.core.vars.generators.authelia-oidc-karakeep = {
+    files."karakeep-client-secret".secret        = true;
+    files."karakeep-client-secret-digest".secret = true;
+
+    files."karakeep-client-secret-digest".restartUnits =
+      [ "authelia-secrets.service" "container@authelia.service" ];
+
+    files."karakeep-client-secret".restartUnits =
+      [ "karakeep-secrets.service" "container@karakeep.service" ];
+
+    runtimeInputs = [ pkgs.authelia pkgs.gnused pkgs.coreutils ];
+
+    script = ''
+      set -euo pipefail
+
+      secret=$(authelia crypto rand --length 72 --charset alphanumeric \
+                 | sed -n 's/^Random Value: //p' | tr -d '\n')
+      if [ -z "$secret" ]; then
+        echo "  ✗ authelia crypto rand produced no client secret for Karakeep" >&2
+        exit 1
+      fi
+      printf '%s' "$secret" > "$out/karakeep-client-secret"
+
+      digest=$(authelia crypto hash generate pbkdf2 --variant sha512 --password "$secret" \
+                 | sed -n 's/^Digest: //p')
+      if [ -z "$digest" ]; then
+        echo "  ✗ pbkdf2 hashing produced no digest for the Karakeep client secret" >&2
+        exit 1
+      fi
+      printf '%s' "$digest" > "$out/karakeep-client-secret-digest"
     '';
   };
 

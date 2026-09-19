@@ -580,6 +580,28 @@ let
   homeassistantAddr = "10.0.90.27";
   homeassistantPort = 8123;
 
+  # Miniflux (M27) — the feed reader, in an NSPAWN container on
+  # 02:00:00:90:00:14 → 10.0.90.28.  Its container firewall accepts THIS
+  # proxy's address, the service index's and the monitoring container's, and
+  # nothing else.
+  #
+  # IT IS THE ONLY appApiHosts NAME ON THIS PROXY THAT IS NOT IN `wanExposed`,
+  # and that asymmetry with its own milestone's other service is deliberate
+  # rather than an omission — see the `karakeep` entry below.
+  minifluxAddr = "10.0.90.28";
+  minifluxPort = 8080;
+
+  # Karakeep (M27) — bookmarks and page archives, in an NSPAWN container on
+  # 02:00:00:90:00:15 → 10.0.90.29.
+  #
+  # IT HAS A SECOND LEG THIS PROXY CANNOT SEE AND MUST NOT ROUTE TO, the way
+  # Home Assistant does: a point-to-point /128 veth (`ai0`, fdca:fe92::) to the
+  # host's inference server, on no VLAN at all.  That leg exists for the
+  # container to talk OUT and carries nothing inbound.  See
+  # containers/karakeep.nix and `roles.ollama…exposeOn` in clan.nix.
+  karakeepAddr = "10.0.90.29";
+  karakeepPort = 3000;
+
   # Calibre-Web-Automated — the podman tier's FOURTH occupant, and the only
   # one of this round's three additions that needed an address of its own.
   #
@@ -869,6 +891,26 @@ let
     # Same three separate acts as every other name here: this entry, a public A
     # record, and the ledger row (L16) in docs/roadmap.md.
     "homepage"
+
+    # Karakeep (M27), and the interesting part is what is NOT here beside it.
+    #
+    # ITS OWN MILESTONE'S OTHER SERVICE, MINIFLUX, IS DELIBERATELY LAN-ONLY.
+    # Two services shipped together, one exposed and one not, is the kind of
+    # asymmetry that reads as an oversight three months later, so: bookmark
+    # sync is the half that HAS to work from outside the house.  miralda and
+    # jens are laptops; Floccus syncing only on the home LAN means the two
+    # machines diverge the moment either one leaves, and the divergence is
+    # discovered later, as a merge.  Reading feeds can wait for the LAN, and a
+    # name not on the internet is the cheapest control there is.
+    #
+    # `wanLoginPaths` DOES carry an entry for this one, unlike `homepage`'s,
+    # because this is an `appApiHosts` name: Authelia never sees the request,
+    # so the per-identity regulation that makes a login-path rate limit
+    # redundant for `home` does not apply here.
+    #
+    # Same three separate acts as every other name here: this entry, a public A
+    # record, and the ledger row (L17) in docs/roadmap.md.
+    "karakeep"
   ];
 
   # ── THE LOGIN PATHS, PER SERVICE, AND WHAT THIS DOES NOT COVER ────────────
@@ -968,6 +1010,40 @@ let
     # 1/10s covers a household of phones comfortably; it would not cover a
     # household of hundreds, which this is not.
     homeassistant = "(PathPrefix(`/auth/login_flow`) || PathPrefix(`/auth/token`))";
+
+    # Karakeep's NextAuth credential endpoints (M27), and this entry is BELT
+    # AND BRACES rather than the main control — which is worth saying, because
+    # it is the reverse of every other entry in this map.
+    #
+    # containers/karakeep.nix sets `DISABLE_PASSWORD_AUTH`, so on the stated
+    # behaviour there is no password to guess here at all and the real login
+    # happens at Authelia, which has per-identity regulation.  THAT IS AN
+    # ASSUMPTION ABOUT AN UPSTREAM FLAG AND IT IS NOT VERIFIED: if
+    # `DISABLE_PASSWORD_AUTH` turns out to hide the form rather than to remove
+    # the NextAuth credentials provider, the endpoint below still accepts POSTs
+    # and this vhost is on the internet.  Limiting it costs nothing, because
+    # nobody legitimate ever posts there.
+    #
+    # `/api/auth/callback/custom` MUST NOT BE MATCHED — that is the OAuth
+    # RETURN from Authelia, i.e. the successful path, and it is a different
+    # prefix from `/api/auth/callback/credentials` on purpose.
+    #
+    # NOTHING HERE COVERS API-KEY GUESSING against /api/v1/**, and it must not:
+    # that is every request the browser extensions and the Floccus adapter
+    # make, so a limit there would break unattended bookmark sync.  Same shape
+    # as the Komga and Subsonic caveat above; CrowdSec's status-based 401
+    # scenario is what actually covers it.
+    karakeep = "(PathPrefix(`/api/auth/callback/credentials`) || PathPrefix(`/api/auth/signin`))";
+
+    # ── MINIFLUX IS ABSENT FROM THIS MAP BECAUSE IT IS NOT ON THE WAN (M27) ─
+    #
+    # It is in `appApiHosts` but not in `wanExposed`, and this map only ever
+    # affects the wan twin of a router — so an entry here would generate a
+    # `miniflux-wan-login` router for a name that has no wan router to twin.
+    # Stated rather than omitted so that whoever later adds `miniflux` to
+    # `wanExposed` knows this is the second edit that goes with it, alongside
+    # the public A record and the ledger row.  Its credential path would be
+    # `PathPrefix(`/oauth2/oidc/redirect`)` plus `PathPrefix(`/login`)`.
 
     # ── NEXTCLOUD IS DELIBERATELY ABSENT FROM THIS MAP (M23) ────────────────
     #
@@ -2668,6 +2744,49 @@ in
               service     = "homeassistant";
             };
 
+            # ── Miniflux (M27) — the feed reader ──────────────────────────
+            #
+            # NO `authelia` MIDDLEWARE: `miniflux.goclan.org` is in
+            # `appApiHosts` (containers/ingress-policy.nix), and the guard
+            # below throws at evaluation if that disagrees with what is written
+            # here.  The argument is in the policy file: the Fever and Google
+            # Reader APIs carry credentials in the request and have no cookie
+            # jar, so a 302 to a portal is not something either protocol can
+            # act on.
+            #
+            # THE BROWSER PATH IS STILL BEHIND A SECOND FACTOR, through
+            # Authelia's OIDC provider rather than through this middleware —
+            # and more completely than Nextcloud's is, because Miniflux has no
+            # local password login at all here.  containers/miniflux.nix.
+            #
+            # NOT IN `wanExposed`, unlike its own milestone's other service.
+            # See the note beside `karakeep` there.
+            miniflux = {
+              rule        = "Host(`miniflux.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              service     = "miniflux";
+            };
+
+            # ── Karakeep (M27) — bookmarks and page archives ──────────────
+            #
+            # NO `authelia` MIDDLEWARE, same list and same guard.  What makes
+            # this entry different from every other exemption on this proxy is
+            # that the clients which cannot follow a 302 are ones THIS
+            # REPOSITORY INSTALLS — the Karakeep extension and the Floccus
+            # adapter, declared for lgo in service-modules/software.nix and
+            # machines/miralda/home-modules/browsers.nix.  Moving this name to
+            # `protectedHosts` would break an unattended sync between two
+            # laptops, which presents as bookmarks quietly failing to
+            # propagate rather than as an error anybody sees.
+            #
+            # ON THE INTERNET (`wanExposed` + ledger row L17), with a
+            # `wanLoginPaths` entry above.
+            karakeep = {
+              rule        = "Host(`karakeep.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              service     = "karakeep";
+            };
+
             # slskd's web UI — in the microvm guest, not a container.  Behind
             # `authelia` like every other admin surface; its own login exists
             # but is a single shared operator account, not per-user.
@@ -2903,6 +3022,12 @@ in
             # WebSocket rides the same backend; Traefik proxies the upgrade with
             # no configuration as long as nothing buffers.
             homeassistant.loadBalancer.servers  = [ { url = "http://${homeassistantAddr}:${toString homeassistantPort}/"; } ];
+
+            # M27 — two nspawn containers on .28 and .29.  Plain HTTP on both;
+            # neither terminates TLS, because the wildcard is terminated once,
+            # here.
+            miniflux.loadBalancer.servers       = [ { url = "http://${minifluxAddr}:${toString minifluxPort}/"; } ];
+            karakeep.loadBalancer.servers       = [ { url = "http://${karakeepAddr}:${toString karakeepPort}/"; } ];
 
             # … and one in the microvm guest, the first non-container backend.
             slskd.loadBalancer.servers          = [ { url = "http://${slskdAddr}:${toString slskdPort}/"; } ];

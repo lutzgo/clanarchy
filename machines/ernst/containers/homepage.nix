@@ -207,6 +207,16 @@ let
   hassAddr      = "10.0.90.27";
   hassPort      = 8123;
 
+  # M27 added two more, so the count in the comment above is now SIX rather
+  # than four — corrected here rather than in that paragraph, because the
+  # paragraph is a true statement about M26 and this is a true statement about
+  # what the file holds today.  Each still costs exactly one accept rule in its
+  # own container file, commented there with this file's address.
+  minifluxAddr  = "10.0.90.28";
+  minifluxPort  = 8080;
+  karakeepAddr  = "10.0.90.29";
+  karakeepPort  = 3000;
+
   # NEXTCLOUD HAS NO ENTRY HERE ON PURPOSE.  Its widget is the one that goes
   # through Traefik by name, because Nextcloud refuses a Host header that is
   # not in `trusted_domains` — see the long note on that widget below.  An
@@ -301,6 +311,36 @@ in
   clan.core.vars.generators.homepage-tokens = {
     files."tokens.env" = {
       secret = true;
+
+      # ── WITHOUT THIS, REGENERATING THESE TOKENS DOES NOTHING.  MEASURED. ──
+      #
+      # Found on 2026-09-19, after M27 added two prompts and regenerated:
+      # `clan vars get` showed all six in the repo, and the STAGED file on
+      # ernst still had four.  `systemctl show homepage-secrets` gave
+      # `ExecMainStartTimestamp` two days and several deploys earlier.
+      #
+      # The mechanism is the one containers/nextcloud.nix states for its own
+      # generators and this one predates: the staging script embeds the sops
+      # PATH, not the contents.  Rewriting the encrypted file leaves the unit's
+      # script byte-identical, so systemd sees no change — and because the unit
+      # is `Type=oneshot` with `RemainAfterExit = true`, it is permanently
+      # "active" and is never re-run.  The stale file simply persists.
+      #
+      # THE FAILURE IS SILENT AND PRESENTS TWO DIFFERENT WAYS, which is what
+      # made it worth chasing rather than shrugging at: with the variable
+      # missing, gethomepage substitutes nothing and sends the LITERAL
+      # `{{HOMEPAGE_VAR_KARAKEEP_KEY}}` as the credential.  Karakeep rejects
+      # that and the tile says "API Error"; Miniflux answers in a shape the
+      # widget parses to `NaN`.  Neither says "token missing", and nothing logs
+      # one.
+      #
+      # `homepage-secrets.service` ONLY, deliberately — NOT `container@arr`,
+      # which every other generator in this repo would list here.  That
+      # container holds Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, Navidrome,
+      # Komga and the rest, and bouncing all of them to pick up a DASHBOARD
+      # credential is a cure worse than the disease.  The script below restarts
+      # the one unit that actually reads the file instead.
+      restartUnits = [ "homepage-secrets.service" ];
     };
 
     prompts."jellyfin-key" = {
@@ -319,13 +359,57 @@ in
       description = "Nextcloud serverinfo NC-Token (Administration settings → System → 'Copy token'). NOT a user password.";
       type = "hidden";
     };
+    prompts."miniflux-key" = {
+      description = "Miniflux API key for the dashboard (Settings → API keys → Create). Per-user; there is no password to use instead.";
+      type = "hidden";
+    };
+    prompts."karakeep-key" = {
+      description = "Karakeep API key for the dashboard (Settings → API keys). Make a SEPARATE one labelled 'homepage' — revoking the extension's or Floccus's key stops bookmark sync silently.";
+      type = "hidden";
+    };
 
+    # ── ADDING A PROMPT DOES NOT RE-RUN THIS GENERATOR.  MEASURED. ─────────
+    #
+    # An earlier version of this comment claimed the opposite — that because a
+    # generator is atomic, M27's two new prompts would make the next
+    # `clan vars generate ernst` ask for all six.  IT ASKS FOR NOTHING.
+    # Measured on 2026-09-19: the run created both `authelia-oidc-*`
+    # generators and left `vars/per-machine/ernst/homepage-tokens/` untouched,
+    # still dated from the deploy before.
+    #
+    # THE RULE IS FILES, NOT INPUTS.  clan treats a generator as satisfied when
+    # every file it DECLARES already exists.  This one declares exactly one,
+    # `tokens.env`, and that file was already there — so the generator is
+    # skipped whole, and a new `prompts.<name>` changes nothing about that.
+    # Prompts are inputs; only files are state.
+    #
+    # THE CONSEQUENCE IS A SILENT PARTIAL CONFIG, which is why this is worth a
+    # comment rather than a footnote: `tokens.env` keeps the four old lines and
+    # gains neither new one, so the two M27 tiles substitute nothing and render
+    # the literal `{{HOMEPAGE_VAR_MINIFLUX_KEY}}` as their API key.  The tile
+    # reports an API error; nothing logs that a variable is missing.
+    #
+    # ADDING A PROMPT THEREFORE NEEDS AN EXPLICIT REGENERATION, and it re-asks
+    # every prompt in the generator because THAT is where atomicity bites:
+    #
+    #     clan vars generate ernst --generator homepage-tokens --regenerate
+    #
+    # Have all six answers to hand before running it — the four already stored
+    # are not carried over.  Read them out first with
+    # `clan vars get ernst homepage-tokens/tokens.env`.
+    #
+    # containers/authelia.nix takes the opposite route (one generator per
+    # relying party) for the related but distinct reason that there the
+    # atomicity would hand a third party a NEW CLIENT SECRET as a side effect.
+    # Here the values are typed by a human, so re-entering them costs typing.
     script = ''
       {
         printf 'HOMEPAGE_VAR_JELLYFIN_KEY=%s\n'  "$(cat "$prompts/jellyfin-key")"
         printf 'HOMEPAGE_VAR_IMMICH_KEY=%s\n'    "$(cat "$prompts/immich-key")"
         printf 'HOMEPAGE_VAR_HASS_TOKEN=%s\n'    "$(cat "$prompts/homeassistant-token")"
         printf 'HOMEPAGE_VAR_NEXTCLOUD_KEY=%s\n' "$(cat "$prompts/nextcloud-token")"
+        printf 'HOMEPAGE_VAR_MINIFLUX_KEY=%s\n'  "$(cat "$prompts/miniflux-key")"
+        printf 'HOMEPAGE_VAR_KARAKEEP_KEY=%s\n'  "$(cat "$prompts/karakeep-key")"
       } > "$out/tokens.env"
     '';
     runtimeInputs = [ pkgs.coreutils ];
@@ -368,6 +452,26 @@ in
         echo "homepage-secrets: no tokens at ${tokensGen.files."tokens.env".path} — run 'clan vars generate ernst'. Staging an empty file so the dashboard starts and reports the missing widgets by name." >&2
         ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
           /dev/null ${homepageSecretsDir}/tokens.env
+      fi
+
+      # ── Make the new file actually reach the process that reads it ────────
+      #
+      # `tokens.env` is an EnvironmentFile, so homepage-dashboard reads it ONCE
+      # at start.  Rewriting it under a running service changes nothing until
+      # that service restarts, which is the second half of the silent failure
+      # the generator's `restartUnits` comment describes: clan re-runs THIS
+      # unit, the file becomes correct, and the dashboard keeps serving the old
+      # credentials until something happens to bounce it.
+      #
+      # ONE UNIT INSIDE ONE CONTAINER, not `container@arr` — see the generator.
+      #
+      # `|| true` is load-bearing on the COLD path: this unit is ordered
+      # `before container@arr`, so on a boot or a first deploy the container is
+      # not running and there is nothing to restart.  That is not an error, and
+      # failing here would keep the container from starting at all, which is
+      # precisely backwards.
+      if ${pkgs.systemd}/bin/machinectl show arr >/dev/null 2>&1; then
+        ${pkgs.systemd}/bin/systemctl -M arr restart homepage-dashboard.service || true
       fi
     '';
   };
@@ -799,6 +903,38 @@ in
                   widget = {
                     type = "romm";
                     url  = "http://${rommAddr}:${toString rommPort}";
+                  };
+                };
+              }
+              {
+                "Miniflux" = {
+                  icon        = "miniflux.png";
+                  href        = pub "miniflux";
+                  description = "Feeds — the reading intake";
+                  widget = {
+                    type = "miniflux";
+                    url  = "http://${minifluxAddr}:${toString minifluxPort}";
+                    # A per-user API key, made in Miniflux's own Settings →
+                    # API keys.  NOT a password: Miniflux has none here, since
+                    # `DISABLE_LOCAL_AUTH` leaves Authelia as the only login.
+                    key  = "{{HOMEPAGE_VAR_MINIFLUX_KEY}}";
+                  };
+                };
+              }
+              {
+                "Karakeep" = {
+                  icon        = "karakeep.png";
+                  href        = pub "karakeep";
+                  description = "Bookmarks and page archives — the reading keep";
+                  widget = {
+                    type = "karakeep";
+                    url  = "http://${karakeepAddr}:${toString karakeepPort}";
+                    # An API key from Karakeep's Settings → API keys.  The SAME
+                    # kind of key the browser extension and the Floccus adapter
+                    # hold, which is worth knowing before rotating one: revoke
+                    # the wrong row and bookmark sync stops silently on two
+                    # laptops.  Make the dashboard its own and label it.
+                    key  = "{{HOMEPAGE_VAR_KARAKEEP_KEY}}";
                   };
                 };
               }
