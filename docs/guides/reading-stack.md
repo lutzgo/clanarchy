@@ -63,16 +63,23 @@ dashboard's. They all come from the same page in Karakeep and look identical;
 revoking the wrong one breaks something you will not immediately connect to the
 revocation. Label it `miniflux`.
 
-### The tags matter more than they look
+### The tags are for provenance, not for state
 
-Anything arriving this way is tagged `miniflux` and `new`. That gives you:
+Anything arriving this way is tagged `miniflux`, which is the useful half: it
+is the only thing that distinguishes a feed capture from a Floccus-synced
+browser bookmark, since both reach Karakeep through the same API. Several
+queries below depend on it.
 
-- a way to find everything that came from a feed rather than from a browser;
-- a **triage queue** — `new` is a tag you remove once you have actually read
-  and filed the thing, so `tag:new` is your backlog and its size is honest.
+`new` is optional and slightly redundant. An earlier version of this guide
+built the triage queue out of it — save, then remove the tag once filed — which
+works but has two problems: it is a convention you have to maintain by hand,
+and it only ever covers things that came from Miniflux. **The inbox below is
+defined from Karakeep's own states instead** (`-is:archived -is:inlist`), which
+needs no discipline and catches everything however it arrived. Keep `new` if
+you like the extra signal; nothing depends on it.
 
-Karakeep's AI tagging adds topic tags on top (see below). The two do not
-conflict: these two are *provenance* and *state*, the AI's are *subject*.
+Karakeep's AI tagging adds subject tags on top. No conflict: `miniflux` is
+*provenance*, the AI's are *subject*.
 
 ### It is a manual setting, and that is not an oversight
 
@@ -123,33 +130,156 @@ the question at reading time is *how much attention do I have right now*, not
 
 ---
 
-## Consuming and curating — the daily loop
+## The daily inbox workflow
 
-The loop is four steps and takes as long as you let it:
+### There are three inboxes, and naming them is most of the work
 
-1. **Skim `Daily`.** Miniflux marks entries read as you scroll. Do not fight it.
-2. **For anything worth more than a skim, save to Karakeep** with the
-   integration above. This is the *only* decision that matters in the whole
-   workflow: *is this worth having in a year?*
-3. **Mark all as read** without guilt. The unread count is not a debt. A feed
-   reader you feel bad about is a feed reader you stop opening.
-4. **Periodically, drain `tag:new` in Karakeep** — that is where the real
-   curation happens, and it is a separate activity from reading.
+Nobody designed it that way; it falls out of having three ways in. An inbox
+you have not named is one you cannot empty.
+
+| Inbox | What is in it | Emptied by | Cadence |
+|---|---|---|---|
+| **Miniflux unread** | Everything you subscribe to | Skimming, then *mark all read* | Daily |
+| **Karakeep inbox** | Things you saved but have not filed | Archiving or filing each one | Daily-ish |
+| **Floccus arrivals** | Browser bookmarks, synced in | Nothing — they accumulate | Monthly, if ever |
+
+The third is the one that bites, because it is silent: bookmarks you make in
+the browser arrive in Karakeep with no tag and no list, so without a query that
+separates them they sit in the second inbox forever, diluting it with things
+you never meant to triage.
+
+### The one rule that makes it work
+
+> **Reading time is capture time only. Filing is a different activity.**
+
+Deciding *where something goes* while you are reading is what turns a ten
+minute skim into forty minutes and is why people stop opening their reader. The
+skim produces exactly one decision per item — keep or don't — and nothing else.
+
+---
+
+### Set-up, once
+
+Karakeep's **smart lists** are saved queries that re-evaluate themselves, so
+the inboxes below are defined rather than maintained. Create these four
+(*Lists → new → smart*):
+
+| Name | Query | What it is |
+|---|---|---|
+| **Inbox** | `-is:archived -is:inlist` | Saved, not yet filed. **The one you actually work.** |
+| **From feeds** | `#miniflux -is:archived` | Today's captures from the reader |
+| **Link rot** | `is:broken` | Bookmarks whose page no longer resolves |
+| **Untagged** | `-is:tagged` | The AI tagger failed or is stuck |
+
+**Calibrate `source:` once before you trust any query built on it.** Karakeep
+records where each bookmark came from — `api`, `extension`, `rss`, `mobile`,
+`web`, `cli`, `singlefile`, `import` — but which value a given tool produces is
+worth *checking* rather than assuming. Search `source:api`, then
+`source:extension`, and see what each returns on your instance. Both Floccus
+and the Miniflux integration go through the API, so `#miniflux` is what tells
+them apart:
+
+```
+source:api -#miniflux        # ≈ Floccus arrivals
+```
+
+If that returns your browser bookmarks, add it as a fifth smart list called
+**Bar**. If it does not, find the value that works before writing one.
+
+### "Archived" does not mean what you think
+
+This is the single most confusing thing in Karakeep and it is worth one
+paragraph.
+
+**`is:archived` is a DONE state, not a preservation state.** Every bookmark has
+a stored page snapshot the moment it is crawled — that is not optional and not
+something you trigger. Archiving is the *email* sense of the word: filed away,
+out of the inbox, still there when you search.
+
+So **archive is your "done" button.** Pressing it does not create a copy and
+un-pressing it does not destroy one.
+
+---
+
+### The daily pass — Miniflux, about ten minutes
+
+1. Open Miniflux. **`Daily` category only.** Do not look at the others.
+2. Skim. Read headlines and first paragraphs.
+3. Anything worth more than a skim → **Save to Karakeep** (the integration —
+   one click). **Do not read it now.**
+4. **Mark all as read.** Not "mark the ones I finished" — all of them.
+5. Close Miniflux.
+
+That is the whole thing. If the unread count in `Weekly` or `Reference` is
+bothering you, that is a *feed subscription* problem, not a reading problem —
+see the monthly pass.
+
+**The unread count is not a debt.** Miniflux ages entries out by design;
+anything you did not get to was, by definition, not worth getting to.
+
+### The reading pass — Karakeep, whenever you actually have attention
+
+Separate from the skim, and it can be hours later or on the sofa:
+
+1. Open the **Inbox** smart list.
+2. Read things. For each, exactly one of:
+   - **Archive it** — read, done, findable by search later. The common case.
+   - **Add it to a list** — you will come back to it deliberately
+     (`Read later`, `Reference`, `Projects`, `Cooking`).
+   - **Delete it** — it was not what you hoped.
+3. Stop when you stop. The inbox does not have to be empty every day.
+
+Note that both archiving *and* filing remove an item from the Inbox query, so
+the list shortens as you work whichever verb you choose.
+
+### The weekly pass — about fifteen minutes
+
+- Drain whatever is left in **Inbox**. Be harsher than during the week; if it
+  has sat for seven days, archive or delete it rather than reading it.
+- Check **Link rot**. A broken bookmark is a page you can now only read in
+  Karakeep's snapshot — which is why the snapshot exists. Worth knowing about
+  while you still remember why you saved it.
+- Check **Untagged**. A handful is the queue; a growing pile means the tagger
+  or the inference link is broken, and `journalctl -M karakeep -u
+  karakeep-workers` on ernst is where that shows.
+
+### The monthly pass — about ten minutes
+
+- **Unsubscribe dead feeds.** Sort by read-ratio in Miniflux. A feed you have
+  never clicked through from in three months is noise with a good reputation.
+  **This is the highest-value habit in the whole stack and the one nobody
+  does** — every feed you drop makes the daily pass shorter forever.
+- **Sweep the Bar list** if you made one, or ignore it deliberately. Browser
+  bookmarks are navigation; they do not owe you triage.
+- **Export OPML** (*Miniflux → Settings → Export*). Small, and the only part of
+  this stack with a portable interchange format.
+
+---
+
+### When you fall behind
+
+You will. The failure mode is not falling behind, it is *avoiding the tool
+because you fell behind*.
+
+- **Miniflux**: mark everything read. There is no penalty and no lost data
+  worth mourning — anything genuinely important recurs.
+- **Karakeep Inbox over ~50 items**: declare bankruptcy. Select all, archive
+  all. Nothing is deleted, everything stays searchable, and you get an empty
+  inbox for the price of admitting you were not going to read them. **An
+  archived bookmark you never read is worth exactly as much as an unarchived
+  one you never read**, minus the guilt.
+
+If bankruptcy happens twice in a quarter, the problem is upstream: too many
+feeds in `Daily`, or too low a bar at capture time. Fix the input, not the
+backlog.
+
+---
 
 ### On starring in Miniflux
 
 Miniflux has a star. **Prefer saving to Karakeep instead**, because a star is a
 pointer into a database that deletes its own entries, and a save is a copy that
 does not. Use the star only as a within-session "come back to this in a minute".
-
-### Unsubscribing is the real maintenance
-
-Once a month, sort feeds by read-ratio (*Feeds → sort*). A feed you have never
-clicked through from in three months is noise with a good reputation.
-Unsubscribe. This is the single highest-value habit in the whole stack and the
-one nobody does.
-
----
 
 ## Archiving and curating in Karakeep
 
@@ -175,20 +305,23 @@ Karakeep has both and they are not interchangeable:
 - **Lists** answer *what am I going to do with this*. Few, hand-made, and worth
   keeping deliberate: `Read later`, `Reference`, `Projects`, `Cooking`.
 
-Smart lists (saved queries) are worth more than manual lists for anything
-rule-shaped — `tag:new` as your triage queue is the obvious first one.
+**Smart lists are worth more than manual lists for anything rule-shaped** —
+they are saved queries that re-evaluate themselves, so the thing stays true
+without being maintained. The four in
+[Set-up, once](#set-up-once) are all of this kind. Keep manual lists for the
+genuinely hand-curated: `Read later`, `Reference`, `Projects`, `Cooking`.
 
-### The triage pass
+**Adding to a list is one of the two ways out of the Inbox**, the other being
+archive — both satisfy `-is:archived -is:inlist`, so either empties it.
 
-Whenever `tag:new` gets uncomfortable:
+### On deleting
 
-1. Open it. For each item: does this belong in a list? Does it need a better
-   title? Is it actually rubbish?
-2. Remove the `new` tag — that is the whole point of it.
-3. Delete freely. **A bookmark manager you never delete from becomes a landfill
-   with a search box.**
+Delete freely during the reading pass. **A bookmark manager you never delete
+from becomes a landfill with a search box**, and the search is what you are
+paying for.
 
-Note that deleting from Karakeep deletes the archived copy too, and that copy
+One caveat with real weight here: deleting from Karakeep deletes the archived
+copy too, and that copy
 may be the only one left. ZFS snapshots on `zdata/state` are the safety net for
 regret, and there is no trash can with a retention period — see
 [ernst zdata datasets](ernst-zdata-datasets.md).
@@ -314,6 +447,9 @@ it to minutes.
 | Keep a page you are browsing | Karakeep browser extension |
 | Bookmark for navigation | Browser bookmarks bar — Floccus syncs it to Karakeep, and archives it there, but a later deletion in the bar removes it |
 | Find something you kept | Karakeep search — it covers page *contents* |
-| Triage the backlog | Karakeep, `tag:new` |
-| Monthly maintenance | Unsubscribe dead feeds in Miniflux; drain `tag:new`; delete rubbish |
+| Triage the backlog | Karakeep → **Inbox** smart list (`-is:archived -is:inlist`) |
+| Daily | Skim `Daily` in Miniflux → save keepers → mark all read |
+| Whenever you have attention | Work the **Inbox** list: archive, file, or delete |
+| Weekly | Drain Inbox harder; check **Link rot** and **Untagged** |
+| Monthly | Unsubscribe dead feeds; sweep browser bookmarks; export OPML |
 | Yearly | Export OPML from Miniflux |
