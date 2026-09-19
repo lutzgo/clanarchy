@@ -2,8 +2,8 @@
 #
 # Miniflux — the feed reader, and the INTAKE half of M27's reading stack (see
 # docs/roadmap.md).  An nspawn container on VLAN 90 serving
-# `miniflux.goclan.org` through Traefik, LAN-only, with Authelia as its sole
-# identity provider.
+# `miniflux.goclan.org` through Traefik on BOTH entrypoints, behind
+# forward-auth, with Authelia as its sole identity provider.
 #
 # ── ITS PLACE IN THE STACK ──────────────────────────────────────────────────
 #
@@ -42,21 +42,30 @@
 #   nextcloud.nix argues the tier question at length and this file takes the
 #   same side for the same reason.
 #
-# ── NO forward-auth ON THIS HOSTNAME ────────────────────────────────────────
+# ── forward-auth AND OIDC — GRAFANA'S ARRANGEMENT, AND NOT THE ONE IT ───────
+#    SHIPPED WITH
 #
-#   `miniflux.goclan.org` is in `appApiHosts` (containers/ingress-policy.nix).
-#   The test that file states is whether EVERY client of the hostname can
-#   render a login page and follow a 302, and Miniflux's native-reader
-#   protocols cannot: the Fever API at /fever/ and the Google Reader API at
-#   /reader/api/0/** are what Reeder, NetNewsWire, FocusReader and every other
-#   third-party reader speak, and both authenticate with credentials in the
-#   request rather than with a session cookie.
+#   `miniflux.goclan.org` is in `protectedHosts` (containers/ingress-policy.nix)
+#   and its router carries the `authelia` middleware.  Forward-auth decides
+#   whether a request arrives at all; the OIDC client below decides whose it
+#   is.  That is Grafana's and Open WebUI's shape.
 #
-#   So the vhost is answered by Miniflux, not by Authelia, and the BROWSER path
-#   gets its second factor from Authelia's OIDC provider instead.  That is
-#   Nextcloud's and CWA's arrangement (OIDC INSTEAD OF the middleware), NOT
-#   Grafana's or Open WebUI's (OIDC AS WELL AS it).  Do not merge the two
-#   reasonings.
+#   IT SHIPPED AS AN `appApiHosts` EXEMPTION and was moved one day later, when
+#   off-LAN access was wanted.  The original argument was Miniflux's Fever
+#   (/fever/) and Google Reader (/reader/api/0/**) APIs, which carry
+#   credentials in the request and cannot follow a 302 — true about the
+#   protocols, and false about this house, where nobody uses a native reader.
+#   So the exemption bought a capability nobody exercised at the price of a
+#   weaker door, and exposing it to the internet was the moment that stopped
+#   being free.  containers/ingress-policy.nix carries the full argument.
+#
+#   THE COST IS PERMANENT AND WORTH KNOWING: no native RSS reader can connect
+#   to this hostname again, on the LAN or off it, because forward-auth applies
+#   to both entrypoints.  Restoring that is an ingress change with a ledger
+#   row, not a setting.
+#
+#   UNAFFECTED, because neither goes through Traefik: the service index's
+#   widget and Prometheus both reach 10.0.90.28:8080 directly across VLAN 90.
 #
 # ── IT HAS NO LOCAL ACCOUNT, AND THAT IS THE OPPOSITE OF WHAT M24 CHOSE ─────
 #

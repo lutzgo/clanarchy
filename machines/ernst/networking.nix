@@ -503,11 +503,14 @@
   #                       M19 to get a real Prometheus job rather than a note
   #                       explaining why it cannot have one.
   #
-  #                       NOT PUBLIC, and it is the only appApiHosts name on
-  #                       this host that is not.  See the note beside
-  #                       `karakeep` in containers/traefik.nix's `wanExposed`
-  #                       for why the two halves of one milestone differ.
-  #                       NO UDM-PRO RULE and NO LEDGER ROW.
+  #                       PUBLIC, AND IT DID NOT SHIP THAT WAY.  It was
+  #                       LAN-only for one day, then moved from `appApiHosts`
+  #                       to `protectedHosts` and exposed, because lgo went to
+  #                       another LAN and wanted his feeds.  The posture it
+  #                       gained is STRONGER than the one it had: forward-auth
+  #                       in front on both entrypoints, rather than an
+  #                       unauthenticated vhost.  Ledger row L18.
+  #                       Still NO UDM-PRO RULE: every client arrives via .12.
   #
   #   02:00:00:90:00:15   karakeep container eth0   (M27 — allocated)  10.0.90.29
   #                       Bookmarks, page archives and the search over both,
