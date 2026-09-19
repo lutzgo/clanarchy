@@ -585,9 +585,9 @@ let
   # proxy's address, the service index's and the monitoring container's, and
   # nothing else.
   #
-  # IT IS THE ONLY appApiHosts NAME ON THIS PROXY THAT IS NOT IN `wanExposed`,
-  # and that asymmetry with its own milestone's other service is deliberate
-  # rather than an omission — see the `karakeep` entry below.
+  # NOT AN appApiHosts NAME ANY MORE.  It shipped as one and moved to
+  # `protectedHosts` when off-LAN access was wanted; its router therefore
+  # carries the `authelia` middleware, which the guard below enforces.
   minifluxAddr = "10.0.90.28";
   minifluxPort = 8080;
 
@@ -894,23 +894,39 @@ let
 
     # Karakeep (M27), and the interesting part is what is NOT here beside it.
     #
-    # ITS OWN MILESTONE'S OTHER SERVICE, MINIFLUX, IS DELIBERATELY LAN-ONLY.
-    # Two services shipped together, one exposed and one not, is the kind of
-    # asymmetry that reads as an oversight three months later, so: bookmark
-    # sync is the half that HAS to work from outside the house.  miralda and
-    # jens are laptops; Floccus syncing only on the home LAN means the two
-    # machines diverge the moment either one leaves, and the divergence is
-    # discovered later, as a merge.  Reading feeds can wait for the LAN, and a
-    # name not on the internet is the cheapest control there is.
+    # ITS OWN MILESTONE'S OTHER SERVICE WAS DELIBERATELY LAN-ONLY AND IS NOT
+    # ANY MORE — see `miniflux` below.  The asymmetry was argued at length
+    # here ("reading feeds can wait for the LAN") and it lasted one day: lgo
+    # went to another LAN and wanted his feeds.  The claim is corrected rather
+    # than deleted, because the reasoning was sound and the PREMISE was wrong,
+    # and those fail differently.
     #
-    # `wanLoginPaths` DOES carry an entry for this one, unlike `homepage`'s,
-    # because this is an `appApiHosts` name: Authelia never sees the request,
-    # so the per-identity regulation that makes a login-path rate limit
-    # redundant for `home` does not apply here.
+    # `wanLoginPaths` DOES carry an entry for this one, unlike `homepage`'s and
+    # now unlike `miniflux`'s, because this is an `appApiHosts` name: Authelia
+    # never sees the request, so the per-identity regulation that makes a
+    # login-path rate limit redundant behind forward-auth does not apply.
     #
     # Same three separate acts as every other name here: this entry, a public A
     # record, and the ledger row (L17) in docs/roadmap.md.
     "karakeep"
+
+    # Miniflux (M27, exposed afterwards).  UNLIKE EVERY OTHER NAME ADDED TO
+    # THIS LIST SINCE M19'S `chat` EXCEPT `homepage`, IT IS NOT AN EXEMPTION:
+    # it sits in `protectedHosts`, so `mkWan` copies the `authelia` middleware
+    # onto the wan twin and the public path is rate-limit → forward-auth → 2FA
+    # before Miniflux sees a byte.
+    #
+    # IT WAS MOVED OUT OF `appApiHosts` TO GET HERE, which is the part worth
+    # reading: the cheap way to give a service off-LAN reach is to add it to
+    # this list as it stands, and for this one that would have put an
+    # unauthenticated vhost on the internet to save an edit.  The clients that
+    # justified the exemption — native RSS readers over Fever and Google
+    # Reader — do not exist in this house, so the exemption cost something and
+    # bought nothing.
+    #
+    # Same three separate acts as every other name here: this entry, a public A
+    # record, and the ledger row (L18) in docs/roadmap.md.
+    "miniflux"
   ];
 
   # ── THE LOGIN PATHS, PER SERVICE, AND WHAT THIS DOES NOT COVER ────────────
@@ -1035,15 +1051,18 @@ let
     # scenario is what actually covers it.
     karakeep = "(PathPrefix(`/api/auth/callback/credentials`) || PathPrefix(`/api/auth/signin`))";
 
-    # ── MINIFLUX IS ABSENT FROM THIS MAP BECAUSE IT IS NOT ON THE WAN (M27) ─
+    # ── MINIFLUX IS STILL ABSENT FROM THIS MAP, FOR A NEW REASON (M27) ─────
     #
-    # It is in `appApiHosts` but not in `wanExposed`, and this map only ever
-    # affects the wan twin of a router — so an entry here would generate a
-    # `miniflux-wan-login` router for a name that has no wan router to twin.
-    # Stated rather than omitted so that whoever later adds `miniflux` to
-    # `wanExposed` knows this is the second edit that goes with it, alongside
-    # the public A record and the ledger row.  Its credential path would be
-    # `PathPrefix(`/oauth2/oidc/redirect`)` plus `PathPrefix(`/login`)`.
+    # It used to be absent because it was not on the WAN at all, and this note
+    # told whoever exposed it to add a matcher here as the second edit.  THAT
+    # ADVICE IS NOW WRONG and is replaced rather than followed: the name went
+    # public by moving to `protectedHosts`, not by staying an exemption, so
+    # Authelia is in front of it and already regulates the credential path per
+    # IDENTITY — 3 attempts in 5 minutes, 15 minute ban — which is strictly
+    # better than a per-source rate limit on a path.
+    #
+    # That is `homepage`'s situation exactly, and the rule generalises: an
+    # entry here belongs to `appApiHosts` names and to nothing else.
 
     # ── NEXTCLOUD IS DELIBERATELY ABSENT FROM THIS MAP (M23) ────────────────
     #
@@ -2746,24 +2765,34 @@ in
 
             # ── Miniflux (M27) — the feed reader ──────────────────────────
             #
-            # NO `authelia` MIDDLEWARE: `miniflux.goclan.org` is in
-            # `appApiHosts` (containers/ingress-policy.nix), and the guard
-            # below throws at evaluation if that disagrees with what is written
-            # here.  The argument is in the policy file: the Fever and Google
-            # Reader APIs carry credentials in the request and have no cookie
-            # jar, so a 302 to a portal is not something either protocol can
-            # act on.
+            # `authelia` MIDDLEWARE, AND IT DID NOT SHIP THAT WAY.  This name
+            # was in `appApiHosts` with no middleware, on an argument about
+            # Miniflux's Fever and Google Reader APIs — protocols that are real
+            # and that nobody in this house uses.  It moved to `protectedHosts`
+            # when off-LAN access was wanted, because forward-auth in front is
+            # a better answer than an unauthenticated vhost on the internet.
+            # containers/ingress-policy.nix carries the full argument and the
+            # cost.
             #
-            # THE BROWSER PATH IS STILL BEHIND A SECOND FACTOR, through
-            # Authelia's OIDC provider rather than through this middleware —
-            # and more completely than Nextcloud's is, because Miniflux has no
-            # local password login at all here.  containers/miniflux.nix.
+            # THE GUARD BELOW ENFORCES THE PAIRING: a `protectedHosts` name
+            # MISSING this middleware throws at evaluation, which is the
+            # fail-open direction and the one worth catching.
             #
-            # NOT IN `wanExposed`, unlike its own milestone's other service.
-            # See the note beside `karakeep` there.
+            # IT ALSO KEEPS ITS OIDC CLIENT, so this is now GRAFANA's
+            # arrangement — forward-auth decides whether the request arrives,
+            # OIDC decides whose it is — and no longer CWA's.  Do not read the
+            # two as interchangeable for this name.
+            #
+            # NO `wanLoginPaths` ENTRY, and its absence is correct rather than
+            # an oversight: that mechanism substitutes a credential-endpoint
+            # rate limit for the per-identity regulation `appApiHosts` names
+            # never get.  This name goes through Authelia, which already has it
+            # — 3 attempts in 5 minutes, per user rather than per path.  Same
+            # reasoning as `homepage`.
             miniflux = {
               rule        = "Host(`miniflux.${baseDomain}`)";
               entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
               service     = "miniflux";
             };
 

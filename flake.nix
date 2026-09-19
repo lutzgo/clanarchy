@@ -373,15 +373,18 @@
           # database is `zdata/state`'s write profile exactly.
           #
           # It is the INTAKE half of the reading stack; karakeep.nix below is
-          # the keep half.  There is no runtime coupling between them at all —
-          # no shared database, no API call either way — and they ship together
-          # because each is useless alone, not because either needs the other
-          # to run.
+          # the keep half.  Neither NEEDS the other to run and they share no
+          # database — but Miniflux's own Karakeep integration is switched on,
+          # so saved entries do POST to karakeep.goclan.org.  That is an
+          # operator setting in Miniflux's database rather than anything either
+          # file declares; see docs/guides/reading-stack.md.
           #
-          # `miniflux.goclan.org` with NO forward-auth (the Fever and Google
-          # Reader APIs carry credentials in the request and have no cookie
-          # jar), and LAN-ONLY: it is the one appApiHosts name on this host
-          # that is deliberately absent from `wanExposed`.
+          # `miniflux.goclan.org` WITH forward-auth, and public.  It shipped
+          # as a LAN-only `appApiHosts` exemption argued from Miniflux's Fever
+          # and Google Reader APIs, and moved to `protectedHosts` one day
+          # later when off-LAN access was wanted — the exemption was buying a
+          # capability nobody here uses at the price of a weaker door.
+          # Ledger row L18.
           #
           # TAKES NO uid FROM THE 3000 BLOCK — the daemon runs under
           # DynamicUser and the only id that lands on zdata is PostgreSQL's

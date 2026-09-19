@@ -25,7 +25,7 @@ browser to render the portal, so it reports an opaque network error and the
 user concludes the server is broken. If someone reports *"works in the browser,
 fails in the app"*, check this first — it is almost always the cause.
 
-### The exempt ten
+### The exempt nine
 
 | Host | Clients that force the exemption |
 |---|---|
@@ -37,7 +37,6 @@ fails in the app"*, check this first — it is almost always the cause.
 | `photos` | the Immich app on two phones (bearer token), the Kodi add-on on the TV (`x-api-key`), **and shared album links** |
 | `cloud` | the Nextcloud desktop sync client on three laptops, DAVx5 on the phones, and **vdirsyncer on a headless user timer** — all app passwords over `/remote.php/dav/**` |
 | `ha` | the Home Assistant companion app — a bearer token over a **long-lived WebSocket**, and a background location reporter with no user present |
-| `miniflux` | every third-party feed reader — the **Fever API** (`/fever/`, credentials in the POST body) and the **Google Reader API** (`/reader/api/0/**`, a token per request). **LAN-only**, and the only exempt name that is |
 | `karakeep` | the Karakeep browser extension and the **Floccus** bookmark-sync adapter — bearer tokens, no cookie jar, and **this repository installs both** |
 
 **`karakeep` is the one row to read twice.** Every other exemption above is
@@ -50,21 +49,28 @@ Floccus into all four of lgo's browsers on miralda and jens. Moving the name to
 the symptom is bookmarks quietly failing to propagate rather than an error
 anyone sees.
 
-**`miniflux` is the one exempt name that is not public.** It has a Technitium
-record and no Cloudflare one, is absent from `wanExposed`, and has no ledger
-row. Its milestone's other service is on the internet and it is not, on
-purpose: bookmark sync has to work away from the house, feed reading can wait
-for the LAN. If it is ever added, the three edits that go together are the
-`wanExposed` entry, the public A record, and the `wanLoginPaths` matcher that
-`containers/traefik.nix` records in its place today.
+**`miniflux` was briefly on this list and is the only name ever to leave it.**
+It was exempted on an argument about Miniflux's Fever and Google Reader APIs —
+protocols that genuinely cannot follow a 302, and that nobody here uses. When
+off-LAN access was wanted a day later, the cheap move would have been to add it
+to `wanExposed` as it stood, putting an unauthenticated vhost on the internet.
+Instead it moved to `protectedHosts`, so the public path is rate-limit →
+forward-auth → 2FA. **The cost is permanent and one-directional**: no native
+RSS reader can connect to that hostname again, on the LAN or off it. Moving a
+name back up this way is an ingress change with a ledger row (L18), not a
+preference.
 
-**Neither has a local password**, which is unusual for this list: `cwa`,
+**The rule it illustrates**, which this page's header states the other way
+round: you may not leave `appApiHosts` to *fix a broken client*, but you may
+leave it to *close a door nothing was using*.
+
+**`karakeep` has no local password**, which is unusual for this list: `cwa`,
 `cloud` and `ha` all keep their own accounts as a second credential store.
-Miniflux sets `DISABLE_LOCAL_AUTH` and Karakeep sets `DISABLE_PASSWORD_AUTH` +
-`DISABLE_SIGNUPS`, so Authelia's OIDC is the only way to obtain a session and
-an API token can only be minted from inside one. The recovery path if Authelia
-is down is to fix Authelia — accepted because nothing in the house depends on
-either service, which is precisely the argument `ha` cannot make.
+Karakeep sets `DISABLE_PASSWORD_AUTH` + `DISABLE_SIGNUPS`, so Authelia's OIDC
+is the only way to obtain a session and an API token can only be minted from
+inside one. The recovery path if Authelia is down is to fix Authelia — accepted
+because nothing in the house depends on it, which is precisely the argument
+`ha` cannot make.
 
 ### `home` is public and is NOT one of them
 
@@ -266,6 +272,41 @@ DNS-01 and HTTP-01 never runs.
    UniFi accepts an address from the `.2–.5` range and then silently hands out
    an ordinary pool lease instead.
 
+### VPN clients land on VLAN 70 and cannot reach VLAN 90 by default
+
+**Measured 2026-09-19**, from a UniFi WireGuard client at `10.0.70.2`:
+
+| Target | VLAN | Result |
+|---|---|---|
+| `10.0.5.3` (Technitium) | 5 | ✅ reachable — so DNS over the tunnel works |
+| `10.0.50.10` (ernst) | 50 | ✅ reachable — so SSH over the tunnel works |
+| `10.0.90.12` (Traefik) | **90** | ❌ **no route** |
+| `10.0.90.29` (Karakeep) | 90 | ❌ no route |
+
+So **every `*.goclan.org` name is unreachable while the VPN is up**, which is
+the exact opposite of what a VPN is for and reads as a service outage rather
+than a firewall policy. It is worse than it sounds, because the *public* path
+is unavailable at the same time: a full-tunnel client egresses from the house's
+own WAN address, so connecting to `78.94.91.74` is a NAT hairpin the UDM-Pro
+does not perform. **Both paths fail at once, and neither failure names the
+cause.**
+
+The fix is one zone-based firewall policy, and it should be narrow:
+
+> **Allow `VPN (70)` → `10.0.90.12:443/tcp`**
+
+Traefik on 443 and nothing else — the same shape as the permanent
+`Allow Traefik` policy that replaced L1/L2, and for the same reason: the VPN
+needs the *proxy*, not the Services VLAN. Do not permit VLAN 70 → VLAN 90
+wholesale; that would hand every tunnelled device the backends directly and
+undo M5's backend-bypass hardening for exactly the clients most likely to be
+someone else's laptop.
+
+**This is not in the repo and cannot be.** It is listed here because the
+symptom — "the VPN is up and nothing resolves to anything useful" — sends
+people to DNS, to Traefik and to the container firewalls in that order, and it
+is none of them.
+
 ### `on_boot.d`
 
 **No new entries.** Nothing added here needs one — the DNAT and the DHCP
@@ -325,12 +366,11 @@ If the first answers and the second does not, it is cache — not config.
 A records only, **DNS-only (grey cloud)**, all → `78.94.91.74`:
 
 ```
-audiobookshelf   auth   chat   cloud   cwa   ha   home   jellyfin   jellyseerr   karakeep   komga   navidrome   photos
+audiobookshelf   auth   chat   cloud   cwa   ha   home   jellyfin   jellyseerr   karakeep   komga   miniflux   navidrome   photos
 ```
 
-`miniflux` is deliberately **not** in that list while it is in the internal one.
-It is currently the only name on this host in that position, and M27's ledger
-row (L17) is where the asymmetry is argued.
+Every internal name is now also a public one. `miniflux` was the sole exception
+for a day — see its entry above and ledger row L18.
 
 **This list was wrong until 2026-09-17** and is worth a note rather than a
 silent fix: it named nine hosts and omitted `chat` (M19) and `ha` (M24), both
