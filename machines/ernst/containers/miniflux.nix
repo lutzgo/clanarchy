@@ -10,9 +10,27 @@
 #   Miniflux reads; containers/karakeep.nix keeps.  They are one milestone
 #   rather than two because each is useless alone: a reader with nowhere to put
 #   what it finds is a river, and an archive with nothing flowing into it is a
-#   drawer.  There is no coupling between the two services at runtime — no
-#   shared database, no API call from one to the other — and that is
-#   deliberate.  What joins them is the person using both.
+#   drawer.
+#
+#   THERE IS NO COUPLING IN THIS FILE, AND THERE IS ONE IN PRACTICE.  As built,
+#   the two services share no database and neither calls the other — that part
+#   is still true and still deliberate.  But Miniflux ships a first-class
+#   Karakeep integration (Settings → Integrations → Karakeep), it is switched
+#   ON, and it is what turns "keep this" from a copy-paste into one click in
+#   the reader.  Saved entries POST to
+#   `https://karakeep.goclan.org/api/v1/bookmarks` with their own API key,
+#   tagged `miniflux, new`.
+#
+#   IT GOES THROUGH TRAEFIK BY NAME rather than to 10.0.90.29 directly, for the
+#   reason containers/homepage.nix gives about reaching Nextcloud: the direct
+#   route would cost an accept rule in containers/karakeep.nix and a hardcoded
+#   peer, to save one layer-2 hop on a request that happens when a human clicks
+#   Save.  `karakeep.goclan.org` carries no forward-auth, so the token passes
+#   straight through.
+#
+#   IT IS NOT DECLARED HERE because it cannot be: Miniflux keeps integration
+#   settings per-user in its own database, the same situation as Nextcloud's
+#   serverinfo token.  docs/guides/reading-stack.md carries the four fields.
 #
 # ── WHY THE nspawn TIER ─────────────────────────────────────────────────────
 #

@@ -71,7 +71,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M24 — Home Assistant | **DEPLOYED 2026-09-16 AND VERIFIED; it came up on the first try. Zigbee network formed, owner account on TOTP, both legs up. TWO DEFECTS FOUND BY DEPLOYING, one of them in this document** — and HACS added on top as [M24b](#m24b-feathass-hacs) on 2026-09-18 | [#196](https://github.com/lutzgo/clanarchy/pull/196) | The household's home-automation hub, and the retirement of the last service the fleet depends on that this repo has never described: `services.home-assistant` 2026.5.4 in an **nspawn** container on `02:00:00:90:00:13` → `10.0.90.27`, seq **13**. **IT REPLACES AN INSTANCE ON A RASPBERRY PI** that has no monitoring, no CrowdSec, no impermanence and no ZFS snapshots — while `modules/desktop/noctalia-hm.nix` has been shipping a `hassio` bar widget pointing at it for months. **IT STANDS UP EMPTY AND DEVICES ARE RE-PAIRED**, which was lgo's call; the escape hatch if that turns out to be too much household work is a ZHA coordinator backup/restore, which changes one manual step and no code. **THE ONLY CONTAINER ON THIS HOST WITH TWO LEGS ON br0, AND THE FIRST ON A SECOND SKYNET VLAN**: `eth0` on VLAN 90 for Traefik, `iot0` on VLAN 20 because **mDNS and SSDP are link-local**. Unicast to VLAN 20 needed no leg at all — `Internal → Internal: Allow All` already permits it — so the leg is bought entirely for DISCOVERY, and it is the option this repo has twice refused a relay for in writing (M8's session prompt; `networking.nix` note 3). **VLAN 30 IS LITERALLY NAMED "HA" AND IS DELIBERATELY NOT USED**: it is not on ernst's trunk, carrying it costs a port-profile edit on USW Pro 24 PoE port 6, and it buys nothing because the leg that matters is the one on the segment the DEVICES are on. It retires with the Pi. **FIRST USB PASSTHROUGH IN THE FLEET.** Two **Nabu Casa ZBT-2** radios with **IDENTICAL VID/PID (`303a:831a`)** — so the udev aliases match on `ID_SERIAL_SHORT` and nothing else; a VID/PID rule would create both symlinks on both devices and ZHA would form its network against whichever won the race, differently on different boots. **`allowedDevices` TAKES THE GROUP FORM `char-ttyACM`, NOT A PATH**, which is where this departs from jellyfin.nix on purpose: `DeviceAllow=` is keyed on major:minor and a USB-serial minor changes on re-enumeration, so a path entry would be correct at start and wrong after a replug. **`ha.goclan.org` IS THE FLEET'S EIGHTH `appApiHosts` NAME** and the only one where forward-auth would break a *handshake* rather than a request: the companion app holds a WebSocket, and a 302 on an HTTP `Upgrade` is a connection that never completes. **Unlike M23 and CWA there is no OIDC path behind it either** — core HA does not ship OIDC at this version and the local account is the recovery path for a house whose lights are on this server — so HA's own `ip_ban_enabled` + native TOTP are the entire boundary, and `trusted_proxies` naming Traefik is what makes the first of those real (L14's lesson, keyed per-SOURCE here instead of per-account, so a misconfigured proxy bans the PROXY). **NO NEW DATASET AND NO `disko.nix` CHANGE**: a `.storage` tree and a SQLite recorder DB is `zdata/state`'s write profile exactly (128K, auto-snapshot on, measured on the host). **NO UDM-Pro FIREWALL RULE**, following L13/L14 and not L12 — every client arrives through `10.0.90.12`. It does take ledger row **L15**, for the WAN exposure. **NO PROMETHEUS JOB**, stated rather than omitted: `/api/prometheus` is bearer-token gated, so a job without one could only ever be `up == 0` (M13's Ollama lesson); failed units inside it are still seen through `machinectl`. **THREAD AND MATTER ARE SPLIT OUT TO M25** and the second radio is bound, aliased and opened by nothing — because otbr-agent sets `accept_ra = 2` and `forwarding = 1` (a deliberate exception to **SN2**), needs `/dev/net/tun` + `CAP_NET_ADMIN` in nspawn, wants avahi publishing *inside* the container, and requires an RCP firmware flash that would gate the whole deploy. **TWO PREMISES DID NOT SURVIVE THE BUILD, both caught by evaluation rather than by review.** (1) The container cannot be called `home-assistant`: nspawn names the host veth `vb-<container>` and an interface name caps at 15 characters, so `vb-home-assistant` (17) cannot be created at all — **the machine is `hass`**. (2) The uid was written as **3038** on exactly the argument rows 3036 and 3037 make, and evaluation refused it: `hass` is a **well-known NixOS static id** (`ids.uids.hass` = **286**), the same situation as PostgreSQL's 71, so **M24 consumes no number from the 3000 block and NEXT FREE there stays at 3038**. **DEPLOY-DAY RESULT: it came up on the first try and the whole test plan passes** — both aliases resolving to distinct nodes with the right serials behind them, the `char-ttyACM` filter permitting an open, both VLANs `PVID Untagged`, `10.0.90.27` + `10.0.20.27` with exactly ONE default route and zero IPv6, `302 → /onboarding.html` through Traefik, state on `zdata/state` owned by 286, and zero failed units in host or container. ZHA formed its network against `/dev/zigbee-coordinator` — the alias, not a `ttyACM` — and the owner account is on TOTP. **TWO MORE DEFECTS FOUND BY DEPLOYING, AND ONE OF THEM WAS IN THIS DOCUMENT.** (1) `systemd-resolved` was holding `:5353` alongside python-zeroconf inside the container. Per-link mDNS was already off (`-mDNS` on both links), so it was neither answering nor querying — precautionary rather than measured — but two sockets on `:5353` under `SO_REUSEPORT` split **unicast** mDNS responses, and the symptom would have been discovery finding most devices most of the time, which reads as a flaky network rather than as a second listener. Closed at the daemon (`settings.Resolve.MulticastDNS = "no"`), which releases the socket and takes a stray `[::]:5353` with it; LLMNR went too, because the container was answering name queries on the household IoT segment. (2) **THE TEST PLAN ASKED FOR A 200 THAT CAN ONLY EVER FAIL** — `curl http://10.0.90.27:8123/` run *on ernst*, when the accept rule is `-s 10.0.90.12/32` and ernst is `10.0.50.10`. A direct curl from the host is refused BY DESIGN; the rows that prove the path are the 302 through Traefik and the listener answering on `127.0.0.1` inside. **THE LESSON: a test plan written from the design rather than from the running thing encodes the author's assumption about who the client is, and a check that cannot pass is worse than no check** — it sends the next person hunting a fault that is the firewall working. Depends on M5, M7, M18. [M24](#m24-featernst-home-assistant) |
 | M24b — HACS | **DEPLOYED AND FULLY VERIFIED 2026-09-18. TWO DEFECTS FOUND BY TESTING RATHER THAN BY READING, and the second one would have made the alerting worse than useless** | [#200](https://github.com/lutzgo/clanarchy/pull/200) | The Home Assistant Community Store on top of [M24](#m24-featernst-home-assistant), as a declarative custom component: `machines/ernst/containers/pkgs/hacs.nix` builds it and one `customComponents` line wires it in, so **HACS ITSELF** is a version in a file and a hash over the bytes like everything else on this host. **WHAT HACS DOWNLOADS IS NOT, AND THAT IS THE WHOLE TRADE** — downloaded integrations and cards are state on `zdata/state`, and `ls /srv/state/home-assistant/custom_components` is the only inventory there is. **THE RELEASE ZIP, NOT THE GIT TAG**: the compiled frontend is ~19 MB of a ~19 MB artifact and is not in the repository, so `fetchFromGitHub` on tag 2.0.5 builds a HACS whose panel is a 404 and whose manifest reads the placeholder `"version": "0.0.0"`. **DEFECT 1, FOUND BY DEPLOYING**: the first deploy created THREE symlinks in `custom_components/` where one was expected, and Home Assistant tried to load two of them as integrations — the module's `copyCustomComponents` runs a bare `find -name manifest.json` and symlinks every parent it finds, and HACS's webpack bundles each contain a file of that name. **nixpkgs KNOWS ABOUT THIS COLLISION AND FIXED ONLY THE OTHER HALF** ([#429790](https://github.com/NixOS/nixpkgs/issues/429790) reports it against HACS at this exact hash; [#432385](https://github.com/NixOS/nixpkgs/pull/432385) path-scoped the *check hook* and left the module alone), **which is precisely why the derivation built green and the defect appeared only on a running hub** — a clean `nix build` is not evidence a custom component is wired correctly. **THE `--skip-pip` HIT IS WORSE THAN FIRST WRITTEN AND IS NOW ALERTED ON**: requirement checking sits behind the same flag (`requirements.py:167`), so Home Assistant does not fail to install a missing requirement, it **never looks** — no `RequirementsNotFound`, no log line naming pip, and for a lazily-importing integration the first evidence is an ImportError days later when a device is first used. With no upstream signal to alert on, `hass-hacs-deps.service` manufactures one, hooked to home-assistant.service's **start** rather than to a timer because a HACS download is inert until restart. **DEFECT 2, FOUND BY TESTING THE CHECKER AGAINST A SYNTHETIC LIBRARY**: built the obvious way it reported `aiogithubapi` — HACS's own requirement, demonstrably installed — as MISSING, because `cfg.package.pythonPath` is the INPUT to the module's local override (`home-assistant.nix:126-137`) and not its result. **A checker that fails on a healthy hub is worse than no checker, because its alert trains you to ignore it**; the fix reads the path off `systemd.services.home-assistant.environment.PYTHONPATH`, the literal string the service gets. **VERIFIED WITH A NEGATIVE CONTROL AND NOT ONLY A HAPPY PATH**: a probe integration with an unsatisfiable requirement took the unit to `Result=exit-code`, surfaced as `clanarchy_container_systemd_unit_failed{container="hass",name="hass-hacs-deps.service"} 1` on the host, and cleared on removal — the chain PR #139 built, exercised end to end. Depends on M24. [M24b](#m24b-feathass-hacs) |
 | M26 — the service index | **DEPLOYED AND FULLY VERIFIED 2026-09-17, same day. It came up on the first try. TWO DEFECTS FOUND BY DEPLOYING, and the first one REMOVED a firewall rule rather than adding one** | [#197](https://github.com/lutzgo/clanarchy/pull/197) | gethomepage at `home.goclan.org`. **The structural decision is that it runs INSIDE `containers.arr`**, co-defining it the way `crowdsec.nix` co-defines `containers.traefik` — because `arr-api-keys.service` stages the six *arr keys it renders, and those keys are EXTRACTED from each service's own config rather than chosen, so a copy in a second namespace is a second source of truth that goes stale when somebody rotates one in a UI. Consequence: **no MAC, no address, no uid** — all three NEXT FREE markers unchanged, and `machines/ernst/networking.nix` records the non-consumption. `protectedHosts` + `wanExposed`, so it is the first name on the internet since M19's `chat` that is **not** an appApiHosts exemption; ledger row L16. Widens exactly four container firewalls (`dashboardAddr`); Jellyfin needed none, having admitted `.13` since M13. **It is not Grafana and must not become it** — no history, no alerting, nothing stored. Depends on M5, M6, M7, M13, M18. [M26](#m26-featernst-homepage) |
-| M27 — the reading stack | **BUILT 2026-09-18, NOT YET DEPLOYED** | — | Miniflux + Karakeep + Floccus as one stack: news in, bookmarks and full-page archives kept, the browsers' own bookmark trees synced into the same store. **Both are nspawn** — `services.miniflux` and `services.karakeep` are first-class NixOS modules at this pin, so the podman tier does not apply. Miniflux on `02:00:00:90:00:14` → `10.0.90.28`, seq **14**, taking **NO uid** (DynamicUser; only PostgreSQL's well-known 71 lands on zdata). Karakeep on `02:00:00:90:00:15` → `10.0.90.29`, seq **15**, uid/gid **3038**, four units plus Meilisearch plus a headless chromium. **NO NEW DATASET FOR EITHER** — both write profiles are `zdata/state`'s exactly, so no `disko.nix` change and no `zfs create`; M24's call, made twice. **MEILISEARCH'S INDEX IS DELIBERATELY NOT BOUND OUT**, because the nixpkgs module runs it under DynamicUser and binding it would put a systemd-ALLOCATED id on the pool — the one thing the uid table exists to prevent. It is derived data and Karakeep rebuilds it. **IT RETIRES A SERVER THAT NEVER EXISTED**: `browsers.nix` has carried an unverified Linkwarden extension ID, a Vimium keybinding whose target was the literal string `YOUR_LINKWARDEN_INSTANCE`, and a comment doubting its own AMO listing, with no Linkwarden anywhere in this fleet. All deleted rather than finally built. **FOUR BROWSERS, FOUR DIFFERENT EXTENSION MECHANISMS**, and each is the only one that works for its browser: ungoogled-chromium ignores `ExtensionInstallForcelist` entirely (upstream #2523) so it takes External Extensions JSON; Firefox takes STORE-PINNED NUR `.xpi`s; LibreWolf takes an `ExtensionSettings` policy DEEP-MERGED into its own shipped `distribution/policies.json` — verified on the built package, its `"*"` rule and uBlock entry survive — because an `/etc` policy file would REPLACE that file and `nixExtensions` would block every manually installed add-on; google-chrome takes a managed policy under `/etc/opt/chrome`, since home-manager asserts against `programs.chromium.extensions` for it on Linux. **KARAKEEP AUTO-TAGS AGAINST THE MODEL ALREADY RESIDENT.** ernst has had no Ollama since M19 — llama-swap replaced it — so this is `OPENAI_BASE_URL` over a third `exposeOn` peer (`fdca:fe92::`), and `INFERENCE_TEXT_MODEL` names `qwen3-coder-30b` on purpose: llama-swap's exclusive group means any other text model would EVICT the coder model on every bookmark and stall lgo's agent. The image model is the priced exception. **NEITHER HAS A LOCAL PASSWORD** (`DISABLE_LOCAL_AUTH`, `DISABLE_PASSWORD_AUTH` + `DISABLE_SIGNUPS`) — the OPPOSITE of M24's call for Home Assistant, and for the reason that file gives: nothing in the house depends on either, so "fix Authelia" is an acceptable recovery path. Both are `appApiHosts`, both take native OIDC INSTEAD OF forward-auth (M23's and CWA's arrangement). **KARAKEEP NEEDED AUTHELIA'S ESCAPE HATCH** — a `claims_policies` block, the first top-level key beside `clients:` this staging script has ever emitted, because Karakeep reads `email` off the ID token instead of calling userinfo. Verified present in the 4.39.20 binary before being written. `require_pkce: false` and `userinfo_signed_response_alg: none` come from Authelia's own integration document for this client, which is M23's lesson applied rather than re-learned. **KARAKEEP IS ON THE WAN AND MINIFLUX IS NOT** (ledger row **L17**) — laptops that leave the house need bookmark sync, not feed reading. **MINIFLUX GETS A REAL PROMETHEUS JOB**, the first since M19: `/metrics` is a genuine OpenMetrics exposition, gated twice (the container firewall AND `METRICS_ALLOWED_NETWORKS`). **KARAKEEP GETS NONE**, stated rather than omitted — SN3. **ONE INSECURE PACKAGE PERMITTED**, `pnpm-9.15.9`, scoped INSIDE the karakeep container after the host-level grant was measured not to reach it: a `containers.<n>.config` is its own nixpkgs evaluation. Every pnpm variant in this pin carries the same seven CVEs, 10.29.2 included, and it is build-time only. Depends on M5, M6, M7, M18, M19. [M27](#m27-featernst-reading-stack) |
+| M27 — the reading stack | **DEPLOYED AND VERIFIED 2026-09-19. Every machine-checkable row of the test plan passed on the first deploy, including `karakeep-browser` — the one thing this milestone called unproven. FOUR DEFECTS FOUND BY DEPLOYING, three of them mine and two of them silent** | [#201](https://github.com/lutzgo/clanarchy/pull/201) | Miniflux + Karakeep + Floccus as one stack: news in, bookmarks and full-page archives kept, the browsers' own bookmark trees synced into the same store. **Both are nspawn** — `services.miniflux` and `services.karakeep` are first-class NixOS modules at this pin, so the podman tier does not apply. Miniflux on `02:00:00:90:00:14` → `10.0.90.28`, seq **14**, taking **NO uid** (DynamicUser; only PostgreSQL's well-known 71 lands on zdata). Karakeep on `02:00:00:90:00:15` → `10.0.90.29`, seq **15**, uid/gid **3038**, four units plus Meilisearch plus a headless chromium. **NO NEW DATASET FOR EITHER** — both write profiles are `zdata/state`'s exactly, so no `disko.nix` change and no `zfs create`; M24's call, made twice. **MEILISEARCH'S INDEX IS DELIBERATELY NOT BOUND OUT**, because the nixpkgs module runs it under DynamicUser and binding it would put a systemd-ALLOCATED id on the pool — the one thing the uid table exists to prevent. It is derived data and Karakeep rebuilds it. **IT RETIRES A SERVER THAT NEVER EXISTED**: `browsers.nix` has carried an unverified Linkwarden extension ID, a Vimium keybinding whose target was the literal string `YOUR_LINKWARDEN_INSTANCE`, and a comment doubting its own AMO listing, with no Linkwarden anywhere in this fleet. All deleted rather than finally built. **FOUR BROWSERS, FOUR DIFFERENT EXTENSION MECHANISMS**, and each is the only one that works for its browser: ungoogled-chromium ignores `ExtensionInstallForcelist` entirely (upstream #2523) so it takes External Extensions JSON; Firefox takes STORE-PINNED NUR `.xpi`s; LibreWolf takes an `ExtensionSettings` policy DEEP-MERGED into its own shipped `distribution/policies.json` — verified on the built package, its `"*"` rule and uBlock entry survive — because an `/etc` policy file would REPLACE that file and `nixExtensions` would block every manually installed add-on; google-chrome takes a managed policy under `/etc/opt/chrome`, since home-manager asserts against `programs.chromium.extensions` for it on Linux. **KARAKEEP AUTO-TAGS AGAINST THE MODEL ALREADY RESIDENT.** ernst has had no Ollama since M19 — llama-swap replaced it — so this is `OPENAI_BASE_URL` over a third `exposeOn` peer (`fdca:fe92::`), and `INFERENCE_TEXT_MODEL` names `qwen3-coder-30b` on purpose: llama-swap's exclusive group means any other text model would EVICT the coder model on every bookmark and stall lgo's agent. The image model is the priced exception. **NEITHER HAS A LOCAL PASSWORD** (`DISABLE_LOCAL_AUTH`, `DISABLE_PASSWORD_AUTH` + `DISABLE_SIGNUPS`) — the OPPOSITE of M24's call for Home Assistant, and for the reason that file gives: nothing in the house depends on either, so "fix Authelia" is an acceptable recovery path. Both are `appApiHosts`, both take native OIDC INSTEAD OF forward-auth (M23's and CWA's arrangement). **KARAKEEP NEEDED AUTHELIA'S ESCAPE HATCH** — a `claims_policies` block, the first top-level key beside `clients:` this staging script has ever emitted, because Karakeep reads `email` off the ID token instead of calling userinfo. Verified present in the 4.39.20 binary before being written. `require_pkce: false` and `userinfo_signed_response_alg: none` come from Authelia's own integration document for this client, which is M23's lesson applied rather than re-learned. **KARAKEEP IS ON THE WAN AND MINIFLUX IS NOT** (ledger row **L17**) — laptops that leave the house need bookmark sync, not feed reading. **MINIFLUX GETS A REAL PROMETHEUS JOB**, the first since M19: `/metrics` is a genuine OpenMetrics exposition, gated twice (the container firewall AND `METRICS_ALLOWED_NETWORKS`). **KARAKEEP GETS NONE**, stated rather than omitted — SN3. **ONE INSECURE PACKAGE PERMITTED**, `pnpm-9.15.9`, scoped INSIDE the karakeep container after the host-level grant was measured not to reach it: a `containers.<n>.config` is its own nixpkgs evaluation. Every pnpm variant in this pin carries the same seven CVEs, 10.29.2 included, and it is build-time only. Depends on M5, M6, M7, M18, M19. [M27](#m27-featernst-reading-stack) |
 
 ---
 
@@ -12463,9 +12463,127 @@ Repeat the browser checks on **jens** specifically: "one edit covers both
 machines" is an inference from the import graph until a second machine confirms
 it.
 
-### Close-out follows M23's and M26's precedent
+### Deploy-day result, 2026-09-19
 
-Post-deploy verification lands as its own small roadmap-only PR.
+**It came up on the first try, and every machine-checkable row of the test plan
+passed** — including the one this milestone singled out as unproven.
+
+| Check | Result |
+|---|---|
+| Authelia survived `claims_policies` | `active`, zero failed units. 4.39.20 accepts the key, as the binary grep predicted |
+| Both containers | `running`, **zero** failed units in either |
+| **`karakeep-browser`** | **active** — headless chromium `--no-sandbox` under `DynamicUser` + `PrivateUsers` inside nspawn works. The `browser.enable = false` fallback was not needed |
+| Addressing | `.28` / `.29`, no IPv6 on either VLAN leg, zero v6 default routes |
+| Inference leg | `qwen3-coder-30b` and `qwen2.5-vl-7b` both returned over `fdca:fe92::1` |
+| **Negative control** | direct curl from ernst **refused** on both backends |
+| Traefik | both answer, neither redirected to the portal — the `appApiHosts` exemption works |
+| Login pages | **only** the Authelia button on both; no password field, no signup link |
+| Metrics | `up{job="miniflux"} = 1`; the scrape works from the monitoring container and not from ernst |
+| uid pin | `/srv/state/karakeep` owned `3038:3038` on zdata |
+
+**FOUR DEFECTS FOUND BY DEPLOYING. Three were mine, and two were silent.**
+
+#### 1. `DISABLE_SIGNUPS` gates OAuth as well as passwords
+
+Flagged in this section as an unverified risk with a written fallback, which is
+the only reason it cost minutes rather than an afternoon. Authelia
+authenticated fine and Karakeep refused the callback:
+
+```
+OAuth login failed: Signups are disabled in server config
+```
+
+— on an instance with no local password, no signup form and no accounts, i.e. a
+service nobody could ever get into. **It is the third upstream-flag assumption
+this repository has paid for**, after M23's `token_endpoint_auth_method` and
+M24's `ids.uids.hass`, and the shape is identical each time: **a flag's NAME
+was read as its scope.**
+
+The fix is two deploys, and it is now the permanent shape of adding any person
+to this service — there is no password form, no admin invite and no CLI. The
+window was LAN-only purely because the Cloudflare record is step 12 of the
+manual steps, an ordering fixed earlier in this milestone for an unrelated
+reason. **It will not be LAN-only next time.**
+
+#### 2. systemd reset the archive to 0755 on every start
+
+`karakeep-dirs` creates `/srv/state/karakeep` with `install -d -m 0700`. After
+the first container start it was **0755**, with `queue.db` world-readable.
+systemd re-asserts the mode from `StateDirectory=` and `StateDirectoryMode`
+defaults to 0755, so it wins over anything an ordered unit did first.
+`containers/immich.nix` had recorded the identical finding and the same
+one-line answer.
+
+**The file's own header had predicted 0750 and argued it was harmless** because
+`getent group 3038` returns nothing on the host — true, and irrelevant at 0755,
+which carries an `o+r` bit the argument never considered. `/srv` and
+`/srv/state` are both 0755 root-owned, so `go`, the passwordless TV autologin,
+could list the directory and read `queue.db`. `db.db` and `settings.env` were
+0600 throughout, so nothing secret was exposed and no credential needed
+rotating. What *would* have been exposed is the archive, once it filled.
+
+**The lesson is not "set StateDirectoryMode".** It is that a comment predicting
+a mode is not a measurement of one, and this file wrote a confident argument
+about a number it had not yet observed.
+
+#### 3. Regenerated dashboard tokens never reached the dashboard — twice over
+
+The tiles read `API Error` (Karakeep) and `NaN` (Miniflux). Two independent
+causes, both silent, and *neither names the token*:
+
+- **`homepage-tokens` declared no `restartUnits`.** Its staging script embeds
+  the sops PATH, not the contents, so rewriting the encrypted file leaves the
+  unit byte-identical; and because it is `Type=oneshot` with
+  `RemainAfterExit = true` it is permanently "active" and never re-runs.
+  `systemctl show homepage-secrets` reported `ExecMainStartTimestamp` **two
+  days and several deploys earlier**. `containers/nextcloud.nix` states this
+  mechanism; M26's generator predates it. M27's two new generators had it,
+  which is exactly why *their* secrets landed and these did not.
+- **`tokens.env` is an `EnvironmentFile`**, read once at start, so fixing the
+  file alone would have kept serving the old credentials.
+
+The two different symptoms from one cause are worth remembering: with a
+variable unset, gethomepage substitutes nothing and sends the **literal**
+`{{HOMEPAGE_VAR_KARAKEEP_KEY}}` as the credential. Karakeep rejects it;
+Miniflux answers in a shape the widget parses to `NaN`.
+
+`restartUnits` names `homepage-secrets.service` **only** — not
+`container@arr`, which every other generator here would list. That container
+holds Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, Navidrome and Komga, and
+bouncing all of them for a dashboard credential is a cure worse than the
+disease. The staging script restarts the single in-container unit instead.
+
+#### 4. A documented step that could only fail, caught before it ran
+
+Not a deploy defect — a defect in this section, found by rereading it. Step 5
+originally validated the staged `oidc-clients.yml` fragment on its own. That
+file has no session, no storage and no notifier, so `authelia validate-config`
+pointed at it fails on missing required keys and says nothing about the thing
+that changed. **This is M24's lesson repeating inside the document that
+recorded it** — a check written from the design rather than from the running
+thing. The step now takes the real three-file `--config` list off the unit.
+
+### Two claims in this milestone that stopped being true
+
+**"The two services do not talk to each other."** True as built, and false as
+operated. Miniflux ships a first-class Karakeep integration, and enabling it is
+what turns triage and keeping into one motion instead of a copy-paste. It is
+recommended, and it is a per-user setting in Miniflux's database — so like
+Nextcloud's serverinfo token it is manual and unreachable from Nix. The
+workflow is in [the reading-stack guide](guides/reading-stack.md); the headers
+in `containers/miniflux.nix`, `containers/karakeep.nix` and `flake.nix` are
+corrected rather than left standing.
+
+**The `zdata/state` decision held.** Both services' write profiles were as
+predicted, and no dataset was created. The one thing worth rechecking in six
+months is Karakeep's asset store: the promotion to its own dataset is a COPY,
+not a rename, so it gets harder the longer it is left.
+
+### Close-out
+
+Deployed and verified 2026-09-19, one day after the build. The verification
+record above and [the reading-stack guide](guides/reading-stack.md) landed as
+the close-out PR, following M23's and M26's precedent.
 
 ---
 
