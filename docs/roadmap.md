@@ -12302,28 +12302,22 @@ TWICE and the first pass leaves them blank on purpose.
    Flush before concluding anything: a lookup made before the zone existed
    leaves a cached NXDOMAIN for up to the SOA minimum (900 s).
 
-3. **`clan vars generate ernst`** — and read this before running it.
+3. **`clan vars generate ernst`.** It will print two generators and **ask you
+   nothing**, which is correct — `authelia-oidc-miniflux` and
+   `authelia-oidc-karakeep` are script-generated, not prompted, and they
+   self-commit.
 
-   Three generators are involved. Two are ordinary
-   (`authelia-oidc-miniflux`, `authelia-oidc-karakeep`: generated, not
-   prompted). The third is `homepage-tokens`, and it has a wrinkle:
+   **It does NOT pick up the two new `homepage-tokens` prompts, and an earlier
+   version of this list said it would.** Measured on 2026-09-19: that
+   generator was skipped whole and its directory left untouched. clan treats a
+   generator as satisfied when every file it DECLARES exists; this one declares
+   one file, `tokens.env`, and that file was already there. **Prompts are
+   inputs; only files are state.** Adding a prompt does not make a generator
+   stale.
 
-   **It gained two prompts, and a generator is ATOMIC, so it re-asks all
-   six.** The four existing answers are not remembered. Recover them first or
-   they come back blank:
-
-   ```bash
-   clan vars get ernst homepage-tokens/tokens.env
-   ```
-
-   **Leave `miniflux-key` and `karakeep-key` EMPTY on this pass.** Neither
-   service exists yet, so neither key can. Empty is safe here specifically —
-   the script writes every line unconditionally, so a blank answer yields
-   `HOMEPAGE_VAR_MINIFLUX_KEY=` and the staging unit still succeeds. That is
-   the shape SN5 demands, and it is why this generator can be run before the
-   services exist at all. It is **not** safe in general: a blank prompt whose
-   file is referenced by path stores nothing, `.path` becomes the literal
-   `/no-such-path`, and that took RomM down on 2026-09-07.
+   So the two dashboard keys are picked up in step 9 by an explicit
+   `--regenerate`, which is where they belong anyway — neither service exists
+   yet, so neither key can. Nothing to do here but run it.
 
 4. **`clan machines update ernst`.**
 
@@ -12382,10 +12376,24 @@ TWICE and the first pass leaves them blank on purpose.
    same kind from the same page; revoking the wrong row stops bookmark sync
    silently on two laptops.
 
-9. **`clan vars generate ernst` again**, answering all six homepage prompts —
-   the four recovered in step 3 plus the two just made. Then
-   **`clan machines update ernst`**. Both tiles should stop reporting API
-   errors.
+9. **Regenerate the dashboard tokens — explicitly, because step 3 could not.**
+
+   ```bash
+   clan vars get ernst homepage-tokens/tokens.env          # read the four you already have
+   clan vars generate ernst --generator homepage-tokens --regenerate
+   clan machines update ernst
+   ```
+
+   `--regenerate` is required: without it clan sees `tokens.env` present and
+   skips the generator, which is exactly what step 3 did. **It re-asks all six
+   prompts** — that is where the atomicity actually bites — and the four
+   existing answers are NOT carried over, so read them out first or they come
+   back blank and four working tiles break.
+
+   Until this runs, the Miniflux and Karakeep tiles substitute nothing and pass
+   the literal `{{HOMEPAGE_VAR_MINIFLUX_KEY}}` as their API key. The tile
+   reports an API error and nothing logs a missing variable, so this step's
+   omission is silent — check both tiles afterwards rather than assuming.
 
 10. **`clan machines update miralda`, then `clan machines update jens`.**
 

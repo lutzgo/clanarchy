@@ -338,16 +338,40 @@ in
       type = "hidden";
     };
 
-    # ── ADDING A PROMPT TO THIS GENERATOR RE-RUNS ALL OF IT ────────────────
+    # ── ADDING A PROMPT DOES NOT RE-RUN THIS GENERATOR.  MEASURED. ─────────
     #
-    # A clan vars generator is ATOMIC, so M27's two prompts mean the next
-    # `clan vars generate ernst` asks for all SIX — including the four that
-    # already have values.  That is harmless here and it is worth knowing
-    # before it surprises someone: these are prompts, not generated secrets, so
-    # re-entering them changes nothing, and none of the four is a shared secret
-    # some other party also holds.  containers/authelia.nix takes the opposite
-    # route (one generator per relying party) because there the atomicity WOULD
-    # hand a third party a new credential as a side effect.
+    # An earlier version of this comment claimed the opposite — that because a
+    # generator is atomic, M27's two new prompts would make the next
+    # `clan vars generate ernst` ask for all six.  IT ASKS FOR NOTHING.
+    # Measured on 2026-09-19: the run created both `authelia-oidc-*`
+    # generators and left `vars/per-machine/ernst/homepage-tokens/` untouched,
+    # still dated from the deploy before.
+    #
+    # THE RULE IS FILES, NOT INPUTS.  clan treats a generator as satisfied when
+    # every file it DECLARES already exists.  This one declares exactly one,
+    # `tokens.env`, and that file was already there — so the generator is
+    # skipped whole, and a new `prompts.<name>` changes nothing about that.
+    # Prompts are inputs; only files are state.
+    #
+    # THE CONSEQUENCE IS A SILENT PARTIAL CONFIG, which is why this is worth a
+    # comment rather than a footnote: `tokens.env` keeps the four old lines and
+    # gains neither new one, so the two M27 tiles substitute nothing and render
+    # the literal `{{HOMEPAGE_VAR_MINIFLUX_KEY}}` as their API key.  The tile
+    # reports an API error; nothing logs that a variable is missing.
+    #
+    # ADDING A PROMPT THEREFORE NEEDS AN EXPLICIT REGENERATION, and it re-asks
+    # every prompt in the generator because THAT is where atomicity bites:
+    #
+    #     clan vars generate ernst --generator homepage-tokens --regenerate
+    #
+    # Have all six answers to hand before running it — the four already stored
+    # are not carried over.  Read them out first with
+    # `clan vars get ernst homepage-tokens/tokens.env`.
+    #
+    # containers/authelia.nix takes the opposite route (one generator per
+    # relying party) for the related but distinct reason that there the
+    # atomicity would hand a third party a NEW CLIENT SECRET as a side effect.
+    # Here the values are typed by a human, so re-entering them costs typing.
     script = ''
       {
         printf 'HOMEPAGE_VAR_JELLYFIN_KEY=%s\n'  "$(cat "$prompts/jellyfin-key")"
