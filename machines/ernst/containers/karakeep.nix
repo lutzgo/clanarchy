@@ -118,6 +118,13 @@
 #   PEOPLE, and a crawled copy of a page that has since gone dark is not
 #   re-acquirable from anywhere.
 #
+#   THE ARCHIVE IS 0700, AND THE LINE THAT ACHIEVES THAT IS NOT THE OBVIOUS
+#   ONE.  `karakeep-dirs` creates it with `install -d -m 0700` and systemd
+#   overwrites that from `StateDirectory=` on every start — measured at 0755 on
+#   the first deploy.  See the `StateDirectoryMode` block in the container
+#   config; it matters here because ernst carries a passwordless autologin
+#   account on the television.
+#
 #   MEILISEARCH'S INDEX STAYS ON THE CONTAINER ROOTFS, and that is a decision
 #   rather than an omission.  The nixpkgs meilisearch module runs under
 #   `DynamicUser` with `StateDirectory = meilisearch`, so binding it out would
@@ -261,12 +268,12 @@ in
       # NUMERIC ids on purpose: `karakeep` is a CONTAINER user and the host has
       # no matching passwd entry.  Same shape traefik.nix uses for uid 3005.
       #
-      # 0700 is asked for; systemd's own StateDirectory handling inside the
-      # container may settle it at 0750, the way the nixpkgs Nextcloud module's
-      # tmpfiles rules do there.  That is not forced back here for the same two
-      # reasons nextcloud.nix gives — a competing rule for one path is the M3
-      # defect, and `getent group 3038` on the HOST returns nothing, so the
-      # group bit grants nobody anything.
+      # 0700 is asked for HERE AND IT IS NOT WHAT LANDS — see the
+      # StateDirectoryMode line in the container config below, which is what
+      # actually settles this.  Measured on the first deploy (2026-09-19): this
+      # line ran, and the directory came out 0755, because systemd re-asserts
+      # the mode from `StateDirectory=` on every unit start and its default is
+      # 0755.  Immich's row records the identical finding.
       install -d -o ${toString karakeepUid} -g ${toString karakeepGid} -m 0700 ${dataRoot}
     '';
   };
@@ -573,6 +580,41 @@ in
           INFERENCE_NUM_WORKERS = "1";
         };
       };
+
+      # ── 0700 ON THE ARCHIVE, AND `install -d` IS NOT WHAT DECIDES IT ──────
+      #
+      # FOUND BY DEPLOYING, 2026-09-19.  karakeep-dirs creates ${dataRoot} with
+      # `install -d -m 0700`, and after the first start it was **0755**:
+      #
+      #     drwxr-xr-x 2 3038 3038  /srv/state/karakeep
+      #     -rw-r--r-- 1 3038 3038  queue.db
+      #
+      # systemd re-asserts the mode from `StateDirectory=` on every unit start
+      # and `StateDirectoryMode` defaults to 0755, so it wins over anything the
+      # ordered unit did first.  containers/immich.nix recorded the identical
+      # finding and this is the same one-line answer.
+      #
+      # THE HEADER'S ORIGINAL ARGUMENT WAS WRONG AND IS CORRECTED RATHER THAN
+      # DELETED.  It predicted 0750 and reasoned that `getent group 3038` on
+      # the host returns nothing, so the group bit grants nobody anything —
+      # which is true, and irrelevant at 0755, because that mode carries an
+      # o+r bit the argument never considered.  /srv and /srv/state are both
+      # 0755 root-owned, so the traversal path is open, and ernst carries `go`:
+      # the couch account that AUTOLOGINS on the television WITHOUT A PASSWORD.
+      # At 0755 that session could list this directory and read `queue.db`
+      # today, and every archived page, screenshot and PDF once the asset store
+      # fills — bypassing the account controls this service is built out of.
+      #
+      # `db.db` and `settings.env` were 0600 throughout, so nothing secret was
+      # exposed and no credential needs rotating.  What was exposed is the
+      # shape of the archive, and what WOULD have been is its contents.
+      #
+      # All three units that declare `StateDirectory = "karakeep"` need it;
+      # setting it on one and not the others means the next start of whichever
+      # was missed puts 0755 back.
+      systemd.services.karakeep-init.serviceConfig.StateDirectoryMode    = "0700";
+      systemd.services.karakeep-workers.serviceConfig.StateDirectoryMode = "0700";
+      systemd.services.karakeep-web.serviceConfig.StateDirectoryMode     = "0700";
 
       # ── Pin the ids ───────────────────────────────────────────────────────
       #
