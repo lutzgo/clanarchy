@@ -12351,23 +12351,36 @@ TWICE and the first pass leaves them blank on purpose.
    Authelia → 2FA. `OAUTH2_USER_CREATION=1` is what creates the account, and
    it is the only way an account can exist here (`DISABLE_LOCAL_AUTH`).
 
-7. **First login to Karakeep, and this is the step most likely to need a
-   workaround.** `https://karakeep.goclan.org` → Authelia → 2FA.
+7. **First login to Karakeep — and the risk this step warned about is REAL.
+   Measured 2026-09-19.**
 
-   **UNVERIFIED RISK, stated rather than discovered:** the config sets
-   `DISABLE_SIGNUPS = "true"` and `OAUTH_ALLOW_DANGEROUS_EMAIL_ACCOUNT_LINKING
-   = "true"`, on the reading that signup-disabling governs the password form
-   while OAuth provisioning is governed by the linking flag. **If
-   `DISABLE_SIGNUPS` also gates OAuth account creation, the first login lands
-   on an empty instance with no way in** — no local password, no signup, no
-   account.
+   The config shipped with `DISABLE_SIGNUPS = "true"`, on the reading that
+   signup-disabling governs the password form while OAuth provisioning is
+   governed by `OAUTH_ALLOW_DANGEROUS_EMAIL_ACCOUNT_LINKING`. **That reading is
+   wrong.** Authelia authenticated fine and Karakeep refused the callback:
 
-   The fallback is one line and costs one deploy: set
-   `DISABLE_SIGNUPS = "false"` in `containers/karakeep.nix`,
-   `clan machines update ernst`, log in once to create the account, then put it
-   back to `"true"` and deploy again. **Whichever way this goes, record it in
-   this section** — it is exactly the class of upstream-flag assumption M23 and
-   M24 each paid for once.
+   ```
+   OAuth login failed: Signups are disabled in server config
+   ```
+
+   — on an instance with no local password, no signup form and no accounts,
+   i.e. a service nobody could ever get into. This is the third
+   upstream-flag assumption this repository has paid for, after M23's
+   `token_endpoint_auth_method` and M24's `ids.uids.hass`, and the pattern is
+   the same each time: a flag's NAME was read as its scope.
+
+   **The fix, which is two deploys:**
+
+   1. `DISABLE_SIGNUPS = "false"` in `containers/karakeep.nix` (already
+      committed), `clan machines update ernst`.
+   2. Sign in with Authelia. The account is created on the callback.
+   3. Set it back to `"true"` and `clan machines update ernst` again.
+
+   **The window is LAN-only, and that is not luck.** While signups are on, any
+   Authelia identity that can pass `two_factor` gets a Karakeep account on
+   first login. `karakeep.goclan.org` is not in public DNS yet because the
+   Cloudflare record is step 12 — an ordering fixed earlier in this list for a
+   different reason, which pays off here. **Do not do step 12 before step 7.3.**
 
 8. **Make the two dashboard API keys**, now that accounts exist.
    Miniflux → Settings → API keys. Karakeep → Settings → API keys.

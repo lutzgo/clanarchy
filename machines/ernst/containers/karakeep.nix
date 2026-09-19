@@ -69,12 +69,17 @@
 #
 # ── NO LOCAL PASSWORD AT ALL ────────────────────────────────────────────────
 #
-#   `DISABLE_PASSWORD_AUTH` plus `DISABLE_SIGNUPS` below means Authelia is the
-#   only way in, which is the same call containers/miniflux.nix makes and the
-#   opposite of containers/home-assistant.nix's.  The reason is the one that
-#   file gives: nothing in the house depends on this service, so "fix Authelia"
-#   is an acceptable recovery path, and it is a much better answer than a
-#   second credential store reachable from the internet.
+#   `DISABLE_PASSWORD_AUTH` below means Authelia is the only way in, which is
+#   the same call containers/miniflux.nix makes and the opposite of
+#   containers/home-assistant.nix's.  The reason is the one that file gives:
+#   nothing in the house depends on this service, so "fix Authelia" is an
+#   acceptable recovery path, and it is a much better answer than a second
+#   credential store reachable from the internet.
+#
+#   `DISABLE_SIGNUPS` IS CURRENTLY "false" AND THAT IS A TEMPORARY STATE.  It
+#   gates OAuth account creation as well as the password form — measured, not
+#   assumed; see the long note at the setting.  It must go back to "true" once
+#   lgo's account exists, and M27's manual steps carry both halves as one step.
 #
 # ── THE SECOND LEG, AND WHY IT COSTS NO VRAM ────────────────────────────────
 #
@@ -527,17 +532,52 @@ in
           NEXTAUTH_URL = "https://${hostName}";
 
           # ── Authentication.  SEE THE HEADER — no local password exists ────
-          DISABLE_SIGNUPS       = "true";
           DISABLE_PASSWORD_AUTH = "true";
           OAUTH_PROVIDER_NAME   = "Authelia";
           OAUTH_WELLKNOWN_URL   = autheliaWellKnown;
 
-          # The FIRST login has to be able to create the account, since there
-          # is no other way for one to exist here and signups are off.  Karakeep
-          # links an OAuth identity to an existing local account only with this
-          # set; with no local accounts at all it is what admits the first user.
-          # Narrow because the issuer is ours and the email claim comes from
-          # Authelia's own user database.
+          # ── DISABLE_SIGNUPS GATES OAUTH TOO.  MEASURED, NOT ASSUMED. ──────
+          #
+          # This shipped as `"true"`, on the reading that signup-disabling
+          # governs the PASSWORD form while OAuth provisioning is governed by
+          # the account-linking flag below.  THAT READING IS WRONG.  On the
+          # first login attempt (2026-09-19) Authelia authenticated fine and
+          # Karakeep refused the callback:
+          #
+          #     OAuth login failed: Signups are disabled in server config
+          #
+          # — on an instance with no local password, no signup form and no
+          # accounts, i.e. a service nobody could ever get into.  The roadmap
+          # flagged this as an unverified upstream-flag assumption with a
+          # one-line fallback; this is that fallback, and the flag stays
+          # visible rather than being quietly reasoned about again.
+          #
+          # ── THE WINDOW THIS OPENS, AND WHY IT IS SMALL ────────────────────
+          #
+          # While this is `"false"`, ANY Authelia identity that can pass
+          # two_factor gets a Karakeep account created on first login.  Three
+          # things bound that:
+          #
+          #   * `karakeep.goclan.org` IS NOT IN PUBLIC DNS YET.  The Cloudflare
+          #     record is step 12 of M27's manual steps, deliberately last, so
+          #     this window is reachable from the house and nowhere else.  That
+          #     ordering was fixed for a different reason and pays off here.
+          #   * The OIDC client requires `two_factor`, so it is not "anyone who
+          #     knows a password".
+          #   * It is meant to last one login.  Set it back to `"true"` and
+          #     deploy again as soon as the account exists — M27's manual steps
+          #     carry both halves as one step.
+          #
+          # Left as a literal rather than an option: an option would invite
+          # leaving it on.
+          DISABLE_SIGNUPS = "false";
+
+          # Karakeep links an OAuth identity to an existing local account only
+          # with this set.  It is NOT what admits the first user — the line
+          # above is; this was originally written as though it were, which is
+          # the same mistaken reading.  Kept because it is still correct for
+          # linking, and narrow because the issuer is ours and the email claim
+          # comes from Authelia's own user database.
           OAUTH_ALLOW_DANGEROUS_EMAIL_ACCOUNT_LINKING = "true";
 
           # Nothing on this host updates itself; the answer is never actionable
