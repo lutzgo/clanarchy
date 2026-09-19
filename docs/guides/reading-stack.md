@@ -199,15 +199,40 @@ regret, and there is no trash can with a retention period — see
 
 Floccus syncs each browser's **native bookmark tree** with Karakeep. It is not
 the same act as saving to Karakeep, and conflating the two causes most of the
-confusion people have with this setup.
+confusion people have with this setup — but the difference is **not** what an
+earlier version of this guide claimed.
 
-| | Where it lives | Gets a page snapshot? |
-|---|---|---|
-| Karakeep extension / Miniflux integration | Karakeep only | **Yes** |
-| Floccus | The browser's bookmarks bar **and** Karakeep | No — it syncs the *link* |
+**Floccus-synced bookmarks ARE fully archived.** Once a link lands in Karakeep
+it is an ordinary bookmark whatever put it there: the crawler fetches it,
+extracts the text, takes a screenshot, the AI tags it and Meilisearch indexes
+it. Verified on the real instance — Floccus-synced entries carry generated
+subject tags and real page screenshots, not favicons.
 
-**So use the bookmarks bar for things you navigate to, and Karakeep for things
-you want to keep.** A banking login belongs in the bar. An article does not.
+The actual difference is **ownership**, and it matters more than archiving did:
+
+| | Lives in | Archived? | Deleting it in the browser… |
+|---|---|---|---|
+| Karakeep extension / Miniflux integration | Karakeep only | **Yes** | n/a — the browser has no copy |
+| Floccus | Bookmarks bar **and** Karakeep | **Yes** | **…deletes it from Karakeep on the next sync** |
+
+**That last cell is the whole point.** Floccus is a *sync* tool, not an import:
+it makes two trees match, in both directions. So a page you "kept" by
+bookmarking it is hostage to the bookmarks bar — tidy the bar six months later
+and the archived copy goes with it, silently, because that is Floccus working
+correctly.
+
+A bookmark saved through the extension or from Miniflux is not in the browser
+at all, so no amount of bookmark housekeeping can touch it.
+
+**So: bookmarks bar for things you navigate to, Karakeep for things you want to
+keep.** A banking login belongs in the bar. An article you want in a year
+should be saved with the extension, *even if it is also bookmarked* — the two
+are not redundant, because only one of them survives a tidy-up.
+
+> **Worth proving to yourself once**, rather than taking on trust: bookmark a
+> throwaway page, let it sync, delete it from the bar, sync again, and see
+> whether it is still in Karakeep. The answer determines how much you should
+> trust the bar as a keeping mechanism, and it is cheap to find out.
 
 ### Setup, per browser
 
@@ -287,7 +312,7 @@ it to minutes.
 | Subscribe to a feed | Miniflux bookmarklet, or paste the URL in Miniflux |
 | Keep an article you are reading | Miniflux → *Save* (goes to Karakeep, tagged `miniflux, new`) |
 | Keep a page you are browsing | Karakeep browser extension |
-| Bookmark for navigation | Browser bookmarks bar (Floccus syncs it) |
+| Bookmark for navigation | Browser bookmarks bar — Floccus syncs it to Karakeep, and archives it there, but a later deletion in the bar removes it |
 | Find something you kept | Karakeep search — it covers page *contents* |
 | Triage the backlog | Karakeep, `tag:new` |
 | Monthly maintenance | Unsubscribe dead feeds in Miniflux; drain `tag:new`; delete rubbish |
