@@ -1,6 +1,6 @@
 # App-API ingress: the services apps talk to
 
-Eight hostnames on ernst are reachable from the public internet **without
+Nine hostnames on ernst are reachable from the public internet **without
 Authelia in front of them**. This page is why, what compensates, and how to
 verify it works.
 
@@ -87,9 +87,10 @@ The recent additions to the public set have all been exemptions — `photos`,
 the public path is rate-limit → forward-auth → 2FA before the application sees
 a byte, which is `chat`'s posture.
 
-**The exempt count stays at eight.** If a future milestone adds a ninth, it
-goes in the table; `home` does not, and moving it there would be a decision to
-stop authenticating the index, not a tidy-up.
+**The exempt count is nine**, and it has moved in both directions: M27 added
+`karakeep` and then took `miniflux` back out again. `home` is in neither
+direction — it has never been exempt, and moving it there would be a decision
+to stop authenticating the index, not a tidy-up.
 
 A Kobo e-reader is the clearest case: there is no browser on the device at all.
 
