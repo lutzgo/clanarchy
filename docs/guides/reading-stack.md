@@ -80,6 +80,26 @@ asks for that secret and for a Karakeep API key. **Make the key its own**,
 labelled `miniflux-bridge`: the extensions, Floccus and the dashboard all draw
 keys from the same page and look identical.
 
+### Adding a feed backfills NOTHING, and that is deliberate
+
+**Measured 2026-09-20.** Two feeds added, 40 entries fetched, and the bridge
+logged nothing at all — with the SSRF guard already lifted, so that was not the
+cause.
+
+**Miniflux does not fire the integration for entries found on a feed's FIRST
+fetch.** Only entries discovered on a *subsequent* refresh count as new.
+Otherwise subscribing to a feed with 500 archived items would dump all 500 into
+Karakeep at once, which nobody wants.
+
+So after adding a feed, the correct expectation is: **nothing happens until
+that feed next publishes something.** For a news site that is minutes; for a
+quiet blog it can be weeks. It is not broken.
+
+**To prove the path immediately**, open any entry in Miniflux and hit *Save*.
+That fires the webhook's `save_entry` event, which the bridge handles
+regardless of `SAVE_NEW_ENTRIES`, and a bookmark appears in Karakeep within
+seconds. It is the only way to exercise the live pipeline on demand.
+
 ### On duplicates, which is the thing that usually goes wrong
 
 **Karakeep deduplicates server-side on the exact URL.** Verified in its own
