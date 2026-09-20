@@ -170,19 +170,30 @@ In rough order of effort:
 3. **Accept that it is not a feed** and put the site in Karakeep as a bookmark
    instead. Not everything belongs in the river.
 
-### Categories are the only organisation that scales
+### Categories organise FEEDS, not reading — and they stop at the bridge
 
-Miniflux has categories and nothing else — no folders, no tags on feeds. Use
-them as **reading modes**, not as subjects:
+Miniflux has categories and nothing else: no folders, no tags on feeds.
 
-- `Daily` — things you genuinely read every day. Keep it small enough to finish.
-- `Weekly` — worth reading, not worth interrupting for.
-- `Reference` — high-volume, low-signal. The category most in need of Blocklist rules, since everything here reaches Karakeep.
-- `Watch` — release feeds, changelogs, security advisories. Skimmed for events.
+**They do not reach Karakeep.** The bridge forwards a URL; it carries no
+category, no feed name and no tag. So everything from every category lands in
+one undifferentiated Inbox, and `Daily` versus `Reference` makes no difference
+to what you see there. An earlier version of this guide called them "reading
+modes", which was true when you read in Miniflux and has not been true since
+M28.
 
-Subject-based categories ("Nix", "Photography") feel natural and fail, because
-the question at reading time is *how much attention do I have right now*, not
-*what is this about*. Subjects are what Karakeep's tags are for, after the fact.
+What they are still good for is **managing the subscription list**: pausing or
+unsubscribing a whole group, seeing at a glance what you have taken on, and
+knowing where to look when something noisy needs a Blocklist rule. A workable
+split on that basis:
+
+- `Daily` — high-volume news. The group most in need of rules, because
+  everything here reaches your Inbox.
+- `Reference` — low-signal, subscribe-and-forget.
+- `Watch` — release feeds, changelogs, security advisories.
+
+**If you ever want a category NOT to reach Karakeep, the bridge cannot do it** —
+`SAVE_NEW_ENTRIES` is global. The lever is per-feed Blocklist rules, or not
+subscribing.
 
 ---
 
@@ -229,25 +240,28 @@ the inboxes below are defined rather than maintained. Create these four
 
 | Name | Query | What it is |
 |---|---|---|
-| **Inbox** | `-is:archived -is:inlist` | Saved, not yet filed. **The one you actually work.** |
-| **From feeds** | `#miniflux -is:archived` | Today's captures from the reader |
-| **Link rot** | `is:broken` | Bookmarks whose page no longer resolves |
-| **Untagged** | `-is:tagged` | The AI tagger failed or is stuck |
+| **Inbox** | `-is:archived -is:inlist` | **The only one you work daily.** Everything unread and unfiled |
+| **Link rot** | `is:broken` | Pages that no longer resolve — the archive is now the only copy |
+| **Untagged** | `-is:tagged` | A handful is the queue; a growing pile means the tagger is stuck |
+| **This week** | `-is:archived age:<7d` | What actually arrived recently, when the Inbox has a backlog |
 
-**Calibrate `source:` once before you trust any query built on it.** Karakeep
-records where each bookmark came from — `api`, `extension`, `rss`, `mobile`,
-`web`, `cli`, `singlefile`, `import` — but which value a given tool produces is
-worth *checking* rather than assuming. Search `source:api`, then
-`source:extension`, and see what each returns on your instance. Both Floccus
-and the Miniflux integration go through the API, so `#miniflux` is what tells
-them apart:
+**There is deliberately no "From feeds" list, and an earlier version of this
+guide got that wrong.** It suggested `#miniflux`, a tag set by Miniflux's
+*in-app* Karakeep integration — which M28 turned off, because the bridge
+replaced it. **The bridge sets no tags at all.** That query now matches
+nothing.
 
-```
-source:api -#miniflux        # ≈ Floccus arrivals
-```
+**Nor can `source:` separate feed items from browser bookmarks.** Both the
+bridge and Floccus create bookmarks through the API, so both are `source:api`
+and the two are indistinguishable by origin. The qualifier is still worth
+knowing — `source:extension` does isolate things saved with the Karakeep
+browser button — but it will not give you a feeds-only view.
 
-If that returns your browser bookmarks, add it as a fifth smart list called
-**Bar**. If it does not, find the value that works before writing one.
+**Calibrate it once rather than trusting this page.** Search `source:api`, then
+`source:extension`, and see what each returns on your instance. If Floccus
+turns out to sync into a *list*, its bookmarks are already `is:inlist` and
+therefore already excluded from your Inbox — which would be the tidiest
+possible outcome and is worth five seconds to check.
 
 ### "Archived" does not mean what you think
 
@@ -500,6 +514,7 @@ it to minutes.
 |---|---|
 | Subscribe to a feed | Miniflux bookmarklet, or paste the URL in Miniflux. Items flow to Karakeep by themselves |
 | Silence part of a noisy feed | Miniflux → the feed → **Blocklist** (regex over title and content) |
+| Separate feed items from browser bookmarks | You cannot by origin — both are `source:api`. Use lists and tags instead |
 | Keep a page you are browsing | Karakeep browser extension |
 | Bookmark for navigation | Browser bookmarks bar — Floccus syncs it to Karakeep, and archives it there, but a later deletion in the bar removes it |
 | Find something you kept | Karakeep search — it covers page *contents* |
