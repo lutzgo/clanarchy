@@ -15,8 +15,8 @@ The whole thing rests on one distinction. Get this right and the rest follows.
 
 | | What it is | Lifetime | Answers |
 |---|---|---|---|
-| **Miniflux** | The **intake**. A river of everything you subscribe to | **Ephemeral** — entries age out | "what's new?" |
-| **Karakeep** | The **keep**. Things you decided to keep, with a copy of the page | **Permanent** — snapshotted, never auto-deleted | "where was that thing?" |
+| **Miniflux** | The **intake and the filter**. Polls feeds, applies rules, forwards survivors. You barely open it | **Ephemeral** — entries age out | "what should get through?" |
+| **Karakeep** | The **keep AND the reading surface**. Everything that survives the filter lands here, archived, with notes and highlights | **Permanent** — snapshotted, never auto-deleted | "what am I reading, and where was that thing?" |
 | **Floccus** | The **sync**. Your browsers' own bookmark trees, mirrored into Karakeep | Follows the browsers | "the bookmarks bar, everywhere" |
 
 **Miniflux is not an archive and must never be used as one.** Its entries are
@@ -31,97 +31,100 @@ will be dead within a couple of years.
 
 ---
 
-## Connecting Miniflux to Karakeep — yes, do it
+## How feed items reach Karakeep
 
-Miniflux ships a first-class Karakeep integration (*Settings → Integrations →
-Karakeep*). It turns "I want to keep this" from a copy-paste into one click in
-the reader.
+**You do not read in Miniflux.** Miniflux polls, applies your rules, and hands
+what survives to Karakeep over a webhook. Everything after that — reading,
+notes, highlights, filing — happens in Karakeep, which is the better surface
+for it and the only one with an archived copy of the page.
 
-**This is the piece that makes the two services a stack rather than two tabs.**
-Without it, Miniflux is a reader you read *next to* an archive. With it, triage
-and keeping are one motion.
+That pipeline is M28's bridge, a small Go service running inside the Miniflux
+container (`machines/ernst/containers/miniflux.nix`). It is a loopback call:
+no address, no firewall rule, nothing on the network.
 
-### Settings
+```
+feed ──► Miniflux ──► rules decide ──► bridge ──► Karakeep ──► you
+         (polls)      (block/keep,     (webhook)  (crawl, archive,
+                       rewrite)                    tag, index)
+```
+
+### Why not just use Karakeep's own RSS?
+
+Karakeep subscribes to feeds natively, and **for a feed you want in full it is
+the right answer** — one service, no bridge. Its subscriptions take a name, a
+URL, an enabled flag and a tag-import toggle.
+
+What it cannot do is **filter**. No rules, no keyword blocking, no regex. If
+you want a noisy feed minus the noise, that decision has to happen before
+Karakeep sees it, and Miniflux is what makes it.
+
+**Pick one path per feed and never both.** A feed subscribed in Miniflux *and*
+in Karakeep is the duplicate generator — see below.
+
+### Setting it up
+
+**In Miniflux** — *Settings → Integrations → Webhook*:
 
 | Field | Value |
 |---|---|
-| Save entries to Karakeep | ✅ |
-| Karakeep API key | an API key from *Karakeep → Settings → API keys* |
-| Karakeep API Endpoint | `https://karakeep.goclan.org/api/v1/bookmarks` |
-| Karakeep Tags | `miniflux, new` |
+| Webhook URL | `http://127.0.0.1:8081/webhook` |
+| Secret | Miniflux generates it — copy it into `clan vars` |
 
-**Use the public hostname, not `10.0.90.29:3000`.** Both work, and the public
-name is the right answer for the same reason `containers/homepage.nix` gives
-for reaching Nextcloud by name: the direct route would need a new accept rule
-in `containers/karakeep.nix` and a hardcoded peer address, to save one layer-2
-hop on a request that happens only when you click *Save*. `karakeep.goclan.org`
-carries no forward-auth (it is an `appApiHosts` name), so the API token passes
-straight through Traefik.
+**Turn OFF the in-app Karakeep integration** (*Settings → Integrations →
+Karakeep*) once the bridge works. It is not harmful to leave on — Karakeep
+deduplicates, so a doubly-posted entry is a no-op — but two mechanisms doing
+one job is two things to debug later.
 
-**Make this key its own**, distinct from the browser extensions' and the
-dashboard's. They all come from the same page in Karakeep and look identical;
-revoking the wrong one breaks something you will not immediately connect to the
-revocation. Label it `miniflux`.
+Then `clan vars generate ernst --generator miniflux-karakeep-bridge`, which
+asks for that secret and for a Karakeep API key. **Make the key its own**,
+labelled `miniflux-bridge`: the extensions, Floccus and the dashboard all draw
+keys from the same page and look identical.
 
-### It saves ENTRIES you pick, not FEEDS — and this is the first thing to get wrong
+### On duplicates, which is the thing that usually goes wrong
 
-**Subscribing to a feed in Miniflux puts nothing in Karakeep.** The integration
-is per-entry and manual: it fires when you hit **Save** on an individual entry,
-exactly like Miniflux's Wallabag integration. Feeds are never synced; entries
-you choose are.
+**Karakeep deduplicates server-side on the exact URL.** Verified in its own
+source (`attemptToDedupLink`): a repeat POST returns the existing bookmark
+instead of making a second one. There is an explicit guard that re-submitting
+an already-**archived** bookmark stays a no-op rather than unarchiving it — so
+a feed re-announcing an old entry cannot resurrect something you have read and
+filed.
 
-That is the whole design rather than a limitation — the river stays in
-Miniflux, and only what you decided to keep crosses over. But the failure mode
-is silent and looks like a broken integration: you subscribe, wait, and nothing
-appears.
+Two things still produce duplicates, and both have answers:
 
-**Test it once so you know it works:** open an entry, click *Save*, and it
-should appear in Karakeep within seconds tagged `miniflux`. Press `?` in
-Miniflux for the keyboard shortcut — saving is a single key and worth learning,
-since it is the one action the daily pass repeats.
+- **Tracking parameters.** `?utm_source=…` makes a different URL, so it makes
+  a different bookmark. **This is the best reason to run Miniflux rather than
+  Karakeep's own RSS**: its rewrite rules strip those before the URL is ever
+  forwarded, which nothing on the Karakeep side could do.
+- **The same feed subscribed twice** — once in Miniflux, once in Karakeep's own
+  RSS. Karakeep will dedupe the identical URLs, but any rewriting Miniflux does
+  makes the two paths disagree and both survive. One feed, one path.
 
-### If you want a whole feed archived automatically
+Upstream notes the dedup is not race-proof. At one webhook delivery at a time,
+that is not a shape this deployment can produce.
 
-Karakeep subscribes to RSS itself — *User Settings → RSS Subscriptions*. It
-polls hourly and imports every new entry as a full bookmark. No webhook and no
-third-party bridge (one exists; it is not needed).
+### What still needs a human in Miniflux
 
-**Use it sparingly, because it cuts against the model in two ways.** Every
-imported entry is crawled, screenshotted and AI-tagged, which is GPU work per
-item against the same model the coding agent uses — a chatty feed is a
-standing load. And it fills the *permanent* keep with unread noise, which is
-precisely what Miniflux's ephemerality exists to prevent.
+Three things, and nothing else:
 
-Good for a low-volume source you genuinely want in full: a friend's blog that
-posts monthly, a changelog you must not miss. Bad for anything you would put in
-`Daily`. If a feed belongs in both, it belongs in Miniflux and you press Save.
+1. **Subscribing** to a feed.
+2. **Writing a rule** when something noisy gets through — *Feeds → the feed →
+   Blocklist / Keeplist*, which are regexes over title and content.
+3. **Unsubscribing** when a feed stops earning its place.
 
-### The tags are for provenance, not for state
+### Tags and provenance
 
-Anything arriving this way is tagged `miniflux`, which is the useful half: it
-is the only thing that distinguishes a feed capture from a Floccus-synced
-browser bookmark, since both reach Karakeep through the same API. Several
-queries below depend on it.
+Feed items arrive through the bridge as ordinary API bookmarks. Karakeep records
+where each came from, so `source:` separates the paths without any tag
+convention:
 
-`new` is optional and slightly redundant. An earlier version of this guide
-built the triage queue out of it — save, then remove the tag once filed — which
-works but has two problems: it is a convention you have to maintain by hand,
-and it only ever covers things that came from Miniflux. **The inbox below is
-defined from Karakeep's own states instead** (`-is:archived -is:inlist`), which
-needs no discipline and catches everything however it arrived. Keep `new` if
-you like the extra signal; nothing depends on it.
+| Query | What it finds |
+|---|---|
+| `source:api` | the bridge, and Floccus |
+| `source:extension` | the browser extension |
+| `source:rss` | Karakeep's own feed subscriptions, if you use any |
 
-Karakeep's AI tagging adds subject tags on top. No conflict: `miniflux` is
-*provenance*, the AI's are *subject*.
-
-### It is a manual setting, and that is not an oversight
-
-Miniflux keeps integration settings per-user in its database, so this is not
-reachable from Nix — the same situation as Nextcloud's serverinfo token. If it
-is ever lost (a database restore, a new account), it is four fields on one page.
-Worth a note in your password manager next to the API key.
-
----
+The bridge sets no tags of its own. Karakeep's AI tagger adds subject tags to
+everything it crawls, which is what you actually search by.
 
 ## Adding feeds
 
@@ -154,7 +157,7 @@ them as **reading modes**, not as subjects:
 
 - `Daily` — things you genuinely read every day. Keep it small enough to finish.
 - `Weekly` — worth reading, not worth interrupting for.
-- `Reference` — high-volume, low-signal; skim headlines, read almost nothing.
+- `Reference` — high-volume, low-signal. The category most in need of Blocklist rules, since everything here reaches Karakeep.
 - `Watch` — release feeds, changelogs, security advisories. Skimmed for events.
 
 Subject-based categories ("Nix", "Photography") feel natural and fail, because
@@ -172,8 +175,8 @@ you have not named is one you cannot empty.
 
 | Inbox | What is in it | Emptied by | Cadence |
 |---|---|---|---|
-| **Miniflux unread** | Everything you subscribe to | Skimming, then *mark all read* | Daily |
-| **Karakeep inbox** | Things you saved but have not filed | Archiving or filing each one | Daily-ish |
+| ~~Miniflux unread~~ | Nothing you need to look at — the bridge forwards, Miniflux ages entries out | Itself | Never |
+| **Karakeep inbox** | Everything the filter let through, plus what you saved by hand | Archiving or filing each one | **Daily — this is the only one** |
 | **Floccus arrivals** | Browser bookmarks, synced in | Nothing — they accumulate | Monthly, if ever |
 
 The third is the one that bites, because it is silent: bookmarks you make in
@@ -183,11 +186,18 @@ you never meant to triage.
 
 ### The one rule that makes it work
 
-> **Reading time is capture time only. Filing is a different activity.**
+> **Capture is automatic. Your only job is deciding what to keep, after the
+> fact.**
 
-Deciding *where something goes* while you are reading is what turns a ten
-minute skim into forty minutes and is why people stop opening their reader. The
-skim produces exactly one decision per item — keep or don't — and nothing else.
+Nothing needs saving, because everything that passed the filter is already
+here, already archived. That removes the decision people actually stall on —
+*is this worth keeping?* asked while reading, with the article half-finished —
+and replaces it with a cheaper one asked later: *archive, file, or delete?*
+
+The corollary is that **the filter is where the real work happens**, and it is
+done once per feed rather than once per item. A feed that keeps putting rubbish
+in your inbox does not need more discipline from you; it needs a Blocklist rule
+or an unsubscribe.
 
 ---
 
@@ -234,25 +244,18 @@ un-pressing it does not destroy one.
 
 ---
 
-### The daily pass — Miniflux, about ten minutes
+### There is no daily Miniflux pass any more
 
-1. Open Miniflux. **`Daily` category only.** Do not look at the others.
-2. Skim. Read headlines and first paragraphs.
-3. Anything worth more than a skim → **Save to Karakeep** (the integration —
-   one click). **Do not read it now.**
-4. **Mark all as read.** Not "mark the ones I finished" — all of them.
-5. Close Miniflux.
+That is the point of the bridge. Feeds are polled, filtered and forwarded
+without you, and the only inbox you work is Karakeep's.
 
-That is the whole thing. If the unread count in `Weekly` or `Reference` is
-bothering you, that is a *feed subscription* problem, not a reading problem —
-see the monthly pass.
-
-**The unread count is not a debt.** Miniflux ages entries out by design;
-anything you did not get to was, by definition, not worth getting to.
+If you find yourself opening Miniflux daily, something is wrong upstream: a
+feed is too noisy and wants a Blocklist rule, or it does not deserve a
+subscription.
 
 ### The reading pass — Karakeep, whenever you actually have attention
 
-Separate from the skim, and it can be hours later or on the sofa:
+This is the whole workflow now, and it can be on the sofa:
 
 1. Open the **Inbox** smart list.
 2. Read things. For each, exactly one of:
@@ -475,16 +478,16 @@ it to minutes.
 
 | Task | Where |
 |---|---|
-| Subscribe to a feed | Miniflux bookmarklet, or paste the URL in Miniflux |
-| Keep an article you are reading | Miniflux → *Save* (goes to Karakeep, tagged `miniflux, new`) |
+| Subscribe to a feed | Miniflux bookmarklet, or paste the URL in Miniflux. Items flow to Karakeep by themselves |
+| Silence part of a noisy feed | Miniflux → the feed → **Blocklist** (regex over title and content) |
 | Keep a page you are browsing | Karakeep browser extension |
 | Bookmark for navigation | Browser bookmarks bar — Floccus syncs it to Karakeep, and archives it there, but a later deletion in the bar removes it |
 | Find something you kept | Karakeep search — it covers page *contents* |
 | Triage the backlog | Karakeep → **Inbox** smart list (`-is:archived -is:inlist`) |
-| Daily | Skim `Daily` in Miniflux → save keepers → mark all read |
+| Daily | Work the **Inbox** smart list in Karakeep. Miniflux runs unattended |
 | Whenever you have attention | Work the **Inbox** list: archive, file, or delete |
 | Weekly | Drain Inbox harder; check **Link rot** and **Untagged** |
-| Monthly | Unsubscribe dead feeds; sweep browser bookmarks; export OPML |
+| Monthly | Unsubscribe dead feeds; add rules for whatever is still noisy; export OPML |
 | Yearly | Export OPML from Miniflux |
 
 ---

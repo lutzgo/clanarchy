@@ -12588,6 +12588,157 @@ the close-out PR, following M23's and M26's precedent.
 
 ---
 
+## M28 — `feat/miniflux-karakeep-bridge`
+
+**M27 built a reader for someone who did not want to read in a reader.** This
+milestone corrects that, and the correction is small because the mistake was
+architectural rather than technical.
+
+### What was wrong
+
+M27's stated ask was "news aggregation, reading, archiving/bookmarking as one
+stack", and *reading* was taken at face value: Miniflux became the reading
+surface, Karakeep the archive, and the join between them a per-entry **Save**
+button. Every downstream decision inherited that — the daily-pass design, the
+guide's whole shape, the recommendation to wire Miniflux's in-app Karakeep
+integration.
+
+lgo's actual workflow is: **subscribe in Miniflux, and never open it again.**
+Read, annotate, curate and archive in Karakeep, which has notes, highlights,
+full-text search over page *contents*, and a stored copy of the page. Miniflux
+has none of those.
+
+The planning question that would have caught it was never asked. "Nothing
+browser-side?" was asked and answered; *where do you want to read?* was not,
+and the answer was assumed.
+
+### Why Miniflux survives at all
+
+Because Karakeep subscribes to RSS natively, the honest first question was
+whether Miniflux should simply be retired. It stays for exactly one capability
+Karakeep's feed ingestion does not have and cannot grow cheaply: **filtering.**
+
+| | Karakeep RSS | Miniflux |
+|---|---|---|
+| Subscribe, poll, import | ✅ hourly, not configurable | ✅ per-feed intervals |
+| Import categories as tags | ✅ | — |
+| **Block/keep rules (regex)** | ❌ | ✅ |
+| **Rewrite rules** (strip tracking params) | ❌ | ✅ |
+| Scraper rules for excerpt-only feeds | ❌ | ✅ |
+
+The rewrite rules are the half that is easy to undervalue. **Karakeep
+deduplicates on the EXACT url** — verified in `attemptToDedupLink`,
+`packages/trpc/routers/bookmarks.ts` — so `?utm_source=…` yields a second
+bookmark for the same page. Stripping those before forwarding is something no
+amount of work on the Karakeep side could achieve. lgo named duplicates as a
+recurring past pain, which makes this the deciding capability rather than a
+nice-to-have.
+
+**For a feed you want in full, Karakeep alone remains the right answer**, and
+the guide says so. This bridge is for feeds you want *part* of.
+
+### The tier, and why the Dockerfile is a red herring
+
+Upstream (`mathpn/karakeep-miniflux-webhook`) ships a Dockerfile, which reads
+like a podman-tier case and is not one. Invariant #1's escape hatch is for
+upstreams that ship **only** an OCI image; this one ships Go source — one
+`main.go`, a `go.mod` with a single dependency. `buildGoModule` handles it in a
+dozen lines.
+
+There is also **no image to pin**: the repository has no releases and no
+registry package. The podman tier's digest discipline would have nothing to
+bite on, which is a second and independent reason.
+
+So it is an ordinary systemd unit, and it lives **inside `containers.miniflux`**
+— its only client is Miniflux in that same namespace, so the webhook is a
+loopback call. **No MAC, no address, no DHCP reservation, no veth, no firewall
+rule, no uid.** `machines/ernst/networking.nix` records the non-consumption.
+
+### Two traps in one environment variable
+
+`PORT` is passed straight to `http.ListenAndServe`, so it is a Go **address**,
+not a number:
+
+- `PORT = "8081"` fails — "missing port in address". The colon is mandatory.
+- the default is `":8080"`, which is **both** a collision with Miniflux itself
+  and a bind on every interface, including the VLAN-90 leg.
+
+`127.0.0.1:8081` is therefore load-bearing: it is what keeps the webhook off
+VLAN 90 entirely, so the container firewall needs no rule and nothing outside
+the namespace can reach it.
+
+### `ADD_TO_LIST` is false, and that is a workflow decision
+
+Adding forwarded entries to a Karakeep list would make them `is:inlist`, which
+is exactly what M27's **Inbox** smart list (`-is:archived -is:inlist`)
+excludes — so every arriving item would skip the triage queue it is meant to
+land in. Unfiled is the correct state for something nobody has looked at.
+
+### The upstream is quiet, and that is priced rather than hidden
+
+Last commit **2025-05-18**, sixteen months before this milestone: the rename
+from "hoarder" to "karakeep". Nobody is watching if Karakeep's API or
+Miniflux's webhook payload changes shape.
+
+What makes that acceptable is size. The whole program is 375 lines doing one
+thing — verify an HMAC, unmarshal a payload, POST to `/api/v1/bookmarks`. It
+is readable in an afternoon and replaceable in a day, which is a very different
+bet from an unmaintained *application*.
+
+### A new generator, for a reason measured the day before
+
+`miniflux-karakeep-bridge` is its own clan-vars generator rather than two more
+prompts on an existing one. M27 learned on 2026-09-19 that **adding a prompt to
+a generator does not make it re-run** — clan treats a generator as satisfied
+when every file it *declares* exists, so `homepage-tokens` was skipped whole
+and two dashboard tiles failed silently. Prompts are inputs; only files are
+state. A new generator declares new files, so it actually runs.
+
+Both of its values carry `restartUnits`, which is the other half of that same
+bug.
+
+### What shipped
+
+| File | What |
+|---|---|
+| `containers/pkgs/miniflux-karakeep-bridge.nix` | **new.** `buildGoModule`, pinned rev, binary renamed off `main` |
+| `containers/miniflux.nix` | the unit, the generator, the second staged env file |
+| `machines/ernst/networking.nix` | the non-consumption note |
+| `docs/guides/reading-stack.md` | rewritten around the pipeline — there is no daily Miniflux pass any more |
+
+### Manual steps
+
+1. **Miniflux → Settings → Integrations → Webhook**: URL
+   `http://127.0.0.1:8081/webhook`. Save, then copy the generated secret.
+2. **Karakeep → Settings → API keys**: a new key labelled `miniflux-bridge`.
+   Its own, not shared with the extensions, Floccus or the dashboard.
+3. `clan vars generate ernst --generator miniflux-karakeep-bridge`
+4. `clan machines update ernst`
+5. **Turn OFF Miniflux's in-app Karakeep integration.** Harmless to leave —
+   Karakeep dedupes — but two mechanisms doing one job is two things to debug.
+6. **Never subscribe to the same feed in both Miniflux and Karakeep's own RSS.**
+   That is the duplicate generator: Karakeep dedupes identical URLs, but any
+   rewriting Miniflux does makes the two paths disagree and both survive.
+
+### Test plan
+
+| Check | Expect |
+|---|---|
+| Unit up | `systemctl -M miniflux status miniflux-karakeep-bridge` active; log line `Starting webhook server on port 127.0.0.1:8081` |
+| **Not on the network** | from ernst: `curl http://10.0.90.28:8081/webhook` **refused**. It must be loopback-only |
+| Signature enforced | a POST with no `X-Miniflux-Signature` returns **400**; a wrong one returns **401** |
+| End to end | subscribe to a low-volume feed; within a poll cycle its entries appear in Karakeep, crawled and tagged |
+| Lands in the Inbox | the new bookmarks satisfy `-is:archived -is:inlist` |
+| Filter works | add a Blocklist regex matching one entry's title; confirm it does **not** arrive |
+| Dedup holds | re-trigger the same entry; no second bookmark, and an already-archived one stays archived |
+
+### Close-out
+
+Post-deploy verification lands as its own roadmap-only PR, following M23, M26
+and M27.
+
+---
+
 ## Packaging — the constraint shaping M12, M14, M15 and M17
 
 **Establish which services have upstream modules IN-SESSION, on the session's own

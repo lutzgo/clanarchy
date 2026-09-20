@@ -169,8 +169,16 @@ let
   # generation.  A directory we own has a stable identity and is rewritten in
   # place.  containers/traefik.nix carries the long form of this.
   ##############################################################################
-  secretsDir  = "/run/miniflux-secrets";
-  oidcEnvFile = "${secretsDir}/oidc.env";
+  secretsDir    = "/run/miniflux-secrets";
+  oidcEnvFile   = "${secretsDir}/oidc.env";
+  bridgeEnvFile = "${secretsDir}/bridge.env";
+
+  # M28's bridge (see the section at the bottom of this file).  Its two values
+  # are both copied out of a WEB UI by a human — Miniflux generates the webhook
+  # secret, Karakeep mints the API key — so this is a prompted generator, not a
+  # generated one, and that is the shape SN5 warns about.  The script below
+  # handles it the way containers/homepage.nix does.
+  bridgeGen = config.clan.core.vars.generators.miniflux-karakeep-bridge;
 
   # Declared in containers/authelia.nix, beside the other relying parties —
   # ONE GENERATOR PER RELYING PARTY is that file's rule, and it is why this
@@ -278,6 +286,95 @@ in
       } > ${oidcEnvFile}.tmp
       chmod 0400 ${oidcEnvFile}.tmp
       mv -f ${oidcEnvFile}.tmp ${oidcEnvFile}
+
+      # ── M28's bridge credentials ────────────────────────────────────────
+      #
+      # A SECOND FILE rather than two more lines in the first, because the two
+      # are consumed by different units: systemd reads an EnvironmentFile per
+      # service, and giving miniflux.service the bridge's Karakeep token would
+      # put a credential in a process that has no use for it.
+      #
+      # ── GUARDED, BECAUSE THIS UNIT CAN TAKE MINIFLUX DOWN ────────────────
+      #
+      # A `clan machines update ernst` run BEFORE
+      # `clan vars generate ernst --generator miniflux-karakeep-bridge` has a
+      # generator whose files do not exist yet, and clan renders the missing
+      # `.path` as the literal string `/no-such-path`.  Read naively under
+      # `set -euo pipefail` that kills this unit — and this unit is
+      # `requiredBy = container@miniflux.service`, so the blast radius is the
+      # WHOLE FEED READER failing to start over a credential only the bridge
+      # needs.  That is SN5's shape exactly, and it is what took RomM down on
+      # 2026-09-07.
+      #
+      # So each value is read only if its file is readable, and is written as
+      # EMPTY otherwise.  The bridge then starts, fails its own signature
+      # check on the first webhook and says so in its log, which is a
+      # proportionate failure: one service degraded, nothing else touched.
+      # containers/homepage.nix makes the same choice for the same reason.
+      readvar() { [ -r "$1" ] && cat "$1" || true; }
+      {
+        printf 'WEBHOOK_SECRET=%s\n'      "$(readvar ${bridgeGen.files."webhook-secret".path})"
+        printf 'KARAKEEP_API_TOKEN=%s\n'  "$(readvar ${bridgeGen.files."karakeep-api-token".path})"
+      } > ${bridgeEnvFile}.tmp
+      chmod 0400 ${bridgeEnvFile}.tmp
+      mv -f ${bridgeEnvFile}.tmp ${bridgeEnvFile}
+    '';
+  };
+
+  ##############################################################################
+  # M28 — the bridge's two credentials.
+  #
+  # ITS OWN GENERATOR, NOT TWO MORE PROMPTS ON AN EXISTING ONE, and the reason
+  # is measured rather than stylistic.  On 2026-09-19 M27 added two prompts to
+  # `homepage-tokens` and the next `clan vars generate ernst` asked for NOTHING:
+  # clan treats a generator as satisfied when every file it DECLARES exists, and
+  # that one already had its single file.  Prompts are inputs; only files are
+  # state.  A NEW generator declares new files, so it actually runs.
+  #
+  # BOTH VALUES ARE PROMPTED because neither is ours to make: Miniflux generates
+  # the webhook secret when the webhook is created, and Karakeep mints API keys
+  # in its own UI.
+  #
+  # THE BLANK-PROMPT TRAP, WHICH THIS SCRIPT IS SHAPED AROUND: a blank answer
+  # stores nothing, `.path` evaluates to the literal `/no-such-path`, a consumer
+  # reading it under `set -eu` dies, and every later deploy re-prompts — which
+  # is fatal without a TTY.  That took RomM down on 2026-09-07.  Here every file
+  # is written UNCONDITIONALLY, so a skipped answer yields an empty value, the
+  # staging unit still succeeds, and the cost is one unit failing its own
+  # startup check instead of the container failing to start.
+  ##############################################################################
+  clan.core.vars.generators.miniflux-karakeep-bridge = {
+    files."webhook-secret".secret      = true;
+    files."karakeep-api-token".secret  = true;
+
+    # WITHOUT THESE THE VALUES NEVER REACH THE CONTAINER.  The staging script
+    # embeds the sops PATH rather than the contents, so rewriting an encrypted
+    # file leaves the unit byte-identical and systemd — seeing a `oneshot` with
+    # `RemainAfterExit` still active — never re-runs it.  M27 shipped exactly
+    # that bug in `homepage-tokens` and it presented as two dashboard tiles
+    # failing with nothing in any log.
+    files."webhook-secret".restartUnits = [
+      "miniflux-secrets.service"
+      "container@miniflux.service"
+    ];
+    files."karakeep-api-token".restartUnits = [
+      "miniflux-secrets.service"
+      "container@miniflux.service"
+    ];
+
+    prompts."webhook-secret" = {
+      description = "Miniflux webhook secret (Settings -> Integrations -> Webhook, after saving the endpoint). Miniflux generates it; copy it here.";
+      type = "hidden";
+    };
+    prompts."karakeep-api-token" = {
+      description = "Karakeep API key for the Miniflux bridge (Karakeep -> Settings -> API keys). Make a SEPARATE one labelled 'miniflux-bridge'.";
+      type = "hidden";
+    };
+
+    runtimeInputs = [ pkgs.coreutils ];
+    script = ''
+      cat "$prompts/webhook-secret"     > "$out/webhook-secret"
+      cat "$prompts/karakeep-api-token" > "$out/karakeep-api-token"
     '';
   };
 
@@ -334,7 +431,14 @@ in
       };
     };
 
-    config = { config, pkgs, lib, ... }: {
+    config = { config, pkgs, lib, ... }:
+    let
+      # Built from source — a 375-line Go program, so NOT the podman tier
+      # despite upstream shipping a Dockerfile.  See the package file for why,
+      # and for what it means that the repository has been quiet since 2025.
+      bridgePkg = pkgs.callPackage ./pkgs/miniflux-karakeep-bridge.nix { };
+    in
+    {
       # Pins the PostgreSQL major version through
       # `services.postgresql.package`'s stateVersion-derived default, which is
       # the thing that must not move under a running database.  A bump is then
@@ -462,6 +566,106 @@ in
           # nothing in the container's log saying why.
           METRICS_COLLECTOR        = 1;
           METRICS_ALLOWED_NETWORKS = "${monitoringAddr}/32";
+        };
+      };
+
+      ##########################################################################
+      # M28 — the Miniflux → Karakeep bridge.
+      #
+      # ── WHY IT LIVES IN THIS CONTAINER ────────────────────────────────────
+      #
+      # Its ONLY client is Miniflux, in this same namespace, so the webhook is
+      # a loopback call: no MAC, no address, no DHCP reservation, no uid, no
+      # veth and no firewall rule anywhere.  containers/homepage.nix makes the
+      # same argument for living inside containers.arr — put a service where
+      # its caller already is, and the network question does not arise.
+      #
+      # ── WHAT IT IS FOR, GIVEN KARAKEEP SUBSCRIBES TO RSS ITSELF ───────────
+      #
+      # Karakeep's own feed subscriptions take a name, a URL, an enabled flag
+      # and a tag-import toggle — no rules, no keyword blocking, no regex.  So
+      # for a feed you want in full, Karakeep alone is the right answer and
+      # this bridge is redundant; docs/guides/reading-stack.md says so.
+      #
+      # What this buys is FILTERING.  Miniflux's per-feed block/keep rules
+      # decide what survives, and only survivors are forwarded.  Its rewrite
+      # rules matter just as much, for a reason that is not obvious: Karakeep
+      # deduplicates on the EXACT url, so `?utm_source=...` makes a second
+      # bookmark for the same page.  Stripping those before forwarding is
+      # something no amount of work on Karakeep's side could do.
+      #
+      # ── `PORT` IS AN ADDRESS, NOT A NUMBER, AND ITS DEFAULT IS WRONG ──────
+      #
+      # Upstream passes this string straight to `http.ListenAndServe`, so it
+      # must be Go's `host:port` form.  Two traps in one variable:
+      #
+      #   * `PORT = "8081"` does NOT work — Go rejects it with "missing port in
+      #     address".  The colon is mandatory.
+      #   * the default is `":8080"`, which is BOTH a collision with Miniflux
+      #     itself (LISTEN_ADDR above) and a bind on every interface, including
+      #     the VLAN-90 leg.  Either alone would be a defect.
+      #
+      # 127.0.0.1 is therefore load-bearing rather than tidy: it is what keeps
+      # the webhook off VLAN 90 entirely, so the container firewall needs no
+      # rule for it and nothing outside this namespace can reach it.
+      ##########################################################################
+      systemd.services.miniflux-karakeep-bridge = {
+        description = "Forward Miniflux entries to Karakeep";
+        wantedBy    = [ "multi-user.target" ];
+        after       = [ "network.target" ];
+
+        environment = {
+          PORT = "127.0.0.1:8081";
+
+          # Through Traefik by name, not to 10.0.90.29 directly — the same
+          # call the in-app integration makes, and for the same reason: the
+          # direct route costs an accept rule in containers/karakeep.nix and a
+          # hardcoded peer address.  `karakeep.goclan.org` is an appApiHosts
+          # name, so the bearer token passes straight through forward-auth.
+          KARAKEEP_API_URL = "https://karakeep.${baseDomain}";
+
+          # THE WHOLE POINT.  Without this the bridge only forwards entries a
+          # human has explicitly starred, which is the manual workflow this
+          # milestone exists to replace.
+          SAVE_NEW_ENTRIES = "true";
+
+          # Deliberately FALSE, and it interacts with M27's workflow.  Adding
+          # forwarded entries to a list would make them `is:inlist`, which is
+          # exactly what the `Inbox` smart list (`-is:archived -is:inlist`)
+          # excludes — so every arriving item would skip the triage queue it is
+          # supposed to land in.  Unfiled is the correct state for something
+          # nobody has looked at yet.
+          ADD_TO_LIST = "false";
+        };
+
+        serviceConfig = {
+          ExecStart       = lib.getExe bridgePkg;
+          EnvironmentFile = bridgeEnvFile;
+
+          # No state, no files, nothing to own.  DynamicUser also gives the
+          # hardening set (ProtectSystem=strict, PrivateTmp, NoNewPrivileges …)
+          # for free, which is worth more here than a static uid would be —
+          # this process holds a Karakeep API token and parses attacker-shaped
+          # input from the internet's feeds.
+          DynamicUser     = true;
+          Restart         = "on-failure";
+          RestartSec      = "10s";
+
+          CapabilityBoundingSet = [ "" ];
+          LockPersonality       = true;
+          MemoryDenyWriteExecute = true;
+          PrivateDevices        = true;
+          ProtectClock          = true;
+          ProtectControlGroups  = true;
+          ProtectHostname       = true;
+          ProtectKernelLogs     = true;
+          ProtectKernelModules  = true;
+          ProtectKernelTunables = true;
+          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" ];
+          RestrictNamespaces    = true;
+          RestrictRealtime      = true;
+          RestrictSUIDSGID      = true;
+          SystemCallArchitectures = "native";
         };
       };
 
