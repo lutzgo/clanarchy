@@ -293,9 +293,28 @@ in
       # are consumed by different units: systemd reads an EnvironmentFile per
       # service, and giving miniflux.service the bridge's Karakeep token would
       # put a credential in a process that has no use for it.
+      #
+      # ── GUARDED, BECAUSE THIS UNIT CAN TAKE MINIFLUX DOWN ────────────────
+      #
+      # A `clan machines update ernst` run BEFORE
+      # `clan vars generate ernst --generator miniflux-karakeep-bridge` has a
+      # generator whose files do not exist yet, and clan renders the missing
+      # `.path` as the literal string `/no-such-path`.  Read naively under
+      # `set -euo pipefail` that kills this unit — and this unit is
+      # `requiredBy = container@miniflux.service`, so the blast radius is the
+      # WHOLE FEED READER failing to start over a credential only the bridge
+      # needs.  That is SN5's shape exactly, and it is what took RomM down on
+      # 2026-09-07.
+      #
+      # So each value is read only if its file is readable, and is written as
+      # EMPTY otherwise.  The bridge then starts, fails its own signature
+      # check on the first webhook and says so in its log, which is a
+      # proportionate failure: one service degraded, nothing else touched.
+      # containers/homepage.nix makes the same choice for the same reason.
+      readvar() { [ -r "$1" ] && cat "$1" || true; }
       {
-        printf 'WEBHOOK_SECRET=%s\n'      "$(cat ${bridgeGen.files."webhook-secret".path})"
-        printf 'KARAKEEP_API_TOKEN=%s\n'  "$(cat ${bridgeGen.files."karakeep-api-token".path})"
+        printf 'WEBHOOK_SECRET=%s\n'      "$(readvar ${bridgeGen.files."webhook-secret".path})"
+        printf 'KARAKEEP_API_TOKEN=%s\n'  "$(readvar ${bridgeGen.files."karakeep-api-token".path})"
       } > ${bridgeEnvFile}.tmp
       chmod 0400 ${bridgeEnvFile}.tmp
       mv -f ${bridgeEnvFile}.tmp ${bridgeEnvFile}
