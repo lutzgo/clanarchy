@@ -63,6 +63,39 @@ dashboard's. They all come from the same page in Karakeep and look identical;
 revoking the wrong one breaks something you will not immediately connect to the
 revocation. Label it `miniflux`.
 
+### It saves ENTRIES you pick, not FEEDS — and this is the first thing to get wrong
+
+**Subscribing to a feed in Miniflux puts nothing in Karakeep.** The integration
+is per-entry and manual: it fires when you hit **Save** on an individual entry,
+exactly like Miniflux's Wallabag integration. Feeds are never synced; entries
+you choose are.
+
+That is the whole design rather than a limitation — the river stays in
+Miniflux, and only what you decided to keep crosses over. But the failure mode
+is silent and looks like a broken integration: you subscribe, wait, and nothing
+appears.
+
+**Test it once so you know it works:** open an entry, click *Save*, and it
+should appear in Karakeep within seconds tagged `miniflux`. Press `?` in
+Miniflux for the keyboard shortcut — saving is a single key and worth learning,
+since it is the one action the daily pass repeats.
+
+### If you want a whole feed archived automatically
+
+Karakeep subscribes to RSS itself — *User Settings → RSS Subscriptions*. It
+polls hourly and imports every new entry as a full bookmark. No webhook and no
+third-party bridge (one exists; it is not needed).
+
+**Use it sparingly, because it cuts against the model in two ways.** Every
+imported entry is crawled, screenshotted and AI-tagged, which is GPU work per
+item against the same model the coding agent uses — a chatty feed is a
+standing load. And it fills the *permanent* keep with unread noise, which is
+precisely what Miniflux's ephemerality exists to prevent.
+
+Good for a low-volume source you genuinely want in full: a friend's blog that
+posts monthly, a changelog you must not miss. Bad for anything you would put in
+`Daily`. If a feed belongs in both, it belongs in Miniflux and you press Save.
+
 ### The tags are for provenance, not for state
 
 Anything arriving this way is tagged `miniflux`, which is the useful half: it
