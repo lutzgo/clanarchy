@@ -12791,6 +12791,20 @@ you subscribe to something, so a fetcher permitted into RFC1918 is an SSRF
 primitive pointed at VLAN 90. An integration target is a URL an administrator
 typed into a settings page — here, a process in the same namespace.
 
+#### Confirmed live, 2026-09-20
+
+With `INTEGRATION_ALLOW_PRIVATE_NETWORKS` deployed, hitting **Save** on a
+Miniflux entry pushes it to Karakeep. That is the check that matters and the
+one the original verification could not make: the hand-signed webhook proved
+the receiver, and this proves **Miniflux actually calls it**.
+
+**Adding a feed still produces nothing, and that is correct.** Two feeds were
+added and 40 entries fetched with the guard already lifted, and the bridge
+logged nothing — because Miniflux fires the integration only for entries found
+on a *subsequent* refresh, never on a feed's first fetch. Otherwise subscribing
+to a feed with 500 archived items would dump all 500 at once. The expectation
+after adding a feed is silence until that feed next publishes.
+
 ### Close-out
 
 Post-deploy verification landed with the fix rather than separately, because

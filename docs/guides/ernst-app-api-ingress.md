@@ -390,6 +390,28 @@ reason it is worth stating as a rule at all: see step 1c.
 **Never add AAAA.** Nothing on the path has a global IPv6 address. An AAAA
 record is the fastest way to reproduce the outage this work started from.
 
+## When ONE name times out from ONE device, suspect the client
+
+**Measured 2026-09-20.** An Android phone could load `cwa.goclan.org` but
+`auth.goclan.org` timed out — on wifi *and* on 5G, and in a private tab.
+
+Everything server-side was innocent and checking it took time worth saving:
+
+- Traefik's access log showed **the phone's requests never arrived** — the only
+  external hits on that name were the operator's own `curl` tests.
+- Internal DNS answers `10.0.90.12` for **every** name, so no split-horizon
+  record was sending it elsewhere.
+- Traefik has **no QUIC listener**, ruling out a genuine HTTP/3 path.
+
+**Rebooting the phone fixed it.** The signature — one ORIGIN failing while
+others on the same address and port succeed, surviving both a network change
+and a private tab — is per-origin state cached in the client: a stale
+`Alt-Svc`/HTTP-3 hint, or a pinned DNS answer the OS was holding.
+
+**So when one name fails from one device and the same name works from
+elsewhere, stop looking at the server.** Try a different browser, then reboot
+the device, before touching DNS, Traefik or the firewall.
+
 ## When EVERY public name stops answering at once, suspect CrowdSec first
 
 **Measured 2026-09-20.** All eight public hostnames stopped answering from
