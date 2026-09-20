@@ -208,12 +208,15 @@ you have not named is one you cannot empty.
 |---|---|---|---|
 | ~~Miniflux unread~~ | Nothing you need to look at — the bridge forwards, Miniflux ages entries out | Itself | Never |
 | **Karakeep inbox** | Everything the filter let through, plus what you saved by hand | Archiving or filing each one | **Daily — this is the only one** |
-| **Floccus arrivals** | Browser bookmarks, synced in | Nothing — they accumulate | Monthly, if ever |
+| ~~Floccus arrivals~~ | Browser bookmarks — **Floccus syncs them into a LIST** | Nothing needed | Never |
 
-The third is the one that bites, because it is silent: bookmarks you make in
-the browser arrive in Karakeep with no tag and no list, so without a query that
-separates them they sit in the second inbox forever, diluting it with things
-you never meant to triage.
+**The third is not an inbox after all, and that is worth knowing because it
+looks like it should be.** Verified 2026-09-20: Floccus-synced bookmarks do not
+appear in `-is:archived -is:inlist`, because the adapter puts them in a
+Karakeep list. They are therefore excluded from the Inbox for free — no tag
+convention, no query, nothing to maintain.
+
+So there are **two** inboxes, and only one of them needs daily attention.
 
 ### The one rule that makes it work
 
@@ -257,11 +260,14 @@ and the two are indistinguishable by origin. The qualifier is still worth
 knowing — `source:extension` does isolate things saved with the Karakeep
 browser button — but it will not give you a feeds-only view.
 
-**Calibrate it once rather than trusting this page.** Search `source:api`, then
-`source:extension`, and see what each returns on your instance. If Floccus
-turns out to sync into a *list*, its bookmarks are already `is:inlist` and
-therefore already excluded from your Inbox — which would be the tidiest
-possible outcome and is worth five seconds to check.
+**Floccus does not pollute the Inbox, and this was verified rather than
+assumed.** Its adapter syncs into a Karakeep *list*, so its bookmarks are
+already `is:inlist` and the Inbox query excludes them without any help. That is
+the tidiest possible outcome and it is why no `Bar` list is needed.
+
+**Calibrate `source:` once anyway if you build queries on it.** Search
+`source:api` and `source:extension` and see what each returns on your instance
+rather than trusting this page.
 
 ### "Archived" does not mean what you think
 
