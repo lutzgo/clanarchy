@@ -1,6 +1,6 @@
 # App-API ingress: the services apps talk to
 
-Eight hostnames on ernst are reachable from the public internet **without
+Nine hostnames on ernst are reachable from the public internet **without
 Authelia in front of them**. This page is why, what compensates, and how to
 verify it works.
 
@@ -87,9 +87,10 @@ The recent additions to the public set have all been exemptions — `photos`,
 the public path is rate-limit → forward-auth → 2FA before the application sees
 a byte, which is `chat`'s posture.
 
-**The exempt count stays at eight.** If a future milestone adds a ninth, it
-goes in the table; `home` does not, and moving it there would be a decision to
-stop authenticating the index, not a tidy-up.
+**The exempt count is nine**, and it has moved in both directions: M27 added
+`karakeep` and then took `miniflux` back out again. `home` is in neither
+direction — it has never been exempt, and moving it there would be a decision
+to stop authenticating the index, not a tidy-up.
 
 A Kobo e-reader is the clearest case: there is no browser on the device at all.
 
@@ -388,6 +389,70 @@ reason it is worth stating as a rule at all: see step 1c.
 
 **Never add AAAA.** Nothing on the path has a global IPv6 address. An AAAA
 record is the fastest way to reproduce the outage this work started from.
+
+## When EVERY public name stops answering at once, suspect CrowdSec first
+
+**Measured 2026-09-20.** All eight public hostnames stopped answering from
+outside the house, simultaneously, from two different networks. It looked like
+a total ingress outage. It was a four-hour ban on the operator's own IP.
+
+### What it looks like
+
+| Symptom | Reading |
+|---|---|
+| Every public name times out, not just one | A per-SOURCE control, not a per-service fault |
+| Internal paths all fine | Nothing wrong with Traefik or any backend |
+| ZeroTier still works | The house has power and internet |
+| Even ICMP to the WAN IP fails | Looks like the line is down — it is not, the UDM-Pro simply drops WAN ping |
+
+**The tell is in a packet capture and nowhere else.** On `br0`:
+
+```
+92.208.144.213.44940 > 10.0.90.12.8443: [S]   ← your SYN arrives, retried 4×
+                                              ← no SYN-ACK, ever
+10.0.90.12.8443 > 45.143.4.41.959:    [S.]    ← Traefik answering OTHER hosts
+10.0.90.12.8443 > 185.136.206.72:     [S.]       in the same second
+```
+
+Traefik answering strangers while silently dropping you is the signature of a
+bouncer. A routing or DNAT fault drops everyone equally.
+
+### Diagnosis and fix
+
+```bash
+ssh root@10.0.50.10 'nixos-container run traefik -- cscli decisions list'
+ssh root@10.0.50.10 'nixos-container run traefik -- cscli decisions delete --ip <your.public.ip>'
+```
+
+`curl -s ifconfig.me` from the affected machine gives the address to look for.
+
+### What set it off, which is the part worth learning
+
+`clanarchy/app-api-auth-bf` — the custom scenario guarding `appApiHosts`
+credential endpoints — counted **eleven events** and banned for four hours. The
+events were **diagnostics**: a sweep of eight hostnames in quick succession from
+one address, plus repeated retries while a DNS record was briefly wrong. To a
+brute-force scenario that is indistinguishable from credential probing, because
+it *is* the same shape.
+
+**So the rule is: do not debug ingress with rapid multi-host sweeps from
+outside.** Check one name, then check `cscli decisions list` before checking a
+second. The control cannot tell an operator from an attacker, and it is not
+supposed to.
+
+### It is L14's lesson in a third costume
+
+Ledger row L14 records that a per-source control keyed on an address you also
+use will eventually be keyed on *you*. Nextcloud's brute-force throttle needed
+`trusted_proxies` or one attacker would lock out the household; Home Assistant's
+`ip_ban` needed the same. This is the third instance and the first where the
+locked-out party was the operator mid-deploy.
+
+**Deliberately NOT fixed by whitelisting.** A permanent allow for a residential
+dynamic address is a rule that is wrong within a week and silently becomes an
+allow for whoever holds the address next. The ban is four hours and the fix is
+one command; the knowledge of where to look is the durable part, which is why
+it is written here rather than engineered away.
 
 ## Post-deploy checklist
 
