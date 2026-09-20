@@ -72,6 +72,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M24b — HACS | **DEPLOYED AND FULLY VERIFIED 2026-09-18. TWO DEFECTS FOUND BY TESTING RATHER THAN BY READING, and the second one would have made the alerting worse than useless** | [#200](https://github.com/lutzgo/clanarchy/pull/200) | The Home Assistant Community Store on top of [M24](#m24-featernst-home-assistant), as a declarative custom component: `machines/ernst/containers/pkgs/hacs.nix` builds it and one `customComponents` line wires it in, so **HACS ITSELF** is a version in a file and a hash over the bytes like everything else on this host. **WHAT HACS DOWNLOADS IS NOT, AND THAT IS THE WHOLE TRADE** — downloaded integrations and cards are state on `zdata/state`, and `ls /srv/state/home-assistant/custom_components` is the only inventory there is. **THE RELEASE ZIP, NOT THE GIT TAG**: the compiled frontend is ~19 MB of a ~19 MB artifact and is not in the repository, so `fetchFromGitHub` on tag 2.0.5 builds a HACS whose panel is a 404 and whose manifest reads the placeholder `"version": "0.0.0"`. **DEFECT 1, FOUND BY DEPLOYING**: the first deploy created THREE symlinks in `custom_components/` where one was expected, and Home Assistant tried to load two of them as integrations — the module's `copyCustomComponents` runs a bare `find -name manifest.json` and symlinks every parent it finds, and HACS's webpack bundles each contain a file of that name. **nixpkgs KNOWS ABOUT THIS COLLISION AND FIXED ONLY THE OTHER HALF** ([#429790](https://github.com/NixOS/nixpkgs/issues/429790) reports it against HACS at this exact hash; [#432385](https://github.com/NixOS/nixpkgs/pull/432385) path-scoped the *check hook* and left the module alone), **which is precisely why the derivation built green and the defect appeared only on a running hub** — a clean `nix build` is not evidence a custom component is wired correctly. **THE `--skip-pip` HIT IS WORSE THAN FIRST WRITTEN AND IS NOW ALERTED ON**: requirement checking sits behind the same flag (`requirements.py:167`), so Home Assistant does not fail to install a missing requirement, it **never looks** — no `RequirementsNotFound`, no log line naming pip, and for a lazily-importing integration the first evidence is an ImportError days later when a device is first used. With no upstream signal to alert on, `hass-hacs-deps.service` manufactures one, hooked to home-assistant.service's **start** rather than to a timer because a HACS download is inert until restart. **DEFECT 2, FOUND BY TESTING THE CHECKER AGAINST A SYNTHETIC LIBRARY**: built the obvious way it reported `aiogithubapi` — HACS's own requirement, demonstrably installed — as MISSING, because `cfg.package.pythonPath` is the INPUT to the module's local override (`home-assistant.nix:126-137`) and not its result. **A checker that fails on a healthy hub is worse than no checker, because its alert trains you to ignore it**; the fix reads the path off `systemd.services.home-assistant.environment.PYTHONPATH`, the literal string the service gets. **VERIFIED WITH A NEGATIVE CONTROL AND NOT ONLY A HAPPY PATH**: a probe integration with an unsatisfiable requirement took the unit to `Result=exit-code`, surfaced as `clanarchy_container_systemd_unit_failed{container="hass",name="hass-hacs-deps.service"} 1` on the host, and cleared on removal — the chain PR #139 built, exercised end to end. Depends on M24. [M24b](#m24b-feathass-hacs) |
 | M26 — the service index | **DEPLOYED AND FULLY VERIFIED 2026-09-17, same day. It came up on the first try. TWO DEFECTS FOUND BY DEPLOYING, and the first one REMOVED a firewall rule rather than adding one** | [#197](https://github.com/lutzgo/clanarchy/pull/197) | gethomepage at `home.goclan.org`. **The structural decision is that it runs INSIDE `containers.arr`**, co-defining it the way `crowdsec.nix` co-defines `containers.traefik` — because `arr-api-keys.service` stages the six *arr keys it renders, and those keys are EXTRACTED from each service's own config rather than chosen, so a copy in a second namespace is a second source of truth that goes stale when somebody rotates one in a UI. Consequence: **no MAC, no address, no uid** — all three NEXT FREE markers unchanged, and `machines/ernst/networking.nix` records the non-consumption. `protectedHosts` + `wanExposed`, so it is the first name on the internet since M19's `chat` that is **not** an appApiHosts exemption; ledger row L16. Widens exactly four container firewalls (`dashboardAddr`); Jellyfin needed none, having admitted `.13` since M13. **It is not Grafana and must not become it** — no history, no alerting, nothing stored. Depends on M5, M6, M7, M13, M18. [M26](#m26-featernst-homepage) |
 | M27 — the reading stack | **DEPLOYED AND VERIFIED 2026-09-19. Every machine-checkable row of the test plan passed on the first deploy, including `karakeep-browser` — the one thing this milestone called unproven. FOUR DEFECTS FOUND BY DEPLOYING, three of them mine and two of them silent** | [#201](https://github.com/lutzgo/clanarchy/pull/201) | Miniflux + Karakeep + Floccus as one stack: news in, bookmarks and full-page archives kept, the browsers' own bookmark trees synced into the same store. **Both are nspawn** — `services.miniflux` and `services.karakeep` are first-class NixOS modules at this pin, so the podman tier does not apply. Miniflux on `02:00:00:90:00:14` → `10.0.90.28`, seq **14**, taking **NO uid** (DynamicUser; only PostgreSQL's well-known 71 lands on zdata). Karakeep on `02:00:00:90:00:15` → `10.0.90.29`, seq **15**, uid/gid **3038**, four units plus Meilisearch plus a headless chromium. **NO NEW DATASET FOR EITHER** — both write profiles are `zdata/state`'s exactly, so no `disko.nix` change and no `zfs create`; M24's call, made twice. **MEILISEARCH'S INDEX IS DELIBERATELY NOT BOUND OUT**, because the nixpkgs module runs it under DynamicUser and binding it would put a systemd-ALLOCATED id on the pool — the one thing the uid table exists to prevent. It is derived data and Karakeep rebuilds it. **IT RETIRES A SERVER THAT NEVER EXISTED**: `browsers.nix` has carried an unverified Linkwarden extension ID, a Vimium keybinding whose target was the literal string `YOUR_LINKWARDEN_INSTANCE`, and a comment doubting its own AMO listing, with no Linkwarden anywhere in this fleet. All deleted rather than finally built. **FOUR BROWSERS, FOUR DIFFERENT EXTENSION MECHANISMS**, and each is the only one that works for its browser: ungoogled-chromium ignores `ExtensionInstallForcelist` entirely (upstream #2523) so it takes External Extensions JSON; Firefox takes STORE-PINNED NUR `.xpi`s; LibreWolf takes an `ExtensionSettings` policy DEEP-MERGED into its own shipped `distribution/policies.json` — verified on the built package, its `"*"` rule and uBlock entry survive — because an `/etc` policy file would REPLACE that file and `nixExtensions` would block every manually installed add-on; google-chrome takes a managed policy under `/etc/opt/chrome`, since home-manager asserts against `programs.chromium.extensions` for it on Linux. **KARAKEEP AUTO-TAGS AGAINST THE MODEL ALREADY RESIDENT.** ernst has had no Ollama since M19 — llama-swap replaced it — so this is `OPENAI_BASE_URL` over a third `exposeOn` peer (`fdca:fe92::`), and `INFERENCE_TEXT_MODEL` names `qwen3-coder-30b` on purpose: llama-swap's exclusive group means any other text model would EVICT the coder model on every bookmark and stall lgo's agent. The image model is the priced exception. **NEITHER HAS A LOCAL PASSWORD** (`DISABLE_LOCAL_AUTH`, `DISABLE_PASSWORD_AUTH` + `DISABLE_SIGNUPS`) — the OPPOSITE of M24's call for Home Assistant, and for the reason that file gives: nothing in the house depends on either, so "fix Authelia" is an acceptable recovery path. Karakeep is `appApiHosts` with native OIDC INSTEAD OF forward-auth (M23's and CWA's arrangement); Miniflux ended up in `protectedHosts` with forward-auth AND OIDC, which is Grafana's. **KARAKEEP NEEDED AUTHELIA'S ESCAPE HATCH** — a `claims_policies` block, the first top-level key beside `clients:` this staging script has ever emitted, because Karakeep reads `email` off the ID token instead of calling userinfo. Verified present in the 4.39.20 binary before being written. `require_pkce: false` and `userinfo_signed_response_alg: none` come from Authelia's own integration document for this client, which is M23's lesson applied rather than re-learned. **BOTH ARE ON THE WAN, AND MINIFLUX ONLY AFTER A CHANGE OF MIND** (ledger rows **L17**, **L18**). It shipped LAN-only on the argument that feed reading could wait for the LAN; that lasted one day. Exposing it was NOT a matter of adding it to `wanExposed`, which would have put an unauthenticated vhost on the internet — it MOVED to `protectedHosts` first, so the public path is forward-auth → 2FA. The clients its exemption was argued from (Fever, Google Reader) are protocols nobody here uses, and the cost of losing them is permanent. **MINIFLUX GETS A REAL PROMETHEUS JOB**, the first since M19: `/metrics` is a genuine OpenMetrics exposition, gated twice (the container firewall AND `METRICS_ALLOWED_NETWORKS`). **KARAKEEP GETS NONE**, stated rather than omitted — SN3. **ONE INSECURE PACKAGE PERMITTED**, `pnpm-9.15.9`, scoped INSIDE the karakeep container after the host-level grant was measured not to reach it: a `containers.<n>.config` is its own nixpkgs evaluation. Every pnpm variant in this pin carries the same seven CVEs, 10.29.2 included, and it is build-time only. Depends on M5, M6, M7, M18, M19. [M27](#m27-featernst-reading-stack) |
+| M28 — the reading pipeline | **DEPLOYED 2026-09-20 AND VERIFIED, THEN FOUND NOT TO WORK — and both statements are true.** Every structural check passed on the first deploy: loopback-only bind, negative control refused, 400/401 signature enforcement, and a hand-signed webhook proving the full path including Karakeep's URL dedup. **THEN NOTHING CAME THROUGH**, because MINIFLUX'S OWN SSRF GUARD refuses to POST to a non-public address — M23's Nextcloud `DnsPinMiddleware` finding in a second costume, in a milestone that cites it | [#204](https://github.com/lutzgo/clanarchy/pull/204) | The bridge that makes "subscribe in Miniflux, consume in Karakeep" a pipeline rather than a pair of tabs. **IT EXISTS BECAUSE M27 BUILT A READER FOR SOMEBODY WHO DID NOT WANT ONE** — the planning question "where do you want to read?" was never asked. **375 lines of Go, so NOT the podman tier** despite upstream shipping a Dockerfile, and there is no image to pin anyway (no releases, no registry package). Runs INSIDE `containers.miniflux` on `127.0.0.1:8081` because its only client is Miniflux in that same namespace: **no MAC, no address, no reservation, no veth, no firewall rule, no uid**. **MINIFLUX SURVIVES FOR EXACTLY ONE CAPABILITY** Karakeep's native RSS lacks — filtering — and the rewrite rules are the deciding half, because Karakeep dedupes on the EXACT url so `?utm_source=` makes a second bookmark. **`PORT` IS AN ADDRESS, NOT A NUMBER**, and its default `:8080` is both a collision with Miniflux and a bind on every interface. **`ADD_TO_LIST` IS FALSE ON PURPOSE**: a list makes arrivals `is:inlist`, which is what M27's Inbox smart list excludes. Depends on M27. [M28](#m28-featminiflux-karakeep-bridge) |
 
 ---
 
@@ -12732,10 +12733,82 @@ bug.
 | Filter works | add a Blocklist regex matching one entry's title; confirm it does **not** arrive |
 | Dedup holds | re-trigger the same entry; no second bookmark, and an already-archived one stays archived |
 
+### Deploy-day result, 2026-09-20
+
+**Everything structural passed on the first deploy, and the feature still did
+nothing.** Both halves are worth recording, because the first half is exactly
+what makes the second half hard to see.
+
+| Check | Result |
+|---|---|
+| Generation matches | ✅ |
+| Unit active, **bound to `127.0.0.1:8081`** and not `0.0.0.0` | ✅ — the `PORT` trap avoided |
+| **Negative control** — `10.0.90.28:8081` from ernst | refused ✅ |
+| Signature enforcement | no header → **400**, wrong header → **401** ✅ |
+| Secrets staged non-empty, committed encrypted | ✅ |
+| **Full path**, via a hand-signed webhook | bookmark created in Karakeep ✅ |
+| **Dedup** — identical second POST | same id, `alreadyExists: true`, count unchanged ✅ |
+| Crawl pipeline | `crawlStatus: success`, screenshot asset, title extracted ✅ |
+| Lands in the Inbox | `archived:false`, no list ✅ |
+
+#### And then no feed entry ever arrived
+
+`INTEGRATION_ALLOW_PRIVATE_NETWORKS`. Miniflux has its own SSRF guard and it
+refused every delivery:
+
+```
+Unable to send new entries to Webhook … nb_entries=1 feed_id=1
+error="connection to private network is blocked:
+       host "127.0.0.1" resolves to a non-public IP address"
+```
+
+**This is M23's Nextcloud finding in a second costume, inside a milestone that
+cites M23's finding.** There, `allow_local_remote_servers` had to be set
+because Nextcloud's `DnsPinMiddleware` refused server-side fetches to RFC1918
+and rendered it as a plain 404. Here the same class of guard, in a different
+application, refuses the same class of destination — and the failure is
+quieter, because a webhook nobody sends produces no error anywhere except one
+WARN line in the *sender's* log.
+
+**The reason it survived a full verification pass** is that every check
+exercised the bridge and none exercised Miniflux's decision to call it. A
+hand-signed `curl` proves the receiver works perfectly and says nothing about
+whether anything will ever knock. **A test that supplies its own input cannot
+detect a missing caller** — the same shape as M24's "test plan written from the
+design rather than from the running thing", one layer further out.
+
+#### Two options exist and only the narrow one is set
+
+Read out of the built binary rather than guessed:
+
+| Variable | Governs | Set? |
+|---|---|---|
+| `INTEGRATION_ALLOW_PRIVATE_NETWORKS` | integration targets (this webhook) | **yes** |
+| `FETCHER_ALLOW_PRIVATE_NETWORKS` | **feed fetching** | **no, and it must stay no** |
+
+The second is the dangerous half. A feed URL is attacker-controlled the moment
+you subscribe to something, so a fetcher permitted into RFC1918 is an SSRF
+primitive pointed at VLAN 90. An integration target is a URL an administrator
+typed into a settings page — here, a process in the same namespace.
+
+#### Confirmed live, 2026-09-20
+
+With `INTEGRATION_ALLOW_PRIVATE_NETWORKS` deployed, hitting **Save** on a
+Miniflux entry pushes it to Karakeep. That is the check that matters and the
+one the original verification could not make: the hand-signed webhook proved
+the receiver, and this proves **Miniflux actually calls it**.
+
+**Adding a feed still produces nothing, and that is correct.** Two feeds were
+added and 40 entries fetched with the guard already lifted, and the bridge
+logged nothing — because Miniflux fires the integration only for entries found
+on a *subsequent* refresh, never on a feed's first fetch. Otherwise subscribing
+to a feed with 500 archived items would dump all 500 at once. The expectation
+after adding a feed is silence until that feed next publishes.
+
 ### Close-out
 
-Post-deploy verification lands as its own roadmap-only PR, following M23, M26
-and M27.
+Post-deploy verification landed with the fix rather than separately, because
+what the deploy found *was* a fix. Follows M23, M26 and M27 otherwise.
 
 ---
 

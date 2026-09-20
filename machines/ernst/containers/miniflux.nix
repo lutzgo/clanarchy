@@ -566,6 +566,39 @@ in
           # nothing in the container's log saying why.
           METRICS_COLLECTOR        = 1;
           METRICS_ALLOWED_NETWORKS = "${monitoringAddr}/32";
+
+          # ── THE LINE WITHOUT WHICH M28's BRIDGE RECEIVES NOTHING ─────────
+          #
+          # MEASURED 2026-09-20, and it is M23's Nextcloud finding in a second
+          # costume.  Miniflux has its own SSRF guard, and it refused every
+          # webhook delivery:
+          #
+          #     Unable to send new entries to Webhook … nb_entries=1
+          #     error="connection to private network is blocked:
+          #            host \"127.0.0.1\" resolves to a non-public IP address"
+          #
+          # The bridge was correctly configured, listening, and signature-
+          # verified end to end by hand — it simply never got a request,
+          # because Miniflux would not make one.  Nothing failed; a unit that
+          # is never called looks exactly like a unit that works.
+          #
+          # ── TWO OPTIONS EXIST AND ONLY THE NARROW ONE IS SET ─────────────
+          #
+          # Read out of the built binary rather than guessed:
+          #
+          #   INTEGRATION_ALLOW_PRIVATE_NETWORKS  — integrations (this)
+          #   FETCHER_ALLOW_PRIVATE_NETWORKS      — FEED FETCHING (not this)
+          #
+          # The second one is the dangerous half and stays OFF.  A feed URL is
+          # attacker-controlled the moment you subscribe to something, so a
+          # fetcher permitted into RFC1918 is a server-side request forgery
+          # primitive pointed at VLAN 90.  An INTEGRATION target is a URL the
+          # administrator typed into a settings page, and here it is
+          # 127.0.0.1:8081 — a process in this same namespace.
+          #
+          # So this relaxes the guard for the one destination we chose and
+          # leaves it in force for the one an outsider influences.
+          INTEGRATION_ALLOW_PRIVATE_NETWORKS = 1;
         };
       };
 
