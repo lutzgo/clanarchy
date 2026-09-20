@@ -219,28 +219,6 @@ rec {
     # Ledger row L14's lesson, in a second costume.
     (h "ha")
 
-    # Miniflux (M27).  The feed reader's OWN web UI is browser-only and would
-    # pass the test at the top of this file — but the vhost also answers two
-    # native-reader protocols, and those are what put it here:
-    #
-    #   /fever/            the Fever API, credentials in the POST body;
-    #   /reader/api/0/**   the Google Reader API, a token in every request.
-    #
-    # Reeder, NetNewsWire, FocusReader and every other third-party reader speak
-    # one of those two and nothing else.  Neither has a cookie jar, so neither
-    # can act on a 302 to a portal.
-    #
-    # THE BROWSER PATH IS NOT LEFT UNPROTECTED: Miniflux has NO local password
-    # login at all here (`DISABLE_LOCAL_AUTH`, containers/miniflux.nix) and
-    # Authelia is its only identity provider, so the web UI still gets a second
-    # factor — CWA's and Nextcloud's arrangement, OIDC INSTEAD OF the
-    # middleware, rather than Grafana's OIDC AS WELL AS it.
-    #
-    # LAN-ONLY.  Unlike every other entry in this list it is not in
-    # `wanExposed`, so the only way to reach it at all is from inside the
-    # house.  That is the bulk of what defends it.
-    (h "miniflux")
-
     # Karakeep (M27).  Bookmarks, archives and the search over them — and the
     # clients that fail the 302 test are ones THIS REPO INSTALLS:
     #
@@ -339,6 +317,38 @@ rec {
     # is why one door is enough here and would not be enough for a service that
     # handed the browser a session on something else.
     (h "home")
+
+    # Miniflux (M27).  IT STARTED IN `appApiHosts` AND WAS MOVED HERE, which
+    # this file's header says not to do — so the reason has to be good.
+    #
+    # THE HEADER FORBIDS MOVING A NAME OUT OF `appApiHosts` TO "FIX" IT, i.e.
+    # to make a broken client work by weakening the door.  This is the opposite
+    # direction: the door is being made STRONGER, and the clients that
+    # justified the exemption turned out not to exist here.
+    #
+    # The original entry argued from Miniflux's Fever (`/fever/`) and Google
+    # Reader (`/reader/api/0/**`) APIs, which carry credentials in the request
+    # and cannot follow a 302 — a correct argument about protocols nobody in
+    # this house uses.  lgo reads in a browser.  So the exemption was buying a
+    # weaker posture in exchange for a capability that was never exercised, and
+    # M27's own section recorded `protectedHosts` as the tighter alternative at
+    # the time the choice was first made.
+    #
+    # WHAT THIS COSTS, STATED SO IT IS NOT REDISCOVERED AS A FAULT: no native
+    # RSS reader — Reeder, NetNewsWire, FocusReader — can ever connect to this
+    # hostname again, on the LAN or off it, because forward-auth applies to
+    # BOTH entrypoints.  Restoring that capability means moving this name back
+    # up, and that is an ingress change with a ledger row, not a preference.
+    #
+    # WHAT IS UNAFFECTED, because neither goes through Traefik: the service
+    # index's widget and Prometheus both reach `10.0.90.28:8080` directly, and
+    # Miniflux's own outbound call to Karakeep is a client of THAT service, not
+    # of this vhost.
+    #
+    # It keeps its OIDC client as well — which is now Grafana's arrangement
+    # (forward-auth AND OIDC) rather than CWA's, and the two are no longer to
+    # be read as the same thing for this name.
+    (h "miniflux")
   ];
 
   ############################################################################

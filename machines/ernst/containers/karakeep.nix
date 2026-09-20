@@ -6,6 +6,16 @@
 # through Traefik on BOTH entrypoints, with Authelia as its sole identity
 # provider and ernst's own inference server doing the tagging.
 #
+# ── IT HAS AN INBOUND API CLIENT THIS FILE DOES NOT DECLARE ─────────────────
+#
+#   Miniflux's own Karakeep integration POSTs saved entries to
+#   /api/v1/bookmarks through Traefik, with its own API key, tagged
+#   `miniflux, new`.  It is a per-user setting in MINIFLUX's database and is
+#   therefore unreachable from Nix — so nothing here changes for it, and no
+#   firewall rule is needed, because it arrives through 10.0.90.12 like every
+#   other client.  Recorded so that a `miniflux` tag showing up in this
+#   service's data has a traceable origin.  docs/guides/reading-stack.md.
+#
 # ── WHAT THIS REPLACES: A SERVER THAT NEVER EXISTED ─────────────────────────
 #
 #   machines/miralda/home-modules/browsers.nix has carried a Linkwarden
