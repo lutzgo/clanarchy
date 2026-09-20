@@ -537,6 +537,15 @@
   #                       LIKE M22, M23 AND M24 IT ADDS NO UDM-PRO RULE for
   #                       VLAN 50 → 90: every client arrives through .12.
   #
+  #   M28 TOOK NOTHING FROM THIS TABLE, and that is recorded rather than left
+  #   to inference.  The Miniflux → Karakeep bridge runs as an ordinary
+  #   systemd unit INSIDE containers.miniflux, bound to 127.0.0.1:8081, because
+  #   its only client is Miniflux in that same namespace.  So it has no L2
+  #   identity, no DHCP reservation, no veth, nothing for the UDM-Pro to know
+  #   about — and no uid either, since it keeps upstream's DynamicUser and
+  #   writes nothing to disk.  A milestone that DECLINES a number has to say so
+  #   here; see M26's row above for the same statement.
+  #
   #   NEXT FREE SEQUENCE NUMBER IS 16; next free address is 10.0.90.30, keeping
   #   the 8 + <seq> correspondence (8 + 0x16 = 30).  There is no free gap left
   #   in the sequence — 08 and 09 lapsed and were never reclaimed, and 0d was
