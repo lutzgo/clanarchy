@@ -13047,50 +13047,33 @@ into plain subdirectories so *arr hardlinks work — and it predates `/srv/unsor
 and `/srv/gardens` (#66). A guide that describes a layout the repo rejects is
 worse than no guide.
 
-**Migrate the VCS workflow from git/gh to jj (Jujutsu), git-backed.** Colocated
-(`jj git init --colocate`), so `.git` stays authoritative and `gh` keeps working
-for PRs — nothing about GitHub, CI, or `clan machines update` changes. This is a
-change to how *we* drive the repo, not to what the repo is.
+**~~Migrate the VCS workflow from git/gh to jj (Jujutsu), git-backed.~~ Landed**
+([#207](https://github.com/lutzgo/clanarchy/pull/207), 2026-09-22). Colocated, so `.git` stays authoritative and `gh`, CI and
+`clan machines update` are untouched — a change to how the repo is *driven*, not to what
+it is. The reasoning that lived in this entry now lives in
+[the jj workflow guide](guides/jj-workflow.md), which is where it is useful; the mechanics
+are in [CLAUDE.md → Version Control Workflow](https://github.com/lutzgo/clanarchy/blob/main/CLAUDE.md).
 
-Why it is worth doing here specifically: this repo's workflow is
-branch-per-change with mandatory PRs and frequent small doc/config commits, and
-several of this session's stumbles were git-shaped rather than
-substance-shaped — a `--delete-branch` that pulled the branch out from under an
-in-flight edit and left an amend landing on `main`, a rebase conflict from two
-PRs touching adjacent rows of the same table, and repeated
-`commit --amend` + `push --force-with-lease` cycles to keep one PR tidy. jj's
-model (no index, no detached HEAD, every edit already a revision, first-class
-conflicts that don't block you, trivial history rewriting) removes the class
-rather than the instances.
+Two things this entry asserted turned out to be wrong, recorded here because both were
+predictions about difficulty and both were load-bearing in the sequencing argument:
 
-Scope, which is mostly documentation:
+- *"`~/.config/jj` needs a persist entry, mirroring `~/.config/git`"* — **already
+  satisfied**. `modules/users/lgo.nix` persists `.config` wholesale, so no impermanence
+  change was needed at all; a nested entry under an already-persisted directory would have
+  been wrong.
+- *"jj needs the equivalent [of the `push` helper], and that is the one genuinely fiddly
+  part"* — **it needs no equivalent.** jj performs git remote interactions by spawning a
+  real `git` subprocess, so `jj git push` picks up the gh credential helper that
+  `programs.gh` already writes into `~/.config/git/config`. `push` was kept as the
+  git-side escape hatch, with the finding recorded in `scripts/devshell.sh`.
 
-- **`CLAUDE.md` "Git Workflow"** — the single most important file to rewrite.
-  The branch-prefix table stays (it drives PR titles and the roadmap), but the
-  mechanics change: `jj new`, `jj describe`, `jj bookmark set`,
-  `jj git push --bookmark`. Keep the invariants stated as invariants — never
-  land directly on `main`, PR via `gh pr create` — because they survive the tool
-  change.
-- **`docs/guides/accepting-pull-requests.md`** and any runbook step that spells
-  out git commands.
-- **The devShell** (`flake.nix`): add `jj`, and decide what happens to the
-  `push` helper, which exists because `~/.config/git` is a read-only
-  impermanence bind mount and reads the gh token at runtime. jj needs the
-  equivalent, and that is the one genuinely fiddly part.
-- **Impermanence**: `~/.config/jj` needs a persist entry, mirroring
-  `~/.config/git`.
-- **The milestone prompts below**, which name git commands verbatim.
+Also settled: Claude sessions drive **jj**, not git, against the colocated repo — both
+work, but mixing them inside one session is where the confusion comes from. Signing needed
+nothing: jj does not inherit `commit.gpgsign` and this repo does not sign.
 
-Open questions to settle when it is picked up: whether Claude sessions should
-drive jj or keep using git against the same colocated repo (both work; mixing
-them in one session is where confusion would come from), and whether
-`git config` signing carries over — note commits in this repo already need
-`--no-gpg-sign`.
-
-Not urgent, and deliberately not bundled with any ernst milestone: a VCS
-migration that lands mid-buildout would make every subsequent PR harder to
-review. Best done between milestones, in one pass, with the docs rewritten in
-the same PR.
+Scope deliberately **not** taken in that PR: the milestone prompts elsewhere in this file
+still name git commands verbatim. Converting several thousand lines of historical record
+would bury the actual change in review noise; they get converted as they are picked up.
 
 **clan-core `Domains=skynet.lan` upstream PR.** A separate session in a separate
 repo. Needs a minimal reproduction first — the smallest clan config that shows

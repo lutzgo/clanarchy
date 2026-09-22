@@ -39,7 +39,24 @@ echo UPDATESTARTUPTTY | gpg-connect-agent >/dev/null 2>&1 || true
 # deploy that quietly did less. Likewise test-pr/test-vm, which booted a
 # machine in QEMU via nixos-rebuild build-vm.
 #
-# ── Git ─────────────────────────────────────────────────────────────────────
+# ── Version control ─────────────────────────────────────────────────────────
+#
+# This repo is driven with jj (Jujutsu), colocated with git; see
+# docs/guides/jj-workflow.md.  There is deliberately NO jj helper here, and
+# that is a finding rather than an omission:
+#
+# jj performs git remote interactions by spawning a real `git` subprocess.
+# So `jj git push` goes through the same credential path as any other git
+# invocation, and picks up the gh credential helper that `programs.gh` in
+# modules/users/lgo.nix already writes into ~/.config/git/config.  No
+# wrapper, no token handling, nothing to inject.  The roadmap entry that
+# proposed this migration predicted a jj counterpart to `push` would be
+# "the one genuinely fiddly part"; at jj 0.41 it needs no counterpart.
+#
+# `push` below is retained as the git-side escape hatch — git remains valid
+# against the colocated repo at any moment — and because, unlike jj, it is
+# self-contained on a machine where the home-manager gh integration is not
+# active: it passes the helper explicitly with `-c`.
 
 # Push using gh's credentials rather than an ambient git identity.
 # This exists because ~/.config/git is impermanence-backed: it is

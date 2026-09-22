@@ -39,7 +39,7 @@ clan vars generate <machine>         # (re)generate secrets, then update
 The devShell adds only what clan does not cover:
 
 ```bash
-push [remote] [branch]       # push via gh credential helper (works with impermanent ~/.config/git)
+push [remote] [branch]       # git push via gh credential helper (works with impermanent ~/.config/git)
 gendocs                      # regenerate docs/reference/*.md from live NixOS config
 docs serve                   # local mkdocs preview
 ```
@@ -49,6 +49,8 @@ See [docs/guides/deploy.md](docs/guides/deploy.md) for the full breakdown, inclu
 ### Pushing with `gh`
 
 Impermanence makes `~/.config/git` a read-only bind mount, so `gh auth setup-git` cannot write the global config it wants. The `push` function passes gh's git credential helper with `-c` instead, so the token is never spliced into a URL or into `argv`.
+
+`jj git push` needs none of that: jj performs remote operations by spawning a real `git` subprocess, so it picks up the same credential helper that `programs.gh` already declares in `~/.config/git/config`. `push` is retained as the git-side escape hatch.
 
 First-time setup (once per machine):
 ```bash
@@ -67,14 +69,23 @@ Full walkthrough: **[docs/guides/first-time-install.md](docs/guides/first-time-i
 
 ## Day-to-day workflow
 
+The repo is driven with **jj (Jujutsu)**, colocated with git — see [docs/guides/jj-workflow.md](docs/guides/jj-workflow.md). Nothing lands on `main` except through a pull request.
+
 ```bash
-# 1. Edit config files
-# 2. Deploy (builds, then activates — there is no staged-only mode):
+# 1. Start the change (a tracked `main` advances on its own):
+jj git fetch
+jj new main -m "<message>"
+
+# 2. Edit config files. There is no `add` and no `commit` — edits are
+#    snapshotted into the working-copy revision as you go; `jj st` shows them.
+
+# 3. Deploy (builds, then activates — there is no staged-only mode):
 clan machines update miralda
 
-# 3. Commit and push:
-git add <files> && git commit
-push
+# 4. Name it and push, then open the PR:
+jj bookmark set <type>/<slug> -r @
+jj git push --bookmark <type>/<slug>
+gh pr create
 ```
 
 If a `secrets/` generator or `sops` config changes, run `clan vars generate <machine>`, then `clan machines update <machine>` to deploy it.
@@ -93,8 +104,8 @@ The YubiKey serves two roles on `miralda`: **SSH authentication** (via GnuPG age
 | `clan vars generate` | **Yes** — decrypts/re-encrypts secrets |
 | `clan machines update` | **Yes** — SSH + secret decryption |
 | Editing config, `nix eval`, building | No |
-| `push` / `gh` operations | No — uses GitHub token |
-| `git commit` | No |
+| `jj git push` / `push` / `gh` operations | No — uses GitHub token |
+| `jj describe` / `git commit` | No |
 
 Updating `biene`, `birte` and `ernst` also needs SSH access to those targets, but they authenticate with the `clanarchy_admin` ed25519 key rather than the YubiKey.
 

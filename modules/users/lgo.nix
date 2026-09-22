@@ -298,6 +298,27 @@ in
           };
         };
 
+        # Jujutsu (jj) — the primary VCS front end for this repo.  Colocated
+        # with git, so `.git` stays authoritative and gh/CI are unaffected;
+        # see docs/guides/jj-workflow.md.
+        #
+        # Declared here for the same reason programs.git is: ~/.config is an
+        # impermanence bind mount, and the identity must match git's exactly,
+        # or a change gets two different author names depending on which of
+        # the two tools happened to write it.
+        #
+        # Deliberately minimal.  In particular `revset-aliases."immutable_heads()"`
+        # is NOT set: jj's builtin default already resolves through trunk() to
+        # main@origin, and that is what mechanically enforces "never rewrite
+        # what has already landed on main".  Redefining it could only weaken it.
+        programs.jujutsu = {
+          enable = true;
+          settings = {
+            user.name  = "Lutz Go";
+            user.email = "lutz0go@gmail.com";
+          };
+        };
+
         # GitHub CLI — auth token stored in ~/.config/gh/ (persisted via impermanence).
         programs.gh = {
           enable   = true;
@@ -463,7 +484,7 @@ in
                 b = "buffer_picker";
                 "/" = "global_search";
                 e = ":sh foot -e yazi &";
-                g = ":sh foot -T lazygit -e lazygit &";
+                g = ":sh foot -T lazyjj -e lazyjj &";
               };
             };
           };
@@ -657,8 +678,8 @@ in
 
           [[manager.prepend_keymap]]
           on  = [ "g" ]
-          run = "shell 'foot -T lazygit -e lazygit'"
-          desc = "Lazygit"
+          run = "shell 'foot -T lazyjj -e lazyjj'"
+          desc = "Lazyjj"
 
           [[manager.prepend_keymap]]
           on  = [ "A" ]
@@ -715,7 +736,10 @@ in
           # Terminal + shell tools
           zellij    # terminal multiplexer
           yazi      # file manager
-          lazygit   # git TUI
+          # jj itself is NOT listed here: programs.jujutsu above already puts it
+          # on PATH, and listing it again just duplicates the entry.
+          lazyjj    # jj TUI — bound to Space+G in helix and to g in yazi
+          lazygit   # git TUI — kept as the git-side escape hatch, now unbound
           bat       # cat with syntax highlighting and paging
 
           # GPG / YubiKey
