@@ -2,6 +2,8 @@
 
 This guide walks through adding a new machine to clanarchy — from declaring it in the flake to the first boot on real hardware.
 
+For adding a *feature* to machines that already exist, see [adding a module or option](adding-a-module.md).
+
 ---
 
 ## Overview
