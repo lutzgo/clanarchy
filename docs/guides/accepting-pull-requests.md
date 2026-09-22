@@ -2,7 +2,9 @@
 
 Clanarchy uses a simple branch-per-change workflow: nothing lands on `main` except through a pull request. This guide covers reviewing and merging PRs, and the recovery steps when something goes wrong.
 
-Branch naming and PR conventions are described in [CLAUDE.md → Git Workflow](https://github.com/lutzgo/clanarchy/blob/main/CLAUDE.md).
+Bookmark naming and PR conventions are described in [CLAUDE.md → Version Control Workflow](https://github.com/lutzgo/clanarchy/blob/main/CLAUDE.md); the mechanics of driving the repo are in [the jj workflow guide](jj-workflow.md).
+
+The repo is driven with jj, colocated with git — but **`gh` is unaffected**, so the entire review-and-merge path below is unchanged apart from the local checkout and cleanup steps.
 
 ---
 
@@ -32,7 +34,8 @@ Before merging, confirm:
    ```
 4. **Deployment is safe.** If the PR changes anything under `machines/*/configuration.nix`, `disko.nix`, `impermanence.nix`, `yubikey.nix`, or `desktop/*.nix`, deploy it from the branch to one machine before merging:
    ```bash
-   gh pr checkout <n>
+   jj git fetch
+   jj new <branch>@origin          # working copy now matches the PR branch
    clan machines update <machine>
    ```
    Prefer the machine the change actually targets. Note this activates — there
@@ -53,13 +56,14 @@ gh pr merge <n> --squash --delete-branch
 
 Use `--merge` (a real merge commit) only when the branch history itself is meaningful, e.g. a multi-step machine bring-up where each commit is worth preserving.
 
-After merging, sync your local `main`:
+After merging, sync your local view. There is no checkout and no fast-forward merge: a
+tracked `main` advances on its own, and the bookmark for a branch GitHub has just deleted
+is forgotten rather than deleted (forgetting drops it locally without trying to push the
+deletion back to a remote that no longer has it):
 
 ```bash
-git switch main
-git fetch origin
-git merge --ff-only origin/main
-git branch -d <branch>   # only if the branch is fully merged
+jj git fetch
+jj bookmark forget <branch>
 ```
 
 ---
@@ -78,23 +82,29 @@ Prefer inline review comments (`gh pr review <n> --comment --body …`) for smal
 
 ## Recovery
 
-**Merged the wrong PR.** Revert with a follow-up PR, don't force-push `main`:
+**Merged the wrong PR.** Revert with a follow-up PR, never by force-pushing `main`:
 
 ```bash
-git switch -c fix/revert-pr-<n>
-git revert -m 1 <merge-sha>      # -m 1 only if --merge; drop -m for squash
+jj git fetch
+jj new main -m "Revert PR #<n>: <reason>"
+jj backout -r <merged-rev>       # no -m 1 to get wrong; jj handles merges itself
+jj squash                        # fold the backout into @
+jj bookmark set fix/revert-pr-<n> -r @
+jj git push --bookmark fix/revert-pr-<n>
 gh pr create --title "Revert PR #<n>" --body "Reverts #<n>: <reason>"
 ```
 
-**Local `main` diverged from `origin/main`** (e.g. you accidentally committed on `main`):
+**Local `main` diverged from `origin/main`.** This failure mode does not arise under jj:
+`main` is a bookmark that moves only when you move it or when `jj git fetch` advances it,
+and nothing is ever "checked out on" it, so stray commits cannot accumulate there. If it
+does somehow point somewhere unexpected, put it back with:
 
 ```bash
-git switch main
-git log --oneline origin/main..HEAD    # see the stray commits
-git switch -c chore/rescue-main        # move them onto a branch
-git switch main
-git reset --hard origin/main           # only after confirming the rescue branch has them
+jj bookmark set main -r main@origin
 ```
+
+**Anything else.** `jj undo` reverses the last operation; `jj op log` + `jj op restore <op>`
+reverses further back, including operations git does not record at all.
 
 Never `git push --force` (or `--force-with-lease`) to `main`. If a bad commit already reached the remote, revert it via a PR instead.
 
@@ -104,6 +114,6 @@ Never `git push --force` (or `--force-with-lease`) to `main`. If a bad commit al
 
 When Claude Code creates a PR on your behalf:
 
-- The branch name follows the `<type>/<slug>` convention in [CLAUDE.md → Git Workflow](https://github.com/lutzgo/clanarchy/blob/main/CLAUDE.md).
+- The bookmark name follows the `<type>/<slug>` convention in [CLAUDE.md → Version Control Workflow](https://github.com/lutzgo/clanarchy/blob/main/CLAUDE.md).
 - The PR title is imperative and unprefixed; the body contains a summary and a test plan.
 - Claude will not merge the PR itself — merging is always your call. Review, then run `gh pr merge <n> --squash --delete-branch` when ready.

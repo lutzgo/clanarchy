@@ -41,7 +41,7 @@ gendocs                       # regenerate docs/reference/*.md from live NixOS c
 docs serve                    # local mkdocs preview
 ```
 
-Key packages in devShell: `clan-cli`, `git`, `openssh`, `nixos-rebuild`, `age-plugin-yubikey`, `sops`, `python3` + `python3Packages.mkdocs-material` (for `gendocs` and `docs serve` — note the local preview runs mkdocs; CI publishes with properdocs).
+Key packages in devShell: `clan-cli`, `jujutsu` (jj), `git`, `openssh`, `nixos-rebuild`, `age-plugin-yubikey`, `sops`, `python3` + `python3Packages.mkdocs-material` (for `gendocs` and `docs serve` — note the local preview runs mkdocs; CI publishes with properdocs).
 
 **When pinentry is broken** (e.g. after a miralda rebuild that changes `modules/hardware/yubikey.nix`): use a local rebuild to avoid the SSH chicken-and-egg problem:
 ```bash
@@ -51,11 +51,22 @@ gpgconf --kill gpg-agent && gpg --card-status
 
 **Important**: Always use `--no-reexec` (not `--fast`) with nixos-rebuild. Never use `--build-host localhost`.
 
-## Git Workflow
+## Version Control Workflow (jj)
 
-**Never commit directly to `main`.** All changes — even single-file docs edits — go on a named, prefix-tagged branch and land on `main` via a pull request.
+This repo is driven with **jj (Jujutsu)**, colocated with git: `.jj/` and `.git/` sit side by side, `.git` stays authoritative, and `gh`, CI and `clan machines update` are unaffected. Git still works at any moment as an escape hatch — but do not mix the two inside one session; that is where the confusion comes from. **Claude sessions drive jj, not git.**
 
-Branch naming: `<type>/<short-kebab-slug>`. Use one of these prefixes:
+Full reference, including recovery: [docs/guides/jj-workflow.md](docs/guides/jj-workflow.md).
+
+**The invariants, which the tool change does not touch:**
+
+- **Never land a change directly on `main`.** Even a single-file docs edit gets its own prefix-tagged bookmark and its own pull request.
+- One change → one bookmark → one PR.
+- PRs are opened with `gh pr create` and merged with `gh pr merge --squash --delete-branch`.
+- Never force-push `main`. Never merge into `main` locally.
+
+jj enforces the first of those rather than merely stating it: its default `immutable_heads()` revset resolves through `trunk()` to `main@origin`, so jj refuses to rewrite anything that has already landed.
+
+Bookmark naming: `<type>/<short-kebab-slug>`. Use one of these prefixes:
 
 | Prefix | For |
 |--------|-----|
@@ -70,14 +81,27 @@ Examples: `feat/ernst-machine`, `fix/greetd-restart-loop`, `docs/git-branch-work
 
 Workflow for any change:
 
-1. Start from an up-to-date `main`: `git fetch origin && git switch main && git merge --ff-only origin/main`.
-2. Create the branch: `git switch -c <type>/<slug>`.
-3. Commit only the files this change touches — never `git add -A` when unrelated work is in the working tree.
-4. Push: `push origin <branch>` (the devShell function) or `git push -u origin <branch>`.
-5. Open a PR with `gh pr create`. Title: imperative, ≤70 chars, no prefix. Body: summary + test plan.
-6. Never force-push to `main`. Never merge locally into `main`; merging happens via the PR (see [docs/guides/accepting-pull-requests.md](docs/guides/accepting-pull-requests.md)).
+1. `jj git fetch` — a tracked `main` advances on its own; there is no checkout and no merge step.
+2. `jj new main -m "<message>"` — creates the change. The bookmark name can wait.
+3. Edit files. There is no `git add` and no `git commit`: edits are snapshotted into `@` automatically, and editing again *is* amending. `jj describe -m "…"` revises the message; `jj st` and `jj diff` show what is in the change.
+    - **After creating a *new* file, run `jj st` before `nix eval` / `nix build` / `clan machines update`.** jj snapshots when a jj command runs, not when the file appears, and Nix cannot read a path git does not yet track — it fails with `Path '…' in the repository is not tracked by Git`, naming git rather than jj. This is the one step `git add` used to cover that jj does not cover for free.
+4. `jj bookmark set <type>/<slug> -r @` — name it.
+5. `jj git push --bookmark <type>/<slug>` — the same command for the first push and every later one: `--bookmark` starts tracking a bookmark the remote has not seen. (`--allow-new` is deprecated at jj 0.41; don't reach for it.) Credentials come from the gh helper via jj's `git` subprocess, so nothing extra is needed — see `scripts/devshell.sh`.
+6. Open a PR with `gh pr create`. Title: imperative, ≤70 chars, no prefix. Body: summary + test plan.
+7. Review feedback: edit the files, `jj bookmark set <type>/<slug> -r @`, `jj git push --bookmark <type>/<slug>` — byte-identical to step 5. No `--amend`, no `--force-with-lease`: jj updates the remote only if it still matches what it last fetched, which is `--force-with-lease` done for you.
+8. After the PR merges (see [docs/guides/accepting-pull-requests.md](docs/guides/accepting-pull-requests.md)): `jj git fetch && jj bookmark forget <type>/<slug>`.
 
-If Claude is asked to make a change while `HEAD` is on `main`, Claude must create a branch first and tell the user which prefix it chose.
+Scope a change with `jj split`, `jj squash --into` or `jj absorb` rather than by staging. There is no index, so "only the files this change touches" is a question of *which revision* an edit lands in, not of what was added.
+
+**But auto-snapshot makes the old `git add -A` hazard worse, not better.** jj snapshots the *whole* working copy into `@` — so an unrelated edit made by someone else while you work (or by you in another window) is swept into your change with no command at all, and is pushed without ever appearing in a `git add` you could have scoped. Under git you had to invoke the mistake; under jj you have to notice it. So **read `jj st` immediately before `jj bookmark set`** and treat any file you did not touch as a stop sign. To eject one that got in:
+
+```
+jj restore --from main@origin --into <bookmark> <path>   # drops it from the change, leaves it on disk
+```
+
+If Claude is asked to make a change while `@` sits empty on top of `main`, Claude must create the change with `jj new main`, name the bookmark before pushing, and tell the user which prefix it chose.
+
+`jj undo` reverses the last operation; `jj op log` + `jj op restore <op>` reverses further back. Nothing in this workflow needs `git reflog`.
 
 ## Installing a Machine from Scratch
 

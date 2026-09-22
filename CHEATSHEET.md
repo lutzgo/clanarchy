@@ -171,7 +171,7 @@ In search mode (after `/` + type + `Enter`):
 | `Space+B` | Buffer picker |
 | `Space+/` | Global search |
 | `Space+E` | Open Yazi in new foot window |
-| `Space+G` | Open Lazygit in new foot window |
+| `Space+G` | Open Lazyjj (jj TUI) in new foot window |
 
 ---
 
@@ -181,7 +181,7 @@ In search mode (after `/` + type + `Enter`):
 |-----|--------|
 | `e` | Open in Helix |
 | `s` | Open terminal here |
-| `g` | Open Lazygit |
+| `g` | Open Lazyjj (jj TUI) |
 | `A` | Select all |
 
 ---
@@ -249,10 +249,72 @@ Common symbols: ✓ `2713` · ✔ `2714` · ✅ `2705` · ☑ `2611`
 
 ---
 
+## Version control (jj)
+
+The repo is driven with jj, colocated with git — `.git` stays authoritative, `gh` and CI
+are unaffected. Full guide: `docs/guides/jj-workflow.md`.
+
+### The loop
+
+```bash
+jj git fetch                             # `main` advances on its own
+jj new main -m "<message>"               # start the change (no bookmark name yet)
+# ...edit files. No `add`, no `commit` — edits land in @ as you go.
+jj bookmark set <type>/<slug> -r @       # name it
+jj git push --bookmark <type>/<slug>     # first push and every later one
+gh pr create
+```
+
+After the PR merges: `jj git fetch && jj bookmark forget <type>/<slug>`.
+
+**New files:** run `jj st` before `nix eval` / `clan machines update`. jj snapshots when a
+jj command runs, not when the file appears, and Nix cannot read a path git does not track
+yet (`Path '…' is not tracked by Git`). This is the only thing `git add` used to cover that
+jj does not cover for free.
+
+### Looking around
+
+| Command | Action |
+|---------|--------|
+| `jj st` | What is in the working-copy revision (replaces `git status`) |
+| `jj diff` | Diff of `@` |
+| `jj log` | History (replaces `git log --oneline --graph`) |
+| `jj show <rev>` | One revision in full |
+| `lazyjj` | TUI — `Space+G` in Helix, `g` in Yazi |
+
+### Changing things
+
+| Command | Action |
+|---------|--------|
+| `jj describe -m "..."` | Set or revise the message of `@` |
+| `jj new <rev>` | Start a new change on top of `<rev>` |
+| `jj edit <rev>` | Move the working copy onto an existing revision |
+| `jj split` | Cut `@` into two revisions |
+| `jj squash` | Fold `@` into its parent |
+| `jj absorb` | Auto-distribute edits into the revisions that introduced those lines |
+| `jj rebase -d main` | Move a change onto current `main` |
+| `jj abandon` | Throw the revision away |
+
+### Getting out of trouble
+
+| Command | Action |
+|---------|--------|
+| `jj undo` | Reverse the last operation |
+| `jj op log` | Every operation, including working-copy snapshots |
+| `jj op restore <op>` | Go back to a previous state — the `git reflog` replacement |
+| `jj bookmark set main -r main@origin` | Put a stray `main` back |
+
+There is no index, no `--amend` and no `--force-with-lease`: editing files *is* amending,
+and jj refuses an unsafe overwrite on its own.
+
+---
+
 ## Deploy workflow
 
 ```bash
 clan machines update miralda    # build + activate
 clan vars generate miralda      # (re)generate secrets first, if they changed
-push                            # git push via gh credential helper
+
+jj git push --bookmark <slug>   # push the change (uses the gh credential helper)
+push                            # git escape hatch — same helper, via git
 ```

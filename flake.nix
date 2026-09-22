@@ -162,7 +162,11 @@
             # Clan docs recommend exposing the CLI via devShell
             clan-core.packages.${system}.clan-cli
             git
-            jujutsu             # jj (git-colocated) — available inside `nix develop`
+            jujutsu             # jj — the VCS front end for this repo, git-colocated.
+                                #      Also in lgo's home.packages, so it is on PATH
+                                #      outside the devShell; listed here too so the
+                                #      shell stays self-contained.  See
+                                #      docs/guides/jj-workflow.md.
             openssh
             nixos-rebuild
             age-plugin-yubikey  # needed for sops re-encryption with YubiKey recipients
