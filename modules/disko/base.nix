@@ -9,6 +9,42 @@
 #
 # Parameters:
 #   device            — /dev/disk/by-id/... path (required)
+#   diskName          — disko's name for this disk, which becomes the GPT
+#                       partition label prefix: `disk-<diskName>-<partition>`.
+#                       SHOULD be the machine name, and must never be "main".
+#
+#                       The Clan installer USB is flashed with `--disk main`,
+#                       so its ESP is labelled `disk-main-ESP`.  If the
+#                       target's ESP carries that same label then during
+#                       `clan machines install` both are present and
+#                       /dev/disk/by-partlabel/disk-main-ESP is ambiguous —
+#                       disko formats, and bootctl writes the bootloader to,
+#                       whichever one udev resolved last.
+#
+#                       This is not hypothetical twice over.  It put birte's
+#                       bootloader on the stick (see modules/disko/btrfs.nix,
+#                       where the same parameter was added as the fix), and
+#                       then on 2026-09-22 it did it again to jens: the
+#                       reinstall wrote jens's kernel, initrd and systemd-boot
+#                       onto the USB stick, left the internal ESP holding the
+#                       2026-09-01 bootloader, and the machine dropped into
+#                       initrd emergency at `Failed to start Find NixOS
+#                       closure` — the old entry's `init=` naming a closure
+#                       that disko had just destroyed.  Observed directly on
+#                       miralda with the stick inserted:
+#                       /dev/disk/by-partlabel/disk-main-ESP -> ../../sda2.
+#
+#                       DEFAULTS TO "main" ONLY BECAUSE miralda AND biene ARE
+#                       ALREADY INSTALLED WITH THOSE LABELS.  Renaming a disk
+#                       relabels nothing on a live machine — labels are set at
+#                       partition-creation time — but it *does* repoint the
+#                       fileSystems entries disko generates, at a
+#                       by-partlabel path that does not exist there.  So each
+#                       of those machines needs its /boot (and biene's
+#                       resumeDevice) pinned to a by-id path first, and the
+#                       rename only takes effect at its next reinstall.
+#                       Until then they carry this hazard.  New and
+#                       reinstalled machines must pass their own name.
 #   enableSwap        — add a swap partition (default false)
 #   swapSize          — swap partition size, disko syntax (default "8G")
 #   encryptSwap       — randomEncryption on the swap partition
@@ -19,6 +55,7 @@
 #                       at boot (default true)
 {
   device,
+  diskName ? "main",
   enableSwap ? false,
   swapSize ? "8G",
   encryptSwap ? true,
@@ -27,7 +64,7 @@
 { lib, ... }:
 {
   disko.devices = {
-    disk.main = {
+    disk.${diskName} = {
       type = "disk";
       inherit device;
       content = {

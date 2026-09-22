@@ -104,7 +104,7 @@
   # In that order.  The prompt needs a TTY and must NOT be answered blank.
   clanarchy.immich.upload.enable = false;
 
-  # Mount the ESP by PARTUUID, not by the partlabel disko assigns.
+  # Mount the ESP by disk-id, not by the partlabel disko assigns.
   #
   # Every machine in this clan uses disko's disk name `main`, so every ESP in
   # the fleet is labelled `disk-main-ESP` — including the ones on Clan
@@ -116,12 +116,21 @@
   # internal drive: it corrupts the installer and leaves the real ESP stale,
   # and nothing warns you.
   #
-  # PARTUUID is the GPT partition GUID and is unique per partition. It is
-  # regenerated if this disk is ever repartitioned, so a reinstall of jens
-  # means updating the value below — `lsblk -o NAME,PARTUUID /dev/nvme0n1`.
-  # Read off the installed system on 2026-09-01.
+  # THIS WAS A PARTUUID UNTIL 2026-09-22, AND THAT IS A TRAP ON REINSTALL.
+  # PARTUUID is the GPT partition GUID: unique per partition, which fixes the
+  # ambiguity above, but *regenerated every time the disk is repartitioned*.
+  # So the value went stale the moment `clan machines install jens` re-ran
+  # disko, and the machine came up with a /boot device that does not exist.
+  # Worse, it is circular: the new PARTUUID can only be read off the installed
+  # machine, and updating it needs a deploy the machine must boot to accept.
+  #
+  # The disk-id path has neither problem. It names model+serial, so it is
+  # unique to this internal NVMe and can never resolve to a USB stick, and the
+  # partition *number* is fixed by modules/disko/base.nix (ESP is always
+  # partition 1) rather than minted afresh by each `mkfs`. Survives reinstalls
+  # untouched. Same device string as machines/jens/disko.nix, plus `-part1`.
   fileSystems."/boot".device =
-    lib.mkForce "/dev/disk/by-partuuid/1012baa5-1831-4ca4-8bbc-13eb1b056f88";
+    lib.mkForce "/dev/disk/by-id/nvme-WD_BLACK_SN770M_2TB_252738400046-part1";
 
   # ZFS pool alerts via ntfy.sh — URL prompted at `clan vars generate jens` time.
   clanarchy.zfs.ntfy.enable = true;

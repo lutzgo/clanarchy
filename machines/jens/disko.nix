@@ -19,6 +19,12 @@ import ../../modules/disko/base.nix {
   # the plain model+serial name below is the stable one to use.
   device = "/dev/disk/by-id/nvme-WD_BLACK_SN770M_2TB_252738400046";
 
+  # NOT the default "main" — that label collides with the Clan installer
+  # USB's, which is flashed with `--disk main`, and the collision put this
+  # machine's entire bootloader on the stick during the 2026-09-22 reinstall.
+  # See the `diskName` parameter in modules/disko/base.nix for the full story.
+  diskName = "jens";
+
   # jens's ZFS pool is encrypted (default) and has no swap partition —
   # same as miralda.  See the hybridSleep note in configuration.nix.
 }
