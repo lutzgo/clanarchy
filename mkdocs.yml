@@ -49,6 +49,7 @@ nav:
     - Deploying and testing: guides/deploy.md
     - Updating machines: guides/updating-machines.md
     - Adding a machine: guides/adding-a-machine.md
+    - Adding a module or option: guides/adding-a-module.md
     - The jj workflow: guides/jj-workflow.md
     - Accepting pull requests: guides/accepting-pull-requests.md
     - Networking: guides/networking.md

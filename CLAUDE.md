@@ -187,6 +187,8 @@ No `stylix.nix` or `wallpapers.nix`: `flake.nix` imports the shared `modules/the
 
 ### Shared Module Layout (`modules/`)
 
+Adding one: [docs/guides/adding-a-module.md](docs/guides/adding-a-module.md) — where a new feature goes (fleet-wide vs machine-specific vs clan service), the option idiom, and the two ways `gendocs` silently drops an option.
+
 Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.nix`) or by individual machines / service modules:
 
 | File | Purpose |
