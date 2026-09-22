@@ -32,4 +32,9 @@
     scheme = "gruvbox-light-hard";
     polarity = "light";
   };
+
+  rose-pine = {
+    scheme = "rose-pine";
+    polarity = "dark";
+  };
 }
