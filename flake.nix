@@ -96,7 +96,12 @@
     };
 
     zjstatus = {
-      url = "github:dj95/zjstatus";
+      # v0.24.0 busy-loops the zellij server against zellij 0.44.3 (nixpkgs
+      # 26.05 and unstable both ship 0.44.3): arrhythmic re-layout, ~125% CPU,
+      # input never processed. v0.25.0 is worse — it requires zellij >= 0.45.
+      # v0.23.0 is the release built against zellij-tile 0.44.1. Unpin only
+      # together with a zellij >= 0.45 bump.
+      url = "github:dj95/zjstatus/v0.23.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
