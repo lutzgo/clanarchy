@@ -24,6 +24,57 @@
   # NetworkManager
   networking.networkmanager.enable = true;
 
+  # ── Keep systemd-networkd off the links NetworkManager owns ──────────────
+  #
+  # These machines run BOTH. networkd is not optional here: clan-core
+  # configures the ZeroTier link through it (09-zerotier.network,
+  # 50-zerotier.link). The problem is that it does not stop there.
+  #
+  # `networking.useDHCP` is already false — NetworkManager sets it — but the
+  # PER-INTERFACE option is independent of it, and something upstream (the
+  # facter-derived hardware config; these units name the exact NICs present
+  # when the machine was scanned, dock NICs included) sets it true for every
+  # detected physical interface. Measured on jens:
+  #
+  #   networking.useDHCP                          -> false
+  #   networking.interfaces.<each real NIC>.useDHCP -> true
+  #
+  # nixpkgs turns each of those into a 40-<iface>.network carrying `DHCP=yes`,
+  # so networkd runs its own DHCP client on a link NetworkManager is already
+  # leasing. Two clients, two leases, two addresses, two default routes per
+  # interface.
+  #
+  # It stayed invisible for months because one address per NIC still routes.
+  # It stopped being invisible on 2026-09-22, when jens was docked: ethernet
+  # and wifi both on 10.0.10.0/24, four addresses and four default routes
+  # across two MACs on one segment, the router's MAC table flapping between
+  # them. ~50% packet loss to everything, including DNS — which surfaced as a
+  # `clan machines update` failing on `Resolving timed out` against
+  # cache.nixos.org, nothing that looked like a network problem at all.
+  #
+  # A .network matching earlier than 40-* with `Unmanaged=yes` makes networkd
+  # ignore the link entirely and leaves it to NetworkManager, which is what
+  # every other part of this config already assumes owns it.
+  #
+  # `Kind=!*` is what keeps this from being a catastrophe: it matches only
+  # devices with no kind, i.e. physical NICs. ZeroTier's zt* is `tun type tap`
+  # and so is excluded, and clan-core's 09-zerotier.network still applies.
+  # Verified on miralda before landing this.
+  #
+  # DELIBERATELY NOT IN kde.nix, the other module that enables
+  # NetworkManager. ernst imports that one (via the htpc role) and its
+  # networkd genuinely owns br0 and the enp13s0 uplink — see the matchConfig
+  # note in machines/ernst/networking.nix, which had to repair a *different*
+  # symptom of the same catch-all-unit behaviour. Unmanaging physical links
+  # there would take the bridge host off the network.
+  systemd.network.networks."05-networkmanager-owned" = {
+    matchConfig = {
+      Type = "ether wlan";
+      Kind = "!*";
+    };
+    linkConfig.Unmanaged = true;
+  };
+
   # Pipewire audio
   security.rtkit.enable = true;
   services.pipewire = {
