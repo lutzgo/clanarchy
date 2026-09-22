@@ -77,7 +77,7 @@
   #     clan machines update miralda
   #
   # In that order.  The prompt needs a TTY and must NOT be answered blank.
-  clanarchy.immich.upload.enable = false;
+  clanarchy.immich.upload.enable = true;
 
   # Mount the ESP by PARTUUID, not by the partlabel disko assigns.
   #
