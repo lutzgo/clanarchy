@@ -8,7 +8,7 @@ nix develop                      # or let direnv do it
 clan machines update <machine>
 ```
 
-`<machine>` is one of `miralda`, `biene`, `birte`, `ernst`. Omit it entirely and
+`<machine>` is one of `miralda`, `jens`, `biene`, `birte`, `ernst`. Omit it entirely and
 clan attempts every configured machine, which is rarely what you want.
 
 ## Everyday use

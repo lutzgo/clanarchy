@@ -257,6 +257,7 @@ are unaffected. Full guide: `docs/guides/jj-workflow.md`.
 ### The loop
 
 ```bash
+jj bookmark track main --remote=origin   # ONCE per clone, or `main` never moves
 jj git fetch                             # `main` advances on its own
 jj new main -m "<message>"               # start the change (no bookmark name yet)
 # ...edit files. No `add`, no `commit` — edits land in @ as you go.

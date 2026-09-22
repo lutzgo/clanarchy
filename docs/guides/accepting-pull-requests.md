@@ -16,7 +16,7 @@ The repo is driven with jj, colocated with git — but **`gh` is unaffected**, s
 | `gh pr view <n>` | Show PR summary + checks |
 | `gh pr diff <n>` | Show the full diff |
 | `gh pr checks <n>` | CI status for the PR |
-| `gh pr merge <n> --squash --delete-branch` | Squash-merge and delete the branch |
+| `gh pr merge <n> --squash` | Squash-merge (see below — **not** `--delete-branch`) |
 | `gh pr close <n>` | Close without merging |
 
 ---
@@ -51,8 +51,11 @@ Before merging, confirm:
 Squash-merge is the default — it keeps `main` linear and each PR shows up as a single commit:
 
 ```bash
-gh pr merge <n> --squash --delete-branch
+gh pr merge <n> --squash
+gh api -X DELETE repos/lutzgo/clanarchy/git/refs/heads/<branch>
 ```
+
+**Two steps, deliberately.** `--delete-branch` makes gh look up the current git branch so it can move off it, and jj leaves git's `HEAD` detached — so gh fails with `could not determine current branch: failed to run git: not on any branch`. It fails *after* the merge has already gone through, which reads like the merge failed when it did not. Check `gh pr view <n> --json state` before retrying anything.
 
 Use `--merge` (a real merge commit) only when the branch history itself is meaningful, e.g. a multi-step machine bring-up where each commit is worth preserving.
 
@@ -116,4 +119,4 @@ When Claude Code creates a PR on your behalf:
 
 - The bookmark name follows the `<type>/<slug>` convention in [CLAUDE.md → Version Control Workflow](https://github.com/lutzgo/clanarchy/blob/main/CLAUDE.md).
 - The PR title is imperative and unprefixed; the body contains a summary and a test plan.
-- Claude will not merge the PR itself — merging is always your call. Review, then run `gh pr merge <n> --squash --delete-branch` when ready.
+- Claude will not merge the PR itself unless you ask — merging is your call. Review, then run `gh pr merge <n> --squash` (plus the ref deletion above) when ready.
