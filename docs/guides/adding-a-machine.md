@@ -158,8 +158,13 @@ For accurate hardware-specific NixOS configuration, boot the target into a NixOS
 ```bash
 # From the live system, or remotely once sshd is accessible:
 clan machines show-hardware --target-host root@<ip> <name> > machines/<name>/facter.json
-git add machines/<name>/facter.json
+jj st     # snapshots the new file so Nix can read it — see the jj workflow guide
 ```
+
+`facter.json` is a **new** file, which is the case where jj does not cover for you
+what `git add` used to: Nix cannot read a path git does not track, and jj only
+snapshots the working copy when a jj command runs. Skip the `jj st` and the next
+`nix eval` fails with `Path 'machines/<name>/facter.json' … is not tracked by Git`.
 
 This sets CPU microcode, kernel modules, and other hardware-specific options automatically.
 

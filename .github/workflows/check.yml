@@ -27,7 +27,7 @@ jobs:
 
       # Eval only — deliberately no `nix build`.
       #
-      # Building four toplevels would pull KDE, Steam and Plasma closures on
+      # Building five toplevels would pull KDE, Steam and Plasma closures on
       # every PR and take tens of minutes; evaluating them catches the whole
       # class of errors that actually reaches a PR here (missing options,
       # renamed attributes, type mismatches, broken module wiring) in about a
@@ -40,7 +40,7 @@ jobs:
         run: |
           set -euo pipefail
           rc=0
-          for machine in miralda biene birte ernst; do
+          for machine in miralda jens biene birte ernst; do
             echo "::group::$machine"
             if nix eval --no-update-lock-file --raw \
                  ".#nixosConfigurations.$machine.config.system.build.toplevel.drvPath"; then
@@ -54,5 +54,5 @@ jobs:
             echo "::endgroup::"
           done
           # Evaluate every machine before failing, so one broken machine does
-          # not hide breakage in the other three.
+          # not hide breakage in the other four.
           exit "$rc"

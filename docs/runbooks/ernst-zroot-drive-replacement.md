@@ -583,10 +583,11 @@ disk.<FAILED_ROLE> = {
 Commit on a branch and open a PR:
 
 ```bash
-git switch -c fix/ernst-replace-<FAILED_ROLE>
-git add machines/ernst/disko.nix
-git commit -m "ernst: replace <FAILED_ROLE> disk (new WWN <NEW_WWN>)"
-push origin fix/ernst-replace-<FAILED_ROLE>
+jj new main -m "ernst: replace <FAILED_ROLE> disk (new WWN <NEW_WWN>)"
+# edit machines/ernst/disko.nix, then:
+jj st                                # confirm it is the ONLY file in the change
+jj bookmark set fix/ernst-replace-<FAILED_ROLE> -r @
+jj git push --bookmark fix/ernst-replace-<FAILED_ROLE>
 gh pr create --title "ernst: replace failed <FAILED_ROLE> SAS SSD" \
   --body "New drive: <NEW_MODEL> <NEW_SERIAL> (WWN <NEW_WWN>)."
 ```

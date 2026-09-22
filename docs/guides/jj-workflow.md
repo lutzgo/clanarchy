@@ -30,6 +30,28 @@ One consequence to know about: jj keeps git's index in sync with the working-cop
 `.jj/` is self-ignoring (it contains its own `.gitignore` with `/*`), so it never appears
 in `git status` and is never copied into a flake build.
 
+### First-time setup: track `main`
+
+Do this once per clone, before anything else:
+
+```bash
+jj bookmark track main --remote=origin
+```
+
+Without it `jj git fetch` updates `main@origin` but leaves the local `main` bookmark
+where it is, so `jj new main` silently builds on a stale trunk. jj tracks the default
+bookmark automatically on `jj git clone`, but **not** when a repo is colocated into an
+existing git checkout with `jj git init --colocate` — which is how this one came to be.
+
+The tell is in the fetch output:
+
+```
+bookmark: main@origin   [updated] untracked
+```
+
+`untracked` there means `main` will not follow. (`main@origin` as an argument is
+deprecated syntax at 0.41; use `--remote=origin`.)
+
 ### New files: the one thing that still needs a deliberate step
 
 Nix refuses to read files a git repository does not track:
@@ -211,6 +233,31 @@ against `readlink /run/current-system` after merging, exactly as before.
 
 ---
 
+## Things that behave differently because the repo is colocated
+
+**`gh pr merge --delete-branch` fails.** jj leaves git's `HEAD` detached, so gh cannot
+work out which branch you are on and aborts with `could not determine current branch:
+failed to run git: not on any branch` — *after* it has already merged the PR. Merge and
+delete as two steps:
+
+```bash
+gh pr merge <n> --squash
+gh api -X DELETE repos/lutzgo/clanarchy/git/refs/heads/<branch>
+```
+
+**`gh pr merge` does not fetch.** Unchanged from the git era: run `jj git fetch`
+afterwards, and check that `main` actually moved before building on it.
+
+**`jj bookmark set` refuses to move a bookmark sideways.** If you rebuild a branch on a
+fresh base — rather than adding to it — jj stops with `Refusing to move bookmark backwards
+or sideways`. That is the guard working; when the replacement is deliberate, say so:
+
+```bash
+jj bookmark set --allow-backwards <bookmark> -r @
+```
+
+---
+
 ## Configuration
 
 `~/.config/jj/config.toml` is declared by `programs.jujutsu` in `modules/users/lgo.nix`,
@@ -221,6 +268,21 @@ which tool wrote it.
 That makes the file a read-only `/nix/store` symlink, so `jj config set --user` will fail —
 exactly as `git config --global` already does. Change it in `modules/users/lgo.nix` and
 redeploy.
+
+**Removing it before a deploy is a one-time step, and only for a real file.** On a machine
+that still has a hand-written `~/.config/jj/config.toml`, home-manager refuses to clobber
+it and the failure takes the whole `lgo` activation with it — so it has to go first. But
+once home-manager owns the path it is a symlink, and deleting *that* and redeploying leaves
+you with **no config at all**: home-manager only re-links when the generation changes, and
+a redeploy of the same generation is a no-op. Check before you remove:
+
+```bash
+[ -L ~/.config/jj/config.toml ] && echo "managed — leave it alone" || rm -f ~/.config/jj/config.toml
+```
+
+If you have already deleted the symlink, the cheapest fix is to recreate it by hand
+pointing at the live generation (`readlink ~/.config/git/config` shows which
+`home-manager-files` path that is); the next real config change re-links it properly.
 
 The declared set is deliberately minimal. Before adding a key, check it against
 `jj config list --include-defaults`: a misspelled key is a silent no-op in jj, but the

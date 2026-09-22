@@ -26,12 +26,19 @@ costs a rebuild if you get it wrong.
 
   Six of the seven prompts come straight out of the resulting config file.
 - **UDM-Pro access**, for one DHCP reservation and one firewall rule.
-- **The branch checked out and the tree clean.** `clan vars generate` commits
-  into whatever branch you are on:
+- **The change in the working copy, and nothing else in it.** `clan vars generate`
+  commits wherever git's `HEAD` is, which under jj is the parent of `@` — so it
+  lands on whatever you are working on top of, including `main` if that is where
+  you are. Put yourself on the change first, and check that `@` holds only what
+  you expect (jj snapshots the whole tree, so a stray edit is already in it):
 
   ```bash
-  git switch feat/ernst-vpn-microvm && git status -sb
+  jj new feat/ernst-vpn-microvm     # or `jj edit` it, if the bookmark is yours
+  jj st
   ```
+
+  Afterwards, fold clan's vars commit into your change rather than leaving it
+  where it landed — `jj squash --from <vars-rev> --into <bookmark>`.
 
 ## Order, and why it is not negotiable
 
@@ -413,9 +420,14 @@ redeploy. The reboot is what proves that claim.
 ## 8. Merge
 
 ```bash
-gh pr merge 83 --squash --delete-branch
-git switch main && git fetch origin && git merge --ff-only origin/main
+gh pr merge 83 --squash
+gh api -X DELETE repos/lutzgo/clanarchy/git/refs/heads/feat/ernst-vpn-microvm
+jj git fetch && jj bookmark forget feat/ernst-vpn-microvm
 ```
+
+(`--delete-branch` cannot be used from a colocated jj repo — git's `HEAD` is
+detached, so gh aborts after having already merged. See
+[the jj workflow guide](../guides/jj-workflow.md).)
 
 Then update the roadmap status row from **code landed — deploy pending** to
 **done — deployed \<date\>**, and write up anything this runbook got wrong. M2b's
@@ -474,5 +486,5 @@ disappear; `/srv/state/qbittorrent` and anything downloaded stay on zdata,
 because they were never on the rolled-back pool to begin with.
 
 ```bash
-git switch main && clan machines update ernst
+jj git fetch && jj new main && clan machines update ernst
 ```

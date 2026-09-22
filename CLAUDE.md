@@ -61,7 +61,7 @@ Full reference, including recovery: [docs/guides/jj-workflow.md](docs/guides/jj-
 
 - **Never land a change directly on `main`.** Even a single-file docs edit gets its own prefix-tagged bookmark and its own pull request.
 - One change → one bookmark → one PR.
-- PRs are opened with `gh pr create` and merged with `gh pr merge --squash --delete-branch`.
+- PRs are opened with `gh pr create` and merged with `gh pr merge <n> --squash`. **Not `--delete-branch`** — it needs a git branch to be checked out, and jj leaves `HEAD` detached, so gh aborts *after* merging. Delete the remote ref separately; see [accepting-pull-requests.md](docs/guides/accepting-pull-requests.md).
 - Never force-push `main`. Never merge into `main` locally.
 
 jj enforces the first of those rather than merely stating it: its default `immutable_heads()` revset resolves through `trunk()` to `main@origin`, so jj refuses to rewrite anything that has already landed.
@@ -81,7 +81,7 @@ Examples: `feat/ernst-machine`, `fix/greetd-restart-loop`, `docs/git-branch-work
 
 Workflow for any change:
 
-1. `jj git fetch` — a tracked `main` advances on its own; there is no checkout and no merge step.
+1. `jj git fetch` — a **tracked** `main` advances on its own; there is no checkout and no merge step. Tracking is not automatic in a repo that was colocated rather than cloned: if `jj git fetch` reports `main@origin [updated] untracked` and `main` does not move, run `jj bookmark track main --remote=origin` once.
 2. `jj new main -m "<message>"` — creates the change. The bookmark name can wait.
 3. Edit files. There is no `git add` and no `git commit`: edits are snapshotted into `@` automatically, and editing again *is* amending. `jj describe -m "…"` revises the message; `jj st` and `jj diff` show what is in the change.
     - **After creating a *new* file, run `jj st` before `nix eval` / `nix build` / `clan machines update`.** jj snapshots when a jj command runs, not when the file appears, and Nix cannot read a path git does not yet track — it fails with `Path '…' in the repository is not tracked by Git`, naming git rather than jj. This is the one step `git add` used to cover that jj does not cover for free.

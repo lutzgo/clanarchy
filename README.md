@@ -32,7 +32,7 @@ nix develop           # or: direnv allow, if you use direnv
 Deploying is the clan CLI — there is no wrapper:
 
 ```bash
-clan machines update <machine>       # miralda | biene | birte | ernst
+clan machines update <machine>       # miralda | jens | biene | birte | ernst
 clan vars generate <machine>         # (re)generate secrets, then update
 ```
 
