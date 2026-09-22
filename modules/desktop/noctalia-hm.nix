@@ -1098,7 +1098,7 @@ in {
     enableNushellIntegration = true;
     settings = {
       format = ''
-        $cmd_duration 󰜥 $directory $git_branch
+        $cmd_duration 󰜥 $directory ''${custom.jj}''${custom.git_branch}
         $character'';
 
       add_newline = false;
@@ -1128,6 +1128,53 @@ in {
         truncation_length = 12;
         truncation_symbol = "";
         style = "bg:cyan";
+      };
+
+      # jj (Jujutsu) in the prompt, and why git_branch alone no longer works.
+      #
+      # This repo is driven with jj colocated with git, and jj keeps git's HEAD
+      # DETACHED — it points at the parent of the working-copy revision, not at
+      # a branch. The builtin git_branch module therefore renders the literal
+      # string "HEAD" in every clanarchy shell, which is accurate about git and
+      # useless to the reader.
+      #
+      # So: show jj's own answer inside a jj repo, and fall back to the builtin
+      # everywhere else. Both are driven by `when`, not `detect_folders`, so
+      # they work in subdirectories too — `jj root` walks up, a folder test does
+      # not.
+      #
+      # `--ignore-working-copy` is load-bearing on both jj calls. Without it jj
+      # snapshots the working copy on every prompt render, which is slow and,
+      # worse, means drawing a prompt MUTATES the repo.
+      custom = {
+        jj = {
+          description = "jj bookmark, or change id, when inside a jj repo";
+          when         = "jj root --ignore-working-copy > /dev/null 2>&1";
+          # starship pipes `command` to this shell on stdin — do NOT add -c.
+          shell        = [ "bash" "--noprofile" "--norc" ];
+          command      = ''
+            jj log -r @ -n1 --ignore-working-copy --no-graph \
+              -T 'coalesce(bookmarks.join(" "), separate("~", parents.map(|p| p.bookmarks().join(" ")).join(""), change_id.shortest(6)))'
+          '';
+          # Reads as the bookmark when @ carries one (`feat/foo`), and as
+          # `<parent bookmark>~<change id>` when it does not (`main~sksuvx`) —
+          # which is the common state right after `jj new main`.
+          symbol = "󰘬";
+          format = "󰜥 [](bold fg:cyan)[$symbol $output](fg:black bg:cyan)[ ](bold fg:cyan)";
+          ignore_timeout = true;
+        };
+
+        # The builtin, re-rendered through `starship module` so it keeps its own
+        # settings above (symbol, truncation, the powerline caps) — but only
+        # where it tells the truth, i.e. outside a jj repo.
+        git_branch = {
+          description = "builtin git_branch, suppressed inside a jj repo";
+          when         = "! jj root --ignore-working-copy > /dev/null 2>&1";
+          shell        = [ "bash" "--noprofile" "--norc" ];
+          command      = "starship module git_branch";
+          format       = "$output";
+          ignore_timeout = true;
+        };
       };
 
       git_commit = {

@@ -329,6 +329,24 @@ unexpected, `jj bookmark set main -r main@origin` puts it back.
 
 ---
 
+## The shell prompt
+
+jj keeps git's `HEAD` **detached** — it points at the parent of the working-copy revision,
+never at a branch. So starship's builtin `git_branch` renders the literal string `HEAD` in
+every shell inside a jj repo: accurate about git, useless to read.
+
+`modules/desktop/noctalia-hm.nix` replaces it with two starship `custom` modules, selected
+by `jj root` rather than by a folder test so they work in subdirectories too:
+
+- inside a jj repo, the bookmark on `@` if it has one (`feat/the-thing`), otherwise
+  `<parent bookmark>~<change id>` (`main~sksuvx`) — the usual state right after `jj new main`;
+- anywhere else, the builtin `git_branch`, re-rendered through `starship module` so it keeps
+  its own symbol, truncation and powerline caps.
+
+Both jj calls pass `--ignore-working-copy`, which is load-bearing rather than an
+optimisation: without it jj snapshots the working copy on every prompt render, so *drawing
+a prompt would mutate the repo*.
+
 ## TUI
 
 `lazyjj` is installed for lgo and bound to `Space+G` in Helix and `g` in Yazi — the slots
