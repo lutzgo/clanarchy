@@ -642,7 +642,18 @@ in
                           format_right "#[fg=#${c.base03},bg=#${c.base00}]#[fg=#${c.base05},bg=#${c.base03}] {datetime}"
                           format_space "#[bg=#${c.base00}]"
 
-                          hide_frame_for_single_pane "true"
+                          // Must stay "false" while default_shell is nu.
+                          // With one pane, "true" makes zjstatus drop the pane
+                          // frame; the pane gains those rows/columns, nushell
+                          // redraws its prompt on the resize, the redraw comes
+                          // back as a pane update, and zjstatus toggles the
+                          // frame again — an unbounded loop that pins the
+                          // zellij server at >120% CPU, resizes the pane
+                          // arrhythmically and starves input, so not even
+                          // Alt+g gets through. Neither half does this alone:
+                          // nu without zjstatus and zsh with it both idle at
+                          // ~2%; nu + zjstatus + "true" measured 123%.
+                          hide_frame_for_single_pane "false"
                           border_enabled "false"
 
                           mode_normal       "#[fg=#${c.base0D},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base0D},bold] NORMAL #[fg=#${c.base0D},bg=#${c.base00}]"
