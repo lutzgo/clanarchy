@@ -223,7 +223,7 @@ Shared modules imported by `commonBase` / `commonHeadful` (see `lib/mk-machine.n
 | `desktop/desktop-common.nix` | Shared NixOS bits for all Noctalia-based Wayland compositors: regreet, pipewire, fonts, NetworkManager, Mullvad, Noctalia plugin runtime deps |
 | `desktop/noctalia-hm.nix` | Shared HM: Noctalia settings, starship, swayidle, packages, activation hooks |
 | `desktop/foot-hm.nix` | Shared HM: foot terminal config (Stylix-themed) |
-| `desktop/niri.nix` | Niri compositor: UWSM session, XDG portal (gtk), fprintd, V4L2 loopback |
+| `desktop/niri.nix` | Niri compositor: UWSM session, XDG portal (gtk), fprintd, V4L2 loopback. Also declares the per-machine appearance options consumed by `niri-hm.nix`: `clanarchy.desktop.niri.{blur.*,border.*,focusRing.width,cornerRadius,shadow.*,opacity.*}`. `opacity.unfocused` is the fleet's inactive-dim — niri has no dim-inactive of its own, so it is an `is-focused=false` window-rule. `shadow` is the one appearance option defaulting **off**, and `niri-hm.nix` omits the whole `shadow { }` node unless enabled, so a machine that doesn't opt in gets a byte-identical config.kdl |
 | `desktop/niri-hm.nix` | Niri HM: full KDL config (outputs, layout, keybinds, rules) |
 | `desktop/labwc.nix` | labwc compositor: UWSM session, XDG portal (wlr+gtk), Valent, PAM service |
 | `desktop/labwc-hm.nix` | labwc HM: rc.xml keybinds, themerc-override (Stylix colors), kanshi display service |

@@ -45,11 +45,52 @@
         {command = ["keepassxc" "--minimized"];}
       ];
 
-      layout.border = {
-        enable = true;
-        width = 1;
-      };
-      layout.focus-ring.width = 1;
+      # An unset colour must leave `active` / `inactive` unmentioned entirely,
+      # not set to null and not set via mkIf. niri-flake types them as a
+      # nullOr of colour-or-gradient defaulting to null, so writing
+      # `active.color = lib.mkIf false …` defines `active` as an attrset whose
+      # `color` has no value — which fails at eval with "was accessed but has
+      # no value defined" rather than falling back to niri's default. Hence
+      # optionalAttrs at the parent level.
+      layout.border = let
+        b = osConfig.clanarchy.desktop.niri.border;
+      in
+        {
+          enable = b.enable;
+          width = b.width;
+        }
+        // lib.optionalAttrs (b.activeColor != null) {active.color = b.activeColor;}
+        // lib.optionalAttrs (b.inactiveColor != null) {inactive.color = b.inactiveColor;};
+
+      layout.focus-ring = let
+        r = osConfig.clanarchy.desktop.niri.focusRing;
+      in
+        {
+          enable = r.enable;
+          width = r.width;
+        }
+        // lib.optionalAttrs (r.activeColor != null) {active.color = r.activeColor;}
+        // lib.optionalAttrs (r.inactiveColor != null) {inactive.color = r.inactiveColor;};
+
+      # Only written when enabled, so a machine that leaves shadows off gets
+      # the same config.kdl it had before the option existed — niri emits no
+      # `shadow` node of its own accord. `inactive-color` is omitted when null,
+      # which is how niri is told to reuse `color` for unfocused windows.
+      layout.shadow = let
+        s = osConfig.clanarchy.desktop.niri.shadow;
+      in
+        lib.mkIf s.enable {
+          enable = true;
+          softness = s.softness;
+          spread = s.spread;
+          offset = {
+            x = s.offset.x;
+            y = s.offset.y;
+          };
+          draw-behind-window = s.drawBehindWindow;
+          color = s.color;
+          inactive-color = s.inactiveColor;
+        };
 
       input = {
         keyboard.xkb = {
@@ -84,24 +125,31 @@
 
       # Window rules: rounded corners, focus-aware opacity.
       # Rules are evaluated in order; the last matching rule for each property wins.
-      # Baseline:  focused = 0.90, unfocused = 0.75
-      # Exception: heavy GUI apps (Chromium, GIMP, LibreOffice) stay fully opaque.
+      # Baseline, terminal override and inactive dim all come from
+      # clanarchy.desktop.niri.opacity. The opaqueApps rule is last and matches
+      # on is-focused=true, so those apps are opaque while focused and dim and
+      # blur like everything else once they are not.
       window-rules = [
         {
-          # Global baseline: 8px rounded corners + focused opacity
-          geometry-corner-radius = {
-            top-left = 8.0;
-            top-right = 8.0;
-            bottom-right = 8.0;
-            bottom-left = 8.0;
+          # Global baseline: rounded corners + focused opacity
+          geometry-corner-radius = let
+            r = osConfig.clanarchy.desktop.niri.cornerRadius;
+          in {
+            top-left = r;
+            top-right = r;
+            bottom-right = r;
+            bottom-left = r;
           };
           clip-to-geometry = true;
           opacity = osConfig.clanarchy.desktop.niri.opacity.focused;
         }
         {
-          # Foot terminals: slightly more opaque than the global baseline
+          # Foot terminals: more opaque than the global baseline, so terminal
+          # text stays readable. This rule is later than the baseline, so it is
+          # opacity.terminal — not opacity.focused — that governs a focused
+          # foot window.
           matches = [{app-id = "^foot$";}];
-          opacity = 0.95;
+          opacity = osConfig.clanarchy.desktop.niri.opacity.terminal;
         }
         {
           # Unfocused windows dim
@@ -109,16 +157,22 @@
           opacity = osConfig.clanarchy.desktop.niri.opacity.unfocused;
         }
         {
-          # Heavy GUI apps: always fully opaque regardless of focus
-          matches = [
-            {app-id = "^org\\.chromium\\.Chromium$";}
-            {app-id = "^chromium$";}
-            {app-id = "^org\\.gimp\\.GIMP$";}
-            {app-id = "^gimp$";}
-            {app-id = "^libreoffice";}
-            {app-id = "^soffice$";}
-            {app-id = "^darktable$";}
-          ];
+          # Heavy GUI apps, *while focused*: they render their own chrome and
+          # are unreadable translucent. Each match carries is-focused=true, so
+          # when one of these loses focus it falls through to the dim rule above
+          # and to the is-focused=false blur rule — receding like everything
+          # else instead of staying a bright opaque slab.
+          #
+          # The list is clanarchy.desktop.niri.opacity.opaqueApps. An app that
+          # is missing from it looks transparent *and* unblurred while focused,
+          # because blur is only applied to foot and to unfocused windows.
+          matches =
+            map (id: {
+              app-id = id;
+              is-focused = true;
+            })
+            (osConfig.clanarchy.desktop.niri.opacity.opaqueApps
+              ++ osConfig.clanarchy.desktop.niri.opacity.extraOpaqueApps);
           opacity = 1.0;
         }
 
@@ -149,9 +203,16 @@
           open-floating = true;
         }
 
-        # Chromium — open maximized
+        # Chromium — open maximized. "chromium-browser" is the app-id
+        # ungoogled-chromium actually reports on Wayland; the two patterns
+        # below it never matched anything, which is why this rule appeared to
+        # do nothing.
         {
-          matches = [{app-id = "^chromium$";} {app-id = "^org\\.chromium\\.Chromium$";}];
+          matches = [
+            {app-id = "^chromium-browser$";}
+            {app-id = "^chromium$";}
+            {app-id = "^org\\.chromium\\.Chromium$";}
+          ];
           open-maximized = true;
         }
 
@@ -167,7 +228,32 @@
           default-column-width = {fixed = 1200;};
           default-window-height = {fixed = 800;};
         }
-      ];
+      ]
+      # Per-focus shadow. niri's layout-level `shadow` varies only by colour
+      # between focused and unfocused, so a differently *shaped* shadow on
+      # unfocused windows has to be a window-rule. Each field falls back to the
+      # focused value, so only what actually differs needs stating.
+      ++ lib.optional osConfig.clanarchy.desktop.niri.shadow.unfocused.enable (let
+        s = osConfig.clanarchy.desktop.niri.shadow;
+        u = s.unfocused;
+        or' = a: b:
+          if a != null
+          then a
+          else b;
+      in {
+        matches = [{is-focused = false;}];
+        shadow = {
+          enable = true;
+          softness = or' u.softness s.softness;
+          spread = or' u.spread s.spread;
+          offset = {
+            x = or' u.offset.x s.offset.x;
+            y = or' u.offset.y s.offset.y;
+          };
+          draw-behind-window = s.drawBehindWindow;
+          color = or' u.color s.color;
+        };
+      });
 
       # All app launches prefixed with "uwsm app --" so they run as systemd units
       binds = {
@@ -350,12 +436,15 @@
 
         // ---- injected by modules/desktop/niri-hm.nix (blur.enable) ----
 
-        // Global blur parameters. Defaults per niri v26.04 wiki.
+        // Global blur parameters, from clanarchy.desktop.niri.blur.* — see
+        // modules/desktop/niri.nix for what each one costs. Nix renders floats
+        // with six decimals ("3.000000"), which KDL takes as a float literal;
+        // a bare "3" would not parse where niri wants one.
         blur {
-            passes 3
-            offset 3.0
-            noise 0.02
-            saturation 1.5
+            passes ${toString osConfig.clanarchy.desktop.niri.blur.passes}
+            offset ${toString osConfig.clanarchy.desktop.niri.blur.offset}
+            noise ${toString osConfig.clanarchy.desktop.niri.blur.noise}
+            saturation ${toString osConfig.clanarchy.desktop.niri.blur.saturation}
         }
 
         // Foot terminal: blur its wallpaper even when focused (opacity 0.95).

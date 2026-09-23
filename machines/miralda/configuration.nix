@@ -1,4 +1,10 @@
-{lib, ...}: {
+# `config` is taken so the niri appearance block below can read the active
+# Stylix palette (config.lib.stylix.colors) instead of hardcoding hex.
+{
+  config,
+  lib,
+  ...
+}: {
   networking.hostName = "miralda";
   networking.hostId = "ebeed95c";
   # DNS: no global `networking.search` — see modules/networking/resolved.nix
@@ -24,6 +30,47 @@
   # modules/themes/palettes.nix; "selenized-black" is what this machine ran
   # before, and reverting is this one word.
   clanarchy.theme = "rose-pine";
+
+  # Drop shadows. Off by default fleet-wide (see modules/desktop/niri.nix), on
+  # here and on jens — both run dark palettes where a 1px border alone does not
+  # separate a window from the wallpaper behind it.
+  #
+  # Tighter and darker than niri's stock shadow: softness 20 rather than 30 to
+  # sit with the 8px corners and 1px borders, alpha 90 rather than 70 because
+  # black at 70 barely reads against a dark palette. drawBehindWindow stays
+  # false — windows here are translucent, and a shadow drawn behind one shows
+  # through it. inactiveColor stays null so niri keeps fading the shadow on
+  # unfocused windows by itself, reinforcing clanarchy.desktop.niri.opacity.
+  clanarchy.desktop.niri = {
+    shadow = {
+      enable = true;
+      softness = 15;
+      spread = 3;
+      offset.y = 0;
+      offset.x = 0;
+      color = "#${config.lib.stylix.colors.base0D}50";
+      unfocused = {
+        enable = false;
+      };
+    };
+    blur = {
+      passes = 5;
+      offset = 6.5;
+      noise = 0.0;
+      saturation = 1.5;
+    };
+    cornerRadius = 10.0;
+    border = {
+      enable = false;
+      width = 0;
+    };
+    opacity = {
+      focused = 0.75;
+      unfocused = 0.65;
+      terminal = 0.75;
+    };
+    focusRing.enable = false;
+  };
 
   # ZSA Voyager: udev rules for Oryx / Keymapp, plus Keymapp itself.
   # Oryx's *browser* features (live training, web flashing) need WebHID, which

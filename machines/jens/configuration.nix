@@ -44,6 +44,18 @@
   # two Niri workstations declare their palettes the same way.
   clanarchy.theme = "selenized-black";
 
+  # Drop shadows, same values as miralda — see the comment there for why these
+  # differ from niri's stock shadow. Stated per machine rather than defaulted
+  # on, because the option is off fleet-wide and the two Niri workstations
+  # declare their appearance the same way they declare their palettes.
+  clanarchy.desktop.niri.shadow = {
+    enable = true;
+    softness = 20;
+    spread = 2;
+    offset.y = 4;
+    color = "#00000090";
+  };
+
   # 2-in-1: accelerometer + auto-rotation + on-screen keyboard.
   # See modules/hardware/convertible.nix; the Niri bind that summons the OSK
   # (Mod+O) is guarded on this same option in modules/desktop/niri-hm.nix.
