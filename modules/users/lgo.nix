@@ -223,6 +223,30 @@ in
           sha256 = "194fgd421w2j77jbpnq994y2ma03qzdlz932cxfhfznrpw3mdjb9";
         };
 
+        # ── zjstatus bar construction ────────────────────────────────────────
+        #
+        # The powerline caps are spelled as \u escapes rather than typed as
+        # literal characters.  They live in the Private Use Area (U+E0B6 /
+        # U+E0B4), and PUA code points in this file have been silently dropped
+        # by a rewrite before now — the failure mode is a bar full of stray
+        # spaces, with a diff that looks like it changed nothing.  Escapes
+        # round-trip through anything.
+        plGlyph = code: builtins.fromJSON ''"\u${code}"'';
+        capL    = plGlyph "e0b6";   # rounded cap, opening
+        capR    = plGlyph "e0b4";   # rounded cap, closing
+
+        # Every widget on the bar is one capsule: cap, bold text on a colour,
+        # cap back to the bar background.  Defining it once is the whole reason
+        # the format strings below are one line each rather than three
+        # near-identical hex repetitions per widget.
+        #
+        # `$name` references are zjstatus's own colour variables, declared as
+        # `color_<name>` in the plugin block.  Declaring the palette once there
+        # and referring to it by name means a Stylix theme change rewrites six
+        # values instead of forty inline hex codes.
+        capsule = colour: text:
+          "#[fg=${colour},bg=$bg]${capL}#[fg=$bg,bg=${colour},bold] ${text} #[fg=${colour},bg=$bg]${capR}";
+
         fzf-zellij-src = pkgs.fetchurl {
           url    = "https://raw.githubusercontent.com/k-kuroguro/fzf-zellij/main/bin/fzf-zellij";
           sha256 = "00xbfr53czs511151xfim13w8syrgpsqy8kkl7y3cbklggr4ammn";
@@ -517,10 +541,23 @@ in
                   reaction_seconds "0.3"
                   print_to_log false
               }
+              // zjstatus is ALSO declared here, not only in the layout, and that is
+              // load-bearing rather than tidiness.  A plugin zellij knows about only
+              // from a layout never gets an answerable permission prompt: the request
+              // is raised against the layout's pane, which for the bar is
+              // `size=1 borderless=true`, and there is no way to focus or answer it.
+              // The plugin then sits un-granted forever and renders an empty bar while
+              // every other signal looks healthy — the layout still lists the pane and
+              // the server log still says `Loaded plugin '…/zjstatus.wasm'`.  Loading
+              // is not granting.  Declaring it here makes zellij raise the request as a
+              // normal floating prompt instead.  Upstream reached the same conclusion:
+              // https://github.com/dj95/zjstatus/issues/212
+              zjstatus location="file:~/.config/zellij/plugins/zjstatus.wasm"
           }
 
           load_plugins {
               autolock
+              zjstatus
           }
 
           themes {
@@ -630,17 +667,71 @@ in
         xdg.configFile."zellij/plugins/zjstatus.wasm".source    = zjstatus-wasm;
         xdg.configFile."zellij/plugins/zellij-autolock.wasm".source = zellij-autolock;
 
-        # Zellij layout — zjstatus bar at bottom
+        # Pre-grant the plugin permissions, so a cleared cache cannot silently
+        # cost us the status bar.
+        #
+        # All THREE permissions are required, and the set must match what the
+        # plugin asks for exactly — zellij compares the cached set against the
+        # requested set and treats "close enough" as not granted at all.
+        # zjstatus wants RunCommands as well as the two state permissions
+        # (it is what backs the `command_*` widgets), so a grant of just
+        # Read/ChangeApplicationState looks right, matches nothing, and leaves
+        # the bar blank exactly as if no grant existed.  That was verified by
+        # granting two, seeing an empty bar, and watching zellij write all
+        # three itself once the prompt was answered by hand.
+        #
+        # `.cache/zellij` is persisted (see the impermanence block above) so
+        # this survives a rollback — but it is still cache, and anything that
+        # clears it re-arms the trap.  Seeding makes the grants a property of
+        # the deploy rather than of a prompt someone has to notice.
+        #
+        # Append-if-absent, never rewrite: zellij owns this file and rewrites
+        # it from its own in-memory state whenever a permission changes.
+        home.activation.seedZellijPluginPermissions = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+          _perms="$HOME/.cache/zellij/permissions.kdl"
+          mkdir -p "$HOME/.cache/zellij"
+          touch "$_perms"
+          for _plugin in zjstatus zellij-autolock; do
+            _path="$HOME/.config/zellij/plugins/$_plugin.wasm"
+            if ! grep -qF "\"$_path\"" "$_perms"; then
+              {
+                echo "\"$_path\" {"
+                echo "    RunCommands"
+                echo "    ChangeApplicationState"
+                echo "    ReadApplicationState"
+                echo "}"
+              } >> "$_perms"
+            fi
+          done
+        '';
+
+        # Zellij layout — zjstatus bar at bottom.
+        #
+        # The plugin's `location` must match the one in config.kdl's `plugins`
+        # block exactly.  zellij keys a permission grant by plugin path, so two
+        # spellings of the same file are two plugins as far as the permission
+        # cache is concerned, and the bar silently stops rendering.
         xdg.configFile."zellij/layouts/default.kdl".text = ''
           layout {
               default_tab_template {
                   children
                   pane size=1 borderless=true {
                       plugin location="file:~/.config/zellij/plugins/zjstatus.wasm" {
-                          format_left  "{mode}#[fg=#${c.base0D},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base0D},bold] {session} #[fg=#${c.base0D},bg=#${c.base00}]"
+                          // Palette, declared once.  Everything below refers to
+                          // these by name; no hex appears in a format string.
+                          color_bg      "#${c.base00}"
+                          color_surface "#${c.base03}"
+                          color_fg      "#${c.base05}"
+                          color_accent  "#${c.base0D}"
+                          color_ok      "#${c.base0B}"
+                          color_warn    "#${c.base0A}"
+                          color_alert   "#${c.base09}"
+                          color_rename  "#${c.base0E}"
+
+                          format_left   "{mode}${capsule "$accent" "{session}"}"
                           format_center "{tabs}"
-                          format_right "#[fg=#${c.base03},bg=#${c.base00}]#[fg=#${c.base05},bg=#${c.base03}] {datetime}"
-                          format_space "#[bg=#${c.base00}]"
+                          format_right  "${capsule "$surface" "{datetime}"}"
+                          format_space  "#[bg=$bg]"
 
                           // Must stay "false" while default_shell is nu.
                           // With one pane, "true" makes zjstatus drop the pane
@@ -653,20 +744,22 @@ in
                           // Alt+g gets through. Neither half does this alone:
                           // nu without zjstatus and zsh with it both idle at
                           // ~2%; nu + zjstatus + "true" measured 123%.
+                          // Upstream has the same report, on a different OS
+                          // and shell: dj95/zjstatus#258.
                           hide_frame_for_single_pane "false"
                           border_enabled "false"
 
-                          mode_normal       "#[fg=#${c.base0D},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base0D},bold] NORMAL #[fg=#${c.base0D},bg=#${c.base00}]"
-                          mode_locked       "#[fg=#${c.base0B},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base0B},bold] LOCKED #[fg=#${c.base0B},bg=#${c.base00}]"
-                          mode_scroll       "#[fg=#${c.base0A},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base0A},bold] SCROLL #[fg=#${c.base0A},bg=#${c.base00}]"
-                          mode_search       "#[fg=#${c.base09},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base09},bold] SEARCH #[fg=#${c.base09},bg=#${c.base00}]"
-                          mode_enter_search "#[fg=#${c.base09},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base09},bold] SEARCH #[fg=#${c.base09},bg=#${c.base00}]"
-                          mode_rename_tab   "#[fg=#${c.base0E},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base0E},bold] RENAME #[fg=#${c.base0E},bg=#${c.base00}]"
+                          mode_normal       "${capsule "$accent"  "NORMAL"}"
+                          mode_locked       "${capsule "$ok"      "LOCKED"}"
+                          mode_scroll       "${capsule "$warn"    "SCROLL"}"
+                          mode_search       "${capsule "$alert"   "SEARCH"}"
+                          mode_enter_search "${capsule "$alert"   "SEARCH"}"
+                          mode_rename_tab   "${capsule "$rename"  "RENAME"}"
 
-                          tab_normal "#[fg=#${c.base03},bg=#${c.base00}]#[fg=#${c.base05},bg=#${c.base03}] {index}  {name} #[fg=#${c.base03},bg=#${c.base00}]"
-                          tab_active "#[fg=#${c.base0D},bg=#${c.base00}]#[fg=#${c.base00},bg=#${c.base0D},bold,italic] {index}  {name} #[fg=#${c.base0D},bg=#${c.base00}]"
+                          tab_normal "${capsule "$surface" "{index}  {name}"}"
+                          tab_active "${capsule "$accent"  "{index}  {name}"}"
 
-                          datetime "#[fg=#${c.base05},bg=#${c.base03},bold] {format} "
+                          datetime "{format}"
                           datetime_format "%H:%M"
                           datetime_timezone "Europe/Berlin"
                       }
