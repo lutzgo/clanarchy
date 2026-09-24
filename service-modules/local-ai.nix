@@ -2,6 +2,28 @@
 #
 # @clanarchy/local-ai — local AI inference, voice, vision and image generation.
 #
+# ── ONE BRIDGE GENERATOR, THREE ROLES (M29) ─────────────────────────────────
+#
+# `mkBridges` below is the whole mechanism by which anything in a container
+# reaches a service bound to this host's loopback.  It was inline in
+# roles.inference and is now shared, because M29 added two more consumers of
+# exactly the same shape (mneme, and the two Wyoming voice servers) and the
+# note the inline copy carried — "this is generated from a list because it was
+# two hand-written blocks and the second one was never written" — applies with
+# more force to a third and fourth.
+#
+# Each bridge is three things and each is silent when missing:
+#   * the socket      — nothing listens, connections time out;
+#   * the accept rule — the host firewall drops it, and the proxy logs nothing
+#                       because it never sees the packet;
+#   * the consumer    — pointed at this address, not at localhost.
+#
+# A FOURTH THING IS REQUIRED AND IS NOT HERE: the veth itself, declared by the
+# consuming container as `extraVeths.<name>`.  M29 learned that the hard way —
+# see the `aiVeth` note in roles.webui — and the guard for it lives in
+# machines/ernst/networking.nix, because that is the only place that can see
+# every container at once.
+#
 # ── WHAT REPLACED WHAT, AND WHY (M19) ────────────────────────────────────────
 #
 # This module used to be `roles.ollama` + `roles.opencode`.  Ollama is gone from
@@ -97,7 +119,119 @@
 #               llama-swap could never have started or stopped a rootful
 #               container — which eviction requires.  See the role.
 #   webui     — Open WebUI in an nspawn container on VLAN 90.
+#   agent     — mneme: the household agent daemon.  Presents the Ollama wire
+#               protocol to Home Assistant (whose release has no llama.cpp
+#               integration) and plain OpenAI to everything else, injecting the
+#               constitution on the way through.  M29.
+#   voice     — Wyoming STT and TTS for Home Assistant's Assist pipeline.  M29.
 #
+let
+  ############################################################################
+  # mkBridges — a loopback service, reachable from one container and nothing
+  # else.  See the header for why this is shared rather than inlined.
+  #
+  # `unit` is the unit-name prefix; `targetPort` is the loopback port being
+  # published; each bridge is { name, address, allowedSource }.
+  ############################################################################
+  mkBridges = { pkgs, unit, what, targetPort, bridges, extraAfter ? [ ] }: {
+    systemd.sockets = lib.listToAttrs (map (b: {
+      name  = "${unit}-${b.name}";
+      value = {
+        description = "${what} listener for the ${b.name} container";
+        wantedBy    = [ "sockets.target" ];
+        socketConfig = {
+          # A LITERAL ADDRESS, never a wildcard.  This is the whole
+          # containment: the only peer of that /128 is one container.
+          ListenStream = "[${b.address}]:${toString targetPort}";
+          BindIPv6Only = "ipv6-only";
+
+          # THE BIND SUCCEEDS EVEN WHEN THE ADDRESS DOES NOT EXIST, which is
+          # why this is stated rather than left implicit.  The address lives on
+          # a veth that only exists while the peer container runs, so the
+          # socket has to come up before it and survive it going away — and
+          # measured on ernst 2026-09-24, it does so with or without this line.
+          # It is set anyway because relying on undeclared kernel behaviour for
+          # a boot-ordering property is how the Open WebUI outage stayed
+          # invisible: a listening socket is NOT evidence that the leg exists.
+          FreeBind = true;
+        };
+      };
+    }) bridges);
+
+    systemd.services = lib.listToAttrs (map (b: {
+      name  = "${unit}-${b.name}";
+      value = {
+        description = "Proxy ${what} to the ${b.name} container";
+        after    = [ "${unit}-${b.name}.socket" ] ++ extraAfter;
+        # SOCKET-ACTIVATED: no `wantedBy`.  With one, systemd starts this
+        # directly and systemd-socket-proxyd exits 1 with "Didn't get any
+        # sockets passed in", then restart-loops.
+        requires = [ "${unit}-${b.name}.socket" ];
+
+        serviceConfig = {
+          ExecStart = lib.concatStringsSep " " [
+            "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd"
+            "127.0.0.1:${toString targetPort}"
+          ];
+          Restart    = "on-failure";
+          RestartSec = "10s";
+          DynamicUser = true;
+          NoNewPrivileges = true;
+          PrivateDevices  = true;
+          ProtectSystem   = "strict";
+          ProtectHome     = true;
+          MemoryDenyWriteExecute = true;
+
+          # AF_INET IS REQUIRED and its absence is silent.  The LISTENER is
+          # AF_INET6 and is created by systemd in the .socket unit; this
+          # process has to DIAL 127.0.0.1, which is AF_INET.  Without it:
+          # "Failed to get remote socket: Address family not supported by
+          # protocol", and every request times out.
+          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+
+          CapabilityBoundingSet = [ "" ];
+          AmbientCapabilities   = [ "" ];
+          SystemCallFilter      = [ "@system-service" "~@resources" "~@privileged" ];
+          SystemCallErrorNumber = "EPERM";
+          SystemCallArchitectures = "native";
+          ProtectProc           = "invisible";
+          ProcSubset            = "pid";
+          ProtectClock          = true;
+          ProtectHostname       = true;
+          ProtectKernelLogs     = true;
+          ProtectKernelTunables = true;
+          ProtectKernelModules  = true;
+          ProtectControlGroups  = true;
+          RestrictNamespaces    = true;
+          RestrictRealtime      = true;
+          RestrictSUIDSGID      = true;
+          LockPersonality       = true;
+          RemoveIPC             = true;
+          UMask                 = "0077";
+          # Both ends are on this host: loopback upstream, the veth /64
+          # downstream.
+          IPAddressDeny  = "any";
+          IPAddressAllow = [ "localhost" "${b.address}/128" "${b.allowedSource}/128" ];
+        };
+      };
+    }) bridges);
+
+    # One accept per bridge, appended to nixos-fw so it lands after
+    # allowedTCPPorts and before the catch-all refuse — the placement
+    # monitoring.nix and containers/arr.nix rely on.  The chain is flushed and
+    # rebuilt on every start, so extraStopCommands needs nothing.
+    #
+    # If a consumer times out while the stack is demonstrably alive:
+    #   ip6tables -L nixos-fw -n --line-numbers | grep ${toString targetPort}
+    # and then, because a listening socket proves nothing:
+    #   ip -6 addr show dev <the consumer's veth>
+    networking.firewall.extraCommands =
+      lib.concatMapStrings (b: ''
+        ip6tables -A nixos-fw -s ${b.allowedSource}/128 \
+          -p tcp -m tcp --dport ${toString targetPort} -j nixos-fw-accept
+      '') bridges;
+  };
+in
 {
   _class = "clan.service";
   manifest.name        = "@clanarchy/local-ai";
@@ -811,115 +945,17 @@
             };
           };
 
-        } {
-          # Loopback bridges — one per container that needs llama-swap.
-          #
-          # llama-swap binds 127.0.0.1 and stays there.  A container cannot
-          # reach the host's loopback, so each consumer gets its own
-          # point-to-point ULA veth, a socket-activated proxy on the HOST end,
-          # and exactly one firewall accept for the container end.  Nothing is
-          # on any VLAN.
-          #
-          # THIS IS GENERATED FROM A LIST BECAUSE IT WAS TWO HAND-WRITTEN
-          # BLOCKS AND THE SECOND ONE WAS NEVER WRITTEN.  The monitoring
-          # container had a bespoke `metricsProxy` option; Open WebUI was
-          # pointed at fdca:fe91::1 and nothing ever listened there.  The
-          # symptom was not an error — it was "No models available" in the
-          # model picker and a voice recording that span forever, three layers
-          # from the cause.  One mechanism, one list, so a consumer cannot be
-          # half-added.
-          #
-          # Each entry needs all three parts, and each is silent when missing:
-          #   * the socket      — nothing listens, connections time out;
-          #   * the accept rule — the host firewall drops it, and the proxy
-          #                       logs nothing because it never sees the packet;
-          #   * the consumer    — pointed at this address, not at localhost.
-          ##################################################################
-          systemd.sockets = lib.listToAttrs (map (b: {
-            name  = "llama-bridge-${b.name}";
-            value = {
-              description = "llama-swap listener for the ${b.name} container";
-              wantedBy    = [ "sockets.target" ];
-              socketConfig = {
-                # A LITERAL ADDRESS, never a wildcard.  This is the whole
-                # containment: the only peer of that /128 is one container.
-                ListenStream = "[${b.address}]:${toString port}";
-                BindIPv6Only = "ipv6-only";
-              };
-            };
-          }) settings.exposeOn);
-
-          systemd.services = lib.listToAttrs (map (b: {
-            name  = "llama-bridge-${b.name}";
-            value = {
-              description = "Proxy llama-swap to the ${b.name} container";
-              after    = [ "llama-swap.service" "llama-bridge-${b.name}.socket" ];
-              # SOCKET-ACTIVATED: no `wantedBy`.  With one, systemd starts this
-              # directly and systemd-socket-proxyd exits 1 with "Didn't get any
-              # sockets passed in", then restart-loops.
-              requires = [ "llama-bridge-${b.name}.socket" ];
-
-              serviceConfig = {
-                ExecStart = lib.concatStringsSep " " [
-                  "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd"
-                  "127.0.0.1:${toString port}"
-                ];
-                Restart    = "on-failure";
-                RestartSec = "10s";
-                DynamicUser = true;
-                NoNewPrivileges = true;
-                PrivateDevices  = true;
-                ProtectSystem   = "strict";
-                ProtectHome     = true;
-                MemoryDenyWriteExecute = true;
-
-                # AF_INET IS REQUIRED and its absence is silent.  The LISTENER
-                # is AF_INET6 and is created by systemd in the .socket unit;
-                # this process has to DIAL 127.0.0.1, which is AF_INET.  Without
-                # it: "Failed to get remote socket: Address family not supported
-                # by protocol", and every request times out.
-                RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
-
-                CapabilityBoundingSet = [ "" ];
-                AmbientCapabilities   = [ "" ];
-                SystemCallFilter      = [ "@system-service" "~@resources" "~@privileged" ];
-                SystemCallErrorNumber = "EPERM";
-                SystemCallArchitectures = "native";
-                ProtectProc           = "invisible";
-                ProcSubset            = "pid";
-                ProtectClock          = true;
-                ProtectHostname       = true;
-                ProtectKernelLogs     = true;
-                ProtectKernelTunables = true;
-                ProtectKernelModules  = true;
-                ProtectControlGroups  = true;
-                RestrictNamespaces    = true;
-                RestrictRealtime      = true;
-                RestrictSUIDSGID      = true;
-                LockPersonality       = true;
-                RemoveIPC             = true;
-                UMask                 = "0077";
-                # Both ends are on this host: loopback upstream, the veth /64
-                # downstream.
-                IPAddressDeny  = "any";
-                IPAddressAllow = [ "localhost" "${b.address}/128" "${b.allowedSource}/128" ];
-              };
-            };
-          }) settings.exposeOn);
-
-          # One accept per bridge, appended to nixos-fw so it lands after
-          # allowedTCPPorts and before the catch-all refuse — the placement
-          # monitoring.nix and containers/arr.nix rely on.  The chain is flushed
-          # and rebuilt on every start, so extraStopCommands needs nothing.
-          #
-          # If a consumer times out while the stack is demonstrably alive:
-          #   ip6tables -L nixos-fw -n --line-numbers | grep ${toString port}
-          networking.firewall.extraCommands =
-            lib.concatMapStrings (b: ''
-              ip6tables -A nixos-fw -s ${b.allowedSource}/128 \
-                -p tcp -m tcp --dport ${toString port} -j nixos-fw-accept
-            '') settings.exposeOn;
-        } {
+        } (mkBridges {
+          inherit pkgs;
+          # The unit prefix stays `llama-bridge-<consumer>` as it has been since
+          # M19: runbooks, journal greps and docs/roadmap.md's L9 row all name
+          # it, and a rename would buy nothing.
+          unit       = "llama-bridge";
+          what       = "llama-swap";
+          targetPort = port;
+          bridges    = settings.exposeOn;
+          extraAfter = [ "llama-swap.service" ];
+        }) {
 
           ##################################################################
           # The SSH forward jens uses.
@@ -1471,6 +1507,482 @@
       # `--inference-path /v1/audio/transcriptions` is OpenAI-shaped with no
       # wrapper and no new input.
       nixosModule = { ... }: { };
+    };
+  };
+
+  ##############################################################################
+  # roles.agent — mneme, the household agent daemon (M29)
+  #
+  # ── WHY THERE IS A DAEMON IN FRONT OF llama-swap AT ALL ────────────────────
+  #
+  # Home Assistant on ernst is 2026.5.4, and that release cannot be pointed at
+  # a local model.  Verified by reading nixpkgs' own component list in both
+  # channels rather than by trying it:
+  #
+  #   nixpkgs 26.05        (HA 2026.5.4)  ollama, openai_conversation, wyoming
+  #   nixpkgs-unstable     (HA 2026.8.1)  ... plus llama_cpp
+  #
+  # The native `llama_cpp` conversation integration — "a local llama.cpp
+  # server, or any OpenAI-compatible endpoint" — arrived in 2026.8.  And
+  # `openai_conversation` in 2026.5.4 defines no base-URL constant at all
+  # (homeassistant/components/openai_conversation/const.py at tag 2026.5.4):
+  # it can only reach api.openai.com, which is the opposite of the requirement.
+  #
+  # What 2026.5.4 DOES have is `ollama`, and it is not a second-class path: its
+  # entity.py builds `tools` from `chat_log.llm_api.tools`, streams, and loops
+  # until `unresponded_tool_results` is empty, and its config flow exposes
+  # CONF_LLM_HASS_API — "Control Home Assistant".  Everything Assist needs.
+  #
+  # So mneme speaks the Ollama wire protocol on its north side.  That is a
+  # translation layer, not an architecture: the daemon has to sit in the
+  # request path anyway, because that is where the constitution is injected
+  # (and, from M29b, the memory wiki's index), so the protocol it presents is a
+  # free choice.  It presents BOTH — /api/chat for Home Assistant today and
+  # /v1/chat/completions for Open WebUI, opencode and nvf — and the migration
+  # when ernst's nixpkgs reaches 2026.8 is a config-flow change in a browser.
+  #
+  # ── THREE PATHS NOT TAKEN, SO THEY ARE NOT RE-PROPOSED ────────────────────
+  #
+  #   * `pkgs-unstable.home-assistant`.  A three-release jump with a one-way
+  #     recorder migration, on the machine that runs the house, to avoid a
+  #     contained protocol shim with build-time tests.  Bad trade.
+  #   * A HACS-downloaded conversation integration.  M24b states the cost out
+  #     loud: what HACS downloads is the one thing on ernst that is not in this
+  #     repository.  Putting the model path there would move the most
+  #     load-bearing integration in the hub out of the repo.
+  #   * Vendoring core's `llama_cpp` as a customComponent.  It rides ChatLog
+  #     internals that moved between 2026.5 and 2026.8, so it would be a
+  #     backport with no upstream and no test.
+  #
+  # ── IT TAKES NO ADDRESS, NO uid AND NO LEDGER ROW ─────────────────────────
+  #
+  # mneme is a host service beside llama-swap, not a container: its upstream is
+  # ernst's own loopback, and its one consumer reaches it over the same
+  # point-to-point ULA mechanism every other loopback consumer uses.  So there
+  # is no MAC, no DHCP reservation, no Traefik router, no hostname and nothing
+  # for the UDM-Pro to know.  Sequence 16 / 10.0.90.30 / uid 3039 stay free.
+  ##############################################################################
+  roles.agent = {
+    description = "mneme — the household agent daemon in front of llama-swap.";
+
+    interface.options = {
+      port = lib.mkOption {
+        type        = lib.types.port;
+        default     = 11435;
+        description = ''
+          Loopback port mneme listens on.
+
+          11435 rather than anything else because it is the port the fleet
+          already associates with "llama-swap, one hop away": jens forwards
+          ernst's 11434 to its own 11435 (see roles.opencode).  Nothing shares
+          a machine with both, so the reuse costs nothing and the number is
+          already in people's heads.
+        '';
+      };
+
+      model = lib.mkOption {
+        type        = lib.types.str;
+        example     = "qwen3-coder-30b";
+        description = ''
+          The model mneme serves, and the ONLY entry its /api/tags returns.
+
+          It must name a key of `roles.models` on this machine — asserted
+          below, because a name that llama-swap does not serve produces a clean
+          404 from llama-swap and a conversation agent that answers every
+          request with an error, which looks like a broken model rather than a
+          typo.
+
+          NAMING ANYTHING OTHER THAN THE RESIDENT MODEL COSTS A GPU EVICTION
+          PER UTTERANCE.  llama-swap runs its LLMs in an exclusive group, so a
+          second text model unloads the coder model every time somebody speaks
+          to the house and reloads it the next time the coding agent is used —
+          21 GiB off zdata, each way.  containers/karakeep.nix names
+          `qwen3-coder-30b` for exactly this reason and so does this role.
+        '';
+      };
+
+      upstream = lib.mkOption {
+        type        = lib.types.str;
+        default     = "";
+        description = ''
+          OpenAI-compatible base URL, including `/v1`.  Empty means "llama-swap
+          on this machine", derived from roles.inference's own port so the two
+          cannot disagree.
+        '';
+      };
+
+      exposeOn = lib.mkOption {
+        default     = [ ];
+        description = ''
+          Containers that may reach mneme, as point-to-point ULA peers.
+
+          Identical in shape and in hazards to roles.inference's option of the
+          same name, and generated by the same function — see the module header.
+          THE VETH ITSELF IS A FOURTH REQUIREMENT this option cannot express:
+          the consuming container declares `extraVeths.<name>`, the name is
+          host-global, and machines/ernst/networking.nix asserts that no two
+          containers claim one.  M29 added that assertion because Open WebUI
+          had already lost its leg to a name collision and nothing reported it.
+        '';
+        type = lib.types.listOf (lib.types.submodule {
+          options = {
+            name = lib.mkOption {
+              type = lib.types.str;
+              example = "hass";
+              description = "Unit-name suffix; must be systemd-safe.";
+            };
+            address = lib.mkOption {
+              type = lib.types.str;
+              example = "fdca:fe93::1";
+              description = "The HOST end of the point-to-point link.";
+            };
+            allowedSource = lib.mkOption {
+              type = lib.types.str;
+              example = "fdca:fe93::2";
+              description = "The CONTAINER end — the only permitted peer.";
+            };
+          };
+        });
+      };
+
+      logLevel = lib.mkOption {
+        type        = lib.types.enum [ "DEBUG" "INFO" "WARNING" "ERROR" ];
+        default     = "INFO";
+        description = ''
+          DEBUG logs every translated request, which is how a tool call that
+          Home Assistant never executes gets attributed to the right side of
+          the translation.  It also logs the whole conversation, including
+          whatever the household said, into the journal — so it is a debugging
+          setting and not a default.
+        '';
+      };
+
+      readTimeout = lib.mkOption {
+        type        = lib.types.ints.positive;
+        default     = 600;
+        description = ''
+          Seconds to wait on a stalled upstream socket.  Deliberately large and
+          deliberately NOT a total request timeout: llama-swap may have to load
+          a 21 GiB model off zdata before the first token, which is why
+          containers/karakeep.nix sets INFERENCE_JOB_TIMEOUT_SEC to 300 rather
+          than the 30 s default.  A total timeout would abort a healthy load.
+        '';
+      };
+    };
+
+    perInstance = { settings, roles, machine, ... }: {
+      nixosModule = { config, pkgs, lib, ... }:
+        let
+          mneme = pkgs.callPackage ./pkgs/mneme { };
+
+          inferencePort =
+            roles.inference.machines.${machine.name}.settings.port or 11434;
+          upstream =
+            if settings.upstream != "" then settings.upstream
+            else "http://127.0.0.1:${toString inferencePort}/v1";
+
+          declared =
+            (roles.models.machines.${machine.name}.settings.models or { });
+        in
+        lib.mkMerge [
+          {
+            assertions = [
+              {
+                # The same shape as roles.inference's assertion, and for the
+                # same reason: a model name that nothing serves fails at
+                # runtime, per request, with a 404 three layers from the typo.
+                assertion = declared == { } || declared ? ${settings.model};
+                message = ''
+                  @clanarchy/local-ai: roles.agent on ${machine.name} serves
+                  "${settings.model}", which is not a key of roles.models on
+                  that machine.  Declared: ${
+                    lib.concatStringsSep ", " (lib.attrNames declared)
+                  }.
+                '';
+              }
+            ];
+
+            systemd.services.mneme = {
+              description = "mneme — household agent daemon";
+              wantedBy = [ "multi-user.target" ];
+              # Ordering only.  mneme answers /api/tags and /healthz without
+              # llama-swap, and Home Assistant's config flow calls exactly
+              # those — so a mneme that starts first is useful, and one that
+              # REQUIRED llama-swap would take the conversation agent's
+              # configuration UI down with it.
+              after = [ "network.target" "llama-swap.service" ];
+
+              serviceConfig = {
+                ExecStart = lib.concatStringsSep " " [
+                  (lib.getExe mneme)
+                  "--listen 127.0.0.1"
+                  "--port ${toString settings.port}"
+                  "--upstream ${upstream}"
+                  "--model ${settings.model}"
+                  "--soul-dir ${mneme}/${mneme.soulSubdir}"
+                  "--read-timeout ${toString settings.readTimeout}"
+                  "--log-level ${settings.logLevel}"
+                ];
+                Restart    = "on-failure";
+                RestartSec = "5s";
+
+                # DynamicUser, unlike llama-swap's static `llama`.  The
+                # difference is state: llama-swap owns a 25 GiB model store on
+                # zdata whose ownership must survive a rollback, and mneme owns
+                # nothing on disk in this milestone.  M29b gives it a git
+                # repository under /srv/state and this becomes a static uid at
+                # that point — a DynamicUser with a StateDirectory would land a
+                # systemd-ALLOCATED uid on the pool, which is exactly what the
+                # uid table in machines/ernst/networking.nix exists to prevent
+                # (M27 made the same call for Meilisearch).
+                DynamicUser = true;
+                NoNewPrivileges = true;
+                PrivateDevices  = true;
+                PrivateTmp      = true;
+                ProtectSystem   = "strict";
+                ProtectHome     = true;
+                CapabilityBoundingSet = [ "" ];
+                AmbientCapabilities   = [ "" ];
+                RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+                SystemCallFilter      = [ "@system-service" "~@resources" "~@privileged" ];
+                SystemCallErrorNumber = "EPERM";
+                SystemCallArchitectures = "native";
+                ProtectProc           = "invisible";
+                ProcSubset            = "pid";
+                ProtectClock          = true;
+                ProtectHostname       = true;
+                ProtectKernelLogs     = true;
+                ProtectKernelTunables = true;
+                ProtectKernelModules  = true;
+                ProtectControlGroups  = true;
+                RestrictNamespaces    = true;
+                RestrictRealtime      = true;
+                RestrictSUIDSGID      = true;
+                LockPersonality       = true;
+                MemoryDenyWriteExecute = true;
+                RemoveIPC             = true;
+                UMask                 = "0077";
+
+                # Loopback only.  Everything else arrives through a bridge.
+                IPAddressDeny  = "any";
+                IPAddressAllow = [ "localhost" ];
+              };
+            };
+
+            environment.systemPackages = [ mneme ];
+          }
+
+          (mkBridges {
+            inherit pkgs;
+            unit       = "mneme-bridge";
+            what       = "mneme";
+            targetPort = settings.port;
+            bridges    = settings.exposeOn;
+            extraAfter = [ "mneme.service" ];
+          })
+        ];
+    };
+  };
+
+  ##############################################################################
+  # roles.voice — Wyoming STT and TTS for Home Assistant's Assist pipeline (M29)
+  #
+  # ── THIS CLOSES local-ai.md's TTS NOTE ON ITS OWN TERMS ───────────────────
+  #
+  # M19 recorded "nothing in nixpkgs serves an OpenAI-shaped /v1/audio/speech …
+  # revisit if a packaged Kokoro or Piper HTTP server appears".  The premise
+  # was right and the search space was too narrow: Home Assistant does not want
+  # an OpenAI-shaped endpoint for voice, it wants WYOMING, and nixpkgs 26.05
+  # ships `services.wyoming.piper` (2.2.2), `services.wyoming.faster-whisper`
+  # (3.1.0) and `services.wyoming.openwakeword` (2.1.0).  Verified against this
+  # flake's own nixpkgs, not against the option search.
+  #
+  # ── THERE ARE NOW TWO SPEECH-TO-TEXT ENGINES ON THIS MACHINE ──────────────
+  #
+  # That is deliberate and is stated here so the next reader does not find two
+  # transcribers and assume one is an accident:
+  #
+  #   roles.speech   whisper.cpp   ggml weights    OpenAI /v1/audio/…  Open WebUI
+  #   roles.voice    faster-whisper CTranslate2    Wyoming             Assist
+  #
+  # Neither can serve the other's protocol and neither can load the other's
+  # weights — a ggml .bin and a CTranslate2 model directory are different
+  # formats for different runtimes.  Collapsing them would mean writing a
+  # Wyoming-to-OpenAI shim for a saving of about 1.6 GiB of disk, on a machine
+  # with 92 TB of it.  Both run on the CPU, so neither costs VRAM and they do
+  # not contend for the card.
+  #
+  # ── THE WEIGHTS ARE PULLED AT RUNTIME, WHICH BREAKS THIS MODULE'S RULE ────
+  #
+  # `roles.models` exists so that a model cannot be downloaded but undeclared,
+  # and every GGUF on this machine is hash-verified.  These two are not, and
+  # the reason is structural rather than laziness:
+  #
+  #   * both servers take a model DIRECTORY whose layout is chosen by the
+  #     library version (faster-whisper wants model.bin + config.json +
+  #     tokenizer.json + vocabulary.txt; piper wants <voice>.onnx +
+  #     <voice>.onnx.json), and roles.models fetches FILES;
+  #   * both nixpkgs units are `DynamicUser` with a `StateDirectory`, so
+  #     pointing them at a store owned by the `llama` user would mean granting
+  #     a systemd-ALLOCATED identity read access to the hash-verified tree —
+  #     the shape M27 refused for Meilisearch and the reason the uid table in
+  #     machines/ernst/networking.nix exists.
+  #
+  # What makes that acceptable here and not for a GGUF: these artifacts are
+  # RE-ACQUIRABLE and carry no state.  Losing them costs a download, not data.
+  # The persist entry below is therefore a bandwidth optimisation — without it
+  # ernst re-fetches ~1.6 GiB on every boot, because root rolls back.
+  ##############################################################################
+  roles.voice = {
+    description = "Wyoming speech-to-text and text-to-speech for Home Assistant Assist.";
+
+    interface.options = {
+      stt = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Run wyoming-faster-whisper.";
+        };
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 10300;
+          description = "Loopback port. 10300 is Wyoming's conventional STT port.";
+        };
+        model = lib.mkOption {
+          type        = lib.types.str;
+          default     = "turbo";
+          description = ''
+            faster-whisper model name.  "turbo" is large-v3-turbo — the same
+            weights roles.speech runs, in the other format — and is the largest
+            one that stays comfortably realtime on this CPU.
+          '';
+        };
+        language = lib.mkOption {
+          type        = lib.types.str;
+          default     = "de";
+          description = ''
+            PINNED, unlike roles.speech's "auto", and the difference is the
+            workload rather than an inconsistency.  roles.speech transcribes
+            dictated prose where a mispinned language mangles English package
+            names.  Assist transcribes short commands, where "auto" spends its
+            detection budget on two seconds of audio and mis-detects often
+            enough to matter.  Home Assistant's pipeline also carries its own
+            language, and the two disagreeing is a confusing failure.
+          '';
+        };
+        beamSize = lib.mkOption {
+          type        = lib.types.ints.unsigned;
+          default     = 1;
+          description = ''
+            1, not the module's default of 5.  A voice command is short and
+            latency is the whole experience; beam search buys accuracy on long
+            prose, which is not what this endpoint transcribes.
+          '';
+        };
+      };
+
+      tts = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Run wyoming-piper.";
+        };
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 10200;
+          description = "Loopback port. 10200 is Wyoming's conventional TTS port.";
+        };
+        voice = lib.mkOption {
+          type        = lib.types.str;
+          default     = "de_DE-thorsten-medium";
+          description = ''
+            Piper voice.  `-medium` rather than `-high`: on a CPU the high
+            variant is several times slower to synthesise and the difference is
+            inaudible through a phone speaker, which is what will play it.
+          '';
+        };
+      };
+
+      exposeOn = lib.mkOption {
+        default     = [ ];
+        description = ''
+          Containers that may reach the voice servers.  Same shape and same
+          three-part hazard as everywhere else in this module; see the header.
+
+          Each entry opens BOTH ports on its address — a pipeline needs STT and
+          TTS together, and splitting them would be two lists that can
+          disagree.
+        '';
+        type = lib.types.listOf (lib.types.submodule {
+          options = {
+            name          = lib.mkOption { type = lib.types.str; example = "hass"; };
+            address       = lib.mkOption { type = lib.types.str; example = "fdca:fe93::1"; };
+            allowedSource = lib.mkOption { type = lib.types.str; example = "fdca:fe93::2"; };
+          };
+        });
+      };
+    };
+
+    perInstance = { settings, ... }: {
+      nixosModule = { pkgs, lib, ... }:
+        lib.mkMerge [
+          {
+            services.wyoming.faster-whisper.servers.assist = lib.mkIf settings.stt.enable {
+              enable = true;
+              uri    = "tcp://127.0.0.1:${toString settings.stt.port}";
+              inherit (settings.stt) model language beamSize;
+              device = "cpu";
+
+              # OFF, and not for tidiness.  The module defaults it on, which
+              # would advertise this server over mDNS on every interface the
+              # host has — including br0 and therefore VLAN 50.  Home Assistant
+              # is configured here by address, over a point-to-point link that
+              # carries no multicast, so discovery would advertise a service
+              # nothing can reach to a segment that should not see it.
+              zeroconf.enable = false;
+            };
+
+            services.wyoming.piper.servers.assist = lib.mkIf settings.tts.enable {
+              enable = true;
+              uri    = "tcp://127.0.0.1:${toString settings.tts.port}";
+              inherit (settings.tts) voice;
+              zeroconf.enable = false;
+            };
+
+            # See the role header: re-acquirable, not hash-verified, and worth
+            # persisting only so a reboot is not a 1.6 GiB download.  Both
+            # units are DynamicUser, so the real directory is under
+            # /var/lib/private and systemd re-asserts ownership on each start —
+            # which is why this is declared root-owned rather than pinned to an
+            # identity that does not exist between starts.
+            environment.persistence."/persist".directories = [
+              {
+                directory = "/var/lib/private/wyoming";
+                user      = "root";
+                group     = "root";
+                mode      = "0700";
+              }
+            ];
+          }
+
+          (mkBridges {
+            inherit pkgs;
+            unit       = "wyoming-stt-bridge";
+            what       = "wyoming-faster-whisper";
+            targetPort = settings.stt.port;
+            bridges    = lib.optionals settings.stt.enable settings.exposeOn;
+            extraAfter = [ "wyoming-faster-whisper-assist.service" ];
+          })
+
+          (mkBridges {
+            inherit pkgs;
+            unit       = "wyoming-tts-bridge";
+            what       = "wyoming-piper";
+            targetPort = settings.tts.port;
+            bridges    = lib.optionals settings.tts.enable settings.exposeOn;
+            extraAfter = [ "wyoming-piper-assist.service" ];
+          })
+        ];
     };
   };
 
@@ -2900,7 +3412,43 @@
           oidcGen = config.clan.core.vars.generators.authelia-oidc-openwebui;
           secretsDir = "/run/open-webui-secrets";
           vethName = "vb-openwebui";
-          aiVeth   = "ai0";
+          # ── THIS NAME IS HOST-GLOBAL, AND IT WAS `ai0` UNTIL M29 ──────────
+          #
+          # `extraVeths.<name>` renders to nspawn's `--network-veth-extra=<name>`
+          # with a SINGLE name, which nspawn uses for BOTH ends — so the name
+          # appears on the host as well as in the container, and the host has
+          # one flat interface namespace.  monitoring.nix:182-184 already wrote
+          # that down for `mon0`; what nobody drew from it is that the name must
+          # therefore be UNIQUE ACROSS EVERY CONTAINER ON THE MACHINE.
+          #
+          # M27 gave karakeep `extraVeths.ai0` as well, and from its deploy on
+          # 2026-09-19 THIS CONTAINER HAD NO SECOND LEG AT ALL.  Measured on
+          # ernst 2026-09-24, sixteen days into the same boot:
+          #
+          #   openwebui: ip -6 -br addr  ->  lo, eth0.  No ai0.
+          #   karakeep : ai0@if126  fdca:fe92::2/128
+          #   host     : exactly one ai0, peered into karakeep
+          #   openwebui -> [fdca:fe91::1]:11434  ->  curl (7), could not connect
+          #   karakeep  -> [fdca:fe92::1]:11434  ->  200          (the control)
+          #
+          # NOTHING REPORTED IT, and the reason is worth keeping: the host end
+          # binds regardless.  `ss -ltn` shows [fdca:fe91::1]:11434 LISTENing,
+          # llama-bridge-webui.socket and .service are both active/running, and
+          # the only symptom is "No models available" in the chat UI — three
+          # layers from the cause, which is the exact failure the `exposeOn`
+          # note above claims this mechanism was built to prevent.  It was
+          # prevented for the half that lives in this file and not for the half
+          # that lives in nspawn's argv.
+          #
+          # There is a second edge on the same fact: nixos-containers.nix:245
+          # runs `ip link del dev <name>` on container STOP, so stopping this
+          # container would have taken karakeep's leg down with it.
+          #
+          # The names now carry the ULA index they belong to — fe91 -> ai1,
+          # fe92 -> ai2, fe93 -> ai3 — so a collision requires typing the same
+          # number twice, and machines/ernst/networking.nix asserts that no two
+          # containers claim one name.
+          aiVeth   = "ai1";
           aiHost   = settings.inferenceAddress;
           aiCont   = "fdca:fe91::2";
           swapUrl  = "http://[${aiHost}]:11434";

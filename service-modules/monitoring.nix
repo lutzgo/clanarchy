@@ -1349,10 +1349,18 @@ in
         enable = lib.mkEnableOption ''
           scraping llama-server's metrics over mon0
 
-          Requires `metricsProxy.enable` on the same machine's
-          @clanarchy/local-ai `inference` role, with `metricsProxy.address` set
-          to this module's monHostAddr (fdca:fe90::1) — llama-server itself
-          binds loopback and a container cannot reach that
+          Requires an `exposeOn` entry on the same machine's @clanarchy/local-ai
+          `inference` role whose `address` is this module's monHostAddr
+          (fdca:fe90::1) and whose `allowedSource` is this container's end —
+          llama-swap binds loopback and a container cannot reach that.
+
+          The bespoke `metricsProxy.{enable,address}` pair this text used to
+          name is gone; `exposeOn` is one list for every consumer. And note
+          that an entry here is only THREE of the four required parts: the
+          fourth is the veth itself, `extraVeths.mon0` on this container, whose
+          name is host-global. M29 found that a name collision silently removes
+          a container's leg while every indicator on the host still reads
+          healthy; machines/ernst/networking.nix asserts uniqueness now
         '';
 
         # THERE IS NO `model` OPTION, and its absence is the point.
@@ -2406,7 +2414,8 @@ in
                 # The address is monHostAddr, not a configured one: the stack is
                 # on ernst itself and binds loopback, so the mon0 proxy on the
                 # host end of this container's own veth is how it is reached.
-                # See metricsProxy in service-modules/local-ai.nix.
+                # See `exposeOn` in service-modules/local-ai.nix (the option was
+                # called metricsProxy when this comment was written).
                 ++ lib.optional settings.localAi.enable {
                   job_name = "llama";
                   static_configs = [ {

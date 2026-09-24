@@ -191,12 +191,20 @@ let
   # ── The inference leg ─────────────────────────────────────────────────────
   #
   # Declared as a peer in clan.nix's `@clanarchy/local-ai` instance
-  # (`roles.ollama.…exposeOn`), which is what puts a socket on the host end and
+  # (`roles.inference.…exposeOn` — this note said `roles.ollama` and that role
+  # is the legacy miralda-only one), which is what puts a socket on the host end and
   # one accept rule in ernst's own firewall.  ALL THREE PARTS ARE REQUIRED and
   # each fails silently on its own — see the long note on that option in
   # service-modules/local-ai.nix.  This file supplies the third: the consumer
   # pointed at the address rather than at localhost.
-  aiVeth = "ai0";
+  #
+  # RENAMED FROM `ai0` BY M29, and this container is why it had to be.  The
+  # name is host-global (nspawn's --network-veth-extra uses one name for both
+  # ends), Open WebUI had already claimed `ai0`, and from this milestone's
+  # deploy Open WebUI silently lost its leg — see the long note at the `aiVeth`
+  # binding in service-modules/local-ai.nix for the measurement.  The number
+  # now tracks the ULA: fe92 -> ai2.
+  aiVeth = "ai2";
   aiHost = "fdca:fe92::1";
   aiCont = "fdca:fe92::2";
   swapUrl = "http://[${aiHost}]:11434";

@@ -410,8 +410,17 @@
             # M6's mon0. Prometheus scrapes llama-swap's /metrics here — the
             # target M13 declined to add because ollama served none.
             { name = "monitoring"; address = "fdca:fe90::1"; allowedSource = "fdca:fe90::2"; }
-            # ai0, one /64 along so the two links cannot be confused in a
+            # ai1, one /64 along so the two links cannot be confused in a
             # routing table. Carries Open WebUI's chat AND its STT.
+            #
+            # THIS ENTRY WAS CORRECT AND THE LEG WAS NOT.  From M27's deploy on
+            # 2026-09-19 until M29 measured it on 2026-09-24, the Open WebUI
+            # container had no second interface at all: karakeep below asked for
+            # the same veth NAME (`ai0`), the name is host-global, and only one
+            # container can hold it.  Nothing reported it — the host end binds
+            # whether or not the address exists anywhere, so every indicator
+            # here and on the host said healthy.  The legs are now named for
+            # their ULA and machines/ernst/networking.nix asserts uniqueness.
             { name = "webui";      address = "fdca:fe91::1"; allowedSource = "fdca:fe91::2"; }
             # M27's karakeep container, one /64 further along again.  Auto-
             # tagging and summarisation of every saved page.
@@ -565,6 +574,56 @@
           # English package names in it, and pinning the language gets the
           # second half wrong.
           language = "auto";
+        };
+
+        # ── ernst: the household agent (M29) ────────────────────────────
+        #
+        # mneme sits between Home Assistant and llama-swap.  It exists because
+        # Home Assistant 2026.5.4 cannot be pointed at a local model: the
+        # native `llama_cpp` integration arrived in 2026.8, and this release's
+        # `openai_conversation` has no base-URL option at all.  Its `ollama`
+        # integration CAN be pointed anywhere and is fully wired to the Assist
+        # LLM API, so mneme presents that protocol and translates.  The whole
+        # argument, and the three alternatives that were rejected, are in
+        # service-modules/local-ai.nix's roles.agent header.
+        #
+        # IT TAKES NOTHING FROM THE REGISTRIES.  Host service, loopback
+        # upstream, one point-to-point peer: no MAC, no address, no uid, no
+        # hostname, no Traefik router, no ledger row.  Sequence 16 /
+        # 10.0.90.30 / uid 3039 all stay free, and machines/ernst/networking.nix
+        # says so where someone allocating the next number will read it.
+        roles.agent.machines.ernst.settings = {
+          # THE RESIDENT MODEL, for the reason karakeep names it too: the GPU
+          # group is exclusive, so any other text model would evict the coder
+          # model every time somebody speaks to the house — 21 GiB off zdata,
+          # each way, per utterance.  This costs nothing and loads nothing.
+          #
+          # Whether it is the RIGHT model for a household assistant is a
+          # separate question with a separate answer: see docs/roadmap.md §M29
+          # on Qwen3.6, which is a measurement this milestone deliberately does
+          # not make.
+          model = "qwen3-coder-30b";
+
+          exposeOn = [
+            # ai3, one /64 beyond karakeep's.  The hub's conversation agent.
+            { name = "hass"; address = "fdca:fe93::1"; allowedSource = "fdca:fe93::2"; }
+          ];
+        };
+
+        # ── ernst: voice for Assist (M29) ───────────────────────────────
+        #
+        # Wyoming, not OpenAI, and that is what unblocked it.  local-ai.md
+        # recorded "nothing in nixpkgs serves an OpenAI-shaped
+        # /v1/audio/speech … revisit if a packaged Kokoro or Piper HTTP server
+        # appears" — true, and the wrong shelf: Home Assistant speaks Wyoming
+        # for speech, and 26.05 ships wyoming-piper and wyoming-faster-whisper.
+        #
+        # SAME LEG AS THE AGENT.  One veth carries the conversation agent, STT
+        # and TTS; three services, three loopback ports, one /128 pair.
+        roles.voice.machines.ernst.settings = {
+          exposeOn = [
+            { name = "hass"; address = "fdca:fe93::1"; allowedSource = "fdca:fe93::2"; }
+          ];
         };
 
         # ── ernst: image generation ─────────────────────────────────────

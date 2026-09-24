@@ -29,6 +29,8 @@ Everything ships in nixpkgs 26.05 — **no external flake input**.
 | `speech` | Whisper STT, registered as a llama-swap backend |
 | `imagegen` | ComfyUI, spawned by llama-swap, exclusive with the LLM on the GPU. Settings only — it produces no units, exactly like `speech` |
 | `webui` | Open WebUI in an nspawn container on VLAN 90 |
+| `agent` | **mneme** (M29) — the household agent daemon in front of llama-swap. Speaks the Ollama wire protocol to Home Assistant and OpenAI to everything else |
+| `voice` | **M29** — `wyoming-faster-whisper` and `wyoming-piper` for Home Assistant's Assist pipeline |
 | `opencode` | `pkgs.opencode` + `~/.config/opencode/config.json`, local or over an SSH forward |
 | `ollama` | **Legacy. miralda only.** See below |
 
@@ -326,12 +328,135 @@ run a workload that never touches the card, buying a ~15 s reload for nothing.
 If the packaging gap closes, Whisper becomes a real GPU consumer and must then
 be added to the group.
 
-### TTS is the browser's
+### TTS is the browser's — for Open WebUI, and only for Open WebUI
 
 Nothing in nixpkgs serves an OpenAI-shaped `/v1/audio/speech`. Open WebUI's Web
 Speech API path costs no VRAM on a card this milestone is already arbitrating,
 and needs no additional service. Recorded as a decision, not an oversight —
 revisit if a packaged Kokoro or Piper HTTP server appears.
+
+**M29 closed this, and the premise was the thing that was wrong.** The search
+was for an OpenAI-shaped speech endpoint; Home Assistant does not want one. It
+speaks **Wyoming**, and nixpkgs 26.05 has had `services.wyoming.piper` (2.2.2),
+`services.wyoming.faster-whisper` (3.1.0) and `services.wyoming.openwakeword`
+(2.1.0) all along. See `roles.voice` below. Open WebUI's own TTS is unchanged
+and still the browser's.
+
+## Voice for Home Assistant — `roles.voice` (M29)
+
+Two servers, both on the CPU, both on ernst's loopback, both reached by the
+`hass` container over the one `ai3` leg:
+
+| Server | Port | What |
+|--------|------|------|
+| `wyoming-faster-whisper` | 10300 | STT. `turbo` (large-v3-turbo), `de`, beam size 1 |
+| `wyoming-piper` | 10200 | TTS. `de_DE-thorsten-medium` |
+
+**There are now two speech-to-text engines on this machine, and that is
+deliberate.**
+
+| | engine | weights | protocol | client |
+|--|--------|---------|----------|--------|
+| `roles.speech` | whisper.cpp | ggml `.bin` | OpenAI `/v1/audio/transcriptions` | Open WebUI |
+| `roles.voice` | faster-whisper | CTranslate2 dir | Wyoming | Assist |
+
+Neither can serve the other's protocol and neither can load the other's
+weights. Collapsing them means writing a Wyoming-to-OpenAI shim to save ~1.6 GiB
+on a host with 92 TB. Both are CPU-only, so neither costs VRAM and they do not
+contend for the card.
+
+**`language` is pinned here and `auto` there, and that is not an
+inconsistency.** `roles.speech` transcribes dictated prose, where pinning the
+language mangles English package names in German sentences. Assist transcribes
+two-second commands, where `auto` spends its detection budget on too little
+audio — and Home Assistant's pipeline carries its own language, which it is
+confusing to have disagree.
+
+**The weights are pulled at runtime, breaking this module's own rule.** Both
+nixpkgs units take a model *directory* whose layout is the library's, not a
+file — so `roles.models` cannot express them — and both are `DynamicUser` with a
+`StateDirectory`, so pointing them at the hash-verified store would mean giving
+a systemd-allocated identity access to it, the shape M27 refused for
+Meilisearch. What makes it acceptable here and not for a GGUF: these artifacts
+are **re-acquirable and carry no state**. `/var/lib/private/wyoming` is
+persisted only so that a reboot is not a 1.6 GiB download.
+
+**No wake word on the server, and there should not be.** The Home Assistant
+Voice Preview Edition runs microWakeWord on the device and streams only after
+it fires. `services.wyoming.openwakeword` would be a second implementation of a
+job the satellite already does better, on audio it would have to stream
+continuously.
+
+## The conversation agent — `roles.agent` / mneme (M29)
+
+```
+hass container ──ai3──> [fdca:fe93::1]:11435  mneme ──> 127.0.0.1:11434  llama-swap
+   `ollama` integration                          │
+   Assist tools pass straight through            └──> the constitution, injected
+```
+
+**Why there is a daemon in front of llama-swap at all.** Home Assistant on ernst
+is 2026.5.4 and cannot be pointed at a local model. Read out of nixpkgs' own
+component list rather than guessed:
+
+| channel | Home Assistant | conversation platforms that take a local URL |
+|---------|----------------|-----------------------------------------------|
+| 26.05 (ernst) | 2026.5.4 | `ollama` only |
+| unstable | 2026.8.1 | `ollama`, **`llama_cpp`** |
+
+The native `llama_cpp` integration — "a local llama.cpp server, or any
+OpenAI-compatible endpoint" — arrived in 2026.8. And `openai_conversation` at
+2026.5.4 defines no base-URL constant at all: it can only reach
+`api.openai.com`.
+
+What 2026.5.4 *does* have is `ollama`, and it is not a second-class path.
+`homeassistant/components/ollama/entity.py` builds `tools` from
+`chat_log.llm_api.tools`, streams, and loops until `unresponded_tool_results` is
+empty; its config flow exposes `CONF_LLM_HASS_API` — "Control Home Assistant".
+
+So mneme presents the Ollama wire protocol northward. That is a translation
+layer, not an architecture: the daemon has to sit in the request path anyway,
+because that is where the constitution is injected (and, from M29b, the memory
+wiki's index), so the protocol it presents is free. It presents **both** —
+`/api/chat` for Home Assistant and `/v1/chat/completions` for Open WebUI,
+opencode and nvf — and the migration when this hub reaches 2026.8 is deleting
+one integration in the browser and adding another against the same daemon.
+
+**The translation is not symmetric**, and that is the only interesting part of
+the code. Ollama has no `tool_call_id` anywhere: an assistant message carries
+`tool_calls[].function.{name,arguments}` with arguments as an object, and a tool
+result is a bare `{"role": "tool", "content": …}` tied to nothing. OpenAI
+requires ids on both. mneme synthesises them **by position**, which is sound
+only because Home Assistant emits tool results in call order immediately after
+the turn that requested them. `service-modules/pkgs/mneme/test_mneme.py` pins
+that and eleven other behaviours **at build time**, because a mis-paired id
+produces an assistant that quietly does not act on the house rather than
+anything that fails.
+
+**It names the resident model.** `qwen3-coder-30b`, for the reason
+`containers/karakeep.nix` gives: the GPU group is exclusive, so any other text
+model evicts the coder model every time somebody speaks to the house.
+
+**`keep_alive` and `options.num_ctx` are dropped, not forwarded.** llama-swap
+owns residency through its own `ttl`, and honouring a client's pin would let the
+hub evict the coding agent by accident. `num_ctx` has nowhere to go at all: the
+window is fixed when llama-swap spawns llama-server, from `contextLength` in
+`roles.models` — SN1 answered at the mechanism. Home Assistant's default of 8192
+is therefore cosmetic.
+
+**It takes no address, no uid and no ledger row.** A host service beside
+llama-swap with a loopback upstream and one point-to-point peer.
+
+### Three paths not taken
+
+- **`pkgs-unstable.home-assistant`** — a three-release jump with a one-way
+  recorder migration, on the machine that runs the house, to avoid a contained
+  protocol shim with build-time tests.
+- **A HACS-downloaded conversation integration** — M24b states the cost out
+  loud: what HACS downloads is the one thing on ernst not in this repository.
+  The model path is the wrong thing to move there.
+- **Vendoring core's `llama_cpp` as a custom component** — it rides `ChatLog`
+  internals that moved between 2026.5 and 2026.8.
 
 ## Image generation — built, not pinned (M21)
 
@@ -766,11 +891,27 @@ local-ai = {
 
   roles.inference.machines.ernst.settings = {
     remoteClients.enable = true;
-    metricsProxy.enable  = true;
-    metricsProxy.address = "fdca:fe90::1";
+
+    # One list, one generator. The bespoke `metricsProxy.{enable,address}`
+    # pair this example used to show has not existed since the bridges were
+    # unified — that is the "two hand-written blocks and the second one was
+    # never written" note in the module.
+    exposeOn = [
+      { name = "monitoring"; address = "fdca:fe90::1"; allowedSource = "fdca:fe90::2"; }
+      { name = "webui";      address = "fdca:fe91::1"; allowedSource = "fdca:fe91::2"; }
+      { name = "karakeep";   address = "fdca:fe92::1"; allowedSource = "fdca:fe92::2"; }
+    ];
   };
   roles.models.machines.ernst.settings.models = { /* see above */ };
   roles.speech.machines.ernst.settings.language = "auto";
+
+  # M29 — the household agent and Assist's voice, both on one ai3 leg.
+  roles.agent.machines.ernst.settings = {
+    model    = "qwen3-coder-30b";
+    exposeOn = [ { name = "hass"; address = "fdca:fe93::1"; allowedSource = "fdca:fe93::2"; } ];
+  };
+  roles.voice.machines.ernst.settings.exposeOn =
+    [ { name = "hass"; address = "fdca:fe93::1"; allowedSource = "fdca:fe93::2"; } ];
   roles.webui.machines.ernst.settings = {
     mac = "02:00:00:90:00:0f";
     uid = 3034;
