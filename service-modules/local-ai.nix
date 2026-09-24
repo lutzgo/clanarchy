@@ -1949,18 +1949,72 @@ in
               zeroconf.enable = false;
             };
 
+            # ── STATIC USERS, NOT DynamicUser — AND THIS WAS PAID FOR ───────
+            #
+            # Both nixpkgs modules ship `DynamicUser = true` with a
+            # `StateDirectory`, which puts their state under /var/lib/private.
+            # M29's first deploy failed there, at every start of both units:
+            #
+            #   Directory "/var/lib/private" already exists, but has mode 0755
+            #   that is too permissive (0700 was requested), refusing.
+            #   status=238/STATE_DIRECTORY
+            #
+            # The proximate cause is fixed fleet-wide in modules/rootfs.nix —
+            # impermanence creates the parents of a persist entry with the
+            # default 0755, and systemd demands 0700 for that path.  This
+            # override is the SEPARATE half, and it is the one this module
+            # already had an opinion about: the `user` option on roles.inference
+            # says DynamicUser + impermanence is a trap "written in blood in the
+            # ollama era of this file", and these two units are the same shape.
+            #
+            # The second cost is the one the error message never mentions.  A
+            # dynamic uid is re-allocated per boot, so systemd re-chowns the
+            # state directory to match — and that directory is a 1.6 GiB model
+            # tree on the persist pool.  A static owner makes the ownership a
+            # fact instead of a per-boot reconciliation.
+            #
+            # No uid is pinned, and that is deliberate: this lands on zroot, not
+            # on zdata, so the numbering rules in machines/ernst/networking.nix
+            # do not apply.  /var/lib/nixos is persisted, so the allocation is
+            # stable across boots anyway.
+            users.users.wyoming-faster-whisper = lib.mkIf settings.stt.enable {
+              isSystemUser = true;
+              group        = "wyoming";
+              description  = "Wyoming speech-to-text";
+            };
+            users.users.wyoming-piper = lib.mkIf settings.tts.enable {
+              isSystemUser = true;
+              group        = "wyoming";
+              description  = "Wyoming text-to-speech";
+            };
+            users.groups.wyoming = { };
+
+            systemd.services.wyoming-faster-whisper-assist =
+              lib.mkIf settings.stt.enable {
+                serviceConfig = {
+                  DynamicUser = lib.mkForce false;
+                  Group       = "wyoming";
+                };
+              };
+            systemd.services.wyoming-piper-assist =
+              lib.mkIf settings.tts.enable {
+                serviceConfig = {
+                  DynamicUser = lib.mkForce false;
+                  Group       = "wyoming";
+                };
+              };
+
             # See the role header: re-acquirable, not hash-verified, and worth
-            # persisting only so a reboot is not a 1.6 GiB download.  Both
-            # units are DynamicUser, so the real directory is under
-            # /var/lib/private and systemd re-asserts ownership on each start —
-            # which is why this is declared root-owned rather than pinned to an
-            # identity that does not exist between starts.
+            # persisting only so a reboot is not a 1.6 GiB download.  Now that
+            # neither unit is DynamicUser this is the plain /var/lib/wyoming
+            # rather than the /var/lib/private indirection; systemd creates the
+            # per-service subdirectory under it and owns it to the right user.
             environment.persistence."/persist".directories = [
               {
-                directory = "/var/lib/private/wyoming";
+                directory = "/var/lib/wyoming";
                 user      = "root";
                 group     = "root";
-                mode      = "0700";
+                mode      = "0755";
               }
             ];
           }

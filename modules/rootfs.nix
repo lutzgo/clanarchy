@@ -72,5 +72,39 @@
       ];
       files = [ "/etc/machine-id" ];
     };
+
+    # ── /var/lib/private MUST BE 0700, AND IMPERMANENCE MAKES IT 0755 ────────
+    #
+    # systemd puts the state of every `DynamicUser` unit that declares a
+    # `StateDirectory` under /var/lib/private, and it REFUSES TO START such a
+    # unit if that directory is more permissive than 0700:
+    #
+    #   Directory "/var/lib/private" already exists, but has mode 0755 that is
+    #   too permissive (0700 was requested), refusing.
+    #   Failed at step STATE_DIRECTORY spawning …: File exists
+    #   status=238/STATE_DIRECTORY
+    #
+    # Upstream systemd creates it 0700 itself, so this never comes up on an
+    # ordinary machine.  On an impermanent one it does: persisting anything
+    # under that path makes IMPERMANENCE create the parent, and it creates
+    # parents with the default 0755.  The `mode` given on a persist entry
+    # applies to the entry itself, not to the directories made to reach it.
+    #
+    # MEASURED ON ernst 2026-09-24, on M29's deploy: /var/lib/private came out
+    # drwxr-xr-x with a correct drwx------ bind mount inside it, and both
+    # Wyoming voice servers failed at every start.
+    #
+    # It is fleet-wide rather than in the module that tripped over it because
+    # nothing about it is specific to that service: ANY DynamicUser unit with a
+    # StateDirectory on ANY impermanent machine here hits it, and the symptom
+    # names systemd rather than impermanence.  tmpfiles runs before
+    # multi-user.target, and `d` adjusts an existing directory's mode without
+    # touching what is mounted inside it.
+    #
+    # See service-modules/local-ai.nix's `user` option for this family's other
+    # member — the one where the dynamic uid cannot write to a persisted
+    # root:root 0700 directory. That one is avoided by not using DynamicUser at
+    # all; this one is a property of the path itself and has to be fixed here.
+    systemd.tmpfiles.rules = [ "d /var/lib/private 0700 root root -" ];
   };
 }
