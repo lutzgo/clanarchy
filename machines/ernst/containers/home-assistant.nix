@@ -278,6 +278,34 @@ let
   # Home Assistant's own listener.  Plain HTTP; TLS is Traefik's.
   hassPort = 8123;
 
+  # ── Leg 3: the AI link (M29) ──────────────────────────────────────────────
+  #
+  # A point-to-point /128 pair to the host, on no VLAN, carrying exactly three
+  # things: the conversation agent, speech-to-text and text-to-speech.  Same
+  # mechanism as containers/karakeep.nix's leg to llama-swap and declared the
+  # same way — `exposeOn` entries in clan.nix put a socket on the host end and
+  # one accept rule in ernst's firewall; this file supplies the third part, the
+  # consumer pointed at the address rather than at localhost.
+  #
+  # ── THE INTERFACE NAME IS HOST-GLOBAL, AND THAT IS WHY IT IS `ai3` ────────
+  #
+  # `extraVeths.<name>` becomes nspawn's `--network-veth-extra=<name>`, which
+  # with a single name is used for BOTH ends — so the name lands in ernst's one
+  # flat interface namespace and two containers cannot share it.  Open WebUI
+  # and karakeep both asked for `ai0`; Open WebUI silently got no leg at all
+  # from M27's deploy until M29 found it.  The number now tracks the ULA
+  # (fe91 -> ai1, fe92 -> ai2, fe93 -> ai3) and
+  # machines/ernst/networking.nix asserts that no two containers collide.
+  #
+  # NOT ON THE IoT LEG AND NOT ON VLAN 90.  Either would work and both would be
+  # worse: VLAN 90 would make the inference endpoint reachable from every other
+  # service container, and VLAN 20 would put it on a segment full of devices
+  # this house does not control.  The whole point of a /128 pair is that its
+  # only peer is one host.
+  aiVeth = "ai3";
+  aiHost = "fdca:fe93::1";
+  aiCont = "fdca:fe93::2";
+
   # State: the configuration tree, the .storage blobs that hold accounts and
   # integration config, and the recorder's SQLite database.
   #
@@ -574,6 +602,15 @@ in
     # Both are set by the container's own networkd, below.
     extraVeths.iot0 = { };
 
+    # Leg 3 — the AI link (M29).  UNLIKE iot0 this one DOES carry its addresses
+    # here: nixos-containers adds the matching /128 host route on both sides
+    # from these, and there is no bridge, no VLAN and no MAC to race over.
+    # containers/karakeep.nix does exactly this and is the working example.
+    extraVeths.${aiVeth} = {
+      hostAddress6  = aiHost;
+      localAddress6 = aiCont;
+    };
+
     # ── THE eBPF DEVICE FILTER: GROUP FORM, NOT PATH FORM ─────────────────
     #
     # NixOS passes these straight through to systemd's DeviceAllow=
@@ -646,7 +683,62 @@ in
       # set Home Assistant itself is built against or the module would install
       # two incompatible copies, and buildHomeAssistantComponent's
       # manifest-requirements check runs under that set's interpreter.
-      hacs = pkgs.home-assistant.python3Packages.callPackage ./pkgs/hacs.nix { };
+      # ── M29: bleak-esphome PINNED TO THE VERSION THE MANIFEST ASKS FOR ────
+      #
+      # The Home Assistant Voice Preview Edition is an ESPHome device, so the
+      # hub needs the `esphome` integration (added to extraComponents below).
+      # Its manifest at this release pins its requirements exactly:
+      #
+      #   core 2026.5.4  esphome/manifest.json
+      #     aioesphomeapi==44.24.1        nixpkgs 26.05: 44.24.1   match
+      #     esphome-dashboard-api==1.3.0  nixpkgs 26.05: 1.3.0     match
+      #     bleak-esphome==3.7.3          nixpkgs 26.05: 3.7.5     MISMATCH
+      #
+      # NOTHING WOULD HAVE REPORTED THE MISMATCH.  nixpkgs builds Home Assistant
+      # with `--skip-pip`, and requirement checking sits behind that same flag
+      # (homeassistant/requirements.py:167) — the reason ./hacs-deps-check.py
+      # exists at all.  That checker covers DOWNLOADED components and would not
+      # have looked at this one, because `esphome` is built in.  So the version
+      # skew would have surfaced, if at all, as an ImportError or a subtly wrong
+      # BLE proxy from inside aioesphomeapi.
+      #
+      # `packageOverrides` is home-assistant's own supported hook
+      # (pkgs/servers/home-assistant/default.nix:247), applied to the scope the
+      # component's dependencies are resolved from, so this reaches the right
+      # copy.  It rebuilds bleak-esphome and nothing else: nothing in this
+      # closure depends on it, it depends on habluetooth rather than the
+      # reverse.
+      #
+      # THE HASH WAS VERIFIED TWICE before it was written down, which is this
+      # repository's rule for anything fetched (see clan.nix's SDXL entry for
+      # why): `nix flake prefetch github:bluetooth-devices/bleak-esphome/v3.7.3`
+      # and a `fetchFromGitHub` build against lib.fakeHash returned the same
+      # value, at rev a6ccd5a657a997cd0551e4aa616ae867c3c46a43.
+      hassPackage = pkgs.home-assistant.override {
+        packageOverrides = _final: prev: {
+          bleak-esphome = prev.bleak-esphome.overridePythonAttrs (old: rec {
+            version = "3.7.3";
+            src = pkgs.fetchFromGitHub {
+              owner = "bluetooth-devices";
+              repo  = "bleak-esphome";
+              tag   = "v${version}";
+              hash  = "sha256-zEa8l3ob05BoT/GHhwClzOreZyC3uPaG05VIJV7ZZ00=";
+            };
+            # The package's own pytest suite is left ON and PASSES at this
+            # version — built and checked on ernst 2026-09-24 before this was
+            # written down, rather than disabled pre-emptively the way a
+            # downgrade usually is.
+          });
+        };
+      };
+
+      # ── HACS, AGAINST THE SAME PYTHON SET ───────────────────────────────
+      #
+      # `hassPackage.python3Packages`, NOT `pkgs.home-assistant.python3Packages`,
+      # and the difference is load-bearing now that the line above overrides the
+      # scope: the two would be different package sets, and the comment below
+      # about installing two incompatible copies would stop being hypothetical.
+      hacs = hassPackage.python3Packages.callPackage ./pkgs/hacs.nix { };
 
       # ── THE REQUIREMENTS CHECKER ────────────────────────────────────────
       #
@@ -829,6 +921,24 @@ in
         };
       };
 
+      # ai3 — the point-to-point link to the host (M29).
+      #
+      # No DHCP, no RA, no gateway: a /128 on each end and an explicit link
+      # route to the peer.  nixos-containers already applied both addresses
+      # from `extraVeths` above; this unit is what keeps networkd from
+      # reconsidering them and what installs the route, exactly as
+      # containers/karakeep.nix's `20-ai2` does.
+      systemd.network.networks."20-${aiVeth}" = {
+        matchConfig.Name = aiVeth;
+        address = [ "${aiCont}/128" ];
+        routes  = [ { Destination = "${aiHost}/128"; Scope = "link"; } ];
+        networkConfig.IPv6AcceptRA = false;
+        # A veth has no carrier until BOTH ends exist, and the host end is
+        # created by the same nspawn invocation that starts this container.
+        # "routable" here would hang wait-online on the host's own timing.
+        linkConfig.RequiredForOnline = "no";
+      };
+
       # Same 20 s cap as every sibling: a DHCP failure must leave a RUNNING
       # container with one failed unit, not a host-side restart loop.
       systemd.network.wait-online.timeout = 20;
@@ -892,6 +1002,13 @@ in
         enable = true;
         inherit configDir;
 
+        # The bleak-esphome pin (M29) — see the long note at `hassPackage`.
+        # The module wraps THIS in a further local override that folds in
+        # extraComponents and the custom components, so what actually runs is a
+        # derivative of it; that is exactly why ./hacs-deps-check.py reads its
+        # PYTHONPATH off the SERVICE and not off this option.
+        package = hassPackage;
+
         # `zha` is what puts the ZBT-2 to work, and it is also what makes the
         # nixpkgs module do the in-container half of the device plumbing for
         # us: it is in that module's `componentsUsingSerialDevices` list, so
@@ -916,6 +1033,59 @@ in
           "met"           # weather, met.no: no API key, no account
           "radio_browser" # offered by the onboarding wizard; absent = a 404
           "backup"        # HA's own backup UI, onto the state tree
+
+          # ── M29: the local AI path ──────────────────────────────────────
+          #
+          # `ollama` IS THE CONVERSATION AGENT, and it is not talking to
+          # Ollama.  This release has no `llama_cpp` integration — that landed
+          # in 2026.8, and ernst is on 26.05's 2026.5.4 — and
+          # `openai_conversation` here has no base-URL option, so it can only
+          # reach api.openai.com.  `ollama` is the only conversation platform
+          # in this release that can be pointed at a local endpoint, so
+          # service-modules/local-ai.nix's mneme daemon presents the Ollama
+          # wire protocol on [fdca:fe93::1]:11435 and translates.  The full
+          # argument is in that module's roles.agent header.
+          #
+          # When this hub's nixpkgs reaches 2026.8, `llama_cpp` replaces this
+          # line and the browser-side change is deleting one integration and
+          # adding another against the same daemon.
+          "ollama"
+
+          # Wyoming — the protocol Assist speaks to speech services.  Both
+          # servers run on the host (roles.voice) and are reached over the same
+          # ai3 leg.  `default_config` does NOT pull this in.
+          "wyoming"
+
+          # The pipeline itself and its two halves.  `default_config` brings
+          # `conversation` and `assist_pipeline`, but `stt` and `tts` are only
+          # loaded as dependencies of a provider — and they have to be
+          # offerable before the Voice assistants UI can build a pipeline, so
+          # all four are named rather than inferred.
+          "conversation"
+          "assist_pipeline"
+          "stt"
+          "tts"
+
+          # ── The Voice Preview Edition is an ESPHome device ───────────────
+          #
+          # It is not a Wyoming satellite and does not need one: the hardware
+          # runs microWakeWord ON DEVICE and speaks the ESPHome native API to
+          # this hub, which then drives the pipeline built from the Wyoming
+          # STT/TTS servers on the host.  So there is no
+          # `services.wyoming.openwakeword` anywhere in this fleet and there
+          # should not be — wake-word detection on the server would be a second
+          # implementation of a job the satellite already does better, on audio
+          # it would have to stream continuously.
+          #
+          # THIS IS THE ONE COMPONENT HERE WITH A PINNED DEPENDENCY.  See the
+          # `hassPackage` note above: the manifest wants bleak-esphome==3.7.3
+          # and nixpkgs 26.05 ships 3.7.5.
+          #
+          # It also depends on `bluetooth`, which it pulls in itself — that is
+          # the BLE-proxy half of the device, and it is why this integration
+          # carries dbus-fast, habluetooth and bluetooth-auto-recovery.
+          # ernst's own Bluetooth adapter is not involved and is not required.
+          "esphome"
         ];
 
         # ── HACS ──────────────────────────────────────────────────────────

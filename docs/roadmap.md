@@ -73,6 +73,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M26 — the service index | **DEPLOYED AND FULLY VERIFIED 2026-09-17, same day. It came up on the first try. TWO DEFECTS FOUND BY DEPLOYING, and the first one REMOVED a firewall rule rather than adding one** | [#197](https://github.com/lutzgo/clanarchy/pull/197) | gethomepage at `home.goclan.org`. **The structural decision is that it runs INSIDE `containers.arr`**, co-defining it the way `crowdsec.nix` co-defines `containers.traefik` — because `arr-api-keys.service` stages the six *arr keys it renders, and those keys are EXTRACTED from each service's own config rather than chosen, so a copy in a second namespace is a second source of truth that goes stale when somebody rotates one in a UI. Consequence: **no MAC, no address, no uid** — all three NEXT FREE markers unchanged, and `machines/ernst/networking.nix` records the non-consumption. `protectedHosts` + `wanExposed`, so it is the first name on the internet since M19's `chat` that is **not** an appApiHosts exemption; ledger row L16. Widens exactly four container firewalls (`dashboardAddr`); Jellyfin needed none, having admitted `.13` since M13. **It is not Grafana and must not become it** — no history, no alerting, nothing stored. Depends on M5, M6, M7, M13, M18. [M26](#m26-featernst-homepage) |
 | M27 — the reading stack | **DEPLOYED AND VERIFIED 2026-09-19. Every machine-checkable row of the test plan passed on the first deploy, including `karakeep-browser` — the one thing this milestone called unproven. FOUR DEFECTS FOUND BY DEPLOYING, three of them mine and two of them silent** | [#201](https://github.com/lutzgo/clanarchy/pull/201) | Miniflux + Karakeep + Floccus as one stack: news in, bookmarks and full-page archives kept, the browsers' own bookmark trees synced into the same store. **Both are nspawn** — `services.miniflux` and `services.karakeep` are first-class NixOS modules at this pin, so the podman tier does not apply. Miniflux on `02:00:00:90:00:14` → `10.0.90.28`, seq **14**, taking **NO uid** (DynamicUser; only PostgreSQL's well-known 71 lands on zdata). Karakeep on `02:00:00:90:00:15` → `10.0.90.29`, seq **15**, uid/gid **3038**, four units plus Meilisearch plus a headless chromium. **NO NEW DATASET FOR EITHER** — both write profiles are `zdata/state`'s exactly, so no `disko.nix` change and no `zfs create`; M24's call, made twice. **MEILISEARCH'S INDEX IS DELIBERATELY NOT BOUND OUT**, because the nixpkgs module runs it under DynamicUser and binding it would put a systemd-ALLOCATED id on the pool — the one thing the uid table exists to prevent. It is derived data and Karakeep rebuilds it. **IT RETIRES A SERVER THAT NEVER EXISTED**: `browsers.nix` has carried an unverified Linkwarden extension ID, a Vimium keybinding whose target was the literal string `YOUR_LINKWARDEN_INSTANCE`, and a comment doubting its own AMO listing, with no Linkwarden anywhere in this fleet. All deleted rather than finally built. **FOUR BROWSERS, FOUR DIFFERENT EXTENSION MECHANISMS**, and each is the only one that works for its browser: ungoogled-chromium ignores `ExtensionInstallForcelist` entirely (upstream #2523) so it takes External Extensions JSON; Firefox takes STORE-PINNED NUR `.xpi`s; LibreWolf takes an `ExtensionSettings` policy DEEP-MERGED into its own shipped `distribution/policies.json` — verified on the built package, its `"*"` rule and uBlock entry survive — because an `/etc` policy file would REPLACE that file and `nixExtensions` would block every manually installed add-on; google-chrome takes a managed policy under `/etc/opt/chrome`, since home-manager asserts against `programs.chromium.extensions` for it on Linux. **KARAKEEP AUTO-TAGS AGAINST THE MODEL ALREADY RESIDENT.** ernst has had no Ollama since M19 — llama-swap replaced it — so this is `OPENAI_BASE_URL` over a third `exposeOn` peer (`fdca:fe92::`), and `INFERENCE_TEXT_MODEL` names `qwen3-coder-30b` on purpose: llama-swap's exclusive group means any other text model would EVICT the coder model on every bookmark and stall lgo's agent. The image model is the priced exception. **NEITHER HAS A LOCAL PASSWORD** (`DISABLE_LOCAL_AUTH`, `DISABLE_PASSWORD_AUTH` + `DISABLE_SIGNUPS`) — the OPPOSITE of M24's call for Home Assistant, and for the reason that file gives: nothing in the house depends on either, so "fix Authelia" is an acceptable recovery path. Karakeep is `appApiHosts` with native OIDC INSTEAD OF forward-auth (M23's and CWA's arrangement); Miniflux ended up in `protectedHosts` with forward-auth AND OIDC, which is Grafana's. **KARAKEEP NEEDED AUTHELIA'S ESCAPE HATCH** — a `claims_policies` block, the first top-level key beside `clients:` this staging script has ever emitted, because Karakeep reads `email` off the ID token instead of calling userinfo. Verified present in the 4.39.20 binary before being written. `require_pkce: false` and `userinfo_signed_response_alg: none` come from Authelia's own integration document for this client, which is M23's lesson applied rather than re-learned. **BOTH ARE ON THE WAN, AND MINIFLUX ONLY AFTER A CHANGE OF MIND** (ledger rows **L17**, **L18**). It shipped LAN-only on the argument that feed reading could wait for the LAN; that lasted one day. Exposing it was NOT a matter of adding it to `wanExposed`, which would have put an unauthenticated vhost on the internet — it MOVED to `protectedHosts` first, so the public path is forward-auth → 2FA. The clients its exemption was argued from (Fever, Google Reader) are protocols nobody here uses, and the cost of losing them is permanent. **MINIFLUX GETS A REAL PROMETHEUS JOB**, the first since M19: `/metrics` is a genuine OpenMetrics exposition, gated twice (the container firewall AND `METRICS_ALLOWED_NETWORKS`). **KARAKEEP GETS NONE**, stated rather than omitted — SN3. **ONE INSECURE PACKAGE PERMITTED**, `pnpm-9.15.9`, scoped INSIDE the karakeep container after the host-level grant was measured not to reach it: a `containers.<n>.config` is its own nixpkgs evaluation. Every pnpm variant in this pin carries the same seven CVEs, 10.29.2 included, and it is build-time only. Depends on M5, M6, M7, M18, M19. [M27](#m27-featernst-reading-stack) |
 | M28 — the reading pipeline | **DEPLOYED 2026-09-20 AND VERIFIED, THEN FOUND NOT TO WORK — and both statements are true.** Every structural check passed on the first deploy: loopback-only bind, negative control refused, 400/401 signature enforcement, and a hand-signed webhook proving the full path including Karakeep's URL dedup. **THEN NOTHING CAME THROUGH**, because MINIFLUX'S OWN SSRF GUARD refuses to POST to a non-public address — M23's Nextcloud `DnsPinMiddleware` finding in a second costume, in a milestone that cites it | [#204](https://github.com/lutzgo/clanarchy/pull/204) | The bridge that makes "subscribe in Miniflux, consume in Karakeep" a pipeline rather than a pair of tabs. **IT EXISTS BECAUSE M27 BUILT A READER FOR SOMEBODY WHO DID NOT WANT ONE** — the planning question "where do you want to read?" was never asked. **375 lines of Go, so NOT the podman tier** despite upstream shipping a Dockerfile, and there is no image to pin anyway (no releases, no registry package). Runs INSIDE `containers.miniflux` on `127.0.0.1:8081` because its only client is Miniflux in that same namespace: **no MAC, no address, no reservation, no veth, no firewall rule, no uid**. **MINIFLUX SURVIVES FOR EXACTLY ONE CAPABILITY** Karakeep's native RSS lacks — filtering — and the rewrite rules are the deciding half, because Karakeep dedupes on the EXACT url so `?utm_source=` makes a second bookmark. **`PORT` IS AN ADDRESS, NOT A NUMBER**, and its default `:8080` is both a collision with Miniflux and a bind on every interface. **`ADD_TO_LIST` IS FALSE ON PURPOSE**: a list makes arrivals `is:inlist`, which is what M27's Inbox smart list excludes. Depends on M27. [M28](#m28-featminiflux-karakeep-bridge) |
+| M29 — Home Assistant on the local AI tier | **BUILT 2026-09-24; not yet deployed.** It also carries an outage fix found while measuring the mechanism it extends: **Open WebUI has had no path to llama-swap since M27 deployed on 2026-09-19** | — | Assist controls the house and answers by voice, on ernst, with nothing leaving the property. **THE OBVIOUS INTEGRATION DOES NOT EXIST HERE**: ernst is on 26.05 → Home Assistant **2026.5.4**, and the native `llama_cpp` conversation integration ("any OpenAI-compatible endpoint") arrived in **2026.8** — present only in `nixpkgs-unstable` (2026.8.1), read out of `component-packages.nix` in both channels. `openai_conversation` at 2026.5.4 defines **no base-URL constant at all** and can only reach api.openai.com. What this release *does* have is `ollama`, fully wired to the Assist LLM API (`entity.py` builds `tools` from `chat_log.llm_api.tools` and loops until `unresponded_tool_results` is empty; the config flow exposes `CONF_LLM_HASS_API`). **So `mneme` speaks the Ollama wire protocol northward and OpenAI southward** — a translation layer, not an architecture, because the daemon has to sit in the request path anyway to inject the constitution, and it serves `/v1/chat/completions` from day one so nvf/opencode/Open WebUI need no second thing. Migration when this hub reaches 2026.8 is deleting one integration in a browser. **THREE PATHS REJECTED IN WRITING**: bumping the hub to unstable (a three-release jump with a one-way recorder migration, on the machine that runs the house); a HACS-downloaded conversation integration (M24b's trade — the one thing on ernst not in the repo); vendoring core's `llama_cpp` (it rides `ChatLog` internals that moved between 2026.5 and 2026.8). **VOICE CLOSED local-ai.md's OWN TTS NOTE, AND THE PREMISE WAS THE WRONG SHELF**: M19 looked for an OpenAI-shaped `/v1/audio/speech`; Assist speaks **Wyoming**, and 26.05 has shipped `services.wyoming.{piper,faster-whisper,openwakeword}` all along. **A SECOND STT ON THE MACHINE, DELIBERATELY** — whisper.cpp (ggml, OpenAI-shaped, Open WebUI) and faster-whisper (CTranslate2, Wyoming, Assist); neither can serve the other's protocol or load the other's weights, and both are CPU-only so neither costs VRAM. **NO WAKE WORD ON THE SERVER**: the Voice Preview Edition runs microWakeWord on-device, so `openwakeword` would be a second implementation of a job the satellite does better on audio it would have to stream continuously. **THE VOICE PE NEEDED A PINNED DEPENDENCY** — core 2026.5.4's `esphome/manifest.json` requires `bleak-esphome==3.7.3` and nixpkgs 26.05 ships **3.7.5**; `aioesphomeapi==44.24.1` and `esphome-dashboard-api==1.3.0` both match. Pinned through home-assistant's own `packageOverrides` hook, hash verified twice. **Nothing would have reported the skew**: `--skip-pip` means requirement checking never runs, and `hacs-deps-check.py` only looks at *downloaded* components. **IT TAKES NOTHING FROM THE REGISTRIES** — three host units beside llama-swap, loopback upstreams, one point-to-point `ai3` leg: no MAC, no address, no uid, no hostname, no Traefik router, no UDM-Pro rule, **no ledger row**. Sequence 16 / 10.0.90.30 / uid 3039 all stay free. **AND IT CARRIES AN OUTAGE FIX.** `extraVeths.<name>` becomes nspawn's `--network-veth-extra=<name>`, used for BOTH ends, so the interface name is **host-global** — M19 named Open WebUI's leg `ai0` and M27 gave karakeep the same name, and from M27's deploy Open WebUI had no second interface at all. Measured on 2026-09-24, sixteen days into one boot: `openwebui → [fdca:fe91::1]:11434` = curl (7), `karakeep → [fdca:fe92::1]:11434` = 200 (the control), one `ai0` on the host peered into karakeep, and Open WebUI's last `get_all_models()` five days earlier — the day before M27 deployed. **IT WAS INVISIBLE BECAUSE A LISTENING SOCKET IS NOT A WORKING LEG**: the host end binds whether or not the address exists anywhere, so `ss -ltn` showed it LISTENing and both bridge units stayed active/running; the only symptom was an empty model picker, three layers from the cause — the exact failure `exposeOn`'s own note claims the mechanism was built to prevent, prevented for the half in Nix and not for the half in nspawn's argv. **The facts needed to predict it were already written down** at `monitoring.nix:182-184`; what was missing was anything that checked. Legs are renamed to track their ULA (`ai1`/`ai2`/`ai3`, `mon0` keeps its name) and `machines/ernst/networking.nix` now **asserts** that no two containers claim one — verified with a negative control that names both offenders. **THE MODEL IS NOT CHANGED**, and that is deliberate: `qwen3-coder-30b` is resident and the GPU group is exclusive, so anything else would evict the coder model on every utterance. Whether it is the right model for a household is a separate, measured question — see "The model question" below. Depends on M19, M24, M24b. [M29](#m29-featernst-hass-local-ai) |
 
 ---
 
@@ -12809,6 +12810,361 @@ after adding a feed is silence until that feed next publishes.
 
 Post-deploy verification landed with the fix rather than separately, because
 what the deploy found *was* a fix. Follows M23, M26 and M27 otherwise.
+
+---
+
+## M29 — `feat/ernst-hass-local-ai`
+
+**Built 2026-09-24, not yet deployed.** Home Assistant gets a conversation
+agent and a voice pipeline that run on ernst and never leave the property.
+
+M19 §8 already wrote this milestone's first paragraph: *"Home Assistant is the
+better path anyway … HA reaches llama-swap over the LAN as a third `exposeOn`
+bridge rather than through the proxied hostname."* Karakeep took the third
+bridge in M27, so this is the fourth.
+
+### What shipped
+
+- `service-modules/local-ai.nix` — `roles.agent` and `roles.voice`; the bridge
+  generator factored out of `roles.inference` and shared by all three.
+- `service-modules/pkgs/mneme/` — the daemon, its constitution, and twelve
+  build-time tests.
+- `machines/ernst/containers/home-assistant.nix` — the `ai3` leg, six new
+  `extraComponents`, and the `bleak-esphome` pin.
+- `machines/ernst/networking.nix` — the veth-name assertion, the ULA legs
+  table, and the "M29 takes no sequence number" row.
+- `clan.nix`, `CLAUDE.md`, `service-modules/local-ai.md`,
+  `service-modules/monitoring.nix` (two stale `metricsProxy` references).
+
+### The integration that does not exist here, and the one that does
+
+This is the decision the milestone turns on, and it was settled by reading
+nixpkgs and Home Assistant's own source rather than by trying things:
+
+| channel | Home Assistant | conversation platforms that accept a local URL |
+|---------|----------------|-----------------------------------------------|
+| 26.05 (ernst) | 2026.5.4 | `ollama` |
+| unstable | 2026.8.1 | `ollama`, **`llama_cpp`** |
+
+`llama_cpp` — the integration whose entire description is "a local llama.cpp
+server, or any OpenAI-compatible endpoint" — arrived in **2026.8**. And
+`openai_conversation` at 2026.5.4 defines no base-URL constant at all
+(`homeassistant/components/openai_conversation/const.py` at that tag): it can
+reach api.openai.com and nothing else.
+
+`ollama` is not a consolation prize. `homeassistant/components/ollama/entity.py`
+at 2026.5.4:
+
+```python
+response_generator = await client.chat(
+    model=model, messages=list(message_history.messages), tools=tools,
+    stream=True, keep_alive=…, options={CONF_NUM_CTX: …}, think=…, format=…)
+```
+
+with `tools = [_format_tool(t, chat_log.llm_api.custom_serializer) for t in
+chat_log.llm_api.tools]`, looping until `chat_log.unresponded_tool_results` is
+empty; and `config_flow.py` validates with `client.list()` and offers
+`CONF_LLM_HASS_API`. Everything Assist needs.
+
+**So the protocol choice is free, and mneme presents both.** The daemon has to
+be in the request path regardless — that is where the constitution is injected,
+and from M29b the memory wiki's index — so presenting `/api/chat` northward
+costs one translation layer and no architecture. It also serves
+`/v1/chat/completions`, which is what nvf, opencode and Open WebUI will use and
+what Home Assistant itself will use after the eventual 2026.8.
+
+### The translation is not symmetric, and that is the whole risk
+
+Ollama has no `tool_call_id` anywhere. An assistant message carries
+`tool_calls[].function.{name, arguments}` with arguments as a JSON **object**,
+and a tool result is a bare `{"role": "tool", "content": "…"}` tied to nothing.
+OpenAI requires an id on both ends and arguments as a **string**. mneme
+synthesises ids **by position**, which is sound only because Home Assistant
+emits tool results in call order immediately after the turn that requested them
+(`_convert_content`). If that ever changes it fails loudly — an OpenAI 400
+naming an unmatched `tool_call_id` — rather than silently.
+
+The reverse direction has its own asymmetry: OpenAI streams one tool call
+across many deltas (`function.arguments` arrives as text fragments), Ollama
+emits a whole call in one chunk with arguments as an object. So nothing can be
+forwarded until the stream ends.
+
+**`test_mneme.py` runs in `checkPhase`**, and that placement is the point.
+A mis-paired id or a dropped call does not crash anything; it produces an
+assistant that quietly does not act on the house. M24b's lesson — a clean
+`nix build` is not evidence that the wiring is right — is answered by making the
+build check the half it can.
+
+**Two client controls are dropped rather than forwarded.** `keep_alive` is
+Ollama's residency pin, and llama-swap owns residency through its own `ttl` and
+exclusive group — honouring a client's pin would let the hub evict the coding
+agent by accident. `options.num_ctx` has nowhere to go at all: llama.cpp fixes
+the window when llama-swap spawns llama-server, from `contextLength` in
+`roles.models`. That is **SN1 answered at the mechanism**, and it means Home
+Assistant's default of 8192 is cosmetic.
+
+### Voice — the premise was the wrong shelf
+
+`local-ai.md` recorded: *"Nothing in nixpkgs serves an OpenAI-shaped
+`/v1/audio/speech` … revisit if a packaged Kokoro or Piper HTTP server
+appears."* True, and looking in the wrong place. Home Assistant does not want an
+OpenAI-shaped speech endpoint; it speaks **Wyoming**, and nixpkgs 26.05 has
+shipped `services.wyoming.piper` (2.2.2), `services.wyoming.faster-whisper`
+(3.1.0) and `services.wyoming.openwakeword` (2.1.0) the whole time.
+
+**There are now two speech-to-text engines on ernst, and the module says so out
+loud** so nobody finds two transcribers and assumes one is a mistake:
+whisper.cpp (ggml, OpenAI-shaped, Open WebUI) and faster-whisper (CTranslate2,
+Wyoming, Assist). Neither can serve the other's protocol or load the other's
+weights; both are CPU-only, so neither costs VRAM and they do not contend for
+the card. Collapsing them means writing a Wyoming-to-OpenAI shim to save
+~1.6 GiB on a host with 92 TB.
+
+**The Wyoming weights break this module's own "models are declared, not pulled"
+rule**, and the reason is structural: both units take a model *directory* whose
+layout belongs to the library, and both are `DynamicUser` with a
+`StateDirectory` — so a hash-verified store would have to be readable by a
+systemd-allocated identity, the shape M27 refused for Meilisearch and the thing
+the uid table exists to prevent. What makes it acceptable here and not for a
+GGUF: these artifacts are **re-acquirable and carry no state**.
+`/var/lib/private/wyoming` is persisted only so a reboot is not a 1.6 GiB
+download.
+
+**No wake word on the server.** The Voice Preview Edition runs microWakeWord on
+the device and streams only after it fires, so `openwakeword` would be a second
+implementation of a job the satellite does better, on audio it would otherwise
+have to stream continuously.
+
+### The Voice PE needed one pinned dependency, and nothing would have caught it
+
+Core 2026.5.4's `esphome/manifest.json`:
+
+```
+aioesphomeapi==44.24.1          nixpkgs 26.05: 44.24.1   match
+esphome-dashboard-api==1.3.0    nixpkgs 26.05: 1.3.0     match
+bleak-esphome==3.7.3            nixpkgs 26.05: 3.7.5     MISMATCH
+```
+
+Pinned through `home-assistant`'s own `packageOverrides` hook
+(`pkgs/servers/home-assistant/default.nix:247`), which applies to the scope the
+component's dependencies resolve from. It rebuilds `bleak-esphome` and nothing
+else — nothing in the closure depends on it. HACS is now built against
+`hassPackage.python3Packages` rather than `pkgs.home-assistant.python3Packages`,
+because with an override in play those are different sets and M24b's warning
+about two incompatible copies stops being hypothetical.
+
+**The hash was verified twice before being written down** — `nix flake prefetch`
+and a `fetchFromGitHub` build against `lib.fakeHash` returned the same value at
+rev `a6ccd5a657a997cd0551e4aa616ae867c3c46a43` — which is this repository's rule
+for anything fetched, and the rule clan.nix's SDXL entry explains.
+
+**Nothing would have reported the skew.** nixpkgs builds Home Assistant with
+`--skip-pip`, and requirement checking sits behind that same flag
+(`requirements.py:167`) — the reason `hacs-deps-check.py` exists. That checker
+covers *downloaded* components and would never have looked at `esphome`, which
+is built in. The skew would have surfaced, if at all, as an ImportError or a
+subtly wrong BLE proxy from inside aioesphomeapi.
+
+### The outage this milestone found
+
+**Open WebUI had no path to llama-swap from M27's deploy on 2026-09-19.**
+Measured on ernst 2026-09-24, sixteen days into one boot, while checking the
+mechanism M29 extends:
+
+```
+openwebui: ip -6 -br addr        ->  lo, eth0.  No second leg at all.
+karakeep : ai0@if126  fdca:fe92::2/128
+host     : exactly one ai0, peered into karakeep
+openwebui -> [fdca:fe91::1]:11434  ->  curl (7), could not connect
+karakeep  -> [fdca:fe92::1]:11434  ->  200                    (the control)
+```
+
+Open WebUI's last `get_all_models()` in the journal was **Sep 14** — the day
+before M27 deployed.
+
+**Cause.** `containers.<c>.extraVeths.<name>` renders to nspawn's
+`--network-veth-extra=<name>`, and with a single name nspawn uses it for **both
+ends**. The name therefore lives in the host's one flat interface namespace.
+M19 named Open WebUI's leg `ai0`; M27 gave karakeep `extraVeths.ai0`; only one
+container can hold it. There is a second edge on the same fact —
+`nixos-containers.nix:245` runs `ip link del dev <name>` on container **stop**,
+so stopping Open WebUI would have taken karakeep's leg down with it.
+
+**Why nothing said so.** The host end binds whether or not any interface carries
+the address. `ss -ltn` showed `[fdca:fe91::1]:11434` LISTENing,
+`llama-bridge-webui.socket` and `.service` were both `active/running`, and the
+only symptom was "No models available" in a browser — three layers from the
+cause. That is precisely the failure `exposeOn`'s own comment claims the
+mechanism was built to prevent; it was prevented for the half that lives in Nix
+and not for the half that lives in nspawn's argv.
+
+**The facts needed to predict it were already in the repository.**
+`service-modules/monitoring.nix:182-184` states that the name is used for both
+ends and appears on the host. What was missing was anything that *checked*.
+
+**Fix.** Legs renamed to track their ULA — `fe91 → ai1`, `fe92 → ai2`,
+`fe93 → ai3`; `mon0` predates the rule and keeps its name — and an assertion in
+`machines/ernst/networking.nix` that no two containers claim one name. Verified
+with a negative control (karakeep temporarily renamed to `ai3`), which failed
+evaluation naming both offenders:
+
+```
+- ernst: two or more containers declare the same extraVeths name, and
+  only one of them can have it — the other silently gets no interface:
+
+    ai3: hass, karakeep
+```
+
+**A second assertion covers the other half of the same silence.** The one above
+catches two containers fighting over an interface; this one catches a bridge
+listening on a ULA that no veth carries — a typo'd nibble in an `exposeOn`
+entry, or an entry kept after its consumer was removed. The symptom is
+identical and equally uninformative, so it gets its own check, matched on the
+`-bridge-` naming convention so a fifth generator is covered without anyone
+remembering. Also verified with a negative control (`fdca:fe93::1` →
+`fdca:fe99::1`):
+
+```
+- ernst: these loopback bridges listen on addresses that no container
+  veth carries, so nothing can ever reach them:
+
+    mneme-bridge-hass -> fdca:fe99::1
+
+  Every bridge address must equal some container's
+  `extraVeths.<name>.hostAddress6`.  Known ends:
+  fdca:fe93::1, fdca:fe92::1, fdca:fe90::1, fdca:fe91::1
+```
+
+**The refactor that shares the bridge generator is behaviour-preserving, and
+that was checked rather than asserted.** The three existing `llama-bridge-*`
+units evaluate byte-identical to what is running on ernst today —
+`ListenStream`, `BindIPv6Only`, `ExecStart`, `Requires` and all three
+`IPAddressAllow` entries — with exactly one addition, `FreeBind=true`, and a
+reordering of `After=`, which is a set.
+
+**This is the third member of a family** `docs/guides/adding-a-module.md`
+already lists: a container name over 12 characters, a uid colliding with
+nixpkgs' `ids.nix`, and now a veth name colliding with another container's —
+all cases where the build is green and the running system is wrong.
+
+### The model question, deliberately not answered here
+
+`roles.agent` names `qwen3-coder-30b` because llama-swap's GPU group is
+exclusive and anything else evicts the resident coder model on **every
+utterance** — 21 GiB off zdata, each way. That is the same argument
+`containers/karakeep.nix` makes and it is about scheduling, not about quality.
+
+Whether a coder model is the right household assistant is a separate question,
+and today's data says the interesting answer is **newer and denser, not bigger**:
+
+| | `qwen3-coder-30b` (deployed) | Qwen3.6-27B | Qwen3.6-35B-A3B |
+|---|---|---|---|
+| shape | MoE 30B / 3.3B active | dense 27B, Gated DeltaNet + Gated Attention | MoE 35B / ~3B active |
+| UD-Q4_K_XL | ~18.6 GB | **~16.8 GB** | **22.4 GB** |
+| KV at 32k, f16 | ~3 GB | **~2 GB** (16 of 64 layers hold KV) | — |
+| vision | none (needs `qwen2.5-vl-7b`, which evicts it) | **native, one `--mmproj`** | — |
+| SWE-bench Verified | — | **77.2** | — |
+
+**"Bigger and more compressed" does not work on this card.** The MoE member at
+UD-Q4_K_XL is 22.4 GB on a 24560 MiB card, leaving ~3 GB for KV and compute
+buffers — less than today, for a model that wants a larger window. The escape,
+`UD-Q3_K_XL` at 16.8 GB, spends exactly what this fleet uses the model for:
+nested tool-call JSON validity (M11 spent a whole part on that failure) and
+long-context edit fidelity.
+
+The 27B dense is *smaller on disk* than what is deployed, and its hybrid
+attention makes the KV cache roughly a quarter the size, which is where a 65536
+window would come from. It is also natively multimodal, so it would **retire
+`qwen2.5-vl-7b`** and with it the eviction `local-ai.md` currently has to
+explain.
+
+**It fails a gate today, which is why it is not in this milestone.** ernst's
+nixpkgs pins `llama-cpp` at **b9190**; Qwen3.6's GGUFs were quantised with
+**b9222**, and the architecture is new (Gated DeltaNet linear attention).
+`nixpkgs-unstable` carries **b10273**. The check is one command on ernst —
+`llama-server -m <gguf>` — and if it fails the options are taking `llama-cpp`
+from `pkgs-unstable` (a deliberate, documented break with "everything ships in
+nixpkgs 26.05 — no external flake input") or waiting. Either way it needs the
+M19 treatment: decode tok/s and resident VRAM at 32768 and 65536, tool-call
+validity on M11's 60/60 harness, and a vision round trip. **A model swap on this
+machine is a measurement, not a config line.**
+
+### Manual steps — lgo's
+
+Nothing on the UDM-Pro, nothing in Technitium, no public DNS record, no ledger
+row: this milestone adds no address and no hostname. Everything below is in the
+Home Assistant UI, which is where integrations, devices and pipelines live
+(`.storage`, not Nix — M24's stated division).
+
+1. Settings → Devices & services → Add integration → **Ollama**, URL
+   `http://[fdca:fe93::1]:11435`. Pick the one model it offers.
+2. On the conversation subentry: **Control Home Assistant** = Assist. Set
+   `num_ctx` — its default of 8192 is not this model's window. Paste the
+   instructions prompt.
+3. Settings → Voice assistants → add a pipeline: conversation agent = Ollama,
+   STT = `faster-whisper`, TTS = `piper`, language German.
+4. **Settings → Voice assistants → Expose entities.** Nothing is exposed by
+   default and the agent is inert until this is done. This is the step that
+   decides what the house will let an LLM touch.
+5. Add the Voice Preview Edition: it announces itself over mDNS on VLAN 20,
+   which is the whole reason the `iot0` leg exists. Adopt via ESPHome, then
+   assign it the pipeline from step 3.
+
+### Test plan
+
+```bash
+# ── the leg, at both ends.  A listening socket is NOT evidence: that is the
+#    entire lesson of the Open WebUI outage this milestone fixes.
+ip -6 addr show ai3
+nixos-container run hass -- ip -6 -br addr show ai3      # fdca:fe93::2/128
+ip -br link | grep -E '^(mon0|ai1|ai2|ai3)'              # four, all distinct
+
+# ── and the leg this milestone repairs
+nixos-container run openwebui -- ip -6 -br addr show ai1
+nixos-container run openwebui -- curl -sS -o /dev/null -w '%{http_code}\n' \
+  'http://[fdca:fe91::1]:11434/v1/models'                # 200, was curl (7)
+
+# ── the Ollama surface, from inside the hub: the exact call the config flow makes
+nixos-container run hass -- curl -s http://[fdca:fe93::1]:11435/api/tags
+
+# ── a tool-calling round trip with no Home Assistant involved
+nixos-container run hass -- curl -s http://[fdca:fe93::1]:11435/api/chat -d '{
+  "model":"qwen3-coder-30b","stream":true,
+  "messages":[{"role":"user","content":"turn on the kitchen light"}],
+  "tools":[{"type":"function","function":{"name":"HassTurnOn","description":"turn on",
+    "parameters":{"type":"object","properties":{"name":{"type":"string"}}}}}]}'
+# PASS = a chunk whose message.tool_calls names HassTurnOn, then {"done":true}.
+
+# ── voice, both directions
+nixos-container run hass -- timeout 3 bash -c '</dev/tcp/fdca:fe93::1/10300' && echo STT
+nixos-container run hass -- timeout 3 bash -c '</dev/tcp/fdca:fe93::1/10200' && echo TTS
+
+# ── the pinned dependency actually on the service's path
+nixos-container run hass -- python3 -c \
+  'import importlib.metadata as m; print(m.version("bleak-esphome"))'   # 3.7.3
+
+# ── negative controls, the half that proves anything
+curl -s --max-time 3 http://[fdca:fe93::1]:11435/api/tags   # from ernst: REFUSED
+nixos-container run karakeep -- curl -s --max-time 3 \
+  http://[fdca:fe93::1]:11435/api/tags                      # REFUSED: one peer only
+```
+
+Then, in the UI: type "turn on the kitchen light", then say it, then ask
+something with no tool answer to exercise the fallback path.
+
+### Left for later, explicitly
+
+- **Memory** — M29b. mneme ships in this milestone as a translating,
+  constitution-injecting pass-through; the git-versioned wiki, the `memory_*`
+  tools and the nightly lint are the next PR. That is also when mneme takes a
+  static uid (**3039**), because a git repository under `/srv/state` is on
+  zdata and a `DynamicUser` there is the thing the uid table forbids.
+- **The model swap** — gated on two checks, above.
+- **nvf and opencode against mneme** — the `/v1` surface exists from day one, so
+  the wiring is an `opencode`-role base URL plus one `permitopen` port on the
+  jens tunnel. Out of scope here only to keep M29 about one machine.
+- **A Prometheus job for Home Assistant** — still owed from M24, still
+  bearer-token gated, still unrelated.
 
 ---
 

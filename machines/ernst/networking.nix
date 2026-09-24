@@ -133,8 +133,116 @@
 # Cutover procedure: docs/runbooks/ernst-vlan-bridge-cutover.md.  The UDM-Pro
 # port changes happen BEFORE this config is deployed, and are verified with
 # ernst still untouched.
-{ ... }:
+{ config, lib, ... }:
 {
+  ###########################################################################
+  # Container veth names are a HOST-GLOBAL namespace — asserted, not trusted.
+  #
+  # `containers.<c>.extraVeths.<name>` becomes nspawn's
+  # `--network-veth-extra=<name>`, and with a single name nspawn uses it for
+  # BOTH ends.  So the name lands in the host's one flat interface namespace,
+  # two containers cannot share one, and stopping either deletes it
+  # (nixos-containers.nix:245 runs `ip link del dev <name>` on stop).
+  #
+  # THIS IS HERE BECAUSE IT ALREADY HAPPENED.  M27 gave karakeep
+  # `extraVeths.ai0`, which Open WebUI had held since M19.  Open WebUI lost its
+  # inference leg on M27's deploy and nothing said so for five days: the host
+  # end binds whether or not any interface carries the address, so
+  # `llama-bridge-webui.socket` stayed active/running, `ss -ltn` still showed
+  # [fdca:fe91::1]:11434 LISTENing, and the only symptom was an empty model
+  # picker in a browser.  The facts needed to predict it were already written
+  # down in service-modules/monitoring.nix:182-184; what was missing was
+  # anything that checked.
+  #
+  # An eval-time failure instead.  This is the third member of the family
+  # docs/guides/adding-a-module.md lists — a container name over 12 characters,
+  # a uid colliding with nixpkgs' ids.nix — where the build is green and the
+  # running system is wrong.
+  ###########################################################################
+  assertions =
+    let
+      claims = lib.concatLists (lib.mapAttrsToList
+        (container: cfg: map (veth: { inherit container veth; })
+          (lib.attrNames (cfg.extraVeths or { })))
+        config.containers);
+      byName = lib.groupBy (c: c.veth) claims;
+      collisions = lib.filterAttrs (_: cs: lib.length cs > 1) byName;
+
+      # Every host end a container actually brings up.
+      vethHostAddrs = lib.concatLists (lib.mapAttrsToList
+        (_: cfg: lib.filter (a: a != null)
+          (lib.mapAttrsToList (_: v: v.hostAddress6 or null) (cfg.extraVeths or { })))
+        config.containers);
+
+      # Every loopback bridge this host declares, whatever generated it —
+      # `llama-bridge-*`, `mneme-bridge-*`, `wyoming-*-bridge-*`.  Matching on
+      # the naming convention rather than on a list means a fifth generator
+      # added later is covered without anyone remembering to add it here.
+      bridgeSockets = lib.filterAttrs
+        (n: _: lib.hasInfix "-bridge-" n)
+        config.systemd.sockets;
+
+      # ListenStream is "[addr]:port"; take what is between the brackets.
+      # The brackets are matched with POSIX bracket expressions — `builtins.match`
+      # is ERE, where a backslash-escaped `[` is rejected outright rather than
+      # treated as a literal.
+      addrOf = sock:
+        let m = builtins.match "[[]([^]]+)[]]:[0-9]+" (sock.socketConfig.ListenStream or "");
+        in if m == null then null else lib.head m;
+
+      missingBridgeAddrs = lib.filter (b: b.addr != null && !(lib.elem b.addr vethHostAddrs))
+        (lib.mapAttrsToList (unit: sock: { inherit unit; addr = addrOf sock; }) bridgeSockets);
+    in
+    [
+      {
+        assertion = collisions == { };
+        message = ''
+          ernst: two or more containers declare the same extraVeths name, and
+          only one of them can have it — the other silently gets no interface:
+
+          ${lib.concatStringsSep "\n" (lib.mapAttrsToList
+            (veth: cs: "  ${veth}: ${lib.concatMapStringsSep ", " (c: c.container) cs}")
+            collisions)}
+
+          The name is used for BOTH ends of the veth, so it must be unique
+          across every container on this machine.  The convention here is to
+          track the peer's ULA: fdca:fe91:: -> ai1, fdca:fe92:: -> ai2,
+          fdca:fe93:: -> ai3.  Monitoring's mon0 predates it and keeps its name.
+        '';
+      }
+
+      # ── AND THE OTHER HALF: A BRIDGE MUST LISTEN ON AN ADDRESS THAT EXISTS
+      #
+      # The uniqueness check above catches two containers fighting over one
+      # interface.  This one catches the simpler, equally silent mistake it
+      # sits next to: a bridge socket bound to a ULA that NO container's veth
+      # carries — a typo'd nibble in an `exposeOn` entry, or an entry kept
+      # after its consumer was removed.
+      #
+      # It is worth a separate assertion because the symptom is identical and
+      # equally uninformative.  systemd binds the socket anyway (FreeBind, and
+      # in fact even without it — measured), the unit reads active/running,
+      # `ss -ltn` shows it LISTENing, and the consumer times out with nothing
+      # logged anywhere, because the packet never reaches the proxy.
+      #
+      # `hostAddress6` is the authority rather than the host's own networkd:
+      # these legs are created by nixos-containers from that option, and no
+      # `.network` unit on this side declares them.
+      {
+        assertion = missingBridgeAddrs == [ ];
+        message = ''
+          ernst: these loopback bridges listen on addresses that no container
+          veth carries, so nothing can ever reach them:
+
+          ${lib.concatMapStringsSep "\n" (b: "  ${b.unit} -> ${b.addr}") missingBridgeAddrs}
+
+          Every bridge address must equal some container's
+          `extraVeths.<name>.hostAddress6`.  Known ends:
+          ${lib.concatStringsSep ", " vethHostAddrs}
+        '';
+      }
+    ];
+
   ###########################################################################
   # The bridge device.
   ###########################################################################
@@ -546,6 +654,17 @@
   #   writes nothing to disk.  A milestone that DECLINES a number has to say so
   #   here; see M26's row above for the same statement.
   #
+  #   M29 TOOK NOTHING FROM THIS TABLE EITHER, same statement and a different
+  #   reason.  Its three new services — mneme (the conversation agent),
+  #   wyoming-faster-whisper and wyoming-piper — are ORDINARY HOST UNITS beside
+  #   llama-swap, not containers: their upstream is ernst's own loopback and
+  #   their one consumer is the hass container, which reaches them over a
+  #   point-to-point /128 pair.  So no MAC, no address, no DHCP reservation, no
+  #   Traefik router, no hostname and no ledger row.  It DOES add one veth
+  #   name, `ai3` on the hass container — see the ULA legs table further down,
+  #   where names are now tracked because M29 found that they are an allocation
+  #   too.
+  #
   #   NEXT FREE SEQUENCE NUMBER IS 16; next free address is 10.0.90.30, keeping
   #   the 8 + <seq> correspondence (8 + 0x16 = 30).  There is no free gap left
   #   in the sequence — 08 and 09 lapsed and were never reclaimed, and 0d was
@@ -624,6 +743,42 @@
   # through the UDM-Pro and (b) the rest of the fleet over ZeroTier, which
   # terminates in this netns and is invisible from VLAN 90.  The host forwards
   # and SNATs for it; see service-modules/monitoring.nix.
+  #
+  # ── THE ULA LEGS, AND THE NAMING RULE M29 HAD TO ADD ──────────────────────
+  #
+  # Four point-to-point /128 pairs now, each with exactly one peer, none on any
+  # VLAN and none with a MAC, a reservation or anything for the UDM-Pro:
+  #
+  #   fdca:fe90::1/::2   mon0   monitoring   Prometheus + llama-swap's /metrics
+  #   fdca:fe91::1/::2   ai1    openwebui    chat and STT (M19)
+  #   fdca:fe92::1/::2   ai2    karakeep     auto-tagging (M27)
+  #   fdca:fe93::1/::2   ai3    hass         the conversation agent, STT and TTS
+  #                                          — three ports on one leg (M29)
+  #
+  # THE INTERFACE NAME IS AS MUCH AN ALLOCATION AS THE ADDRESS IS, and nothing
+  # said so until it cost an outage.  `extraVeths.<name>` becomes nspawn's
+  # `--network-veth-extra=<name>`, used for BOTH ends, so the name lives in
+  # this host's one flat interface namespace.  M19 named Open WebUI's leg
+  # `ai0`; M27 gave karakeep `extraVeths.ai0` as well; from M27's deploy on
+  # 2026-09-19 OPEN WEBUI HAD NO SECOND INTERFACE AT ALL.  Measured on
+  # 2026-09-24, sixteen days into one boot:
+  #
+  #   openwebui: ip -6 -br addr -> lo, eth0 only
+  #   host     : exactly one ai0, peered into karakeep
+  #   openwebui -> [fdca:fe91::1]:11434 -> curl (7), could not connect
+  #   karakeep  -> [fdca:fe92::1]:11434 -> 200        (the control)
+  #
+  # And the last `get_all_models()` in Open WebUI's journal was five days
+  # before the measurement — the day before M27 deployed.
+  #
+  # IT WAS INVISIBLE BECAUSE A LISTENING SOCKET IS NOT A WORKING LEG.  The host
+  # end binds whether or not any interface carries the address, so `ss -ltn`
+  # showed [fdca:fe91::1]:11434 LISTENing and both bridge units were
+  # active/running the whole time.  The facts needed to predict this were
+  # already written down at service-modules/monitoring.nix:182-184; what was
+  # missing was anything that checked.  The assertion at the top of this file
+  # is that check, and the names now track the ULA so a collision requires
+  # typing the same number twice.  `mon0` predates the rule and keeps its name.
   #
   # The last octet is 8 + <seq>.  That correspondence is not enforced by
   # anything and it is worth keeping anyway: it is the only thing that makes a
@@ -1123,6 +1278,19 @@
   #                           down, which is the step M24 skipped and paid for.
   #
   #                           NEXT FREE IN THE 3000 BLOCK IS 3039.)
+  #
+  #   NO uid FOR ANY OF M29's THREE SERVICES, and NEXT FREE STAYS 3039.  mneme,
+  #   wyoming-faster-whisper and wyoming-piper all run `DynamicUser` on the
+  #   host and none of them writes to zdata — the one thing they do keep, the
+  #   Wyoming model downloads, lands under /var/lib/private/wyoming on the root
+  #   pool and is persisted there rather than bound out.  That is deliberate
+  #   and is M27's Meilisearch call again: binding a DynamicUser's
+  #   StateDirectory onto the pool would put a systemd-ALLOCATED uid on it,
+  #   which is the exact thing this table exists to prevent.
+  #
+  #   mneme GETS A STATIC uid THE MOMENT IT KEEPS A WIKI (M29b).  Its memory is
+  #   a git repository under /srv/state, which is zdata, so the next milestone
+  #   claims 3039 and this line is the warning not to spend it first.
   #
   #   NO uid FOR miniflux, and it is recorded rather than left to inference.
   #   M27's other container (containers/miniflux.nix) runs the daemon under
