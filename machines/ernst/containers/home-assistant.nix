@@ -779,60 +779,122 @@ in
       # about installing two incompatible copies would stop being hypothetical.
       hacs = hassPackage.python3Packages.callPackage ./pkgs/hacs.nix { };
 
-      # ── WHY THIS IS A CURATED LIST, AND WHAT THE CEILING IS ───────────
+      # ── EVERY PACKAGED INTEGRATION, BEHIND ONE PYTHONPATH ENTRY ───────
       #
-      # The obvious complaint about naming components one at a time is right:
-      # Home Assistant's "Add Integration" dialog offers all ~1450 built-ins
-      # unconditionally, because the list comes from HA's own manifest index,
-      # which knows nothing about how this build was assembled.  So every
-      # unlisted integration is a trap — it is offered, you pick it, its config
-      # flow imports its library, and you get
+      # WHY NOT A CURATED LIST.  Home Assistant's "Add Integration" dialog
+      # offers all ~1450 built-ins unconditionally — the list is HA's own
+      # manifest index and knows nothing about how this build was assembled.
+      # Any integration not named in Nix is therefore a trap: offered,
+      # accepted, and then failing on import,
       #
       #     Error occurred loading flow for integration yamaha_musiccast:
       #     No module named 'aiomusiccast'
       #
-      # with the fix being a file edit and a redeploy while you are standing in
-      # front of the device you were trying to add.
+      # with the fix being a file edit and a redeploy while you stand in front
+      # of the device you were adding.  So: name all of them.
       #
-      # ENABLING ALL OF THEM WAS TRIED, IN #229/#230, AND IT DOES NOT FIT.
-      # It is not a size or build-time problem — `extraComponents` does not
-      # rebuild Home Assistant, it only extends `pythonPath`, and the full set
-      # costs 1391 extra store paths, 383 MiB, nothing built locally.  It is a
-      # hard kernel limit:
-      #
-      #     nixpkgs' module sets  environment.PYTHONPATH = package.pythonPath
-      #     — one colon-separated entry per requirement, in the unit env block
+      # THE FIRST ATTEMPT AT THIS (#229/#230) TOOK THE HUB DOWN, and the
+      # reason is the whole design of what follows.  nixpkgs' module sets
+      # `environment.PYTHONPATH = package.pythonPath` — ONE COLON-SEPARATED
+      # ENTRY PER REQUIREMENT, in the unit's environment block:
       #
       #     1595 entries    = 162898 bytes
       #     MAX_ARG_STRLEN  = 32 * PAGE_SIZE = 131072 bytes
       #
       # execve() rejects any single argument or environment string over that,
-      # so home-assistant.service died with E2BIG on every start.  `systemctl
-      # status` shows only `start-limit-hit`; `hacs-deps-check`, which inherits
-      # the same PYTHONPATH, reports the honest version:
+      # so home-assistant.service failed with E2BIG on every start.  systemd
+      # reports only `start-limit-hit`; `hacs-deps-check`, inheriting the same
+      # PYTHONPATH, is what said `Argument list too long`.  Not a degraded
+      # integration — no hub at all.
       #
-      #     .../bin/python3: Argument list too long
+      # `hassPythonEnv` below is the fix: ONE buildEnv holding every
+      # requirement, so PYTHONPATH is a single ~93-byte path and the limit
+      # stops being reachable at any component count.
       #
-      # THE HUB DOES NOT COME UP AT ALL.  Not a degraded integration — no Home
-      # Assistant.  There is no partial version of this failure, and it is why
-      # the ceiling is worth writing down rather than rediscovering.
+      # WHAT HAD TO BE GOT RIGHT, because it is silent when wrong:
       #
-      # The limit lands at roughly 1280 entries at these path lengths, and the
-      # number to design against is lower, because it moves with the store path
-      # lengths of whatever happens to be in the set.
+      #   * ALL OUTPUTS, not just the default one.  nixpkgs puts grpcio's and
+      #     pyopenssl's python modules in their `dev` outputs, and
+      #     makePythonPath includes those.  A first version of this linked
+      #     only default outputs and `import grpc` vanished — no build error,
+      #     no warning, just a module that is not there.  `d.outputs` below is
+      #     load-bearing.
       #
-      # WHAT WOULD ACTUALLY LIFT IT is collapsing the many site-packages dirs
-      # into ONE — a single `withPackages`/`buildEnv` (almost certainly with
-      # `ignoreCollisions`, since ~1400 components will disagree about some
-      # versions) forced over the module's value.  That turns 162 KB of
-      # PYTHONPATH into one path.  It is a real option and it is deliberately
-      # not attempted in this commit: this commit exists to get the hub back
-      # up, and pointing a freshly invented Python environment at a Home
-      # Assistant that is currently offline is the wrong order to do things in.
+      #   * `extraPackages` MUST BE FOLDED IN TOO.  Forcing PYTHONPATH
+      #     replaces the module's value wholesale, and the module's value is
+      #     `componentBuildInputs ++ extraBuildInputs`.  Leaving the second
+      #     half out would silently drop the HACS requirements below — which
+      #     is why `hassExtraPackages` is a binding used in both places
+      #     rather than a list written twice.
       #
-      # So: named components below, and `hacs-deps-check` for the HACS half.
-      # Adding one is a line and a redeploy.  That is the cost, it is known,
-      # and it is smaller than the cost of the hub not starting.
+      #   * `ignoreCollisions` is unavoidable at ~1400 components and is the
+      #     residual risk: conflicts resolve first-wins, which is not
+      #     guaranteed to match sys.path order.  Checked before deploying —
+      #     400 of the 1587 top-level modules imported, 399 succeeded, and the
+      #     one failure (`clementineremote`, a protobuf codegen mismatch)
+      #     fails identically with the unmerged 1595-entry path, so it is
+      #     upstream and not an artefact of merging.
+      #
+      # EVALUATING IS STILL NOT BUILDING.  `tryEval` proves a component's
+      # requirements can be *described*; `kef` evaluates and then fails to
+      # build, because aiokef 0.2.17 calls asyncio.get_event_loop() at
+      # construction (raises on python3.14) and cache.nixos.org 404s its
+      # output.  Nothing at evaluation time predicts that, so the deny-list is
+      # empirical.  Re-derive it after any nixpkgs bump, before deploying:
+      #
+      #     nix build --dry-run .#nixosConfigurations.ernst.config.system.build.toplevel
+      #
+      # Anything under "these N derivations will be built" that is a
+      # `python3.14-*` package is a component requirement with no binary
+      # cache; map it back with
+      #
+      #     awk '/^    "/{c=$1} /<pkgname>/{print c}' \
+      #       <nixpkgs>/pkgs/servers/home-assistant/component-packages.nix
+      #
+      # and add that component here.  Units, `etc`, `system-path` and the
+      # system closure are always in that list and are not a signal.
+      unbuildableComponents = [
+        "kef" # aiokef 0.2.17: get_event_loop() at init, broken on python3.14
+      ];
+
+      buildableComponents =
+        let
+          evaluates = component:
+            let
+              result = builtins.tryEval (builtins.deepSeq
+                (map (drv: drv.outPath)
+                  (hassPackage.getPackages component hassPackage.python3Packages))
+                true);
+            in
+            result.success && result.value;
+          usable = component:
+            !(builtins.elem component unbuildableComponents) && evaluates component;
+        in
+        builtins.filter usable hassPackage.availableComponents;
+
+      # Used twice on purpose — see the `extraPackages` note above.
+      hassExtraPackages = ps: [
+        # philips_airplus (HACS) — manifest wants paho-mqtt>=2.1,<3.
+        ps.paho-mqtt
+      ];
+
+      hassPythonEnv =
+        let
+          ps = hassPackage.python3Packages;
+          deps = lib.unique (
+            lib.concatMap (c: hassPackage.getPackages c ps) buildableComponents
+            ++ hassExtraPackages ps
+          );
+          closure = ps.requiredPythonModules deps;
+          allOutputs =
+            lib.concatMap (d: map (o: d.${o}) (d.outputs or [ "out" ])) closure;
+        in
+        pkgs.buildEnv {
+          name = "hass-python-deps";
+          paths = allOutputs;
+          pathsToLink = [ "/lib/${ps.python.libPrefix}/site-packages" ];
+          ignoreCollisions = true;
+        };
 
       # ── THE REQUIREMENTS CHECKER ────────────────────────────────────────
       #
@@ -1120,9 +1182,14 @@ in
         # pulls in most integrations; these are the ones it does not, or that
         # must be present before the UI can offer them.
         #
-        # THIS LIST IS WHAT DECIDES WHAT THE UI CAN ACTUALLY OFFER, and the
-        # `let` block above says why it cannot simply be "all of them".
-        extraComponents = [
+        # THIS LIST NO LONGER DECIDES WHAT THE UI CAN OFFER — the
+        # `++ buildableComponents` at the end adds every other packaged
+        # integration, which the merged `hassPythonEnv` above is what makes
+        # possible.  The names are kept because they are the record of what
+        # this household actually depends on, and because naming them makes
+        # the build FAIL if one ever stops being packaged, where the filtered
+        # set would quietly drop it.
+        extraComponents = lib.unique ([
           "zha"           # Zigbee, via the ZBT-2 on /dev/zigbee-coordinator
           "mobile_app"    # the companion app's registration + push endpoint
           "zeroconf"      # mDNS discovery — the iot0 leg's reason to exist
@@ -1194,13 +1261,9 @@ in
           "yamaha_musiccast"      # the Yamaha AV receiver, MusicCast API
           "dwd_weather_warnings"  # DWD severe-weather warnings, by warncell
 
-          # `kef` is the counter-example worth keeping in view: it is packaged,
-          # it evaluates, and it does not build — aiokef 0.2.17 calls
-          # asyncio.get_event_loop() at construction, which raises on
-          # python3.14, and cache.nixos.org 404s its output.  Adding a
-          # component here can fail the build; that is the failure mode to
-          # expect, and it is loud.
-        ];
+          # `kef` is the counter-example, and it is excluded by
+          # `unbuildableComponents` above rather than merely unnamed here.
+        ] ++ buildableComponents);
 
         # ── Requirements for HACS-downloaded integrations ────────────────────
         #
@@ -1221,12 +1284,12 @@ in
         # Each entry names the component that wants it, because nothing else in
         # the tree records the connection — delete the component in HACS and
         # this line is the only thing left pointing at it.
-        extraPackages = ps: [
-          # philips_airplus — manifest wants paho-mqtt>=2.1,<3; nixpkgs 26.05
-          # has 2.1.0.  The failure this fixes is `No module named 'paho'`
-          # raised from the config flow.
-          ps.paho-mqtt
-        ];
+        # The list itself lives at `hassExtraPackages` in the `let` above,
+        # because `hassPythonEnv` has to fold in exactly the same packages —
+        # forcing PYTHONPATH replaces the module's `componentBuildInputs ++
+        # extraBuildInputs` wholesale, and writing the list twice is how the
+        # second half goes missing.
+        extraPackages = hassExtraPackages;
 
         # ── HACS ──────────────────────────────────────────────────────────
         #
@@ -1387,6 +1450,20 @@ in
       # the arr container without ever alerting).  A failed ONESHOT is the
       # exact case that PR was written for: nothing stays in a bad state long
       # enough to be noticed any other way.
+      # ── THE LINE THAT MAKES ~1450 COMPONENTS POSSIBLE ───────────────────
+      #
+      # Replaces the module's colon-separated list of one store path per
+      # requirement with the single merged environment.  See the long note at
+      # `hassPythonEnv` for why the module's own value cannot be used at this
+      # component count: 1595 entries is 162898 bytes and execve() rejects any
+      # environment string over 131072, so the hub does not start at all.
+      #
+      # `hacs-deps-check` reads its interpreter and PYTHONPATH off THIS value
+      # (see `hassPythonPath` above), so the checker follows automatically and
+      # keeps answering the question it exists to answer.
+      systemd.services.home-assistant.environment.PYTHONPATH = lib.mkForce
+        "${hassPythonEnv}/lib/${hassPackage.python3Packages.python.libPrefix}/site-packages";
+
       systemd.services.hass-hacs-deps = {
         description = "Check HACS-downloaded integrations for unsatisfiable Python requirements";
         wantedBy = [ "home-assistant.service" ];
