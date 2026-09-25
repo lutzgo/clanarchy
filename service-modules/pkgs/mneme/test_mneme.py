@@ -353,6 +353,24 @@ def test_sdxl_workflow_is_wired_and_names_the_checkpoint() -> None:
     assert wf["7"]["inputs"]["images"] == ["6", 0]
     assert wf["5"]["inputs"]["steps"] == 25
 
+
+def test_thinking_defaults_to_off_when_the_client_says_nothing() -> None:
+    # Home Assistant omits `think` until somebody sets the option, and its own
+    # DEFAULT_THINK is False. Leaving the key unset hands the decision to the
+    # model's template — which on a thinking-capable model spends ~450 tokens
+    # of reasoning on "turn on the lamp" before the tool call. Measured on
+    # ernst 2026-09-25 against Qwen3.6-35B-A3B.
+    out = mneme.ollama_to_openai({"messages": []}, "m", "RULES")
+    assert out["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+def test_thinking_is_still_available_on_request() -> None:
+    out = mneme.ollama_to_openai({"messages": [], "think": True}, "m", "RULES")
+    assert out["chat_template_kwargs"] == {"enable_thinking": True}
+    out = mneme.ollama_to_openai({"messages": [], "think": False}, "m", "RULES")
+    assert out["chat_template_kwargs"] == {"enable_thinking": False}
+
+
 def main() -> int:
     failures = 0
     for name, fn in sorted(globals().items()):

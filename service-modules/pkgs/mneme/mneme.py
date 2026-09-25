@@ -337,9 +337,27 @@ def ollama_to_openai(
     # `think` is Ollama's per-request reasoning toggle.  llama-server exposes
     # the equivalent through the chat template's own kwargs, which is where the
     # Qwen templates read it from.
-    think = body.get("think")
-    if think is not None:
-        out["chat_template_kwargs"] = {"enable_thinking": bool(think)}
+    #
+    # ── ABSENT MEANS FALSE, AND THAT IS NOT WHAT THIS USED TO DO ───────────
+    #
+    # Home Assistant sends `think=settings.get(CONF_THINK)`, and CONF_THINK is
+    # simply absent until somebody opens the subentry options and sets it — so
+    # the value arriving here is normally None.  This previously left
+    # chat_template_kwargs unset in that case, which hands the decision to the
+    # model's own template default.
+    #
+    # For the model resident today that is harmless, because it does not think.
+    # It stops being harmless the moment a thinking-capable one is served:
+    # measured on ernst 2026-09-25 against Qwen3.6-35B-A3B, a single
+    # "switch on the lamp" turn spent 419-509 characters of reasoning before
+    # emitting its tool call.  Nothing is wrong with the call — tool validity
+    # is 20/20 either way once the token budget allows it — but on a VOICE
+    # request that is latency and context spent to reach the same answer.
+    #
+    # Home Assistant's own DEFAULT_THINK is False, so mirroring it is being
+    # faithful to the client rather than imposing a policy.  A client that
+    # genuinely wants reasoning still gets it by sending `think: true`.
+    out["chat_template_kwargs"] = {"enable_thinking": bool(body.get("think"))}
 
     # DELIBERATELY DROPPED: `keep_alive` and `options.num_ctx`.
     #
