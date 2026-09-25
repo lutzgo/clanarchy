@@ -486,6 +486,45 @@ in
               "-ngl 999 -fa on --jinja"
               "--alias ${name}"
               "--metrics"
+
+              # ── THINKING IS OFF UNLESS A CLIENT ASKS FOR IT ──────────────
+              #
+              # Qwen3.6 thinks by default, and a thinking response puts the
+              # reasoning in `reasoning_content` and leaves `message.content`
+              # EMPTY until the thinking finishes.  A client that reads
+              # `content` — which is every plain OpenAI client — therefore
+              # gets an empty string, and if it capped max_tokens it gets
+              # `finish_reason: "length"` with nothing in it at all.
+              #
+              # THIS IS NOT HYPOTHETICAL AND IT COST A DAY OF GPU.  #227
+              # switched every consumer to this model; Karakeep, which speaks
+              # plain OpenAI and cannot be told to send template kwargs,
+              # started failing every auto-tag job with
+              #
+              #     The model ignored our prompt and didn't respond with the
+              #     expected JSON
+              #     Got no message content from OpenAI
+              #
+              # and retrying each one forever — 26 inference jobs per 10
+              # minutes, GPU pinned at 96%, Tctl at 96 °C, producing nothing.
+              # Verified directly against the running server: the same prompt
+              # burns all 200 max_tokens on `reasoning_content` and returns
+              # `content: ""`, and with `enable_thinking: false` returns
+              # `{"tags":["test"]}` in 6 tokens.
+              #
+              # A SERVER DEFAULT IS THE RIGHT PLACE, not a per-client patch.
+              # The clients that want thinking already ask for it explicitly —
+              # mneme sends `chat_template_kwargs.enable_thinking` on every
+              # request, derived from Ollama's `think` flag
+              # (service-modules/pkgs/mneme/mneme.py), and Home Assistant
+              # defaults it false for the same reason (#224).  Naive clients
+              # are the ones that need a sane default, and they are exactly
+              # the ones that cannot set it.
+              #
+              # Request-level kwargs override this default, which is what
+              # keeps mneme's `think: true` path working — verify after
+              # deploying, it is the one claim here not tested in advance.
+              "--chat-template-kwargs '{\"enable_thinking\":false}'"
             ]
             ++ lib.optional (m.mmproj != null) "--mmproj ${modelsDir}/${relOf m m.mmproj}"
             ++ m.extraArgs);
