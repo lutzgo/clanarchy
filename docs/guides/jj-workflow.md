@@ -159,12 +159,36 @@ And there is no `--force-with-lease` to get right or wrong: jj updates the remot
 its current state still matches what jj last fetched, which is what `--force-with-lease`
 was for.
 
-After the PR is squash-merged and the remote branch deleted:
+Merging, which is **two commands and not one**:
+
+```bash
+gh pr merge <n> --squash
+gh api -X DELETE repos/lutzgo/clanarchy/git/refs/heads/feat/the-thing
+```
+
+`--delete-branch` is the obvious third option and it does not work here. gh looks
+up the current git branch so it can move off it, jj leaves `HEAD` detached, and gh
+aborts with `could not determine current branch: failed to run git: not on any
+branch` — **after the merge has already gone through**, which reads like a failed
+merge when it was not. Check `gh pr view <n> --json state` before retrying
+anything. Hence the separate `gh api` call for the remote ref.
+
+Then sync the local view. There is no checkout and no fast-forward merge — a
+tracked `main` advances on its own, and a bookmark whose remote branch GitHub has
+just deleted is **forgotten**, not deleted (deleting would try to push the
+deletion back to a remote that no longer has it):
 
 ```bash
 jj git fetch
 jj bookmark forget feat/the-thing
 ```
+
+`gh pr merge` does not fetch, so check that `main` actually moved before building
+on it: "Already up to date" is what both success and a stale local `main` look
+like.
+
+Review, the merge checklist and the recovery paths are in
+[accepting-pull-requests.md](accepting-pull-requests.md).
 
 ### Credentials
 
