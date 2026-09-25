@@ -74,6 +74,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M27 — the reading stack | **DEPLOYED AND VERIFIED 2026-09-19. Every machine-checkable row of the test plan passed on the first deploy, including `karakeep-browser` — the one thing this milestone called unproven. FOUR DEFECTS FOUND BY DEPLOYING, three of them mine and two of them silent** | [#201](https://github.com/lutzgo/clanarchy/pull/201) | Miniflux + Karakeep + Floccus as one stack: news in, bookmarks and full-page archives kept, the browsers' own bookmark trees synced into the same store. **Both are nspawn** — `services.miniflux` and `services.karakeep` are first-class NixOS modules at this pin, so the podman tier does not apply. Miniflux on `02:00:00:90:00:14` → `10.0.90.28`, seq **14**, taking **NO uid** (DynamicUser; only PostgreSQL's well-known 71 lands on zdata). Karakeep on `02:00:00:90:00:15` → `10.0.90.29`, seq **15**, uid/gid **3038**, four units plus Meilisearch plus a headless chromium. **NO NEW DATASET FOR EITHER** — both write profiles are `zdata/state`'s exactly, so no `disko.nix` change and no `zfs create`; M24's call, made twice. **MEILISEARCH'S INDEX IS DELIBERATELY NOT BOUND OUT**, because the nixpkgs module runs it under DynamicUser and binding it would put a systemd-ALLOCATED id on the pool — the one thing the uid table exists to prevent. It is derived data and Karakeep rebuilds it. **IT RETIRES A SERVER THAT NEVER EXISTED**: `browsers.nix` has carried an unverified Linkwarden extension ID, a Vimium keybinding whose target was the literal string `YOUR_LINKWARDEN_INSTANCE`, and a comment doubting its own AMO listing, with no Linkwarden anywhere in this fleet. All deleted rather than finally built. **FOUR BROWSERS, FOUR DIFFERENT EXTENSION MECHANISMS**, and each is the only one that works for its browser: ungoogled-chromium ignores `ExtensionInstallForcelist` entirely (upstream #2523) so it takes External Extensions JSON; Firefox takes STORE-PINNED NUR `.xpi`s; LibreWolf takes an `ExtensionSettings` policy DEEP-MERGED into its own shipped `distribution/policies.json` — verified on the built package, its `"*"` rule and uBlock entry survive — because an `/etc` policy file would REPLACE that file and `nixExtensions` would block every manually installed add-on; google-chrome takes a managed policy under `/etc/opt/chrome`, since home-manager asserts against `programs.chromium.extensions` for it on Linux. **KARAKEEP AUTO-TAGS AGAINST THE MODEL ALREADY RESIDENT.** ernst has had no Ollama since M19 — llama-swap replaced it — so this is `OPENAI_BASE_URL` over a third `exposeOn` peer (`fdca:fe92::`), and `INFERENCE_TEXT_MODEL` names `qwen3-coder-30b` on purpose: llama-swap's exclusive group means any other text model would EVICT the coder model on every bookmark and stall lgo's agent. The image model is the priced exception. **NEITHER HAS A LOCAL PASSWORD** (`DISABLE_LOCAL_AUTH`, `DISABLE_PASSWORD_AUTH` + `DISABLE_SIGNUPS`) — the OPPOSITE of M24's call for Home Assistant, and for the reason that file gives: nothing in the house depends on either, so "fix Authelia" is an acceptable recovery path. Karakeep is `appApiHosts` with native OIDC INSTEAD OF forward-auth (M23's and CWA's arrangement); Miniflux ended up in `protectedHosts` with forward-auth AND OIDC, which is Grafana's. **KARAKEEP NEEDED AUTHELIA'S ESCAPE HATCH** — a `claims_policies` block, the first top-level key beside `clients:` this staging script has ever emitted, because Karakeep reads `email` off the ID token instead of calling userinfo. Verified present in the 4.39.20 binary before being written. `require_pkce: false` and `userinfo_signed_response_alg: none` come from Authelia's own integration document for this client, which is M23's lesson applied rather than re-learned. **BOTH ARE ON THE WAN, AND MINIFLUX ONLY AFTER A CHANGE OF MIND** (ledger rows **L17**, **L18**). It shipped LAN-only on the argument that feed reading could wait for the LAN; that lasted one day. Exposing it was NOT a matter of adding it to `wanExposed`, which would have put an unauthenticated vhost on the internet — it MOVED to `protectedHosts` first, so the public path is forward-auth → 2FA. The clients its exemption was argued from (Fever, Google Reader) are protocols nobody here uses, and the cost of losing them is permanent. **MINIFLUX GETS A REAL PROMETHEUS JOB**, the first since M19: `/metrics` is a genuine OpenMetrics exposition, gated twice (the container firewall AND `METRICS_ALLOWED_NETWORKS`). **KARAKEEP GETS NONE**, stated rather than omitted — SN3. **ONE INSECURE PACKAGE PERMITTED**, `pnpm-9.15.9`, scoped INSIDE the karakeep container after the host-level grant was measured not to reach it: a `containers.<n>.config` is its own nixpkgs evaluation. Every pnpm variant in this pin carries the same seven CVEs, 10.29.2 included, and it is build-time only. Depends on M5, M6, M7, M18, M19. [M27](#m27-featernst-reading-stack) |
 | M28 — the reading pipeline | **DEPLOYED 2026-09-20 AND VERIFIED, THEN FOUND NOT TO WORK — and both statements are true.** Every structural check passed on the first deploy: loopback-only bind, negative control refused, 400/401 signature enforcement, and a hand-signed webhook proving the full path including Karakeep's URL dedup. **THEN NOTHING CAME THROUGH**, because MINIFLUX'S OWN SSRF GUARD refuses to POST to a non-public address — M23's Nextcloud `DnsPinMiddleware` finding in a second costume, in a milestone that cites it | [#204](https://github.com/lutzgo/clanarchy/pull/204) | The bridge that makes "subscribe in Miniflux, consume in Karakeep" a pipeline rather than a pair of tabs. **IT EXISTS BECAUSE M27 BUILT A READER FOR SOMEBODY WHO DID NOT WANT ONE** — the planning question "where do you want to read?" was never asked. **375 lines of Go, so NOT the podman tier** despite upstream shipping a Dockerfile, and there is no image to pin anyway (no releases, no registry package). Runs INSIDE `containers.miniflux` on `127.0.0.1:8081` because its only client is Miniflux in that same namespace: **no MAC, no address, no reservation, no veth, no firewall rule, no uid**. **MINIFLUX SURVIVES FOR EXACTLY ONE CAPABILITY** Karakeep's native RSS lacks — filtering — and the rewrite rules are the deciding half, because Karakeep dedupes on the EXACT url so `?utm_source=` makes a second bookmark. **`PORT` IS AN ADDRESS, NOT A NUMBER**, and its default `:8080` is both a collision with Miniflux and a bind on every interface. **`ADD_TO_LIST` IS FALSE ON PURPOSE**: a list makes arrivals `is:inlist`, which is what M27's Inbox smart list excludes. Depends on M27. [M28](#m28-featminiflux-karakeep-bridge) |
 | M29 — Home Assistant on the local AI tier | **DEPLOYED 2026-09-24. The outage fix it carries is PROVEN — Open WebUI lists and answers again after five days dark — and `mneme`, all four ULA legs and all six bridges came up on the first try. ONE DEFECT FOUND BY DEPLOYING: both Wyoming voice servers failed at every start**, `238/STATE_DIRECTORY`, because impermanence creates the parents of a persist entry 0755 and systemd demands 0700 for `/var/lib/private`. **Fixed and re-deployed the same day via [#220](https://github.com/lutzgo/clanarchy/pull/220); both voice servers now run and the whole test plan passes** — and the second deploy found a defect in the test plan itself, an expected refusal on a path the host reaches over `lo` | [#219](https://github.com/lutzgo/clanarchy/pull/219), [#220](https://github.com/lutzgo/clanarchy/pull/220) | Assist controls the house and answers by voice, on ernst, with nothing leaving the property. **THE OBVIOUS INTEGRATION DOES NOT EXIST HERE**: ernst is on 26.05 → Home Assistant **2026.5.4**, and the native `llama_cpp` conversation integration ("any OpenAI-compatible endpoint") arrived in **2026.8** — present only in `nixpkgs-unstable` (2026.8.1), read out of `component-packages.nix` in both channels. `openai_conversation` at 2026.5.4 defines **no base-URL constant at all** and can only reach api.openai.com. What this release *does* have is `ollama`, fully wired to the Assist LLM API (`entity.py` builds `tools` from `chat_log.llm_api.tools` and loops until `unresponded_tool_results` is empty; the config flow exposes `CONF_LLM_HASS_API`). **So `mneme` speaks the Ollama wire protocol northward and OpenAI southward** — a translation layer, not an architecture, because the daemon has to sit in the request path anyway to inject the constitution, and it serves `/v1/chat/completions` from day one so nvf/opencode/Open WebUI need no second thing. Migration when this hub reaches 2026.8 is deleting one integration in a browser. **THREE PATHS REJECTED IN WRITING**: bumping the hub to unstable (a three-release jump with a one-way recorder migration, on the machine that runs the house); a HACS-downloaded conversation integration (M24b's trade — the one thing on ernst not in the repo); vendoring core's `llama_cpp` (it rides `ChatLog` internals that moved between 2026.5 and 2026.8). **VOICE CLOSED local-ai.md's OWN TTS NOTE, AND THE PREMISE WAS THE WRONG SHELF**: M19 looked for an OpenAI-shaped `/v1/audio/speech`; Assist speaks **Wyoming**, and 26.05 has shipped `services.wyoming.{piper,faster-whisper,openwakeword}` all along. **A SECOND STT ON THE MACHINE, DELIBERATELY** — whisper.cpp (ggml, OpenAI-shaped, Open WebUI) and faster-whisper (CTranslate2, Wyoming, Assist); neither can serve the other's protocol or load the other's weights, and both are CPU-only so neither costs VRAM. **NO WAKE WORD ON THE SERVER**: the Voice Preview Edition runs microWakeWord on-device, so `openwakeword` would be a second implementation of a job the satellite does better on audio it would have to stream continuously. **THE VOICE PE NEEDED A PINNED DEPENDENCY** — core 2026.5.4's `esphome/manifest.json` requires `bleak-esphome==3.7.3` and nixpkgs 26.05 ships **3.7.5**; `aioesphomeapi==44.24.1` and `esphome-dashboard-api==1.3.0` both match. Pinned through home-assistant's own `packageOverrides` hook, hash verified twice. **Nothing would have reported the skew**: `--skip-pip` means requirement checking never runs, and `hacs-deps-check.py` only looks at *downloaded* components. **IT TAKES NOTHING FROM THE REGISTRIES** — three host units beside llama-swap, loopback upstreams, one point-to-point `ai3` leg: no MAC, no address, no uid, no hostname, no Traefik router, no UDM-Pro rule, **no ledger row**. Sequence 16 / 10.0.90.30 / uid 3039 all stay free. **AND IT CARRIES AN OUTAGE FIX.** `extraVeths.<name>` becomes nspawn's `--network-veth-extra=<name>`, used for BOTH ends, so the interface name is **host-global** — M19 named Open WebUI's leg `ai0` and M27 gave karakeep the same name, and from M27's deploy Open WebUI had no second interface at all. Measured on 2026-09-24, sixteen days into one boot: `openwebui → [fdca:fe91::1]:11434` = curl (7), `karakeep → [fdca:fe92::1]:11434` = 200 (the control), one `ai0` on the host peered into karakeep, and Open WebUI's last `get_all_models()` five days earlier — the day before M27 deployed. **IT WAS INVISIBLE BECAUSE A LISTENING SOCKET IS NOT A WORKING LEG**: the host end binds whether or not the address exists anywhere, so `ss -ltn` showed it LISTENing and both bridge units stayed active/running; the only symptom was an empty model picker, three layers from the cause — the exact failure `exposeOn`'s own note claims the mechanism was built to prevent, prevented for the half in Nix and not for the half in nspawn's argv. **The facts needed to predict it were already written down** at `monitoring.nix:182-184`; what was missing was anything that checked. Legs are renamed to track their ULA (`ai1`/`ai2`/`ai3`, `mon0` keeps its name) and `machines/ernst/networking.nix` now **asserts** that no two containers claim one — verified with a negative control that names both offenders. **THE MODEL IS NOT CHANGED**, and that is deliberate: `qwen3-coder-30b` is resident and the GPU group is exclusive, so anything else would evict the coder model on every utterance. Whether it is the right model for a household is a separate, measured question — see "The model question" below. Depends on M19, M24, M24b. [M29](#m29-featernst-hass-local-ai) |
+| M29b — the agent's memory, web search and images | **BUILT 2026-09-25; not yet deployed.** `mneme` gains a git-versioned wiki it reads and writes, a `web_search` tool over SearXNG, and a `generate_image` tool over ComfyUI | — | **Recall is INJECTED, not requested**: the constitution, `index.md` and any page matching the last user turn go into the system message on every turn (6000 chars ≈ 1500 tokens of a 32768 window). `memory_search` exists as a tool too, but a tool is consulted only if the model decides to — and **M11 measured what that decision is worth on this model class**. No embeddings and no vector store: index-first navigation is *exact* inside the ~150–200 page range this pattern states. **Every write is a commit**, so `git log` is what it knows, `git show` is who told it, and `git revert` is how a wrong fact comes out; each agent-written page carries `source:` front matter naming the turn that produced it. **THE INJECTION BOUNDARY IS BUILT, NOT RETROFITTED** — a page is read back as context on every later turn, so `00-core/`, `SOUL.md` and `IRON_RULES.md` are not writable by the agent (the constitution lives in the Nix store and every write path refuses it by name), traversal and non-slug names are refused, and `IRON_RULES.md` states that wiki content is data and never instruction. Six of the thirty build-time tests cover exactly that. **THE NIGHTLY PASS DOES NOT CALL THE MODEL, and that absence is the design**: every published write-up of this pattern that automated a synthesis step reported it failing silently ~50% of the time, unnoticed for weeks, because a background job that produces nothing looks like one with nothing to do. `mneme-lint` only rebuilds the index and reports problems; it deletes nothing. **SN4 needed no new alert** — ernst sets `exporters.systemd = true`, so a failed oneshot raises `SystemdUnitFailed` through the ordinary path, and a second rule aimed at one unit is duplication that later disagrees. **THE INTERNAL TOOL LOOP is why mneme stays stateless**: HA runs its own loop around the whole request and carries its own history, so mneme's own tool work must finish inside one response — by the time anything goes back to HA it is an answer or one of HA's tools, never one of ours; capped at four rounds because ours happen *inside* one of HA's. **SearXNG GOT A SECOND LEG AND KEPT THE PROPERTY IT HAD** — its block said in writing "NO SECOND VETH, and its absence is load-bearing"; M29b needs the opposite direction, and the host dials in while nothing accepts on the way back (no accept exists for `fdca:fe94::2`). Widening `allowedSource` instead would have spent a documented "ONE address" invariant *and* hairpinned every search through the UDM-Pro, since the host's route to `10.0.90.24` is `via 10.0.50.1` (measured). The leg is `web0`, not `ai4`: every `ai*` leg lets a container reach this host, and this one points the other way. **HOME ASSISTANT SERVES THE PICTURES, NOT mneme** — mneme listens on a ULA only the hub can reach, so a URL it served itself would be unreachable from the browser that must display it; the PNG goes to `www/mneme` and returns as `https://ha.goclan.org/local/mneme/<name>.png`, which adds no listener, no route and no hostname. The cost is one mode change on `www` (0700 → 0755, directory only, in the file that owns that tree), exposing the *names* of files that already hold public frontend assets. **AND IMAGE GENERATION IS THE ONE TOOL WITH A RUNNING COST**: ComfyUI is in llama-swap's exclusive GPU group, so every picture evicts the resident 21 GiB coder model — ~15 s each way, stalling the household agent and the coding agent together. Enabled deliberately, priced in the tool's own description so the model knows it is expensive. **uid 3039, WHICH M29 PREDICTED** — that milestone ran the daemon DynamicUser because it owned nothing on disk and wrote in the uid table that a wiki would change it; ids pass through unmapped onto zdata, so keeping state and keeping a per-boot identity are mutually exclusive. NEXT FREE is now 3040. Depends on M29. [M29b](#m29b-featernst-agent-memory) |
 
 ---
 
@@ -13249,6 +13250,197 @@ and a check that cannot fail is as useless as one that cannot pass.
   jens tunnel. Out of scope here only to keep M29 about one machine.
 - **A Prometheus job for Home Assistant** — still owed from M24, still
   bearer-token gated, still unrelated.
+
+---
+
+## M29b — `feat/ernst-agent-memory`
+
+**Built 2026-09-25.** The agent remembers, can look things up, and can draw.
+
+M29 shipped `mneme` as a translating, constitution-injecting pass-through. This
+fills it in: a git-versioned wiki it reads and writes, SearXNG behind a
+`web_search` tool, and ComfyUI behind a `generate_image` tool.
+
+### Memory — injected, not requested
+
+The constitution, `index.md`, and any page matching the last user turn go into
+the system message **on every turn**, up to `memory.contextBudget` characters
+(6000 ≈ 1500 tokens of a 32768 window). `memory_search` exists as a tool too,
+but a tool is consulted only if the model decides to consult it, and **M11
+measured what that decision is worth on this model class**. Recall that depends
+on the model being in the mood is not recall.
+
+No embeddings and no vector store. Index-first navigation is *exact* inside the
+~150–200 dense page range this pattern states — a page either is in the index or
+it is not — and a household will not reach that for years. If it ever does, the
+answer is a retrieval layer underneath the index, not instead of it.
+
+**Every write is a commit**, so "what does it think it knows" is `git log`, "who
+told it that" is `git show`, and "that is wrong" is `git revert`. Each
+agent-written page carries `source:` front matter naming the turn that produced
+it. That is the whole audit story and it needed no code.
+
+### The injection boundary, built rather than retrofitted
+
+A wiki page is read back as context on every later turn, so anything the agent
+learns from a device name, a calendar entry, an article title or a guest
+speaking to it is a potential instruction. Hence:
+
+- `00-core/`, `SOUL.md` and `IRON_RULES.md` are **not writable by the agent** —
+  the constitution lives in the Nix store and every write path refuses it by
+  name, so a model that decides to rewrite its own rules gets a refusal it can
+  read;
+- path traversal, non-slug names, and writes to `index.md`/`log.md` are refused;
+- `IRON_RULES.md` states that wiki content is data and never instruction, and
+  that a remembered fact loses to the live state of the house.
+
+Six of the thirty build-time tests cover exactly this.
+
+### The nightly pass does not call the model, and that absence is the design
+
+`mneme-lint.timer` rebuilds the index, flags pages with no summary (invisible to
+retrieval — the index line is what the match runs over), duplicate titles, and
+pages untouched past `staleDays`. It deletes nothing.
+
+**Every published write-up of this pattern that automated a synthesis step
+reported the same outcome**: the step failed silently, roughly half the time,
+and nobody noticed for weeks — because a background job that produces nothing
+looks exactly like a background job with nothing to do. One measured it: ~50% of
+automated flushes timed out, exited quietly or wrote an empty file, and a
+scheduled compile "literally never triggered once in production".
+
+**SN4 is already answered and no new alert was added.** ernst sets
+`exporters.systemd = true`, so a failed oneshot raises `SystemdUnitFailed`
+through the ordinary path. A second rule aimed at one unit is duplication that
+later disagrees with the general one. Reported problems print rather than fail —
+a permanent red light is a light everyone learns to ignore, which is M24b's
+`hacs-deps-check` lesson.
+
+### The internal tool loop, and why mneme is still stateless
+
+Home Assistant runs its own tool loop around the whole request and carries its
+own history. So anything mneme does with its **own** tools has to finish inside
+one response — HA's next request knows nothing about a memory lookup that
+happened in here. By the time something goes back to HA it is either an answer
+or a call to one of HA's tools, never one of ours. Capped at four rounds,
+because our rounds happen *inside* one of HA's and an uncapped loop holds a
+voice request open while the household waits.
+
+A mixed round gives HA's tools priority and lets the model ask again; executing
+both would strand our results against a history that never saw them.
+
+### SearXNG got a second leg, and the property it had is kept
+
+Its container block said, in writing, **"NO SECOND VETH, and its absence is
+load-bearing"** — a compromised SearXNG had no path to anything ernst binds
+locally. M29b needs the opposite direction: mneme is a host service reaching
+*into* a container.
+
+The property survives because the host dials in and **nothing accepts on the way
+back**. `nixos-fw` drops unmatched input and this milestone adds no accept for
+`fdca:fe94::2`, so packets the container aims at the host are discarded; only
+replies on a connection the host opened return, through the conntrack rule that
+was already there.
+
+**Why not widen `allowedSource` to the host instead.** Two reasons, and the
+first is measured: the host's route to `10.0.90.24` is `via 10.0.50.1`, so every
+search would leave ernst, cross the UDM-Pro and come back — the hairpin `mon0`
+exists to avoid. And `allowedSource` is documented as "the ONE address
+permitted"; making it plural to admit a differently-shaped peer spends an
+invariant on a case that does not need it.
+
+The leg is `web0`, not `ai4`: every `ai*` leg exists so a container can reach
+this host's loopback, and this one points the other way.
+
+### Pictures are served by Home Assistant, not by mneme
+
+mneme listens on a point-to-point ULA only the hub can reach, so a URL it served
+itself would be unreachable from the browser that has to display it. The hub
+serves its own `www/` at `/local/`, that directory is on this host, and the hub
+is already behind Traefik with a split-horizon name. So the PNG goes to
+`/srv/state/home-assistant/www/mneme/` and comes back as
+`https://ha.goclan.org/local/mneme/<name>.png` — no new listener, no new route,
+no new hostname.
+
+**The cost is stated rather than buried.** `www` is created 0700 by HACS, and
+0700 means another uid cannot even *traverse* it, so the mode goes to 0755 on
+the directory only. Nothing inside changes owner or mode, and what that exposes
+is the *names* of files under `www/` — which already holds community frontend
+assets served to every browser that loads the dashboard. The change lives in
+`containers/home-assistant.nix` because that file owns that tree.
+
+**And image generation is the one tool with a running cost.** ComfyUI is in
+llama-swap's exclusive GPU group, so every picture **evicts the resident 21 GiB
+coder model** and the next request reloads it — ~15 s each way, stalling the
+household agent and the coding agent together. That is the eviction
+`containers/karakeep.nix` already prices for image bookmarks; this is the second
+place it is paid, enabled deliberately rather than because it was available. The
+tool's own description tells the model it is expensive, because a model that
+does not know an action is costly will take it on a whim.
+
+### uid 3039 — M29 predicted this line
+
+M29 ran the daemon under `DynamicUser` because it owned nothing on disk, and
+wrote in the uid table that a wiki would change that. Ids pass through unmapped
+onto zdata, so keeping state and keeping a per-boot identity are mutually
+exclusive. Checked against nixpkgs' `ids.nix` before being written down — the
+step M24 skipped and paid for. NEXT FREE is now **3040**.
+
+### What shipped
+
+- `service-modules/pkgs/mneme/{memory,tools,lint}.py` — the wiki, the tools, the
+  nightly pass; `mneme.py` gains retrieval injection and the internal loop
+- `service-modules/local-ai.nix` — `roles.agent.{memory,webSearch,imageGen}`,
+  static uid, `mneme-dirs` guard with `git init`, `mneme-lint` timer, SearXNG's
+  `web0` leg
+- `machines/ernst/containers/home-assistant.nix` — `www/mneme`, and the mode
+  change that makes it reachable
+- `machines/ernst/networking.nix` — uid 3039, the `fdca:fe94::` row
+- `docs/guides/agent-memory.md` — operating it
+
+### Test plan
+
+Build-time (30 tests in `checkPhase`, `git` a check input only): path traversal
+and constitution refusals, index derivation and idempotence, search ranking,
+retrieval injection and budget, the tool split, workflow wiring.
+
+```bash
+# The wiki exists, is a repository, and is on the right dataset.
+systemctl status mneme-dirs
+git -C /srv/state/mneme/wiki log --oneline | head
+findmnt --noheadings --output SOURCE --target /srv/state    # zdata/state
+
+# Memory survives a NEW conversation — the whole point.
+#   session A: "remember that the dishwasher takes three hours"
+#   session B, after reload: "how long does the dishwasher take"
+git -C /srv/state/mneme/wiki log -1 --stat
+git -C /srv/state/mneme/wiki show HEAD | grep -E 'source:|updated:'
+
+# The lint pass, and the index it derives.
+systemctl start mneme-lint && journalctl -u mneme-lint -n 20 --no-pager
+
+# Web search reaches SearXNG over the new leg, and only from the host.
+curl -s 'http://[fdca:fe94::2]:8888/search?q=test&format=json' | head -c 200
+nixos-container run searxng -- ip -6 -br addr show web0
+
+# The boundary, and it must FAIL:
+#   ask the agent to write to IRON_RULES.md or 00-core/ -> refusal, no commit.
+
+# A picture, and the eviction it causes.
+#   ask for one, then watch: journalctl -u llama-swap -f
+ls -l /srv/state/home-assistant/www/mneme/
+curl -sI https://ha.goclan.org/local/mneme/<name>.png | head -1   # 200
+```
+
+### Left for later
+
+- **`/v1` does not get the action tools.** This handler is a byte passthrough,
+  so a returned `memory_write` would reach a client that has never heard of it.
+  Recall still works there (it is injected). Open WebUI already has the same
+  SearXNG and the same ComfyUI. Running the internal loop for `/v1` is the
+  follow-on if opencode or nvf ever wants the wiki.
+- **A model-driven synthesis pass**, if ever, as a command a person runs.
+- **The model swap** — still M29c, still gated on llama.cpp b9190 vs b9222.
 
 ---
 

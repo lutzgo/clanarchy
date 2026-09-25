@@ -306,6 +306,13 @@ let
   aiHost = "fdca:fe93::1";
   aiCont = "fdca:fe93::2";
 
+  # M29b.  The agent's uid, allocated in the table in
+  # machines/ernst/networking.nix, named here because `hass-dirs` has to create
+  # a directory inside this container's state tree that the agent can write —
+  # see the note at that unit for what it is for and what the mode change on
+  # `www` does and does not expose.
+  mnemeUid = 3039;
+
   # State: the configuration tree, the .storage blobs that hold accounts and
   # integration config, and the recorder's SQLite database.
   #
@@ -509,6 +516,38 @@ in
         chown ${toString hassUid}:${toString hassGid} "${stateRoot}/scripts.yaml"
         chmod 0600 "${stateRoot}/scripts.yaml"
       fi
+
+      # ── M29b: where the agent's pictures land ──────────────────────────
+      #
+      # Home Assistant serves `www/` at `/local/`, so a PNG written here is
+      # reachable at https://ha.goclan.org/local/mneme/<name>.png — from the
+      # Assist dialog, from the companion app, and from off the LAN, because
+      # that name is already split-horizon behind Traefik.  mneme cannot serve
+      # it itself: it listens on a point-to-point ULA that only this container
+      # can reach, so a URL it produced would be unreachable from the browser
+      # that has to display it.
+      #
+      # THIS IS THE PERMISSION CHANGE THAT MAKES IT POSSIBLE, and it is here
+      # rather than in the agent's module because this file owns this tree.
+      # `www` is created 0700 by HACS (which writes www/community), and 0700
+      # means another uid cannot even TRAVERSE it — so the agent could not
+      # reach a subdirectory of its own inside it.  0755 on the directory
+      # only; nothing inside it changes owner or mode.
+      #
+      # What that exposes: the names of files under www/ become listable by
+      # any local uid.  HACS already puts community frontend assets there, and
+      # those are public JavaScript served to every browser that loads the
+      # dashboard — so the directory's contents were never secret.  No file
+      # mode is loosened.
+      if [ -d "${stateRoot}/www" ]; then
+        chmod 0755 "${stateRoot}/www"
+      else
+        install -d -o ${toString hassUid} -g ${toString hassGid} -m 0755 "${stateRoot}/www"
+      fi
+      # Owned by the agent, readable by Home Assistant and by the frontend.
+      # uid ${toString mnemeUid} is allocated in machines/ernst/networking.nix; it is named
+      # here because a bare number in a chown is how the two drift apart.
+      install -d -o ${toString mnemeUid} -g ${toString mnemeUid} -m 0755 "${stateRoot}/www/mneme"
     '';
   };
 

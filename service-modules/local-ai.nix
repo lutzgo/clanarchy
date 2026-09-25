@@ -1657,6 +1657,174 @@ in
         '';
       };
 
+      # ── M29b: memory, web search, image generation ────────────────────────
+      memory = {
+        enable = lib.mkOption {
+          type    = lib.types.bool;
+          default = false;
+          description = ''
+            Give the agent a git-versioned markdown wiki it can read and write.
+
+            OFF BY DEFAULT because it is the option that makes the agent keep
+            things.  Turning it on creates a repository on zdata and gives the
+            model four tools that write to it.
+          '';
+        };
+        stateDir = lib.mkOption {
+          type    = lib.types.path;
+          default = "/srv/state/mneme";
+          description = ''
+            Parent of the wiki.  `/srv/state` by the test in
+            docs/guides/ernst-zdata-datasets.md: a tree of small markdown files
+            and a git object store is that dataset's write profile, and its
+            `com.sun:auto-snapshot=true` is what matters — a fact the household
+            told the agent once is not re-acquirable from anywhere.
+          '';
+        };
+        contextBudget = lib.mkOption {
+          type    = lib.types.ints.positive;
+          default = 6000;
+          description = ''
+            Characters of constitution plus memory injected into every turn.
+
+            A CHARACTER count, not a token count, and approximate on purpose —
+            see the note on `build_context` in mneme.py.  6000 is roughly 1500
+            tokens against a 32768 window, so memory costs under 5% of the
+            context and the conversation keeps the rest.
+          '';
+        };
+        staleDays = lib.mkOption {
+          type    = lib.types.ints.positive;
+          default = 180;
+          description = ''
+            `mneme-lint` reports pages untouched for longer than this.  It
+            never deletes anything — this module removes no facts.
+          '';
+        };
+      };
+
+      webSearch = {
+        enable = lib.mkOption {
+          type    = lib.types.bool;
+          default = false;
+          description = "Give the agent a `web_search` tool backed by SearXNG.";
+        };
+        url = lib.mkOption {
+          type    = lib.types.str;
+          default = "";
+          example = "http://[fdca:fe94::2]:8888";
+          description = ''
+            SearXNG's base URL as reached FROM THIS HOST.
+
+            Not the VLAN-90 address.  SearXNG's container firewall admits one
+            peer and the host's route to 10.0.90.24 hairpins out through the
+            UDM-Pro and back — so M29b gives it a point-to-point leg instead,
+            the same argument M6's mon0 makes.  The container end of that leg
+            is what belongs here.
+          '';
+        };
+      };
+
+      imageGen = {
+        enable = lib.mkOption {
+          type    = lib.types.bool;
+          default = false;
+          description = ''
+            Give the agent a `generate_image` tool backed by ComfyUI.
+
+            ── IT IS THE ONE TOOL WITH A RUNNING COST ────────────────────────
+
+            ComfyUI is a member of llama-swap's EXCLUSIVE GPU group, so every
+            picture EVICTS the resident 21 GiB language model and the next
+            request reloads it — roughly 15 s each way, and it stalls this
+            agent and lgo's coding agent both.  The tool's own description
+            tells the model so, because a model that does not know an action is
+            expensive will take it on a whim.
+          '';
+        };
+        url = lib.mkOption {
+          type    = lib.types.str;
+          default = "";
+          example = "http://127.0.0.1:11434/upstream/comfyui";
+          description = ''
+            ComfyUI through llama-swap.  LOOPBACK, and that is the whole reason
+            this tool needs no network work: mneme is a host service and
+            llama-swap's `/upstream/comfyui` proxy is on 127.0.0.1.  Verified
+            200 from the host on 2026-09-25 before this was written.
+          '';
+        };
+        outputDir = lib.mkOption {
+          type    = lib.types.str;
+          default = "";
+          example = "/srv/state/home-assistant/www/mneme";
+          description = ''
+            Where the finished PNG is written.
+
+            HOME ASSISTANT SERVES THE PICTURE, NOT mneme, and that is a
+            delivery decision rather than a convenience.  mneme listens on a
+            point-to-point ULA that only the hub can reach, so a URL it served
+            itself would be unreachable from the browser that has to show it.
+            The hub serves its own `www/` at `/local/`, that directory is on
+            this host, and the hub is already behind Traefik with a public
+            name — so this is the only delivery that adds no listener, no route
+            and no hostname.
+
+            THE COST, stated: the agent writes into the hub's state tree, and
+            `www` has to be traversable by this service.  See the `hass-dirs`
+            unit in machines/ernst/containers/home-assistant.nix, which owns
+            that tree and therefore owns the permission.
+          '';
+        };
+        publicBase = lib.mkOption {
+          type    = lib.types.str;
+          default = "";
+          example = "https://ha.goclan.org/local/mneme";
+          description = ''
+            The URL prefix `outputDir` is served at.  This is what the model
+            hands the household, so it has to be the name a phone off the LAN
+            resolves too — which `ha.goclan.org` is, split-horizon.
+          '';
+        };
+        checkpoint = lib.mkOption {
+          type    = lib.types.str;
+          default = "sd_xl_base_1.0.safetensors";
+          description = ''
+            Must be the `filename` of a `roles.models` entry with
+            `subdir = "checkpoints"`.  ComfyUI resolves it through the
+            generated extra_model_paths.yaml, so a name that is not declared
+            there is a per-request load error.
+          '';
+        };
+        steps = lib.mkOption {
+          type    = lib.types.ints.positive;
+          default = 25;
+          description = "Sampler steps. 25 is SDXL's usual quality/time knee.";
+        };
+        width = lib.mkOption {
+          type    = lib.types.ints.positive;
+          default = 1024;
+          description = "SDXL is trained at 1024; smaller degrades badly.";
+        };
+        height = lib.mkOption {
+          type    = lib.types.ints.positive;
+          default = 1024;
+        };
+        negative = lib.mkOption {
+          type    = lib.types.str;
+          default = "";
+          description = "Negative prompt applied to every generation.";
+        };
+        timeoutSec = lib.mkOption {
+          type    = lib.types.ints.positive;
+          default = 600;
+          description = ''
+            Ceiling on one generation.  Generous because a first picture
+            includes evicting the language model AND loading a 6.9 GiB
+            checkpoint off zdata.
+          '';
+        };
+      };
+
       readTimeout = lib.mkOption {
         type        = lib.types.ints.positive;
         default     = 600;
@@ -1683,6 +1851,21 @@ in
 
           declared =
             (roles.models.machines.${machine.name}.settings.models or { });
+
+          mem = settings.memory;
+          wikiDir = "${mem.stateDir}/wiki";
+
+          # ── uid 3039 (M29b), AND IT IS LOAD-BEARING NOW ──────────────────
+          #
+          # M29 ran this daemon under DynamicUser because it owned nothing on
+          # disk.  A git repository under /srv/state changes that: nspawn and
+          # virtiofs pass ids through unmapped, so whatever uid systemd
+          # allocated on a given boot is the uid on zdata — and a per-boot
+          # identity on the pool is exactly what the uid table in
+          # machines/ernst/networking.nix exists to prevent.  M27 made the same
+          # call for Meilisearch and went the other way (leave it off the
+          # pool); here the data must be persistent, so the identity must be.
+          uid = 3039;
         in
         lib.mkMerge [
           {
@@ -1710,10 +1893,19 @@ in
               # those — so a mneme that starts first is useful, and one that
               # REQUIRED llama-swap would take the conversation agent's
               # configuration UI down with it.
-              after = [ "network.target" "llama-swap.service" ];
+              after = [ "network.target" "llama-swap.service" ]
+                ++ lib.optional mem.enable "mneme-dirs.service";
+              # BLOCKING, not advisory: without the wiki the memory tools would
+              # fail per call with a path error, and a guard that only warns is
+              # a guard nobody reads.
+              requires = lib.optional mem.enable "mneme-dirs.service";
+
+              # git is on the PATH rather than in the package, so which git
+              # makes the commits is visible here.
+              path = lib.optional mem.enable pkgs.git;
 
               serviceConfig = {
-                ExecStart = lib.concatStringsSep " " [
+                ExecStart = lib.concatStringsSep " " ([
                   (lib.getExe mneme)
                   "--listen 127.0.0.1"
                   "--port ${toString settings.port}"
@@ -1722,20 +1914,45 @@ in
                   "--soul-dir ${mneme}/${mneme.soulSubdir}"
                   "--read-timeout ${toString settings.readTimeout}"
                   "--log-level ${settings.logLevel}"
-                ];
+                ]
+                ++ lib.optionals mem.enable [
+                  "--wiki ${wikiDir}"
+                  "--context-budget ${toString mem.contextBudget}"
+                ]
+                ++ lib.optionals settings.webSearch.enable [
+                  "--search-url ${settings.webSearch.url}"
+                ]
+                ++ lib.optionals settings.imageGen.enable [
+                  "--image-url ${settings.imageGen.url}"
+                  "--image-output-dir ${settings.imageGen.outputDir}"
+                  "--image-public-base ${settings.imageGen.publicBase}"
+                  "--image-checkpoint ${settings.imageGen.checkpoint}"
+                  "--image-steps ${toString settings.imageGen.steps}"
+                  "--image-width ${toString settings.imageGen.width}"
+                  "--image-height ${toString settings.imageGen.height}"
+                  "--image-timeout ${toString settings.imageGen.timeoutSec}"
+                ]
+                ++ lib.optionals
+                     (settings.imageGen.enable && settings.imageGen.negative != "")
+                     [ "--image-negative '${settings.imageGen.negative}'" ]);
                 Restart    = "on-failure";
                 RestartSec = "5s";
 
-                # DynamicUser, unlike llama-swap's static `llama`.  The
-                # difference is state: llama-swap owns a 25 GiB model store on
-                # zdata whose ownership must survive a rollback, and mneme owns
-                # nothing on disk in this milestone.  M29b gives it a git
-                # repository under /srv/state and this becomes a static uid at
-                # that point — a DynamicUser with a StateDirectory would land a
-                # systemd-ALLOCATED uid on the pool, which is exactly what the
-                # uid table in machines/ernst/networking.nix exists to prevent
-                # (M27 made the same call for Meilisearch).
-                DynamicUser = true;
+                # ── STATIC uid WHEN IT KEEPS ANYTHING (M29b) ──────────────
+                #
+                # M29 ran this DynamicUser because the daemon owned nothing on
+                # disk.  A wiki changes that, and the reason is the one this
+                # file already gives for llama-swap's `llama` user and that
+                # roles.voice paid for in M29's first deploy: ids pass through
+                # unmapped onto zdata, and a per-boot identity on the pool is
+                # what the uid table exists to prevent.  With memory off it
+                # keeps nothing and stays dynamic.
+                DynamicUser = !mem.enable;
+                User  = lib.mkIf mem.enable "mneme";
+                Group = lib.mkIf mem.enable "mneme";
+                # The wiki is the ONE path outside the store it may write.
+                ReadWritePaths = lib.optional mem.enable mem.stateDir
+                  ++ lib.optional settings.imageGen.enable settings.imageGen.outputDir;
                 NoNewPrivileges = true;
                 PrivateDevices  = true;
                 PrivateTmp      = true;
@@ -1770,6 +1987,113 @@ in
             };
 
             environment.systemPackages = [ mneme ];
+
+            # ── The wiki's identity and its directory ────────────────────────
+            users.users.mneme = lib.mkIf mem.enable {
+              inherit uid;
+              isSystemUser = true;
+              group        = "mneme";
+              home         = mem.stateDir;
+              createHome   = false;
+              description  = "Household agent memory (mneme)";
+            };
+            users.groups.mneme = lib.mkIf mem.enable { gid = uid; };
+
+            # A GUARD, NOT A tmpfiles RULE, and for the reason every other
+            # service on this host gives: activation does not re-run
+            # systemd-tmpfiles-setup in time, and a service that writes to
+            # /srv/state before the dataset is mounted writes onto the ROOT
+            # pool — where it is silently lost at the next rollback.  Immich
+            # measured that; this is the same shape.
+            systemd.services.mneme-dirs = lib.mkIf mem.enable {
+              description = "Prepare and verify mneme's memory on zdata";
+              wantedBy   = [ "multi-user.target" ];
+              after      = [ "srv-state.mount" ];
+              requires   = [ "srv-state.mount" ];
+              before     = [ "mneme.service" ];
+              requiredBy = [ "mneme.service" ];
+              path = [ pkgs.git pkgs.util-linux pkgs.coreutils ];
+              serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
+              script = ''
+                set -euo pipefail
+
+                # findmnt on the PARENT: --target on a leaf that does not exist
+                # yet returns nothing, which would read as "wrong dataset".
+                src=$(findmnt --noheadings --output SOURCE --target /srv/state || true)
+                if [ "$src" != "zdata/state" ]; then
+                  echo "mneme-dirs: /srv/state is '$src', expected 'zdata/state'." >&2
+                  echo "Refusing to write the memory wiki onto the root pool," >&2
+                  echo "where a rollback would silently discard it. Fix with:" >&2
+                  echo "  zfs create -o recordsize=128K -o exec=on \\" >&2
+                  echo "    -o com.sun:auto-snapshot=true zdata/state" >&2
+                  exit 1
+                fi
+
+                install -d -o ${toString uid} -g ${toString uid} -m 0750 ${mem.stateDir}
+                install -d -o ${toString uid} -g ${toString uid} -m 0750 ${wikiDir}
+
+                # git init is idempotent and this is the only place it happens,
+                # so a wiki cannot exist without being a repository — which is
+                # the whole audit story.
+                if [ ! -d ${wikiDir}/.git ]; then
+                  git -C ${wikiDir} init -q -b main
+                  git -C ${wikiDir} config user.name mneme
+                  git -C ${wikiDir} config user.email mneme@goclan.org
+                fi
+                for d in ${lib.concatStringsSep " " [ "00-core" "01-people" "02-devices" "03-routines" "04-facts" ]}; do
+                  install -d -o ${toString uid} -g ${toString uid} -m 0750 ${wikiDir}/"$d"
+                done
+                chown -R ${toString uid}:${toString uid} ${wikiDir}
+              '';
+            };
+
+            # ── The nightly pass ────────────────────────────────────────────
+            #
+            # SN4 SAYS A FAILED ONESHOT ON A TIMER IS SILENT, and it is already
+            # answered here rather than needing a new rule: ernst sets
+            # `exporters.systemd = true`, so node_exporter reports this unit's
+            # failed state and monitoring.nix's `SystemdUnitFailed` fires on
+            # it.  That is why there is no bespoke alert for this service — the
+            # general mechanism covers a host unit, and a second rule aimed at
+            # one unit would be the kind of duplication that later disagrees
+            # with the general one.
+            #
+            # (It is the CONTAINER units that mechanism cannot see, which is
+            # what `exporters.containers` exists for.  This runs on the host.)
+            systemd.services.mneme-lint = lib.mkIf mem.enable {
+              description = "Rebuild mneme's memory index and report problems";
+              after    = [ "mneme-dirs.service" ];
+              requires = [ "mneme-dirs.service" ];
+              path = [ pkgs.git ];
+              serviceConfig = {
+                Type = "oneshot";
+                User  = "mneme";
+                Group = "mneme";
+                ExecStart = lib.concatStringsSep " " [
+                  "${mneme}/bin/mneme-lint"
+                  "--wiki ${wikiDir}"
+                  "--stale-days ${toString mem.staleDays}"
+                ];
+                ReadWritePaths = [ mem.stateDir ];
+                NoNewPrivileges = true;
+                PrivateDevices  = true;
+                ProtectSystem   = "strict";
+                ProtectHome     = true;
+                IPAddressDeny   = "any";   # it reads files; it needs no network
+              };
+            };
+
+            systemd.timers.mneme-lint = lib.mkIf mem.enable {
+              description = "Nightly mneme memory lint";
+              wantedBy = [ "timers.target" ];
+              timerConfig = {
+                OnCalendar = "daily";
+                # The wiki is small, so this is about not colliding with the
+                # snapshot and GC timers rather than about load.
+                RandomizedDelaySec = "30m";
+                Persistent = true;
+              };
+            };
           }
 
           (mkBridges {
@@ -2503,6 +2827,20 @@ in
           vethName   = "vb-searxng";
           secretsDir = "/run/searxng-secrets";
           secretGen  = config.clan.core.vars.generators.searxng-secret;
+
+          # ── The leg to the host (M29b) ──────────────────────────────────
+          #
+          # `web0` rather than `ai4`: the ai-numbered legs all point AT the
+          # inference stack, and this one points the other way — a host
+          # service reaching into a container.  Naming it in that family would
+          # read as a fifth consumer of llama-swap, which it is not.
+          #
+          # The name is host-global (nspawn uses one name for both ends), and
+          # machines/ernst/networking.nix asserts no two containers claim one.
+          # fdca:fe94:: is the next free /64 after M29's fe93.
+          webVeth = "web0";
+          webHost = "fdca:fe94::1";
+          webCont = "fdca:fe94::2";
         in
         {
           ####################################################################
@@ -2637,11 +2975,34 @@ in
             hostBridge      = settings.bridge;
             localMacAddress = settings.mac;
 
-            # NO SECOND VETH, and its absence is load-bearing.  The webui
-            # container has `ai0` to reach llama-swap; this one has no path to
-            # the host's loopback at all, so a compromised SearXNG cannot
-            # reach the inference stack, the metrics proxy, or anything else
-            # ernst binds locally.  Traffic in this feature goes one way only.
+            # ── A SECOND VETH, ADDED BY M29b, AND THE PROPERTY IT HAD IS KEPT
+            #
+            # This block used to say "NO SECOND VETH, and its absence is
+            # load-bearing": the webui container has a leg to llama-swap, and
+            # this one had no path to anything ernst binds locally, so a
+            # compromised SearXNG could not reach the inference stack.
+            #
+            # M29b needs the OPPOSITE DIRECTION — mneme is a host service and
+            # has to reach SearXNG — and the distinction is what preserves the
+            # property.  The host end dials in; nothing accepts on the way
+            # back.  ernst's `nixos-fw` drops unmatched input and this
+            # milestone adds NO accept for `fdca:fe94::2`, so the container can
+            # emit packets at the host and they are discarded; only replies on
+            # a connection the host opened come back, by the conntrack rule
+            # that is already there.  A compromised SearXNG is exactly as
+            # boxed in as it was.
+            #
+            # WHY NOT JUST WIDEN `allowedSource` TO THE HOST.  Two reasons.
+            # The host's route to 10.0.90.24 is `via 10.0.50.1` — measured —
+            # so search traffic would leave ernst, cross the UDM-Pro and come
+            # back, which is the hairpin M6's mon0 exists to avoid.  And
+            # `allowedSource` is documented as "the ONE address permitted";
+            # making it plural to admit a second, differently-shaped peer
+            # would spend that invariant on a case that does not need it.
+            extraVeths.${webVeth} = {
+              hostAddress6  = webHost;
+              localAddress6 = webCont;
+            };
             bindMounts = {
               ${secretsDir} = {
                 hostPath   = secretsDir;
@@ -2685,12 +3046,28 @@ in
               };
               systemd.network.wait-online.timeout = 20;
 
-              # NOTHING is unconditionally open.  One source, one port.
+              # ai-style leg to the host (M29b) — see extraVeths above.
+              systemd.network.networks."20-${webVeth}" = {
+                matchConfig.Name = webVeth;
+                address = [ "${webCont}/128" ];
+                routes  = [ { Destination = "${webHost}/128"; Scope = "link"; } ];
+                networkConfig.IPv6AcceptRA = false;
+                # A veth has no carrier until both ends exist, and the host end
+                # is created by the nspawn invocation that starts this
+                # container. "routable" would hang wait-online on that timing.
+                linkConfig.RequiredForOnline = "no";
+              };
+
+              # NOTHING is unconditionally open.  Two sources now, one port,
+              # and they are different address families on different legs:
+              # Open WebUI over VLAN 90, and mneme over the point-to-point ULA.
               networking.firewall = {
                 enable = true;
                 extraCommands = ''
                   iptables -A nixos-fw -p tcp --dport ${toString settings.port} \
                     -s ${settings.allowedSource} -j nixos-fw-accept
+                  ip6tables -A nixos-fw -p tcp --dport ${toString settings.port} \
+                    -s ${webHost}/128 -j nixos-fw-accept
                 '';
               };
 

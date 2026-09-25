@@ -60,6 +60,7 @@ nav:
     - ernst zdata datasets: guides/ernst-zdata-datasets.md
     - ernst app-API ingress: guides/ernst-app-api-ingress.md
     - The reading stack: guides/reading-stack.md
+    - The agent's memory: guides/agent-memory.md
     - HTPC / Plasma Bigscreen: guides/htpc-bigscreen.md
     - HTPC / game controllers: guides/htpc-controllers.md
     - Emulation on birte: guides/birte-emulation.md

@@ -17,11 +17,17 @@
 , stdenvNoCC
 , python3
 , makeWrapper
+, git
 }:
 
 let
   python = python3.withPackages (ps: [ ps.aiohttp ]);
 in
+# `git` is a CHECK input only, never a runtime one.  The memory tests make a
+# real repository and assert that a write becomes a commit — that is the whole
+# audit story, so testing it against a mock would test the mock.  At runtime
+# the binary comes from the unit's own PATH (see roles.agent), which keeps it
+# out of this closure and keeps which git is in use visible in the unit.
 stdenvNoCC.mkDerivation {
   pname   = "mneme";
   version = "0.1.0";
@@ -32,7 +38,14 @@ stdenvNoCC.mkDerivation {
   # in this checkout.
   src = lib.fileset.toSource {
     root = ./.;
-    fileset = lib.fileset.unions [ ./mneme.py ./test_mneme.py ./soul ];
+    fileset = lib.fileset.unions [
+      ./mneme.py
+      ./memory.py
+      ./tools.py
+      ./lint.py
+      ./test_mneme.py
+      ./soul
+    ];
   };
 
   nativeBuildInputs = [ makeWrapper ];
@@ -41,8 +54,16 @@ stdenvNoCC.mkDerivation {
   dontBuild     = true;
 
   doCheck = true;
+  nativeCheckInputs = [ git ];
   checkPhase = ''
     runHook preCheck
+    # The wiki tests commit, so git needs an identity and a deterministic
+    # default branch; a sandbox has neither and git's own defaults warn.
+    export HOME=$TMPDIR
+    export GIT_CONFIG_GLOBAL=$TMPDIR/gitconfig
+    git config --global user.email test@localhost
+    git config --global user.name test
+    git config --global init.defaultBranch main
     ${python}/bin/python3 test_mneme.py
     runHook postCheck
   '';
@@ -50,7 +71,12 @@ stdenvNoCC.mkDerivation {
   installPhase = ''
     runHook preInstall
 
-    install -Dm0644 mneme.py "$out/lib/mneme/mneme.py"
+    # All four modules into one directory: python puts a script's own directory
+    # on sys.path, so `from memory import Wiki` resolves with no PYTHONPATH and
+    # no package boilerplate.
+    for m in mneme memory tools lint; do
+      install -Dm0644 "$m.py" "$out/lib/mneme/$m.py"
+    done
 
     # The constitution ships as data, not as a string literal in the daemon, so
     # that `cat` on a running host shows exactly what the model is told and so
@@ -60,6 +86,12 @@ stdenvNoCC.mkDerivation {
 
     makeWrapper "${python}/bin/python3" "$out/bin/mneme" \
       --add-flags "$out/lib/mneme/mneme.py"
+
+    # The nightly pass gets its own entry point rather than a flag on the
+    # daemon: it is a oneshot on a timer with an alert pointed at it, and a
+    # mode switch inside a long-running server is a worse thing to alert on.
+    makeWrapper "${python}/bin/python3" "$out/bin/mneme-lint" \
+      --add-flags "$out/lib/mneme/lint.py"
 
     runHook postInstall
   '';

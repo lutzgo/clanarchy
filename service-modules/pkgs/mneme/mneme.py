@@ -50,7 +50,19 @@ from typing import Any
 import aiohttp
 from aiohttp import web
 
+from memory import Wiki
+from tools import Toolbox
+
 _LOG = logging.getLogger("mneme")
+
+# How many rounds of mneme's OWN tools one request may take before we stop.
+#
+# IT HAS TO BE BOUNDED AND THE BOUND HAS TO BE SMALL.  Home Assistant caps its
+# own tool loop at 10 (MAX_TOOL_ITERATIONS in its ollama entity) and that cap
+# protects HA, not this daemon: our rounds happen INSIDE one of its rounds, so
+# without a cap here a model that keeps searching its memory holds a voice
+# request open indefinitely while the household waits for an answer.
+MAX_INTERNAL_ROUNDS = 4
 
 # The digest Home Assistant shows in the device registry.  Ollama's /api/tags
 # entries carry one and the python client's pydantic model accepts None, but a
@@ -87,6 +99,72 @@ class Preamble:
 
     def text(self) -> str:
         return self._text
+
+
+def build_context(
+    preamble: str,
+    wiki: Wiki | None,
+    messages: list[dict[str, Any]],
+    budget_chars: int,
+) -> str:
+    """The constitution, plus as much of the wiki as is worth carrying.
+
+    RETRIEVAL IS INJECTED, NOT REQUESTED, and that is the central choice of
+    this milestone.  `memory_search` exists as a tool too, but a tool is only
+    consulted if the model decides to consult it — and M11 measured what that
+    decision is worth on this model class.  So the index goes in on every turn
+    unconditionally, and the pages whose index line matches the last thing the
+    household said go in with it.
+
+    Index-first navigation, no embeddings, no vector database: the pattern's
+    own stated working range is ~150-200 dense pages and this household will
+    not reach that for years.  Inside it, a page either is in the index or it
+    is not, which is a property a similarity search cannot offer.
+
+    THE BUDGET IS A CHARACTER COUNT, not a token count, and that is a
+    deliberate approximation.  Counting tokens properly means carrying the
+    model's tokenizer, and the number it would produce would still be an
+    estimate of what the template does with it. Four characters to a token is
+    close enough to keep the context from being spent on memory.
+    """
+    parts = [preamble]
+    if wiki is None:
+        return "\n\n".join(parts)
+
+    index = wiki.index_text().strip()
+    if index:
+        parts.append(
+            "# Your memory of this household\n\n"
+            "This is the index of what you have written down. To read a page, "
+            "use memory_read with its path.\n\n" + index
+        )
+
+    last_user = ""
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            content = msg.get("content")
+            if isinstance(content, str):
+                last_user = content
+            elif isinstance(content, list):
+                last_user = " ".join(
+                    p.get("text", "") for p in content if isinstance(p, dict)
+                )
+            break
+
+    if last_user:
+        spent = sum(len(p) for p in parts)
+        for path, _ in wiki.search(last_user, limit=4):
+            try:
+                body = wiki.read(path)
+            except Exception:  # noqa: BLE001 - a bad page must not kill the turn
+                continue
+            block = f"# Memory page `{path}`\n\n{body.strip()}"
+            if spent + len(block) > budget_chars:
+                break
+            parts.append(block)
+            spent += len(block)
+
+    return "\n\n".join(parts)
 
 
 def inject_preamble(messages: list[dict[str, Any]], preamble: str) -> list[dict[str, Any]]:
@@ -215,7 +293,12 @@ def _as_data_url(image: Any) -> str:
     return str(image)
 
 
-def ollama_to_openai(body: dict[str, Any], model: str, preamble: str) -> dict[str, Any]:
+def ollama_to_openai(
+    body: dict[str, Any],
+    model: str,
+    preamble: str,
+    extra_tools: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Build the upstream OpenAI request from an /api/chat body."""
     messages = inject_preamble(
         _ollama_to_openai_messages(body.get("messages") or []), preamble
@@ -231,7 +314,10 @@ def ollama_to_openai(body: dict[str, Any], model: str, preamble: str) -> dict[st
         "stream": True,
     }
 
-    tools = body.get("tools")
+    # HA's Assist tools, plus mneme's own.  The model sees one flat list and
+    # does not know the difference; the server sorts the calls back out by
+    # name, executing its own and handing HA's back to HA.
+    tools = list(body.get("tools") or []) + list(extra_tools or [])
     if tools:
         out["tools"] = tools
         out["tool_choice"] = "auto"
@@ -280,6 +366,38 @@ def _now() -> str:
     )
 
 
+def _last_user_text(messages: list[dict[str, Any]]) -> str:
+    """The last thing the household actually said, for write provenance."""
+    for msg in reversed(messages or []):
+        if msg.get("role") == "user":
+            content = msg.get("content")
+            if isinstance(content, str):
+                return " ".join(content.split())[:300]
+            if isinstance(content, list):
+                return " ".join(
+                    " ".join(str(p.get("text", "")).split())
+                    for p in content
+                    if isinstance(p, dict)
+                )[:300]
+            return ""
+    return ""
+
+
+def _args_obj(arguments: str, name: str) -> dict[str, Any]:
+    """Parse a tool call's argument string into an object.
+
+    A refusal rather than an exception on bad JSON: the caller is a model, the
+    result goes back to it as a tool result, and `{"__raw": …}` reaching the
+    tool is something it can be told about. Raising here would end the turn.
+    """
+    try:
+        parsed = json.loads(arguments or "{}")
+    except json.JSONDecodeError:
+        _LOG.warning("tool call %s: unparseable arguments %r", name, arguments)
+        return {"__raw": arguments}
+    return parsed if isinstance(parsed, dict) else {"__value": parsed}
+
+
 def _ollama_chunk(model: str, message: dict[str, Any], done: bool, reason: str | None = None) -> bytes:
     payload: dict[str, Any] = {
         "model": model,
@@ -308,12 +426,38 @@ class _ToolCallAccumulator:
     def feed(self, deltas: list[dict[str, Any]]) -> None:
         for delta in deltas:
             index = delta.get("index", 0)
-            call = self._calls.setdefault(index, {"name": "", "arguments": ""})
+            call = self._calls.setdefault(index, {"name": "", "arguments": "", "id": ""})
+            if delta.get("id"):
+                call["id"] = delta["id"]
             fn = delta.get("function") or {}
             if fn.get("name"):
                 call["name"] = fn["name"]
             if fn.get("arguments"):
                 call["arguments"] += fn["arguments"]
+
+    def drain_openai(self) -> list[dict[str, Any]]:
+        """The calls in OpenAI's own shape, arguments still a JSON string.
+
+        Used by the internal tool loop, which has to put the assistant turn
+        back into an OpenAI message list — so re-serialising an object we just
+        parsed would be work with a failure mode. `drain()` below is the other
+        direction, for handing a call to Home Assistant.
+
+        An id is synthesised when llama.cpp omits one, because the assistant
+        message and its tool result have to agree on a value and an empty
+        string on both sides is an unmatched pair upstream.
+        """
+        out: list[dict[str, Any]] = []
+        for _, call in sorted(self._calls.items()):
+            out.append(
+                {
+                    "id": call["id"] or f"call_{uuid.uuid4().hex[:24]}",
+                    "name": call["name"],
+                    "arguments": call["arguments"] or "{}",
+                }
+            )
+        self._calls.clear()
+        return out
 
     def drain(self) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
@@ -345,6 +489,32 @@ class Mneme:
         self.cfg = cfg
         self.preamble = Preamble(cfg.soul_dir).text()
         self.session: aiohttp.ClientSession | None = None
+
+        self.wiki = Wiki(cfg.wiki) if cfg.wiki else None
+        image: dict[str, Any] = {}
+        if cfg.image_url:
+            image = {
+                "url": cfg.image_url,
+                "outputDir": cfg.image_output_dir,
+                "publicBase": cfg.image_public_base,
+                "checkpoint": cfg.image_checkpoint,
+                "steps": cfg.image_steps,
+                "width": cfg.image_width,
+                "height": cfg.image_height,
+                "negative": cfg.image_negative,
+                "timeout": cfg.image_timeout,
+            }
+        self.tools = Toolbox(
+            self.wiki,
+            search_url=cfg.search_url,
+            image=image,
+            session_factory=lambda: self.session,
+        )
+
+    def context_for(self, messages: list[dict[str, Any]]) -> str:
+        return build_context(
+            self.preamble, self.wiki, messages, self.cfg.context_budget
+        )
 
     async def start(self, app: web.Application) -> None:
         # No total timeout: a request that has to wait for llama-swap to load a
@@ -423,45 +593,159 @@ class Mneme:
         except json.JSONDecodeError:
             return web.json_response({"error": "invalid JSON"}, status=400)
 
-        payload = ollama_to_openai(body, self.cfg.model, self.preamble)
+        ollama_messages = body.get("messages") or []
+        context = self.context_for(ollama_messages)
+        payload = ollama_to_openai(
+            body, self.cfg.model, context, self.tools.schemas()
+        )
+
+        # Provenance for anything the model writes to memory this turn: the
+        # last thing the household actually said. IRON_RULES tells the model
+        # that page content is data rather than instruction; this is what lets
+        # a person see which turn produced a page.
+        source = _last_user_text(ollama_messages)
 
         response = web.StreamResponse(
             status=200, headers={"Content-Type": "application/x-ndjson"}
         )
         await response.prepare(request)
 
-        try:
-            upstream = await self._post_upstream(payload)
-        except aiohttp.ClientError as err:
-            _LOG.error("upstream unreachable: %s", err)
-            await response.write(
-                _ollama_chunk(
-                    self.cfg.model,
-                    {"role": "assistant", "content": f"[mneme] upstream unreachable: {err}"},
-                    done=True,
-                    reason="error",
-                )
-            )
-            await response.write_eof()
-            return response
+        # ── THE INTERNAL TOOL LOOP ──────────────────────────────────────────
+        #
+        # Home Assistant runs its own tool loop around this whole request, so
+        # anything mneme does with its OWN tools has to finish inside one
+        # response — the next request from HA carries HA's message history and
+        # knows nothing about a memory lookup that happened in here.
+        #
+        # That is why mneme is stateless per request and why this loop exists:
+        # by the time we hand something back to HA it is either an answer or a
+        # call to one of HA's tools, never a call to one of ours.
+        #
+        # CONTENT IS STREAMED THROUGH EVERY ROUND rather than buffered until
+        # the last one. The cost is that a model which says "let me check what
+        # I know about that" before searching has that sentence read aloud.
+        # The alternative — hold everything until the final round — throws away
+        # streaming for every ordinary turn to tidy up an occasional one.
+        for round_index in range(MAX_INTERNAL_ROUNDS + 1):
+            calls, finish, error = await self._pump(payload, response)
 
-        async with upstream:
-            if upstream.status != 200:
-                detail = (await upstream.text())[:500]
-                _LOG.error("upstream %s: %s", upstream.status, detail)
+            if error:
                 await response.write(
                     _ollama_chunk(
                         self.cfg.model,
-                        {
-                            "role": "assistant",
-                            "content": f"[mneme] upstream HTTP {upstream.status}: {detail}",
-                        },
+                        {"role": "assistant", "content": f"[mneme] {error}"},
                         done=True,
                         reason="error",
                     )
                 )
                 await response.write_eof()
                 return response
+
+            mine = [c for c in calls if self.tools.owns(c["name"])]
+            theirs = [c for c in calls if not self.tools.owns(c["name"])]
+
+            # HA's tools win a mixed round. Executing ours as well would strand
+            # their results: HA replies with its own tool result and no memory
+            # of our exchange, so the model would see an answer to a question
+            # it no longer knows it asked. Better to let it ask again.
+            if theirs:
+                await response.write(
+                    _ollama_chunk(
+                        self.cfg.model,
+                        {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "function": {
+                                        "name": c["name"],
+                                        "arguments": _args_obj(c["arguments"], c["name"]),
+                                    }
+                                }
+                                for c in theirs
+                            ],
+                        },
+                        done=False,
+                    )
+                )
+                finish = "tool_calls"
+                break
+
+            if not mine:
+                break
+
+            if round_index == MAX_INTERNAL_ROUNDS:
+                _LOG.warning(
+                    "internal tool loop hit %d rounds; stopping", MAX_INTERNAL_ROUNDS
+                )
+                await response.write(
+                    _ollama_chunk(
+                        self.cfg.model,
+                        {
+                            "role": "assistant",
+                            "content": " I looked several times and could not "
+                            "settle it; ask me again more specifically.",
+                        },
+                        done=False,
+                    )
+                )
+                break
+
+            payload["messages"].append(
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": c["id"],
+                            "type": "function",
+                            "function": {"name": c["name"], "arguments": c["arguments"]},
+                        }
+                        for c in mine
+                    ],
+                }
+            )
+            for c in mine:
+                result = await self.tools.call(
+                    c["name"], _args_obj(c["arguments"], c["name"]), source=source
+                )
+                _LOG.info("tool %s -> %d chars", c["name"], len(result))
+                payload["messages"].append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": c["id"],
+                        "content": result,
+                    }
+                )
+
+        await response.write(
+            _ollama_chunk(
+                self.cfg.model, {"role": "assistant", "content": ""}, done=True,
+                reason=finish or "stop",
+            )
+        )
+        await response.write_eof()
+        return response
+
+    async def _pump(
+        self, payload: dict[str, Any], response: web.StreamResponse
+    ) -> tuple[list[dict[str, Any]], str, str]:
+        """One upstream call. Streams content out; returns its tool calls.
+
+        Returns (calls, finish_reason, error). `error` non-empty means nothing
+        was streamed and the caller should report it and stop.
+        """
+        try:
+            upstream = await self._post_upstream(payload)
+        except aiohttp.ClientError as err:
+            _LOG.error("upstream unreachable: %s", err)
+            return [], "error", f"upstream unreachable: {err}"
+
+        async with upstream:
+            if upstream.status != 200:
+                detail = (await upstream.text())[:500]
+                _LOG.error("upstream %s: %s", upstream.status, detail)
+                return [], "error", f"upstream HTTP {upstream.status}: {detail}"
 
             calls = _ToolCallAccumulator()
             finish = "stop"
@@ -506,25 +790,7 @@ class Mneme:
                 if emit:
                     await response.write(_ollama_chunk(self.cfg.model, message, done=False))
 
-            pending = calls.drain()
-            if pending:
-                await response.write(
-                    _ollama_chunk(
-                        self.cfg.model,
-                        {"role": "assistant", "content": "", "tool_calls": pending},
-                        done=False,
-                    )
-                )
-                finish = "tool_calls" if finish == "stop" else finish
-
-            await response.write(
-                _ollama_chunk(
-                    self.cfg.model, {"role": "assistant", "content": ""}, done=True, reason=finish
-                )
-            )
-
-        await response.write_eof()
-        return response
+        return calls.drain_openai(), finish, ""
 
     # ── the OpenAI surface ──────────────────────────────────────────────────
     #
@@ -554,7 +820,28 @@ class Mneme:
 
         body = dict(body)
         body["model"] = self.cfg.model
-        body["messages"] = inject_preamble(body.get("messages") or [], self.preamble)
+        messages = body.get("messages") or []
+        body["messages"] = inject_preamble(messages, self.context_for(messages))
+
+        # ── THE /v1 SURFACE GETS INJECTION BUT NOT mneme's TOOLS ────────────
+        #
+        # Deliberate, and the asymmetry with /api/chat is the point. Memory
+        # RECALL works here, because recall is injected into the system message
+        # and needs nothing from the client. The action tools are not offered.
+        #
+        # Offering them would be worse than withholding them: this handler is
+        # a byte passthrough, so a returned `memory_write` call would go to a
+        # client that has never heard of that function. Open WebUI would
+        # surface it as an unknown tool and opencode would try to run it. A
+        # tool nobody executes is not a capability, it is a dead end with a
+        # description.
+        #
+        # It also costs those clients nothing, which is why this is not a gap
+        # worth closing in a hurry: Open WebUI already has its own web search
+        # (the same SearXNG) and its own image generation (the same ComfyUI),
+        # both wired in roles.webui. Running mneme's internal loop here as well
+        # is a follow-on if opencode or nvf ever wants the wiki.
+
 
         try:
             upstream = await self._post_upstream(body)
@@ -614,7 +901,51 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--soul-dir", required=True, help="Directory holding SOUL.md and IRON_RULES.md.")
     parser.add_argument("--read-timeout", type=float, default=600.0)
     parser.add_argument("--log-level", default="INFO")
-    return parser.parse_args(argv)
+
+    # ── M29b: memory, web search, images ────────────────────────────────────
+    #
+    # Each is off unless its path is given, so a machine can take the agent
+    # without taking any of them — and the daemon's whole behaviour is
+    # readable off its own command line with `systemctl cat mneme`.
+    parser.add_argument(
+        "--wiki",
+        default="",
+        help="Git-versioned wiki directory. Empty disables memory entirely.",
+    )
+    parser.add_argument(
+        "--context-budget",
+        type=int,
+        default=6000,
+        help="Characters of constitution + memory to inject per turn.",
+    )
+    parser.add_argument(
+        "--search-url",
+        default="",
+        help="SearXNG base URL. Empty disables web search.",
+    )
+    parser.add_argument(
+        "--image-url",
+        default="",
+        help="ComfyUI base URL. Empty disables image generation.",
+    )
+    parser.add_argument("--image-output-dir", default="")
+    parser.add_argument("--image-public-base", default="")
+    parser.add_argument("--image-checkpoint", default="sd_xl_base_1.0.safetensors")
+    parser.add_argument("--image-steps", type=int, default=25)
+    parser.add_argument("--image-width", type=int, default=1024)
+    parser.add_argument("--image-height", type=int, default=1024)
+    parser.add_argument("--image-negative", default="")
+    parser.add_argument("--image-timeout", type=float, default=600.0)
+
+    args = parser.parse_args(argv)
+    if args.image_url and not (args.image_output_dir and args.image_public_base):
+        # Refused at startup rather than at the first picture. Without a place
+        # to put the PNG and a URL a browser can reach, the tool can only ever
+        # tell the household it made something they cannot see.
+        parser.error(
+            "--image-url requires --image-output-dir and --image-public-base"
+        )
+    return args
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -623,7 +954,21 @@ def main(argv: list[str] | None = None) -> None:
         level=getattr(logging, cfg.log_level.upper(), logging.INFO),
         format="%(levelname)s %(name)s %(message)s",
     )
-    _LOG.info("serving %s on %s:%d -> %s", cfg.model, cfg.listen, cfg.port, cfg.upstream)
+    enabled = ", ".join(
+        [
+            name
+            for name, on in (
+                ("memory", bool(cfg.wiki)),
+                ("web-search", bool(cfg.search_url)),
+                ("image-gen", bool(cfg.image_url)),
+            )
+            if on
+        ]
+    ) or "none"
+    _LOG.info(
+        "serving %s on %s:%d -> %s (tools: %s)",
+        cfg.model, cfg.listen, cfg.port, cfg.upstream, enabled,
+    )
     web.run_app(build_app(cfg), host=cfg.listen, port=cfg.port, print=None)
 
 

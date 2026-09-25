@@ -608,6 +608,42 @@
             # ai3, one /64 beyond karakeep's.  The hub's conversation agent.
             { name = "hass"; address = "fdca:fe93::1"; allowedSource = "fdca:fe93::2"; }
           ];
+
+          # ── M29b: it remembers, it can look things up, it can draw ──────
+          #
+          # The wiki takes uid 3039 — the first number M29 deliberately left
+          # free — because a git repository on zdata needs a stable owner.
+          memory.enable = true;
+
+          # SearXNG over a point-to-point leg rather than its VLAN-90 address.
+          # The host's route to 10.0.90.24 is `via 10.0.50.1` (measured), so
+          # the VLAN path would send every search out through the UDM-Pro and
+          # back; this keeps it inside the machine, which is M6's mon0 argument
+          # exactly.  The container end of the leg is the URL.
+          webSearch.enable = true;
+          webSearch.url    = "http://[fdca:fe94::2]:8888";
+
+          # ── AND THIS ONE COSTS SOMETHING, EVERY TIME ────────────────────
+          #
+          # ComfyUI is in llama-swap's exclusive GPU group, so a picture EVICTS
+          # the resident 21 GiB coder model and the next request reloads it —
+          # about 15 s each way, stalling the household agent and lgo's coding
+          # agent together.  That is the same eviction containers/karakeep.nix
+          # accepts for image bookmarks and prices out loud; this is the second
+          # place it is paid, and it is enabled deliberately rather than
+          # because it was available.
+          #
+          # The tool's own description tells the model it is expensive, which
+          # is the only thing that stops a model treating it as free.
+          imageGen.enable     = true;
+          imageGen.url        = "http://127.0.0.1:11434/upstream/comfyui";
+          # Home Assistant serves this at /local/mneme — see the `hass-dirs`
+          # note in containers/home-assistant.nix for why the hub and not mneme
+          # is what delivers the picture.
+          imageGen.outputDir  = "/srv/state/home-assistant/www/mneme";
+          imageGen.publicBase = "https://ha.goclan.org/local/mneme";
+          # Must name a roles.models entry with subdir = "checkpoints".
+          imageGen.checkpoint = "sd_xl_base_1.0.safetensors";
         };
 
         # ── ernst: voice for Assist (M29) ───────────────────────────────
