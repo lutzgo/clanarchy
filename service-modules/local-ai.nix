@@ -1351,8 +1351,45 @@ in
               # In list form the prefix lands where systemd parses it, so the
               # original intent — a completed fetch is a success even if the
               # restart cannot be delivered — is what now happens.
-              ExecStartPost =
-                [ "-${pkgs.systemd}/bin/systemctl try-restart llama-swap.service" ];
+              #
+              # ── AND IT IS GONE (M29c), BECAUSE IT COULD NEVER HAVE WORKED ──
+              #
+              # The call is deleted, not fixed, and the premise above is the
+              # part that was wrong rather than the plumbing.
+              #
+              # IT IS NOT PERMITTED. This unit runs `User=llama`, unprivileged,
+              # with no ambient capabilities — measured on ernst 2026-09-25 —
+              # and an unprivileged user cannot restart a system unit:
+              #
+              #   Failed to try-restart llama-swap.service: Access denied as
+              #   the requested operation requires interactive authentication.
+              #
+              # So every version of this line has been a no-op since M19: first
+              # a 127 that failed the unit, then a `-`-prefixed denial that did
+              # not. Two rounds of fixing the SYNTAX of a call that was never
+              # going to be authorised.
+              #
+              # AND IT IS NOT NEEDED, which is the part that settles it. The
+              # claim above — "a model whose file did not exist yet is listed
+              # but unusable until it re-reads" — was refuted by exactly the
+              # case it describes. On 2026-09-25 the fetcher downloaded a
+              # newly-declared 21 GiB model, this restart was DENIED, llama-swap
+              # was never restarted, and the very first request naming that
+              # model loaded and served it:
+              #
+              #   [INFO] <qwen3.6-35b-a3b> Health check passed on :11503/health
+              #   [INFO] "POST /v1/chat/completions" 200 ... 4.641790064s
+              #
+              # Which is what the code does: llama-swap renders each backend's
+              # COMMAND from its config at startup, and the command contains a
+              # PATH. Nothing opens that path until a request arrives and the
+              # child llama-server is spawned, so a file that appears later is
+              # simply found. There is nothing to re-read.
+              #
+              # If a future change makes llama-swap cache something about the
+              # files themselves, the fix is a polkit rule scoped to this one
+              # unit and action — not a restart the fetcher is not allowed to
+              # perform.
             };
 
             script = ''
