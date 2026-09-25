@@ -447,6 +447,69 @@ is therefore cosmetic.
 **It takes no address, no uid and no ledger row.** A host service beside
 llama-swap with a loopback upstream and one point-to-point peer.
 
+### It remembers, it can look things up, and it can draw (M29b)
+
+Three tools, appended to whatever Home Assistant already sent. The model sees
+one flat list and does not know the difference; mneme sorts the calls back out
+by name, executing its own in an internal loop (capped at 4 rounds) and handing
+HA's back to HA untouched.
+
+| Tool | Backed by | Cost |
+|------|-----------|------|
+| `memory_search` / `_read` / `_write` / `_append` | a git repo at `/srv/state/mneme/wiki` | free |
+| `web_search` | SearXNG over `fdca:fe94::` | free; the one door to the open internet |
+| `generate_image` | ComfyUI on llama-swap's loopback | **evicts the 21 GiB coder model** |
+
+Operating the memory — reading it, correcting it, editing it by hand — is
+[docs/guides/agent-memory.md](../docs/guides/agent-memory.md).
+
+**Recall is injected, not requested.** The constitution, `index.md`, and any
+page matching the last user turn go into the system message on every turn, up to
+`memory.contextBudget` characters. `memory_search` exists as well, but a tool is
+only used if the model decides to use it — and M11 measured what that decision
+is worth here. No embeddings, no vector store: index-first navigation is exact
+inside the ~150–200 page range this pattern states, and a household will not
+reach that for years.
+
+**The internal loop is why mneme stays stateless per request.** Home Assistant
+runs its own tool loop around the whole request and carries its own history, so
+anything mneme does with its own tools must finish inside one response — HA's
+next request knows nothing about a memory lookup that happened in here. By the
+time something goes back to HA it is either an answer or a call to one of HA's
+tools, never one of ours. A mixed round gives HA's tools priority and lets the
+model ask again; executing both would strand our results.
+
+**uid 3039, and M29 predicted this line.** That milestone ran the daemon under
+`DynamicUser` because it owned nothing on disk and wrote in the uid table that a
+wiki would change it. Ids pass through unmapped onto zdata, so keeping state and
+keeping a per-boot identity are mutually exclusive — the same call `roles.voice`
+paid for in M29's first deploy.
+
+**SearXNG got a second leg, and the property it had is kept.** Its container
+block used to say "NO SECOND VETH, and its absence is load-bearing". M29b needs
+the opposite direction — mneme is a host service reaching *into* a container —
+and the host dials in while nothing accepts on the way back: `nixos-fw` drops
+unmatched input and no accept exists for `fdca:fe94::2`. Widening
+`allowedSource` to the host instead would have spent a documented "ONE address"
+invariant *and* hairpinned every search through the UDM-Pro, since the host's
+route to `10.0.90.24` is `via 10.0.50.1`.
+
+**Home Assistant serves the pictures, not mneme.** mneme listens on a
+point-to-point ULA only the hub can reach, so a URL it served itself would be
+unreachable from the browser that has to display it. The hub serves `www/` at
+`/local/`, that directory is on this host, and the hub is already behind Traefik
+with a split-horizon name — so the PNG goes to
+`/srv/state/home-assistant/www/mneme/` and comes back as
+`https://ha.goclan.org/local/mneme/<name>.png`. The cost is one permission
+change on `www` (0700 → 0755, directory only), which lives in
+`containers/home-assistant.nix` because that file owns that tree.
+
+**Neither web search nor image generation is offered on the `/v1` surface**, and
+that is not an oversight: this handler is a byte passthrough, so a returned
+`memory_write` would reach a client that has never heard of it. Open WebUI
+already has its own web search (the same SearXNG) and its own image generation
+(the same ComfyUI). Recall still works there, because recall is injected.
+
 ### Three paths not taken
 
 - **`pkgs-unstable.home-assistant`** — a three-release jump with a one-way

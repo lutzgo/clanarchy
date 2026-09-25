@@ -754,6 +754,25 @@
   #   fdca:fe92::1/::2   ai2    karakeep     auto-tagging (M27)
   #   fdca:fe93::1/::2   ai3    hass         the conversation agent, STT and TTS
   #                                          — three ports on one leg (M29)
+  #   fdca:fe94::1/::2   web0   searxng      web search for the agent (M29b)
+  #
+  # THE LAST ONE POINTS THE OTHER WAY, which is why it is not called `ai4`.
+  # Every `ai*` leg exists so a CONTAINER can reach a service on this host's
+  # loopback; `web0` exists so a HOST service (mneme) can reach a service in a
+  # container.  Naming it in the ai family would read as a fifth consumer of
+  # llama-swap, which it is not.
+  #
+  # IT DOES NOT GIVE SearXNG A PATH INTO THE HOST, and that was the property
+  # its container block called load-bearing.  The host dials in; nothing
+  # accepts on the way back.  `nixos-fw` drops unmatched input and M29b adds no
+  # accept for `fdca:fe94::2`, so packets the container aims at the host are
+  # discarded — only replies on a connection the host opened return, through
+  # the conntrack rule that was already there.
+  #
+  # Why not widen SearXNG's `allowedSource` to the host instead: the host's
+  # route to 10.0.90.24 is `via 10.0.50.1` (measured 2026-09-25), so every
+  # search would leave ernst, cross the UDM-Pro and come back — the hairpin
+  # `mon0` was created to avoid.
   #
   # THE INTERFACE NAME IS AS MUCH AN ALLOCATION AS THE ADDRESS IS, and nothing
   # said so until it cost an outage.  `extraVeths.<name>` becomes nspawn's
@@ -1288,9 +1307,27 @@
   #   StateDirectory onto the pool would put a systemd-ALLOCATED uid on it,
   #   which is the exact thing this table exists to prevent.
   #
-  #   mneme GETS A STATIC uid THE MOMENT IT KEEPS A WIKI (M29b).  Its memory is
-  #   a git repository under /srv/state, which is zdata, so the next milestone
-  #   claims 3039 and this line is the warning not to spend it first.
+  #   uid 3039  mneme        (service-modules/local-ai.nix — M29b, the household
+  #                           agent's memory.  OWN group, no media access: it
+  #                           writes a git repository at /srv/state/mneme/wiki
+  #                           and nothing else on the pool.
+  #
+  #                           M29 PREDICTED THIS LINE.  That milestone ran the
+  #                           daemon under DynamicUser because it owned nothing
+  #                           on disk, and said in this table that a wiki would
+  #                           change it.  A per-boot systemd-allocated id on
+  #                           zdata is the exact thing this table exists to
+  #                           prevent, so keeping state and keeping DynamicUser
+  #                           are mutually exclusive.
+  #
+  #                           CHECKED AGAINST nixpkgs' ids.nix before being
+  #                           written down — the step M24 skipped and paid for.
+  #
+  #                           It also owns /srv/state/home-assistant/www/mneme,
+  #                           created by hass-dirs, where generated pictures
+  #                           land so that the hub can serve them at /local.
+  #
+  #                           NEXT FREE IN THE 3000 BLOCK IS 3040.)
   #
   #   NO uid FOR miniflux, and it is recorded rather than left to inference.
   #   M27's other container (containers/miniflux.nix) runs the daemon under
