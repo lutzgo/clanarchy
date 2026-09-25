@@ -779,111 +779,60 @@ in
       # about installing two incompatible copies would stop being hypothetical.
       hacs = hassPackage.python3Packages.callPackage ./pkgs/hacs.nix { };
 
-      # ── EVERY INTEGRATION NIXPKGS CAN BUILD ─────────────────────────────
+      # ── WHY THIS IS A CURATED LIST, AND WHAT THE CEILING IS ───────────
       #
-      # WHY THIS IS NOT A CURATED LIST.  Home Assistant's "Add Integration"
-      # dialog offers all ~1450 built-ins unconditionally — the list comes
-      # from HA's own manifest index, which knows nothing about how this
-      # build was assembled.  Naming components one at a time therefore makes
-      # every unlisted integration a trap: it is offered, you pick it, its
-      # config flow imports its library, and you get
+      # The obvious complaint about naming components one at a time is right:
+      # Home Assistant's "Add Integration" dialog offers all ~1450 built-ins
+      # unconditionally, because the list comes from HA's own manifest index,
+      # which knows nothing about how this build was assembled.  So every
+      # unlisted integration is a trap — it is offered, you pick it, its config
+      # flow imports its library, and you get
       #
       #     Error occurred loading flow for integration yamaha_musiccast:
       #     No module named 'aiomusiccast'
       #
-      # with the fix being a file edit and a redeploy while you are standing
-      # in front of the device you were trying to add.  That is a bad trade
-      # for a hub whose whole point is that adding a device is browser work.
+      # with the fix being a file edit and a redeploy while you are standing in
+      # front of the device you were trying to add.
       #
-      # nixpkgs makes taking the other side of it cheap, which is the part
-      # that is easy to miss.  `extraComponents` does NOT rebuild Home
-      # Assistant — it only extends `pythonPath`, so this costs store paths
-      # and nothing else.  Measured on this pin: 1391 additional paths,
-      # 375 MiB download, 1.6 GiB unpacked, ZERO built locally (all
-      # substitutable).  Nothing is loaded at runtime that is not configured;
-      # an unused component is a directory on sys.path.
+      # ENABLING ALL OF THEM WAS TRIED, IN #229/#230, AND IT DOES NOT FIT.
+      # It is not a size or build-time problem — `extraComponents` does not
+      # rebuild Home Assistant, it only extends `pythonPath`, and the full set
+      # costs 1391 extra store paths, 383 MiB, nothing built locally.  It is a
+      # hard kernel limit:
       #
-      # THE FILTER IS NOT OPTIONAL AND MUST NOT BE FROZEN INTO A DENY-LIST.
-      # `availableComponents` means "has an entry in component-packages.nix",
-      # not "evaluates".  On this pin 18 of the 1450 throw during evaluation —
-      # mostly python3.14 incompatibilities, e.g.
+      #     nixpkgs' module sets  environment.PYTHONPATH = package.pythonPath
+      #     — one colon-separated entry per requirement, in the unit env block
       #
-      #     error: apischema-0.18.3 not supported for interpreter python3.14
+      #     1595 entries    = 162898 bytes
+      #     MAX_ARG_STRLEN  = 32 * PAGE_SIZE = 131072 bytes
       #
-      # and one bad name takes the WHOLE machine's evaluation down, not just
-      # Home Assistant's.  The membership changes on every nixpkgs bump in
-      # both directions, so it is computed here rather than written down:
-      # tryEval each component's requirement closure and keep the ones that
-      # survive.  A component repaired upstream reappears at the next bump
-      # with no edit; a newly broken one drops out instead of breaking the
-      # deploy.
+      # execve() rejects any single argument or environment string over that,
+      # so home-assistant.service died with E2BIG on every start.  `systemctl
+      # status` shows only `start-limit-hit`; `hacs-deps-check`, which inherits
+      # the same PYTHONPATH, reports the honest version:
       #
-      # IT IS NOT FREE: evaluating this container's service went from ~4 s to
-      # ~14 s, and that is paid on every `clan machines update ernst`, not
-      # only when Home Assistant changes.  Measured, not guessed; if it ever
-      # becomes the thing that makes deploys annoying, the escape is to
-      # snapshot the excluded 18 into a literal list here and re-derive it at
-      # each nixpkgs bump with the command below — trading a recurring 10 s
-      # for a recurring manual step.
+      #     .../bin/python3: Argument list too long
       #
-      # To see what is currently excluded:
+      # THE HUB DOES NOT COME UP AT ALL.  Not a degraded integration — no Home
+      # Assistant.  There is no partial version of this failure, and it is why
+      # the ceiling is worth writing down rather than rediscovering.
       #
-      #     nix eval --impure --expr 'let p = (builtins.getFlake (toString ./.)).inputs.clan-core.inputs.nixpkgs.legacyPackages.x86_64-linux; h = p.home-assistant; in builtins.filter (c: !(builtins.tryEval (builtins.deepSeq (map (x: x.outPath) (h.getPackages c h.python3Packages)) true)).value) h.availableComponents'
-      # AND EVALUATING IS NOT BUILDING.  `tryEval` below proves a component's
-      # requirements can be *described*, which is a strictly weaker claim than
-      # that they exist.  `kef` evaluates perfectly and then fails to build:
-      # aiokef 0.2.17 calls `asyncio.get_event_loop()` at construction time,
-      # which raises on python3.14, so its own test suite fails and
-      # cache.nixos.org has no output for it (404 on the narinfo) — the first
-      # deploy of this change died there after downloading the other 1390
-      # paths.  Nothing available at evaluation time can predict that, so the
-      # deny-list below is empirical and has to be.
+      # The limit lands at roughly 1280 entries at these path lengths, and the
+      # number to design against is lower, because it moves with the store path
+      # lengths of whatever happens to be in the set.
       #
-      # It is genuinely short, and that is the reason this approach survives:
-      # a dry run of the whole machine lists exactly ONE package to build, so
-      # there is one name here rather than a maintenance burden.  Re-derive it
-      # after any nixpkgs bump, before deploying:
+      # WHAT WOULD ACTUALLY LIFT IT is collapsing the many site-packages dirs
+      # into ONE — a single `withPackages`/`buildEnv` (almost certainly with
+      # `ignoreCollisions`, since ~1400 components will disagree about some
+      # versions) forced over the module's value.  That turns 162 KB of
+      # PYTHONPATH into one path.  It is a real option and it is deliberately
+      # not attempted in this commit: this commit exists to get the hub back
+      # up, and pointing a freshly invented Python environment at a Home
+      # Assistant that is currently offline is the wrong order to do things in.
       #
-      #     nix build --dry-run .#nixosConfigurations.ernst.config.system.build.toplevel
-      #
-      # Anything under "these N derivations will be built" that is a
-      # `python3.14-*` package is a component requirement with no binary
-      # cache.  Map it back to its component with
-      #
-      #     awk '/^    "/{c=$1} /<pkgname>/{print c}' \
-      #       <nixpkgs>/pkgs/servers/home-assistant/component-packages.nix
-      #
-      # and add that component here.  The rest of the "will be built" list is
-      # always units, `etc`, `system-path` and the system closure itself —
-      # those are normal and not a signal.
-      #
-      # WHY EXCLUDE THE COMPONENT RATHER THAN SET `doCheck = false`.  It is
-      # tempting, since the failure is "only" a test, and the scope override
-      # at `hassPackage` above is right there.  But the test is not wrong:
-      # `_AsyncCommunicator.__init__` calls `get_event_loop()` on every code
-      # path, so the library raises the same RuntimeError the first time the
-      # integration talks to a speaker.  Silencing the test would ship a
-      # component that is broken at runtime instead of absent at build time,
-      # which is the worse of the two — the whole point of this block is that
-      # what the UI offers is what actually works.
-      unbuildableComponents = [
-        "kef" # aiokef 0.2.17: get_event_loop() at init, broken on python3.14
-      ];
-
-      buildableComponents =
-        let
-          evaluates = component:
-            let
-              result = builtins.tryEval (builtins.deepSeq
-                (map (drv: drv.outPath)
-                  (hassPackage.getPackages component hassPackage.python3Packages))
-                true);
-            in
-            result.success && result.value;
-          usable = component:
-            !(builtins.elem component unbuildableComponents) && evaluates component;
-        in
-        builtins.filter usable hassPackage.availableComponents;
+      # So: named components below, and `hacs-deps-check` for the HACS half.
+      # Adding one is a line and a redeploy.  That is the cost, it is known,
+      # and it is smaller than the cost of the hub not starting.
 
       # ── THE REQUIREMENTS CHECKER ────────────────────────────────────────
       #
@@ -1171,15 +1120,9 @@ in
         # pulls in most integrations; these are the ones it does not, or that
         # must be present before the UI can offer them.
         #
-        # THIS LIST IS NO LONGER WHAT DECIDES WHAT THE UI CAN OFFER.  The
-        # `++ buildableComponents` at the end of it adds every other packaged
-        # integration; see that binding in the `let` above for why.  The names
-        # below are kept anyway, because they are the record of what this
-        # household actually depends on — and because naming them makes the
-        # build FAIL if one ever stops being packaged, where the filtered set
-        # would quietly drop it and the failure would surface months later as
-        # a missing integration in the UI.
-        extraComponents = lib.unique ([
+        # THIS LIST IS WHAT DECIDES WHAT THE UI CAN ACTUALLY OFFER, and the
+        # `let` block above says why it cannot simply be "all of them".
+        extraComponents = [
           "zha"           # Zigbee, via the ZBT-2 on /dev/zigbee-coordinator
           "mobile_app"    # the companion app's registration + push endpoint
           "zeroconf"      # mDNS discovery — the iot0 leg's reason to exist
@@ -1241,12 +1184,23 @@ in
           # ernst's own Bluetooth adapter is not involved and is not required.
           "esphome"
 
-          # ── The household set ends here ────────────────────────────────────
+          # ── Added because the UI offered them and they did not work ────────
           #
-          # `yamaha_musiccast` and `dwd_weather_warnings` were what prompted
-          # this; they are now covered by the line below along with everything
-          # else, so they are not named.
-        ] ++ buildableComponents);
+          # The two that started all of this.  Both were listed in "Add
+          # Integration", both failed their config flow on import, and both
+          # have their requirement packaged in nixpkgs — they were simply not
+          # named here.  Naming a component is the whole fix; the module pulls
+          # the requirement in from component-packages.nix.
+          "yamaha_musiccast"      # the Yamaha AV receiver, MusicCast API
+          "dwd_weather_warnings"  # DWD severe-weather warnings, by warncell
+
+          # `kef` is the counter-example worth keeping in view: it is packaged,
+          # it evaluates, and it does not build — aiokef 0.2.17 calls
+          # asyncio.get_event_loop() at construction, which raises on
+          # python3.14, and cache.nixos.org 404s its output.  Adding a
+          # component here can fail the build; that is the failure mode to
+          # expect, and it is loud.
+        ];
 
         # ── Requirements for HACS-downloaded integrations ────────────────────
         #
