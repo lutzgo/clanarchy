@@ -750,12 +750,51 @@ of them can be set from Nix:
 | setting | where | without it |
 |---|---|---|
 | `image_generation` capability | Models → *(model)* → Capabilities | the **Image** toggle never appears |
-| Function Calling = **Legacy** | Models → *(model)* → Advanced Params | the forced handler never runs; the model answers in prose about Photoshop |
+| Function Calling = **Native** | Models → *(model)* → Advanced Params | see below — this row said *Legacy* until M29c and was backwards |
 | `vision` capability | Models → *(model)* → Capabilities | governs whether attachments are *expected* to work — see below |
 
 A related wart in that same row: `qwen3-coder-30b` had `"vision": true`, which
 is false — it has no vision tower. That is why attaching an image to it
 produced a silent HTTP 500 rather than a warning.
+
+#### Function Calling: `Native`, and the old advice here was backwards
+
+This table said **Legacy** until M29c. That was right for a text-only model and
+an older Open WebUI; it is wrong now, and the reason is worth reading off the
+source rather than the UI labels.
+
+**Open WebUI tests exactly one value — `legacy` — and nothing else.**
+`Default` and `Native` are therefore identical in behaviour; the only real
+choice is legacy-or-not. From `open_webui/utils/middleware.py`, its own
+comments:
+
+```python
+# Skip forced RAG web search when native FC is enabled - model can use web_search tool
+if metadata.get('params', {}).get('function_calling') == 'legacy':
+    form_data = await chat_web_search_handler(request, form_data, extra_params, user)
+
+# Skip forced image generation when native FC is enabled - model can use generate_image tool
+if metadata.get('params', {}).get('function_calling') == 'legacy':
+    form_data = await chat_image_generation_handler(request, form_data, extra_params, user)
+```
+
+So:
+
+- **`legacy`** — Open WebUI *forces* the handler on every turn the feature is
+  toggled on. It runs the search or the image generation itself and injects the
+  result, whether or not it helps, and it costs a second LLM pass to pick the
+  tool.
+- **`native`** — `web_search` and `generate_image` are offered to the model as
+  real tools. One request, and the model calls them when they are useful.
+
+**Native is correct here because the model can actually do it**: measured on
+ernst 2026-09-25, `qwen3.6-35b-a3b` returns 20/20 valid tool calls through
+llama.cpp's own `--jinja` template parsing. Legacy exists for models that
+cannot, which is what the resident model used to be.
+
+The practical consequence for the household: with Native, asking for a picture
+produces one, and asking an ordinary question does not silently run a web search
+first.
 
 ### Image editing used to need the VISION model selected (M29c retired that)
 
