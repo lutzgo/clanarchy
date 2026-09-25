@@ -829,6 +829,47 @@ in
       # To see what is currently excluded:
       #
       #     nix eval --impure --expr 'let p = (builtins.getFlake (toString ./.)).inputs.clan-core.inputs.nixpkgs.legacyPackages.x86_64-linux; h = p.home-assistant; in builtins.filter (c: !(builtins.tryEval (builtins.deepSeq (map (x: x.outPath) (h.getPackages c h.python3Packages)) true)).value) h.availableComponents'
+      # AND EVALUATING IS NOT BUILDING.  `tryEval` below proves a component's
+      # requirements can be *described*, which is a strictly weaker claim than
+      # that they exist.  `kef` evaluates perfectly and then fails to build:
+      # aiokef 0.2.17 calls `asyncio.get_event_loop()` at construction time,
+      # which raises on python3.14, so its own test suite fails and
+      # cache.nixos.org has no output for it (404 on the narinfo) — the first
+      # deploy of this change died there after downloading the other 1390
+      # paths.  Nothing available at evaluation time can predict that, so the
+      # deny-list below is empirical and has to be.
+      #
+      # It is genuinely short, and that is the reason this approach survives:
+      # a dry run of the whole machine lists exactly ONE package to build, so
+      # there is one name here rather than a maintenance burden.  Re-derive it
+      # after any nixpkgs bump, before deploying:
+      #
+      #     nix build --dry-run .#nixosConfigurations.ernst.config.system.build.toplevel
+      #
+      # Anything under "these N derivations will be built" that is a
+      # `python3.14-*` package is a component requirement with no binary
+      # cache.  Map it back to its component with
+      #
+      #     awk '/^    "/{c=$1} /<pkgname>/{print c}' \
+      #       <nixpkgs>/pkgs/servers/home-assistant/component-packages.nix
+      #
+      # and add that component here.  The rest of the "will be built" list is
+      # always units, `etc`, `system-path` and the system closure itself —
+      # those are normal and not a signal.
+      #
+      # WHY EXCLUDE THE COMPONENT RATHER THAN SET `doCheck = false`.  It is
+      # tempting, since the failure is "only" a test, and the scope override
+      # at `hassPackage` above is right there.  But the test is not wrong:
+      # `_AsyncCommunicator.__init__` calls `get_event_loop()` on every code
+      # path, so the library raises the same RuntimeError the first time the
+      # integration talks to a speaker.  Silencing the test would ship a
+      # component that is broken at runtime instead of absent at build time,
+      # which is the worse of the two — the whole point of this block is that
+      # what the UI offers is what actually works.
+      unbuildableComponents = [
+        "kef" # aiokef 0.2.17: get_event_loop() at init, broken on python3.14
+      ];
+
       buildableComponents =
         let
           evaluates = component:
@@ -839,8 +880,10 @@ in
                 true);
             in
             result.success && result.value;
+          usable = component:
+            !(builtins.elem component unbuildableComponents) && evaluates component;
         in
-        builtins.filter evaluates hassPackage.availableComponents;
+        builtins.filter usable hassPackage.availableComponents;
 
       # ── THE REQUIREMENTS CHECKER ────────────────────────────────────────
       #
