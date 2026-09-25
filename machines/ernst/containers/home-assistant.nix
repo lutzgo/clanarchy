@@ -779,6 +779,69 @@ in
       # about installing two incompatible copies would stop being hypothetical.
       hacs = hassPackage.python3Packages.callPackage ./pkgs/hacs.nix { };
 
+      # ── EVERY INTEGRATION NIXPKGS CAN BUILD ─────────────────────────────
+      #
+      # WHY THIS IS NOT A CURATED LIST.  Home Assistant's "Add Integration"
+      # dialog offers all ~1450 built-ins unconditionally — the list comes
+      # from HA's own manifest index, which knows nothing about how this
+      # build was assembled.  Naming components one at a time therefore makes
+      # every unlisted integration a trap: it is offered, you pick it, its
+      # config flow imports its library, and you get
+      #
+      #     Error occurred loading flow for integration yamaha_musiccast:
+      #     No module named 'aiomusiccast'
+      #
+      # with the fix being a file edit and a redeploy while you are standing
+      # in front of the device you were trying to add.  That is a bad trade
+      # for a hub whose whole point is that adding a device is browser work.
+      #
+      # nixpkgs makes taking the other side of it cheap, which is the part
+      # that is easy to miss.  `extraComponents` does NOT rebuild Home
+      # Assistant — it only extends `pythonPath`, so this costs store paths
+      # and nothing else.  Measured on this pin: 1391 additional paths,
+      # 375 MiB download, 1.6 GiB unpacked, ZERO built locally (all
+      # substitutable).  Nothing is loaded at runtime that is not configured;
+      # an unused component is a directory on sys.path.
+      #
+      # THE FILTER IS NOT OPTIONAL AND MUST NOT BE FROZEN INTO A DENY-LIST.
+      # `availableComponents` means "has an entry in component-packages.nix",
+      # not "evaluates".  On this pin 18 of the 1450 throw during evaluation —
+      # mostly python3.14 incompatibilities, e.g.
+      #
+      #     error: apischema-0.18.3 not supported for interpreter python3.14
+      #
+      # and one bad name takes the WHOLE machine's evaluation down, not just
+      # Home Assistant's.  The membership changes on every nixpkgs bump in
+      # both directions, so it is computed here rather than written down:
+      # tryEval each component's requirement closure and keep the ones that
+      # survive.  A component repaired upstream reappears at the next bump
+      # with no edit; a newly broken one drops out instead of breaking the
+      # deploy.
+      #
+      # IT IS NOT FREE: evaluating this container's service went from ~4 s to
+      # ~14 s, and that is paid on every `clan machines update ernst`, not
+      # only when Home Assistant changes.  Measured, not guessed; if it ever
+      # becomes the thing that makes deploys annoying, the escape is to
+      # snapshot the excluded 18 into a literal list here and re-derive it at
+      # each nixpkgs bump with the command below — trading a recurring 10 s
+      # for a recurring manual step.
+      #
+      # To see what is currently excluded:
+      #
+      #     nix eval --impure --expr 'let p = (builtins.getFlake (toString ./.)).inputs.clan-core.inputs.nixpkgs.legacyPackages.x86_64-linux; h = p.home-assistant; in builtins.filter (c: !(builtins.tryEval (builtins.deepSeq (map (x: x.outPath) (h.getPackages c h.python3Packages)) true)).value) h.availableComponents'
+      buildableComponents =
+        let
+          evaluates = component:
+            let
+              result = builtins.tryEval (builtins.deepSeq
+                (map (drv: drv.outPath)
+                  (hassPackage.getPackages component hassPackage.python3Packages))
+                true);
+            in
+            result.success && result.value;
+        in
+        builtins.filter evaluates hassPackage.availableComponents;
+
       # ── THE REQUIREMENTS CHECKER ────────────────────────────────────────
       #
       # Why it exists at all is in the "HACS" section of the header: under
@@ -1064,7 +1127,16 @@ in
         # The rest are the ordinary household set.  `default_config` below
         # pulls in most integrations; these are the ones it does not, or that
         # must be present before the UI can offer them.
-        extraComponents = [
+        #
+        # THIS LIST IS NO LONGER WHAT DECIDES WHAT THE UI CAN OFFER.  The
+        # `++ buildableComponents` at the end of it adds every other packaged
+        # integration; see that binding in the `let` above for why.  The names
+        # below are kept anyway, because they are the record of what this
+        # household actually depends on — and because naming them makes the
+        # build FAIL if one ever stops being packaged, where the filtered set
+        # would quietly drop it and the failure would surface months later as
+        # a missing integration in the UI.
+        extraComponents = lib.unique ([
           "zha"           # Zigbee, via the ZBT-2 on /dev/zigbee-coordinator
           "mobile_app"    # the companion app's registration + push endpoint
           "zeroconf"      # mDNS discovery — the iot0 leg's reason to exist
@@ -1125,6 +1197,38 @@ in
           # carries dbus-fast, habluetooth and bluetooth-auto-recovery.
           # ernst's own Bluetooth adapter is not involved and is not required.
           "esphome"
+
+          # ── The household set ends here ────────────────────────────────────
+          #
+          # `yamaha_musiccast` and `dwd_weather_warnings` were what prompted
+          # this; they are now covered by the line below along with everything
+          # else, so they are not named.
+        ] ++ buildableComponents);
+
+        # ── Requirements for HACS-downloaded integrations ────────────────────
+        #
+        # `extraComponents` above covers BUILT-IN integrations.  This covers the
+        # other half: an integration HACS downloaded into
+        # ${configDir}/custom_components is not in any nixpkgs component list,
+        # so there is nothing to name — its requirements have to be added to
+        # the environment directly, by hand, here.
+        #
+        # THIS LIST IS DERIVED, NOT AUTHORED.  `hacs-deps-check` reads the
+        # downloaded manifests and prints exactly this block; see the HACS
+        # section of the header and `hass-hacs-deps.service` below.  Run it
+        # after installing anything through HACS rather than waiting for the
+        # ImportError:
+        #
+        #     nixos-container run hass -- hacs-deps-check
+        #
+        # Each entry names the component that wants it, because nothing else in
+        # the tree records the connection — delete the component in HACS and
+        # this line is the only thing left pointing at it.
+        extraPackages = ps: [
+          # philips_airplus — manifest wants paho-mqtt>=2.1,<3; nixpkgs 26.05
+          # has 2.1.0.  The failure this fixes is `No module named 'paho'`
+          # raised from the config flow.
+          ps.paho-mqtt
         ];
 
         # ── HACS ──────────────────────────────────────────────────────────
