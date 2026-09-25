@@ -1,0 +1,3388 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="NixOS declarative configuration — guides and option reference">
+      
+      
+      
+        <link rel="canonical" href="https://lutzgo.github.io/clanarchy/guides/reading-stack/">
+      
+      
+        <link rel="prev" href="../ernst-app-api-ingress/">
+      
+      
+        <link rel="next" href="../agent-memory/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>The reading stack - Clanarchy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#the-reading-stack-feeds-in-bookmarks-kept-pages-archived" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Clanarchy" class="md-header__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Clanarchy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              The reading stack
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../first-time-install/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../runbooks/zfs-auto-snapshot-optin/" class="md-tabs__link">
+          
+  
+  
+  Runbooks
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../incidents/ernst-slot12-drop-2026-08-11/" class="md-tabs__link">
+          
+  
+  
+  Incidents
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Clanarchy" class="md-nav__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Clanarchy
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../first-time-install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    First-time install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploying and testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../updating-machines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating machines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adding-a-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adding-a-module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a module or option
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../jj-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The jj workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../accepting-pull-requests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Accepting pull requests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../networking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Networking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../yubikey/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../yubikey-ssh-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey SSH setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote-unlock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote unlock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-zdata-datasets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zdata datasets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-app-api-ingress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst app-API ingress
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The reading stack
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The reading stack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-mental-model-in-one-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The mental model, in one table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-feed-items-reach-karakeep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How feed items reach Karakeep
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How feed items reach Karakeep">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-not-just-use-karakeeps-own-rss" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why not just use Karakeep's own RSS?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#setting-it-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setting it up
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adding-a-feed-backfills-nothing-and-that-is-deliberate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding a feed backfills NOTHING, and that is deliberate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#on-duplicates-which-is-the-thing-that-usually-goes-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On duplicates, which is the thing that usually goes wrong
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-still-needs-a-human-in-miniflux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What still needs a human in Miniflux
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tags-and-provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tags and provenance
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-feeds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding feeds
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Adding feeds">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-normal-way-the-bookmarklet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The normal way: the bookmarklet
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-a-site-has-no-feed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a site has no feed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#categories-organise-feeds-not-reading-and-they-stop-at-the-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Categories organise FEEDS, not reading — and they stop at the bridge
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-daily-inbox-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The daily inbox workflow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The daily inbox workflow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#there-are-three-inboxes-and-naming-them-is-most-of-the-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        There are three inboxes, and naming them is most of the work
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-one-rule-that-makes-it-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The one rule that makes it work
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#set-up-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set-up, once
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#archived-does-not-mean-what-you-think" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "Archived" does not mean what you think
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#there-is-no-daily-miniflux-pass-any-more" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        There is no daily Miniflux pass any more
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-reading-pass-karakeep-whenever-you-actually-have-attention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The reading pass — Karakeep, whenever you actually have attention
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-weekly-pass-about-fifteen-minutes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The weekly pass — about fifteen minutes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-monthly-pass-about-ten-minutes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The monthly pass — about ten minutes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-you-fall-behind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When you fall behind
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#on-starring-in-miniflux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On starring in Miniflux
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#archiving-and-curating-in-karakeep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Archiving and curating in Karakeep
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Archiving and curating in Karakeep">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-happens-automatically-when-something-arrives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What happens automatically when something arrives
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lists-are-for-intent-tags-are-for-subject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lists are for intent, tags are for subject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#on-deleting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On deleting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#browser-bookmarks-floccus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Browser bookmarks — Floccus
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Browser bookmarks — Floccus">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setup-per-browser" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup, per browser
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#two-warnings-worth-reading-before-the-first-sync" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two warnings worth reading before the first sync
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-the-same-page-arrives-twice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When the same page arrives twice
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-backed-up-and-what-is-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is backed up, and what is not
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-person-to-karakeep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding a person to Karakeep
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reaching-this-from-another-network" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reaching this from another network
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reaching this from another network">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-trap-with-the-vpn-up-both-paths-break" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The trap: with the VPN up, BOTH paths break
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The agent's memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../htpc-bigscreen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / Plasma Bigscreen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../htpc-controllers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / game controllers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../birte-emulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emulation on birte
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../firmware-updates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware updates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../noctalia-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../noctalia-v5-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia v5 migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../obs-sony-webcam/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OBS / Sony webcam
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runbooks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Runbooks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/zfs-auto-snapshot-optin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZFS auto-snapshot opt-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-zroot-drive-replacement/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zroot drive replacement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-enable-impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst enabling impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-vlan-bridge-cutover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VLAN bridge cutover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-vpn-microvm-deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VPN microvm deploy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Incidents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Incidents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../incidents/ernst-slot12-drop-2026-08-11/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst slot-12 drive drop (2026-08-11)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../incidents/ernst-jellyfin-vaapi-drm-display-failure-2026-08-18/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst Jellyfin VAAPI DRM display failure (2026-08-18)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/hardware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Desktop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/apps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/users/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/wifi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-mental-model-in-one-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The mental model, in one table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-feed-items-reach-karakeep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How feed items reach Karakeep
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How feed items reach Karakeep">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-not-just-use-karakeeps-own-rss" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why not just use Karakeep's own RSS?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#setting-it-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setting it up
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adding-a-feed-backfills-nothing-and-that-is-deliberate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding a feed backfills NOTHING, and that is deliberate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#on-duplicates-which-is-the-thing-that-usually-goes-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On duplicates, which is the thing that usually goes wrong
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-still-needs-a-human-in-miniflux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What still needs a human in Miniflux
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tags-and-provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tags and provenance
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-feeds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding feeds
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Adding feeds">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-normal-way-the-bookmarklet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The normal way: the bookmarklet
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-a-site-has-no-feed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a site has no feed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#categories-organise-feeds-not-reading-and-they-stop-at-the-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Categories organise FEEDS, not reading — and they stop at the bridge
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-daily-inbox-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The daily inbox workflow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The daily inbox workflow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#there-are-three-inboxes-and-naming-them-is-most-of-the-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        There are three inboxes, and naming them is most of the work
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-one-rule-that-makes-it-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The one rule that makes it work
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#set-up-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set-up, once
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#archived-does-not-mean-what-you-think" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "Archived" does not mean what you think
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#there-is-no-daily-miniflux-pass-any-more" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        There is no daily Miniflux pass any more
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-reading-pass-karakeep-whenever-you-actually-have-attention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The reading pass — Karakeep, whenever you actually have attention
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-weekly-pass-about-fifteen-minutes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The weekly pass — about fifteen minutes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-monthly-pass-about-ten-minutes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The monthly pass — about ten minutes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-you-fall-behind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When you fall behind
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#on-starring-in-miniflux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On starring in Miniflux
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#archiving-and-curating-in-karakeep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Archiving and curating in Karakeep
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Archiving and curating in Karakeep">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-happens-automatically-when-something-arrives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What happens automatically when something arrives
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lists-are-for-intent-tags-are-for-subject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lists are for intent, tags are for subject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#on-deleting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On deleting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#browser-bookmarks-floccus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Browser bookmarks — Floccus
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Browser bookmarks — Floccus">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setup-per-browser" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup, per browser
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#two-warnings-worth-reading-before-the-first-sync" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two warnings worth reading before the first sync
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-the-same-page-arrives-twice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When the same page arrives twice
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-backed-up-and-what-is-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is backed up, and what is not
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-person-to-karakeep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding a person to Karakeep
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reaching-this-from-another-network" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reaching this from another network
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reaching this from another network">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-trap-with-the-vpn-up-both-paths-break" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The trap: with the VPN up, BOTH paths break
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/lutzgo/clanarchy/edit/main/docs/guides/reading-stack.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="the-reading-stack-feeds-in-bookmarks-kept-pages-archived">The reading stack — feeds in, bookmarks kept, pages archived<a class="headerlink" href="#the-reading-stack-feeds-in-bookmarks-kept-pages-archived" title="Permanent link">&para;</a></h1>
+<p>Miniflux, Karakeep and Floccus (M27). This guide is the <em>workflow</em>: what each
+part is for, how a link travels through them, and the decisions worth making
+once rather than every time.</p>
+<p>The infrastructure — containers, ingress, auth — is in
+<a href="../../roadmap/">the M27 section of the roadmap</a>. This page assumes it works.</p>
+<hr />
+<h2 id="the-mental-model-in-one-table">The mental model, in one table<a class="headerlink" href="#the-mental-model-in-one-table" title="Permanent link">&para;</a></h2>
+<p>The whole thing rests on one distinction. Get this right and the rest follows.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>What it is</th>
+<th>Lifetime</th>
+<th>Answers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Miniflux</strong></td>
+<td>The <strong>intake and the filter</strong>. Polls feeds, applies rules, forwards survivors. You barely open it</td>
+<td><strong>Ephemeral</strong> — entries age out</td>
+<td>"what should get through?"</td>
+</tr>
+<tr>
+<td><strong>Karakeep</strong></td>
+<td>The <strong>keep AND the reading surface</strong>. Everything that survives the filter lands here, archived, with notes and highlights</td>
+<td><strong>Permanent</strong> — snapshotted, never auto-deleted</td>
+<td>"what am I reading, and where was that thing?"</td>
+</tr>
+<tr>
+<td><strong>Floccus</strong></td>
+<td>The <strong>sync</strong>. Your browsers' own bookmark trees, mirrored into Karakeep</td>
+<td>Follows the browsers</td>
+<td>"the bookmarks bar, everywhere"</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Miniflux is not an archive and must never be used as one.</strong> Its entries are
+retained for a fixed window and then removed — that is what keeps it fast and
+what keeps the database small. If you want something after next month, it goes
+in Karakeep. Every workflow below is a variation on that single rule.</p>
+<p><strong>Karakeep keeps a COPY, not a link.</strong> It crawls the page, extracts the text,
+takes a screenshot and stores a full-page snapshot. That is the point: a
+bookmark to a dead page is a tombstone, and roughly a tenth of what you save
+will be dead within a couple of years.</p>
+<hr />
+<h2 id="how-feed-items-reach-karakeep">How feed items reach Karakeep<a class="headerlink" href="#how-feed-items-reach-karakeep" title="Permanent link">&para;</a></h2>
+<p><strong>You do not read in Miniflux.</strong> Miniflux polls, applies your rules, and hands
+what survives to Karakeep over a webhook. Everything after that — reading,
+notes, highlights, filing — happens in Karakeep, which is the better surface
+for it and the only one with an archived copy of the page.</p>
+<p>That pipeline is M28's bridge, a small Go service running inside the Miniflux
+container (<code>machines/ernst/containers/miniflux.nix</code>). It is a loopback call:
+no address, no firewall rule, nothing on the network.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>feed ──► Miniflux ──► rules decide ──► bridge ──► Karakeep ──► you
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>         (polls)      (block/keep,     (webhook)  (crawl, archive,
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>                       rewrite)                    tag, index)
+</code></pre></div>
+<h3 id="why-not-just-use-karakeeps-own-rss">Why not just use Karakeep's own RSS?<a class="headerlink" href="#why-not-just-use-karakeeps-own-rss" title="Permanent link">&para;</a></h3>
+<p>Karakeep subscribes to feeds natively, and <strong>for a feed you want in full it is
+the right answer</strong> — one service, no bridge. Its subscriptions take a name, a
+URL, an enabled flag and a tag-import toggle.</p>
+<p>What it cannot do is <strong>filter</strong>. No rules, no keyword blocking, no regex. If
+you want a noisy feed minus the noise, that decision has to happen before
+Karakeep sees it, and Miniflux is what makes it.</p>
+<p><strong>Pick one path per feed and never both.</strong> A feed subscribed in Miniflux <em>and</em>
+in Karakeep is the duplicate generator — see below.</p>
+<h3 id="setting-it-up">Setting it up<a class="headerlink" href="#setting-it-up" title="Permanent link">&para;</a></h3>
+<p><strong>In Miniflux</strong> — <em>Settings → Integrations → Webhook</em>:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Webhook URL</td>
+<td><code>http://127.0.0.1:8081/webhook</code></td>
+</tr>
+<tr>
+<td>Secret</td>
+<td>Miniflux generates it — copy it into <code>clan vars</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Turn OFF the in-app Karakeep integration</strong> (<em>Settings → Integrations →
+Karakeep</em>) once the bridge works. It is not harmful to leave on — Karakeep
+deduplicates, so a doubly-posted entry is a no-op — but two mechanisms doing
+one job is two things to debug later.</p>
+<p>Then <code>clan vars generate ernst --generator miniflux-karakeep-bridge</code>, which
+asks for that secret and for a Karakeep API key. <strong>Make the key its own</strong>,
+labelled <code>miniflux-bridge</code>: the extensions, Floccus and the dashboard all draw
+keys from the same page and look identical.</p>
+<h3 id="adding-a-feed-backfills-nothing-and-that-is-deliberate">Adding a feed backfills NOTHING, and that is deliberate<a class="headerlink" href="#adding-a-feed-backfills-nothing-and-that-is-deliberate" title="Permanent link">&para;</a></h3>
+<p><strong>Measured 2026-09-20.</strong> Two feeds added, 40 entries fetched, and the bridge
+logged nothing at all — with the SSRF guard already lifted, so that was not the
+cause.</p>
+<p><strong>Miniflux does not fire the integration for entries found on a feed's FIRST
+fetch.</strong> Only entries discovered on a <em>subsequent</em> refresh count as new.
+Otherwise subscribing to a feed with 500 archived items would dump all 500 into
+Karakeep at once, which nobody wants.</p>
+<p>So after adding a feed, the correct expectation is: <strong>nothing happens until
+that feed next publishes something.</strong> For a news site that is minutes; for a
+quiet blog it can be weeks. It is not broken.</p>
+<p><strong>To prove the path immediately</strong>, open any entry in Miniflux and hit <em>Save</em>.
+That fires the webhook's <code>save_entry</code> event, which the bridge handles
+regardless of <code>SAVE_NEW_ENTRIES</code>, and a bookmark appears in Karakeep within
+seconds. It is the only way to exercise the live pipeline on demand.</p>
+<h3 id="on-duplicates-which-is-the-thing-that-usually-goes-wrong">On duplicates, which is the thing that usually goes wrong<a class="headerlink" href="#on-duplicates-which-is-the-thing-that-usually-goes-wrong" title="Permanent link">&para;</a></h3>
+<p><strong>Karakeep deduplicates server-side on the exact URL.</strong> Verified in its own
+source (<code>attemptToDedupLink</code>): a repeat POST returns the existing bookmark
+instead of making a second one. There is an explicit guard that re-submitting
+an already-<strong>archived</strong> bookmark stays a no-op rather than unarchiving it — so
+a feed re-announcing an old entry cannot resurrect something you have read and
+filed.</p>
+<p>Two things still produce duplicates, and both have answers:</p>
+<ul>
+<li><strong>Tracking parameters.</strong> <code>?utm_source=…</code> makes a different URL, so it makes
+  a different bookmark. <strong>This is the best reason to run Miniflux rather than
+  Karakeep's own RSS</strong>: its rewrite rules strip those before the URL is ever
+  forwarded, which nothing on the Karakeep side could do.</li>
+<li><strong>The same feed subscribed twice</strong> — once in Miniflux, once in Karakeep's own
+  RSS. Karakeep will dedupe the identical URLs, but any rewriting Miniflux does
+  makes the two paths disagree and both survive. One feed, one path.</li>
+</ul>
+<p>Upstream notes the dedup is not race-proof. At one webhook delivery at a time,
+that is not a shape this deployment can produce.</p>
+<h3 id="what-still-needs-a-human-in-miniflux">What still needs a human in Miniflux<a class="headerlink" href="#what-still-needs-a-human-in-miniflux" title="Permanent link">&para;</a></h3>
+<p>Three things, and nothing else:</p>
+<ol>
+<li><strong>Subscribing</strong> to a feed.</li>
+<li><strong>Writing a rule</strong> when something noisy gets through — <em>Feeds → the feed →
+   Blocklist / Keeplist</em>, which are regexes over title and content.</li>
+<li><strong>Unsubscribing</strong> when a feed stops earning its place.</li>
+</ol>
+<h3 id="tags-and-provenance">Tags and provenance<a class="headerlink" href="#tags-and-provenance" title="Permanent link">&para;</a></h3>
+<p>Feed items arrive through the bridge as ordinary API bookmarks. Karakeep records
+where each came from, so <code>source:</code> separates the paths without any tag
+convention:</p>
+<table>
+<thead>
+<tr>
+<th>Query</th>
+<th>What it finds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>source:api</code></td>
+<td>the bridge, and Floccus</td>
+</tr>
+<tr>
+<td><code>source:extension</code></td>
+<td>the browser extension</td>
+</tr>
+<tr>
+<td><code>source:rss</code></td>
+<td>Karakeep's own feed subscriptions, if you use any</td>
+</tr>
+</tbody>
+</table>
+<p>The bridge sets no tags of its own. Karakeep's AI tagger adds subject tags to
+everything it crawls, which is what you actually search by.</p>
+<h2 id="adding-feeds">Adding feeds<a class="headerlink" href="#adding-feeds" title="Permanent link">&para;</a></h2>
+<h3 id="the-normal-way-the-bookmarklet">The normal way: the bookmarklet<a class="headerlink" href="#the-normal-way-the-bookmarklet" title="Permanent link">&para;</a></h3>
+<p><em>Miniflux → Settings → Integrations → Bookmarklet.</em> Drag it to the bookmarks
+bar once, per browser. On any site, click it: Miniflux discovers the feed and
+offers to subscribe.</p>
+<p>This is deliberately <strong>not</strong> a browser extension. There is no official Miniflux
+one, the third-party options are unaffiliated code holding an API token, and
+the bookmarklet does the same job with nothing installed.</p>
+<h3 id="when-a-site-has-no-feed">When a site has no feed<a class="headerlink" href="#when-a-site-has-no-feed" title="Permanent link">&para;</a></h3>
+<p>In rough order of effort:</p>
+<ol>
+<li><strong>Look harder.</strong> Many sites still have <code>/feed</code>, <code>/rss</code>, <code>/atom.xml</code> or
+   <code>/index.xml</code> without advertising it. Try them before concluding anything.</li>
+<li><strong>RSS-Bridge / RSSHub.</strong> Generate a feed from a site that has none. Neither
+   is deployed here; adding one is its own decision, not a footnote to this
+   guide.</li>
+<li><strong>Accept that it is not a feed</strong> and put the site in Karakeep as a bookmark
+   instead. Not everything belongs in the river.</li>
+</ol>
+<h3 id="categories-organise-feeds-not-reading-and-they-stop-at-the-bridge">Categories organise FEEDS, not reading — and they stop at the bridge<a class="headerlink" href="#categories-organise-feeds-not-reading-and-they-stop-at-the-bridge" title="Permanent link">&para;</a></h3>
+<p>Miniflux has categories and nothing else: no folders, no tags on feeds.</p>
+<p><strong>They do not reach Karakeep.</strong> The bridge forwards a URL; it carries no
+category, no feed name and no tag. So everything from every category lands in
+one undifferentiated Inbox, and <code>Daily</code> versus <code>Reference</code> makes no difference
+to what you see there. An earlier version of this guide called them "reading
+modes", which was true when you read in Miniflux and has not been true since
+M28.</p>
+<p>What they are still good for is <strong>managing the subscription list</strong>: pausing or
+unsubscribing a whole group, seeing at a glance what you have taken on, and
+knowing where to look when something noisy needs a Blocklist rule. A workable
+split on that basis:</p>
+<ul>
+<li><code>Daily</code> — high-volume news. The group most in need of rules, because
+  everything here reaches your Inbox.</li>
+<li><code>Reference</code> — low-signal, subscribe-and-forget.</li>
+<li><code>Watch</code> — release feeds, changelogs, security advisories.</li>
+</ul>
+<p><strong>If you ever want a category NOT to reach Karakeep, the bridge cannot do it</strong> —
+<code>SAVE_NEW_ENTRIES</code> is global. The lever is per-feed Blocklist rules, or not
+subscribing.</p>
+<hr />
+<h2 id="the-daily-inbox-workflow">The daily inbox workflow<a class="headerlink" href="#the-daily-inbox-workflow" title="Permanent link">&para;</a></h2>
+<h3 id="there-are-three-inboxes-and-naming-them-is-most-of-the-work">There are three inboxes, and naming them is most of the work<a class="headerlink" href="#there-are-three-inboxes-and-naming-them-is-most-of-the-work" title="Permanent link">&para;</a></h3>
+<p>Nobody designed it that way; it falls out of having three ways in. An inbox
+you have not named is one you cannot empty.</p>
+<table>
+<thead>
+<tr>
+<th>Inbox</th>
+<th>What is in it</th>
+<th>Emptied by</th>
+<th>Cadence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>~~Miniflux unread~~</td>
+<td>Nothing you need to look at — the bridge forwards, Miniflux ages entries out</td>
+<td>Itself</td>
+<td>Never</td>
+</tr>
+<tr>
+<td><strong>Karakeep inbox</strong></td>
+<td>Everything the filter let through, plus what you saved by hand</td>
+<td>Archiving or filing each one</td>
+<td><strong>Daily — this is the only one</strong></td>
+</tr>
+<tr>
+<td>~~Floccus arrivals~~</td>
+<td>Browser bookmarks — <strong>Floccus syncs them into a LIST</strong></td>
+<td>Nothing needed</td>
+<td>Never</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The third is not an inbox after all, and that is worth knowing because it
+looks like it should be.</strong> Verified 2026-09-20: Floccus-synced bookmarks do not
+appear in <code>-is:archived -is:inlist</code>, because the adapter puts them in a
+Karakeep list. They are therefore excluded from the Inbox for free — no tag
+convention, no query, nothing to maintain.</p>
+<p>So there are <strong>two</strong> inboxes, and only one of them needs daily attention.</p>
+<h3 id="the-one-rule-that-makes-it-work">The one rule that makes it work<a class="headerlink" href="#the-one-rule-that-makes-it-work" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p><strong>Capture is automatic. Your only job is deciding what to keep, after the
+fact.</strong></p>
+</blockquote>
+<p>Nothing needs saving, because everything that passed the filter is already
+here, already archived. That removes the decision people actually stall on —
+<em>is this worth keeping?</em> asked while reading, with the article half-finished —
+and replaces it with a cheaper one asked later: <em>archive, file, or delete?</em></p>
+<p>The corollary is that <strong>the filter is where the real work happens</strong>, and it is
+done once per feed rather than once per item. A feed that keeps putting rubbish
+in your inbox does not need more discipline from you; it needs a Blocklist rule
+or an unsubscribe.</p>
+<hr />
+<h3 id="set-up-once">Set-up, once<a class="headerlink" href="#set-up-once" title="Permanent link">&para;</a></h3>
+<p>Karakeep's <strong>smart lists</strong> are saved queries that re-evaluate themselves, so
+the inboxes below are defined rather than maintained. Create these four
+(<em>Lists → new → smart</em>):</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Query</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Inbox</strong></td>
+<td><code>-is:archived -is:inlist</code></td>
+<td><strong>The only one you work daily.</strong> Everything unread and unfiled</td>
+</tr>
+<tr>
+<td><strong>Link rot</strong></td>
+<td><code>is:broken</code></td>
+<td>Pages that no longer resolve — the archive is now the only copy</td>
+</tr>
+<tr>
+<td><strong>Untagged</strong></td>
+<td><code>-is:tagged</code></td>
+<td>A handful is the queue; a growing pile means the tagger is stuck</td>
+</tr>
+<tr>
+<td><strong>This week</strong></td>
+<td><code>-is:archived age:&lt;7d</code></td>
+<td>What actually arrived recently, when the Inbox has a backlog</td>
+</tr>
+</tbody>
+</table>
+<p><strong>There is deliberately no "From feeds" list, and an earlier version of this
+guide got that wrong.</strong> It suggested <code>#miniflux</code>, a tag set by Miniflux's
+<em>in-app</em> Karakeep integration — which M28 turned off, because the bridge
+replaced it. <strong>The bridge sets no tags at all.</strong> That query now matches
+nothing.</p>
+<p><strong>Nor can <code>source:</code> separate feed items from browser bookmarks.</strong> Both the
+bridge and Floccus create bookmarks through the API, so both are <code>source:api</code>
+and the two are indistinguishable by origin. The qualifier is still worth
+knowing — <code>source:extension</code> does isolate things saved with the Karakeep
+browser button — but it will not give you a feeds-only view.</p>
+<p><strong>Floccus does not pollute the Inbox, and this was verified rather than
+assumed.</strong> Its adapter syncs into a Karakeep <em>list</em>, so its bookmarks are
+already <code>is:inlist</code> and the Inbox query excludes them without any help. That is
+the tidiest possible outcome and it is why no <code>Bar</code> list is needed.</p>
+<p><strong>Calibrate <code>source:</code> once anyway if you build queries on it.</strong> Search
+<code>source:api</code> and <code>source:extension</code> and see what each returns on your instance
+rather than trusting this page.</p>
+<h3 id="archived-does-not-mean-what-you-think">"Archived" does not mean what you think<a class="headerlink" href="#archived-does-not-mean-what-you-think" title="Permanent link">&para;</a></h3>
+<p>This is the single most confusing thing in Karakeep and it is worth one
+paragraph.</p>
+<p><strong><code>is:archived</code> is a DONE state, not a preservation state.</strong> Every bookmark has
+a stored page snapshot the moment it is crawled — that is not optional and not
+something you trigger. Archiving is the <em>email</em> sense of the word: filed away,
+out of the inbox, still there when you search.</p>
+<p>So <strong>archive is your "done" button.</strong> Pressing it does not create a copy and
+un-pressing it does not destroy one.</p>
+<hr />
+<h3 id="there-is-no-daily-miniflux-pass-any-more">There is no daily Miniflux pass any more<a class="headerlink" href="#there-is-no-daily-miniflux-pass-any-more" title="Permanent link">&para;</a></h3>
+<p>That is the point of the bridge. Feeds are polled, filtered and forwarded
+without you, and the only inbox you work is Karakeep's.</p>
+<p>If you find yourself opening Miniflux daily, something is wrong upstream: a
+feed is too noisy and wants a Blocklist rule, or it does not deserve a
+subscription.</p>
+<h3 id="the-reading-pass-karakeep-whenever-you-actually-have-attention">The reading pass — Karakeep, whenever you actually have attention<a class="headerlink" href="#the-reading-pass-karakeep-whenever-you-actually-have-attention" title="Permanent link">&para;</a></h3>
+<p>This is the whole workflow now, and it can be on the sofa:</p>
+<ol>
+<li>Open the <strong>Inbox</strong> smart list.</li>
+<li>Read things. For each, exactly one of:</li>
+<li><strong>Archive it</strong> — read, done, findable by search later. The common case.</li>
+<li><strong>Add it to a list</strong> — you will come back to it deliberately
+     (<code>Read later</code>, <code>Reference</code>, <code>Projects</code>, <code>Cooking</code>).</li>
+<li><strong>Delete it</strong> — it was not what you hoped.</li>
+<li>Stop when you stop. The inbox does not have to be empty every day.</li>
+</ol>
+<p>Note that both archiving <em>and</em> filing remove an item from the Inbox query, so
+the list shortens as you work whichever verb you choose.</p>
+<h3 id="the-weekly-pass-about-fifteen-minutes">The weekly pass — about fifteen minutes<a class="headerlink" href="#the-weekly-pass-about-fifteen-minutes" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Drain whatever is left in <strong>Inbox</strong>. Be harsher than during the week; if it
+  has sat for seven days, archive or delete it rather than reading it.</li>
+<li>Check <strong>Link rot</strong>. A broken bookmark is a page you can now only read in
+  Karakeep's snapshot — which is why the snapshot exists. Worth knowing about
+  while you still remember why you saved it.</li>
+<li>Check <strong>Untagged</strong>. A handful is the queue; a growing pile means the tagger
+  or the inference link is broken, and <code>journalctl -M karakeep -u
+  karakeep-workers</code> on ernst is where that shows.</li>
+</ul>
+<h3 id="the-monthly-pass-about-ten-minutes">The monthly pass — about ten minutes<a class="headerlink" href="#the-monthly-pass-about-ten-minutes" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Unsubscribe dead feeds.</strong> Sort by read-ratio in Miniflux. A feed you have
+  never clicked through from in three months is noise with a good reputation.
+  <strong>This is the highest-value habit in the whole stack and the one nobody
+  does</strong> — every feed you drop makes the daily pass shorter forever.</li>
+<li><strong>Sweep the Bar list</strong> if you made one, or ignore it deliberately. Browser
+  bookmarks are navigation; they do not owe you triage.</li>
+<li><strong>Export OPML</strong> (<em>Miniflux → Settings → Export</em>). Small, and the only part of
+  this stack with a portable interchange format.</li>
+</ul>
+<hr />
+<h3 id="when-you-fall-behind">When you fall behind<a class="headerlink" href="#when-you-fall-behind" title="Permanent link">&para;</a></h3>
+<p>You will. The failure mode is not falling behind, it is <em>avoiding the tool
+because you fell behind</em>.</p>
+<ul>
+<li><strong>Miniflux</strong>: mark everything read. There is no penalty and no lost data
+  worth mourning — anything genuinely important recurs.</li>
+<li><strong>Karakeep Inbox over ~50 items</strong>: declare bankruptcy. Select all, archive
+  all. Nothing is deleted, everything stays searchable, and you get an empty
+  inbox for the price of admitting you were not going to read them. <strong>An
+  archived bookmark you never read is worth exactly as much as an unarchived
+  one you never read</strong>, minus the guilt.</li>
+</ul>
+<p>If bankruptcy happens twice in a quarter, the problem is upstream: too many
+feeds in <code>Daily</code>, or too low a bar at capture time. Fix the input, not the
+backlog.</p>
+<hr />
+<h3 id="on-starring-in-miniflux">On starring in Miniflux<a class="headerlink" href="#on-starring-in-miniflux" title="Permanent link">&para;</a></h3>
+<p>Miniflux has a star. <strong>Prefer saving to Karakeep instead</strong>, because a star is a
+pointer into a database that deletes its own entries, and a save is a copy that
+does not. Use the star only as a within-session "come back to this in a minute".</p>
+<h2 id="archiving-and-curating-in-karakeep">Archiving and curating in Karakeep<a class="headerlink" href="#archiving-and-curating-in-karakeep" title="Permanent link">&para;</a></h2>
+<h3 id="what-happens-automatically-when-something-arrives">What happens automatically when something arrives<a class="headerlink" href="#what-happens-automatically-when-something-arrives" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>The crawler</strong> fetches the page, extracts readable text, and stores a
+   full-page snapshot plus a screenshot.</li>
+<li><strong>AI tagging</strong> runs against ernst's own inference server — <code>qwen3-coder-30b</code>
+   over the <code>ai0</code> link, the model llama-swap already has resident — and adds
+   subject tags and a summary. Nothing leaves the house.</li>
+<li><strong>Meilisearch</strong> indexes the text, so search covers the <em>contents</em> of what you
+   saved, not just titles and URLs.</li>
+</ol>
+<p>Tagging is asynchronous. A just-saved bookmark is untagged for a few seconds to
+a minute; that is the queue, not a fault.</p>
+<h3 id="lists-are-for-intent-tags-are-for-subject">Lists are for intent, tags are for subject<a class="headerlink" href="#lists-are-for-intent-tags-are-for-subject" title="Permanent link">&para;</a></h3>
+<p>Karakeep has both and they are not interchangeable:</p>
+<ul>
+<li><strong>Tags</strong> answer <em>what is this about</em>. Mostly AI-generated. Let them be messy;
+  search is what you actually use.</li>
+<li><strong>Lists</strong> answer <em>what am I going to do with this</em>. Few, hand-made, and worth
+  keeping deliberate: <code>Read later</code>, <code>Reference</code>, <code>Projects</code>, <code>Cooking</code>.</li>
+</ul>
+<p><strong>Smart lists are worth more than manual lists for anything rule-shaped</strong> —
+they are saved queries that re-evaluate themselves, so the thing stays true
+without being maintained. The four in
+<a href="#set-up-once">Set-up, once</a> are all of this kind. Keep manual lists for the
+genuinely hand-curated: <code>Read later</code>, <code>Reference</code>, <code>Projects</code>, <code>Cooking</code>.</p>
+<p><strong>Adding to a list is one of the two ways out of the Inbox</strong>, the other being
+archive — both satisfy <code>-is:archived -is:inlist</code>, so either empties it.</p>
+<h3 id="on-deleting">On deleting<a class="headerlink" href="#on-deleting" title="Permanent link">&para;</a></h3>
+<p>Delete freely during the reading pass. <strong>A bookmark manager you never delete
+from becomes a landfill with a search box</strong>, and the search is what you are
+paying for.</p>
+<p>One caveat with real weight here: deleting from Karakeep deletes the archived
+copy too, and that copy
+may be the only one left. ZFS snapshots on <code>zdata/state</code> are the safety net for
+regret, and there is no trash can with a retention period — see
+<a href="../ernst-zdata-datasets/">ernst zdata datasets</a>.</p>
+<hr />
+<h2 id="browser-bookmarks-floccus">Browser bookmarks — Floccus<a class="headerlink" href="#browser-bookmarks-floccus" title="Permanent link">&para;</a></h2>
+<p>Floccus syncs each browser's <strong>native bookmark tree</strong> with Karakeep. It is not
+the same act as saving to Karakeep, and conflating the two causes most of the
+confusion people have with this setup — but the difference is <strong>not</strong> what an
+earlier version of this guide claimed.</p>
+<p><strong>Floccus-synced bookmarks ARE fully archived.</strong> Once a link lands in Karakeep
+it is an ordinary bookmark whatever put it there: the crawler fetches it,
+extracts the text, takes a screenshot, the AI tags it and Meilisearch indexes
+it. Verified on the real instance — Floccus-synced entries carry generated
+subject tags and real page screenshots, not favicons.</p>
+<p>The actual difference is <strong>ownership</strong>, and it matters more than archiving did:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Lives in</th>
+<th>Archived?</th>
+<th>Deleting it in the browser…</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Karakeep extension / Miniflux integration</td>
+<td>Karakeep only</td>
+<td><strong>Yes</strong></td>
+<td>n/a — the browser has no copy</td>
+</tr>
+<tr>
+<td>Floccus</td>
+<td>Bookmarks bar <strong>and</strong> Karakeep</td>
+<td><strong>Yes</strong></td>
+<td><strong>…deletes it from Karakeep on the next sync</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>That last cell is the whole point.</strong> Floccus is a <em>sync</em> tool, not an import:
+it makes two trees match, in both directions. So a page you "kept" by
+bookmarking it is hostage to the bookmarks bar — tidy the bar six months later
+and the archived copy goes with it, silently, because that is Floccus working
+correctly.</p>
+<p>A bookmark saved through the extension or from Miniflux is not in the browser
+at all, so no amount of bookmark housekeeping can touch it.</p>
+<p><strong>So: bookmarks bar for things you navigate to, Karakeep for things you want to
+keep.</strong> A banking login belongs in the bar. An article you want in a year
+should be saved with the extension, <em>even if it is also bookmarked</em> — the two
+are not redundant, because only one of them survives a tidy-up.</p>
+<blockquote>
+<p><strong>Worth proving to yourself once</strong>, rather than taking on trust: bookmark a
+throwaway page, let it sync, delete it from the bar, sync again, and see
+whether it is still in Karakeep. The answer determines how much you should
+trust the bar as a keeping mechanism, and it is cheap to find out.</p>
+</blockquote>
+<h3 id="setup-per-browser">Setup, per browser<a class="headerlink" href="#setup-per-browser" title="Permanent link">&para;</a></h3>
+<p>Installed declaratively on miralda and jens for all four browsers — see
+<code>service-modules/software.nix</code> and <code>machines/miralda/home-modules/browsers.nix</code>.
+Configuring them is manual, because neither extension exposes a managed-storage
+schema:</p>
+<ol>
+<li>Karakeep extension → server <code>https://karakeep.goclan.org</code> → its own API key.</li>
+<li>Floccus → <em>Add account</em> → <strong>Karakeep</strong> → same URL → its own API key.</li>
+<li>Choose which local folder syncs. <strong>Start with one folder, not the whole
+   tree.</strong></li>
+</ol>
+<h3 id="two-warnings-worth-reading-before-the-first-sync">Two warnings worth reading before the first sync<a class="headerlink" href="#two-warnings-worth-reading-before-the-first-sync" title="Permanent link">&para;</a></h3>
+<p><strong>Give every browser its own API key</strong>, labelled. Eight browser instances
+sharing one key means one revocation breaks all of them, and you will not know
+which one you meant to fix.</p>
+<p><strong>The first sync is the dangerous one.</strong> Floccus merges two trees, and if one
+side is empty it can look like "delete everything" to the other. Sync one small
+folder first and confirm both ends look right before pointing it at the root.</p>
+<hr />
+<h2 id="when-the-same-page-arrives-twice">When the same page arrives twice<a class="headerlink" href="#when-the-same-page-arrives-twice" title="Permanent link">&para;</a></h2>
+<p>It will: you save an article from Miniflux, then bookmark it in the browser a
+week later. Karakeep deduplicates on URL for identical links, but tracking
+parameters (<code>?utm_source=…</code>) make two URLs that are the same page.</p>
+<p>Not worth solving systematically. Strip tracking parameters when you notice,
+and merge duplicates during the triage pass. A handful of duplicates costs
+less than a rule that occasionally hides something.</p>
+<hr />
+<h2 id="what-is-backed-up-and-what-is-not">What is backed up, and what is not<a class="headerlink" href="#what-is-backed-up-and-what-is-not" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Snapshotted</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Karakeep (<code>/srv/state/karakeep</code>)</td>
+<td>✅ <code>zdata/state</code>, auto-snapshot on</td>
+<td>The archive AND the SQLite database</td>
+</tr>
+<tr>
+<td>Miniflux (<code>/srv/state/miniflux</code>)</td>
+<td>✅ same dataset</td>
+<td>Mostly feed subscriptions; entries are transient by design</td>
+</tr>
+<tr>
+<td>Meilisearch index</td>
+<td>❌ container rootfs</td>
+<td><strong>Deliberate</strong> — derived data, rebuilt from Karakeep on demand</td>
+</tr>
+<tr>
+<td>Browser bookmark trees</td>
+<td>via Floccus → Karakeep</td>
+<td>The browsers are not backed up; Karakeep is</td>
+</tr>
+</tbody>
+</table>
+<p><strong>There is still no off-box backup of any of this</strong> — ZFS snapshots live on the
+same pool as the data. That is a fleet-wide gap, not one this stack introduces,
+and <code>zdata/backup</code> is reserved and deliberately uncreated.</p>
+<p><strong>Export your Miniflux feed list occasionally</strong> (<em>Settings → Export → OPML</em>).
+It is small, it is the one thing that is genuinely painful to rebuild by hand,
+and it is the only part of this stack with a portable interchange format.</p>
+<hr />
+<h2 id="adding-a-person-to-karakeep">Adding a person to Karakeep<a class="headerlink" href="#adding-a-person-to-karakeep" title="Permanent link">&para;</a></h2>
+<p>Not a footnote — there is <strong>no</strong> other route, and it surprises people:</p>
+<ol>
+<li><code>DISABLE_SIGNUPS = "false"</code> in <code>machines/ernst/containers/karakeep.nix</code></li>
+<li><code>clan machines update ernst</code></li>
+<li>They sign in once through Authelia — the account is created on the callback</li>
+<li>Back to <code>"true"</code>, <code>clan machines update ernst</code> again</li>
+</ol>
+<p>There is no password form, no admin invite and no CLI. While signups are on,
+any Authelia identity that can pass two-factor gets an account on first login,
+and since <code>karakeep.goclan.org</code> is public that window is on the internet. Keep
+it to minutes.</p>
+<hr />
+<h2 id="quick-reference">Quick reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Subscribe to a feed</td>
+<td>Miniflux bookmarklet, or paste the URL in Miniflux. Items flow to Karakeep by themselves</td>
+</tr>
+<tr>
+<td>Silence part of a noisy feed</td>
+<td>Miniflux → the feed → <strong>Blocklist</strong> (regex over title and content)</td>
+</tr>
+<tr>
+<td>Separate feed items from browser bookmarks</td>
+<td>You cannot by origin — both are <code>source:api</code>. Use lists and tags instead</td>
+</tr>
+<tr>
+<td>Keep a page you are browsing</td>
+<td>Karakeep browser extension</td>
+</tr>
+<tr>
+<td>Bookmark for navigation</td>
+<td>Browser bookmarks bar — Floccus syncs it to Karakeep, and archives it there, but a later deletion in the bar removes it</td>
+</tr>
+<tr>
+<td>Find something you kept</td>
+<td>Karakeep search — it covers page <em>contents</em></td>
+</tr>
+<tr>
+<td>Triage the backlog</td>
+<td>Karakeep → <strong>Inbox</strong> smart list (<code>-is:archived -is:inlist</code>)</td>
+</tr>
+<tr>
+<td>Daily</td>
+<td>Work the <strong>Inbox</strong> smart list in Karakeep. Miniflux runs unattended</td>
+</tr>
+<tr>
+<td>Whenever you have attention</td>
+<td>Work the <strong>Inbox</strong> list: archive, file, or delete</td>
+</tr>
+<tr>
+<td>Weekly</td>
+<td>Drain Inbox harder; check <strong>Link rot</strong> and <strong>Untagged</strong></td>
+</tr>
+<tr>
+<td>Monthly</td>
+<td>Unsubscribe dead feeds; add rules for whatever is still noisy; export OPML</td>
+</tr>
+<tr>
+<td>Yearly</td>
+<td>Export OPML from Miniflux</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="reaching-this-from-another-network">Reaching this from another network<a class="headerlink" href="#reaching-this-from-another-network" title="Permanent link">&para;</a></h2>
+<p>Two paths, and they fail in confusingly similar ways.</p>
+<p><strong>The public path</strong> — <code>miniflux.goclan.org</code> and <code>karakeep.goclan.org</code> are both
+on the <code>wan</code> entrypoint. Miniflux is behind Authelia's forward-auth (you get
+the portal, then 2FA); Karakeep answers its own sign-in page and sends you to
+Authelia from there. Nothing to set up: open the URL.</p>
+<p><strong>The VPN path</strong> — the UniFi WireGuard server. Import the client config into
+NetworkManager so Noctalia's <code>network-manager-vpn</code> widget can toggle it; that
+is the same arrangement <code>modules/desktop/desktop-common.nix</code> describes for
+IVPN, and the widget only ever sees NetworkManager connections.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>nmcli<span class="w"> </span>connection<span class="w"> </span>import<span class="w"> </span><span class="nb">type</span><span class="w"> </span>wireguard<span class="w"> </span>file<span class="w"> </span>skynetvpn.conf
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>nmcli<span class="w"> </span>connection<span class="w"> </span>modify<span class="w"> </span>skynetvpn<span class="w"> </span>connection.autoconnect<span class="w"> </span>no
+</code></pre></div>
+<p><code>autoconnect no</code> matters — a full tunnel coming up on the home LAN is not what
+you want. <strong>Do not run it alongside IVPN</strong>: both are <code>AllowedIPs = 0.0.0.0/0</code>,
+and two things with authority over the default route is how a kill-switch
+becomes an outage nobody can diagnose.</p>
+<h3 id="the-trap-with-the-vpn-up-both-paths-break">The trap: with the VPN up, BOTH paths break<a class="headerlink" href="#the-trap-with-the-vpn-up-both-paths-break" title="Permanent link">&para;</a></h3>
+<p>Measured 2026-09-19. A tunnelled client gets an address on <strong>VLAN 70</strong>, and:</p>
+<ul>
+<li>it <strong>cannot reach VLAN 90 at all</strong> — not Traefik, not any backend — because
+  the UDM-Pro has no policy permitting it. DNS works (VLAN 5 is reachable) and
+  SSH to ernst works (VLAN 50 is reachable), which makes it look like the
+  services are down rather than unreachable;</li>
+<li>the <strong>public</strong> path is simultaneously unavailable, because a full-tunnel
+  client egresses from the house's own WAN address, and connecting to
+  <code>78.94.91.74</code> from inside is a NAT hairpin the UDM-Pro does not do.</li>
+</ul>
+<p>So the VPN takes away the path that was working and does not supply the one it
+promised. The fix is one UDM-Pro policy — <code>VPN (70)</code> → <code>10.0.90.12:443/tcp</code> —
+and it is written up in
+<a href="../ernst-app-api-ingress/#vpn-clients-land-on-vlan-70-and-cannot-reach-vlan-90-by-default">the app-API ingress guide</a>.</p>
+<p><strong>Until that rule exists, turn the VPN off to reach these two services.</strong></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
