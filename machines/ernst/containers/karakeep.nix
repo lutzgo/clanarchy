@@ -99,21 +99,26 @@
 #   the monitoring container and Open WebUI — a socket on the host end, ONE
 #   firewall accept for the container end, and no VLAN exposure whatsoever.
 #
-#   NOTE THE MODEL CHOICE.  `INFERENCE_TEXT_MODEL` is `qwen3-coder-30b`, the
-#   model llama-swap ALREADY has resident for lgo's coding agent — declared in
-#   clan.nix's `roles.models`.  llama-swap runs its LLMs in an exclusive group,
-#   so naming any other text model here would EVICT the coder model on every
-#   bookmark and stall the agent on the next keystroke.  Reusing the resident
-#   one costs nothing: no eviction, no second set of weights, no VRAM.
+#   NOTE THE MODEL CHOICE.  Both `INFERENCE_TEXT_MODEL` and
+#   `INFERENCE_IMAGE_MODEL` name `qwen3.6-35b-a3b`, the model llama-swap ALREADY
+#   has resident — declared in clan.nix's `roles.models`.  llama-swap runs its
+#   LLMs in an exclusive group, so naming any other model here would EVICT the
+#   resident one on every bookmark and stall lgo's coding agent on the next
+#   keystroke.  Reusing it costs nothing: no eviction, no second set of weights,
+#   no VRAM.
 #
-#   THE IMAGE MODEL IS THE EXCEPTION AND IT IS PRICED HERE RATHER THAN
-#   DISCOVERED.  `qwen2.5-vl-7b` is a different model in that same exclusive
-#   group, so saving an IMAGE bookmark does evict the coder model and the next
-#   agent request pays a reload.  That is acceptable because image bookmarks
-#   are rare and the alternative — leaving the karakeep default of
-#   `gpt-4o-mini`, a model that does not exist here — is a request that fails
-#   with a name nothing on this host has ever served.  M19's restart-loop
-#   lesson, in miniature.
+#   THE IMAGE MODEL USED TO BE THE EXCEPTION, AND M29c REMOVED THE EXCEPTION.
+#   Until 2026-09-25 this was `qwen2.5-vl-7b` — a different model in that same
+#   exclusive group — so saving an IMAGE bookmark evicted the text model and the
+#   next agent request paid a reload.  That was accepted because image bookmarks
+#   are rare, and priced here rather than discovered.
+#
+#   It is not a trade any more: the resident model is multimodal, so one name
+#   goes in both slots and there is no second model to swap to.  What has NOT
+#   changed is why either slot is set at all — karakeep's default is
+#   `gpt-4o-mini`, a model that does not exist here, so leaving it unset is a
+#   request that fails with a name nothing on this host has ever served.  M19's
+#   restart-loop lesson, in miniature.
 #
 # ── uid 3038, AND IT IS LOAD-BEARING ────────────────────────────────────────
 #
