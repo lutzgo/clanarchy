@@ -3287,12 +3287,33 @@ in
 
                   server = {
                     port         = settings.port;
-                    # 0.0.0.0 with the firewall above as the boundary — the
-                    # same shape the webui container uses, and for the same
-                    # reason: the container's address is a DHCP lease, so
-                    # binding it specifically means binding something this
-                    # module does not know at build time.
-                    bind_address = "0.0.0.0";
+                    # `::`, not `0.0.0.0`, and not the container's own address:
+                    # the address is a DHCP lease, so binding it specifically
+                    # means binding something this module does not know at
+                    # build time.  The firewall above is the boundary, the same
+                    # shape the webui container uses.
+                    #
+                    # IT HAS TO BE `::` BECAUSE THIS LISTENER HAS TWO
+                    # CONSUMERS ON DIFFERENT FAMILIES.  M20 wrote `0.0.0.0`
+                    # when the only caller was Open WebUI over IPv4 at
+                    # 10.0.90.24:8888.  M29b then gave mneme the `web0` leg —
+                    # `fdca:fe94::1` → `fdca:fe94::2` — which is IPv6-ONLY, and
+                    # did not revisit this line.  Everything else about that
+                    # leg was correct: both ends up, the container's accept for
+                    # `fdca:fe94::1` on 8888 present, mneme launched with
+                    # `--search-url http://[fdca:fe94::2]:8888`.  There was
+                    # simply no socket on that family, so every `web_search`
+                    # call the agent made failed, and the agent reported it as
+                    # "I cannot search the internet".
+                    #
+                    # `::` serves BOTH, and that depends on
+                    # `net.ipv6.bindv6only = 0` — the kernel default, verified
+                    # 0 in this container.  If that ever flips, the IPv4
+                    # consumer (Open WebUI, and the verification curl against
+                    # 10.0.90.24:8888 in the header above) loses its listener
+                    # instead, which would be the same failure wearing the
+                    # other family's clothes.
+                    bind_address = "::";
 
                     # Substituted by searx-init's envsubst from
                     # environmentFile, so the value is never in the store.
