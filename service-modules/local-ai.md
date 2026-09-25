@@ -732,6 +732,18 @@ On ernst, 2026-09-10, that returned **exactly one row** — `qwen3-coder-30b` �
 while `qwen2.5-vl-7b` had no record at all, and so had none of the settings
 somebody had carefully applied in the UI.
 
+**M29c MAKES THIS BITE AGAIN, AND IT IS A MANUAL STEP.** Changing which model is
+served changes the model *id*, and these rows are keyed on the id. So
+`qwen3.6-35b-a3b` starts with **no row at all** — no `vision` capability, no
+`function_calling` — and Open WebUI will refuse an image attachment with the
+same `Model {{modelName}} is not vision capable` toast the section below
+describes, on a model that is perfectly capable of vision.
+
+Nothing in Nix can set this: the rows live in Open WebUI's own database and
+`ENABLE_PERSISTENT_CONFIG = "False"` governs environment-derived config, not
+per-model metadata. After a model swap, open Workspace → Models → the new id and
+set the capabilities by hand. The query above is how to check you did.
+
 Each model that should generate or edit images needs **all three**, and none
 of them can be set from Nix:
 
@@ -745,12 +757,16 @@ A related wart in that same row: `qwen3-coder-30b` had `"vision": true`, which
 is false — it has no vision tower. That is why attaching an image to it
 produced a silent HTTP 500 rather than a warning.
 
-### Editing an image requires selecting the VISION model, not the coder
+### Image editing used to need the VISION model selected (M29c retired that)
 
-**Pick `qwen2.5-vl-7b` before attaching a picture to edit — and configure it
-per the table above first.** With `qwen3-coder-30b` selected the edit itself
-succeeds and the result is thrown away, replaced by an error. Measured on ernst
-2026-09-10:
+**This section used to open "pick `qwen2.5-vl-7b` before attaching a picture to
+edit".** There is no longer a second model to pick: `qwen3.6-35b-a3b` is
+multimodal and is what every consumer names.
+
+The failure it warned about is worth keeping, because it is what a missing
+vision tower looks like from the UI rather than from the log. Measured on ernst
+2026-09-10 with the coder model selected — the edit *succeeded*, then the result
+was thrown away and replaced by an error:
 
 ```
 09:25:53  comfyui_edit_image: WebSocket connection established
@@ -760,46 +776,25 @@ succeeds and the result is thrown away, replaced by an error. Measured on ernst
           image input is not supported - hint: ... provide the mmproj
 ```
 
-**The img2img ran and finished.** What failed is the *chat* turn afterwards:
-Open WebUI sends the conversation — including the attached image — to the
-selected model for the text reply, and the coder model has no vision tower, so
-llama-server answers HTTP 500 and Open WebUI surfaces that instead of the
-edited image.
+Sixteen seconds of GPU spent on an image nobody ever sees. If a text-only model
+is ever served here again, that is the shape of the mistake to expect.
 
-Nothing prevents this on the client side, and two details in the frontend are
-why (`Chat.svelte:2891`):
+### Reading images no longer needs a manual model switch (M29c)
 
-```js
-hasImages &&
-!(model.info?.meta?.capabilities?.vision ?? true) &&
-!imageGenerationEnabled
-```
+**This section used to say the opposite, and the change is the model rather
+than Open WebUI.** Open WebUI still has no automatic model routing — attaching
+an image to a model without the `vision` capability produces a toast (`Model
+{{modelName}} is not vision capable`, `Chat.svelte:2892`) and nothing else: no
+fallback, no auto-switch, nowhere in the request path.
 
-- **`?? true`** — vision is assumed *present* when the capability is unset, so
-  no warning fires for a model nobody has explicitly marked non-vision;
-- **`&& !imageGenerationEnabled`** — the check is skipped entirely whenever the
-  Image toggle is on, which is exactly when editing happens;
-- and it is a `toast.error` either way — **it never aborts the request.**
+What changed is that there is only one model now, and it has a vision tower.
+`qwen3.6-35b-a3b` is multimodal, so the model already selected for text reads
+images too. The separate `qwen2.5-vl-7b` entry is deleted.
 
-It cannot be fixed at the proxy either: llama-swap's `stripParams` operates on
-top-level request parameters (`temperature`, …) and cannot reach into
-`messages[].content[]`.
-
-So this is a model-selection fact, not a configuration one. Verified that the
-vision model handles it — the same image through llama-swap to
-`qwen2.5-vl-7b` returns *"Red apple on surface."*
-
-### Reading images needs a manual model switch, and that cannot be automated
-
-**Open WebUI has no automatic model routing.** Attaching an image to a model
-without the `vision` capability produces a toast — `Model {{modelName}} is not
-vision capable` (`Chat.svelte:2892`) — and nothing else: no fallback, no
-auto-switch, nowhere in the request path.
-
-So reading an image means selecting `qwen2.5-vl-7b` by hand. The alternative is
-making the VL model the default for every chat, which trades the 30B's text
-quality for occasional image reading — a bad deal, and llama-swap makes the
-manual switch cheap anyway since it is a model swap rather than a restart.
+That also removes the eviction the old arrangement carried: the VL model was in
+the same exclusive GPU group, so looking at a picture unloaded the resident text
+model and the next request paid a reload. `containers/karakeep.nix` priced that
+for image bookmarks and now names one model in both of its slots.
 
 ### Generating an image is a UI toggle, not a prompt — and one step is runtime state
 

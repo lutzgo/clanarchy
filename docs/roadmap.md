@@ -75,6 +75,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M28 — the reading pipeline | **DEPLOYED 2026-09-20 AND VERIFIED, THEN FOUND NOT TO WORK — and both statements are true.** Every structural check passed on the first deploy: loopback-only bind, negative control refused, 400/401 signature enforcement, and a hand-signed webhook proving the full path including Karakeep's URL dedup. **THEN NOTHING CAME THROUGH**, because MINIFLUX'S OWN SSRF GUARD refuses to POST to a non-public address — M23's Nextcloud `DnsPinMiddleware` finding in a second costume, in a milestone that cites it | [#204](https://github.com/lutzgo/clanarchy/pull/204) | The bridge that makes "subscribe in Miniflux, consume in Karakeep" a pipeline rather than a pair of tabs. **IT EXISTS BECAUSE M27 BUILT A READER FOR SOMEBODY WHO DID NOT WANT ONE** — the planning question "where do you want to read?" was never asked. **375 lines of Go, so NOT the podman tier** despite upstream shipping a Dockerfile, and there is no image to pin anyway (no releases, no registry package). Runs INSIDE `containers.miniflux` on `127.0.0.1:8081` because its only client is Miniflux in that same namespace: **no MAC, no address, no reservation, no veth, no firewall rule, no uid**. **MINIFLUX SURVIVES FOR EXACTLY ONE CAPABILITY** Karakeep's native RSS lacks — filtering — and the rewrite rules are the deciding half, because Karakeep dedupes on the EXACT url so `?utm_source=` makes a second bookmark. **`PORT` IS AN ADDRESS, NOT A NUMBER**, and its default `:8080` is both a collision with Miniflux and a bind on every interface. **`ADD_TO_LIST` IS FALSE ON PURPOSE**: a list makes arrivals `is:inlist`, which is what M27's Inbox smart list excludes. Depends on M27. [M28](#m28-featminiflux-karakeep-bridge) |
 | M29 — Home Assistant on the local AI tier | **DEPLOYED 2026-09-24. The outage fix it carries is PROVEN — Open WebUI lists and answers again after five days dark — and `mneme`, all four ULA legs and all six bridges came up on the first try. ONE DEFECT FOUND BY DEPLOYING: both Wyoming voice servers failed at every start**, `238/STATE_DIRECTORY`, because impermanence creates the parents of a persist entry 0755 and systemd demands 0700 for `/var/lib/private`. **Fixed and re-deployed the same day via [#220](https://github.com/lutzgo/clanarchy/pull/220); both voice servers now run and the whole test plan passes** — and the second deploy found a defect in the test plan itself, an expected refusal on a path the host reaches over `lo` | [#219](https://github.com/lutzgo/clanarchy/pull/219), [#220](https://github.com/lutzgo/clanarchy/pull/220) | Assist controls the house and answers by voice, on ernst, with nothing leaving the property. **THE OBVIOUS INTEGRATION DOES NOT EXIST HERE**: ernst is on 26.05 → Home Assistant **2026.5.4**, and the native `llama_cpp` conversation integration ("any OpenAI-compatible endpoint") arrived in **2026.8** — present only in `nixpkgs-unstable` (2026.8.1), read out of `component-packages.nix` in both channels. `openai_conversation` at 2026.5.4 defines **no base-URL constant at all** and can only reach api.openai.com. What this release *does* have is `ollama`, fully wired to the Assist LLM API (`entity.py` builds `tools` from `chat_log.llm_api.tools` and loops until `unresponded_tool_results` is empty; the config flow exposes `CONF_LLM_HASS_API`). **So `mneme` speaks the Ollama wire protocol northward and OpenAI southward** — a translation layer, not an architecture, because the daemon has to sit in the request path anyway to inject the constitution, and it serves `/v1/chat/completions` from day one so nvf/opencode/Open WebUI need no second thing. Migration when this hub reaches 2026.8 is deleting one integration in a browser. **THREE PATHS REJECTED IN WRITING**: bumping the hub to unstable (a three-release jump with a one-way recorder migration, on the machine that runs the house); a HACS-downloaded conversation integration (M24b's trade — the one thing on ernst not in the repo); vendoring core's `llama_cpp` (it rides `ChatLog` internals that moved between 2026.5 and 2026.8). **VOICE CLOSED local-ai.md's OWN TTS NOTE, AND THE PREMISE WAS THE WRONG SHELF**: M19 looked for an OpenAI-shaped `/v1/audio/speech`; Assist speaks **Wyoming**, and 26.05 has shipped `services.wyoming.{piper,faster-whisper,openwakeword}` all along. **A SECOND STT ON THE MACHINE, DELIBERATELY** — whisper.cpp (ggml, OpenAI-shaped, Open WebUI) and faster-whisper (CTranslate2, Wyoming, Assist); neither can serve the other's protocol or load the other's weights, and both are CPU-only so neither costs VRAM. **NO WAKE WORD ON THE SERVER**: the Voice Preview Edition runs microWakeWord on-device, so `openwakeword` would be a second implementation of a job the satellite does better on audio it would have to stream continuously. **THE VOICE PE NEEDED A PINNED DEPENDENCY** — core 2026.5.4's `esphome/manifest.json` requires `bleak-esphome==3.7.3` and nixpkgs 26.05 ships **3.7.5**; `aioesphomeapi==44.24.1` and `esphome-dashboard-api==1.3.0` both match. Pinned through home-assistant's own `packageOverrides` hook, hash verified twice. **Nothing would have reported the skew**: `--skip-pip` means requirement checking never runs, and `hacs-deps-check.py` only looks at *downloaded* components. **IT TAKES NOTHING FROM THE REGISTRIES** — three host units beside llama-swap, loopback upstreams, one point-to-point `ai3` leg: no MAC, no address, no uid, no hostname, no Traefik router, no UDM-Pro rule, **no ledger row**. Sequence 16 / 10.0.90.30 / uid 3039 all stay free. **AND IT CARRIES AN OUTAGE FIX.** `extraVeths.<name>` becomes nspawn's `--network-veth-extra=<name>`, used for BOTH ends, so the interface name is **host-global** — M19 named Open WebUI's leg `ai0` and M27 gave karakeep the same name, and from M27's deploy Open WebUI had no second interface at all. Measured on 2026-09-24, sixteen days into one boot: `openwebui → [fdca:fe91::1]:11434` = curl (7), `karakeep → [fdca:fe92::1]:11434` = 200 (the control), one `ai0` on the host peered into karakeep, and Open WebUI's last `get_all_models()` five days earlier — the day before M27 deployed. **IT WAS INVISIBLE BECAUSE A LISTENING SOCKET IS NOT A WORKING LEG**: the host end binds whether or not the address exists anywhere, so `ss -ltn` showed it LISTENing and both bridge units stayed active/running; the only symptom was an empty model picker, three layers from the cause — the exact failure `exposeOn`'s own note claims the mechanism was built to prevent, prevented for the half in Nix and not for the half in nspawn's argv. **The facts needed to predict it were already written down** at `monitoring.nix:182-184`; what was missing was anything that checked. Legs are renamed to track their ULA (`ai1`/`ai2`/`ai3`, `mon0` keeps its name) and `machines/ernst/networking.nix` now **asserts** that no two containers claim one — verified with a negative control that names both offenders. **THE MODEL IS NOT CHANGED**, and that is deliberate: `qwen3-coder-30b` is resident and the GPU group is exclusive, so anything else would evict the coder model on every utterance. Whether it is the right model for a household is a separate, measured question — see "The model question" below. Depends on M19, M24, M24b. [M29](#m29-featernst-hass-local-ai) |
 | M29b — the agent's memory, web search and images | **BUILT 2026-09-25; not yet deployed.** `mneme` gains a git-versioned wiki it reads and writes, a `web_search` tool over SearXNG, and a `generate_image` tool over ComfyUI | — | **Recall is INJECTED, not requested**: the constitution, `index.md` and any page matching the last user turn go into the system message on every turn (6000 chars ≈ 1500 tokens of a 32768 window). `memory_search` exists as a tool too, but a tool is consulted only if the model decides to — and **M11 measured what that decision is worth on this model class**. No embeddings and no vector store: index-first navigation is *exact* inside the ~150–200 page range this pattern states. **Every write is a commit**, so `git log` is what it knows, `git show` is who told it, and `git revert` is how a wrong fact comes out; each agent-written page carries `source:` front matter naming the turn that produced it. **THE INJECTION BOUNDARY IS BUILT, NOT RETROFITTED** — a page is read back as context on every later turn, so `00-core/`, `SOUL.md` and `IRON_RULES.md` are not writable by the agent (the constitution lives in the Nix store and every write path refuses it by name), traversal and non-slug names are refused, and `IRON_RULES.md` states that wiki content is data and never instruction. Six of the thirty build-time tests cover exactly that. **THE NIGHTLY PASS DOES NOT CALL THE MODEL, and that absence is the design**: every published write-up of this pattern that automated a synthesis step reported it failing silently ~50% of the time, unnoticed for weeks, because a background job that produces nothing looks like one with nothing to do. `mneme-lint` only rebuilds the index and reports problems; it deletes nothing. **SN4 needed no new alert** — ernst sets `exporters.systemd = true`, so a failed oneshot raises `SystemdUnitFailed` through the ordinary path, and a second rule aimed at one unit is duplication that later disagrees. **THE INTERNAL TOOL LOOP is why mneme stays stateless**: HA runs its own loop around the whole request and carries its own history, so mneme's own tool work must finish inside one response — by the time anything goes back to HA it is an answer or one of HA's tools, never one of ours; capped at four rounds because ours happen *inside* one of HA's. **SearXNG GOT A SECOND LEG AND KEPT THE PROPERTY IT HAD** — its block said in writing "NO SECOND VETH, and its absence is load-bearing"; M29b needs the opposite direction, and the host dials in while nothing accepts on the way back (no accept exists for `fdca:fe94::2`). Widening `allowedSource` instead would have spent a documented "ONE address" invariant *and* hairpinned every search through the UDM-Pro, since the host's route to `10.0.90.24` is `via 10.0.50.1` (measured). The leg is `web0`, not `ai4`: every `ai*` leg lets a container reach this host, and this one points the other way. **HOME ASSISTANT SERVES THE PICTURES, NOT mneme** — mneme listens on a ULA only the hub can reach, so a URL it served itself would be unreachable from the browser that must display it; the PNG goes to `www/mneme` and returns as `https://ha.goclan.org/local/mneme/<name>.png`, which adds no listener, no route and no hostname. The cost is one mode change on `www` (0700 → 0755, directory only, in the file that owns that tree), exposing the *names* of files that already hold public frontend assets. **AND IMAGE GENERATION IS THE ONE TOOL WITH A RUNNING COST**: ComfyUI is in llama-swap's exclusive GPU group, so every picture evicts the resident 21 GiB coder model — ~15 s each way, stalling the household agent and the coding agent together. Enabled deliberately, priced in the tool's own description so the model knows it is expensive. **uid 3039, WHICH M29 PREDICTED** — that milestone ran the daemon DynamicUser because it owned nothing on disk and wrote in the uid table that a wiki would change it; ids pass through unmapped onto zdata, so keeping state and keeping a per-boot identity are mutually exclusive. NEXT FREE is now 3040. Depends on M29. [M29b](#m29b-featernst-agent-memory) |
+| M29c — Qwen3.6 on ernst | **MEASURED AND SWITCHED 2026-09-25.** `qwen3.6-35b-a3b` replaces BOTH `qwen3-coder-30b` and `qwen2.5-vl-7b`; the vision entry is deleted | — | **THE TWO GATES THIS WAS WAITING ON WERE BOTH MINE AND BOTH WRONG.** (1) "It needs a newer llama.cpp" was inferred from build numbers — the GGUFs were quantised with b9222 and ernst pins b9190 — which says nothing about what is needed to RUN them. Qwen3.6 declares `model_type: "qwen3_5"` and ernst's own libllama.so already carried `qwen35`/`qwen35moe`/`qwen3next` with the Gated DeltaNet kernels; there is no `qwen36` arch in llama.cpp even on master. Confirmed by loading it: `system_fingerprint: "b9190-b64739e"`. (2) "22.4 GB leaves less room for KV than today" was wrong twice — a DECIMAL figure (20.8 GiB), and this architecture barely has a KV cache (40 layers, only 10 Gated Attention, 2 KV heads each). **So the decision put to lgo — break "everything ships in nixpkgs 26.05" for a newer llama.cpp? — was a decision about nothing**, and he picked this model over my advice and was right. **MEASURED interleaved n=3** because a sequential pass drifts more than the difference: `qwen3-coder-30b` 107.1 tok/s / 20959 MiB / 20-of-20 tool calls, `qwen3.6-35b-a3b` 99.2 tok/s / 24100 MiB / 20-of-20. **−7.4% decode**, the speed holding because it is still an MoE with ~3B active — the dense 27B sibling would have cost roughly 3×. Vision verified before the old model was deleted: a two-colour test image read correctly INCLUDING a third region the prompt never mentioned. **A MODEL DEFECT THAT DID NOT EXIST, CAUGHT BY COUNTING FAILURE MODES**: a first harness measured 11/20 tool calls with thinking on vs 20/20 off, and was about to be written up as "thinking halves tool calling"; counting WHY each trial failed showed every failure was `finish_reason: length` — the harness's own 200-token cap eaten by 419–509 characters of reasoning. At 1000 tokens it is 20/20 in both modes. **The lesson is M29's bad negative control in another costume: a harness that records pass/fail and not failure mode will manufacture findings.** What did survive is a real `mneme` defect fixed in [#224](https://github.com/lutzgo/clanarchy/pull/224). **THE VISION EVICTION IS GONE RATHER THAN MITIGATED** — `qwen2.5-vl-7b` shared the exclusive GPU group, so reading an image unloaded the text model; karakeep now names ONE model in both slots and `local-ai.md`'s two manual-model-switch sections are retired. **THE ONE REAL COST IS 460 MiB OF HEADROOM** (24100 of 24560 against 20959): `contextLength` stays at 32768 because 65536 would add 320–640 MiB of KV and there is not room — the limit is the weights, not the window. `qwen3-coder-30b` is kept declared but named by nothing for one milestone, so rollback is one string in three places rather than a 17 GiB download during whatever went wrong. Depends on M29, M29b. [M29c](#m29c-featernst-qwen36) |
 
 ---
 
@@ -13440,7 +13441,120 @@ curl -sI https://ha.goclan.org/local/mneme/<name>.png | head -1   # 200
   SearXNG and the same ComfyUI. Running the internal loop for `/v1` is the
   follow-on if opencode or nvf ever wants the wiki.
 - **A model-driven synthesis pass**, if ever, as a command a person runs.
-- **The model swap** — still M29c, still gated on llama.cpp b9190 vs b9222.
+- **The model swap** — done, as M29c below. The gate it was waiting on turned
+  out not to exist.
+
+---
+
+## M29c — `feat/ernst-qwen36`
+
+**Measured and switched 2026-09-25.** `qwen3.6-35b-a3b` replaces both
+`qwen3-coder-30b` and `qwen2.5-vl-7b`; the vision entry is deleted.
+
+### Two things this milestone was gated on, and both were mine and wrong
+
+**(1) "It needs a newer llama.cpp."** Inferred from build numbers — the GGUFs
+were quantised with b9222, ernst pins b9190 — which is not a valid inference:
+which build *quantised* a file says nothing about the minimum needed to *run*
+it. Qwen3.6 declares `model_type: "qwen3_5"`, and ernst's own `libllama.so`
+already carried `qwen35`, `qwen35moe` and `qwen3next` with the Gated DeltaNet
+kernels. There is no `qwen36` architecture in llama.cpp even on master; the 3.6
+is weights, not a new graph. Confirmed by loading it:
+`system_fingerprint: "b9190-b64739e"`.
+
+**(2) "22.4 GB leaves less room for KV than today."** Wrong twice — that is a
+decimal figure (20.8 GiB), and this architecture barely has a KV cache: 40
+layers of which only 10 are Gated Attention, 2 KV heads each.
+
+So the decision I put to lgo — *break "everything ships in nixpkgs 26.05 — no
+external flake input" to get a newer llama.cpp?* — **was a decision about
+nothing.** He picked this model over my advice and was right.
+
+### The numbers
+
+Interleaved, n=3, alternating, because a sequential pass drifts more than the
+difference being measured (M19's finding, re-used):
+
+| | decode | VRAM | tool calls | vision |
+|---|---|---|---|---|
+| `qwen3-coder-30b` | 107.5 / 106.8 / 106.9 → **107.1 tok/s** | 20959 MiB | 20/20 | none |
+| `qwen3.6-35b-a3b` | 99.4 / 98.7 / 99.4 → **99.2 tok/s** | 24100 MiB | 20/20 | **works** |
+
+**−7.4% decode**, and the speed holds because this is still an MoE with ~3B
+active — the dense 27B sibling would have cost roughly 3×. The incumbent
+measuring 107.1 today against M19's 107.5 a fortnight earlier is the harness
+validating itself.
+
+Vision verified before the old model was deleted: a two-colour test image
+through `--mmproj`, read correctly **including a third region the prompt had not
+mentioned** (an ImageMagick artefact) — a real read rather than an echo of the
+question.
+
+### A model defect that did not exist, caught by counting failure modes
+
+A first tool-call harness measured **11/20** with thinking on against 20/20 with
+it off, which reads as "thinking halves tool calling on this model". It was
+about to be written up as exactly that.
+
+Counting *why* each trial failed, rather than only whether it did:
+
+| arm | max_tokens | ok | truncated | other |
+|---|---|---|---|---|
+| thinking on | 200 | 12/20 | **8** | 0 |
+| thinking on | 1000 | **20/20** | 0 | 0 |
+| thinking off | 200 | **20/20** | 0 | 0 |
+
+**Every** failure was `finish_reason: length` — the harness's own token cap
+eaten by 419–509 characters of reasoning, not one malformed call. The model is
+20/20 in both modes.
+
+**The lesson, and it is the same shape as M29's bad negative control:** a
+harness that records pass/fail and not *failure mode* will manufacture findings.
+Both errors in this milestone came from a number that looked conclusive and a
+mechanism that was never checked.
+
+What did survive is a real defect in `mneme`, fixed separately in
+[#224](https://github.com/lutzgo/clanarchy/pull/224): it only set
+`enable_thinking` when the client sent `think`, and Home Assistant omits it
+until somebody opens the options — so a thinking-capable model thought by
+default, spending ~450 tokens to decide to turn on a lamp.
+
+### What the switch buys beyond the model
+
+**The vision eviction is gone rather than mitigated.** `qwen2.5-vl-7b` shared
+the exclusive GPU group, so reading an image unloaded the resident text model
+and the next request paid a reload. `containers/karakeep.nix` priced that for
+image bookmarks and now names **one model in both slots**; `local-ai.md`'s two
+sections on the manual model switch are retired.
+
+### The one real cost: 460 MiB of headroom
+
+24100 MiB of 24560, against 20959 before. Enough, and not comfortable:
+
+- **`contextLength` stays at 32768.** 65536 would add 320–640 MiB of KV and
+  there is not room — the limit is the weights, not the window, which this
+  architecture would otherwise afford easily.
+- **ComfyUI still evicts it**, as before; that is the priced eviction
+  `roles.imagegen` and mneme's `generate_image` both document.
+- **If it ever spills**, the fallback is the same model at `UD-Q3_K_XL`
+  (16.8 GB, hash recorded in `clan.nix`) — but Q3 is where nested tool-call JSON
+  degrades first, so that is a measurement and not a swap.
+
+`qwen3-coder-30b` is **kept declared but named by nothing**, for one milestone.
+The switch is measured, not yet lived with, and rollback should be one string in
+three places rather than a 17 GiB download during whatever went wrong.
+
+### Manual steps — lgo's
+
+**Open WebUI keeps model capabilities per model *id*, in its own database.** The
+new id starts with no row, so it has no `vision` and no `function_calling` flag
+and the UI will refuse an image attachment on a model that is perfectly capable
+of it. Nothing in Nix can set this. Workspace → Models → `qwen3.6-35b-a3b` →
+enable them; verify with the `sqlite3` query in `local-ai.md`.
+
+Disk, whenever convenient — the fetcher only adds, so the retired weights stay
+until removed: `rm /srv/state/local-ai/models/Qwen2.5-VL*` (~5.7 GiB), and
+`Qwen3-Coder-30B*` (~17 GiB) once the fallback is dropped.
 
 ---
 

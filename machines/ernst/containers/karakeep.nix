@@ -616,9 +616,20 @@ in
           OPENAI_API_KEY = "sk-no-key-required";
 
           # Both names must match KEYS in ernst's `roles.models` in clan.nix.
-          # `qwen3-coder-30b` is the resident one; `qwen2.5-vl-7b` evicts it.
-          INFERENCE_TEXT_MODEL  = "qwen3-coder-30b";
-          INFERENCE_IMAGE_MODEL = "qwen2.5-vl-7b";
+          #
+          # ── ONE NAME IN BOTH SLOTS NOW (M29c), AND THAT IS THE WIN ───────
+          #
+          # This used to be two different models, and the header above priced
+          # the consequence: `qwen2.5-vl-7b` is in the same exclusive GPU
+          # group, so saving an IMAGE bookmark evicted the resident text model
+          # and the next request — a human waiting on the coding agent — paid
+          # a reload.  It was accepted because image bookmarks are rare.
+          #
+          # Qwen3.6-35B-A3B is multimodal, so the same resident model answers
+          # both.  The eviction is not mitigated, it is GONE: there is no
+          # second model to swap to.
+          INFERENCE_TEXT_MODEL  = "qwen3.6-35b-a3b";
+          INFERENCE_IMAGE_MODEL = "qwen3.6-35b-a3b";
 
           INFERENCE_ENABLE_AUTO_TAGGING       = "true";
           INFERENCE_ENABLE_AUTO_SUMMARIZATION = "true";

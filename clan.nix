@@ -448,6 +448,22 @@
         roles.models.machines.ernst.settings.models = {
           # The coder model.  Same family and quantisation class as the ollama
           # blob it replaces, so M11's and M19's numbers still describe it.
+          # ── KEPT AS A FALLBACK BY M29c, NAMED BY NOTHING ────────────────
+          #
+          # Every consumer moved to qwen3.6-35b-a3b on 2026-09-25.  This entry
+          # stays anyway, for one milestone, because the switch is measured but
+          # not yet LIVED WITH: the bake-off says 20/20 tool calls and -7.4%
+          # decode, and neither of those is the same as a fortnight of real
+          # household questions and real coding sessions.
+          #
+          # It costs disk and nothing else.  The weights are already fetched,
+          # the GPU group is exclusive so an unnamed model is never loaded, and
+          # rolling back is one string in three places rather than a 17 GiB
+          # download during whatever went wrong.
+          #
+          # DELETE IT once the new model has earned it — and delete the weights
+          # with it (`rm /srv/state/local-ai/models/Qwen3-Coder-30B*`), because
+          # the fetcher only adds.
           qwen3-coder-30b = {
             url  = "https://huggingface.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/resolve/main/Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf";
             hash = "sha256-KEGqMU2RZDSGDPuJkDR1KNzf5cNQ28udFGHb7oj/JTM=";
@@ -471,13 +487,38 @@
             kvCacheType = "f16";
           };
 
-          # ── M29c CANDIDATE — DECLARED, NOT YET SERVED TO ANYTHING ───────
+          # ── THE RESIDENT MODEL SINCE M29c (2026-09-25) ──────────────────
           #
-          # Qwen3.6-35B-A3B.  It is here so it can be MEASURED; no consumer
-          # names it yet.  Adding an entry costs disk and nothing else — the
-          # GPU group is exclusive, so a model nobody requests is never loaded
-          # and evicts nothing.  Flipping consumers is a separate edit, after
-          # the numbers.
+          # Qwen3.6-35B-A3B.  It was declared unserved first so it could be
+          # measured, and it passed; every consumer names it now — mneme,
+          # karakeep (both slots) and the opencode role.
+          #
+          # MEASURED ON ernst, interleaved n=3 against the model it replaced,
+          # because a sequential pass drifts more than the difference does:
+          #
+          #   qwen3-coder-30b   107.1 tok/s   20959 MiB   20/20 tool calls
+          #   qwen3.6-35b-a3b    99.2 tok/s   24100 MiB   20/20 tool calls
+          #
+          # -7.4% decode, and the speed holds because this is still an MoE
+          # with ~3B active; the dense 27B sibling would have cost roughly 3x.
+          #
+          # ── THE ONE REAL COST: 460 MiB OF HEADROOM ──────────────────────
+          #
+          # 24100 MiB of 24560 resident, against 20959 before.  That is enough
+          # and it is not comfortable.  Consequences worth knowing before
+          # anyone edits this entry:
+          #
+          #   * contextLength STAYS AT 32768.  65536 would add 320-640 MiB of
+          #     KV and there is not room.  This architecture would otherwise
+          #     afford it easily — only 10 of 40 layers hold KV — so the limit
+          #     is the weights, not the window.
+          #   * ANYTHING ELSE WANTING THE CARD evicts it, as before.  ComfyUI
+          #     still does; that is the priced eviction the imagegen role and
+          #     mneme's generate_image tool both document.
+          #   * IF IT SPILLS, the fallback is the same model at UD-Q3_K_XL
+          #     (16.8 GB, sha256-qDK5aJkl8b0zW76YXN+wbDa/LPJo9Pj27Or6POtRVhc=)
+          #     — but Q3 is where nested tool-call JSON degrades first, so it
+          #     is a measurement and not a swap.
           #
           # ── TWO THINGS I GOT WRONG WHEN I FIRST COSTED THIS ─────────────
           #
@@ -510,10 +551,10 @@
           # another 320-640 MiB, which is the window this could afford that
           # the current model cannot.
           #
-          # IT IS MULTIMODAL, which is the part that pays for itself: "Causal
-          # Language Model with Vision Encoder", with its own mmproj below.  If
-          # it passes, `qwen2.5-vl-7b` is deleted in the same edit and the
-          # manual model switch local-ai.md has to explain goes with it.
+          # IT IS MULTIMODAL, which is the part that paid for itself: "Causal
+          # Language Model with Vision Encoder", with its own mmproj below.
+          # That is what let the separate vision model be deleted rather than
+          # kept alongside — see the note where it used to live, below.
           #
           # HASHES FROM HuggingFace's OWN LFS oids, read from the API on
           # 2026-09-25 and converted with `nix hash convert`.  The fetcher
@@ -551,28 +592,27 @@
             };
           };
 
-
-          # Vision.  A SECOND model rather than a bigger one: the coder model
-          # has no vision tower, and llama-swap's exclusive group means the two
-          # are never resident together, so this costs disk rather than VRAM.
-          # QUOTED, and it has to be: `qwen2.5-vl-7b = …` is a DOTTED PATH in
-          # Nix and would silently declare `qwen2."5-vl-7b"` — a model named
-          # "5-vl-7b" nested under one named "qwen2", which type-checks and is
-          # wrong.
-          "qwen2.5-vl-7b" = {
-            url  = "https://huggingface.co/ggml-org/Qwen2.5-VL-7B-Instruct-GGUF/resolve/main/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf";
-            hash = "sha256-kli/BbEmhtCX/ztrGNloqzk2SXgKorPNZ/7EPVBVQ5I=";
-            filename    = "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf";
-            description = "Qwen2.5-VL 7B (vision)";
-            contextLength = 16384;
-            kvCacheType   = "f16";
-            # llama.cpp needs the projector and the weights as TWO files.
-            mmproj = "mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf";
-            extraFiles."mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf" = {
-              url  = "https://huggingface.co/ggml-org/Qwen2.5-VL-7B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf";
-              hash = "sha256-wkp/X8/GgobwohcCO2c45zvqTxF4ekPoI41LsbhgTN4=";
-            };
-          };
+          # ── THE VISION MODEL USED TO BE HERE, AND M29c DELETED IT ────────
+          #
+          # `qwen2.5-vl-7b` (Qwen2.5-VL 7B + its own mmproj) occupied this
+          # space from M19 until 2026-09-25.  It existed because the coder
+          # model had no vision tower, and it cost an eviction every time it
+          # was used — it is in the same exclusive GPU group, so reading an
+          # image unloaded the resident text model and the next request paid a
+          # reload.  containers/karakeep.nix priced that for image bookmarks
+          # and local-ai.md had a section explaining the manual model switch a
+          # human had to perform to look at a picture.
+          #
+          # The model above is multimodal, so all of that is gone rather than
+          # mitigated: one resident model answers text and images, karakeep
+          # names it in both slots, and there is no second model to swap to.
+          # Verified before deleting this — a two-colour test image through
+          # `--mmproj` on ernst, 2026-09-25, read correctly including a third
+          # region the prompt had not mentioned.
+          #
+          # Its ~5.7 GiB of weights stay on disk until somebody removes them;
+          # the fetcher only adds.  `rm /srv/state/local-ai/models/Qwen2.5-VL*`
+          # reclaims it and nothing here refers to them any more.
 
           # Whisper's weights.  Declared here rather than in roles.speech so
           # there is ONE fetcher and one hash-verified store for everything the
@@ -679,11 +719,16 @@
           # model every time somebody speaks to the house — 21 GiB off zdata,
           # each way, per utterance.  This costs nothing and loads nothing.
           #
-          # Whether it is the RIGHT model for a household assistant is a
-          # separate question with a separate answer: see docs/roadmap.md §M29
-          # on Qwen3.6, which is a measurement this milestone deliberately does
-          # not make.
-          model = "qwen3-coder-30b";
+          # M29c ANSWERED THAT QUESTION AND THIS IS THE ANSWER.  Measured on
+          # ernst 2026-09-25, interleaved n=3 against the incumbent:
+          #
+          #   qwen3-coder-30b   107.1 tok/s   20959 MiB   20/20 tool calls
+          #   qwen3.6-35b-a3b    99.2 tok/s   24100 MiB   20/20 tool calls
+          #
+          # -7.4% decode for a model two generations newer that also has a
+          # vision tower.  It is still an MoE with ~3B active, which is why the
+          # speed holds — the dense 27B sibling would have cost roughly 3x.
+          model = "qwen3.6-35b-a3b";
 
           exposeOn = [
             # ai3, one /64 beyond karakeep's.  The hub's conversation agent.
@@ -988,7 +1033,7 @@
           # Must match a KEY in ernst's roles.models above — no longer an
           # ollama registry tag, which is the class of mistake that put
           # `qwen3-coder:8b` into a restart loop for months.
-          model = "local/qwen3-coder-30b";
+          model = "local/qwen3.6-35b-a3b";
           tunnel.enable = true;
           # ernst serves this model at 32768 (roles.models above), so the
           # fleet default of 1000 — sized for miralda's 4096 — is not
