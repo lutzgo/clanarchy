@@ -471,6 +471,87 @@
             kvCacheType = "f16";
           };
 
+          # ── M29c CANDIDATE — DECLARED, NOT YET SERVED TO ANYTHING ───────
+          #
+          # Qwen3.6-35B-A3B.  It is here so it can be MEASURED; no consumer
+          # names it yet.  Adding an entry costs disk and nothing else — the
+          # GPU group is exclusive, so a model nobody requests is never loaded
+          # and evicts nothing.  Flipping consumers is a separate edit, after
+          # the numbers.
+          #
+          # ── TWO THINGS I GOT WRONG WHEN I FIRST COSTED THIS ─────────────
+          #
+          # (1) "It needs a newer llama.cpp."  That was inferred from build
+          # numbers — the GGUFs were quantised with b9222 and ernst has b9190 —
+          # which says nothing about what is needed to RUN them.  The real
+          # question is the architecture, and Qwen3.6 declares `model_type:
+          # "qwen3_5"` (config.json on the Qwen repo).  ernst's libllama.so at
+          # b9190 already carries `qwen35`, `qwen35moe` and `qwen3next`,
+          # including build_qkvz / build_norm_gated / build_layer_attn_linear
+          # — grepped out of the deployed binary on 2026-09-25.  There is no
+          # `qwen36` arch in llama.cpp even on master; the 3.6 is weights, not
+          # a new graph.
+          #
+          # (2) "22.4 GB leaves less room for KV than today."  Wrong twice
+          # over: that is a DECIMAL figure (20.8 GiB = 21325 MiB against a
+          # 24560 MiB card), and this architecture barely has a KV cache.  It
+          # is 40 layers of which only 10 are Gated Attention — the pattern is
+          # 10 x (3 x DeltaNet -> 1 x Gated Attention) — with 2 KV heads each.
+          # So, computed rather than assumed:
+          #
+          #   weights UD-Q4_K_XL   21325 MiB
+          #   mmproj-F16             858 MiB
+          #   KV @ 32768, f16    320-640 MiB   (vs ~3000 for the coder model)
+          #   ------------------------------
+          #   total            22503-22823 MiB, leaving 1.7-2.1 GiB spare
+          #
+          # For comparison the coder model measures 21799 MiB resident today.
+          # So this is about 1 GiB more, not a spill — and 65536 costs only
+          # another 320-640 MiB, which is the window this could afford that
+          # the current model cannot.
+          #
+          # IT IS MULTIMODAL, which is the part that pays for itself: "Causal
+          # Language Model with Vision Encoder", with its own mmproj below.  If
+          # it passes, `qwen2.5-vl-7b` is deleted in the same edit and the
+          # manual model switch local-ai.md has to explain goes with it.
+          #
+          # HASHES FROM HuggingFace's OWN LFS oids, read from the API on
+          # 2026-09-25 and converted with `nix hash convert`.  The fetcher
+          # verifies them on download, so a wrong value here is a loud failure
+          # at fetch time rather than a bad model at run time.
+          #
+          # QUOTED, and it has to be: an unquoted `qwen3.6-35b-a3b` is a DOTTED
+          # PATH in Nix and would silently declare `qwen3."6-35b-a3b"` — the
+          # same trap the vision entry below documents.
+          "qwen3.6-35b-a3b" = {
+            url  = "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf";
+            hash = "sha256-cHpVqKQ5fs3kTeDEmdPmjBrR0kDR2mWCa0lJ0QQ/RFA=";
+            filename    = "Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf";
+            description = "Qwen3.6 35B-A3B (UD-Q4_K_XL) — M29c candidate";
+
+            # 32768 TO MATCH THE INCUMBENT, deliberately, so the bake-off
+            # compares like with like.  This architecture can afford far more
+            # (see the KV arithmetic above) and raising it is the first thing
+            # to try AFTER the comparison, not during it.
+            contextLength = 32768;
+            kvCacheType   = "f16";
+
+            # `mmproj-F16.gguf` IS A GENERIC NAME IN A FLAT STORE, and that is
+            # recorded rather than worked around.  The other vision entry uses
+            # upstream's long form (mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf), so
+            # there is no collision today; a future model shipping this same
+            # bare name would land on the same path.  That fails LOUDLY — the
+            # fetcher verifies each file's hash, so the second declaration
+            # cannot quietly overwrite the first — but the fix, if it happens,
+            # is `subdir` on both entries rather than a rename here.
+            mmproj = "mmproj-F16.gguf";
+            extraFiles."mmproj-F16.gguf" = {
+              url  = "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/mmproj-F16.gguf";
+              hash = "sha256-iXHuTzMf8KTGCTdPMphLPU5twIbAqjXx1jf60YKeiH8=";
+            };
+          };
+
+
           # Vision.  A SECOND model rather than a bigger one: the coder model
           # has no vision tower, and llama-swap's exclusive group means the two
           # are never resident together, so this costs disk rather than VRAM.
