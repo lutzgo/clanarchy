@@ -76,6 +76,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M29 — Home Assistant on the local AI tier | **DEPLOYED 2026-09-24. The outage fix it carries is PROVEN — Open WebUI lists and answers again after five days dark — and `mneme`, all four ULA legs and all six bridges came up on the first try. ONE DEFECT FOUND BY DEPLOYING: both Wyoming voice servers failed at every start**, `238/STATE_DIRECTORY`, because impermanence creates the parents of a persist entry 0755 and systemd demands 0700 for `/var/lib/private`. **Fixed and re-deployed the same day via [#220](https://github.com/lutzgo/clanarchy/pull/220); both voice servers now run and the whole test plan passes** — and the second deploy found a defect in the test plan itself, an expected refusal on a path the host reaches over `lo` | [#219](https://github.com/lutzgo/clanarchy/pull/219), [#220](https://github.com/lutzgo/clanarchy/pull/220) | Assist controls the house and answers by voice, on ernst, with nothing leaving the property. **THE OBVIOUS INTEGRATION DOES NOT EXIST HERE**: ernst is on 26.05 → Home Assistant **2026.5.4**, and the native `llama_cpp` conversation integration ("any OpenAI-compatible endpoint") arrived in **2026.8** — present only in `nixpkgs-unstable` (2026.8.1), read out of `component-packages.nix` in both channels. `openai_conversation` at 2026.5.4 defines **no base-URL constant at all** and can only reach api.openai.com. What this release *does* have is `ollama`, fully wired to the Assist LLM API (`entity.py` builds `tools` from `chat_log.llm_api.tools` and loops until `unresponded_tool_results` is empty; the config flow exposes `CONF_LLM_HASS_API`). **So `mneme` speaks the Ollama wire protocol northward and OpenAI southward** — a translation layer, not an architecture, because the daemon has to sit in the request path anyway to inject the constitution, and it serves `/v1/chat/completions` from day one so nvf/opencode/Open WebUI need no second thing. Migration when this hub reaches 2026.8 is deleting one integration in a browser. **THREE PATHS REJECTED IN WRITING**: bumping the hub to unstable (a three-release jump with a one-way recorder migration, on the machine that runs the house); a HACS-downloaded conversation integration (M24b's trade — the one thing on ernst not in the repo); vendoring core's `llama_cpp` (it rides `ChatLog` internals that moved between 2026.5 and 2026.8). **VOICE CLOSED local-ai.md's OWN TTS NOTE, AND THE PREMISE WAS THE WRONG SHELF**: M19 looked for an OpenAI-shaped `/v1/audio/speech`; Assist speaks **Wyoming**, and 26.05 has shipped `services.wyoming.{piper,faster-whisper,openwakeword}` all along. **A SECOND STT ON THE MACHINE, DELIBERATELY** — whisper.cpp (ggml, OpenAI-shaped, Open WebUI) and faster-whisper (CTranslate2, Wyoming, Assist); neither can serve the other's protocol or load the other's weights, and both are CPU-only so neither costs VRAM. **NO WAKE WORD ON THE SERVER**: the Voice Preview Edition runs microWakeWord on-device, so `openwakeword` would be a second implementation of a job the satellite does better on audio it would have to stream continuously. **THE VOICE PE NEEDED A PINNED DEPENDENCY** — core 2026.5.4's `esphome/manifest.json` requires `bleak-esphome==3.7.3` and nixpkgs 26.05 ships **3.7.5**; `aioesphomeapi==44.24.1` and `esphome-dashboard-api==1.3.0` both match. Pinned through home-assistant's own `packageOverrides` hook, hash verified twice. **Nothing would have reported the skew**: `--skip-pip` means requirement checking never runs, and `hacs-deps-check.py` only looks at *downloaded* components. **IT TAKES NOTHING FROM THE REGISTRIES** — three host units beside llama-swap, loopback upstreams, one point-to-point `ai3` leg: no MAC, no address, no uid, no hostname, no Traefik router, no UDM-Pro rule, **no ledger row**. Sequence 16 / 10.0.90.30 / uid 3039 all stay free. **AND IT CARRIES AN OUTAGE FIX.** `extraVeths.<name>` becomes nspawn's `--network-veth-extra=<name>`, used for BOTH ends, so the interface name is **host-global** — M19 named Open WebUI's leg `ai0` and M27 gave karakeep the same name, and from M27's deploy Open WebUI had no second interface at all. Measured on 2026-09-24, sixteen days into one boot: `openwebui → [fdca:fe91::1]:11434` = curl (7), `karakeep → [fdca:fe92::1]:11434` = 200 (the control), one `ai0` on the host peered into karakeep, and Open WebUI's last `get_all_models()` five days earlier — the day before M27 deployed. **IT WAS INVISIBLE BECAUSE A LISTENING SOCKET IS NOT A WORKING LEG**: the host end binds whether or not the address exists anywhere, so `ss -ltn` showed it LISTENing and both bridge units stayed active/running; the only symptom was an empty model picker, three layers from the cause — the exact failure `exposeOn`'s own note claims the mechanism was built to prevent, prevented for the half in Nix and not for the half in nspawn's argv. **The facts needed to predict it were already written down** at `monitoring.nix:182-184`; what was missing was anything that checked. Legs are renamed to track their ULA (`ai1`/`ai2`/`ai3`, `mon0` keeps its name) and `machines/ernst/networking.nix` now **asserts** that no two containers claim one — verified with a negative control that names both offenders. **THE MODEL IS NOT CHANGED**, and that is deliberate: `qwen3-coder-30b` is resident and the GPU group is exclusive, so anything else would evict the coder model on every utterance. Whether it is the right model for a household is a separate, measured question — see "The model question" below. Depends on M19, M24, M24b. [M29](#m29-featernst-hass-local-ai) |
 | M29b — the agent's memory, web search and images | **BUILT 2026-09-25; not yet deployed.** `mneme` gains a git-versioned wiki it reads and writes, a `web_search` tool over SearXNG, and a `generate_image` tool over ComfyUI | — | **Recall is INJECTED, not requested**: the constitution, `index.md` and any page matching the last user turn go into the system message on every turn (6000 chars ≈ 1500 tokens of a 32768 window). `memory_search` exists as a tool too, but a tool is consulted only if the model decides to — and **M11 measured what that decision is worth on this model class**. No embeddings and no vector store: index-first navigation is *exact* inside the ~150–200 page range this pattern states. **Every write is a commit**, so `git log` is what it knows, `git show` is who told it, and `git revert` is how a wrong fact comes out; each agent-written page carries `source:` front matter naming the turn that produced it. **THE INJECTION BOUNDARY IS BUILT, NOT RETROFITTED** — a page is read back as context on every later turn, so `00-core/`, `SOUL.md` and `IRON_RULES.md` are not writable by the agent (the constitution lives in the Nix store and every write path refuses it by name), traversal and non-slug names are refused, and `IRON_RULES.md` states that wiki content is data and never instruction. Six of the thirty build-time tests cover exactly that. **THE NIGHTLY PASS DOES NOT CALL THE MODEL, and that absence is the design**: every published write-up of this pattern that automated a synthesis step reported it failing silently ~50% of the time, unnoticed for weeks, because a background job that produces nothing looks like one with nothing to do. `mneme-lint` only rebuilds the index and reports problems; it deletes nothing. **SN4 needed no new alert** — ernst sets `exporters.systemd = true`, so a failed oneshot raises `SystemdUnitFailed` through the ordinary path, and a second rule aimed at one unit is duplication that later disagrees. **THE INTERNAL TOOL LOOP is why mneme stays stateless**: HA runs its own loop around the whole request and carries its own history, so mneme's own tool work must finish inside one response — by the time anything goes back to HA it is an answer or one of HA's tools, never one of ours; capped at four rounds because ours happen *inside* one of HA's. **SearXNG GOT A SECOND LEG AND KEPT THE PROPERTY IT HAD** — its block said in writing "NO SECOND VETH, and its absence is load-bearing"; M29b needs the opposite direction, and the host dials in while nothing accepts on the way back (no accept exists for `fdca:fe94::2`). Widening `allowedSource` instead would have spent a documented "ONE address" invariant *and* hairpinned every search through the UDM-Pro, since the host's route to `10.0.90.24` is `via 10.0.50.1` (measured). The leg is `web0`, not `ai4`: every `ai*` leg lets a container reach this host, and this one points the other way. **HOME ASSISTANT SERVES THE PICTURES, NOT mneme** — mneme listens on a ULA only the hub can reach, so a URL it served itself would be unreachable from the browser that must display it; the PNG goes to `www/mneme` and returns as `https://ha.goclan.org/local/mneme/<name>.png`, which adds no listener, no route and no hostname. The cost is one mode change on `www` (0700 → 0755, directory only, in the file that owns that tree), exposing the *names* of files that already hold public frontend assets. **AND IMAGE GENERATION IS THE ONE TOOL WITH A RUNNING COST**: ComfyUI is in llama-swap's exclusive GPU group, so every picture evicts the resident 21 GiB coder model — ~15 s each way, stalling the household agent and the coding agent together. Enabled deliberately, priced in the tool's own description so the model knows it is expensive. **uid 3039, WHICH M29 PREDICTED** — that milestone ran the daemon DynamicUser because it owned nothing on disk and wrote in the uid table that a wiki would change it; ids pass through unmapped onto zdata, so keeping state and keeping a per-boot identity are mutually exclusive. NEXT FREE is now 3040. Depends on M29. [M29b](#m29b-featernst-agent-memory) |
 | M29c — Qwen3.6 on ernst | **MEASURED AND SWITCHED 2026-09-25.** `qwen3.6-35b-a3b` replaces BOTH `qwen3-coder-30b` and `qwen2.5-vl-7b`; the vision entry is deleted | — | **THE TWO GATES THIS WAS WAITING ON WERE BOTH MINE AND BOTH WRONG.** (1) "It needs a newer llama.cpp" was inferred from build numbers — the GGUFs were quantised with b9222 and ernst pins b9190 — which says nothing about what is needed to RUN them. Qwen3.6 declares `model_type: "qwen3_5"` and ernst's own libllama.so already carried `qwen35`/`qwen35moe`/`qwen3next` with the Gated DeltaNet kernels; there is no `qwen36` arch in llama.cpp even on master. Confirmed by loading it: `system_fingerprint: "b9190-b64739e"`. (2) "22.4 GB leaves less room for KV than today" was wrong twice — a DECIMAL figure (20.8 GiB), and this architecture barely has a KV cache (40 layers, only 10 Gated Attention, 2 KV heads each). **So the decision put to lgo — break "everything ships in nixpkgs 26.05" for a newer llama.cpp? — was a decision about nothing**, and he picked this model over my advice and was right. **MEASURED interleaved n=3** because a sequential pass drifts more than the difference: `qwen3-coder-30b` 107.1 tok/s / 20959 MiB / 20-of-20 tool calls, `qwen3.6-35b-a3b` 99.2 tok/s / 24100 MiB / 20-of-20. **−7.4% decode**, the speed holding because it is still an MoE with ~3B active — the dense 27B sibling would have cost roughly 3×. Vision verified before the old model was deleted: a two-colour test image read correctly INCLUDING a third region the prompt never mentioned. **A MODEL DEFECT THAT DID NOT EXIST, CAUGHT BY COUNTING FAILURE MODES**: a first harness measured 11/20 tool calls with thinking on vs 20/20 off, and was about to be written up as "thinking halves tool calling"; counting WHY each trial failed showed every failure was `finish_reason: length` — the harness's own 200-token cap eaten by 419–509 characters of reasoning. At 1000 tokens it is 20/20 in both modes. **The lesson is M29's bad negative control in another costume: a harness that records pass/fail and not failure mode will manufacture findings.** What did survive is a real `mneme` defect fixed in [#224](https://github.com/lutzgo/clanarchy/pull/224). **THE VISION EVICTION IS GONE RATHER THAN MITIGATED** — `qwen2.5-vl-7b` shared the exclusive GPU group, so reading an image unloaded the text model; karakeep now names ONE model in both slots and `local-ai.md`'s two manual-model-switch sections are retired. **THE ONE REAL COST IS 460 MiB OF HEADROOM** (24100 of 24560 against 20959): `contextLength` stays at 32768 because 65536 would add 320–640 MiB of KV and there is not room — the limit is the weights, not the window. `qwen3-coder-30b` is kept declared but named by nothing for one milestone, so rollback is one string in three places rather than a 17 GiB download during whatever went wrong. Depends on M29, M29b. [M29c](#m29c-featernst-qwen36) |
+| M30 — Music Assistant | **BUILT 2026-09-26; not yet deployed.** Music Assistant beside Home Assistant, playing the library Navidrome already indexes, to the one speaker in the house | — | **THE PIPELINE HAS HAD ONE HOLE IN IT SINCE M14 AND IT IS NOT A LIBRARY.** Navidrome indexes and serves the Subsonic API; every client does the *playing* itself, on a phone — so nothing in this house could say "play this album in the living room". Music Assistant is the player controller, and it **adds nothing to the pipeline and replaces none of it**: Lidarr + slskd + Soularr still acquire, Navidrome still serves every mobile client on its own WAN hostname, and this is a CONSUMER of it in exactly the sense karakeep is a consumer of llama-swap. nspawn (`services.music-assistant` is a first-class module; upstream's Docker image and HAOS add-on do not apply), `02:00:00:90:00:16` → **10.0.90.30**, seq **16**, uid/gid **3040**. **`opensubsonic`, NOT `filesystem_local`**, and the obvious-looking answer is wrong twice: a second scanner means two libraries that disagree about play counts and ratings that exist nowhere else, and it would need the media mount — so this container has **no bind mount onto /srv/media at all** and its uid is in no media group. `subsonic_scrobble` is the return path, which makes the arrangement symmetric rather than read-only. **THE PLAYER LIST WAS MEASURED, NOT ASSUMED** — read out of Home Assistant's own `core.config_entries`: **one** target, a Yamaha MusicCast receiver at 10.0.20.31, no Chromecast, no Sonos, no DLNA, no Snapcast. **SO THE SECOND LEG IS NOT OPTIONAL**: `musiccast` is DISCOVERY-ONLY (`mdns_discovery: ["_http._tcp.local."]`, one entry point, no add-by-address flow), mDNS is link-local, and this repo has refused to relay it across a firewall boundary twice in writing — so the container sits ON the segment, M24's answer one VLAN later. Tighter than M24's though: `check_yamaha_ssdp` is a UNICAST GET, so 5353/udp is opened and **1900/udp is not**. **THE VETH IS `iot1` AND THAT IS M29's OUTAGE NOT REPEATED** — the obvious mistake was `iot0` "because that is the IoT leg", which is the `ai0` collision exactly; the assertion in networking.nix catches it, and that file's veth table now tracks VLAN legs too. **TWO LISTENERS, AND CONFLATING THEM IS HOW THE FIREWALL GOES WRONG**: 8095 is the API/UI, **8097 is the stream server and its client is a SPEAKER** — routing it would put forward-auth in front of a receiver. Its rule names no interface on purpose, because MA publishes `ip_addresses[0]` and that is non-deterministic when multi-homed. **AND THE RECEIVER TALKS BACK ON AN EPHEMERAL PORT**: aiomusiccast binds `("0.0.0.0", 0)` and advertises it in `X-AppPort`, conntrack cannot help because the registering request was a different socket — so one rule is narrow in source and wide in port, and without it playback WORKS while the UI never updates. **IT HAS ITS OWN ACCOUNTS, CHECKED RATHER THAN ASSUMED**: roles, per-user player filters, an auth middleware with a short bypass list, and an escalating PER-USERNAME login backoff (3–5 → 30 s … 15+ → 300 s) — Nextcloud's shape, not HA's `ip_ban`. Its first-run `/setup` **closes itself** at `has_users`, unlike Komga's and Navidrome's. `protectedHosts` and **LAN-ONLY** — not in `wanExposed`, no public record, **no ledger row** — which needs arguing because the two names either side of it are both exemptions: this one's only client is a browser, its WebSocket is opened BY that browser (so forward-auth authorises it), and **the hub's integration does not come through Traefik at all**. **NO CHANGE TO containers/home-assistant.nix**: `music_assistant` is already offerable since [#229](https://github.com/lutzgo/clanarchy/pull/229)'s `++ buildableComponents`. **DynamicUser OFF FOR THE THIRD TIME ON THIS HOST** — `StateDirectory` + `DynamicUser` migrates a BIND MOUNT (crowdsec measured it, ollama hit it) — with the four protections it silently implied restated by hand, which is the half no build error reports. **A VERSION SKEW NOTHING WOULD HAVE REPORTED**: the manifest pins `py-opensonic==8.1.3`, nixpkgs ships **9.0.1**, and nixpkgs' `dont-install-deps.patch` DELETES the version check outright — M29's `bleak-esphome` in a second costume. Checked pre-deploy against the real interpreter: every `libopensonic` import and every `AsyncConnection` keyword resolves. **NO PROMETHEUS JOB** (no endpoint exists — SN3), but the `machinectl`-walking container-unit collector covers it with no configuration. No new dataset, no UDM-Pro VLAN 50 → 90 rule. Depends on M14, M24, M26. [M30](#m30-featernst-music-assistant) |
 
 ---
 
@@ -13555,6 +13556,371 @@ enable them; verify with the `sqlite3` query in `local-ai.md`.
 Disk, whenever convenient — the fetcher only adds, so the retired weights stay
 until removed: `rm /srv/state/local-ai/models/Qwen2.5-VL*` (~5.7 GiB), and
 `Qwen3-Coder-30B*` (~17 GiB) once the fallback is dropped.
+
+---
+
+## M30 — `feat/ernst-music-assistant`
+
+**Built 2026-09-26; not yet deployed.** Music Assistant beside Home Assistant,
+playing the library Navidrome already indexes, to the one speaker in the house.
+
+### What was missing, and it was not a library
+
+Navidrome is a **library server**. It indexes Lidarr's tree (M14), serves the
+Subsonic API, and every client — Tempo, Symfonium, play:Sub — does the *playing*
+itself, on the phone, into whatever that phone is plugged into. So the fleet has
+had a complete music pipeline for a month with one hole in it: nothing in this
+house can say *play this album in the living room*.
+
+Music Assistant is the player controller. It holds the queue, resolves a track
+to a stream, transcodes if the target needs it, and drives the speakers. It does
+not index music.
+
+**So this adds nothing to the pipeline and replaces none of it.** Lidarr + slskd
++ Soularr still acquire; Navidrome still indexes and still serves every mobile
+client on its own WAN hostname. This container is a *consumer* of Navidrome in
+exactly the sense `containers/karakeep.nix` is a consumer of llama-swap.
+
+### The library: `opensubsonic`, not `filesystem_local`
+
+The obvious-looking answer is the wrong one. `filesystem_local` needs no
+dependencies at all and the files are on this very host — and it is deliberately
+not used, for two reasons that are independent:
+
+1. **It would put a second index on the same files.** Navidrome's database is
+   not a cache of the library; `containers/arr.nix` says so at length — it holds
+   play counts, ratings, starred tracks and playlists that exist nowhere else. A
+   second scanner means two libraries that disagree, and the one the phones use
+   is the one that drifts.
+2. **It would need the media mount.** That means binding `/srv/media/music` into
+   this container and joining gid 3000 — a handle on 47 TB for a service whose
+   entire job is to fetch bytes over HTTP. Reading through Navidrome leaves this
+   container with **no bind mount onto the media tree at all**, and uid 3040 in
+   no media group. Same trade as Immich's and Nextcloud's rows.
+
+`subsonic_scrobble` is the return path, and it is what makes this better than a
+second index rather than merely cheaper: a play started in Music Assistant is
+scrobbled back to Navidrome, so history and star ratings stay in the one
+database the mobile clients read. It declares `depends_on: opensubsonic` and has
+no requirements of its own, so the line costs nothing.
+
+### The player was measured, not assumed
+
+The provider list is short because the device list is. Read out of Home
+Assistant's own `.storage/core.config_entries` rather than guessed:
+
+| integration | address |
+|---|---|
+| `yamaha_musiccast` | **10.0.20.31** |
+| `esphome` (Voice PE) | 10.0.20.13 |
+| `zha`, `mobile_app`, `ollama`, `wyoming` ×2, `met`, … | — |
+
+**One playback target: a Yamaha MusicCast receiver on VLAN 20.** No Chromecast,
+no Sonos, no DLNA renderer, no Snapcast. So `providers = [ "opensubsonic"
+"subsonic_scrobble" "musiccast" ]` and nothing else — every other name in that
+enum is a package closure for a subscription this household does not have or a
+device it does not own. `ytmusic` would additionally pull in `deno` and need
+`@pkey` in the syscall filter; `airplay` would want an inbound UDP range of
+32768–65535 (upstream's own `openFirewall`). Adding one later is one word here
+plus a UI step.
+
+### Why the second leg is not optional
+
+`musiccast` is **discovery-only.** Its manifest declares
+`"mdns_discovery": ["_http._tcp.local."]`, and `provider.py` has exactly one
+entry point — `on_mdns_service_state_change`. There is no add-by-address config
+flow to fall back on, unlike Home Assistant's `yamaha_musiccast`, which is how
+that integration was set up by hand.
+
+mDNS is link-local by definition, and this repo has refused to relay it across a
+firewall boundary twice in writing (M8's session prompt; note 3 of
+`machines/ernst/networking.nix`). M24 answered that with a second veth onto the
+segment its devices are on. This is the same answer, one VLAN's worth of devices
+later — and unicast to VLAN 20 needed no leg at all, since the UDM-Pro has both
+segments in one `Internal` zone.
+
+`check_yamaha_ssdp`, which runs after discovery, is a **unicast HTTP GET** of the
+device description — not multicast. So unlike `containers/home-assistant.nix`
+this container opens 5353/udp and **not** 1900/udp. A tighter posture arrived at
+by reading the provider rather than by copying the sibling.
+
+### The veth is `iot1`, and that is M29's outage not repeated
+
+`extraVeths.<name>` becomes nspawn's `--network-veth-extra=<name>`, which names
+**both** ends, so the name lands in the host's one flat interface namespace. M19
+named Open WebUI's leg `ai0`, M27 gave karakeep the same name, and Open WebUI
+silently had no second interface for five days.
+
+`iot0` is the hub's. The obvious mistake here was to reach for it anyway —
+*because that is the IoT leg* — which is the `ai0` collision exactly, with the
+same symptom. The assertion at the top of `machines/ernst/networking.nix` is
+what catches it: it groups every container's `extraVeths` and does not care what
+the name is supposed to mean. That file's veth table now records the VLAN legs
+too, which it did not before, because until this milestone there was only one.
+
+### Two listeners, and conflating them is how the firewall goes wrong
+
+| port | what | client |
+|---|---|---|
+| 8095 | the API and web UI | a browser, via Traefik — and Home Assistant, directly |
+| **8097** | the **stream server**, deliberately split from the API | **a speaker** |
+
+8097 is the URL a *player* fetches. Putting it behind Traefik would mean putting
+forward-auth in front of a Yamaha receiver, so it stays on the L2 path with a
+source-matched accept. Both numbers are Python constants (`DEFAULT_PORT` in
+`constants.py` and `controllers/streams/constants.py`), settable only in Music
+Assistant's own settings database — change either in the UI and the rules stop
+matching, silently.
+
+**The stream rule names no interface, on purpose.** Which leg the fetch arrives
+on depends on which address Music Assistant published in the URL, and it picks
+`ip_addresses[0]` from its own interfaces (`controllers/webserver/controller.py`
+— the same indexing nixpkgs carries a test patch for). That is
+non-deterministic on a multi-homed host, so a source-matched rule with no `-i` is
+correct for both answers. The published address can and should be pinned in the
+UI; the firewall must not depend on somebody having done it.
+
+### And the receiver talks back on an ephemeral port
+
+aiomusiccast does not poll. It opens a UDP socket on `("0.0.0.0", 0)` — an
+ephemeral port chosen by the kernel — and hands the number to the receiver in an
+`X-AppPort` header; the receiver then pushes status events there, roughly every
+second while playing (`pyamaha.py:186-199`).
+
+There is no fixed port to open, and **conntrack does not help**: the events are
+unsolicited as far as the kernel is concerned, because the HTTP request that
+registered the port was a different socket on a different protocol. So that rule
+is narrow in source (the one receiver) and wide in port (the local ephemeral
+range). The asymmetry is stated rather than buried.
+
+Without it the failure is *not* "no player": the receiver is discovered, it
+plays, and the UI simply never updates — volume, position and track changes made
+at the receiver are invisible. Which reads as a Music Assistant bug.
+
+### It has its own accounts, and that was checked rather than assumed
+
+The reflex assumption about a self-hosted media controller is that it has no
+authentication and the proxy is the whole boundary. **That is false at 2.8.7**,
+and the difference decides two other things in this milestone, so it was read out
+of the source:
+
+- a users table with roles (`UserRole.ADMIN`) and a per-user `player_filter`;
+- `auth_middleware` on every route, with a short bypass list — `/info`,
+  `/login`, `/setup`, `/auth/`, `/assets/`, `/favicon.ico`, `/manifest.json`,
+  `/index.html`, `/` — and `require_authentication()` in the handlers;
+- the WebSocket at `/ws` tracks an authenticated user per connection and refuses
+  admin commands to a non-ADMIN role;
+- `LoginRateLimiter`: an escalating **per-username** backoff over a 30-minute
+  window — 3–5 failures 30 s, 6–9 60 s, 10–14 120 s, 15+ 300 s.
+
+So the posture is belt-and-braces rather than proxy-only. The backoff is
+Nextcloud's per-*account* shape, not Home Assistant's per-*source* `ip_ban`;
+neither file describes the other.
+
+**The first-run window closes itself**, which is the one real difference from
+Komga, Navidrome and CWA. `/setup` creates the first admin and is
+unauthenticated by construction, but `_handle_setup` returns 400 *"Setup already
+completed"* once `auth.has_users`. It is still a deploy step — until that account
+exists, anybody who can reach the vhost can create it — but on the LAN, behind
+forward-auth, it is a far narrower window than the one the M18 ledger row worries
+about for the WAN names. Which is exactly why this service is not one of them.
+
+And it is what makes the service-index tile cheap: `/` is on the bypass list, so
+a `siteMonitor` probe needs no credential, and everything past it does. The
+dashboard learns that the service answers; it does not get to control the music.
+Contrast the hub's own tile, which carries a long-lived access token.
+
+### forward-auth, sitting between two exemptions
+
+`music.goclan.org` is in `protectedHosts`, and that needs saying because the two
+services it sits between are both `appApiHosts`:
+
+| name | exempt because |
+|---|---|
+| `navidrome` | the Subsonic protocol carries its token in a **query parameter** |
+| `ha` | the companion app holds a bearer token over a **WebSocket**, no browser |
+| **`music`** | **neither.** The only client of the hostname is a browser |
+
+**Its UI is WebSocket-driven, and that is not Home Assistant's problem.** The
+distinction is who opens the upgrade: there, a native app with no cookie jar, so
+a 302 on an HTTP UPGRADE is a handshake that never completes. Here it is the same
+browser that just authenticated to Authelia, so the upgrade carries the session
+cookie and forward-auth authorises it like any other request.
+
+**The Home Assistant integration does not come through Traefik at all**, which is
+what makes the strict door free: the hub holds its WebSocket against
+`10.0.90.30:8095` directly, one L2 hop, admitted by address. If it went through
+the proxy it *would* need an exemption, and the point of the direct hop is that
+it does not.
+
+**LAN-only**: `websecure` only, not in `wanExposed`, no public A record, **no
+ledger row**. Navidrome is already on the internet and is what a phone off the
+property should be talking to; this drives speakers that are, by construction, in
+the house.
+
+### The Home Assistant integration needs no change to that container
+
+`music_assistant` is a packaged component in this channel
+(`component-packages.nix` → `music-assistant-client`), and since
+[#229](https://github.com/lutzgo/clanarchy/pull/229) that file's
+`extraComponents` ends with `++ buildableComponents` — every packaged
+integration, not a curated dozen. So the hub can already offer it, and
+`containers/home-assistant.nix` is untouched by this milestone.
+
+**It will not auto-discover, and that is correct rather than broken.** Music
+Assistant advertises `_mass._tcp.local.`, but the hub's firewall accepts 5353/udp
+on `iot0` only — VLAN 20, where the devices are — so nothing on VLAN 90 is heard
+in either direction. Opening mDNS between the two containers to save one text
+field would put both services' multicast on the Services VLAN for no capability.
+The config flow takes the URL by hand.
+
+### `DynamicUser` off, for the third time on this host
+
+Upstream runs the daemon under `DynamicUser = true` with
+`StateDirectory = "music-assistant"`. That combination **migrates the state
+directory** — systemd renames `/var/lib/music-assistant` to
+`/var/lib/private/music-assistant` on first start — and here that path is a bind
+mount. `containers/crowdsec.nix` measured exactly this and quoted systemd's own
+log line; `service-modules/local-ai.nix` hit it with ollama before that.
+
+The deeper version is the uid table's: ids cross the nspawn boundary **unmapped**
+onto zdata, so a systemd-allocated uid owning files on the pool is precisely what
+that table exists to prevent. Keeping state and keeping a per-boot identity are
+mutually exclusive — M29b already wrote that down for mneme.
+
+So uid/gid **3040**, checked against nixpkgs' `ids.nix` first (there is no static
+`music-assistant` id upstream) — the step M24 skipped and paid for with a
+`conflicting definition values: 286 / 3038` evaluation failure.
+
+**And the hardening has to be put back by hand.** `DynamicUser = true` silently
+implies `NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`, `ProtectHome`,
+`RemoveIPC` and `RestrictSUIDSGID`. The upstream module sets the last two itself,
+so the four restated in the container file are exactly what turning it off would
+otherwise have dropped — a silent widening of the sandbox that no build error
+reports. arr.nix's `prowlarr` and `seerr` blocks are the working examples.
+
+### A version skew that nothing would have reported
+
+`opensubsonic`'s manifest pins `py-opensonic==8.1.3`; nixpkgs 26.05 ships
+**9.0.1**. `aiomusiccast==0.15.0` matches exactly.
+
+**Nothing checks.** nixpkgs' `dont-install-deps.patch` deletes the version
+comparison in `_get_provider_module` outright — it has to, because the upstream
+behaviour on a mismatch is to `pip install` into a store path — so a major
+version skew loads silently and would surface, if at all, as an `AttributeError`
+somewhere inside the provider. This is the `bleak-esphome` situation of M29 in a
+second costume, and it was checked the same way, before deploying, against the
+interpreter that will actually run it:
+
+- every `libopensonic` name the provider imports resolves — `AsyncConnection`;
+  `AuthError`, `CredentialError`, `DataNotFoundError`, `ParameterError`,
+  `SonicError`; and the fourteen `libopensonic.media` classes `sonic_provider.py`
+  and `parsers.py` name;
+- every keyword `SonicConnection(...)` is constructed with exists in 9.0.1's
+  signature: `username`, `password`, `legacy_auth`, `port`, `server_path`,
+  `app_name`.
+
+That does not prove every method call is compatible — only a live server does —
+which is why the test plan has a row for the library actually listing. It does
+rule out the failure mode that would otherwise have looked like a broken deploy.
+
+### What is deliberately not done
+
+**No Prometheus job.** Music Assistant exposes no metrics endpoint of any kind —
+SN3, stated rather than omitted. What does cover it is the container-unit
+collector: `exporters.containers` walks `machinectl list` on a one-minute timer,
+so `music-assistant.service` failing in here raises
+`ContainerSystemdUnitFailed` with no per-container configuration at all. That
+mechanism exists because `soularr.service` failed 1,412 times in the arr
+container without alerting ([#139](https://github.com/lutzgo/clanarchy/pull/139)).
+
+**No second dataset.** A SQLite database plus a tree of small JSON blobs is
+`zdata/state`'s write profile exactly — 128K recordsize, the default, with
+`com.sun:auto-snapshot=true`. That is the call M24 and M27 (twice) all made
+before this one; `docs/guides/ernst-zdata-datasets.md` splits by write profile,
+not by service. The snapshot property is load-bearing here for a reason that is
+*not* Karakeep's: the library index **is** re-derivable from Navidrome, but the
+Navidrome credential, the discovered player and the queue are not, and
+re-entering them is a manual step in a browser.
+
+**No UDM-Pro rule for VLAN 50 → 90.** Like M22, M23, M24 and M27: every human
+arrives through Traefik on .12.
+
+### What shipped
+
+| File | What |
+|---|---|
+| `containers/music-assistant.nix` | **new.** The container, both legs, five firewall rules, uid 3040, `DynamicUser` off |
+| `flake.nix` | the import, with the tier and posture argument |
+| `machines/ernst/networking.nix` | VLAN 90 seq **16** → `10.0.90.30`; VLAN 20 seq **02** → `10.0.20.30`, the table's second row ever; uid **3040**; and the veth-name namespace note extended to VLAN legs |
+| `containers/ingress-policy.nix` | `music` in `protectedHosts`, argued against the two exemptions either side of it |
+| `containers/traefik.nix` | the router, the backend, and why 8097 is not here |
+| `containers/arr.nix` | Navidrome's **third** source list, and its first application client |
+| `containers/homepage.nix` | the player tile, beside the library tile |
+| `CLAUDE.md` | the container table row |
+
+### Manual steps — lgo's
+
+Nothing in Nix can do any of these; all five are one-time.
+
+1. **Two DHCP reservations on the UDM-Pro.**
+   `02:00:00:90:00:16` → `10.0.90.30` (VLAN 90) and `02:00:00:20:00:02` →
+   `10.0.20.30` (VLAN 20). **Verify `10.0.20.30` is actually free first** — that
+   is a populated household segment with an established pool, and the networking
+   table is a *copy* of the UDM-Pro rather than the source of truth. Nothing in
+   Nix depends on the number; the leg takes DHCP and the MAC is what the
+   reservation keys on.
+2. **A Technitium A record**: `music.goclan.org` → `10.0.90.12` (Traefik). The
+   wildcard certificate already covers the name, so there is no certificate work.
+3. **Create the Music Assistant admin account immediately**, at
+   `https://music.goclan.org` → `/setup`. See above: the window closes itself
+   once the account exists, but it is open until then.
+4. **A Navidrome account for Music Assistant**, created in Navidrome's UI — its
+   users live in its own database and nothing here can declare one. Then
+   Settings → Providers → add **OpenSubsonic**, URL `http://10.0.90.13:4533`
+   (the direct L2 path, *not* the public hostname — that would hairpin through
+   Traefik for no reason), with that account. Add **Subsonic Scrobbler**
+   afterwards; it depends on the provider above.
+5. **Pin the published stream IP**, Settings → Core → Web server. Without it
+   Music Assistant picks `ip_addresses[0]`, which is non-deterministic on two
+   legs. Set it to the **VLAN 20** address so the receiver fetches audio on its
+   own segment instead of hairpinning through the UDM-Pro. (The firewall admits
+   either, so a wrong answer here costs a detour, not silence.)
+
+Then, in Home Assistant: Settings → Devices & Services → Add Integration →
+**Music Assistant** → URL `http://10.0.90.30:8095`. It will not appear by
+discovery; that is expected and the reason is above.
+
+### Test plan
+
+| Check | Expect |
+|---|---|
+| Generation matches | `readlink /run/current-system` equals the built toplevel |
+| Container up | `machinectl list` shows `mass`; `systemctl -M mass status music-assistant` active |
+| **No failed units inside** | `systemctl -M mass --failed` empty — this is what `ContainerSystemdUnitFailed` keys on |
+| Both legs addressed | in `mass`: `ip -br addr` shows `eth0` = 10.0.90.30/24 and `iot1` = 10.0.20.30/24, and **no IPv6 anywhere** (SN2) |
+| **One default route**, not two | `ip route` shows exactly one `default via`, on `eth0` — the `UseGateway = false` check |
+| VLAN tags | on the host: `bridge vlan show dev vb-mass` → 90 PVID untagged; `bridge vlan show dev iot1` → 20 PVID untagged |
+| MACs | `eth0` = `02:00:00:90:00:16`, `iot1` = `02:00:00:20:00:02` |
+| **resolved is not on 5353** | in `mass`: `ss -lunp \| grep 5353` shows the application and **not** `systemd-resolve` |
+| DNS works anyway | in `mass`: `getent hosts musicbrainz.org` resolves — the `RestrictAddressFamilies` set has no `AF_UNIX`, so this proves nss falls through to `dns` |
+| State on the pool | `findmnt --target /srv/state/music-assistant` → `zdata/state`; `stat -c '%u:%g %a' /srv/state/music-assistant` → `3040:3040 700` |
+| **Not DynamicUser** | `systemctl -M mass show music-assistant -p User -p DynamicUser` → `music-assistant` / `no` |
+| Hardening restored | same command for `NoNewPrivileges`, `PrivateTmp`, `ProtectSystem`, `RemoveIPC` → `yes`/`yes`/`strict`/`yes` |
+| **No media handle** | in `mass`: `id music-assistant` shows no gid 3000, and `/srv/media` does not exist in the namespace |
+| Reachable from Traefik | from `traefik`: `curl -sS -o /dev/null -w '%{http_code}' http://10.0.90.30:8095/` → 200 |
+| **Negative control** | from the `monitoring` container (not in the rule set): the same curl **times out or is refused**. This is the rule that proves the firewall is doing the work |
+| Reachable from the hub | from `hass`: same curl → 200 |
+| Reachable from the index | from `arr`: same curl → 200, and the Homepage tile shows the dot |
+| **Stream port is NOT open to those three** | from `traefik`: `curl http://10.0.90.30:8097/` → refused. Only 10.0.20.31 may |
+| Navidrome answers | in `mass`: `curl -sS 'http://10.0.90.13:4533/rest/ping?u=<user>&p=<pass>&v=1.16.1&c=mass'` → `status="ok"` |
+| **The library actually lists** | in the UI, the OpenSubsonic provider syncs and albums appear — the row that covers the `py-opensonic` 8.1.3 → 9.0.1 skew, which no import check can |
+| The receiver is discovered | Settings → Players lists the Yamaha without anything being typed — the row that proves the `iot1` leg and the 5353 rule are both real |
+| **It plays** | queue an album to the receiver; audio comes out |
+| **And the UI follows the receiver** | change volume *at the receiver*; the Music Assistant UI updates within a second or two. This is the ephemeral-UDP rule, and the only check that distinguishes it from a missing one |
+| Forward-auth applies | a browser in a fresh private window is redirected to `auth.goclan.org`, and the WebSocket connects after login |
+| **Not on the WAN** | off-property: `music.goclan.org` does not resolve publicly, and the `wan` entrypoint has no router for it |
+| Scrobbles land | play a track through Music Assistant; Navidrome's play count for it increments |
 
 ---
 

@@ -420,6 +420,33 @@
           # extension and the Floccus adapter both carry bearer tokens and
           # neither has a UI.  Ledger row L17.
           ./machines/ernst/containers/karakeep.nix
+          # M30.  Music Assistant — the player controller over the library
+          # Navidrome already indexes, on the NSPAWN tier because
+          # `services.music-assistant` is a first-class NixOS module (upstream
+          # recommends its Docker image and its HAOS add-on; neither applies).
+          #
+          # IT ADDS NOTHING TO THE MUSIC PIPELINE AND REPLACES NONE OF IT.
+          # Lidarr + slskd + Soularr still acquire, Navidrome still indexes and
+          # still serves every mobile client on its own WAN hostname.  This is a
+          # CONSUMER of Navidrome over the Subsonic API — `opensubsonic` rather
+          # than `filesystem_local`, so it holds no handle on /srv/media and
+          # does not put a second index on the same files.
+          #
+          # THE SECOND CONTAINER ON THIS HOST WITH TWO LEGS ON br0, and for
+          # home-assistant.nix's reason one VLAN later: the `musiccast` provider
+          # is DISCOVERY-ONLY (mDNS, no add-by-address flow) and the household's
+          # one speaker is a Yamaha receiver on VLAN 20.  Its leg is `iot1`, not
+          # `iot0` — that name is host-global and the hub has it; the assertion
+          # in machines/ernst/networking.nix is what enforces it.
+          #
+          # `music.goclan.org` WITH forward-auth, admins only, and LAN-ONLY —
+          # not in `wanExposed`, no public record, no ledger row.  Every client
+          # of this name is a browser, so neither Navidrome's Subsonic exemption
+          # nor Home Assistant's companion-app exemption applies.
+          #
+          # The machine is `mass`, not `music-assistant`: nspawn names the host
+          # veth `vb-<container>` and an interface name caps at 15 characters.
+          ./machines/ernst/containers/music-assistant.nix
           # microvm.nix's host module, and the one guest that uses it (M3).
           # The import lives here rather than inside wg-qbittorrent.nix
           # because `inputs` reaches a machine module via _module.args, and

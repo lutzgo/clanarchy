@@ -349,6 +349,38 @@ rec {
     # (forward-auth AND OIDC) rather than CWA's, and the two are no longer to
     # be read as the same thing for this name.
     (h "miniflux")
+
+    # Music Assistant (M30).  IT SITS BETWEEN TWO EXEMPTIONS AND IS NOT ONE,
+    # which is the only reason this entry needs more than its name.
+    #
+    # `navidrome` is exempt because the Subsonic protocol carries its token in a
+    # QUERY PARAMETER and no Subsonic client can express a 302.  `ha` is exempt
+    # because the companion app holds a bearer token over a WebSocket with no
+    # browser anywhere in the process.  Music Assistant reads Navidrome's library
+    # and is controlled from Home Assistant, so both arguments are within reach
+    # — and neither applies:
+    #
+    #   The only client of THIS HOSTNAME is a browser.  Music Assistant's UI is
+    #   the whole of it; there is no native app, no OPDS reader, no bearer-token
+    #   mobile client, no device with a token in a URL path.
+    #
+    # ITS UI IS WEBSOCKET-DRIVEN, AND THAT IS NOT HOME ASSISTANT'S PROBLEM.  The
+    # distinction is who opens the upgrade: there, a native app with no cookie
+    # jar, so a 302 on the HTTP UPGRADE is a handshake that never completes.
+    # Here it is the same browser that just authenticated to Authelia, so the
+    # upgrade carries the session cookie and forward-auth authorises it like any
+    # other request.  Do not read the hub's entry as covering this one.
+    #
+    # THE HOME ASSISTANT INTEGRATION DOES NOT COME THROUGH HERE AT ALL, which is
+    # what makes the strict door free: the hub holds its WebSocket against
+    # 10.0.90.30:8095 directly, one L2 hop, admitted by name in that container's
+    # firewall.  If it went through Traefik it WOULD need an exemption — and the
+    # point of the direct hop is that it does not.
+    #
+    # LAN-ONLY: not in `wanExposed`, no public A record, no ledger row.
+    # Navidrome is already on the internet and is what a phone off the property
+    # should be talking to; this service drives speakers that are in the house.
+    (h "music")
   ];
 
   ############################################################################
