@@ -602,6 +602,22 @@ let
   karakeepAddr = "10.0.90.29";
   karakeepPort = 3000;
 
+  # Music Assistant (M30) — the player controller over Navidrome's library, in
+  # an NSPAWN container on 02:00:00:90:00:16 → 10.0.90.30.
+  #
+  # 8095 IS THE API AND UI PORT, AND THERE IS A SECOND LISTENER THIS PROXY MUST
+  # NOT ROUTE TO.  8097 is Music Assistant's STREAM server, deliberately split
+  # from the API, and its client is a SPEAKER fetching a URL — not a browser.
+  # Putting it behind this proxy would mean putting forward-auth in front of a
+  # Yamaha receiver.  It stays on the L2 path, admitted by source address in
+  # that container's own firewall.
+  #
+  # IT ALSO HAS A SECOND LEG THIS PROXY CANNOT SEE, like Home Assistant's: iot1
+  # on VLAN 20, for mDNS discovery of the one speaker in the house.  Nothing
+  # inbound from this proxy goes anywhere near it.
+  massAddr = "10.0.90.30";
+  massPort = 8095;
+
   # Calibre-Web-Automated — the podman tier's FOURTH occupant, and the only
   # one of this round's three additions that needed an address of its own.
   #
@@ -2816,6 +2832,40 @@ in
               service     = "karakeep";
             };
 
+            # ── Music Assistant (M30) — the player controller ──────────────
+            #
+            # `authelia`, and this is the interesting case on this proxy rather
+            # than a routine one: it sits between two names that are BOTH
+            # exemptions and is not one itself.  `navidrome` is exempt for the
+            # Subsonic protocol's query-parameter token; `homeassistant` is
+            # exempt for a native app holding a bearer token over a WebSocket.
+            # This hostname's only client is a browser, so the strict door is
+            # free — containers/ingress-policy.nix carries the full argument.
+            #
+            # THE WEBSOCKET HERE IS NOT THE HUB'S WEBSOCKET.  This UI is a
+            # WebSocket-driven SPA, and Traefik proxies the upgrade with no
+            # configuration; forward-auth authorises it because the browser that
+            # opens it carries the Authelia session cookie.  The hub's own
+            # integration does NOT come through this router at all — it holds its
+            # WebSocket against 10.0.90.30:8095 on the L2 path, which is what
+            # keeps this name out of `appApiHosts`.
+            #
+            # LAN-ONLY: `websecure` and nothing else, absent from `wanExposed`,
+            # no public record, no ledger row.  Speakers are in the house.
+            #
+            # NO `wanLoginPaths` ENTRY, and its absence is correct: that
+            # mechanism substitutes a credential-endpoint rate limit for the
+            # per-identity regulation an `appApiHosts` name never gets.  This
+            # name goes through Authelia, which already has it — and it is not on
+            # the WAN in the first place.  Same reasoning as `miniflux` and
+            # `homepage`.
+            mass = {
+              rule        = "Host(`music.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              middlewares = [ "authelia" ];
+              service     = "mass";
+            };
+
             # slskd's web UI — in the microvm guest, not a container.  Behind
             # `authelia` like every other admin surface; its own login exists
             # but is a single shared operator account, not per-user.
@@ -3057,6 +3107,12 @@ in
             # here.
             miniflux.loadBalancer.servers       = [ { url = "http://${minifluxAddr}:${toString minifluxPort}/"; } ];
             karakeep.loadBalancer.servers       = [ { url = "http://${karakeepAddr}:${toString karakeepPort}/"; } ];
+
+            # M30 — its own nspawn container on .30, answering plain HTTP on
+            # the API port.  A WebSocket rides the same backend and Traefik
+            # proxies the upgrade with no configuration.  The stream server on
+            # 8097 is NOT here and must not be — see the note at `massAddr`.
+            mass.loadBalancer.servers           = [ { url = "http://${massAddr}:${toString massPort}/"; } ];
 
             # … and one in the microvm guest, the first non-container backend.
             slskd.loadBalancer.servers          = [ { url = "http://${slskdAddr}:${toString slskdPort}/"; } ];

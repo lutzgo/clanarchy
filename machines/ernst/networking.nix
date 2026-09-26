@@ -208,6 +208,10 @@
           across every container on this machine.  The convention here is to
           track the peer's ULA: fdca:fe91:: -> ai1, fdca:fe92:: -> ai2,
           fdca:fe93:: -> ai3.  Monitoring's mon0 predates it and keeps its name.
+
+          A leg on a VLAN has no ULA to track and is numbered in order instead:
+          iot0 (hass), iot1 (mass).  Two containers on the SAME VLAN still need
+          different names — the name is an interface, not a description.
         '';
       }
 
@@ -665,8 +669,54 @@
   #   where names are now tracked because M29 found that they are an allocation
   #   too.
   #
-  #   NEXT FREE SEQUENCE NUMBER IS 16; next free address is 10.0.90.30, keeping
-  #   the 8 + <seq> correspondence (8 + 0x16 = 30).  There is no free gap left
+  #   02:00:00:90:00:16   mass container eth0       (M30 — allocated)  10.0.90.30
+  #                       Music Assistant — the player controller over the
+  #                       library Navidrome indexes,
+  #                       machines/ernst/containers/music-assistant.nix.
+  #                       nspawn, because `services.music-assistant` is a
+  #                       first-class NixOS module; upstream recommends its
+  #                       Docker image and its HAOS add-on and neither applies.
+  #
+  #                       THE MACHINE IS `mass`, NOT `music-assistant`, and that
+  #                       is the M24 constraint again rather than a preference:
+  #                       `vb-music-assistant` is 18 characters against
+  #                       IFNAMSIZ - 1 = 15, so the host-side link cannot be
+  #                       created at all — a failure at container START, not at
+  #                       evaluation.  `mass` is upstream's own abbreviation
+  #                       (`_mass._tcp`), so nothing is invented here.
+  #
+  #                       ITS FIREWALL ADMITS TWO ADDRESSES ON eth0 AND ONE
+  #                       ELSEWHERE, which is an unusual shape for this table.
+  #                       Traefik (.12) for the browser UI; HOME ASSISTANT
+  #                       (.27) for the `music_assistant` integration's
+  #                       WebSocket, which deliberately does NOT go through the
+  #                       proxy — forward-auth is on that path and the
+  #                       integration has no cookie jar, so a direct L2 hop is
+  #                       what keeps `music.goclan.org` out of `appApiHosts`.
+  #                       The third is the Yamaha receiver on VLAN 20, reaching
+  #                       the STREAM server on 8097, and it is a SPEAKER rather
+  #                       than a service — see the VLAN 20 table below.
+  #
+  #                       IT IS THE SECOND CONTAINER WITH A LEG ON VLAN 20, and
+  #                       therefore the reason that table stops having one row.
+  #
+  #                       IT ALSO WIDENS ONE OTHER CONTAINER'S FIREWALL —
+  #                       containers/arr.nix, Navidrome's port, a third source
+  #                       list and Navidrome's first APPLICATION client.  That
+  #                       is the M26 shape (a new service reaching INTO an
+  #                       existing container) rather than the M27 shape.
+  #
+  #                       LAN-ONLY, with forward-auth: `protectedHosts`, not in
+  #                       `wanExposed`, no public A record, NO LEDGER ROW.  Every
+  #                       client of the hostname is a browser, so neither
+  #                       Navidrome's Subsonic exemption nor Home Assistant's
+  #                       companion-app exemption applies — and Navidrome is
+  #                       already the thing a phone off the property talks to.
+  #                       Like M22, M23, M24 and M27 it adds NO UDM-PRO RULE for
+  #                       VLAN 50 → 90: every human arrives through .12.
+  #
+  #   NEXT FREE SEQUENCE NUMBER IS 17; next free address is 10.0.90.31, keeping
+  #   the 8 + <seq> correspondence (8 + 0x17 = 31).  There is no free gap left
   #   in the sequence — 08 and 09 lapsed and were never reclaimed, and 0d was
   #   taken back by CWA.
   #
@@ -705,7 +755,46 @@
   #                       not on `extraVeths`, which has no option for it.  See
   #                       the `20-iot0` unit in containers/home-assistant.nix.
   #
-  #   NEXT FREE SEQUENCE NUMBER ON VLAN 20 IS 02.
+  #   02:00:00:20:00:02   mass container iot1       (M30 — allocated)  10.0.20.30
+  #                       Music Assistant's DISCOVERY leg, and the second row
+  #                       this table has ever had.  Same argument as the first
+  #                       and one VLAN's worth of devices later: the `musiccast`
+  #                       provider is DISCOVERY-ONLY — its manifest declares
+  #                       `mdns_discovery: ["_http._tcp.local."]` and provider.py
+  #                       has no add-by-address flow at all — so without a leg on
+  #                       the speakers' segment there is no way to reach the one
+  #                       speaker in the house.
+  #
+  #                       THE VETH IS `iot1`, NOT `iot0`, AND THAT IS M29's
+  #                       OUTAGE NOT REPEATED.  `extraVeths.<name>` becomes
+  #                       nspawn's `--network-veth-extra=<name>`, which names
+  #                       BOTH ends, so the name is host-global and the hass
+  #                       container already holds `iot0`.  The assertion at the
+  #                       top of this file is what enforces that rather than this
+  #                       paragraph.
+  #
+  #                       TWO SOURCE-MATCHED RULES POINT AT THE RECEIVER AT
+  #                       10.0.20.31 and both are worth naming here, because
+  #                       neither is a service port in the ordinary sense:
+  #                       8097/tcp, the STREAM server — the speaker fetches the
+  #                       audio itself — and a UDP range, because aiomusiccast
+  #                       binds ("0.0.0.0", 0) and advertises the EPHEMERAL port
+  #                       in an `X-AppPort` header, so there is no fixed number
+  #                       to open.  Narrow in source, wide in port; without it
+  #                       playback works and the UI never updates.
+  #
+  #                       .30 MATCHES THE VLAN-90 LAST OCTET, AND THAT IS THE
+  #                       SAME MNEMONIC THE ROW ABOVE USES — not the 8 + <seq>
+  #                       rule, which does not apply on this segment and has
+  #                       nothing to check against here.  Read the previous row's
+  #                       final paragraph before touching this: the UDM-Pro is
+  #                       the source of truth for 10.0.20.0/24, this is a copy of
+  #                       it, and the address must be verified FREE on that
+  #                       segment rather than derived from anything in this file.
+  #                       Nothing in Nix depends on the number — the leg takes
+  #                       DHCP and the MAC is what the reservation keys on.
+  #
+  #   NEXT FREE SEQUENCE NUMBER ON VLAN 20 IS 03.
   #
   #   M18 ADDED NO MAC AND NO ADDRESS, which is worth stating because it is a
   #   milestone that opened the house to the internet.  CrowdSec runs INSIDE
@@ -798,6 +887,20 @@
   # missing was anything that checked.  The assertion at the top of this file
   # is that check, and the names now track the ULA so a collision requires
   # typing the same number twice.  `mon0` predates the rule and keeps its name.
+  #
+  # THE NAMESPACE IS NOT ULA-ONLY, AND M30 IS WHERE THAT STOPPED BEING
+  # THEORETICAL.  The VLAN legs created the same way live in the same flat host
+  # namespace and are NOT in the table above, because they have no ULA to track:
+  #
+  #   iot0   hass   VLAN 20, mDNS + SSDP discovery of the wifi devices (M24)
+  #   iot1   mass   VLAN 20, mDNS discovery of the MusicCast receiver  (M30)
+  #
+  # Two containers with a leg on the SAME VLAN therefore cannot share a name, and
+  # the obvious mistake was to give Music Assistant `iot0` "because that is the
+  # IoT leg" — which is the `ai0` collision exactly, with the same symptom (the
+  # container that loses the interface is discovered by nobody noticing it for
+  # days).  The assertion covers these too: it groups every container's
+  # `extraVeths` and does not care what the name means.
   #
   # The last octet is 8 + <seq>.  That correspondence is not enforced by
   # anything and it is worth keeping anyway: it is the only thing that makes a
@@ -1328,6 +1431,50 @@
   #                           land so that the hub can serve them at /local.
   #
   #                           NEXT FREE IN THE 3000 BLOCK IS 3040.)
+  #
+  #   uid 3040  music-assistant (containers/music-assistant.nix — M30, the player
+  #   gid 3040                   controller over Navidrome's library, in an NSPAWN
+  #                              container on VLAN 90 with a second leg on VLAN
+  #                              20.  OWN group and NO MEDIA ACCESS AT ALL, which
+  #                              is the point of reading the library over the
+  #                              Subsonic API rather than off disk: this account
+  #                              holds no handle on /srv/media, so the boundary
+  #                              around 47 TB is the uid and not the container.
+  #                              Same argument as jellyseerr's row.
+  #
+  #                              IT OWNS /srv/state/music-assistant — a SQLite
+  #                              database plus the provider and player
+  #                              configuration, created by mass-dirs.  NO DATASET
+  #                              OF ITS OWN: that is `zdata/state`'s write profile
+  #                              exactly (128K, auto-snapshot ON), the call M24,
+  #                              M27 and M27 again all made before it.
+  #
+  #                              THE STATE IS NOT DERIVED AND THE SNAPSHOT
+  #                              PROPERTY MATTERS, which is why this is not
+  #                              Meilisearch's row: the library index IS
+  #                              re-derivable from Navidrome, but the Navidrome
+  #                              credential, the player it discovered and the
+  #                              queue are not, and re-entering them is a manual
+  #                              step in a browser.
+  #
+  #                              DynamicUser IS TURNED OFF TO GET THIS NUMBER, and
+  #                              that is the third time on this host:
+  #                              `StateDirectory` + `DynamicUser` MIGRATES
+  #                              /var/lib/music-assistant to
+  #                              /var/lib/private/music-assistant, and here that
+  #                              path is a BIND MOUNT.  containers/crowdsec.nix
+  #                              measured it with systemd's own log line and
+  #                              service-modules/local-ai.nix hit it with ollama
+  #                              before that.  The six protections DynamicUser
+  #                              implied are restated by hand in that file — the
+  #                              silent half of this trade.
+  #
+  #                              CHECKED AGAINST nixpkgs' ids.nix before being
+  #                              written down, the step M24 skipped and paid for:
+  #                              there is NO static `music-assistant` id upstream,
+  #                              so 3040 is this repo's to allocate.
+  #
+  #                              NEXT FREE IN THE 3000 BLOCK IS 3041.)
   #
   #   NO uid FOR miniflux, and it is recorded rather than left to inference.
   #   M27's other container (containers/miniflux.nix) runs the daemon under
