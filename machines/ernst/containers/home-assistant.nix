@@ -878,6 +878,68 @@ in
         ps.paho-mqtt
       ];
 
+      # ── TWO DISTRIBUTIONS, ONE IMPORT NAME: `brotlipy` IS EXCLUDED ────────
+      #
+      # `ignoreCollisions` above resolves same-PATH conflicts first-wins, and
+      # the note there calls that the residual risk.  THIS IS A DIFFERENT AND
+      # WORSE SHAPE, and it is not a collision at all — the two paths do not
+      # overlap, so nothing warns:
+      #
+      #   Brotli 1.2.0   installs  site-packages/brotli.py     (a MODULE)
+      #   brotlipy 0.7.0 installs  site-packages/brotli/       (a PACKAGE)
+      #
+      # Python's FileFinder checks directory loaders before file loaders, so in
+      # one merged site-packages the PACKAGE always wins and `import brotli` is
+      # brotlipy — measured under the service's own interpreter:
+      #
+      #   brotli.__file__ = …/hass-python-deps/…/brotli/__init__.py
+      #
+      # AND aiohttp 3.13.5 CANNOT DRIVE brotlipy.  Its BrotliDecompressor picks
+      # a branch by feature detection (compression_utils.py:310):
+      #
+      #   if hasattr(self._obj, "decompress"):
+      #       return self._obj.decompress(data, max_length)   # brotlipy
+      #   return self._obj.process(data, max_length)          # Brotli
+      #
+      # brotlipy's `Decompressor.decompress(self, data)` takes no max_length —
+      # it never gained one — so the branch aiohttp selects FOR it raises
+      #
+      #   TypeError: Decompressor.decompress() takes 2 positional arguments
+      #              but 3 were given
+      #
+      # which aiohttp re-raises as `Can not decode content-encoding: br`.  Every
+      # brotli-encoded response this hub fetches fails.  HACS is what surfaced
+      # it, three times per start, because data-v2.hacs.xyz serves `br`:
+      # `async_handle_removed_repositories` dies in `startup_tasks`, so the
+      # store comes up without its removed-repository list on every boot.
+      #
+      # NOT A MISSING DEPENDENCY, AND NOT FIXABLE BY ADDING ONE.  Both
+      # distributions are present and correct; the defect is that they share an
+      # import name and the wrong one is reachable.  Dropping brotlipy leaves
+      # `brotli.py` unshadowed, and Brotli's `Decompressor` has no `decompress`
+      # attribute at all, so aiohttp takes its `process(data, max_length)`
+      # branch — verified against the real interpreter before this was written:
+      #
+      #   PYTHONPATH=<Brotli only> python3.14 -c 'import brotli
+      #     d = brotli.Decompressor()
+      #     print(hasattr(d, "decompress"), d.process(brotli.compress(b"x"), 99))'
+      #   False b'x'
+      #
+      # NOTHING LOSES A CAPABILITY.  brotlipy enters this closure through
+      # exactly one component — `surepetcare`, via surepy's propagated inputs
+      # (the only reference in this channel's component-packages.nix) — and
+      # neither surepy nor anything else here imports brotli directly: they
+      # declare it so that aiohttp can decode `br`, which is precisely what
+      # this restores.  urllib3 does the same feature detection and works
+      # against either distribution.
+      #
+      # THE FILTER IS BY `pname`, WHICH ONLY WORKS WHILE BOTH SURVIVE.  If a
+      # future nixpkgs bump drops Brotli out of this closure, the filter would
+      # remove the only `brotli` there is and `import brotli` would fail
+      # outright for surepetcare — a silently worse outcome than the bug.  The
+      # throw below is what makes that a build failure instead.
+      shadowedDists = [ "brotlipy" ];
+
       hassPythonEnv =
         let
           ps = hassPackage.python3Packages;
@@ -885,16 +947,34 @@ in
             lib.concatMap (c: hassPackage.getPackages c ps) buildableComponents
             ++ hassExtraPackages ps
           );
-          closure = ps.requiredPythonModules deps;
+          fullClosure = ps.requiredPythonModules deps;
+          closure =
+            lib.filter (d: !(lib.elem (d.pname or "") shadowedDists)) fullClosure;
+          keptPnames = map (d: d.pname or "") closure;
           allOutputs =
             lib.concatMap (d: map (o: d.${o}) (d.outputs or [ "out" ])) closure;
+
+          # `throw` and not `assertions`, for containers/traefik.nix's reason:
+          # it fires wherever this is evaluated — `nix flake check`, the CI
+          # eval, `nix build --dry-run` — and cannot be demoted to a warning.
+          env = pkgs.buildEnv {
+            name = "hass-python-deps";
+            paths = allOutputs;
+            pathsToLink = [ "/lib/${ps.python.libPrefix}/site-packages" ];
+            ignoreCollisions = true;
+          };
         in
-        pkgs.buildEnv {
-          name = "hass-python-deps";
-          paths = allOutputs;
-          pathsToLink = [ "/lib/${ps.python.libPrefix}/site-packages" ];
-          ignoreCollisions = true;
-        };
+        if !(lib.elem "brotli" keptPnames) then
+          throw ''
+            home-assistant.nix: brotlipy is filtered out of hassPythonEnv so
+            that `import brotli` resolves to Brotli — but Brotli is no longer
+            in this closure, so the filter would leave NO brotli at all and
+            the surepetcare component would fail to import.
+            Re-read the "TWO DISTRIBUTIONS, ONE IMPORT NAME" block above and
+            re-derive the fix against the current channel.
+          ''
+        else
+          env;
 
       # ── THE REQUIREMENTS CHECKER ────────────────────────────────────────
       #
