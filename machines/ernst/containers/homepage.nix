@@ -217,6 +217,14 @@ let
   karakeepAddr  = "10.0.90.29";
   karakeepPort  = 3000;
 
+  # M30 makes it SEVEN, and this one is the cheapest of the set: a `siteMonitor`
+  # and no widget, so there is no credential to hold and no generator prompt.
+  # `/` is on Music Assistant's own auth bypass list, so an up/down probe needs
+  # nothing — which is the whole reason the accept rule in
+  # containers/music-assistant.nix was worth adding rather than declining.
+  massAddr      = "10.0.90.30";
+  massPort      = 8095;
+
   # NEXTCLOUD HAS NO ENTRY HERE ON PURPOSE.  Its widget is the one that goes
   # through Traefik by name, because Nextcloud refuses a Host header that is
   # not in `trusted_domains` — see the long note on that widget below.  An
@@ -760,8 +768,25 @@ in
                 "Navidrome" = {
                   icon        = "navidrome.png";
                   href        = pub "navidrome";
-                  description = "Music, over Subsonic";
+                  description = "Music library, over Subsonic";
                   siteMonitor = local navidromePort;
+                };
+              }
+              {
+                # M30.  The PLAYER half, next to the LIBRARY half above, which is
+                # the only arrangement of these two tiles that explains itself:
+                # Navidrome indexes and serves clients, this drives the speakers
+                # and reads Navidrome to do it.
+                #
+                # `siteMonitor` is an ADDRESS here, not `local`, because unlike
+                # every other tile in this group Music Assistant is in its own
+                # container rather than this one — so it costs an accept rule
+                # there, as the six before it did.
+                "Music Assistant" = {
+                  icon        = "music-assistant.png";
+                  href        = pub "music";
+                  description = "Plays it, to the speakers";
+                  siteMonitor = "http://${massAddr}:${toString massPort}";
                 };
               }
               {

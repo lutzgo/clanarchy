@@ -632,6 +632,28 @@ let
   slskdAddr = "10.0.90.11";
   slskdPort = 5030;
 
+  # M30.  The Music Assistant container's address on VLAN 90 (DHCP reservation
+  # keyed on 02:00:00:90:00:16).
+  #
+  # THE DIRECTION IS THE OPPOSITE OF jellyfinAddr AND slskdAddr, and that is why
+  # this binding is an address and not a port: nothing in this container calls
+  # Music Assistant.  Music Assistant calls NAVIDROME, over the Subsonic API, as
+  # its music library — so what is needed here is an inbound accept on
+  # `navidromePort`, and machines/ernst/containers/music-assistant.nix declares
+  # nothing for the far side of it.
+  #
+  # IT IS THE THIRD SOURCE ON navidromePort AND THE FIRST THAT IS NOT A PROXY OR
+  # A SCRAPER.  Traefik's rule carries every human and every Subsonic client;
+  # the monitoring container's carries /metrics.  This one is an APPLICATION
+  # reading the library continuously — so a Navidrome outage now presents as
+  # silence in the living room, not merely as a phone app that cannot connect.
+  #
+  # NO NEW ACCOUNT IS DECLARED FOR IT.  Navidrome's users live in its own
+  # database and are created in its UI; the credential Music Assistant
+  # authenticates with is a manual step (docs/roadmap.md M30).  This rule opens
+  # the door; it does not hand over a key.
+  massAddr = "10.0.90.30";
+
   # M14.  slskd's download tree, declared in microvms/wg-qbittorrent.nix and
   # restated here because THREE things have to agree on it verbatim: slskd's
   # own `directories.downloads`, Soularr's config.ini (which tells Lidarr where
@@ -1964,6 +1986,25 @@ in
           # same reason: the far end is a container on this host that already
           # scrapes every other service, and the endpoint itself demands HTTP
           # Basic (measured: 401 without, 200 with — see the block below).
+          navidromePort
+        ]
+        # ── M30: NAVIDROME'S THIRD SOURCE, AND ITS FIRST APPLICATION CLIENT ──
+        #
+        # A third source list rather than a merged list of (source, port) pairs,
+        # for the reason stated above the first one: "what can Traefik reach?"
+        # has to stay answerable by reading one list, and so does this.
+        #
+        # ONE PORT, ONE SOURCE.  Music Assistant reads the library over the
+        # Subsonic API at /rest/** and touches nothing else in this container —
+        # not Lidarr, not the *arr APIs, not Komga.  The acquisition pipeline and
+        # the playback controller share exactly one surface, and it is this.
+        #
+        # `/metrics` RIDES THIS PORT TOO, which is the trade the monitoring rule
+        # above already states plainly: source-restricting to one address is what
+        # keeps that acceptable, and the endpoint demands HTTP Basic regardless.
+        + lib.concatMapStrings (port: ''
+          iptables -A nixos-fw -p tcp -s ${massAddr}/32 --dport ${toString port} -j nixos-fw-accept
+        '') [
           navidromePort
         ];
 
