@@ -2630,10 +2630,24 @@ in
               entryPoints = [ "websecure" ];
               service     = "cwa";
             };
+            # ── Storyteller: NO forward-auth, and NOT on `wan` ────────────
+            #
+            # The middleware came off on 2026-09-27: the Storyteller Reader
+            # app (Android/iOS) authenticates by POSTing to /api/v2/token and
+            # carrying a token, and forward-auth answered that very call with
+            # a 303 to auth.goclan.org — measured, not assumed. A client with
+            # no browser cannot follow it, so the app could never obtain a
+            # credential at all.  Same client-compatibility clause as
+            # audiobookshelf, komga, navidrome and cwa; the reasoning lives in
+            # containers/ingress-policy.nix beside the appApiHosts entry.
+            #
+            # `entryPoints = [ "websecure" ]` ONLY — deliberately still absent
+            # from `wanExposed`.  This name answers the LAN and the VPN, never
+            # the public internet, which is what makes dropping forward-auth a
+            # smaller decision here than it was for the five WAN names.
             storyteller = {
               rule        = "Host(`storyteller.${baseDomain}`)";
               entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
               service     = "storyteller";
             };
 

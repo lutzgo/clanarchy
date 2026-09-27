@@ -684,3 +684,49 @@ download). Do not route it anywhere else: Audiobookshelf cannot render EPUB
 media overlays, and CWA's ingest converts and deletes what it takes in, which
 would destroy the synchronisation that is the entire point. The synced book is
 a terminal artifact.
+
+### Reading a synced book — the Storyteller app, and the VPN
+
+The synced EPUB3 is a terminal artifact: it stays in Storyteller's `/data` and is
+read in the **Storyteller Reader** app (Android `dev.smoores.Storyteller`, and
+iOS). Set the server URL, log in, download. Position syncs across devices when
+the app can reach the server.
+
+**Two things had to change before the app could connect at all, and only one of
+them is in this repo.**
+
+**1. Forward-auth had to come off (done, 2026-09-27).** `storyteller.goclan.org`
+was in `protectedHosts`. Measured with the middleware still in place:
+
+```
+GET  /api/v2/books  -> 302  https://auth.goclan.org/?rd=…
+POST /api/v2/token  -> 303  https://auth.goclan.org/?rd=…
+```
+
+`/api/v2/token` is the login call. The app posts credentials there and carries a
+token afterwards — so the redirect intercepted the one request that would have
+produced a credential. The app could never authenticate, and the symptom is
+indistinguishable from a broken server. It is now in `appApiHosts`, the same
+client-compatibility clause as Audiobookshelf, Komga, Navidrome and CWA.
+
+It is deliberately **not** in `wanExposed`. This name answers the LAN and the
+VPN and never the public internet, which is what makes dropping forward-auth a
+smaller decision here than it was for the five WAN names. Storyteller's own
+accounts are now the entire boundary on it.
+
+**2. The VPN needs a UDM-Pro policy, and that cannot live in this repo.**
+Tunnelled clients land on VLAN 70 with no route to VLAN 90 — so *both*
+Audiobookshelf and Storyteller are unreachable over the VPN until:
+
+> **Allow `VPN (70)` → `10.0.90.12:443/tcp`**
+
+Traefik on 443 and nothing else. Do not permit VLAN 70 → VLAN 90 wholesale.
+Full detail, including why the public path fails at the same time (NAT hairpin),
+is in [the app-API ingress guide](ernst-app-api-ingress.md#vpn-clients-land-on-vlan-70-and-cannot-reach-vlan-90-by-default).
+
+**Audiobookshelf needed no repo change for this** — it has carried the
+forward-auth bypass since M14 and is already on `wan`. Over the VPN it is
+blocked by the routing policy alone.
+
+So the order that actually works: add the UDM-Pro policy, then point both apps
+at `https://audiobookshelf.goclan.org` and `https://storyteller.goclan.org`.
