@@ -72,10 +72,48 @@
 #                               This leg exists for DISCOVERY, and it is not
 #                               optional.
 #
-#   THE ONE PLAYER IN THIS HOUSE IS A YAMAHA MusicCast RECEIVER AT 10.0.20.31,
-#   read out of Home Assistant's own config entries rather than assumed
-#   (`yamaha_musiccast`, `.storage/core.config_entries`).  No Chromecast, no
-#   Sonos, no DLNA renderer, no Snapcast.
+#   THE PLAYERS IN THIS HOUSE ARE TWO YAMAHA MusicCast SPEAKERS ON VLAN 20 —
+#   `Küche` at 10.0.20.31 and `Renate` at 10.0.20.32.  No Chromecast, no Sonos,
+#   no DLNA renderer, no Snapcast.
+#
+#   THIS FILE SHIPPED SAYING THERE WAS ONE, and the correction is worth keeping
+#   because of where the wrong number came from.  M30 read Home Assistant's
+#   `core.config_entries`, found one `yamaha_musiccast` entry, and treated it as
+#   an inventory of the segment.  It is an inventory of what the HUB has been
+#   configured with.  Browsing `_http._tcp.local.` from the leg itself found
+#   both in seconds — see the note at `musiccastAddrs`.
+#
+# ── AND THE SECOND LEG DOES NOTHING UNTIL ONE SETTING IS CHANGED ────────────
+#
+#   READ THIS BEFORE DEBUGGING ANY "no players found" REPORT.  Music Assistant's
+#   zeroconf binds to the DEFAULT INTERFACE ONLY unless told otherwise, and the
+#   option's own description says so:
+#
+#     "By default, Music Assistant will only listen on the default interface.
+#      If you have multiple network interfaces and you want to discover players
+#      on all interfaces, you can change this setting to 'All interfaces'."
+#         — CONF_ENTRY_ZEROCONF_INTERFACES, constants.py:669
+#
+#   The default interface here is eth0, on VLAN 90, where there are no speakers.
+#   So `iot1` is CARRIED, ADDRESSED, FIREWALLED AND DECORATIVE until
+#   Settings -> Core -> Discovery -> "Mdns/Zeroconf discovery interface(s)" is
+#   set to **All interfaces** (`core.discovery.values.zeroconf_interfaces =
+#   "all"`, advanced-only, `requires_reload`).
+#
+#   MEASURED BOTH WAYS on 2026-09-27: with the default, the provider loaded and
+#   discovered nothing for twenty minutes while both speakers were announcing —
+#   confirmed by browsing `_http._tcp.local.` from the hass container's own
+#   VLAN-20 leg, which saw both immediately.  With "all", both appeared within a
+#   minute of the reload.
+#
+#   THIS IS THE SILENT FAILURE THIS FILE ALREADY WARNED ABOUT, arriving from a
+#   direction the warning did not anticipate.  The note on the firewall rules
+#   says an absent accept leaves the leg "decorative while looking correct", and
+#   that discovery finding nothing is "indistinguishable from a household with
+#   no discoverable devices".  Both were true here with every rule correct: the
+#   application simply was not listening on the interface.  It is NOT declarable
+#   — it lives in Music Assistant's own settings database like every provider —
+#   so it is a deploy step, and it is the FIRST one to check.
 #
 #   And Music Assistant's `musiccast` provider is DISCOVERY-ONLY.  Its manifest
 #   declares `"mdns_discovery": ["_http._tcp.local."]` and provider.py has
@@ -117,7 +155,7 @@
 #           Assistant integration speaks the same WebSocket.
 #     8097  the STREAM server, deliberately separate from the API
 #           (controllers/streams/README.md).  This is the URL a PLAYER fetches
-#           — so its client is the Yamaha receiver, not a browser and not
+#           — so its client is a Yamaha speaker, not a browser and not
 #           Traefik.
 #
 #   Both are Python constants (`DEFAULT_PORT`), settable only in Music
@@ -356,10 +394,33 @@ let
   # in containers/arr.nix, and nothing in this file's firewall block concerns
   # it.  A reader looking for the Navidrome wiring should look there.
 
-  # The Yamaha MusicCast receiver, on the IoT VLAN.  Read out of Home
-  # Assistant's config entries, not guessed.  It is the one PLAYER in the
-  # house, and the only source that needs the two rules on the iot1 leg.
-  musiccastAddr = "10.0.20.31";
+  # ── THE MusicCast SPEAKERS, AND THERE ARE TWO ──────────────────────────────
+  #
+  # THIS FILE SHIPPED SAYING THERE WAS ONE, and the mistake is instructive about
+  # where the fact came from.  M30 read Home Assistant's `core.config_entries`,
+  # found a single `yamaha_musiccast` entry at 10.0.20.31, and wrote "the one
+  # speaker in the house" — which is a statement about what the HUB has been
+  # configured with, not about what is on the segment.
+  #
+  # Browsing `_http._tcp.local.` from the VLAN-20 leg found both, within seconds:
+  #
+  #     Küche._http._tcp.local.   10.0.20.31   (the one the hub knows)
+  #     Renate._http._tcp.local.  10.0.20.32   (nobody had told this repo)
+  #
+  # Music Assistant discovered both as soon as it was looking on the right
+  # interface, so the second one was never a question of discovery — only of
+  # whether the two source-matched rules below would let it play.
+  #
+  # NAMED INDIVIDUALLY RATHER THAN AS A SUBNET, and that is a deliberate trade.
+  # `-s 10.0.20.0/24` would cover every future speaker with no edit, and it would
+  # also hand the whole IoT segment an ephemeral UDP range into this container —
+  # a much wider grant than mDNS, which is multicast and has no source to name.
+  # Adding a speaker is one line here; that is the right amount of friction for
+  # something that opens a port to a device.
+  musiccastAddrs = [
+    "10.0.20.31" # Küche
+    "10.0.20.32" # Renate
+  ];
 
   # 8095 — the API and web UI.  8097 — the stream server the PLAYER fetches.
   # Both are Python constants in the application, not NixOS options; see the
@@ -735,9 +796,13 @@ in
       networking.firewall.extraCommands = ''
         iptables -A nixos-fw -p tcp -s ${traefikAddr}/32 --dport ${toString massPort} -j nixos-fw-accept
         iptables -A nixos-fw -p tcp -s ${dashboardAddr}/32 --dport ${toString massPort} -j nixos-fw-accept
-        iptables -A nixos-fw -p tcp -s ${musiccastAddr}/32 --dport ${toString streamPort} -j nixos-fw-accept
+      '' + lib.concatMapStrings (addr: ''
+        iptables -A nixos-fw -p tcp -s ${addr}/32 --dport ${toString streamPort} -j nixos-fw-accept
+      '') musiccastAddrs + ''
         iptables -A nixos-fw -i ${iotVeth} -p udp --dport 5353 -j nixos-fw-accept
-        iptables -A nixos-fw -i ${iotVeth} -p udp -s ${musiccastAddr}/32 --dport ${toString ephemeralLow}:${toString ephemeralHigh} -j nixos-fw-accept
+      '' + lib.concatMapStrings (addr: ''
+        iptables -A nixos-fw -i ${iotVeth} -p udp -s ${addr}/32 --dport ${toString ephemeralLow}:${toString ephemeralHigh} -j nixos-fw-accept
+      '') musiccastAddrs + ''
       '';
 
       ##########################################################################
@@ -792,8 +857,8 @@ in
           # instead of read-only.
           "subsonic_scrobble"
 
-          # THE PLAYER.  The Yamaha receiver at ${musiccastAddr}, which is the
-          # only playback target in this house that is not a browser tab.
+          # THE PLAYERS.  The two Yamaha MusicCast speakers on VLAN 20, which
+          # are the only playback targets in this house that are not browser tabs.
           # Pulls in aiomusiccast.  DISCOVERY-ONLY — there is no add-by-address
           # flow, which is the entire reason this container has a second leg.
           "musiccast"
