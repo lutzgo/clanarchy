@@ -705,4 +705,57 @@ in
       CPUWeight = 20;
     };
   };
+
+  ##############################################################################
+  # `storyteller-stage` — putting a pair where the watcher will find it.
+  #
+  # Here rather than in the guide for the reason rom-import.sh gives: the
+  # constants (uid 3022, the media gid, importDir, both library roots) are
+  # DEFINED in this file, and a copy of them in a document goes stale silently.
+  # The tool is generated from the same `let` bindings the container is, so it
+  # cannot disagree with the deployment.
+  #
+  # WHY A TOOL AND NOT `cp`.  Four things have to be right, and three of them
+  # have already cost time in this milestone:
+  #
+  #   1. BOTH HALVES IN ONE SUBDIRECTORY.  That is what makes Storyteller pair
+  #      them into a single item instead of two unmatched halves needing a
+  #      manual merge afterwards.
+  #   2. HARDLINK THE AUDIO.  The staging directory is on zdata/audiobooks
+  #      precisely so this is free; a naive `cp` of a 4.4 GB audiobook works
+  #      and quietly costs 4.4 GB every time.  The tool checks `stat -c %d`
+  #      and links when it can, copies when it cannot.
+  #   3. OWNERSHIP.  A fresh directory is root:root; the setgid bit fixes the
+  #      GROUP of new files and never the owner, so the container (uid 3022)
+  #      would see files it cannot read.
+  #   4. EPUB ONLY.  Storyteller cannot take azw3 or mobi.  `storyteller-stage`
+  #      refuses them with the conversion route rather than staging something
+  #      that will fail an hour into transcription.
+  #
+  # `storyteller-stage pairs` answers the question that actually gates this
+  # workflow — which titles exist in BOTH libraries — and it compares TITLES,
+  # not author directories, because Audiobookshelf files Banks under
+  # "Iain M. Banks" and Bindery under "Iain Banks". An author-level join misses
+  # real pairs; that trap cost a wrong answer during M17's follow-up.
+  ##############################################################################
+  environment.systemPackages = [
+    (pkgs.writeShellApplication {
+      name = "storyteller-stage";
+
+      runtimeInputs = with pkgs; [
+        coreutils findutils gnused gnugrep
+      ];
+
+      text = ''
+        IMPORT=${importDir}
+        EBOOKS=/srv/media/library/books
+        AUDIO=/srv/audiobooks/library
+        INGEST=/srv/media/ingest/cwa
+        UID_=${toString storytellerUid}
+        GID_=${toString mediaGid}
+
+        ${builtins.readFile ../storyteller-stage.sh}
+      '';
+    })
+  ];
 }
