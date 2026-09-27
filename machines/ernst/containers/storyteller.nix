@@ -221,6 +221,46 @@ let
   dataDir    = "/srv/audiobooks/storyteller";
   secretsDir = "/run/storyteller-secrets";
 
+  # ── THE AUTO-IMPORT STAGING DIRECTORY ──────────────────────────────────────
+  #
+  # Storyteller has exactly TWO ways in, and neither is "read the library":
+  # chunked upload through the browser (POST /api/v2/books/upload) and an
+  # auto-import watcher on a directory.  There is no import-from-server-path
+  # flow — checked against the deployed 2.9.3 build's route table, which has
+  # books/upload, books/merge and books/[bookId]/process and nothing else.
+  #
+  # That makes upload useless here for the case that matters.  The first pair
+  # anyone actually wants to align is Consider Phlebas: a 562 KB EPUB and
+  # 2.2 GB of FLAC that are ALREADY ON THIS HOST.  Uploading them means
+  # pulling 2.2 GB down to a laptop and pushing it back through Traefik to
+  # reach a path two directories away.  So the watcher is the mechanism, and
+  # it needs somewhere to watch.
+  #
+  # WHY A NEW DIRECTORY RATHER THAN POINTING THE WATCHER AT THE LIBRARIES:
+  #
+  #   /library/audiobooks is 116 GB.  Pointing auto-import there would sweep
+  #   the entire household audiobook collection into Storyteller and start
+  #   whisper transcription across all of it — the single most CPU-expensive
+  #   thing this box can do, against a Jellyfin transcode, the HTPC session
+  #   and an interactive Ollama session.  The header's "bind ONE pair and
+  #   check it by hand" rule exists precisely to stop that, and a watcher on
+  #   the whole library is that rule inverted.
+  #
+  #   /library/ebooks is only 14 MB and would be harmless, but ebooks alone
+  #   produce half-books waiting for an audio half, which is not a pair.
+  #
+  #   Both are also mounted READ-ONLY and must stay that way (see `volumes`).
+  #
+  # WHY IT LIVES ON zdata/audiobooks, AND THIS IS THE WHOLE POINT:
+  #
+  #   Same dataset as /srv/audiobooks/library and as dataDir.  So staging an
+  #   audiobook is `ln` — a HARDLINK, instant, zero bytes copied, however many
+  #   gigabytes the book is.  Put this on zdata/media, or anywhere else, and
+  #   every pair costs a full copy of the audio twice over.  The ebook half
+  #   does cost a real copy because it comes from zdata/media, and at
+  #   kilobytes that is not worth solving.
+  importDir  = "/srv/audiobooks/storyteller-import";
+
   # See the header.  web-v2.9.3, the newest STABLE tag — NOT `latest`, which is
   # currently a 3.0.0 beta.
   imageTag    = "web-v2.9.3";
@@ -384,6 +424,19 @@ in
     script = ''
       ${pkgs.coreutils}/bin/install -d \
         -o ${toString storytellerUid} -g ${toString mediaGid} -m 0750 ${dataDir}
+
+      # The staging directory: 2770, not 0750 like dataDir above, and the
+      # difference is deliberate.  dataDir has ONE writer (the container).
+      # This one has two: the container imports from it, and a human (or a
+      # script running as a member of `media`) stages pairs into it.  setgid
+      # so a hardlinked or copied file keeps group `media` and stays readable
+      # by the container regardless of who staged it.
+      #
+      # Podman here is ROOTFUL with --user=3022:3000, so these numbers are the
+      # numbers on zdata — no mapping to reason about, same property the rest
+      # of this file relies on.
+      ${pkgs.coreutils}/bin/install -d \
+        -o ${toString storytellerUid} -g ${toString mediaGid} -m 2770 ${importDir}
     '';
   };
 
@@ -492,6 +545,25 @@ in
       # Checked in the deployed 2.9.3 build: the setting exists and is null.
       "/srv/media/library/books:/library/ebooks:ro"
       "/srv/audiobooks/library:/library/audiobooks:ro"
+
+      # ── THE AUTO-IMPORT WATCH FOLDER, AND THE ONE RW MOUNT ────────────────
+      #
+      # Read-write, unlike the two libraries above, and that asymmetry is the
+      # design rather than an oversight.  Storyteller may move, rename or
+      # delete what it has ingested from its watch folder — that is a drop
+      # box, and a drop box the watcher cannot clear is one that re-imports
+      # or wedges.  Nothing of value lives here: everything staged into it is
+      # a hardlink to, or a copy of, a file that still exists in the library
+      # it came from.
+      #
+      # So the invariant the two `:ro` mounts protect is intact — Storyteller
+      # still cannot touch Bindery's or Audiobookshelf's trees — and the only
+      # thing it can write to besides its own /data is a scratch directory.
+      #
+      # Point Storyteller's Settings → Automatic import at `/import` (the
+      # CONTAINER path, not the host path).  It is a DB/UI setting with no
+      # environment variable, so this file cannot set it; see the guide.
+      "${importDir}:/import"
     ];
 
     # NO `ports` ENTRY, deliberately.  Publishing a port is meaningless with

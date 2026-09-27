@@ -575,3 +575,112 @@ and it is written up in
 [the app-API ingress guide](ernst-app-api-ingress.md#vpn-clients-land-on-vlan-70-and-cannot-reach-vlan-90-by-default).
 
 **Until that rule exists, turn the VPN off to reach these two services.**
+
+## Read-along books — Storyteller, and how to stage a pair
+
+Storyteller takes a DRM-free **EPUB** and the matching **audiobook** and emits a
+single EPUB3 with sentence-level synchronised playback. It is the only thing in
+this stack that produces a new artifact rather than serving an existing one, and
+it is also the only one that can saturate the box, so the staging step is
+deliberate rather than automatic.
+
+### Two ways in, and only one of them is usable here
+
+Checked against the deployed 2.9.3 build's route table — `books/upload`,
+`books/merge`, `books/[bookId]/process`:
+
+| Route | Works? |
+|---|---|
+| Chunked upload through the browser | Technically, but a 2.2 GB audiobook means pulling it to a laptop and pushing it back through Traefik to reach a path two directories away |
+| **Auto-import watcher on a directory** | **This one.** |
+
+There is **no import-from-server-path flow**. That is the whole reason
+`/srv/audiobooks/storyteller-import` exists.
+
+### Why the watcher is NOT pointed at the libraries
+
+Storyteller can see both libraries read-only, at `/library/ebooks` and
+`/library/audiobooks`. Do not point auto-import at either:
+
+- **`/library/audiobooks` is 116 GB.** The watcher would sweep the entire
+  household collection in and start whisper transcription across all of it —
+  the most CPU-expensive thing this box can do, against a Jellyfin transcode,
+  the HTPC session and an interactive Ollama session. `containers/storyteller.nix`
+  requires one known-good pair be checked by hand *before* any batch; a watcher
+  on the whole library is that rule inverted.
+- **`/library/ebooks`** is only 14 MB and harmless, but ebooks with no audio half
+  are not pairs — they just queue up waiting to be matched.
+
+Both mounts are read-only and must stay that way. `/import` is the only
+read-write mount, and nothing of value lives in it.
+
+### Settings, once
+
+In Storyteller → Settings:
+
+- **Automatic import → Enable**, path **`/import`** — the *container* path, not
+  the host path. `/srv/media/ingest/cwa` is CWA's drop box and is not mounted
+  here at all; pointing at it silently watches nothing.
+- **Readaloud location → "In the Storyteller internal folder"**. The default,
+  "Alongside input with a suffix", writes next to the input file — which for a
+  library-sourced pair is a read-only mount, so it cannot work.
+- **Whisper model** — `tiny` is the bundled default and is fine for clean
+  English. Much of this library is German (Eschbach, Zeh, Kling, Dusse,
+  Sonneborn, Moers); those want `small` or `medium`.
+- Leave turbo mode and both parallelism values at **1** until one book has been
+  timed. The image is the **CPU** build by design (`-rocm` was rejected so it
+  cannot contend with Ollama for the 7900 XTX), so "GPU if available" resolves
+  to CPU regardless.
+
+### Staging a pair — the hardlink is the point
+
+`/srv/audiobooks/storyteller-import`, `/srv/audiobooks/library` and Storyteller's
+`/data` are all on **zdata/audiobooks**. So staging the audio half is `ln`:
+instant, zero bytes copied, however many gigabytes the book is. The ebook half
+comes from `zdata/media` and is a real copy, which at kilobytes does not matter.
+
+Put both halves in **one subdirectory** — that is what makes Storyteller treat
+them as a single item instead of two unmatched ones:
+
+```bash
+ssh root@10.0.50.10
+BOOK="/srv/audiobooks/storyteller-import/consider-phlebas"
+install -d -o 3022 -g 3000 -m 2770 "$BOOK"
+
+# audio half — hardlink, free
+ln "/srv/audiobooks/library/Iain M. Banks/Consider Phlebas: Culture Series, Book 1/"*.flac "$BOOK/"
+
+# ebook half — real copy, 562 KB
+cp "/srv/media/library/books/Iain Banks/Consider Phlebas- Culture Series, Book 1 (2014)/Consider Phlebas- Culture Series, Book 1 - Iain Banks.epub" "$BOOK/"
+
+chown -R 3022:3000 "$BOOK"
+```
+
+The watcher picks it up within seconds. Alignment then runs for a long time —
+it is nice'd and CPUWeight-limited, so it will not starve anything, which also
+means it is not fast.
+
+### Which pairs actually exist
+
+Both halves must be the same title, and the ebook must be **EPUB**. As of
+2026-09-27 the library supports exactly one ready pair:
+
+| Title | Ebook | Audiobook | Ready? |
+|---|---|---|---|
+| Consider Phlebas | `.epub` | 2.2 GB FLAC | **yes** |
+| Project Hail Mary | `.azw3` | 4.4 GB | no — convert to EPUB first (CWA can) |
+| Artemis | none (a stray `.txt`) | present | no |
+
+Note the author folders disagree: Audiobookshelf files Banks under
+**`Iain M. Banks`**, Bindery under **`Iain Banks`**. Neither is wrong and
+nothing depends on them matching — but a naive "which authors are in both"
+comparison misses this pair, so compare titles, not directories.
+
+### Where the output goes
+
+Into Storyteller's own `/data`, served through `storyteller.goclan.org` and read
+in the **Storyteller Reader** app (Android and iOS — set the server URL, log in,
+download). Do not route it anywhere else: Audiobookshelf cannot render EPUB
+media overlays, and CWA's ingest converts and deletes what it takes in, which
+would destroy the synchronisation that is the entire point. The synced book is
+a terminal artifact.
