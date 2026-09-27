@@ -557,24 +557,45 @@ you want. **Do not run it alongside IVPN**: both are `AllowedIPs = 0.0.0.0/0`,
 and two things with authority over the default route is how a kill-switch
 becomes an outage nobody can diagnose.
 
-### The trap: with the VPN up, BOTH paths break
+### The VPN trap, and the policy that resolves it
 
-Measured 2026-09-19. A tunnelled client gets an address on **VLAN 70**, and:
+**This section described an unresolved trap until 2026-09-27. The policy now
+exists** — see below before acting on anything here.
 
-- it **cannot reach VLAN 90 at all** — not Traefik, not any backend — because
-  the UDM-Pro has no policy permitting it. DNS works (VLAN 5 is reachable) and
-  SSH to ernst works (VLAN 50 is reachable), which makes it look like the
-  services are down rather than unreachable;
+Measured 2026-09-19, and true of a UDM-Pro with no VPN policy. A tunnelled
+client gets an address on **VLAN 70**, and:
+
+- it **cannot reach VLAN 90 at all** — not Traefik, not any backend. DNS works
+  (VLAN 5 is reachable) and SSH to ernst works (VLAN 50 is reachable), which
+  makes it look like the services are down rather than unreachable;
 - the **public** path is simultaneously unavailable, because a full-tunnel
   client egresses from the house's own WAN address, and connecting to
   `78.94.91.74` from inside is a NAT hairpin the UDM-Pro does not do.
 
-So the VPN takes away the path that was working and does not supply the one it
-promised. The fix is one UDM-Pro policy — `VPN (70)` → `10.0.90.12:443/tcp` —
-and it is written up in
-[the app-API ingress guide](ernst-app-api-ingress.md#vpn-clients-land-on-vlan-70-and-cannot-reach-vlan-90-by-default).
+So the VPN took away the path that was working and did not supply the one it
+promised, and **neither failure named the cause**.
 
-**Until that rule exists, turn the VPN off to reach these two services.**
+**RESOLVED 2026-09-27 — the policy `Allow VPN to Traefik` is configured**, and
+it is exactly the narrow shape this guide asked for:
+
+| Field | Value |
+|---|---|
+| Source zone | `VPN`, any address, any port |
+| Destination zone | `Services`, **IP `10.0.90.12`**, port **HTTPS/443** |
+| Action | Allow, with auto return traffic |
+| Protocol / IP version | TCP, IPv4 |
+| Schedule | Always |
+
+Traefik on 443 and nothing else. **Do not widen it to VLAN 70 → VLAN 90
+wholesale** — that would hand every tunnelled device the backends directly and
+undo M5's backend-bypass hardening for exactly the clients most likely to be
+someone else's laptop.
+
+**Still owed: an end-to-end check from a tunnelled client.** The policy matches
+the recommendation, but nobody has yet confirmed a connection from VLAN 70
+through Traefik to a backend. The cheapest proof is opening
+`audiobookshelf.goclan.org` in the phone app with the VPN up; if that works, so
+does every other name on VLAN 90.
 
 ## Read-along books — Storyteller, and how to stage a pair
 
@@ -714,19 +735,23 @@ VPN and never the public internet, which is what makes dropping forward-auth a
 smaller decision here than it was for the five WAN names. Storyteller's own
 accounts are now the entire boundary on it.
 
-**2. The VPN needs a UDM-Pro policy, and that cannot live in this repo.**
-Tunnelled clients land on VLAN 70 with no route to VLAN 90 — so *both*
-Audiobookshelf and Storyteller are unreachable over the VPN until:
+**2. The VPN needs a UDM-Pro policy, and that cannot live in this repo — it is
+configured (2026-09-27).** `Allow VPN to Traefik`: VPN zone → Services zone,
+IP `10.0.90.12`, TCP/443 only. See
+[the VPN section above](#the-vpn-trap-and-the-policy-that-resolves-it) for the
+full shape and for why it must not be widened.
 
-> **Allow `VPN (70)` → `10.0.90.12:443/tcp`**
-
-Traefik on 443 and nothing else. Do not permit VLAN 70 → VLAN 90 wholesale.
-Full detail, including why the public path fails at the same time (NAT hairpin),
-is in [the app-API ingress guide](ernst-app-api-ingress.md#vpn-clients-land-on-vlan-70-and-cannot-reach-vlan-90-by-default).
-
-**Audiobookshelf needed no repo change for this** — it has carried the
-forward-auth bypass since M14 and is already on `wan`. Over the VPN it is
+**Audiobookshelf needed no repo change for either half** — it has carried the
+forward-auth bypass since M14 and is already on `wan`. Over the VPN it was
 blocked by the routing policy alone.
 
-So the order that actually works: add the UDM-Pro policy, then point both apps
-at `https://audiobookshelf.goclan.org` and `https://storyteller.goclan.org`.
+So both apps should now work over the tunnel: point them at
+`https://audiobookshelf.goclan.org` and `https://storyteller.goclan.org`.
+Downloads need the Storyteller app in the **foreground** — background
+downloading is not implemented, and an audiobook is gigabytes, so do the first
+one on wifi.
+
+If a connection fails, distinguish the two causes before changing anything: a
+**302 to `auth.goclan.org`** means forward-auth (a repo problem), while a
+**timeout or no route** means the UDM-Pro policy or the zone assignment (not a
+repo problem). They are unrelated and the symptoms do not overlap.

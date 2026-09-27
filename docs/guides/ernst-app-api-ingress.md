@@ -308,6 +308,36 @@ symptom — "the VPN is up and nothing resolves to anything useful" — sends
 people to DNS, to Traefik and to the container firewalls in that order, and it
 is none of them.
 
+#### CONFIGURED 2026-09-27 — `Allow VPN to Traefik`
+
+The policy exists on the UDM-Pro and matches the recommendation above exactly:
+
+| Field | Value |
+|---|---|
+| Name | `Allow VPN to Traefik` |
+| Source zone | `VPN` — any address, any port |
+| Destination zone | `Services` — **IP `10.0.90.12`**, port **HTTPS/443** |
+| Action | Allow, `Auto Allow Return Traffic` on |
+| Protocol | TCP, IPv4 only |
+| Connection state / schedule | All / Always |
+
+Recorded here because a router policy has no other home in this repo, and
+because the *absence* of a record is what made the original trap expensive: the
+next person to hit a VPN routing failure needs to know whether this rule is
+supposed to exist before they go looking for why it does not work.
+
+**IPv4 only, and that is consistent rather than an oversight.** There is no GUA
+anywhere on this path and the CrowdSec bouncer runs with
+`nftables.ipv6.enabled = false`; a v6 path would bypass the controls the v4 one
+carries. Same reasoning as the no-AAAA-records decision in the WAN ledger row.
+
+**Verification still owed:** an end-to-end connection from a tunnelled client
+through Traefik to a backend. The policy is configured and correctly shaped;
+nobody has yet watched a packet complete the trip. The cheapest proof is
+opening `audiobookshelf.goclan.org` in the phone app with the VPN up — if that
+works, every other VLAN 90 name does too, since they all terminate on the same
+Traefik address and port.
+
 ### `on_boot.d`
 
 **No new entries.** Nothing added here needs one — the DNAT and the DHCP
