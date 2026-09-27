@@ -948,6 +948,19 @@ in
           # flow, which is the entire reason this container has a second leg.
           "musiccast"
 
+          # LIVE RADIO.  The radio-browser.info community database, which is
+          # what puts WDR 2 Rheinland, WDR 5 and the rest of the ARD stations
+          # in reach without hand-maintaining stream URLs that the broadcaster
+          # re-points without warning.  Pulls in `radios`, and nixpkgs has
+          # exactly the 0.3.2 the manifest pins — no skew to check, unlike
+          # py-opensonic.
+          #
+          # NO ACCOUNT AND NO CREDENTIAL, which is why this is the radio answer
+          # here and `tunein` is not: TuneIn wants a login, and a second set of
+          # household credentials to buy the same public streams is a poor
+          # trade.
+          "radiobrowser"
+
           # ── NOT A SONOS.  THIS IS musiccast's UNDECLARED DEPENDENCY ────────
           #
           # There is no Sonos in this house and this does NOT enable the Sonos
