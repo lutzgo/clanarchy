@@ -14173,6 +14173,44 @@ application actually does. Three of the six defects above lived entirely on the
 undeclarable side, which is why this section records the settings-database
 procedure rather than only the options.
 
+#### After the close-out, same day
+
+Three providers were added once the milestone was working, each a one-word
+dependency change plus a UI step:
+
+- **`radiobrowser`** — live radio, for WDR 2 Rheinland / WDR 5 / 1LIVE. Chosen
+  over `tunein`, which wants an account for streams this reaches without one,
+  and over hand-maintained stream URLs, which rot when WDR re-points its Icecast
+  endpoints. The stations were confirmed present in the database *before* the
+  provider was added.
+- **`listenbrainz_scrobble`** — chosen over `lastfm_scrobble`, which is packaged
+  too. Plays already reach Navidrome via `subsonic_scrobble`; this is the one
+  that leaves the house, so the recipient is MetaBrainz — the same project behind
+  the `musicbrainz` metadata provider already in use — rather than a commercial
+  account.
+- **`hass`** — the plugin, which is the REVERSE direction from M24's
+  integration: it makes Home Assistant's media players visible *inside* Music
+  Assistant. Configured against `https://ha.goclan.org`, so it arrives through
+  Traefik and needed **no firewall change** — a prediction in that PR that the
+  deploy falsified, recorded here rather than left wrong.
+
+**What was declined is in the container file**, with the reason for each, because
+the next person to ask "what else is useful?" deserves the answers rather than
+the search. The one worth repeating: **`airplay_receiver` is not free.** The
+nixpkgs module reacts to that provider name by enabling avahi *with publishing*
+inside the container — a new mDNS publisher on both legs, in a container whose
+design keeps publishing off and whose host denies avahi on `iot1`.
+
+**And one thing the reading corrected:** `providers` installs dependency
+*closures*, so a provider whose manifest lists no requirements already imports
+and needs no entry at all. `somafm`, `radioparadise`, `podcastfeed`,
+`itunes_podcasts`, `internet_archive` and `orf_radiothek` are each a UI step and
+no deploy.
+
+Separately, **`hacs-deps-check` caught its first real defect** since M24 wrote it:
+`droans/mass_queue` needed `aiocache`, the queue silently did nothing, and
+`--skip-pip` meant nothing was logged. [#246](https://github.com/lutzgo/clanarchy/pull/246).
+
 #### M30d — the second leg was decorative, and one setting is why
 
 **Found 2026-09-27, after `musiccast` finally loaded.** The provider came up —

@@ -333,6 +333,53 @@
 #   32768-65535 (upstream's own `openFirewall`), which is not a thing to carry
 #   speculatively.
 #
+#   ── AND THE REST OF A CATALOGUE SWEEP, 2026-09-27 ──────────────────────
+#
+#   lgo asked for "useful providers and plugins", which meant reading the whole
+#   stable catalogue rather than picking favourites.  What was ADDED is in
+#   `providers` below with its own reason each.  What was DECLINED is here,
+#   because the next person to ask the same question deserves the answers
+#   rather than the search:
+#
+#     genius_lyrics      `lyricsgenius` IS NOT IN nixpkgs.  It would need a
+#                        derivation under ./pkgs plus an API token — real work
+#                        for a SUPPLEMENTARY lyrics source, when `lrclib` is
+#                        already enabled, needs neither, and carries synced
+#                        lyrics.  Revisit only if a gap actually bites.
+#
+#     airplay_receiver   NOT FREE, and the cost is invisible from the option.
+#                        The nixpkgs module reacts to this name by enabling
+#                        AVAHI WITH PUBLISHING inside this container
+#                        (music-assistant.nix:99-106) — a new mDNS publisher on
+#                        BOTH legs, in a container that keeps publishing off and
+#                        whose host denies avahi on iot1 entirely.  It would
+#                        also need inbound rules for shairport-sync or it is
+#                        decorative, which is the failure shape this milestone
+#                        already shipped three times.  ALPHA.  If it is ever
+#                        wanted it gets its own PR and its own argument.
+#
+#     lastfm_scrobble    Packaged (`pylast 7.0.2`) and declined on merit: a
+#                        SECOND scrobble destination behind a commercial
+#                        account.  `listenbrainz_scrobble` does the same job for
+#                        MetaBrainz, whose `musicbrainz` provider this container
+#                        already uses, with openly licensed data.
+#
+#     spotify_connect    ALPHA, and needs Premium.  No Spotify in this fleet.
+#     plex_connect       ALPHA.  Declined by lgo by name.
+#     vban_receiver      ALPHA.  Declined by lgo by name.
+#     ariacast_receiver  ALPHA, and nothing here speaks AriaCast.
+#
+#     tunein             Wants an account for streams `radiobrowser` already
+#                        reaches without one.
+#
+#   PROVIDERS WITH NO REQUIREMENTS NEED NO ENTRY IN `providers` AT ALL, which
+#   is worth knowing before anyone edits this list to get one: the option
+#   installs dependency CLOSURES, so a provider whose manifest lists no
+#   requirements — `somafm`, `radioparadise`, `podcastfeed`, `itunes_podcasts`,
+#   `internet_archive`, `orf_radiothek` among them — already imports and can be
+#   enabled in the settings database alone.  None is enabled today; any of them
+#   is a UI step and no deploy.
+#
 #   NO SECOND DATASET.  A SQLite database and a tree of small JSON blobs is
 #   `zdata/state`'s write profile exactly — 128K recordsize, the default —
 #   which is the call containers/home-assistant.nix, containers/miniflux.nix
