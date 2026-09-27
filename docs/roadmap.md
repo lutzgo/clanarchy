@@ -14127,6 +14127,69 @@ way.
 appeared: it has to be added in the UI like any other provider. Its dependency
 *is* installed, so adding it is one click.
 
+#### M30c — musiccast could not import, and the manifest is why
+
+**Found 2026-09-27 by adding the provider.** `musiccast` failed to load with a
+message that names the Nix option and the wrong package:
+
+```
+RuntimeError: Configure musiccast in `services.music-assistant.providers`
+to install the required dependencies.
+```
+
+`musiccast` **was** in that list, and `aiomusiccast==0.15.0` — the one
+requirement its manifest declares — was installed and importable. The real chain
+is longer, and none of it is visible to the manifest:
+
+```
+musiccast/provider.py:25  from music_assistant.providers.sonos.helpers
+                                 import get_primary_ip_address
+  -> imports the sonos PACKAGE, so sonos/__init__.py runs
+sonos/__init__.py:17      from .provider import SonosPlayerProvider
+sonos/provider.py:14      from aiosonos.api.models import SonosCapability
+  -> ModuleNotFoundError: aiosonos
+```
+
+**One helper function — resolving a zeroconf record to an IPv4 address — drags
+in a second player stack's entire dependency set.** A cross-provider import is
+invisible to `manifest.json`, therefore invisible to the nixpkgs `providers`
+option, therefore invisible to the build. The fix is one word: `"sonos"` in the
+list.
+
+**It does NOT enable the Sonos provider**, and the distinction is the one M30
+already relies on: `providers` installs dependency closures, while enabling is
+state in Music Assistant's own database. `sonos` sits in upstream's
+`DEFAULT_PROVIDERS` behind `require_mdns = True`, so nothing turns it on until a
+Sonos is actually seen on the segment — and there is none.
+
+**THE ERROR MESSAGE POINTS THE WRONG WAY, FOR THE SECOND TIME IN TWO DAYS.**
+nixpkgs' `dont-install-deps.patch` turns *any* ImportError inside a provider into
+that RuntimeError, naming the provider rather than the missing module. M30b
+recorded it misdirecting toward installing four unwanted dependency closures;
+here it misdirects by naming a package that is already present and correct. The
+traceback above the message is the only thing that identifies the real cause.
+Read it, not the message.
+
+**MY PRE-DEPLOY CHECK WAS THE WRONG CHECK, AND THAT IS THE REUSABLE PART.** M30
+verified the *declared* requirement — `import aiomusiccast` succeeds — which is
+strictly weaker than "the provider imports". Importing the provider MODULE is the
+check that would have caught this, and it needs the wrapper's own site
+directories rather than `pythonPath` alone, because Music Assistant's core deps
+come from `bin/.mass-wrapped` (98 `site.addsitedir` entries) and not from the
+`PYTHONPATH` the unit sets:
+
+```
+  OK   opensubsonic
+  OK   subsonic_scrobble
+  FAIL musiccast -> ModuleNotFoundError: No module named 'aiosonos'   <- before
+  OK   musiccast                                                      <- after
+```
+
+Run that for any provider added here. `opensubsonic` and `subsonic_scrobble` were
+checked the same way and are clean — the latter imports across providers too, but
+only into `opensubsonic`, which its manifest declares as `depends_on` and which
+is installed.
+
 #### What the deploy proved that the pre-deploy checks could not
 
 **The `py-opensonic` 8.1.3 → 9.0.1 skew is fine in practice, not just at import
