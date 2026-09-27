@@ -112,6 +112,45 @@ rec {
     # support is a stated requirement for this library.
     (h "audiobookshelf")
 
+    # Storyteller.  The SAME argument as Audiobookshelf directly above, for the
+    # same household and in a stricter form — and it shipped in protectedHosts
+    # until 2026-09-27 because nobody had tried the app yet.
+    #
+    # MEASURED, not inferred.  With forward-auth in front, the endpoints the
+    # Storyteller Reader app actually calls answer like this:
+    #
+    #   GET  /api/v2/books  -> 302  https://auth.goclan.org/?rd=…
+    #   POST /api/v2/token  -> 303  https://auth.goclan.org/?rd=…
+    #
+    # /api/v2/token is the LOGIN call.  The app posts credentials there and
+    # carries a token afterwards; it has no browser, no cookie jar and no way
+    # to express a redirect to a portal.  So the redirect does not merely
+    # inconvenience the app, it intercepts the one request that would have
+    # obtained the credential — the failure is total and looks like a broken
+    # server rather than a policy.
+    #
+    # WHY THIS IS SAFER THAN EVERY OTHER NAME IN THIS LIST: it is NOT in
+    # `wanExposed` and is not being added.  The other seven answer the public
+    # internet; this one answers the LAN and the VPN only, so dropping
+    # forward-auth widens the audience from "LAN browsers that got past
+    # Authelia" to "LAN and tunnelled devices", not to everybody.  lgo asked
+    # for VPN access specifically (2026-09-27) and this is the narrow form of
+    # that request.
+    #
+    # WHAT CARRIES AUTHENTICATION INSTEAD: Storyteller's own accounts, which
+    # are the entire boundary on this name from here on — no second factor and
+    # no per-user regulation, exactly as the audiobookshelf ledger row records
+    # for its name.  Its settings also expose `disablePasswordLogin` and
+    # `authProviders`; neither is configured, so password login is the boundary.
+    #
+    # THE VPN STILL NEEDS A UDM-PRO POLICY AND THIS CHANGE DOES NOT SUPPLY IT.
+    # Tunnelled clients land on VLAN 70 and have no route to VLAN 90 at all —
+    # measured 2026-09-19, see docs/guides/ernst-app-api-ingress.md. Removing
+    # forward-auth is necessary and not sufficient; without
+    # `Allow VPN (70) -> 10.0.90.12:443/tcp` the app still cannot connect, and
+    # it will fail in a way that looks identical to this bug.
+    (h "storyteller")
+
     # Komga.  Komelia (Android), Mihon's Komga source extension, and any OPDS
     # v1/v2 reader.  All three authenticate with HTTP Basic or an API key
     # against /api/** and /opds/**; none has a browser.  Komga's per-user
@@ -343,7 +382,6 @@ rec {
     (h "lidarr")
     (h "kapowarr")
     (h "questarr")
-    (h "storyteller")
     (h "slskd")
     (h "bindery")
     (h "romm")
