@@ -515,6 +515,11 @@ in
       # and deletes it.  Two principals, so the directory is shared
       # explicitly rather than by loosening something and hoping.
       #
+      # THIS LINE ALONE IS NOT ENOUGH, AND IT SHIPPED THAT WAY IN #250.
+      # The container REVERTS it on every start — see
+      # cwa-ingest-perms.service below, which is what actually makes it
+      # stick.  Do not delete that unit believing this line covers it.
+      #
       # WHAT THIS DOES NOT DO, because it is the thing the header's
       # gid paragraph rules out: it does not put CWA in `media`.  CWA keeps
       # uid/gid 3033 and OWNS this directory, so it retains rwx and can still
@@ -580,6 +585,92 @@ in
       "--dns=10.0.5.3"
       "--dns-search=skynet.lan"
     ];
+  };
+
+  ##############################################################################
+  # THE INGEST DIRECTORY'S PERMISSIONS, RE-APPLIED AFTER THE CONTAINER STARTS.
+  #
+  # ── WHY THIS UNIT EXISTS: cwa-dirs IS NOT ENOUGH, MEASURED ─────────────────
+  #
+  #   PR #250 gave the ingest directory `2770 cwa:media` in cwa-dirs so Bindery
+  #   (uid 3028, gid media) could drop ebooks into it.  That shipped, deployed
+  #   cleanly, and DID NOT WORK.  Measured on ernst immediately after:
+  #
+  #     $ stat -c '%A %U:%G' /srv/media/ingest/cwa   # after cwa-dirs
+  #       drwxrws--- cwa:media                       # correct
+  #     $ systemctl restart podman-cwa.service
+  #     $ stat -c '%A %U:%G' /srv/media/ingest/cwa   # after the container
+  #       drwxr-xr-x cwa:cwa                         # reverted
+  #
+  #   The image is a LinuxServer.io base, and its s6 init chowns and chmods the
+  #   paths it has been given to PUID:PGID on EVERY start.  So cwa-dirs sets
+  #   the directory correctly during activation and the container undoes it
+  #   moments later, every boot and every restart.  Bindery then gets EPERM and
+  #   its CWA push fails silently — the integration logs a copy failure, not a
+  #   permission error, so this would have been slow to attribute.
+  #
+  #   THE GENERAL LESSON, worth more than this directory: a tmpfiles or
+  #   install-time mode on a path that is bind-mounted into an opaque image is
+  #   an OPENING BID, not a setting.  The image gets the last word.  Anywhere
+  #   else in this file that assumes otherwise is wrong for the same reason.
+  #
+  # ── WHY IT WAITS FOR HEALTHY RATHER THAN RUNNING IMMEDIATELY ───────────────
+  #
+  #   podman-cwa.service is considered started once the container is created;
+  #   the s6 init that does the chown runs asynchronously INSIDE it afterwards.
+  #   An ExecStartPost firing straight away would race that init and lose about
+  #   as often as it won — the worst kind of fix, because it would appear to
+  #   work whenever anyone checked by hand.  The container declares a
+  #   healthcheck (podman reports health_status=healthy), so this waits for it
+  #   and then re-applies.  Bounded at ~120s so a genuinely broken container
+  #   fails this unit rather than hanging the boot.
+  #
+  #   Separate unit rather than ExecStartPost on podman-cwa, for two reasons:
+  #   a two-minute ExecStartPost would keep podman-cwa in `activating` for the
+  #   same window and hold up anything ordered after it, and a failure here
+  #   should be legible as "the ingest permissions did not stick" rather than
+  #   as "CWA failed to start".
+  ##############################################################################
+  systemd.services.cwa-ingest-perms = {
+    description = "Re-apply ${ingestDir} ownership after CWA's image resets it";
+
+    # Runs whenever the container starts, including on every restart — not
+    # just at boot.  `wantedBy` on the container unit rather than on
+    # multi-user.target is what ties the two together.
+    wantedBy = [ "podman-cwa.service" ];
+    after    = [ "podman-cwa.service" ];
+
+    serviceConfig = {
+      Type            = "oneshot";
+      RemainAfterExit = true;
+    };
+
+    script = ''
+      set -eu
+
+      # Wait for the image's s6 init to finish its chown pass.  Health is the
+      # only signal podman exposes that means "the init got that far".
+      for _ in $(${pkgs.coreutils}/bin/seq 1 60); do
+        status=$(${pkgs.podman}/bin/podman inspect \
+          -f '{{.State.Health.Status}}' cwa 2>/dev/null || echo starting)
+        [ "$status" = "healthy" ] && break
+        ${pkgs.coreutils}/bin/sleep 2
+      done
+
+      if [ "$status" != "healthy" ]; then
+        echo "cwa did not become healthy in ~120s; refusing to guess" >&2
+        exit 1
+      fi
+
+      # Same line as cwa-dirs, and deliberately a duplicate rather than a
+      # refactor: cwa-dirs must still create the directory correctly BEFORE
+      # the container first mounts it, and this must correct it AFTER.  Both
+      # are needed, and collapsing them into one helper would hide that.
+      ${pkgs.coreutils}/bin/install -d \
+        -o ${toString cwaUid} -g ${toString mediaGid} -m 2770 ${ingestDir}
+
+      echo "re-applied 2770 ${toString cwaUid}:${toString mediaGid} on ${ingestDir}"
+    '';
   };
 
   systemd.services.podman-cwa = {
