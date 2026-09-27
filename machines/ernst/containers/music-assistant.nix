@@ -57,11 +57,17 @@
 #   ratings stay in the one database the mobile clients read.  It declares
 #   `depends_on: opensubsonic` and takes no extra dependency.
 #
-#   THE PROVIDER IS CONFIGURED IN THE UI, NOT HERE.  Music Assistant keeps
+#   THE PROVIDER IS CONFIGURED OUTSIDE THIS FILE.  Music Assistant keeps
 #   provider configuration in its own database under ${stateRoot}; there is no
 #   declarative option for a URL and a password, and there will not be one.
 #   The Navidrome account it authenticates with is a manual step — see
 #   docs/roadmap.md M30.
+#
+#   "OUTSIDE THIS FILE" IS NOT THE SAME AS "IN THE BROWSER", and the difference
+#   bit twice: `musiccast` and `subsonic_scrobble` declare no config entries, so
+#   their setup dialogs have no fields and the SAVE button can never enable.
+#   They have to be written into the settings database directly.  See the note
+#   at `providers` below for the exact shape and the procedure.
 #
 # ── TWO LEGS, AND THE SECOND ONE IS THE WHOLE POINT ─────────────────────────
 #
@@ -863,6 +869,40 @@ in
         # settings live in the database under ${configDir}.  So a name here is
         # necessary and not sufficient — and a name MISSING here presents as a
         # provider that appears in the list and then fails to set up.
+        #
+        # ── TWO OF THE THREE CANNOT BE ADDED IN THE BROWSER AT ALL ─────────
+        #
+        # The header says provider configuration is a UI step.  For
+        # `opensubsonic` that is true — it has a form, because it needs a URL
+        # and a credential.  For the other two it is FALSE, and the failure is
+        # a dead button rather than an error:
+        #
+        #     musiccast/__init__.py         get_config_entries -> ()
+        #     subsonic_scrobble/__init__.py get_config_entries -> ()
+        #
+        # A provider with no config entries renders a setup dialog with NO
+        # FIELDS, and Music Assistant's frontend keeps SAVE disabled because
+        # nothing has changed — so there is no way to press it.  Measured on
+        # both, 2026-09-27.  Neither is broken; there is simply nothing for the
+        # form to collect, and the UI has no case for that.
+        #
+        # ADD THEM IN THE SETTINGS DATABASE INSTEAD, with the service stopped:
+        #
+        #     systemctl -M mass stop music-assistant
+        #     cp -a ${configDir}/settings.json ${configDir}/settings.json.bak
+        #     jq '.providers.<domain> = {values:{}, type:"<type>",
+        #           domain:"<domain>", instance_id:"<domain>", enabled:true,
+        #           name:"<Name>", default_name:null, last_error:null}' … 
+        #     install -o ${toString massUid} -g ${toString massGid} -m 0600 …
+        #     systemctl -M mass start music-assistant
+        #
+        # `instance_id` EQUALS THE DOMAIN for both, because each manifest sets
+        # `multi_instance: false`; a multi-instance provider gets
+        # `<domain>--<shortuuid>` instead, which is why the OpenSubsonic entry
+        # in that file looks different.  The shape is upstream's own — it is
+        # what `create_builtin_provider_config` writes (controllers/config.py)
+        # — so this is filling in a record the application would have written,
+        # not inventing one.
         #
         # ── AND THE APPLICATION ENABLES A DEFAULT SET BEHIND THIS OPTION ────
         #
