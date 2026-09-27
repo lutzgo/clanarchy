@@ -686,16 +686,22 @@
   #                       (`_mass._tcp`), so nothing is invented here.
   #
   #                       ITS FIREWALL ADMITS TWO ADDRESSES ON eth0 AND ONE
-  #                       ELSEWHERE, which is an unusual shape for this table.
-  #                       Traefik (.12) for the browser UI; HOME ASSISTANT
-  #                       (.27) for the `music_assistant` integration's
-  #                       WebSocket, which deliberately does NOT go through the
-  #                       proxy — forward-auth is on that path and the
-  #                       integration has no cookie jar, so a direct L2 hop is
-  #                       what keeps `music.goclan.org` out of `appApiHosts`.
-  #                       The third is the Yamaha receiver on VLAN 20, reaching
-  #                       the STREAM server on 8097, and it is a SPEAKER rather
-  #                       than a service — see the VLAN 20 table below.
+  #                       ELSEWHERE.  Traefik (.12) for every client including
+  #                       the hub, and the service index (.13) for a status
+  #                       probe.  The third is the Yamaha receiver on VLAN 20,
+  #                       reaching the STREAM server on 8097, and it is a
+  #                       SPEAKER rather than a service — see the VLAN 20 table
+  #                       below.
+  #
+  #                       IT SHIPPED WITH A THIRD eth0 SOURCE AND LOST IT.  An
+  #                       accept for HOME ASSISTANT (.27) was meant to carry the
+  #                       `music_assistant` integration's WebSocket on a direct
+  #                       L2 hop, skipping the proxy — which was the stated
+  #                       reason this hostname did not need a forward-auth
+  #                       exemption.  The integration cannot use it: its config
+  #                       flow drives the BROWSER and its own server-side calls
+  #                       from one url, so the hub arrives on .12 like everything
+  #                       else.  Removed rather than left as a rule nothing uses.
   #
   #                       IT IS THE SECOND CONTAINER WITH A LEG ON VLAN 20, and
   #                       therefore the reason that table stops having one row.
@@ -706,12 +712,16 @@
   #                       is the M26 shape (a new service reaching INTO an
   #                       existing container) rather than the M27 shape.
   #
-  #                       LAN-ONLY, with forward-auth: `protectedHosts`, not in
-  #                       `wanExposed`, no public A record, NO LEDGER ROW.  Every
-  #                       client of the hostname is a browser, so neither
-  #                       Navidrome's Subsonic exemption nor Home Assistant's
-  #                       companion-app exemption applies — and Navidrome is
-  #                       already the thing a phone off the property talks to.
+  #                       LAN-ONLY AND EXEMPT FROM forward-auth: `appApiHosts`,
+  #                       not in `wanExposed`, no public A record, NO LEDGER ROW.
+  #                       It shipped in `protectedHosts` on the argument that
+  #                       every client is a browser, and that premise was
+  #                       falsified by the hub's config flow — Home Assistant's
+  #                       exemption turns out to apply here after all.  IT IS THE
+  #                       ONLY NAME IN `appApiHosts` NOT ALSO IN `wanExposed`,
+  #                       which is what keeps the exemption proportionate: the
+  #                       application's own accounts are defending the house
+  #                       against the house, not against the internet.
   #                       Like M22, M23, M24 and M27 it adds NO UDM-PRO RULE for
   #                       VLAN 50 → 90: every human arrives through .12.
   #

@@ -142,30 +142,43 @@
 #   changes made at the receiver are invisible.  Which reads as a Music
 #   Assistant bug.
 #
-# ── forward-auth, UNLIKE Home Assistant AND UNLIKE Navidrome ────────────────
+# ── NO forward-auth, AND IT SHIPPED WITH IT ────────────────────────────────
 #
-#   `music.goclan.org` is in `protectedHosts` (containers/ingress-policy.nix),
-#   and that is worth saying explicitly because the two services it sits
-#   between are both exemptions.
+#   `music.goclan.org` is in `appApiHosts` (containers/ingress-policy.nix).  It
+#   was in `protectedHosts` for one day, and the move is the direction that
+#   file's header warns about — so the reason is recorded here too rather than
+#   only there.
 #
-#   The test that file states is whether every client can render a login page
-#   and follow a 302.  Here every client can: the only one is a browser.
-#   Navidrome's exemption is the Subsonic protocol, which carries its token in
-#   a query parameter; Home Assistant's is the companion app holding a bearer
-#   token over a WebSocket with no browser anywhere in it.  Neither argument
-#   transfers.
+#   THE ARGUMENT FOR THE STRICT DOOR RESTED ON A FALSE PREMISE, and it was this
+#   file's premise: that the only client of the hostname is a browser, because
+#   Home Assistant reached the container DIRECTLY on 10.0.90.30:8095 and never
+#   came through the proxy at all.  The integration does not work that way.
+#   From the deployed code, `config_flow.py`:
 #
-#   THIS UI IS ALSO WEBSOCKET-DRIVEN, AND THAT IS NOT THE SAME PROBLEM.  Home
-#   Assistant's exemption turns on a NATIVE app opening the upgrade with no
-#   cookie jar; here the upgrade is issued by the same browser that just
-#   authenticated to Authelia, so it carries the session cookie and
-#   forward-auth authorises it like any other request.
+#       login_url = f"{self.url}/login?{params}"
+#       return self.async_external_step(step_id="auth", url=login_url)
 #
-#   LAN-ONLY.  The router names `websecure` and nothing else: it is NOT in
-#   `wanExposed`, there is no public A record, and there is no ledger row —
-#   Navidrome is already on the WAN and is what a phone off the property should
-#   be talking to.  Music Assistant drives speakers that are, by construction,
-#   in the house.
+#   `self.url` is the ONE url typed into the config flow, and both halves use
+#   it: the browser is redirected to `{url}/login`, and the hub's own
+#   server-side calls — `GET {url}/info`, `POST {url}/auth/login` for the
+#   long-lived token, and the persistent `{url}/ws` — go to the same address.
+#   There is no separate field for an internal one.
+#
+#   So this hostname has a non-browser client, and `/ws` is an HTTP UPGRADE
+#   with no cookie jar: the exact thing that exempts `ha` itself.
+#
+#   MEASURED, NOT REASONED BACKWARDS.  Pointed at the direct address, the
+#   BROWSER half broke instead — it was sent to
+#   `http://10.0.90.30:8095/login?…`, which no human's machine may reach, and
+#   the external step hung on a blank page.  With the middleware attached there
+#   is no single URL that satisfies both halves.
+#
+#   LAN-ONLY, and that is what keeps the exemption proportionate: this is the
+#   ONLY name in `appApiHosts` that is NOT also in `wanExposed`.  Every other
+#   entry in that list is a deliberate unauthenticated surface facing the
+#   internet; this one faces the living room, has no public A record and takes
+#   no ledger row.  The compensations below are defending the house against the
+#   house.
 #
 # ── IT HAS ITS OWN ACCOUNTS, AND THAT WAS CHECKED RATHER THAN ASSUMED ───────
 #
@@ -309,10 +322,21 @@ let
   # reach 8095 besides the hub below.
   traefikAddr = "10.0.90.12";
 
-  # Home Assistant (M24).  Its `music_assistant` integration holds a WebSocket
-  # open against 8095 for the life of the session — the same shape the
-  # companion app holds against the hub itself.
-  hassAddr = "10.0.90.27";
+  # NO BINDING FOR HOME ASSISTANT, AND ITS ABSENCE IS THE POINT.  This file
+  # shipped with an accept for 10.0.90.27 on 8095, so that the hub's
+  # `music_assistant` integration could hold its WebSocket open on a direct L2
+  # hop and skip the proxy — which was the stated reason this hostname did not
+  # need a forward-auth exemption.
+  #
+  # THE INTEGRATION CANNOT USE IT.  Its config flow drives the browser and its
+  # own server-side calls from ONE url (see the header), so the hub arrives
+  # through Traefik on .12 like every other client, and an accept for .27 would
+  # be a rule nothing uses carrying a comment that asserts the opposite of what
+  # this file now says.  M26's first deploy-day defect removed a firewall rule
+  # rather than adding one; this is the same move.
+  #
+  # Re-add it only alongside a way for the hub to be pointed at the direct
+  # address, which this release of the integration does not have.
 
   # The service index (M26), which runs INSIDE containers.arr and therefore
   # shares Navidrome's address.  It gets 8095 for a `siteMonitor` — an up/down
@@ -647,20 +671,16 @@ in
       #    traffic, since those frames are one L2 hop and the UDM-Pro never
       #    sees them.
       #
-      #   8095/tcp  from Traefik (.12), from Home Assistant (.27) and from the
-      #             service index (.13).
+      #   8095/tcp  from Traefik (.12) and from the service index (.13).
       #
-      #             THE SECOND SOURCE IS THE HUB, not a human.  The
-      #             `music_assistant` integration opens a WebSocket to
-      #             /ws and holds it, which is what puts Music Assistant's
-      #             players and queues into Home Assistant as entities and what
-      #             makes them usable from Assist.  It does NOT go through
-      #             Traefik: forward-auth is on that path, and the integration
-      #             has no cookie jar — which is the same reason the hub itself
-      #             is an `appApiHosts` name.  A direct L2 hop avoids the
-      #             question entirely.
+      #             EVERY HUMAN AND THE HUB ALIKE ARRIVE ON .12.  Home Assistant
+      #             had a rule of its own here and lost it — see the note where
+      #             `hassAddr` used to be: its config flow drives the browser and
+      #             its own server-side calls from one url, so it cannot be
+      #             pointed at this address, and the accept was a rule nothing
+      #             used.
       #
-      #             THE THIRD IS THE SERVICE INDEX, for a `siteMonitor` and
+      #             THE SECOND IS THE SERVICE INDEX, for a `siteMonitor` and
       #             nothing more.  It reaches `/`, which is on the application's
       #             own auth bypass list, so this line buys an up/down dot and
       #             grants no control — see `dashboardAddr` in the let block.
@@ -713,8 +733,7 @@ in
       # only nftables container on this machine.
       networking.firewall.allowedTCPPorts = [ ];
       networking.firewall.extraCommands = ''
-        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32   --dport ${toString massPort} -j nixos-fw-accept
-        iptables -A nixos-fw -p tcp -s ${hassAddr}/32      --dport ${toString massPort} -j nixos-fw-accept
+        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32 --dport ${toString massPort} -j nixos-fw-accept
         iptables -A nixos-fw -p tcp -s ${dashboardAddr}/32 --dport ${toString massPort} -j nixos-fw-accept
         iptables -A nixos-fw -p tcp -s ${musiccastAddr}/32 --dport ${toString streamPort} -j nixos-fw-accept
         iptables -A nixos-fw -i ${iotVeth} -p udp --dport 5353 -j nixos-fw-accept
@@ -734,6 +753,32 @@ in
         # settings live in the database under ${configDir}.  So a name here is
         # necessary and not sufficient — and a name MISSING here presents as a
         # provider that appears in the list and then fails to set up.
+        #
+        # ── AND THE APPLICATION ENABLES A DEFAULT SET BEHIND THIS OPTION ────
+        #
+        # Measured on the first start, 2026-09-27.  Music Assistant writes a
+        # `default_providers_setup` into its own settings and turns on a handful
+        # of player providers whether or not anything here installed their
+        # dependencies.  On this deploy that was `sendspin`, `airplay`,
+        # `chromecast` and `dlna`, and all four failed on every start:
+        #
+        #     ERROR [music_assistant.controllers.config] Failed to load provider
+        #     module for chromecast: Configure chromecast in
+        #     `services.music-assistant.providers` to install the required
+        #     dependencies.
+        #
+        # THE ERROR NAMES THIS OPTION AND THE FIX IS NOT TO EDIT IT.  That
+        # message is nixpkgs' own, from `dont-install-deps.patch`, which replaces
+        # upstream's pip-install-at-runtime with a RuntimeError; taken at face
+        # value it invites adding four dependency closures for devices this
+        # household does not own.  The correct fix is to DISABLE them in the UI,
+        # because the defect is that they are enabled, not that they are missing.
+        #
+        # IT IS NOISE RATHER THAN AN OUTAGE, and it does not reach the alerting
+        # path: these are application log lines, not a failed systemd unit, so
+        # `ContainerSystemdUnitFailed` stays quiet and correctly so.  It is
+        # recorded because the error message is actively misleading about which
+        # way to fix it.
         providers = [
           # THE LIBRARY.  Navidrome speaks OpenSubsonic, and this is the
           # provider that reads it — see the header for why this rather than

@@ -2834,35 +2834,39 @@ in
 
             # ── Music Assistant (M30) — the player controller ──────────────
             #
-            # `authelia`, and this is the interesting case on this proxy rather
-            # than a routine one: it sits between two names that are BOTH
-            # exemptions and is not one itself.  `navidrome` is exempt for the
-            # Subsonic protocol's query-parameter token; `homeassistant` is
-            # exempt for a native app holding a bearer token over a WebSocket.
-            # This hostname's only client is a browser, so the strict door is
-            # free — containers/ingress-policy.nix carries the full argument.
+            # NO `authelia` MIDDLEWARE, AND IT SHIPPED WITH ONE.  The original
+            # router carried forward-auth on the argument that this hostname's
+            # only client is a browser — and that the hub's WebSocket did not
+            # count, because it reached the container directly on 10.0.90.30:8095
+            # and never came through here.  The second half is wrong, which makes
+            # the first half wrong too.
             #
-            # THE WEBSOCKET HERE IS NOT THE HUB'S WEBSOCKET.  This UI is a
-            # WebSocket-driven SPA, and Traefik proxies the upgrade with no
-            # configuration; forward-auth authorises it because the browser that
-            # opens it carries the Authelia session cookie.  The hub's own
-            # integration does NOT come through this router at all — it holds its
-            # WebSocket against 10.0.90.30:8095 on the L2 path, which is what
-            # keeps this name out of `appApiHosts`.
+            # `homeassistant/components/music_assistant/config_flow.py` builds
+            # `login_url = f"{self.url}/login?…"` and hands it to
+            # `async_external_step`, so the ONE url typed into the config flow is
+            # used for BOTH the browser redirect AND the hub's own server-side
+            # `GET /info`, `POST /auth/login` and persistent `/ws`.  There is no
+            # separate internal-address field, and `/ws` is an HTTP UPGRADE with
+            # no cookie jar — the same thing that exempts `homeassistant` itself.
             #
-            # LAN-ONLY: `websecure` and nothing else, absent from `wanExposed`,
-            # no public record, no ledger row.  Speakers are in the house.
+            # MEASURED: pointed at the direct address the BROWSER half broke
+            # instead, hanging on a blank page, because no human's machine may
+            # reach 10.0.90.30. Neither URL satisfies both halves with the
+            # middleware attached. containers/ingress-policy.nix carries the full
+            # argument and the compensations — which are real here and were read
+            # out of the application rather than assumed: its own accounts with
+            # roles, `require_authentication()` on the handlers, a `/ws` that
+            # tracks an authenticated user and refuses admin commands to a
+            # non-ADMIN role, and an escalating per-username login backoff.
             #
-            # NO `wanLoginPaths` ENTRY, and its absence is correct: that
-            # mechanism substitutes a credential-endpoint rate limit for the
-            # per-identity regulation an `appApiHosts` name never gets.  This
-            # name goes through Authelia, which already has it — and it is not on
-            # the WAN in the first place.  Same reasoning as `miniflux` and
-            # `homepage`.
+            # STILL LAN-ONLY, and that is what keeps this proportionate: it is the
+            # ONLY name in `appApiHosts` that is not also in `wanExposed`. No
+            # public record, no ledger row, no `wanLoginPaths` entry — that
+            # mechanism protects a credential path facing the internet, and this
+            # one faces the living room.
             mass = {
               rule        = "Host(`music.${baseDomain}`)";
               entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
               service     = "mass";
             };
 
