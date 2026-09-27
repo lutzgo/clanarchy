@@ -60,6 +60,18 @@
 #     - NATIVE PREBUILDS for the alignment library, shipped per-architecture;
 #     - WHISPER.CPP BINARIES, vendored per-variant, plus a bundled tiny.en
 #       model;
+#
+#       CORRECTED 2026-09-27, by running an alignment: at web-v2.9.3 the
+#       binaries are NOT vendored.  The app logs "No variant configured or
+#       installed. Falling back to platform detection." and then FETCHES
+#       whisper.cpp from gitlab.com at first use, into $HOME.  That has two
+#       consequences this file has to handle and one to know about:
+#       transcription needs a writable HOME (see `environment` below, where it
+#       is set to /data and where the EACCES this caused is recorded); it
+#       needs OUTBOUND HTTPS, which the netns firewall already permits since
+#       only ingress is restricted; and the "-blas / -cuda / -rocm variants"
+#       paragraph below is about which variant the image would SELECT, not
+#       about binaries it carries.
 #     - a READIUM BINARY lifted out of a DIFFERENT container image
 #       (ghcr.io/readium/readium);
 #     - and a SQLite UUID extension compiled in-line with gcc.
@@ -508,6 +520,42 @@ in
       TZ = "Europe/Berlin";
       # See the secrets block: a FILE, not the key itself.
       STORYTELLER_SECRET_KEY_FILE = "/run/secrets/secret-key";
+
+      # ── HOME=/data, AND WITHOUT IT TRANSCRIPTION CANNOT RUN AT ALL ────────
+      #
+      # The image's own user owns /home/storyteller:
+      #
+      #   drwxr-x--- 1 storyteller storyteller  /home/storyteller
+      #
+      # but this container runs `--user=${toString storytellerUid}:${toString mediaGid}`
+      # (see extraOptions), so the uid inside is 3022 and it is NOT that user.
+      # Its own $HOME is therefore unwritable — a straightforward consequence
+      # of forcing --user on an image that baked a different uid, and invisible
+      # until something actually tries to write there.
+      #
+      # Something does.  Measured 2026-09-27, aligning the first pair:
+      #
+      #   No variant configured or installed. Falling back to platform detection.
+      #   Downloading whisper.cpp (linux-x64-cpu) … 6.6 MB / 6.6 MB (100.0%)
+      #   Extracting to /home/storyteller/.local/share/ghost-story/whisper-cpp/…
+      #   ERROR: EACCES: permission denied, mkdir '/home/storyteller/.local/…'
+      #   Encountered error while running task "TRANSCRIBE_CHAPTERS"
+      #
+      # The book imports, the audio splits, and then every alignment fails at
+      # the transcription step with a UI that says only "Transcribing tracks —
+      # Failed".
+      #
+      # XDG_DATA_HOME WOULD BE THE TIDIER KNOB AND IT DOES NOT EXIST HERE:
+      # grepped the deployed bundle (work-dist/worker.cjs) for XDG_DATA_HOME —
+      # zero hits.  It resolves $HOME directly, so $HOME is the only lever.
+      #
+      # /data is the right target rather than a new state path: the container
+      # already owns it (drwxr-s--- 3022:3000), it is on zdata/audiobooks and
+      # therefore snapshotted, and this makes the download PERSIST instead of
+      # being re-fetched into a fresh overlay on every restart.  That matters
+      # more than 6.6 MB suggests — the `medium` Whisper model this fleet needs
+      # for its German audiobooks is ~1.5 GB and lands in the same tree.
+      HOME = "/data";
     };
 
     volumes = [
