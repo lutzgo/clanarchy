@@ -14127,6 +14127,72 @@ way.
 appeared: it has to be added in the UI like any other provider. Its dependency
 *is* installed, so adding it is one click.
 
+#### M30d — the second leg was decorative, and one setting is why
+
+**Found 2026-09-27, after `musiccast` finally loaded.** The provider came up —
+`Loaded player provider MusicCast` — and discovered nothing, for twenty minutes,
+while the speakers were announcing the whole time.
+
+**Music Assistant's zeroconf binds to the DEFAULT INTERFACE ONLY**, and the
+option's own description says so:
+
+> By default, Music Assistant will only listen on the default interface. If you
+> have multiple network interfaces and you want to discover players on all
+> interfaces, you can change this setting to 'All interfaces'.
+> — `CONF_ENTRY_ZEROCONF_INTERFACES`, `constants.py:669`
+
+The default interface is `eth0`, on VLAN 90, where there are no speakers. So
+`iot1` — carried on the trunk, tagged on the bridge, addressed by DHCP,
+firewalled for mDNS and for two kinds of unicast — **did nothing at all.** The
+entire argument for the second leg, which M30 spends a long header section
+making, was correct and inert.
+
+**This is the silent failure M30 warned about, arriving from a direction the
+warning did not anticipate.** That file says an absent accept leaves the leg
+"decorative while looking correct", and that discovery finding nothing is
+"indistinguishable from a household with no discoverable devices". Both were true
+here **with every rule correct** — the application was not listening on the
+interface.
+
+**Measured both ways rather than inferred.** Browsing `_http._tcp.local.` from
+the *hass* container's own VLAN-20 leg — using Home Assistant's python, which
+already ships `zeroconf` — saw both speakers immediately:
+
+```
+Küche._http._tcp.local.   ['10.0.20.31', 'fe80::aeb6:87ff:fed5:1e1']
+Renate._http._tcp.local.  ['10.0.20.32']
+```
+
+So the announcements existed and the segment was fine. Setting
+`core.discovery.values.zeroconf_interfaces = "all"` and reloading produced both
+players within the minute.
+
+It is **not declarable** — it lives in Music Assistant's settings database like
+every provider — so it is a deploy step, and the container file now says it is
+the *first* thing to check for any "no players found" report.
+
+#### And there are two speakers, not one
+
+`Renate` at **10.0.20.32** was news to this repository. M30 read Home Assistant's
+`core.config_entries`, found one `yamaha_musiccast` entry at 10.0.20.31, and
+wrote "the one speaker in the house" — **which is a statement about what the hub
+has been configured with, not about what is on the segment.** The mDNS browse
+above is the inventory that was actually wanted, and it took one command from a
+container that already had a leg there.
+
+Discovery was never the issue for the second one: Music Assistant found both as
+soon as it was looking at the right interface. What would have failed is
+playback, because the two source-matched rules named `.31` only — so `Renate`
+could be selected, and then could neither fetch the stream on 8097 nor push its
+status events back. `musiccastAddrs` is now a list and both rules iterate it.
+
+**Named individually rather than as a subnet, deliberately.** `-s 10.0.20.0/24`
+would cover every future speaker with no edit, and would also hand the whole IoT
+segment an ephemeral UDP range into this container — a much wider grant than the
+mDNS rule, which is multicast and has no source to name. Adding a speaker is one
+line; that is the right amount of friction for something that opens a port to a
+device.
+
 #### M30c — musiccast could not import, and the manifest is why
 
 **Found 2026-09-27 by adding the provider.** `musiccast` failed to load with a
