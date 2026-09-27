@@ -417,47 +417,54 @@ let
   # a much wider grant than mDNS, which is multicast and has no source to name.
   # Adding a speaker is one line here; that is the right amount of friction for
   # something that opens a port to a device.
-  # ── RENATE HAS TWO ENTRIES, AND ONE OF THEM IS TEMPORARY ──────────────────
+  # ── BOTH SPEAKERS ARE ON WI-FI, AND THE WIRED ATTEMPT IS RECORDED ─────────
   #
-  # The YSP-5600 is cabled to the switch and was still associating over Wi-Fi.
-  # Asked the device rather than assumed:
+  # `Renate` (YSP-5600) is cabled to the switch and CANNOT USE THE CABLE.  The
+  # attempt is written down rather than deleted, because the obvious next move
+  # for a future reader — "just plug it in and switch it to wired" — is the one
+  # that was already tried and failed.
   #
-  #     system/getNetworkStatus -> "connection": "wireless_lan",
-  #                                ssid "skynet-iot", strength 96
-  #     mac_address: { wired_lan:    "00A0DE86BE4A",   Yamaha OUI 00:a0:de
-  #                    wireless_lan: "F83331DC4499" }  TI OUI f8:33:31
+  #   The device switched itself to wired mode after a restart and then had no
+  #   link at all.  Its own information screen:
   #
-  # THE TWO INTERFACES HAVE DIFFERENT MACs FROM DIFFERENT VENDORS, which is
-  # why the Wi-Fi side appears in the UDM-Pro as an unnamed "Texas Instruments"
-  # client rather than as a Yamaha: only the wired NIC carries Yamaha's OUI.
-  # Anyone auditing VLAN 20 will meet that client and should not have to guess.
+  #       Status        Trennen             (disconnected)
+  #       Verbindung    Kabelgebunden       (wired)
+  #       IP-Adresse    0.0.0.0             (and netmask, gateway, both DNS)
   #
-  # SO THE WIRED SIDE TAKES A LEASE OF ITS OWN, and .32 cannot be reserved for
-  # it: the WIRELESS MAC is holding .32 right now and the UDM-Pro refuses a
-  # reservation for an address in use.  Deleting the client does not help —
-  # the device is still associated, so UniFi re-learns it immediately, and it
-  # cannot stop associating until it has been switched.  That circle is broken
-  # by giving the wired interface a different address instead of fighting for
-  # this one.
+  #   A device with link but no lease reports CONNECTED with 0.0.0.0, so this is
+  #   a carrier problem, not DHCP.  Confirmed from this container: a full ARP
+  #   sweep of VLAN 20 plus scans of 10.0.10.0/24, 10.0.30.0/24, 10.0.5.0/24 and
+  #   an ARP sweep of VLAN 50 found NEITHER of its MACs anywhere.
   #
-  # .33, verified free from this container's own leg before being written
-  # down: `.33`-`.36` all returned INCOMPLETE against a positive control that
-  # resolves `.31`.
+  #   THE LIKELY CAUSE IS THE SWITCH PORT, not the speaker.  The UDM-Pro's last
+  #   record for the wired MAC is 192.168.2.10 on 2026-01-03 — an address from
+  #   the pre-renumber flat network — so that port has not had a working lease
+  #   since the VLAN cutover and was probably never re-profiled onto IoT.
   #
-  # BOTH ARE LISTED ACROSS THE MOVE so there is no window in which the speaker
-  # holds an address the firewall does not admit.  DROP .32 ONCE
-  # `getNetworkStatus` REPORTS `wired_lan` — leaving it behind is an accept for
-  # an address this household no longer uses, which is what M26's first
-  # deploy-day defect removed rather than added.
+  # lgo reconnected it to Wi-Fi and abandoned the cable, so .32 is permanent
+  # again and the wired address .33 is retired here.  ONE LINE PER SPEAKER, and
+  # no line for an address nothing holds: an accept for .33 would now be a rule
+  # with no client, which is what M26's first deploy-day defect removed rather
+  # than added.
   #
-  # THE PLAYER IDENTITY SURVIVES THE MOVE, which is why this is a firewall
-  # question and not a reconfiguration.  Music Assistant keys the player on the
-  # device_id — `00A0DE86BE4A___main`, i.e. the WIRED MAC — so the queue, the
-  # name and any per-player settings follow it across interfaces.
+  # IF THE CABLE IS EVER REVISITED: fix the switch port's network profile first
+  # (it must be IoT/VLAN 20, where these rules and the DHCP reservation live),
+  # confirm the speaker reports `Verbindung: Kabelgebunden` with a real address,
+  # and only then add its wired address here.  The wired MAC is
+  # 00:A0:DE:86:BE:4A and already has a UDM-Pro reservation for 10.0.20.33.
+  #
+  # ── AND THE TWO INTERFACES CARRY DIFFERENT VENDORS' MACs ──────────────────
+  #
+  #     wired_lan:    00A0DE86BE4A    Yamaha OUI (00:a0:de)
+  #     wireless_lan: F83331DC4499    TI OUI     (f8:33:31)
+  #
+  # Only the wired NIC is a Yamaha.  The radio is a Texas Instruments module, so
+  # the address in use below appears in the UDM-Pro as an unnamed "Texas
+  # Instruments" client rather than as a speaker — which is worth knowing before
+  # anyone auditing VLAN 20 concludes there is a stranger on the segment.
   musiccastAddrs = [
-    "10.0.20.31" # Küche  — WX-021, wireless (it has a wired port; no cable run)
-    "10.0.20.32" # Renate — YSP-5600 Wi-Fi; REMOVE once it reports wired_lan
-    "10.0.20.33" # Renate — YSP-5600 wired, reserved for 00:A0:DE:86:BE:4A
+    "10.0.20.31" # Küche  — WX-021, Wi-Fi (has a wired port; no cable run)
+    "10.0.20.32" # Renate — YSP-5600, Wi-Fi; its cable does not link, see above
   ];
 
   # 8095 — the API and web UI.  8097 — the stream server the PLAYER fetches.
