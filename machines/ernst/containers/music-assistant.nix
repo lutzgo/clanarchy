@@ -1008,6 +1008,39 @@ in
           # trade.
           "radiobrowser"
 
+          # ── AUDIOBOOKS AND PODCASTS, from the server that already has them ─
+          #
+          # lgo asked (2026-09-27) which player supports Storyteller on
+          # HASS/MASS.  The answer is NEITHER, and it is structural rather
+          # than a gap: Storyteller emits an EPUB3 with media overlays — a
+          # BOOK — and Music Assistant plays audio streams.  Its synced output
+          # is read in the Storyteller Reader app and nowhere else in this
+          # fleet.  This provider is the thing that actually answers the
+          # question behind it: it puts the AUDIOBOOKS on the MusicCast
+          # speakers, which is the part of "listening" that MA can do.
+          #
+          # Audiobookshelf is already deployed (arr container, port 13378) and
+          # already holds the household's audiobooks, so this is a second
+          # reader of an existing library rather than a new one — the same
+          # shape as `opensubsonic` over Navidrome above, and chosen for the
+          # same reason.  Chapters, resume position and BIDIRECTIONAL progress
+          # sync come with it, so finishing a chapter in the ABS phone app and
+          # picking it up on a speaker is one library, not two.
+          #
+          # NO SKEW, checked the way this file checks everything: the provider
+          # manifest in the deployed MA 2.8.7 pins `aioaudiobookshelf==0.1.20`
+          # and nixpkgs at this flake's pin has exactly 0.1.20.  Stage is
+          # `stable`, not alpha — unlike the four receivers declined below.
+          #
+          # IT NEEDS AN API KEY, NOT A PASSWORD, and that is a hard version
+          # boundary rather than a preference: ABS on ernst is 2.36.0, and ABS
+          # requires key auth from 2.26 onwards.  The key is minted in ABS
+          # (Settings → Users → API Keys) and entered in MA's browser UI, so
+          # this line does the one thing the option is for — installing the
+          # dependency closure — and nothing else, exactly like the two
+          # plugins below.
+          "audiobookshelf"
+
           # ── TWO PLUGINS, AND UNLIKE THE THREE ABOVE THEY HAVE FORMS ───────
           #
           # Both can be added in the browser, because both declare real config
