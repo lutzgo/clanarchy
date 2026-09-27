@@ -797,6 +797,58 @@ in
           # Pulls in aiomusiccast.  DISCOVERY-ONLY — there is no add-by-address
           # flow, which is the entire reason this container has a second leg.
           "musiccast"
+
+          # ── NOT A SONOS.  THIS IS musiccast's UNDECLARED DEPENDENCY ────────
+          #
+          # There is no Sonos in this house and this does NOT enable the Sonos
+          # provider — `providers` installs dependency closures; enabling is
+          # separate state in Music Assistant's own database, and `sonos` sits
+          # in upstream's `DEFAULT_PROVIDERS` behind `require_mdns = True`, so
+          # nothing turns it on until a Sonos is actually seen on the segment.
+          #
+          # IT IS HERE BECAUSE musiccast CANNOT IMPORT WITHOUT IT, and the
+          # manifest does not say so.  `providers/musiccast/manifest.json`
+          # declares exactly one requirement, `aiomusiccast==0.15.0`, and that
+          # is what the nixpkgs `providers` option installs.  The real import
+          # graph is longer:
+          #
+          #   musiccast/provider.py:25
+          #     from music_assistant.providers.sonos.helpers
+          #                                    import get_primary_ip_address
+          #   -> imports the sonos PACKAGE, so sonos/__init__.py runs
+          #   sonos/__init__.py:17   from .provider import SonosPlayerProvider
+          #   sonos/provider.py:14   from aiosonos.api.models import …
+          #   -> ModuleNotFoundError: aiosonos
+          #
+          # A cross-provider import is invisible to the manifest, therefore
+          # invisible to the option, therefore invisible to the build.  One
+          # helper function — resolving a zeroconf record to an IPv4 address —
+          # drags in a second player stack's entire dependency set.
+          #
+          # AND THE ERROR BLAMES THE WRONG THING.  nixpkgs'
+          # `dont-install-deps.patch` turns any ImportError in a provider into
+          #
+          #     RuntimeError: Configure musiccast in
+          #     `services.music-assistant.providers` to install the required
+          #     dependencies.
+          #
+          # which names `musiccast` — already present and correct — and says
+          # nothing about `sonos`.  Taken at face value it is unactionable; the
+          # traceback above it is the only thing that identifies the real
+          # missing module.  See the "default set" note above for the other
+          # direction of the same misdirection.
+          #
+          # FOUND BY RUNNING IT.  The pre-deploy check verified the DECLARED
+          # requirement — `import aiomusiccast` succeeds — which is a weaker
+          # statement than "the provider imports" and did not catch this.  If a
+          # future provider is added here, import the provider MODULE rather
+          # than its manifest's requirements:
+          #
+          #     nixos-container run mass -- sh -c \
+          #       'PYTHONPATH=$(systemctl show music-assistant -p Environment \
+          #          | tr " " "\n" | grep ^PYTHONPATH= | cut -d= -f2-) \
+          #        python3 -c "import music_assistant.providers.<name>"'
+          "sonos"
         ];
 
         # FALSE, and it is not the default by accident — upstream's own default
