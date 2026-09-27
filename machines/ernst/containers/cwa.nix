@@ -204,12 +204,34 @@
 #   test import.  DELETABLE once nobody is nervous; it is not referenced by
 #   anything and CWA does not read it.
 #
-#   WIRING BINDERY'S OUTPUT INTO CWA'S INGEST IS DELIBERATELY NOT DONE.  It is
-#   a one-line change to Bindery's destination and it is somebody's decision,
-#   not a detail: it would move ebook acquisition from "Komga reads a plain
-#   tree" to "CWA owns the tree and Komga reads CWA's output", which is a
-#   different topology for the household's reading. Left as an explicit
-#   non-decision rather than a default.
+#   WIRING BINDERY'S OUTPUT INTO CWA'S INGEST IS NOW DONE — lgo's decision,
+#   2026-09-27.  This paragraph used to leave it as "an explicit non-decision",
+#   on the grounds that it would move ebook acquisition from "Komga reads a
+#   plain tree" to "CWA owns the tree and Komga reads CWA's output".
+#
+#   BOTH HALVES OF THAT OBJECTION ARE GONE, and for different reasons:
+#
+#     1. KOMGA NO LONGER READS EBOOKS AT ALL.  It serves comics, and its
+#        /srv/media/library/books library was removed by lgo on 2026-09-27.
+#        So there is no second reader whose topology could change.
+#     2. IT IS NOT A REDIRECT, IT IS A COPY.  Bindery's own CWA integration
+#        (`cwa.ingest_path`, set in its UI) copies the finished file into the
+#        ingest folder and KEEPS ITS OWN — upstream's wording, and measured:
+#        BINDERY_LIBRARY_DIR is untouched by it.  So the thing the paragraph
+#        feared — CWA taking ownership of Bindery's tree — does not happen in
+#        either direction.  /srv/media/library/books stays exactly as it is.
+#
+#   THE COST, stated rather than buried: every acquired ebook exists twice, in
+#   Bindery's plain tree and again inside CWA's Calibre library, and the second
+#   copy is a COPY rather than a hardlink because CWA converts and restructures
+#   what it ingests.  This is the one path into /srv/media that deliberately
+#   breaks invariant #2's hardlink property, and it is affordable only because
+#   ebooks are kilobytes to a few megabytes.  Do not reach for this shape for
+#   anything measured in gigabytes.
+#
+#   AND THE INGEST FOLDER STILL DELETES WHAT IT PROCESSES, which is now a
+#   SAFETY property rather than a hazard: the copy is the disposable one and
+#   Bindery holds the original.
 #
 # ── SHELFMARK ─────────────────────────────────────────────────────────────
 #
@@ -286,6 +308,11 @@ let
   webPort = 8083;
 
   traefikAddr = "10.0.90.12";
+
+  # The `media` gid, for the INGEST DIRECTORY ONLY — see the cwa-dirs script.
+  # CWA itself is deliberately NOT a member of this group; the paragraph above
+  # is unchanged and still the reason.
+  mediaGid = 3000;
 
   stateDir   = "/srv/state/cwa";
   libraryDir = "/srv/media/library/calibre";
@@ -470,17 +497,38 @@ in
       set -eu
       install=${pkgs.coreutils}/bin/install
 
-      # 0750 cwa:cwa throughout, NOT 2770 root:media.
-      #
-      # No setgid and no shared group, because unlike RomM's tree there is no
-      # second principal here: CWA is the only writer to all three of these.
-      # Syncthing does not replicate them and no *arr files into them.  A
-      # shared-group tree with one member is a grant waiting to be inherited by
-      # something that should not have it.
+      # 0750 cwa:cwa for STATE AND LIBRARY, and the argument is unchanged for
+      # those two: no setgid and no shared group, because CWA is their only
+      # writer.  Syncthing does not replicate them and no *arr files into them.
+      # A shared-group tree with one member is a grant waiting to be inherited
+      # by something that should not have it.
       $install -d -o ${toString cwaUid} -g ${toString cwaGid} -m 0750 ${stateDir}
       $install -d -o ${toString cwaUid} -g ${toString cwaGid} -m 0750 ${stateDir}/config
       $install -d -o ${toString cwaUid} -g ${toString cwaGid} -m 0750 ${libraryDir}
-      $install -d -o ${toString cwaUid} -g ${toString cwaGid} -m 0750 ${ingestDir}
+
+      # ── THE INGEST DIRECTORY NOW HAS A SECOND PRINCIPAL, SO IT IS 2770 ────
+      #
+      # The paragraph above used to cover this directory too, on the premise
+      # that "CWA is the only writer to all three of these".  That premise
+      # died the moment Bindery's `cwa.ingest_path` was pointed here: Bindery
+      # (uid 3028, gid media) COPIES each finished ebook in, and CWA consumes
+      # and deletes it.  Two principals, so the directory is shared
+      # explicitly rather than by loosening something and hoping.
+      #
+      # WHAT THIS DOES NOT DO, because it is the thing the header's
+      # gid paragraph rules out: it does not put CWA in `media`.  CWA keeps
+      # uid/gid 3033 and OWNS this directory, so it retains rwx and can still
+      # unlink after ingest.  `media` appears on the GROUP of one directory —
+      # the drop box — and nowhere else.  CWA gains no write handle on the
+      # film and television library, which is the whole point of that
+      # paragraph and is still true afterwards.
+      #
+      # setgid (the 2) is load-bearing, not decoration: Bindery's unit runs
+      # UMask=0002, so a file it creates here lands 0664 with the directory's
+      # group.  Without the setgid bit the group would be `media` on the
+      # directory and `bindery` on the file, and CWA — which is in neither —
+      # would be reading on the `other` bits by luck.
+      $install -d -o ${toString cwaUid} -g ${toString mediaGid} -m 2770 ${ingestDir}
     '';
   };
 

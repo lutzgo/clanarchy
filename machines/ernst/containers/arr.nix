@@ -4718,15 +4718,50 @@ in
       #      service that dies is loud (SN4's own distinction).  No timer,
       #      no OnFailure debt.
       #
-      # ── WHAT IS DELIBERATELY NOT CONFIGURED ──────────────────────────────
+      # ── BINDERY_AUDIOBOOK_DIR — SET, AND THE OLD NOTE WAS FALSIFIED ──────
       #
-      #   BINDERY_AUDIOBOOK_DIR.  Unset, so audiobooks Bindery might acquire
-      #   route to the ebook library dir — and audiobook acquisition is NOT
-      #   set up in its UI.  The audiobook pipeline in this house is
-      #   Audiobookshelf + Storyteller on /srv/audiobooks; a second writer
-      #   into that tree from another product's quality logic is the
-      #   two-systems-one-library failure M4/M12 exist to avoid.  If that
-      #   changes, set the variable AND argue the ownership here.
+      #   This block used to say the variable was "deliberately not
+      #   configured", because "audiobook acquisition is NOT set up in its
+      #   UI".  THAT SECOND CLAUSE WAS NEVER CHECKED AGAINST THE RUNNING
+      #   SERVICE, AND IT WAS WRONG.  Measured 2026-09-27: Bindery's
+      #   Audiobookshelf import created 32 book rows with media_type
+      #   `audiobook` or `both`, every one of them monitored, and by the time
+      #   anyone looked it had acquired FOUR audiobooks — 2.8 GB of MP3 and
+      #   M4B — and filed them exactly where the first clause predicted:
+      #
+      #     /srv/media/library/books/Ayn Rand/Atlas Shrugged (2012)/…m4b
+      #     /srv/media/library/books/Blake Crouch/Dark Matter- A Novel (2016)/
+      #     …
+      #
+      #   So the guard was one unset environment variable in front of a code
+      #   path that was already live.  The comment described an intention;
+      #   the tree recorded what actually happened.  Do not restore it.
+      #
+      #   THE VARIABLE IS NOW SET, and that is a REVERSAL of M17's read-only
+      #   posture rather than a tidy-up, so it is argued rather than asserted.
+      #   M17 mounted /srv/audiobooks read-only for this service on the
+      #   grounds that "a second writer into that tree from another product's
+      #   quality logic is the two-systems-one-library failure M4/M12 exist to
+      #   avoid".  That argument is still correct in the abstract.  What
+      #   changed is that the alternative turned out to be WORSE: with the
+      #   variable unset the audiobooks do not stop arriving, they arrive in
+      #   the EBOOK library instead — so the choice was never "one writer or
+      #   two", it was "audiobooks in the audiobook tree, or audiobooks in the
+      #   wrong tree".  Between those, the audiobook tree wins.
+      #
+      #   lgo asked for Bindery and Audiobookshelf to be connected
+      #   (2026-09-27); this is that connection, and the read-only enforcement
+      #   it costs is named here so nobody re-reads M17 and thinks the mount
+      #   drifted by accident.
+      #
+      #   NARROWED AS FAR AS IT GOES: ReadWritePaths gains
+      #   ${audiobooksRoot}/library and NOT ${audiobooksRoot}.  Storyteller's
+      #   output tree (${audiobooksRoot}/synced) and its staging pool
+      #   (${audiobooksRoot}/ebooks) stay read-only to this service, so the
+      #   one thing M14 and M17 both cared about — that nothing else writes
+      #   into Storyteller's directories — is still enforced by the unit.
+      #
+      # ── WHAT IS DELIBERATELY NOT CONFIGURED ──────────────────────────────
       #
       #   BINDERY_TRUSTED_PROXY / BINDERY_URL_BASE.  Distinct hostname, no
       #   subpath, and nothing consumes client IPs from it — same as every
@@ -4735,7 +4770,27 @@ in
       systemd.services.bindery = {
         description = "Bindery — ebook acquisition and library manager";
         wantedBy    = [ "multi-user.target" ];
-        after       = [ "network.target" ];
+
+        # ── PROWLARR IS AN ORDERING DEPENDENCY, FOUND BY READING FAILURES ──
+        #
+        # `after = [ "network.target" ]` alone was not enough, and the
+        # evidence is in Bindery's own log: on the 2026-09-26 18:47 boot its
+        # startup sync failed with
+        #
+        #   prowlarr startup sync failed … dial tcp 10.0.90.13:9696:
+        #   connect: connection refused
+        #
+        # at 18:47:13 — the same second prowlarr.service entered active.  Six
+        # of the fifteen queue failures found on 2026-09-27 were the same
+        # race one step later ("fetch torrent content: … context deadline
+        # exceeded" against that address), NOT the dead-torrent failures they
+        # were sitting next to and were initially mistaken for.
+        #
+        # `wants` rather than `requires`: Prowlarr being down should make
+        # Bindery's searches fail, which is visible, rather than refuse to
+        # start it at all, which is not.
+        after       = [ "network.target" "prowlarr.service" ];
+        wants       = [ "prowlarr.service" ];
 
         environment = {
           BINDERY_PORT         = toString binderyPort;
@@ -4746,6 +4801,11 @@ in
           BINDERY_DB_PATH      = "/var/lib/bindery/bindery.db";
           BINDERY_LIBRARY_DIR  = "/srv/media/library/books";
           BINDERY_DOWNLOAD_DIR = "/srv/media/torrents/books";
+
+          # Audiobooks go to Audiobookshelf's library, NOT to the ebook
+          # library dir.  See the long block above for why this reverses
+          # M17's read-only posture and why the alternative was worse.
+          BINDERY_AUDIOBOOK_DIR = "${audiobooksRoot}/library";
           # Phone-home off, same call as every service here that offers it.
           BINDERY_TELEMETRY_DISABLED = "true";
         };
@@ -4769,7 +4829,17 @@ in
           RemoveIPC        = true;
           RestrictSUIDSGID = true;
 
-          ReadWritePaths = [ "/srv/media" "/var/lib/bindery" ];
+          # ${audiobooksRoot}/library and NOT ${audiobooksRoot}: see the
+          # BINDERY_AUDIOBOOK_DIR block above.  Storyteller's `synced` output
+          # and its `ebooks` staging pool stay read-only to this service, so
+          # the M14 rule that nothing else writes into Storyteller's
+          # directories survives this change and is enforced here rather than
+          # being a convention.
+          ReadWritePaths = [
+            "/srv/media"
+            "/var/lib/bindery"
+            "${audiobooksRoot}/library"
+          ];
 
           CapabilityBoundingSet   = "";
           PrivateDevices          = true;

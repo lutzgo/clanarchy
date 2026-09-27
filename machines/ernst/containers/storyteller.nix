@@ -24,9 +24,19 @@
 #   (zdata/audiobooks) and why neither is a reason to drop the other.
 #
 #   What is NOT claimed: there is no automatic hand-off between them.
-#   Storyteller takes its input through its own web UI and writes its output
-#   inside its /data volume.  Pointing Audiobookshelf at the result is a UI
-#   step in the PR body, not something this file implements.
+#   Storyteller writes its output inside its /data volume, and pointing
+#   Audiobookshelf at the result is a UI step in the PR body, not something
+#   this file implements.
+#
+#   CORRECTED 2026-09-27: this paragraph used to add "Storyteller takes its
+#   input through its own web UI", and that was not the design decision it
+#   sounded like.  The container mounted /data and nothing else, so uploading
+#   through the browser was the only thing it COULD do — the sentence
+#   described a limitation of this file and attributed it to upstream.  Both
+#   source libraries are now mounted READ-ONLY (see `volumes`), so a pair can
+#   be aligned from the trees the household already has.  The upload path
+#   still works and is still the only way to align something that is in
+#   neither library.
 #
 # ── TIER: PODMAN, AND THE ROADMAP'S OWN ESCAPE HATCH IS WHAT PUTS IT HERE ──
 #
@@ -358,8 +368,15 @@ in
     description = "Create ${dataDir} as storyteller:media 0750";
     wantedBy = [ "multi-user.target" ];
     before   = [ "podman-storyteller.service" ];
-    after    = [ "srv-audiobooks.mount" "audiobooks-tree.service" ];
-    requires = [ "srv-audiobooks.mount" "audiobooks-tree.service" ];
+
+    # srv-media.mount joins the list because the container now mounts
+    # /srv/media/library/books as a source library.  Same hazard the paragraph
+    # above describes for zdata/audiobooks, one dataset over: start before the
+    # mount and podman bind-mounts a directory on the ROLLED-BACK root, so
+    # Storyteller sees an empty ebook library and the operator sees a bug in
+    # Storyteller.  It is `requires` for the same reason the other two are.
+    after    = [ "srv-audiobooks.mount" "srv-media.mount" "audiobooks-tree.service" ];
+    requires = [ "srv-audiobooks.mount" "srv-media.mount" "audiobooks-tree.service" ];
     serviceConfig = {
       Type            = "oneshot";
       RemainAfterExit = true;
@@ -444,6 +461,37 @@ in
       "${dataDir}:/data"
       # Read-only, and mounted at the path the variable above names.
       "${secretsDir}/secret-key:/run/secrets/secret-key:ro"
+
+      # ── THE TWO SOURCE LIBRARIES, READ-ONLY ───────────────────────────────
+      #
+      # lgo asked (2026-09-27) for Storyteller to be connected to the ebook
+      # and audiobook libraries.  Until now this container mounted /data and
+      # NOTHING ELSE, so the header's "Storyteller takes its input through its
+      # own web UI" was not a design preference — it was the only thing the
+      # container could physically do.  It could not see either library.
+      #
+      # These two mounts are what make the pairing possible at all: both
+      # halves of a title are now visible to the same process, at paths that
+      # match the host and every other container (invariant: nobody rewrites
+      # a path), so a pair can be picked without uploading gigabytes through
+      # a browser.
+      #
+      # `:ro` IS THE WHOLE POINT AND IS NOT NEGOTIABLE.  Storyteller is a
+      # PRODUCER — it reads pairs and writes synced EPUB3s into /data.  It has
+      # no business renaming, converting or deleting anything in the trees
+      # Bindery and Audiobookshelf own, and M14's "complementary, not
+      # overlapping" split is exactly this: ABS and Bindery serve libraries,
+      # Storyteller produces artifacts from them.  A read-write mount here
+      # would make that sentence false and give a third writer a handle on
+      # both libraries at once.
+      #
+      # WHAT IS STILL A MANUAL STEP, so nobody reads this and expects magic:
+      # the container can now SEE the files; it does not import them on its
+      # own.  Storyteller's `importPath` setting (its DB, its UI — there is no
+      # environment variable for it) has to be pointed at one of these paths.
+      # Checked in the deployed 2.9.3 build: the setting exists and is null.
+      "/srv/media/library/books:/library/ebooks:ro"
+      "/srv/audiobooks/library:/library/audiobooks:ro"
     ];
 
     # NO `ports` ENTRY, deliberately.  Publishing a port is meaningless with
