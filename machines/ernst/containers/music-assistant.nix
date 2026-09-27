@@ -417,9 +417,47 @@ let
   # a much wider grant than mDNS, which is multicast and has no source to name.
   # Adding a speaker is one line here; that is the right amount of friction for
   # something that opens a port to a device.
+  # ── RENATE HAS TWO ENTRIES, AND ONE OF THEM IS TEMPORARY ──────────────────
+  #
+  # The YSP-5600 is cabled to the switch and was still associating over Wi-Fi.
+  # Asked the device rather than assumed:
+  #
+  #     system/getNetworkStatus -> "connection": "wireless_lan",
+  #                                ssid "skynet-iot", strength 96
+  #     mac_address: { wired_lan:    "00A0DE86BE4A",   Yamaha OUI 00:a0:de
+  #                    wireless_lan: "F83331DC4499" }  TI OUI f8:33:31
+  #
+  # THE TWO INTERFACES HAVE DIFFERENT MACs FROM DIFFERENT VENDORS, which is
+  # why the Wi-Fi side appears in the UDM-Pro as an unnamed "Texas Instruments"
+  # client rather than as a Yamaha: only the wired NIC carries Yamaha's OUI.
+  # Anyone auditing VLAN 20 will meet that client and should not have to guess.
+  #
+  # SO THE WIRED SIDE TAKES A LEASE OF ITS OWN, and .32 cannot be reserved for
+  # it: the WIRELESS MAC is holding .32 right now and the UDM-Pro refuses a
+  # reservation for an address in use.  Deleting the client does not help —
+  # the device is still associated, so UniFi re-learns it immediately, and it
+  # cannot stop associating until it has been switched.  That circle is broken
+  # by giving the wired interface a different address instead of fighting for
+  # this one.
+  #
+  # .33, verified free from this container's own leg before being written
+  # down: `.33`-`.36` all returned INCOMPLETE against a positive control that
+  # resolves `.31`.
+  #
+  # BOTH ARE LISTED ACROSS THE MOVE so there is no window in which the speaker
+  # holds an address the firewall does not admit.  DROP .32 ONCE
+  # `getNetworkStatus` REPORTS `wired_lan` — leaving it behind is an accept for
+  # an address this household no longer uses, which is what M26's first
+  # deploy-day defect removed rather than added.
+  #
+  # THE PLAYER IDENTITY SURVIVES THE MOVE, which is why this is a firewall
+  # question and not a reconfiguration.  Music Assistant keys the player on the
+  # device_id — `00A0DE86BE4A___main`, i.e. the WIRED MAC — so the queue, the
+  # name and any per-player settings follow it across interfaces.
   musiccastAddrs = [
-    "10.0.20.31" # Küche
-    "10.0.20.32" # Renate
+    "10.0.20.31" # Küche  — WX-021, wireless (it has a wired port; no cable run)
+    "10.0.20.32" # Renate — YSP-5600 Wi-Fi; REMOVE once it reports wired_lan
+    "10.0.20.33" # Renate — YSP-5600 wired, reserved for 00:A0:DE:86:BE:4A
   ];
 
   # 8095 — the API and web UI.  8097 — the stream server the PLAYER fetches.
