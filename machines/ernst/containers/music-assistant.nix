@@ -417,9 +417,41 @@ let
   # a much wider grant than mDNS, which is multicast and has no source to name.
   # Adding a speaker is one line here; that is the right amount of friction for
   # something that opens a port to a device.
+  # ── RENATE HAS TWO ENTRIES, AND THAT IS TEMPORARY ─────────────────────────
+  #
+  # The YSP-5600 is cabled to the switch and was still associating over Wi-Fi.
+  # Asked directly rather than assumed:
+  #
+  #     system/getNetworkStatus -> "connection": "wireless_lan",
+  #                                ssid "skynet-iot", strength 96
+  #     mac_address: { wired_lan:      "00A0DE86BE4A",
+  #                    wireless_lan:   "F83331DC4499" }
+  #
+  # THE TWO INTERFACES HAVE DIFFERENT MACs, so the wired side takes a DHCP
+  # lease of its own and the device does NOT come back on .32 — and .32 cannot
+  # simply be reserved for the wired MAC, because the WIRELESS MAC is holding
+  # it right now (`ip neigh` on this leg: f8:33:31:dc:44:99) and the UDM-Pro
+  # refuses a reservation for an address already in use.
+  #
+  # So the wired side gets .33, verified free from this container's own leg
+  # before being written down — `.33`-`.36` all came back INCOMPLETE against a
+  # positive control that resolves `.31`.
+  #
+  # BOTH ARE LISTED ACROSS THE MOVE so there is no window in which the speaker
+  # holds an address the firewall does not admit: the rules for .33 cost
+  # nothing while nothing answers there, and the rules for .32 cost nothing
+  # once it is gone.  DROP .32 ONCE `getNetworkStatus` REPORTS `wired_lan` —
+  # leaving it is a rule for an address this household no longer uses, which is
+  # the thing containers/ingress-policy.nix and M26 both object to.
+  #
+  # THE PLAYER IDENTITY SURVIVES THE MOVE, which is why this is a firewall
+  # question and not a reconfiguration.  Music Assistant keys the player on the
+  # device_id — `00A0DE86BE4A___main`, i.e. the WIRED MAC — so the queue, the
+  # name and any per-player settings follow it across interfaces.
   musiccastAddrs = [
-    "10.0.20.31" # Küche
-    "10.0.20.32" # Renate
+    "10.0.20.31" # Küche  — WX-021, wireless (it has a wired port; no cable run)
+    "10.0.20.32" # Renate — YSP-5600, CURRENT wireless lease; remove after the move
+    "10.0.20.33" # Renate — YSP-5600, reserved for wired MAC 00:A0:DE:86:BE:4A
   ];
 
   # 8095 — the API and web UI.  8097 — the stream server the PLAYER fetches.
