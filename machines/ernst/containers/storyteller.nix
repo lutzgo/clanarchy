@@ -61,17 +61,21 @@
 #     - WHISPER.CPP BINARIES, vendored per-variant, plus a bundled tiny.en
 #       model;
 #
-#       CORRECTED 2026-09-27, by running an alignment: at web-v2.9.3 the
-#       binaries are NOT vendored.  The app logs "No variant configured or
-#       installed. Falling back to platform detection." and then FETCHES
-#       whisper.cpp from gitlab.com at first use, into $HOME.  That has two
-#       consequences this file has to handle and one to know about:
-#       transcription needs a writable HOME (see `environment` below, where it
-#       is set to /data and where the EACCES this caused is recorded); it
-#       needs OUTBOUND HTTPS, which the netns firewall already permits since
-#       only ingress is restricted; and the "-blas / -cuda / -rocm variants"
-#       paragraph below is about which variant the image would SELECT, not
-#       about binaries it carries.
+#       THIS IS CORRECT — and a correction added here on 2026-09-27 claiming
+#       otherwise was WRONG and is retracted.  The image really does carry
+#       /home/storyteller/.local/share/ghost-story/whisper-cpp/1.8.3/
+#       {linux-x64-cpu,linux-x64-cpu-legacy}/bin/whisper-cli, a bundled
+#       ggml-tiny.en.bin, and a config.json naming
+#       "installedVariant": "linux-x64-cpu-legacy".
+#
+#       What misled the first diagnosis was the app's own log line, "No
+#       variant configured or installed. Falling back to platform detection."
+#       That is true from the process's point of view and false about the
+#       image: the binaries are present and UNREACHABLE.  See the
+#       /home/storyteller volume in `volumes` below for why, and note the
+#       general shape — an application reporting a thing is "not installed"
+#       is reporting what it can SEE, which under a forced --user is not the
+#       same as what is there.
 #     - a READIUM BINARY lifted out of a DIFFERENT container image
 #       (ghcr.io/readium/readium);
 #     - and a SQLite UUID extension compiled in-line with gcc.
@@ -273,6 +277,12 @@ let
   #   kilobytes that is not worth solving.
   importDir  = "/srv/audiobooks/storyteller-import";
 
+  # $HOME for the container, and the ONLY path in this file that is not on
+  # zdata/audiobooks.  It has to be on zdata/state because that is the one
+  # dataset here with `exec=on` — whisper.cpp is a downloaded binary and the
+  # media datasets refuse to execute.  See the /home/storyteller volume.
+  homeDir    = "/srv/state/storyteller/home";
+
   # See the header.  web-v2.9.3, the newest STABLE tag — NOT `latest`, which is
   # currently a 3.0.0 beta.
   imageTag    = "web-v2.9.3";
@@ -427,8 +437,13 @@ in
     # mount and podman bind-mounts a directory on the ROLLED-BACK root, so
     # Storyteller sees an empty ebook library and the operator sees a bug in
     # Storyteller.  It is `requires` for the same reason the other two are.
-    after    = [ "srv-audiobooks.mount" "srv-media.mount" "audiobooks-tree.service" ];
-    requires = [ "srv-audiobooks.mount" "srv-media.mount" "audiobooks-tree.service" ];
+    # srv-state.mount joins the list because $HOME now lives there (see
+    # homeDir).  Same hazard as the other two: start before the mount and
+    # podman bind-mounts a directory on the rolled-back root, so the container
+    # gets an empty home, re-downloads whisper.cpp into it, and the real one
+    # is shadowed at the next boot.
+    after    = [ "srv-audiobooks.mount" "srv-media.mount" "srv-state.mount" "audiobooks-tree.service" ];
+    requires = [ "srv-audiobooks.mount" "srv-media.mount" "srv-state.mount" "audiobooks-tree.service" ];
     serviceConfig = {
       Type            = "oneshot";
       RemainAfterExit = true;
@@ -449,6 +464,14 @@ in
       # of this file relies on.
       ${pkgs.coreutils}/bin/install -d \
         -o ${toString storytellerUid} -g ${toString mediaGid} -m 2770 ${importDir}
+
+      # $HOME.  0750 and owned by the container's uid — one writer, no sharing,
+      # so it gets the dataDir treatment rather than the importDir treatment.
+      # The OWNERSHIP is the load-bearing part: this directory's permissions
+      # REPLACE the image's 0750 storyteller:storyteller home when it is
+      # mounted over it, which is what makes the home traversable at all.
+      ${pkgs.coreutils}/bin/install -d \
+        -o ${toString storytellerUid} -g ${toString mediaGid} -m 0750 ${homeDir}
     '';
   };
 
@@ -521,41 +544,19 @@ in
       # See the secrets block: a FILE, not the key itself.
       STORYTELLER_SECRET_KEY_FILE = "/run/secrets/secret-key";
 
-      # ── HOME=/data, AND WITHOUT IT TRANSCRIPTION CANNOT RUN AT ALL ────────
+      # NO `HOME` OVERRIDE, and one shipped here briefly and was WRONG.
       #
-      # The image's own user owns /home/storyteller:
+      # #253 set HOME=/data to dodge an unwritable home.  It got one step
+      # further and then failed differently:
       #
-      #   drwxr-x--- 1 storyteller storyteller  /home/storyteller
+      #   Failed to start whisper process: spawn
+      #     /data/.local/…/linux-x64-cpu/bin/whisper-cli EACCES
       #
-      # but this container runs `--user=${toString storytellerUid}:${toString mediaGid}`
-      # (see extraOptions), so the uid inside is 3022 and it is NOT that user.
-      # Its own $HOME is therefore unwritable — a straightforward consequence
-      # of forcing --user on an image that baked a different uid, and invisible
-      # until something actually tries to write there.
-      #
-      # Something does.  Measured 2026-09-27, aligning the first pair:
-      #
-      #   No variant configured or installed. Falling back to platform detection.
-      #   Downloading whisper.cpp (linux-x64-cpu) … 6.6 MB / 6.6 MB (100.0%)
-      #   Extracting to /home/storyteller/.local/share/ghost-story/whisper-cpp/…
-      #   ERROR: EACCES: permission denied, mkdir '/home/storyteller/.local/…'
-      #   Encountered error while running task "TRANSCRIBE_CHAPTERS"
-      #
-      # The book imports, the audio splits, and then every alignment fails at
-      # the transcription step with a UI that says only "Transcribing tracks —
-      # Failed".
-      #
-      # XDG_DATA_HOME WOULD BE THE TIDIER KNOB AND IT DOES NOT EXIST HERE:
-      # grepped the deployed bundle (work-dist/worker.cjs) for XDG_DATA_HOME —
-      # zero hits.  It resolves $HOME directly, so $HOME is the only lever.
-      #
-      # /data is the right target rather than a new state path: the container
-      # already owns it (drwxr-s--- 3022:3000), it is on zdata/audiobooks and
-      # therefore snapshotted, and this makes the download PERSIST instead of
-      # being re-fetched into a fresh overlay on every restart.  That matters
-      # more than 6.6 MB suggests — the `medium` Whisper model this fleet needs
-      # for its German audiobooks is ~1.5 GB and lands in the same tree.
-      HOME = "/data";
+      # because zdata/audiobooks carries `exec=off` (so does zdata/media;
+      # zdata/state does not) and a media dataset that refuses to execute
+      # binaries is CORRECT — the fix was pointing a binary install at it.
+      # $HOME is fixed by the /home/storyteller volume below instead, which
+      # lands on zdata/state where exec is permitted.
     };
 
     volumes = [
@@ -612,6 +613,43 @@ in
       # CONTAINER path, not the host path).  It is a DB/UI setting with no
       # environment variable, so this file cannot set it; see the guide.
       "${importDir}:/import"
+
+      # ── $HOME, ON zdata/state, AND TRANSCRIPTION CANNOT RUN WITHOUT IT ────
+      #
+      # Two separate defects meet at this path, and both come from forcing
+      # `--user=${toString storytellerUid}:${toString mediaGid}` onto an image
+      # that baked its own user.
+      #
+      #   1. TRAVERSAL.  The image ships
+      #        drwxr-x--- 1 storyteller storyteller  /home/storyteller
+      #      0750, owned by a uid that is not 3022.  So the process cannot
+      #      even `cd` into its own $HOME — which is why it reported "No
+      #      variant configured or installed" while the image was carrying
+      #      whisper-cli the whole time, and then tried to download a copy and
+      #      died on `EACCES: mkdir`.  Mounting a directory OVER
+      #      /home/storyteller replaces those permissions with the host
+      #      directory's, so 3022 owns its home and traversal works.
+      #
+      #   2. NOEXEC.  #253's attempt to sidestep (1) by setting HOME=/data
+      #      failed on `spawn … whisper-cli EACCES`, because zdata/audiobooks
+      #      is `exec=off`.  So is zdata/media.  Only zdata/state permits
+      #      exec, which is why this volume comes from /srv/state and not from
+      #      the dataset everything else in this file uses.
+      #
+      # WHAT IS GIVEN UP, deliberately: this shadows the image's bundled
+      # binaries and its ggml-tiny.en.bin, so the app re-downloads whisper.cpp
+      # (6.6 MB) and whichever model is selected on first run.  Seeding the
+      # host directory from the image instead would preserve them and costs a
+      # copy-out step at deploy time that has to stay correct across image
+      # bumps; re-downloading is a few seconds and self-correcting.  The
+      # downloads PERSIST here, which is the part that matters — the `medium`
+      # model this fleet needs for its German audiobooks is ~1.5 GB, and
+      # without a volume it would be re-fetched into a fresh overlay on every
+      # container restart.
+      #
+      # The netns firewall already permits the egress this needs; only ingress
+      # is restricted.
+      "${homeDir}:/home/storyteller"
     ];
 
     # NO `ports` ENTRY, deliberately.  Publishing a port is meaningless with
