@@ -961,6 +961,42 @@ in
           # trade.
           "radiobrowser"
 
+          # ── TWO PLUGINS, AND UNLIKE THE THREE ABOVE THEY HAVE FORMS ───────
+          #
+          # Both can be added in the browser, because both declare real config
+          # entries — ListenBrainz two, Home Assistant thirteen.  So this option
+          # is doing the ONE thing it is for and nothing else: installing the
+          # dependency closure.  Enabling and configuring them is lgo's, in the
+          # UI, because both need a token only he can mint.
+          #
+          # LISTENBRAINZ, NOT LAST.FM, and that was a choice rather than a
+          # default: `lastfm_scrobble` is packaged too (pylast 7.0.2) and was
+          # declined — it is a second scrobble destination behind a commercial
+          # account, where ListenBrainz is MetaBrainz, the same project behind
+          # the `musicbrainz` metadata provider this container already uses, and
+          # its data is openly licensed.  Plays already reach Navidrome through
+          # `subsonic_scrobble`; this is the one that leaves the house, so who
+          # receives it is worth a sentence.
+          "listenbrainz_scrobble"
+
+          # THE HOME ASSISTANT PLUGIN IS THE REVERSE DIRECTION FROM THE
+          # INTEGRATION, and conflating the two is easy.  The hub's
+          # `music_assistant` integration makes MA's players appear in Home
+          # Assistant.  THIS makes Home Assistant's own media players and
+          # entities visible to MA.  Different daemon, different direction,
+          # different credential — and this one is a plugin in MA's settings,
+          # not something containers/home-assistant.nix declares.
+          #
+          # It needs no firewall rule: MA dials OUT to the hub on 10.0.90.27,
+          # and that container already admits .30 on 8123 for the service index
+          # and Traefik… no, it does not — outbound from here is unrestricted
+          # and the ACCEPT it needs is on the hub's side, which already carries
+          # a rule for Traefik and the dashboard only.  Expect to add `.30` to
+          # containers/home-assistant.nix's 8123 list when this is configured;
+          # it is NOT added here, because an accept for a plugin nobody has
+          # enabled yet is a rule with no client.
+          "hass"
+
           # ── NOT A SONOS.  THIS IS musiccast's UNDECLARED DEPENDENCY ────────
           #
           # There is no Sonos in this house and this does NOT enable the Sonos
