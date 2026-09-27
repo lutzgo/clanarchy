@@ -876,6 +876,26 @@ in
       hassExtraPackages = ps: [
         # philips_airplus (HACS) — manifest wants paho-mqtt>=2.1,<3.
         ps.paho-mqtt
+
+        # mass_queue (HACS, droans/mass_queue) — surfaces Music Assistant's
+        # play queue in Home Assistant, which M30 gave this household something
+        # to queue TO.
+        #
+        # ITS OTHER REQUIREMENT NEEDED NOTHING.  The manifest asks for
+        # `music-assistant-client` as well, and that is already in the
+        # environment because core's own `music_assistant` integration pulls it
+        # in — so `aiocache` is the only gap, and a reader who assumes a HACS
+        # integration needs all of its requirements added here would add a
+        # duplicate.
+        #
+        # FOUND BY ./hacs-deps-check.py, which is the entire reason that script
+        # exists and the first time it has caught something since it was
+        # written.  Its output named the package, the version resolved, and the
+        # `extraPackages` block to paste — the symptom on the other side was a
+        # queue that stayed empty with nothing logged, because `--skip-pip`
+        # means Home Assistant never validates a downloaded integration's
+        # requirements and reports nothing about pip.
+        ps.aiocache
       ];
 
       # ── TWO DISTRIBUTIONS, ONE IMPORT NAME: `brotlipy` IS EXCLUDED ────────
