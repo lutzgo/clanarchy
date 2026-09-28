@@ -230,6 +230,11 @@
 #       log in with the password  →  Settings → 2FA → One-Time Password → ADD
 #       →  `authelia-code` on ernst  →  type it  →  QR appears  →  scan.
 #
+#   WebAuthn enrolment (a YubiKey, or an Android fingerprint through Google
+#   Password Manager) goes through this same elevation, with the same three
+#   traps.  The procedure, and the four upstream webauthn defaults that make a
+#   GPM passkey work without a deploy, are in docs/guides/authelia-2fa.md.
+#
 #   AND ONE UI TRAP THAT IS NOT OURS: the 2FA page can land on "Security Key"
 #   (WebAuthn) even when the account's preferred method is TOTP.  With nothing
 #   registered it then shows only "Register device" and no code box, which

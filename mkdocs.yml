@@ -53,6 +53,7 @@ nav:
     - The jj workflow: guides/jj-workflow.md
     - Accepting pull requests: guides/accepting-pull-requests.md
     - Networking: guides/networking.md
+    - Authelia second factors: guides/authelia-2fa.md
     - YubiKey: guides/yubikey.md
     - YubiKey SSH setup: guides/yubikey-ssh-setup.md
     - Impermanence: guides/impermanence.md
