@@ -9,5 +9,6 @@
     ./flatpak.nix
     ./desktop-tools.nix
     ./emulation.nix
+    ./subsonic.nix
   ];
 }
