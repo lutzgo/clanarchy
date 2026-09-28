@@ -294,6 +294,16 @@ let
   # wrote this" is a question someone will ask of a stuck file at 0200.
   soulseekRoot = "/srv/media/soulseek";
 
+  # ── sldl's output tree, a THIRD sibling under the same dataset ────────────
+  #
+  # Kept apart from slskd's incomplete/complete for the reason stated just
+  # above about qBittorrent: "which client wrote this" is a question someone
+  # will ask of a stuck file at 0200, and sldl is a different client with a
+  # different account (see the sldl block further down for why the account has
+  # to differ).  Still inside /srv/media, so it is the same hardlink domain and
+  # Lidarr can import out of it exactly as it does from slskd's tree.
+  sldlRoot = "${soulseekRoot}/sldl";
+
   # State, on zdata beside qBittorrent's (invariant #7).  Mounted at the
   # module's own StateDirectory path so the packaged unit needs no override.
   slskdStateSource = "/srv/state/slskd";
@@ -536,6 +546,11 @@ in
     "d ${soulseekRoot}            2770 root media -"
     "d ${soulseekRoot}/incomplete 2770 root media -"
     "d ${soulseekRoot}/complete   2770 root media -"
+
+    # sldl's output. Same 2770 root:media, same two-halves property — and the
+    # umask half is supplied by the `sldl` wrapper rather than by a unit,
+    # because sldl is run by hand and has no service to carry UMask=.
+    "d ${sldlRoot}                2770 root media -"
 
     "d ${slskdStateSource}        0700 ${toString slskdUid} ${toString mediaGid} -"
   ];
@@ -2020,10 +2035,64 @@ in
       # log people learn to ignore is worse than no boot log.
       systemd.services.sshd-keygen.enable = false;
 
-      # Minimal guest.  curl and wireguard-tools are the test plan's
-      # instruments (exit-IP check through wg0, `wg show` for the handshake);
-      # everything else stays out.
-      environment.systemPackages = with pkgs; [ curl wireguard-tools ];
+      ##########################################################################
+      # sldl — playlist/CSV downloads, and WHY IT IS IN THIS GUEST.
+      #
+      # `slsk-batchdl` takes a CSV, a Spotify or YouTube or Bandcamp playlist
+      # URL, or a plain search string, and pulls the tracks off Soulseek.  It
+      # is the track-level answer that Lidarr is the wrong shape for: Lidarr
+      # models ARTISTS and ALBUMS, so a 50-track playlist becomes ~45 artists
+      # and their discographies.
+      #
+      # IT IS A SOULSEEK CLIENT IN ITS OWN RIGHT.  It does NOT drive slskd and
+      # cannot be pointed at it — upstream is explicit that it "connects
+      # directly to Soulseek's network as an independent client".  Invariant #1
+      # therefore applies to it exactly as it does to slskd: this is a workload
+      # talking peer-to-peer to the open internet on ernst's behalf, so it goes
+      # inside the tunnel or it does not go anywhere.  Installing it on the
+      # host would have published the home IP to every Soulseek peer, which is
+      # the whole reason slskd is in here.
+      #
+      # IT NEEDS A SECOND SOULSEEK ACCOUNT, AND THAT IS UPSTREAM'S OWN RULE:
+      # "If you're running a persistent Soulseek client, use [sldl] with a
+      # separate Soulseek account to avoid connection problems."  slskd holds a
+      # persistent session on the account in the `slskd-credentials` var; a
+      # second login on the same name fights it.
+      #
+      # NO CLAN VAR FOR THOSE CREDENTIALS, DELIBERATELY.  A prompted generator
+      # blocks `clan machines update` for EVERY machine until it is answered
+      # and needs a TTY to answer, and the second account does not exist yet —
+      # so adding the prompt now would wedge deploys on a credential nobody can
+      # supply.  sldl takes `--user`/`--pass`, or reads them from a config file
+      # (`-c`).  If the account becomes permanent, a generator beside
+      # `slskd-credentials` is the follow-up, and it is a small one.
+      #
+      # THE WRAPPER EXISTS FOR THE UMASK, WHICH IS NOT COSMETIC.  The M14
+      # section of this header spends a page on it: 2770 setgid dirs fix the
+      # GROUP, and a 0002 umask fixes the group's WRITE BIT, and
+      # fs.protected_hardlinks needs both or Lidarr cannot hardlink out of the
+      # tree and import silently degrades to a copy.  slskd gets its half from
+      # `UMask=0002` on its unit.  sldl has no unit — it is run by hand — so
+      # the wrapper carries it instead.  A bare `sldl` as root writes 0644 and
+      # quietly breaks the property this guest was built to hold.
+      #
+      # `path` comes from a store config rather than a baked `--path` so that
+      # a CLI `-p` still overrides it; config is the lowest precedence layer.
+      ##########################################################################
+      environment.systemPackages = with pkgs; [
+        curl
+        wireguard-tools
+
+        (writeShellApplication {
+          name = "sldl";
+          text = ''
+            umask 0002
+            exec ${slsk-batchdl}/bin/sldl -c ${writeText "sldl.conf" ''
+              path = ${sldlRoot}
+            ''} "$@"
+          '';
+        })
+      ];
       documentation.enable = false;
       documentation.nixos.enable = false;
     };
