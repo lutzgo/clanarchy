@@ -287,6 +287,32 @@ let
   # currently a 3.0.0 beta.
   imageTag    = "web-v2.9.3";
   imageDigest = "sha256:9f7fac6ba3217e131cf3eaefe0b5107b8b6c431ace91e73c06cb530cd43ff4b8";
+
+  # `storyteller-stage` — bound here rather than inline in systemPackages so
+  # the weekly pair watcher below can invoke THE SAME derivation. Two copies
+  # of the script would be two matchers, and a watcher announcing pairs the
+  # staging tool would then reject is precisely the drift the header forbids.
+  storytellerStage = pkgs.writeShellApplication {
+    name = "storyteller-stage";
+
+    runtimeInputs = with pkgs; [
+      coreutils findutils gnused gnugrep sqlite
+    ];
+
+    text = ''
+      IMPORT=${importDir}
+      EBOOKS=/srv/media/library/books
+      AUDIO=/srv/audiobooks/library
+      INGEST=/srv/media/ingest/cwa
+      UID_=${toString storytellerUid}
+      GID_=${toString mediaGid}
+      # Storyteller's own database, read-only, for `new`'s already-imported
+      # check.  Lives on zdata with the rest of its state (see the header).
+      DB=${dataDir}/storyteller.db
+
+      ${builtins.readFile ../storyteller-stage.sh}
+    '';
+  };
 in
 {
   ##############################################################################
@@ -738,24 +764,111 @@ in
   # "Iain M. Banks" and Bindery under "Iain Banks". An author-level join misses
   # real pairs; that trap cost a wrong answer during M17's follow-up.
   ##############################################################################
-  environment.systemPackages = [
-    (pkgs.writeShellApplication {
-      name = "storyteller-stage";
+  environment.systemPackages = [ storytellerStage ];
 
-      runtimeInputs = with pkgs; [
-        coreutils findutils gnused gnugrep
-      ];
+  ############################################################################
+  # The weekly pair watcher.
+  #
+  # IT NOTIFIES; IT DOES NOT STAGE.  That is the whole design, and it came out
+  # of measuring the libraries rather than from caution: 26 EPUBs and 31
+  # audiobooks yield exactly ONE pairable title (Consider Phlebas, 2026-09-28).
+  # The two shelves barely overlap — the ebooks are Banks/Le Guin/Wilde, the
+  # audiobooks are Vinge/Weir/Tchaikovsky plus a large German shelf — so an
+  # auto-stager would wake up, find nothing, and go back to sleep for weeks.
+  # The scarce thing is a matching second half, not the two minutes it takes
+  # to run `storyteller-stage`.
+  #
+  # AND ALIGNMENT COSTS HOURS OF CPU PER BOOK.  A stager that found four pairs
+  # at once would commit the machine to most of a day of whisper without
+  # anyone deciding to.  Notifying puts that decision back in front of a
+  # human, which is where it belongs while this is a handful of titles a year.
+  #
+  # ONE MORE REASON, AND IT IS THE LOAD-BEARING ONE: auto-import has never
+  # been observed working on this deployment.  The only book in the database
+  # was created 2026-08-28, BEFORE the /import mount existed at all (M#250,
+  # merged 2026-09-27), and it was processed through Reprocess rather than
+  # through the watcher.  The one watcher scan that has been caught in the act
+  # threw `Encountered an error scanning for new book files in /import/` with
+  # an empty message out of getCoverArt.  Staging automatically onto a leg
+  # that has never been proven would manufacture silent failures; announcing a
+  # pair and letting someone stage it by hand proves the leg as a side effect.
+  ############################################################################
+  systemd.services.storyteller-pair-watch = lib.mkIf config.clanarchy.zfs.ntfy.enable {
+    description = "Announce Storyteller-pairable titles not yet imported";
+    # Reuses the ZFS alerting topic on purpose — see the splitScript option in
+    # modules/observability/zfs-ntfy.nix, which exists precisely so that every
+    # publisher in this fleet normalises the var identically and lands on ONE
+    # topic. A second topic here would be a second thing to reserve, mute and
+    # rotate.
+    serviceConfig = {
+      Type = "oneshot";
+      # Read-only work: a library scan and a read-only sqlite open.
+      ProtectSystem = "strict";
+      ReadOnlyPaths = [ "/srv/media/library/books" "/srv/audiobooks" ];
+      PrivateTmp    = true;
+    };
+    path = [ pkgs.curl pkgs.coreutils ];
+    script = ''
+      set -eu
 
-      text = ''
-        IMPORT=${importDir}
-        EBOOKS=/srv/media/library/books
-        AUDIO=/srv/audiobooks/library
-        INGEST=/srv/media/ingest/cwa
-        UID_=${toString storytellerUid}
-        GID_=${toString mediaGid}
+      # The SAME derivation that is on the operator's PATH — not a second copy
+      # of the script. `new` announcing pairs that `storyteller-stage` would
+      # then refuse to stage is exactly the drift this file's header forbids.
+      new=$(${lib.getExe storytellerStage} new) || true
 
-        ${builtins.readFile ../storyteller-stage.sh}
-      '';
-    })
-  ];
+      # Empty stdout is the "no news" signal. Exit before touching the network
+      # so a quiet week costs nothing and pages nobody.
+      [ -n "$new" ] || exit 0
+
+      count=$(printf '%s\n' "$new" | wc -l)
+      body=$(printf '%s\n' "$new" | cut -f1 | sed 's/^/• /')
+
+      if ! SPLIT=$(${config.clanarchy.zfs.ntfy.splitScript} \
+            ${config.clan.core.vars.generators.zfs-ntfy.files."url".path}); then
+        echo "storyteller-pair-watch: cannot read a topic out of the zfs-ntfy var" >&2
+        exit 1
+      fi
+      NTFY_URL="''${SPLIT%% *}/''${SPLIT##* }"
+
+      post() {
+        curl -sSf --max-time 10 "$@" \
+          -H "Title: $count new Storyteller pair(s)" \
+          -H "Tags: books" \
+          -d "$body
+
+Stage with: storyteller-stage <slug> <ebook> <audiobook-dir>
+List them:  storyteller-stage new" \
+          "$NTFY_URL" >/dev/null
+      }
+
+      ${lib.optionalString config.clanarchy.zfs.ntfy.auth.enable ''
+      # Same argv-avoiding form as the zedlet: the token goes file → pipe →
+      # curl via `-K -`, never an argument, never an env var. ernst carries an
+      # unprivileged couch account that can read /proc.
+      TOKEN_FILE='${config.clan.core.vars.generators.zfs-ntfy-token.files."token".path}'
+      if [ -r "$TOKEN_FILE" ]; then
+        {
+          printf 'header = "Authorization: Bearer '
+          tr -d '[:space:]' < "$TOKEN_FILE"
+          printf '"\n'
+        } | post -K -
+        exit 0
+      fi
+      echo "storyteller-pair-watch: auth enabled but $TOKEN_FILE is unreadable" >&2
+      exit 1
+      ''}
+
+      post
+    '';
+  };
+
+  systemd.timers.storyteller-pair-watch = lib.mkIf config.clanarchy.zfs.ntfy.enable {
+    description = "Weekly check for Storyteller-pairable titles";
+    wantedBy    = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar   = "Mon 09:00";
+      Persistent   = true;   # a week the machine was down still gets its check
+      RandomizedDelaySec = "30m";
+    };
+  };
 }

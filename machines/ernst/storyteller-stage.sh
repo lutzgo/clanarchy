@@ -12,6 +12,7 @@ storyteller-stage — stage an ebook + audiobook pair for Storyteller
   storyteller-stage <name> <ebook> <audiobook-dir>
   storyteller-stage list
   storyteller-stage pairs
+  storyteller-stage new
 
   <name>           subdirectory to create under the watch folder, e.g. consider-phlebas
   <ebook>          path to an EPUB
@@ -22,6 +23,9 @@ as a single item instead of two unmatched ones.
 
   list    what is currently staged
   pairs   titles that exist in BOTH libraries and could be staged
+  new     pairs not yet imported and not yet staged, tab-separated
+          (slug, ebook, audiobook). Empty output means no news — this is
+          what the weekly ntfy watcher runs.
 EOF
 }
 
@@ -58,15 +62,18 @@ cmd_list() {
 # directories are NOT comparable: Audiobookshelf files Banks under
 # "Iain M. Banks" and Bindery under "Iain Banks", so an author-level join
 # misses real pairs.  Titles are the only thing that lines up.
-cmd_pairs() {
-  norm() { tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g; s/  */ /g; s/^ //; s/ $//'; }
+norm() { tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g; s/  */ /g; s/^ //; s/ $//'; }
 
+# The pair join, once, machine-readable: "<ebook>\t<audiobook>" per line.
+# cmd_pairs pretty-prints it and cmd_new filters it; neither reimplements it,
+# because two copies of this matcher would drift and the matcher IS the
+# interesting part.
+emit_pairs() {
   tmp=$(mktemp -d); trap 'rm -rf "$tmp"' RETURN
 
   find "$EBOOKS" -type f -iname '*.epub' -printf '%p\n' 2>/dev/null > "$tmp/ebooks"
   find "$AUDIO" -mindepth 2 -maxdepth 2 -type d -printf '%p\n' 2>/dev/null > "$tmp/audio"
 
-  found=0
   while IFS= read -r ab; do
     abt=$(basename "$ab" | norm)
     [ -n "$abt" ] || continue
@@ -75,17 +82,67 @@ cmd_pairs() {
       ebt=$(basename "$eb" .epub | sed 's/ - [^-]*$//' | norm)
       [ -n "$ebt" ] || continue
       case "$abt" in *"$ebt"*) ;; *) case "$ebt" in *"$abt"*) ;; *) continue ;; esac ;; esac
-      echo "  PAIR"
-      echo "    ebook:     $eb"
-      echo "    audiobook: $ab"
-      found=$((found + 1))
+      printf '%s\t%s\n' "$eb" "$ab"
       break
     done < "$tmp/ebooks"
   done < "$tmp/audio"
+}
+
+cmd_pairs() {
+  found=0
+  while IFS=$(printf '\t') read -r eb ab; do
+    echo "  PAIR"
+    echo "    ebook:     $eb"
+    echo "    audiobook: $ab"
+    found=$((found + 1))
+  done <<EOF
+$(emit_pairs)
+EOF
 
   [ "$found" -eq 0 ] && echo "  no titles present in both libraries"
   echo
   echo "  ($found candidate pair(s); an EPUB is required — azw3/mobi must be converted first)"
+}
+
+# Pairs that are NOT already imported and NOT already staged.  This is what the
+# weekly ntfy watcher runs; it prints one "<slug>\t<ebook>\t<audiobook>" per
+# line and nothing at all when there is no news, so an empty stdout is the
+# "say nothing" signal.
+#
+# Already-imported is decided against Storyteller's OWN database rather than
+# against $IMPORT, because the watch folder is a scratch drop box that gets
+# cleared — using it as the ledger would re-announce every title every time it
+# was emptied.  Read-only open; this runs while the app is live.
+cmd_new() {
+  titles=""
+  if [ -r "$DB" ]; then
+    titles=$(sqlite3 -readonly "$DB" 'select title from book;' 2>/dev/null | norm || true)
+  fi
+
+  while IFS=$(printf '\t') read -r eb ab; do
+    [ -n "$eb" ] || continue
+    abt=$(basename "$ab" | norm)
+
+    # Already in Storyteller?  Same substring rule as the library join, since
+    # the DB stores "Consider Phlebas" and the audiobook dir is
+    # "Consider Phlebas: Culture Series, Book 1".
+    known=0
+    while IFS= read -r t; do
+      [ -n "$t" ] || continue
+      case "$abt" in *"$t"*) known=1; break ;; esac
+      case "$t" in *"$abt"*) known=1; break ;; esac
+    done <<EOF
+$titles
+EOF
+    [ "$known" -eq 1 ] && continue
+
+    slug=$(basename "$ab" | norm | sed 's/ /-/g' | cut -c1-60)
+    [ -e "$IMPORT/$slug" ] && continue
+
+    printf '%s\t%s\t%s\n' "$slug" "$eb" "$ab"
+  done <<EOF
+$(emit_pairs)
+EOF
 }
 
 cmd_stage() {
@@ -140,6 +197,7 @@ cmd_stage() {
 case "${1-}" in
   list)  cmd_list ;;
   pairs) cmd_pairs ;;
+  new)   cmd_new ;;
   ""|-h|--help|help) usage ;;
   *)
     [ "$#" -eq 3 ] || { usage; exit 1; }
