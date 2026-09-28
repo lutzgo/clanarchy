@@ -39,6 +39,12 @@
 #     pydantic           2.12.5    >=2.10.4,<3.0.0   ok
 #     pyjwt              2.13.0    >=2.8.0,<3.0.0    ok
 #
+#   THAT TABLE IS NOT THE WHOLE DEPENDENCY SET, which is the trap this file
+#   fell into once already: `hishel[httpx]` is an EXTRA, and Nix does not model
+#   extras. See the `anysqlite` note in `dependencies` below — it is a ninth
+#   distribution that no requirement string names, and omitting it broke login
+#   with a bare "Unexpected error" in the UI.
+#
 #   THREE OF THOSE SIT EXACTLY ON THEIR LOWER BOUND.  A nixpkgs bump that moves
 #   httpx past 0.29, or loguru past 0.8, breaks this at BUILD time via the
 #   dependency list below rather than silently at import — which is the reason
@@ -79,6 +85,7 @@
   loguru,
   pydantic,
   pyjwt,
+  anysqlite,
 }:
 
 buildPythonPackage rec {
@@ -105,6 +112,38 @@ buildPythonPackage rec {
     loguru
     pydantic
     pyjwt
+
+    # ── anysqlite: NOT IN pytoyoda's REQUIREMENTS, AND STILL REQUIRED ─────
+    #
+    # pytoyoda asks for `hishel[httpx]`, and that EXTRA pulls two more
+    # distributions of its own:
+    #
+    #   anyio>=4.9.0;      extra == "httpx"
+    #   anysqlite>=0.0.5;  extra == "httpx"
+    #
+    # NIX DOES NOT MODEL PYTHON EXTRAS.  nixpkgs' `hishel` propagates its BASE
+    # dependencies only — httpx, msgpack, typing-extensions (checked) — so
+    # naming `hishel` here silently buys the unextra'd package.  `anyio` was
+    # already in the environment via Home Assistant, which is why it is absent
+    # from this list; `anysqlite` was not, and nothing in the requirement
+    # metadata says so.
+    #
+    # THE FAILURE WAS LOUD BUT LATE, and `hacs-deps-check` could not have
+    # caught it: that checker resolves the manifest's requirement STRINGS, and
+    # `pytoyoda==5.2.9` resolved perfectly. The gap is one level down, inside a
+    # satisfied requirement's extra. It surfaced only when the config flow
+    # actually logged in:
+    #
+    #   pytoyoda/controller.py:212 in _get_http_client
+    #   ImportError: The 'anysqlite' library is required to use the
+    #                `AsyncSqliteStorage` integration.
+    #
+    # which Home Assistant renders in the UI as a bare "Unexpected error".
+    #
+    # GENERAL SHAPE, worth keeping: a requirement written `pkg[extra]` is a
+    # place where the nixpkgs attribute and the PyPI requirement are NOT the
+    # same thing, and the extra's dependencies have to be added by hand.
+    anysqlite
   ];
 
   # The sdist ships LICENSE, PKG-INFO, pyproject.toml, README.md and the
