@@ -832,7 +832,16 @@ in
           chmod 600 "$_keys"
         '';
 
-        home.packages = [ fzf-zellij ] ++ (with pkgs; [
+        home.packages = [
+          fzf-zellij
+
+          # Terminal Navidrome client. Config is NOT managed here: the Subsonic
+          # protocol needs the password itself (it builds a fresh salted token
+          # per request, so a token cannot substitute), and that belongs in a
+          # hand-written ~/.config/sonic-tui/config.yaml — which is inside
+          # lgo's persist set, so it survives rollback. See docs/guides/navidrome-clients.md.
+          inputs.sonic-tui.packages.${pkgs.stdenv.hostPlatform.system}.default
+        ] ++ (with pkgs; [
           htop
           ripgrep
           fd
