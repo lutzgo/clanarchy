@@ -121,6 +121,22 @@
     # nvf — pin to the same revision govim uses so the DAG lib is consistent
     nvf.follows = "govim/nvf";
 
+    # sonic-tui — terminal Navidrome/Subsonic client for lgo.  Not in nixpkgs;
+    # the Subsonic TUI niche has churned badly and the two clients that used to
+    # be the obvious answer are gone — stmp is unmaintained and its fork stmps
+    # is titled "[unmaintained]" upstream.  This one is alive (Rust, mpv-backed)
+    # and, usefully, is developed ON NixOS: it ships packages.default as a plain
+    # rustPlatform.buildRustPackage, so there is no derivation here to maintain.
+    #
+    # Follows nixpkgs-unstable for the same reason govim does — its own flake
+    # pins nixos-unstable, and pointing it at *ours* avoids a third,
+    # independently-drifting nixpkgs in the lock.  Not clan-core/nixpkgs: that
+    # is 26.05, and nothing guarantees its rustc satisfies the crate's edition.
+    sonic-tui = {
+      url = "git+https://codeberg.org/thelinuxcast/sonic-tui";
+      inputs.nixpkgs.follows = "nixpkgs-unstable";
+    };
+
     # Jovian-NixOS — Steam Deck (birte) support.
     # Jovian officially supports only nixos-unstable, so it follows
     # nixpkgs-unstable (which this flake already pulls in for Noctalia).
