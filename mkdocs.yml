@@ -63,6 +63,7 @@ nav:
     - The reading stack: guides/reading-stack.md
     - Navidrome clients: guides/navidrome-clients.md
     - The agent's memory: guides/agent-memory.md
+    - HACS dependencies: guides/hacs-dependencies.md
     - HTPC / Plasma Bigscreen: guides/htpc-bigscreen.md
     - HTPC / game controllers: guides/htpc-controllers.md
     - Emulation on birte: guides/birte-emulation.md
