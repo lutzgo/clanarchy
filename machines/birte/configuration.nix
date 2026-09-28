@@ -83,6 +83,11 @@
   clanarchy.apps.flatpak.enable       = true;
   clanarchy.apps.desktopTools.enable  = true;
 
+  # Supersonic, for Navidrome in Desktop Mode. The default package is the
+  # right one here: birte is `clanarchy.channel = "unstable"`, where
+  # `supersonic-wayland` no longer exists.
+  clanarchy.apps.subsonic.enable      = true;
+
   # Switch emulation. RetroDECK (installed as a Flatpak, see deck.nix for the
   # persistence and data-folder wiring it needs) covers everything up to the
   # Switch and dropped the Switch itself in February 2026, so that one console

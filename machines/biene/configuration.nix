@@ -80,6 +80,14 @@
   clanarchy.apps.desktopTools.enable    = true;
   clanarchy.apps.flatpak.enable         = true;
 
+  # Supersonic, for Navidrome. biene is on the stable channel, where the
+  # Wayland build is still a separate derivation — plain `supersonic` there is
+  # the X11 one and would run through XWayland under labwc. Unstable removed
+  # this attribute after folding Wayland support into the main package, so
+  # this override must NOT be copied to a machine on `channel = "unstable"`.
+  clanarchy.apps.subsonic.enable        = true;
+  clanarchy.apps.subsonic.package       = pkgs.supersonic-wayland;
+
   # GUI applications available to all biene users (file manager, doc viewer).
   # gvfs provides virtual filesystem support for nautilus
   # (network shares, MTP devices, trash, etc.).
