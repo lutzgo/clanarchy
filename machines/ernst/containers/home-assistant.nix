@@ -779,6 +779,18 @@ in
       # about installing two incompatible copies would stop being hypothetical.
       hacs = hassPackage.python3Packages.callPackage ./pkgs/hacs.nix { };
 
+      # ── pytoyoda, FOR THE `toyota` HACS INTEGRATION ──────────────────────
+      #
+      # Same scope rule as `hacs` directly above, and for the second of the two
+      # reasons given there: this ends up in `hassExtraPackages`, so its
+      # pydantic/httpx/arrow must be the ones Home Assistant itself is built
+      # against rather than a parallel copy.
+      #
+      # It is a ./pkgs file rather than `ps.pytoyoda` because nixpkgs has no
+      # such attribute — see that file for why the block `hacs-deps-check`
+      # printed could not be pasted as-is.
+      pytoyoda = hassPackage.python3Packages.callPackage ./pkgs/pytoyoda.nix { };
+
       # ── EVERY PACKAGED INTEGRATION, BEHIND ONE PYTHONPATH ENTRY ───────
       #
       # WHY NOT A CURATED LIST.  Home Assistant's "Add Integration" dialog
@@ -896,6 +908,21 @@ in
         # means Home Assistant never validates a downloaded integration's
         # requirements and reports nothing about pip.
         ps.aiocache
+
+        # toyota (HACS, pytoyoda/ha_toyota 3.2.1) — manifest wants
+        # `pytoyoda==5.2.9` and `arrow`.
+        #
+        # NOT `ps.pytoyoda`: there is no such attribute in nixpkgs, so the
+        # remediation `hacs-deps-check` printed would have failed at
+        # EVALUATION. The derivation is ./pkgs/pytoyoda.nix and the binding is
+        # in the `let` above — which is why this entry has no `ps.` prefix
+        # while its neighbours do.
+        #
+        # `arrow`, the manifest's other requirement, is deliberately absent
+        # here: pytoyoda depends on it too, so the derivation propagates it.
+        # Listing it again would be the duplicate the mass_queue note above
+        # warns about.
+        pytoyoda
       ];
 
       # ── TWO DISTRIBUTIONS, ONE IMPORT NAME: `brotlipy` IS EXCLUDED ────────
