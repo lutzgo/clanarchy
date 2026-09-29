@@ -1,12 +1,13 @@
 # Navidrome clients
 
 Navidrome runs inside the `arr` container on ernst (port 4533) and answers at
-[`navidrome.goclan.org`](https://navidrome.goclan.org). Two clients are deployed, split by machine.
+[`navidrome.goclan.org`](https://navidrome.goclan.org). Three clients are deployed, split by machine.
 
 | Machine | Client | Kind |
 |---|---|---|
 | miralda, jens | `sonic-tui` | terminal (mpv-backed) |
 | birte, biene | Supersonic | desktop (Go/Fyne) |
+| ernst | `plugin.kodi.navidrome` | Kodi add-on (living-room TV) |
 
 ## Credentials are Navidrome's, not Authelia's
 
@@ -57,3 +58,22 @@ Then just `sonic-tui`. Keys: `?` help · `/` search · `space` play/pause · `hj
 | birte (unstable) | 0.22.0 | **removed** — folded into `supersonic` |
 
 birte takes the module default; biene overrides `clanarchy.apps.subsonic.package` to `pkgs.supersonic-wayland`, because plain `supersonic` on stable is the X11 build and would run through XWayland under labwc. Do **not** copy that override to a machine on `clanarchy.channel = "unstable"` — the attribute does not exist there and it fails at eval.
+
+## Kodi add-on (ernst)
+
+Shipped in the HTPC role's add-on list, built from `modules/roles/pkgs/navidrome-kodi.nix` — `kodiPackages` has no Navidrome add-on and no Subsonic client of any name, so it is out-of-tree and pinned to upstream's `v0.6.0` tag. Nothing to enable; it is in the client package `roles.htpc` already builds.
+
+**It ships inert and needs three values entered from the sofa**, in Settings → Add-ons → Navidrome. Kodi keeps add-on settings in `~/.kodi/userdata/addon_data`, which `mediaClient.guiSettings` does not reach — that option writes Kodi's own `guisettings.xml`, not any add-on's — so this cannot be declared, the same as the YouTube API key and the Immich URL:
+
+| Setting | Value |
+|---|---|
+| `server_url` | `https://navidrome.goclan.org` (the default `http://localhost:4533` is wrong here) |
+| `username` | a Navidrome account |
+| `password` | the password itself — see above; there is no token to substitute |
+
+Leave `verify_ssl` on: that hostname has a real Traefik certificate, so the `ca_cert_path` setting v0.6.0 added is for somebody else's setup.
+
+!!! warning "Turn the offline cache off"
+    `enable_offline_cache` defaults to **on at 2000 MB**, and on ernst it caches ernst — the Kodi client and the Navidrome server are the same box. The copy lands in `~/.kodi/userdata/addon_data`, `.kodi` is in the role's `persistenceDirectories`, and `/persist` is on the mirrored 960 GB zroot. So the default spends system-pool space duplicating a library that is already on the bulk pool.
+
+The add-on also registers an `xbmc.service` alongside the plugin. That is the scrobbler and the "now playing" updater; it starts with Kodi rather than when the add-on is opened.
