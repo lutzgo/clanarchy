@@ -755,6 +755,39 @@ in
             # See machines/ernst/containers/immich.nix.
             (p.callPackage ./pkgs/immich-kodi.nix { })
 
+            # Navidrome — the household music library on the TV, closing the
+            # last gap in this list: video, photos and live TV were all here
+            # and music was not.
+            #
+            # `p.callPackage` FOR THE SAME REASON AS THE TWO ABOVE. nixpkgs
+            # has no Navidrome add-on and no Subsonic client of any name, so
+            # this is out-of-tree (pkgs/navidrome-kodi.nix), and taking it
+            # from `pkgs.kodiPackages` would build it against plain `kodi` and
+            # have `withPackages` drop it silently — see the trap at the top
+            # of this file.
+            #
+            # THE SERVER NEEDS NO NEW PLUMBING, unlike `pvr-hts`. Navidrome is
+            # already in the `arr` container on this very machine and already
+            # fronted by Traefik at navidrome.goclan.org, in `appApiHosts` and
+            # `wanExposed` — so there is no firewall to open and no VLAN
+            # policy to add. docs/guides/navidrome-clients.md lists the
+            # clients; this is the third.
+            #
+            # NEEDS RUNTIME SETUP AND WILL NOT WORK WITHOUT IT: server URL,
+            # username and password in the add-on's own settings. The URL
+            # default is `http://localhost:4533` and is wrong here. The
+            # password must be the PASSWORD — Subsonic derives a fresh salted
+            # token per request, so there is no token to substitute.
+            #
+            # WHILE YOU ARE IN THERE, TURN THE OFFLINE CACHE OFF. It defaults
+            # on at 2000 MB and would copy ernst's music onto ernst, into
+            # ~/.kodi/userdata/addon_data — which `persistenceDirectories`
+            # keeps, on the mirrored system pool. See the package file.
+            #
+            # It registers an `xbmc.service` as well as a plugin; that is the
+            # scrobbler, and it is expected.
+            (p.callPackage ./pkgs/navidrome-kodi.nix { })
+
             # NO SKIN IS SHIPPED, and that is a change from how this role
             # started. `osmc-skin` was here — the only skin nixpkgs packages —
             # and it was REMOVED on 2026-09-07 because it breaks Kodi on
@@ -787,6 +820,7 @@ in
             (p.callPackage ./pkgs/youtube-kodi.nix { })
             (p.callPackage ./pkgs/mediathekview-kodi.nix { })
             (p.callPackage ./pkgs/immich-kodi.nix { })
+            (p.callPackage ./pkgs/navidrome-kodi.nix { })
           ]
         '';
         description = ''
