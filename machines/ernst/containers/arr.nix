@@ -4794,6 +4794,15 @@ in
       #   BINDERY_TRUSTED_PROXY / BINDERY_URL_BASE.  Distinct hostname, no
       #   subpath, and nothing consumes client IPs from it — same as every
       #   other *arr here.
+      #
+      #   A MINIMUM-SEEDERS FILTER, because there is nothing to configure.
+      #   Bindery has no such concept — the only seed-related setting it has
+      #   is `seed_ratio`, which is the upload side — so it grabs 0-seed
+      #   releases as readily as well-seeded ones and then fails them as
+      #   "stalled: no peers".  Prowlarr's `appMinimumSeeders` does NOT reach
+      #   it either: that field is only propagated to *arr apps on sync.
+      #   The queue therefore needs periodic sweeping, which is a runbook and
+      #   not a setting — see docs/runbooks/bindery-dead-torrent-sweep.md.
       ##########################################################################
       systemd.services.bindery = {
         description = "Bindery — ebook acquisition and library manager";
