@@ -569,6 +569,98 @@ let
   # Host state sources.  Bound to the upstream default paths inside.
   stateRoot = "/srv/state";
 
+  # ── beets: the bridge from sldl's tag-only output to Lidarr's shape ───────
+  #
+  # See the tmpfiles block for the measurement that justifies this existing at
+  # all.  Two paths, and the split is the usual one:
+  #
+  #   beetsStagingRoot  MEDIA.  The Artist/Album tree beets writes and Lidarr
+  #                     imports from.  On zdata/media, in the hardlink domain.
+  #   beetsStateDir     STATE.  beets' own library.db and import log.  On
+  #                     zdata/state with every other service's state
+  #                     (invariant #7) — it is a catalogue, not media, and
+  #                     rebuilding it would mean re-matching everything.
+  beetsStagingRoot = "/srv/media/staging/music";
+  beetsStateDir    = "${stateRoot}/beets";
+
+  # The config is in the store, so `music-stage` cannot drift from what this
+  # file says it does.
+  #
+  # `copy: yes` / `move: no` IS DELIBERATE AND NOT A DEFAULT.  sldl tracks what
+  # it has already fetched in a per-playlist `_index.csv` INSIDE its own output
+  # tree, and the batch re-runs over the same CSVs for weeks.  Moving files out
+  # from under it leaves that bookkeeping describing files that are gone.
+  # Copying costs disk — 42 TB free against ~100 GB of music — and costs
+  # nothing else.
+  #
+  # `quiet_fallback: skip` is the important one.  In quiet mode beets takes the
+  # best match without asking; on a weak match that silently files a track
+  # under the wrong album, which is worse than not filing it at all and is
+  # invisible afterwards.  `skip` leaves anything it is not confident about in
+  # place, to be run again interactively.
+  beetsConfig = pkgs.writeText "beets-config.yaml" ''
+    directory: ${beetsStagingRoot}
+    library: ${beetsStateDir}/library.db
+
+    import:
+      copy: yes
+      move: no
+      write: yes
+      quiet_fallback: skip
+      log: ${beetsStateDir}/import.log
+      duplicate_action: skip
+
+    # The singleton line carries the album when the tags have one, because
+    # Lidarr is album-oriented and `Artist/Non-Album Tracks/` (beets' usual
+    # singleton shape) gives it nothing to match.  Measured: 236 of 239 files
+    # DO carry an album tag, so the fallback is the rare path, not the common
+    # one.
+    paths:
+      default: $albumartist/$album%aunique{}/$track $title
+      singleton: $artist/%if{$album,$album,Non-Album Tracks}/$title
+      comp: Various Artists/$album%aunique{}/$track $title
+
+    # `fromfilename` is the fallback for the handful with no tags at all (2 of
+    # 239 measured): it guesses artist/title from the filename rather than
+    # dropping them entirely.
+    plugins: fromfilename
+  '';
+
+  # `beet` with this deployment's config, and the umask that keeps the
+  # hardlink property intact — the same half that slskd gets from `UMask=0002`
+  # on its unit and that sldl gets from its own wrapper.  A bare `beet` as root
+  # writes 0644 and Lidarr can then no longer hardlink out of the staging tree.
+  # `-A -s` IS BAKED IN, AND BOTH FLAGS WERE ARRIVED AT BY MEASUREMENT.
+  # Running `beet import` without them on this input is not a worse result, it
+  # is a WRONG one, so the wrapper does not offer the choice:
+  #
+  #   WITHOUT -s, beets treats each PLAYLIST DIRECTORY as one album.  sldl's
+  #   folders are playlists — unrelated tracks by unrelated artists — so it
+  #   picked one file's album tag and filed all three under it.  Measured
+  #   2026-10-03: three unrelated singles landed in
+  #   `Various Artists/Psychic/`, Psychic being Darkside's album.
+  #
+  #   WITHOUT -A, beets asks MusicBrainz and `quiet_fallback: skip` then skips
+  #   everything it cannot match confidently.  Measured on the same three
+  #   files: `Found 0 candidates` and three skips, with MusicBrainz reachable
+  #   and answering (HTTP 200 in 0.18 s, checked separately — this is not a
+  #   network fault).  The tags are already right; asking a remote database to
+  #   second-guess them buys nothing here and loses the files when it fails.
+  #
+  # With both, the same three files landed as Trettmann/…, Darkside/… and
+  # Iriepathie/… — each under its own artist, which is the whole point.
+  #
+  # Raw beets, for anything this does not cover, is
+  # `beet -c ${beetsConfig} …` — the config path is stable in the store.
+  musicStage = pkgs.writeShellApplication {
+    name = "music-stage";
+    runtimeInputs = [ pkgs.beets ];
+    text = ''
+      umask 0002
+      exec beet -c ${beetsConfig} import -q -A -s "''${1:-/srv/media/soulseek/sldl}"
+    '';
+  };
+
   # Traefik's veth address on VLAN 90 (M5, DHCP reservation on the UDM-Pro
   # keyed on 02:00:00:90:00:04).  The ONLY source permitted to reach the three
   # web UIs.
@@ -987,6 +1079,33 @@ in
     # Jellyfin does not serve music in this deployment; Lidarr is the only
     # thing that writes here.
     "d /srv/media/library/music 2770 root ${toString mediaGid} -"
+
+    # ── THE BEETS STAGING TREE, AND WHY IT IS NOT THE LIBRARY ───────────────
+    #
+    # sldl (containers/../microvms/wg-qbittorrent.nix) writes playlist
+    # downloads as `<Playlist>/<whatever the uploader named it>` — flat, no
+    # artist directories, filenames like `11-iriepathie-lang_her.mp3`.  Lidarr
+    # cannot consume that: it models ARTISTS and ALBUMS and its Library Import
+    # reads the top directory level as an artist name, so pointed at that tree
+    # it would invent an artist called "KitKat".
+    #
+    # MEASURED BEFORE BUILDING ANY OF THIS (2026-10-03, 239 files): 236 carry
+    # artist AND title AND album, 1 lacks album, 2 carry nothing.  So the
+    # FILENAMES are junk and the TAGS are good, which is exactly the case a
+    # tag-driven organiser solves and a path-driven one cannot.
+    #
+    # beets reads those tags, matches them against MusicBrainz, and writes
+    # `Artist/Album/` here — the shape Lidarr's Library Import consumes
+    # natively.  That keeps LIDARR THE ONLY WRITER OF
+    # /srv/media/library/music, which is the property the note above states
+    # and which a beets run writing straight into the library would quietly
+    # destroy.
+    #
+    # Inside /srv/media, so Lidarr's import out of here is a hardlink or a
+    # move rather than a copy (invariant #2 — the domain is the dataset).
+    "d /srv/media/staging          2770 root ${toString mediaGid} -"
+    "d ${beetsStagingRoot}         2770 root ${toString mediaGid} -"
+    "d ${beetsStateDir}            0770 root ${toString mediaGid} -"
 
     # KAPOWARR'S DOWNLOAD TREE, and — like MediathekArr's — it is NOT under
     # ${stateRoot}.  It is media: Kapowarr downloads .cbz files here and then
@@ -6010,8 +6129,15 @@ in
       # `curl` is the test plan's instrument: it is what proves this container
       # can reach the download client's API at 10.0.90.11:8080 over br0 without
       # the UDM-Pro being involved, and what checks each web UI answers on
-      # localhost before any firewall is in the picture.  Nothing else is added.
-      environment.systemPackages = with pkgs; [ curl ];
+      # localhost before any firewall is in the picture.
+      #
+      # `music-stage` is beets with this deployment's config — see the binding
+      # in the `let` above.  It belongs HERE rather than in the VPN guest
+      # because it is a pure tag/metadata operation on files already on disk:
+      # the only network it touches is MusicBrainz over HTTPS, which is an
+      # ordinary API call and not something that needs to exit through the
+      # tunnel.  Nothing else is added.
+      environment.systemPackages = with pkgs; [ curl musicStage ];
       documentation.enable       = false;
       documentation.nixos.enable = false;
     };
