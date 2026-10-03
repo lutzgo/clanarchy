@@ -998,11 +998,27 @@ in
     # M17 — BINDERY'S TREES, the same shape for the same reason: download and
     # library ends BOTH inside /srv/media, so the import is a rename (or a
     # hardlink) on one dataset rather than a copy across two (invariant #2).
-    # NOT /srv/audiobooks: that dataset belongs to the Audiobookshelf +
-    # Storyteller pair; Bindery's audiobook capability is deliberately left
-    # unrouted (see its unit below).
     "d /srv/media/torrents/books  2770 root ${toString mediaGid} -"
     "d /srv/media/library/books   2770 root ${toString mediaGid} -"
+
+    # The AUDIOBOOK download tree, a SIBLING of torrents/books rather than a
+    # subdirectory of it — same argument slskd's and sldl's trees get in
+    # machines/ernst/microvms/wg-qbittorrent.nix: "which client wrote this"
+    # is a question someone will ask of a stuck file at 0200.
+    #
+    # It is here under /srv/media and NOT under /srv/audiobooks, even though
+    # the finished audiobooks land on the latter.  The one-dataset invariant
+    # cannot be satisfied for this path in any case: BINDERY_AUDIOBOOK_DIR is
+    # ${audiobooksRoot}/library, a different dataset, so Bindery's audiobook
+    # import is a cross-dataset COPY wherever the download sits.  Given that,
+    # the download tree stays with the download client's other trees, and
+    # /srv/audiobooks keeps the read-only posture the unit below argues for.
+    #
+    # The comment that used to sit here said "Bindery's audiobook capability
+    # is deliberately left unrouted".  That was falsified on 2026-09-27 and
+    # the unit below has said so since; this removes the last copy of the
+    # claim rather than leaving the two statements to contradict each other.
+    "d /srv/media/torrents/audiobooks 2770 root ${toString mediaGid} -"
 
     # AUDIOBOOKSHELF'S TREE, on its own dataset.
     #
@@ -4754,6 +4770,18 @@ in
       #   it costs is named here so nobody re-reads M17 and thinks the mount
       #   drifted by accident.
       #
+      #   IT TAKES TWO VARIABLES, not one.  BINDERY_AUDIOBOOK_DIR is where
+      #   finished audiobooks are FILED; BINDERY_AUDIOBOOK_DOWNLOAD_DIR is
+      #   where they are DOWNLOADED, and it does not follow
+      #   BINDERY_DOWNLOAD_DIR any more than BINDERY_DB_PATH follows
+      #   BINDERY_DATA_DIR.  Left unset it falls back to the ebook download
+      #   dir, which is the same shape of bug one level down: the audiobooks
+      #   still arrive, they just arrive in the ebook tree.  Measured
+      #   2026-10-03, with it unset and the qBittorrent `audiobooks` category
+      #   carrying no save path of its own, 55 audiobook torrents had
+      #   collected in qBittorrent's default `torrents/complete/audiobooks`
+      #   and Bindery's own download-client health check reported `error`.
+      #
       #   NARROWED AS FAR AS IT GOES: ReadWritePaths gains
       #   ${audiobooksRoot}/library and NOT ${audiobooksRoot}.  Storyteller's
       #   output tree (${audiobooksRoot}/synced) and its staging pool
@@ -4801,6 +4829,13 @@ in
           BINDERY_DB_PATH      = "/var/lib/bindery/bindery.db";
           BINDERY_LIBRARY_DIR  = "/srv/media/library/books";
           BINDERY_DOWNLOAD_DIR = "/srv/media/torrents/books";
+          # The AUDIOBOOK download tree, and it does NOT follow
+          # BINDERY_DOWNLOAD_DIR — see the block above for why leaving it
+          # unset made audiobooks share the ebook download dir.  Must match
+          # the qBittorrent `audiobooks` category's save path exactly;
+          # Bindery's download-client health check compares the two and
+          # reports `error` when they disagree.
+          BINDERY_AUDIOBOOK_DOWNLOAD_DIR = "/srv/media/torrents/audiobooks";
 
           # Audiobooks go to Audiobookshelf's library, NOT to the ebook
           # library dir.  See the long block above for why this reverses
