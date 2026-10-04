@@ -143,6 +143,58 @@ is low; but ernst's only management address rides `br0`, and this deploy adds a
 port to that bridge. Have the [Comet KVM](../guides/remote-unlock.md) reachable
 before you run it, as usual.
 
+### Changing the vars later: the deploy is NOT enough
+
+!!! danger "A deploy that says it modified the secrets can still leave the guest on the old ones"
+    Re-running `clan vars generate` for this guest — a new endpoint, a new
+    keypair, a rotated host key — and then deploying looks like it worked. It
+    reports, truthfully:
+
+    ```
+    [ernst] modifying secrets: vars/wg-qbittorrent/endpoint-ip, …/ssh-host-key, …/wg0.conf
+    ```
+
+    **And the guest keeps running the old config.** sops writes the new values
+    under `/run/secrets/…`, but the guest does not read those: they are staged
+    into `/run/microvm-wg-qbittorrent-secrets/` and passed in over virtiofs.
+    The unit that performs that copy, `microvm-secrets-wg-qbittorrent.service`,
+    is `RemainAfterExit` — once it is `active (exited)` a deploy has no reason
+    to re-run it, so the staged copies stay stale and the VM is never
+    restarted either.
+
+    Measured 2026-10-04: sops held the new endpoint while
+    `/run/microvm-wg-qbittorrent-secrets/wg0.conf` still carried the old
+    endpoint, address and DNS, and `microvm@wg-qbittorrent` had not restarted
+    in six days.
+
+So a vars change needs **two explicit restarts after the deploy**, in this
+order:
+
+```bash
+# 1. re-stage the secrets the guest actually reads
+systemctl restart microvm-secrets-wg-qbittorrent.service
+
+# confirm the staged copy really changed before restarting the VM
+grep -E '^(Address|DNS|Endpoint|MTU)' /run/microvm-wg-qbittorrent-secrets/wg0.conf
+
+# 2. restart the guest so wg-quick picks them up
+systemctl restart microvm@wg-qbittorrent.service
+```
+
+Then verify from inside the guest rather than trusting the restart:
+
+```bash
+ssh root@10.0.90.11 'wg show | grep -E "endpoint|latest handshake"; curl -s https://api.ipify.org'
+```
+
+The exit IP must be the provider's, never ernst's own. If `ssh` refuses with a
+changed host key, that is expected whenever `ssh-host-key` was part of the
+regeneration — `ssh-keygen -R 10.0.90.11` and reconnect.
+
+**This is the same shape as `cwa-ingest-perms` in `containers/cwa.nix`**: a
+`RemainAfterExit` oneshot that a deploy will not re-run, where the symptom is
+not an error but stale state.
+
 ---
 
 ## 4. Verify at L2, before the firewall is in the way
