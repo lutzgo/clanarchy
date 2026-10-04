@@ -602,6 +602,29 @@ let
     directory: ${beetsStagingRoot}
     library: ${beetsStateDir}/library.db
 
+    # ── `*.incomplete` IS NOT COSMETIC: IT IMPORTS TRUNCATED AUDIO ──────────
+    #
+    # sldl names an in-flight download `<name>.flac.incomplete` and renames it
+    # on completion.  The batch now runs for weeks, so a `music-stage` run
+    # ALWAYS overlaps live transfers — and beets does not care about the
+    # extension, it cares whether the file has readable tags.  A half-written
+    # FLAC usually does, because the tags are at the front.
+    #
+    # Measured 2026-10-04: a 4.6 MB truncated file landed as
+    # `Dover/2/King George 07 (2007 Remastered Version).incomplete`, catalogued
+    # as a real track.  Worse than the stray file itself is what it does next —
+    # `duplicate_action: skip` means the FINISHED download is then skipped as a
+    # duplicate of the broken one, so the good copy never arrives.
+    #
+    # beets' default ignore list is replaced wholesale when this key is set, so
+    # its defaults are restated here rather than merged.
+    ignore:
+      - '*.incomplete'
+      - '.*'
+      - '*~'
+      - 'System Volume Information'
+      - 'lost+found'
+
     import:
       copy: yes
       move: no
@@ -1620,6 +1643,28 @@ in
       };
       "/var/lib/prowlarr" = {
         hostPath   = "${stateRoot}/prowlarr";
+        isReadOnly = false;
+      };
+
+      # ── beets' CATALOGUE, AND IT IS NOT OPTIONAL STATE ─────────────────────
+      #
+      # Shipped missing in #269 and found on 2026-10-04.  `beetsStateDir` is a
+      # HOST path, and only `/srv/media` was mounted in — so
+      # `nixos-container run arr -- music-stage` wrote library.db to the
+      # container's PRIVATE /srv/state/beets, on zroot, which rolls back.
+      #
+      # THE SYMPTOM IS NOT AN EMPTY CATALOGUE, IT IS DUPLICATE AUDIO.  With no
+      # record of what it already staged, beets cannot apply
+      # `duplicate_action: skip`; it copies the file again and disambiguates
+      # the name, so a second run of the same CSVs produced
+      # `Elephant Gun.flac` AND `Elephant Gun.1.flac`.  At ten thousand tracks
+      # over weeks of re-runs that is the whole library, several times over.
+      #
+      # The path is the same inside and out, unlike the `/var/lib/<svc>`
+      # entries above, because `music-stage`'s config is generated from
+      # `beetsStateDir` and the two must agree.
+      "${beetsStateDir}" = {
+        hostPath   = beetsStateDir;
         isReadOnly = false;
       };
 
@@ -6137,7 +6182,16 @@ in
       # the only network it touches is MusicBrainz over HTTPS, which is an
       # ordinary API call and not something that needs to exit through the
       # tunnel.  Nothing else is added.
-      environment.systemPackages = with pkgs; [ curl musicStage ];
+      # `beets` itself alongside the wrapper, because `music-stage` only ever
+      # runs `import` — deliberately, see its binding — and maintenance needs
+      # the other subcommands.  Removing a bad catalogue entry is the case that
+      # forced this:
+      #
+      #   beet -c <config> remove -d '<query>'
+      #
+      # The config path is printed by `music-stage` in its own command line, or
+      # read out of this file.
+      environment.systemPackages = with pkgs; [ curl musicStage beets ];
       documentation.enable       = false;
       documentation.nixos.enable = false;
     };
