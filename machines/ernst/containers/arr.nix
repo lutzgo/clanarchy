@@ -1103,29 +1103,48 @@ in
     # thing that writes here.
     "d /srv/media/library/music 2770 root ${toString mediaGid} -"
 
-    # ── THE BEETS STAGING TREE, AND WHY IT IS NOT THE LIBRARY ───────────────
+    # ── THE BEETS STAGING TREE ──────────────────────────────────────────────
     #
     # sldl (containers/../microvms/wg-qbittorrent.nix) writes playlist
     # downloads as `<Playlist>/<whatever the uploader named it>` — flat, no
-    # artist directories, filenames like `11-iriepathie-lang_her.mp3`.  Lidarr
-    # cannot consume that: it models ARTISTS and ALBUMS and its Library Import
-    # reads the top directory level as an artist name, so pointed at that tree
-    # it would invent an artist called "KitKat".
+    # artist directories, filenames like `11-iriepathie-lang_her.mp3`.
     #
     # MEASURED BEFORE BUILDING ANY OF THIS (2026-10-03, 239 files): 236 carry
     # artist AND title AND album, 1 lacks album, 2 carry nothing.  So the
     # FILENAMES are junk and the TAGS are good, which is exactly the case a
-    # tag-driven organiser solves and a path-driven one cannot.
+    # tag-driven organiser solves and a path-driven one cannot.  beets reads
+    # those tags and writes `Artist/Album/Title` here.
     #
-    # beets reads those tags, matches them against MusicBrainz, and writes
-    # `Artist/Album/` here — the shape Lidarr's Library Import consumes
-    # natively.  That keeps LIDARR THE ONLY WRITER OF
-    # /srv/media/library/music, which is the property the note above states
-    # and which a beets run writing straight into the library would quietly
-    # destroy.
+    # ── THE DESTINATION IS NAVIDROME, NOT LIDARR.  CORRECTED 2026-10-04 ─────
     #
-    # Inside /srv/media, so Lidarr's import out of here is a hardlink or a
-    # move rather than a copy (invariant #2 — the domain is the dataset).
+    # An earlier revision of this comment said beets wrote "the shape Lidarr's
+    # Library Import consumes natively", and that this kept Lidarr the only
+    # writer of /srv/media/library/music.  BOTH CLAIMS WERE WRONG and were
+    # believed for a day:
+    #
+    #   1. THIS LIDARR HAS NO LIBRARY IMPORT.  That is a Sonarr/Radarr
+    #      feature.  A full scan of the 3.1.0.4875 UI bundle's routes gives
+    #      `/add/search` and `/unmapped` and nothing else — `/add/import` is a
+    #      404.
+    #   2. LIDARR CANNOT MATCH THIS CORPUS IN BULK ANYWAY.  Its
+    #      `/api/v1/manualimport` against the staged tree returned all 255
+    #      files with `"albumReleaseId": 0` and `"tracks": []` — nothing
+    #      identified, every file needing an artist and album chosen by hand.
+    #      That is Lidarr being artist/album-shaped meeting a corpus of ~219
+    #      artists holding one track each; it is not a misconfiguration.
+    #
+    # So the staged tree is copied into /srv/media/library/music, which
+    # Navidrome serves and indexes BY TAGS rather than by path.  Lidarr lists
+    # the result under `/unmapped` and leaves it alone, because it manages
+    # only artists it tracks.  Lidarr stays the right tool for the handful of
+    # artists worth monitoring — added through `/add/search`, after which it
+    # adopts their files out of the same root folder.
+    #
+    # The procedure, including the permission step that `cp` gets wrong, is
+    # docs/guides/music-pipeline.md.
+    #
+    # Inside /srv/media, so the copy into the library stays within one dataset
+    # (invariant #2 — the domain is the dataset).
     "d /srv/media/staging          2770 root ${toString mediaGid} -"
     "d ${beetsStagingRoot}         2770 root ${toString mediaGid} -"
     "d ${beetsStateDir}            0770 root ${toString mediaGid} -"

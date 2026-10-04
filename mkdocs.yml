@@ -61,6 +61,7 @@ nav:
     - ernst zdata datasets: guides/ernst-zdata-datasets.md
     - ernst app-API ingress: guides/ernst-app-api-ingress.md
     - The reading stack: guides/reading-stack.md
+    - The music pipeline: guides/music-pipeline.md
     - Navidrome clients: guides/navidrome-clients.md
     - The agent's memory: guides/agent-memory.md
     - HACS dependencies: guides/hacs-dependencies.md
