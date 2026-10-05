@@ -1,11 +1,11 @@
 # ernst: creating the zdata datasets
 
-`machines/ernst/disko.nix` declares nine datasets on `zdata` — `media`,
+`machines/ernst/disko.nix` declares ten datasets on `zdata` — `media`,
 `state`, `games`, `roms`, `unsorted`, `gardens`, `audiobooks`, `photos`,
-`nextcloud` — and disko emits the corresponding NixOS `fileSystems` entries so
-`/srv/media`, `/srv/state`, `/srv/games`, `/srv/roms`, `/srv/unsorted`,
-`/srv/gardens`, `/srv/audiobooks`, `/srv/photos` and `/srv/nextcloud` mount
-declaratively on every boot.
+`nextcloud`, `docs` — and disko emits the corresponding NixOS `fileSystems`
+entries so `/srv/media`, `/srv/state`, `/srv/games`, `/srv/roms`,
+`/srv/unsorted`, `/srv/gardens`, `/srv/audiobooks`, `/srv/photos`,
+`/srv/nextcloud` and `/srv/docs` mount declaratively on every boot.
 
 > **`zdata/media/movies` and `zdata/media/tvshows` are gone**, and this file
 > described them for a year after they stopped existing. They were **collapsed
@@ -13,7 +13,7 @@ declaratively on every boot.
 > [#20](https://github.com/lutzgo/clanarchy/pull/20): hardlinks cannot cross a
 > ZFS dataset boundary, and the \*arr import path depends on them. That is
 > architecture invariant #2 — **no dataset boundary inside the hardlink
-> domain** — and it is why `audiobooks`, `roms` and `photos` below are all
+> domain** — and it is why `audiobooks`, `roms`, `photos` and `docs` below are all
 > SIBLINGS of `zdata/media` rather than children. Do not re-create them.
 
 Disko itself only runs at first install; on the already-provisioned
@@ -303,6 +303,42 @@ zfs create \
   -o atime=off \
   -o com.sun:auto-snapshot=true \
   zdata/nextcloud
+
+# zdata/docs -> /srv/docs  (M32, the Paperless-ngx document archive)
+#
+# A SIBLING of zdata/media, never a child — invariant #2. Nothing here is
+# hardlinked to anything there.
+#
+# NOT a subdirectory of /srv/state, for the reason photos and nextcloud are
+# not: the INDEX, the scikit-learn classifier model and PostgreSQL all live on
+# /srv/state/paperless (128K, small random writes) and the ORIGINALS plus the
+# archived PDF/As live here (1M). Two opposite recordsizes, two datasets.
+#
+# recordsize=1M MUST be set at creation. A scanned PDF is written whole and is
+# never partially rewritten in place, which is the access pattern that would
+# make 1M wrong.
+#
+# com.sun:auto-snapshot=true, and this is the THIRD dataset where it is
+# non-negotiable rather than nice, after photos and nextcloud. Same reason —
+# people delete from it, from a phone, with a swipe, and paperless's trash is a
+# database flag with a retention period rather than a filesystem undo — plus
+# one twist the other two do not have: THE SOURCE IS GONE. The point of
+# scanning a document is to throw the paper away, so there is no second copy
+# anywhere to re-acquire it from.
+#
+# NO acltype=posix — see the note on unsorted and gardens above. paperless
+# keeps its permission model in its own database. The one directory with a
+# non-trivial mode is /srv/docs/inbox at 2770 paperless:docsin, created by
+# paperless-dirs, and a setgid bit is not an ACL.
+zfs create \
+  -o mountpoint=legacy \
+  -o recordsize=1M \
+  -o exec=off \
+  -o setuid=off \
+  -o devices=off \
+  -o atime=off \
+  -o com.sun:auto-snapshot=true \
+  zdata/docs
 ```
 
 `compression=zstd` and encryption are inherited from the pool root and
@@ -320,7 +356,7 @@ Property audit — every value below must match what was requested above:
 zfs get -H -o name,property,value \
   mountpoint,recordsize,exec,setuid,devices,atime,acltype,compression,encryption,com.sun:auto-snapshot \
   zdata/media zdata/state zdata/games zdata/roms zdata/unsorted zdata/gardens \
-  zdata/audiobooks zdata/photos zdata/nextcloud
+  zdata/audiobooks zdata/photos zdata/nextcloud zdata/docs
 ```
 
 Expected:
@@ -336,6 +372,7 @@ Expected:
 | `zdata/audiobooks` | legacy | 1M         | off  | off    | off     | off   | off     | true     | zstd     | aes-256-gcm |
 | `zdata/photos`     | legacy | 1M         | off  | off    | off     | off   | off     | true     | zstd     | aes-256-gcm |
 | `zdata/nextcloud`  | legacy | 1M         | off  | off    | off     | off   | off     | true     | zstd     | aes-256-gcm |
+| `zdata/docs`       | legacy | 1M         | off  | off    | off     | off   | off     | true     | zstd     | aes-256-gcm |
 
 > **`com.sun:auto-snapshot` is the column that silently does nothing if it is
 > wrong.** `services.zfs.autoSnapshot` is on fleet-wide, but it only touches
@@ -366,13 +403,13 @@ mount | grep '/srv/'
 findmnt /srv/media  # confirms device=zdata/media, fstype=zfs
 ```
 
-The three datasets that carry `nofail` — `/srv/audiobooks`, `/srv/photos` and
-`/srv/nextcloud` — will **not** fail the boot if they are missing or
-mis-propertied. Their consumers refuse to start instead, which is the point.
-Check those directly rather than trusting a clean boot:
+The four datasets that carry `nofail` — `/srv/audiobooks`, `/srv/photos`,
+`/srv/nextcloud` and `/srv/docs` — will **not** fail the boot if they are
+missing or mis-propertied. Their consumers refuse to start instead, which is
+the point. Check those directly rather than trusting a clean boot:
 
 ```bash
-systemctl status audiobooks-tree immich-dirs nextcloud-dirs
+systemctl status audiobooks-tree immich-dirs nextcloud-dirs paperless-dirs
 ```
 
 `hass-dirs` guards `/srv/state` the same way but is not in that list, because

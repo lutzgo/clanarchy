@@ -537,6 +537,55 @@
           };
         };
 
+        # zdata/docs — the household document archive (M32).
+        #
+        # recordsize=1M, on zdata/nextcloud's argument rather than a new one: a
+        # scanned PDF is written WHOLE and is never partially rewritten in
+        # place, which is the access pattern that would make 1M wrong.
+        # recordsize is a MAXIMUM and not a quantum, so the thumbnails cost
+        # what they occupy.  The index, the scikit-learn classifier model and
+        # PostgreSQL all DO partial rewrites, want 128K, and are deliberately
+        # not here — they are on zdata/state, exactly as Immich's and
+        # Nextcloud's databases are.
+        #
+        # exec/setuid/devices=off: scanned paper, never executable, and this
+        # dataset accepts uploads from the internet.
+        #
+        # com.sun:auto-snapshot=true, and this is the THIRD dataset on the pool
+        # where it is non-negotiable rather than nice — after zdata/photos and
+        # zdata/nextcloud, and for a sharper version of their reason.  Those
+        # two are deleted from by people.  So is this one, from a phone, with a
+        # swipe — and paperless's trash is a database flag with a retention
+        # period, not a filesystem undo.  What makes it sharper is that the
+        # SOURCE IS GONE: the point of scanning a document is to throw the
+        # paper away, so unlike a photograph on a phone or a file on a laptop
+        # there is no second copy anywhere to re-acquire it from.
+        #
+        # NO acltype=posix, for nextcloud's reason: paperless keeps its
+        # permission model in its own database and writes plain
+        # 0700 paperless:paperless.  The ONE directory with a non-trivial mode
+        # is /srv/docs/inbox at 2770 paperless:docsin, and a setgid bit is not
+        # an ACL.
+        #
+        # CREATED BY HAND ONCE, like every other dataset in this block — see
+        # docs/guides/ernst-zdata-datasets.md.  disko does not create datasets
+        # on an existing pool; it only emits the fileSystems entry that mounts
+        # them.  M14 shipped a dataset without adding that runbook section and
+        # put this machine in emergency; do not repeat it.
+        docs = {
+          type = "zfs_fs";
+          mountpoint = "/srv/docs";
+          options = {
+            mountpoint = "legacy";
+            recordsize = "1M";
+            exec       = "off";
+            setuid     = "off";
+            devices    = "off";
+            atime      = "off";
+            "com.sun:auto-snapshot" = "true";
+          };
+        };
+
         # zdata/backup — reserved.  Not created here; when the backup strategy
         # is chosen we may want a very different recordsize / compression /
         # (perhaps) encryption story, so add it deliberately at that point.
@@ -642,4 +691,22 @@
   # unless its storage is the storage it thinks it is.
   ##############################################################################
   fileSystems."/srv/nextcloud".options = [ "nofail" ];
+
+  ##############################################################################
+  # `nofail` on /srv/docs — M32, fourth application, and the shortest argument
+  # of the four because the three above have already made it.
+  #
+  # Both preconditions hold: the consumer is one container, and
+  # `paperless-dirs` in containers/paperless.nix is `requires` + `requiredBy`
+  # on container@paperless, so an unmounted dataset costs paperless and nothing
+  # else rather than taking local-fs.target and sshd down with it.
+  #
+  # The damage it prevents is Immich's shape, not Nextcloud's — there is no
+  # sync client here to propagate a deletion — but with the one twist
+  # zdata/docs's own comment makes: the phones report every upload as a success
+  # and the paper original has already been recycled.  A document archive that
+  # silently writes to zroot is the only service on this machine that can
+  # destroy something which exists nowhere else.
+  ##############################################################################
+  fileSystems."/srv/docs".options = [ "nofail" ];
 }

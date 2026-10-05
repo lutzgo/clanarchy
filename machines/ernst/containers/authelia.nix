@@ -474,6 +474,30 @@ let
 
   oidcMinifluxGen = config.clan.core.vars.generators.authelia-oidc-miniflux;
   oidcKarakeepGen = config.clan.core.vars.generators.authelia-oidc-karakeep;
+
+  # ── M32's relying party ───────────────────────────────────────────────────
+  #
+  # django-allauth's path, and it is the fourth distinct shape in this file —
+  # Nextcloud's `/apps/user_oidc/code`, Miniflux's hand-rolled `/oauth2/`,
+  # Karakeep's NextAuth `/api/auth/callback/custom`, and now allauth's
+  # `/accounts/<provider>/login/callback/`.  Read out of allauth's own
+  # documentation rather than inferred from any of the other three, which is
+  # M23's lesson stated as a habit.
+  #
+  # `authelia` IN THE PATH IS THE `provider_id` AND NOT A COINCIDENCE: allauth
+  # builds this URL from whatever `provider_id` the `PAPERLESS_SOCIALACCOUNT_
+  # PROVIDERS` JSON declares, and containers/paperless.nix declares it as
+  # `authelia`.  Change it in one place and this stops matching, which presents
+  # as `invalid_redirect_uri` at this portal rather than as a paperless error.
+  #
+  # ONE URI, UNLIKE NEXTCLOUD'S TWO.  Nextcloud needs both because which one it
+  # emits depends on `htaccess.RewriteBase`; allauth has no such fallback and
+  # paperless's own `PAPERLESS_SOCIALACCOUNT_PROVIDERS` pins `redirect_uri`
+  # explicitly, so there is exactly one value either side can produce.
+  paperlessRedirectUri =
+    "https://docs.${baseDomain}/accounts/oidc/authelia/login/callback/";
+
+  oidcPaperlessGen = config.clan.core.vars.generators.authelia-oidc-paperless;
 in
 {
   ##############################################################################
@@ -883,6 +907,62 @@ in
         echo "        token_endpoint_auth_method: 'client_secret_post'"
         echo "        redirect_uris:"
         ${lib.concatMapStringsSep "\n" (u: "echo \"          - '${u}'\"") nextcloudRedirectUris}
+        echo "        scopes:"
+        echo "          - 'openid'"
+        echo "          - 'profile'"
+        echo "          - 'groups'"
+        echo "          - 'email'"
+
+        # ── Paperless-ngx (M32).  The WEB UI only — CWA's arrangement ──────
+        #
+        # docs.goclan.org carries NO forward-auth (it is in `appApiHosts`), so
+        # the Paperless Mobile app's token exchange at /api/token/ reaches the
+        # application directly and authenticates against paperless's own
+        # accounts.  This client covers the BROWSER path and nothing else.
+        #
+        # THIS IS CWA's AND NEXTCLOUD's REASONING, NOT GRAFANA's OR OPEN
+        # WEBUI's: OIDC INSTEAD OF the middleware, because the middleware would
+        # break the app.  Do not merge the two.
+        #
+        # `two_factor`, matching every other name here.  The web UI is where
+        # documents get deleted and where tokens are minted, so it gets the
+        # same policy as the admin surfaces even though the vhost around it is
+        # deliberately open.
+        #
+        # ── client_secret_basic, AND THAT IS CHECKED RATHER THAN COPIED ────
+        #
+        # Nextcloud's block two screens up is the only one here that is NOT
+        # basic, and its comment is emphatic that this was measured rather than
+        # chosen — `user_oidc` unconditionally switches to `client_secret_post`
+        # when discovery advertises it, so the knob cannot win.  THAT IS A
+        # user_oidc PROPERTY AND NOT AN AUTHELIA ONE, so it does not transfer:
+        # django-allauth sends what its provider config says, and
+        # containers/paperless.nix does not set `token_auth_method`, whose
+        # allauth default is `client_secret_basic`.
+        #
+        # If a login ever fails at the TOKEN EXCHANGE here — after the portal,
+        # after 2FA, on the callback — with
+        #
+        #     invalid_client — … 'token_endpoint_auth_method' method
+        #     'client_secret_post', however the OAuth 2.0 client registration
+        #     does not allow this method
+        #
+        # then allauth changed its default and this line is what to flip.  The
+        # two-arm control against /api/oidc/token in the Nextcloud comment is
+        # the way to confirm it before changing anything.
+        echo "      - client_id: 'paperless'"
+        echo "        client_name: 'Paperless'"
+        printf "        client_secret: '"
+        tr -d '[:space:]' < ${oidcPaperlessGen.files."paperless-client-secret-digest".path}
+        echo "'"
+        echo "        public: false"
+        echo "        authorization_policy: 'two_factor'"
+        echo "        require_pkce: true"
+        echo "        pkce_challenge_method: 'S256'"
+        echo "        consent_mode: 'implicit'"
+        echo "        token_endpoint_auth_method: 'client_secret_basic'"
+        echo "        redirect_uris:"
+        echo "          - '${paperlessRedirectUri}'"
         echo "        scopes:"
         echo "          - 'openid'"
         echo "          - 'profile'"
@@ -1336,6 +1416,47 @@ in
         exit 1
       fi
       printf '%s' "$digest" > "$out/nextcloud-client-secret-digest"
+    '';
+  };
+
+  ##############################################################################
+  # `authelia-oidc-paperless` — the Paperless-ngx relying party (M32).
+  #
+  # ONE GENERATOR PER RELYING PARTY, for the reason the Nextcloud block above
+  # gives: the two halves of the pair restart DIFFERENT units, and
+  # `restartUnits` belongs with the file rather than with the consumer.  The
+  # digest bounces Authelia; the plaintext bounces paperless.
+  ##############################################################################
+  clan.core.vars.generators.authelia-oidc-paperless = {
+    files."paperless-client-secret".secret        = true;
+    files."paperless-client-secret-digest".secret = true;
+
+    files."paperless-client-secret-digest".restartUnits =
+      [ "authelia-secrets.service" "container@authelia.service" ];
+
+    files."paperless-client-secret".restartUnits =
+      [ "paperless-secrets.service" "container@paperless.service" ];
+
+    runtimeInputs = [ pkgs.authelia pkgs.gnused pkgs.coreutils ];
+
+    script = ''
+      set -euo pipefail
+
+      secret=$(authelia crypto rand --length 72 --charset alphanumeric \
+                 | sed -n 's/^Random Value: //p' | tr -d '\n')
+      if [ -z "$secret" ]; then
+        echo "  ✗ authelia crypto rand produced no client secret for Paperless" >&2
+        exit 1
+      fi
+      printf '%s' "$secret" > "$out/paperless-client-secret"
+
+      digest=$(authelia crypto hash generate pbkdf2 --variant sha512 --password "$secret" \
+                 | sed -n 's/^Digest: //p')
+      if [ -z "$digest" ]; then
+        echo "  ✗ pbkdf2 hashing produced no digest for the Paperless client secret" >&2
+        exit 1
+      fi
+      printf '%s' "$digest" > "$out/paperless-client-secret-digest"
     '';
   };
 

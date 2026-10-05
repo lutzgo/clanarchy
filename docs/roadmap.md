@@ -77,6 +77,7 @@ Verified against the repo on 2026-08-25 (`main` @ `133a39d`).
 | M29b — the agent's memory, web search and images | **BUILT 2026-09-25; not yet deployed.** `mneme` gains a git-versioned wiki it reads and writes, a `web_search` tool over SearXNG, and a `generate_image` tool over ComfyUI | — | **Recall is INJECTED, not requested**: the constitution, `index.md` and any page matching the last user turn go into the system message on every turn (6000 chars ≈ 1500 tokens of a 32768 window). `memory_search` exists as a tool too, but a tool is consulted only if the model decides to — and **M11 measured what that decision is worth on this model class**. No embeddings and no vector store: index-first navigation is *exact* inside the ~150–200 page range this pattern states. **Every write is a commit**, so `git log` is what it knows, `git show` is who told it, and `git revert` is how a wrong fact comes out; each agent-written page carries `source:` front matter naming the turn that produced it. **THE INJECTION BOUNDARY IS BUILT, NOT RETROFITTED** — a page is read back as context on every later turn, so `00-core/`, `SOUL.md` and `IRON_RULES.md` are not writable by the agent (the constitution lives in the Nix store and every write path refuses it by name), traversal and non-slug names are refused, and `IRON_RULES.md` states that wiki content is data and never instruction. Six of the thirty build-time tests cover exactly that. **THE NIGHTLY PASS DOES NOT CALL THE MODEL, and that absence is the design**: every published write-up of this pattern that automated a synthesis step reported it failing silently ~50% of the time, unnoticed for weeks, because a background job that produces nothing looks like one with nothing to do. `mneme-lint` only rebuilds the index and reports problems; it deletes nothing. **SN4 needed no new alert** — ernst sets `exporters.systemd = true`, so a failed oneshot raises `SystemdUnitFailed` through the ordinary path, and a second rule aimed at one unit is duplication that later disagrees. **THE INTERNAL TOOL LOOP is why mneme stays stateless**: HA runs its own loop around the whole request and carries its own history, so mneme's own tool work must finish inside one response — by the time anything goes back to HA it is an answer or one of HA's tools, never one of ours; capped at four rounds because ours happen *inside* one of HA's. **SearXNG GOT A SECOND LEG AND KEPT THE PROPERTY IT HAD** — its block said in writing "NO SECOND VETH, and its absence is load-bearing"; M29b needs the opposite direction, and the host dials in while nothing accepts on the way back (no accept exists for `fdca:fe94::2`). Widening `allowedSource` instead would have spent a documented "ONE address" invariant *and* hairpinned every search through the UDM-Pro, since the host's route to `10.0.90.24` is `via 10.0.50.1` (measured). The leg is `web0`, not `ai4`: every `ai*` leg lets a container reach this host, and this one points the other way. **HOME ASSISTANT SERVES THE PICTURES, NOT mneme** — mneme listens on a ULA only the hub can reach, so a URL it served itself would be unreachable from the browser that must display it; the PNG goes to `www/mneme` and returns as `https://ha.goclan.org/local/mneme/<name>.png`, which adds no listener, no route and no hostname. The cost is one mode change on `www` (0700 → 0755, directory only, in the file that owns that tree), exposing the *names* of files that already hold public frontend assets. **AND IMAGE GENERATION IS THE ONE TOOL WITH A RUNNING COST**: ComfyUI is in llama-swap's exclusive GPU group, so every picture evicts the resident 21 GiB coder model — ~15 s each way, stalling the household agent and the coding agent together. Enabled deliberately, priced in the tool's own description so the model knows it is expensive. **uid 3039, WHICH M29 PREDICTED** — that milestone ran the daemon DynamicUser because it owned nothing on disk and wrote in the uid table that a wiki would change it; ids pass through unmapped onto zdata, so keeping state and keeping a per-boot identity are mutually exclusive. NEXT FREE is now 3040. Depends on M29. [M29b](#m29b-featernst-agent-memory) |
 | M29c — Qwen3.6 on ernst | **MEASURED AND SWITCHED 2026-09-25.** `qwen3.6-35b-a3b` replaces BOTH `qwen3-coder-30b` and `qwen2.5-vl-7b`; the vision entry is deleted | — | **THE TWO GATES THIS WAS WAITING ON WERE BOTH MINE AND BOTH WRONG.** (1) "It needs a newer llama.cpp" was inferred from build numbers — the GGUFs were quantised with b9222 and ernst pins b9190 — which says nothing about what is needed to RUN them. Qwen3.6 declares `model_type: "qwen3_5"` and ernst's own libllama.so already carried `qwen35`/`qwen35moe`/`qwen3next` with the Gated DeltaNet kernels; there is no `qwen36` arch in llama.cpp even on master. Confirmed by loading it: `system_fingerprint: "b9190-b64739e"`. (2) "22.4 GB leaves less room for KV than today" was wrong twice — a DECIMAL figure (20.8 GiB), and this architecture barely has a KV cache (40 layers, only 10 Gated Attention, 2 KV heads each). **So the decision put to lgo — break "everything ships in nixpkgs 26.05" for a newer llama.cpp? — was a decision about nothing**, and he picked this model over my advice and was right. **MEASURED interleaved n=3** because a sequential pass drifts more than the difference: `qwen3-coder-30b` 107.1 tok/s / 20959 MiB / 20-of-20 tool calls, `qwen3.6-35b-a3b` 99.2 tok/s / 24100 MiB / 20-of-20. **−7.4% decode**, the speed holding because it is still an MoE with ~3B active — the dense 27B sibling would have cost roughly 3×. Vision verified before the old model was deleted: a two-colour test image read correctly INCLUDING a third region the prompt never mentioned. **A MODEL DEFECT THAT DID NOT EXIST, CAUGHT BY COUNTING FAILURE MODES**: a first harness measured 11/20 tool calls with thinking on vs 20/20 off, and was about to be written up as "thinking halves tool calling"; counting WHY each trial failed showed every failure was `finish_reason: length` — the harness's own 200-token cap eaten by 419–509 characters of reasoning. At 1000 tokens it is 20/20 in both modes. **The lesson is M29's bad negative control in another costume: a harness that records pass/fail and not failure mode will manufacture findings.** What did survive is a real `mneme` defect fixed in [#224](https://github.com/lutzgo/clanarchy/pull/224). **THE VISION EVICTION IS GONE RATHER THAN MITIGATED** — `qwen2.5-vl-7b` shared the exclusive GPU group, so reading an image unloaded the text model; karakeep now names ONE model in both slots and `local-ai.md`'s two manual-model-switch sections are retired. **THE ONE REAL COST IS 460 MiB OF HEADROOM** (24100 of 24560 against 20959): `contextLength` stays at 32768 because 65536 would add 320–640 MiB of KV and there is not room — the limit is the weights, not the window. `qwen3-coder-30b` is kept declared but named by nothing for one milestone, so rollback is one string in three places rather than a 17 GiB download during whatever went wrong. Depends on M29, M29b. [M29c](#m29c-featernst-qwen36) |
 | M30 — Music Assistant | **DEPLOYED AND FULLY VERIFIED 2026-09-27; the test plan passes end to end, including playback to both speakers and the volume-follow check. SIX DEFECTS, FOUR OF THEM MINE — see the close-out. Came up on the first try: service active, no failed units on the host or in the container, and every machine-checkable row passed INCLUDING BOTH NEGATIVE CONTROLS — monitoring refused on 8095, and Traefik refused on the stream port. ONE ROW FAILS AND IT IS A MISSING DHCP RESERVATION, not a bug**: the container leased 10.0.90.207, so arr's correct `-s 10.0.90.30/32` rule does not match and the Traefik router is inert until the UDM-Pro is edited — a failure that is silent in the worst direction, since every unit reads active and the firewall is right. **AND IT FOUND A DEFECT IN M29's FILE**: [#235](https://github.com/lutzgo/clanarchy/pull/235) was merged and ernst deployed the same evening WITHOUT IT — `gh pr merge` does not fetch and `jj git fetch` moves the bookmark rather than `@` — so Home Assistant kept failing every brotli-encoded response for thirteen hours with the fix sitting in `main`. Both are live now and the HACS traceback is gone | [#236](https://github.com/lutzgo/clanarchy/pull/236) | **THE PIPELINE HAS HAD ONE HOLE IN IT SINCE M14 AND IT IS NOT A LIBRARY.** Navidrome indexes and serves the Subsonic API; every client does the *playing* itself, on a phone — so nothing in this house could say "play this album in the living room". Music Assistant is the player controller, and it **adds nothing to the pipeline and replaces none of it**: Lidarr + slskd + Soularr still acquire, Navidrome still serves every mobile client on its own WAN hostname, and this is a CONSUMER of it in exactly the sense karakeep is a consumer of llama-swap. nspawn (`services.music-assistant` is a first-class module; upstream's Docker image and HAOS add-on do not apply), `02:00:00:90:00:16` → **10.0.90.30**, seq **16**, uid/gid **3040**. **`opensubsonic`, NOT `filesystem_local`**, and the obvious-looking answer is wrong twice: a second scanner means two libraries that disagree about play counts and ratings that exist nowhere else, and it would need the media mount — so this container has **no bind mount onto /srv/media at all** and its uid is in no media group. `subsonic_scrobble` is the return path, which makes the arrangement symmetric rather than read-only. **THE PLAYER LIST WAS MEASURED, NOT ASSUMED** — read out of Home Assistant's own `core.config_entries`: **one** target, a Yamaha MusicCast receiver at 10.0.20.31, no Chromecast, no Sonos, no DLNA, no Snapcast. **SO THE SECOND LEG IS NOT OPTIONAL**: `musiccast` is DISCOVERY-ONLY (`mdns_discovery: ["_http._tcp.local."]`, one entry point, no add-by-address flow), mDNS is link-local, and this repo has refused to relay it across a firewall boundary twice in writing — so the container sits ON the segment, M24's answer one VLAN later. Tighter than M24's though: `check_yamaha_ssdp` is a UNICAST GET, so 5353/udp is opened and **1900/udp is not**. **THE VETH IS `iot1` AND THAT IS M29's OUTAGE NOT REPEATED** — the obvious mistake was `iot0` "because that is the IoT leg", which is the `ai0` collision exactly; the assertion in networking.nix catches it, and that file's veth table now tracks VLAN legs too. **TWO LISTENERS, AND CONFLATING THEM IS HOW THE FIREWALL GOES WRONG**: 8095 is the API/UI, **8097 is the stream server and its client is a SPEAKER** — routing it would put forward-auth in front of a receiver. Its rule names no interface on purpose, because MA publishes `ip_addresses[0]` and that is non-deterministic when multi-homed. **AND THE RECEIVER TALKS BACK ON AN EPHEMERAL PORT**: aiomusiccast binds `("0.0.0.0", 0)` and advertises it in `X-AppPort`, conntrack cannot help because the registering request was a different socket — so one rule is narrow in source and wide in port, and without it playback WORKS while the UI never updates. **IT HAS ITS OWN ACCOUNTS, CHECKED RATHER THAN ASSUMED**: roles, per-user player filters, an auth middleware with a short bypass list, and an escalating PER-USERNAME login backoff (3–5 → 30 s … 15+ → 300 s) — Nextcloud's shape, not HA's `ip_ban`. Its first-run `/setup` **closes itself** at `has_users`, unlike Komga's and Navidrome's. **`appApiHosts` and LAN-ONLY** — and it shipped in `protectedHosts`, moving ONE DAY LATER when the premise was falsified by deploying: HA's config flow builds `login_url = f"{self.url}/login?…"` from the SAME url its server-side `/info`, `/auth/login` and `/ws` use, so the hostname does have a 302-incapable client and **the claim that the hub bypasses Traefik was simply wrong**. Pointed at the direct address the BROWSER half hung on a blank page instead; an `ssh -L` through ernst does not rescue it either (the host is VLAN 50 and not in the rule set). A path-bypass router keeping 2FA on the UI was considered and rejected — `/ws` is the whole control surface, so it would have weakened `withWan`'s fail-open guard to protect a door already open next to it. **It is the only `appApiHosts` name NOT in `wanExposed`**, so the compensations defend the house against the house. One firewall rule was REMOVED rather than left behind (M26's move). **NO CHANGE TO containers/home-assistant.nix**: `music_assistant` is already offerable since [#229](https://github.com/lutzgo/clanarchy/pull/229)'s `++ buildableComponents`. **DynamicUser OFF FOR THE THIRD TIME ON THIS HOST** — `StateDirectory` + `DynamicUser` migrates a BIND MOUNT (crowdsec measured it, ollama hit it) — with the four protections it silently implied restated by hand, which is the half no build error reports. **A VERSION SKEW NOTHING WOULD HAVE REPORTED**: the manifest pins `py-opensonic==8.1.3`, nixpkgs ships **9.0.1**, and nixpkgs' `dont-install-deps.patch` DELETES the version check outright — M29's `bleak-esphome` in a second costume. Checked pre-deploy against the real interpreter: every `libopensonic` import and every `AsyncConnection` keyword resolves. **NO PROMETHEUS JOB** (no endpoint exists — SN3), but the `machinectl`-walking container-unit collector covers it with no configuration. No new dataset, no UDM-Pro VLAN 50 → 90 rule. Depends on M14, M24, M26. [M30](#m30-featernst-music-assistant) |
+| M32 — Paperless-ngx | **BUILT 2026-10-05, NOT DEPLOYED AND NOTHING IN IT IS VERIFIED ON HARDWARE.** That is the honest status; the test plan in the section below is what closes it. Built in a session running CONCURRENTLY with M31's, which is why it is M32 and why its allocations are the post-collision set | — | **The household scans paper with phones and has nowhere to put it.** Paperless-ngx on `docs.goclan.org`: OCR in German and English, Whoosh full-text, Tika + Gotenberg for office files, and the scikit-learn classifier that learns tags from the household's own corrections. nspawn (`services.paperless` is a first-class NixOS module), `02:00:00:90:00:18` → **10.0.90.32**, seq **18**. **THE uid IS 315 AND NOT FROM THE 3000 BLOCK** — `ids.uids.paperless` is a static upstream id the module assigns unconditionally, so a 3000-block number on top is the `hass`=286 evaluation conflict verbatim; checked against `ids.nix` BEFORE the row was written, which is the habit M24 paid for and M30 established. NEXT FREE in the block did not advance for it; the one id M32 does take is **gid 3042 `docsin`**, a group with no user of its own in gid 3000 `media`'s shape. **TWO DATASETS**, the split M22 and M23 both made: `zdata/docs` at 1M for originals and archived PDF/As, index + classifier + PostgreSQL on `/srv/state/paperless` at 128K. `com.sun:auto-snapshot=true` is non-negotiable here for a SHARPER version of photos' and nextcloud's reason — those are deleted from by people, and so is this, but **the source is gone**: the point of scanning a document is to throw the paper away, so there is no second copy anywhere to re-acquire from. **TWO INGEST DOORS, BECAUSE FairScan HAS NO CLOUD OF ITS OWN** — it is deliberately account-free and either shares a PDF to another app or saves into a folder a storage app provides, so the question is which app receives it: the Paperless Mobile app straight to the API, and a writable Nextcloud external-storage folder that **is** the consumption directory. Upstream is going the same way, having replaced the Nextcloud Android app's own scanner with FairScan in nextcloud/android#17710. **THE SHARED INBOX IS ON `/srv/state` AND NOT `/srv/docs`, AND THAT IS A DEFECT CAUGHT IN WRITING RATHER THAN IN PRODUCTION**: it is bind-mounted into TWO containers, a bind whose host path does not exist is a container that will not start, and on `/srv/docs` a missing `zdata/docs` would therefore have taken the household's file sync, calendars and contacts down with an unrelated service's dataset — exactly the coupling `containers/arr.nix` refuses for `/srv/audiobooks`. `paperless-inbox.service` is split out of `paperless-dirs` for the same reason, carrying only the dependency both containers share (`srv-state.mount`, which `nextcloud-dirs` already requires). It costs nothing because this is a QUEUE and not a library — nothing lives there longer than one poll interval. `2770 paperless:docsin`, where the owner bit lets paperless unlink, the group bit lets Nextcloud write, and the **setgid** bit is what stops paperless reading on the `other` bits by luck (cwa.nix's sentence, one ingest tree later). **NO `cwa-ingest-perms` EQUIVALENT AND THAT IS ARGUED RATHER THAN OMITTED**: that unit exists because a mode on a path bind-mounted into an opaque podman image is an opening bid the image overrides, and nspawn does not touch a host directory's ownership. **`PAPERLESS_CONSUMER_POLLING = 60`, NOT inotify**, and `modules/immich-upload.nix` is this fleet's own argument for it: inotify reports a file the moment it APPEARS, which for an upload in flight is while it is still being written, and a partial PDF consumes happily into a corrupt document with a valid checksum — so the retry-on-next-run safety net never catches it either. **`address = "::"` AND NOT `0.0.0.0`, MEASURED** against the granian 2.7.4 in this very pin (`ss` shows `*:28991`, curl returns 200 over both `127.0.0.1` and `[::1]`): Traefik arrives over v4 on eth0 and mneme over v6 on `doc0`, so a v4-only bind would have served the browser and given the agent ECONNREFUSED on a leg correct from both ends — the `ai0` class of failure, where the socket is up and the only symptom is silence. **THREE GENERATORS AND NONE IS PROMPTED** (SN5): Django's `SECRET_KEY`, which 2.x requires and the 26.05 module does not generate because the generator is a v3 addition; the local admin password, generated precisely BECAUSE it is the recovery path; and mneme's 40-hex DRF token, generated here and written INTO the database by `paperless-provision` so the generator is the source of truth in both directions. `PAPERLESS_SOCIALACCOUNT_PROVIDERS` and the secret key go in an `EnvironmentFile` rather than `settings`, since `settings` renders into the Nix store — written bare, because systemd's EnvironmentFile parser keeps quotes as part of the value (homepage.nix paid for that one). **THE THREE SIGNUP SWITCHES WERE READ OUT OF `settings.py` AT THIS VERSION RATHER THAN FROM THE DOCS**, because two of them pull in opposite directions: `ACCOUNT_ALLOW_SIGNUPS` defaults NO, `SOCIALACCOUNT_ALLOW_SIGNUPS` defaults **YES**, `SOCIALACCOUNT_AUTO_SIGNUP` defaults NO — so an Authelia identity materialises on first login while the public registration form stays shut, and conflating the first two would have locked Sabine out. The local password form and `REDIRECT_LOGIN_TO_SSO` are both left alone: a login page that redirects straight to a portal is useless on the day the portal is what is broken. **`appApiHosts` + OIDC**, CWA's and Nextcloud's arrangement, **with** a `wanLoginPaths` entry where `cloud` deliberately has none — the test is whether the credential endpoint is a distinct path or is every request, and `/api/token/` is hit once per enrolment where `/remote.php/dav/**` is every sync. Ledger row **L21**. **ONE PROVISIONING UNIT, AND THE TOKEN DOES NOT GO THROUGH argv** — nextcloud-provision has to use a command line because `occ` offers no file form, this one does not have to and so does not; the account is a non-superuser with four `view_*` permissions and an unusable password, because an agent with a tool is a thing that can be talked into something. Carries the **`doc0`** leg (`fdca:fe95::1/::2`), which points **inward** like searxng's `web0` and for the same two reasons: mneme is a host service, and the host's route to 10.0.90.32 is `via 10.0.50.1` so widening the VLAN-90 firewall would hairpin every query through the UDM-Pro. **No host-side accept and no `mkBridges` call** — the host dials in, nothing accepts on the way back. **NO PROMETHEUS JOB** (no OpenMetrics endpoint exists — SN3, M13's Ollama lesson), and **no homepage widget**: a link tile ships instead, because adding a seventh prompt to `homepage-tokens` does not re-run that generator and `--regenerate` re-asks all six existing ones. **WHAT IS DELIBERATELY NOT HERE**: paperless's own LLM suggestions and in-app document chat, which merged against upstream's **v3.0.0** while ernst's stable pin carries **2.20.15** — taking them means a cross-channel module AND package import onto a stable machine plus an embedding model llama-swap does not have and that M20 refused on unpinned-HuggingFace-download grounds, with llama-swap's `gpu` group `exclusive = true` so an embedding entry evicts the resident 21 GiB model on every query. Deferred until 26.11 ships 3.x in-tree. Also not here: IMAP consumption, a laptop watch folder, any off-box backup, and any migration of the existing paper pile — standing up empty is M23's lesson applied before it could be re-learned. **M32b is a separate PR**: `document_search` / `document_read` on mneme, which is only Python plus four Nix touch points, because the leg, the read-only account and its token all ship here. Depends on M19, M23, M26, M29b. [M32](#m32-featernst-paperless) |
 
 ---
 
@@ -705,6 +706,7 @@ Rows are retired only by the PR that actually removes the rule.
 | L16 | `home.goclan.org` — the service index, on `10.0.90.13:8082` **inside the arr container**, on the `wan` entrypoint | M26 (`machines/ernst/containers/homepage.nix` + the router in `containers/traefik.nix`) | An index of the house's services, reachable from outside it — which is where it is most useful, since the moment you need to know what the ebook server is called is the moment you are not at home. **The weakest case for WAN exposure in this table, and it is written as such**: unlike L13/L14/L15 nothing here breaks without it, and it is on the list because lgo asked for it rather than because a client requires it | **None — this is the permanent shape.** Recorded because the `wanExposed` header requires a ledger row for every name added to the internet-facing set, not because anything here is temporary. **Three things make this row worth reading rather than counting.** First, **it is the first name added to `wanExposed` since M19's `chat` that is NOT an exemption**, and that inverts the recent trend the `—` row below worries about: L13, L14 and L15 each put an `appApiHosts` name on the internet with Authelia never consulted, because each had a native client that cannot follow a 302. This name is in `protectedHosts`, so `mkWan` copies the `authelia` middleware onto the wan twin — verified on the evaluated config, `homepage-wan` is `["wan-ratelimit","wan-inflight","authelia"]` — and `access_control` puts `home.goclan.org` under the **admins-only `two_factor`** rule. The public path is rate-limit → forward-auth → 2FA before the application sees a byte. It is L10's posture exactly. `wanLoginPaths` is deliberately EMPTY, and correctly so: that mechanism substitutes a credential-endpoint limit for the per-identity regulation `appApiHosts` names never get, and this name goes through Authelia, which already has it (3 in 5 min → 15 min ban, per user). There is also no login endpoint on this backend to point a matcher at. Second, **what is behind the door is a MAP, not a KEY**: homepage proxies every widget call server-side and sends the browser rendered numbers, so the ten credentials it holds never cross the boundary in either direction. An Authelia compromise here reaches an inventory of service names, most of which are already in public DNS, and not a session on any of them. That is why one door is enough, and it would not be for a service that handed the browser a session on something else. Third, **the concentration is real and is the thing to watch**: six *arr keys reached through `LoadCredential` plus four clan-var tokens (Jellyfin, Immich, Home Assistant serverinfo/long-lived, Nextcloud NC-Token) is the densest set of read credentials on this host. They are scoped read-only where the service offers it — Immich's is `server.statistics` only, Nextcloud's NC-Token authorises the serverinfo app and cannot log in — and that scoping is an operator step, not something any file here can enforce. **NO UDM-Pro RULE**, following L13/L14/L15 and not L12: every client arrives through `10.0.90.12`, and the arr container's firewall admits that one address on 8082. **The internal widening is THREE accept rules and no more** — Immich, Home Assistant and RomM each admit `10.0.90.13` on their existing web port, all three tagged `dashboardAddr` so one grep finds the set. **Two backends needed nothing**: Jellyfin has admitted that address since M13, and Nextcloud is reached through Traefik by NAME rather than by address, because it refuses a Host header outside `trusted_domains` — see "Found by deploying". **NO AAAA RECORD**, SN2 unchanged |
 | L17 | `karakeep.goclan.org` — Karakeep on `10.0.90.29`, VLAN 90, **on the `wan` entrypoint** | M27 (`machines/ernst/containers/karakeep.nix` + the router in `containers/traefik.nix`) | Bookmarks and page archives, reachable from outside the house — and the requirement is a SYNC one rather than a reading one. Floccus keeps miralda's and jens's own bookmark trees in step through this hostname; both machines are laptops, so a backend that answers only on the home LAN means the two diverge the moment either one leaves, and the divergence is discovered later, as a merge | **None — this is the permanent shape.** Recorded because the `wanExposed` header requires a ledger row for every name added to the internet-facing set, not because anything here is temporary. **Four things make this row worth reading rather than counting.** First, **its own milestone's other service is deliberately NOT here**: Miniflux (`miniflux.goclan.org`, `10.0.90.28`) is an `appApiHosts` name with no `wanExposed` entry, no Cloudflare record and no row in this table — the only such name on this host. Two services shipped in one PR, one exposed and one not, is exactly the asymmetry that reads as an oversight later, so it is argued in three places (that `wanExposed` entry's comment, the MAC row in `machines/ernst/networking.nix`, and here): bookmark sync has to work away from the house, feed reading can wait for the LAN, and a name that is not in public DNS is the cheapest control there is. Second, **it is an `appApiHosts` exemption — L13/L14/L15's posture, not L16's** — so Authelia is never consulted on the public path, and the clients that make that necessary are unusual for this table in that **this repository installs them**: the Karakeep browser extension and the Floccus adapter are declared for lgo in `clan.nix`, `service-modules/software.nix` and `machines/miralda/home-modules/browsers.nix`. Every previous exemption was argued from a client somebody might install. Moving this name to `protectedHosts` would break an unattended sync between two laptops, and the symptom would be bookmarks quietly failing to propagate rather than an error anyone sees. Third, **the application has no password at all**: `DISABLE_PASSWORD_AUTH` plus `DISABLE_SIGNUPS` leave Authelia's OIDC as the only way to obtain a session, and an API token can only be minted from inside one — so unlike L14, where Nextcloud's own accounts are a second credential store on the internet, there is nothing here to brute-force. `wanLoginPaths` still carries an entry (`/api/auth/callback/credentials`, `/api/auth/signin`) and it is **belt and braces rather than the control**, because "DISABLE_PASSWORD_AUTH removes the NextAuth credentials provider" is an unverified claim about an upstream flag and the endpoint costs nothing to limit. Nothing limits API-key guessing against `/api/v1/**`, and nothing may: that is every request the extensions make. CrowdSec's status-based 401 scenario is what covers it. Fourth, **it reaches the inference server**, which no other name in this table does: a point-to-point `fdca:fe92::/128` veth to llama-swap for auto-tagging, declared as a peer in `clan.nix`'s `roles.ollama…exposeOn`. That is a THIRD host-side listener, after M6's and M19's, on a /128 whose only peer is this container — worth naming here because an internet-facing service now has a path, however narrow, toward the GPU. It is outbound-only and the container's firewall opens nothing on that leg. **NO UDM-Pro RULE**, following L13/L14/L15: every client arrives through `10.0.90.12`. **NO AAAA RECORD**, SN2 unchanged |
 | L18 | `miniflux.goclan.org` — Miniflux on `10.0.90.28`, VLAN 90, **on the `wan` entrypoint, behind forward-auth** | M27 (`machines/ernst/containers/miniflux.nix` + the router in `containers/traefik.nix`) | Off-LAN feed reading. M27 argued at length that this could wait for the LAN while Karakeep could not — and the argument lasted one day, until lgo was on another LAN and wanted his feeds | **None — this is the permanent shape.** Recorded because the `wanExposed` header requires a ledger row for every name added to the internet-facing set. **Three things make this row worth reading rather than counting.** First, **it is the only name in this table that LEFT `appApiHosts` to get here**, and the direction matters: `containers/ingress-policy.nix` forbids moving a name out of that list to *fix a broken client*, because that weakens a door to make something work. This is the opposite — the door got STRONGER, and the clients that justified the exemption (Fever at `/fever/`, Google Reader at `/reader/api/0/**`) are protocols nobody in this house uses. The cheap alternative was to add the name to `wanExposed` as it stood, which would have put an **unauthenticated vhost on the internet** to save one edit. Second, **the posture is L16's, not L13/L14/L15/L17's**: the name is in `protectedHosts`, so `mkWan` copies the `authelia` middleware onto the wan twin and the public path is rate-limit → forward-auth → 2FA before Miniflux sees a byte — and `access_control` puts it under the **admins-only `two_factor`** rule with no edit, because that rule is derived from the list. It keeps its OIDC client as well, which makes this **Grafana's** arrangement (forward-auth AND OIDC) rather than the CWA/Nextcloud one (OIDC INSTEAD OF it) that M27 originally gave it. **`wanLoginPaths` is deliberately EMPTY**, and the note that used to tell a future exposer to add a matcher has been replaced rather than followed: that mechanism substitutes a per-source path limit for the per-identity regulation `appApiHosts` names never get, and this name now has the real thing. Third, **the cost is permanent and one-directional**: forward-auth applies to BOTH entrypoints, so no native RSS reader can reach this hostname again, on the LAN or off it. Restoring that is an ingress change with its own row, not a setting. **What is unaffected, because neither goes through Traefik**: the service index's widget and Prometheus both reach `10.0.90.28:8080` directly across VLAN 90, and Miniflux's own outbound call to Karakeep is a client of *that* vhost. **NO UDM-Pro RULE**, following L13–L17. **NO AAAA RECORD**, SN2 unchanged |
+| L21 | `docs.goclan.org` — Paperless-ngx on `10.0.90.32`, VLAN 90, **on the `wan` entrypoint** | M32 (`machines/ernst/containers/paperless.nix` + the router in `containers/traefik.nix`) | Off-LAN document reading, and for this service that is the requirement rather than a convenience: a scan is most useful at the moment somebody is standing at a counter being asked for a document they left at home. An archive reachable only on the home wifi is the filing cabinet it replaces | **None — this is the permanent shape.** Recorded because the `wanExposed` header requires a ledger row for every name added to the internet-facing set. **Three things make this row worth reading rather than counting.** First, **the posture is L13/L14/L17's and not L16/L18's**: the name is in `appApiHosts`, so the router carries no `authelia` middleware and the vhost is a deliberate unauthenticated surface — because the Paperless Mobile app on both phones POSTs to `/api/token/` once, takes a DRF token, and sends it as a header afterwards, with no browser anywhere in the process. The BROWSER path still gets Authelia and 2FA through an OIDC client, which makes this **CWA's and Nextcloud's** arrangement (OIDC INSTEAD OF the middleware) rather than Grafana's (OIDC AS WELL AS it). Second, **it DOES get a `wanLoginPaths` entry where `cloud` deliberately does not**, and the contrast is the useful part: the test is not "does it have an app", it is *is the credential endpoint a distinct path or is it every request?* `/api/token/` is hit once per device per enrolment and `/accounts/login` is a human filling in a form — where Nextcloud's equivalents are `/remote.php/dav/**`, which is every sync request, and `/login/v2/**`, which is a poll loop. A limiter on either of those throttles a client rather than an attacker. Do not "fix" the asymmetry in either direction. Third, **this name raises the stakes on a gap the fleet already has rather than introducing one**: there is still no off-box backup anywhere here, `zdata/backup` is reserved and uncreated, and both protections for this dataset — ZFS snapshots and the nightly `document_exporter` — live on the same pool as the data. That matters more for this library than for any other on the machine, because the point of scanning a document is to throw the paper away, so unlike photographs on a phone or files on a laptop there is no second copy to re-acquire from. **The compensations that are real**: `PAPERLESS_ACCOUNT_ALLOW_SIGNUPS = false`, pinned rather than left at its default so nobody can register against a public hostname; django-allauth's own throttling; `wan-ratelimit` + `wan-inflight`; CrowdSec's status-based 401 scenario; and paperless's own TOTP, which is runtime state and therefore an operator step on the local admin — the recovery account the portal cannot protect. **NO UDM-Pro RULE**, following L13–L18. **NO AAAA RECORD**, SN2 unchanged. **L19 and L20 are M31's**, from a branch developed concurrently with this one |
 | — | **M13's Jellyseerr and M15's Tdarr routes** | Traefik (`containers/traefik.nix`), M13 and M15 | Both are ordinary Traefik routers on names the M5 wildcard already covers, riding the permanent `Allow Traefik` rule. **Neither is a shim** — listed so nobody creates a ledger row for a route | **permanent** — this is invariant #3 working as designed, not an exception to it | not created. **M15's half is now moot**: the milestone closed 2026-08-29 without shipping, so the Tdarr router was never created (the guidance stands for any future service: `authelia` middleware, not `mgmt-only`, which M7 deleted per L5). M13's Jellyseerr router exists and deliberately carries **no** middleware (household service; its posture is Jellyseerr's own Jellyfin-account login — see M13). Copy the *arr routers for anything new. Adding a hostname to the middleware also means adding it to `access_control` in `containers/authelia.nix`, which is deny-by-default: a route with the middleware and no matching rule fails **closed** |
 | — | `WAN → jellyfin` **+ `komga` + `navidrome` + `cwa`**, via the `wan` Traefik entryPoint, **none of them behind Authelia** | 2026-09-08 — `containers/ingress-policy.nix` (`appApiHosts`) + `containers/traefik.nix` (`wanExposed`) + four public A records | **THE LARGEST SINGLE GROWTH OF THE INTERNET-FACING SURFACE SINCE M18, and the first time the unauthenticated surface is the rule rather than the exception.** Before this the external set was `jellyseerr` + `auth` (both behind Authelia) + `audiobookshelf` (the one bypass). It is now seven names, **five of which answer the application rather than the portal**. **Why each is exempt**: forward-auth is a redirect protocol and none of these has a client that can follow a 302 — TV/Chromecast/DLNA (jellyfin), bearer-token mobile apps (audiobookshelf), Komelia + Mihon + OPDS (komga), the Subsonic protocol which carries the credential as a **query parameter** (navidrome), and OPDS + a Kobo device token **in the URL path** + KOReader `/kosync` (cwa — a Kobo e-reader has no browser at all). **`jellyfin` IS A REVERSAL**: M18 deliberately kept it off `wan` AND used it as the negative control proving the entrypoint is fail-closed. That control is spent, by lgo's decision; the replacement control is `sonarr`, which is strictly better because it carries forward-auth so a leak would be caught twice. The old "never expose jellyfin" note was **Cloudflare's terms of service**, not a security rule, and died with the tunnel in M18. **What is NEW here and did not exist for audiobookshelf's row above**: the exemption is now a **MECHANISM, not a comment**. `ingress-policy.nix` is the single source both traefik.nix and authelia.nix read, and `withWan` gained four evaluation-time throws — an appApi host given forward-auth, a protected host **missing** it (the fail-OPEN direction, which `default_policy = "deny"` does NOT catch), a routed hostname classified nowhere, and an unparsable rule. All three new branches were verified to fire. The RomM 403 that `authelia.nix` predicted in prose and then suffered anyway is now a build error. **Compensation, since Authelia's 2FA and per-user regulation protect none of these**: `wan-login-ratelimit` (1/10s, burst 5) on higher-priority `<name>-wan-login` routers — because `wan-ratelimit` at 50/s is sized for browsing and is 4.3M password guesses a day — plus the local CrowdSec scenario `clanarchy/app-api-auth-bf` (10× 401/403 in 5 min → ban), which is the ONLY control covering Subsonic and Komga's HTTP Basic, where the credential is on every request and there is no distinct login path to limit. **Residual exposure, stated rather than buried**: no second factor on any of the five; Komga has no separate admin surface to keep off the public vhost and no brute-force limiter of its own; **no geo-restriction** — asked for and deliberately not built, because the only route is a Yaegi plugin fetched unpinned from plugins.traefik.io at Traefik's startup, which traefik.nix rejects on stronger grounds than the thing it would defend against. **Preconditions no file can enforce**: strong accounts on all five, and admin accounts created IMMEDIATELY on komga/navidrome/cwa — their first-run flows are unauthenticated by construction, which on the WAN is not a survivable window. **NO AAAA RECORDS, and this is load-bearing**: there is no GUA anywhere on this path, the CrowdSec bouncer has `nftables.ipv6.enabled = false`, and a v6 path would bypass the DNAT and therefore the `wan` entrypoint while being unbannable — SN2 unchanged | **permanent** — a `—` row, in the same shape as the audiobookshelf and qBittorrent WebUI rows, so a future milestone does not mistake it for something to retire and "fix" by adding the middleware back. `withWan` check (e) now makes that attempt a build failure rather than an outage | **created 2026-09-08** (built and evaluated; live once lgo deploys, the four A records resolve — `jellyfin` and `navidrome` already do — and the off-net checks in docs/guides/ernst-app-api-ingress.md pass) |
 | — | `WAN → jellyseerr.goclan.org` **+ `auth.goclan.org`**, via the `wan` Traefik entryPoint | M18 — `containers/traefik.nix` (`wanExposed`) + a UDM-Pro DNAT | **THE SAME BYPASS AS M16'S ROW BELOW, THROUGH A DIFFERENT MECHANISM — it is not a new exposure and the hostname set has not grown.** Architecture invariant #4 requires bypasses to be listed; this is the live one. **Mechanism**: the UDM-Pro DNATs WAN `:443` → `10.0.90.12:8443`, which is Traefik's `wan` entryPoint; a router reaches it if and only if it names `wan`, and only `jellyseerr-wan` and `authelia-wan` do — copied by `withWan` from their LAN twins so rule, service and forward-auth cannot disagree between the two paths. **Two independent gates**: the entrypoint, and public DNS (only these two names have A records; everything else NXDOMAINs from outside). **Fail-closed by construction, with a mechanism and not a comment**: `withWan` THROWS at evaluation if any router omits `entryPoints` (Traefik binds such a router to every entrypoint — measured), if `wanExposed` names a router that does not exist, or if any router adds `wan` by hand. **Where this is weaker than the tunnel, stated**: a request to the bare public IP with any SNI completes a TLS handshake and gets `404` + `CN=TRAEFIK DEFAULT CERT` — an existence disclosure, not an exposure, and the case DNS cannot gate. **Auth posture unchanged from M16**: `two_factor` for `admins` OR `household` on jellyseerr, Jellyseerr's own Jellyfin login underneath, and `auth.goclan.org` external because forward-auth is a redirect protocol. **Plus what the tunnel never had**: `rateLimit` + `inFlightReq` on the wan routers only, and CrowdSec dropping at the packet layer. **:80 IS NOT FORWARDED** — ACME is DNS-01, HTTP-01 never runs, and this row is where that is written down so nobody opens it "for Let's Encrypt" | **permanent** — a `—` row, in the same shape as the qBittorrent WebUI row, so a future milestone does not mistake it for something to retire and "fix" by removing the restriction | **created 2026-09-03** (M18 built; live once lgo runs the UDM-Pro forward, the two public A records and the deploy, and the off-net negative controls pass) |
@@ -14366,6 +14368,322 @@ and set **Published IP address** — which is a *Streamserver* setting and
 advanced-only, not the *Webserver* page where a first attempt reasonably landed.
 Then the last rows: discovery of the receiver, playback, the UI following the
 receiver's own volume knob, and scrobbling.
+
+---
+
+## M32 — `feat/ernst-paperless`
+
+The household document store, and the first service on this machine whose
+corpus has no second copy anywhere. Built 2026-10-05 in one session, running
+**concurrently with M31's** — which is why it is M32 and why every allocation
+below is the post-collision set.
+
+This section is a build close-out rather than a session prompt. **Nothing in it
+is verified on hardware yet** — that is the honest status, and the test plan at
+the end is what closes it.
+
+### What it is for, stated before anything technical
+
+Three requirements, from lgo:
+
+| | |
+|---|---|
+| it gets in from a phone | lgo and Sabine scan with FairScan, which has no cloud of its own. **Both** doors are wired rather than one: the Paperless Mobile app straight to the API, and a Nextcloud folder that *is* the consumption directory |
+| everything is searchable | OCR in German and English, Whoosh full-text over the extracted text, and office files too — `configureTika` brings up Tika and Gotenberg |
+| the local AI can answer questions about it | **Not in this PR.** M32b gives mneme `document_search` / `document_read` over the `doc0` leg declared here |
+
+The AI half was lgo's explicit "both, in two PRs": mneme's tools first on the
+stable paperless, and paperless's own v3 chat revisited later.
+
+### The version fact that shaped everything
+
+| | |
+|---|---|
+| ernst's pin (stable 26.05) | `paperless-ngx` **2.20.15** |
+| `nixpkgs-unstable` in this flake | 3.0.5 |
+| upstream latest | 3.2.1 |
+
+Paperless's LLM suggestions and in-app document chat merged against the
+**v3.0.0** milestone. They do not exist in 2.20.15, and taking them would mean
+`disabledModules` plus a cross-channel module **and** package import onto a
+stable machine — the unstable module adds a v3-only secret-key generator, a
+Tantivy index directory and a tiktoken cache, so the stable module cannot drive
+the v3 package. It would also need an embedding model llama-swap does not have
+and that M20 refused on the grounds that the only offer was an unpinned runtime
+HuggingFace download; and llama-swap's `gpu` group is `exclusive = true`, so an
+embedding entry evicts the resident 21 GiB model on every query unless
+`llamaCmd` gains an `-ngl 0` knob and a `cpu`-group placement like whisper's.
+
+**So the intelligence goes in mneme, where this fleet already keeps it.**
+2.20.15 is not the degraded option it sounds like: OCR, PDF/A archiving,
+full-text search, Tika/Gotenberg, the document exporter and the scikit-learn
+classifier that learns tags from the household's own corrections are all in it.
+Only the LLM features are not.
+
+### Allocations, and why they are not the obvious ones
+
+M31's mail container was developed in parallel and claimed seq 17, uid/gid 3041
+and ledger rows L19–L20 first. First-claimed wins:
+
+| | Value |
+|---|---|
+| VLAN 90 | seq **18**, MAC `02:00:00:90:00:18`, **10.0.90.32** |
+| uid/gid | **315**, out-of-block — see below |
+| gid | **3042 `docsin`**, the one id this takes from the 3000 block |
+| ULA leg | `fdca:fe95::1/::2`, veth **`doc0`** |
+| Ledger | row **L21** |
+
+**The uid is the part worth reading.** `ids.uids.paperless` is 315 and the
+nixpkgs module assigns it unconditionally whenever `user` is the default, so a
+3000-block number on top is not an override — it is the `hass` = 286
+evaluation conflict verbatim. This was checked against `ids.nix` *before* the
+row was written, which is the habit M24 paid for and M30 established. The
+escape (renaming `services.paperless.user` so the module's own `users` block is
+skipped, then declaring the account by hand) was considered and refused: it buys
+a tidier number and costs a hand-rolled system user.
+
+### The defect that was caught in writing rather than in production
+
+The shared scan inbox started at `/srv/docs/inbox`, one directory inside this
+milestone's own dataset, which is where it obviously belongs.
+
+It is bind-mounted into **two** containers — paperless consumes from it,
+Nextcloud writes into it. **A bind mount whose host path does not exist is a
+container that does not start.** So on `/srv/docs`, a missing or
+mis-propertied `zdata/docs` would have stopped the household's file sync, its
+calendars and its contacts, because of a dataset belonging to a service they
+have nothing to do with.
+
+That is precisely the coupling `containers/arr.nix` refuses when it orders only
+`before` on `/srv/audiobooks` — *"Sonarr must not go down because an unrelated
+library is missing"* — and the fix is the same in spirit: **the shared path
+lives where both users already depend on it.** `nextcloud-dirs` already
+requires `srv-state.mount`, so the inbox moved to `/srv/state/paperless/inbox`
+and `paperless-inbox.service` is split out of `paperless-dirs` to carry only
+that one dependency.
+
+It costs nothing, because **this is a queue and not a library**: nothing lives
+in it longer than one `PAPERLESS_CONSUMER_POLLING` interval, so `/srv/docs`'s 1M
+recordsize would buy it nothing and the archive is untouched. The one honest
+cost is that `/srv/state` carries `exec=on` where `/srv/docs` is `exec=off`.
+
+### Two things measured rather than reasoned
+
+**`address = "::"` and not `0.0.0.0`.** Traefik arrives over IPv4 on `eth0` and
+mneme over IPv6 on `doc0`, so a v4-only bind would serve the browser and give
+the agent `ECONNREFUSED` on a leg that looks correct from both ends — the `ai0`
+class of failure, where the socket is up and the only symptom is silence. Tested
+against the granian 2.7.4 in this exact pin:
+
+```
+granian --interface asgi --host :: --port 28991 app:app
+
+ss -ltn        ->  LISTEN  *:28991  *:*
+curl 127.0.0.1 ->  HTTP 200
+curl [::1]     ->  HTTP 200
+```
+
+**The three signup switches, read out of `src/paperless/settings.py` at this
+version rather than from the documentation**, because two of them pull in
+opposite directions and getting it wrong locks Sabine out:
+
+| Setting | Default |
+|---|---|
+| `ACCOUNT_ALLOW_SIGNUPS` | NO — the self-registration form |
+| `SOCIALACCOUNT_ALLOW_SIGNUPS` | **YES** — account creation via OIDC |
+| `SOCIALACCOUNT_AUTO_SIGNUP` | NO — skip the intermediate form |
+
+So an Authelia identity materialises on first login while the public
+registration form stays shut. Turning the first one off does **not** turn the
+second one off.
+
+### The Nextcloud door, and the one `occ` option that makes it work
+
+Four edits to `containers/nextcloud.nix`: the `docsin` group and membership, the
+bind mount, a second `files_external` mount in `nextcloud-provision` — and one
+line that is easy to miss and ruins the feature without it:
+
+```
+nextcloud-occ files_external:option <id> filesystem_check_changes 1
+```
+
+Paperless consumes a scan and **unlinks** it. Nextcloud does not notice a file
+disappearing from external storage unless told to look, so without this the
+folder keeps showing scans that no longer exist — and the household's
+conclusion is that uploading is broken, not that it worked.
+
+**The web UI sets this and `files_external:create` does not.** GUI-created
+mounts are initialised with `filesystem_check_changes = 1`; the non-GUI path
+omits the option and falls back to the global default, which is `0` (Never). So
+this is required precisely because we are on the path that skips it.
+
+The `occ` subcommand name, its three positional arguments, and the JSON keys
+(`id` and `backendOptions`, **not** `mount_id` and `configuration`) were all
+read out of `apps/files_external/lib/` at this Nextcloud version rather than
+guessed. `files_external:create --output=json` also prints the bare new mount
+id, which removes a second lookup.
+
+The `Media` mount is left on the global default deliberately: it is read-only,
+nothing deletes from it behind Nextcloud's back, and rescan-on-access over a
+multi-terabyte library is a cost with no benefit.
+
+### What shipped
+
+| File | What |
+|---|---|
+| `machines/ernst/containers/paperless.nix` | The container, both veths, two dirs guards, secrets staging, three generators, the provisioning unit |
+| `machines/ernst/disko.nix` | `zdata/docs`, plus its `nofail` and the argument for it |
+| `machines/ernst/networking.nix` | Seq-18 row, the uid-315 out-of-block row, gid 3042, the `doc0` ULA row, a "no uid for Tika or Gotenberg" note, and both NEXT FREE markers |
+| `machines/ernst/containers/ingress-policy.nix` | `docs` in `appApiHosts`, with the one-client argument |
+| `machines/ernst/containers/traefik.nix` | Backend, router, `wanExposed`, and a `wanLoginPaths` entry *with* the contrast against `cloud`'s absence |
+| `machines/ernst/containers/authelia.nix` | `authelia-oidc-paperless`, the allauth redirect URI, and the OIDC client block |
+| `machines/ernst/containers/nextcloud.nix` | The scan-inbox door — group, bind, mount, and the option above |
+| `machines/ernst/containers/homepage.nix` | A link tile, with the reason it is not a widget |
+| `docs/guides/document-store.md` | **New.** The operator guide: both doors, phone setup, the Settings-once list, troubleshooting |
+| `docs/guides/ernst-zdata-datasets.md` | The `zfs create`, the property table row, and the `nofail` list |
+| `flake.nix`, `CLAUDE.md`, `mkdocs.yml`, `docs/roadmap.md` | Registration, and this section plus L21 |
+
+### Manual steps — lgo's, and in this order
+
+The ordering is the control, not a convenience.
+
+1. **Check what the pool actually says**, before trusting any table:
+   ```bash
+   zfs get -r com.sun:auto-snapshot zdata
+   ```
+   `docs/guides/ernst-app-api-ingress.md` records that only `zdata/audiobooks`
+   and `zdata/roms` carried the property on the live pool, and
+   `docs/runbooks/zfs-auto-snapshot-optin.md` is still outstanding for ernst.
+   **If `zdata/state` is missing it, the scan inbox and the index are not
+   snapshotted either.**
+
+2. **Create the dataset**, before the deploy that carries `disko.nix`. disko
+   does not create datasets on an existing pool, and `mountpoint=legacy` is not
+   decoration — any other value means the generated `.mount` unit fails, takes
+   `local-fs.target` with it, and ernst boots into emergency with no sshd. That
+   happened on 2026-08-28.
+   ```bash
+   zfs create -o mountpoint=legacy -o recordsize=1M -o exec=off \
+     -o setuid=off -o devices=off -o atime=off \
+     -o com.sun:auto-snapshot=true zdata/docs
+   ```
+
+3. **DHCP reservation** on the UDM-Pro for `02:00:00:90:00:18` → `10.0.90.32`.
+   **Inside the pool `10.0.90.6–.254`** — UniFi accepts `.2–.5` and then
+   silently hands out a pool lease instead, which is how M30 shipped with an
+   inert Traefik router and every unit reading `active`.
+
+4. `clan vars generate ernst`, then `clan machines update ernst`.
+
+5. **Internal** Technitium A record `docs.goclan.org` → `10.0.90.12`.
+   Forgetting this is the nastier of the two DNS failures: the LAN resolver
+   recurses to the public view, gets the WAN IP, hairpins at the UDM-Pro and
+   **hangs**. Flush before concluding anything.
+
+6. **Log in and close the first-run window**, as `admin` with
+   `clan vars get ernst paperless-admin/admin-pass`. Enable paperless's own
+   TOTP on that account — it is the recovery path, and the recovery path is the
+   one credential the portal cannot protect. Have Sabine log in via Authelia
+   once so her account materialises, then give it the permissions she needs.
+
+7. **Only then** the public Cloudflare A record → `78.94.91.74`, DNS-only grey
+   cloud, **never AAAA**. Credential before exposure.
+
+8. **Phones**: Paperless Mobile from F-Droid on both, pointed at
+   `https://docs.goclan.org`. Confirm `Scan Inbox` appears in the Nextcloud
+   Files app as well — that is the second door.
+
+### Test plan
+
+```bash
+# ── the guards did their job, and the container is up ───────────────────────
+systemctl status paperless-inbox paperless-dirs
+machinectl status paperless
+findmnt --output SOURCE,FSTYPE --target /srv/docs        # zdata/docs, zfs
+
+# ── the ingest directory has the modes that make two writers work ──────────
+stat -c '%A %U:%G' /srv/state/paperless/inbox            # drwxrws--- 315:3042
+
+# ── THE ASSUMPTION THAT IS REASONED AND NOT MEASURED ───────────────────────
+#   That Nextcloud's umask leaves a file paperless can read.  PHP's default
+#   gives 0644 and the setgid bit fixes the group, so this should hold — but
+#   it is the one permission claim in this milestone with no measurement
+#   behind it.  Upload a PDF from the phone into Scan Inbox and check BEFORE
+#   paperless takes it:
+stat -c '%A %U:%G' /srv/state/paperless/inbox/*          # must be group-readable
+#   If it is not, the fix is UMask = 0002 on phpfpm-nextcloud, which is
+#   containers/cwa.nix's answer to the same problem.
+
+# ── end to end, which is the actual deliverable ────────────────────────────
+#   Scan with FairScan -> Share -> Nextcloud -> Scan Inbox.  Within ~60 s it
+#   appears in paperless with OCR'd text, and DISAPPEARS from Scan Inbox the
+#   next time that folder is opened.  Both halves matter: the second is the
+#   filesystem_check_changes option doing its job.
+machinectl shell paperless /run/current-system/sw/bin/journalctl -u paperless-consumer -f
+
+# ── the other door ─────────────────────────────────────────────────────────
+#   Scan -> Share -> Paperless Mobile, with a tag chosen at upload time.
+
+# ── office files, which is the half Tika and Gotenberg exist for ───────────
+#   Upload a .docx and a .xlsx through the web UI; both must get a PDF
+#   preview AND searchable text.  A preview without text means Tika is up and
+#   Gotenberg is not, or the reverse.
+
+# ── search actually indexes, not just stores ───────────────────────────────
+#   Search for a word that appears ONLY in the middle of page 3 of a scan.
+#   German too: a word with an umlaut, to prove deu came before eng.
+
+# ── the negative controls, which are the half that proves anything ─────────
+curl -sS -m 5 http://10.0.90.32:28981/ ; echo "exit=$?"   # from the host: MUST fail
+ss -ltn | grep 28981                                      # on the host: nothing
+#   Tika and Gotenberg must not be reachable from VLAN 90 either:
+curl -sS -m 5 http://10.0.90.32:9998/  ; echo "exit=$?"   # tika:      MUST fail
+curl -sS -m 5 http://10.0.90.32:3000/  ; echo "exit=$?"   # gotenberg: MUST fail
+
+# ── the provisioning unit, which nothing human notices ─────────────────────
+machinectl shell paperless /run/current-system/sw/bin/systemctl status paperless-provision
+
+# ── ingress, from mobile data with WiFi OFF ────────────────────────────────
+#   https://docs.goclan.org   -> paperless's OWN login page, NOT Authelia
+#   "Sign in with Authelia"   -> portal, 2FA, back into paperless
+#   the Paperless Mobile app  -> logs in and lists documents
+#   over IPv6                 -> MUST fail
+#   https://sonarr.goclan.org -> 404   (the negative control)
+#
+#   Check ONE name, then `cscli decisions list`.  Do not sweep several
+#   hostnames from outside: app-api-auth-bf counted eleven diagnostic events
+#   once and banned for four hours.
+
+# ── the exporter, which is the only non-ZFS protection here ────────────────
+machinectl shell paperless /run/current-system/sw/bin/systemctl start paperless-exporter
+ls /srv/docs/export                                       # originals + manifest JSON
+#   It STOPS the paperless services while it runs (Conflicts), so expect the
+#   UI to be briefly unavailable.  Confirm they came back:
+machinectl shell paperless /run/current-system/sw/bin/systemctl --failed
+
+# ── and the reboot, because invariant #7 is not aspirational ───────────────
+#   /srv/docs and /srv/state/paperless must survive; the container rootfs is
+#   rebuilt from the store.  A document uploaded before the reboot must still
+#   be searchable after it.
+```
+
+### Left for later, deliberately
+
+- **M32b** — `document_search` / `document_read` on mneme. Four Nix touch
+  points plus Python; the leg, the read-only account and its token all ship
+  here. `document_read` must **page**, because `MAX_RESULT_CHARS = 6000` clips
+  every tool result and a five-page contract is past that.
+- **Paperless v3's chat and LLM suggestions**, once 26.11 ships 3.x in-tree and
+  an embedding model can be declared in `roles.models` with a `cpu`-group
+  placement.
+- **Open WebUI reaching mneme over its Ollama connector**, which would give the
+  browser the agent's tools with no mneme change at all — `/api/chat` already
+  runs the internal tool loop and streams. Reasoned, not measured: that
+  connector may call endpoints mneme does not serve.
+- **The homepage widget**, which costs a `--regenerate` of all six
+  `homepage-tokens` prompts.
+- **An off-box backup.** Still none anywhere in this fleet. This milestone makes
+  the gap matter more rather than introducing it.
 
 ---
 

@@ -152,6 +152,50 @@ let
   # the app believes about itself.
   mediaRoot = "/srv/media";
 
+  # ── THE SCAN INBOX (M32) ───────────────────────────────────────────────────
+  #
+  # This is paperless's CONSUMPTION DIRECTORY, mounted here as writable
+  # external storage so that "FairScan → Share → Nextcloud" lands a scan where
+  # paperless will pick it up.  FairScan has no cloud of its own; it shares a
+  # PDF to another app or saves into a folder a storage app provides, and this
+  # household already has the Nextcloud app on both phones with an account
+  # each.  So the cheapest door is the one that needs no new app and no new
+  # login — and upstream is going the same way, having replaced the Nextcloud
+  # Android app's own scanner with FairScan in nextcloud/android#17710.
+  #
+  # UNLIKE mediaRoot THIS ONE IS WRITABLE, which is the whole point, so the
+  # kernel-enforced boundary that `isReadOnly` provides there is not available
+  # here.  What bounds it instead is the directory's mode: 2770
+  # paperless:docsin, with this container's service user a member of `docsin`
+  # below.  Nextcloud can write into that one directory and nowhere else,
+  # because its parent /srv/state/paperless is 0700 owned by uid 315 and is NOT
+  # bound in.
+  #
+  # ── IT IS ON /srv/state AND NOT ON /srv/docs, FOR THIS CONTAINER'S SAKE ───
+  #
+  # A bind mount whose host path does not exist is a container that does not
+  # start.  Under /srv/docs, a missing zdata/docs would therefore have taken
+  # THE HOUSEHOLD'S FILE SYNC, CALENDARS AND CONTACTS down with an unrelated
+  # service's dataset.  The shared path lives where both users already depend
+  # on it instead: `nextcloud-dirs` below already requires `srv-state.mount`,
+  # so this costs this container no dependency it did not have.
+  #
+  # Created by `paperless-inbox.service` in containers/paperless.nix — a unit
+  # deliberately separate from `paperless-dirs` so that it carries only the
+  # dependencies BOTH containers share.  That is also why it is not created
+  # here: one directory, one declaring unit.
+  #
+  # FILES VANISH FROM IT, AND THAT IS CORRECT: paperless consumes and unlinks.
+  # Making Nextcloud notice is what the `filesystem_check_changes` option in
+  # `nextcloud-provision` is for — without it this folder would show scans that
+  # no longer exist.
+  docsInbox = "/srv/state/paperless/inbox";
+
+  # The shared ingest group from containers/paperless.nix, restated here
+  # because a container config is its own NixOS evaluation and cannot read the
+  # host's option tree — the same reason `mediaGid` is restated above.
+  docsinGid = 3042;
+
   ##############################################################################
   # Secrets staging.
   #
@@ -441,6 +485,21 @@ in
         isReadOnly = true;
       };
 
+      # The scan inbox as WRITABLE external storage (M32).  See the let block
+      # for why read-only is not an option here and what bounds it instead.
+      #
+      # NOT created by this container: `paperless-inbox.service` owns it,
+      # because it is paperless's consumption directory and the mode it needs
+      # is paperless's to choose.  That unit declares
+      # `before`/`requiredBy` on container@nextcloud as well as on
+      # container@paperless, so the ordering this bind needs is expressed at
+      # the unit rather than left to activation order — which is the Immich
+      # lesson, and the reason a tmpfiles rule would not do.
+      "${docsInbox}" = {
+        hostPath   = docsInbox;
+        isReadOnly = false;
+      };
+
       "${secretsDir}" = {
         hostPath   = secretsDir;
         isReadOnly = true;
@@ -676,8 +735,14 @@ in
       # external storage mount only.
       users.users.nextcloud.uid  = nextcloudUid;
       users.groups.nextcloud.gid = nextcloudGid;
-      users.users.nextcloud.extraGroups = [ "media" ];
+      # `media` is SECONDARY, for the read-only external storage mount.
+      # `docsin` is SECONDARY too, and is what lets a scan shared from a phone
+      # be written into paperless's consumption directory (M32).  Neither is
+      # primary: making either one primary would put a shared gid on every file
+      # Nextcloud writes into its own store.
+      users.users.nextcloud.extraGroups = [ "media" "docsin" ];
       users.groups.media.gid = mediaGid;
+      users.groups.docsin.gid = docsinGid;
 
       ##########################################################################
       # ── Provisioning that only occ can express ──────────────────────────────
@@ -693,7 +758,7 @@ in
       # provider exists after somebody deleted it in the admin UI.
       ##########################################################################
       systemd.services.nextcloud-provision = {
-        description = "Register the Authelia OIDC provider and the media external storage";
+        description = "Register the Authelia OIDC provider and the external storage mounts";
         wantedBy = [ "multi-user.target" ];
         after    = [ "nextcloud-setup.service" "phpfpm-nextcloud.service" "network-online.target" ];
         wants    = [ "network-online.target" ];
@@ -730,7 +795,7 @@ in
           User  = "nextcloud";
           Group = "nextcloud";
         };
-        path = [ config.services.nextcloud.occ pkgs.coreutils pkgs.gnugrep ];
+        path = [ config.services.nextcloud.occ pkgs.coreutils pkgs.gnugrep pkgs.jq ];
         script = ''
           set -euo pipefail
 
@@ -787,6 +852,75 @@ in
           # External storage if that stops being true.
           if ! nextcloud-occ files_external:list --output=json | tr -d '\\' | grep -q '${mediaRoot}'; then
             nextcloud-occ files_external:create Media local null::null -c datadir=${mediaRoot}
+          fi
+
+          # ── The scan inbox as WRITABLE external storage (M32) ─────────────
+          #
+          # Same loose-substring idempotency as the Media mount above, for the
+          # same asymmetry: too loose creates nothing and is visible on the
+          # first look; too strict creates a duplicate mount on every deploy,
+          # silently, forever.
+          #
+          # ⚠ `filesystem_check_changes` IS NOT OPTIONAL HERE, AND THE DEFAULT
+          #   IS AGAINST US.
+          #
+          # Paperless consumes a scan and UNLINKS it.  Nextcloud does not
+          # notice a file disappearing from external storage unless it is told
+          # to look, so without this option the folder keeps showing scans that
+          # no longer exist — and the household's conclusion is that uploading
+          # is broken, not that it worked.
+          #
+          # THE WEB UI SETS THIS AND `files_external:create` DOES NOT.  Mounts
+          # made through the GUI are initialised with
+          # `filesystem_check_changes = 1`; the non-GUI creation path omits the
+          # option entirely and falls back to the GLOBAL default, which is 0
+          # (Never).  So this is the one line that makes the inbox behave, and
+          # it has to be set explicitly because we are on the path that skips
+          # it.  Values: 0 never, 1 once per direct access, 2 always.  `1` is
+          # what we want — opening the folder in the Files app rescans that one
+          # directory, and nothing scans on a timer.
+          #
+          # The Media mount above is almost certainly on the global default
+          # too.  It is left alone deliberately: it is read-only, nothing
+          # deletes from it behind Nextcloud's back, and a rescan-on-access
+          # over a multi-terabyte library is a cost with no benefit.
+          #
+          # `files_external:option <mount_id> <key> <value>` rather than
+          # `:config` — read out of
+          # apps/files_external/lib/Command/Option.php at this exact Nextcloud
+          # version.  `:option` takes mount OPTIONS; `:config` sets BACKEND
+          # configuration such as `datadir`.  Three positional arguments, no
+          # `set` verb.
+          #
+          # THE JSON KEYS ARE `id` AND `backendOptions`, also read out of
+          # Lib/StorageConfig.php::jsonSerialize rather than guessed — not
+          # `mount_id` and not `configuration`, which is what they look like
+          # they should be.  And there is no `tr -d '\\'` on this pipeline,
+          # unlike the Media check above: PHP escapes forward slashes as `\/`,
+          # which `grep` has to have stripped but which is a VALID JSON escape
+          # that jq decodes correctly on its own.  Stripping backslashes before
+          # jq would corrupt any other escape in the document.
+          inbox_id=$(nextcloud-occ files_external:list --output=json \
+            | jq -r --arg d '${docsInbox}' \
+                'first(.[] | select(.backendOptions.datadir == $d) | .id) // empty')
+
+          if [ -z "$inbox_id" ]; then
+            # With --output=json, files_external:create writes the bare new
+            # mount id and nothing else (Command/Create.php), so there is no
+            # need to list again to find what was just made.
+            inbox_id=$(nextcloud-occ files_external:create "Scan Inbox" \
+              local null::null -c datadir=${docsInbox} --output=json)
+          fi
+
+          if [ -n "$inbox_id" ]; then
+            nextcloud-occ files_external:option "$inbox_id" filesystem_check_changes 1
+          else
+            echo "nextcloud-provision: could not determine the Scan Inbox mount id" >&2
+            echo "  The mount exists but its change-detection option is unset," >&2
+            echo "  which means consumed scans will linger in the Files app." >&2
+            echo "  Set it by hand: Settings -> External storage -> gear icon" >&2
+            echo "  -> 'Filesystem check frequency' -> 'Once every direct access'." >&2
+            exit 1
           fi
         '';
       };

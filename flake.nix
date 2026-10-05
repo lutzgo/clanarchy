@@ -463,6 +463,31 @@
           # The machine is `mass`, not `music-assistant`: nspawn names the host
           # veth `vb-<container>` and an interface name caps at 15 characters.
           ./machines/ernst/containers/music-assistant.nix
+          # M32.  Paperless-ngx — the household document archive, on the NSPAWN
+          # tier because `services.paperless` is a first-class NixOS module.
+          # Owns zdata/docs; OCRs in German and English; brings up Tika and
+          # Gotenberg on the container's own loopback so office files get a
+          # text layer too.
+          #
+          # TWO INGEST DOORS, because FairScan has no cloud of its own: the
+          # Paperless Mobile app straight to the API, and a writable Nextcloud
+          # external-storage folder that IS the consumption directory.  That
+          # second door is why containers/nextcloud.nix gains a `docsin` group
+          # membership and a bind mount, and why the shared inbox lives on
+          # /srv/state rather than /srv/docs — a bind whose host path is
+          # missing is a container that will not start, and Nextcloud must not
+          # be stopped by an unrelated service's dataset.
+          #
+          # Public on `docs.goclan.org` with NO forward-auth — the phone app
+          # exchanges credentials at /api/token/ and then sends a token header,
+          # so it can neither render a portal nor follow a 302.  The browser
+          # path takes Authelia's OIDC provider instead: CWA's and Nextcloud's
+          # arrangement.  See containers/ingress-policy.nix.
+          #
+          # It also carries the `doc0` leg (fdca:fe95::1/::2), which points
+          # INWARD like searxng's `web0`: M32b gives mneme a `document_search`
+          # tool and the host has to dial in to reach this API.
+          ./machines/ernst/containers/paperless.nix
           # microvm.nix's host module, and the one guest that uses it (M3).
           # The import lives here rather than inside wg-qbittorrent.nix
           # because `inputs` reaches a machine module via _module.args, and

@@ -725,10 +725,43 @@
   #                       Like M22, M23, M24 and M27 it adds NO UDM-PRO RULE for
   #                       VLAN 50 → 90: every human arrives through .12.
   #
-  #   NEXT FREE SEQUENCE NUMBER IS 17; next free address is 10.0.90.31, keeping
-  #   the 8 + <seq> correspondence (8 + 0x17 = 31).  There is no free gap left
+  #   02:00:00:90:00:18   paperless container eth0   (M32)      10.0.90.32
+  #
+  #                       Paperless-ngx, the household document archive.
+  #                       containers/paperless.nix.
+  #
+  #                       SEQUENCE 17 IS SKIPPED HERE ON PURPOSE, and it is not
+  #                       a gap of the 08/09 kind: M31's mail container claimed
+  #                       it, in a branch developed concurrently with this one.
+  #                       Its row arrives with that branch; if you are reading
+  #                       this and 17 is absent from the table, that merge has
+  #                       not landed yet.
+  #
+  #                       THE FIREWALL ADMITS TWO SOURCES AND THEY ARE ON
+  #                       DIFFERENT FAMILIES.  Traefik (.12) on 28981 over v4,
+  #                       for every human client; and mneme over v6 on the
+  #                       `doc0` leg below, which is the only thing that reaches
+  #                       this service without passing the proxy.  Monitoring is
+  #                       NOT admitted — paperless exposes no OpenMetrics
+  #                       endpoint, so a scrape job could only ever be `up == 0`
+  #                       (SN3), the same call M23 and M27 made.  Neither is the
+  #                       dashboard: containers/homepage.nix gets a plain link
+  #                       tile rather than a widget, so it needs no accept here.
+  #
+  #                       PUBLIC AND EXEMPT FROM forward-auth: `appApiHosts`
+  #                       plus Authelia OIDC — CWA's and Nextcloud's
+  #                       arrangement, because the Paperless Mobile app on both
+  #                       phones authenticates against /api/token/ and cannot
+  #                       follow a 302.  Ledger row L21.  Unlike `cloud` it DOES
+  #                       carry a `wanLoginPaths` entry; traefik.nix argues the
+  #                       difference in place.
+  #                       Like M22, M23, M24, M27 and M30 it adds NO UDM-PRO
+  #                       RULE for VLAN 50 → 90: every human arrives through .12.
+  #
+  #   NEXT FREE SEQUENCE NUMBER IS 19; next free address is 10.0.90.33, keeping
+  #   the 8 + <seq> correspondence (8 + 0x19 = 33).  There is no free gap left
   #   in the sequence — 08 and 09 lapsed and were never reclaimed, and 0d was
-  #   taken back by CWA.
+  #   taken back by CWA.  17 is M31's and 18 is M32's.
   #
   # ── MAC ALLOCATIONS ON VLAN 20 (IoT) ────────────────────────────────────────
   #
@@ -845,7 +878,7 @@
   #
   # ── THE ULA LEGS, AND THE NAMING RULE M29 HAD TO ADD ──────────────────────
   #
-  # Four point-to-point /128 pairs now, each with exactly one peer, none on any
+  # Six point-to-point /128 pairs now, each with exactly one peer, none on any
   # VLAN and none with a MAC, a reservation or anything for the UDM-Pro:
   #
   #   fdca:fe90::1/::2   mon0   monitoring   Prometheus + llama-swap's /metrics
@@ -854,12 +887,21 @@
   #   fdca:fe93::1/::2   ai3    hass         the conversation agent, STT and TTS
   #                                          — three ports on one leg (M29)
   #   fdca:fe94::1/::2   web0   searxng      web search for the agent (M29b)
+  #   fdca:fe95::1/::2   doc0   paperless    document search for the agent (M32)
   #
-  # THE LAST ONE POINTS THE OTHER WAY, which is why it is not called `ai4`.
-  # Every `ai*` leg exists so a CONTAINER can reach a service on this host's
-  # loopback; `web0` exists so a HOST service (mneme) can reach a service in a
-  # container.  Naming it in the ai family would read as a fifth consumer of
-  # llama-swap, which it is not.
+  # THE LAST TWO POINT THE OTHER WAY, which is why neither is called `ai4` or
+  # `ai5`.  Every `ai*` leg exists so a CONTAINER can reach a service on this
+  # host's loopback; `web0` and `doc0` exist so a HOST service (mneme) can reach
+  # a service in a container.  Naming either in the ai family would read as
+  # another consumer of llama-swap, which neither is.
+  #
+  # `doc0` IS `web0`'S SHAPE AND NOT A NEW ONE, down to the security property:
+  # it adds NO host-side accept for `fdca:fe95::2` and no `mkBridges` call, so
+  # mneme dials into paperless and nothing accepts on the way back.  The only
+  # accept is inside containers/paperless.nix and it names `fdca:fe95::1`.
+  # Same reason for existing, too: the host's route to 10.0.90.32 is
+  # `via 10.0.50.1`, so widening paperless's VLAN-90 firewall to the host would
+  # hairpin every query out through the UDM-Pro and back.
   #
   # IT DOES NOT GIVE SearXNG A PATH INTO THE HOST, and that was the property
   # its container block called load-bearing.  The host dials in; nothing
@@ -1486,6 +1528,40 @@
   #
   #                              NEXT FREE IN THE 3000 BLOCK IS 3041.)
   #
+  #   gid 3042  docsin          M32's SHARED INGEST GROUP, and the only id that
+  #                              milestone takes from this block — paperless
+  #                              itself is upstream's 315 and is in the
+  #                              out-of-block table below.
+  #
+  #                              A GROUP WITH NO USER OF ITS OWN, which makes
+  #                              this gid 3000 `media`'s shape rather than any
+  #                              row above it.  Two principals share
+  #                              /srv/docs/inbox: Nextcloud (3037) writes a scan
+  #                              into it over WebDAV, and paperless (315) owns
+  #                              the directory and CONSUMES AND UNLINKS.  The
+  #                              directory is 2770 paperless:docsin — the owner
+  #                              bit is what lets paperless unlink, the group
+  #                              bit is what lets Nextcloud write, and the
+  #                              SETGID bit is what makes a Nextcloud-written
+  #                              file land in group `docsin` instead of group
+  #                              `nextcloud`.  Without it paperless, in neither
+  #                              group, would be reading on the `other` bits by
+  #                              luck — containers/cwa.nix:509-535 wrote that
+  #                              sentence first, about its own ingest tree.
+  #
+  #                              DECLARED IN TWO CONTAINER CONFIGS, which is not
+  #                              duplication to tidy away: each
+  #                              `containers.<n>.config` is its own NixOS
+  #                              evaluation and cannot read the host option
+  #                              tree, the same reason nextcloud.nix restates
+  #                              `mediaGid = 3000`.
+  #
+  #                              3041 IS SKIPPED: M31's `virtualMail` claimed
+  #                              it, in a branch developed concurrently with
+  #                              this one.  Its row arrives with that branch.
+  #
+  #                              NEXT FREE IN THE 3000 BLOCK IS 3043.)
+  #
   #   NO uid FOR miniflux, and it is recorded rather than left to inference.
   #   M27's other container (containers/miniflux.nix) runs the daemon under
   #   DynamicUser — upstream's own choice, kept — and stores everything in
@@ -1562,7 +1638,46 @@
   #                           that happen to share a number, which is fine
   #                           precisely because no tree is shared.  The
   #                           3000-block convention does not apply to it and it
-  #                           must not be renumbered into the block.
+  #                           must not be renumbered into the block.  Since M32
+  #                           it is also on /srv/state/paperless/postgresql —
+  #                           a fourth database in a fourth container, fine for
+  #                           the same reason: no tree is shared.
+  #
+  #   uid/gid 315  paperless  NOT ALLOCATED HERE, and this row exists so nobody
+  #                           tries.  M32's container lands on zdata unmapped
+  #                           like every other container uid, but 315 is a
+  #                           WELL-KNOWN NixOS static id (`ids.uids.paperless`)
+  #                           and the nixpkgs module assigns it unconditionally:
+  #
+  #                             users = lib.optionalAttrs (cfg.user == defaultUser) {
+  #                               users.${cfg.user} = { uid = config.ids.uids.paperless; … };
+  #
+  #                           So a 3000-block number on top of it is not an
+  #                           override, it is an evaluation conflict — THE
+  #                           `hass` = 286 FAILURE VERBATIM, and the good news
+  #                           is that it fails at eval rather than at container
+  #                           start:
+  #
+  #                             The option `containers.paperless.users.users
+  #                             .paperless.uid' has conflicting definition
+  #                             values: 315 / 3042
+  #
+  #                           The escape — setting `services.paperless.user` to
+  #                           something other than the default so the module's
+  #                           own `users` block is skipped, then declaring the
+  #                           account by hand — was considered and refused: it
+  #                           buys a tidier number and costs a hand-rolled
+  #                           system user.  This is what M24 learned the
+  #                           expensive way and M30 then checked for in advance;
+  #                           M32 checked ids.nix BEFORE writing the row, which
+  #                           is the whole point of that habit.
+  #
+  #                           /srv/docs and everything under it is
+  #                           315:315, except /srv/docs/inbox which is
+  #                           315:3042.  The 3000-block convention does not
+  #                           apply to it and it must not be renumbered into the
+  #                           block — and NEXT FREE in that block DID NOT
+  #                           ADVANCE for it.
   #
   #   uid 3026  tvheadend       M8 LANDED 2026-08-27 AND TOOK THIS — moved up
   #                              into the allocated table, as shape (ii): OWN
@@ -1572,6 +1687,16 @@
   #                              wanted despite MediathekArr), and Jellyfin's
   #                              DVR records, so "group media PRIMARY" never
   #                              happened.
+  #
+  # NO uid FOR TIKA OR GOTENBERG, M32's two helpers, and they are shape (c) —
+  # upstream's DynamicUser kept, nothing written to zdata.  `configureTika`
+  # brings both up inside containers/paperless.nix to turn office files into
+  # PDFs; `services.tika` defaults to listenAddress 127.0.0.1 and
+  # `services.gotenberg` to bindIP 127.0.0.1, both on the CONTAINER's loopback,
+  # so neither is reachable from VLAN 90 and neither has state to pin.  Listed
+  # because a reader who finds two new daemons in that container and no rows
+  # here has to be able to tell "recorded as taking none" from "somebody
+  # forgot".
   #
   # NO uid FOR byparr.  It replaces FlareSolverr and keeps upstream's
   # DynamicUser, exactly as FlareSolverr does: there is no persistent state,

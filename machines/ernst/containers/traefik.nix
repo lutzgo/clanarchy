@@ -618,6 +618,20 @@ let
   massAddr = "10.0.90.30";
   massPort = 8095;
 
+  # Paperless-ngx — the household document archive (M32).
+  #
+  # IT ALSO HAS A SECOND LEG THIS PROXY CANNOT SEE, like Home Assistant's and
+  # Music Assistant's, but for the opposite direction: `doc0`
+  # (fdca:fe95::1/::2) exists so mneme, a HOST service, can reach the document
+  # API for M32b's `document_search`.  Nothing inbound from this proxy goes
+  # anywhere near it, and nothing on that leg can reach back out.
+  #
+  # Port 28981 is the module's own default and is granian, not nginx — unlike
+  # Nextcloud there is no web server in front of the application inside the
+  # container.  TLS is still terminated once, here.
+  paperlessAddr = "10.0.90.32";
+  paperlessPort = 28981;
+
   # Calibre-Web-Automated — the podman tier's FOURTH occupant, and the only
   # one of this round's three additions that needed an address of its own.
   #
@@ -943,6 +957,21 @@ let
     # Same three separate acts as every other name here: this entry, a public A
     # record, and the ledger row (L18) in docs/roadmap.md.
     "miniflux"
+
+    # Paperless-ngx (M32).  Off-LAN reach is the requirement rather than a side
+    # effect, and the reason is the same one that makes the whole thing worth
+    # building: a scan is most useful at the moment somebody is standing at a
+    # counter being asked for a document they left at home.  A document archive
+    # reachable only on the home wifi is an archive you have to go home to
+    # read, which is the filing cabinet it replaces.
+    #
+    # `wanLoginPaths` DOES carry an entry for this one, like `karakeep`'s and
+    # unlike `cloud`'s, because this is an `appApiHosts` name AND because its
+    # login surface is addressable — see the entry below for the argument.
+    #
+    # Same three separate acts as every other name here: this entry, a public A
+    # record, and the ledger row (L21) in docs/roadmap.md.
+    "paperless"
   ];
 
   # ── THE LOGIN PATHS, PER SERVICE, AND WHAT THIS DOES NOT COVER ────────────
@@ -1112,6 +1141,38 @@ let
     #
     # Revisit if CrowdSec's metrics show enough 401s on this vhost to argue for
     # a matcher narrower than either of the two above.
+
+    # ── PAPERLESS IS PRESENT, AND THE CONTRAST WITH NEXTCLOUD IS THE POINT ──
+    #
+    # Both names are in `appApiHosts` and both are in `wanExposed`, so the two
+    # entries look like they should go the same way.  They do not, and the test
+    # that separates them is NOT "does it have an app" — it is **is the
+    # credential endpoint a DISTINCT path, or is it every request?**
+    #
+    #   /api/token/        is where Paperless Mobile exchanges a username and
+    #                      password for a DRF token.  It is hit ONCE per device
+    #                      per enrolment, and never again — the token rides in
+    #                      an `Authorization` header on the ordinary API paths
+    #                      afterwards, which this matcher does not touch.  One
+    #                      request per ten seconds is invisible to a phone
+    #                      being set up and ruinous to a password guesser.
+    #   /accounts/login    is django-allauth's browser form, including the POST.
+    #                      Same shape: a human logs in, a human does not log in
+    #                      sixty times a minute.
+    #
+    # That is exactly what Nextcloud lacks: its equivalent of the first is
+    # every sync request, and its equivalent of the second is a poll loop.
+    # So the asymmetry between these two neighbouring entries is a property of
+    # the protocols, not an inconsistency to tidy — do not "fix" it by removing
+    # this entry or by adding one for `nextcloud`.
+    #
+    # NOTE `/accounts/login` IS A PREFIX WITHOUT A TRAILING SLASH on purpose:
+    # allauth serves the form at /accounts/login/ and the OIDC leg under
+    # /accounts/oidc/..., so a trailing slash here would still catch the form
+    # while a broader `/accounts` would also rate-limit the OIDC callback — one
+    # redirect per login, but shared with every other household member behind
+    # the same public address.
+    paperless = "(PathPrefix(`/api/token/`) || PathPrefix(`/accounts/login`))";
   };
 
   ############################################################################
@@ -2761,6 +2822,30 @@ in
               service     = "nextcloud";
             };
 
+            # ── Paperless-ngx (M32) — NO forward-auth, and the reason is in ──
+            #    containers/ingress-policy.nix under `(h "docs")`.
+            #
+            # Short form: the Paperless Mobile app on both phones POSTs to
+            # /api/token/ once and then sends `Authorization: Token …` on every
+            # request.  No browser, so a 302 to the portal arrives as an opaque
+            # network error.  The browser path IS handed to Authelia's OIDC
+            # provider, which makes this CWA's and Nextcloud's arrangement
+            # rather than Home Assistant's.
+            #
+            # ONE PROPERTY OF THIS ROUTER TO PRESERVE, the same class of
+            # invisible-if-broken as the Immich and Nextcloud notes above: NO
+            # `buffering` MIDDLEWARE, here or on the wan chain this router
+            # inherits.  A phone uploading a multi-page colour scan is a large
+            # POST, and buffering the whole body would make it fail as
+            # "the upload button does nothing" rather than as an error anyone
+            # sees.  The `readTimeout` on `websecure` (3600s) and `wan` (1800s)
+            # bounds it and is already generous.
+            paperless = {
+              rule        = "Host(`docs.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              service     = "paperless";
+            };
+
             # ── Home Assistant (M24) — NO forward-auth, and the reason is in ─
             #    containers/ingress-policy.nix under `(h "ha")`.
             #
@@ -3114,6 +3199,7 @@ in
             # M23 — its own nspawn container on .26, answering on plain 80
             # from the module's own nginx.
             nextcloud.loadBalancer.servers      = [ { url = "http://${nextcloudAddr}:${toString nextcloudPort}/"; } ];
+            paperless.loadBalancer.servers      = [ { url = "http://${paperlessAddr}:${toString paperlessPort}/"; } ];
 
             # M24 — its own nspawn container on .27.  Plain HTTP, and a
             # WebSocket rides the same backend; Traefik proxies the upgrade with
