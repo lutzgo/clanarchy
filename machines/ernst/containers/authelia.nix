@@ -348,10 +348,40 @@ let
   # username.  lgo's is already public — it is the author address on every
   # commit in this repo.
   ############################################################################
+  # ── `sarinah` WAS `sabine` UNTIL 2026-10-05, AND THE RENAME WAS FREE ───────
+  #
+  # The household account shipped under the wrong name.  M31's mail stack
+  # provisions `sarinah@goclan.org` and that is what she is called, so this
+  # entry is corrected rather than duplicated.
+  #
+  # RENAMING AN AUTHELIA USERNAME IS NORMALLY EXPENSIVE, and it is worth saying
+  # why it was not here.  `preferred_username` is the claim every OIDC relying
+  # party in this fleet maps accounts on — nextcloud.nix passes
+  # `--mapping-uid=preferred_username` explicitly — so a rename does not rename
+  # anything downstream: it creates a SECOND, EMPTY account beside the first in
+  # every application she has ever logged into, and orphans her second factor,
+  # which Authelia keys on username in its own database.
+  #
+  # Both were checked on ernst before this edit rather than assumed:
+  #
+  #   nextcloud-occ user:list        -> lgo, ncadmin.  No `sabine`.
+  #   sqlite3 db.sqlite3 'select username from totp_configurations'
+  #                                  -> go, lgo.  No `sabine`.
+  #
+  # She had never logged in anywhere and had never enrolled a second factor, so
+  # there was nothing to migrate and nothing to orphan.  IF THIS IS EVER DONE
+  # AGAIN FOR A USER WHO HAS, run those two queries first — the cost is a
+  # per-application account migration, not an edit here.
+  #
+  # HER UNIX USERNAME ON biene IS STILL `sabine` (modules/users/sabine.nix) and
+  # is deliberately untouched: that one owns a home directory, a Noctalia
+  # profile and a Syncthing folder, and renaming it is a different and much
+  # larger change with no connection to this one.  The two namespaces are
+  # independent, and this comment exists so the mismatch reads as a decision.
   autheliaUsers = [
-    { name = "lgo";    displayName = "Lutz";   email = "lutz0go@gmail.com";     groups = [ "admins" ]; }
-    { name = "go";     displayName = "Go";     email = "go@${baseDomain}";      groups = [ "admins" ]; }
-    { name = "sabine"; displayName = "Sabine"; email = "sabine@${baseDomain}";  groups = [ "household" ]; }
+    { name = "lgo";     displayName = "Lutz";    email = "lutz0go@gmail.com";     groups = [ "admins" ]; }
+    { name = "go";      displayName = "Go";      email = "go@${baseDomain}";      groups = [ "admins" ]; }
+    { name = "sarinah"; displayName = "Sarinah"; email = "sarinah@${baseDomain}"; groups = [ "household" ]; }
   ];
 
   adminGroup     = "admins";
