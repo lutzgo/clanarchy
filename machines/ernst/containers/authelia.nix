@@ -929,27 +929,40 @@ in
         # same policy as the admin surfaces even though the vhost around it is
         # deliberately open.
         #
-        # ── client_secret_basic, AND THAT IS CHECKED RATHER THAN COPIED ────
+        # ── client_secret_post, AND THE SECOND CLIENT HERE TO NEED IT ──────
         #
-        # Nextcloud's block two screens up is the only one here that is NOT
-        # basic, and its comment is emphatic that this was measured rather than
-        # chosen — `user_oidc` unconditionally switches to `client_secret_post`
-        # when discovery advertises it, so the knob cannot win.  THAT IS A
-        # user_oidc PROPERTY AND NOT AN AUTHELIA ONE, so it does not transfer:
-        # django-allauth sends what its provider config says, and
-        # containers/paperless.nix does not set `token_auth_method`, whose
-        # allauth default is `client_secret_basic`.
+        # THIS SHIPPED AS `client_secret_basic` AND THAT WAS WRONG.  The
+        # comment it shipped with argued that Nextcloud's forced
+        # `client_secret_post` was a `user_oidc` property which "does not
+        # transfer" to django-allauth, whose documented default is basic.
+        # Measured on ernst 2026-10-05, on the first real login: it transfers.
         #
-        # If a login ever fails at the TOKEN EXCHANGE here — after the portal,
-        # after 2FA, on the callback — with
-        #
-        #     invalid_client — … 'token_endpoint_auth_method' method
+        #     [paperless.auth] Social authentication error for provider
+        #     `Authelia`: unknown (Error retrieving access token:
+        #     {"error":"invalid_client","error_description":"… The request was
+        #     determined to be using 'token_endpoint_auth_method' method
         #     'client_secret_post', however the OAuth 2.0 client registration
-        #     does not allow this method
+        #     does not allow this method."})
         #
-        # then allauth changed its default and this line is what to flip.  The
-        # two-arm control against /api/oidc/token in the Nextcloud comment is
-        # the way to confirm it before changing anything.
+        # The browser's half of the flow all works — the portal, 2FA, and the
+        # redirect back with a code — and the failure is at the TOKEN EXCHANGE,
+        # so what the user sees is paperless's generic "An error occurred while
+        # attempting to login via your social network account" with no mention
+        # of a method, a client or a secret.  Authelia's log is the only place
+        # that names the cause.
+        #
+        # THE GENERALISATION, now that two of five clients here need it: the
+        # library picks the method, not us, and a library that reads Authelia's
+        # discovery document will find `client_secret_post` advertised —
+        # because that list describes what the SERVER supports rather than what
+        # this client is registered for.  So the honest default for a NEW
+        # client here is to assume post and verify, rather than to assume basic
+        # because the library's documentation says so.
+        #
+        # SECURITY: the same non-issue Nextcloud's block argues.  Both forms
+        # send the same shared secret over the same TLS connection; `post` puts
+        # it in the request body where `basic` puts it in a header, Traefik
+        # logs neither, and RFC 6749 §2.3.1 permits both.
         echo "      - client_id: 'paperless'"
         echo "        client_name: 'Paperless'"
         printf "        client_secret: '"
@@ -960,7 +973,7 @@ in
         echo "        require_pkce: true"
         echo "        pkce_challenge_method: 'S256'"
         echo "        consent_mode: 'implicit'"
-        echo "        token_endpoint_auth_method: 'client_secret_basic'"
+        echo "        token_endpoint_auth_method: 'client_secret_post'"
         echo "        redirect_uris:"
         echo "          - '${paperlessRedirectUri}'"
         echo "        scopes:"
