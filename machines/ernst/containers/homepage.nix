@@ -963,6 +963,45 @@ in
                   };
                 };
               }
+              {
+                "Paperless" = {
+                  icon        = "paperless-ngx.png";
+                  href        = pub "docs";
+                  description = "Scanned documents — searchable, OCR'd";
+
+                  # ── A LINK, NOT A WIDGET, AND NOT BECAUSE ONE DOES NOT ────
+                  #    EXIST (M32)
+                  #
+                  # homepage ships a `paperlessngx` widget.  It needs an API
+                  # token, which means a seventh prompt on the
+                  # `homepage-tokens` generator — and adding a prompt does NOT
+                  # re-run that generator, because clan treats it as satisfied
+                  # once every FILE it declares exists.  Getting the new value
+                  # in needs
+                  #
+                  #     clan vars generate ernst --generator homepage-tokens \
+                  #       --regenerate
+                  #
+                  # which re-asks all six existing prompts, every one of which
+                  # has to be fetched out of a different service's UI first.
+                  # That is the price of a document count on a dashboard, and
+                  # it is not worth it on day one.
+                  #
+                  # NO siteMonitor EITHER, deliberately: the tiles that have
+                  # one point at a `local` port inside the arr container, and
+                  # this backend is a different container.  Pointing it at
+                  # 10.0.90.32 would cost containers/paperless.nix a firewall
+                  # accept for the dashboard — a second non-Traefik client on
+                  # a vhost whose whole claim is that every human arrives
+                  # through the proxy.  A green dot is not worth that.
+                  #
+                  # If the widget is ever wanted, do the `--regenerate` once
+                  # and reuse the `docs.goclan.org` URL rather than the
+                  # backend address: paperless validates Host against
+                  # `PAPERLESS_URL`, so this is Nextcloud's situation and the
+                  # public name is the one that answers.
+                };
+              }
             ];
           }
 

@@ -346,6 +346,40 @@ rec {
     # this entry disproves.  M26's first deploy-day defect REMOVED a firewall
     # rule rather than adding one; same move.
     (h "music")
+
+    # Paperless-ngx (M32).  ONE client class, and it is the cleanest case in
+    # this list: the Paperless Mobile app on lgo's and Sabine's phones POSTs
+    # credentials to /api/token/, receives a DRF token, and sends it as an
+    # `Authorization: Token …` header on every subsequent request.  There is no
+    # browser in that process, so there is nothing to render a portal and
+    # nothing to follow a 302 — forward-auth would turn every upload and every
+    # search into an opaque network error.
+    #
+    # THE WEB UI GOES TO AUTHELIA'S OIDC PROVIDER INSTEAD, which makes this
+    # CWA's and Nextcloud's arrangement (OIDC INSTEAD OF the middleware) rather
+    # than Grafana's or Open WebUI's (OIDC AS WELL AS it).  A browser therefore
+    # still gets two-factor; see containers/paperless.nix and the client block
+    # in containers/authelia.nix.
+    #
+    # UNLIKE photos, NOTHING HERE IS MEANT TO BE ANONYMOUS, and unlike `music`
+    # this one IS on the internet.  So the compensation stack in this file's
+    # header is load-bearing rather than defending the house against itself,
+    # and the two pieces that carry the most weight for this name are:
+    #
+    #   `PAPERLESS_ACCOUNT_ALLOW_SIGNUPS = false`, pinned in the container
+    #   even though it is already the default, so nobody can register
+    #   themselves against a WAN-exposed hostname; and
+    #
+    #   django-allauth's own rate limiting plus the `wan-login-ratelimit`
+    #   router below.  Unlike `cloud`, this name CAN have one — see the
+    #   `wanLoginPaths` entry in containers/traefik.nix for why the paths here
+    #   are a login surface and Nextcloud's are every sync request.
+    #
+    # Paperless also offers TOTP of its own (`MFA_TOTP_ISSUER`), which is
+    # runtime state and nothing in this repo can set.  It is worth enabling by
+    # hand on the local admin, because that account is the recovery path and
+    # the recovery path is the one credential the portal cannot protect.
+    (h "docs")
   ];
 
   ############################################################################
