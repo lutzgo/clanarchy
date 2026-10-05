@@ -348,11 +348,38 @@ let
   # username.  lgo's is already public — it is the author address on every
   # commit in this repo.
   ############################################################################
-  # ── `sarinah` WAS `sabine` UNTIL 2026-10-05, AND THE RENAME WAS FREE ───────
+  # ── THE USERNAME CONVENTION, WHICH THIS LIST NOW ACTUALLY FOLLOWS ─────────
   #
-  # The household account shipped under the wrong name.  M31's mail stack
-  # provisions `sarinah@goclan.org` and that is what she is called, so this
-  # entry is corrected rather than duplicated.
+  #     first initial + surname     Lutz Go     -> lgo
+  #                                 Sarinah Go  -> sgo
+  #     the surname alone           the family's shared account -> go
+  #
+  # `go` is therefore not an abbreviation of a first name, and it is not lgo's
+  # second account: it is the HOUSEHOLD, which is why it is the couch account
+  # on the television and why it sits in `admins`.
+  #
+  # THE EMAIL IS A DIFFERENT NAMESPACE AND DOES NOT FOLLOW THIS.  M31's mail
+  # stack provisions `sarinah@goclan.org` and `lutz@goclan.org` — first names,
+  # because that is what a correspondent types.  Authelia accepts either the
+  # username or the email at the login form, so both spellings reach the same
+  # account and neither has to be bent to match the other.
+  #
+  # ── `sgo` WAS `sabine` UNTIL 2026-10-05, AND THE RENAME WAS FREE ───────────
+  #
+  # The household account shipped under the wrong name AND under no
+  # convention.  She is Sarinah — `containers/immich.nix` has said so since
+  # M22 ("sgo — FP4 app auto-backup.  Sarinah's own account, her own library")
+  # — so this entry is corrected rather than duplicated.
+  #
+  # IT WAS CORRECTED TWICE, and the first attempt is worth recording because
+  # it was wrong in an instructive way: it became `sarinah`, which fixed the
+  # name and ignored the convention, leaving a list where two entries were
+  # initials and one was a first name.  `sgo` is the spelling the rest of this
+  # fleet already uses for her.
+  #
+  # So she has three spellings across the fleet — `sgo` here and in Immich,
+  # `sarinah` in mail, `sabine` as a Unix account on biene.  Only the last of
+  # those is wrong-and-staying-wrong; the final paragraph below says why.
   #
   # RENAMING AN AUTHELIA USERNAME IS NORMALLY EXPENSIVE, and it is worth saying
   # why it was not here.  `preferred_username` is the claim every OIDC relying
@@ -381,7 +408,7 @@ let
   autheliaUsers = [
     { name = "lgo";     displayName = "Lutz";    email = "lutz0go@gmail.com";     groups = [ "admins" ]; }
     { name = "go";      displayName = "Go";      email = "go@${baseDomain}";      groups = [ "admins" ]; }
-    { name = "sarinah"; displayName = "Sarinah"; email = "sarinah@${baseDomain}"; groups = [ "household" ]; }
+    { name = "sgo";     displayName = "Sarinah"; email = "sarinah@${baseDomain}"; groups = [ "household" ]; }
   ];
 
   adminGroup     = "admins";
