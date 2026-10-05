@@ -89,9 +89,10 @@ cannot protect.
 Things that live in paperless's database rather than in this repo, and
 therefore have to be done by hand the first time.
 
-- **Create Sabine's account** by having her log in with Authelia once, then
-  give it the permissions she needs. An auto-signed-up account starts with very
-  few.
+- **Create Sarinah's account** by having her log in with Authelia once. That is
+  the whole step — she lands in the `household` group automatically and there is
+  nothing to grant by hand. (This item used to say otherwise, and the gap it
+  described is what produced the 403 in Troubleshooting below.)
 - **TOTP on `admin`**, as above.
 - **Mail rules — none.** There is deliberately no IMAP consumption; see the
   "what is deliberately not here" block in `containers/paperless.nix`.
