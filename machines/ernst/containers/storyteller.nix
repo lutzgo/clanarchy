@@ -623,21 +623,33 @@ in
 
       # ── THE AUTO-IMPORT WATCH FOLDER, AND THE ONE RW MOUNT ────────────────
       #
-      # Read-write, unlike the two libraries above, and that asymmetry is the
-      # design rather than an oversight.  Storyteller may move, rename or
-      # delete what it has ingested from its watch folder — that is a drop
-      # box, and a drop box the watcher cannot clear is one that re-imports
-      # or wedges.  Nothing of value lives here: everything staged into it is
-      # a hardlink to, or a copy of, a file that still exists in the library
-      # it came from.
+      # Read-write, unlike the two libraries above.  Nothing of value lives
+      # here: everything staged into it is a hardlink to, or a copy of, a file
+      # that still exists in the library it came from.  So the invariant the
+      # two `:ro` mounts protect is intact — Storyteller still cannot touch
+      # Bindery's or Audiobookshelf's trees — and the only thing it can write
+      # to besides its own /data is a scratch directory.
       #
-      # So the invariant the two `:ro` mounts protect is intact — Storyteller
-      # still cannot touch Bindery's or Audiobookshelf's trees — and the only
-      # thing it can write to besides its own /data is a scratch directory.
+      # CORRECTED 2026-10-05.  This used to justify the `rw` with "Storyteller
+      # may move, rename or delete what it has ingested".  It does NOT, and
+      # the opposite is what actually matters operationally: the DB stores the
+      # SOURCE PATHS (`audiobook.filepath` = `/import/<slug>`) and the splitter
+      # reads them when PROCESSING is started, which is a separate manual step
+      # that may happen days after the import.  Clearing the watch folder in
+      # between produces
       #
-      # Point Storyteller's Settings → Automatic import at `/import` (the
+      #   ERROR: … task "SPLIT_TRACKS" … ENOENT: scandir '/import/consider-phlebas'
+      #
+      # observed 2026-09-28.  So `/import` is a HOLDING area until a book is
+      # ALIGNED, not a drop box.  The mount is left `rw` anyway — no write by
+      # the container has been observed, staging is done host-side by
+      # `storyteller-stage` as root, and tightening it is an untested change
+      # for no gain.
+      #
+      # Point Storyteller's Settings → Automatic import at `/import/` (the
       # CONTAINER path, not the host path).  It is a DB/UI setting with no
-      # environment variable, so this file cannot set it; see the guide.
+      # environment variable, so this file cannot set it; it was set by hand on
+      # 2026-09-27 and is in the DB.  See the guide.
       "${importDir}:/import"
 
       # ── $HOME, ON zdata/state, AND TRANSCRIPTION CANNOT RUN WITHOUT IT ────
@@ -783,15 +795,27 @@ in
   # anyone deciding to.  Notifying puts that decision back in front of a
   # human, which is where it belongs while this is a handful of titles a year.
   #
-  # ONE MORE REASON, AND IT IS THE LOAD-BEARING ONE: auto-import has never
-  # been observed working on this deployment.  The only book in the database
-  # was created 2026-08-28, BEFORE the /import mount existed at all (M#250,
-  # merged 2026-09-27), and it was processed through Reprocess rather than
-  # through the watcher.  The one watcher scan that has been caught in the act
-  # threw `Encountered an error scanning for new book files in /import/` with
-  # an empty message out of getCoverArt.  Staging automatically onto a leg
-  # that has never been proven would manufacture silent failures; announcing a
-  # pair and letting someone stage it by hand proves the leg as a side effect.
+  # ONE MORE REASON, AND IT IS NOW THE LOAD-BEARING ONE: AUTO-IMPORT DOES NOT
+  # START PROCESSING.  An earlier revision of this comment said auto-import had
+  # "never been observed working"; that was written before the leg had been
+  # exercised and is RETRACTED — Consider Phlebas was imported by the watcher
+  # on 2026-09-27 18:07 and aligned on 2026-09-28.  What the watcher does,
+  # read out of the deployed 2.9.3 bundle's scanner, is create the book row,
+  # pull metadata and cover art out of the EPUB, and log `Scanning complete`.
+  # It enqueues NO work.  Transcode/transcribe/align begins only when a human
+  # presses CREATE READALOUD on the book's page in the web UI — the route
+  # behind it is `POST /api/v2/books/<id>/process`, but nothing on screen says
+  # "process".
+  #
+  # And the scanner DUPLICATES: every change fires two concurrent scans, each
+  # holding a book list snapshotted at its own start, so three pairs staged in
+  # one sitting became six books on 2026-10-05.  Another reason an auto-stager
+  # would be a liability rather than a convenience.  See the guide.
+  #
+  # So an auto-stager would not spend a single CPU-second anyway — it would
+  # only fill the library with unprocessed rows, while still committing the
+  # staging decision nobody made.  Announcing the pair puts the one decision
+  # that matters in front of the person who then has to press the button.
   ############################################################################
   systemd.services.storyteller-pair-watch = lib.mkIf config.clanarchy.zfs.ntfy.enable {
     description = "Announce Storyteller-pairable titles not yet imported";
@@ -837,7 +861,10 @@ in
           -d "$body
 
 Stage with: storyteller-stage <slug> <ebook> <audiobook-dir>
-List them:  storyteller-stage new" \
+List them:  storyteller-stage new
+Then press Create readaloud in the web UI — the watcher imports but
+never aligns. Stage one at a time (the scanner duplicates), and verify
+the ebook path first (the matcher over-matches)." \
           "$NTFY_URL" >/dev/null
       }
 

@@ -110,9 +110,11 @@ EOF
 # "say nothing" signal.
 #
 # Already-imported is decided against Storyteller's OWN database rather than
-# against $IMPORT, because the watch folder is a scratch drop box that gets
-# cleared — using it as the ledger would re-announce every title every time it
-# was emptied.  Read-only open; this runs while the app is live.
+# against $IMPORT, because the watch folder is emptied by hand once a book is
+# ALIGNED — using it as the ledger would re-announce every title the moment it
+# was cleaned up.  (It must NOT be cleared before that: the DB points at
+# /import/<slug> and the splitter reads it when processing starts.  See
+# containers/storyteller.nix.)  Read-only open; this runs while the app is live.
 cmd_new() {
   titles=""
   if [ -r "$DB" ]; then

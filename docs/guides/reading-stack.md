@@ -635,11 +635,15 @@ Storyteller can see both libraries read-only, at `/library/ebooks` and
 Both mounts are read-only and must stay that way. `/import` is the only
 read-write mount, and nothing of value lives in it.
 
-### Settings, once
+### Settings, once — already done, here to be verified
+
+All four were set on 2026-09-27 and read back out of `storyteller.db` on
+2026-10-05. Nothing below needs doing again; it is here so a wrong value can be
+recognised.
 
 In Storyteller → Settings:
 
-- **Automatic import → Enable**, path **`/import`** — the *container* path, not
+- **Automatic import → Enable**, path **`/import/`** — the *container* path, not
   the host path. `/srv/media/ingest/cwa` is CWA's drop box and is not mounted
   here at all; pointing at it silently watches nothing.
 - **Readaloud location → "In the Storyteller internal folder"**. The default,
@@ -653,49 +657,202 @@ In Storyteller → Settings:
   cannot contend with Ollama for the 7900 XTX), so "GPU if available" resolves
   to CPU regardless.
 
-### Staging a pair — the hardlink is the point
+### The weekly ntfy notification, and what it is telling you
 
-`/srv/audiobooks/storyteller-import`, `/srv/audiobooks/library` and Storyteller's
-`/data` are all on **zdata/audiobooks**. So staging the audio half is `ln`:
-instant, zero bytes copied, however many gigabytes the book is. The ebook half
-comes from `zdata/media` and is a real copy, which at kilobytes does not matter.
+A timer on ernst (`storyteller-pair-watch`, Mondays 09:00) runs
+`storyteller-stage new` and pushes any result to the ZFS ntfy topic. The body is
+a bullet list of **slugs** and the footer repeats the staging command. It is the
+only thing in this stack that announces itself, so it is usually where the
+workflow starts.
 
-Put both halves in **one subdirectory** — that is what makes Storyteller treat
-them as a single item instead of two unmatched ones:
+It **notifies and never stages** — `containers/storyteller.nix` explains why at
+length: alignment costs hours of CPU per book, so committing the box to four of
+them has to be somebody's decision.
+
+Three commands, all on ernst, all from the same derivation as the watcher (so
+the watcher can never announce something the tool would refuse):
+
+| Command | Answers |
+|---|---|
+| `storyteller-stage pairs` | every title present in **both** libraries |
+| `storyteller-stage new` | pairs not yet in Storyteller's DB and not yet staged — tab-separated `slug`, `ebook`, `audiobook` |
+| `storyteller-stage list` | what is currently sitting in the watch folder |
+
+**Read the candidates before staging them — the matcher over-matches.** It
+lowercases, strips punctuation and asks whether either title contains the other,
+then takes the **first** ebook that hits. That is deliberately crude (the author
+directories do not line up: Audiobookshelf files Banks under `Iain M. Banks`,
+Bindery under `Iain Banks`), and it produces three kinds of junk, all of them
+present in the 2026-10-05 run:
+
+- **Wrong ebook, right audiobook.** `Outgrowing God (2019)` matched the ebook
+  `God (2016)` because "god" is a substring and that file came first — the real
+  `Outgrowing God` EPUB is in the same author directory. Check the ebook path,
+  not just the slug.
+- **Coincidental substring.** `Death of Poe (2026)` matched an ebook called
+  `Poe`; `Classic Science Fiction- Selected Short Stories…` matched a PKD
+  collection called `Short stories`.
+- **Language mismatch.** `For the Win (German Edition)` against the English
+  EPUB. Whisper would transcribe German audio and the aligner would then try to
+  fit it to English text.
+
+It also **under**-reports: the join only looks at `<author>/<title>/` audiobook
+directories (`-mindepth 2 -maxdepth 2 -type d`), so an author whose books sit as
+loose files directly under the author directory is invisible to it. Cory
+Doctorow's shelf is like that — a dozen `.m4b` files and one subdirectory, and
+only the subdirectory is ever considered.
+
+### Staging a pair — use the tool, not `cp`
 
 ```bash
 ssh root@10.0.50.10
-BOOK="/srv/audiobooks/storyteller-import/consider-phlebas"
-install -d -o 3022 -g 3000 -m 2770 "$BOOK"
-
-# audio half — hardlink, free
-ln "/srv/audiobooks/library/Iain M. Banks/Consider Phlebas: Culture Series, Book 1/"*.flac "$BOOK/"
-
-# ebook half — real copy, 562 KB
-cp "/srv/media/library/books/Iain Banks/Consider Phlebas- Culture Series, Book 1 (2014)/Consider Phlebas- Culture Series, Book 1 - Iain Banks.epub" "$BOOK/"
-
-chown -R 3022:3000 "$BOOK"
+storyteller-stage new                       # pick a line, verify both paths
+storyteller-stage rendezvous-with-rama \
+  "/srv/media/library/books/Arthur C. Clarke/Rendezvous with Rama (1973)/Rendezvous with Rama - Arthur C. Clarke.epub" \
+  "/srv/audiobooks/library/Arthur C. Clarke/Rendezvous with Rama (1973)"
 ```
 
-The watcher picks it up within seconds. Alignment then runs for a long time —
-it is nice'd and CPUWeight-limited, so it will not starve anything, which also
-means it is not fast.
+The slug is just the directory name under the watch folder; Storyteller takes
+the title from the EPUB's metadata, not from it.
+
+`storyteller-stage` is generated from `containers/storyteller.nix`'s own `let`
+bindings, so it cannot disagree with the deployment about uid 3022, the `media`
+gid, or either library root. It gets four things right that a hand-rolled `cp`
+gets wrong:
+
+1. **Both halves in one subdirectory.** Storyteller's scanner skips any EPUB
+   sitting directly in the watch folder — it logs `Found an EPUB file that was
+   not in a book folder: skipping` and moves on.
+2. **Hardlinks the audio.** `/srv/audiobooks/storyteller-import`,
+   `/srv/audiobooks/library` and Storyteller's `/data` are all on
+   **zdata/audiobooks**, so the audio half is `ln`: instant, zero bytes, however
+   many gigabytes the book is. A `cp` works and silently costs the full size
+   every time. The ebook half comes from `zdata/media` and is a real copy, which
+   at kilobytes does not matter.
+3. **Ownership.** A fresh directory is `root:root`; the setgid bit fixes the
+   group of new files and never the owner, so the container (uid 3022) would see
+   files it cannot read.
+4. **EPUB only.** azw3 and mobi are refused up front, with the conversion route,
+   rather than failing an hour into transcription.
+
+### …then press **Create readaloud**. The watcher does not.
+
+**This is the step the rest of this guide used to skip, and it is the only
+manual one.** Read out of the deployed 2.9.3 bundle's scanner: it creates the
+book row, pulls metadata and cover art out of the EPUB, and logs
+`Scanning complete`. It does **not** enqueue any work. Nothing happens until a
+human opens `storyteller.goclan.org`, picks the new book and presses the button.
+
+The button is labelled **Create readaloud** on the book's own page, under the
+cover. There is no "Start processing" anywhere in this build — that is the name
+of the API route behind it (`POST /api/v2/books/<id>/process`), not of anything
+on screen.
+
+So the full loop is:
+
+1. `storyteller-stage <slug> <ebook> <audiobook-dir>` on ernst.
+2. Within ~5 seconds: `Detected a change in /import/, scanning for new book
+   files...` in `journalctl -u podman-storyteller`, and the book appears in the
+   web UI with cover and metadata, unprocessed.
+3. **In the UI: Create readaloud.** Transcode → transcribe → align. It is
+   `Nice = 15` / `CPUWeight = 20`, so it will not starve anything, which also
+   means it is not fast — Consider Phlebas took about 8½ hours wall-clock on
+   `whisper.cpp:medium`.
+4. The synced EPUB3 lands in `/data/assets/<Title>/aligned/<Title>.epub` and the
+   `readaloud` row flips to `ALIGNED`.
+
+### Stage one pair at a time — the scanner duplicates books
+
+**Measured 2026-10-05: three pairs staged in one sitting produced six books.**
+Every change fires *two* concurrent scans — `Detected a change in /import/` is
+logged twice, every time — and each scan snapshots the existing book list when
+it *starts*, so neither sees the other's insert. Two rows, same title, same
+source paths, different `uuid` and a ` [xxxxxxxx]` suffix on the second one's
+asset directory.
+
+It is made worse by scans dying part-way:
+
+```
+ERROR: Encountered an error scanning for new book files in /import/
+  … at async I.getCoverArt
+[Error: Command failed: ffprobe -i "/tmp/storyteller/Audio/00006-00001.flac" …
+```
+
+The scanner re-extracts cover art for **every** book under `/import` on every
+pass, including ones already imported, and one bad extraction aborts the whole
+scan — so the next filesystem change rescans from a stale snapshot and imports
+again. A pair that is finished with `/import` (status `ALIGNED`) is worth
+clearing out for this reason alone, not just for tidiness.
+
+Both are upstream races in 2.9.3, not something this deployment configures. Work
+around them:
+
+- Stage **one** pair, wait for `Scanning complete` in the journal and for the
+  book to appear, then stage the next.
+- If a duplicate happens anyway, delete one of the two from its own page
+  (**Delete book**) *before* creating a readaloud. It is safe: the delete route
+  removes the book row and at most that book's own asset directory and generated
+  readaloud. It never touches `ebook.filepath` or `audiobook.filepath`, so the
+  staged pair in `/import` survives, and the two asset directories are distinct
+  because of the suffix.
+- Tell them apart by UUID. **The UUID is not displayed anywhere in the UI — it
+  is the URL.** Opening a book puts `…/books/<uuid>` in the address bar, and
+  hovering a cover in the grid puts it in the status bar. To go straight to the
+  one you mean, paste its URL. The two pages are otherwise identical — same
+  title, same cover, same `/import/<slug>` paths — so the URL is the only thing
+  to check before pressing Delete.
+- The surviving row should be the one whose asset directory has **no** suffix,
+  i.e. the first-created of the two:
+
+```bash
+ssh root@10.0.50.10
+nix shell nixpkgs#sqlite -c sqlite3 -readonly \
+  /srv/audiobooks/storyteller/storyteller.db \
+  "select uuid, title, suffix, created_at from book order by title, created_at;"
+```
+
+**Delete book leaves the asset directory behind** unless the delete included
+assets — it is only cover art at this stage (a few hundred KB), but it
+accumulates. Sweep the orphans by comparing the two lists:
+
+```bash
+ssh root@10.0.50.10 'ls /srv/audiobooks/storyteller/assets/'
+# any directory with a ` [xxxxxxxx]` suffix whose book no longer exists in the
+# query above is dead; rm -rf it.
+```
+
+**Leave the staged directory in `/import` until processing has finished.** The
+DB stores the *source paths*, not copies: `audiobook.filepath` stays
+`/import/<slug>` and the splitter reads from it when processing starts, which
+may be days after the import. Clearing the watch folder early produces
+
+```
+ERROR: Encountered error while running task "SPLIT_TRACKS" for book <uuid>
+  ENOENT: no such file or directory, scandir '/import/consider-phlebas'
+```
+
+which is what happened on 2026-09-28 and cost a re-stage. Leaving it costs
+nothing anyway — the audio is a hardlink. Once `aligned_at` is set the directory
+can go; `storyteller-stage new` will not re-announce the title, because it
+de-duplicates against Storyteller's database rather than against the watch
+folder.
 
 ### Which pairs actually exist
 
-Both halves must be the same title, and the ebook must be **EPUB**. As of
-2026-09-27 the library supports exactly one ready pair:
+Both halves must be the same title and the ebook must be **EPUB**. Do not keep a
+list here — it goes stale the moment Bindery or the audiobook grabber lands
+anything. Ask the machine:
 
-| Title | Ebook | Audiobook | Ready? |
-|---|---|---|---|
-| Consider Phlebas | `.epub` | 2.2 GB FLAC | **yes** |
-| Project Hail Mary | `.azw3` | 4.4 GB | no — convert to EPUB first (CWA can) |
-| Artemis | none (a stray `.txt`) | present | no |
+```bash
+ssh root@10.0.50.10 storyteller-stage new
+```
 
-Note the author folders disagree: Audiobookshelf files Banks under
-**`Iain M. Banks`**, Bindery under **`Iain Banks`**. Neither is wrong and
-nothing depends on them matching — but a naive "which authors are in both"
-comparison misses this pair, so compare titles, not directories.
+For scale: on 2026-10-05 that returned six candidate lines, of which two were
+clean matches (`Rendezvous with Rama`, `Childhood's End` — both Clarke, both
+flat mp3 directories), one was the right audiobook with the wrong ebook picked
+(`Outgrowing God`), and three were junk by the rules in the section above. One
+genuinely-aligned book exists so far: **Consider Phlebas**, imported
+2026-09-27 and aligned 2026-09-28 with `whisper.cpp:medium`.
 
 ### Where the output goes
 
