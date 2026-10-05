@@ -515,13 +515,48 @@ in
       #                paperless, in neither group, would be reading it on the
       #                `other` bits by luck.  cwa.nix:509-535, verbatim.
       #
-      # containers/cwa.nix needs a `cwa-ingest-perms` unit to re-apply this
-      # after every container start.  THIS FILE DOES NOT, and the difference is
-      # worth stating so nobody adds one: that unit exists because a mode on a
-      # path bind-mounted into an OPAQUE PODMAN IMAGE is an opening bid the
-      # image overrides.  nspawn binds a host directory without touching its
-      # ownership, and `services.paperless` declares no tmpfiles rule for a
-      # consumption directory it did not create.
+      # ── THIS LINE IS AN OPENING BID AND NOT THE LAST WORD.  MEASURED. ─────
+      #
+      # An earlier version of this comment said `services.paperless` declares
+      # no tmpfiles rule for a consumption directory it did not create.  THAT
+      # WAS WRONG, and the first deploy (2026-10-05) proved it: the directory
+      # came out `drwxrws--- 315:315` and Nextcloud's uid could not write to
+      # it, so the second ingest door was dead while every unit read active.
+      #
+      # The module ships (paperless.nix:461-472):
+      #
+      #     defaultRule = { user = cfg.user; group = <cfg.user's group>; };
+      #     "<cfg.consumptionDir>".d = defaultRule;
+      #
+      # (angle brackets rather than Nix interpolation syntax on purpose, and
+      # the attribute name spelled out rather than quoted: this comment lives
+      # inside a Nix indented-string literal, so a literal dollar-brace gets
+      # interpolated and a doubled apostrophe ENDS THE STRING.  Both were
+      # tried here, in that order.  A shell comment is not a comment to Nix.)
+      #
+      # `defaultRule` carries NO mode, which is exactly why the symptom was
+      # confusing: systemd-tmpfiles left 2770 alone and changed only the
+      # group, so the setgid bit survived and pointed at the wrong group.
+      #
+      # It runs INSIDE the container, through the bind, on every start — the
+      # Immich `StateDirectoryMode` finding and nextcloud.nix's 0700-becomes-
+      # 0750 finding in a third costume.  Upstream re-asserts after we set
+      # ours, and upstream wins.
+      #
+      # So this line still has to exist, because the bind mount needs the path
+      # to be there before EITHER container starts — and the in-container rule
+      # is amended to agree with it rather than fought (see the
+      # `systemd.tmpfiles.settings` override in the container config below).
+      # The two declarations are kept deliberately identical; that is the M3
+      # defect's shape, and the reason it is accepted here is that neither one
+      # can be removed.
+      #
+      # containers/cwa.nix needs a whole `cwa-ingest-perms` unit to re-apply
+      # this after every container start.  THIS FILE STILL DOES NOT, and the
+      # difference is real: that unit exists because the path is bound into an
+      # OPAQUE PODMAN IMAGE with no declarative handle on its tmpfiles. Here
+      # there is one, so the fix is a two-line override rather than a polling
+      # health-check loop.
       install -d -o ${toString paperlessUid} -g ${toString docsinGid} -m 2770 ${consumeDir}
     '';
   };
@@ -688,18 +723,40 @@ in
     linkConfig.RequiredForOnline = "enslaved";
   };
 
-  # The `doc0` leg.  `Bridge = "br0"` rather than `KeepMaster`, because
-  # `--network-veth-extra` creates the pair and enslaves nothing — the note in
-  # machines/ernst/networking.nix:830-832 is the one that matters here.
-  systemd.network.networks."60-${docVeth}" = {
-    matchConfig.Name = docVeth;
-    address = [ "${docHost}/128" ];
-    routes  = [ { Destination = "${docCont}/128"; Scope = "link"; } ];
-    networkConfig.IPv6AcceptRA = false;
-    # No carrier until the container end exists, so this must never hold up
-    # network-online.target.
-    linkConfig.RequiredForOnline = "no";
-  };
+  # ── THERE IS DELIBERATELY NO HOST-SIDE NETWORK FOR `doc0` ─────────────────
+  #
+  # MEASURED, and it cost this container four restarts on its first deploy
+  # (2026-10-05).  An earlier draft declared
+  #
+  #     systemd.network.networks."60-doc0" = {
+  #       matchConfig.Name = docVeth;
+  #       address = [ "${docHost}/128" ];
+  #       routes  = [ { Destination = "${docCont}/128"; Scope = "link"; } ];
+  #       ...
+  #
+  # on the reasoning that a leg needs configuring at both ends.  It does not:
+  # `containers.<n>.extraVeths.<v>.hostAddress6` is what nspawn's
+  # `--network-veth-extra` consumes, and the nixos-containers module assigns
+  # the HOST end from it directly.  Declaring it again in networkd means two
+  # things racing to own one address, and the loser is the container:
+  #
+  #     Error: ipv6: address already assigned.
+  #     container@paperless.service: Control process exited,
+  #                                  code=exited, status=2/INVALIDARGUMENT
+  #
+  # — a restart loop whose message names neither the veth nor this file.  The
+  # container booted far enough each time to start paperless, Tika and
+  # Gotenberg, so the only outward symptom was a 90-second stop job.
+  #
+  # The check that would have caught it is `grep -rn '60-mon0\|60-ai1\|60-web0'`
+  # over the repo: NONE of the four existing ULA legs has a host-side network,
+  # and that absence is the pattern rather than an omission.  The CONTAINER
+  # side does get one — `20-doc0` below, which matches `20-ai1` and `20-web0`
+  # exactly — because the container's networkd has no `extraVeths` to read.
+  #
+  # Only VLAN legs (`vb-*`, `iot0`, `iot1`) take a `60-*` network, and that is
+  # what the `Bridge`-versus-`KeepMaster` note in
+  # machines/ernst/networking.nix is about.  It does not apply here.
 
   # Same VLAN race, same idempotent backstop, same "-" prefix as every other
   # nspawn container on br0: networkd applies [BridgeVLAN] only once it observes
@@ -1017,6 +1074,33 @@ in
       # this block does is the group membership that the shared inbox needs.
       users.groups.docsin.gid = docsinGid;
       users.users.paperless.extraGroups = [ "docsin" ];
+
+      # ── AND THE RULE THAT WOULD OTHERWISE UNDO THE INBOX'S GROUP ──────────
+      #
+      # `services.paperless` declares the consumption directory in its own
+      # `systemd.tmpfiles.settings."10-paperless"` with
+      # `group = <paperless's own group>` and no mode.  That runs on every
+      # container start, through the bind, and chowns the shared inbox back to
+      # `paperless:paperless` — which leaves the setgid bit pointing at a group
+      # Nextcloud is not in, so the WebDAV write fails with EACCES and the
+      # Nextcloud ingest door silently stops working.
+      #
+      # Measured on the first deploy; `install -d` on the host had already set
+      # 315:3042 and the live directory was still 315:315.
+      #
+      # THIS AMENDS UPSTREAM'S RULE RATHER THAN ADDING A SECOND ONE, which is
+      # the distinction that keeps it out of M3-defect territory: there is
+      # still exactly one tmpfiles entry for this path, and `mkForce` changes
+      # the group it names.  A competing `systemd.tmpfiles.rules` line would be
+      # two rules for one path taking turns winning, one per deploy.
+      #
+      # The mode is set here too, even though upstream's rule omits it, so the
+      # in-container declaration is complete on its own instead of depending on
+      # the host-side `install -d` having run first and left 2770 behind.
+      systemd.tmpfiles.settings."10-paperless".${consumeDir}.d = {
+        group = lib.mkForce "docsin";
+        mode  = "2770";
+      };
 
       ##########################################################################
       # ── Provisioning that only the Django layer can express ────────────────
