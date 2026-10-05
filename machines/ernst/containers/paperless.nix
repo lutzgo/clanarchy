@@ -260,10 +260,41 @@ let
   #
   # Both are written by paperless-secrets.service into this file instead.
   #
-  # NOTE THE PARSER.  systemd's `EnvironmentFile` does NOT treat quotes as
-  # shell quoting — a quoted value keeps its quotes as part of the value.  So
-  # the JSON below is written bare, and containers/homepage.nix:300-312 is the
-  # file that paid for learning that.
+  # ── THIS FILE HAS TWO READERS WITH DIFFERENT PARSERS, AND EVERY VALUE IN ──
+  #    IT IS THEREFORE SINGLE-QUOTED
+  #
+  # An earlier version of this comment said systemd's `EnvironmentFile` keeps
+  # quotes as part of the value and wrote the JSON bare.  THAT IS WRONG, and it
+  # cost `paperless-provision` its first deploy (2026-10-05):
+  #
+  #     json.decoder.JSONDecodeError: Expecting property name enclosed in
+  #     double quotes: line 1 column 2 (char 1)
+  #
+  # The confusing part is that the SERVICES were fine.  Two readers:
+  #
+  #   systemd `EnvironmentFile=`   paperless-web and friends.  Reads the file
+  #                               itself; strips matching quotes.
+  #   bash `source`               `paperless-manage`, which does
+  #                               `set -o allexport; source <file>` — and
+  #                               therefore applies BRACE EXPANSION and word
+  #                               splitting to an unquoted value.
+  #
+  # Measured on ernst with a two-arm control, the only way to tell these apart:
+  #
+  #     bare   + bash source  ->  {openid_connect:{OAUTH_PKCE_ENABLED:true,…}}
+  #     bare   + systemd      ->  {"openid_connect":{"OAUTH_PKCE_ENABLED":true,…}}
+  #     quoted + bash source  ->  {"openid_connect":{"OAUTH_PKCE_ENABLED":true,…}}
+  #     quoted + systemd      ->  {"openid_connect":{"OAUTH_PKCE_ENABLED":true,…}}
+  #
+  # So bash silently ate every double quote in the JSON, and only the one
+  # consumer that goes through the wrapper noticed.  Single quotes satisfy both
+  # readers, and they are safe here because the JSON contains double quotes
+  # only.
+  #
+  # containers/homepage.nix:300-312 says NOT to quote, and that is not a
+  # contradiction to reconcile — that file's values are read by homepage's own
+  # Go template engine, not by systemd or by bash.  Check the reader, not the
+  # convention.
   envFile = "${secretsDir}/env";
 
   adminGen = config.clan.core.vars.generators.paperless-admin;
@@ -603,9 +634,9 @@ in
       (
         umask 077
         {
-          printf 'PAPERLESS_SECRET_KEY=%s\n' "$(cat ${secretGen.files."secret-key".path})"
+          printf "PAPERLESS_SECRET_KEY='%s'\n" "$(cat ${secretGen.files."secret-key".path})"
 
-          # ── OIDC, as ONE unquoted JSON line ────────────────────────────────
+          # ── OIDC, as ONE single-quoted JSON line ──────────────────────────
           #
           # `openid_connect` with an explicit `redirect_uri`, because
           # django-allauth otherwise derives one from the request it sees — and
@@ -614,10 +645,12 @@ in
           # `overwriteprotocol` fixes for Nextcloud, and it fails CLOSED at
           # Authelia as `invalid_redirect_uri`.
           #
-          # NO QUOTES around the value.  systemd's EnvironmentFile parser keeps
-          # them as part of the string, and Django would then fail to parse its
-          # own setting.
-          printf 'PAPERLESS_SOCIALACCOUNT_PROVIDERS=%s\n' \
+          # SINGLE QUOTES, and the let block above has the measurement: bash's
+          # `source` in the `paperless-manage` wrapper brace-expands an
+          # unquoted value and silently eats every double quote in the JSON,
+          # while systemd's EnvironmentFile reader strips the single quotes and
+          # is happy either way.  Safe because the JSON contains no apostrophe.
+          printf "PAPERLESS_SOCIALACCOUNT_PROVIDERS='%s'\n" \
             "{\"openid_connect\":{\"OAUTH_PKCE_ENABLED\":true,\"APPS\":[{\"provider_id\":\"authelia\",\"name\":\"Authelia\",\"client_id\":\"paperless\",\"secret\":\"$(cat ${oidcGen.files."paperless-client-secret".path})\",\"settings\":{\"server_url\":\"${autheliaIssuer}\",\"redirect_uri\":\"https://${hostName}/accounts/oidc/authelia/login/callback/\"}}]}}"
         } > ${envFile}
       )
