@@ -325,7 +325,7 @@ let
     # construction rather than by a stamp file.  A stamp file would be worse
     # than nothing: it would claim the account exists after somebody deleted it
     # in the admin UI.
-    from django.contrib.auth.models import Permission, User
+    from django.contrib.auth.models import Group, Permission, User
     from rest_framework.authtoken.models import Token
 
     TOKEN_FILE = "${mnemeTokenDst}"
@@ -371,6 +371,64 @@ let
     Token.objects.update_or_create(user=user, defaults={"key": key})
 
     print(f"mneme: token set, {user.user_permissions.count()} permissions")
+
+    # ── THE GROUP EVERY HUMAN SIGN-IN LANDS IN ────────────────────────────
+    #
+    # django-allauth creates an account on first OIDC login
+    # (SOCIALACCOUNT_AUTO_SIGNUP) with NO permissions at all, and paperless
+    # then refuses even /api/ui_settings/.  What the person sees is
+    #
+    #     Error loading settings — 403 — You do not have permission to
+    #     perform this action
+    #
+    # on a dashboard that otherwise rendered, which reads as a broken server
+    # rather than as an empty permission set.  lgo hit it on the first real
+    # login (2026-10-05).
+    #
+    # `PAPERLESS_SOCIAL_ACCOUNT_DEFAULT_GROUPS` names this group, so the fix
+    # is automatic from the second account onward.  The group has to EXIST
+    # before allauth can put anyone in it, which is why it is created here
+    # rather than left to the admin UI.
+    #
+    # ── WHAT IT GRANTS, AND WHAT IT DELIBERATELY DOES NOT ─────────────────
+    #
+    # Every permission in the `documents` app and nothing else.  That is
+    # view/add/change/delete on documents, tags, correspondents, document
+    # types, storage paths, saved views, notes, custom fields, share links
+    # and workflows — the archive treated as shared household property, which
+    # is how Immich and Nextcloud already work here.
+    #
+    # NOT the `auth` app: no adding users, no changing group membership, no
+    # granting anyone else access.  That stays with the two superusers.
+    #
+    # NOT `paperless_mail` either, and that is not an oversight — IMAP
+    # consumption is deliberately not configured (see this file's header), so
+    # those twelve permissions would configure a feature that is off.
+    #
+    # ── WHO THIS LETS IN, STATED RATHER THAN IMPLIED ──────────────────────
+    #
+    # `docs` is an `appApiHosts` name, so Authelia has no `access_control`
+    # rule for it; what gates the OIDC client is its own `two_factor` policy.
+    # So ANY Authelia identity that passes 2FA signs up and lands here —
+    # including `go`, the couch account that autologins on the television
+    # without a password.  That was raised as a decision rather than slid
+    # past, and lgo chose full access on 2026-10-05: this is a two-person
+    # household archive, and the alternative was a permission grant by hand
+    # after every first login.
+    #
+    # If that ever stops being true, the narrower shape is this same group
+    # with `delete_*` filtered out, NOT removing the default group — an
+    # account with no permissions is the 403 above, not a safe default.
+    HOUSEHOLD_GROUP = "household"
+
+    group, created = Group.objects.get_or_create(name=HOUSEHOLD_GROUP)
+    group.permissions.set(
+        Permission.objects.filter(content_type__app_label="documents")
+    )
+    print(
+        f"{HOUSEHOLD_GROUP}: {'created' if created else 'updated'}, "
+        f"{group.permissions.count()} permissions"
+    )
   '';
 in
 {
@@ -1074,6 +1132,15 @@ in
           # first one off does NOT turn the second one off; they are separate
           # settings and conflating them would lock her out.
           PAPERLESS_SOCIAL_AUTO_SIGNUP = true;
+
+          # The group `paperless-provision` creates, and the line that makes
+          # auto-signup produce a USABLE account rather than one that gets a
+          # 403 on /api/ui_settings/.  See that script for what the group
+          # grants and for who ends up in it.
+          #
+          # A LIST SETTING, read with paperless's `__get_list`, so it is
+          # comma-separated and a single name needs no special form.
+          PAPERLESS_SOCIAL_ACCOUNT_DEFAULT_GROUPS = "household";
 
           # Already the default.  Pinned anyway, because "nobody can register
           # themselves on a WAN-exposed hostname" is a property worth being

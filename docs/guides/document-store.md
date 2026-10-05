@@ -54,11 +54,31 @@ forward-auth (`docs` is an `appApiHosts` name; see
 | Who | How they log in |
 |---|---|
 | `admin` | A local paperless password, generated. **The recovery path** — it still works when Authelia, the OIDC registration or Traefik is what is broken. Read it with `clan vars get ernst paperless-admin/admin-pass`. |
-| lgo, Sabine | "Sign in with Authelia" in the browser. The account materialises on first login (`PAPERLESS_SOCIAL_AUTO_SIGNUP`), so there is no row in this repo to add. |
+| lgo, sarinah | "Sign in with Authelia" in the browser. The account materialises on first login (`PAPERLESS_SOCIAL_AUTO_SIGNUP`) and lands in the `household` group, so there is no row in this repo to add and nothing to grant by hand. |
 | `mneme` | Not a human. A read-only API token for the agent — four `view_*` permissions, no password, provisioned by `paperless-provision.service`. |
 
 Self-registration is off and pinned off. Nobody can create an account against
 the public hostname.
+
+### What an auto-created account can do
+
+`paperless-provision.service` creates a `household` group holding every
+permission in the `documents` app — view, add, change and delete on documents,
+tags, correspondents, document types, storage paths, saved views, notes, custom
+fields, share links and workflows. The archive is treated as shared household
+property, the way Immich and Nextcloud already are.
+
+It deliberately holds **no** `auth` permissions: nobody in it can add users,
+change group membership or grant access. That stays with the two superusers.
+
+> **Anyone who passes Authelia's 2FA lands in this group.** `docs` is an
+> `appApiHosts` name, so Authelia has no `access_control` rule for it — what
+> gates the OIDC client is its own `two_factor` policy. That includes `go`, the
+> couch account that autologins on the television without a password. It is a
+> two-person household archive and that was the deliberate trade; the narrower
+> shape, if it is ever wanted, is the same group with `delete_*` filtered out.
+> **Removing the default group is not the narrower shape** — an account with no
+> permissions is the 403 below, not a safe default.
 
 **Enable paperless's own TOTP on `admin`** (Settings → account). That account is
 the recovery path, and the recovery path is the one credential the portal
@@ -156,6 +176,26 @@ machinectl shell nextcloud /run/current-system/sw/bin/nextcloud-occ \
 
 `nextcloud-provision.service` sets this on every deploy, so if it keeps
 reverting, that unit is failing.
+
+**Logged in fine, but the dashboard shows `Error loading settings — 403 — You
+do not have permission to perform this action` on `/api/ui_settings/`.**
+
+The account exists but has no permissions, which means it is not in the
+`household` group. Normally that cannot happen — `PAPERLESS_SOCIAL_ACCOUNT_DEFAULT_GROUPS`
+puts every new social account there — so check that the group exists at all:
+
+```bash
+machinectl shell paperless /run/current-system/sw/bin/paperless-manage shell -c "
+from django.contrib.auth.models import Group, User
+print([(g.name, g.permissions.count()) for g in Group.objects.all()])
+print([(u.username, [g.name for g in u.groups.all()]) for u in User.objects.all()])
+"
+```
+
+If the group is missing, `paperless-provision.service` has not succeeded. If it
+exists and the user is simply not in it — which is the case for any account
+created *before* the default group was wired — add them once in Settings →
+Users & Groups, or from the shell above with `u.groups.add(g)`.
 
 **The login page shows no "Sign in with Authelia" button.**
 The OIDC provider config did not reach the container. It is staged by
