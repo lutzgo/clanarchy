@@ -54,7 +54,7 @@ forward-auth (`docs` is an `appApiHosts` name; see
 | Who | How they log in |
 |---|---|
 | `admin` | A local paperless password, generated. **The recovery path** — it still works when Authelia, the OIDC registration or Traefik is what is broken. Read it with `clan vars get ernst paperless-admin/admin-pass`. |
-| lgo, sarinah | "Sign in with Authelia" in the browser. The account materialises on first login (`PAPERLESS_SOCIAL_AUTO_SIGNUP`) and lands in the `household` group, so there is no row in this repo to add and nothing to grant by hand. |
+| `lgo`, `sgo` | "Sign in with Authelia" in the browser. Those are the Authelia usernames — first initial plus surname, so Sarinah is `sgo`; she can also log in with `sarinah@goclan.org`. The account materialises on first login (`PAPERLESS_SOCIAL_AUTO_SIGNUP`) and lands in the `household` group, so there is no row in this repo to add and nothing to grant by hand. |
 | `mneme` | Not a human. A read-only API token for the agent — four `view_*` permissions, no password, provisioned by `paperless-provision.service`. |
 
 Self-registration is off and pinned off. Nobody can create an account against
