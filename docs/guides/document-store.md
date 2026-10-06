@@ -207,9 +207,22 @@ systemctl show mneme -p IPAddressAllow
 # want: localhost  fdca:fe94::2/128 (searxng)  fdca:fe95::2/128 (paperless)
 ```
 
-**"the document archive refused mneme's token"** means
-`paperless-provision.service` has failed — the staged token never reached the
-database. See the troubleshooting entry below.
+**the tools are missing entirely** — the model says it has no way to search
+documents. mneme could not read the token and therefore does not offer them.
+Its startup line is the place to look:
+
+```bash
+journalctl -u mneme | grep -E "tools:|could not read secret" | tail -3
+# want: (tools: memory, web-search, documents, image-gen)
+```
+
+The token is a clan var owned by the `mneme` user (`files."token".owner` in
+`containers/paperless.nix`); without that it is `0400 root:root` and the
+daemon cannot read it.
+
+**"the document archive refused mneme's token"** means the token mneme holds is
+not the one in paperless's database — `paperless-provision.service` failed to
+write it. Check that unit; it is the one that rotates the token on deploy.
 
 ## Backups
 

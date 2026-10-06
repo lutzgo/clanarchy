@@ -355,6 +355,19 @@ def test_a_page_plus_its_header_still_fits_the_clip() -> None:
     assert toolsmod.DOC_PAGE_CHARS < toolsmod.MAX_RESULT_CHARS
 
 
+def test_an_archive_without_a_token_offers_no_document_tools() -> None:
+    # THE FAILURE THIS GUARDS: an empty token still produces a valid HTTP
+    # call, so the tool is armed, every search 401s, and the model reports the
+    # archive as broken. Measured on 2026-10-06 when the token file was
+    # unreadable by the service user.
+    tb = toolsmod.Toolbox(
+        _wiki(), documents_url="http://[fdca:fe95::2]:28981", documents_token=""
+    )
+    names = {s["function"]["name"] for s in tb.schemas()}
+    assert "document_search" not in names
+    assert "document_read" not in names
+
+
 def test_toolbox_offers_nothing_it_cannot_do() -> None:
     tb = toolsmod.Toolbox(None)
     assert tb.schemas() == []
