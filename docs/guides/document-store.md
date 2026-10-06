@@ -119,6 +119,31 @@ from VLAN 90.
 already has a text layer is left alone rather than re-OCR'd
 (`PAPERLESS_OCR_MODE = "skip"`), which covers most downloaded invoices.
 
+**Changing the language is a rebuild, not a restart.** The nixpkgs module
+derives tesseract's `enableLanguages` from this string by splitting on `+`, so
+the separator is load-bearing — a comma builds a tesseract containing one
+language called `deu,eng`.
+
+> ### Do not change OCR settings in the web UI
+>
+> paperless keeps an `ApplicationConfiguration` row in its database that **wins
+> over the environment**, and opening Settings in the browser and pressing Save
+> writes *every* form field into it. A value declared in Nix stops applying the
+> moment somebody looks at that page, and nothing says so.
+>
+> That happened on the first real scan: the row held `deu,eng` and `redo`,
+> shadowing `deu+eng` and `skip`. The failure surfaced as
+> `MissingDependencyError: OCR engine does not have language data` — which
+> points at the package, not at the setting, and the package was fine.
+>
+> `paperless-provision.service` now resets **`language` and `mode`** to NULL on
+> every deploy, so Nix owns exactly the two settings it declares. Everything
+> else on that page — deskew, rotate, unpaper, output type, the barcode
+> switches — is left alone and the UI keeps it.
+>
+> So: change OCR language or mode in `containers/paperless.nix`. Changing them
+> in the UI lasts until the next deploy.
+
 ## Asking the AI about a document
 
 **Not in M32.** M32b gives mneme `document_search` and `document_read` tools

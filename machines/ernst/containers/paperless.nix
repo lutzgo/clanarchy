@@ -326,6 +326,7 @@ let
     # than nothing: it would claim the account exists after somebody deleted it
     # in the admin UI.
     from django.contrib.auth.models import Group, Permission, User
+    from paperless.models import ApplicationConfiguration
     from rest_framework.authtoken.models import Token
 
     TOKEN_FILE = "${mnemeTokenDst}"
@@ -419,6 +420,57 @@ let
     # If that ever stops being true, the narrower shape is this same group
     # with `delete_*` filtered out, NOT removing the default group — an
     # account with no permissions is the 403 above, not a safe default.
+    # ── THE DATABASE OVERRIDES THE ENVIRONMENT, AND IT DOES IT SILENTLY ───
+    #
+    # paperless keeps an `ApplicationConfiguration` row that WINS over every
+    # PAPERLESS_* variable it shadows.  Opening Settings in the browser and
+    # pressing Save writes EVERY form field into that row, so a value this
+    # repo declares stops applying the moment somebody looks at the settings
+    # page — with nothing anywhere saying so.
+    #
+    # MEASURED on the first real scan (2026-10-05).  `PAPERLESS_OCR_LANGUAGE`
+    # was `deu+eng` in the unit environment and the row held `deu,eng`, which
+    # is not a tesseract language spec at all:
+    #
+    #     MissingDependencyError: OCR engine does not have language data for
+    #     the following requested languages:  deu,eng
+    #
+    # The error blames missing language data, so the obvious reading is that
+    # the package lacks German — and it does not.  The nixpkgs module derives
+    # tesseract's `enableLanguages` from this very setting by splitting on
+    # `+`, so the engine had `deu`, `eng`, `equ` and `osd`; what it was asked
+    # for was one language whose name contained a comma.  The same row also
+    # held `mode = redo`, quietly overriding `PAPERLESS_OCR_MODE = skip`.
+    #
+    # ── SO NIX OWNS EXACTLY WHAT NIX DECLARES, AND NOTHING ELSE ───────────
+    #
+    # These two fields are reset to NULL on every provision, which makes the
+    # environment authoritative for them again — Open WebUI's
+    # `ENABLE_PERSISTENT_CONFIG = False` applied to the two settings that have
+    # a declaration to defend.
+    #
+    # THE REST OF THE ROW IS LEFT ALONE ON PURPOSE.  `deskew`, `rotate_pages`,
+    # `unpaper_clean`, `output_type` and the barcode switches are scanner
+    # preferences this repo does not declare, so they stay runtime state and
+    # the UI keeps them.  Blanket-nulling the row would be this file deciding
+    # things it never had an opinion about.
+    #
+    # THE COST, STATED: changing OCR language or mode in the web UI now lasts
+    # until the next deploy and then reverts.  Change them here instead.  That
+    # is the same trade every declarative setting in this fleet makes, and it
+    # is strictly better than the alternative it replaces — a declared value
+    # that silently does nothing, which is SN3's "broken instrument" in
+    # configuration form.
+    NIX_OWNED_OCR_FIELDS = ["language", "mode"]
+
+    for cfg in ApplicationConfiguration.objects.all():
+        stale = {f: getattr(cfg, f) for f in NIX_OWNED_OCR_FIELDS if getattr(cfg, f) is not None}
+        if stale:
+            for f in NIX_OWNED_OCR_FIELDS:
+                setattr(cfg, f, None)
+            cfg.save()
+            print(f"ocr config: cleared UI overrides {stale}, environment now authoritative")
+
     HOUSEHOLD_GROUP = "household"
 
     group, created = Group.objects.get_or_create(name=HOUSEHOLD_GROUP)
@@ -1073,16 +1125,37 @@ in
           # JSON-encodes any list or attrset in `settings`.
           PAPERLESS_PROXY_SSL_HEADER = [ "HTTP_X_FORWARDED_PROTO" "https" ];
 
+          # ── THIS SETTING BUILDS THE PACKAGE, IT DOES NOT ONLY CONFIGURE IT ─
+          #
           # German first: the household's paper is German, and tesseract tries
-          # the languages in the order given.  No package override is needed —
-          # the default `tesseract5` carries every language, and the
-          # `tesseract5 may be overwritten` comment in the paperless package is
-          # about SHRINKING that closure, not about adding to it.
+          # the languages in the order given.
+          #
+          # No package override is needed, but NOT for the reason an earlier
+          # version of this comment gave.  It is not that the default
+          # `tesseract5` carries every language and we simply use it — the
+          # nixpkgs module's `package` option has an `apply` that REBUILDS
+          # tesseract from this exact string:
+          #
+          #     enableLanguages = unique([ "equ" "osd" "eng" ]
+          #                              ++ splitString "+" PAPERLESS_OCR_LANGUAGE)
+          #
+          # So the separator is load-bearing and `+` is the only one that
+          # works.  A comma produces a tesseract containing a language called
+          # `deu,eng`, and the error names missing language data rather than a
+          # malformed setting.  Changing this value is a rebuild, not a
+          # restart.
+          #
+          # ⚠ AND IT CAN BE OVERRIDDEN FROM THE WEB UI — see the
+          # `ApplicationConfiguration` block in the provisioning script, which
+          # is what stops that from silently winning.
           PAPERLESS_OCR_LANGUAGE = "deu+eng";
 
           # `skip` leaves a PDF that already has a text layer alone instead of
           # rasterising and re-OCRing it.  For a household that mixes phone
           # scans with downloaded invoices this is most of the corpus.
+          #
+          # Same UI-override caveat as the language above, and this one was
+          # actually overridden on the first deploy: the row held `redo`.
           PAPERLESS_OCR_MODE = "skip";
 
           # ── POLLING, NOT inotify, AND THIS IS THE ONE SETTING MOST LIKELY
