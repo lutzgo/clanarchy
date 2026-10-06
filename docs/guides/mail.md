@@ -6,7 +6,8 @@ and [`modules/mail-accounts.nix`](../../modules/mail-accounts.nix); everything
 here is a step somebody has to take at Cloudflare, on the UDM-Pro, in
 Technitium, or on a phone.
 
-Five mailboxes, one domain, no webmail:
+Five mailboxes, one domain. Webmail is the Nextcloud **Mail** app at
+`cloud.goclan.org` — see [Nextcloud Mail](#nextcloud-mail--webmail-at-cloudgoclanorg):
 
 | Mailbox | Also receives | Used from |
 |---|---|---|
@@ -386,6 +387,42 @@ generator is atomic. Then redeploy ernst.
 
 Installed, not configured. Same settings; Thunderbird's autoconfig will fail
 and offer manual entry, which is the expected path.
+
+### Nextcloud Mail — webmail at `cloud.goclan.org`
+
+The **Mail** app is installed declaratively
+([`machines/ernst/containers/nextcloud.nix`](../../machines/ernst/containers/nextcloud.nix),
+`extraApps`). It is a per-user IMAP client, so each person adds their own
+account **once**, in the app's UI — there is nothing to deploy per person.
+
+Settings are the same four as every other client:
+
+| Field | Value |
+|---|---|
+| Mail address | the full address, e.g. `sarinah@goclan.org` |
+| IMAP | `mail.goclan.org` : `993`, **SSL/TLS** |
+| SMTP | `mail.goclan.org` : `465`, **SSL/TLS** |
+| Password | the one from `clan vars generate` — the same one K-9 uses |
+
+Use the **hostname, not the IP**. Nextcloud's container resolves
+`mail.goclan.org` to `10.0.90.31` through Technitium, so the Let's Encrypt
+certificate validates; pointed at the bare address, TLS fails on a name
+mismatch. No firewall change is needed in either container — the mail ports
+accept from everywhere.
+
+> **Accounts are deliberately not auto-provisioned, and cannot be.** Nextcloud
+> Mail's default provisioning logs into IMAP with the user's *Nextcloud login
+> password*, and logins here go through Authelia over OIDC, so Nextcloud never
+> has one. Its master-password mode — built for exactly this situation — needs
+> Dovecot **master users**, which simple-nixos-mailserver exposes no option
+> for. The container file carries the full argument. Typing three passwords
+> once is the cheaper side of that trade.
+
+**Nextcloud's own outbound mail is still unconfigured** and is a separate gap:
+`mail_smtphost` is the stock `127.0.0.1` default, so `sharebymail` and
+password-reset mail cannot send. That needs either a mailbox credential for
+Nextcloud or a Postfix `mynetworks` exemption for `10.0.90.26` — its own
+decision, its own change.
 
 ---
 
