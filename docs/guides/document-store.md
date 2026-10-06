@@ -146,6 +146,14 @@ language called `deu,eng`.
 
 ## Asking the AI about a document
 
+> **This is not in paperless's web UI, and cannot be.** Paperless 2.20.15 has
+> no AI features at all — those arrived upstream in v3, which this fleet
+> deliberately does not take (see the OCR section and `containers/paperless.nix`).
+> The archive is answerable through **mneme**, the household agent: Home
+> Assistant Assist on the voice satellites and in the HA app, or any client
+> pointed at mneme's Ollama endpoint. Looking for an "Assist" button in
+> paperless will not find one.
+
 mneme has two tools over the `doc0` leg, so the archive is answerable from
 anywhere Assist is — the voice satellites, the Home Assistant app, and any
 client pointed at mneme's Ollama endpoint.
@@ -187,7 +195,19 @@ written on the paper, and that is in the text `document_read` returns.
 
 ### If it stops working
 
-`document_search` returning *"the document archive refused mneme's token"* means
+**"the search did not work (timeout)"**, and the model offers to try again. That
+is mneme's egress filter, not paperless. mneme runs under `IPAddressDeny=any`
+and a peer missing from `IPAddressAllow` is *dropped*, so the call times out
+rather than being refused — which reads as a flaky service. The allow list is
+derived from the configured tool URLs in `service-modules/local-ai.nix`; check
+it with
+
+```bash
+systemctl show mneme -p IPAddressAllow
+# want: localhost  fdca:fe94::2/128 (searxng)  fdca:fe95::2/128 (paperless)
+```
+
+**"the document archive refused mneme's token"** means
 `paperless-provision.service` has failed — the staged token never reached the
 database. See the troubleshooting entry below.
 

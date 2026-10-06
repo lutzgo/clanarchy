@@ -2113,9 +2113,79 @@ in
                 RemoveIPC             = true;
                 UMask                 = "0077";
 
-                # Loopback only.  Everything else arrives through a bridge.
+                # ── LOOPBACK, PLUS THE PEERS ITS TOOLS ARE POINTED AT ────
+                #
+                # This said "Loopback only.  Everything else arrives through a
+                # bridge", and that is true of everything that reaches mneme
+                # and false of everything mneme reaches.  Home Assistant comes
+                # IN over `ai3` through a socket proxy, so the daemon only ever
+                # sees 127.0.0.1 — but `web_search` and `document_search` go
+                # OUT, to a container's end of a point-to-point leg, and an
+                # egress filter that allows only loopback drops them.
+                #
+                # MEASURED 2026-10-06, as the mneme uid under this exact
+                # filter:
+                #
+                #   http://[fdca:fe95::2]:28981/api/  -> 000 (blocked)
+                #   http://[fdca:fe94::2]:8888/       -> 000 (blocked)
+                #   http://127.0.0.1:11434/v1/models  -> 200
+                #
+                # and with the peer added, 302 and 200 respectively.  The
+                # symptom is a TIMEOUT rather than a refusal, because the
+                # packets are dropped — so the model reports that the search
+                # "did not work" and offers to try again, which reads as a
+                # flaky service rather than as a policy.
+                #
+                # `web_search` HAS BEEN BLOCKED SINCE M29b and nobody noticed,
+                # because the journal shows the tool was never once invoked:
+                # it was shipped, enabled, and never asked for.  `document_search`
+                # is what exercised the path first.
+                #
+                # DERIVED FROM THE URLS RATHER THAN LISTED, so a leg that moves
+                # cannot leave this behind — the same reason traefik.nix
+                # extracts hostnames from its rules instead of keeping a second
+                # map.  A URL whose host is not a bracketed literal contributes
+                # nothing, which is correct: those are reached some other way
+                # and should be argued for separately.
                 IPAddressDeny  = "any";
-                IPAddressAllow = [ "localhost" ];
+                IPAddressAllow =
+                  let
+                    # POSIX BRACKET EXPRESSIONS, NOT \[ — `builtins.match` is
+                    # ERE and rejects a backslash-escaped bracket outright.
+                    # machines/ernst/networking.nix's `addrOf` carries the same
+                    # note for the same reason; this is the second place it
+                    # bites.
+                    # AND IT THROWS RATHER THAN RETURNING null, because a
+                    # peer this cannot parse is a tool that is offered to the
+                    # model and then times out on every call — the exact
+                    # failure this block is being written to fix, reintroduced
+                    # silently.  An eval error naming the option is strictly
+                    # better than a model apologising for a flaky service.
+                    hostOfUrl = what: url:
+                      let m = builtins.match "https?://[[]([^]]+)[]].*" url;
+                      in if m == null then
+                        throw ''
+                          local-ai: roles.agent ${what}.url is ${url}, which has
+                          no bracketed IPv6 literal for a host, so mneme's egress
+                          filter cannot be derived from it.
+
+                          mneme runs under IPAddressDeny=any. A peer that is not
+                          in IPAddressAllow is DROPPED, and the tool times out
+                          rather than failing — which the model reports as the
+                          service being unavailable.
+
+                          Use the container end of a point-to-point leg
+                          (http://[fdca:feNN::2]:PORT), or widen IPAddressAllow
+                          here deliberately and say why.
+                        ''
+                      else "${builtins.head m}/128";
+                    peers = [ ]
+                      ++ lib.optional settings.webSearch.enable
+                           (hostOfUrl "webSearch" settings.webSearch.url)
+                      ++ lib.optional settings.documents.enable
+                           (hostOfUrl "documents" settings.documents.url);
+                  in
+                  [ "localhost" ] ++ peers;
               };
             };
 
