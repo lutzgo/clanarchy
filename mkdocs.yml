@@ -61,6 +61,7 @@ nav:
     - Remote unlock: guides/remote-unlock.md
     - ernst zdata datasets: guides/ernst-zdata-datasets.md
     - ernst app-API ingress: guides/ernst-app-api-ingress.md
+    - Mail on ernst: guides/mail.md
     - The reading stack: guides/reading-stack.md
     - The music pipeline: guides/music-pipeline.md
     - The document store: guides/document-store.md

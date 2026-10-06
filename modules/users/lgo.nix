@@ -64,7 +64,21 @@ let
   };
 in
 {
-  imports = [ ../caldav-sync.nix ];
+  imports = [
+    ../caldav-sync.nix
+    # M31.  Declares the shared @goclan.org mailbox generator, which is what
+    # makes `mail-accounts/lutz.plain` decryptable on THIS machine — a clan
+    # var reaches only the machines whose configuration declares its
+    # generator.  aerc reads it through `passwordCommand`; see
+    # ../../machines/miralda/home-modules/console-desktop.nix.
+    #
+    # The same file is imported by machines/ernst/containers/mail.nix, which
+    # is the other end of the same secret.  Nix dedupes `imports` by path, so
+    # that is one generator, not two — and it has to be, because two would
+    # each prompt separately for lutz's password and nothing would keep the
+    # answers equal.
+    ../mail-accounts.nix
+  ];
 
   options.clanarchy.users.lgo = {
     enable = lib.mkEnableOption "lgo power user profile (Niri, browsers, devtools, Noctalia)";
@@ -110,6 +124,14 @@ in
         (builtins.readFile ../../machines/miralda/yubikey_ed25519.pub)
       ];
     };
+
+    # M31.  aerc runs as `lgo` and reads the mailbox password through
+    # `passwordCommand`, so the 0400 plaintext has to be owned by `lgo` on
+    # this machine — root ownership would mean aerc could not open it, which
+    # presents as an IMAP login failure and looks exactly like a wrong
+    # password.  ernst leaves this at `root`; nothing there reads it.
+    clanarchy.mail.accounts.enable         = true;
+    clanarchy.mail.accounts.plaintextOwner = "lgo";
 
     # Clan vars: lgo password generator
     clan.core.vars.generators.lgo-password = {

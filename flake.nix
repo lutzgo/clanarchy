@@ -137,6 +137,41 @@
       inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
 
+    # simple-nixos-mailserver — the M31 mail stack on ernst (Postfix +
+    # Dovecot + Rspamd + Redis + kresd), imported inside `containers.mail`
+    # and by nothing else in the fleet.
+    #
+    # PINNED TO THE RELEASE BRANCH THAT MATCHES clan-core's nixpkgs, which is
+    # not a style choice: the module asserts a release match itself
+    # (`mailserver.enableNixpkgsReleaseCheck`, default true) because a
+    # mismatched pair needs migrations that make a rollback tricky.  When this
+    # flake moves off 26.05, this branch moves with it, in the same commit.
+    #
+    # nixpkgs.follows — its own input is `nixos-26.05-small`, and without the
+    # follows we acquire a fourth full nixpkgs in the lock for nothing: the
+    # module reads `pkgs` from the importing configuration, and the only thing
+    # upstream's own nixpkgs feeds is its checks/devShell.
+    #
+    # The lock DOES still gain upstream's `blobs` input (flake = false, a
+    # small source tree of test fixtures).  It has no nixpkgs of its own, so
+    # there is nothing to make it follow, and nothing on any evaluation path
+    # here reads it — `blobs` reaches the modules only through `_module.args`
+    # in upstream's test suite, which we never evaluate.  Same situation as
+    # microvm's `spectrum` input above.
+    #
+    # WHY THIS AND NOT `services.stalwart`, which is already in nixpkgs 26.05
+    # and would cost no input at all: Stalwart 0.16 replaces the TOML config
+    # with a CLI-applied JSON plan, so nixpkgs 26.11 forces a config rewrite
+    # within the year — the churn this flake pins against everywhere else.
+    # simple-nixos-mailserver's accounts are also plain Nix options, which is
+    # what lets the five mailboxes come out of clan vars rather than out of a
+    # database seeded by hand.  JMAP, Stalwart's real advantage, buys nothing
+    # here: aerc and K-9 are both IMAP.
+    simple-nixos-mailserver = {
+      url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-26.05";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # Jovian-NixOS — Steam Deck (birte) support.
     # Jovian officially supports only nixos-unstable, so it follows
     # nixpkgs-unstable (which this flake already pulls in for Noctalia).
@@ -488,6 +523,34 @@
           # INWARD like searxng's `web0`: M32b gives mneme a `document_search`
           # tool and the host has to dial in to reach this API.
           ./machines/ernst/containers/paperless.nix
+          # M31.  The household's mail server for @goclan.org — Postfix,
+          # Dovecot, Rspamd, Redis and kresd behind
+          # simple-nixos-mailserver, on the NSPAWN tier for the reason every
+          # other first-class NixOS module on this host is.
+          #
+          # THE FIRST SERVICE IN THIS FLEET THAT DOES NOT RIDE TRAEFIK, and it
+          # cannot: traefik.nix declares no TCP routers and no TCP
+          # entrypoints, and SMTP carries no SNI for one to key on.  So mail
+          # gets its own UDM-Pro DNATs (ledger L19 for :25 inbound, L20 for
+          # the :465/:993/:4190 client ports), sits outside
+          # ingress-policy.nix entirely, and is covered by fail2ban INSIDE the
+          # container rather than by CrowdSec, whose single acquisition is
+          # Traefik's journal.
+          #
+          # ITS DELIVERABILITY WAS KNOWN-COMPROMISED, WAS ACCEPTED, AND THEN
+          # GOT FIXED.  ernst's uplink is a Vodafone DE residential line:
+          # outbound :25 was open (measured), but the PTR was a generic pool
+          # name and the address was listed on b.barracudacentral.org, so
+          # Outlook would reject and Gmail/GMX would junk.  The reputation
+          # work in docs/guides/mail.md then landed — Barracuda delisted, and
+          # Vodafone set the PTR to mail.goclan.org, forward-confirmed.
+          #
+          # SO DIRECT SENDING WORKS HERE BECAUSE OF TWO EXTERNAL FACTS, not
+          # because it is generally fine from a residential line.  Either can
+          # be lost to a tariff change or a renumbering, and the symptom is
+          # silent.  The smarthost escape hatch is one option block,
+          # documented there and deliberately left disabled.
+          ./machines/ernst/containers/mail.nix
           # microvm.nix's host module, and the one guest that uses it (M3).
           # The import lives here rather than inside wg-qbittorrent.nix
           # because `inputs` reaches a machine module via _module.args, and
