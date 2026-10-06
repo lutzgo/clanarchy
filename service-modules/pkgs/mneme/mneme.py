@@ -71,6 +71,31 @@ MAX_INTERNAL_ROUNDS = 4
 _FAKE_DIGEST = "0" * 64
 
 
+def _read_secret(path: str) -> str:
+    """Read a credential from a file, once, at startup.
+
+    A FILE AND NOT A FLAG, because the whole command line of this service is
+    visible in `systemctl cat mneme` and in /proc/<pid>/cmdline — and the rest
+    of this file is deliberately all-flags so that the unit shows the entire
+    behaviour.  A token is the one thing that must not be in there.
+
+    Read ONCE rather than per request: the staged copy is replaced on deploy
+    and the unit is restarted by the generator's `restartUnits`, so re-reading
+    would buy nothing and add a filesystem error to every search.  Missing or
+    unreadable is not fatal here — the caller offers the tool only when a URL
+    is configured, and `parse_args` already refuses a URL with no token file,
+    so the remaining case is a staging unit that has not run yet.  That shows
+    up as a 403 the tool explains, rather than as a daemon that will not start.
+    """
+    if not path:
+        return ""
+    try:
+        return open(path).read().strip()
+    except OSError as err:
+        _LOG.error("could not read secret %s: %s", path, err)
+        return ""
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # The system preamble.
 #
@@ -526,6 +551,8 @@ class Mneme:
             self.wiki,
             search_url=cfg.search_url,
             image=image,
+            documents_url=cfg.documents_url,
+            documents_token=_read_secret(cfg.documents_token_file),
             session_factory=lambda: self.session,
         )
 
@@ -942,6 +969,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="SearXNG base URL. Empty disables web search.",
     )
     parser.add_argument(
+        "--documents-url",
+        default="",
+        help="Paperless-ngx base URL. Empty disables the document tools.",
+    )
+    parser.add_argument(
+        "--documents-token-file",
+        default="",
+        help="File holding paperless's API token. Read once, at startup.",
+    )
+    parser.add_argument(
         "--image-url",
         default="",
         help="ComfyUI base URL. Empty disables image generation.",
@@ -956,6 +993,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--image-timeout", type=float, default=600.0)
 
     args = parser.parse_args(argv)
+    if args.documents_url and not args.documents_token_file:
+        # Same reasoning as the image check below: refused at startup rather
+        # than on the first search. Paperless answers 403 to an unauthenticated
+        # caller, so without this the tool would be offered to the model and
+        # fail every single time it was used.
+        parser.error("--documents-url requires --documents-token-file")
     if args.image_url and not (args.image_output_dir and args.image_public_base):
         # Refused at startup rather than at the first picture. Without a place
         # to put the PNG and a URL a browser can reach, the tool can only ever
@@ -978,6 +1021,7 @@ def main(argv: list[str] | None = None) -> None:
             for name, on in (
                 ("memory", bool(cfg.wiki)),
                 ("web-search", bool(cfg.search_url)),
+                ("documents", bool(cfg.documents_url)),
                 ("image-gen", bool(cfg.image_url)),
             )
             if on

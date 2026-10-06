@@ -367,9 +367,30 @@ let
 
     user.user_permissions.set(Permission.objects.filter(codename__in=PERMS))
 
-    # Keyed on the USER, so re-running with a rotated token replaces the key
-    # rather than colliding on rest_framework's one-to-one.
-    Token.objects.update_or_create(user=user, defaults={"key": key})
+    # ── DELETE THEN CREATE, BECAUSE `key` IS THE PRIMARY KEY ──────────────
+    #
+    # This shipped as
+    #
+    #     Token.objects.update_or_create(user=user, defaults={"key": key})
+    #
+    # with a comment claiming it was "keyed on the USER, so re-running with a
+    # rotated token replaces the key rather than colliding".  IT IS NOT.
+    # rest_framework's Token has `key` as its PRIMARY KEY and `user` as a
+    # OneToOneField, and Django cannot UPDATE a primary key — assigning a new
+    # one and saving INSERTS a second row:
+    #
+    #     IntegrityError: duplicate key value violates unique constraint
+    #     "authtoken_token_user_id_key"  DETAIL: Key (user_id)=(4) already exists.
+    #
+    # Measured 2026-10-06 at NRestarts=284: the unit had been failing since the
+    # first token rotation, so the staged token never reached the database and
+    # the API answered 401 to it.  Nothing a human uses was affected, which is
+    # why it went unnoticed — the only client is the agent.
+    #
+    # Delete-then-create is how DRF tokens are rotated.  It is safe to run when
+    # no token exists: `.delete()` on an empty queryset is a no-op.
+    Token.objects.filter(user=user).delete()
+    Token.objects.create(user=user, key=key)
 
     print(f"mneme: token set, {user.user_permissions.count()} permissions")
 

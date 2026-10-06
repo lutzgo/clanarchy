@@ -68,12 +68,20 @@ class Toolbox:
         *,
         search_url: str = "",
         image: dict[str, Any] | None = None,
+        documents_url: str = "",
+        documents_token: str = "",
         session_factory=None,
     ) -> None:
         self.wiki = wiki
         self.search_url = search_url.rstrip("/")
         self.image = image or {}
+        self.documents_url = documents_url.rstrip("/")
+        self.documents_token = documents_token
         self._session_factory = session_factory
+        # Resolved once per process from /api/correspondents/ and
+        # /api/document_types/, which a household has a handful of.  The search
+        # response carries ids, not names, and an id is no use to the model.
+        self._doc_names: dict[str, dict[int, str]] = {}
 
     # ── declaration ─────────────────────────────────────────────────────────
     def schemas(self) -> list[dict]:
@@ -147,6 +155,54 @@ class Toolbox:
                 )
             )
 
+        if self.documents_url:
+            out.append(
+                _fn(
+                    "document_search",
+                    "Search the household's scanned paper — letters, bills, "
+                    "contracts, insurance, medical and official post. Use it "
+                    "for anything that would have arrived on paper. Returns "
+                    "titles and the matching lines, NOT whole documents: to "
+                    "answer from a document you must then read it.",
+                    {
+                        "query": {
+                            "type": "string",
+                            "description": (
+                                "Words that appear IN the document. This is a "
+                                "full-text search over scanned text, not a "
+                                "question — search 'Versicherung Beitrag', "
+                                "not 'what does my insurance cost'."
+                            ),
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "How many documents, 1-10. Default 5.",
+                        },
+                    },
+                    ["query"],
+                )
+            )
+            out.append(
+                _fn(
+                    "document_read",
+                    "Read the text of one document found by document_search, "
+                    "by its id. Long documents come back in numbered parts; "
+                    "the reply says whether more remain, and you ask for the "
+                    "next part by number.",
+                    {
+                        "document_id": {
+                            "type": "integer",
+                            "description": "The id from document_search.",
+                        },
+                        "part": {
+                            "type": "integer",
+                            "description": "Which part to read. Default 1.",
+                        },
+                    },
+                    ["document_id"],
+                )
+            )
+
         if self.image.get("url"):
             out.append(
                 _fn(
@@ -196,6 +252,14 @@ class Toolbox:
                 return await self._web_search(
                     args.get("query", ""), int(args.get("count") or 5)
                 )
+            if name == "document_search":
+                return await self._document_search(
+                    args.get("query", ""), int(args.get("limit") or 5)
+                )
+            if name == "document_read":
+                return await self._document_read(
+                    int(args.get("document_id") or 0), int(args.get("part") or 1)
+                )
             if name == "generate_image":
                 return await self._generate_image(args.get("prompt", ""))
         except MemoryError as err:
@@ -214,6 +278,130 @@ class Toolbox:
         return _clip(
             "\n".join(f"- `{path}` — {excerpt}" for path, excerpt in hits)
         )
+
+    # ── documents ───────────────────────────────────────────────────────────
+    #
+    # Paperless-ngx's REST API over the `doc0` leg (M32b).  The account behind
+    # the token is NOT a superuser and holds four `view_*` permissions, which
+    # is measured rather than asserted — DELETE, PATCH and the upload endpoint
+    # all answer 403 to this token.
+    #
+    # WHY FULL-TEXT AND NOT DATES.  An earlier draft took `created_after` /
+    # `correspondent` filters.  The first scan through this pipeline came back
+    # with `created = 1983-10-19` — paperless guesses a date out of the OCR
+    # text and gets it wrong — so a date filter here would silently exclude the
+    # documents it was meant to find.  The date that matters is the one written
+    # ON the paper, and that is in the text, which `document_read` returns.
+    # Filters can come back when the corpus is big enough to need them and the
+    # classifier has had something to learn from.
+
+    def _doc_headers(self) -> dict[str, str]:
+        return {"Authorization": f"Token {self.documents_token}"}
+
+    async def _doc_get(self, path: str, params: dict[str, Any]) -> Any:
+        url = f"{self.documents_url}{path}?" + urllib.parse.urlencode(params)
+        session = self._session_factory()
+        async with session.get(
+            url, headers=self._doc_headers(), timeout=aiohttp.ClientTimeout(total=30)
+        ) as resp:
+            if resp.status == 401 or resp.status == 403:
+                # Worth its own message: this is the one failure a person can
+                # fix, and it does not look like an auth problem from outside.
+                raise RuntimeError(
+                    "the document archive refused mneme's token "
+                    f"(HTTP {resp.status}); paperless-provision may have failed"
+                )
+            if resp.status != 200:
+                raise RuntimeError(f"document archive returned HTTP {resp.status}")
+            return await resp.json(content_type=None)
+
+    async def _doc_name_map(self, kind: str) -> dict[int, str]:
+        """id -> name for correspondents / document types, fetched once."""
+        if kind in self._doc_names:
+            return self._doc_names[kind]
+        try:
+            payload = await self._doc_get(f"/api/{kind}/", {"page_size": 200})
+            self._doc_names[kind] = {
+                int(r["id"]): str(r.get("name", "")) for r in payload.get("results", [])
+            }
+        except Exception:  # noqa: BLE001 - a missing name must not kill a search
+            self._doc_names[kind] = {}
+        return self._doc_names[kind]
+
+    @staticmethod
+    def _strip_highlight(markup: str) -> str:
+        """Paperless marks matches with <span class="match termN">…</span>.
+
+        The model does not need the markup, but it DOES need to know which
+        words matched, so the span becomes *emphasis* rather than nothing.
+        """
+        text = re.sub(r'<span class="match[^"]*">(.*?)</span>', r"*\1*", markup or "")
+        text = re.sub(r"<[^>]+>", "", text)
+        return " ".join(text.split())
+
+    async def _document_search(self, query: str, limit: int) -> str:
+        if not query.strip():
+            return "Give me words that appear in the document."
+        limit = max(1, min(limit, 10))
+
+        payload = await self._doc_get(
+            "/api/documents/", {"query": query, "page_size": limit}
+        )
+        results = payload.get("results") or []
+        if not results:
+            return (
+                f"Nothing in the paper archive matches {query!r}. "
+                "It may not be scanned yet, or the words on the page may differ."
+            )
+
+        corr = await self._doc_name_map("correspondents")
+        types = await self._doc_name_map("document_types")
+
+        lines = [f"{payload.get('count', len(results))} match(es); showing {len(results)}."]
+        for r in results:
+            bits = [f"[id {r.get('id')}] {r.get('title') or '(untitled)'}"]
+            who = corr.get(r.get("correspondent")) if r.get("correspondent") else None
+            what = types.get(r.get("document_type")) if r.get("document_type") else None
+            if who:
+                bits.append(f"from {who}")
+            if what:
+                bits.append(what)
+            # Paperless's own guess, and labelled as one — see the note above.
+            if r.get("created"):
+                bits.append(f"filed {r['created']} (auto-detected, may be wrong)")
+            lines.append(" · ".join(bits))
+
+            hit = r.get("__search_hit__") or {}
+            excerpt = self._strip_highlight(hit.get("highlights", ""))
+            if excerpt:
+                lines.append(f"    …{excerpt}…")
+        lines.append("Use document_read with an id to read one.")
+        return _clip("\n".join(lines))
+
+    async def _document_read(self, document_id: int, part: int) -> str:
+        if document_id <= 0:
+            return "Give me a document id from document_search."
+        part = max(1, part)
+
+        payload = await self._doc_get(f"/api/documents/{document_id}/", {})
+        content = (payload.get("content") or "").strip()
+        title = payload.get("title") or "(untitled)"
+        if not content:
+            return f"[id {document_id}] {title} has no extracted text."
+
+        chunk = page_of(content, part)
+        if chunk is None:
+            total = page_count(content)
+            return f"[id {document_id}] {title} has only {total} part(s)."
+        text, part, total = chunk
+
+        head = f"[id {document_id}] {title} — part {part} of {total}"
+        tail = (
+            f"\n\n(part {part} of {total}; ask for part {part + 1} to continue)"
+            if part < total
+            else f"\n\n(end of document, {total} part(s) total)"
+        )
+        return head + "\n\n" + text + tail
 
     # ── web ─────────────────────────────────────────────────────────────────
     async def _web_search(self, query: str, count: int) -> str:
@@ -415,6 +603,36 @@ def build_sdxl_workflow(
             "inputs": {"filename_prefix": "mneme", "images": ["6", 0]},
         },
     }
+
+
+# ── PAGING IS NOT OPTIONAL, AND IT IS A FREE FUNCTION SO IT IS TESTABLE ─────
+#
+# `_clip` cuts every tool result at MAX_RESULT_CHARS.  Without paging, a long
+# contract would be silently truncated and the model would answer from its
+# first two pages while believing it had read the whole thing — a wrong answer
+# delivered confidently, which is the worst failure this tool can have.
+#
+# The page is smaller than the clip so the header and footer always fit inside
+# it; if they did not, the clip would eat the "ask for part N+1" line and the
+# model would never learn there was more.
+DOC_PAGE_CHARS = MAX_RESULT_CHARS - 600
+
+
+def page_count(content: str) -> int:
+    content = content or ""
+    if not content:
+        return 1
+    return (len(content) + DOC_PAGE_CHARS - 1) // DOC_PAGE_CHARS
+
+
+def page_of(content: str, part: int) -> tuple[str, int, int] | None:
+    """(text, part, total) for a 1-based part, or None if it is out of range."""
+    content = content or ""
+    total = page_count(content)
+    if part < 1 or part > total:
+        return None
+    start = (part - 1) * DOC_PAGE_CHARS
+    return content[start : start + DOC_PAGE_CHARS], part, total
 
 
 def _clip(text: str, limit: int = MAX_RESULT_CHARS) -> str:

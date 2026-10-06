@@ -291,6 +291,70 @@ def test_toolbox_owns_only_its_own_tools() -> None:
     assert not tb.owns("HassTurnOn")          # HA's tools are not ours
 
 
+def test_document_tools_appear_only_with_an_archive_configured() -> None:
+    w = _wiki()
+    without = {s["function"]["name"] for s in toolsmod.Toolbox(w).schemas()}
+    assert "document_search" not in without
+    assert "document_read" not in without
+
+    with_docs = toolsmod.Toolbox(
+        w, documents_url="http://[fdca:fe95::2]:28981", documents_token="t"
+    )
+    names = {s["function"]["name"] for s in with_docs.schemas()}
+    assert {"document_search", "document_read"} <= names
+    assert with_docs.owns("document_search")
+    assert not with_docs.owns("HassTurnOn")
+
+
+def test_search_highlights_keep_the_matched_words_and_lose_the_markup() -> None:
+    # Paperless marks matches with a span. The model does not need the HTML,
+    # but it DOES need to see which words matched, so the span becomes
+    # emphasis rather than being dropped with its contents.
+    raw = 'Tagesklinik f\u00fcr <span class="match term0">Psychiatrie</span>\nund mehr'
+    out = toolsmod.Toolbox._strip_highlight(raw)
+    assert "*Psychiatrie*" in out
+    assert "<span" not in out and "</span>" not in out
+    assert "Tagesklinik" in out and "mehr" in out
+
+
+def test_document_paging_never_silently_drops_the_tail() -> None:
+    # THE FAILURE THIS GUARDS: a document longer than one page is answered
+    # from its first page while the model believes it read the whole thing.
+    page = toolsmod.DOC_PAGE_CHARS
+    content = "A" * page + "B" * page + "C" * 10
+
+    assert toolsmod.page_count(content) == 3
+
+    first = toolsmod.page_of(content, 1)
+    assert first is not None
+    text, part, total = first
+    assert (part, total) == (1, 3)
+    assert text == "A" * page
+
+    last = toolsmod.page_of(content, 3)
+    assert last is not None
+    assert last[0] == "C" * 10 and last[1:] == (3, 3)
+
+    # Every character is reachable, which is the property that matters.
+    joined = "".join(toolsmod.page_of(content, n)[0] for n in range(1, total + 1))
+    assert joined == content
+
+    assert toolsmod.page_of(content, 4) is None
+    assert toolsmod.page_of(content, 0) is None
+
+
+def test_a_short_document_is_one_page_not_zero() -> None:
+    assert toolsmod.page_count("") == 1
+    assert toolsmod.page_count("hello") == 1
+    assert toolsmod.page_of("hello", 1) == ("hello", 1, 1)
+
+
+def test_a_page_plus_its_header_still_fits_the_clip() -> None:
+    # If the page were MAX_RESULT_CHARS, _clip would eat the "ask for part
+    # N+1" footer and the model would never learn there was more.
+    assert toolsmod.DOC_PAGE_CHARS < toolsmod.MAX_RESULT_CHARS
+
+
 def test_toolbox_offers_nothing_it_cannot_do() -> None:
     tb = toolsmod.Toolbox(None)
     assert tb.schemas() == []

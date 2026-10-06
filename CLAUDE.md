@@ -57,6 +57,12 @@ This repo is driven with **jj (Jujutsu)**, colocated with git: `.jj/` and `.git/
 
 Full reference, including recovery: [docs/guides/jj-workflow.md](docs/guides/jj-workflow.md).
 
+**How to sequence and verify work — read this before planning a change:**
+[docs/guides/coding-agent-workflow.md](docs/guides/coding-agent-workflow.md).
+It covers the two failures that keep recurring: asking for one deploy per
+defect instead of one per round of findings, and writing "this known trap
+does not apply here" without measuring it. M32 cost six deploys to both.
+
 **The invariants, which the tool change does not touch:**
 
 - **Never land a change directly on `main`.** Even a single-file docs edit gets its own prefix-tagged bookmark and its own pull request.

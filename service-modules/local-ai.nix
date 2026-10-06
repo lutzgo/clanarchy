@@ -1801,6 +1801,59 @@ in
         };
       };
 
+      # ── THE DOCUMENT ARCHIVE (M32b) ────────────────────────────────────
+      #
+      # Paperless-ngx on `docs.goclan.org`, reached over the `doc0` leg.  This
+      # is `webSearch`'s shape with one addition: a TOKEN FILE rather than a
+      # token, because the whole ExecStart of this unit is visible in
+      # `systemctl cat mneme`.
+      documents = {
+        enable = lib.mkOption {
+          type    = lib.types.bool;
+          default = false;
+          description = ''
+            Give the agent `document_search` and `document_read` over the
+            household's scanned paper.
+
+            The account behind the token is READ-ONLY by construction —
+            `containers/paperless.nix` provisions it with four `view_*`
+            permissions and no password, and DELETE, PATCH and the upload
+            endpoint were measured answering 403 to it.
+          '';
+        };
+        url = lib.mkOption {
+          type    = lib.types.str;
+          default = "";
+          example = "http://[fdca:fe95::2]:28981";
+          description = ''
+            Paperless's base URL as reached FROM THIS HOST.
+
+            Not the VLAN-90 address: the host's route to 10.0.90.32 goes via
+            10.0.50.1, so every search would hairpin out through the UDM-Pro
+            and back.  M29b hit this reaching SearXNG and the answer was a
+            point-to-point leg; `doc0` is the same shape, and the container end
+            of it is what belongs here.
+          '';
+        };
+        tokenFile = lib.mkOption {
+          type    = lib.types.str;
+          default = "";
+          example = "/run/secrets/vars/paperless-mneme-token/token";
+          description = ''
+            File holding paperless's API token for the `mneme` account, read
+            once at startup.
+
+            A PATH AND NOT A VALUE: mneme takes its whole configuration as
+            flags so that `systemctl cat mneme` shows the entire behaviour, and
+            a credential is the one thing that must not be in there.  mneme
+            runs on the host, so the per-generation symlink under /run/secrets
+            is fine — the staging dance in the container files exists because
+            an nspawn bind would pin a deleted generation, which does not apply
+            here.
+          '';
+        };
+      };
+
       imageGen = {
         enable = lib.mkOption {
           type    = lib.types.bool;
@@ -1997,6 +2050,10 @@ in
                 ]
                 ++ lib.optionals settings.webSearch.enable [
                   "--search-url ${settings.webSearch.url}"
+                ]
+                ++ lib.optionals settings.documents.enable [
+                  "--documents-url ${settings.documents.url}"
+                  "--documents-token-file ${settings.documents.tokenFile}"
                 ]
                 ++ lib.optionals settings.imageGen.enable [
                   "--image-url ${settings.imageGen.url}"

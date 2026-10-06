@@ -749,6 +749,34 @@
           webSearch.enable = true;
           webSearch.url    = "http://[fdca:fe94::2]:8888";
 
+          # ── THE PAPER ARCHIVE (M32b), AND IT COSTS NOTHING ──────────────
+          #
+          # The same point-to-point argument one leg over: the host's route to
+          # 10.0.90.32 is `via 10.0.50.1`, so `doc0` keeps the query inside the
+          # machine.  Unlike `web_search` this one never leaves the house, and
+          # unlike `generate_image` it evicts nothing — it is a database query
+          # against a container that is already running.
+          #
+          # READ-ONLY BY CONSTRUCTION, not by the model behaving.  The token
+          # belongs to a non-superuser account with four `view_*` permissions;
+          # DELETE, PATCH and the upload endpoint were each measured answering
+          # 403 to it.  So the worst a confused model can do here is read the
+          # household's own paper back to the household.
+          documents.enable    = true;
+          documents.url       = "http://[fdca:fe95::2]:28981";
+          # LITERAL, not `config.clan.core.vars.generators.…files."token".path`,
+          # which is the obvious spelling and does not work here: these are
+          # inventory instance SETTINGS, a plain attrset with no module
+          # arguments, so `config` is simply not in scope and the error is a
+          # bare `undefined variable 'config'`.
+          #
+          # The path is clan's own stable layout, /run/secrets/vars/<generator>/<file>,
+          # and the generator is `paperless-mneme-token` in
+          # containers/paperless.nix.  Rename that generator and this string
+          # has to follow — which is why the generator carries `mneme.service`
+          # in its `restartUnits`, so at least the rotation half is wired.
+          documents.tokenFile = "/run/secrets/vars/paperless-mneme-token/token";
+
           # ── AND THIS ONE COSTS SOMETHING, EVERY TIME ────────────────────
           #
           # ComfyUI is in llama-swap's exclusive GPU group, so a picture EVICTS
