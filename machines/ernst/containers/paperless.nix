@@ -326,6 +326,8 @@ let
     # than nothing: it would claim the account exists after somebody deleted it
     # in the admin UI.
     from django.contrib.auth.models import Group, Permission, User
+    from documents.models import Document, Workflow, WorkflowAction, WorkflowTrigger
+    from guardian.shortcuts import assign_perm
     from paperless.models import ApplicationConfiguration
     from rest_framework.authtoken.models import Token
 
@@ -502,6 +504,79 @@ let
         f"{HOUSEHOLD_GROUP}: {'created' if created else 'updated'}, "
         f"{group.permissions.count()} permissions"
     )
+
+    # ── AND THE OBJECT-LEVEL HALF, WHICH IS A SEPARATE SYSTEM ─────────────
+    #
+    # The group above grants MODEL permissions — "may view documents in
+    # general".  Paperless ALSO enforces OBJECT permissions through
+    # django-guardian, and a document carries an `owner`: whoever uploaded it
+    # through the web UI.  A document with an owner is invisible to everyone
+    # else, model permission or not.
+    #
+    # MEASURED 2026-10-06, and it is why the agent could answer about one
+    # document and not the others:
+    #
+    #   id 1  owner None  (arrived via the Scan Inbox)  -> mneme sees it
+    #   id 2  owner lgo   (uploaded in the web UI)      -> invisible
+    #   id 3  owner lgo   (uploaded in the web UI)      -> invisible
+    #
+    # That failure is worse than "no results", because it is INCONSISTENT: the
+    # agent answers confidently about part of the archive and claims ignorance
+    # about the rest, with nothing to tell the household which is which.
+    #
+    # There is no `PAPERLESS_DEFAULT_PERMISSIONS_*` at 2.20.15 — checked in
+    # settings.py; it does not exist.  What paperless offers instead is a
+    # WORKFLOW, which is a database object, so it is provisioned here for the
+    # same reason the group is.
+    #
+    # TRIGGER IS "Document Added", NOT "Consumption Started", because it fires
+    # for BOTH doors: the consumption directory and a web-UI upload.
+    # Consumption Started runs before the document exists and would miss every
+    # upload.
+    AGENTS_GROUP = "agents"
+
+    # A group with NO model permissions, and that is the whole reason it exists
+    # separately from `household`.  Django unions a user's own permissions with
+    # those of every group it belongs to, so putting mneme in `household` would
+    # hand it `delete_document` — the one thing the read-only account is built
+    # not to have.  This group carries object-level view and nothing else.
+    agents, _ = Group.objects.get_or_create(name=AGENTS_GROUP)
+    agents.permissions.clear()
+    user.groups.set([agents])
+
+    trigger, _ = WorkflowTrigger.objects.get_or_create(
+        type=WorkflowTrigger.WorkflowTriggerType.DOCUMENT_ADDED,
+    )
+    action, _ = WorkflowAction.objects.get_or_create(
+        type=WorkflowAction.WorkflowActionType.ASSIGNMENT,
+    )
+    action.assign_view_groups.set([group, agents])
+    action.save()
+
+    workflow, wf_created = Workflow.objects.get_or_create(
+        name="Share with the household",
+        defaults={"order": 0, "enabled": True},
+    )
+    workflow.enabled = True
+    workflow.save()
+    workflow.triggers.set([trigger])
+    workflow.actions.set([action])
+    print(
+        f"workflow: {'created' if wf_created else 'updated'}, "
+        f"view for {sorted(g.name for g in action.assign_view_groups.all())}"
+    )
+
+    # ── BACKFILL, because a workflow only fires on NEW documents ──────────
+    #
+    # Without this, everything added before this unit first ran stays
+    # invisible and the inconsistency above survives the fix.  Idempotent:
+    # guardian's assign_perm is a no-op when the permission already exists.
+    backfilled = 0
+    for doc in Document.objects.all():
+        for grp in (group, agents):
+            assign_perm("view_document", grp, doc)
+        backfilled += 1
+    print(f"backfill: view granted on {backfilled} existing document(s)")
   '';
 in
 {
@@ -1226,7 +1301,17 @@ in
           # looks: ZFS snapshots are the backup, and a snapshot is only as
           # useful as the layout inside it.  `{created_year}/{correspondent}`
           # means a recovery can be done with `cp` and without paperless.
-          PAPERLESS_FILENAME_FORMAT = "{created_year}/{correspondent}/{title}";
+          # DOUBLE BRACES, AND PAPERLESS SAYS SO ITSELF.  Shipped as
+          # `{created_year}/...`, which 2.20.15 accepts and then warns about on
+          # every management command:
+          #
+          #   Filename format {created_year}/{correspondent}/{title} is using
+          #   the old style, please update to use double curly brackets
+          #
+          # Deprecated upstream, so this is a warning now and a broken archive
+          # layout later — and the layout is what makes a ZFS snapshot
+          # restorable with `cp` and without paperless.
+          PAPERLESS_FILENAME_FORMAT = "{{ created_year }}/{{ correspondent }}/{{ title }}";
 
           # Loads django-allauth's OIDC provider.  The provider CONFIG, which
           # carries the client secret, is in the EnvironmentFile instead.

@@ -368,6 +368,20 @@ class Toolbox:
                 bits.append(f"from {who}")
             if what:
                 bits.append(what)
+            # ── FACTS THE MODEL WILL OTHERWISE INVENT ────────────────────
+            #
+            # MEASURED on the first real answer (2026-10-06): asked how many
+            # pages the two VIDGA instructions had, the model said "2 Seiten"
+            # for both.  They are 4 and 1.  It had no page count in front of
+            # it, so it produced a plausible one — a confident wrong answer,
+            # which is worse than a refusal because nothing signals it.
+            #
+            # Anything the household might reasonably ask about a document
+            # belongs in the search result rather than being left to
+            # inference.  `page_count` is the cheapest of those and was the
+            # first to be asked for.
+            if r.get("page_count"):
+                bits.append(f"{r['page_count']} page(s)")
             # Paperless's own guess, and labelled as one — see the note above.
             if r.get("created"):
                 bits.append(f"filed {r['created']} (auto-detected, may be wrong)")

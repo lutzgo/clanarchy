@@ -173,6 +173,24 @@ full-text index over OCR'd text, so *"Versicherung Beitrag"* finds things that
 *"what does my insurance cost"* does not. The model is told this in the tool's
 own description, but phrasing still helps.
 
+### Everything is shared, whoever added it
+
+A document uploaded through paperless's web UI gets `owner = <you>`, and
+paperless enforces that at the object level — so without intervention the agent
+(and the other person) cannot see it, while documents arriving via the Scan
+Inbox are ownerless and visible to everybody. The result is an archive the agent
+answers about *inconsistently*, with nothing to indicate which half it can see.
+
+`paperless-provision.service` fixes that with a **Workflow** — paperless's own
+mechanism, since 2.20.15 has no `PAPERLESS_DEFAULT_PERMISSIONS_*` setting. On
+"Document Added", which covers both doors, it grants view permission to
+`household` and to a no-privilege `agents` group holding mneme. Existing
+documents are backfilled on every run.
+
+`agents` is separate from `household` on purpose: Django unions a user's
+permissions with those of its groups, so putting mneme in `household` would hand
+it `delete_document`. It gets object-level view and nothing else.
+
 ### What it cannot do
 
 **Read-only, by construction rather than by the model behaving.** The token
