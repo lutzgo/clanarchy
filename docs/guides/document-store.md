@@ -146,10 +146,50 @@ language called `deu,eng`.
 
 ## Asking the AI about a document
 
-**Not in M32.** M32b gives mneme `document_search` and `document_read` tools
-over the `doc0` leg, after which "when does the car insurance renew?" works
-from Home Assistant voice and from Open WebUI. The leg, the read-only account
-and its token all ship here so that half is only Python.
+mneme has two tools over the `doc0` leg, so the archive is answerable from
+anywhere Assist is — the voice satellites, the Home Assistant app, and any
+client pointed at mneme's Ollama endpoint.
+
+| Tool | What it does |
+|---|---|
+| `document_search` | Full-text search. Returns titles and the *matching lines*, not whole documents |
+| `document_read` | The text of one document by id, in numbered parts |
+
+The split is deliberate: search is cheap and read is not, so the model finds
+first and reads only what it needs. A long document comes back in parts and the
+reply says how many remain — without that, the model would answer from page one
+while believing it had read the whole thing.
+
+**Ask with words that are on the paper**, not with a question. It is a
+full-text index over OCR'd text, so *"Versicherung Beitrag"* finds things that
+*"what does my insurance cost"* does not. The model is told this in the tool's
+own description, but phrasing still helps.
+
+### What it cannot do
+
+**Read-only, by construction rather than by the model behaving.** The token
+belongs to a non-superuser account holding four `view_*` permissions; `DELETE`,
+`PATCH` and the upload endpoint were each measured answering **403** to it. The
+worst a confused model can do is read the household's own paper back to it.
+
+**It never leaves the house.** Unlike `web_search`, nothing goes to SearXNG or
+the internet. Unlike `generate_image`, it evicts no model — it is a database
+query against a container that is already running, so it costs nothing.
+
+### Dates are not trustworthy, and the tool says so
+
+Paperless guesses a document's date out of its OCR text and gets it wrong — the
+first scan through this pipeline came back filed under **1983**. So
+`document_search` labels the date *"auto-detected, may be wrong"* and there are
+deliberately **no date filters**: a filter built on that field would silently
+exclude the documents it was meant to find. The date that matters is the one
+written on the paper, and that is in the text `document_read` returns.
+
+### If it stops working
+
+`document_search` returning *"the document archive refused mneme's token"* means
+`paperless-provision.service` has failed — the staged token never reached the
+database. See the troubleshooting entry below.
 
 ## Backups
 
@@ -239,9 +279,10 @@ Paperless client block in `containers/authelia.nix` — it names the one setting
 (`token_endpoint_auth_method`) and the two-arm control that proves it before
 changing anything.
 
-**`document_search` returns 401** (after M32b).
-`paperless-provision.service` never succeeded, so the token is not in the
-database. Nothing a human uses is affected:
+**`document_search` says the archive refused mneme's token.**
+`paperless-provision.service` has failed, so the staged token never reached the
+database. Nothing a human uses is affected, which is why it goes unnoticed —
+the only client is the agent:
 
 ```bash
 machinectl shell paperless /run/current-system/sw/bin/systemctl status paperless-provision

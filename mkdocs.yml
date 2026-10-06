@@ -51,6 +51,7 @@ nav:
     - Adding a machine: guides/adding-a-machine.md
     - Adding a module or option: guides/adding-a-module.md
     - The jj workflow: guides/jj-workflow.md
+    - Coding-agent workflow: guides/coding-agent-workflow.md
     - Accepting pull requests: guides/accepting-pull-requests.md
     - Networking: guides/networking.md
     - Authelia second factors: guides/authelia-2fa.md

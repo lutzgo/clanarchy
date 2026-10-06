@@ -14827,6 +14827,117 @@ that the result reaches `main`.** The existing note covers the first half.
 
 ---
 
+## M32b — `feat/mneme-document-tools`
+
+The half M32 was opened for: the household can ask the agent about its own
+paper. Built 2026-10-06, **verified against the live archive before deploy**
+rather than after.
+
+### What it is
+
+Two tools on mneme, over the `doc0` leg M32 shipped:
+
+| Tool | Returns |
+|---|---|
+| `document_search(query, limit)` | Titles plus the *matching lines*, not whole documents |
+| `document_read(document_id, part)` | One document's text, in numbered parts |
+
+The split is the design: search is cheap, read is not, so the model finds first
+and reads only what it needs.
+
+### Three things measured, not assumed
+
+**The date field is unreliable, so there are no date filters.** An earlier draft
+took `created_after` / `correspondent`. The first real scan came back with
+`created = 1983-10-19` — paperless guesses a date out of OCR text and got it
+wrong by forty-three years. A filter on that field would silently exclude the
+documents it was meant to find, so `document_search` labels the date
+*"auto-detected, may be wrong"* and filters nothing. The date that matters is
+written on the paper and comes back from `document_read`.
+
+**Highlights arrive as HTML.** Paperless returns
+`<span class="match term0">Psychiatrie</span>`. The markup is stripped but the
+span becomes `*emphasis*` rather than being dropped with its contents — the
+model needs to see *which* words matched.
+
+**Read-only is enforced by the server, not by the model behaving:**
+
+```
+DELETE /api/documents/1/          -> 403
+PATCH  /api/documents/1/          -> 403
+POST   /api/documents/post_document/ -> 403
+```
+
+### The defect this unblocked
+
+`paperless-provision` had been failing since M32's first token rotation —
+`NRestarts=284` — so the staged token never reached the database and the API
+answered 401 to it. M32 shipped
+
+```python
+Token.objects.update_or_create(user=user, defaults={"key": key})
+```
+
+with a comment claiming it was *"keyed on the USER, so re-running with a rotated
+token replaces the key rather than colliding"*. **It is not.** DRF's `Token` has
+`key` as its PRIMARY KEY, and Django cannot UPDATE a primary key — assigning a
+new one INSERTs a second row:
+
+```
+IntegrityError: duplicate key value violates unique constraint
+"authtoken_token_user_id_key"  DETAIL: Key (user_id)=(4) already exists.
+```
+
+Nothing a human uses was affected, which is why it went unnoticed for a day: the
+only client is the agent. Delete-then-create is how DRF tokens are rotated.
+
+That is the **fifth** instance in this milestone of a comment asserting a known
+trap did not apply, written from reasoning rather than measurement. The pattern
+is recorded in M32's close-out and is the reason
+[docs/guides/coding-agent-workflow.md](guides/coding-agent-workflow.md) exists.
+
+### Verification, before asking for a deploy
+
+```
+mneme test suite            37/37 pass  (5 new, run at build time by doCheck)
+nix eval ernst toplevel     OK
+nix eval miralda toplevel   OK          (the role is fleet-wide; this is the control)
+ExecStart flags             --documents-url, --documents-token-file present
+```
+
+and then the real code against the real archive, by running `Toolbox` on ernst
+pointed at the live container:
+
+```
+TOOLS            ['document_read', 'document_search']
+search, hit      1 match(es), formatted, date labelled auto-detected
+search, miss     "Nothing in the paper archive matches …"
+search, empty    "Give me words that appear in the document."
+read             "part 1 of 1" + the text
+read, missing    HTTP 404, reported as a tool failure rather than a crash
+read, part=9     "has only 1 part(s)"
+bad token        "the document archive refused mneme's token (HTTP 401);
+                  paperless-provision may have failed"
+```
+
+The build-time tests cover the one thing that fails *silently* — paging. Without
+it `_clip` would cut a long contract at 6000 characters and the model would
+answer from page one believing it had read the whole thing, so `page_of` is a
+free function with a test asserting every character is reachable.
+
+### What it deliberately does not do
+
+- **No embeddings and no vector store.** Full-text plus a read tool, which is
+  mneme's existing argument for the wiki and M20's refusal of an unpinned
+  HuggingFace download. Reconsider when the corpus is big enough that keyword
+  search visibly misses, not before.
+- **Not offered on `/v1`.** `mneme.py`'s OpenAI handler is a byte passthrough,
+  so a returned tool call would reach a client that has never heard of the
+  function. Open WebUI can have these tools by pointing its **Ollama** connector
+  at mneme, which needs no code change — still untried.
+- **No write path.** Tagging a document from voice would need a second account
+  with `change_*`, and the read-only guarantee above is worth more.
+
 ## Packaging — the constraint shaping M12, M14, M15 and M17
 
 **Establish which services have upstream modules IN-SESSION, on the session's own
