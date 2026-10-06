@@ -1,8 +1,18 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, osConfig, ... }:
 
 let
   cfg     = config.clanarchy.consoleDesktop;
   cfgAerc = cfg.aerc;
+
+  # M31.  lutz@goclan.org's password, staged by sops on THIS machine because
+  # modules/users/lgo.nix imports modules/mail-accounts.nix — a clan var only
+  # reaches machines whose configuration declares its generator.
+  #
+  # Reached through `osConfig` rather than re-derived, the same way
+  # desktop/niri-hm.nix and desktop/labwc-hm.nix reach system options: the
+  # path is a property of the deployment, not of the home.
+  mailPasswordFile =
+    osConfig.clan.core.vars.generators.mail-accounts.files."lutz.plain".path;
 in
 {
   options.clanarchy.consoleDesktop = {
@@ -60,28 +70,53 @@ in
       };
     };
 
-    # TODO: Add email accounts here — see accounts.email.accounts.<name>.aerc.*
-    # in the Home Manager option docs.  For Gmail OAuth2 via oama:
+    # ── The household's own mailbox (M31) ────────────────────────────────
     #
-    #   accounts.email.accounts.gmail = {
-    #     primary  = true;
-    #     address  = "user@gmail.com";
-    #     realName = "Lutz Go";
-    #     imap     = { host = "imap.gmail.com"; port = 993; tls.enable = true; };
-    #     smtp     = { host = "smtp.gmail.com"; port = 465; tls.enable = true; };
-    #     aerc = {
-    #       enable  = true;
-    #       extraAccounts = {
-    #         source   = "imaps://user@gmail.com@imap.gmail.com:993/";
-    #         outgoing = "smtps+oauthbearer://user@gmail.com@smtp.gmail.com:465";
-    #       };
-    #       passwordCommand = "oama access user@gmail.com";
-    #     };
-    #   };
+    #   This replaces the commented-out Gmail-over-oama sketch that sat here
+    #   from the day aerc was added and was never filled in.  oama and w3m
+    #   stay in home.packages above — w3m because aerc still needs an HTML
+    #   renderer, oama because a Gmail account may yet be added beside this
+    #   one and removing a package to re-add it later is churn.
     #
-    # First-time OAuth2 setup: register a Google Cloud project, obtain
-    # client-id and client-secret, then run:
-    #   oama setup --client-id <id> --client-secret <secret> user@gmail.com
-    # and follow the browser prompt to authorise IMAP/SMTP access.
+    #   THE SERVER IS machines/ernst/containers/mail.nix.  Read that file's
+    #   header before trusting outgoing mail: ernst sends from a residential
+    #   Vodafone address whose PTR cannot be changed, so delivery to Outlook
+    #   and the big German providers is a known problem with a documented fix
+    #   path in docs/guides/mail.md.  Nothing about that is visible from here
+    #   — aerc will report a cheerful 250 either way.
+    accounts.email.accounts.goclan = lib.mkIf cfgAerc.enable {
+      primary  = true;
+      address  = "lutz@goclan.org";
+      userName = "lutz@goclan.org";
+      realName = "Lutz Go";
+
+      # Implicit TLS on both, which is what the server offers: 993 for IMAP
+      # and 465 for submission.  143 and 587 are switched OFF on ernst per
+      # RFC 8314, so there is no STARTTLS port to fall back to and that is
+      # deliberate — see the port note in containers/mail.nix.
+      imap = { host = "mail.goclan.org"; port = 993; tls.enable = true; };
+      smtp = { host = "mail.goclan.org"; port = 465; tls.enable = true; };
+
+      # `cat` on a 0400 file owned by lgo.  aerc re-runs this on every start,
+      # so rotating the clan var needs no daemon restart — only a restart of
+      # aerc itself.
+      #
+      # THE FILE IS READABLE HERE BECAUSE modules/users/lgo.nix DECLARES THE
+      # GENERATOR, not merely because ernst has it.  A clan var is deployed
+      # to the machines that declare it; dropping that import would leave
+      # this path pointing at nothing and aerc prompting on every start.
+      passwordCommand = "${pkgs.coreutils}/bin/cat ${mailPasswordFile}";
+
+      aerc = {
+        enable = true;
+        # The username is percent-encoded because it IS an email address and
+        # the `@` would otherwise terminate the userinfo component early,
+        # leaving aerc trying to reach a host called `goclan.org@mail...`.
+        extraAccounts = {
+          source   = "imaps://lutz%40goclan.org@mail.goclan.org:993";
+          outgoing = "smtps://lutz%40goclan.org@mail.goclan.org:465";
+        };
+      };
+    };
   };
 }

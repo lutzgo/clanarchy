@@ -1069,6 +1069,59 @@ in
           '';
         };
 
+        mailAddress = lib.mkOption {
+          type        = lib.types.str;
+          default     = "";
+          example     = "10.0.90.31";
+          description = ''
+            Address of the mail container on the Services VLAN (M31).
+            Empty disables the `mail` job.
+
+            AN EXPORTER, unlike Miniflux and Navidrome —
+            `prometheus-postfix-exporter`, a sidecar in the same container.
+            Postfix has no metrics endpoint of its own; the exporter reads the
+            journal for delivery outcomes and stats the `showq` socket for the
+            queue.
+
+            ── WHY THIS ONE CLEARS SN3 WHEN NEXTCLOUD, HOME ASSISTANT AND
+               KARAKEEP EACH GOT A WRITTEN REFUSAL ──
+
+            SN3's test is whether a job can say anything a failed-unit alert
+            cannot.  For those three it could not, so the honest move was no
+            job.  Here it plainly can: QUEUE DEPTH AND DEFERRAL AGE ARE
+            INVISIBLE TO systemd.  A mail server whose queue is filling
+            because a receiver started deferring — which on ernst's
+            residential IP with an unsettable PTR is the EXPECTED failure, not
+            a hypothetical one (see containers/mail.nix's header) — is
+            `active (running)` throughout, and every unit-state signal this
+            module has reads green while mail silently stops arriving.
+
+            That is also the whole answer to "why not just alert on the unit":
+            the interesting failure never touches the unit.
+
+            ONE GATE, NOT TWO.  Unlike Miniflux there is no second
+            application-side allowlist to forget — the container firewall's
+            single accept rule for this address is the entire boundary.  Note
+            that the exporter is the ONLY port in that container bounded by a
+            peer list; :25, :465, :993 and :4190 deliberately answer the whole
+            internet, so a reader checking that firewall should not read the
+            open ports as a mistake.
+          '';
+        };
+
+        mailPort = lib.mkOption {
+          type        = lib.types.port;
+          default     = 9154;
+          description = ''
+            `prometheus-postfix-exporter`'s upstream default port.
+
+            Its own listener, not shared with anything — Immich's situation
+            rather than Miniflux's — because the exporter is a separate
+            process from every daemon in that container.  There is no mail
+            protocol on this port and nothing here is reachable from the WAN.
+          '';
+        };
+
         navidromeAddress = lib.mkOption {
           type        = lib.types.str;
           default     = "";
@@ -2362,6 +2415,18 @@ in
                   static_configs = [ {
                     targets = [ "${settings.mediaStack.minifluxAddress}:${toString settings.mediaStack.minifluxPort}" ];
                     labels.instance = "miniflux";
+                  } ];
+                }
+                # Mail (M31).  The one target here whose interesting signal is
+                # not "is it up" — see the option's description for why this
+                # clears SN3 where Nextcloud, Home Assistant and Karakeep did
+                # not.  Watch `postfix_showq_message_age_seconds` and the
+                # queue-size series; `up` going to 0 is the boring case.
+                ++ lib.optional (settings.mediaStack.mailAddress != "") {
+                  job_name = "mail";
+                  static_configs = [ {
+                    targets = [ "${settings.mediaStack.mailAddress}:${toString settings.mediaStack.mailPort}" ];
+                    labels.instance = "mail";
                   } ];
                 }
                 # Navidrome, and the only authenticated scrape in this file.

@@ -725,6 +725,39 @@
   #                       Like M22, M23, M24 and M27 it adds NO UDM-PRO RULE for
   #                       VLAN 50 → 90: every human arrives through .12.
   #
+  #   02:00:00:90:00:17   mail container eth0       (M31 — allocated)  10.0.90.31
+  #                       The household's SMTP and IMAP server for @goclan.org,
+  #                       machines/ernst/containers/mail.nix — Postfix, Dovecot,
+  #                       Rspamd, Redis and kresd behind
+  #                       simple-nixos-mailserver.  nspawn, for the same reason
+  #                       every other first-class-NixOS-module service here is.
+  #
+  #                       THE MACHINE IS `mail`, NOT `mailserver`, and that is
+  #                       the M24 constraint once more: `vb-mailserver` is 13
+  #                       characters and survives eval, so the failure would
+  #                       land at container START.
+  #
+  #                       IT IS THE FIRST SERVICE ON THIS HOST THAT DOES NOT
+  #                       ARRIVE THROUGH .12, and it is the row that makes this
+  #                       table's usual "every human arrives through Traefik"
+  #                       note false.  SMTP, IMAP and ManageSieve are not HTTP
+  #                       and :25 carries no SNI, so there is nothing for a TCP
+  #                       router to key on.  It therefore has NO ENTRY IN
+  #                       containers/ingress-policy.nix — not an omission: that
+  #                       file classifies hostnames ROUTED THROUGH THE PROXY, and
+  #                       none of these are.
+  #
+  #                       IT ADDS FOUR UDM-PRO DNATs, WHICH NO OTHER ROW HERE
+  #                       DOES.  WAN :25 → .31:25 (ledger L19) and WAN
+  #                       :465/:993/:4190 → .31 (ledger L20).  Before M31 the
+  #                       fleet had exactly one port forward, WAN :443 →
+  #                       10.0.90.12:8443, and "one forward" was load-bearing in
+  #                       several arguments elsewhere; it is now five.
+  #
+  #                       CROWDSEC DOES NOT COVER IT — containers/crowdsec.nix
+  #                       acquires only Traefik's journal — so the container runs
+  #                       fail2ban of its own against Postfix and Dovecot.
+  #
   #   02:00:00:90:00:18   paperless container eth0   (M32)      10.0.90.32
   #
   #                       Paperless-ngx, the household document archive.
@@ -1528,6 +1561,28 @@
   #
   #                              NEXT FREE IN THE 3000 BLOCK IS 3041.)
   #
+  #   uid/gid 3041  virtualMail  (containers/mail.nix — M31, the owner of the
+  #                              Maildir at /srv/state/mail/vmail.)
+  #
+  #                              PINNED RATHER THAN DEFAULTED.  Upstream's
+  #                              `mailserver.storage.uid` defaults to 5000, which
+  #                              works and is outside every convention this table
+  #                              exists to keep.  The 3000 block is for ids that
+  #                              become VISIBLE ON THE POOL, and this is the one
+  #                              id in M31 that does — every message the household
+  #                              owns is a file owned by it.
+  #
+  #                              M31 TAKES EXACTLY TWO ids FROM THIS BLOCK —
+  #                              this one and `redis-rspamd` at 3043 below — and
+  #                              the four daemons are why that is worth stating:
+  #                              postfix 13, postdrop 14, dovecot2 46 and rspamd
+  #                              225 are ALL STATIC IN nixpkgs' ids.nix.  Pinning
+  #                              a 3000-block number onto any of them is an
+  #                              option conflict at EVAL — `conflicting definition
+  #                              values` — which is M24's lesson, and this time
+  #                              the check was run first.  They are recorded below
+  #                              beside 286 and 71 for the same reason those are.
+  #
   #   gid 3042  docsin          M32's SHARED INGEST GROUP, and the only id that
   #                              milestone takes from this block — paperless
   #                              itself is upstream's 315 and is in the
@@ -1560,7 +1615,39 @@
   #                              it, in a branch developed concurrently with
   #                              this one.  Its row arrives with that branch.
   #
-  #                              NEXT FREE IN THE 3000 BLOCK IS 3043.)
+  #
+  #   uid/gid 3043  redis-rspamd (containers/mail.nix — M31, Rspamd's BAYES
+  #                              CLASSIFIER, at /srv/state/mail/redis.)
+  #
+  #                              M31'S SECOND id, AND IT MOVED ONCE.  It was
+  #                              written as 3042 in the branch; M32 landed first
+  #                              and took that number for `docsin`, so this is
+  #                              3043.  Both milestones reserved the other's
+  #                              number in prose while developing concurrently —
+  #                              that is what the "3041 IS SKIPPED" note above
+  #                              and the seq-17 note in the MAC table are — and
+  #                              the one number neither side reserved is the one
+  #                              that collided.
+  #
+  #                              PINNED FOR THE ORDINARY REASON, not a clever
+  #                              one: `redis-rspamd` is a PER-SERVER user, so
+  #                              unlike postfix/dovecot2/rspamd it has no entry
+  #                              in nixpkgs' ids.nix, nixpkgs declares it
+  #                              `isSystemUser` with no uid, and nspawn passes
+  #                              container ids through UNMAPPED — so whatever
+  #                              useradd happens to pick would own the Bayes
+  #                              database on the pool.  Let it drift and Redis
+  #                              cannot read its own dump after a rebuild.
+  #
+  #                              DynamicUser IS NOT IN PLAY HERE, unlike
+  #                              crowdsec / ollama / music-assistant:
+  #                              `services.redis.servers.rspamd` already sets
+  #                              `User=`, so `StateDirectory=redis-rspamd` stays
+  #                              at /var/lib/redis-rspamd and does not migrate
+  #                              to /var/lib/private — the bind mount is safe as
+  #                              written and that trade is not owed.
+  #
+  #                              NEXT FREE IN THE 3000 BLOCK IS 3044.)
   #
   #   NO uid FOR miniflux, and it is recorded rather than left to inference.
   #   M27's other container (containers/miniflux.nix) runs the daemon under
@@ -1678,6 +1765,28 @@
   #                           apply to it and it must not be renumbered into the
   #                           block — and NEXT FREE in that block DID NOT
   #                           ADVANCE for it.
+  #
+  #   uid   13  postfix      NOT ALLOCATED HERE, all four, and listed for the
+  #   gid   14  postdrop      reason 71 and 286 are.  M31's mail container
+  #   uid   46  dovecot2      (containers/mail.nix) runs four daemons that every
+  #   uid  225  rspamd        one of them has a WELL-KNOWN NixOS static id for —
+  #                           `ids.uids.postfix` 13, `ids.gids.postdrop` 14,
+  #                           `ids.uids.dovecot2` 46, `ids.uids.rspamd` 225 —
+  #                           and all four land on zdata unmapped, on
+  #                           /srv/state/mail/{postfix,dovecot,rspamd}.
+  #
+  #                           THE CHECK WAS RUN BEFORE THE NUMBERS WERE WRITTEN
+  #                           DOWN, which is the step M24 skipped: pinning a
+  #                           3000-block id onto any of these would have been
+  #                           hass's `conflicting definition values` error again,
+  #                           four times over.  The 3000-block convention does
+  #                           not apply to them and they must not be renumbered
+  #                           into the block.
+  #
+  #                           THE ONE id M31 DOES TAKE is 3041, `virtualMail`,
+  #                           whose row is in the allocated table above — the
+  #                           Maildir's owner, and the only M31 id that is this
+  #                           repo's to choose.
   #
   #   uid 3026  tvheadend       M8 LANDED 2026-08-27 AND TOOK THIS — moved up
   #                              into the allocated table, as shape (ii): OWN

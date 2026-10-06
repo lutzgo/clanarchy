@@ -405,10 +405,35 @@ let
   # profile and a Syncthing folder, and renaming it is a different and much
   # larger change with no connection to this one.  The two namespaces are
   # independent, and this comment exists so the mismatch reads as a decision.
+  # ── M31 CHANGED WHAT THE `email` COLUMN MEANS ──────────────────────────────
+  #
+  #   This file used to say, in as many words, that these addresses are NOT
+  #   correspondence addresses — they were identifiers for notification
+  #   addressing and for email-as-username login, and nothing on earth could
+  #   deliver to them.  That stopped being true the moment
+  #   containers/mail.nix shipped: `go@`, `sarinah@` and `max@` are now REAL
+  #   MAILBOXES on 10.0.90.31, and `lutz0go@gmail.com` is the one entry that
+  #   still points off-site.
+  #
+  #   Nothing here had to change for that — `search.email = true` already
+  #   accepted these as usernames — but the SEMANTICS did, and two things
+  #   follow.  First, a typo in this column is no longer harmless: it used to
+  #   produce a login name nobody could use, and now it produces a login name
+  #   nobody can use AND a deliverable address that silently belongs to the
+  #   wrong person.  Second, the SMTP notifier this file rejected on the
+  #   grounds of "a third-party dependency in the login path" is now only
+  #   half-rejected — the third party is gone, the dependency is not.  That is
+  #   argued where it belongs, in containers/mail.nix, and is deliberately NOT
+  #   acted on here: a mail outage must not be able to take out 2FA enrolment.
   autheliaUsers = [
     { name = "lgo";     displayName = "Lutz";    email = "lutz0go@gmail.com";     groups = [ "admins" ]; }
     { name = "go";      displayName = "Go";      email = "go@${baseDomain}";      groups = [ "admins" ]; }
     { name = "sgo";     displayName = "Sarinah"; email = "sarinah@${baseDomain}"; groups = [ "household" ]; }
+    # M31.  Max — `household`, not `admins`: the group that reaches exactly one
+    # name (`jellyseerr`) and nothing else, which is the right default for a
+    # member who has not asked for anything beyond mail.  Widening it later is
+    # one word; narrowing it after someone has used it is not.
+    { name = "mgo";     displayName = "Max";     email = "max@${baseDomain}";     groups = [ "household" ]; }
   ];
 
   adminGroup     = "admins";

@@ -1192,6 +1192,25 @@
             # and SN3 is the rule against pointing a job at one that does not
             # exist.
             minifluxAddress = "10.0.90.28";
+
+            # M31.  The mail server, and the first target in this list whose
+            # job is NOT mainly there to answer "is it running".
+            #
+            # A real exporter (prometheus-postfix-exporter) rather than a
+            # native endpoint, which makes it Immich's shape rather than
+            # Miniflux's: its own port, its own process, and only ONE gate —
+            # the container firewall — because there is no application-side
+            # allowlist to get wrong.
+            #
+            # WHY IT IS HERE AT ALL, given SN3 sent Nextcloud, Home Assistant
+            # and Karakeep away empty-handed: queue depth and deferral age
+            # cannot be derived from unit state, and on ernst's residential
+            # IP a filling queue is the EXPECTED failure rather than an
+            # exotic one — containers/mail.nix's header carries the measured
+            # reputation problem that predicts it.  A mail server that has
+            # silently stopped delivering is `active (running)` the whole
+            # time.
+            mailAddress = "10.0.90.31";
           };
 
           # M19.  The inference stack — THE TARGET M13 WANTED AND COULD NOT
