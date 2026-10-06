@@ -723,10 +723,48 @@ in
             tasks         # the VTODO surface modules/caldav-sync.nix pushes to
             notes
             user_oidc     # the Authelia login button
+            mail          # webmail against M31's server — see the note below
             ;
         };
         extraAppsEnable = true;
       };
+
+      # ── THE MAIL APP'S ACCOUNTS ARE NOT PROVISIONED, AND CANNOT BE ────────
+      #
+      #   `mail` is a per-user IMAP client, not a second mail server.  It talks
+      #   to M31's Dovecot on 10.0.90.31 — by NAME, `mail.goclan.org`, which
+      #   Technitium resolves to that address from inside this container
+      #   (verified), so the Let's Encrypt certificate validates.  Reaching it
+      #   needs NO accept rule anywhere: containers/mail.nix opens 993/465/4190
+      #   to everything, which is the one place that convention-break pays off.
+      #
+      #   NEXTCLOUD MAIL CAN AUTO-PROVISION ACCOUNTS, AND BOTH OF ITS MODES ARE
+      #   UNAVAILABLE HERE.  This is worth writing down, because "just turn on
+      #   provisioning" is the obvious next thought and it dead-ends twice:
+      #
+      #     1. The default mode logs into IMAP with the user's NEXTCLOUD LOGIN
+      #        PASSWORD.  Logins here go through Authelia over OIDC (`user_oidc`
+      #        above), so Nextcloud never sees a password and has none to reuse.
+      #        Provisioning would create accounts that cannot authenticate.
+      #
+      #     2. The master-password mode exists precisely for SSO deployments —
+      #        one credential for every provisioned account — but it needs
+      #        Dovecot MASTER USERS, and simple-nixos-mailserver exposes no
+      #        option for them (grepped: no `master_user`, no `auth_master`).
+      #        Enabling it would mean hand-written Dovecot config underneath a
+      #        module that owns that file.
+      #
+      #   So each person adds their account once, in the Mail app's UI, with
+      #   the password from `modules/mail-accounts.nix` — the same one K-9 uses.
+      #   docs/guides/mail.md carries the four fields.  That is three mailboxes
+      #   typed once each, against a standing source of truth divergence; the
+      #   trade is not close.
+      #
+      #   NO SYSTEM SMTP IS SET HERE EITHER, and that is a separate gap rather
+      #   than part of this one: `mail_smtphost` is still Nextcloud's stock
+      #   127.0.0.1 default, so `sharebymail` and password-reset mail cannot
+      #   send.  Wiring that needs a credential or a Postfix `mynetworks`
+      #   exemption, which is its own decision and its own change.
 
       # ── Pin the ids ───────────────────────────────────────────────────────
       #
