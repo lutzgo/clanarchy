@@ -14925,6 +14925,50 @@ it `_clip` would cut a long contract at 6000 characters and the model would
 answer from page one believing it had read the whole thing, so `page_of` is a
 free function with a test asserting every character is reachable.
 
+### Deploy-day result, 2026-10-06 — and the defect it exposed in M29b
+
+**The tools deployed and were immediately blocked.** The model called
+`document_search`, waited, and told the household the search "did not work
+(timeout)" — twice, then offered to try something else. A timeout rather than a
+refusal, because the packets were *dropped*.
+
+mneme runs under `IPAddressDeny=any` with
+
+```
+IPAddressAllow = [ "localhost" ]
+```
+
+carrying the comment *"Loopback only.  Everything else arrives through a
+bridge."* That is true of everything which reaches mneme — Home Assistant comes
+IN over `ai3` through a socket proxy, so the daemon only ever sees 127.0.0.1 —
+and **false of everything mneme reaches**. `web_search` and `document_search` go
+OUT, to the container end of a point-to-point leg.
+
+Measured as the mneme uid under that exact filter:
+
+```
+http://[fdca:fe95::2]:28981/api/   -> 000 (blocked)
+http://[fdca:fe94::2]:8888/        -> 000 (blocked)
+http://127.0.0.1:11434/v1/models   -> 200
+```
+
+**So `web_search` has been blocked since M29b**, and the journal says why nobody
+noticed: the tool was never once invoked. It was shipped, enabled, advertised to
+the model, and never asked for. `document_search` is simply the first thing to
+exercise that path.
+
+The allow list is now **derived from the configured tool URLs** rather than
+listed, so a leg that moves cannot leave it behind — traefik.nix's argument for
+extracting hostnames from rules instead of keeping a second map. And a URL whose
+host is not a bracketed IPv6 literal is an **evaluation error** naming the
+option, because the alternative is exactly this failure reintroduced silently.
+Verified firing by breaking `documents.url` deliberately; the restored tree
+evaluates to an identical drv hash.
+
+One more instance of the ERE trap: `builtins.match` rejects `\[`, so the
+extraction uses POSIX bracket expressions. `machines/ernst/networking.nix`'s
+`addrOf` carries the same note — second time.
+
 ### What it deliberately does not do
 
 - **No embeddings and no vector store.** Full-text plus a read tool, which is
