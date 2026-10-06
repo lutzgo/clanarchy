@@ -3,3 +3,10 @@ result
 .gstack/
 .claude/
 site/
+
+# Python bytecode from running pkgs/mneme's test suite in a workspace.
+# jj auto-snapshots the WHOLE working copy, so these were committed by
+# accident in #284 — there is no `git add` to scope and therefore no moment
+# at which anyone was asked.  See CLAUDE.md's note on the auto-snapshot hazard.
+__pycache__/
+*.pyc

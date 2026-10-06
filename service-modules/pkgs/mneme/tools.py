@@ -155,7 +155,7 @@ class Toolbox:
                 )
             )
 
-        if self.documents_url:
+        if self.documents_url and self.documents_token:
             out.append(
                 _fn(
                     "document_search",
@@ -309,7 +309,9 @@ class Toolbox:
                 # fix, and it does not look like an auth problem from outside.
                 raise RuntimeError(
                     "the document archive refused mneme's token "
-                    f"(HTTP {resp.status}); paperless-provision may have failed"
+                    f"(HTTP {resp.status}); either paperless-provision failed "
+                    "to write it into the database, or this daemon could not "
+                    "read it — check mneme's own startup log first"
                 )
             if resp.status != 200:
                 raise RuntimeError(f"document archive returned HTTP {resp.status}")

@@ -855,6 +855,30 @@ in
   # like what it is.
   clan.core.vars.generators.paperless-mneme-token = {
     files."token".secret = true;
+
+    # ── THE ONE CONSUMER IS A HOST SERVICE, SO IT NEEDS THE OWNER ─────────
+    #
+    # Every other secret in this file is read by a CONTAINER, and gets there
+    # through `paperless-secrets.service`, which `install -m 0400 -o 315`s a
+    # copy into /run/paperless-secrets.  This one is different: mneme runs on
+    # the HOST and reads /run/secrets directly, so there is no staging unit to
+    # set the mode and sops-nix's default of 0400 root:root applies.
+    #
+    # MEASURED 2026-10-06.  Without this line the daemon logs
+    #
+    #   ERROR mneme could not read secret /run/secrets/vars/paperless-mneme-token/token:
+    #         [Errno 13] Permission denied
+    #
+    # at startup and then answers every search with the 401 message, because an
+    # empty token is still a token as far as the HTTP call is concerned.  The
+    # household sees "the document archive is unavailable" and the cause is two
+    # layers away.
+    #
+    # `owner` rather than a `group`: there is exactly one reader and it has its
+    # own uid (3039, allocated by M29b).  A group would be a second way to
+    # reach the same file for no additional consumer.
+    files."token".owner = "mneme";
+
     files."token".restartUnits = [
       "paperless-secrets.service"
       "container@paperless.service"

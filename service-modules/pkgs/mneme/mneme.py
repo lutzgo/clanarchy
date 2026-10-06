@@ -547,12 +547,38 @@ class Mneme:
                 "negative": cfg.image_negative,
                 "timeout": cfg.image_timeout,
             }
+        # ── A TOOL WHOSE CREDENTIAL IS UNREADABLE IS NOT OFFERED ────────
+        #
+        # MEASURED 2026-10-06: with the token file unreadable, `_read_secret`
+        # returned "" and the tool was advertised anyway — so every search went
+        # out with an empty Authorization header, came back 401, and reported
+        # "the document archive refused mneme's token; paperless-provision may
+        # have failed".  That message is a lie in this case, and it cost a
+        # debugging round: the real cause was an ERROR line at startup, two
+        # layers away from the symptom.
+        #
+        # So the credential is resolved BEFORE the toolbox is built, and an
+        # empty one disables the tools rather than arming broken ones.  The
+        # startup line below then omits "documents", which is the one place a
+        # person looks.  This is `/v1`'s argument reused: a tool nobody can
+        # execute is not a capability, it is a dead end with a description.
+        documents_token = _read_secret(cfg.documents_token_file)
+        documents_url = cfg.documents_url
+        if documents_url and not documents_token:
+            _LOG.error(
+                "document tools DISABLED: no token could be read from %s — "
+                "check that the file exists and is readable by this service's "
+                "user (clan vars `files.<n>.owner`)",
+                cfg.documents_token_file,
+            )
+            documents_url = ""
+
         self.tools = Toolbox(
             self.wiki,
             search_url=cfg.search_url,
             image=image,
-            documents_url=cfg.documents_url,
-            documents_token=_read_secret(cfg.documents_token_file),
+            documents_url=documents_url,
+            documents_token=documents_token,
             session_factory=lambda: self.session,
         )
 
