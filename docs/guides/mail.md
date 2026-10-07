@@ -488,17 +488,21 @@ container needs by name.
 that has silently stopped delivering is `active (running)` the whole time, and
 every unit-state signal reads green.
 
-**DMARC and TLS reporting are switched off.** Those options make *this* server
-mail daily reports to strangers, and they were disabled when the IP was
-Barracuda-listed, because unsolicited outbound volume to parties with no
-relationship to us was the last thing it needed. **That reason has now
-expired** — the delisting took and the PTR is set — so this is the first thing
-to turn on once step 7 passes:
+**DMARC and TLS report sending is ON, and was not always.** Those options make
+*this* server mail daily reports to strangers about their SPF/DKIM failures and
+TLS negotiations. They shipped **off**, because the IP was Barracuda-listed
+behind a generic pool PTR and unsolicited volume to parties with no
+relationship to us was the last thing it needed. Both halves of that premise
+expired — the delisting took, Vodafone set the PTR, and the delivery gate
+passed — so they were turned on in a **separate** change from the one that
+proved delivery, deliberately, rather than putting two untested things in one
+deploy.
 
-```nix
-dmarcReporting.enable = true;
-tlsrpt.enable         = true;
-```
+**If deliverability ever degrades, switch these back off first** — before the
+smarthost, before anything else. They are the only outbound traffic this server
+generates that nobody asked for, so they are the cheapest thing to stop.
 
 **Receiving** reports was never affected: that is a property of our own
-`_dmarc` record and has worked since the day it was published.
+`_dmarc` record and has worked since the day it was published. Note that
+`_smtp._tls` is still unpublished (it waits on MTA-STS), so nothing is asking
+us for TLS reports about ourselves yet either.
