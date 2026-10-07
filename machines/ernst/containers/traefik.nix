@@ -591,6 +591,18 @@ let
   minifluxAddr = "10.0.90.28";
   minifluxPort = 8080;
 
+  # Mail (M31) — 02:00:00:90:00:17 → 10.0.90.31.
+  #
+  # THIS PROXY ROUTES EXACTLY ONE THING TO IT, and not the mail server.
+  # SMTP, IMAP and ManageSieve reach that container through four UDM-Pro
+  # DNATs (ledger L19/L20) and a LAN rule (L22); none of them is HTTP and
+  # `:25` has no SNI, so no TCP router could carry them even if this file had
+  # one.  What IS routed is the MTA-STS policy file — a fixed HTTPS URL by
+  # RFC 8461 — served by a four-line nginx vhost in that container so the
+  # policy and the MX it names cannot drift apart.
+  mailAddr   = "10.0.90.31";
+  mtaStsPort = 8080;
+
   # Karakeep (M27) — bookmarks and page archives, in an NSPAWN container on
   # 02:00:00:90:00:15 → 10.0.90.29.
   #
@@ -972,6 +984,16 @@ let
     # Same three separate acts as every other name here: this entry, a public A
     # record, and the ledger row (L21) in docs/roadmap.md.
     "paperless"
+
+    # M31's MTA-STS policy.  THIS ONE HAS TO BE PUBLIC OR IT DOES NOTHING:
+    # the readers are remote MTAs deciding whether to require TLS to us, and
+    # they are by definition outside the house.  A LAN-only MTA-STS policy is
+    # a file nobody fetches.
+    #
+    # It is also the least sensitive name on this list by a distance — the
+    # response body is four lines naming the MX, which is already a public DNS
+    # record.  Ledger row L23.
+    "mtasts"
   ];
 
   # ── THE LOGIN PATHS, PER SERVICE, AND WHAT THIS DOES NOT COVER ────────────
@@ -2911,6 +2933,30 @@ in
               service     = "miniflux";
             };
 
+            # ── MTA-STS (M31) — one static file, for remote mail servers ──
+            #
+            # NO `authelia` MIDDLEWARE, and this is the least arguable
+            # exemption on the proxy.  Every other `appApiHosts` entry is a
+            # judgement about whether some client could follow a 302; here the
+            # clients are GMAIL'S AND OUTLOOK'S MTAs fetching a policy file
+            # before they will talk TLS to us, and an MTA has no browser, no
+            # session and no human.  A login page would simply mean the policy
+            # is unreadable and the feature off.
+            #
+            # IT PUBLISHES NOTHING PRIVATE.  The file's entire content is the
+            # MX hostname, which is already a public DNS record — this is the
+            # one exemption where there is no secret behind the door at all.
+            #
+            # THE BACKEND IS THE MAIL CONTAINER, which is otherwise not on this
+            # proxy at all (containers/mail.nix, convention 1).  That is
+            # deliberate: the policy names this server's own MX, so the two
+            # live together and cannot drift.
+            mtasts = {
+              rule        = "Host(`mta-sts.${baseDomain}`)";
+              entryPoints = [ "websecure" ];
+              service     = "mtasts";
+            };
+
             # ── Karakeep (M27) — bookmarks and page archives ──────────────
             #
             # NO `authelia` MIDDLEWARE, same list and same guard.  What makes
@@ -3211,6 +3257,11 @@ in
             # here.
             miniflux.loadBalancer.servers       = [ { url = "http://${minifluxAddr}:${toString minifluxPort}/"; } ];
             karakeep.loadBalancer.servers       = [ { url = "http://${karakeepAddr}:${toString karakeepPort}/"; } ];
+
+            # M31 — nginx inside the MAIL container, serving one static file.
+            # The only backend on this proxy that is not a web application;
+            # see the router above for why it lives there.
+            mtasts.loadBalancer.servers         = [ { url = "http://${mailAddr}:${toString mtaStsPort}/"; } ];
 
             # M30 — its own nspawn container on .30, answering plain HTTP on
             # the API port.  A WebSocket rides the same backend and Traefik

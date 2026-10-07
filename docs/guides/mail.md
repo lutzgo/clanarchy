@@ -158,25 +158,45 @@ without passing the UDM-Pro DNAT, so it would carry no port forward to remove,
 and the container's fail2ban jails are v4 chains. Reachable and unbannable at
 once is exactly what SN2 exists to prevent.
 
-### Not yet: MTA-STS and TLS-RPT
+### MTA-STS and TLS-RPT — three more records, added together
 
-`_mta-sts` and `_smtp._tls` are **deliberately absent from the table above**,
-and publishing them now would make things worse rather than better: MTA-STS
-requires a policy file served over HTTPS at
-`https://mta-sts.goclan.org/.well-known/mta-sts.txt`, and a `_mta-sts` record
-pointing at a 404 is a broken policy rather than no policy.
+These were deliberately held back from the first rollout, because a `_mta-sts`
+record pointing at a 404 is a *broken* policy rather than no policy. The policy
+file now exists (nginx inside the mail container, routed as `mtasts` on
+Traefik — ledger **L23**), so all three go in:
 
-That policy file is HTTP, so unlike everything else about mail it **does** ride
-Traefik: a small static-file router on the existing `*.goclan.org` wildcard,
-`mta-sts` added to `appApiHosts` (its clients are remote MTAs, which cannot
-follow a 302) and to `wanExposed`, plus a public A record and its own ledger
-row. It is the one piece of mail that touches `containers/ingress-policy.nix`,
-which is why it is a separate change and not part of M31 — it edits a
-fail-open-direction guard, and that does not belong in the same diff as a large
-new container.
+| Type | Name | Value |
+|---|---|---|
+| A | `mta-sts` | `78.94.91.74` |
+| TXT | `_mta-sts` | `v=STSv1; id=20261007000000Z` |
+| TXT | `_smtp._tls` | `v=TLSRPTv1; rua=mailto:dmarc@goclan.org` |
 
-Until it lands, inbound TLS is opportunistic. That is the same posture every
-other small mail server has and is not a reason to delay the rest.
+Grey cloud, like everything else. **Add the A record first** — the TXT record
+is a pointer, and senders that read it before the name resolves will cache a
+failure.
+
+> **The `id=` is a version stamp, not decoration.** Senders cache the policy
+> for `max_age` and only re-fetch when `id` changes. Whenever
+> `machines/ernst/containers/mail.nix` changes the policy body, bump this to a
+> new value — the convention above is just a UTC timestamp. Forget it and the
+> old policy stays live for a day.
+
+**The policy ships as `mode: testing`**, which means senders check it and
+report failures but still deliver. That is `p=none` again: under `enforce`, a
+certificate renewal that goes wrong does not degrade mail, it stops it, and the
+first symptom is a bounce in somebody else's postmaster log. Move to `enforce`
+in `mail.nix` once the TLS-RPT reports have been clean for a few weeks, raising
+`max_age` at the same time.
+
+Verify after deploying — this is the whole feature, and it is one request:
+
+```bash
+curl -s https://mta-sts.goclan.org/.well-known/mta-sts.txt
+dig +short TXT _mta-sts.goclan.org
+```
+
+The file must come back with `version: STSv1` and the MX, and the `id` in DNS
+must match what you published.
 
 ### Technitium (`10.0.5.3`) — internal
 
@@ -627,6 +647,6 @@ smarthost, before anything else. They are the only outbound traffic this server
 generates that nobody asked for, so they are the cheapest thing to stop.
 
 **Receiving** reports was never affected: that is a property of our own
-`_dmarc` record and has worked since the day it was published. Note that
-`_smtp._tls` is still unpublished (it waits on MTA-STS), so nothing is asking
-us for TLS reports about ourselves yet either.
+`_dmarc` record, and of `_smtp._tls` since MTA-STS landed. Both point at
+`dmarc@goclan.org`, so aggregate DMARC XML and TLS-RPT summaries arrive in
+`admin@`.
