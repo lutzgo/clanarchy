@@ -65,6 +65,7 @@ nav:
     - The reading stack: guides/reading-stack.md
     - The music pipeline: guides/music-pipeline.md
     - The document store: guides/document-store.md
+    - Video courses in Jellyfin: guides/courses.md
     - Navidrome clients: guides/navidrome-clients.md
     - The agent's memory: guides/agent-memory.md
     - HACS dependencies: guides/hacs-dependencies.md
