@@ -344,15 +344,36 @@ mail is not re-acquirable.
 
 ## Client setup
 
-Same settings everywhere — implicit TLS on both, no STARTTLS anywhere, because
-`143` and `587` are switched **off** on the server per RFC 8314.
+Same settings everywhere. **Mail is implicit TLS; ManageSieve is STARTTLS** —
+see the warning under the table, which has already cost one round.
 
 | | |
 |---|---|
-| IMAP | `mail.goclan.org` : `993`, SSL/TLS |
-| SMTP | `mail.goclan.org` : `465`, SSL/TLS |
-| ManageSieve | `mail.goclan.org` : `4190` |
+| IMAP | `mail.goclan.org` : `993`, **SSL/TLS** |
+| SMTP | `mail.goclan.org` : `465`, **SSL/TLS** |
+| ManageSieve | `mail.goclan.org` : `4190`, **STARTTLS** |
 | Username | the **full address** — `lutz@goclan.org`, not `lutz` |
+
+> ⚠️ **ManageSieve does not take implicit TLS, and `:4190` is not a typo for a
+> wrapper-mode port.** `143` and `587` are switched off on this server per RFC
+> 8314, so "implicit TLS everywhere, STARTTLS nowhere" is the right instinct for
+> *mail* — and it is wrong for Sieve. There is no implicit-TLS ManageSieve port
+> in common use: Dovecot's Pigeonhole listens plaintext on 4190 and advertises
+> `STARTTLS`, which is the standard. Measured on the running server:
+>
+> ```
+> $ exec 3<>/dev/tcp/10.0.90.31/4190; cat <&3
+> "IMPLEMENTATION" "Dovecot Pigeonhole"
+> "SASL" ""
+> "STARTTLS"
+> ```
+>
+> The empty `SASL` list is `ssl = required` working correctly — Dovecot offers
+> no authentication mechanism at all until TLS is up. A client configured for
+> SSL/TLS sends a TLS ClientHello into a plaintext greeting and the handshake
+> fails; **Nextcloud Mail reports this as `Request failed with status code
+> 500`**, which names neither TLS nor the port and sends you looking at
+> credentials.
 
 ### aerc (miralda, jens)
 
@@ -409,6 +430,16 @@ Use the **hostname, not the IP**. Nextcloud's container resolves
 certificate validates; pointed at the bare address, TLS fails on a name
 mismatch. No firewall change is needed in either container — the mail ports
 accept from everywhere.
+
+**Then, under Account settings:**
+
+- **Aliases → Add alias** — add the username form (`lgo@`, `sgo@`, `mgo@`).
+  The server permits it: `:465` enforces `reject_sender_login_mismatch` against
+  `vaccounts`, which maps each alias to its owning login. Without the alias here
+  you can receive at both addresses but only *send* as the canonical one.
+- **Sieve server → Enable sieve filter**, host `mail.goclan.org`, port `4190`,
+  **STARTTLS** — not SSL/TLS, see the warning above — with *IMAP credentials*.
+  This puts filters on the server, so they apply to K-9 and aerc too.
 
 > **Accounts are deliberately not auto-provisioned, and cannot be.** Nextcloud
 > Mail's default provisioning logs into IMAP with the user's *Nextcloud login
