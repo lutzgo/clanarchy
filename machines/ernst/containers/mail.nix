@@ -805,29 +805,43 @@ in
         #   The long argument is on the mail-dkim generator above.
         dkim.domains.${baseDomain}.selectors.mail.keyFile = "${secretsDir}/dkim.key";
 
-        # ── Both report SENDERS are off, and the reason has just expired ────
+        # ── Both report SENDERS are ON, and they were not always ────────────
         #
         #   These make this server mail DAILY REPORTS TO STRANGERS about their
-        #   SPF/DKIM failures and TLS negotiations.  That is good citizenship
-        #   on a healthy IP.  They were switched off because this IP was NOT
-        #   healthy — Barracuda-listed, with a generic pool PTR — and sending
-        #   unsolicited volume to parties who never asked, from a sender they
-        #   have no relationship with, is the exact traffic shape that deepens
-        #   a reputation problem.
+        #   SPF/DKIM failures and TLS negotiations — aggregate DMARC reports to
+        #   whatever `rua=` each sending domain publishes, and TLS-RPT summaries
+        #   to whatever `_smtp._tls` asks for.  That is ordinary good
+        #   citizenship on a healthy IP and it is how the ecosystem notices its
+        #   own breakage.
         #
-        #   BOTH HALVES OF THAT PREMISE ARE NOW GONE: the delisting took and
-        #   Vodafone set the PTR (see the header's before/after table).  So
-        #   these are the FIRST THING to switch on once the delivery gate in
-        #   docs/guides/mail.md passes — left off here only because flipping
-        #   them in the same change that first proves delivery would mean two
-        #   untested things at once.
+        #   THEY SHIPPED OFF, DELIBERATELY, AND THE REASON IS WORTH KEEPING.
+        #   M31 was built while this address was Barracuda-listed behind a
+        #   generic pool PTR, and unsolicited daily volume to parties who never
+        #   asked, from a sender they have no relationship with, is the exact
+        #   traffic shape that deepens a reputation problem rather than one it
+        #   survives.  Both halves of that premise then expired — the delisting
+        #   took and Vodafone set the PTR (the header's before/after table) —
+        #   and the delivery gate in docs/guides/mail.md passed end to end:
+        #   inbound from Gmail arrived, the reply went out.
+        #
+        #   SO THIS IS A SEPARATE COMMIT FROM THE ONE THAT PROVED DELIVERY, on
+        #   purpose.  Flipping them in the same change would have put two
+        #   untested things in one deploy, and the first of them was the one
+        #   the whole milestone turned on.
+        #
+        #   IF DELIVERABILITY EVER DEGRADES, THESE ARE THE FIRST THING BACK
+        #   OFF — before the smarthost, before anything else.  They are the
+        #   only outbound traffic this server generates that nobody asked for,
+        #   so they are the cheapest thing to stop sending.
         #
         #   NOTE WHAT THIS DOES NOT AFFECT.  RECEIVING reports is a property of
         #   our own _dmarc and _smtp._tls records pointing at dmarc@goclan.org;
-        #   it needs no option here and is switched on from the first day.  We
-        #   read reports about ourselves from the start and write none.
-        dmarcReporting.enable = false;
-        tlsrpt.enable         = false;
+        #   it needs no option here and has worked since those records were
+        #   published.  Turning these on is about what we WRITE, not what we
+        #   read — and `_smtp._tls` is not published yet, so nothing is asking
+        #   us for TLS reports about ourselves either way.
+        dmarcReporting.enable = true;
+        tlsrpt.enable         = true;
 
         # ── TLS ─────────────────────────────────────────────────────────────
         #   The cert itself is requested by the security.acme block below.
