@@ -380,6 +380,30 @@ rec {
     # hand on the local admin, because that account is the recovery path and
     # the recovery path is the one credential the portal cannot protect.
     (h "docs")
+
+    # MTA-STS (M31).  ONE CLIENT CLASS, AND IT IS NOT A PROGRAM ANYONE HERE
+    # RUNS: remote mail servers — Gmail's, Outlook's — fetching
+    # /.well-known/mta-sts.txt before deciding whether to require TLS when
+    # delivering to this domain.
+    #
+    # This is the test at the top of this file answered more plainly than by
+    # anything else in the list.  Every other exemption argues about whether
+    # some app could be made to follow a 302; an MTA has no browser, no
+    # session store and no human, and RFC 8461 gives it exactly one thing to
+    # do with a non-200: treat the domain as having no policy.  Forward-auth
+    # here would not break a client, it would silently switch the feature off.
+    #
+    # AND THERE IS NOTHING BEHIND THE DOOR.  The response is four lines whose
+    # only payload is the MX hostname, already a public DNS record — unlike
+    # every other name on this list, where the exemption is a judgement about
+    # trading a login page against a working client, this one guards no data
+    # at all.
+    #
+    # The backend is the MAIL container, which is otherwise absent from this
+    # file entirely (containers/mail.nix, convention 1): SMTP, IMAP and
+    # ManageSieve do not route through the proxy and cannot.  This single HTTP
+    # path is the exception that file already names.
+    (h "mta-sts")
   ];
 
   ############################################################################

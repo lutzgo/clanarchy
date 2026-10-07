@@ -82,7 +82,10 @@
 #      through the proxy, so there is no entry to make and the `withWan` guard
 #      in traefik.nix has nothing to check.  The one mail-adjacent thing that
 #      IS HTTP — the MTA-STS policy file at mta-sts.goclan.org — rides Traefik
-#      normally and is a separate change; see docs/guides/mail.md.
+#      normally, and is the one exception: an nginx vhost further down this
+#      file, routed as `mtasts`, in `appApiHosts` and `wanExposed`, ledger
+#      row L23.  It is served from HERE rather than a web container so the
+#      policy and the MX it names cannot drift.
 #
 #   2. ITS FIREWALL ACCEPTS FROM THE WHOLE INTERNET.  Every sibling container
 #      lists named peers (Traefik, the index, monitoring) and refuses
@@ -201,6 +204,18 @@ let
   # count, which is the whole reason this target clears SN3 — see the metrics
   # note further down.
   exporterPort = 9154;
+
+  # Traefik, which reaches exactly one thing in this container: the MTA-STS
+  # policy file.  Named here rather than inlined because it is the ONLY
+  # address in this file that is a named peer alongside monitoring — every
+  # other port deliberately answers the whole internet.
+  traefikAddr = "10.0.90.12";
+
+  # The MTA-STS policy, served over plain HTTP to Traefik, which terminates
+  # TLS for it on the existing *.goclan.org wildcard.  8080 because nothing
+  # else in this container listens there; it is not reachable from the WAN
+  # and carries no mail protocol.
+  mtaStsPort = 8080;
 
   baseDomain = "goclan.org";
 
@@ -679,7 +694,78 @@ in
       #   it would produce no rule and no warning.
       networking.firewall.extraCommands = ''
         iptables -A nixos-fw -p tcp -s ${monitoringAddr}/32 --dport ${toString exporterPort} -j nixos-fw-accept
+        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32    --dport ${toString mtaStsPort}  -j nixos-fw-accept
       '';
+
+      ##########################################################################
+      # The MTA-STS policy file.
+      #
+      # ── THE ONE PIECE OF MAIL THAT DOES RIDE TRAEFIK ──────────────────────
+      #
+      #   Convention 1 in the header says this container has no hostname on
+      #   the proxy, and that is still true of SMTP, IMAP and ManageSieve.
+      #   MTA-STS is the exception the header already names: RFC 8461 puts the
+      #   policy at a fixed HTTPS URL, so it is HTTP, so it goes where all HTTP
+      #   goes here.  It is served from THIS container rather than a web one
+      #   because the policy's only content is this server's own MX and the
+      #   two must not drift.
+      #
+      # ── WHY A WEB SERVER AT ALL ───────────────────────────────────────────
+      #
+      #   Traefik is a proxy and has no static-file capability; every service
+      #   in traefik.nix is a loadBalancer to a backend.  The alternatives were
+      #   a Yaegi plugin — which containers/traefik.nix rejects on principle,
+      #   an unpinned network fetch at proxy startup — or parking the file in
+      #   an unrelated web container, which spreads mail across two.  nginx is
+      #   already in this fleet and this vhost is four lines.
+      #
+      # ── `mode: testing`, NOT `enforce` ────────────────────────────────────
+      #
+      #   Testing means senders CHECK the policy and REPORT failures, but still
+      #   deliver if TLS does not validate.  Enforce means they bounce instead.
+      #   This is DMARC's `p=none` again, for the same reason and with the same
+      #   escalation: a certificate renewal that goes wrong under `enforce`
+      #   does not degrade mail, it STOPS it, and the first symptom is a sender
+      #   bouncing silently to someone else's postmaster.  Move to `enforce`
+      #   once the TLS-RPT reports (now enabled, and this is what makes them
+      #   meaningful) have been clean for a few weeks.
+      #
+      #   `max_age` 86400 and not the RFC's suggested weeks: in testing mode a
+      #   short cache is the point, because it is what lets a bad policy be
+      #   withdrawn in a day rather than inherited by every sender for a month.
+      #   Raise it with the move to enforce.
+      #
+      #   THE `id` IN THE _mta-sts TXT RECORD MUST CHANGE whenever this file
+      #   does, or senders keep the cached copy — the record is the version
+      #   stamp and the file is the payload.  docs/guides/mail.md pairs them.
+      ##########################################################################
+      services.nginx = {
+        enable = true;
+        # No recommended*Settings: this vhost serves one 100-byte static file
+        # to remote MTAs. Gzip, proxy tuning and the TLS defaults are all for
+        # workloads this is not, and TLS in particular is Traefik's job here.
+        virtualHosts."mta-sts.${baseDomain}" = {
+          listen = [ { addr = "0.0.0.0"; port = mtaStsPort; } ];
+          locations."= /.well-known/mta-sts.txt" = {
+            # CRLF line endings: RFC 8461 §3.2 specifies them, and while most
+            # implementations tolerate LF there is no reason to find out which
+            # do not.
+            alias = pkgs.writeText "mta-sts.txt" (
+              lib.concatStringsSep "\r\n" [
+                "version: STSv1"
+                "mode: testing"
+                "max_age: 86400"
+                "mx: ${fqdn}"
+                ""
+              ]
+            );
+            extraConfig = ''
+              default_type text/plain;
+              add_header Cache-Control "max-age=86400";
+            '';
+          };
+        };
+      };
 
       ##########################################################################
       # The mail server.
@@ -876,8 +962,8 @@ in
         #   our own _dmarc and _smtp._tls records pointing at dmarc@goclan.org;
         #   it needs no option here and has worked since those records were
         #   published.  Turning these on is about what we WRITE, not what we
-        #   read — and `_smtp._tls` is not published yet, so nothing is asking
-        #   us for TLS reports about ourselves either way.
+        #   read; `_smtp._tls` went in with MTA-STS, so the reading half works
+        #   too.
         dmarcReporting.enable = true;
         tlsrpt.enable         = true;
 
