@@ -1261,6 +1261,18 @@
           # M18 that is the event that would make every router in the house
           # reachable on a path the `wan` entryPoint does not gate.
           exporters.ipv6Guard  = true;
+
+          # M31.  The two external facts outbound mail rests on — a PTR
+          # Vodafone set on request, and staying off the blocklists — both
+          # of which can be lost on somebody else's schedule, silently.
+          # docs/guides/mail.md shipped asking for a QUARTERLY manual
+          # re-check, which is `ipv6Guard`'s own argument with a longer
+          # interval: a property re-measured by hand is not monitored.
+          #
+          # ernst only, and not because of the mail server's address: the
+          # collector reaches the mail container's resolver by name through
+          # `nixos-container run`, which only works on its host.
+          exporters.mailReputation = true;
         };
 
         # The laptops take node_exporter and nothing else.  miralda and biene

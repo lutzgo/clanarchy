@@ -801,6 +801,44 @@ in
         # enables turn on.
         openFirewall = true;
 
+        # ── The special-use folders ─────────────────────────────────────────
+        #
+        #   ALL FIVE ARE RESTATED, INCLUDING THE FOUR THAT MATCH UPSTREAM, and
+        #   that is not verbosity.  `mailserver.mailboxes` carries no `type`,
+        #   so it is a freeform attrset — and an option's `default` applies
+        #   only when there is NO definition.  Naming one mailbox here
+        #   replaces the whole set, silently taking Drafts, Sent and Junk with
+        #   it.  Adding `Archive` alone would have deleted three working
+        #   folders.
+        #
+        #   TWO CHANGES FROM UPSTREAM'S DEFAULT, both found by using it:
+        #
+        #     Trash was `auto = "no"` — declared, so clients know what it is
+        #     called, but never created.  Nextcloud Mail and K-9 both then
+        #     show no Trash folder and deleting falls back to an IMAP flag,
+        #     which is not what anybody means by delete.
+        #
+        #     Archive was absent entirely.  It is in RFC 6154 and every client
+        #     here has a one-key archive action; without the folder the key
+        #     does nothing.
+        #
+        #   `auto = "subscribe"` and not `"create"`: create makes the folder
+        #   exist, subscribe also puts it in the client's list.  An unsubscribed
+        #   folder is invisible in Nextcloud Mail, which is the same symptom as
+        #   it not existing and a longer walk to diagnose.
+        #
+        #   EXACTLY ONE `\\Junk` IS REQUIRED — dovecot.nix derives the Rspamd
+        #   learn-as-spam target from this attrset and asserts on the count.
+        #   `fts_autoindex = false` on Trash and Junk follows upstream: there
+        #   is no reason to spend index on either.
+        mailboxes = {
+          Trash   = { auto = "subscribe"; special_use = "\\Trash";   fts_autoindex = false; };
+          Junk    = { auto = "subscribe"; special_use = "\\Junk";    fts_autoindex = false; };
+          Drafts  = { auto = "subscribe"; special_use = "\\Drafts"; };
+          Sent    = { auto = "subscribe"; special_use = "\\Sent"; };
+          Archive = { auto = "subscribe"; special_use = "\\Archive"; };
+        };
+
         # ── DKIM from sops, not from /var/dkim ──────────────────────────────
         #   The long argument is on the mail-dkim generator above.
         dkim.domains.${baseDomain}.selectors.mail.keyFile = "${secretsDir}/dkim.key";

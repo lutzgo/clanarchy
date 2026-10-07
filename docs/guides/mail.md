@@ -79,19 +79,51 @@ and none of it can be.
    that mattered most, and the one that was expected to be refused on a
    consumer tariff. It was not.
 
-**Re-check 1, 2 and 4 quarterly.** A residential address can be re-listed
-because of something a neighbour's infected machine does, and a PTR can be lost
-to a tariff change or a renumbering. In every case the symptom is the same:
-mail silently stops arriving, with no error anywhere on this host. The one-line
-check:
+### These are now monitored, so do not re-check them by hand
+
+This section originally said *"re-check 1, 2 and 4 quarterly"*. That was the
+same mistake `ipv6Guard` was written to fix — **a property re-measured by hand
+is not monitored** — with a longer interval. Both facts can be lost on somebody
+else's schedule, and the symptom is identical and silent: mail stops being
+accepted, with nothing wrong on this host.
+
+A textfile collector on ernst now checks them **twice a day** and alerts
+through the usual ntfy path:
+
+| Alert | Fires when | What to do |
+|---|---|---|
+| `MailReverseDnsBroken` | PTR and forward A disagree, for 6h | Get the PTR restored, or enable [the smarthost escape hatch](#the-smarthost-escape-hatch) |
+| `MailIpBlocklisted` | listed on any checked DNSBL, for 6h | Use that list's removal form — the links are above |
+| `MailDnsblCheckUnusable` | a list fails its own test points, for 24h | The *check* is broken, not the reputation |
+
+**Why the third alert exists.** Measured on ernst: asking the host resolver
+gives `127.255.255.254`, which is Spamhaus **refusing** the query — they refuse
+anything arriving via a large public resolver, and Technitium forwards. A naive
+check reads that as "no answer, so not listed" and goes green permanently, in
+exactly the case it was built for. So the queries go through the mail
+container's kresd, and every run first asks each list about `127.0.0.2` (must
+be listed) and `127.0.0.1` (must be clean). A list that fails its own control
+gets `usable 0` and **no** `listed` verdict at all.
+
+To check by hand anyway — after an alert, or when curious — use the container's
+resolver, not the host's:
 
 ```bash
-dig +short -x 78.94.91.74 @1.1.1.1        # must answer mail.goclan.org
-dig +short A mail.goclan.org @1.1.1.1     # must answer 78.94.91.74
+ssh root@10.0.50.10 '
+  nixos-container run mail -- dig +short -x 78.94.91.74
+  nixos-container run mail -- dig +short A mail.goclan.org
+  nixos-container run mail -- dig +short 74.91.94.78.zen.spamhaus.org
+  nixos-container run mail -- dig +short 2.0.0.127.zen.spamhaus.org   # control: must be 127.0.0.x
+'
 ```
 
-Both must agree. That pair is forward-confirmed reverse DNS, and it is what
-receivers actually test.
+The first two must agree — that pair is forward-confirmed reverse DNS, and it
+is what receivers actually test. The third must be empty. **If the fourth is
+empty too, the other answers mean nothing.**
+
+Steps 1–3 above (the removal forms and SNDS) still have no automation and
+cannot have any; they are web forms. The monitoring tells you *when* to go and
+fill one in.
 
 ---
 
@@ -440,6 +472,21 @@ accept from everywhere.
 - **Sieve server → Enable sieve filter**, host `mail.goclan.org`, port `4190`,
   **STARTTLS** — not SSL/TLS, see the warning above — with *IMAP credentials*.
   This puts filters on the server, so they apply to K-9 and aerc too.
+
+**Folders are a server setting, not a client one.** Trash and Archive did not
+exist at first: simple-nixos-mailserver ships `Trash` as `auto = "no"` —
+declared so clients know its name, but never created — and no `Archive` at all.
+Both are now `auto = "subscribe"` in `mailserver.mailboxes`, so every client
+gets them without configuring anything. If you ever add a folder there, **list
+all five**: the option is a freeform attrset, so naming one replaces the whole
+default and would silently delete Drafts, Sent and Junk.
+
+**Avatars are off by design.** Turning off *Avatars from Gravatar and favicons*
+in Mail settings is what removes them — Gravatar lookups send a hash of your
+correspondent's address to a third party, and favicon fetches hit the sender's
+domain when you open a message. The local alternative costs nothing and leaks
+nothing: a contact in Nextcloud **Contacts** with a photo shows that photo in
+Mail. Same picture, no third party.
 
 > **Accounts are deliberately not auto-provisioned, and cannot be.** Nextcloud
 > Mail's default provisioning logs into IMAP with the user's *Nextcloud login
