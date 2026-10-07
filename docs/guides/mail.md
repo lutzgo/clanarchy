@@ -232,6 +232,41 @@ this container. Remember that `nc -vz 10.0.90.31 25` **from ernst** succeeds
 anyway, because the mail ports accept from everywhere — see the inverted
 negative control below.
 
+### But a LAN → 90 rule IS needed, and M31 shipped without it
+
+**`Allow Mail Clients`** — ledger **L22**, created 2026-10-07 after aerc on
+miralda could not connect.
+
+| | |
+|---|---|
+| Source zone | `Internal`, network **LAN** |
+| Destination | `Services`, **IP** `10.0.90.31` |
+| Ports | `465,993,4190` (Destination card) |
+| Return traffic | Auto Allow ✅ |
+
+The permanent `Allow Traefik` rule names exactly **one** destination,
+`10.0.90.12`, because until M31 every user-facing service arrived through the
+proxy. Mail does not and cannot. So VLAN 1 could reach `10.0.90.12:443` and
+nothing else on VLAN 90 — including `10.0.90.31`. aerc resolved the right
+address through Technitium and the packets were dropped at the UDM-Pro, which
+looks exactly like a broken mail client.
+
+> **Why no test caught this, which is the part worth keeping.** Every check
+> that passed came from somewhere that could already reach `.31`: ernst and its
+> containers are VLAN 50/90, Nextcloud Mail is a VLAN-90 peer, and both phones
+> were tested **on mobile data** — deliberately, because this guide said wifi
+> "would prove nothing about the DNATs". That was true, and it was half the
+> sentence. **The DNATs prove nothing about wifi either**: the two paths share
+> no hop. Mail has three distinct client paths — WAN DNAT, VLAN 90 peer, and
+> LAN — and each needs its own test. Testing two of them told us nothing about
+> the third.
+
+Scoped to the **IP**, not the `Services` network: this opens one container, not
+the other fourteen on VLAN 90. The control is that `10.0.90.26:80` (Nextcloud's
+own address) is still refused from the LAN — worth re-checking if the rule is
+ever edited. `:25` is deliberately not included; nothing inside the house
+submits mail unauthenticated.
+
 ---
 
 ## Rollout
@@ -346,9 +381,20 @@ that is new information rather than the predicted outcome: re-run the two
 
 ### 8. Clients
 
-See [Client setup](#client-setup). Test K-9 **over mobile data, not wifi** —
-on wifi it takes the LAN path and proves nothing about the port forwards. Then
-do one ManageSieve round-trip to exercise `:4190`.
+See [Client setup](#client-setup). **There are three distinct client paths and
+each needs its own test** — they share no hop, so passing one tells you nothing
+about the others. This is the step M31 got wrong: two of the three passed and
+the third was broken for a day.
+
+| Path | Test with | Goes via |
+|---|---|---|
+| WAN | K-9 **on mobile data, not wifi** | the four UDM-Pro DNATs (L19/L20) |
+| VLAN 90 peer | Nextcloud Mail | the container bridge, no rule needed |
+| **LAN** | **aerc on miralda or jens** | the `Allow Mail Clients` rule (**L22**) |
+
+On wifi a phone takes the LAN path and proves nothing about the port forwards —
+and equally, the port forwards prove nothing about the LAN. Then do one
+ManageSieve round-trip to exercise `:4190`.
 
 ### 9. Protection
 
