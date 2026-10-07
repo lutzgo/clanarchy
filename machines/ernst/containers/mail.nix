@@ -242,6 +242,10 @@ let
   acctGen = config.clan.core.vars.generators.mail-accounts;
   dkimGen = config.clan.core.vars.generators.mail-dkim;
 
+  # noreply@'s credential — declared further down in this file, read here and
+  # by containers/nextcloud.nix, which takes the plaintext half.
+  systemSenderGen = config.clan.core.vars.generators.mail-system-sender;
+
   # Declared in containers/traefik.nix.  THE SAME CREDENTIAL, REACHED ACROSS
   # RATHER THAN PROMPTED TWICE — it is one Cloudflare API token, already
   # scoped Zone:DNS:Edit + Zone:Zone:Read on goclan.org, and a second
@@ -428,6 +432,11 @@ in
           (f: "stage ${acctGen.files.${f}.path} ${secretsDir}/${f} ${toString dovecotUid}")
           (lib.filter (lib.hasSuffix ".hash") (lib.attrNames acctGen.files))}
 
+      # noreply@ comes from its OWN generator (see mail-system-sender below),
+      # so it is not in the loop above — that one walks `mail-accounts` only.
+      # Staged identically: Dovecot reads it, so uid 46.
+      stage ${systemSenderGen.files."noreply.hash".path} ${secretsDir}/noreply.hash ${toString dovecotUid}
+
       # The DKIM private key.  GENERATED, not prompted, so it is always
       # present — but staged through the same guard so that a fleet restored
       # from a tree without it degrades to "outgoing mail is unsigned" rather
@@ -490,6 +499,62 @@ in
       rspamadm dkim_keygen -d ${baseDomain} -s mail -b 2048 -k "$out/dkim.key" > "$out/dkim.txt"
       if [ ! -s "$out/dkim.key" ] || [ ! -s "$out/dkim.txt" ]; then
         echo "  ✗ rspamadm dkim_keygen produced an empty key or record" >&2
+        exit 1
+      fi
+    '';
+  };
+
+  ##############################################################################
+  # noreply@ — the credential Nextcloud sends system mail with.
+  #
+  # ── GENERATED, NOT PROMPTED, AND THAT IS WHY IT IS ITS OWN GENERATOR ───────
+  #
+  #   Nobody types this password: one machine hands it to another.  A prompt
+  #   would be a human-chosen secret for an account no human logs into, and it
+  #   would make this generator block every deploy of every machine until
+  #   somebody answered it — which is what the prompted `mail-accounts`
+  #   already does and the reason adding a sixth mailbox there would have
+  #   RE-PROMPTED ALL FIVE existing passwords.  A generator is satisfied only
+  #   when every file it declares exists, so a new file in an old generator
+  #   re-runs the whole thing.  A separate generator re-runs only itself.
+  #
+  #   It is NOT shared: both readers — this container and Nextcloud's — are on
+  #   ernst, so a per-machine var reaches both.  containers/nextcloud.nix
+  #   reads it across, the way every consumer reads the OIDC pairs declared in
+  #   containers/authelia.nix.
+  #
+  # ── BOTH HALVES, FOR THE USUAL REASON ─────────────────────────────────────
+  #
+  #   Dovecot verifies the hash; Nextcloud must send the password itself,
+  #   because SMTP AUTH has no hash-only shape.  Same split as lutz's, and the
+  #   same shape as modules/nix-remote-builder.nix's keypair.
+  #
+  #   `tr -d` on the base64 punctuation follows containers/nextcloud.nix's
+  #   admin password: this string is pasted into a JSON blob and read back by
+  #   PHP, and the punctuation buys nothing while costing quoting mistakes.
+  ##############################################################################
+  clan.core.vars.generators.mail-system-sender = {
+    files."noreply.hash" = {
+      secret       = true;
+      restartUnits = [ "mail-secrets.service" "container@mail.service" ];
+    };
+    files."noreply.plain" = {
+      secret       = true;
+      restartUnits = [ "nextcloud-secrets.service" "container@nextcloud.service" ];
+    };
+
+    runtimeInputs = [ pkgs.coreutils pkgs.openssl pkgs.mkpasswd ];
+    script = ''
+      set -euo pipefail
+      pw=$(openssl rand -base64 48 | tr -d '\n=+/' | cut -c1-48)
+      if [ "''${#pw}" -lt 32 ]; then
+        echo "  ✗ openssl produced a short password (''${#pw} chars)" >&2
+        exit 1
+      fi
+      printf '%s' "$pw" > "$out/noreply.plain"
+      printf '%s' "$pw" | mkpasswd -s > "$out/noreply.hash"
+      if [ ! -s "$out/noreply.hash" ]; then
+        echo "  ✗ mkpasswd produced nothing" >&2
         exit 1
       fi
     '';
@@ -869,6 +934,23 @@ in
         # word.
         accounts."go@${baseDomain}" = {
           hashedPasswordFile = "${secretsDir}/go.hash";
+        };
+
+        # The sixth mailbox, and the only one no human reads.  Nextcloud
+        # authenticates as this to send share links, calendar invitations and
+        # password resets — see containers/nextcloud.nix.
+        #
+        # A REAL MAILBOX AND NOT AN ALIAS, because SMTP AUTH needs a login of
+        # its own: an alias is a routing rule, not an identity Dovecot can
+        # authenticate.  The Maildir it gets is the point rather than waste —
+        # bounces and out-of-office replies to automated mail land somewhere
+        # inspectable instead of in a person's inbox, which is the whole
+        # reason this is not just `admin@`.
+        #
+        # NO USERNAME ALIAS, unlike the five above: there is no person behind
+        # it, so there is no second name to be reachable under.
+        accounts."noreply@${baseDomain}" = {
+          hashedPasswordFile = "${secretsDir}/noreply.hash";
         };
 
         # ── Ports: wrapper-mode only, which is upstream's default and RFC

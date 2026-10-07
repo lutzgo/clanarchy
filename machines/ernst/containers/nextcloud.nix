@@ -208,6 +208,19 @@ let
   secretsDir     = "/run/nextcloud-secrets";
   adminPassFile  = "${secretsDir}/admin-pass";
   oidcSecretFile = "${secretsDir}/oidc-client-secret";
+  smtpSecretFile = "${secretsDir}/smtp.json";
+
+  # noreply@'s password, declared in containers/mail.nix beside the mailbox it
+  # belongs to.  Both containers are on ernst, so a per-machine var reaches
+  # both — this is the same reach-across every consumer makes for the OIDC
+  # pairs in containers/authelia.nix.
+  systemSenderGen = config.clan.core.vars.generators.mail-system-sender;
+
+  # The mail server (M31).  Reached BY NAME and not by address, because the
+  # certificate is issued for `mail.goclan.org` and Technitium resolves it to
+  # 10.0.90.31 from inside this container (verified) — pointed at the bare
+  # address, TLS fails on a name mismatch.
+  mailHost = "mail.goclan.org";
 
   adminGen = config.clan.core.vars.generators.nextcloud-admin;
 
@@ -393,6 +406,23 @@ in
 
       install -m 0400 -o ${toString nextcloudUid} -g ${toString nextcloudGid} \
         ${oidcGen.files."nextcloud-client-secret".path} ${oidcSecretFile}
+
+      # ── The SMTP password, as JSON for `services.nextcloud.secretFile` ────
+      #
+      # NOT as a `settings` entry: that attrset is rendered into config.php
+      # through the Nix store, which is world-readable on this host. The
+      # module's `secretFile` exists for exactly this — a JSON blob merged
+      # into config.php at activation, in the same shape as `settings`.
+      #
+      # Written through .tmp + mv so a half-written file is never read: unlike
+      # the two installs above, this one is BUILT here rather than copied, so
+      # there is a window to get wrong.
+      umask 077
+      printf '{"mail_smtppassword":"%s"}\n' \
+        "$(cat ${systemSenderGen.files."noreply.plain".path})" > ${smtpSecretFile}.tmp
+      chown ${toString nextcloudUid}:${toString nextcloudGid} ${smtpSecretFile}.tmp
+      chmod 0400 ${smtpSecretFile}.tmp
+      mv -f ${smtpSecretFile}.tmp ${smtpSecretFile}
     '';
   };
 
@@ -609,6 +639,44 @@ in
         # is a confusing name for a Nextcloud user.
         config.adminuser = "ncadmin";
         config.adminpassFile = adminPassFile;
+
+        # ── Outbound mail, via M31's server as noreply@ ────────────────────
+        #
+        #   Until this landed `mail_smtphost` was Nextcloud's stock
+        #   `127.0.0.1` and nothing could send.  That is a SILENT failure in
+        #   four places — share-by-mail links, calendar iMIP invitations,
+        #   activity notifications and local password resets — and the
+        #   calendar one is the trap: inviting an external guest appears to
+        #   work and simply never reaches them.
+        #
+        #   `secretFile` below carries the password; it is NOT in `settings`,
+        #   because that attrset is rendered into config.php through the Nix
+        #   store and this host's store is world-readable.
+        #
+        #   AUTHENTICATED SUBMISSION ON 465, not a `mynetworks` exemption for
+        #   this container's address.  The exemption was the cheaper option —
+        #   no credential, no mailbox, one line — and it was rejected: Postfix
+        #   `mynetworks` bypasses relay denial, so a compromised Nextcloud
+        #   could relay to any destination as any sender, carrying our DKIM
+        #   signature.  A credential scoped to one mailbox is revocable by
+        #   regenerating one generator; a trusted /32 is not revocable at all
+        #   short of editing the mail server.
+        secretFile = smtpSecretFile;
+
+        settings = {
+          mail_smtpmode     = "smtp";
+          mail_smtphost     = mailHost;
+          mail_smtpport     = 465;
+          # `ssl`, not `tls`: Nextcloud's `tls` means STARTTLS, and 465 is
+          # implicit TLS.  M31 leaves 587 off per RFC 8314, so there is no
+          # STARTTLS port to fall back to and getting this wrong is a hang
+          # rather than a clear error.
+          mail_smtpsecure   = "ssl";
+          mail_smtpauth     = true;
+          mail_smtpname     = "noreply@${baseDomain}";
+          mail_from_address = "noreply";
+          mail_domain       = baseDomain;
+        };
 
         # Redis for the distributed cache and the file-locking backend, over
         # its unix socket.  APCu stays the local cache (`caching.apcu`, on by

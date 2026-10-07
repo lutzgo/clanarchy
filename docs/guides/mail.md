@@ -16,6 +16,7 @@ Five mailboxes, one domain. Webmail is the Nextcloud **Mail** app at
 | `sarinah@goclan.org` | `sgo@` | K-9 on Sarinah's phone |
 | `max@goclan.org` | `mgo@` | K-9 on Max's phone |
 | `go@goclan.org` | — | the couch/admin account |
+| `noreply@goclan.org` | — | Nextcloud's system mail — no human reads it |
 
 **Everyone is reachable under both names.** The fleet identifies people by a
 three-letter username (`lgo`, `sgo`, `mgo`) and addresses them by their first
@@ -562,11 +563,29 @@ Mail. Same picture, no third party.
 > for. The container file carries the full argument. Typing three passwords
 > once is the cheaper side of that trade.
 
-**Nextcloud's own outbound mail is still unconfigured** and is a separate gap:
-`mail_smtphost` is the stock `127.0.0.1` default, so `sharebymail` and
-password-reset mail cannot send. That needs either a mailbox credential for
-Nextcloud or a Postfix `mynetworks` exemption for `10.0.90.26` — its own
-decision, its own change.
+**Nextcloud's own outbound mail now works too**, and it is a different thing
+from the Mail app above: this is Nextcloud *itself* sending — share-by-mail
+links, calendar iMIP invitations, activity notifications, local password
+resets. It had been silently unable to send since the day Nextcloud shipped
+(`mail_smtphost` was the stock `127.0.0.1`), and the calendar one is the trap:
+inviting an external guest appears to work and never reaches them.
+
+It authenticates as **`noreply@goclan.org`** on `:465`, with a password from
+its own generated clan var — no prompt, because no human types it. Nothing to
+configure per user.
+
+> **Why a sixth mailbox rather than a `mynetworks` exemption.** Trusting
+> `10.0.90.26/32` in Postfix would have been one line and no credential — but
+> `mynetworks` bypasses relay denial, so a compromised Nextcloud could relay
+> anywhere as anyone, carrying our DKIM signature. A credential scoped to one
+> mailbox is revocable by regenerating one generator; a trusted `/32` is not
+> revocable short of editing the mail server. Reusing `admin@` was the third
+> option and was rejected for a duller reason: its password is prompted, so
+> emitting the plaintext would have re-prompted all five human mailboxes.
+>
+> The Maildir `noreply@` gets is a feature, not waste — bounces and
+> out-of-office replies to automated mail land somewhere inspectable instead
+> of in a person's inbox.
 
 ---
 
