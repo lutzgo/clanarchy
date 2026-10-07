@@ -724,10 +724,47 @@ in
             notes
             user_oidc     # the Authelia login button
             mail          # webmail against M31's server — see the note below
+            integration_paperless  # "send to Paperless" in the Files menu (M32)
             ;
         };
         extraAppsEnable = true;
       };
+
+      # ── THE PAPERLESS APP IS A FILE ACTION, NOT A SECOND INBOX (M32) ──────
+      #
+      #   `integration_paperless` adds one item to the Files action menu:
+      #   "Send to Paperless". It is the official Nextcloud app
+      #   (nextcloud/integration_paperless), in nixpkgs' curated set, so it
+      #   needs no appstore — which is the whole reason it is acceptable here.
+      #
+      #   IT DOES NOT REPLACE THE SCAN INBOX, and the two are for different
+      #   motions. `Scan Inbox` is a drop box: anything that lands there is
+      #   consumed and vanishes, which is what a phone wants. This is for a
+      #   file that is ALREADY in Nextcloud and should ALSO be in the archive —
+      #   a PDF someone mailed you, a contract you edited. The original stays
+      #   where it is.
+      #
+      #   THE UPLOAD IS SERVER-SIDE, so this container has to reach paperless.
+      #   Verified from inside it (2026-10-07):
+      #
+      #     getent hosts docs.goclan.org   -> 10.0.90.12   (Traefik)
+      #     curl https://docs.goclan.org/api/   -> 302      (paperless answering)
+      #     curl http://10.0.90.32:28981/api/   -> 000      (backend, blocked)
+      #
+      #   So it is configured with the PUBLIC NAME and needs no new firewall
+      #   rule anywhere — and the direct path stays shut. Pointing it at the
+      #   backend address would fail anyway: `PAPERLESS_URL` sets Django's
+      #   ALLOWED_HOSTS, so a request with `Host: 10.0.90.32` is refused. That
+      #   is containers/homepage.nix's Nextcloud-widget situation exactly, one
+      #   service along.
+      #
+      #   PER-USER AND NOT PROVISIONABLE. The app stores its URL and API token
+      #   in PERSONAL settings, so each person enters them once under
+      #   Settings → Personal → Paperless. A token is minted in paperless under
+      #   the user's own account, which is the point: the upload is attributed
+      #   to the person who made it, not to a shared credential. The `mneme`
+      #   token is read-only and deliberately unsuitable.
+      #   docs/guides/document-store.md carries the two fields.
 
       # ── THE MAIL APP'S ACCOUNTS ARE NOT PROVISIONED, AND CANNOT BE ────────
       #

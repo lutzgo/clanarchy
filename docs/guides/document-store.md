@@ -104,6 +104,103 @@ therefore have to be done by hand the first time.
   archive as `{created_year}/{correspondent}/{title}`, which is what makes a
   ZFS snapshot restorable with `cp` and without paperless.
 
+## Automatic tagging, titles and filenames
+
+Three different things, and only one of them is already automatic.
+
+| | Automatic? | What makes it work |
+|---|---|---|
+| **The file on disk** | **Yes, already** | `PAPERLESS_FILENAME_FORMAT` files the archive as `{{ created_year }}/{{ correspondent }}/{{ title }}`. Declared in Nix; nothing to set |
+| **Tags, correspondent, document type** | **After you teach it** | paperless's scikit-learn classifier, which learns from *your corrections*. It cannot guess on an empty database |
+| **The document title** | **No** | Stays whatever the file was called. Needs a Workflow, see below |
+
+### The classifier has to be taught, and this is the whole procedure
+
+2.20.15 has no LLM — nothing reads a document and invents a label. What it has
+is a classifier that notices patterns in what *you* have already filed. So:
+
+1. **Create the labels first.** Tags, Correspondents and Document Types in the
+   sidebar. Nothing is suggested until the label exists.
+2. **On each one, set Matching algorithm to `Auto`.** This is the step people
+   miss. The default is `None`, and a label with `None` is never applied by
+   anything — the classifier trains on it and then has no permission to use it.
+   For a correspondent whose name always appears literally, `Any word` or
+   `Regular expression` is more reliable than `Auto` and works from document
+   one.
+3. **File 5–10 documents per label by hand.** Below roughly five examples the
+   classifier will not predict a label at all.
+4. **Wait.** Training runs on a schedule inside the container
+   (`paperless-scheduler`), not on save.
+
+Expect nothing useful for the first couple of dozen documents. That is the
+trade for having no model involved.
+
+### Automatic titles need a Workflow
+
+Settings → **Workflows** → add one, trigger *Document Added*, action
+*Assignment*, and set the **title** field to a template, e.g.
+
+```
+{{ correspondent }} – {{ created }}
+```
+
+There is already a workflow called **Share with the household** — do not edit
+that one. It is recreated from `paperless-provision.service` on every deploy,
+so changes to it are silently reverted. Add a second workflow instead.
+
+### An inbox tag is worth it once there is volume
+
+The usual paperless pattern: a tag called `Inbox`, assigned by a workflow to
+every new document, removed when you file it. Then "what still needs filing" is
+a saved view rather than a memory. Settings → General has **"Automatically
+remove inbox tag(s) on save"** to close the loop.
+
+Not set up here, because with three documents it is ceremony. Worth doing at
+perhaps fifty.
+
+## What to set on the two settings pages
+
+**Settings** (`/settings`) is per-user interface preference — display language,
+date format, dark mode. Nothing there affects how documents are processed, and
+nothing there needs changing.
+
+**Configuration** (`/config`) is different, and **two fields on it are owned by
+Nix**:
+
+> ⚠️ On the **OCR Settings** tab, `Language` and `Mode` are reset to empty on
+> every deploy by `paperless-provision.service`, so the environment wins. Set
+> them in `containers/paperless.nix`, not here. See the OCR section above for
+> what happened when they were set in the UI.
+>
+> Everything else on that page — deskew, rotate pages, unpaper, output type and
+> the **Barcode Settings** tab — is yours and is left alone.
+
+The one worth knowing about is **Barcode Settings → Enable barcode splitting**:
+put a separator sheet between documents and one scan becomes several. Useful if
+you ever feed a stack through a sheet-fed scanner; irrelevant for phone scans.
+
+## Sending a file from Nextcloud
+
+`integration_paperless` adds **"Send to Paperless"** to the Files action menu
+(the `⋯` next to a file). It is for a file that is *already* in Nextcloud and
+should *also* be in the archive — the original stays where it is. That is the
+difference from `Scan Inbox`, which consumes and deletes.
+
+**Each person sets it up once**, because the app keeps its settings per user:
+
+1. In paperless: your avatar → **My Profile** → mint an **API token** (not the
+   `mneme` one — that is read-only and belongs to the agent).
+2. In Nextcloud: **Settings → Personal → Paperless**, and enter
+
+   | Field | Value |
+   |---|---|
+   | URL | `https://docs.goclan.org` |
+   | Token | the token from step 1 |
+
+The upload happens server-side, from the Nextcloud container through Traefik, so
+the public name is the right value — the backend address would be refused by
+`PAPERLESS_URL`'s `ALLOWED_HOSTS`.
+
 ## Office files
 
 `.docx`, `.odt`, `.xlsx` and friends work: `configureTika = true` brings up
