@@ -408,6 +408,58 @@ in
             One `ip -6 addr` per run, no network access, sub-millisecond.
           '';
         };
+
+        mailReputation = lib.mkOption {
+          type        = lib.types.bool;
+          default     = false;
+          description = ''
+            Export the two external facts M31's outbound mail depends on —
+            forward-confirmed reverse DNS, and DNSBL listing status — via
+            node_exporter's textfile collector. Backs the
+            `MailReverseDnsBroken`, `MailIpBlocklisted` and
+            `MailDnsblCheckUnusable` alerts.
+
+            ── WHY THIS EXISTS, IN THIS REPO'S OWN WORDS ──
+
+            `ipv6Guard` above was written because "a property re-measured by
+            hand is not monitored". `docs/guides/mail.md` shipped with a
+            **quarterly manual re-check** of exactly two facts, which is the
+            same sentence with a longer interval. Both can be lost without
+            anybody being told — a PTR to a tariff change or a renumbering, a
+            listing to something a neighbour's infected machine does — and in
+            both cases the symptom is identical and silent: mail stops being
+            accepted, with no error anywhere on this host.
+
+            ── THE CHECK MUST NOT RUN ON THE HOST RESOLVER, AND THAT IS THE
+               WHOLE DESIGN ──
+
+            Measured on ernst 2026-10-07:
+
+              host (Technitium)            -> 127.255.255.254
+              via the mail container       -> empty
+
+            `127.255.255.254` is Spamhaus REFUSING the query, which they do for
+            anything arriving through a large public resolver — and Technitium
+            forwards. A naive host-side check reads that as "no answer, so not
+            listed" and goes green **permanently**, in exactly the case it was
+            built for. So the queries are routed through the mail container's
+            kresd, which does its own recursion (`mailserver.localDnsResolver`
+            — the same resolver Rspamd scores with, so this measures the path
+            that actually matters).
+
+            ── IT CARRIES ITS OWN POSITIVE CONTROL ──
+
+            Every run queries Spamhaus's documented test points before
+            trusting its own answer: `2.0.0.127` must come back listed and
+            `1.0.0.127` must come back clean. If either fails, the collector
+            emits `clanarchy_mail_dnsbl_usable 0` and does NOT emit a
+            `listed 0` it cannot stand behind. That is SN3 applied to an
+            instrument rather than a target: a refused query and a clean IP
+            look identical on the wire, and only the control tells them apart.
+
+            A handful of DNS lookups per run. Default off; ernst sets it.
+          '';
+        };
       };
     };
 
@@ -436,6 +488,36 @@ in
           # window in which the file is absent and the metric silently missing
           # rather than zero.
           textfileDir = "/var/lib/prometheus-node-exporter-textfile";
+
+          # ── M31's deliverability facts, as data ──────────────────────────
+          #
+          # Not options, deliberately. Every one of these is a property of
+          # THIS deployment that already appears verbatim in
+          # machines/ernst/containers/mail.nix and docs/guides/mail.md, and a
+          # third configurable copy is a third thing to leave stale. A fleet
+          # that grows a second mail server can promote them then.
+          #
+          # `reversedIp` is precomputed rather than reversed in shell, so a
+          # typo is an evaluation error here instead of a query against the
+          # wrong address that comes back clean and reassuring.
+          mailRep = rec {
+            container   = "mail";
+            publicIp    = "78.94.91.74";
+            reversedIp  = "74.91.94.78";
+            expectedPtr = "mail.goclan.org";
+
+            # Only lists that publish the 127.0.0.2 / 127.0.0.1 test points,
+            # because the positive control is what makes an answer
+            # trustworthy. A list without one cannot be distinguished from a
+            # list that has stopped answering, so it would be monitoring
+            # theatre. UCEPROTECT is excluded on different grounds: it lists
+            # entire ranges as policy and would be permanently red.
+            blocklists = [
+              "zen.spamhaus.org"
+              "b.barracudacentral.org"
+              "bl.spamcop.net"
+            ];
+          };
 
           # Failed units inside the nspawn containers, as Prometheus metrics.
           #
@@ -598,6 +680,111 @@ in
             '';
           };
 
+          # ── M31's deliverability tripwire ───────────────────────────────
+          #
+          # Emits three families, all unconditionally including their zeros —
+          # ipv6Guard's reasoning: this collector asserts negatives, and an
+          # absent series would be indistinguishable from the collector having
+          # died, which is the one case the alerts exist for.
+          #
+          # EVERY QUERY GOES THROUGH THE MAIL CONTAINER, not the host. The
+          # option's description carries the measurement; the short version is
+          # that Technitium forwards, Spamhaus refuses forwarded queries with
+          # 127.255.255.254, and a host-side check would therefore read
+          # "refused" as "clean" forever.
+          #
+          # `nixos-container run` and not `systemd-run --machine`: the latter
+          # leaves a failed transient unit behind on any error, which trips
+          # `ContainerSystemdUnitFailed` and pages about the monitoring rather
+          # than the thing monitored. That cost four false alerts on
+          # 2026-09-27 and is written down in the runbooks.
+          mailReputationCollector = pkgs.writeShellApplication {
+            name = "clanarchy-mail-reputation-collector";
+            runtimeInputs = [ pkgs.coreutils pkgs.gnused pkgs.gnugrep ];
+            text = ''
+              out=${textfileDir}/mail-reputation.prom
+              tmp=$(mktemp "$out.XXXXXX")
+              trap 'rm -f "$tmp"' EXIT
+
+              ip=${mailRep.publicIp}
+              want=${mailRep.expectedPtr}
+              rev=${mailRep.reversedIp}
+
+              # One place that knows how to ask, so the host resolver cannot
+              # creep back in via a later edit.
+              #
+              # ABSOLUTE PATH, not a runtimeInput: `nixos-container` is built
+              # by the containers module into the system profile, not exposed
+              # as a package this file could add to `runtimeInputs`.
+              # writeShellApplication prepends to PATH rather than replacing
+              # it, so the ambient one would usually work — but "usually" is
+              # the wrong guarantee for the command every single metric here
+              # depends on, and this is the exact string the hardened probe
+              # was measured with on 2026-10-07.
+              #
+              # `dig` resolves inside the container, where M31 puts it.
+              q() { /run/current-system/sw/bin/nixos-container run ${mailRep.container} -- dig +short +time=5 +tries=2 "$@" 2>/dev/null || true; }
+
+              ##############################################################
+              # Forward-confirmed reverse DNS.  BOTH directions must agree —
+              # a PTR alone proves nothing, because anyone can point a PTR at
+              # a name they do not control.  Receivers check the pair.
+              ##############################################################
+              ptr=$(q -x "$ip" | sed 's/\.$//' | head -1)
+              fwd=$(q A "$want" | head -1)
+              fcrdns=0
+              if [ "$ptr" = "$want" ] && [ "$fwd" = "$ip" ]; then fcrdns=1; fi
+
+              {
+                echo "# HELP clanarchy_mail_fcrdns_ok Forward-confirmed reverse DNS for the mail sender address. 1 is healthy."
+                echo "# TYPE clanarchy_mail_fcrdns_ok gauge"
+                echo "clanarchy_mail_fcrdns_ok $fcrdns"
+              } > "$tmp"
+
+              ##############################################################
+              # DNSBLs, each gated on its own positive control.
+              #
+              # 127.0.0.2 is the address every DNSBL in this list publishes as
+              # permanently listed, and 127.0.0.1 as permanently clean.  If a
+              # list does not answer correctly for BOTH, it is not answering
+              # for us either, and `listed` is not emitted at all — only
+              # `usable 0`.  Emitting `listed 0` from a refused query is the
+              # precise failure this whole collector was written to avoid.
+              ##############################################################
+              # Grouped, not four `>>` in a row: writeShellApplication's lint
+              # pass treats SC2129 as an error and fails the DERIVATION, which
+              # `nix eval` does not surface — ipv6-guard's comment above
+              # records the same lesson about SC2126.
+              {
+                echo "# HELP clanarchy_mail_dnsbl_usable DNSBL answered its own test points correctly this run. 1 is healthy."
+                echo "# TYPE clanarchy_mail_dnsbl_usable gauge"
+                echo "# HELP clanarchy_mail_dnsbl_listed Our public IP is listed on this DNSBL. 0 is healthy."
+                echo "# TYPE clanarchy_mail_dnsbl_listed gauge"
+              } >> "$tmp"
+
+              for bl in ${lib.concatStringsSep " " mailRep.blocklists}; do
+                pos=$(q "2.0.0.127.$bl" | grep -c '^127\.' || true)
+                neg=$(q "1.0.0.127.$bl" | grep -c '^127\.' || true)
+
+                if [ "''${pos:-0}" -ge 1 ] && [ "''${neg:-0}" -eq 0 ]; then
+                  echo "clanarchy_mail_dnsbl_usable{list=\"$bl\"} 1" >> "$tmp"
+                  hit=$(q "$rev.$bl" | grep -c '^127\.' || true)
+                  if [ "''${hit:-0}" -ge 1 ]; then
+                    echo "clanarchy_mail_dnsbl_listed{list=\"$bl\"} 1" >> "$tmp"
+                  else
+                    echo "clanarchy_mail_dnsbl_listed{list=\"$bl\"} 0" >> "$tmp"
+                  fi
+                else
+                  echo "clanarchy_mail_dnsbl_usable{list=\"$bl\"} 0" >> "$tmp"
+                fi
+              done
+
+              chmod 0644 "$tmp"
+              mv -f "$tmp" "$out"
+              trap - EXIT
+            '';
+          };
+
           # Ports this machine actually exposes.
           exposedPorts =
             [ ports.node ]
@@ -694,7 +881,7 @@ in
           ####################################################################
           systemd.tmpfiles.rules = lib.optional
             (settings.exporters.containers || settings.exporters.coredumps
-             || settings.exporters.ipv6Guard)
+             || settings.exporters.ipv6Guard || settings.exporters.mailReputation)
             "d ${textfileDir} 0755 root root -";
 
           systemd.services.clanarchy-container-units =
@@ -782,6 +969,54 @@ in
                 # alert waits 15m anyway. There is nothing to gain from
                 # polling this at the rate of a crash loop.
                 OnUnitActiveSec = "5m";
+              };
+            };
+
+          systemd.services.clanarchy-mail-reputation =
+            lib.mkIf settings.exporters.mailReputation {
+              description = "Collect mail FCrDNS and DNSBL status for node_exporter";
+              # The container has to be up to answer: every query goes through
+              # its resolver. Without this the collector reports an outage of
+              # the mail server as a reputation failure, which is true but
+              # names the wrong thing.
+              after = [ "container@${mailRep.container}.service" ];
+              serviceConfig = {
+                Type = "oneshot";
+                ExecStart = lib.getExe mailReputationCollector;
+                # NOT PrivateNetwork — this one is entirely network. Same
+                # exception ipv6-guard takes above, for the mirror-image
+                # reason: there it would see no addresses, here it would
+                # resolve nothing, and in both cases the collector would
+                # cheerfully report the healthy answer forever.
+                #
+                # NOT PrivateDevices either: `nixos-container run` needs
+                # /dev/ptmx to allocate the pty it runs the command on.
+                ProtectHome = true;
+                ProtectSystem = "strict";
+                ReadWritePaths = [ textfileDir ];
+                NoNewPrivileges = true;
+              };
+            };
+
+          systemd.timers.clanarchy-mail-reputation =
+            lib.mkIf settings.exporters.mailReputation {
+              description = "Check mail reverse DNS and blocklist status twice daily";
+              wantedBy = [ "timers.target" ];
+              timerConfig = {
+                # Twice a day, against a guide that said QUARTERLY and meant
+                # "when somebody remembers". Both facts change on somebody
+                # else's schedule — an ISP renumbering, a listing by a
+                # neighbour's infected host — so the useful question is how
+                # long we are willing to be silently undeliverable, not how
+                # fast the value moves. Half a day, against the alert's own
+                # 6h `for`, puts the worst case under a day.
+                #
+                # Not faster: these are third-party nameservers answering
+                # queries we are a guest of, and the `usable` control doubles
+                # the query count already.
+                OnBootSec = "10m";
+                OnUnitActiveSec = "12h";
+                RandomizedDelaySec = "30m";
               };
             };
 
@@ -2651,6 +2886,51 @@ in
                           annotations = {
                             summary     = "IPv6 global address on {{ $labels.instance }} — SN2 assumed none exist";
                             description = "An IPv6 global-scope address (non-ULA) appeared, or the collector stopped reporting. SN2's IPv4-only decision rests on there being none. On ernst this is urgent: Traefik's entryPoints are wildcard listens, so a global address makes every router reachable on a path that bypasses the UDM-Pro DNAT and therefore the `wan` entryPoint, and the firewall bouncer has no ip6 table so those routers would also be unbannable. Check `ip -6 addr show scope global` and `journalctl -u clanarchy-ipv6-guard`.";
+                          };
+                        }
+
+                        # ── M31 deliverability ───────────────────────────
+                        #
+                        # Three rules and not one, because they are three
+                        # different jobs for the person woken by them: fix
+                        # the PTR, request a delisting, or fix the check.
+                        # Collapsing them would produce an alert whose
+                        # runbook starts "first work out which of these it
+                        # is", which is the alert doing none of its work.
+                        {
+                          alert = "MailReverseDnsBroken";
+                          expr = ''
+                            (clanarchy_mail_fcrdns_ok == 0)
+                            or
+                            (absent(clanarchy_mail_fcrdns_ok) == 1)
+                          '';
+                          "for" = "6h";
+                          labels.severity = "critical";
+                          annotations = {
+                            summary     = "Mail reverse DNS no longer forward-confirmed";
+                            description = "The PTR for the public address and its forward A record no longer agree, or the collector stopped reporting. This is the single fact M31's outbound mail rests on: Vodafone set the PTR to mail.goclan.org on request, and if a tariff change or renumbering takes it away, Outlook rejects outright and Gmail/GMX junk — silently, with nothing wrong on this host. Check `dig -x` and `dig A` by hand (docs/guides/mail.md, Phase 0), then either get the PTR restored or enable the smarthost escape hatch. 6h because DNS propagation and a brief resolver wobble are not worth paging for.";
+                          };
+                        }
+
+                        {
+                          alert = "MailIpBlocklisted";
+                          expr = ''clanarchy_mail_dnsbl_listed == 1'';
+                          "for" = "6h";
+                          labels.severity = "warning";
+                          annotations = {
+                            summary     = "Mail IP listed on {{ $labels.list }}";
+                            description = "The public address is listed on {{ $labels.list }}. It was delisted from Barracuda by hand on 2026-10-06; a residential address can be re-listed because of something a neighbour's infected machine does, and the symptom is mail quietly not arriving. Most lists have a free self-service removal form — docs/guides/mail.md, Phase 0, carries the links. Warning and not critical: one list is a degradation, and the FCrDNS alert covers the case where delivery stops outright.";
+                          };
+                        }
+
+                        {
+                          alert = "MailDnsblCheckUnusable";
+                          expr = ''clanarchy_mail_dnsbl_usable == 0'';
+                          "for" = "24h";
+                          labels.severity = "warning";
+                          annotations = {
+                            summary     = "Blocklist check for {{ $labels.list }} is not answering its own test points";
+                            description = "{{ $labels.list }} failed the positive control — 127.0.0.2 should answer listed and 127.0.0.1 clean — so its verdict for our address is not trustworthy and no `listed` series is being emitted for it. The usual cause is the query being refused rather than the list being down: Spamhaus answers 127.255.255.254 to anything arriving via a large public resolver, which is why these queries go through the mail container's kresd. Check that container@mail is up and that `nixos-container run mail -- dig +short 2.0.0.127.zen.spamhaus.org` returns 127.0.0.x. SN3: this alert exists so a refused query cannot masquerade as a clean one.";
                           };
                         }
 
