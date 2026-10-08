@@ -329,6 +329,10 @@
           ./machines/ernst/hardware-configuration.nix
           ./machines/ernst/networking.nix
           ./machines/ernst/htpc.nix
+          # The Courses Jellyfin library + `course-import`.  Imported BEFORE
+          # jellyfin.nix only for reading order: it owns /srv/media/library/
+          # courses, which jellyfin.nix bind-mounts into the container.
+          ./machines/ernst/courses.nix
           ./machines/ernst/containers/jellyfin.nix
           ./machines/ernst/containers/arr.nix
           ./machines/ernst/containers/traefik.nix

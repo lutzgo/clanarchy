@@ -369,6 +369,20 @@ in
         isReadOnly = true;
       };
 
+      # Bought video courses, watched as TV shows with purely local NFO
+      # metadata.  A SEPARATE library and not a folder inside TV-Shows because
+      # Jellyfin's metadata providers are a per-library setting: a course has no
+      # TheTVDB entry, so it needs "no internet metadata", and in TV-Shows that
+      # switch would also apply to all 155 real series.  RO like the others —
+      # the writer is `course-import` on the host, never Jellyfin.
+      #
+      # The host path, its mode and its ownership are owned by
+      # machines/ernst/courses.nix; this is the only line here that names it.
+      "/media/Server001/Courses" = {
+        hostPath   = "/srv/media/library/courses";
+        isReadOnly = true;
+      };
+
       # M8, shape (ii): Jellyfin's OWN DVR is the recorder — Tvheadend only
       # shares tuners (see containers/tvheadend.nix's header for the
       # argument).  This is the ONE writable media bind in this container,

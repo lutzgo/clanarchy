@@ -1,0 +1,95 @@
+{
+  "show": {
+    "title": "Proko - Drawing Basics",
+    "sorttitle": "Proko 01 Drawing Basics",
+    "studio": "Proko",
+    "genres": ["Education", "Art"],
+    "creator": "Stan Prokopenko",
+    "url": "https://www.proko.com/course/drawing-basics",
+    "totalLessons": 185,
+    "plot": "Stan Prokopenko's foundation course in drawing: 185 lessons across eight chapters covering lines, shapes, perspective, values and edges. The claim it opens on is that anyone can learn to draw the same way anyone can learn to speak, because drawing is a visual language. There are no prerequisites — this course is the prerequisite."
+  },
+
+  "chapters": [
+    {
+      "season": 1,
+      "title": "Getting Started",
+      "lessons": [
+        {
+          "slug": "learning-how-to-draw",
+          "title": "Learning How to Draw",
+          "plot": "Stan opens the course with its central claim: anyone can learn to draw, just as anyone can learn to speak — drawing is a visual language and two-year-olds manage the spoken one. The course is meant to be refreshingly simple, fun and enlightening, teaching the fundamental concepts for drawing anything from reference or from imagination."
+        },
+        {
+          "slug": "intro-to-drawing-basics",
+          "title": "Intro to Drawing Basics",
+          "plot": "A walkthrough of how the course is structured. Stan lays out what the fundamentals of visual language will let you do: design characters, render them with confident lines and perspective, and shade forms so they read as three-dimensional."
+        },
+        {
+          "slug": "project-get-your-tools-and-start-playing",
+          "title": "Project - Get Your Tools and Start Playing",
+          "plot": "The first assignment. Before anything else you need tools — go and get some, then spend time playing with them rather than trying to produce a finished drawing."
+        },
+        {
+          "slug": "ultimate-guide-to-sketchbooks-and-paper",
+          "title": "Ultimate Guide to Sketchbooks and Paper",
+          "plot": "A beginner's guide to sketchbooks and paper with lotsa juicy info about paper types, texture, weight, archivability and most importantly, how to avoid the common mental pitfall of sketchbooking."
+        },
+        {
+          "slug": "ultimate-guide-to-pencils-and-erasers",
+          "title": "Ultimate Guide to Pencils and Erasers",
+          "plot": "A beginner's guide to pencils and erasers! A breakdown of the many different pencil and eraser options out there. I'll go over the different types, how they each differ from one another, the best way to hold them, and the most effective way to use them."
+        },
+        {
+          "slug": "sharpening-6-types-of-drawing-pencils",
+          "title": "Sharpening 6 Types of Drawing Pencils",
+          "plot": "How to sharpen six different kinds of drawing pencil, and what each shape of point is good for."
+        },
+        {
+          "slug": "project-simplify-from-observation",
+          "title": "Project - Simplify from Observation",
+          "plot": "Before moving on to Lines, an opportunity to actually draw. The assignment is to simplify a subject down to its shapes, values and edges — level 1 is a pear, level 2 a portrait. The reference photos are filed next to this episode.",
+          "resources": [
+            "level-1-pear-1.jpg",
+            "level-1-pear-2.jpg",
+            "level-1-pear-3.jpg",
+            "level-2-portrait.jpg"
+          ]
+        },
+        {
+          "slug": "simplify-from-observation-pear-demo",
+          "title": "Demo - Simplify Pear from Observation",
+          "plot": "Stan works through the level 1 assignment himself, simplifying a pear from observation into shapes, values and edges."
+        },
+        {
+          "slug": "simplify-from-observation-portrait-demo",
+          "title": "Demo - Simplify Portrait from Observation",
+          "plot": "Stan works through the level 2 assignment himself, simplifying a portrait from observation into shapes, values and edges."
+        },
+        {
+          "slug": "critique-simplify-pear-from-observation",
+          "title": "Critique - Simplify Pear from Observation",
+          "plot": "A clip taken from the premium critique of the Drawing Basics course. The assignment was to simplify a pear or a portrait down to its shapes, values, and edges. In this critique, I break down some of the common issues I saw students have with their shape design. I'll give you advice and talk about proportion, asymmetry, and improving your shadow shape design."
+        },
+        {
+          "slug": "critique-simplify-portrait-from-observation",
+          "title": "Critique - Simplify Portrait from Observation",
+          "plot": "A critique clip from the level 2 Drawing Basics project on simplifying portraits using shapes, values, and edges."
+        },
+        {
+          "slug": "warmup-mushrooms",
+          "title": "Warmup - Mushrooms",
+          "plot": "A fun exercise to warm up your hand and get you comfortable with drawing fluid lines. While doodling with my son, he asked me to draw a Mario mushroom, and I realized it's a perfect way to practice ellipses."
+        }
+      ]
+    },
+
+    { "season": 2, "title": "Lines",                "lessons": [] },
+    { "season": 3, "title": "Shapes",               "lessons": [] },
+    { "season": 4, "title": "How Perspective Works","lessons": [] },
+    { "season": 5, "title": "Intuitive Perspective","lessons": [] },
+    { "season": 6, "title": "Values",               "lessons": [] },
+    { "season": 7, "title": "Edges",                "lessons": [] },
+    { "season": 8, "title": "Bonus Content",        "lessons": [] }
+  ]
+}
