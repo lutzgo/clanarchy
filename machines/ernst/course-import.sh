@@ -93,6 +93,27 @@ probe_minutes() {
   awk -v d="$d" 'BEGIN { if (d > 0) printf "%d", int((d + 30) / 60) }'
 }
 
+# True when any of the glob patterns passed in matched something.
+#
+# This exists because `compgen -G` DOES NOT WORK HERE, which is only visible on
+# the deployed machine: writeShellApplication runs the script under
+# `bashNonInteractive`, which nixpkgs builds with --disable-progcomp, so the
+# compgen builtin is absent and every call fails with "command not found" —
+# under `set -e`, inside an `if`, that reads as "no match" and the test silently
+# always goes the same way.  A plain glob expansion is the equivalent that does
+# exist.  Call it with the `*` OUTSIDE the quotes so the caller's glob expands:
+#
+#     glob_exists "$dir/$slug."*".srt"
+#
+# An unmatched glob expands to the literal pattern, which `-e` then rejects.
+glob_exists() {
+  local f
+  for f in "$@"; do
+    if [ -e "$f" ]; then return 0; fi
+  done
+  return 1
+}
+
 # True when a browser is still writing this lesson.  Chromium names a partial
 # download `<name>.mp4.crdownload` and renames on completion, so the exact-name
 # test in find_video already excludes partials — this exists so that "still
@@ -101,7 +122,7 @@ probe_minutes() {
 has_partial() {
   local dir=$1 slug=$2 ext
   for ext in crdownload part partial; do
-    if compgen -G "$dir/$slug."'*'".$ext" >/dev/null; then return 0; fi
+    if glob_exists "$dir/$slug."*".$ext"; then return 0; fi
   done
   return 1
 }
@@ -273,7 +294,7 @@ cmd_status() {
       dst="$LIB/$show/Season $sn"
 
       state="not downloaded"
-      if compgen -G "$dst/$base."'*' >/dev/null; then
+      if glob_exists "$dst/$base."*; then
         state="in library"
       elif [ ! -d "$src" ]; then
         :
