@@ -271,7 +271,28 @@ code as making them mutually exclusive. It does not: the bridge is
 `wantedBy = sockets.target` and therefore always up, so the shared bind did not
 arbitrate between them — it just failed whichever came second, which was always
 the gate. Two units wanting one address need `Conflicts=` naming each other;
-the collision is the symptom, not the mechanism. Fixed in #301.
+the collision is the symptom, not the mechanism. Fixed in #301 — and #301 was
+**also wrong**, in the mirror image, which is the more useful half of the
+lesson.
+
+**`Conflicts=` stops the loser but does not order the stop.** systemd.unit(5)
+says it plainly: it is *"independent of and orthogonal to the After= and
+Before= ordering dependencies"*. So with `Conflicts=` alone the winner's bind
+races the loser's close, and on the second deploy it lost the other way:
+
+```
+llama-bridge-karakeep.socket: Failed to create listening socket
+  ([fdca:fe92::1]:11434): Address already in use
+```
+
+That left the leg with **neither** unit on it — karakeep had no path to
+llama-swap at all until the bridge was started by hand. `After=` in both
+directions is a cycle, so the handover is now an explicit ordered script: stop
+the loser, wait for it, then start the winner, biased towards the bridge on
+every error path because a dead leg (connection-refused, unthrottled retries)
+is worse than no backoff at all. Fixed in #302 — and this time the handover was
+exercised on the live machine in both directions *before* the deploy rather
+than after it, which is what the first two rounds should have done.
 
 **A `try-restart` inside an activation transaction can be cancelled.** The
 preempt unit also failed on that first deploy — `Job for llama-swap.service

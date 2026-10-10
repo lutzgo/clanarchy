@@ -315,29 +315,40 @@ let
           description = "503 gate for the ${b.name} container";
 
           # NO `wantedBy`, deliberately: the gate is purely a consequence of
-          # llama-swap's state — raised by its ExecStopPost, lowered when its
-          # ExecStartPost brings the bridge back — so it never starts at boot
-          # and never races anything starting for its own reasons.
+          # llama-swap's state, handed the leg and taken off it by the
+          # handover script below.  It never starts at boot and never races
+          # anything starting for its own reasons.
           #
-          # CONFLICTS WITH THE BRIDGE, AND THIS IS THE LOAD-BEARING LINE.
-          # Both bind the same address, and an earlier revision declared only
-          # `llama-swap.conflicts = [ this socket ]`, reasoning that the two
-          # were "mutually exclusive by the bind itself".  They are not: the
-          # bridge is `wantedBy = sockets.target` and therefore ALWAYS up, so
-          # the bind did not arbitrate between them — it simply failed
-          # whichever came second.  MEASURED on ernst 2026-10-10, first
-          # activation after deploy:
+          # ── NO `Conflicts=` EITHER, AND THAT IS THE CORRECTION ──────────
           #
-          #   llama-gate-karakeep.socket: Failed to create listening socket
-          #     ([fdca:fe92::1]:11434): Address already in use
+          # The gate and the bridge bind one address, so exactly one may be
+          # up — and TWO revisions of this got the mechanism wrong, in
+          # opposite directions, each time costing a deploy:
           #
-          # The gate could never have taken the leg.  Naming the bridge here
-          # is what makes starting one stop the other.
-          conflicts = [ "${replaces}-${b.name}.socket" ];
-
+          #  1. Only `llama-swap.conflicts = [ gate ]`, on the reasoning that
+          #     the shared bind made them "mutually exclusive by itself".  It
+          #     does not: the bridge is `wantedBy = sockets.target` and so
+          #     always up, and the bind does not arbitrate — it fails
+          #     whichever comes second.  The gate never started at all.
+          #  2. `Conflicts=` between the two sockets.  Closer, and still
+          #     wrong, because systemd.unit(5) says it outright: Conflicts
+          #     "is independent of and orthogonal to the After= and Before=
+          #     ordering dependencies".  It guarantees the loser is stopped,
+          #     NOT that the stop completes before the winner binds.
+          #     MEASURED on ernst 2026-10-10, second deploy — the mirror
+          #     image of the first failure:
+          #
+          #       llama-bridge-karakeep.socket: Failed to create listening
+          #         socket ([fdca:fe92::1]:11434): Address already in use
+          #
+          #     and the leg was left with NEITHER unit on it.
+          #
+          # The missing half is ordering, and `After=` in both directions is
+          # a cycle.  So the handover is done explicitly, by a script that
+          # stops the loser and only then starts the winner — see
+          # `gateHandover` in the inference role.
           socketConfig = {
-            # The same address and port as the bridge it replaces — that is
-            # the point, and the `conflicts` above is what makes it possible.
+            # The same address and port as the bridge it replaces.
             ListenStream = "[${b.address}]:${toString targetPort}";
             BindIPv6Only = "ipv6-only";
             FreeBind     = true;
@@ -679,7 +690,63 @@ in
           # list are all generated from one set and cannot drift.
           gatedBridges =
             lib.filter (b: lib.elem b.name settings.gateOn) settings.exposeOn;
-          gateSockets  = map (b: "llama-gate-${b.name}.socket") gatedBridges;
+
+          # ── THE HANDOVER ────────────────────────────────────────────────
+          #
+          # One address, two possible owners, so the swap has to be ORDERED:
+          # stop the one that has it, wait for that to finish, then start the
+          # other.  `Conflicts=` cannot express this — it stops the loser but
+          # is explicitly orthogonal to ordering, so the winner's bind races
+          # the loser's close.  Both earlier revisions lost that race, in
+          # opposite directions, and the second left the leg with nothing
+          # listening on it at all.
+          #
+          # BIASED TOWARDS THE BRIDGE ON EVERY ERROR.  The worst outcome here
+          # is a dead leg: karakeep then gets connection-refused, which is
+          # the hammering this whole mechanism exists to stop, with no
+          # Retry-After to slow it down.  Losing the gate instead costs only
+          # the backoff, and degrades to exactly the behaviour before any of
+          # this existed.  So every failure path ends by putting the bridge
+          # back.
+          gateHandover = pkgs.writeShellScript "llama-gate-handover" ''
+            set -u
+
+            # Absolute paths for BOTH binaries. This runs from llama-swap's
+            # ExecStopPost under `+`, which keeps the unit's environment — and
+            # that unit sets its own PATH. A bare `timeout` would resolve or
+            # not depending on what upstream happened to put there, and the
+            # failure would be a handover that silently never happened.
+            sctl() {
+              ${pkgs.coreutils}/bin/timeout 20 ${pkgs.systemd}/bin/systemctl "$@"
+            }
+
+            want="''${1:-bridge}"
+            for n in ${lib.concatStringsSep " " (map (b: b.name) gatedBridges)}; do
+              gate="llama-gate-$n.socket"
+              bridge="llama-bridge-$n.socket"
+
+              if [ "$want" = gate ]; then
+                sctl stop "$bridge"
+                if ! sctl start "$gate"; then
+                  echo "handover: $gate would not start — leaving $bridge up" >&2
+                  sctl reset-failed "$gate" || true
+                  sctl start "$bridge" || true
+                fi
+              else
+                sctl stop "$gate"
+                if ! sctl start "$bridge"; then
+                  # The one case worth retrying rather than reporting: a
+                  # stale bind clearing a moment late leaves the leg dead.
+                  echo "handover: $bridge would not start — retrying once" >&2
+                  sctl reset-failed "$bridge" || true
+                  ${pkgs.coreutils}/bin/sleep 1
+                  sctl start "$bridge" \
+                    || echo "handover: $bridge STILL down — the leg is dead" >&2
+                fi
+              fi
+            done
+            exit 0
+          '';
 
           # ROCm llama.cpp, built from the flake's OWN nixpkgs — no new input,
           # which was a hard constraint on this milestone and turned out to cost
@@ -1283,19 +1350,15 @@ in
             # ── THE GATE IS THIS UNIT'S SHADOW ──────────────────────────
             #
             # Exactly one of the gate and the bridge owns a gated leg at any
-            # moment.  The two sockets conflict with each other (see mkGate),
-            # so all this unit has to do is say which one it wants:
+            # moment, and this unit's state is what picks the winner:
             #
-            #   llama-swap stops   ->  ExecStopPost  starts the GATE
-            #                          (its Conflicts stops the bridge)
-            #   llama-swap starts  ->  ExecStartPost starts the BRIDGE
-            #                          (its Conflicts stops the gate)
+            #   llama-swap stops   ->  ExecStopPost  hands the leg to the GATE
+            #   llama-swap starts  ->  ExecStartPost hands it back to the BRIDGE
             #
-            # ONE mechanism, not two.  An earlier revision also carried
-            # `conflicts = gateSockets` here, which stopped the gate when
-            # llama-swap started but left NOTHING to bring the bridge back —
-            # the leg would simply have gone dead.  Choosing the winner by
-            # starting it is the whole of the arrangement.
+            # Both go through `gateHandover`, which stops the loser before
+            # starting the winner. See its comment for why `Conflicts=` is
+            # not enough on its own and why two earlier revisions of this
+            # block were wrong.
             #
             # ExecStopPost runs on clean stop AND on failure, so a crashed
             # llama-swap raises the gate too — the case that matters most,
@@ -1321,23 +1384,22 @@ in
               Group = lib.mkForce user;
 
               # THE `+` PREFIX IS LOAD-BEARING AND ITS ABSENCE IS SILENT.
-              # ExecStopPost inherits this unit's User=llama, NoNewPrivileges
-              # and SystemCallFilter, under which `systemctl start` cannot
-              # talk to PID 1 — the gate would simply never come up, and the
-              # only evidence would be consumers hammering a dead port.  `+`
-              # runs the line as root, outside the sandbox.
+              # These lines inherit this unit's User=llama, NoNewPrivileges
+              # and SystemCallFilter, under which `systemctl` cannot talk to
+              # PID 1 at all — the handover would simply never happen, and
+              # the only evidence would be consumers meeting the wrong
+              # listener.  `+` runs the line as root, outside the sandbox.
               #
-              # --no-block because a systemctl that waits for a job inside a
-              # stop job deadlocks against the transaction it is part of.
-              ExecStopPost = map
-                (s: "+${pkgs.systemd}/bin/systemctl --no-block start ${s}")
-                gateSockets;
-
-              # The other half: hand the leg back to the bridge.  Same `+`
-              # and the same `--no-block`, for the same two reasons.
-              ExecStartPost = map
-                (b: "+${pkgs.systemd}/bin/systemctl --no-block start llama-bridge-${b.name}.socket")
-                gatedBridges;
+              # BLOCKING, deliberately, where the first revision used
+              # `--no-block`.  The whole point of the handover is that the
+              # stop completes before the start, and --no-block throws that
+              # away — it is what produced the second failed deploy.  The
+              # script bounds itself with `timeout 20` per systemctl instead;
+              # the jobs it waits on belong to unrelated socket units, so
+              # there is nothing here for this unit's own job to deadlock
+              # against.
+              ExecStopPost  = lib.optional (gatedBridges != [ ]) "+${gateHandover} gate";
+              ExecStartPost = lib.optional (gatedBridges != [ ]) "+${gateHandover} bridge";
 
               # ── llama-swap FORKS llama-server, SO ITS SANDBOX IS THEIRS ────
               #
@@ -1478,19 +1540,19 @@ in
                  && [ "$usedMiB" -gt ${toString settings.vram.reserveMiB} ]; then
                 if systemctl -q is-active llama-swap.service; then
                   echo "card holds ''${usedMiB} MiB with nothing of ours loaded — standing down" >&2
+                  # Stopping it runs ExecStopPost, which is the handover.
                   systemctl stop llama-swap.service
+                else
+                  # llama-swap was already down, so no ExecStopPost will fire
+                  # and nothing has handed the leg over. Do it here — the
+                  # script is idempotent, so the overlap with the branch above
+                  # costs nothing.
+                  ${gateHandover} gate
                 fi
-                # Explicitly, rather than trusting Conflicts= to be
-                # symmetrical.  It is documented to be, but the ExecStopPost
-                # above is the path that normally raises the gate and this is
-                # the backstop for the case where llama-swap was already down.
-                for s in ${lib.concatStringsSep " " gateSockets}; do
-                  systemctl -q is-active "$s" || systemctl start "$s"
-                done
               elif [ "$usedMiB" -le ${toString settings.vram.reserveMiB} ] \
                    && ! systemctl -q is-active llama-swap.service; then
                 echo "card back under the reserve at ''${usedMiB} MiB — resuming" >&2
-                # Starting llama-swap stops the gates through Conflicts=.
+                # Starting it runs ExecStartPost, which hands the leg back.
                 systemctl start llama-swap.service
               fi
             '';
