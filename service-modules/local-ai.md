@@ -295,6 +295,102 @@ Run `systemctl start llama-models-fetch` (idempotent) or wait for the next boot.
 That is the right trade — adding a model is rare and deliberate, deploying is
 neither.
 
+## The card is shared with the television, and the budget says so
+
+On ernst the inference card is also the card the living room is looking at.
+`exclusive` does not cover that, and on 2026-10-09 the gap crash-looped the TV
+for eleven minutes — see
+[the incident](../docs/incidents/ernst-card1-vram-starvation-2026-10-09.md).
+
+**Why the group was not enough.** llama-swap's exclusive group arbitrates the
+processes llama-swap *spawns*. whisper and ComfyUI are children of
+`llama-swap.service`, which is exactly why `roles.speech` and `roles.imagegen`
+produce no units of their own — a second owner would put them outside the
+group. The HTPC compositor is outside it by nature: it is the thing the machine
+exists to run, not something llama-swap starts. So it cannot be evicted and it
+does not queue. When a model takes the last of the VRAM, gamescope's framebuffer
+pin returns `ENOMEM` and gamescope calls `abort()`.
+
+### The reserve
+
+```nix
+roles.inference.machines.ernst.settings.vram = {
+  totalMiB       = 24560;        # mem_info_vram_total, NOT the nominal 24576
+  reserveMiB     = 1600;         # measured session baseline + 250
+  cardPciAddress = "0000:03:00.0";
+};
+```
+
+and, per model:
+
+```nix
+residentVramMiB = 22672;         # MEASURED, never computed
+```
+
+An assertion refuses any served model where
+`residentVramMiB + reserveMiB > totalMiB`, naming the model, all three numbers
+and the overage. **One assertion per model, not one for the largest** — the
+group is exclusive, so any member can be the resident one and each has to fit on
+its own. A model left without `residentVramMiB` warns instead: it is exempt by
+omission rather than by measurement, and that is worth seeing.
+
+Measure it with the session stopped:
+
+```bash
+systemctl stop display-manager.service
+curl -s -X POST http://127.0.0.1:11434/v1/chat/completions \
+  -H 'content-type: application/json' \
+  -d '{"model":"<name>","messages":[{"role":"user","content":"hi"}],"max_tokens":1}'
+cat /sys/class/drm/card1/device/mem_info_vram_used
+```
+
+Measuring with the session up measures the *sum*, which is the quantity the
+check is against — not its input.
+
+`reserveMiB` is a floor, not a margin. It is the lever that will look cheapest
+the next time a model does not fit, and it is where the television lives. Use
+`--n-cpu-moe N` in `extraArgs` instead: on an MoE it moves only the expert
+tensors of the first N layers to system RAM and leaves attention and the KV
+cache on the GPU, which is a far better VRAM-per-token trade than lowering
+`-ngl`.
+
+### The 503 gate
+
+```nix
+gateOn         = [ "karakeep" ];
+gateRetryAfter = 120;
+```
+
+While the card is held by a claimant outside the group, named `exposeOn` legs
+are taken over by a responder that answers `503` + `Retry-After` instead of
+leaving the consumer to hammer a server that cannot answer.
+
+- The gate binds **the same address and port as the bridge**, so the two are
+  mutually exclusive by the bind itself, not only by unit relations.
+- `Accept = true` plus a templated unit is systemd's inetd mode: one process per
+  connection, socket on stdin and stdout. For one fixed response that removes
+  the need for an HTTP server entirely.
+- It has **no `wantedBy`**. The gate is purely a consequence of llama-swap's
+  state — raised by its `ExecStopPost`, lowered by its `Conflicts` — so it
+  cannot start at boot and cannot race.
+- `clanarchy-llama-gate.timer` reads card occupancy every 30 s and decides which
+  of the two owns the leg. It reads sysfs and `/running`, so a game, a hand-run
+  `llama-server` and a stray ComfyUI all look the same to it, which is the
+  correct level of ignorance.
+
+**Gate background consumers only.** A 503 is right for bookmark tagging and
+wrong for anything with a person waiting on it, and monitoring must keep
+scraping for the condition to be visible at all.
+
+**It is load-prevention, not eviction.** A claimant that takes the card while a
+model is already resident still wins; that case waits for `idleTtl`. What
+evicts on demand is the htpc role's `gpu.preempt.units`, which bounces
+llama-swap as a session starts.
+
+> These options are ernst-only, and `scripts/gen-options.py` evaluates only
+> miralda and biene — so they will never appear in the generated reference.
+> This section is the documentation.
+
 ## Voice — whisper.cpp, and it runs on the CPU
 
 **Speaches was the intended choice and is not taken.** It is not in nixpkgs at

@@ -90,16 +90,58 @@
           # on a kernel bump, which would put the session on the KVM's head and
           # take the compute card away from ROCm.
           #
-          # The same dGPU is Ollama's ROCm card (see roles.ollama below).  A
-          # session and ROCm workloads share a GPU without trouble — compute
-          # goes through the render node, KMS through the card node — so this
-          # is a note for future readers rather than a conflict.
+          # The same dGPU is the ROCm card (see roles.ollama below), AND THAT
+          # IS A CONFLICT.  This comment used to say it was not:
+          #
+          #   "A session and ROCm workloads share a GPU without trouble —
+          #    compute goes through the render node, KMS through the card
+          #    node — so this is a note for future readers rather than a
+          #    conflict."
+          #
+          # The sentence is true about DEVICE NODES and irrelevant, because
+          # the two do not compete for nodes.  They compete for VRAM, and
+          # VRAM is finite in a way the node argument never addressed.
+          #
+          # MEASURED on ernst 2026-10-09, when it stopped being theoretical:
+          # llama-swap loaded a model sized against an IDLE card, the session
+          # could no longer pin a framebuffer, and gamescope answered ENOMEM
+          # by calling abort() — nine times in eleven minutes, each one
+          # relogged in by SDDM, until the model's idle ttl expired and ended
+          # it with nobody having intervened.  Kernel, every time:
+          #
+          #   amdgpu: [drm] *ERROR* Not enough memory for command submission!
+          #   [drm:amdgpu_dm_plane_helper_prepare_fb] *ERROR* Failed to pin
+          #     framebuffer with error -12
+          #
+          # What keeps them apart now is three things, none of which is this
+          # comment: a VRAM reserve the evaluator enforces (`vram.reserveMiB`
+          # under roles.inference), `gpu.preempt.units` below, and the 503
+          # gate on the karakeep leg.  See
+          # docs/incidents/ernst-card1-vram-starvation-2026-10-09.md.
           #
           # Naming it here also makes the session wait for the TV to be awake
           # before starting a compositor on that card; a TV that is off reads
           # as `disconnected`, and gamescope answers a card with no connected
           # output by segfaulting.  See modules/roles/htpc.nix.
           display.gpuPciAddress = "0000:03:00.0";
+
+          # Hand the card back at the one moment the session is about to need
+          # it.  Not while a session merely exists — this machine autologins
+          # into one at boot and holds it all day, so that would mean never
+          # running inference at all.
+          gpu.preempt.units = [ "llama-swap.service" ];
+
+          # Demote rather than relogin a dying session forever.
+          #
+          # `kodi` first because it is measured cheaper, not because it is
+          # preferred: 326 MiB of VRAM against Big Picture's ~1350, so it is
+          # the mode most likely to survive whatever just exhausted the card
+          # — and it is the one a person on the sofa can drive with a remote.
+          # `plasma` after it, as the last rung that still draws something.
+          crashLoop = {
+            enable        = true;
+            fallbackChain = [ "kodi" "plasma" ];
+          };
 
           # The living-room set is an HDR LG, and the couch use case is
           # watching films rather than only playing games: without this the
@@ -391,6 +433,60 @@
           # `permitopen` restriction needs no edit at all.
           remoteClients.enable = true;
 
+          # ── THE CARD IS SHARED WITH THE TELEVISION ─────────────────────
+          #
+          # The compositor on 0000:03:00.0 is a claimant llama-swap's
+          # `exclusive` group cannot see and cannot evict: it is not one of
+          # llama-swap's children, so when a model takes the last of the
+          # VRAM the session does not get swapped out, it ABORTS.  See the
+          # roles.htpc block above for what that looked like on 2026-10-09.
+          #
+          # These three numbers are what stop it happening again, and only
+          # the first two are judgement — the third is read off the card.
+          vram = {
+            # MEASURED: /sys/class/drm/card1/device/mem_info_vram_total
+            # reports 25753026560 bytes.  Note it is NOT 24576 — the usable
+            # figure is below the nominal 24 GB and the difference is larger
+            # than some of the margins being argued about here.
+            totalMiB = 24560;
+
+            # MEASURED on ernst 2026-10-09, summing amdgpu_gem_info per
+            # process with each session idle and nothing else on the card:
+            #
+            #   Kodi (kodi.bin --standalone --windowing=gbm)     326 MiB
+            #   Steam Big Picture                             ~1350 MiB
+            #     gamescope-wl 225 + Xwayland 276 + steamwebhelper 604
+            #     + steamwebhelper 215 + steam 31
+            #
+            # 1600 is the larger of the two plus 250 MiB, which covers the
+            # framebuffer pin during a modeset and steamwebhelper's growth
+            # over an evening.
+            #
+            # THIS IS A FLOOR, NOT A SAFETY MARGIN, and it is the lever that
+            # will look cheapest the next time a model does not fit.  The
+            # 460 MiB that used to sit here was not chosen either — it was
+            # whatever happened to be left over, and that is exactly how the
+            # television ended up crash-looping.
+            reserveMiB = 1600;
+
+            # Which card to watch.  By address, for the same reason
+            # display.gpuPciAddress is: the dGPU is card1 here, not card0,
+            # and a watchdog reading the wrong one would see a quiet iGPU
+            # and conclude the busy dGPU was free.
+            cardPciAddress = "0000:03:00.0";
+          };
+
+          # Tell karakeep to come back later instead of letting it hammer a
+          # card it cannot have.
+          #
+          # KARAKEEP ALONE, deliberately.  A gated leg answers 503 for as
+          # long as the card is busy, which is right for bookmark tagging
+          # and wrong for anything with a person waiting on it — Open WebUI
+          # and Home Assistant should fail in front of the user rather than
+          # be told to retry in two minutes, and monitoring must keep
+          # scraping so the condition is visible at all.
+          gateOn = [ "karakeep" ];
+
           # ── The two containers that need llama-swap ────────────────────
           #
           # llama-swap binds 127.0.0.1 and stays there, so each consumer gets
@@ -485,6 +581,14 @@
             # 2761 MiB to spare and q8_0 would cost 14.7% of decode (94.6 vs
             # 107.5 tok/s, interleaved, n=5) to buy nothing at this window.
             kvCacheType = "f16";
+
+            # 21799 + 1600 = 23399, under the 24560 ceiling, so this one
+            # needs no offload: it was always the smaller of the two and the
+            # reserve never squeezed it.  Declared anyway, because the check
+            # is per-model — the group is exclusive, so whichever member is
+            # resident is the one that has to fit, and a model left
+            # unmeasured is exempt by omission rather than by argument.
+            residentVramMiB = 21799;
           };
 
           # ── THE RESIDENT MODEL SINCE M29c (2026-09-25) ──────────────────
@@ -502,23 +606,74 @@
           # -7.4% decode, and the speed holds because this is still an MoE
           # with ~3B active; the dense 27B sibling would have cost roughly 3x.
           #
-          # ── THE ONE REAL COST: 460 MiB OF HEADROOM ──────────────────────
+          # ── THE ONE REAL COST: IT DID NOT FIT, AND THE TV PAID ──────────
           #
-          # 24100 MiB of 24560 resident, against 20959 before.  That is enough
-          # and it is not comfortable.  Consequences worth knowing before
-          # anyone edits this entry:
+          # THIS PARAGRAPH USED TO READ "THE ONE REAL COST: 460 MiB OF
+          # HEADROOM — 24100 MiB of 24560 resident, against 20959 before.
+          # That is enough and it is not comfortable."
           #
-          #   * contextLength STAYS AT 32768.  65536 would add 320-640 MiB of
-          #     KV and there is not room.  This architecture would otherwise
-          #     afford it easily — only 10 of 40 layers hold KV — so the limit
-          #     is the weights, not the window.
-          #   * ANYTHING ELSE WANTING THE CARD evicts it, as before.  ComfyUI
-          #     still does; that is the priced eviction the imagegen role and
-          #     mneme's generate_image tool both document.
-          #   * IF IT SPILLS, the fallback is the same model at UD-Q3_K_XL
-          #     (16.8 GB, sha256-qDK5aJkl8b0zW76YXN+wbDa/LPJo9Pj27Or6POtRVhc=)
-          #     — but Q3 is where nested tool-call JSON degrades first, so it
-          #     is a measurement and not a swap.
+          # The arithmetic was right and the baseline was wrong.  460 MiB is
+          # what is left on an IDLE card, and this card is never idle: the
+          # living-room compositor holds a framebuffer on it every minute of
+          # every day.  Kodi needs 326 MiB and squeaked under.  Steam Big
+          # Picture needs ~1350 and did not, so on 2026-10-09 gamescope could
+          # not pin a framebuffer, called abort(), and was relogged in by
+          # SDDM nine times over eleven minutes.  See the roles.htpc block
+          # above and
+          # docs/incidents/ernst-card1-vram-starvation-2026-10-09.md.
+          #
+          # So the session's baseline is now a declared reserve
+          # (`vram.reserveMiB = 1600`) and the evaluator enforces it.  The
+          # ceiling for any single model is 24560 - 1600 = 22960 MiB.
+          #
+          # ── WHAT IT COSTS TO FIT UNDER THAT ─────────────────────────────
+          #
+          # MEASURED on ernst 2026-10-10, one arm at a time, llama-server run
+          # by hand on the live card with the Kodi session resident (330 MiB)
+          # and subtracted out.  256-token decode, n=1 per arm:
+          #
+          #   -c 32768                      23699 MiB   94.5 tok/s   OVER
+          #   -c 16384                      23381 MiB   95.8 tok/s   OVER
+          #   -c 16384 --n-cpu-moe 1        22916 MiB   87.0 tok/s   44 under
+          #   -c 16384 --n-cpu-moe 2        22353 MiB   80.1 tok/s
+          #   -c 32768 --n-cpu-moe 2        22672 MiB   81.5 tok/s   <- taken
+          #   -c 32768 --n-cpu-moe 3        22207 MiB   76.2 tok/s
+          #
+          # TAKEN: 32768 with `--n-cpu-moe 2`, at -13.8% decode.
+          #
+          # NOT the faster arm, and the reasons are worth keeping.  -c 16384
+          # with one layer offloaded holds 87.0 tok/s, but it (a) halves the
+          # window, which is a semantic change to every consumer and mneme
+          # injects a constitution plus wiki recall on every turn, and (b)
+          # clears the ceiling by 44 MiB — the same "enough and not
+          # comfortable" posture that produced this incident. Paying 13 tok/s
+          # to keep the window and 288 MiB of room is the better trade.
+          #
+          # `--n-cpu-moe N` rather than a lower `-ngl`: it moves only the
+          # expert tensors of the first N layers to system RAM and leaves
+          # attention and the whole KV cache on the GPU, which is why 2 layers
+          # buy 1027 MiB for 13% rather than for a third of the decode rate.
+          #
+          # Consequences worth knowing before anyone edits this entry:
+          #
+          #   * contextLength STAYS AT 32768, now for a second reason.  65536
+          #     would add 320-640 MiB of KV on top of a model that already
+          #     needs two layers offloaded to fit.
+          #   * ANYTHING ELSE INSIDE llama-swap's GROUP evicts it, as before.
+          #     ComfyUI still does; that is the priced eviction the imagegen
+          #     role and mneme's generate_image tool both document.
+          #     ANYTHING OUTSIDE THE GROUP DOES NOT — that was the hole.  The
+          #     session cannot evict and does not wait; it aborts.  What
+          #     covers it now is the reserve above, `gpu.preempt.units` in
+          #     the htpc block, and the 503 gate on the karakeep leg.
+          #   * IF IT SPILLS AGAIN, raise `--n-cpu-moe` before reaching for
+          #     UD-Q3_K_XL (16.8 GB,
+          #     sha256-qDK5aJkl8b0zW76YXN+wbDa/LPJo9Pj27Or6POtRVhc=): Q3 is
+          #     where nested tool-call JSON degrades first, so it is a
+          #     measurement and not a swap, and the offload lever is now
+          #     measured and linear.
+          #   * LOWERING `vram.reserveMiB` IS NOT A LEVER.  It is where the
+          #     television lives.
           #
           # ── TWO THINGS I GOT WRONG WHEN I FIRST COSTED THIS ─────────────
           #
@@ -571,11 +726,31 @@
             description = "Qwen3.6 35B-A3B (UD-Q4_K_XL) — M29c candidate";
 
             # 32768 TO MATCH THE INCUMBENT, deliberately, so the bake-off
-            # compares like with like.  This architecture can afford far more
-            # (see the KV arithmetic above) and raising it is the first thing
-            # to try AFTER the comparison, not during it.
+            # compares like with like.  Raising it was once "the first thing
+            # to try after the comparison"; it is not, any more — see the
+            # measured table above, this model needs two expert layers
+            # offloaded just to fit the window it already has.
             contextLength = 32768;
             kvCacheType   = "f16";
+
+            # MEASURED on ernst 2026-10-10 with `-c 32768 --n-cpu-moe 2`:
+            # 22672 MiB, 288 MiB under the 22960 ceiling.  Re-measure this
+            # whenever contextLength, kvCacheType, the quantisation or
+            # extraArgs change — it is the number the budget assertion
+            # checks, and a stale one is worse than none because it reads as
+            # measured.
+            residentVramMiB = 22672;
+
+            # WHAT MAKES IT FIT.  Two layers' worth of expert tensors live
+            # in system RAM instead of VRAM: 1027 MiB saved for 13.8% of
+            # decode (94.5 -> 81.5 tok/s).  Attention and the KV cache stay
+            # on the GPU, which is why the trade is that cheap on an MoE
+            # with ~3B active parameters.
+            #
+            # Without this the model is 23699 MiB and the reserve cannot be
+            # honoured — which is not an abstract overrun: it is the
+            # television crash-looping, measured, on 2026-10-09.
+            extraArgs = [ "--n-cpu-moe 2" ];
 
             # `mmproj-F16.gguf` IS A GENERIC NAME IN A FLAT STORE, and that is
             # recorded rather than worked around.  The other vision entry uses

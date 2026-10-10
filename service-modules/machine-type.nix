@@ -86,6 +86,25 @@
       mediaClient.remoteControl.enable =
         lib.mkEnableOption "network remote control of the media client (Kore/Yatse); needs a password set in Kodi's Services -> Control";
 
+      gpu.preempt.units = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "llama-swap.service" ];
+        description = "Units bounced just before a session takes the GPU, so VRAM they hold is handed back first (see modules/roles/htpc.nix).";
+      };
+
+      crashLoop = {
+        enable =
+          lib.mkEnableOption "demoting the session instead of reloging a failing one forever (see modules/roles/htpc.nix)";
+
+        fallbackChain = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          example = [ "kodi" "plasma" ];
+          description = "Modes to demote through, cheapest first. Required when crashLoop.enable is set.";
+        };
+      };
+
       bigscreen = {
         enable =
           lib.mkEnableOption "Plasma Bigscreen mode in an nspawn container (see modules/desktop/bigscreen.nix)";
@@ -124,6 +143,10 @@
               display.gpuPciAddress = settings.display.gpuPciAddress;
               display.hdr.enable = settings.display.hdr.enable;
               mediaClient.remoteControl.enable = settings.mediaClient.remoteControl.enable;
+              gpu.preempt.units = settings.gpu.preempt.units;
+              crashLoop = {
+                inherit (settings.crashLoop) enable fallbackChain;
+              };
               bigscreen = {
                 inherit (settings.bigscreen) enable gid;
               }

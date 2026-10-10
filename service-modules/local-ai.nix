@@ -231,6 +231,153 @@ let
           -p tcp -m tcp --dport ${toString targetPort} -j nixos-fw-accept
       '') bridges;
   };
+
+  # ── THE 503 GATE ────────────────────────────────────────────────────────
+  #
+  # A stand-in listener that takes a bridge's address while the GPU belongs
+  # to something outside llama-swap's exclusive group, and answers every
+  # request `503` + `Retry-After`.
+  #
+  # WHY A GATE AND NOT JUST A FAILING UPSTREAM.  Measured on ernst
+  # 2026-10-09: with the card held by a game, llama-server could not load and
+  # llama-swap answered 500 in ~1.4 s.  karakeep's bundled OpenAI SDK retries
+  # 5xx twice internally (0.5 s then 1 s), liteque re-polls at 1 s, and the
+  # queue is created with a hard-coded `numRetries: 3` — about twelve requests
+  # per bookmark over twelve seconds.  Across a non-empty queue that measured
+  # ~60 requests per minute for fourteen minutes.  None of it could ever
+  # succeed, because the card was busy the whole time.
+  #
+  # There is no env knob to turn that down; the full `INFERENCE_*` schema was
+  # read and carries none.  But the same SDK honours `Retry-After` off the
+  # wire, in seconds or as an HTTP-date, WITH NO CLAMP.  So the backoff is
+  # ours to send, and sending it is the whole fix.
+  #
+  # WHY inetd MODE.  `Accept = true` makes systemd hand each connection to a
+  # fresh instance of a templated unit with the socket on stdin and stdout.
+  # For one fixed response that removes the entire reason to run an HTTP
+  # server: no parser, no keep-alive, no new package, and nothing listening
+  # when the gate is down.
+  mkGate = { pkgs, unit, targetPort, bridges, retryAfter }:
+    let
+      body = builtins.toJSON {
+        error = {
+          message = "The inference card is reserved for the TV session. "
+                    + "Retry after ${toString retryAfter}s.";
+          type = "server_error";
+          code = "gpu_reserved";
+        };
+      };
+
+      responder = pkgs.writeShellScript "${unit}-503" ''
+        set -u
+
+        # DRAIN THE REQUEST BEFORE ANSWERING, which is not optional.  Closing
+        # a socket with unread data queued makes the kernel send RST instead
+        # of FIN, and a client that sees a reset connection reports a
+        # transport error — it never parses the response, so it never sees
+        # the Retry-After that is the entire point of this unit.
+        #
+        # Headers first, to the blank line, capturing Content-Length on the
+        # way past; then exactly that many body bytes.
+        len=0
+        while IFS= read -r line; do
+          line="''${line%$'\r'}"
+          [ -z "$line" ] && break
+          case "$line" in
+            [Cc]ontent-[Ll]ength:*)
+              len="''${line#*:}"
+              len="''${len// /}"
+              ;;
+          esac
+        done
+        case "$len" in
+          ''' | *[!0-9]* ) len=0 ;;
+        esac
+        [ "$len" -gt 0 ] && ${pkgs.coreutils}/bin/head -c "$len" >/dev/null
+
+        body=${lib.escapeShellArg body}
+
+        # CRLF line endings, explicitly.  A bare \n is tolerated by most
+        # clients and not by all, and this unit exists to be parsed.
+        printf 'HTTP/1.1 503 Service Unavailable\r\n'
+        printf 'Retry-After: %s\r\n' '${toString retryAfter}'
+        printf 'Content-Type: application/json\r\n'
+        printf 'Content-Length: %s\r\n' "''${#body}"
+        printf 'Connection: close\r\n'
+        printf '\r\n'
+        printf '%s' "$body"
+      '';
+    in
+    {
+      systemd.sockets = lib.listToAttrs (map (b: {
+        name  = "${unit}-${b.name}";
+        value = {
+          description = "503 gate for the ${b.name} container";
+
+          # NO `wantedBy`, deliberately, and it is load-bearing twice over.
+          #
+          # It keeps the gate off at boot, so llama-swap's `conflicts` never
+          # races a unit that is starting for its own reasons.  And it makes
+          # the gate purely a consequence of llama-swap's state: raised by
+          # its ExecStopPost, lowered by its Conflicts.  Nothing else decides.
+          socketConfig = {
+            # THE SAME ADDRESS AND PORT AS THE BRIDGE.  The two are mutually
+            # exclusive by the bind itself, not only by the unit relations —
+            # whichever is up owns the leg, and the other cannot come up
+            # behind its back.
+            ListenStream = "[${b.address}]:${toString targetPort}";
+            BindIPv6Only = "ipv6-only";
+            FreeBind     = true;
+            Accept       = true;
+          };
+        };
+      }) bridges);
+
+      # The template systemd instantiates per connection.  Named
+      # `<socket>@.service` because that is the name `Accept = true` looks
+      # for; an explicit `Service=` would only restate the default.
+      systemd.services = lib.listToAttrs (map (b: {
+        name  = "${unit}-${b.name}@";
+        value = {
+          description = "503 responder for the ${b.name} container";
+          serviceConfig = {
+            ExecStart        = responder;
+            Type             = "exec";
+            StandardInput    = "socket";
+            StandardOutput   = "socket";
+            StandardError    = "journal";
+
+            DynamicUser            = true;
+            NoNewPrivileges        = true;
+            PrivateDevices         = true;
+            PrivateNetwork         = true;
+            ProtectSystem          = "strict";
+            ProtectHome            = true;
+            MemoryDenyWriteExecute = true;
+            CapabilityBoundingSet  = [ "" ];
+            AmbientCapabilities    = [ "" ];
+            RestrictAddressFamilies = [ "AF_UNIX" ];
+            SystemCallFilter       = [ "@system-service" "~@resources" "~@privileged" ];
+            SystemCallErrorNumber  = "EPERM";
+            SystemCallArchitectures = "native";
+            ProtectProc            = "invisible";
+            ProcSubset             = "pid";
+            ProtectClock           = true;
+            ProtectHostname        = true;
+            ProtectKernelLogs      = true;
+            ProtectKernelTunables  = true;
+            ProtectKernelModules   = true;
+            ProtectControlGroups   = true;
+            RestrictNamespaces     = true;
+            RestrictRealtime       = true;
+            RestrictSUIDSGID       = true;
+            LockPersonality        = true;
+            RemoveIPC              = true;
+            UMask                  = "0077";
+          };
+        };
+      }) bridges);
+    };
 in
 {
   _class = "clan.service";
@@ -308,6 +455,74 @@ in
           returns the card. Measured reload cost from cold: ~4 s to evict and
           bring the other member up, ~15 s for the 18.5 GiB coder model.
         '';
+      };
+
+      # ── THE CARD IS NOT ALL OURS ───────────────────────────────────────
+      #
+      # llama-swap's `exclusive` group arbitrates the claimants it SPAWNS.
+      # It knows nothing about claimants outside it, and on ernst there is a
+      # permanent one: the HTPC session's compositor, which holds a
+      # framebuffer on the same card every minute of every day.
+      #
+      # That gap cost the TV eleven minutes on 2026-10-09.  A model sized to
+      # fit an *idle* card left 460 MiB, Steam Big Picture needs ~1350, and
+      # gamescope answers a failed framebuffer pin by aborting — nine times,
+      # with SDDM reloging it in after each one.  The arithmetic had been
+      # done correctly against the wrong baseline, in a comment, where
+      # nothing could check it.
+      #
+      # So the baseline becomes a declared number and the evaluator enforces
+      # it.  The next person to raise a context length gets a failed eval
+      # instead of a coredump on the television.
+      vram = {
+        totalMiB = lib.mkOption {
+          type        = lib.types.nullOr lib.types.ints.positive;
+          default     = null;
+          example     = 24560;
+          description = ''
+            Total VRAM on the inference card, in MiB, as the driver reports
+            it — `cat /sys/class/drm/cardN/device/mem_info_vram_total`, which
+            is smaller than the marketing figure (a 24 GB card reports 24560
+            MiB, not 24576).
+
+            `null` disables the budget check entirely.  Set it on any machine
+            whose inference card also drives a display.
+          '';
+        };
+
+        reserveMiB = lib.mkOption {
+          type        = lib.types.ints.unsigned;
+          default     = 0;
+          example     = 1600;
+          description = ''
+            VRAM that must stay free for claimants OUTSIDE llama-swap's
+            exclusive group — in practice the compositor holding the screen.
+
+            This is not a safety margin, it is a measured floor: sum
+            `amdgpu_gem_info` per process with the session idle and nothing
+            else on the card.  A model is only allowed to exist if it fits in
+            `totalMiB - reserveMiB`.
+          '';
+        };
+
+        cardPciAddress = lib.mkOption {
+          type        = lib.types.nullOr lib.types.str;
+          default     = null;
+          example     = "0000:03:00.0";
+          description = ''
+            PCI address of the inference card, used to find its sysfs
+            occupancy counters at runtime.
+
+            BY PCI ADDRESS AND NOT BY CARD NUMBER, for the reason the htpc
+            role pins its compositor the same way: on a two-GPU board the
+            numbering is not stable — ernst's discrete card is `card1`, not
+            `card0` — and it can flip on a kernel bump.  A watchdog reading
+            the wrong card would see a quiet iGPU and conclude the dGPU was
+            free.
+
+            Required by `gateOn`; `null` otherwise.
+          '';
+        };
       };
 
       stateDir = lib.mkOption {
@@ -393,6 +608,41 @@ in
         });
       };
 
+      gateOn = lib.mkOption {
+        type        = lib.types.listOf lib.types.str;
+        default     = [ ];
+        example     = [ "karakeep" ];
+        description = ''
+          Names from `exposeOn` whose leg gets a 503 gate: while the card is
+          held by a claimant outside llama-swap's exclusive group, those
+          consumers are told so, with a `Retry-After`, instead of being left
+          to hammer a server that cannot answer.
+
+          FOR BACKGROUND CONSUMERS ONLY.  A gated leg returns 503 for as long
+          as the card is busy, which is right for bookmark tagging and wrong
+          for anything a person is waiting on — Open WebUI and Home Assistant
+          should fail honestly in front of the user rather than be told to
+          come back in two minutes. List only the legs whose work can wait.
+
+          Names not present in `exposeOn` are an eval error, since a gate on
+          a leg that does not exist is a gate that silently never fires.
+        '';
+      };
+
+      gateRetryAfter = lib.mkOption {
+        type        = lib.types.ints.positive;
+        default     = 120;
+        description = ''
+          Seconds the gate puts in its `Retry-After` header.
+
+          Sized against the CONSUMER's job timeout, not against how long the
+          card is likely to stay busy — the client sleeps this long inside a
+          single job attempt, so a value above its timeout just converts the
+          backoff into a timeout and loses the job sooner.  120 s against
+          karakeep's `INFERENCE_JOB_TIMEOUT_SEC = 300` gives two sleeps per
+          attempt and still lands inside the budget.
+        '';
+      };
 
       remoteClients.enable = lib.mkEnableOption ''
         accepting SSH port-forwards from clan machines that have no usable local
@@ -410,6 +660,13 @@ in
         let
           inherit (settings) stateDir user port;
           modelsDir = "${stateDir}/models";
+
+          # The `exposeOn` entries named by `gateOn`, resolved once so the
+          # gate's units, llama-swap's `conflicts` and the watchdog's start
+          # list are all generated from one set and cannot drift.
+          gatedBridges =
+            lib.filter (b: lib.elem b.name settings.gateOn) settings.exposeOn;
+          gateSockets  = map (b: "llama-gate-${b.name}.socket") gatedBridges;
 
           # ROCm llama.cpp, built from the flake's OWN nixpkgs — no new input,
           # which was a hard constraint on this milestone and turned out to cost
@@ -825,7 +1082,100 @@ in
                 mistake rather than a valid state.
               '';
             }
-          ];
+            {
+              assertion =
+                let known = map (b: b.name) settings.exposeOn;
+                in lib.all (n: lib.elem n known) settings.gateOn;
+              message =
+                let
+                  known   = map (b: b.name) settings.exposeOn;
+                  unknown = lib.filter (n: !(lib.elem n known)) settings.gateOn;
+                in ''
+                  @clanarchy/local-ai: ${machine.name} lists
+                  ${lib.concatStringsSep ", " unknown} in `gateOn`, but
+                  `exposeOn` declares only ${lib.concatStringsSep ", " known}.
+
+                  A gate names the leg it takes over, so a name with no leg
+                  behind it produces a unit that binds nothing and fires
+                  never — the failure mode this whole role already learned
+                  once, when Open WebUI lost its veth and a listening socket
+                  went on looking healthy for five days.
+                '';
+            }
+            {
+              assertion =
+                settings.gateOn == [ ] || settings.vram.cardPciAddress != null;
+              message = ''
+                @clanarchy/local-ai: ${machine.name} sets `gateOn` but no
+                `vram.cardPciAddress`.
+
+                The gate is driven by the card's own occupancy counters, so
+                the watchdog has to be told which card — on a two-GPU board
+                there is no safe default, and picking the wrong one would
+                read a quiet iGPU and conclude the busy dGPU was free.
+              '';
+            }
+          ]
+          # ── THE VRAM BUDGET ────────────────────────────────────────────
+          #
+          # One assertion per served model, rather than one for the largest,
+          # because the group is `exclusive`: any member can be the resident
+          # one, so every member has to fit on its own.  Checking only the
+          # biggest would pass a config whose second model is the problem.
+          #
+          # Skipped entirely when totalMiB is null — a machine whose card
+          # drives no display has nothing to reserve against and should not
+          # be made to declare a number it cannot measure.
+          ++ lib.optionals (settings.vram.totalMiB != null)
+            (map (n:
+              let
+                m       = declared.${n};
+                ceiling = settings.vram.totalMiB - settings.vram.reserveMiB;
+              in {
+                assertion = m.residentVramMiB == null || m.residentVramMiB <= ceiling;
+                message = ''
+                  @clanarchy/local-ai: model "${n}" does not fit on
+                  ${machine.name}'s inference card under the session reserve.
+
+                    measured resident   ${toString m.residentVramMiB} MiB
+                    card total          ${toString settings.vram.totalMiB} MiB
+                    session reserve     ${toString settings.vram.reserveMiB} MiB
+                    ceiling             ${toString ceiling} MiB
+                    OVER BY             ${toString (m.residentVramMiB - ceiling)} MiB
+
+                  The reserve is what the compositor holding the TV needs.
+                  Taking it is not a slow degradation — gamescope answers a
+                  framebuffer pin that returns ENOMEM by calling abort(), and
+                  the display manager relogs it in, so the television
+                  crash-loops until the model's idle ttl expires.
+
+                  Three levers, cheapest first:
+
+                    * lower `contextLength` — on this architecture only a
+                      quarter of the layers hold KV, so halving the window
+                      buys a few hundred MiB and costs little;
+                    * `extraArgs = [ "--n-cpu-moe N" ]` — moves the expert
+                      tensors of the first N layers to system RAM and leaves
+                      attention and KV on the GPU;
+                    * a smaller quantisation, which is a measurement and not
+                      a swap: check tool-call fidelity before believing it.
+
+                  Lowering `vram.reserveMiB` is the lever that LOOKS cheapest
+                  and is not — it is a measured floor, not a safety margin.
+                '';
+              }) modelNames);
+
+          # A warning, not an assertion: an unmeasured model is allowed —
+          # measuring one costs a deploy and a stopped session — but it is
+          # invisible to the check above, so it must not also be silent.
+          warnings = lib.optionals (settings.vram.totalMiB != null)
+            (map (n: ''
+              @clanarchy/local-ai: model "${n}" has no `residentVramMiB`, so
+              ${machine.name}'s VRAM budget cannot check it.  It is exempt
+              from the reserve by omission rather than by measurement, which
+              is the state the budget exists to make visible.  Measure it with
+              the command in the option's description.
+            '') (lib.filter (n: declared.${n}.residentVramMiB == null) modelNames));
 
           ##################################################################
           # User, state, and the model store on zdata.
@@ -917,6 +1267,21 @@ in
             # with no models on disk; a request for one that is missing fails
             # per-request, which is the correct granularity.
 
+            # ── THE GATE IS THIS UNIT'S SHADOW ──────────────────────────
+            #
+            # Exactly one of the two owns a gated leg at any moment, and the
+            # handover is expressed entirely here so that nothing else has to
+            # remember it:
+            #
+            #   llama-swap starts  ->  Conflicts stops the gate
+            #   llama-swap stops   ->  ExecStopPost starts the gate
+            #
+            # ExecStopPost runs on clean stop AND on failure, so a crashed
+            # llama-swap raises the gate too — which is the case that matters,
+            # because that is when consumers would otherwise meet a refused
+            # connection and retry it immediately.
+            conflicts = gateSockets;
+
             environment = {
               ROCR_VISIBLE_DEVICES = "0";
               HOME                 = stateDir;
@@ -925,6 +1290,19 @@ in
             serviceConfig = {
               User  = lib.mkForce user;
               Group = lib.mkForce user;
+
+              # THE `+` PREFIX IS LOAD-BEARING AND ITS ABSENCE IS SILENT.
+              # ExecStopPost inherits this unit's User=llama, NoNewPrivileges
+              # and SystemCallFilter, under which `systemctl start` cannot
+              # talk to PID 1 — the gate would simply never come up, and the
+              # only evidence would be consumers hammering a dead port.  `+`
+              # runs the line as root, outside the sandbox.
+              #
+              # --no-block because a systemctl that waits for a job inside a
+              # stop job deadlocks against the transaction it is part of.
+              ExecStopPost = map
+                (s: "+${pkgs.systemd}/bin/systemctl --no-block start ${s}")
+                gateSockets;
 
               # ── llama-swap FORKS llama-server, SO ITS SANDBOX IS THEIRS ────
               #
@@ -984,7 +1362,105 @@ in
             };
           };
 
-        } (mkBridges {
+        } (lib.mkIf (gatedBridges != [ ]) {
+          ##################################################################
+          # The watchdog that decides which of the two owns the gated legs.
+          #
+          # ONE RULE, and it is a rule about the CARD rather than about any
+          # claimant on it:
+          #
+          #   nothing of ours is resident, yet the card is busy
+          #     -> somebody outside the exclusive group has it.  Stand down
+          #        and tell background consumers to come back later.
+          #   the card is quiet again
+          #     -> take it back.
+          #
+          # Reading occupancy rather than counting failures is what keeps
+          # this short.  There is no journal to grep, no 5xx rate to
+          # threshold, and no list of things that might claim a GPU: a game,
+          # a hand-run llama-server and a stray ComfyUI all look identical to
+          # sysfs, which is the correct level of ignorance for this unit.
+          #
+          # It cannot evict, only decline to load.  A game started while a
+          # model is already resident still loses — that case belongs to the
+          # htpc role's preempt unit and to the idle ttl, not here.
+          ##################################################################
+          systemd.timers.clanarchy-llama-gate = {
+            description = "Watch the inference card for outside claimants";
+            wantedBy    = [ "timers.target" ];
+            timerConfig = {
+              OnBootSec       = "2min";
+              OnUnitActiveSec = "30s";
+              AccuracySec     = "5s";
+              Unit            = "clanarchy-llama-gate.service";
+            };
+          };
+
+          systemd.services.clanarchy-llama-gate = {
+            description = "Raise or lower the llama-swap 503 gate";
+            # No `wantedBy`: the timer is the only thing that starts it.
+            serviceConfig = {
+              Type = "oneshot";
+              # Root, and it genuinely needs to be: it starts and stops
+              # system units.  Everything else is closed off instead.
+              ProtectSystem         = "strict";
+              ProtectHome           = true;
+              PrivateTmp            = true;
+              NoNewPrivileges       = true;
+              CapabilityBoundingSet = [ "" ];
+              AmbientCapabilities   = [ "" ];
+              RestrictNamespaces    = true;
+              RestrictRealtime      = true;
+              LockPersonality       = true;
+            };
+            path = [ pkgs.curl pkgs.jq pkgs.systemd pkgs.coreutils ];
+            script = ''
+              set -u
+
+              drmDir=/sys/bus/pci/devices/${settings.vram.cardPciAddress}/drm
+              set -- "$drmDir"/card[0-9]*
+              if [ ! -d "$1" ]; then
+                echo "no DRM card at PCI ${settings.vram.cardPciAddress} — nothing to watch" >&2
+                exit 0
+              fi
+              usedFile="$1/device/mem_info_vram_used"
+
+              usedMiB=$(( $(cat "$usedFile") / 1048576 ))
+
+              # `/running` is llama-swap's own view, so "ours" means exactly
+              # the members of the exclusive group — including whisper and
+              # ComfyUI, which are its children and not separate units.
+              resident=$(curl -fsS --max-time 5 \
+                           http://127.0.0.1:${toString port}/running \
+                         | jq -r '.running | length' 2>/dev/null || echo unknown)
+
+              # An unreachable llama-swap is NOT evidence of a free card: it
+              # is the state the gate already covers, and guessing here would
+              # flap the units every 30 s.  Leave it alone.
+              [ "$resident" = unknown ] && exit 0
+
+              if [ "$resident" -eq 0 ] \
+                 && [ "$usedMiB" -gt ${toString settings.vram.reserveMiB} ]; then
+                if systemctl -q is-active llama-swap.service; then
+                  echo "card holds ''${usedMiB} MiB with nothing of ours loaded — standing down" >&2
+                  systemctl stop llama-swap.service
+                fi
+                # Explicitly, rather than trusting Conflicts= to be
+                # symmetrical.  It is documented to be, but the ExecStopPost
+                # above is the path that normally raises the gate and this is
+                # the backstop for the case where llama-swap was already down.
+                for s in ${lib.concatStringsSep " " gateSockets}; do
+                  systemctl -q is-active "$s" || systemctl start "$s"
+                done
+              elif [ "$usedMiB" -le ${toString settings.vram.reserveMiB} ] \
+                   && ! systemctl -q is-active llama-swap.service; then
+                echo "card back under the reserve at ''${usedMiB} MiB — resuming" >&2
+                # Starting llama-swap stops the gates through Conflicts=.
+                systemctl start llama-swap.service
+              fi
+            '';
+          };
+        }) (mkBridges {
           inherit pkgs;
           # The unit prefix stays `llama-bridge-<consumer>` as it has been since
           # M19: runbooks, journal greps and docs/roadmap.md's L9 row all name
@@ -994,6 +1470,12 @@ in
           targetPort = port;
           bridges    = settings.exposeOn;
           extraAfter = [ "llama-swap.service" ];
+        }) (mkGate {
+          inherit pkgs;
+          unit       = "llama-gate";
+          targetPort = port;
+          bridges    = gatedBridges;
+          retryAfter = settings.gateRetryAfter;
         }) {
 
           ##################################################################
@@ -1127,6 +1609,36 @@ in
 
               Size it against VRAM.  Measured on ernst's 24560 MiB card with
               the 30B: f16 at 32768 is 21799 MiB resident; f16 at 65536 spills.
+              "Spills" is the generous failure; see `residentVramMiB` for the
+              one that takes the television with it.
+            '';
+          };
+
+          residentVramMiB = lib.mkOption {
+            type        = lib.types.nullOr lib.types.ints.positive;
+            default     = null;
+            example     = 22800;
+            description = ''
+              MEASURED resident VRAM for this model, in MiB.  Never computed,
+              never estimated — read off the card with the model loaded and
+              every other claimant stopped:
+
+              ```
+              systemctl stop display-manager.service
+              curl -s -X POST http://127.0.0.1:11434/v1/chat/completions \
+                -H 'content-type: application/json' \
+                -d '{"model":"<name>","messages":[{"role":"user","content":"hi"}],"max_tokens":1}'
+              cat /sys/class/drm/card1/device/mem_info_vram_used
+              ```
+
+              Stopping the session first is not fussiness: measured with it up
+              you measure the sum, which is the quantity that is supposed to
+              be checked against, not the input to the check.
+
+              When this and `inference.vram.totalMiB` are both set, the
+              evaluator refuses a model that does not fit under the reserve.
+              `null` means unmeasured — allowed, but it warns, because an
+              unmeasured model is exactly the one that overruns.
             '';
           };
 
@@ -1204,10 +1716,24 @@ in
           extraArgs = lib.mkOption {
             type        = lib.types.listOf lib.types.str;
             default     = [ ];
-            example     = [ "temp = 0.7" ];
+            example     = [ "--n-cpu-moe 4" ];
             description = ''
-              Extra preset INI lines for this model, verbatim.  Keys are
-              llama-server arguments without leading dashes.
+              Extra llama-server arguments for this model, appended verbatim
+              to the command line llama-swap spawns.
+
+              THE DESCRIPTION HERE USED TO SAY "preset INI lines … keys
+              without leading dashes", with `temp = 0.7` as the example.  That
+              was ollama-era text that outlived its implementation: `llamaCmd`
+              has always joined this list into an argv, so an INI line would
+              have been passed to llama-server as a positional argument.
+              Corrected when the VRAM budget started depending on the option.
+
+              The lever it exists for on an MoE is `--n-cpu-moe N`, which
+              keeps the expert tensors of the first N layers in system RAM
+              while attention and the KV cache stay on the GPU.  Prefer it
+              over `-ngl`: `-ngl 999` is already in the fixed argument list
+              above, so overriding it would rest on llama.cpp's parser being
+              last-wins, which nobody here has measured.
             '';
           };
         };

@@ -76,7 +76,27 @@ let
   manageableUnits = [
     "display-manager.service"
   ]
+  ++ lib.optional (cfg.gpu.preempt.units != [ ]) "clanarchy-gpu-preempt.service"
   ++ lib.optional cfg.bigscreen.enable bigscreenUnit;
+
+  # Where the crash-loop breaker keeps its working state.
+  #
+  # ON tmpfs AND NOT IN stateDir, deliberately. Two reasons, and the first is
+  # the one that matters: a reboot has to be a fresh start. Someone who power
+  # cycles the machine after a bad evening should get Big Picture back, not a
+  # counter that remembers six relogins from before the reboot and demotes
+  # them again on the second crash.
+  #
+  # The second is that /run costs nothing to get right. stateDir needs the `z`
+  # tmpfiles rule below precisely because a root-owned write there leaves a
+  # file the couch user cannot update — and a breaker that silently cannot
+  # write its counter is a breaker that silently never trips.
+  #
+  # The durable record is the journal, which is in the persist set; these two
+  # files only describe what is happening now, which is what /run is for.
+  runDir      = "/run/clanarchy-session";
+  startLog    = "${runDir}/starts";
+  breakerNote = "${runDir}/breaker-note";
 
   # Wait for the TV before handing the card to a compositor.
   #
@@ -185,10 +205,104 @@ let
   # NOT part of `programs.steam.package` — pointing there yields a path that
   # does not exist, and the session fails to start.  The system profile is
   # the only stable handle we get.
+  # ── THE CRASH-LOOP BREAKER ────────────────────────────────────────────
+  #
+  # Counts session entries that nobody asked for, and demotes rather than
+  # letting the display manager relogin a failing session forever.
+  #
+  # WHY IT LIVES HERE AND NOT IN A UNIT. systemd's StartLimitBurst on
+  # display-manager.service looks like the right tool and is not: a
+  # compositor that aborts does not take SDDM down with it, so the unit never
+  # restarts and its limits never apply. MEASURED on ernst 2026-10-09 —
+  # gamescope dumped core nine times between 20:27:46 and 20:38:15 while
+  # display-manager.service stayed `active (running)` throughout. SDDM's
+  # own `Relogin=true` was restarting the SESSION, and this wrapper is the
+  # only thing in the loop that sees that happen.
+  #
+  # WHAT COUNTS. Only starts that follow an unexpected death. A deliberate
+  # switch clears the counter in `clanarchy-session-select`, and a clean Kodi
+  # exit clears it on its own branch below, so what is left is exactly
+  # "something died and we were put back".
+  crashBreaker = lib.optionalString
+    (cfg.crashLoop.enable && cfg.crashLoop.fallbackChain != [ ]) ''
+    now=$(${pkgs.coreutils}/bin/date +%s)
+    cutoff=$(( now - ${toString cfg.crashLoop.windowSec} ))
+
+    starts=1
+    kept=""
+    if [ -r ${startLog} ]; then
+      while read -r t; do
+        case "$t" in ''' | *[!0-9]* ) continue ;; esac
+        if [ "$t" -ge "$cutoff" ]; then
+          kept="$kept$t
+"
+          starts=$(( starts + 1 ))
+        fi
+      done < ${startLog}
+    fi
+    printf '%s%s\n' "$kept" "$now" > ${startLog} 2>/dev/null || true
+
+    if [ "$starts" -ge ${toString cfg.crashLoop.threshold} ]; then
+      next=""
+      seen=""
+      for m in ${lib.concatStringsSep " " cfg.crashLoop.fallbackChain}; do
+        if [ -n "$seen" ] && [ -z "$next" ]; then next="$m"; fi
+        if [ "$m" = "$mode" ]; then seen=yes; fi
+      done
+      # A mode that is not in the chain at all — `gamescope`, normally —
+      # enters it at the top rather than being treated as its last rung.
+      if [ -z "$seen" ]; then
+        next="${builtins.head cfg.crashLoop.fallbackChain}"
+      fi
+
+      if [ -n "$next" ]; then
+        printf 'clanarchy-session: %s started %s times in %ss — demoting to %s\n' \
+          "$mode" "$starts" '${toString cfg.crashLoop.windowSec}' "$next" >&2
+        printf '%s: %s looped (%s starts), demoted to %s\n' \
+          "$(${pkgs.coreutils}/bin/date -Is)" "$mode" "$starts" "$next" \
+          > ${breakerNote} 2>/dev/null || true
+        printf '%s\n' "$next" > ${stateFile}
+        : > ${startLog} 2>/dev/null || true
+        mode="$next"
+      else
+        # END OF THE CHAIN. Do NOT exit — exiting is what the display manager
+        # answers with another relogin, which is the loop this exists to
+        # break. Holding the session process open is what stops it, and it
+        # leaves a message on the screen instead of a black flicker.
+        printf 'clanarchy-session: %s also looped (%s starts). Every fallback is exhausted.\n' \
+          "$mode" "$starts" >&2
+        printf 'Nothing further to try automatically. Over SSH:\n' >&2
+        printf '  journalctl -b -t clanarchy-session\n' >&2
+        printf '  clanarchy-session-select gamescope   # to clear and retry\n' >&2
+        printf '%s: %s looped (%s starts), chain exhausted — holding\n' \
+          "$(${pkgs.coreutils}/bin/date -Is)" "$mode" "$starts" \
+          > ${breakerNote} 2>/dev/null || true
+        while :; do ${pkgs.coreutils}/bin/sleep 3600; done
+      fi
+    fi
+  '';
+
+  # Ask the host to hand back GPU memory before a compositor takes the card.
+  #
+  # AFTER waitForDisplay, not before: with the TV off the wait blocks for as
+  # long as it takes, and evicting a model for a session that has not started
+  # would be a daily tax for nothing.
+  #
+  # Never fatal. A session that refuses to start because the inference server
+  # would not bounce is strictly worse than one that starts and might abort —
+  # the second case at least has the breaker behind it.
+  gpuPreempt = lib.optionalString (cfg.gpu.preempt.units != [ ]) ''
+    ${pkgs.systemd}/bin/systemctl start --no-ask-password \
+      clanarchy-gpu-preempt.service \
+      || printf 'clanarchy-session: GPU preempt failed — starting anyway\n' >&2
+  '';
+
   sessionRun = pkgs.writeShellScript "clanarchy-session-run" ''
     set -eu
     mode="$(cat ${stateFile} 2>/dev/null || echo ${cfg.defaultSession})"
+    ${crashBreaker}
     ${waitForDisplay}
+    ${gpuPreempt}
     case "$mode" in
       ${
         # "bigscreen" lands on Plasma only while that arm is actually built.
@@ -223,6 +337,12 @@ let
           # demoting the machine out of media mode because of a segfault.
           if ${cfg.mediaClient.exe} ${cfg.mediaClient.arguments}; then
             printf 'gamescope\n' > ${stateFile}
+            ${lib.optionalString cfg.crashLoop.enable
+              # Clean exit, so the relogin that follows is expected and must
+              # not be counted. Only on this branch — the `if` already
+              # distinguishes a clean exit from a crash, and a crash has to
+              # keep counting or Kodi could loop forever one abort at a time.
+              "rm -f ${startLog} ${breakerNote}"}
           fi
           exit 0
           ;;
@@ -277,6 +397,19 @@ let
       # The state dir is owned by the HTPC user (tmpfiles rule below), so
       # this deliberately does not need root.
       printf '%s\n' "$mode" > ${stateFile}
+
+      ${lib.optionalString cfg.crashLoop.enable ''
+        # A DELIBERATE SWITCH IS NOT A CRASH, and the breaker must not read it
+        # as one. Without this, flipping between Big Picture and Kodi a few
+        # times in an evening would spend the budget that exists for sessions
+        # dying on their own, and the next real abort would demote on its
+        # first occurrence.
+        #
+        # It also doubles as the reset: `clanarchy-session-select gamescope`
+        # is how someone takes the machine back out of a demotion, so the
+        # command that undoes the symptom has to clear the state behind it.
+        rm -f ${startLog} ${breakerNote}
+      ''}
 
       # The display manager and the Bigscreen container both want KMS on the
       # TV's GPU, so exactly one of them may run.  Whichever we are leaving
@@ -531,6 +664,95 @@ in
       transcoding HDR to SDR on the server instead of direct-playing it.
       Turning this on is what makes turning that off worthwhile
     '';
+
+    gpu.preempt.units = lib.mkOption {
+      type    = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "llama-swap.service" ];
+      description = ''
+        Units bounced just before a session takes the card, so whatever VRAM
+        they are holding is handed back first.
+
+        WHY THIS EXISTS.  On a machine that both drives a television and runs
+        GPU compute, the compute side will happily take the whole card — it
+        has no idea a compositor needs a framebuffer on it.  When it does,
+        gamescope's framebuffer pin returns ENOMEM and gamescope answers that
+        by calling abort().  MEASURED on ernst 2026-10-09: nine aborts in
+        eleven minutes, each one relogged in by the display manager, until a
+        model's idle ttl expired and ended it without anyone intervening.
+
+        ON SESSION START ONLY, and the distinction is the whole design.  The
+        HTPC session is up twenty-four hours a day, so "stop the compute
+        while a session exists" means "never run compute".  What a session
+        start is, is the one moment the card's allocation is about to change
+        and the compositor is not yet holding anything — so it is the cheapest
+        possible moment to reclaim, and the only one that needs to.
+
+        Steady-state coexistence is the job of the VRAM reserve
+        (`clanarchy.local-ai`'s `vram.reserveMiB`), not of this list.
+
+        Each unit is bounced with `try-restart`, NOT `restart`: a no-op on an
+        inactive unit, so this neither starts compute that was deliberately
+        off nor races its own startup at boot.
+      '';
+    };
+
+    crashLoop = {
+      enable = lib.mkEnableOption ''
+        a circuit breaker that demotes the session instead of letting the
+        display manager relogin a failing one forever
+
+        The display manager's own `StartLimitBurst` does NOT cover this and
+        cannot: a compositor that dies does not take SDDM with it, so
+        display-manager.service never restarts and its limits never apply.
+        What happens instead is SDDM's `Relogin=true` starting the SESSION
+        again, which only the session wrapper can see
+      '';
+
+      windowSec = lib.mkOption {
+        type    = lib.types.ints.positive;
+        default = 600;
+        description = ''
+          Rolling window, in seconds, over which unexpected session starts
+          are counted.
+        '';
+      };
+
+      threshold = lib.mkOption {
+        type    = lib.types.ints.positive;
+        default = 5;
+        description = ''
+          Unexpected starts within the window before the session is demoted.
+
+          Sized against the incident it exists for: nine aborts across eleven
+          minutes, some only six seconds apart, so five-in-ten-minutes fires
+          about halfway through rather than after it has resolved itself.
+          Deliberate mode switches do not count toward it — the switcher
+          clears the counter — so this is reached only by sessions dying on
+          their own.
+        '';
+      };
+
+      fallbackChain = lib.mkOption {
+        type    = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "kodi" "plasma" ];
+        description = ''
+          Modes to demote through, in order, each time the breaker trips.
+
+          Order these by how little they ask of the machine, not by
+          preference.  On ernst the first step is `kodi` for a measured
+          reason: Kodi idles at 326 MiB of VRAM against Steam Big Picture's
+          ~1350, so it is both navigable with a remote and the mode most
+          likely to survive whatever just exhausted the card.
+
+          At the end of the chain the session STOPS AND HOLDS rather than
+          exiting, because exiting is what the display manager answers with
+          another relogin. A couch user gets a message that stays on screen
+          instead of a black flicker.
+        '';
+      };
+    };
 
     bigscreen = {
       enable = lib.mkEnableOption ''
@@ -1649,7 +1871,13 @@ in
       "d ${stateDir} 0755 ${cfg.user} ${config.users.users.${cfg.user}.group} -"
       "f ${stateFile} 0644 ${cfg.user} ${config.users.users.${cfg.user}.group} - ${cfg.defaultSession}"
       "z ${stateFile} 0644 ${cfg.user} ${config.users.users.${cfg.user}.group} -"
-    ];
+    ]
+    # The breaker's working directory. Only the directory is declared: the
+    # two files inside it are created on demand and are meaningless when
+    # absent, so there is no equivalent of the `f` seed above — and on tmpfs
+    # the whole thing is recreated each boot, which is the reset.
+    ++ lib.optional cfg.crashLoop.enable
+      "d ${runDir} 0755 ${cfg.user} ${config.users.users.${cfg.user}.group} -";
 
     # The media client's own state. Home is rolled back on every boot, and
     # Kodi keeps the Jellyfin add-on, the paired server, the login and every
@@ -1703,6 +1931,60 @@ in
     # `skin.estuary` is Kodi's built-in default, shipped inside the binary's
     # own addon directory and impossible to uninstall, so the fallback cannot
     # itself dangle.
+    # ── HAND THE CARD BACK BEFORE A COMPOSITOR WANTS IT ──────────────────
+    #
+    # The counterpart to the VRAM reserve in @clanarchy/local-ai. The reserve
+    # keeps a model from ever being sized into the session's framebuffer; this
+    # deals with the memory a model is holding RIGHT NOW, at the one instant
+    # the session is about to need it.
+    #
+    # Root, because it bounces system units; the couch user reaches it through
+    # the polkit grant on `manageableUnits`, which buys them "ask the host to
+    # bounce the inference server" and nothing else — the unit list is fixed at
+    # build time, so there is no argument to abuse.
+    systemd.services.clanarchy-gpu-preempt =
+      lib.mkIf (cfg.gpu.preempt.units != [ ]) {
+        description = "Reclaim GPU memory before the session starts";
+
+        # Same wiring and the same reasoning as clanarchy-steam-shortcuts in
+        # modules/gaming-shortcuts.nix.
+        wantedBy = [ "multi-user.target" "display-manager.service" ];
+        before   = [ "display-manager.service" ];
+        after    = [ "local-fs.target" ];
+
+        serviceConfig = {
+          Type = "oneshot";
+
+          # NO RemainAfterExit, and here it is doing more work than in the
+          # units above. It is what lets `systemctl start` re-run this: the
+          # session wrapper calls it on EVERY entry, including the relogins
+          # that follow a crash, and a unit left "active (exited)" would
+          # silently do nothing from the second call onwards — which is
+          # precisely the run that matters.
+          RemainAfterExit = false;
+
+          # Bounded, because this sits in front of the television starting.
+          # A wedged inference server must not mean a TV that never lights up.
+          TimeoutStartSec = "60s";
+
+          # `try-restart` rather than `restart`, for two separate reasons:
+          #
+          #   * at boot this unit is ordered BEFORE the display manager and so
+          #     runs before llama-swap has started. `restart` would start it
+          #     there, racing its own unit ordering; `try-restart` is a no-op
+          #     on an inactive unit, so boot is unaffected.
+          #   * `stop` would be wrong too. llama-swap carries
+          #     Restart=on-failure, which does not cover a clean stop, so a
+          #     stopped swapper stays stopped and every consumer of the model
+          #     loses it until someone notices. A restart frees the VRAM — the
+          #     backends are children of that cgroup — and leaves the swapper
+          #     up and able to reload on the next request.
+          ExecStart = map
+            (u: "${pkgs.systemd}/bin/systemctl try-restart ${u}")
+            cfg.gpu.preempt.units;
+        };
+      };
+
     systemd.services.clanarchy-kodi-skin-repair = lib.mkIf cfg.mediaClient.enable {
       description = "Reset Kodi's skin when it names one that is not installed";
 
