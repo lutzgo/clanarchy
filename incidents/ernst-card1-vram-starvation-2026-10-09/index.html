@@ -1,0 +1,2730 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="NixOS declarative configuration — guides and option reference">
+      
+      
+      
+        <link rel="canonical" href="https://lutzgo.github.io/clanarchy/incidents/ernst-card1-vram-starvation-2026-10-09/">
+      
+      
+        <link rel="prev" href="../ernst-jellyfin-vaapi-drm-display-failure-2026-08-18/">
+      
+      
+        <link rel="next" href="../../reference/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>ernst card1 VRAM starvation (2026-10-09) - Clanarchy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#ernst-card1-vram-starvation-crash-looped-the-tv-2026-10-09-resolved" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Clanarchy" class="md-header__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Clanarchy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ernst card1 VRAM starvation (2026-10-09)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/first-time-install/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../runbooks/zfs-auto-snapshot-optin/" class="md-tabs__link">
+          
+  
+  
+  Runbooks
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../ernst-slot12-drop-2026-08-11/" class="md-tabs__link">
+          
+  
+  
+  Incidents
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Clanarchy" class="md-nav__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Clanarchy
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/first-time-install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    First-time install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploying and testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/updating-machines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating machines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/adding-a-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/adding-a-module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a module or option
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/jj-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The jj workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/coding-agent-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coding-agent workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/accepting-pull-requests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Accepting pull requests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/networking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Networking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/authelia-2fa/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authelia second factors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/yubikey/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/yubikey-ssh-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey SSH setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/remote-unlock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote unlock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ernst-zdata-datasets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zdata datasets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ernst-app-api-ingress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst app-API ingress
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/mail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mail on ernst
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/reading-stack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The reading stack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/music-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The music pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/document-store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The document store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/courses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video courses in Jellyfin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/navidrome-clients/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Navidrome clients
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/agent-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The agent's memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/hacs-dependencies/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HACS dependencies
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/htpc-bigscreen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / Plasma Bigscreen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/htpc-controllers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / game controllers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/birte-emulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emulation on birte
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/firmware-updates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware updates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/noctalia-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/noctalia-v5-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia v5 migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/obs-sony-webcam/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OBS / Sony webcam
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runbooks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Runbooks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/zfs-auto-snapshot-optin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZFS auto-snapshot opt-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-zroot-drive-replacement/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zroot drive replacement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-enable-impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst enabling impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-vlan-bridge-cutover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VLAN bridge cutover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-vpn-microvm-deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VPN microvm deploy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/bindery-dead-torrent-sweep/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bindery dead-torrent sweep
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Incidents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Incidents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-slot12-drop-2026-08-11/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst slot-12 drive drop (2026-08-11)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-jellyfin-vaapi-drm-display-failure-2026-08-18/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst Jellyfin VAAPI DRM display failure (2026-08-18)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst card1 VRAM starvation (2026-10-09)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst card1 VRAM starvation (2026-10-09)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#timeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#failure-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failure mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-numbers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The numbers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-repo-claimed-and-why-it-was-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the repo claimed, and why it was wrong
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-fixes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The fixes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The fixes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-a-vram-reserve-the-evaluator-enforces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. A VRAM reserve the evaluator enforces
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-the-model-was-made-to-fit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The model was made to fit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-reclaim-on-session-start-and-a-breaker-behind-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Reclaim on session start, and a breaker behind it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-karakeep-is-told-to-back-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. karakeep is told to back off
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#traps-worth-remembering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Traps worth remembering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#not-fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not fixed
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/hardware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Desktop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/apps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/users/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/wifi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#timeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#failure-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failure mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-numbers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The numbers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-repo-claimed-and-why-it-was-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the repo claimed, and why it was wrong
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-fixes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The fixes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The fixes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-a-vram-reserve-the-evaluator-enforces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. A VRAM reserve the evaluator enforces
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-the-model-was-made-to-fit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The model was made to fit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-reclaim-on-session-start-and-a-breaker-behind-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Reclaim on session start, and a breaker behind it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-karakeep-is-told-to-back-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. karakeep is told to back off
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#traps-worth-remembering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Traps worth remembering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#not-fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not fixed
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/lutzgo/clanarchy/edit/main/docs/incidents/ernst-card1-vram-starvation-2026-10-09.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="ernst-card1-vram-starvation-crash-looped-the-tv-2026-10-09-resolved">ernst — card1 VRAM starvation crash-looped the TV, 2026-10-09 — RESOLVED<a class="headerlink" href="#ernst-card1-vram-starvation-crash-looped-the-tv-2026-10-09-resolved" title="Permanent link">&para;</a></h1>
+<p><strong>Status: cause confirmed and measured; fixes written and awaiting deploy.</strong></p>
+<p>The living-room session crash-looped for eleven minutes because a language
+model took VRAM the compositor needed. Nobody intervened — it ended when the
+model's idle timer expired.</p>
+<p>Three things were wrong, and the first is the one that matters:</p>
+<ol>
+<li><strong>A model was sized against an idle card.</strong> The card is never idle: the
+   HTPC session holds a framebuffer on it continuously. The sizing argument
+   lived in a comment, where nothing could check it.</li>
+<li><strong>Nothing reclaimed the card when a session started.</strong> llama-swap
+   arbitrates the claimants it spawns and is blind to everything else; the
+   session is not one of its children, so it could not be swapped out — only
+   killed.</li>
+<li><strong>The consumer that triggered it had no backoff</strong>, and karakeep exposes no
+   setting to give it one.</li>
+</ol>
+<hr />
+<h2 id="timeline">Timeline<a class="headerlink" href="#timeline" title="Permanent link">&para;</a></h2>
+<p>All times CEST, from <code>journalctl</code> and <code>coredumpctl</code> on ernst.</p>
+<table>
+<thead>
+<tr>
+<th>Time</th>
+<th>What happened</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>~20:10</td>
+<td>karakeep began a tag + summary batch and asked llama-swap for <code>qwen3.6-35b-a3b</code> through <code>llama-bridge-karakeep</code></td>
+</tr>
+<tr>
+<td>20:10–20:25</td>
+<td><code>llama-server</code> could not load — Crimson Desert held the VRAM. llama-swap answered 500 in ~1.4 s; karakeep retried at <strong>~60 requests/minute for fourteen minutes</strong>, none of which could have succeeded</td>
+</tr>
+<tr>
+<td>20:25:20</td>
+<td>The load finally succeeded, which means the card had just been freed: the game had died. <code>mem_info_vram_used</code> went to 24 G of 24 G</td>
+</tr>
+<tr>
+<td>20:27:46</td>
+<td>First gamescope abort</td>
+</tr>
+<tr>
+<td>20:27:46–20:38:15</td>
+<td><strong>Nine</strong> aborts, SDDM reloging the session in after each. Gaps as short as six seconds</td>
+</tr>
+<tr>
+<td>~20:44</td>
+<td>llama-swap's <code>ttl: 900</code> expired, the model unloaded, VRAM fell to 901 M, and the loop stopped on its own</td>
+</tr>
+</tbody>
+</table>
+<p>Note the ordering. The game did not lose to the model — the model could not
+load <em>until</em> the game died. What the model then did was take the card so
+completely that the session could never get back on it.</p>
+<h2 id="failure-mode">Failure mode<a class="headerlink" href="#failure-mode" title="Permanent link">&para;</a></h2>
+<p>Kernel, at every abort:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>amdgpu 0000:03:00.0: amdgpu: [drm] *ERROR* Not enough memory for command submission!
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>[drm:amdgpu_dm_plane_helper_prepare_fb [amdgpu]] *ERROR* Failed to pin framebuffer with error -12
+</code></pre></div>
+<p><code>-12</code> is <code>ENOMEM</code>. Every one of the nine coredumps carries the same stack:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>abort (libc.so.6 + 0x29350)
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>gamescope::CDRMBackend::Commit(FrameInfo_t const*)
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>gamescope::CDRMBackend::Present(FrameInfo_t const*, bool)
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>paint_all(global_focus_t*, bool)
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>steamcompmgr_main(int, char**)
+</code></pre></div>
+<p>gamescope answers a failed DRM atomic commit by calling <code>abort()</code>. There is no
+degraded mode.</p>
+<p><strong>Why the display manager's restart limits did not stop it.</strong> They never saw
+it. <code>display-manager.service</code> has nixpkgs' defaults — <code>StartLimitIntervalSec=30</code>,
+<code>StartLimitBurst=3</code>, <code>Restart=always</code> — but a compositor dying does not take
+SDDM down, so the unit never restarted. It stayed <code>active (running)</code> throughout.
+What was looping was SDDM's own <code>Relogin=true</code> restarting the <em>session</em>, which
+only <code>clanarchy-session-run</code> is in a position to observe.</p>
+<h2 id="the-numbers">The numbers<a class="headerlink" href="#the-numbers" title="Permanent link">&para;</a></h2>
+<p>Measured by summing <code>/sys/kernel/debug/dri/0000:03:00.0/amdgpu_gem_info</code> per
+process, each session idle, nothing else on the card:</p>
+<table>
+<thead>
+<tr>
+<th>Claimant</th>
+<th>VRAM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Card total (<code>mem_info_vram_total</code>)</td>
+<td>24560 MiB</td>
+</tr>
+<tr>
+<td><code>qwen3.6-35b-a3b</code> as configured</td>
+<td>23699 MiB</td>
+</tr>
+<tr>
+<td>Kodi (<code>kodi.bin --standalone --windowing=gbm</code>)</td>
+<td>326 MiB</td>
+</tr>
+<tr>
+<td>Steam Big Picture (gamescope 225 + Xwayland 276 + steamwebhelper 604 + steamwebhelper 215 + steam 31)</td>
+<td>~1350 MiB</td>
+</tr>
+</tbody>
+</table>
+<p>So:</p>
+<ul>
+<li>model + Kodi = 24025 of 24560 — <strong>fits, with 535 MiB to spare</strong></li>
+<li>model + Big Picture = 25049 of 24560 — <strong>over by 489 MiB</strong></li>
+</ul>
+<p>That is the whole incident. The machine had been running in Kodi, which fit;
+the session that could not fit was the gaming one.</p>
+<h2 id="what-the-repo-claimed-and-why-it-was-wrong">What the repo claimed, and why it was wrong<a class="headerlink" href="#what-the-repo-claimed-and-why-it-was-wrong" title="Permanent link">&para;</a></h2>
+<p>Two comments asserted this could not happen. Both have been corrected in place.</p>
+<p><code>clan.nix</code>, on the shared dGPU:</p>
+<blockquote>
+<p>A session and ROCm workloads share a GPU without trouble — compute goes
+through the render node, KMS through the card node — so this is a note for
+future readers rather than a conflict.</p>
+</blockquote>
+<p>True about device nodes, and irrelevant. They do not compete for nodes. They
+compete for VRAM, and the node argument never addressed that.</p>
+<p><code>clan.nix</code>, on the model that replaced the coder model at M29c:</p>
+<blockquote>
+<p><strong>THE ONE REAL COST: 460 MiB OF HEADROOM</strong> — 24100 MiB of 24560 resident,
+against 20959 before. That is enough and it is not comfortable.</p>
+</blockquote>
+<p>The arithmetic was right; the baseline was wrong. 460 MiB is what is left on an
+idle card. Big Picture needs ~1350.</p>
+<p>A third sentence in the same block was <em>nearly</em> right and worth reading
+carefully:</p>
+<blockquote>
+<p>ANYTHING ELSE WANTING THE CARD evicts it, as before. ComfyUI still does.</p>
+</blockquote>
+<p>True only for claimants <strong>inside</strong> llama-swap's <code>exclusive</code> group. ComfyUI and
+whisper are children of <code>llama-swap.service</code>, so the group arbitrates them. The
+session is not, so it cannot evict — it aborts. The word "anything" was doing
+damage.</p>
+<p><code>docs/roadmap.md</code>'s M15 close-out had also recorded the problem as
+<strong>UNPROVOKED</strong> ("no service claims the render node"). M19 later added a re-open
+trigger noting it was provoked and that "something now arbitrates it". That
+arbitration is intra-llama-swap only, and the session is exactly the claimant
+it does not cover.</p>
+<h2 id="the-fixes">The fixes<a class="headerlink" href="#the-fixes" title="Permanent link">&para;</a></h2>
+<p>Three, because the single root cause has three independent failure surfaces.</p>
+<h3 id="1-a-vram-reserve-the-evaluator-enforces">1. A VRAM reserve the evaluator enforces<a class="headerlink" href="#1-a-vram-reserve-the-evaluator-enforces" title="Permanent link">&para;</a></h3>
+<p>The session's idle baseline is now a declared number rather than whatever
+happens to be left over:</p>
+<ul>
+<li><code>clanarchy.local-ai</code> inference settings gain <code>vram.totalMiB</code> (24560),
+  <code>vram.reserveMiB</code> (<strong>1600</strong> — the larger measured baseline plus 250 MiB for
+  the framebuffer pin during a modeset) and <code>vram.cardPciAddress</code>.</li>
+<li>Each model gains <code>residentVramMiB</code>, which is <strong>measured, never computed</strong>.</li>
+<li>An assertion refuses any served model where
+  <code>residentVramMiB + reserveMiB &gt; totalMiB</code>, naming the model, all three
+  numbers and the overage. One assertion per model, not one for the largest:
+  the group is exclusive, so any member can be the resident one.</li>
+<li>A warning fires for any model left unmeasured, so omission is visible rather
+  than silently exempt.</li>
+</ul>
+<p>The next person to raise a context window gets a failed eval instead of a
+coredump on the television.</p>
+<h3 id="2-the-model-was-made-to-fit">2. The model was made to fit<a class="headerlink" href="#2-the-model-was-made-to-fit" title="Permanent link">&para;</a></h3>
+<p>Measured on ernst 2026-10-10, one arm at a time, <code>llama-server</code> run by hand on
+the live card with the Kodi session resident (330 MiB) and subtracted out.
+256-token decode, n=1 per arm. Ceiling is 24560 − 1600 = <strong>22960 MiB</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>arm</th>
+<th>resident</th>
+<th>decode</th>
+<th>vs ceiling</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-c 32768</code> (as deployed)</td>
+<td>23699 MiB</td>
+<td>94.5 tok/s</td>
+<td><strong>739 over</strong></td>
+</tr>
+<tr>
+<td><code>-c 16384</code></td>
+<td>23381 MiB</td>
+<td>95.8 tok/s</td>
+<td>421 over</td>
+</tr>
+<tr>
+<td><code>-c 16384 --n-cpu-moe 1</code></td>
+<td>22916 MiB</td>
+<td>87.0 tok/s</td>
+<td>44 under</td>
+</tr>
+<tr>
+<td><code>-c 16384 --n-cpu-moe 2</code></td>
+<td>22353 MiB</td>
+<td>80.1 tok/s</td>
+<td>607 under</td>
+</tr>
+<tr>
+<td><strong><code>-c 32768 --n-cpu-moe 2</code></strong></td>
+<td><strong>22672 MiB</strong></td>
+<td><strong>81.5 tok/s</strong></td>
+<td><strong>288 under</strong></td>
+</tr>
+<tr>
+<td><code>-c 32768 --n-cpu-moe 3</code></td>
+<td>22207 MiB</td>
+<td>76.2 tok/s</td>
+<td>753 under</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Taken: <code>-c 32768 --n-cpu-moe 2</code></strong>, at −13.8% decode.</p>
+<p>Not the faster arm. <code>-c 16384 --n-cpu-moe 1</code> holds 87.0 tok/s but halves the
+context window — a semantic change for every consumer, and mneme injects a
+constitution plus wiki recall on every turn — and clears the ceiling by 44 MiB,
+which is the same thin posture that caused this incident.</p>
+<p><code>--n-cpu-moe N</code> moves only the expert tensors of the first N layers to system
+RAM and leaves attention and the whole KV cache on the GPU. That is why two
+layers buy 1027 MiB for 13% rather than for a third of the decode rate. It
+needed no new option: <code>extraArgs</code> already existed, though its description had
+drifted to describing ollama-era INI syntax and has been corrected.</p>
+<h3 id="3-reclaim-on-session-start-and-a-breaker-behind-it">3. Reclaim on session start, and a breaker behind it<a class="headerlink" href="#3-reclaim-on-session-start-and-a-breaker-behind-it" title="Permanent link">&para;</a></h3>
+<p><code>clanarchy-gpu-preempt.service</code> bounces <code>llama-swap.service</code> with
+<code>try-restart</code> just before a session takes the card. Restarting frees the VRAM —
+the backends are children of that cgroup — and leaves the swapper up and able
+to reload. <code>try-restart</code> rather than <code>restart</code> so it is a no-op at boot, and
+rather than <code>stop</code> because llama-swap's <code>Restart=on-failure</code> does not cover a
+clean stop and every consumer would lose the model.</p>
+<p><strong>On session start only.</strong> The HTPC session is up twenty-four hours a day, so
+"stop the compute while a session exists" would mean never running compute at
+all. Steady-state coexistence is the reserve's job.</p>
+<p>It is wired twice: <code>before</code>/<code>wantedBy</code> on <code>display-manager.service</code> for boot and
+for <code>clanarchy-session-select</code>, and a <code>systemctl start</code> from
+<code>clanarchy-session-run</code> — because SDDM's relogin never restarts the display
+manager, and that is precisely the crash-loop path.</p>
+<p>Behind it, a circuit breaker in <code>clanarchy-session-run</code> counts session entries
+that nobody asked for (a deliberate switch clears the counter) and demotes
+through <code>kodi</code> then <code>plasma</code> rather than letting the relogin run forever. Kodi
+first for a measured reason: 326 MiB against Big Picture's 1350, so it is both
+navigable with a remote and the mode most likely to survive whatever exhausted
+the card. At the end of the chain the session <strong>holds</strong> instead of exiting,
+because exiting is what the display manager answers with another relogin.</p>
+<p>The counter lives on tmpfs (<code>/run/clanarchy-session</code>) so a reboot is a fresh
+start.</p>
+<h3 id="4-karakeep-is-told-to-back-off">4. karakeep is told to back off<a class="headerlink" href="#4-karakeep-is-told-to-back-off" title="Permanent link">&para;</a></h3>
+<p>karakeep 0.32.0 has <strong>no</strong> retry or backoff setting. Read from the deployed
+store path:</p>
+<ul>
+<li><code>apps/workers/dist/logger-DyXDxwmR.js:30-160</code> is the complete zod env schema;
+  thirteen <code>INFERENCE_*</code> variables, none retry-related.</li>
+<li><code>shared-server-CI-y1v5_.js:2310</code> creates the queue with a literal
+  <code>numRetries: 3</code>.</li>
+<li><code>queue-liteque-p9Yg_mKq.js:68</code> re-polls at 1000 ms.</li>
+<li>the bundled OpenAI SDK retries 5xx twice on its own at 0.5 s then 1 s.</li>
+</ul>
+<p>Multiplied out, that is the measured ~60 requests/minute.</p>
+<p>But the same SDK honours <code>Retry-After</code> off the wire (<code>index.js:8398-8426</code>), in
+seconds or as an HTTP-date, <strong>with no clamp</strong>. So the backoff is the server's to
+send. A 503 gate now stands on karakeep's leg whenever the card belongs to
+something outside llama-swap's group: same ULA address as the bridge, mutually
+exclusive by the bind itself, raised by llama-swap's <code>ExecStopPost</code> and lowered
+by its <code>Conflicts</code>. A 30-second watchdog reads card occupancy and decides which
+of the two owns the leg.</p>
+<p>Expected: ~2–3 requests per 300 s instead of ~60 per 60.</p>
+<p><strong>Gated for karakeep alone.</strong> A 503 is right for bookmark tagging and wrong for
+anything with a person waiting on it, so Open WebUI and Home Assistant are not
+gated, and monitoring must keep scraping for the condition to stay visible.</p>
+<h2 id="traps-worth-remembering">Traps worth remembering<a class="headerlink" href="#traps-worth-remembering" title="Permanent link">&para;</a></h2>
+<p><strong>A unit that stays <code>active</code> while its payload dies nine times.</strong> The instinct
+on a crash loop is to reach for <code>StartLimitBurst</code>. It was already set, already
+correct, and already irrelevant. Check <em>which</em> thing is restarting before
+limiting it.</p>
+<p><strong>Measuring a model on a card that is not empty.</strong> Measuring the model while the
+session is up measures the sum — the quantity the check is supposed to be
+<em>against</em>, not its input. Every figure in the table above was taken with the
+Kodi baseline subtracted, and the option's description says so, because the next
+person will be tempted to skip the stop.</p>
+<p><strong>A headroom figure with no stated baseline.</strong> "460 MiB of headroom" was true
+and useless. A reserve is only meaningful next to what it is reserved <em>from</em>.</p>
+<p><strong><code>ExecStopPost</code> inherits the unit's sandbox.</strong> The line that raises the gate
+runs <code>systemctl</code>, under a unit with <code>User=llama</code>, <code>NoNewPrivileges</code> and a
+syscall filter — where it cannot talk to PID 1. It needs the <code>+</code> prefix to run
+as root, and without it the gate would simply never come up, with the only
+symptom being consumers hammering a dead port.</p>
+<p><strong>Two measurement runs were lost to the bug itself.</strong> Repeat runs of the chosen
+arm died with <code>failed to load model</code> because llama-swap had loaded the 35B for a
+real karakeep job mid-measurement. The incident reproduced itself, unprompted,
+during the investigation into it.</p>
+<p><strong>"Mutually exclusive by the bind" is not a mechanism.</strong> The first deploy of
+this fix failed to start the gate:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>llama-gate-karakeep.socket: Failed to create listening socket
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  ([fdca:fe92::1]:11434): Address already in use
+</code></pre></div>
+<p>The gate and the bridge bind the same address, and that was described in the
+code as making them mutually exclusive. It does not: the bridge is
+<code>wantedBy = sockets.target</code> and therefore always up, so the shared bind did not
+arbitrate between them — it just failed whichever came second, which was always
+the gate. Two units wanting one address need <code>Conflicts=</code> naming each other;
+the collision is the symptom, not the mechanism. Fixed in #301.</p>
+<p><strong>A <code>try-restart</code> inside an activation transaction can be cancelled.</strong> The
+preempt unit also failed on that first deploy — <code>Job for llama-swap.service
+canceled</code> — because activation was already restarting llama-swap and systemd
+resolved the duplicate job by dropping one. Ordering the unit <code>After=</code> the units
+it bounces removes the cause; a <code>-</code> prefix on <code>ExecStart</code> removes the
+consequence, which matters because this unit sits in front of the television
+starting and must never be a reason for a dark screen.</p>
+<h2 id="not-fixed">Not fixed<a class="headerlink" href="#not-fixed" title="Permanent link">&para;</a></h2>
+<p><strong>A game that starts while a model is already resident still loses.</strong> The gate
+is load-prevention, not eviction: it stops a model being loaded onto a busy
+card, and does not evict one that is already there. That case waits for the
+idle ttl or a manual unload. Wiring Steam's launch path to preempt would close
+it and is out of scope here.</p>
+<p><strong>The reserve covers the session shell, not a running game.</strong> A game wanting
+several GiB will still make a model load fail. That is correct TV-wins
+behaviour, and it is the case the gate exists to make survivable rather than
+noisy.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

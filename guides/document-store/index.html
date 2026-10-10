@@ -1,0 +1,3131 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="NixOS declarative configuration — guides and option reference">
+      
+      
+      
+        <link rel="canonical" href="https://lutzgo.github.io/clanarchy/guides/document-store/">
+      
+      
+        <link rel="prev" href="../music-pipeline/">
+      
+      
+        <link rel="next" href="../courses/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>The document store - Clanarchy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#the-document-store" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Clanarchy" class="md-header__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Clanarchy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              The document store
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../first-time-install/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../runbooks/zfs-auto-snapshot-optin/" class="md-tabs__link">
+          
+  
+  
+  Runbooks
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../incidents/ernst-slot12-drop-2026-08-11/" class="md-tabs__link">
+          
+  
+  
+  Incidents
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Clanarchy" class="md-nav__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Clanarchy
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../first-time-install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    First-time install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploying and testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../updating-machines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating machines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adding-a-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adding-a-module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a module or option
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../jj-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The jj workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coding-agent-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coding-agent workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../accepting-pull-requests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Accepting pull requests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../networking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Networking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../authelia-2fa/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authelia second factors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../yubikey/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../yubikey-ssh-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey SSH setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote-unlock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote unlock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-zdata-datasets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zdata datasets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-app-api-ingress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst app-API ingress
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mail on ernst
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reading-stack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The reading stack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../music-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The music pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The document store
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The document store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-two-ways-in-and-which-one-to-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The two ways in, and which one to use
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The two ways in, and which one to use">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#expect-the-file-to-disappear-from-scan-inbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expect the file to disappear from Scan Inbox
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phone-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phone setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accounts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accounts
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Accounts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-an-auto-created-account-can-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What an auto-created account can do
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-settings-once-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Settings-once list
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automatic-tagging-titles-and-filenames" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic tagging, titles and filenames
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Automatic tagging, titles and filenames">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-classifier-has-to-be-taught-and-this-is-the-whole-procedure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The classifier has to be taught, and this is the whole procedure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#automatic-titles-need-a-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic titles need a Workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#an-inbox-tag-is-worth-it-once-there-is-volume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        An inbox tag is worth it once there is volume
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-to-set-on-the-two-settings-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What to set on the two settings pages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sending-a-file-from-nextcloud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sending a file from Nextcloud
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#office-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Office files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ocr-language" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OCR language
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="OCR language">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#do-not-change-ocr-settings-in-the-web-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do not change OCR settings in the web UI
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#asking-the-ai-about-a-document" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Asking the AI about a document
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Asking the AI about a document">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#everything-is-shared-whoever-added-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Everything is shared, whoever added it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-cannot-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it cannot do
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dates-are-not-trustworthy-and-the-tool-says-so" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dates are not trustworthy, and the tool says so
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#if-it-stops-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If it stops working
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../courses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video courses in Jellyfin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../navidrome-clients/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Navidrome clients
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The agent's memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hacs-dependencies/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HACS dependencies
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../htpc-bigscreen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / Plasma Bigscreen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../htpc-controllers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / game controllers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../birte-emulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emulation on birte
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../firmware-updates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware updates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../noctalia-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../noctalia-v5-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia v5 migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../obs-sony-webcam/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OBS / Sony webcam
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runbooks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Runbooks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/zfs-auto-snapshot-optin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZFS auto-snapshot opt-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-zroot-drive-replacement/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zroot drive replacement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-enable-impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst enabling impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-vlan-bridge-cutover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VLAN bridge cutover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-vpn-microvm-deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VPN microvm deploy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/bindery-dead-torrent-sweep/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bindery dead-torrent sweep
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Incidents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Incidents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../incidents/ernst-slot12-drop-2026-08-11/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst slot-12 drive drop (2026-08-11)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../incidents/ernst-jellyfin-vaapi-drm-display-failure-2026-08-18/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst Jellyfin VAAPI DRM display failure (2026-08-18)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../incidents/ernst-card1-vram-starvation-2026-10-09/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst card1 VRAM starvation (2026-10-09)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/hardware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Desktop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/apps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/users/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/wifi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-two-ways-in-and-which-one-to-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The two ways in, and which one to use
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The two ways in, and which one to use">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#expect-the-file-to-disappear-from-scan-inbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expect the file to disappear from Scan Inbox
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phone-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phone setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accounts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accounts
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Accounts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-an-auto-created-account-can-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What an auto-created account can do
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-settings-once-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Settings-once list
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automatic-tagging-titles-and-filenames" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic tagging, titles and filenames
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Automatic tagging, titles and filenames">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-classifier-has-to-be-taught-and-this-is-the-whole-procedure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The classifier has to be taught, and this is the whole procedure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#automatic-titles-need-a-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic titles need a Workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#an-inbox-tag-is-worth-it-once-there-is-volume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        An inbox tag is worth it once there is volume
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-to-set-on-the-two-settings-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What to set on the two settings pages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sending-a-file-from-nextcloud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sending a file from Nextcloud
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#office-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Office files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ocr-language" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OCR language
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="OCR language">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#do-not-change-ocr-settings-in-the-web-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do not change OCR settings in the web UI
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#asking-the-ai-about-a-document" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Asking the AI about a document
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Asking the AI about a document">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#everything-is-shared-whoever-added-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Everything is shared, whoever added it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-cannot-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it cannot do
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dates-are-not-trustworthy-and-the-tool-says-so" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dates are not trustworthy, and the tool says so
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#if-it-stops-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If it stops working
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/lutzgo/clanarchy/edit/main/docs/guides/document-store.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="the-document-store">The document store<a class="headerlink" href="#the-document-store" title="Permanent link">&para;</a></h1>
+<p><code>docs.goclan.org</code> — Paperless-ngx on ernst (M32). Scan paper with a phone,
+upload it, and have it OCR'd, filed and full-text searchable from anywhere.</p>
+<p>Declared in <code>machines/ernst/containers/paperless.nix</code>, with a second ingest
+door wired into <code>machines/ernst/containers/nextcloud.nix</code>.</p>
+<h2 id="the-two-ways-in-and-which-one-to-use">The two ways in, and which one to use<a class="headerlink" href="#the-two-ways-in-and-which-one-to-use" title="Permanent link">&para;</a></h2>
+<p><strong>FairScan does not upload anything.</strong> It is deliberately account-free and
+cloud-free: it produces a multi-page PDF and then either shares it to another
+app or saves it into a folder a storage app provides. So the question is never
+"how does FairScan reach ernst" — it is "which app does FairScan hand the PDF
+to". Both answers are configured.</p>
+<table>
+<thead>
+<tr>
+<th>Door</th>
+<th>Use it for</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Paperless Mobile</strong></td>
+<td>The everyday case. Tag and name the document at upload time, and search the whole archive from the phone.</td>
+<td>Scan → Share → Paperless Mobile</td>
+</tr>
+<tr>
+<td><strong>The Nextcloud folder</strong></td>
+<td>When you want to scan now and sort later, or when the other person's phone does not have the app.</td>
+<td>Scan → Share → Nextcloud → <code>Scan Inbox</code>, or Save directly into that folder</td>
+</tr>
+</tbody>
+</table>
+<p>Both end in the same place. The Nextcloud folder <strong>is</strong> paperless's consumption
+directory — <code>/srv/state/paperless/inbox</code>, mounted into Nextcloud as writable
+external storage — so a file dropped there is picked up within a minute and
+becomes a document with no further action.</p>
+<h3 id="expect-the-file-to-disappear-from-scan-inbox">Expect the file to disappear from <code>Scan Inbox</code><a class="headerlink" href="#expect-the-file-to-disappear-from-scan-inbox" title="Permanent link">&para;</a></h3>
+<p>That is correct and is the sign it worked. Paperless consumes a scan and
+unlinks it. Nextcloud is configured to notice (<code>filesystem_check_changes = 1</code>
+on that mount), so the folder empties itself the next time you open it.</p>
+<p>If scans <strong>pile up</strong> in <code>Scan Inbox</code> instead, paperless is not consuming — see
+<a href="#troubleshooting">Troubleshooting</a>.</p>
+<h2 id="phone-setup">Phone setup<a class="headerlink" href="#phone-setup" title="Permanent link">&para;</a></h2>
+<p>Install <strong>Paperless Mobile</strong> from F-Droid
+(<code>de.astubenbord.paperless_mobile</code>), add a server:</p>
+<ul>
+<li>Server URL: <code>https://docs.goclan.org</code></li>
+<li>Username / password: the account created for you (see below)</li>
+</ul>
+<p>There is a lighter alternative if the full client is more than you want:
+<strong>Paperless-NGX Android Uploader</strong>, which adds nothing but a share target.</p>
+<p>Both work from mobile data as well as the home wifi — that is the point of the
+public hostname, and it is why the app's token exchange is exempt from
+forward-auth (<code>docs</code> is an <code>appApiHosts</code> name; see
+<a href="../ernst-app-api-ingress/">ernst app-API ingress</a>).</p>
+<h2 id="accounts">Accounts<a class="headerlink" href="#accounts" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Who</th>
+<th>How they log in</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>admin</code></td>
+<td>A local paperless password, generated. <strong>The recovery path</strong> — it still works when Authelia, the OIDC registration or Traefik is what is broken. Read it with <code>clan vars get ernst paperless-admin/admin-pass</code>.</td>
+</tr>
+<tr>
+<td><code>lgo</code>, <code>sgo</code></td>
+<td>"Sign in with Authelia" in the browser. Those are the Authelia usernames — first initial plus surname, so Sarinah is <code>sgo</code>; she can also log in with <code>sarinah@goclan.org</code>. The account materialises on first login (<code>PAPERLESS_SOCIAL_AUTO_SIGNUP</code>) and lands in the <code>household</code> group, so there is no row in this repo to add and nothing to grant by hand.</td>
+</tr>
+<tr>
+<td><code>mneme</code></td>
+<td>Not a human. A read-only API token for the agent — four <code>view_*</code> permissions, no password, provisioned by <code>paperless-provision.service</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Self-registration is off and pinned off. Nobody can create an account against
+the public hostname.</p>
+<h3 id="what-an-auto-created-account-can-do">What an auto-created account can do<a class="headerlink" href="#what-an-auto-created-account-can-do" title="Permanent link">&para;</a></h3>
+<p><code>paperless-provision.service</code> creates a <code>household</code> group holding every
+permission in the <code>documents</code> app — view, add, change and delete on documents,
+tags, correspondents, document types, storage paths, saved views, notes, custom
+fields, share links and workflows. The archive is treated as shared household
+property, the way Immich and Nextcloud already are.</p>
+<p>It deliberately holds <strong>no</strong> <code>auth</code> permissions: nobody in it can add users,
+change group membership or grant access. That stays with the two superusers.</p>
+<blockquote>
+<p><strong>Anyone who passes Authelia's 2FA lands in this group.</strong> <code>docs</code> is an
+<code>appApiHosts</code> name, so Authelia has no <code>access_control</code> rule for it — what
+gates the OIDC client is its own <code>two_factor</code> policy. That includes <code>go</code>, the
+couch account that autologins on the television without a password. It is a
+two-person household archive and that was the deliberate trade; the narrower
+shape, if it is ever wanted, is the same group with <code>delete_*</code> filtered out.
+<strong>Removing the default group is not the narrower shape</strong> — an account with no
+permissions is the 403 below, not a safe default.</p>
+</blockquote>
+<p><strong>Enable paperless's own TOTP on <code>admin</code></strong> (Settings → account). That account is
+the recovery path, and the recovery path is the one credential the portal
+cannot protect.</p>
+<h2 id="the-settings-once-list">The Settings-once list<a class="headerlink" href="#the-settings-once-list" title="Permanent link">&para;</a></h2>
+<p>Things that live in paperless's database rather than in this repo, and
+therefore have to be done by hand the first time.</p>
+<ul>
+<li><strong>Create Sarinah's account</strong> by having her log in with Authelia once. That is
+  the whole step — she lands in the <code>household</code> group automatically and there is
+  nothing to grant by hand. (This item used to say otherwise, and the gap it
+  described is what produced the 403 in Troubleshooting below.)</li>
+<li><strong>TOTP on <code>admin</code></strong>, as above.</li>
+<li><strong>Mail rules — none.</strong> There is deliberately no IMAP consumption; see the
+  "what is deliberately not here" block in <code>containers/paperless.nix</code>.</li>
+<li><strong>Let the classifier learn.</strong> 2.20.15 has no LLM. What it has is a
+  scikit-learn classifier that suggests tags, correspondents and document types
+  from <em>your own corrections</em> — so the first few dozen documents are worth
+  filing properly by hand. It retrains on a schedule after that.</li>
+<li><strong>Storage paths</strong>: not needed. <code>PAPERLESS_FILENAME_FORMAT</code> already files the
+  archive as <code>{created_year}/{correspondent}/{title}</code>, which is what makes a
+  ZFS snapshot restorable with <code>cp</code> and without paperless.</li>
+</ul>
+<h2 id="automatic-tagging-titles-and-filenames">Automatic tagging, titles and filenames<a class="headerlink" href="#automatic-tagging-titles-and-filenames" title="Permanent link">&para;</a></h2>
+<p>Three different things, and only one of them is already automatic.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Automatic?</th>
+<th>What makes it work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>The file on disk</strong></td>
+<td><strong>Yes, already</strong></td>
+<td><code>PAPERLESS_FILENAME_FORMAT</code> files the archive as <code>{{ created_year }}/{{ correspondent }}/{{ title }}</code>. Declared in Nix; nothing to set</td>
+</tr>
+<tr>
+<td><strong>Tags, correspondent, document type</strong></td>
+<td><strong>After you teach it</strong></td>
+<td>paperless's scikit-learn classifier, which learns from <em>your corrections</em>. It cannot guess on an empty database</td>
+</tr>
+<tr>
+<td><strong>The document title</strong></td>
+<td><strong>No</strong></td>
+<td>Stays whatever the file was called. Needs a Workflow, see below</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-classifier-has-to-be-taught-and-this-is-the-whole-procedure">The classifier has to be taught, and this is the whole procedure<a class="headerlink" href="#the-classifier-has-to-be-taught-and-this-is-the-whole-procedure" title="Permanent link">&para;</a></h3>
+<p>2.20.15 has no LLM — nothing reads a document and invents a label. What it has
+is a classifier that notices patterns in what <em>you</em> have already filed. So:</p>
+<ol>
+<li><strong>Create the labels first.</strong> Tags, Correspondents and Document Types in the
+   sidebar. Nothing is suggested until the label exists.</li>
+<li><strong>On each one, set Matching algorithm to <code>Auto</code>.</strong> This is the step people
+   miss. The default is <code>None</code>, and a label with <code>None</code> is never applied by
+   anything — the classifier trains on it and then has no permission to use it.
+   For a correspondent whose name always appears literally, <code>Any word</code> or
+   <code>Regular expression</code> is more reliable than <code>Auto</code> and works from document
+   one.</li>
+<li><strong>File 5–10 documents per label by hand.</strong> Below roughly five examples the
+   classifier will not predict a label at all.</li>
+<li><strong>Wait.</strong> Training runs on a schedule inside the container
+   (<code>paperless-scheduler</code>), not on save.</li>
+</ol>
+<p>Expect nothing useful for the first couple of dozen documents. That is the
+trade for having no model involved.</p>
+<h3 id="automatic-titles-need-a-workflow">Automatic titles need a Workflow<a class="headerlink" href="#automatic-titles-need-a-workflow" title="Permanent link">&para;</a></h3>
+<p>Settings → <strong>Workflows</strong> → add one, trigger <em>Document Added</em>, action
+<em>Assignment</em>, and set the <strong>title</strong> field to a template, e.g.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>{{ correspondent }} – {{ created }}
+</code></pre></div>
+<p>There is already a workflow called <strong>Share with the household</strong> — do not edit
+that one. It is recreated from <code>paperless-provision.service</code> on every deploy,
+so changes to it are silently reverted. Add a second workflow instead.</p>
+<h3 id="an-inbox-tag-is-worth-it-once-there-is-volume">An inbox tag is worth it once there is volume<a class="headerlink" href="#an-inbox-tag-is-worth-it-once-there-is-volume" title="Permanent link">&para;</a></h3>
+<p>The usual paperless pattern: a tag called <code>Inbox</code>, assigned by a workflow to
+every new document, removed when you file it. Then "what still needs filing" is
+a saved view rather than a memory. Settings → General has <strong>"Automatically
+remove inbox tag(s) on save"</strong> to close the loop.</p>
+<p>Not set up here, because with three documents it is ceremony. Worth doing at
+perhaps fifty.</p>
+<h2 id="what-to-set-on-the-two-settings-pages">What to set on the two settings pages<a class="headerlink" href="#what-to-set-on-the-two-settings-pages" title="Permanent link">&para;</a></h2>
+<p><strong>Settings</strong> (<code>/settings</code>) is per-user interface preference — display language,
+date format, dark mode. Nothing there affects how documents are processed, and
+nothing there needs changing.</p>
+<p><strong>Configuration</strong> (<code>/config</code>) is different, and <strong>two fields on it are owned by
+Nix</strong>:</p>
+<blockquote>
+<p>⚠️ On the <strong>OCR Settings</strong> tab, <code>Language</code> and <code>Mode</code> are reset to empty on
+every deploy by <code>paperless-provision.service</code>, so the environment wins. Set
+them in <code>containers/paperless.nix</code>, not here. See the OCR section above for
+what happened when they were set in the UI.</p>
+<p>Everything else on that page — deskew, rotate pages, unpaper, output type and
+the <strong>Barcode Settings</strong> tab — is yours and is left alone.</p>
+</blockquote>
+<p>The one worth knowing about is <strong>Barcode Settings → Enable barcode splitting</strong>:
+put a separator sheet between documents and one scan becomes several. Useful if
+you ever feed a stack through a sheet-fed scanner; irrelevant for phone scans.</p>
+<h2 id="sending-a-file-from-nextcloud">Sending a file from Nextcloud<a class="headerlink" href="#sending-a-file-from-nextcloud" title="Permanent link">&para;</a></h2>
+<p><code>integration_paperless</code> adds <strong>"Send to Paperless"</strong> to the Files action menu
+(the <code>⋯</code> next to a file). It is for a file that is <em>already</em> in Nextcloud and
+should <em>also</em> be in the archive — the original stays where it is. That is the
+difference from <code>Scan Inbox</code>, which consumes and deletes.</p>
+<p><strong>Each person sets it up once</strong>, because the app keeps its settings per user:</p>
+<ol>
+<li>In paperless: your avatar → <strong>My Profile</strong> → mint an <strong>API token</strong> (not the
+   <code>mneme</code> one — that is read-only and belongs to the agent).</li>
+<li>In Nextcloud: <strong>Settings → Personal → Paperless</strong>, and enter</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL</td>
+<td><code>https://docs.goclan.org</code></td>
+</tr>
+<tr>
+<td>Token</td>
+<td>the token from step 1</td>
+</tr>
+</tbody>
+</table>
+<p>The upload happens server-side, from the Nextcloud container through Traefik, so
+the public name is the right value — the backend address would be refused by
+<code>PAPERLESS_URL</code>'s <code>ALLOWED_HOSTS</code>.</p>
+<h2 id="office-files">Office files<a class="headerlink" href="#office-files" title="Permanent link">&para;</a></h2>
+<p><code>.docx</code>, <code>.odt</code>, <code>.xlsx</code> and friends work: <code>configureTika = true</code> brings up
+Tika (text extraction) and Gotenberg (LibreOffice → PDF) on the container's own
+loopback. They get a PDF preview and searchable text like anything else.</p>
+<p>Both listen on <code>127.0.0.1</code> <strong>inside the container</strong> and neither is reachable
+from VLAN 90.</p>
+<h2 id="ocr-language">OCR language<a class="headerlink" href="#ocr-language" title="Permanent link">&para;</a></h2>
+<p><code>deu+eng</code>, German first, because tesseract tries them in order. A PDF that
+already has a text layer is left alone rather than re-OCR'd
+(<code>PAPERLESS_OCR_MODE = "skip"</code>), which covers most downloaded invoices.</p>
+<p><strong>Changing the language is a rebuild, not a restart.</strong> The nixpkgs module
+derives tesseract's <code>enableLanguages</code> from this string by splitting on <code>+</code>, so
+the separator is load-bearing — a comma builds a tesseract containing one
+language called <code>deu,eng</code>.</p>
+<blockquote>
+<h3 id="do-not-change-ocr-settings-in-the-web-ui">Do not change OCR settings in the web UI<a class="headerlink" href="#do-not-change-ocr-settings-in-the-web-ui" title="Permanent link">&para;</a></h3>
+<p>paperless keeps an <code>ApplicationConfiguration</code> row in its database that <strong>wins
+over the environment</strong>, and opening Settings in the browser and pressing Save
+writes <em>every</em> form field into it. A value declared in Nix stops applying the
+moment somebody looks at that page, and nothing says so.</p>
+<p>That happened on the first real scan: the row held <code>deu,eng</code> and <code>redo</code>,
+shadowing <code>deu+eng</code> and <code>skip</code>. The failure surfaced as
+<code>MissingDependencyError: OCR engine does not have language data</code> — which
+points at the package, not at the setting, and the package was fine.</p>
+<p><code>paperless-provision.service</code> now resets <strong><code>language</code> and <code>mode</code></strong> to NULL on
+every deploy, so Nix owns exactly the two settings it declares. Everything
+else on that page — deskew, rotate, unpaper, output type, the barcode
+switches — is left alone and the UI keeps it.</p>
+<p>So: change OCR language or mode in <code>containers/paperless.nix</code>. Changing them
+in the UI lasts until the next deploy.</p>
+</blockquote>
+<h2 id="asking-the-ai-about-a-document">Asking the AI about a document<a class="headerlink" href="#asking-the-ai-about-a-document" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p><strong>This is not in paperless's web UI, and cannot be.</strong> Paperless 2.20.15 has
+no AI features at all — those arrived upstream in v3, which this fleet
+deliberately does not take (see the OCR section and <code>containers/paperless.nix</code>).
+The archive is answerable through <strong>mneme</strong>, the household agent: Home
+Assistant Assist on the voice satellites and in the HA app, or any client
+pointed at mneme's Ollama endpoint. Looking for an "Assist" button in
+paperless will not find one.</p>
+</blockquote>
+<p>mneme has two tools over the <code>doc0</code> leg, so the archive is answerable from
+anywhere Assist is — the voice satellites, the Home Assistant app, and any
+client pointed at mneme's Ollama endpoint.</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>document_search</code></td>
+<td>Full-text search. Returns titles and the <em>matching lines</em>, not whole documents</td>
+</tr>
+<tr>
+<td><code>document_read</code></td>
+<td>The text of one document by id, in numbered parts</td>
+</tr>
+</tbody>
+</table>
+<p>The split is deliberate: search is cheap and read is not, so the model finds
+first and reads only what it needs. A long document comes back in parts and the
+reply says how many remain — without that, the model would answer from page one
+while believing it had read the whole thing.</p>
+<p><strong>Ask with words that are on the paper</strong>, not with a question. It is a
+full-text index over OCR'd text, so <em>"Versicherung Beitrag"</em> finds things that
+<em>"what does my insurance cost"</em> does not. The model is told this in the tool's
+own description, but phrasing still helps.</p>
+<h3 id="everything-is-shared-whoever-added-it">Everything is shared, whoever added it<a class="headerlink" href="#everything-is-shared-whoever-added-it" title="Permanent link">&para;</a></h3>
+<p>A document uploaded through paperless's web UI gets <code>owner = &lt;you&gt;</code>, and
+paperless enforces that at the object level — so without intervention the agent
+(and the other person) cannot see it, while documents arriving via the Scan
+Inbox are ownerless and visible to everybody. The result is an archive the agent
+answers about <em>inconsistently</em>, with nothing to indicate which half it can see.</p>
+<p><code>paperless-provision.service</code> fixes that with a <strong>Workflow</strong> — paperless's own
+mechanism, since 2.20.15 has no <code>PAPERLESS_DEFAULT_PERMISSIONS_*</code> setting. On
+"Document Added", which covers both doors, it grants view permission to
+<code>household</code> and to a no-privilege <code>agents</code> group holding mneme. Existing
+documents are backfilled on every run.</p>
+<p><code>agents</code> is separate from <code>household</code> on purpose: Django unions a user's
+permissions with those of its groups, so putting mneme in <code>household</code> would hand
+it <code>delete_document</code>. It gets object-level view and nothing else.</p>
+<h3 id="what-it-cannot-do">What it cannot do<a class="headerlink" href="#what-it-cannot-do" title="Permanent link">&para;</a></h3>
+<p><strong>Read-only, by construction rather than by the model behaving.</strong> The token
+belongs to a non-superuser account holding four <code>view_*</code> permissions; <code>DELETE</code>,
+<code>PATCH</code> and the upload endpoint were each measured answering <strong>403</strong> to it. The
+worst a confused model can do is read the household's own paper back to it.</p>
+<p><strong>It never leaves the house.</strong> Unlike <code>web_search</code>, nothing goes to SearXNG or
+the internet. Unlike <code>generate_image</code>, it evicts no model — it is a database
+query against a container that is already running, so it costs nothing.</p>
+<h3 id="dates-are-not-trustworthy-and-the-tool-says-so">Dates are not trustworthy, and the tool says so<a class="headerlink" href="#dates-are-not-trustworthy-and-the-tool-says-so" title="Permanent link">&para;</a></h3>
+<p>Paperless guesses a document's date out of its OCR text and gets it wrong — the
+first scan through this pipeline came back filed under <strong>1983</strong>. So
+<code>document_search</code> labels the date <em>"auto-detected, may be wrong"</em> and there are
+deliberately <strong>no date filters</strong>: a filter built on that field would silently
+exclude the documents it was meant to find. The date that matters is the one
+written on the paper, and that is in the text <code>document_read</code> returns.</p>
+<h3 id="if-it-stops-working">If it stops working<a class="headerlink" href="#if-it-stops-working" title="Permanent link">&para;</a></h3>
+<p><strong>"the search did not work (timeout)"</strong>, and the model offers to try again. That
+is mneme's egress filter, not paperless. mneme runs under <code>IPAddressDeny=any</code>
+and a peer missing from <code>IPAddressAllow</code> is <em>dropped</em>, so the call times out
+rather than being refused — which reads as a flaky service. The allow list is
+derived from the configured tool URLs in <code>service-modules/local-ai.nix</code>; check
+it with</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>systemctl<span class="w"> </span>show<span class="w"> </span>mneme<span class="w"> </span>-p<span class="w"> </span>IPAddressAllow
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="c1"># want: localhost  fdca:fe94::2/128 (searxng)  fdca:fe95::2/128 (paperless)</span>
+</code></pre></div>
+<p><strong>the tools are missing entirely</strong> — the model says it has no way to search
+documents. mneme could not read the token and therefore does not offer them.
+Its startup line is the place to look:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>journalctl<span class="w"> </span>-u<span class="w"> </span>mneme<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">"tools:|could not read secret"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-3
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="c1"># want: (tools: memory, web-search, documents, image-gen)</span>
+</code></pre></div>
+<p>The token is a clan var owned by the <code>mneme</code> user (<code>files."token".owner</code> in
+<code>containers/paperless.nix</code>); without that it is <code>0400 root:root</code> and the
+daemon cannot read it.</p>
+<p><strong>"the document archive refused mneme's token"</strong> means the token mneme holds is
+not the one in paperless's database — <code>paperless-provision.service</code> failed to
+write it. Check that unit; it is the one that rotates the token on deploy.</p>
+<h2 id="backups">Backups<a class="headerlink" href="#backups" title="Permanent link">&para;</a></h2>
+<p>Two layers, and neither is off-box:</p>
+<ul>
+<li><strong>ZFS snapshots</strong> of <code>zdata/docs</code> — <code>com.sun:auto-snapshot=true</code>, frequent
+  15 min / hourly 24 / daily 7 / weekly 4 / monthly 1.</li>
+<li><strong>The paperless exporter</strong>, nightly at 02:30 into <code>/srv/docs/export</code>:
+  originals plus a metadata JSON that restores <em>without</em> paperless. It stops
+  the paperless services while it runs, which is why the hour is what it is.</li>
+</ul>
+<blockquote>
+<p><strong>There is still no off-box backup of any of this</strong>, and this is the library
+where that matters most: the point of scanning a document is to throw the
+paper away, so unlike photographs on a phone or files on a laptop there is no
+second copy anywhere. Both layers above live on the same pool as the data.
+<code>zdata/backup</code> is reserved and deliberately uncreated.</p>
+</blockquote>
+<p>Verify the snapshot property is actually set — <code>disko</code> applies it at creation
+and never reconciles:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>zfs<span class="w"> </span>get<span class="w"> </span>-r<span class="w"> </span>com.sun:auto-snapshot<span class="w"> </span>zdata
+</code></pre></div>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<p><strong>Scans pile up in <code>Scan Inbox</code> and never become documents.</strong>
+Check the consumer and the directory's mode:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>systemctl<span class="w"> </span>status<span class="w"> </span>paperless-inbox
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>machinectl<span class="w"> </span>shell<span class="w"> </span>paperless<span class="w"> </span>/run/current-system/sw/bin/systemctl<span class="w"> </span>status<span class="w"> </span>paperless-consumer
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>stat<span class="w"> </span>-c<span class="w"> </span><span class="s1">'%A %U:%G'</span><span class="w"> </span>/srv/state/paperless/inbox<span class="w">     </span><span class="c1"># want: drwxrws--- 315:3042</span>
+</code></pre></div>
+<p>A mode other than <code>2770 315:3042</code> means Nextcloud's file landed in a group
+paperless cannot read. The setgid bit is the part that usually went missing.</p>
+<p><strong>Scans stay visible in <code>Scan Inbox</code> after being filed.</strong>
+The mount's change-detection option is unset. <code>files_external:create</code> — the
+non-GUI path — omits it and falls back to the global default of <code>0</code> (Never):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>machinectl<span class="w"> </span>shell<span class="w"> </span>nextcloud<span class="w"> </span>/run/current-system/sw/bin/nextcloud-occ<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>files_external:list<span class="w"> </span>--output<span class="o">=</span>json
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># then, for the Scan Inbox mount id:</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>machinectl<span class="w"> </span>shell<span class="w"> </span>nextcloud<span class="w"> </span>/run/current-system/sw/bin/nextcloud-occ<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span>files_external:option<span class="w"> </span>&lt;id&gt;<span class="w"> </span>filesystem_check_changes<span class="w"> </span><span class="m">1</span>
+</code></pre></div>
+<p><code>nextcloud-provision.service</code> sets this on every deploy, so if it keeps
+reverting, that unit is failing.</p>
+<p><strong>Logged in fine, but the dashboard shows <code>Error loading settings — 403 — You
+do not have permission to perform this action</code> on <code>/api/ui_settings/</code>.</strong></p>
+<p>The account exists but has no permissions, which means it is not in the
+<code>household</code> group. Normally that cannot happen — <code>PAPERLESS_SOCIAL_ACCOUNT_DEFAULT_GROUPS</code>
+puts every new social account there — so check that the group exists at all:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>machinectl<span class="w"> </span>shell<span class="w"> </span>paperless<span class="w"> </span>/run/current-system/sw/bin/paperless-manage<span class="w"> </span>shell<span class="w"> </span>-c<span class="w"> </span><span class="s2">"</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="s2">from django.contrib.auth.models import Group, User</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="s2">print([(g.name, g.permissions.count()) for g in Group.objects.all()])</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="s2">print([(u.username, [g.name for g in u.groups.all()]) for u in User.objects.all()])</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="s2">"</span>
+</code></pre></div>
+<p>If the group is missing, <code>paperless-provision.service</code> has not succeeded. If it
+exists and the user is simply not in it — which is the case for any account
+created <em>before</em> the default group was wired — add them once in Settings →
+Users &amp; Groups, or from the shell above with <code>u.groups.add(g)</code>.</p>
+<p><strong>The login page shows no "Sign in with Authelia" button.</strong>
+The OIDC provider config did not reach the container. It is staged by
+<code>paperless-secrets.service</code> into an <code>EnvironmentFile</code>, not set in the Nix store,
+so:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>systemctl<span class="w"> </span>status<span class="w"> </span>paperless-secrets
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>systemctl<span class="w"> </span>restart<span class="w"> </span>paperless-secrets<span class="w"> </span>container@paperless
+</code></pre></div>
+<p><strong>Login fails at the callback with <code>invalid_client</code>.</strong>
+Authelia's problem to report, paperless's to cause. See the long note in the
+Paperless client block in <code>containers/authelia.nix</code> — it names the one setting
+(<code>token_endpoint_auth_method</code>) and the two-arm control that proves it before
+changing anything.</p>
+<p><strong><code>document_search</code> says the archive refused mneme's token.</strong>
+<code>paperless-provision.service</code> has failed, so the staged token never reached the
+database. Nothing a human uses is affected, which is why it goes unnoticed —
+the only client is the agent:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>machinectl<span class="w"> </span>shell<span class="w"> </span>paperless<span class="w"> </span>/run/current-system/sw/bin/systemctl<span class="w"> </span>status<span class="w"> </span>paperless-provision
+</code></pre></div>
+<p><strong>The container will not start at all.</strong>
+Almost always the dataset. <code>paperless-dirs</code> refuses rather than creating the
+archive on zroot, and prints the exact <code>zfs create</code> line:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>systemctl<span class="w"> </span>status<span class="w"> </span>paperless-dirs
+</code></pre></div>
+<p>See <a href="../ernst-zdata-datasets/">ernst zdata datasets</a>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

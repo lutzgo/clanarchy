@@ -1,0 +1,3643 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="NixOS declarative configuration — guides and option reference">
+      
+      
+      
+        <link rel="canonical" href="https://lutzgo.github.io/clanarchy/guides/mail/">
+      
+      
+        <link rel="prev" href="../ernst-app-api-ingress/">
+      
+      
+        <link rel="next" href="../reading-stack/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Mail on ernst - Clanarchy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#mail-on-ernst-goclanorg" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Clanarchy" class="md-header__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Clanarchy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Mail on ernst
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../first-time-install/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../runbooks/zfs-auto-snapshot-optin/" class="md-tabs__link">
+          
+  
+  
+  Runbooks
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../incidents/ernst-slot12-drop-2026-08-11/" class="md-tabs__link">
+          
+  
+  
+  Incidents
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Clanarchy" class="md-nav__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Clanarchy
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../first-time-install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    First-time install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploying and testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../updating-machines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating machines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adding-a-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adding-a-module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a module or option
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../jj-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The jj workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coding-agent-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coding-agent workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../accepting-pull-requests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Accepting pull requests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../networking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Networking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../authelia-2fa/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authelia second factors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../yubikey/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../yubikey-ssh-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey SSH setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote-unlock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote unlock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-zdata-datasets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zdata datasets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ernst-app-api-ingress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst app-API ingress
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mail on ernst
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mail on ernst
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#read-this-before-anything-else" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read this before anything else
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-0-reputation-done-2026-10-06" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 0 — reputation ✅ DONE 2026-10-06
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 0 — reputation ✅ DONE 2026-10-06">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#these-are-now-monitored-so-do-not-re-check-them-by-hand" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        These are now monitored, so do not re-check them by hand
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DNS
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DNS">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cloudflare-public-and-grey-cloud-dns-only-on-every-record" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cloudflare — public, and grey cloud (DNS-only) on every record
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mta-sts-and-tls-rpt-three-more-records-added-together" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MTA-STS and TLS-RPT — three more records, added together
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#technitium-10053-internal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Technitium (10.0.5.3) — internal
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#udm-pro" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UDM-Pro
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="UDM-Pro">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#dhcp-reservation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DHCP reservation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#port-forwards-four-and-they-are-the-first-that-do-not-end-at-traefik" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Port forwards — four, and they are the first that do not end at Traefik
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-vlan-50-90-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No VLAN 50 → 90 rule
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#but-a-lan-90-rule-is-needed-and-m31-shipped-without-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        But a LAN → 90 rule IS needed, and M31 shipped without it
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rollout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rollout
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Rollout">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Build
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-generate-the-secrets-in-a-real-terminal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Generate the secrets — in a real terminal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-publish-dkim-before-deploying" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Publish DKIM before deploying
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Deploy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-inbound-25-the-gate-that-decides-whether-m31-works-at-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Inbound :25 — the gate that decides whether M31 works at all
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-outbound-authentication-and-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Outbound authentication and alignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-real-world-delivery-the-honest-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Real-world delivery — the honest test
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-clients" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Clients
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-protection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Protection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-monitoring-and-snapshots" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Monitoring and snapshots
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#client-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Client setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Client setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#aerc-miralda-jens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        aerc (miralda, jens)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#k-9-thunderbird-for-android-sarinahs-and-maxs-phones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        K-9 / Thunderbird for Android (Sarinah's and Max's phones)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#thunderbird-biene" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Thunderbird (biene)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nextcloud-mail-webmail-at-cloudgoclanorg" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nextcloud Mail — webmail at cloud.goclan.org
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-smarthost-escape-hatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The smarthost escape hatch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#things-that-will-look-wrong-and-are-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Things that will look wrong and are not
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reading-stack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The reading stack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../music-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The music pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../document-store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The document store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../courses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video courses in Jellyfin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../navidrome-clients/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Navidrome clients
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The agent's memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hacs-dependencies/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HACS dependencies
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../htpc-bigscreen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / Plasma Bigscreen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../htpc-controllers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / game controllers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../birte-emulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emulation on birte
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../firmware-updates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware updates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../noctalia-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../noctalia-v5-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia v5 migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../obs-sony-webcam/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OBS / Sony webcam
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runbooks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Runbooks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/zfs-auto-snapshot-optin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZFS auto-snapshot opt-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-zroot-drive-replacement/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zroot drive replacement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-enable-impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst enabling impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-vlan-bridge-cutover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VLAN bridge cutover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/ernst-vpn-microvm-deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VPN microvm deploy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbooks/bindery-dead-torrent-sweep/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bindery dead-torrent sweep
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Incidents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Incidents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../incidents/ernst-slot12-drop-2026-08-11/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst slot-12 drive drop (2026-08-11)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../incidents/ernst-jellyfin-vaapi-drm-display-failure-2026-08-18/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst Jellyfin VAAPI DRM display failure (2026-08-18)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../incidents/ernst-card1-vram-starvation-2026-10-09/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst card1 VRAM starvation (2026-10-09)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/hardware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Desktop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/apps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/users/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/wifi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#read-this-before-anything-else" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read this before anything else
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-0-reputation-done-2026-10-06" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 0 — reputation ✅ DONE 2026-10-06
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 0 — reputation ✅ DONE 2026-10-06">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#these-are-now-monitored-so-do-not-re-check-them-by-hand" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        These are now monitored, so do not re-check them by hand
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DNS
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DNS">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cloudflare-public-and-grey-cloud-dns-only-on-every-record" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cloudflare — public, and grey cloud (DNS-only) on every record
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mta-sts-and-tls-rpt-three-more-records-added-together" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MTA-STS and TLS-RPT — three more records, added together
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#technitium-10053-internal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Technitium (10.0.5.3) — internal
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#udm-pro" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UDM-Pro
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="UDM-Pro">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#dhcp-reservation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DHCP reservation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#port-forwards-four-and-they-are-the-first-that-do-not-end-at-traefik" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Port forwards — four, and they are the first that do not end at Traefik
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-vlan-50-90-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No VLAN 50 → 90 rule
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#but-a-lan-90-rule-is-needed-and-m31-shipped-without-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        But a LAN → 90 rule IS needed, and M31 shipped without it
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rollout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rollout
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Rollout">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Build
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-generate-the-secrets-in-a-real-terminal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Generate the secrets — in a real terminal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-publish-dkim-before-deploying" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Publish DKIM before deploying
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Deploy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-inbound-25-the-gate-that-decides-whether-m31-works-at-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Inbound :25 — the gate that decides whether M31 works at all
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-outbound-authentication-and-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Outbound authentication and alignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-real-world-delivery-the-honest-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Real-world delivery — the honest test
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-clients" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Clients
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-protection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Protection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-monitoring-and-snapshots" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Monitoring and snapshots
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#client-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Client setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Client setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#aerc-miralda-jens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        aerc (miralda, jens)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#k-9-thunderbird-for-android-sarinahs-and-maxs-phones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        K-9 / Thunderbird for Android (Sarinah's and Max's phones)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#thunderbird-biene" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Thunderbird (biene)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nextcloud-mail-webmail-at-cloudgoclanorg" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nextcloud Mail — webmail at cloud.goclan.org
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-smarthost-escape-hatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The smarthost escape hatch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#things-that-will-look-wrong-and-are-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Things that will look wrong and are not
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/lutzgo/clanarchy/edit/main/docs/guides/mail.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="mail-on-ernst-goclanorg">Mail on ernst — @goclan.org<a class="headerlink" href="#mail-on-ernst-goclanorg" title="Permanent link">&para;</a></h1>
+<p>The operator's half of M31. The declarative half is
+<a href="../../machines/ernst/containers/mail.nix"><code>machines/ernst/containers/mail.nix</code></a>
+and <a href="../../modules/mail-accounts.nix"><code>modules/mail-accounts.nix</code></a>; everything
+here is a step somebody has to take at Cloudflare, on the UDM-Pro, in
+Technitium, or on a phone.</p>
+<p>Five mailboxes, one domain. Webmail is the Nextcloud <strong>Mail</strong> app at
+<code>cloud.goclan.org</code> — see <a href="#nextcloud-mail--webmail-at-cloudgoclanorg">Nextcloud Mail</a>:</p>
+<table>
+<thead>
+<tr>
+<th>Mailbox</th>
+<th>Also receives</th>
+<th>Used from</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>admin@goclan.org</code></td>
+<td><code>postmaster@</code> <code>abuse@</code> <code>hostmaster@</code> <code>dmarc@</code></td>
+<td>a terminal on ernst</td>
+</tr>
+<tr>
+<td><code>lutz@goclan.org</code></td>
+<td><code>lgo@</code></td>
+<td>aerc on miralda and jens</td>
+</tr>
+<tr>
+<td><code>sarinah@goclan.org</code></td>
+<td><code>sgo@</code></td>
+<td>K-9 on Sarinah's phone</td>
+</tr>
+<tr>
+<td><code>max@goclan.org</code></td>
+<td><code>mgo@</code></td>
+<td>K-9 on Max's phone</td>
+</tr>
+<tr>
+<td><code>go@goclan.org</code></td>
+<td>—</td>
+<td>the couch/admin account</td>
+</tr>
+<tr>
+<td><code>noreply@goclan.org</code></td>
+<td>—</td>
+<td>Nextcloud's system mail — no human reads it</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Everyone is reachable under both names.</strong> The fleet identifies people by a
+three-letter username (<code>lgo</code>, <code>sgo</code>, <code>mgo</code>) and addresses them by their first
+name, so each mailbox carries its username form as an alias — mail to <code>lgo@</code>
+lands in <code>lutz@</code>. That is routing, not a second account: an alias costs no
+mailbox, no password and no Maildir. <code>go@</code> needs none, because there the
+username and the local part are already the same word.</p>
+<p><code>sabine@goclan.org</code> does <strong>not</strong> exist. It was an alias in an earlier draft,
+back when Authelia's account for Sarinah was called <code>sabine</code>; PR #278 renamed
+it to <code>sarinah</code> and #280 renamed it again to <code>sgo</code>, so the address now names
+nobody — and it never received mail, because this server did not exist. Her
+Unix username on biene is still <code>sabine</code> and that is untouched and unrelated.</p>
+<hr />
+<h2 id="read-this-before-anything-else">Read this before anything else<a class="headerlink" href="#read-this-before-anything-else" title="Permanent link">&para;</a></h2>
+<p><strong>This milestone was planned on the assumption that outbound mail would mostly
+fail, and that assumption no longer holds.</strong> Both problems were real, both were
+measured, and both were fixed by work outside this repo. Keeping the before
+column matters, because the design below was chosen while the "now" column did
+not exist.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>2026-09-29 (planning)</th>
+<th>2026-10-06 (now)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Public IPv4</td>
+<td><code>78.94.91.74</code></td>
+<td>unchanged</td>
+</tr>
+<tr>
+<td>PTR</td>
+<td><code>…um19.pools.vodafone-ip.de</code></td>
+<td><strong><code>mail.goclan.org</code></strong> — Vodafone set it on request</td>
+</tr>
+<tr>
+<td>Forward-confirmed rDNS</td>
+<td>n/a</td>
+<td><strong>confirmed</strong>, both directions agree</td>
+</tr>
+<tr>
+<td>Outbound <code>:25</code></td>
+<td>open — reached Gmail's and iCloud's MX directly</td>
+<td>unchanged</td>
+</tr>
+<tr>
+<td><code>b.barracudacentral.org</code></td>
+<td><strong>listed</strong> (<code>127.0.0.2</code>)</td>
+<td><strong>delisted</strong></td>
+</tr>
+<tr>
+<td>Spamhaus, SpamCop, UCEPROTECT, PSBL, SORBS</td>
+<td>not listed</td>
+<td>not listed</td>
+</tr>
+</tbody>
+</table>
+<p>So direct sending is now genuinely viable here. <strong>It is viable because of two
+specific external facts, not because sending direct from a residential line is
+generally fine.</strong> It is not. If the PTR is ever lost — a tariff change, a pool
+renumbering, a support ticket handled by somebody else — the symptom is mail
+quietly landing in junk, and the answer is
+<a href="#the-smarthost-escape-hatch">the smarthost escape hatch</a>, which is one option
+block and changes no mailbox, no key and no client.</p>
+<p>Step 7 of the rollout is still a <strong>gate</strong>. It is now expected to pass.</p>
+<hr />
+<h2 id="phase-0-reputation-done-2026-10-06">Phase 0 — reputation ✅ DONE 2026-10-06<a class="headerlink" href="#phase-0-reputation-done-2026-10-06" title="Permanent link">&para;</a></h2>
+<p>Kept as a record, because this is the work that made the rest viable and it is
+the work to repeat if deliverability ever degrades. None of it is in the repo
+and none of it can be.</p>
+<ol>
+<li><strong>Barracuda removal</strong> — <a href="https://www.barracudacentral.org/rbl/removal-request">https://www.barracudacentral.org/rbl/removal-request</a>.
+   Free, self-service, same-day. ✅ Delisted.</li>
+<li><strong>Spamhaus</strong> — check <a href="https://check.spamhaus.org/ip/78.94.91.74">https://check.spamhaus.org/ip/78.94.91.74</a> in a
+   browser. ✅ Not listed. Do <strong>not</strong> try to check this with <code>dig</code>: Spamhaus
+   refuses queries arriving via a public or shared resolver and answers
+   <code>127.255.255.254</code>, which is easy to misread as "not listed".</li>
+<li><strong>Microsoft</strong> — enrolled in <a href="https://sendersupport.olc.protection.outlook.com/snds/">SNDS</a>,
+   mitigation requested at <a href="https://sender.office.com/">https://sender.office.com/</a>. ✅</li>
+<li><strong>Vodafone set the PTR to <code>mail.goclan.org</code></strong> on request — the single change
+   that mattered most, and the one that was expected to be refused on a
+   consumer tariff. It was not.</li>
+</ol>
+<h3 id="these-are-now-monitored-so-do-not-re-check-them-by-hand">These are now monitored, so do not re-check them by hand<a class="headerlink" href="#these-are-now-monitored-so-do-not-re-check-them-by-hand" title="Permanent link">&para;</a></h3>
+<p>This section originally said <em>"re-check 1, 2 and 4 quarterly"</em>. That was the
+same mistake <code>ipv6Guard</code> was written to fix — <strong>a property re-measured by hand
+is not monitored</strong> — with a longer interval. Both facts can be lost on somebody
+else's schedule, and the symptom is identical and silent: mail stops being
+accepted, with nothing wrong on this host.</p>
+<p>A textfile collector on ernst now checks them <strong>twice a day</strong> and alerts
+through the usual ntfy path:</p>
+<table>
+<thead>
+<tr>
+<th>Alert</th>
+<th>Fires when</th>
+<th>What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MailReverseDnsBroken</code></td>
+<td>PTR and forward A disagree, for 6h</td>
+<td>Get the PTR restored, or enable <a href="#the-smarthost-escape-hatch">the smarthost escape hatch</a></td>
+</tr>
+<tr>
+<td><code>MailIpBlocklisted</code></td>
+<td>listed on any checked DNSBL, for 6h</td>
+<td>Use that list's removal form — the links are above</td>
+</tr>
+<tr>
+<td><code>MailDnsblCheckUnusable</code></td>
+<td>a list fails its own test points, for 24h</td>
+<td>The <em>check</em> is broken, not the reputation</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Why the third alert exists.</strong> Measured on ernst: asking the host resolver
+gives <code>127.255.255.254</code>, which is Spamhaus <strong>refusing</strong> the query — they refuse
+anything arriving via a large public resolver, and Technitium forwards. A naive
+check reads that as "no answer, so not listed" and goes green permanently, in
+exactly the case it was built for. So the queries go through the mail
+container's kresd, and every run first asks each list about <code>127.0.0.2</code> (must
+be listed) and <code>127.0.0.1</code> (must be clean). A list that fails its own control
+gets <code>usable 0</code> and <strong>no</strong> <code>listed</code> verdict at all.</p>
+<p>To check by hand anyway — after an alert, or when curious — use the container's
+resolver, not the host's:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>ssh<span class="w"> </span>root@10.0.50.10<span class="w"> </span><span class="s1">'</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="s1">  nixos-container run mail -- dig +short -x 78.94.91.74</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="s1">  nixos-container run mail -- dig +short A mail.goclan.org</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="s1">  nixos-container run mail -- dig +short 74.91.94.78.zen.spamhaus.org</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="s1">  nixos-container run mail -- dig +short 2.0.0.127.zen.spamhaus.org   # control: must be 127.0.0.x</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="s1">'</span>
+</code></pre></div>
+<p>The first two must agree — that pair is forward-confirmed reverse DNS, and it
+is what receivers actually test. The third must be empty. <strong>If the fourth is
+empty too, the other answers mean nothing.</strong></p>
+<p>Steps 1–3 above (the removal forms and SNDS) still have no automation and
+cannot have any; they are web forms. The monitoring tells you <em>when</em> to go and
+fill one in.</p>
+<hr />
+<h2 id="dns">DNS<a class="headerlink" href="#dns" title="Permanent link">&para;</a></h2>
+<h3 id="cloudflare-public-and-grey-cloud-dns-only-on-every-record">Cloudflare — public, and <strong>grey cloud (DNS-only) on every record</strong><a class="headerlink" href="#cloudflare-public-and-grey-cloud-dns-only-on-every-record" title="Permanent link">&para;</a></h3>
+<p>Never orange-cloud any of these. Cloudflare's proxy cannot carry SMTP or IMAP
+at all, and a proxied <code>A</code> record breaks the MX outright.</p>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Name</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A</td>
+<td><code>mail</code></td>
+<td><code>78.94.91.74</code></td>
+</tr>
+<tr>
+<td>MX</td>
+<td><code>@</code></td>
+<td><code>10 mail.goclan.org.</code></td>
+</tr>
+<tr>
+<td>TXT</td>
+<td><code>@</code></td>
+<td><code>v=spf1 mx -all</code></td>
+</tr>
+<tr>
+<td>TXT</td>
+<td><code>mail._domainkey</code></td>
+<td>the contents of <code>clan vars get ernst mail-dkim/dkim.txt</code></td>
+</tr>
+<tr>
+<td>TXT</td>
+<td><code>_dmarc</code></td>
+<td><code>v=DMARC1; p=none; rua=mailto:dmarc@goclan.org; ruf=mailto:dmarc@goclan.org; fo=1</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>clan vars get ernst mail-dkim/dkim.txt</code> emits the record in BIND zone-file
+form. Cloudflare's editor wants only the quoted value, and the key is long
+enough to be split across several quoted strings — paste all of them, keeping
+the quotes, into the single content field.</p>
+<p><strong>DMARC starts at <code>p=none</code> and stays there for two weeks.</strong> Reports land in
+<code>admin@</code> via the <code>dmarc@</code> alias. Going straight to <code>p=quarantine</code> on an IP with
+this reputation makes a genuine misconfiguration indistinguishable from the
+junking you already expect, and you lose the only two weeks in which the
+difference is cheap to find out.</p>
+<p><strong>No AAAA record, ever</strong> — standing note SN2. A v6 path would reach <code>:25</code>
+without passing the UDM-Pro DNAT, so it would carry no port forward to remove,
+and the container's fail2ban jails are v4 chains. Reachable and unbannable at
+once is exactly what SN2 exists to prevent.</p>
+<h3 id="mta-sts-and-tls-rpt-three-more-records-added-together">MTA-STS and TLS-RPT — three more records, added together<a class="headerlink" href="#mta-sts-and-tls-rpt-three-more-records-added-together" title="Permanent link">&para;</a></h3>
+<p>These were deliberately held back from the first rollout, because a <code>_mta-sts</code>
+record pointing at a 404 is a <em>broken</em> policy rather than no policy. The policy
+file now exists (nginx inside the mail container, routed as <code>mtasts</code> on
+Traefik — ledger <strong>L23</strong>), so all three go in:</p>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Name</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A</td>
+<td><code>mta-sts</code></td>
+<td><code>78.94.91.74</code></td>
+</tr>
+<tr>
+<td>TXT</td>
+<td><code>_mta-sts</code></td>
+<td><code>v=STSv1; id=20261007000000Z</code></td>
+</tr>
+<tr>
+<td>TXT</td>
+<td><code>_smtp._tls</code></td>
+<td><code>v=TLSRPTv1; rua=mailto:dmarc@goclan.org</code></td>
+</tr>
+</tbody>
+</table>
+<p>Grey cloud, like everything else. <strong>Add the A record first</strong> — the TXT record
+is a pointer, and senders that read it before the name resolves will cache a
+failure.</p>
+<blockquote>
+<p><strong>The <code>id=</code> is a version stamp, not decoration.</strong> Senders cache the policy
+for <code>max_age</code> and only re-fetch when <code>id</code> changes. Whenever
+<code>machines/ernst/containers/mail.nix</code> changes the policy body, bump this to a
+new value — the convention above is just a UTC timestamp. Forget it and the
+old policy stays live for a day.</p>
+</blockquote>
+<p><strong>The policy ships as <code>mode: testing</code></strong>, which means senders check it and
+report failures but still deliver. That is <code>p=none</code> again: under <code>enforce</code>, a
+certificate renewal that goes wrong does not degrade mail, it stops it, and the
+first symptom is a bounce in somebody else's postmaster log. Move to <code>enforce</code>
+in <code>mail.nix</code> once the TLS-RPT reports have been clean for a few weeks, raising
+<code>max_age</code> at the same time.</p>
+<p>Verify after deploying — this is the whole feature, and it is one request:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>https://mta-sts.goclan.org/.well-known/mta-sts.txt
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>dig<span class="w"> </span>+short<span class="w"> </span>TXT<span class="w"> </span>_mta-sts.goclan.org
+</code></pre></div>
+<p>The file must come back with <code>version: STSv1</code> and the MX, and the <code>id</code> in DNS
+must match what you published.</p>
+<h3 id="technitium-10053-internal">Technitium (<code>10.0.5.3</code>) — internal<a class="headerlink" href="#technitium-10053-internal" title="Permanent link">&para;</a></h3>
+<p>One <code>A</code> record, <code>mail.goclan.org</code> → <code>10.0.90.31</code>, in its own small zone, the
+same way every other service name is handled.</p>
+<p><strong>Do not skip this.</strong> Without it, LAN clients resolve <code>mail.goclan.org</code> to the
+public address, then hairpin at a UDM-Pro that does not hairpin — which
+presents as aerc <strong>hanging</strong> rather than failing, and sends you looking at the
+mail server.</p>
+<hr />
+<h2 id="udm-pro">UDM-Pro<a class="headerlink" href="#udm-pro" title="Permanent link">&para;</a></h2>
+<h3 id="dhcp-reservation">DHCP reservation<a class="headerlink" href="#dhcp-reservation" title="Permanent link">&para;</a></h3>
+<p><code>10.0.90.31</code> for MAC <code>02:00:00:90:00:17</code>, which is the <strong>container-side</strong> MAC.
+It must be inside the <code>10.0.90.6–.254</code> pool; UniFi silently hands out an
+ordinary pool lease for anything in <code>.2–.5</code>.</p>
+<p>If this is missed, the container leases some other address, the monitoring
+accept rule stops matching, and nothing says so — M30 lost a verification row
+to exactly this.</p>
+<h3 id="port-forwards-four-and-they-are-the-first-that-do-not-end-at-traefik">Port forwards — four, and they are the first that do not end at Traefik<a class="headerlink" href="#port-forwards-four-and-they-are-the-first-that-do-not-end-at-traefik" title="Permanent link">&para;</a></h3>
+<p>Before M31 this fleet had exactly one port forward, <code>WAN :443 →
+10.0.90.12:8443</code>, and "one forward" was load-bearing in several arguments
+elsewhere. It is now five.</p>
+<table>
+<thead>
+<tr>
+<th>WAN</th>
+<th>Destination</th>
+<th>Ledger</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>:25</code></td>
+<td><code>10.0.90.31:25</code></td>
+<td>L19</td>
+</tr>
+<tr>
+<td><code>:465</code></td>
+<td><code>10.0.90.31:465</code></td>
+<td>L20</td>
+</tr>
+<tr>
+<td><code>:993</code></td>
+<td><code>10.0.90.31:993</code></td>
+<td>L20</td>
+</tr>
+<tr>
+<td><code>:4190</code></td>
+<td><code>10.0.90.31:4190</code></td>
+<td>L20</td>
+</tr>
+</tbody>
+</table>
+<p><strong>DNAT, not SNAT</strong> — <code>Auto Allow Return Traffic</code> ticked, no source NAT. The
+container's fail2ban jails ban by client address, so a rewritten source would
+either ban nothing or ban the gateway. This is the same property
+<code>containers/crowdsec.nix</code> measured for Traefik, and it matters here for the
+same reason.</p>
+<p><strong>Ports go in the Destination card.</strong> The editor has a Port section in both
+zone cards and the source one is the one you see first; filling that one
+matches traffic <em>from</em> port 25, i.e. never.</p>
+<h3 id="no-vlan-50-90-rule">No VLAN 50 → 90 rule<a class="headerlink" href="#no-vlan-50-90-rule" title="Permanent link">&para;</a></h3>
+<p>Same as M22, M23, M24, M27 and M30: nothing on the Servers VLAN needs to reach
+this container. Remember that <code>nc -vz 10.0.90.31 25</code> <strong>from ernst</strong> succeeds
+anyway, because the mail ports accept from everywhere — see the inverted
+negative control below.</p>
+<h3 id="but-a-lan-90-rule-is-needed-and-m31-shipped-without-it">But a LAN → 90 rule IS needed, and M31 shipped without it<a class="headerlink" href="#but-a-lan-90-rule-is-needed-and-m31-shipped-without-it" title="Permanent link">&para;</a></h3>
+<p><strong><code>Allow Mail Clients</code></strong> — ledger <strong>L22</strong>, created 2026-10-07 after aerc on
+miralda could not connect.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Source zone</td>
+<td><code>Internal</code>, network <strong>LAN</strong></td>
+</tr>
+<tr>
+<td>Destination</td>
+<td><code>Services</code>, <strong>IP</strong> <code>10.0.90.31</code></td>
+</tr>
+<tr>
+<td>Ports</td>
+<td><code>465,993,4190</code> (Destination card)</td>
+</tr>
+<tr>
+<td>Return traffic</td>
+<td>Auto Allow ✅</td>
+</tr>
+</tbody>
+</table>
+<p>The permanent <code>Allow Traefik</code> rule names exactly <strong>one</strong> destination,
+<code>10.0.90.12</code>, because until M31 every user-facing service arrived through the
+proxy. Mail does not and cannot. So VLAN 1 could reach <code>10.0.90.12:443</code> and
+nothing else on VLAN 90 — including <code>10.0.90.31</code>. aerc resolved the right
+address through Technitium and the packets were dropped at the UDM-Pro, which
+looks exactly like a broken mail client.</p>
+<blockquote>
+<p><strong>Why no test caught this, which is the part worth keeping.</strong> Every check
+that passed came from somewhere that could already reach <code>.31</code>: ernst and its
+containers are VLAN 50/90, Nextcloud Mail is a VLAN-90 peer, and both phones
+were tested <strong>on mobile data</strong> — deliberately, because this guide said wifi
+"would prove nothing about the DNATs". That was true, and it was half the
+sentence. <strong>The DNATs prove nothing about wifi either</strong>: the two paths share
+no hop. Mail has three distinct client paths — WAN DNAT, VLAN 90 peer, and
+LAN — and each needs its own test. Testing two of them told us nothing about
+the third.</p>
+</blockquote>
+<p>Scoped to the <strong>IP</strong>, not the <code>Services</code> network: this opens one container, not
+the other fourteen on VLAN 90. The control is that <code>10.0.90.26:80</code> (Nextcloud's
+own address) is still refused from the LAN — worth re-checking if the rule is
+ever edited. <code>:25</code> is deliberately not included; nothing inside the house
+submits mail unauthenticated.</p>
+<hr />
+<h2 id="rollout">Rollout<a class="headerlink" href="#rollout" title="Permanent link">&para;</a></h2>
+<p>Ordered so a failure stops before anyone is given an address.</p>
+<h3 id="1-build">1. Build<a class="headerlink" href="#1-build" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>jj<span class="w"> </span>st<span class="w">                      </span><span class="c1"># snapshot first: Nix cannot read an untracked path</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>nix<span class="w"> </span>build<span class="w"> </span>--dry-run<span class="w"> </span>.#nixosConfigurations.ernst.config.system.build.toplevel
+</code></pre></div>
+<h3 id="2-generate-the-secrets-in-a-real-terminal">2. Generate the secrets — <strong>in a real terminal</strong><a class="headerlink" href="#2-generate-the-secrets-in-a-real-terminal" title="Permanent link">&para;</a></h3>
+<p>Two generators, and they behave differently. Run both:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>clan<span class="w"> </span>vars<span class="w"> </span>generate<span class="w"> </span>ernst
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>clan<span class="w"> </span>vars<span class="w"> </span>generate<span class="w"> </span>ernst<span class="w"> </span>--generator<span class="w"> </span>authelia-users<span class="w"> </span>--regenerate
+</code></pre></div>
+<p><strong>The first</strong> prompts for all five mailbox passwords, minimum 12 characters,
+enforced by the generator. It re-prompts even for mailboxes that already had a
+password, because clan treats a generator as satisfied only when <em>every</em> file
+it declares exists — and <code>max.hash</code> and <code>go.hash</code> are new. Nothing is deployed
+yet, so no password is in use; re-entering the old ones or choosing new ones
+are equally fine. It is a <strong>shared</strong> generator, so this also satisfies miralda
+and jens, and because it is prompted, <strong>every deploy of every machine blocks
+until it has run once</strong>. In a non-interactive shell that surfaces as a
+<code>termios.error</code>, not as "you owe me a password".</p>
+<p><strong>The second is the one that is easy to skip, and skipping it is silent.</strong>
+Adding <code>mgo</code> to <code>autheliaUsers</code> adds a <em>prompt</em> but no new <em>file</em> —
+<code>authelia-users</code> emits a single <code>users_database.yml</code>, which already exists — so
+a plain <code>clan vars generate</code> asks for nothing and Max never reaches the
+database. <code>--regenerate</code> forces it. The cost is that it re-prompts <strong>lgo, go
+and sgo as well</strong>, because that generator is atomic.</p>
+<blockquote>
+<p>⚠️ <strong>Enter the existing three passwords unchanged</strong> unless you mean to change
+them. These are the accounts that reach every admin UI in the house. TOTP
+enrolments are unaffected — they live in Authelia's own storage, keyed by
+username, and no username changes here.</p>
+</blockquote>
+<p>Then check the secrets actually landed in the tree:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>jj<span class="w"> </span>diff<span class="w"> </span>--from<span class="w"> </span>main<span class="w"> </span>--to<span class="w"> </span>@<span class="w"> </span>--<span class="w"> </span>vars/
+</code></pre></div>
+<p><code>clan vars generate</code> commits as a jj <strong>sibling</strong>. An empty diff here means the
+new secrets are not in your change and the deploy will ship without them.</p>
+<h3 id="3-publish-dkim-before-deploying">3. Publish DKIM before deploying<a class="headerlink" href="#3-publish-dkim-before-deploying" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>clan<span class="w"> </span>vars<span class="w"> </span>get<span class="w"> </span>ernst<span class="w"> </span>mail-dkim/dkim.txt
+</code></pre></div>
+<p>Put it in Cloudflare now, along with the rest of the <a href="#dns">DNS table</a>. DNS
+propagation and first delivery then stop racing each other.</p>
+<h3 id="4-deploy">4. Deploy<a class="headerlink" href="#4-deploy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>clan<span class="w"> </span>machines<span class="w"> </span>update<span class="w"> </span>ernst
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>bridge<span class="w"> </span>vlan<span class="w"> </span>show<span class="w"> </span>dev<span class="w"> </span>vb-mail<span class="w">      </span><span class="c1"># must show 90 PVID untagged</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>nixos-container<span class="w"> </span>run<span class="w"> </span>mail<span class="w"> </span>--<span class="w"> </span>systemctl<span class="w"> </span>--failed
+</code></pre></div>
+<h3 id="5-inbound-25-the-gate-that-decides-whether-m31-works-at-all">5. Inbound <code>:25</code> — the gate that decides whether M31 works at all<a class="headerlink" href="#5-inbound-25-the-gate-that-decides-whether-m31-works-at-all" title="Permanent link">&para;</a></h3>
+<p><strong>Vodafone may block inbound 25 and nothing in this repo can tell you.</strong> From
+off-LAN — phone tethering, not the house wifi:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>nc<span class="w"> </span>-vz<span class="w"> </span><span class="m">78</span>.94.91.74<span class="w"> </span><span class="m">25</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>swaks<span class="w"> </span>--to<span class="w"> </span>admin@goclan.org<span class="w"> </span>--server<span class="w"> </span><span class="m">78</span>.94.91.74
+</code></pre></div>
+<p>If this fails, the milestone is dead in its current form. The fallback is the
+VPS-relay design that was considered and set aside during planning: a small
+box with a static IP and a settable PTR, relaying both directions to ernst over
+ZeroTier. Do not hand out addresses before this passes.</p>
+<h3 id="6-outbound-authentication-and-alignment">6. Outbound authentication and alignment<a class="headerlink" href="#6-outbound-authentication-and-alignment" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># from aerc, or:</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>nixos-container<span class="w"> </span>run<span class="w"> </span>mail<span class="w"> </span>--<span class="w"> </span>swaks<span class="w"> </span>--from<span class="w"> </span>lutz@goclan.org<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span>--to<span class="w"> </span>check-auth@verifier.port25.com<span class="w"> </span>--server<span class="w"> </span>localhost
+</code></pre></div>
+<p>Require <code>SPF=pass</code>, <code>DKIM=pass</code>, <code>DMARC=pass</code> in the reply. Then send to a fresh
+address from <a href="https://www.mail-tester.com/">https://www.mail-tester.com/</a>. With the PTR set and the
+blocklists clear this should now score close to 10/10 — if it does not, read
+which check failed rather than assuming it is reputation, because the two
+reputation problems this guide was written around are both gone.</p>
+<h3 id="7-real-world-delivery-the-honest-test">7. Real-world delivery — the honest test<a class="headerlink" href="#7-real-world-delivery-the-honest-test" title="Permanent link">&para;</a></h3>
+<p>Send to a <strong>Gmail</strong>, a <strong>GMX</strong> and an <strong>Outlook.com</strong> address, and check <strong>where
+each landed</strong>, not whether it was accepted. Then reply from each and confirm
+inbound.</p>
+<p>This is still the gate, but it is now <strong>expected to pass</strong> — Outlook's usual
+reason for rejecting a residential sender is generic rDNS, and the PTR is
+<code>mail.goclan.org</code> with forward confirmation. If mail still lands in junk,
+that is new information rather than the predicted outcome: re-run the two
+<code>dig</code> checks in Phase 0 first, and only then consider
+<a href="#the-smarthost-escape-hatch">the escape hatch</a>.</p>
+<h3 id="8-clients">8. Clients<a class="headerlink" href="#8-clients" title="Permanent link">&para;</a></h3>
+<p>See <a href="#client-setup">Client setup</a>. <strong>There are three distinct client paths and
+each needs its own test</strong> — they share no hop, so passing one tells you nothing
+about the others. This is the step M31 got wrong: two of the three passed and
+the third was broken for a day.</p>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Test with</th>
+<th>Goes via</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>WAN</td>
+<td>K-9 <strong>on mobile data, not wifi</strong></td>
+<td>the four UDM-Pro DNATs (L19/L20)</td>
+</tr>
+<tr>
+<td>VLAN 90 peer</td>
+<td>Nextcloud Mail</td>
+<td>the container bridge, no rule needed</td>
+</tr>
+<tr>
+<td><strong>LAN</strong></td>
+<td><strong>aerc on miralda or jens</strong></td>
+<td>the <code>Allow Mail Clients</code> rule (<strong>L22</strong>)</td>
+</tr>
+</tbody>
+</table>
+<p>On wifi a phone takes the LAN path and proves nothing about the port forwards —
+and equally, the port forwards prove nothing about the LAN. Then do one
+ManageSieve round-trip to exercise <code>:4190</code>.</p>
+<h3 id="9-protection">9. Protection<a class="headerlink" href="#9-protection" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># three bad IMAP logins from off-LAN, then:</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>nixos-container<span class="w"> </span>run<span class="w"> </span>mail<span class="w"> </span>--<span class="w"> </span>fail2ban-client<span class="w"> </span>status<span class="w"> </span>dovecot
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>nixos-container<span class="w"> </span>run<span class="w"> </span>mail<span class="w"> </span>--<span class="w"> </span>rspamc<span class="w"> </span>stat<span class="w">          </span><span class="c1"># Rspamd is scoring</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>nixos-container<span class="w"> </span>run<span class="w"> </span>mail<span class="w"> </span>--<span class="w"> </span>rspamadm<span class="w"> </span>configtest
+</code></pre></div>
+<h3 id="10-monitoring-and-snapshots">10. Monitoring and snapshots<a class="headerlink" href="#10-monitoring-and-snapshots" title="Permanent link">&para;</a></h3>
+<p><code>up{job="mail"} == 1</code> in Grafana, and the <code>postfix_showq_*</code> series non-null.
+Stop dovecot and confirm <code>ContainerSystemdUnitFailed</code> reaches the ntfy topic.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>zfs<span class="w"> </span>list<span class="w"> </span>-t<span class="w"> </span>snapshot<span class="w"> </span>zdata/state<span class="w"> </span><span class="p">|</span><span class="w"> </span>tail
+</code></pre></div>
+<p><strong>Those snapshots are the only backup that exists.</strong> There is no borg, no
+restic and no replication anywhere in this repo. For media that was a shrug;
+mail is not re-acquirable.</p>
+<hr />
+<h2 id="client-setup">Client setup<a class="headerlink" href="#client-setup" title="Permanent link">&para;</a></h2>
+<p>Same settings everywhere. <strong>Mail is implicit TLS; ManageSieve is STARTTLS</strong> —
+see the warning under the table, which has already cost one round.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IMAP</td>
+<td><code>mail.goclan.org</code> : <code>993</code>, <strong>SSL/TLS</strong></td>
+</tr>
+<tr>
+<td>SMTP</td>
+<td><code>mail.goclan.org</code> : <code>465</code>, <strong>SSL/TLS</strong></td>
+</tr>
+<tr>
+<td>ManageSieve</td>
+<td><code>mail.goclan.org</code> : <code>4190</code>, <strong>STARTTLS</strong></td>
+</tr>
+<tr>
+<td>Username</td>
+<td>the <strong>full address</strong> — <code>lutz@goclan.org</code>, not <code>lutz</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>⚠️ <strong>ManageSieve does not take implicit TLS, and <code>:4190</code> is not a typo for a
+wrapper-mode port.</strong> <code>143</code> and <code>587</code> are switched off on this server per RFC
+8314, so "implicit TLS everywhere, STARTTLS nowhere" is the right instinct for
+<em>mail</em> — and it is wrong for Sieve. There is no implicit-TLS ManageSieve port
+in common use: Dovecot's Pigeonhole listens plaintext on 4190 and advertises
+<code>STARTTLS</code>, which is the standard. Measured on the running server:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>$ exec 3&lt;&gt;/dev/tcp/10.0.90.31/4190; cat &lt;&amp;3
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>"IMPLEMENTATION" "Dovecot Pigeonhole"
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>"SASL" ""
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>"STARTTLS"
+</code></pre></div>
+<p>The empty <code>SASL</code> list is <code>ssl = required</code> working correctly — Dovecot offers
+no authentication mechanism at all until TLS is up. A client configured for
+SSL/TLS sends a TLS ClientHello into a plaintext greeting and the handshake
+fails; <strong>Nextcloud Mail reports this as <code>Request failed with status code
+500</code></strong>, which names neither TLS nor the port and sends you looking at
+credentials.</p>
+</blockquote>
+<h3 id="aerc-miralda-jens">aerc (miralda, jens)<a class="headerlink" href="#aerc-miralda-jens" title="Permanent link">&para;</a></h3>
+<p>Already configured, in
+<a href="../../machines/miralda/home-modules/console-desktop.nix"><code>machines/miralda/home-modules/console-desktop.nix</code></a>
+— shared through <code>modules/users/lgo.nix</code>, so one edit covers both laptops.
+The password comes from the shared clan var, so there is nothing to type.</p>
+<p>If aerc prompts for a password, the clan var did not reach the machine: check
+that <code>modules/users/lgo.nix</code> still imports <code>modules/mail-accounts.nix</code>, and
+that <code>/run/secrets/vars/mail-accounts/lutz.plain</code> exists and is owned by <code>lgo</code>.</p>
+<h3 id="k-9-thunderbird-for-android-sarinahs-and-maxs-phones">K-9 / Thunderbird for Android (Sarinah's and Max's phones)<a class="headerlink" href="#k-9-thunderbird-for-android-sarinahs-and-maxs-phones" title="Permanent link">&para;</a></h3>
+<p>Add the account manually rather than letting autodiscovery try — there is no
+autoconfig endpoint published. Server <code>mail.goclan.org</code> for both incoming and
+outgoing, ports as above, username <code>sarinah@goclan.org</code> / <code>max@goclan.org</code>.</p>
+<p><strong>The password is the one you typed at <code>clan vars generate</code> time, and it is not
+recoverable from the repo.</strong> <code>clan vars get ernst mail-accounts/sarinah.hash</code>
+returns a <em>hash</em>, not a password — that is the whole point of it. If it has
+been lost, the reset path is:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>clan<span class="w"> </span>vars<span class="w"> </span>generate<span class="w"> </span>ernst<span class="w"> </span>--generator<span class="w"> </span>mail-accounts<span class="w"> </span>--regenerate
+</code></pre></div>
+<p>which re-prompts every mailbox password, not just the lost one, because the
+generator is atomic. Then redeploy ernst.</p>
+<h3 id="thunderbird-biene">Thunderbird (biene)<a class="headerlink" href="#thunderbird-biene" title="Permanent link">&para;</a></h3>
+<p>Installed, not configured. Same settings; Thunderbird's autoconfig will fail
+and offer manual entry, which is the expected path.</p>
+<h3 id="nextcloud-mail-webmail-at-cloudgoclanorg">Nextcloud Mail — webmail at <code>cloud.goclan.org</code><a class="headerlink" href="#nextcloud-mail-webmail-at-cloudgoclanorg" title="Permanent link">&para;</a></h3>
+<p>The <strong>Mail</strong> app is installed declaratively
+(<a href="../../machines/ernst/containers/nextcloud.nix"><code>machines/ernst/containers/nextcloud.nix</code></a>,
+<code>extraApps</code>). It is a per-user IMAP client, so each person adds their own
+account <strong>once</strong>, in the app's UI — there is nothing to deploy per person.</p>
+<p>Settings are the same four as every other client:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mail address</td>
+<td>the full address, e.g. <code>sarinah@goclan.org</code></td>
+</tr>
+<tr>
+<td>IMAP</td>
+<td><code>mail.goclan.org</code> : <code>993</code>, <strong>SSL/TLS</strong></td>
+</tr>
+<tr>
+<td>SMTP</td>
+<td><code>mail.goclan.org</code> : <code>465</code>, <strong>SSL/TLS</strong></td>
+</tr>
+<tr>
+<td>Password</td>
+<td>the one from <code>clan vars generate</code> — the same one K-9 uses</td>
+</tr>
+</tbody>
+</table>
+<p>Use the <strong>hostname, not the IP</strong>. Nextcloud's container resolves
+<code>mail.goclan.org</code> to <code>10.0.90.31</code> through Technitium, so the Let's Encrypt
+certificate validates; pointed at the bare address, TLS fails on a name
+mismatch. No firewall change is needed in either container — the mail ports
+accept from everywhere.</p>
+<p><strong>Then, under Account settings:</strong></p>
+<ul>
+<li><strong>Aliases → Add alias</strong> — add the username form (<code>lgo@</code>, <code>sgo@</code>, <code>mgo@</code>).
+  The server permits it: <code>:465</code> enforces <code>reject_sender_login_mismatch</code> against
+  <code>vaccounts</code>, which maps each alias to its owning login. Without the alias here
+  you can receive at both addresses but only <em>send</em> as the canonical one.</li>
+<li><strong>Sieve server → Enable sieve filter</strong>, host <code>mail.goclan.org</code>, port <code>4190</code>,
+  <strong>STARTTLS</strong> — not SSL/TLS, see the warning above — with <em>IMAP credentials</em>.
+  This puts filters on the server, so they apply to K-9 and aerc too.</li>
+</ul>
+<p><strong>Folders are a server setting, not a client one.</strong> Trash and Archive did not
+exist at first: simple-nixos-mailserver ships <code>Trash</code> as <code>auto = "no"</code> —
+declared so clients know its name, but never created — and no <code>Archive</code> at all.
+Both are now <code>auto = "subscribe"</code> in <code>mailserver.mailboxes</code>, so every client
+gets them without configuring anything. If you ever add a folder there, <strong>list
+all five</strong>: the option is a freeform attrset, so naming one replaces the whole
+default and would silently delete Drafts, Sent and Junk.</p>
+<p><strong>Avatars are off by design.</strong> Turning off <em>Avatars from Gravatar and favicons</em>
+in Mail settings is what removes them — Gravatar lookups send a hash of your
+correspondent's address to a third party, and favicon fetches hit the sender's
+domain when you open a message. The local alternative costs nothing and leaks
+nothing: a contact in Nextcloud <strong>Contacts</strong> with a photo shows that photo in
+Mail. Same picture, no third party.</p>
+<blockquote>
+<p><strong>Accounts are deliberately not auto-provisioned, and cannot be.</strong> Nextcloud
+Mail's default provisioning logs into IMAP with the user's <em>Nextcloud login
+password</em>, and logins here go through Authelia over OIDC, so Nextcloud never
+has one. Its master-password mode — built for exactly this situation — needs
+Dovecot <strong>master users</strong>, which simple-nixos-mailserver exposes no option
+for. The container file carries the full argument. Typing three passwords
+once is the cheaper side of that trade.</p>
+</blockquote>
+<p><strong>Nextcloud's own outbound mail now works too</strong>, and it is a different thing
+from the Mail app above: this is Nextcloud <em>itself</em> sending — share-by-mail
+links, calendar iMIP invitations, activity notifications, local password
+resets. It had been silently unable to send since the day Nextcloud shipped
+(<code>mail_smtphost</code> was the stock <code>127.0.0.1</code>), and the calendar one is the trap:
+inviting an external guest appears to work and never reaches them.</p>
+<p>It authenticates as <strong><code>noreply@goclan.org</code></strong> on <code>:465</code>, with a password from
+its own generated clan var — no prompt, because no human types it. Nothing to
+configure per user.</p>
+<blockquote>
+<p><strong>Why a sixth mailbox rather than a <code>mynetworks</code> exemption.</strong> Trusting
+<code>10.0.90.26/32</code> in Postfix would have been one line and no credential — but
+<code>mynetworks</code> bypasses relay denial, so a compromised Nextcloud could relay
+anywhere as anyone, carrying our DKIM signature. A credential scoped to one
+mailbox is revocable by regenerating one generator; a trusted <code>/32</code> is not
+revocable short of editing the mail server. Reusing <code>admin@</code> was the third
+option and was rejected for a duller reason: its password is prompted, so
+emitting the plaintext would have re-prompted all five human mailboxes.</p>
+<p>The Maildir <code>noreply@</code> gets is a feature, not waste — bounces and
+out-of-office replies to automated mail land somewhere inspectable instead
+of in a person's inbox.</p>
+</blockquote>
+<hr />
+<h2 id="the-smarthost-escape-hatch">The smarthost escape hatch<a class="headerlink" href="#the-smarthost-escape-hatch" title="Permanent link">&para;</a></h2>
+<p><strong>Not enabled.</strong> This is what to do if step 7 shows mail is not arriving.</p>
+<p>Outbound moves to a relay with a real reputation and a real PTR. Nothing else
+changes — not the mailboxes, not the DKIM key, not SPF alignment, not a single
+client — because Rspamd signs the message <strong>before</strong> Postfix hands it off, so
+the signature and the <code>From:</code> domain still align on the far side.</p>
+<p>In the container config:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>services<span class="o">.</span>postfix<span class="o">.</span>settings<span class="o">.</span><span class="ss">main</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>  <span class="ss">relayhost</span>                  <span class="o">=</span> <span class="p">[</span> <span class="s2">"[smtp.relay.example]:587"</span> <span class="p">];</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>  <span class="ss">smtp_sasl_auth_enable</span>      <span class="o">=</span> <span class="no">true</span><span class="p">;</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>  <span class="ss">smtp_sasl_password_maps</span>    <span class="o">=</span> <span class="s2">"texthash:/run/mail-secrets/relay.passwd"</span><span class="p">;</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>  <span class="ss">smtp_sasl_security_options</span> <span class="o">=</span> <span class="s2">"noanonymous"</span><span class="p">;</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>  <span class="ss">smtp_tls_security_level</span>    <span class="o">=</span> <span class="s2">"encrypt"</span><span class="p">;</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="p">};</span>
+</code></pre></div>
+<p>Note <code>services.postfix.relayHost</code> was <strong>removed</strong> in nixpkgs 26.05 in favour of
+<code>settings.main.relayhost</code>, which takes a <strong>list</strong>.</p>
+<p>Then:</p>
+<ul>
+<li>add the relay's credentials as a new prompted clan-vars generator and stage
+  <code>relay.passwd</code> alongside the other secrets in <code>mail-secrets</code>;</li>
+<li>add the relay to SPF: <code>v=spf1 mx include:spf.relay.example -all</code>.</li>
+</ul>
+<p>Candidates, EU-hosted and free at household volume: Mailjet (200/day), Brevo
+(300/day). Amazon SES <code>eu-central-1</code> is €0.10/1000 and has the best
+deliverability of the cheap options. All three allow a custom <code>From:</code> domain,
+which is the requirement — a mailbox provider's SMTP will not do, because those
+only let you send as an address you hold with them.</p>
+<hr />
+<h2 id="things-that-will-look-wrong-and-are-not">Things that will look wrong and are not<a class="headerlink" href="#things-that-will-look-wrong-and-are-not" title="Permanent link">&para;</a></h2>
+<p><strong><code>nc -vz 10.0.90.31 25</code> from ernst succeeds.</strong> Every other container on this
+host refuses connections from ernst by design, and each of their files says so.
+Mail is the exception: <code>:25</code>, <code>:465</code>, <code>:993</code> and <code>:4190</code> accept from everywhere,
+because they have to. The negative control still holds for the exporter —
+<code>curl http://10.0.90.31:9154/metrics</code> from ernst <strong>is</strong> refused, and only
+<code>10.0.90.14</code> gets through.</p>
+<p><strong>CrowdSec shows no mail decisions, ever.</strong> It acquires only Traefik's journal
+and lives in Traefik's netns. Mail is covered by fail2ban inside its own
+container; <code>cscli decisions list</code> is the wrong tool and will always look empty.</p>
+<p><strong>The container cannot resolve <code>*.skynet.lan</code>.</strong> It runs kresd and does its own
+recursion instead of pointing at Technitium, because DNSBL operators refuse
+queries arriving via a shared resolver — a Technitium-pointed Rspamd would read
+every blocklist as empty and say nothing. There is nothing on the LAN this
+container needs by name.</p>
+<p><strong><code>up{job="mail"}</code> is the boring metric.</strong> The job exists for
+<code>postfix_showq_message_age_seconds</code> and the queue-size series. A mail server
+that has silently stopped delivering is <code>active (running)</code> the whole time, and
+every unit-state signal reads green.</p>
+<p><strong>DMARC and TLS report sending is ON, and was not always.</strong> Those options make
+<em>this</em> server mail daily reports to strangers about their SPF/DKIM failures and
+TLS negotiations. They shipped <strong>off</strong>, because the IP was Barracuda-listed
+behind a generic pool PTR and unsolicited volume to parties with no
+relationship to us was the last thing it needed. Both halves of that premise
+expired — the delisting took, Vodafone set the PTR, and the delivery gate
+passed — so they were turned on in a <strong>separate</strong> change from the one that
+proved delivery, deliberately, rather than putting two untested things in one
+deploy.</p>
+<p><strong>If deliverability ever degrades, switch these back off first</strong> — before the
+smarthost, before anything else. They are the only outbound traffic this server
+generates that nobody asked for, so they are the cheapest thing to stop.</p>
+<p><strong>Receiving</strong> reports was never affected: that is a property of our own
+<code>_dmarc</code> record, and of <code>_smtp._tls</code> since MTA-STS landed. Both point at
+<code>dmarc@goclan.org</code>, so aggregate DMARC XML and TLS-RPT summaries arrive in
+<code>admin@</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
