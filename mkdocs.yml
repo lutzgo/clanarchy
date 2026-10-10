@@ -86,6 +86,7 @@ nav:
   - Incidents:
     - ernst slot-12 drive drop (2026-08-11): incidents/ernst-slot12-drop-2026-08-11.md
     - ernst Jellyfin VAAPI DRM display failure (2026-08-18): incidents/ernst-jellyfin-vaapi-drm-display-failure-2026-08-18.md
+    - ernst card1 VRAM starvation (2026-10-09): incidents/ernst-card1-vram-starvation-2026-10-09.md
   - Reference:
     - Overview: reference/index.md
     - Hardware: reference/hardware.md

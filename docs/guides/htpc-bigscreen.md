@@ -248,8 +248,18 @@ carrying extra colons — so the natural `/dev/dri/by-path/pci-0000:03:00.0-card
 cannot be used as a bind source. This is the same wall
 `machines/ernst/containers/jellyfin.nix` hit for the iGPU, solved the same way.
 
-The dGPU is also Ollama's ROCm card. A kwin session and ROCm workloads coexist
-fine — compute goes through the render node, KMS through the card node.
+The dGPU is also the ROCm card, and that is a conflict. This page used to say
+it was not — "a kwin session and ROCm workloads coexist fine, compute goes
+through the render node, KMS through the card node". The node argument is true
+and does not matter: the two compete for **VRAM**, not for device nodes.
+
+On 2026-10-09 a model sized against an idle card left the gamescope session
+unable to pin a framebuffer, and gamescope answers `ENOMEM` by calling
+`abort()` — nine times in eleven minutes, relogged in each time. What keeps
+them apart now is a VRAM reserve the evaluator enforces, a preempt unit that
+reclaims the card as a session starts, and a 503 gate telling background
+consumers to come back later. See
+[the incident write-up](../incidents/ernst-card1-vram-starvation-2026-10-09.md).
 
 ## Enabling it on another machine
 
@@ -300,3 +310,41 @@ Both the display manager and the container want KMS on the same card, so only
 one may run. `clanarchy-session-select` stops one before starting the other; if
 things get out of step, `systemctl stop display-manager` then
 `systemctl start container@bigscreen`.
+
+### The TV came up in Kodi when it should have been in Big Picture
+
+That is the crash-loop breaker, not a setting that got lost. A session that
+dies repeatedly — five unexpected starts within ten minutes — is demoted down
+`crashLoop.fallbackChain`, which on ernst is `kodi` then `plasma`. Kodi is
+first because it is measured cheaper on VRAM (326 MiB against Big Picture's
+~1350), so it is the mode most likely to survive whatever killed the session.
+
+What happened, and why:
+
+```bash
+journalctl -b -t clanarchy-session      # the count and the demotion
+cat /run/clanarchy-session/breaker-note # one line: when, which mode, how many
+cat /var/lib/clanarchy-session/current  # where it landed
+```
+
+To undo it, switch deliberately — the switcher clears the counter as well as
+setting the mode:
+
+```bash
+clanarchy-session-select gamescope
+```
+
+A reboot also clears it: the counter is on tmpfs precisely so that power
+cycling is a fresh start.
+
+**If the screen shows a message saying every fallback is exhausted**, the
+session is deliberately holding rather than exiting — exiting is what the
+display manager answers with another relogin, which is the loop being broken.
+Nothing will change until someone intervenes. The usual cause is the card being
+full; check it before switching back:
+
+```bash
+cat /sys/class/drm/card1/device/mem_info_vram_used   # against 24560 MiB total
+curl -s localhost:11434/running                      # is a model resident?
+systemctl status clanarchy-gpu-preempt.service       # did the reclaim run?
+```

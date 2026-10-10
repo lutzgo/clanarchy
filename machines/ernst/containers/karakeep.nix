@@ -656,6 +656,49 @@ in
           # llama-swap anyway, and a single worker makes that visible in the
           # journal instead of as latency.
           INFERENCE_NUM_WORKERS = "1";
+
+          # ── THERE IS NO RETRY KNOB HERE, AND LOOKING FOR ONE IS THE TRAP ──
+          #
+          # Nothing below is settable; this block exists so the next person
+          # does not spend an afternoon finding that out.
+          #
+          # MEASURED on ernst 2026-10-09, reading the deployed store path
+          # (karakeep 0.32.0, apps/workers/dist/):
+          #
+          #   * logger-DyXDxwmR.js:30-160 is the COMPLETE zod env schema.  It
+          #     declares thirteen INFERENCE_* variables — the ones above plus
+          #     FETCH_TIMEOUT_SEC, MAX_OUTPUT_TOKENS, USE_MAX_COMPLETION_TOKENS,
+          #     SUPPORTS_STRUCTURED_OUTPUT, OUTPUT_SCHEMA and IMAGE_MODEL.
+          #     NONE of them is a retry, backoff or delay.  The only
+          #     retry-shaped variables in the whole schema belong to webhooks
+          #     and to the crawler's per-domain rate limiter.
+          #   * shared-server-CI-y1v5_.js:2310 creates the queue with
+          #     `{ defaultJobArgs: { numRetries: 3 }, keepFailedJobs: false }`
+          #     — a literal, with no env override reaching it.
+          #   * queue-liteque-p9Yg_mKq.js:68 re-polls at 1000 ms.
+          #   * the bundled OpenAI SDK retries 5xx twice on its own
+          #     (index.js:8120, `maxRetries ?? 2`) at 0.5s then 1s.
+          #
+          # Multiply those out and you get what the incident actually looked
+          # like: ~12 requests per bookmark over ~12 s, sustained at ~60
+          # requests/minute for fourteen minutes while the card was held by a
+          # game and NOT ONE of them could have succeeded.
+          #
+          # WHAT WORKS INSTEAD IS ON THE WIRE.  index.js:8398-8426 honours
+          # `retry-after-ms`, then `retry-after` in seconds or as an
+          # HTTP-date, WITH NO CLAMP, and treats `x-should-retry: false` as
+          # final.  So the backoff is the SERVER's to send, and it is sent:
+          # see `gateOn` in clan.nix, which stands a 503 responder on this
+          # container's leg whenever the card belongs to something else.
+          # ~2-3 requests per 300 s instead of ~60 per 60.
+          #
+          # THE COST, so it is not discovered later: the job still burns its
+          # three retries, and `keepFailedJobs: false` drops it.  A bookmark
+          # saved during a long game keeps `taggingStatus = failure` and has
+          # to be re-run from karakeep's UI.  Raising
+          # INFERENCE_JOB_TIMEOUT_SEC past the length of a film would let it
+          # ride out the gate instead — and would also let one genuinely hung
+          # inference hold the single worker for that long.  Not taken.
         };
       };
 
