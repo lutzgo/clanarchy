@@ -257,7 +257,7 @@ let
   # For one fixed response that removes the entire reason to run an HTTP
   # server: no parser, no keep-alive, no new package, and nothing listening
   # when the gate is down.
-  mkGate = { pkgs, unit, targetPort, bridges, retryAfter }:
+  mkGate = { pkgs, unit, replaces, targetPort, bridges, retryAfter }:
     let
       body = builtins.toJSON {
         error = {
@@ -314,17 +314,30 @@ let
         value = {
           description = "503 gate for the ${b.name} container";
 
-          # NO `wantedBy`, deliberately, and it is load-bearing twice over.
+          # NO `wantedBy`, deliberately: the gate is purely a consequence of
+          # llama-swap's state — raised by its ExecStopPost, lowered when its
+          # ExecStartPost brings the bridge back — so it never starts at boot
+          # and never races anything starting for its own reasons.
           #
-          # It keeps the gate off at boot, so llama-swap's `conflicts` never
-          # races a unit that is starting for its own reasons.  And it makes
-          # the gate purely a consequence of llama-swap's state: raised by
-          # its ExecStopPost, lowered by its Conflicts.  Nothing else decides.
+          # CONFLICTS WITH THE BRIDGE, AND THIS IS THE LOAD-BEARING LINE.
+          # Both bind the same address, and an earlier revision declared only
+          # `llama-swap.conflicts = [ this socket ]`, reasoning that the two
+          # were "mutually exclusive by the bind itself".  They are not: the
+          # bridge is `wantedBy = sockets.target` and therefore ALWAYS up, so
+          # the bind did not arbitrate between them — it simply failed
+          # whichever came second.  MEASURED on ernst 2026-10-10, first
+          # activation after deploy:
+          #
+          #   llama-gate-karakeep.socket: Failed to create listening socket
+          #     ([fdca:fe92::1]:11434): Address already in use
+          #
+          # The gate could never have taken the leg.  Naming the bridge here
+          # is what makes starting one stop the other.
+          conflicts = [ "${replaces}-${b.name}.socket" ];
+
           socketConfig = {
-            # THE SAME ADDRESS AND PORT AS THE BRIDGE.  The two are mutually
-            # exclusive by the bind itself, not only by the unit relations —
-            # whichever is up owns the leg, and the other cannot come up
-            # behind its back.
+            # The same address and port as the bridge it replaces — that is
+            # the point, and the `conflicts` above is what makes it possible.
             ListenStream = "[${b.address}]:${toString targetPort}";
             BindIPv6Only = "ipv6-only";
             FreeBind     = true;
@@ -1269,18 +1282,34 @@ in
 
             # ── THE GATE IS THIS UNIT'S SHADOW ──────────────────────────
             #
-            # Exactly one of the two owns a gated leg at any moment, and the
-            # handover is expressed entirely here so that nothing else has to
-            # remember it:
+            # Exactly one of the gate and the bridge owns a gated leg at any
+            # moment.  The two sockets conflict with each other (see mkGate),
+            # so all this unit has to do is say which one it wants:
             #
-            #   llama-swap starts  ->  Conflicts stops the gate
-            #   llama-swap stops   ->  ExecStopPost starts the gate
+            #   llama-swap stops   ->  ExecStopPost  starts the GATE
+            #                          (its Conflicts stops the bridge)
+            #   llama-swap starts  ->  ExecStartPost starts the BRIDGE
+            #                          (its Conflicts stops the gate)
+            #
+            # ONE mechanism, not two.  An earlier revision also carried
+            # `conflicts = gateSockets` here, which stopped the gate when
+            # llama-swap started but left NOTHING to bring the bridge back —
+            # the leg would simply have gone dead.  Choosing the winner by
+            # starting it is the whole of the arrangement.
             #
             # ExecStopPost runs on clean stop AND on failure, so a crashed
-            # llama-swap raises the gate too — which is the case that matters,
+            # llama-swap raises the gate too — the case that matters most,
             # because that is when consumers would otherwise meet a refused
             # connection and retry it immediately.
-            conflicts = gateSockets;
+            #
+            # KNOWN AND ACCEPTED: a RESTART is a stop followed by a start, so
+            # every deploy flaps the gate up and down for about a second.  A
+            # karakeep job in flight during that window reads the
+            # `Retry-After` and sleeps 120 s for nothing.  systemd gives
+            # ExecStopPost no way to tell a restart from a stop, and the
+            # alternative — letting only the 30 s watchdog raise the gate —
+            # would cost a real outage up to 30 s of the hammering this
+            # exists to prevent.  The flap is the cheaper error.
 
             environment = {
               ROCR_VISIBLE_DEVICES = "0";
@@ -1303,6 +1332,12 @@ in
               ExecStopPost = map
                 (s: "+${pkgs.systemd}/bin/systemctl --no-block start ${s}")
                 gateSockets;
+
+              # The other half: hand the leg back to the bridge.  Same `+`
+              # and the same `--no-block`, for the same two reasons.
+              ExecStartPost = map
+                (b: "+${pkgs.systemd}/bin/systemctl --no-block start llama-bridge-${b.name}.socket")
+                gatedBridges;
 
               # ── llama-swap FORKS llama-server, SO ITS SANDBOX IS THEIRS ────
               #
@@ -1473,6 +1508,9 @@ in
         }) (mkGate {
           inherit pkgs;
           unit       = "llama-gate";
+          # The bridge unit prefix the gate takes over from. Passed rather
+          # than hard-coded so the two names cannot drift apart.
+          replaces   = "llama-bridge";
           targetPort = port;
           bridges    = gatedBridges;
           retryAfter = settings.gateRetryAfter;

@@ -365,8 +365,13 @@ While the card is held by a claimant outside the group, named `exposeOn` legs
 are taken over by a responder that answers `503` + `Retry-After` instead of
 leaving the consumer to hammer a server that cannot answer.
 
-- The gate binds **the same address and port as the bridge**, so the two are
-  mutually exclusive by the bind itself, not only by unit relations.
+- The gate binds **the same address and port as the bridge**, and the two
+  sockets `Conflicts=` each other, so starting one stops the other. The bind
+  alone does **not** arbitrate — an earlier revision assumed it did, and since
+  the bridge is `wantedBy = sockets.target` and therefore always up, the gate
+  simply failed with `Address already in use` and could never take the leg.
+  llama-swap then only has to say which one it wants: `ExecStopPost` starts the
+  gate, `ExecStartPost` starts the bridge back.
 - `Accept = true` plus a templated unit is systemd's inetd mode: one process per
   connection, socket on stdin and stdout. For one fixed response that removes
   the need for an HTTP server entirely.
