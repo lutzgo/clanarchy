@@ -258,6 +258,29 @@ arm died with `failed to load model` because llama-swap had loaded the 35B for a
 real karakeep job mid-measurement. The incident reproduced itself, unprompted,
 during the investigation into it.
 
+**"Mutually exclusive by the bind" is not a mechanism.** The first deploy of
+this fix failed to start the gate:
+
+```
+llama-gate-karakeep.socket: Failed to create listening socket
+  ([fdca:fe92::1]:11434): Address already in use
+```
+
+The gate and the bridge bind the same address, and that was described in the
+code as making them mutually exclusive. It does not: the bridge is
+`wantedBy = sockets.target` and therefore always up, so the shared bind did not
+arbitrate between them — it just failed whichever came second, which was always
+the gate. Two units wanting one address need `Conflicts=` naming each other;
+the collision is the symptom, not the mechanism. Fixed in #301.
+
+**A `try-restart` inside an activation transaction can be cancelled.** The
+preempt unit also failed on that first deploy — `Job for llama-swap.service
+canceled` — because activation was already restarting llama-swap and systemd
+resolved the duplicate job by dropping one. Ordering the unit `After=` the units
+it bounces removes the cause; a `-` prefix on `ExecStart` removes the
+consequence, which matters because this unit sits in front of the television
+starting and must never be a reason for a dark screen.
+
 ## Not fixed
 
 **A game that starts while a model is already resident still loses.** The gate

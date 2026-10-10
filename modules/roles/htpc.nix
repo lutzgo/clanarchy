@@ -1950,7 +1950,17 @@ in
         # modules/gaming-shortcuts.nix.
         wantedBy = [ "multi-user.target" "display-manager.service" ];
         before   = [ "display-manager.service" ];
-        after    = [ "local-fs.target" ];
+
+        # Ordered after the units it bounces, which matters only inside a
+        # transaction that is already restarting them — i.e. a deploy.
+        # Without it, activation queues both this unit's `try-restart` and
+        # the system's own restart of the same unit, and systemd resolves
+        # that by cancelling one. MEASURED on ernst 2026-10-10, first
+        # activation after deploy:
+        #
+        #   systemctl[1823271]: Job for llama-swap.service canceled.
+        #   clanarchy-gpu-preempt.service: Failed with result 'exit-code'.
+        after = [ "local-fs.target" ] ++ cfg.gpu.preempt.units;
 
         serviceConfig = {
           Type = "oneshot";
@@ -1979,8 +1989,18 @@ in
           #     loses it until someone notices. A restart frees the VRAM — the
           #     backends are children of that cgroup — and leaves the swapper
           #     up and able to reload on the next request.
+          # THIS UNIT MUST NOT FAIL, and the `-` prefix is how that is said.
+          # It sits in front of the television starting, and a failure here
+          # is not a reason to keep the TV dark — the session wrapper calls
+          # it and carries on regardless, the reserve means a reclaim is an
+          # optimisation rather than a precondition, and the breaker is
+          # behind both. What a hard failure WOULD buy is a permanently
+          # degraded `systemctl --failed` and an ntfy alert every deploy.
+          #
+          # The ordering above removes the known cause; this removes the
+          # consequence of any cause not yet known.
           ExecStart = map
-            (u: "${pkgs.systemd}/bin/systemctl try-restart ${u}")
+            (u: "-${pkgs.systemd}/bin/systemctl try-restart ${u}")
             cfg.gpu.preempt.units;
         };
       };
