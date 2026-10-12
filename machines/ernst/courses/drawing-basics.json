@@ -84,7 +84,162 @@
       ]
     },
 
-    { "season": 2, "title": "Lines",                "lessons": [] },
+    {
+      "season": 2,
+      "title": "Lines",
+      "lessons": [
+        {
+          "slug": "intro-to-lines",
+          "title": "Intro to Lines",
+          "plot": "There is an endless number of ways to use lines as an artist, so let's jump in and take a look at the basics."
+        },
+        {
+          "slug": "project-simplify-to-csi",
+          "title": "Project - Simplify to CSI",
+          "plot": "Here's a project to help you avoid chicken scratch. We're going to simplify our drawings to C curves, S curves, and straight lines."
+        },
+        {
+          "slug": "2-week-drawing-challenge",
+          "title": "2 Week Drawing Challenge",
+          "plot": "Challenge yourself to draw every day for two weeks."
+        },
+        {
+          "slug": "demo-simplify-snail-and-boots-to-csi",
+          "title": "Demo - Simplify Snail and Boots to CSI",
+          "plot": "In this demo, I'll show you how I would approach the level 1 CSI drawings."
+        },
+        {
+          "slug": "demo-simplify-camel-and-skull-to-csi",
+          "title": "Demo - Simplify Camel and Skull to CSI",
+          "plot": "In this demo, I'll show you how I would approach the level 2 CSI drawings."
+        },
+        {
+          "slug": "critique-simplify-to-csi",
+          "title": "Critique - Simplify to CSI",
+          "plot": "Let's take a look at your \"Simplify to CSI\" submissions!"
+        },
+        {
+          "slug": "how-to-draw-confident-lines-the-tapered-stroke",
+          "title": "How to Draw Confident Lines - The Tapered Stroke",
+          "plot": "Master the Tapered Stroke for confident line quality in your sketches! Learn how to construct complex shapes & add energy to your loose sketches."
+        },
+        {
+          "slug": "searching-lines",
+          "title": "Searching Lines",
+          "plot": "Searching Lines, 3 levels of looseness, and their practical applications."
+        },
+        {
+          "slug": "project-learning-to-sketch-from-observation",
+          "title": "Project - Learning to Sketch from Observation",
+          "plot": "In this project, we'll start learning how to sketch using simple loose lines."
+        },
+        {
+          "slug": "project-learning-to-sketch-from-imagination",
+          "title": "Project - Learning to Sketch from Imagination",
+          "plot": "This is our first stop on the path to drawing from imagination."
+        },
+        {
+          "slug": "drawing-from-imagination-cramps",
+          "title": "Drawing from Imagination Cramps",
+          "plot": "Why drawing from imagination is important for artists, when to start, and overcoming the emotional challenges."
+        },
+        {
+          "slug": "demo-learning-to-sketch-from-observation",
+          "title": "Demo - Learning to Sketch from Observation",
+          "plot": "In this lesson, I walk you through each step of my process for sketching all 3 of the \"Learning to Sketch from Observation\" reference images."
+        },
+        {
+          "slug": "demo-learning-to-sketch-from-imagination",
+          "title": "Demo - Learning to Sketch from Imagination",
+          "plot": "I demonstrate the sketching from imagination project. From studying the reference, to explorations, to final sketch."
+        },
+        {
+          "slug": "critique-learning-to-sketch-from-observation",
+          "title": "Critique - Learning to Sketch from Observation",
+          "plot": "In this lesson, I'll look over your sketches from observation and address the common mistakes."
+        },
+        {
+          "slug": "critique-learning-to-sketch-from-imagination",
+          "title": "Critique - Learning to Sketch from Imagination",
+          "plot": "Reviewing the common mistakes and standout assignments from the \"Learning to Sketch from Imagination\" projects."
+        },
+        {
+          "slug": "warmups-to-improve-line-quality",
+          "title": "Warmups to Improve Line Quality",
+          "plot": "In this lesson, I show you 5 line quality warm-ups that you can practice to improve your line control."
+        },
+        {
+          "slug": "6-habits-for-good-line-quality",
+          "title": "6 Habits for Good Line Quality",
+          "plot": "Master line quality with 6 key habits: avoid common mistakes, find a comfortable speed, follow-through, ghosting, rotate the paper, and use simple strokes."
+        },
+        {
+          "slug": "how-to-draw-with-line-weight",
+          "title": "How to Draw with Line Weight",
+          "plot": "In this lesson, we'll learn about the importance of line weight when creating engaging and interesting art."
+        },
+        {
+          "slug": "project-organizing-line-weight",
+          "title": "Project - Organizing Line Weight",
+          "plot": "For this project, we're going to design our line quality to be more interesting by practicing organizing the line weight."
+        },
+        {
+          "slug": "demo-hierarchy-of-importance-line-weight",
+          "title": "Demo - Hierarchy of Importance Line Weight",
+          "plot": "In this demo, I show the \"hierarchy of importance\" method for organizing line weight."
+        },
+        {
+          "slug": "demo-light-and-shadow-line-weight",
+          "title": "Demo - Light and Shadow Line Weight",
+          "plot": "In this demo, I show the \"light & shadow\" method for organizing line weight."
+        },
+        {
+          "slug": "demo-different-ways-to-use-line-weight",
+          "title": "Demo - Different Ways to Use Line Weight",
+          "plot": "Before starting my line weight drawing of shoes, I did some small sketches exploring all the options."
+        },
+        {
+          "slug": "demo-depth-and-form-line-weight",
+          "title": "Demo - Depth and Form Line Weight",
+          "plot": "In this demo, I show you how to approach the Depth and Form method."
+        },
+        {
+          "slug": "critique-organizing-line-weight",
+          "title": "Critique - Organizing Line Weight",
+          "plot": "Let's take a look at all your \"Organizing Line Weight\" projects."
+        },
+        {
+          "slug": "combining-line-weight",
+          "title": "Combining Line Weight",
+          "plot": "In this bonus demo, I'll attempt to use ALL 3 line weight methods in the same drawing and show how you can be creative in the way you combine them."
+        },
+        {
+          "slug": "project-line-master-studies",
+          "title": "Project - Line Master Studies",
+          "plot": "In this new project, you'll practice to improve your line quality by doing master studies!"
+        },
+        {
+          "slug": "demo-line-master-studies-jeff-watts",
+          "title": "Demo - Line Master Studies - Jeff Watts",
+          "plot": "In this demo, I do a master study of a skull drawing from my instructor Jeff Watts."
+        },
+        {
+          "slug": "demo-line-master-studies-roberto-de-la-torre",
+          "title": "Demo - Line Master Studies - Roberto De La Torre",
+          "plot": "In this demo, I do a couple master studies from one of my favorite inkers, Roberto De La Torre."
+        },
+        {
+          "slug": "critique-line-master-studies",
+          "title": "Critique - Line Master Studies",
+          "plot": "In this critique, I'll look through your master study assignments and give some advice on how to improve your studies of lines."
+        },
+        {
+          "slug": "jeff-watts-on-line-quality",
+          "title": "Jeff Watts on Line Quality",
+          "plot": "In this bonus lesson, we get some great insight on how to effectively use lines from my instructor, Jeff Watts."
+        }
+      ]
+    },
     { "season": 3, "title": "Shapes",               "lessons": [] },
     { "season": 4, "title": "How Perspective Works","lessons": [] },
     { "season": 5, "title": "Intuitive Perspective","lessons": [] },
