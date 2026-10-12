@@ -365,13 +365,28 @@ While the card is held by a claimant outside the group, named `exposeOn` legs
 are taken over by a responder that answers `503` + `Retry-After` instead of
 leaving the consumer to hammer a server that cannot answer.
 
-- The gate binds **the same address and port as the bridge**, and the two
-  sockets `Conflicts=` each other, so starting one stops the other. The bind
-  alone does **not** arbitrate — an earlier revision assumed it did, and since
-  the bridge is `wantedBy = sockets.target` and therefore always up, the gate
-  simply failed with `Address already in use` and could never take the leg.
-  llama-swap then only has to say which one it wants: `ExecStopPost` starts the
-  gate, `ExecStartPost` starts the bridge back.
+- The gate binds **the same address and port as the bridge**, so exactly one of
+  them may be up, and the swap is done by an **ordered handover script** —
+  `llama-gate-handover gate|bridge` — which stops the loser, waits for that to
+  finish, and only then starts the winner. llama-swap's `ExecStopPost` calls it
+  with `gate` and its `ExecStartPost` with `bridge`, so the leg simply follows
+  llama-swap's state.
+
+    Two earlier revisions got this wrong in opposite directions, and each cost a
+    deploy. First, only `llama-swap.conflicts = [ gate ]`, on the reasoning that
+    a shared address made the two "mutually exclusive by the bind itself" — it
+    does not, the bridge is `wantedBy = sockets.target` and always up, so the
+    gate just failed with `Address already in use`. Then `Conflicts=` between
+    the two sockets, which is closer but still insufficient: systemd.unit(5)
+    says `Conflicts=` is *"independent of and orthogonal to the After= and
+    Before= ordering dependencies"*, so it guarantees the loser is stopped but
+    not that the stop finishes before the winner binds. The second deploy failed
+    the mirror image of the first and left the leg with **neither** unit on it.
+    `After=` in both directions is a cycle, so the ordering is explicit instead.
+
+    The script is biased towards the bridge on every error path: a dead leg
+    means connection-refused and unthrottled retries, which is worse than simply
+    having no backoff.
 - `Accept = true` plus a templated unit is systemd's inetd mode: one process per
   connection, socket on stdin and stdout. For one fixed response that removes
   the need for an HTTP server entirely.
