@@ -153,11 +153,22 @@ the manifests are baked into the store path the tool reads.
 - `season` — the season number for that chapter. `lessons: []` is fine; an empty
   chapter produces no season directory, so listing all eight chapters up front
   does not leave seven empty seasons in Jellyfin.
-- `slug` — **the download filename stem, which is also the lesson's URL slug**,
-  and which disagrees with the title often enough to matter:
-  `simplify-from-observation-pear-demo` is the lesson *Demo - Simplify Pear from
-  Observation*. There is no rule that derives one from the other, so the mapping
-  is stated and the tool refuses to guess.
+- `slug` — **the download filename stem, and nothing else.** It is what the
+  importer matches against, so it must be copied from the file on disk.
+
+    It disagrees with the lesson title often enough to matter:
+    `simplify-from-observation-pear-demo` is the lesson *Demo - Simplify Pear
+    from Observation*. There is no rule that derives one from the other, so the
+    mapping is stated and the tool refuses to guess.
+
+    **And it is not always the URL slug either** — do not read it off the
+    address bar. That same lesson is `/course-lesson/demo-simplify-pear-from-observation`
+    on proko.com while the downloaded file is `simplify-from-observation-pear-demo.mp4`;
+    the two are reversed. The same applies to the portrait demo. For most
+    lessons they happen to agree, which is exactly what makes the exceptions
+    easy to miss: a manifest row written from the URL matches no file, and the
+    lesson silently reports `not downloaded` while its video sits in ingest.
+    `course-import orphans <course>` is what catches it.
 - Episode number is the lesson's **position in its chapter**, never a sort of
   the ingest directory. Inserting a lesson renumbers everything after it — which
   is correct, and which `import` will carry out as renames on the next run.
