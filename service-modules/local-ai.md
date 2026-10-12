@@ -354,62 +354,44 @@ tensors of the first N layers to system RAM and leaves attention and the KV
 cache on the GPU, which is a far better VRAM-per-token trade than lowering
 `-ngl`.
 
-### The 503 gate
+### There was a 503 gate here, and it was removed
 
-```nix
-gateOn         = [ "karakeep" ];
-gateRetryAfter = 120;
-```
+While the card was held by a claimant outside the group, a named `exposeOn` leg
+was taken over by a responder answering `503` + `Retry-After`, so a background
+consumer would back off instead of retrying a server that could not answer. It
+worked. It is gone, and the reasoning is worth keeping.
 
-While the card is held by a claimant outside the group, named `exposeOn` legs
-are taken over by a responder that answers `503` + `Retry-After` instead of
-leaving the consumer to hammer a server that cannot answer.
+**What it bought, measured rather than assumed:** a lower request *rate* on a
+loopback path. It did **not** save the bookmark — the job still burns karakeep's
+hard-coded three retries and `keepFailedJobs: false` drops it either way — so
+the entire benefit was fewer journal lines during a gaming session.
 
-- The gate binds **the same address and port as the bridge**, so exactly one of
-  them may be up, and the swap is done by an **ordered handover script** —
-  `llama-gate-handover gate|bridge` — which stops the loser, waits for that to
-  finish, and only then starts the winner. llama-swap's `ExecStopPost` calls it
-  with `gate` and its `ExecStartPost` with `bridge`, so the leg simply follows
-  llama-swap's state.
+**What it cost:** five follow-up fixes in three days, every one a defect in the
+gate itself, and one live outage.
 
-    Two earlier revisions got this wrong in opposite directions, and each cost a
-    deploy. First, only `llama-swap.conflicts = [ gate ]`, on the reasoning that
-    a shared address made the two "mutually exclusive by the bind itself" — it
-    does not, the bridge is `wantedBy = sockets.target` and always up, so the
-    gate just failed with `Address already in use`. Then `Conflicts=` between
-    the two sockets, which is closer but still insufficient: systemd.unit(5)
-    says `Conflicts=` is *"independent of and orthogonal to the After= and
-    Before= ordering dependencies"*, so it guarantees the loser is stopped but
-    not that the stop finishes before the winner binds. The second deploy failed
-    the mirror image of the first and left the leg with **neither** unit on it.
-    `After=` in both directions is a cycle, so the ordering is explicit instead.
+| | |
+|---|---|
+| a socket that could never bind | `Conflicts=` was declared against llama-swap, not against the bridge that actually held the address |
+| a `Conflicts=` that stops but does not order | systemd.unit(5): *"independent of and orthogonal to the After= and Before= ordering dependencies"* — so the winner's bind raced the loser's close, in both directions |
+| a sentinel that never appeared | `curl \| jq \|\| echo unknown` puts the `\|\|` on the pipeline, and `jq` exits 0 on empty input |
+| a handover racing every activation | the bridge socket is `wantedBy = sockets.target`, so every activation started it while the handover was trying to take it away |
+| **a permanent 503** | a deploy left the gate holding the leg in front of a healthy llama-swap, and nothing was watching for that pair |
 
-    The script is biased towards the bridge on every error path: a dead leg
-    means connection-refused and unthrottled retries, which is worse than simply
-    having no backoff.
-- `Accept = true` plus a templated unit is systemd's inetd mode: one process per
-  connection, socket on stdin and stdout. For one fixed response that removes
-  the need for an HTTP server entirely.
-- It has **no `wantedBy`**. The gate is purely a consequence of llama-swap's
-  state — raised by its `ExecStopPost`, lowered by its `Conflicts` — so it
-  cannot start at boot and cannot race.
-- `clanarchy-llama-gate.timer` reads card occupancy every 30 s and decides which
-  of the two owns the leg. It reads sysfs and `/running`, so a game, a hand-run
-  `llama-server` and a stray ComfyUI all look the same to it, which is the
-  correct level of ignorance.
+Its watchdog also **stopped llama-swap** whenever an outside claimant held the
+card, which is worse than it sounds: a gaming session took the model away from
+mneme, Home Assistant's Assist pipeline and OpenCode, where without it they
+merely fail a load and recover the moment the card frees.
 
-**Gate background consumers only.** A 503 is right for bookmark tagging and
-wrong for anything with a person waiting on it, and monitoring must keep
-scraping for the condition to be visible at all.
+So the card is arbitrated by the three mechanisms that protect something a
+person would notice — the VRAM reserve above, the htpc role's
+`gpu.preempt.units`, and its crash-loop breaker — and a model that cannot load
+answers 500, as it did before any of this.
+`machines/ernst/containers/karakeep.nix` records what that costs and why no
+knob exists to soften it.
 
-**It is load-prevention, not eviction.** A claimant that takes the card while a
-model is already resident still wins; that case waits for `idleTtl`. What
-evicts on demand is the htpc role's `gpu.preempt.units`, which bounces
-llama-swap as a session starts.
-
-> These options are ernst-only, and `scripts/gen-options.py` evaluates only
-> miralda and biene — so they will never appear in the generated reference.
-> This section is the documentation.
+**The general lesson, since it is not about this gate.** A mechanism whose only
+benefit is invisible to people, and whose failure modes are visible to them, is
+the wrong trade however correct it eventually becomes.
 
 ## Voice — whisper.cpp, and it runs on the CPU
 
