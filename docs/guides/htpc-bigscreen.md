@@ -322,9 +322,19 @@ first because it is measured cheaper on VRAM (326 MiB against Big Picture's
 What happened, and why:
 
 ```bash
-journalctl -b -t clanarchy-session      # the count and the demotion
-cat /run/clanarchy-session/breaker-note # one line: when, which mode, how many
-cat /var/lib/clanarchy-session/current  # where it landed
+# The session's own output. NOT the journal — the wrapper runs under SDDM,
+# so its stderr lands here and `journalctl -t clanarchy-session` is empty.
+tail ~go/.local/share/sddm/wayland-session.log
+
+cat /run/clanarchy-session/breaker-note   # one line: when, which mode, how many
+cat /var/lib/clanarchy-session/current    # where it landed
+```
+
+Verified on ernst 2026-10-12 by seeding four recent starts and restarting the
+display manager; the fifth entry demoted `kodi` to `plasma` and wrote:
+
+```
+2026-10-12T09:17:47+02:00: kodi looped (5 starts), demoted to plasma
 ```
 
 To undo it, switch deliberately — the switcher clears the counter as well as
