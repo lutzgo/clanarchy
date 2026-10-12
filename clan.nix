@@ -624,6 +624,13 @@
           #
           # TAKEN: 32768 with `--n-cpu-moe 2`, at -13.8% decode.
           #
+          # EVERY FIGURE IN THAT TABLE IS A LOAD-TIME READING and so a
+          # floor — see `residentVramMiB` below, where the same arm
+          # measures 22879 MiB once the KV cache has filled.  The table
+          # is still the right basis for CHOOSING between arms, because
+          # the error is in the same direction for all of them; it is the
+          # wrong basis for the budget.
+          #
           # NOT the faster arm, and the reasons are worth keeping.  -c 16384
           # with one layer offloaded holds 87.0 tok/s, but it (a) halves the
           # window, which is a semantic change to every consumer and mneme
@@ -716,13 +723,32 @@
             contextLength = 32768;
             kvCacheType   = "f16";
 
-            # MEASURED on ernst 2026-10-10 with `-c 32768 --n-cpu-moe 2`:
-            # 22672 MiB, 288 MiB under the 22960 ceiling.  Re-measure this
-            # whenever contextLength, kvCacheType, the quantisation or
-            # extraArgs change — it is the number the budget assertion
-            # checks, and a stale one is worse than none because it reads as
-            # measured.
-            residentVramMiB = 22672;
+            # MEASURED on ernst with `-c 32768 --n-cpu-moe 2`.  THE HIGHEST
+            # FIGURE OBSERVED, deliberately, and that is a correction:
+            #
+            #   22672 MiB   2026-10-10, seconds after load   <- what this said
+            #   22771 MiB   2026-10-12, seconds after load
+            #   22811 MiB   2026-10-12, settled after three long prompts
+            #   22879 MiB   2026-10-12, under a live karakeep tagging run
+            #
+            # A load-time reading is a FLOOR, not the resident size: the KV
+            # cache fills as the model is used and the footprint grows about
+            # 100-200 MiB with it.  The old 22672 was taken seconds after a
+            # cold load and so understated the real number by ~200 MiB,
+            # which made the assertion below optimistic in the one direction
+            # a safety check must never be optimistic in.
+            #
+            # So this is the high-water mark, and the margin it leaves is the
+            # honest one: 22879 + 1600 = 24479 of 24560, i.e. 81 MiB spare
+            # rather than the 288 the old figure implied.  Steam Big Picture
+            # still fits — 22879 + ~1350 = 24229 — but there is not room for
+            # a second surprise, so the next model change should buy margin
+            # back with `--n-cpu-moe 3` (22207 at load, ~76 tok/s) rather
+            # than spend what is left.
+            #
+            # Re-measure UNDER LOAD, not after load, whenever contextLength,
+            # kvCacheType, the quantisation or extraArgs change.
+            residentVramMiB = 22879;
 
             # WHAT MAKES IT FIT.  Two layers' worth of expert tensors live
             # in system RAM instead of VRAM: 1027 MiB saved for 13.8% of
