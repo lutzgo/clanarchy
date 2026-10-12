@@ -911,7 +911,7 @@
   #
   # ── THE ULA LEGS, AND THE NAMING RULE M29 HAD TO ADD ──────────────────────
   #
-  # Six point-to-point /128 pairs now, each with exactly one peer, none on any
+  # Seven point-to-point /128 pairs now, each with exactly one peer, none on any
   # VLAN and none with a MAC, a reservation or anything for the UDM-Pro:
   #
   #   fdca:fe90::1/::2   mon0   monitoring   Prometheus + llama-swap's /metrics
@@ -921,12 +921,33 @@
   #                                          — three ports on one leg (M29)
   #   fdca:fe94::1/::2   web0   searxng      web search for the agent (M29b)
   #   fdca:fe95::1/::2   doc0   paperless    document search for the agent (M32)
+  #   fdca:fe96::1/::2   kodi0  hass         Home Assistant -> Kodi's HTTP and
+  #                                          WebSocket control on the host
   #
-  # THE LAST TWO POINT THE OTHER WAY, which is why neither is called `ai4` or
-  # `ai5`.  Every `ai*` leg exists so a CONTAINER can reach a service on this
+  # `web0` AND `doc0` POINT THE OTHER WAY, which is why neither is called `ai4`
+  # or `ai5`.  Every `ai*` leg exists so a CONTAINER can reach a service on this
   # host's loopback; `web0` and `doc0` exist so a HOST service (mneme) can reach
   # a service in a container.  Naming either in the ai family would read as
   # another consumer of llama-swap, which neither is.
+  #
+  # `kodi0` HAS THE `ai*` DIRECTION AND STILL IS NOT ONE, for the same reason
+  # read from the other side: the rule is about WHAT IS AT THE FAR END, not
+  # about which way the packets go.  A container reaching a host service is the
+  # `ai*` geometry, but the far end here is the couch session's media client,
+  # not llama-swap, so an `ai` name would promise a fifth inference consumer.
+  #
+  # IT IS ALSO THE FIRST LEG OF ITS DIRECTION WITH NO `mkBridges` CALL, and the
+  # absence is the interesting part.  Every `ai*` leg carries a socket proxy
+  # because llama-swap binds `127.0.0.1` and stays there — a container cannot
+  # reach it however the packets are routed.  Kodi binds the WILDCARD
+  # (measured 2026-10-12: `LISTEN [::]:8080` and `LISTEN 0.0.0.0:8080`), so it
+  # is already answering on `fdca:fe96::1` the moment the leg exists.  A proxy
+  # would be a second mechanism for a property the first one already has.
+  #
+  # AND IT REPLACES A UDM-Pro RULE THAT WAS NOT CREATED.  The alternative was a
+  # `Services -> Internal` permit for `10.0.90.27 -> 10.0.50.10:{8080,9090}`,
+  # which is the L12 shape; this follows L13/L14/L15 instead and keeps the
+  # traffic inside the box.  See the interim-rule ledger for why no row exists.
   #
   # `doc0` IS `web0`'S SHAPE AND NOT A NEW ONE, down to the security property:
   # it adds NO host-side accept for `fdca:fe95::2` and no `mkBridges` call, so
