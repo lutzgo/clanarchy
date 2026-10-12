@@ -1548,22 +1548,48 @@ in
               #
               # When llama-swap is DOWN nothing of ours can be resident, so
               # occupancy alone decides and `/running` is not needed at all.
+              # ── ENFORCE AN INVARIANT, DO NOT REACT TO A TRANSITION ──────
+              #
+              # The leg has exactly one correct owner at any instant:
+              #
+              #   llama-swap up    ->  the BRIDGE owns it
+              #   llama-swap down  ->  the GATE owns it
+              #
+              # `want` is computed from the world as it is, and `ensure`
+              # makes it so from ANY starting state.  That is the difference
+              # between this and the revision before it, which moved the leg
+              # only at the moments it decided something and therefore had no
+              # branch at all for "llama-swap is up but the gate holds the
+              # leg".  MEASURED on ernst 2026-10-12: a deploy left exactly
+              # that pair, and because nothing was watching for it rather
+              # than for a change, karakeep sat on a permanent 503 with a
+              # perfectly healthy llama-swap behind it.
+              #
+              # Idempotent by construction: `ensure` is a no-op when the
+              # wanted unit is already active, so the common case costs two
+              # `systemctl is-active` calls and nothing else.
+              # Every gated leg, not just the first: with two of them they can
+              # disagree, and a check that looks only at one would call the
+              # pair settled while the other sat on the wrong owner.
+              ensure() {
+                for n in ${lib.concatStringsSep " " (map (b: b.name) gatedBridges)}; do
+                  case "$1" in
+                    bridge) want="llama-bridge-$n.socket" ;;
+                    *)      want="llama-gate-$n.socket"   ;;
+                  esac
+                  systemctl -q is-active "$want" || { ${gateHandover} "$1"; return; }
+                done
+              }
+
               if ! systemctl -q is-active llama-swap.service; then
                 if [ "$usedMiB" -le ${toString settings.vram.reserveMiB} ]; then
                   echo "card back under the reserve at ''${usedMiB} MiB — resuming" >&2
                   systemctl start llama-swap.service
-                  # Hand the leg back here, because llama-swap no longer does
-                  # it for itself — see the note on that unit.
-                  ${gateHandover} bridge
+                  ensure bridge
                 else
-                  # Still held by something outside the group.  The gate
-                  # should already be up from ExecStopPost; this is the
-                  # backstop for the case where it is not — llama-swap having
-                  # been down since boot, say, so no ExecStopPost ever ran.
-                  for g in ${lib.concatStringsSep " "
-                             (map (b: "llama-gate-${b.name}.socket") gatedBridges)}; do
-                    systemctl -q is-active "$g" || { ${gateHandover} gate; break; }
-                  done
+                  # Still held by something outside the group: a game, a
+                  # hand-run server, anything that is not ours.
+                  ensure gate
                 fi
                 exit 0
               fi
@@ -1591,9 +1617,14 @@ in
                  && [ "$usedMiB" -gt ${toString settings.vram.reserveMiB} ]; then
                 echo "card holds ''${usedMiB} MiB with nothing of ours loaded — standing down" >&2
                 systemctl stop llama-swap.service
-                # And raise the gate, for the same reason as above: this is
-                # now the only thing that moves the leg.
-                ${gateHandover} gate
+                ensure gate
+              else
+                # llama-swap is up and entitled to the card, so the bridge
+                # owns the leg. THIS BRANCH IS THE WHOLE POINT: it is the one
+                # the previous revision did not have, and its absence is what
+                # left karakeep on a permanent 503 after a deploy raised the
+                # gate and nothing was left to lower it.
+                ensure bridge
               fi
             '';
           };
