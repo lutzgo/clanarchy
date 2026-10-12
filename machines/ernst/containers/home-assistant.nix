@@ -1549,17 +1549,46 @@ in
       # The HACS requirements checker.
       ##########################################################################
 
-      # ── HOOKED TO HOME ASSISTANT'S START, NOT TO A TIMER ──────────────────
+      # ── HOOKED TO HOME ASSISTANT'S START *AND* TO A DAILY SWEEP ───────────
       #
-      # A timer would be the reflex and it would be worse in both directions:
-      # noisier, because the answer cannot change between restarts, and slower,
-      # because a download made at 09:00 would wait for the next firing.
+      # THIS BLOCK USED TO ARGUE AGAINST A TIMER, and half of that argument was
+      # wrong.  It said:
       #
-      # The answer changes at exactly one moment.  A HACS download is inert
-      # until Home Assistant is restarted — that is why HACS itself puts a
-      # "restart required" notice on every install — so the restart is both the
-      # moment new state takes effect and the moment it becomes checkable.
-      # `wantedBy` + `after` on home-assistant.service puts the check there.
+      #   "A timer would be worse in both directions: noisier, because the
+      #    answer cannot change between restarts, and slower, because a
+      #    download made at 09:00 would wait for the next firing."
+      #
+      # The answer CAN change between restarts, and the premise confused two
+      # different moments.  `hacs-deps-check` reads manifests off disk, and
+      # HACS writes a download to disk the instant it happens — so the answer
+      # changes at DOWNLOAD time.  What waits for the restart is the EFFECT:
+      # the integration is inert until then, which is why HACS shows its
+      # "restart required" notice.
+      #
+      # Those are both worth knowing, at different moments:
+      #
+      #   download  -> the answer becomes TRUE.  A sweep here tells you the
+      #                next restart is going to break something, while there
+      #                is still time to package the requirement.
+      #   restart   -> the answer becomes LOAD-BEARING.  Keep this trigger;
+      #                it is the one that catches a problem at the moment it
+      #                starts costing something.
+      #
+      # MEASURED, and it cost two days in both directions: on 2026-10-09 the
+      # boot check failed on `sofabaton_x1s` wanting `infrared-protocols`,
+      # which is not in nixpkgs.  HACS had downloaded that version at some
+      # earlier point and nothing noticed until the restart.  Upstream then
+      # dropped the requirement in 0.7.0 — and the FIX sat on disk equally
+      # unnoticed until the next container restart on 2026-10-11 08:24 cleared
+      # the alert.  A unit that only speaks at restart is two restarts behind
+      # the thing it reports on.
+      #
+      # The "noisier" half does not survive either: the sweep runs the same
+      # check over the same files, so it cannot report anything the restart
+      # check would not have reported.  It only reports it sooner.
+      #
+      # So: both triggers.  `wantedBy` + `after` on home-assistant.service for
+      # the restart, and the timer below for the download.
       #
       # WantedBy, NOT RequiredBy, and the asymmetry is deliberate: Home
       # Assistant must not be held up or taken down by its own checker.  A
@@ -1596,8 +1625,24 @@ in
         wantedBy = [ "home-assistant.service" ];
         after    = [ "home-assistant.service" ];
         serviceConfig = {
-          Type            = "oneshot";
-          RemainAfterExit = true;
+          Type = "oneshot";
+
+          # RemainAfterExit IS OFF, AND IT HAS TO BE FOR THE TIMER TO WORK.
+          # It used to be on, which reads as harmless and is not: a timer
+          # issues StartUnit, and StartUnit on a unit already sitting in
+          # `active (exited)` is a NO-OP.  Left on, the sweep below would
+          # have fired every day, done nothing, logged nothing, and looked
+          # exactly like a working timer — except after a FAILURE, where the
+          # unit is in `failed` and can be started again.  A check that only
+          # re-runs once it is already failing is precisely backwards.
+          #
+          # Nothing depended on the `active (exited)` state.  The container
+          # collector in service-modules/monitoring.nix lists
+          # `--state=failed` only, so a success that goes `inactive (dead)`
+          # is invisible to it either way, and a failure still sticks until
+          # a later run succeeds — which is what clears the alert.
+          RemainAfterExit = false;
+
           ExecStart       = "${hacsDepsCheck}/bin/hacs-deps-check ${configDir}/custom_components";
 
           # Read-only, and as the service user rather than root: it inspects
@@ -1609,6 +1654,28 @@ in
           ProtectHome     = true;
           PrivateTmp      = true;
           NoNewPrivileges = true;
+        };
+      };
+
+      # The download-time half of the pair above.
+      systemd.timers.hass-hacs-deps = {
+        description = "Daily sweep for HACS integrations with unsatisfiable requirements";
+        wantedBy    = [ "timers.target" ];
+        timerConfig = {
+          OnCalendar = "daily";
+
+          # The check is three seconds of reading manifests, so the spread is
+          # not about load — it is so the alert, if one comes, does not always
+          # arrive at the same minute and become part of the furniture.
+          RandomizedDelaySec = "1h";
+
+          # NOT Persistent.  A missed firing means the container was down, and
+          # a container coming back up runs home-assistant.service, which pulls
+          # this unit through its `wantedBy` anyway.  Persistent would add a
+          # second run moments after the first and tell nobody anything new.
+          Persistent = false;
+
+          Unit = "hass-hacs-deps.service";
         };
       };
 

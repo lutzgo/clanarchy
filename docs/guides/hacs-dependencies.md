@@ -45,7 +45,16 @@ if not self.hass.config.skip_pip:
 
 So Home Assistant does not check, does not raise `RequirementsNotFound`, and logs nothing about pip. The integration loads, does `import pyfoo`, and the first symptom is an `ImportError` from inside someone else's code — which for a lazily-importing integration may not appear until the affected device is first used, days after the download. There is no upstream signal to alert on, so `hacs-deps-check` manufactures one.
 
-You do not have to remember to run it. `hass-hacs-deps.service` runs it on every Home Assistant start (`wantedBy = home-assistant.service`), and a failure becomes `clanarchy_container_systemd_unit_failed` within a minute via ernst's container-unit collector.
+You do not have to remember to run it. `hass-hacs-deps.service` runs it at **two** moments, and a failure becomes `clanarchy_container_systemd_unit_failed` within a minute via ernst's container-unit collector:
+
+| Trigger | Catches |
+|---|---|
+| every Home Assistant start (`wantedBy = home-assistant.service`) | the moment a downloaded integration becomes load-bearing |
+| `hass-hacs-deps.timer`, daily | the moment it was downloaded, which is when the answer actually changed |
+
+The daily sweep exists because the check reads manifests **off disk**, and HACS writes a download there immediately — so the answer changes at download time, while only its *effect* waits for a restart. With the restart trigger alone the unit is two restarts behind what it reports on, which is exactly what happened on 2026-10-09: a `sofabaton_x1s` update wanting the unpackaged `infrared-protocols` had been sitting on disk unnoticed, and when upstream dropped the requirement in 0.7.0 that fix also sat unnoticed until the next container restart two days later.
+
+The sweep cannot report anything the restart check would not have — same script, same files. It only reports it sooner, while there is still time to package the requirement before a restart makes it bite.
 
 ## The other kind of dependency
 
