@@ -1951,9 +1951,24 @@ in
       lib.mkIf (cfg.gpu.preempt.units != [ ]) {
         description = "Reclaim GPU memory before the session starts";
 
-        # Same wiring and the same reasoning as clanarchy-steam-shortcuts in
-        # modules/gaming-shortcuts.nix.
-        wantedBy = [ "multi-user.target" "display-manager.service" ];
+        # Nearly the wiring of clanarchy-steam-shortcuts in
+        # modules/gaming-shortcuts.nix, with ONE deliberate difference:
+        # `multi-user.target` is NOT in the list.
+        #
+        # Its siblings can afford it because they are cheap and idempotent —
+        # rewriting a shortcuts file, repairing a Kodi setting. This one
+        # bounces the inference server, and `switch-to-configuration` starts
+        # every inactive unit wanted by an already-active target, so
+        # `multi-user.target` here meant EVERY DEPLOY evicted whatever model
+        # was resident. MEASURED on ernst 2026-10-12, where it also fired the
+        # gate handover mid-activation and failed the switch (see the note on
+        # llama-swap in service-modules/local-ai.nix).
+        #
+        # `display-manager.service` alone loses nothing: at boot the display
+        # manager starts and pulls this in, and a session restart is exactly
+        # when the card needs clearing. What goes away is the reclaim nobody
+        # asked for, on a deploy that was not touching the session at all.
+        wantedBy = [ "display-manager.service" ];
         before   = [ "display-manager.service" ];
 
         # Ordered after the units it bounces, which matters only inside a

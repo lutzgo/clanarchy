@@ -1349,16 +1349,37 @@ in
 
             # ── THE GATE IS THIS UNIT'S SHADOW ──────────────────────────
             #
-            # Exactly one of the gate and the bridge owns a gated leg at any
-            # moment, and this unit's state is what picks the winner:
+            # ── THIS UNIT NO LONGER TOUCHES THE GATE, AND THAT IS THE FIX ──
             #
-            #   llama-swap stops   ->  ExecStopPost  hands the leg to the GATE
-            #   llama-swap starts  ->  ExecStartPost hands it back to the BRIDGE
+            # It used to: `ExecStopPost` handed the leg to the gate and
+            # `ExecStartPost` handed it back.  That made the handover instant
+            # and it also made this unit a SECOND actor on two sockets that
+            # the activation transaction already manages — and the two want
+            # opposite things at the same instant.  MEASURED on ernst
+            # 2026-10-12, during an ordinary deploy:
             #
-            # Both go through `gateHandover`, which stops the loser before
-            # starting the winner. See its comment for why `Conflicts=` is
-            # not enough on its own and why two earlier revisions of this
-            # block were wrong.
+            #   10:37:20 Listening on llama-swap listener for the karakeep
+            #            container                                 <- activation
+            #   10:37:20 llama-gate-karakeep.socket: Failed to create
+            #            listening socket ([fdca:fe92::1]:11434):
+            #            Address already in use                    <- ExecStopPost
+            #   ... activation returned 4 — retrying
+            #
+            # `llama-bridge-*.socket` is `wantedBy = sockets.target`, so EVERY
+            # activation starts it; `clanarchy-gpu-preempt` is pulled in by
+            # every activation too and `try-restart`s this unit, which fired
+            # the hook.  So this was not a rare race — it was every deploy,
+            # reporting a failed unit and a retried activation each time.  A
+            # deploy that always looks slightly broken is how a deploy that is
+            # actually broken goes unnoticed.
+            #
+            # The handover now has ONE owner: `clanarchy-llama-gate.service`,
+            # on its own timer, which never runs inside an activation
+            # transaction and so cannot race one.  The cost is bounded and
+            # stated: on a real llama-swap outage the gate appears within the
+            # timer's 30 s rather than instantly, and for that window karakeep
+            # meets a refused connection instead of a 503 — which is simply
+            # the behaviour from before the gate existed.
             #
             # ExecStopPost runs on clean stop AND on failure, so a crashed
             # llama-swap raises the gate too — the case that matters most,
@@ -1383,23 +1404,6 @@ in
               User  = lib.mkForce user;
               Group = lib.mkForce user;
 
-              # THE `+` PREFIX IS LOAD-BEARING AND ITS ABSENCE IS SILENT.
-              # These lines inherit this unit's User=llama, NoNewPrivileges
-              # and SystemCallFilter, under which `systemctl` cannot talk to
-              # PID 1 at all — the handover would simply never happen, and
-              # the only evidence would be consumers meeting the wrong
-              # listener.  `+` runs the line as root, outside the sandbox.
-              #
-              # BLOCKING, deliberately, where the first revision used
-              # `--no-block`.  The whole point of the handover is that the
-              # stop completes before the start, and --no-block throws that
-              # away — it is what produced the second failed deploy.  The
-              # script bounds itself with `timeout 20` per systemctl instead;
-              # the jobs it waits on belong to unrelated socket units, so
-              # there is nothing here for this unit's own job to deadlock
-              # against.
-              ExecStopPost  = lib.optional (gatedBridges != [ ]) "+${gateHandover} gate";
-              ExecStartPost = lib.optional (gatedBridges != [ ]) "+${gateHandover} bridge";
 
               # ── llama-swap FORKS llama-server, SO ITS SANDBOX IS THEIRS ────
               #
@@ -1547,8 +1551,10 @@ in
               if ! systemctl -q is-active llama-swap.service; then
                 if [ "$usedMiB" -le ${toString settings.vram.reserveMiB} ]; then
                   echo "card back under the reserve at ''${usedMiB} MiB — resuming" >&2
-                  # Starting it runs ExecStartPost, which hands the leg back.
                   systemctl start llama-swap.service
+                  # Hand the leg back here, because llama-swap no longer does
+                  # it for itself — see the note on that unit.
+                  ${gateHandover} bridge
                 else
                   # Still held by something outside the group.  The gate
                   # should already be up from ExecStopPost; this is the
@@ -1584,8 +1590,10 @@ in
               if [ "$resident" -eq 0 ] \
                  && [ "$usedMiB" -gt ${toString settings.vram.reserveMiB} ]; then
                 echo "card holds ''${usedMiB} MiB with nothing of ours loaded — standing down" >&2
-                # Stopping it runs ExecStopPost, which is the handover.
                 systemctl stop llama-swap.service
+                # And raise the gate, for the same reason as above: this is
+                # now the only thing that moves the leg.
+                ${gateHandover} gate
               fi
             '';
           };
