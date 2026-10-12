@@ -289,6 +289,42 @@ through and teaches the session switcher about the third mode.
 `extraPackages` must be drawn from `pkgs-unstable`, not the host's `pkgs` —
 otherwise a second, conflicting Qt/KDE closure lands in the session.
 
+## Home Assistant drives Kodi over its own leg
+
+Kodi's HTTP control is on by default for this role
+(`mediaClient.remoteControl.enable` opens 8080/9090 TCP and 9777 UDP). Home
+Assistant reaches it over a point-to-point ULA pair, `kodi0` /
+`fdca:fe96::`, **not** over `10.0.50.10`.
+
+In the Kodi integration's config flow:
+
+| Field | Value |
+|---|---|
+| Host | `fdca:fe96::1` |
+| Port | `8080` |
+| SSL | off |
+| Username | `kodi` |
+| Password | in `/home/go/.kodi/userdata/guisettings.xml` under `services.webserverpassword` |
+| WebSocket port | `9090` |
+
+**Do not use `10.0.50.10`.** It is the address the machine answers on from the
+LAN, and it is the one that does not work from the hub: the container's route
+to it is `via 10.0.90.1`, so the request leaves ernst, crosses the UDM-Pro and
+lands on `Services → Internal`, which is Block All. The integration reports
+only *"Failed to connect"*. From a LAN client the same request answers `401` in
+under 2 ms, which is the quickest way to tell the firewall apart from Kodi
+being down.
+
+The password is **not declarative** — `guiSettings` pins three unrelated keys
+and nothing about the web server, so this is one of the few values on ernst
+that lives only on disk. Kodi stores it in plaintext.
+
+!!! note "The integration goes unavailable when the TV is off"
+
+    Kodi only runs while the session does, and the session waits for a
+    connected output. That is the design, not a fault — see
+    [The TV must be awake](#the-tv-must-be-awake-for-the-session-to-start).
+
 ## Troubleshooting
 
 ```bash

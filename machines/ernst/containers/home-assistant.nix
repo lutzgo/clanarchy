@@ -306,6 +306,47 @@ let
   aiHost = "fdca:fe93::1";
   aiCont = "fdca:fe93::2";
 
+  # ── LEG 4: THE HUB'S PATH TO KODI ─────────────────────────────────────────
+  #
+  # Kodi runs on the HOST, under the htpc role's session.  Home Assistant's
+  # Kodi integration therefore has to leave this container to reach it, and
+  # without this leg the only route is the ordinary one:
+  #
+  #   10.0.50.10 via 10.0.90.1 dev eth0 src 10.0.90.27   (measured 2026-10-12)
+  #
+  # — out to the UDM-Pro and back, landing on the `Services -> Internal` zone
+  # pair, which is Block All.  The symptom is a TIMEOUT rather than a refusal:
+  # the integration's config flow says only "Failed to connect", with nothing
+  # on either machine to say why.  From the LAN zone the same request answers
+  # 401 in under 2 ms, which is what makes the firewall the suspect and not
+  # Kodi.
+  #
+  # NOT A UDM-Pro RULE, following L13/L14/L15 and not L12.  A zone policy would
+  # work and would cost: a permit entered by hand off-repo, a ledger row with a
+  # removal trigger, a dependency on the gateway for traffic between two things
+  # inside one box, and a hairpin across the UDM-Pro for every poll.  A /128
+  # pair has none of those and is a line in this file.
+  #
+  # NOT NAMED `ai4`, by the rule machines/ernst/networking.nix states: the
+  # `ai*` family means "a container reaching llama-swap on this host's
+  # loopback".  This leg has that direction and nothing else in common, so an
+  # `ai` name would read as a fifth inference consumer.
+  #
+  # AND NO `mkBridges` CALL, WHICH IS THE PART WORTH READING.  Every `ai*` leg
+  # carries a socket-activated proxy because **llama-swap binds 127.0.0.1 and
+  # stays there**, so a container cannot reach it however it is routed.  Kodi
+  # does not have that problem — MEASURED on ernst 2026-10-12:
+  #
+  #   LISTEN 0 4096   0.0.0.0:8080   users:(("kodi.bin",...))
+  #   LISTEN 0 4096      [::]:8080   users:(("kodi.bin",...))
+  #
+  # It binds the wildcard, so it is already listening on the host end of this
+  # leg the moment the leg exists.  A proxy here would be a second mechanism
+  # for a property the first one already has.
+  kodiVeth = "kodi0";
+  kodiHost = "fdca:fe96::1";
+  kodiCont = "fdca:fe96::2";
+
   # M29b.  The agent's uid, allocated in the table in
   # machines/ernst/networking.nix, named here because `hass-dirs` has to create
   # a directory inside this container's state tree that the agent can write —
@@ -648,6 +689,13 @@ in
     extraVeths.${aiVeth} = {
       hostAddress6  = aiHost;
       localAddress6 = aiCont;
+    };
+
+    # Leg 4 — the Kodi link. Same shape as leg 3 and for the same reasons; see
+    # the `kodiVeth` note above for why it carries no proxy and no `ai` name.
+    extraVeths.${kodiVeth} = {
+      hostAddress6  = kodiHost;
+      localAddress6 = kodiCont;
     };
 
     # ── THE eBPF DEVICE FILTER: GROUP FORM, NOT PATH FORM ─────────────────
@@ -1219,6 +1267,17 @@ in
         # A veth has no carrier until BOTH ends exist, and the host end is
         # created by the same nspawn invocation that starts this container.
         # "routable" here would hang wait-online on the host's own timing.
+        linkConfig.RequiredForOnline = "no";
+      };
+
+      # kodi0 — the point-to-point link to Kodi on the host. Byte-for-byte the
+      # shape above; the two differ only in which host service is at the far
+      # end, which is the point of having a shape at all.
+      systemd.network.networks."20-${kodiVeth}" = {
+        matchConfig.Name = kodiVeth;
+        address = [ "${kodiCont}/128" ];
+        routes  = [ { Destination = "${kodiHost}/128"; Scope = "link"; } ];
+        networkConfig.IPv6AcceptRA = false;
         linkConfig.RequiredForOnline = "no";
       };
 
