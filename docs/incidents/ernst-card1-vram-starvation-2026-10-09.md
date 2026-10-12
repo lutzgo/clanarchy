@@ -253,6 +253,17 @@ syscall filter — where it cannot talk to PID 1. It needs the `+` prefix to run
 as root, and without it the gate would simply never come up, with the only
 symptom being consumers hammering a dead port.
 
+**`cmd | jq … || echo fallback` does not do what it reads like.** The `||`
+binds to the whole pipeline, and `jq` exits 0 on empty input — so when the
+`curl` feeding it failed, the fallback never ran and the variable was the empty
+string rather than the sentinel. The guard written to catch that case was
+therefore dead code, and the script threw `[: : integer expected` once per 30 s
+for as long as llama-swap was down. It happened to behave correctly, because
+the erroring test is false and fell through to the branch that was wanted — a
+guess that was right for the wrong reason, which is the kind that survives
+review. The fix was to branch on the thing actually known (`systemctl
+is-active`) before asking the thing that might not answer. Fixed in #303.
+
 **Two measurement runs were lost to the bug itself.** Repeat runs of the chosen
 arm died with `failed to load model` because llama-swap had loaded the 35B for a
 real karakeep job mid-measurement. The incident reproduced itself, unprompted,

@@ -1524,36 +1524,68 @@ in
 
               usedMiB=$(( $(cat "$usedFile") / 1048576 ))
 
-              # `/running` is llama-swap's own view, so "ours" means exactly
-              # the members of the exclusive group — including whisper and
-              # ComfyUI, which are its children and not separate units.
+              # ── BRANCH ON llama-swap'S STATE FIRST ──────────────────────
+              #
+              # Asking `/running` before knowing whether llama-swap is even
+              # up was the wrong order, and it produced a guard that could
+              # never fire.  The intent was `resident=unknown` on an
+              # unreachable server, but `curl | jq` puts the `||` on the
+              # PIPELINE: when curl fails, jq still exits 0 on empty input,
+              # so the fallback never ran and `resident` was the EMPTY
+              # STRING.  MEASURED on ernst 2026-10-12, once per 30 s for as
+              # long as llama-swap was down:
+              #
+              #   clanarchy-llama-gate-start: line 28: [: : integer expected
+              #
+              # The behaviour happened to be right — the erroring test is
+              # false, so it fell through to the resume branch — but it was
+              # right by accident, and the `unknown` guard that was supposed
+              # to prevent flapping was dead code.
+              #
+              # When llama-swap is DOWN nothing of ours can be resident, so
+              # occupancy alone decides and `/running` is not needed at all.
+              if ! systemctl -q is-active llama-swap.service; then
+                if [ "$usedMiB" -le ${toString settings.vram.reserveMiB} ]; then
+                  echo "card back under the reserve at ''${usedMiB} MiB — resuming" >&2
+                  # Starting it runs ExecStartPost, which hands the leg back.
+                  systemctl start llama-swap.service
+                else
+                  # Still held by something outside the group.  The gate
+                  # should already be up from ExecStopPost; this is the
+                  # backstop for the case where it is not — llama-swap having
+                  # been down since boot, say, so no ExecStopPost ever ran.
+                  for g in ${lib.concatStringsSep " "
+                             (map (b: "llama-gate-${b.name}.socket") gatedBridges)}; do
+                    systemctl -q is-active "$g" || { ${gateHandover} gate; break; }
+                  done
+                fi
+                exit 0
+              fi
+
+              # llama-swap is up, so ask it what it is holding.  `/running`
+              # is its own view, which means "ours" is exactly the members of
+              # the exclusive group — including whisper and ComfyUI, which
+              # are its children rather than separate units.
               resident=$(curl -fsS --max-time 5 \
                            http://127.0.0.1:${toString port}/running \
-                         | jq -r '.running | length' 2>/dev/null || echo unknown)
+                         | jq -r '.running | length' 2>/dev/null)
 
-              # An unreachable llama-swap is NOT evidence of a free card: it
-              # is the state the gate already covers, and guessing here would
-              # flap the units every 30 s.  Leave it alone.
-              [ "$resident" = unknown ] && exit 0
+              # Now the unknown case is detectable, because a running
+              # llama-swap that does not answer is a real and separate state:
+              # starting up, or wedged.  Neither is evidence about the card,
+              # and acting on it would flap the units every 30 s.
+              case "''${resident:-}" in
+                ''' | *[!0-9]* )
+                  echo "llama-swap is up but /running did not answer — leaving the leg alone" >&2
+                  exit 0
+                  ;;
+              esac
 
               if [ "$resident" -eq 0 ] \
                  && [ "$usedMiB" -gt ${toString settings.vram.reserveMiB} ]; then
-                if systemctl -q is-active llama-swap.service; then
-                  echo "card holds ''${usedMiB} MiB with nothing of ours loaded — standing down" >&2
-                  # Stopping it runs ExecStopPost, which is the handover.
-                  systemctl stop llama-swap.service
-                else
-                  # llama-swap was already down, so no ExecStopPost will fire
-                  # and nothing has handed the leg over. Do it here — the
-                  # script is idempotent, so the overlap with the branch above
-                  # costs nothing.
-                  ${gateHandover} gate
-                fi
-              elif [ "$usedMiB" -le ${toString settings.vram.reserveMiB} ] \
-                   && ! systemctl -q is-active llama-swap.service; then
-                echo "card back under the reserve at ''${usedMiB} MiB — resuming" >&2
-                # Starting it runs ExecStartPost, which hands the leg back.
-                systemctl start llama-swap.service
+                echo "card holds ''${usedMiB} MiB with nothing of ours loaded — standing down" >&2
+                # Stopping it runs ExecStopPost, which is the handover.
+                systemctl stop llama-swap.service
               fi
             '';
           };
