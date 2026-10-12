@@ -43,8 +43,9 @@ course-import — file downloaded course lessons into the Jellyfin Courses libra
   course-import status COURSE        per-lesson table: in library / waiting / missing
   course-import import [-n] COURSE   file everything waiting in ingest into the library
   course-import orphans COURSE       ingest files no manifest entry claims
+  course-import prune [-n] COURSE    delete ingest copies already in the library
 
-  -n   dry run: print what import would do, change nothing
+  -n   dry run: print what it would do, change nothing
 
 Ingest a batch first (from the machine holding the downloads):
 
@@ -503,6 +504,155 @@ cmd_import() {
          "$imported" "$refreshed" "$waiting"
   if [ "$dry" -eq 0 ]; then
     printf 'Run: course-import orphans %s   — to see anything the manifest does not claim.\n' "$course"
+    # The redundant-copy warning.  This is NOT a corner case: the documented
+    # workflow is to rsync the whole download folder, and the laptop still holds
+    # every lesson it ever downloaded, so a second batch re-uploads the entire
+    # first batch.  Those copies are claimed by the manifest, so `orphans` stays
+    # silent about them, and `import` cannot move them because the destination
+    # already exists — they just sit there.  Measured: 7.8 GB after one re-run.
+    prune_report "$course"
+  fi
+}
+
+# ─── prune ──────────────────────────────────────────────────────────────────
+#
+# Files in ingest whose lesson is ALREADY in the library.  Reported by `import`
+# and deleted only by an explicit `prune`, never automatically: this is the one
+# destructive thing the tool does, and a size mismatch means the ingest copy is
+# not the file that was imported — a re-download, a different cut — which is a
+# question for a human, not something to silently delete.
+#
+# Emits one TAB-separated "ingest-path<TAB>library-path<TAB>verdict" line per
+# candidate on stdout; callers decide what to do with it.
+prune_candidates() {
+  local course=$1 mf src show showdir
+  mf=$(manifest_for "$course")
+  src="$INGEST/$course"
+  if [ ! -d "$src" ]; then return 0; fi
+  show=$(jq -r '.show.title' "$mf")
+  showdir="$LIB/$show"
+
+  local nchap ci nles season sn li slug title ep base dst
+  local vext f libf isz lsz n r res
+  nchap=$(jq '.chapters | length' "$mf")
+  for ((ci = 0; ci < nchap; ci++)); do
+    nles=$(jq ".chapters[$ci].lessons | length" "$mf")
+    if [ "$nles" -eq 0 ]; then continue; fi
+    season=$(jq -r ".chapters[$ci].season" "$mf")
+    sn=$(printf '%02d' "$season")
+    dst="$showdir/Season $sn"
+    for ((li = 0; li < nles; li++)); do
+      slug=$( jq -r ".chapters[$ci].lessons[$li].slug"  "$mf")
+      title=$(jq -r ".chapters[$ci].lessons[$li].title" "$mf")
+      ep=$(printf '%02d' $((li + 1)))
+      base="$dst/$(printf '%s - S%sE%s - %s' "$show" "$sn" "$ep" "$(sanitize "$title")")"
+
+      # Only a lesson that is actually in the library can have a redundant copy.
+      libf=""
+      for vext in mp4 mkv m4v webm; do
+        if [ -f "$base.$vext" ]; then libf="$base.$vext"; break; fi
+      done
+      if [ -z "$libf" ]; then continue; fi
+
+      # video
+      for vext in mp4 mkv m4v webm; do
+        f="$src/$slug.$vext"
+        if [ -f "$f" ]; then emit_candidate "$f" "$base.$vext"; fi
+      done
+      # subtitles
+      f="$src/$slug-captions-english.srt"
+      if [ -f "$f" ]; then emit_candidate "$f" "$base.en.srt"; fi
+      # Transcript (the three suffix spellings).  `break` is load-bearing and
+      # not just an optimisation: `-transcript*.txt` ALSO matches
+      # `-transcription-english.txt`, so without it that one spelling is emitted
+      # by both globs and gets counted — and its bytes totalled — twice.
+      # Measured: 35 candidates reported for 34 files on ernst.
+      for f in "$src/$slug"-transcript*.txt "$src/$slug"-transcription*.txt; do
+        if [ -f "$f" ]; then emit_candidate "$f" "$base.txt"; break; fi
+      done
+      # named resources
+      n=$(jq ".chapters[$ci].lessons[$li].resources // [] | length" "$mf")
+      for ((r = 0; r < n; r++)); do
+        res=$(jq -r ".chapters[$ci].lessons[$li].resources[$r]" "$mf")
+        f="$src/$res"
+        if [ -f "$f" ]; then emit_candidate "$f" "$base - $res"; fi
+      done
+    done
+  done
+}
+
+emit_candidate() {
+  local ing=$1 lib=$2 isz lsz
+  if [ ! -f "$lib" ]; then return 0; fi
+  isz=$(stat -c %s -- "$ing")
+  lsz=$(stat -c %s -- "$lib")
+  if [ "$isz" = "$lsz" ]; then
+    printf '%s\t%s\tsame\n' "$ing" "$lib"
+  else
+    printf '%s\t%s\tDIFFERS\n' "$ing" "$lib"
+  fi
+}
+
+prune_report() {
+  local course=$1 n bytes differs
+  local out
+  out=$(prune_candidates "$course")
+  if [ -z "$out" ]; then return 0; fi
+  n=$(printf '%s\n' "$out" | grep -c 'same$' || true)
+  differs=$(printf '%s\n' "$out" | grep -c 'DIFFERS$' || true)
+  if [ "$n" -gt 0 ]; then
+    bytes=$(printf '%s\n' "$out" | awk -F'\t' '$3=="same"{print $1}' \
+            | tr '\n' '\0' | xargs -0 stat -c %s 2>/dev/null | awk '{s+=$1} END{print s+0}')
+    printf 'Note: %s file(s) in ingest (%s) are already in the library.\n' \
+           "$n" "$(numfmt --to=iec --suffix=B "$bytes" 2>/dev/null || echo "$bytes bytes")"
+    printf '      Run: course-import prune %s   — to delete the redundant copies.\n' "$course"
+  fi
+  if [ "$differs" -gt 0 ]; then
+    printf 'Warning: %s file(s) in ingest share a lesson with the library but DIFFER in size.\n' "$differs"
+    printf '         prune will not touch them; inspect them by hand.\n'
+  fi
+}
+
+cmd_prune() {
+  local dry=0
+  while getopts 'n' opt; do
+    case "$opt" in
+      n) dry=1 ;;
+      *) usage; exit 2 ;;
+    esac
+  done
+  shift $((OPTIND - 1))
+  local course=${1:-}
+  if [ -z "$course" ]; then usage; exit 2; fi
+
+  local out n=0 ing lib verdict
+  out=$(prune_candidates "$course")
+  if [ -z "$out" ]; then
+    printf 'course-import: nothing to prune — no ingest file duplicates a library file.\n'
+    return 0
+  fi
+
+  while IFS=$'\t' read -r ing lib verdict; do
+    case "$verdict" in
+      same)
+        if [ "$dry" -eq 1 ]; then
+          printf '  would delete  %s\n' "$(basename "$ing")"
+        else
+          rm -f -- "$ing"
+          printf '  deleted  %s\n' "$(basename "$ing")"
+        fi
+        n=$((n + 1))
+        ;;
+      DIFFERS)
+        warn "$(basename "$ing"): size differs from the library copy — KEPT"
+        ;;
+    esac
+  done <<< "$out"
+
+  if [ "$dry" -eq 1 ]; then
+    printf '\ncourse-import: %s file(s) would be deleted.\n' "$n"
+  else
+    printf '\ncourse-import: %s redundant file(s) deleted from ingest.\n' "$n"
   fi
 }
 
@@ -515,6 +665,7 @@ case "$cmd" in
   status)  if [ $# -lt 1 ]; then usage; exit 2; fi; cmd_status "$1" ;;
   orphans) if [ $# -lt 1 ]; then usage; exit 2; fi; cmd_orphans "$1" ;;
   import)  cmd_import "$@" ;;
+  prune)   cmd_prune "$@" ;;
   ''|-h|--help|help) usage ;;
   *)       die "unknown command '$cmd' (try --help)" ;;
 esac

@@ -75,6 +75,8 @@ course-import status drawing-basics      # per-lesson: in library / waiting / do
 course-import import -n drawing-basics   # dry run
 course-import import drawing-basics      # do it
 course-import orphans drawing-basics     # files no manifest entry claims
+course-import prune -n drawing-basics    # what is redundant in ingest
+course-import prune drawing-basics       # delete it
 ```
 
 `import` **moves** rather than copies. Ingest and the library are on the same
@@ -85,6 +87,26 @@ Re-running `import` is safe and is how metadata is corrected: edit the manifest
 and run it again. A changed `plot` is rewritten into the `.nfo`; a changed
 `title` *additionally renames* the episode and every one of its sidecars,
 because an episode is identified by its `SxxExx`, not by its title.
+
+### Prune after every batch — it is not optional
+
+The rsync above copies the **whole** download folder, and the laptop still holds
+every lesson it ever downloaded. So the second batch re-uploads the entire first
+batch, and `import` cannot move those copies because the destination already
+exists. They just sit in ingest. They are claimed by the manifest, so `orphans`
+stays silent about them.
+
+Measured on ernst: one re-run left **7.8 GB** of redundant copies.
+
+`import` now ends by reporting them, and `prune` deletes them. It only ever
+deletes a file whose library counterpart exists **and is byte-for-byte the same
+size**; anything that differs is kept with a warning, because a size mismatch
+means the ingest copy is not the file that was imported — a re-download, a
+different cut — and that is a question for a human.
+
+If you would rather not think about it, `rsync --remove-source-files` is the
+wrong fix: it deletes from the **laptop**, which is the only copy that is not on
+a RAID.
 
 ### Artwork
 
