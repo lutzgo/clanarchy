@@ -232,176 +232,6 @@ let
       '') bridges;
   };
 
-  # ── THE 503 GATE ────────────────────────────────────────────────────────
-  #
-  # A stand-in listener that takes a bridge's address while the GPU belongs
-  # to something outside llama-swap's exclusive group, and answers every
-  # request `503` + `Retry-After`.
-  #
-  # WHY A GATE AND NOT JUST A FAILING UPSTREAM.  Measured on ernst
-  # 2026-10-09: with the card held by a game, llama-server could not load and
-  # llama-swap answered 500 in ~1.4 s.  karakeep's bundled OpenAI SDK retries
-  # 5xx twice internally (0.5 s then 1 s), liteque re-polls at 1 s, and the
-  # queue is created with a hard-coded `numRetries: 3` — about twelve requests
-  # per bookmark over twelve seconds.  Across a non-empty queue that measured
-  # ~60 requests per minute for fourteen minutes.  None of it could ever
-  # succeed, because the card was busy the whole time.
-  #
-  # There is no env knob to turn that down; the full `INFERENCE_*` schema was
-  # read and carries none.  But the same SDK honours `Retry-After` off the
-  # wire, in seconds or as an HTTP-date, WITH NO CLAMP.  So the backoff is
-  # ours to send, and sending it is the whole fix.
-  #
-  # WHY inetd MODE.  `Accept = true` makes systemd hand each connection to a
-  # fresh instance of a templated unit with the socket on stdin and stdout.
-  # For one fixed response that removes the entire reason to run an HTTP
-  # server: no parser, no keep-alive, no new package, and nothing listening
-  # when the gate is down.
-  mkGate = { pkgs, unit, replaces, targetPort, bridges, retryAfter }:
-    let
-      body = builtins.toJSON {
-        error = {
-          message = "The inference card is reserved for the TV session. "
-                    + "Retry after ${toString retryAfter}s.";
-          type = "server_error";
-          code = "gpu_reserved";
-        };
-      };
-
-      responder = pkgs.writeShellScript "${unit}-503" ''
-        set -u
-
-        # DRAIN THE REQUEST BEFORE ANSWERING, which is not optional.  Closing
-        # a socket with unread data queued makes the kernel send RST instead
-        # of FIN, and a client that sees a reset connection reports a
-        # transport error — it never parses the response, so it never sees
-        # the Retry-After that is the entire point of this unit.
-        #
-        # Headers first, to the blank line, capturing Content-Length on the
-        # way past; then exactly that many body bytes.
-        len=0
-        while IFS= read -r line; do
-          line="''${line%$'\r'}"
-          [ -z "$line" ] && break
-          case "$line" in
-            [Cc]ontent-[Ll]ength:*)
-              len="''${line#*:}"
-              len="''${len// /}"
-              ;;
-          esac
-        done
-        case "$len" in
-          ''' | *[!0-9]* ) len=0 ;;
-        esac
-        [ "$len" -gt 0 ] && ${pkgs.coreutils}/bin/head -c "$len" >/dev/null
-
-        body=${lib.escapeShellArg body}
-
-        # CRLF line endings, explicitly.  A bare \n is tolerated by most
-        # clients and not by all, and this unit exists to be parsed.
-        printf 'HTTP/1.1 503 Service Unavailable\r\n'
-        printf 'Retry-After: %s\r\n' '${toString retryAfter}'
-        printf 'Content-Type: application/json\r\n'
-        printf 'Content-Length: %s\r\n' "''${#body}"
-        printf 'Connection: close\r\n'
-        printf '\r\n'
-        printf '%s' "$body"
-      '';
-    in
-    {
-      systemd.sockets = lib.listToAttrs (map (b: {
-        name  = "${unit}-${b.name}";
-        value = {
-          description = "503 gate for the ${b.name} container";
-
-          # NO `wantedBy`, deliberately: the gate is purely a consequence of
-          # llama-swap's state, handed the leg and taken off it by the
-          # handover script below.  It never starts at boot and never races
-          # anything starting for its own reasons.
-          #
-          # ── NO `Conflicts=` EITHER, AND THAT IS THE CORRECTION ──────────
-          #
-          # The gate and the bridge bind one address, so exactly one may be
-          # up — and TWO revisions of this got the mechanism wrong, in
-          # opposite directions, each time costing a deploy:
-          #
-          #  1. Only `llama-swap.conflicts = [ gate ]`, on the reasoning that
-          #     the shared bind made them "mutually exclusive by itself".  It
-          #     does not: the bridge is `wantedBy = sockets.target` and so
-          #     always up, and the bind does not arbitrate — it fails
-          #     whichever comes second.  The gate never started at all.
-          #  2. `Conflicts=` between the two sockets.  Closer, and still
-          #     wrong, because systemd.unit(5) says it outright: Conflicts
-          #     "is independent of and orthogonal to the After= and Before=
-          #     ordering dependencies".  It guarantees the loser is stopped,
-          #     NOT that the stop completes before the winner binds.
-          #     MEASURED on ernst 2026-10-10, second deploy — the mirror
-          #     image of the first failure:
-          #
-          #       llama-bridge-karakeep.socket: Failed to create listening
-          #         socket ([fdca:fe92::1]:11434): Address already in use
-          #
-          #     and the leg was left with NEITHER unit on it.
-          #
-          # The missing half is ordering, and `After=` in both directions is
-          # a cycle.  So the handover is done explicitly, by a script that
-          # stops the loser and only then starts the winner — see
-          # `gateHandover` in the inference role.
-          socketConfig = {
-            # The same address and port as the bridge it replaces.
-            ListenStream = "[${b.address}]:${toString targetPort}";
-            BindIPv6Only = "ipv6-only";
-            FreeBind     = true;
-            Accept       = true;
-          };
-        };
-      }) bridges);
-
-      # The template systemd instantiates per connection.  Named
-      # `<socket>@.service` because that is the name `Accept = true` looks
-      # for; an explicit `Service=` would only restate the default.
-      systemd.services = lib.listToAttrs (map (b: {
-        name  = "${unit}-${b.name}@";
-        value = {
-          description = "503 responder for the ${b.name} container";
-          serviceConfig = {
-            ExecStart        = responder;
-            Type             = "exec";
-            StandardInput    = "socket";
-            StandardOutput   = "socket";
-            StandardError    = "journal";
-
-            DynamicUser            = true;
-            NoNewPrivileges        = true;
-            PrivateDevices         = true;
-            PrivateNetwork         = true;
-            ProtectSystem          = "strict";
-            ProtectHome            = true;
-            MemoryDenyWriteExecute = true;
-            CapabilityBoundingSet  = [ "" ];
-            AmbientCapabilities    = [ "" ];
-            RestrictAddressFamilies = [ "AF_UNIX" ];
-            SystemCallFilter       = [ "@system-service" "~@resources" "~@privileged" ];
-            SystemCallErrorNumber  = "EPERM";
-            SystemCallArchitectures = "native";
-            ProtectProc            = "invisible";
-            ProcSubset             = "pid";
-            ProtectClock           = true;
-            ProtectHostname        = true;
-            ProtectKernelLogs      = true;
-            ProtectKernelTunables  = true;
-            ProtectKernelModules   = true;
-            ProtectControlGroups   = true;
-            RestrictNamespaces     = true;
-            RestrictRealtime       = true;
-            RestrictSUIDSGID       = true;
-            LockPersonality        = true;
-            RemoveIPC              = true;
-            UMask                  = "0077";
-          };
-        };
-      }) bridges);
-    };
 in
 {
   _class = "clan.service";
@@ -529,24 +359,6 @@ in
           '';
         };
 
-        cardPciAddress = lib.mkOption {
-          type        = lib.types.nullOr lib.types.str;
-          default     = null;
-          example     = "0000:03:00.0";
-          description = ''
-            PCI address of the inference card, used to find its sysfs
-            occupancy counters at runtime.
-
-            BY PCI ADDRESS AND NOT BY CARD NUMBER, for the reason the htpc
-            role pins its compositor the same way: on a two-GPU board the
-            numbering is not stable — ernst's discrete card is `card1`, not
-            `card0` — and it can flip on a kernel bump.  A watchdog reading
-            the wrong card would see a quiet iGPU and conclude the dGPU was
-            free.
-
-            Required by `gateOn`; `null` otherwise.
-          '';
-        };
       };
 
       stateDir = lib.mkOption {
@@ -632,41 +444,7 @@ in
         });
       };
 
-      gateOn = lib.mkOption {
-        type        = lib.types.listOf lib.types.str;
-        default     = [ ];
-        example     = [ "karakeep" ];
-        description = ''
-          Names from `exposeOn` whose leg gets a 503 gate: while the card is
-          held by a claimant outside llama-swap's exclusive group, those
-          consumers are told so, with a `Retry-After`, instead of being left
-          to hammer a server that cannot answer.
 
-          FOR BACKGROUND CONSUMERS ONLY.  A gated leg returns 503 for as long
-          as the card is busy, which is right for bookmark tagging and wrong
-          for anything a person is waiting on — Open WebUI and Home Assistant
-          should fail honestly in front of the user rather than be told to
-          come back in two minutes. List only the legs whose work can wait.
-
-          Names not present in `exposeOn` are an eval error, since a gate on
-          a leg that does not exist is a gate that silently never fires.
-        '';
-      };
-
-      gateRetryAfter = lib.mkOption {
-        type        = lib.types.ints.positive;
-        default     = 120;
-        description = ''
-          Seconds the gate puts in its `Retry-After` header.
-
-          Sized against the CONSUMER's job timeout, not against how long the
-          card is likely to stay busy — the client sleeps this long inside a
-          single job attempt, so a value above its timeout just converts the
-          backoff into a timeout and loses the job sooner.  120 s against
-          karakeep's `INFERENCE_JOB_TIMEOUT_SEC = 300` gives two sleeps per
-          attempt and still lands inside the budget.
-        '';
-      };
 
       remoteClients.enable = lib.mkEnableOption ''
         accepting SSH port-forwards from clan machines that have no usable local
@@ -684,69 +462,6 @@ in
         let
           inherit (settings) stateDir user port;
           modelsDir = "${stateDir}/models";
-
-          # The `exposeOn` entries named by `gateOn`, resolved once so the
-          # gate's units, llama-swap's `conflicts` and the watchdog's start
-          # list are all generated from one set and cannot drift.
-          gatedBridges =
-            lib.filter (b: lib.elem b.name settings.gateOn) settings.exposeOn;
-
-          # ── THE HANDOVER ────────────────────────────────────────────────
-          #
-          # One address, two possible owners, so the swap has to be ORDERED:
-          # stop the one that has it, wait for that to finish, then start the
-          # other.  `Conflicts=` cannot express this — it stops the loser but
-          # is explicitly orthogonal to ordering, so the winner's bind races
-          # the loser's close.  Both earlier revisions lost that race, in
-          # opposite directions, and the second left the leg with nothing
-          # listening on it at all.
-          #
-          # BIASED TOWARDS THE BRIDGE ON EVERY ERROR.  The worst outcome here
-          # is a dead leg: karakeep then gets connection-refused, which is
-          # the hammering this whole mechanism exists to stop, with no
-          # Retry-After to slow it down.  Losing the gate instead costs only
-          # the backoff, and degrades to exactly the behaviour before any of
-          # this existed.  So every failure path ends by putting the bridge
-          # back.
-          gateHandover = pkgs.writeShellScript "llama-gate-handover" ''
-            set -u
-
-            # Absolute paths for BOTH binaries. This runs from llama-swap's
-            # ExecStopPost under `+`, which keeps the unit's environment — and
-            # that unit sets its own PATH. A bare `timeout` would resolve or
-            # not depending on what upstream happened to put there, and the
-            # failure would be a handover that silently never happened.
-            sctl() {
-              ${pkgs.coreutils}/bin/timeout 20 ${pkgs.systemd}/bin/systemctl "$@"
-            }
-
-            want="''${1:-bridge}"
-            for n in ${lib.concatStringsSep " " (map (b: b.name) gatedBridges)}; do
-              gate="llama-gate-$n.socket"
-              bridge="llama-bridge-$n.socket"
-
-              if [ "$want" = gate ]; then
-                sctl stop "$bridge"
-                if ! sctl start "$gate"; then
-                  echo "handover: $gate would not start — leaving $bridge up" >&2
-                  sctl reset-failed "$gate" || true
-                  sctl start "$bridge" || true
-                fi
-              else
-                sctl stop "$gate"
-                if ! sctl start "$bridge"; then
-                  # The one case worth retrying rather than reporting: a
-                  # stale bind clearing a moment late leaves the leg dead.
-                  echo "handover: $bridge would not start — retrying once" >&2
-                  sctl reset-failed "$bridge" || true
-                  ${pkgs.coreutils}/bin/sleep 1
-                  sctl start "$bridge" \
-                    || echo "handover: $bridge STILL down — the leg is dead" >&2
-                fi
-              fi
-            done
-            exit 0
-          '';
 
           # ROCm llama.cpp, built from the flake's OWN nixpkgs — no new input,
           # which was a hard constraint on this milestone and turned out to cost
@@ -1162,39 +877,6 @@ in
                 mistake rather than a valid state.
               '';
             }
-            {
-              assertion =
-                let known = map (b: b.name) settings.exposeOn;
-                in lib.all (n: lib.elem n known) settings.gateOn;
-              message =
-                let
-                  known   = map (b: b.name) settings.exposeOn;
-                  unknown = lib.filter (n: !(lib.elem n known)) settings.gateOn;
-                in ''
-                  @clanarchy/local-ai: ${machine.name} lists
-                  ${lib.concatStringsSep ", " unknown} in `gateOn`, but
-                  `exposeOn` declares only ${lib.concatStringsSep ", " known}.
-
-                  A gate names the leg it takes over, so a name with no leg
-                  behind it produces a unit that binds nothing and fires
-                  never — the failure mode this whole role already learned
-                  once, when Open WebUI lost its veth and a listening socket
-                  went on looking healthy for five days.
-                '';
-            }
-            {
-              assertion =
-                settings.gateOn == [ ] || settings.vram.cardPciAddress != null;
-              message = ''
-                @clanarchy/local-ai: ${machine.name} sets `gateOn` but no
-                `vram.cardPciAddress`.
-
-                The gate is driven by the card's own occupancy counters, so
-                the watchdog has to be told which card — on a two-GPU board
-                there is no safe default, and picking the wrong one would
-                read a quiet iGPU and conclude the busy dGPU was free.
-              '';
-            }
           ]
           # ── THE VRAM BUDGET ────────────────────────────────────────────
           #
@@ -1347,53 +1029,40 @@ in
             # with no models on disk; a request for one that is missing fails
             # per-request, which is the correct granularity.
 
-            # ── THE GATE IS THIS UNIT'S SHADOW ──────────────────────────
+            # ── THERE WAS A 503 GATE HERE, AND IT WAS REMOVED ──────────
             #
-            # ── THIS UNIT NO LONGER TOUCHES THE GATE, AND THAT IS THE FIX ──
+            # It stood a `503` + `Retry-After` responder on karakeep's leg
+            # whenever the card belonged to something outside this unit's
+            # exclusive group, so karakeep would back off instead of retrying
+            # a server that could not answer.  It worked, and it was not
+            # worth it.
             #
-            # It used to: `ExecStopPost` handed the leg to the gate and
-            # `ExecStartPost` handed it back.  That made the handover instant
-            # and it also made this unit a SECOND actor on two sockets that
-            # the activation transaction already manages — and the two want
-            # opposite things at the same instant.  MEASURED on ernst
-            # 2026-10-12, during an ordinary deploy:
+            # WHAT IT ACTUALLY BOUGHT, once measured rather than assumed: a
+            # lower REQUEST RATE on a loopback path.  It did not save the
+            # bookmark — the job still burns karakeep's hard-coded three
+            # retries and `keepFailedJobs: false` drops it either way — so
+            # the whole benefit was fewer journal lines during a gaming
+            # session.  Nothing a person could see.
             #
-            #   10:37:20 Listening on llama-swap listener for the karakeep
-            #            container                                 <- activation
-            #   10:37:20 llama-gate-karakeep.socket: Failed to create
-            #            listening socket ([fdca:fe92::1]:11434):
-            #            Address already in use                    <- ExecStopPost
-            #   ... activation returned 4 — retrying
+            # WHAT IT COST: five follow-up fixes in three days, each a defect
+            # in the gate itself — a socket that could never bind, a
+            # `Conflicts=` that stops but does not order, a dead sentinel, a
+            # handover racing every activation — and one live outage, where a
+            # deploy left the gate holding the leg in front of a perfectly
+            # healthy llama-swap and karakeep got a permanent 503.
             #
-            # `llama-bridge-*.socket` is `wantedBy = sockets.target`, so EVERY
-            # activation starts it; `clanarchy-gpu-preempt` is pulled in by
-            # every activation too and `try-restart`s this unit, which fired
-            # the hook.  So this was not a rare race — it was every deploy,
-            # reporting a failed unit and a retried activation each time.  A
-            # deploy that always looks slightly broken is how a deploy that is
-            # actually broken goes unnoticed.
+            # Its watchdog also stopped this unit whenever an outside
+            # claimant held the card, which is worse than it sounds: a gaming
+            # session took the model away from mneme, Home Assistant's Assist
+            # pipeline and OpenCode, where without it they merely fail a load
+            # and recover the moment the card frees.
             #
-            # The handover now has ONE owner: `clanarchy-llama-gate.service`,
-            # on its own timer, which never runs inside an activation
-            # transaction and so cannot race one.  The cost is bounded and
-            # stated: on a real llama-swap outage the gate appears within the
-            # timer's 30 s rather than instantly, and for that window karakeep
-            # meets a refused connection instead of a 503 — which is simply
-            # the behaviour from before the gate existed.
-            #
-            # ExecStopPost runs on clean stop AND on failure, so a crashed
-            # llama-swap raises the gate too — the case that matters most,
-            # because that is when consumers would otherwise meet a refused
-            # connection and retry it immediately.
-            #
-            # KNOWN AND ACCEPTED: a RESTART is a stop followed by a start, so
-            # every deploy flaps the gate up and down for about a second.  A
-            # karakeep job in flight during that window reads the
-            # `Retry-After` and sleeps 120 s for nothing.  systemd gives
-            # ExecStopPost no way to tell a restart from a stop, and the
-            # alternative — letting only the 30 s watchdog raise the gate —
-            # would cost a real outage up to 30 s of the hammering this
-            # exists to prevent.  The flap is the cheaper error.
+            # So the card is now arbitrated by the three things that protect
+            # something a person would notice — the VRAM reserve, the htpc
+            # role's `gpu.preempt.units`, and its crash-loop breaker — and a
+            # model that cannot load simply answers 500, as it did before any
+            # of this.  machines/ernst/containers/karakeep.nix records what
+            # that costs and why no knob exists to soften it.
 
             environment = {
               ROCR_VISIBLE_DEVICES = "0";
@@ -1463,141 +1132,7 @@ in
             };
           };
 
-        } (lib.mkIf (gatedBridges != [ ]) {
-          ##################################################################
-          # The watchdog that decides which of the two owns the gated legs.
-          #
-          # ONE RULE, and it is a rule about the CARD rather than about any
-          # claimant on it:
-          #
-          #   nothing of ours is resident, yet the card is busy
-          #     -> somebody outside the exclusive group has it.  Stand down
-          #        and tell background consumers to come back later.
-          #   the card is quiet again
-          #     -> take it back.
-          #
-          # Reading occupancy rather than counting failures is what keeps
-          # this short.  There is no journal to grep, no 5xx rate to
-          # threshold, and no list of things that might claim a GPU: a game,
-          # a hand-run llama-server and a stray ComfyUI all look identical to
-          # sysfs, which is the correct level of ignorance for this unit.
-          #
-          # It cannot evict, only decline to load.  A game started while a
-          # model is already resident still loses — that case belongs to the
-          # htpc role's preempt unit and to the idle ttl, not here.
-          ##################################################################
-          systemd.timers.clanarchy-llama-gate = {
-            description = "Watch the inference card for outside claimants";
-            wantedBy    = [ "timers.target" ];
-            timerConfig = {
-              OnBootSec       = "2min";
-              OnUnitActiveSec = "30s";
-              AccuracySec     = "5s";
-              Unit            = "clanarchy-llama-gate.service";
-            };
-          };
-
-          systemd.services.clanarchy-llama-gate = {
-            description = "Raise or lower the llama-swap 503 gate";
-            # No `wantedBy`: the timer is the only thing that starts it.
-            serviceConfig = {
-              Type = "oneshot";
-              # Root, and it genuinely needs to be: it starts and stops
-              # system units.  Everything else is closed off instead.
-              ProtectSystem         = "strict";
-              ProtectHome           = true;
-              PrivateTmp            = true;
-              NoNewPrivileges       = true;
-              CapabilityBoundingSet = [ "" ];
-              AmbientCapabilities   = [ "" ];
-              RestrictNamespaces    = true;
-              RestrictRealtime      = true;
-              LockPersonality       = true;
-            };
-            path = [ pkgs.curl pkgs.jq pkgs.systemd pkgs.coreutils ];
-            script = ''
-              set -u
-
-              drmDir=/sys/bus/pci/devices/${settings.vram.cardPciAddress}/drm
-              set -- "$drmDir"/card[0-9]*
-              if [ ! -d "$1" ]; then
-                echo "no DRM card at PCI ${settings.vram.cardPciAddress} — nothing to watch" >&2
-                exit 0
-              fi
-              usedFile="$1/device/mem_info_vram_used"
-
-              usedMiB=$(( $(cat "$usedFile") / 1048576 ))
-
-              # ── BRANCH ON llama-swap'S STATE FIRST ──────────────────────
-              #
-              # Asking `/running` before knowing whether llama-swap is even
-              # up was the wrong order, and it produced a guard that could
-              # never fire.  The intent was `resident=unknown` on an
-              # unreachable server, but `curl | jq` puts the `||` on the
-              # PIPELINE: when curl fails, jq still exits 0 on empty input,
-              # so the fallback never ran and `resident` was the EMPTY
-              # STRING.  MEASURED on ernst 2026-10-12, once per 30 s for as
-              # long as llama-swap was down:
-              #
-              #   clanarchy-llama-gate-start: line 28: [: : integer expected
-              #
-              # The behaviour happened to be right — the erroring test is
-              # false, so it fell through to the resume branch — but it was
-              # right by accident, and the `unknown` guard that was supposed
-              # to prevent flapping was dead code.
-              #
-              # When llama-swap is DOWN nothing of ours can be resident, so
-              # occupancy alone decides and `/running` is not needed at all.
-              if ! systemctl -q is-active llama-swap.service; then
-                if [ "$usedMiB" -le ${toString settings.vram.reserveMiB} ]; then
-                  echo "card back under the reserve at ''${usedMiB} MiB — resuming" >&2
-                  systemctl start llama-swap.service
-                  # Hand the leg back here, because llama-swap no longer does
-                  # it for itself — see the note on that unit.
-                  ${gateHandover} bridge
-                else
-                  # Still held by something outside the group.  The gate
-                  # should already be up from ExecStopPost; this is the
-                  # backstop for the case where it is not — llama-swap having
-                  # been down since boot, say, so no ExecStopPost ever ran.
-                  for g in ${lib.concatStringsSep " "
-                             (map (b: "llama-gate-${b.name}.socket") gatedBridges)}; do
-                    systemctl -q is-active "$g" || { ${gateHandover} gate; break; }
-                  done
-                fi
-                exit 0
-              fi
-
-              # llama-swap is up, so ask it what it is holding.  `/running`
-              # is its own view, which means "ours" is exactly the members of
-              # the exclusive group — including whisper and ComfyUI, which
-              # are its children rather than separate units.
-              resident=$(curl -fsS --max-time 5 \
-                           http://127.0.0.1:${toString port}/running \
-                         | jq -r '.running | length' 2>/dev/null)
-
-              # Now the unknown case is detectable, because a running
-              # llama-swap that does not answer is a real and separate state:
-              # starting up, or wedged.  Neither is evidence about the card,
-              # and acting on it would flap the units every 30 s.
-              case "''${resident:-}" in
-                ''' | *[!0-9]* )
-                  echo "llama-swap is up but /running did not answer — leaving the leg alone" >&2
-                  exit 0
-                  ;;
-              esac
-
-              if [ "$resident" -eq 0 ] \
-                 && [ "$usedMiB" -gt ${toString settings.vram.reserveMiB} ]; then
-                echo "card holds ''${usedMiB} MiB with nothing of ours loaded — standing down" >&2
-                systemctl stop llama-swap.service
-                # And raise the gate, for the same reason as above: this is
-                # now the only thing that moves the leg.
-                ${gateHandover} gate
-              fi
-            '';
-          };
-        }) (mkBridges {
+        } (mkBridges {
           inherit pkgs;
           # The unit prefix stays `llama-bridge-<consumer>` as it has been since
           # M19: runbooks, journal greps and docs/roadmap.md's L9 row all name
@@ -1607,15 +1142,6 @@ in
           targetPort = port;
           bridges    = settings.exposeOn;
           extraAfter = [ "llama-swap.service" ];
-        }) (mkGate {
-          inherit pkgs;
-          unit       = "llama-gate";
-          # The bridge unit prefix the gate takes over from. Passed rather
-          # than hard-coded so the two names cannot drift apart.
-          replaces   = "llama-bridge";
-          targetPort = port;
-          bridges    = gatedBridges;
-          retryAfter = settings.gateRetryAfter;
         }) {
 
           ##################################################################

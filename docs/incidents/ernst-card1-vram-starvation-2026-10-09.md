@@ -219,17 +219,41 @@ Multiplied out, that is the measured ~60 requests/minute.
 
 But the same SDK honours `Retry-After` off the wire (`index.js:8398-8426`), in
 seconds or as an HTTP-date, **with no clamp**. So the backoff is the server's to
-send. A 503 gate now stands on karakeep's leg whenever the card belongs to
-something outside llama-swap's group: same ULA address as the bridge, mutually
-exclusive by the bind itself, raised by llama-swap's `ExecStopPost` and lowered
-by its `Conflicts`. A 30-second watchdog reads card occupancy and decides which
-of the two owns the leg.
+send, and for three days it was: a 503 gate stood on karakeep's leg whenever the
+card belonged to something outside llama-swap's group, cutting the rate to ~2–3
+requests per 300 s.
 
-Expected: ~2–3 requests per 300 s instead of ~60 per 60.
+### The gate was removed on 2026-10-12, and that is the more useful record
 
-**Gated for karakeep alone.** A 503 is right for bookmark tagging and wrong for
-anything with a person waiting on it, so Open WebUI and Home Assistant are not
-gated, and monitoring must keep scraping for the condition to stay visible.
+It worked, and it was the wrong trade.
+
+**It never saved the bookmark.** The job still burns the hard-coded three
+retries and `keepFailedJobs: false` drops it, so a bookmark saved during a long
+game ends at `taggingStatus = failure` with or without the gate. The entire
+benefit was a lower request rate on a loopback path — fewer journal lines, a
+little CPU. Nothing a person could see.
+
+**It cost five follow-up fixes in three days and one live outage**, each defect
+in the gate itself rather than in anything it protected:
+
+| | |
+|---|---|
+| a socket that could never bind | `Conflicts=` named llama-swap, not the bridge that actually held the address |
+| a `Conflicts=` that stops but does not order | systemd.unit(5) calls it *"independent of and orthogonal to"* ordering, so the winner's bind raced the loser's close — in both directions, on successive deploys |
+| a sentinel that never appeared | `curl \| jq \|\| echo unknown` puts the `\|\|` on the pipeline, and `jq` exits 0 on empty input |
+| a handover racing every activation | the bridge socket is `wantedBy = sockets.target`, so every activation started it while the handover tried to take it away — a failed unit and a retried activation on every deploy |
+| **a permanent 503** | a deploy left the gate holding the leg in front of a healthy llama-swap, and the watchdog had no branch for that pair |
+
+Its watchdog also stopped llama-swap whenever an outside claimant held the card,
+which is worse than it sounds: a gaming session took the model away from mneme,
+Home Assistant's Assist pipeline and OpenCode, where without it they merely fail
+a load and recover the moment the card frees.
+
+**So the accepted behaviour is the original one**: while a game holds the card,
+karakeep's tagging jobs fail at roughly one request per second until the queue
+drains, and those bookmarks are re-run by hand. The card is arbitrated by the
+three mechanisms that protect something visible — the reserve, the preempt unit
+and the crash-loop breaker.
 
 ## Traps worth remembering
 

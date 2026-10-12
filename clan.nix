@@ -468,24 +468,7 @@
             # whatever happened to be left over, and that is exactly how the
             # television ended up crash-looping.
             reserveMiB = 1600;
-
-            # Which card to watch.  By address, for the same reason
-            # display.gpuPciAddress is: the dGPU is card1 here, not card0,
-            # and a watchdog reading the wrong one would see a quiet iGPU
-            # and conclude the busy dGPU was free.
-            cardPciAddress = "0000:03:00.0";
           };
-
-          # Tell karakeep to come back later instead of letting it hammer a
-          # card it cannot have.
-          #
-          # KARAKEEP ALONE, deliberately.  A gated leg answers 503 for as
-          # long as the card is busy, which is right for bookmark tagging
-          # and wrong for anything with a person waiting on it — Open WebUI
-          # and Home Assistant should fail in front of the user rather than
-          # be told to retry in two minutes, and monitoring must keep
-          # scraping so the condition is visible at all.
-          gateOn = [ "karakeep" ];
 
           # ── The two containers that need llama-swap ────────────────────
           #

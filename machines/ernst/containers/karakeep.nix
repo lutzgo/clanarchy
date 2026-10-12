@@ -684,20 +684,29 @@ in
           # requests/minute for fourteen minutes while the card was held by a
           # game and NOT ONE of them could have succeeded.
           #
-          # WHAT WORKS INSTEAD IS ON THE WIRE.  index.js:8398-8426 honours
-          # `retry-after-ms`, then `retry-after` in seconds or as an
+          # THE BACKOFF IS SENDABLE, AND IT IS NOT SENT.  index.js:8398-8426
+          # honours `retry-after-ms`, then `retry-after` in seconds or as an
           # HTTP-date, WITH NO CLAMP, and treats `x-should-retry: false` as
-          # final.  So the backoff is the SERVER's to send, and it is sent:
-          # see `gateOn` in clan.nix, which stands a 503 responder on this
-          # container's leg whenever the card belongs to something else.
-          # ~2-3 requests per 300 s instead of ~60 per 60.
+          # final — so a server CAN tell this client to stand down, and a 503
+          # gate on this container's leg did exactly that for three days,
+          # cutting the rate to ~2-3 requests per 300 s.
           #
-          # THE COST, so it is not discovered later: the job still burns its
-          # three retries, and `keepFailedJobs: false` drops it.  A bookmark
-          # saved during a long game keeps `taggingStatus = failure` and has
-          # to be re-run from karakeep's UI.  Raising
-          # INFERENCE_JOB_TIMEOUT_SEC past the length of a film would let it
-          # ride out the gate instead — and would also let one genuinely hung
+          # IT WAS REMOVED ANYWAY, and the reason belongs here because this is
+          # where someone will come looking for it.  The gate never saved the
+          # bookmark: the job still burns the three retries above and
+          # `keepFailedJobs: false` drops it, so a bookmark saved during a long
+          # game keeps `taggingStatus = failure` either way and has to be
+          # re-run from karakeep's UI.  What it bought was a quieter journal;
+          # what it cost was five defect fixes and one outage in which it held
+          # the leg in front of a healthy llama-swap and answered 503 to
+          # everything.  See the note on `systemd.services.llama-swap` in
+          # service-modules/local-ai.nix.
+          #
+          # SO THIS IS THE ACCEPTED BEHAVIOUR: while a game holds the card,
+          # tagging jobs fail at roughly one request per second until the queue
+          # drains, on a loopback path, and those bookmarks are re-run by hand.
+          # Raising INFERENCE_JOB_TIMEOUT_SEC past the length of a film would
+          # let a job ride it out — and would also let one genuinely hung
           # inference hold the single worker for that long.  Not taken.
         };
       };
