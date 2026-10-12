@@ -272,7 +272,12 @@ let
         printf 'clanarchy-session: %s also looped (%s starts). Every fallback is exhausted.\n' \
           "$mode" "$starts" >&2
         printf 'Nothing further to try automatically. Over SSH:\n' >&2
-        printf '  journalctl -b -t clanarchy-session\n' >&2
+        # The session's stderr goes to SDDM's per-session log, NOT the
+        # journal — MEASURED on ernst 2026-10-12, where a demotion printed
+        # here was absent from `journalctl -t clanarchy-session` and present
+        # in the file below. Advice on a screen nobody can scroll has to be
+        # the command that actually works.
+        printf '  tail ~go/.local/share/sddm/wayland-session.log\n' >&2
         printf '  clanarchy-session-select gamescope   # to clear and retry\n' >&2
         printf '%s: %s looped (%s starts), chain exhausted — holding\n' \
           "$(${pkgs.coreutils}/bin/date -Is)" "$mode" "$starts" \
