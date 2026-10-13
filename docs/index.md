@@ -27,9 +27,11 @@
 
 ## Navigation
 
-- **Roadmap** — what is built, what is next, and the session prompt for each open milestone
-- **Guides** — step-by-step explanations for cross-cutting concerns (deploy helpers, first-time install, YubiKey setup, Noctalia profiles, …)
-- **Reference** — auto-generated tables of all `clanarchy.*` NixOS options defined in `modules/`
+- **Invariants / Standing notes / Ledger** — what a change must design around, the hazards that live in files you will edit for another reason, and the temporary network shims
+- **History** — one row per milestone: what it was, whether it landed, which PRs to read
+- **Architecture** — the machines, the modules, and the decisions whose reason is not visible from the code
+- **Guides** — how to do a thing: deploy, install a machine, add a module, the YubiKey, each service
+- **Reference** — generated tables of all `clanarchy.*` NixOS options
 
 ## Developing
 

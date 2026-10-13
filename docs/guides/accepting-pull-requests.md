@@ -38,38 +38,33 @@ Before merging, confirm:
    jj new <branch>@origin          # working copy now matches the PR branch
    clan machines update <machine>
    ```
-   Prefer the machine the change actually targets. Note this activates — there
-   is no stage-only mode (see [deploy.md](deploy.md)), so for a change that
-   could cost you the machine (bootloader, disko, impermanence), have console
-   or [remote unlock](remote-unlock.md) access to hand before you run it.
-5. **Secrets are not committed.** Anything under `vars/per-machine/*/` should only change if the PR explicitly regenerated a var. Never commit plaintext keys.
-
----
+   Prefer the machine the change actually targets. This **activates** — there is
+   no stage-only mode (see [deploy](deploy.md)) — so for anything that could
+   cost you the machine (bootloader, disko, impermanence) have console or
+   [remote unlock](remote-unlock.md) access to hand first.
+5. **Secrets are not committed.** Anything under `vars/` should only change if
+   the PR explicitly regenerated a var. Never commit plaintext keys.
+6. **Comment-only and docs-only PRs should leave the derivation untouched.**
+   `nix eval --raw '.#nixosConfigurations.<m>.config.system.build.toplevel.drvPath'`
+   before and after should be byte-identical. If it moved, something that looked
+   like a comment was content — a `#` line inside a `''` block is a file in the
+   store, not a Nix comment.
 
 ## Merge
-
-Squash-merge is the default — it keeps `main` linear and each PR shows up as a single commit:
 
 ```bash
 gh pr merge <n> --squash
 gh api -X DELETE repos/lutzgo/clanarchy/git/refs/heads/<branch>
+jj git fetch && jj bookmark forget <branch>
 ```
 
-**Two steps, deliberately.** `--delete-branch` makes gh look up the current git branch so it can move off it, and jj leaves git's `HEAD` detached — so gh fails with `could not determine current branch: failed to run git: not on any branch`. It fails *after* the merge has already gone through, which reads like the merge failed when it did not. Check `gh pr view <n> --json state` before retrying anything.
+Squash-merge is the default: it keeps `main` linear and each PR lands as one
+commit. Use `--merge` only when the branch history itself is meaningful, e.g. a
+multi-step machine bring-up where each commit is worth preserving.
 
-Use `--merge` (a real merge commit) only when the branch history itself is meaningful, e.g. a multi-step machine bring-up where each commit is worth preserving.
-
-After merging, sync your local view. There is no checkout and no fast-forward merge: a
-tracked `main` advances on its own, and the bookmark for a branch GitHub has just deleted
-is forgotten rather than deleted (forgetting drops it locally without trying to push the
-deletion back to a remote that no longer has it):
-
-```bash
-jj git fetch
-jj bookmark forget <branch>
-```
-
----
+**Why four commands and not `--delete-branch`**, why the fetch is not optional,
+and what to do when a bookmark refuses to move: see
+[the jj workflow](jj-workflow.md#things-that-behave-differently-because-the-repo-is-colocated).
 
 ## Reject / request changes
 
@@ -79,43 +74,16 @@ gh pr comment <n> --body "…"
 gh pr close   <n>                # abandon
 ```
 
-Prefer inline review comments (`gh pr review <n> --comment --body …`) for small fixes over closing and reopening.
+Prefer inline review comments for small fixes over closing and reopening.
 
----
+## When it goes wrong
 
-## Recovery
-
-**Merged the wrong PR.** Revert with a follow-up PR, never by force-pushing `main`:
-
-```bash
-jj git fetch
-jj new main -m "Revert PR #<n>: <reason>"
-jj backout -r <merged-rev>       # no -m 1 to get wrong; jj handles merges itself
-jj squash                        # fold the backout into @
-jj bookmark set fix/revert-pr-<n> -r @
-jj git push --bookmark fix/revert-pr-<n>
-gh pr create --title "Revert PR #<n>" --body "Reverts #<n>: <reason>"
-```
-
-**Local `main` diverged from `origin/main`.** This failure mode does not arise under jj:
-`main` is a bookmark that moves only when you move it or when `jj git fetch` advances it,
-and nothing is ever "checked out on" it, so stray commits cannot accumulate there. If it
-does somehow point somewhere unexpected, put it back with:
-
-```bash
-jj bookmark set main -r main@origin
-```
-
-**Anything else.** `jj undo` reverses the last operation; `jj op log` + `jj op restore <op>`
-reverses further back, including operations git does not record at all.
-
-Never `git push --force` (or `--force-with-lease`) to `main`. If a bad commit already reached the remote, revert it via a PR instead.
-
----
+Reverting a merged PR, undoing a jj operation, and putting a stray `main` back
+are all in [the jj workflow's recovery section](jj-workflow.md#recovery). The one
+rule that does not live there: never `git push --force` to `main`. If a bad
+commit has already landed, revert it through a PR.
 
 ## When Claude opens the PR
-
-When Claude Code creates a PR on your behalf:
 
 - The bookmark name follows the `<type>/<slug>` convention in [AGENTS.md](https://github.com/lutzgo/clanarchy/blob/main/AGENTS.md).
 - The PR title is imperative and unprefixed; the body contains a summary and a test plan.

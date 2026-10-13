@@ -256,9 +256,10 @@ and does not matter: the two compete for **VRAM**, not for device nodes.
 On 2026-10-09 a model sized against an idle card left the gamescope session
 unable to pin a framebuffer, and gamescope answers `ENOMEM` by calling
 `abort()` — nine times in eleven minutes, relogged in each time. What keeps
-them apart now is a VRAM reserve the evaluator enforces, a preempt unit that
-reclaims the card as a session starts, and a 503 gate telling background
-consumers to come back later. See
+them apart now is a VRAM reserve the evaluator enforces and a preempt unit that
+reclaims the card as a session starts. A third mechanism — a 503 gate telling
+background consumers to come back later — was removed three days after it
+landed; it fixed the request rate without ever saving the bookmark. See
 [the incident write-up](../incidents/ernst-card1-vram-starvation-2026-10-09.md).
 
 ## Enabling it on another machine

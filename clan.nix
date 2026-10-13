@@ -113,11 +113,14 @@
           #   [drm:amdgpu_dm_plane_helper_prepare_fb] *ERROR* Failed to pin
           #     framebuffer with error -12
           #
-          # What keeps them apart now is three things, none of which is this
+          # What keeps them apart now is TWO things, neither of which is this
           # comment: a VRAM reserve the evaluator enforces (`vram.reserveMiB`
-          # under roles.inference), `gpu.preempt.units` below, and the 503
-          # gate on the karakeep leg.  See
-          # docs/incidents/ernst-card1-vram-starvation-2026-10-09.md.
+          # under roles.inference) and `gpu.preempt.units` below.  There was a
+          # third — a 503 gate on karakeep's leg — and it was REMOVED three
+          # days after it landed, because it never saved the bookmark it was
+          # meant to save.  See
+          # docs/incidents/ernst-card1-vram-starvation-2026-10-09.md and the
+          # note on `systemd.services.llama-swap` in local-ai.nix.
           #
           # Naming it here also makes the session wait for the TV to be awake
           # before starting a compositor on that card; a TV that is off reads
@@ -647,8 +650,10 @@
           #     role and mneme's generate_image tool both document.
           #     ANYTHING OUTSIDE THE GROUP DOES NOT — that was the hole.  The
           #     session cannot evict and does not wait; it aborts.  What
-          #     covers it now is the reserve above, `gpu.preempt.units` in
-          #     the htpc block, and the 503 gate on the karakeep leg.
+          #     covers it now is the reserve above and `gpu.preempt.units` in
+          #     the htpc block.  A 503 gate on karakeep's leg covered it too
+          #     for three days and was then removed — see the note on
+          #     `systemd.services.llama-swap` in local-ai.nix.
           #   * IF IT SPILLS AGAIN, raise `--n-cpu-moe` before reaching for
           #     UD-Q3_K_XL (16.8 GB,
           #     sha256-qDK5aJkl8b0zW76YXN+wbDa/LPJo9Pj27Or6POtRVhc=): Q3 is

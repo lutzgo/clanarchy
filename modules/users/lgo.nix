@@ -381,7 +381,7 @@ in
         # to scdaemon). Two per-host overrides bypass this — either forcing plain
         # ssh-ed25519 HostKeyAlgorithms (drops the cert path so hostbound isn't
         # negotiated) or PubkeyAuthentication=unbound (opts out of the hostbound
-        # extension while keeping cert host keys). See docs/yubikey-ssh-setup.md.
+        # extension while keeping cert host keys). See docs/guides/yubikey.md.
         programs.ssh = {
           enable = true;
           enableDefaultConfig = false;

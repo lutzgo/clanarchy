@@ -8,7 +8,7 @@ This guide covers how machines resolve each other, what ZeroTier provides, and h
 
 | Name | Resolves via | Works across networks |
 |------|--------------|-----------------------|
-| `miralda.goclan.org` | Public DNS | Yes (used by `deploy`) |
+| `miralda.goclan.org` | Public DNS | Yes — the address clan deploys to |
 | `biene.skynet.lan` | Local split-horizon DNS | LAN only |
 | `miralda.local` / `biene.local` | mDNS (Avahi) | Yes — via ZeroTier reflector |
 | ZeroTier IPv6 directly | ZeroTier network | Yes |
@@ -118,11 +118,11 @@ ssh lgo@biene.local           # biene via mDNS over ZeroTier
 !!! note "YubiKey required for SSH"
     SSH auth uses the YubiKey OpenPGP auth subkey via `gpg-agent`.
     The key must be inserted and the PIN must not be blocked.
-    See [Updating machines — YubiKey SSH signing](updating-machines.md#yubikey-ssh-signing) if auth fails.
+    See [YubiKey — SSH signing fails](yubikey.md#ssh-signing-fails) if auth fails.
 
 ### 5. Deploy connectivity
 
-`deploy` targets `root@miralda.goclan.org` (public DNS — always reachable).
+Clan deploys to `root@miralda.goclan.org` (public DNS — always reachable).
 Clan resolves biene to `root@biene.local` (mDNS over ZeroTier).
 To verify before deploying:
 
