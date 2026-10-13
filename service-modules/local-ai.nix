@@ -5022,7 +5022,7 @@ in
   # roles.opencode — the CLI agent
   ##############################################################################
   roles.opencode = {
-    description = "OpenCode CLI coding agent, pointed at a local or tunnelled llama-swap.";
+    description = "OpenCode CLI coding agent, pointed at one or more OpenAI-compatible endpoints (local, tunnelled, or both).";
 
     interface.options = {
       user = lib.mkOption {
@@ -5030,28 +5030,65 @@ in
         default     = "lgo";
         description = "Home Manager user to install OpenCode for.";
       };
-      model = lib.mkOption {
-        type        = lib.types.str;
-        default     = "local/qwen3-coder-30b";
+      providers = lib.mkOption {
+        type = lib.types.listOf (lib.types.submodule {
+          options = {
+            id = lib.mkOption {
+              type        = lib.types.str;
+              description = "Provider id, as written into OpenCode's `provider` attrset.";
+            };
+            label = lib.mkOption {
+              type        = lib.types.str;
+              description = "Name OpenCode shows for this endpoint in its model picker.";
+            };
+            port = lib.mkOption {
+              type        = lib.types.port;
+              description = ''
+                Loopback port this endpoint's OpenAI-compatible surface answers
+                on — `tunnel.localPort` for the remote one, the backend's own
+                port for a local one.
+
+                Per provider rather than derived: the local branch used to
+                hardcode 11434 and so could not follow `roles.inference.port`.
+              '';
+            };
+            models = lib.mkOption {
+              type        = lib.types.listOf lib.types.str;
+              description = ''
+                Models this endpoint serves, under the names it serves them by.
+
+                Not optional: the OpenAI-compatible driver has no catalogue for
+                OpenCode to discover, so an undeclared name is unselectable even
+                when the server has it.  A name here must be a key in the
+                endpoint's `roles.models` (or an ollama tag, for an ollama
+                backend) — it is no longer required to be an ollama registry
+                TAG, which is the class of mistake that put `qwen3-coder:8b` —
+                a tag that has never existed — into a restart loop for months.
+
+                  curl -s localhost:<port>/v1/models | jq -r '.data[].id'
+              '';
+            };
+          };
+        });
+        default     = [ ];
         description = ''
-          Default model, as `<provider-id>/<model name>`.  The provider id is
-          always `local` here — it is the key this role writes into `provider`
-          in OpenCode's config.
+          Endpoints OpenCode can reach, in preference order.
 
-          The model half must name a key in the endpoint's `roles.models`, or
-          OpenCode asks for something that was never declared and llama-swap
-          answers 404.  It no longer has to be an ollama registry TAG, which is
-          the class of mistake that put `qwen3-coder:8b` — a tag that has never
-          existed — into a restart loop for months.
-
-          Check what the endpoint actually serves before trusting an answer:
-            curl -s localhost:11435/v1/models | jq -r '.data[].id'
+          A SECOND ENTRY IS THE FALLBACK, AND IT IS A MANUAL ONE.  OpenCode
+          reads one `model` at startup and has no automatic failover, so what a
+          second provider buys is that `/models` in the TUI is a recovery step
+          rather than a dead end.  `ai-status` says which endpoints answer.
         '';
       };
-      providerName = lib.mkOption {
+
+      defaultModel = lib.mkOption {
         type        = lib.types.str;
-        default     = "local";
-        description = "Provider id written into OpenCode's config.";
+        example     = "ernst/qwen3.6-35b-a3b";
+        description = ''
+          Model OpenCode starts on, as `<provider id>/<model>`.  Must name a
+          `providers` entry and one of its `models`; asserted, because the
+          symptom otherwise is a 404 from a server three layers away.
+        '';
       };
 
       contextBudgetTokens = lib.mkOption {
@@ -5060,25 +5097,21 @@ in
         description = ''
           Ceiling, in tokens, on the context govim's opencode.nvim integration
           will inject into a prompt (`vim.g.opencode_context_budget_tokens`).
+          Over budget it REFUSES to send, which is the point: this is SN1's
+          fail-closed guard.
 
-          THIS IS THE SAME DECISION AS THE SERVED CONTEXT WINDOW, which is why
-          it is set at the call site in clan.nix next to the endpoint's
-          `contextLength` / `roles.models` rather than buried in the editor
-          config — the two numbers are only meaningful read together.
+          IT IS PER MACHINE, NOT PER PROVIDER, and there is only one of it.  So
+          on a machine with both a 32768 endpoint and a 4096 fallback, a budget
+          sized for the former will be silently truncated by the latter —
+          ollama answers an over-long prompt HTTP 200 with the HEAD discarded
+          (system prompt and tool definitions first) and then fabricates
+          plausibly.  llama.cpp answers 400 instead, so the hazard is the
+          fallback's alone.
 
-          Over budget, the integration REFUSES to send. That is the point, and
-          it is SN1: an over-long prompt does not fail loudly, it comes back
-          HTTP 200 with a truncated head and a confidently fabricated answer.
-          A review of a diff the model never fully saw looks exactly like a
-          real one.
-
-          The default of 1000 matches govim's own fail-closed default, sized
-          for the SMALLEST window in the fleet — miralda's 4096, which the
-          opencode system prompt and tool definitions have already eaten into.
-          Restate it explicitly per machine rather than inheriting it: a host
-          with a 32768 window (jens, via llama-swap) that silently keeps 1000
-          refuses most real diffs — govim's own working diff measures ~2521
-          estimated tokens.
+          Set it against the endpoint you actually work on, and re-check it
+          when `contextLength` or `roles.models` moves.  Reference points:
+          govim's default is 1000, sized for a 4096 window; its own working
+          diff measures ~2521 estimated tokens.
         '';
       };
 
@@ -5179,11 +5212,34 @@ in
           govimActive =
             (config.clanarchy.users.${settings.user}.editor or null) == "govim";
 
-          baseURL =
-            if settings.tunnel.enable then
-              "http://127.0.0.1:${toString settings.tunnel.localPort}/v1"
-            else
-              "http://127.0.0.1:11434/v1";
+          # One `provider.<id>` entry per endpoint.  llama-swap's and ollama's
+          # /v1 surfaces are both OpenAI-compatible, so the generic driver is
+          # the right one for either.
+          providerAttrs = lib.listToAttrs (map (p:
+            lib.nameValuePair p.id {
+              npm             = "@ai-sdk/openai-compatible";
+              name            = p.label;
+              options.baseURL = "http://127.0.0.1:${toString p.port}/v1";
+              models          = lib.genAttrs p.models (_: { });
+            }) settings.providers);
+
+          declaredModels =
+            lib.concatMap (p: map (m: "${p.id}/${m}") p.models) settings.providers;
+
+          # Which endpoints are up, as one command.  Falling back is `/models`
+          # in the TUI; this is how you know you need to.
+          aiStatus = pkgs.writeShellApplication {
+            name          = "ai-status";
+            runtimeInputs = [ pkgs.curl pkgs.jq ];
+            text = lib.concatMapStrings (p: ''
+              printf '%-8s 127.0.0.1:%-6s ' ${lib.escapeShellArg p.id} ${toString p.port}
+              if out=$(curl -fs --max-time 3 "http://127.0.0.1:${toString p.port}/v1/models" 2>/dev/null); then
+                printf 'up    %s\n' "$(printf '%s' "$out" | jq -r '[.data[].id] | join(", ")')"
+              else
+                printf 'DOWN\n'
+              fi
+            '') settings.providers;
+          };
 
           # ── THE ONE INSTRUCTION THAT DECIDES WHETHER TOOL CALLING WORKS ──
           #
@@ -5216,19 +5272,30 @@ in
         lib.mkMerge [
 
           {
-            # FROM UNSTABLE, DELIBERATELY, and this is the copy that wins.
-            #
-            # clan-core's 26.05 pin carries opencode 1.15.10; nixpkgs-unstable
-            # has 1.18.16. opencode.nvim 0.14.0 tests against 1.17.4 and
-            # `:checkhealth opencode` warns on anything older, so the stable
-            # pin is three minor versions behind its own client.
-            #
-            # It has to be fixed HERE and not in govim: nvf APPENDS to $PATH
-            # (mnw does `PATH = PATH .. ":" .. extraBinPath`), so a
-            # system-wide opencode always shadows the one govim bundles. The
-            # bundled copy is unreachable as long as this line exists, which
-            # means this line is the only place the version can be chosen.
-            environment.systemPackages = [ pkgs-unstable.opencode ];
+            assertions = [
+              {
+                assertion = settings.providers != [ ];
+                message = ''
+                  roles.opencode on this machine declares no providers, so
+                  OpenCode would be installed pointing at nothing.
+                '';
+              }
+              {
+                assertion = lib.elem settings.defaultModel declaredModels;
+                message =
+                  "roles.opencode: defaultModel \"${settings.defaultModel}\" names no"
+                  + " declared provider/model. Declared: "
+                  + lib.concatStringsSep ", " declaredModels;
+              }
+            ];
+
+            # FROM UNSTABLE, DELIBERATELY, and this is the copy that wins: nvf
+            # APPENDS to $PATH (mnw does `PATH = PATH .. ":" .. extraBinPath`),
+            # so a system-wide opencode always shadows the one govim bundles.
+            # clan-core's 26.05 pin carries 1.15.10 against opencode.nvim
+            # 0.14.0's tested 1.17.4, so this line is the only place the
+            # version can be chosen.
+            environment.systemPackages = [ pkgs-unstable.opencode aiStatus ];
 
             home-manager.users.${settings.user} = { lib, ... }: {
               # ~/.config is persisted for lgo (modules/users/lgo.nix), so this
@@ -5241,19 +5308,9 @@ in
               # driver) matches no version of the schema — opencode ignored the
               # whole block and fell through to its own defaults.
               xdg.configFile."opencode/config.json".text = builtins.toJSON {
-                "$schema" = "https://opencode.ai/config.json";
-                model = settings.model;
-                provider.${settings.providerName} = {
-                  # llama-swap's /v1 surface is OpenAI-compatible, so the
-                  # generic OpenAI-compatible driver is the right one.
-                  npm = "@ai-sdk/openai-compatible";
-                  name = "llama.cpp (${if settings.tunnel.enable then settings.tunnel.remoteHost else "local"})";
-                  options = { inherit baseURL; };
-                  # Declaring the model explicitly matters: this provider has no
-                  # model catalogue for opencode to discover, so an undeclared
-                  # name is not selectable even when the server has it.
-                  models.${lib.removePrefix "${settings.providerName}/" settings.model} = { };
-                };
+                "$schema"    = "https://opencode.ai/config.json";
+                model        = settings.defaultModel;
+                provider     = providerAttrs;
                 instructions = [ "${toolCallRule}" ];
               };
             }
