@@ -236,6 +236,89 @@
           # no observable failure mode at runtime. They run at build time
           # (`doCheck`), so this check is how they run without building ernst.
           mneme = pkgs.callPackage ./service-modules/pkgs/mneme { };
+
+          # The container modules ship with no consumers, so without this they
+          # would be "evaluates clean" and nothing more. ./tests/ declares one
+          # container of each tier and this asserts the units that come out.
+          container-modules =
+            let
+              t = import ./tests/container-modules.nix { inherit (pkgs) lib; nixpkgs = inputs.nixpkgs; };
+              svc = n: t.systemd.services.${n};
+              has = hay: needle: pkgs.lib.hasInfix needle hay;
+              must = name: cond:
+                if cond then "" else throw "container-modules: ${name}";
+            in
+            pkgs.runCommand "container-modules-test" { } ''
+              ${must "widget-dirs guards the state mount"
+                 (has (svc "widget-dirs").script "findmnt --noheadings --output SOURCE --target /srv/state")}
+              ${must "widget-dirs refuses the wrong source"
+                 (has (svc "widget-dirs").script "!= zdata/state"
+                  && has (svc "widget-dirs").script "exit 1")}
+              ${must "widget-dirs installs with numeric ownership"
+                 (has (svc "widget-dirs").script "install -d -o 3099 -g 3099 -m 0700 /srv/state/widget")}
+              ${must "widget-dirs blocks the container"
+                 (pkgs.lib.elem "container@widget.service" (svc "widget-dirs").requiredBy)}
+              ${must "widget-dirs is ordered after the mount"
+                 (pkgs.lib.elem "srv-state.mount" (svc "widget-dirs").requires)}
+
+              ${must "gadget guards its second mount too"
+                 (pkgs.lib.elem "srv-photos.mount" (svc "gadget-dirs").requires)}
+              ${must "gadget-secrets writes then renames"
+                 (has (svc "gadget-secrets").script "mv -f /run/gadget-secrets/oidc.env.tmp /run/gadget-secrets/oidc.env")}
+              ${must "gadget-secrets locks the file down"
+                 (has (svc "gadget-secrets").script "chmod 0400")}
+              ${must "gadget binds its secrets directory read-only"
+                 (t.containers.gadget.bindMounts."/run/gadget-secrets".isReadOnly)}
+
+              ${must "widget takes the host MAC and bridge"
+                 (t.containers.widget.localMacAddress == "02:00:00:90:00:63"
+                  && t.containers.widget.hostBridge == "br0")}
+              ${must "widget pins its uid inside the container"
+                 (t.containers.widget.config.users.users.widget.uid == 3099)}
+              ${must "the container resolver is pinned, not inherited"
+                 (t.containers.widget.config.systemd.network.networks."10-eth0".networkConfig.DNS == "10.0.5.3")}
+              ${must "IPv6 link-local is off inside the container"
+                 (t.containers.widget.config.systemd.network.networks."10-eth0".networkConfig.LinkLocalAddressing == "no")}
+              ${must "the firewall admits only the named peer"
+                 (has t.containers.widget.config.networking.firewall.extraCommands
+                    "-s 10.0.90.12/32 --dport 8080 -j nixos-fw-accept")}
+              ${must "the container opens no ports by default"
+                 (t.containers.widget.config.networking.firewall.allowedTCPPorts == [ ])}
+
+              ${must "the VLAN backstop is idempotent and non-fatal"
+                 (pkgs.lib.any (c: has c "-" && has c "bridge vlan add dev vb-widget vid 90 pvid untagged")
+                    (svc "container@widget").serviceConfig.ExecStartPost)}
+              ${must "the host veth keeps its master"
+                 (t.systemd.network.networks."60-vb-widget".networkConfig.KeepMaster)}
+
+              ${must "the ULA leg exists on both ends"
+                 (t.containers.gadget.extraVeths.ai9.hostAddress6 == "fdca:fe99::1"
+                  && t.containers.gadget.extraVeths.ai9.localAddress6 == "fdca:fe99::2")}
+              ${must "the ULA leg does not gate wait-online"
+                 (t.containers.gadget.config.systemd.network.networks."20-ai9".linkConfig.RequiredForOnline == "no")}
+
+              ${must "podman gets a prebuilt netns, not its own network"
+                 (pkgs.lib.elem "--network=ns:/run/netns/doohickey"
+                    t.virtualisation.oci-containers.containers.doohickey.extraOptions)}
+              ${must "both images share the one namespace"
+                 (pkgs.lib.elem "--network=ns:/run/netns/doohickey"
+                    t.virtualisation.oci-containers.containers.doohickey-db.extraOptions)}
+              ${must "podman runs rootful and unmapped"
+                 (pkgs.lib.elem "--user=3098:3098"
+                    t.virtualisation.oci-containers.containers.doohickey.extraOptions)}
+              ${must "dhcpcd does not rewrite the host resolv.conf"
+                 (has (svc "doohickey-dhcp").serviceConfig.ExecStart "--nohook resolv.conf")}
+              ${must "the netns defaults to DROP"
+                 (has (svc "doohickey-netns").script "iptables -P INPUT DROP")}
+              ${must "the netns admits the named peer"
+                 (has (svc "doohickey-netns").script "-s 10.0.90.12/32 --dport 8080 -j ACCEPT")}
+              ${must "the podman host end is bridged, not KeepMaster"
+                 (t.systemd.network.networks."60-vb-doohickey".networkConfig.Bridge == "br0")}
+              ${must "the healthcheck polls rather than blocking the unit"
+                 (has (svc "doohickey-healthy").script "podman inspect")}
+
+              touch $out
+            '';
         };
 
         devShells.default = pkgs.mkShell {

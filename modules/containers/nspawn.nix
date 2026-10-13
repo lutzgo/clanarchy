@@ -1,0 +1,380 @@
+# `clanarchy.containers.<name>` — a declarative systemd-nspawn container with
+# the ~230 lines of per-service skeleton generated instead of written.
+#
+# ── WHAT IT REPLACES ────────────────────────────────────────────────────────
+#
+# Thirteen container files repeated the same eight blocks: a `<svc>-dirs`
+# oneshot, a `<svc>-secrets` staging unit, a `60-vb-<svc>` networkd file, an
+# idempotent `bridge vlan add` backstop, the five-line `containers.<n>`
+# preamble, a 26-line in-container networking block, the uid/gid pins, and an
+# `allowedTCPPorts = [ ]` + `extraCommands` pair. The comments explaining them
+# were copied too — the VLAN-race paragraph appears in nine files, the
+# `extraInputRules` note in nine, the `wait-online` cap in eight.
+#
+# ── HOST-AGNOSTIC BY CONSTRUCTION ───────────────────────────────────────────
+#
+# Nothing here names ernst, br0, VLAN 90 or goclan.org. The per-host answers
+# live in one `clanarchy.containers.defaults` block in the machine's own
+# configuration.nix, so a second container host is an inventory edit rather
+# than a rewrite. Imported fleet-wide and inert until a machine declares a
+# container — the same shape as modules/hardware/convertible.nix.
+#
+# ── NOT A CLAN SERVICE, DELIBERATELY ────────────────────────────────────────
+#
+# docs/guides/adding-a-module.md says to reach for `service-modules/` only when
+# a feature genuinely has roles, and that "which role? the only one" is the
+# signal not to. A container host has no roles; it has named instances.
+{ config, lib, pkgs, ... }:
+let
+  cfg = config.clanarchy.containers;
+  defaults = config.clanarchy.containerDefaults;
+  clib = import ./lib.nix { inherit lib pkgs; };
+
+  enabled = lib.filterAttrs (_: c: c.enable) cfg;
+  perContainer = lib.mapAttrsToList mkOne enabled;
+
+  stateDirType = lib.types.submodule {
+    options = {
+      path  = lib.mkOption { type = lib.types.str; description = "Absolute path to create."; };
+      owner = lib.mkOption { type = lib.types.either lib.types.int lib.types.str; description = "Numeric uid (a container user the host cannot name)."; };
+      group = lib.mkOption { type = lib.types.either lib.types.int lib.types.str; description = "Numeric gid."; };
+      mode  = lib.mkOption { type = lib.types.str; default = "0700"; description = "Mode, as install(1) takes it."; };
+    };
+  };
+
+  ulaType = lib.types.submodule {
+    options = {
+      veth = lib.mkOption {
+        type = lib.types.str;
+        description = ''
+          Interface name, used for BOTH ends of the pair — so it is a
+          HOST-GLOBAL allocation, not a per-container one. M19 and M27 both
+          chose `ai0`; only one container could hold it, and Open WebUI
+          silently had no second interface for five days. Asserted in
+          modules/containers/assertions.nix.
+        '';
+      };
+      hostAddress6  = lib.mkOption { type = lib.types.str; description = "Host end, a /128."; };
+      localAddress6 = lib.mkOption { type = lib.types.str; description = "Container end, a /128."; };
+    };
+  };
+
+  allowType = lib.types.submodule {
+    options = {
+      peer = lib.mkOption { type = lib.types.str; description = "Source address allowed to reach `port`."; };
+      port = lib.mkOption { type = lib.types.port; description = "Destination port on the container."; };
+    };
+  };
+
+  containerType = lib.types.submodule ({ name, ... }: {
+    options = {
+      enable = lib.mkEnableOption "this container";
+
+      mac = lib.mkOption {
+        type = lib.types.str;
+        example = "02:00:00:90:00:14";
+        description = ''
+          The container's own MAC. Its address is a DHCP reservation keyed on
+          this, so a typo does not fail — it quietly takes a pool lease
+          instead, with every indicator on the host staying green. On ernst
+          this must match the row in machines/ernst/allocations.nix, which is
+          asserted there.
+        '';
+      };
+
+      vlan = lib.mkOption {
+        type = lib.types.nullOr lib.types.int;
+        default = null;
+        description = "VLAN the primary leg sits on. Null falls back to `clanarchy.containerDefaults.vlan`.";
+      };
+
+      bridge = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Host bridge the primary leg is enslaved to. Null falls back to the host default.";
+      };
+
+      stateDirs = lib.mkOption {
+        type = lib.types.listOf stateDirType;
+        default = [ ];
+        description = "Directories to create before the container starts, with numeric ownership.";
+      };
+
+      extraGuardedMounts = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "/srv/photos" ];
+        description = "Further mounts the dirs unit must verify and order after, beyond the state mount.";
+      };
+
+      secrets = lib.mkOption {
+        type = lib.types.attrsOf (lib.types.attrsOf lib.types.str);
+        default = { };
+        example = lib.literalExpression ''{ "oidc.env" = { OAUTH_CLIENT_SECRET = "/run/secrets/vars/…"; }; }'';
+        description = ''
+          Env files to stage, as `<file>.<KEY> = <path to the var>`. Staged
+          host-side and bind-mounted, because a clan var path does not exist
+          inside the container — pointing an in-container unit at
+          `/run/secrets/vars/...` fails with a silent `243/CREDENTIALS`.
+        '';
+      };
+
+      bindMounts = lib.mkOption {
+        type = lib.types.attrsOf (lib.types.attrsOf lib.types.anything);
+        default = { };
+        description = "Passed through to `containers.<name>.bindMounts`. The secrets directory is added automatically.";
+      };
+
+      ula = lib.mkOption {
+        type = lib.types.listOf ulaType;
+        default = [ ];
+        description = ''
+          Point-to-point ULA legs. Each gets an `extraVeths` entry and an
+          in-container network with a link-scope route to the host end — the
+          shape a loopback-bound producer needs in order to serve one consumer
+          without listening on any VLAN.
+        '';
+      };
+
+      allowFrom = lib.mkOption {
+        type = lib.types.listOf allowType;
+        default = [ ];
+        description = "Peers allowed in, one accept each. Everything else is refused.";
+      };
+
+      uid = lib.mkOption {
+        type = lib.types.nullOr lib.types.int;
+        default = null;
+        description = ''
+          Numeric uid to pin for the container's service user. nspawn passes
+          ids through UNMAPPED, so a number chosen inside the container is a
+          number on the host's storage. Null means the service takes no id of
+          its own (DynamicUser, or an upstream-static id it must keep).
+        '';
+      };
+
+      gid = lib.mkOption {
+        type = lib.types.nullOr lib.types.int;
+        default = null;
+        description = "Numeric gid to pin, same reasoning as `uid`.";
+      };
+
+      user = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Name of the in-container user `uid`/`gid` apply to.";
+      };
+
+      resolver = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "DNS server the container uses; null falls back to the host default. Pinned rather than inherited from the host.";
+      };
+
+      searchDomain = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Search domain; null falls back to the host default.";
+      };
+
+      useResolved = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Run `services.resolved` inside the container. The one service that
+          sets this false is the mail container, whose kresd recurses itself —
+          DNSBL operators refuse shared resolvers, so it cannot forward.
+        '';
+      };
+
+      stateVersion = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "`system.stateVersion` for the container; null follows the host.";
+      };
+
+      config = lib.mkOption {
+        type = lib.types.deferredModule;
+        default = { };
+        description = ''
+          The service itself — the irreducible half. Merged with the generated
+          networking, firewall and id pins into `containers.<name>.config`.
+        '';
+      };
+    };
+  });
+
+  mkOne = name: c:
+    let
+      vethHost   = "vb-${name}";
+      secretsDir = "${defaults.secretsRoot}/${name}-secrets";
+      unitFor    = "container@${name}.service";
+
+      # Fallbacks are resolved HERE, in the config phase, and not as option
+      # defaults. An option default that reads `config` is evaluated while the
+      # option set is still being built — which is infinite recursion, and is
+      # exactly what the first version of this module did.
+      vlan         = if c.vlan         != null then c.vlan         else defaults.vlan;
+      bridge       = if c.bridge       != null then c.bridge       else defaults.bridge;
+      resolver     = if c.resolver     != null then c.resolver     else defaults.resolver;
+      searchDomain = if c.searchDomain != null then c.searchDomain else defaults.searchDomain;
+      stateVersion = if c.stateVersion != null then c.stateVersion else config.system.stateVersion;
+
+      support = clib.mkSupportUnits {
+        inherit name unitFor secretsDir;
+        inherit (defaults) stateMount stateSource;
+        inherit (c) stateDirs secrets;
+        extraMounts = c.extraGuardedMounts;
+      };
+    in
+    {
+      # ── Host side ─────────────────────────────────────────────────────────
+      systemd.services = support // {
+        # The VLAN race, and the idempotent backstop for it. networkd applies
+        # [BridgeVLAN] only once it observes the link's master, and nspawn sets
+        # that master out of band. With `DefaultPVID = "none"` on the bridge a
+        # miss is fail-CLOSED, so the container is simply unreachable.
+        # `bridge vlan show dev vb-<name>` is the check. The "-" prefix makes
+        # the command's failure non-fatal, since it is a backstop and not the
+        # primary mechanism.
+        "container@${name}" = lib.mkIf (vlan != null) {
+          serviceConfig.ExecStartPost = [
+            "-${pkgs.iproute2}/bin/bridge vlan add dev ${vethHost} vid ${toString vlan} pvid untagged"
+          ];
+        };
+      };
+
+      systemd.network.networks."60-${vethHost}" = {
+        matchConfig.Name = vethHost;
+        networkConfig = {
+          # KeepMaster: nspawn enslaves the link itself, and networkd must not
+          # fight it for ownership.
+          KeepMaster          = true;
+          LinkLocalAddressing = "no";
+          IPv6AcceptRA        = false;
+        };
+        bridgeVLANs = lib.optionals (vlan != null)
+          [ { VLAN = vlan; PVID = vlan; EgressUntagged = vlan; } ];
+        linkConfig.RequiredForOnline = "enslaved";
+      };
+
+      containers.${name} = {
+        autoStart = true;
+        ephemeral = false;
+
+        privateNetwork  = true;
+        hostBridge      = bridge;
+        localMacAddress = c.mac;
+
+        extraVeths = lib.listToAttrs (map (u:
+          lib.nameValuePair u.veth {
+            inherit (u) hostAddress6 localAddress6;
+          }) c.ula);
+
+        bindMounts = c.bindMounts // lib.optionalAttrs (c.secrets != { }) {
+          ${secretsDir} = { hostPath = secretsDir; isReadOnly = true; };
+        };
+
+        config = { ... }: {
+          imports = [ c.config ];
+
+          system.stateVersion = stateVersion;
+
+          # ── Networking, the ordinary shape ────────────────────────────────
+          networking.useHostResolvConf = false;
+          networking.useNetworkd = true;
+          services.resolved.enable = c.useResolved;
+
+          systemd.network.networks = {
+            "10-eth0" = {
+            matchConfig.Name = "eth0";
+            networkConfig = {
+              DHCP         = "ipv4";
+              DNS          = resolver;
+              Domains      = "~. ${searchDomain}";
+              IPv6AcceptRA = false;
+              # SN2: v4 only. IPv6AcceptRA alone blocks an RA but NOT
+              # link-local assignment; this is the line that actually makes
+              # `ip -6 addr show dev eth0` empty.
+              LinkLocalAddressing = "no";
+            };
+              dhcpV4Config = { UseDNS = false; UseDomains = false; };
+              linkConfig.RequiredForOnline = "routable";
+            };
+          }
+
+          # Each ULA leg: its own /128 and a link-scope route to the host end.
+          # RequiredForOnline = "no" because a veth has no carrier until BOTH
+          # ends are up, and the host end is brought up after the container's
+          # own boot — so wait-online would be waiting on an event its own
+          # completion gates.
+          // lib.listToAttrs (map (u:
+            lib.nameValuePair "20-${u.veth}" {
+              matchConfig.Name = u.veth;
+              address = [ "${u.localAddress6}/128" ];
+              routes  = [ { Destination = "${u.hostAddress6}/128"; Scope = "link"; } ];
+              networkConfig.IPv6AcceptRA = false;
+              linkConfig.RequiredForOnline = "no";
+            }) c.ula);
+
+          # A DHCP failure must leave a RUNNING container with one failed unit,
+          # not a host-side restart loop.
+          systemd.network.wait-online.timeout = 20;
+
+          # The container firewall is the ONLY enforcement point for
+          # bridge-local traffic: those frames are one L2 hop and the router
+          # never sees them.
+          networking.firewall = clib.mkFirewall c.allowFrom;
+
+          users = lib.optionalAttrs (c.user != null && c.uid != null) {
+            users.${c.user}.uid = c.uid;
+          } // lib.optionalAttrs (c.user != null && c.gid != null) {
+            groups.${c.user}.gid = c.gid;
+          };
+        };
+      };
+    };
+in
+{
+  options.clanarchy.containerDefaults = {
+    bridge        = lib.mkOption { type = lib.types.str; default = "br0"; description = "Default host bridge."; };
+    vlan          = lib.mkOption { type = lib.types.nullOr lib.types.int; default = null; description = "Default VLAN; null means untagged."; };
+    resolver      = lib.mkOption { type = lib.types.str; default = "127.0.0.53"; description = "Default DNS server for containers."; };
+    searchDomain  = lib.mkOption { type = lib.types.str; default = "local"; description = "Default search domain."; };
+    stateMount    = lib.mkOption { type = lib.types.str; default = "/srv/state"; description = "Where per-service state lives."; };
+    stateSource   = lib.mkOption { type = lib.types.str; default = ""; description = "What `stateMount` must be backed by; the dirs units refuse to run otherwise."; };
+    secretsRoot   = lib.mkOption { type = lib.types.str; default = "/run"; description = "Parent of each `<name>-secrets` staging directory."; };
+  };
+
+  options.clanarchy.containers = lib.mkOption {
+    type = lib.types.attrsOf containerType;
+    default = { };
+    description = ''
+      Declarative nspawn containers. A name here must be at most 12
+      characters: nspawn derives the host veth as `vb-<name>` and 15 is
+      IFNAMSIZ, so a longer one evaluates cleanly and fails at container
+      START. It is why ernst's are `mail`, `mass` and `hass`.
+    '';
+  };
+
+  # ── THE SHAPE OF `config` MUST NOT DEPEND ON `config` ───────────────────
+  #
+  # Three versions of this were infinite recursion, each one subtler:
+  #
+  #   1. option defaults that read `config.clanarchy.containerDefaults` —
+  #      evaluated while the option set is still being built;
+  #   2. `lib.mkIf (enabled != { }) …` — a mkIf CONDITION reading `config`,
+  #      forced during the same early phase;
+  #   3. `lib.mkMerge (mapAttrsToList mkOne enabled)` as the whole of `config`
+  #      — which still makes the SET OF ATTRIBUTES depend on `config`, so
+  #      `_module.freeformType` cannot be collected without forcing it.
+  #
+  # The fix is a STATIC SPINE: these four keys always exist, and only their
+  # values are computed from the declarations. Per-container fallbacks are
+  # resolved in `mkOne`, which is inside a value and therefore safe.
+  config = {
+    systemd.services         = lib.mkMerge (map (x: x.systemd.services) perContainer);
+    systemd.network.networks = lib.mkMerge (map (x: x.systemd.network.networks) perContainer);
+    containers               = lib.mkMerge (map (x: x.containers) perContainer);
+  };
+}

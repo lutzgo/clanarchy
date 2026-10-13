@@ -52,5 +52,8 @@ jobs:
       - name: Evaluate all machine toplevels
         run: bash scripts/check.sh
 
-      - name: Run the mneme test suite
-        run: nix build --no-update-lock-file -L --no-link '.#checks.x86_64-linux.mneme'
+      - name: Run the package and module tests
+        run: |
+          nix build --no-update-lock-file -L --no-link \
+            '.#checks.x86_64-linux.mneme' \
+            '.#checks.x86_64-linux.container-modules'

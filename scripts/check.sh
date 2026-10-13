@@ -31,8 +31,13 @@ fi
 # jj snapshots the working copy when a jj command runs, not when a file is
 # written — and Nix cannot read a path git does not yet track.  Without this a
 # brand-new module fails with "not tracked by Git", naming git rather than jj.
+# `jj status` snapshots as a side effect, which is the whole point of calling
+# it. Plain, with no flags: `--ignore-working-copy` is a FLAG, not a key=value
+# option, so `--ignore-working-copy=false` exits 2 — and with `|| true` after
+# it, this guard silently did nothing at all from the day it was written until
+# a new file hit the very error it exists to prevent.
 if command -v jj >/dev/null 2>&1 && [ -d .jj ]; then
-  jj --ignore-working-copy=false status >/dev/null 2>&1 || true
+  jj status >/dev/null 2>&1 || true
 fi
 
 rc=0
