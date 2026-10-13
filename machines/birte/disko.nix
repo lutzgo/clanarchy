@@ -32,7 +32,8 @@ import ../../modules/disko/btrfs.nix {
   # hibernate if the battery dies while suspended).  Swap is not
   # randomly-encrypted because the resume image must be readable after
   # a full power-off.  Standard for laptops / handheld consoles across
-  # the clan (see clanarchy.roles.laptop.hybridSleep default = true).
+  # the clan (hybridSleep defaults on here because this machine is btrfs —
+  # see modules/roles/laptop.nix).
   enableSwap = true;
   swapSize = "16G";
   encryptSwap = false;

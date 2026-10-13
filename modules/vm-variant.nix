@@ -37,6 +37,12 @@
     boot.resumeDevice = lib.mkForce "";
     swapDevices       = lib.mkForce [];
 
+    # …and with both of those cleared, the laptop role's hybrid-sleep
+    # assertions would fail for any machine that has it on (birte). Turn the
+    # feature off in the variant rather than weakening the assertions, which
+    # exist precisely to catch a half-configured hibernate.
+    clanarchy.roles.laptop.hybridSleep.enable = lib.mkForce false;
+
     # Impermanence's `environment.persistence` bind-mounts /persist/* onto
     # the live root. Without a real /persist dataset this fails at
     # activation — clear the persist declarations for the VM.

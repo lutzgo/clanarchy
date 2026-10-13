@@ -70,11 +70,6 @@
   clanarchy.users.lgo.enable = true;
   clanarchy.users.admin.enable = true;
 
-  # Hybrid-sleep disabled: disko.nix lays down no swap partition, matching
-  # miralda.  Re-enable together with `enableSwap` + `boot.resumeDevice` if
-  # suspend-to-disk is ever wanted here.
-  clanarchy.roles.laptop.hybridSleep.enable = false;
-
   # 26.05: pkgsForSystem's config only reaches clanInternals.machines.<sys>.<name>,
   # NOT nixosConfigurations.<name> (which clan machines update uses). So we still
   # have to set allowUnfree at the NixOS module level for the deploy path.

@@ -46,15 +46,18 @@
   services.usbmuxd.enable = true;
 
   # Lid close → shut down (Sabine's preference), overriding the laptop-role
-  # default of hybrid-sleep on battery / suspend on AC. Disabling hybridSleep
-  # also drops the now-unused HibernateMode=shutdown sleep setting.
-  # Docked behaviour (HandleLidSwitchDocked) keeps the systemd default: ignore.
-  clanarchy.roles.laptop.hybridSleep.enable = false;
+  # default of suspend on lid close. Hybrid-sleep is already unavailable here —
+  # this machine is on the stable channel and therefore ZFS — so this is a
+  # preference about suspend, not about hibernation. Docked behaviour
+  # (HandleLidSwitchDocked) keeps the systemd default: ignore.
   services.logind.settings.Login.HandleLidSwitch              = lib.mkForce "poweroff";
   services.logind.settings.Login.HandleLidSwitchExternalPower = lib.mkForce "poweroff";
 
-  # Swap partition is retained for memory pressure only; resumeDevice is left
-  # set so re-enabling hibernation later is a one-line change.
+  # Swap partition is retained for memory pressure only. resumeDevice stays
+  # set, but it is INERT: hibernation is refused on a ZFS root
+  # (modules/roles/laptop.nix), and this machine is on the stable channel,
+  # which is what makes it ZFS. Re-enabling hibernation here is a channel
+  # change, not a one-line change — which is why that claim is gone.
   boot.resumeDevice = "/dev/disk/by-partlabel/disk-main-swap";
 
   # Removable-media filesystem compatibility (USB sticks, SD cards, externals

@@ -25,15 +25,12 @@
   # modules/channel.nix for how this swaps the pkgs instance.
   clanarchy.channel = "unstable";
 
-  # btrfs rather than the fleet's ZFS.  Out-of-tree OpenZFS gates the
-  # kernel, which doesn't work on a machine tracking unstable + a Valve
-  # kernel via Jovian (see disko.nix).  This selects the btrfs
-  # impermanence backend — modules/btrfs-impermanence.nix — which blanks
-  # @root on boot but, unlike the ZFS backend, leaves home persistent:
-  # deck's home holds Steam/gamescope state Gaming Mode expects to
+  # btrfs rather than ZFS, and NOT set here: modules/rootfs.nix derives it from
+  # `clanarchy.channel` above, because out-of-tree OpenZFS gates the kernel and
+  # tracking a Valve kernel is the whole reason this machine is on unstable.
+  # The backend rolls back @root on boot but, unlike the ZFS one, leaves home
+  # persistent: deck's home holds Steam/gamescope state Gaming Mode expects to
   # survive.  The game library lives on its own @games subvol.
-  clanarchy.rootfs = "btrfs";
-
   # Bluetooth pairings. A handheld pairs controllers and headphones and must
   # not forget them on every boot; nothing else in the fleet persists this
   # because no other machine depends on pairing as a matter of course.
@@ -59,8 +56,10 @@
   clanarchy.impermanence.rollback.enable = true;
 
   # Hybrid-sleep: the swap partition (see disko.nix) is the resume device.
-  # `clanarchy.roles.laptop.hybridSleep.enable` defaults to true — standard
-  # for laptops and handheld consoles across the clan — so no override here.
+  # `clanarchy.roles.laptop.hybridSleep.enable` defaults on here because this
+  # machine is btrfs, which is itself derived from `clanarchy.channel =
+  # "unstable"` — so no override. It is the only machine in the fleet that
+  # hibernates; see modules/roles/laptop.nix for why ZFS is refused.
   #
   # Derived from the disko disk name rather than written out, because the two
   # must agree and nothing checks that they do. Hardcoding it as

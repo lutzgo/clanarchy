@@ -12,27 +12,39 @@
 # and each guards its own body on this option, the same way modules/channel.nix
 # guards the pkgs swap.  This file holds only what they share.
 #
-# Why two backends: ZFS is the fleet default and gives us encryption plus
-# cheap dataset snapshots.  But OpenZFS is out-of-tree, so it gates the
-# kernel — which is a problem on a machine that has to track a fast-moving
-# one.  birte (Steam Deck, `clanarchy.channel = "unstable"`, Valve kernel)
-# uses btrfs for exactly that reason: it is in-tree and never holds the
-# kernel back.  See docs/guides/first-time-install.md for the one-time
-# blank-snapshot step, which differs per backend.
-{ lib, ... }:
+# ── THE CHOICE IS NOT A SEPARATE ONE.  IT IS DERIVED FROM THE CHANNEL ───────
+#
+# OpenZFS is out-of-tree, so it gates the kernel.  That is the whole reason a
+# second backend exists, and it is exactly the thing a machine on
+# `clanarchy.channel = "unstable"` cannot afford: unstable is chosen *because*
+# the machine must track a fast-moving kernel (birte: Steam Deck, Valve
+# kernel).  So the two decisions were never independent, and this option is now
+# computed rather than set:
+#
+#   channel = "stable"    ->  rootfs = "zfs"
+#   channel = "unstable"  ->  rootfs = "btrfs"
+#
+# It is `readOnly` with a definition here, so a machine that tries to set it
+# gets "is read-only, but it's set multiple times" rather than silently
+# pairing an unstable kernel with an out-of-tree filesystem module.  To change
+# a machine's filesystem, change its channel.
+#
+# See docs/guides/first-time-install.md for the one-time blank-snapshot step,
+# which differs per backend.
+{ config, lib, ... }:
 {
   options.clanarchy.rootfs = lib.mkOption {
     type = lib.types.enum [ "zfs" "btrfs" ];
-    default = "zfs";
-    example = "btrfs";
+    readOnly = true;
     description = ''
       Which filesystem backs this machine's root, and therefore which
       impermanence rollback implementation is active.
-      - `zfs`   — the fleet default (miralda, biene, ernst).
-      - `btrfs` — in-tree, does not gate the kernel; used by birte.
+
+      **Derived from `clanarchy.channel`, not set per machine** — `stable`
+      gives `zfs` (miralda, jens, biene, ernst), `unstable` gives `btrfs`
+      (birte). See the header for why the two are one decision.
     '';
   };
-
   options.clanarchy.impermanence.rollback.enable = lib.mkOption {
     type = lib.types.bool;
     default = true;
@@ -52,6 +64,9 @@
   };
 
   config = {
+    # The derivation itself. One definition, from here — see the header.
+    clanarchy.rootfs = if config.clanarchy.channel == "unstable" then "btrfs" else "zfs";
+
     # Impermanence needs /persist and /home mounted in stage 1, and the
     # rollback units in both backends are systemd-initrd services.
     boot.initrd.systemd.enable = true;
