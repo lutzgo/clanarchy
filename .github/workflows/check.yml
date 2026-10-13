@@ -25,34 +25,32 @@ jobs:
       # persists the evaluated store paths between runs.
       - uses: DeterminateSystems/magic-nix-cache-action@v8
 
-      # Eval only — deliberately no `nix build`.
+      # Two steps, deliberately.
       #
-      # Building five toplevels would pull KDE, Steam and Plasma closures on
-      # every PR and take tens of minutes; evaluating them catches the whole
-      # class of errors that actually reaches a PR here (missing options,
-      # renamed attributes, type mismatches, broken module wiring) in about a
-      # minute. Real builds stay a pre-merge step on a machine with the store
-      # already warm — see docs/guides/accepting-pull-requests.md.
+      # The first is byte-for-byte what a local session runs (`check` in the
+      # devShell, or ./scripts/check.sh), so "it passed locally" and "it passed
+      # in CI" mean the same thing — and it prints one readable line per
+      # machine, evaluating all five before failing so one break cannot hide
+      # four.
       #
-      # --no-update-lock-file so a PR cannot silently pass against a lock it
-      # did not commit.
+      # The second builds `checks.mneme` — 37 tests that run at build time and
+      # otherwise only run if someone happens to build ernst.
+      #
+      # NOT `nix flake check`, and this was MEASURED rather than assumed: it
+      # took this job from 7m12s to 30m37s, because it re-evaluates all five
+      # nixosConfigurations on top of the step above and then evaluates every
+      # other flake output as well. Building the one check that adds coverage
+      # gets the tests for a few seconds. `nix flake check` still works and is
+      # the right thing to run locally when changing flake outputs.
+      #
+      # Still no `nix build` of a machine toplevel: five of them would pull KDE,
+      # Steam and Plasma closures on every PR. Real builds stay a pre-merge step
+      # on a warm store — see docs/guides/accepting-pull-requests.md.
+      #
+      # --no-update-lock-file so a PR cannot silently pass against a lock it did
+      # not commit.
       - name: Evaluate all machine toplevels
-        run: |
-          set -euo pipefail
-          rc=0
-          for machine in miralda jens biene birte ernst; do
-            echo "::group::$machine"
-            if nix eval --no-update-lock-file --raw \
-                 ".#nixosConfigurations.$machine.config.system.build.toplevel.drvPath"; then
-              echo ""
-              echo "$machine: OK"
-            else
-              echo ""
-              echo "$machine: FAILED"
-              rc=1
-            fi
-            echo "::endgroup::"
-          done
-          # Evaluate every machine before failing, so one broken machine does
-          # not hide breakage in the other four.
-          exit "$rc"
+        run: bash scripts/check.sh
+
+      - name: Run the mneme test suite
+        run: nix build --no-update-lock-file -L --no-link '.#checks.x86_64-linux.mneme'

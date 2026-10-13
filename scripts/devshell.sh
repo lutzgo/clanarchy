@@ -124,3 +124,14 @@ docs() {
   mkdocs "$@"
 }
 export -f docs
+
+# ── Checks ──────────────────────────────────────────────────────────────────
+
+# The gate before asking for a deploy. Same script CI runs, so a local pass and
+# a CI pass mean the same thing.
+# Usage: check                  — every machine
+#        check miralda jens     — just these
+check() {
+  bash scripts/check.sh "$@"
+}
+export -f check
