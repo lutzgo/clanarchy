@@ -4,10 +4,19 @@ All `clanarchy.*` NixOS options defined in `modules/`. These pages are generated
 
 | Page | Namespace | Source |
 |------|-----------|--------|
+| [Hardware](hardware.md) | `clanarchy.hardware.*`, `clanarchy.display.*`, `clanarchy.locale.*` | `modules/hardware/` |
 | [Roles](roles.md) | `clanarchy.roles.*` | `modules/roles/` |
-| [Desktop (Niri)](desktop.md) | `clanarchy.desktop.niri.*` | `modules/desktop/niri.nix` |
-| [WiFi](wifi.md) | `clanarchy.wifi.*` | `modules/wifi.nix` |
+| [Desktop](desktop.md) | `clanarchy.desktop.*`, `clanarchy.iconTheme.*` | `modules/desktop/` |
+| [Apps](apps.md) | `clanarchy.apps.*`, `clanarchy.immich.*` | `modules/apps/` |
 | [Users](users.md) | `clanarchy.users.*` | `modules/users/` |
+| [WiFi](wifi.md) | `clanarchy.wifi.*` | `modules/wifi.nix` |
+
+!!! warning "Two ways an option silently never appears here"
+    `scripts/gen-options.py` evaluates **only `miralda` and `biene`**, so an
+    option that exists only on ernst, jens or birte is absent. And its `PAGES`
+    map keys on option prefixes — a new top-level prefix that matches no entry
+    is dropped. Both failures are silent; see
+    [adding a module](../guides/adding-a-module.md).
 
 ## Regenerating
 

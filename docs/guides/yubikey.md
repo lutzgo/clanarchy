@@ -89,6 +89,71 @@ programs.ssh.knownHosts."miralda.goclan.org" = {
 
 ---
 
+### First-time setup of the auth subkey
+
+Only needed when provisioning a new card or a new master key. Prerequisites: a
+YubiKey 5 with the OpenPGP app enabled, an existing GPG master key, and both
+PINs (defaults `123456` / `12345678`).
+
+**1. Create a dedicated ed25519 auth subkey.** Do not reuse a Sign or Encrypt
+subkey for SSH.
+
+```bash
+gpg --quick-add-key <FINGERPRINT> ed25519 auth
+gpg -K --with-keygrip          # look for `ssb [A] ed25519`; note its keygrip
+```
+
+**2. Move it to the card.**
+
+```bash
+gpg --edit-key <FINGERPRINT>
+# gpg> key 0        deselect everything
+# gpg> list         find the [A] subkey's position N
+# gpg> key N        select ONLY that one
+# gpg> keytocard    choose slot 3 (Authentication); User PIN, then Admin PIN
+# gpg> save
+```
+
+`key 1` selects the first *subkey*, which is usually not the auth key — use
+`list` and match on `[A]`. Afterwards `gpg -K` shows `ssb>` for it; the `>`
+means the private half is on the card.
+
+**3. Export the SSH public key** to `machines/miralda/yubikey_ed25519.pub`:
+
+```bash
+gpg --export-ssh-key <FINGERPRINT>    # ssh-ed25519 AAAA… openpgp:0xXXXXXXXX
+```
+
+**4. Add the keygrip to `sshcontrol`** — gpg-agent only exposes keys listed
+there:
+
+```bash
+echo "<KEYGRIP> 0" >> ~/.gnupg/sshcontrol
+ssh-add -L                     # should now show the ed25519 key
+```
+
+The trailing `0` means "confirm on each use". `.gnupg` is persisted through
+impermanence, so this survives reboots.
+
+**5. Authorise it.** The pubkey is read into `openssh.authorizedKeys.keys` by
+`modules/users/admin.nix` and `modules/users/lgo.nix`:
+
+```nix
+openssh.authorizedKeys.keys = [
+  (builtins.readFile ../../machines/miralda/yubikey_ed25519.pub)
+];
+```
+
+Then deploy. Verify end to end:
+
+```bash
+gpg --card-status     # card detected, PIN retry counter 3
+ssh-add -L            # key exposed by the agent
+ssh root@ernst true   # PIN prompt, then success
+```
+
+---
+
 ## Age encryption (clan vars / sops)
 
 The YubiKey PIV applet holds an **age recipient** via `age-plugin-yubikey`. This allows clan vars secrets and sops files to be encrypted to the YubiKey — decryptable only when the key is inserted and the PIN is entered.
@@ -170,6 +235,27 @@ The YubiKey must be inserted and PIN available.
 ---
 
 ## Troubleshooting
+
+### SSH signing fails
+
+`sign_and_send_pubkey: signing failed … agent refused operation`, usually with
+`smartcard signing failed: General error` in the gpg-agent log. In order:
+
+1. Card inserted? `ykman list`
+2. PIN not blocked? `gpg --card-status | grep 'PIN retry'` — a counter of `0`
+   needs the Admin PIN to clear:
+   ```bash
+   gpg --card-edit
+   # → admin → passwd → option 2 (Unblock PIN)
+   ```
+3. Stale scdaemon? `gpgconf --kill gpg-agent && gpg --card-status`
+4. Does the host have `HostKeyAlgorithms=ssh-ed25519`? See
+   [the quirk](#hostkeyalgorithms-quirk) — and note a *new* `Host` alias does
+   not inherit it from a pattern block, so the workaround has to be repeated on
+   the alias.
+
+If gpg-agent's log shows the failure *before* pinentry or scdaemon are reached,
+it is almost always (4).
 
 ### gpg-agent not forwarding SSH key
 

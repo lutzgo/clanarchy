@@ -1,50 +1,68 @@
 # clanarchy
 
-NixOS declarative configuration built on [clan-core](https://git.clan.lol/clan/clan-core), managing four machines:
+NixOS declarative configuration built on [clan-core](https://git.clan.lol/clan/clan-core), managing five machines:
 
 | Machine | Hardware | Role |
 |---------|----------|------|
 | `miralda` | Framework 13 AMD | daily-driver laptop (Niri, YubiKey, lgo) |
+| `jens` | Framework 12 Intel, convertible | second laptop, same desktop as miralda |
 | `biene` | Lenovo laptop | Sabine's machine (labwc + Noctalia) |
 | `birte` | Steam Deck OLED (Galileo) | Steam Gaming Mode via Jovian-NixOS; KDE Plasma 6 fallback |
-| `ernst` | AM5/X870E homelab | headless server (NAS + VM host + GPU compute) |
+| `ernst` | AM5/X870E homelab | headless server — NAS, VM host, GPU compute, ~20 containerised services |
 
-**Stack:** ZFS + impermanence · Wayland compositors (Niri, labwc, KDE) · Noctalia shell · YubiKey PIV (age) + GnuPG (SSH) · clan vars for secrets.
+**Stack:** ZFS or btrfs + impermanence · Wayland compositors (Niri, labwc, KDE) · Noctalia shell · YubiKey PIV (age) + GnuPG (SSH) · clan vars for secrets.
 
 Full docs: **[lutzgo.github.io/clanarchy](https://lutzgo.github.io/clanarchy)** (or `docs serve` locally).
 
 ---
 
-## Prerequisites
+## Working on this repo
 
-- Nix with flakes enabled
-- [clan-cli](https://clan.lol/docs/getting-started/) (provided by the devShell)
-- A configured YubiKey with a PIV age identity (needed for secret decryption on `miralda`)
-
----
-
-## Development shell
+Read **[AGENTS.md](AGENTS.md)** first — it is the short version of every
+convention here, and it is what both Claude Code and OpenCode read.
 
 ```bash
-nix develop           # or: direnv allow, if you use direnv
+direnv allow          # or: nix develop
+check                 # evaluate every machine — the one gate before a deploy
 ```
 
-Deploying is the clan CLI — there is no wrapper:
+Changes go through a PR; nothing lands on `main` directly. The repo is driven
+with [jj](docs/guides/jj-workflow.md), not git:
+
+```bash
+jj git fetch
+jj new main -m "<message>"
+# …edit. Editing again *is* amending; there is no add and no commit.
+jj st                                     # read this before the next line
+jj bookmark set <type>/<slug> -r @        # feat/ fix/ docs/ chore/ vars/ wip/
+jj git push --bookmark <type>/<slug>
+gh pr create --head <type>/<slug>
+```
+
+Prerequisites: Nix with flakes, and — for anything touching secrets on
+`miralda` — a YubiKey with a PIV age identity. `clan-cli` comes from the
+devShell.
+
+## Deploying
+
+The clan CLI, with no wrapper around it:
 
 ```bash
 clan machines update <machine>       # miralda | jens | biene | birte | ernst
 clan vars generate <machine>         # (re)generate secrets, then update
 ```
 
-The devShell adds only what clan does not cover:
+It needs a real terminal. See [deploy](docs/guides/deploy.md) for the flags, the
+roaming overrides, and why the old `deploy-<machine>` helpers were removed.
+
+## What else the devShell adds
 
 ```bash
-push [remote] [branch]       # git push via gh credential helper (works with impermanent ~/.config/git)
-gendocs                      # regenerate docs/reference/*.md from live NixOS config
+check [machine…]             # evaluate machines; same script CI runs
+push [remote] [branch]       # git push via gh credential helper (read-only ~/.config/git)
+gendocs                      # regenerate docs/reference/*.md from live config
 docs serve                   # local mkdocs preview
 ```
-
-See [docs/guides/deploy.md](docs/guides/deploy.md) for the full breakdown, including `--target-host`/`--build-host` and why the old `deploy` helpers were removed.
 
 ### Pushing with `gh`
 
@@ -64,32 +82,6 @@ gh auth login
 New machines are installed by booting the Clan installer USB, then running `clan machines install <name>` from an existing clan machine. The installer uses the YubiKey pubkey embedded in `machines/miralda/yubikey_ed25519.pub` so no manual SSH-key setup is needed.
 
 Full walkthrough: **[docs/guides/first-time-install.md](docs/guides/first-time-install.md)**.
-
----
-
-## Day-to-day workflow
-
-The repo is driven with **jj (Jujutsu)**, colocated with git — see [docs/guides/jj-workflow.md](docs/guides/jj-workflow.md). Nothing lands on `main` except through a pull request.
-
-```bash
-# 1. Start the change (a tracked `main` advances on its own):
-jj git fetch
-jj new main -m "<message>"
-
-# 2. Edit config files. There is no `add` and no `commit` — edits are
-#    snapshotted into the working-copy revision as you go; `jj st` shows them.
-
-# 3. Deploy (builds, then activates — there is no staged-only mode):
-clan machines update miralda
-
-# 4. Name it and push, then open the PR:
-jj bookmark set <type>/<slug> -r @
-jj git push --bookmark <type>/<slug>
-gh pr create
-```
-
-If a `secrets/` generator or `sops` config changes, run `clan vars generate <machine>`, then `clan machines update <machine>` to deploy it.
-
 ---
 
 ## YubiKey usage
@@ -123,20 +115,21 @@ gpg --card-status        # re-triggers agent + card detection
 
 ## Architecture
 
-Authoritative source: **[docs/index.md](docs/index.md)** for the overview and **[docs/reference/](docs/reference/)** for the auto-generated `clanarchy.*` option tables.
+Authoritative: **[docs/architecture/](docs/architecture/machines.md)** — the
+machines, the modules and clan services, and the decisions whose reason is not
+visible from the code. `docs/reference/` carries the generated `clanarchy.*`
+option tables.
 
 At a glance:
 
-- `flake.nix` — inputs, devShell, and clan machine composition (uses `lib/mk-machine.nix` helpers).
-- `clan.nix` — clan-core metadata (`name = clanarchy`, `domain = goclan.org`), nixpkgs overlays, and clan-service inventory instances.
-- `lib/mk-machine.nix` — `mkModuleArgs`, `commonBase`, `commonHeadful` — reusable pieces that keep the per-machine blocks small. Per-machine nixpkgs channel selection is in `modules/channel.nix` (`clanarchy.channel = "stable" | "unstable"`).
-- `modules/` — reusable NixOS modules (hardware, roles, apps, desktop, users, disko/stylix bases).
-- `service-modules/` — custom clan-service definitions (`@clanarchy/machine-type`, `@clanarchy/desktop`, `@clanarchy/users`, `@clanarchy/yubikey`, `@clanarchy/printing`, `@clanarchy/software`, `@clanarchy/local-ai`).
-- `machines/{miralda,biene,birte,ernst}/` — machine-specific `configuration.nix`, `disko.nix`, `stylix.nix`, plus per-machine extras (wallpapers, Jovian wiring, etc.).
-- `vars/per-machine/` — generated clan vars (secrets committed encrypted, plaintext gitignored).
+- `flake.nix` — inputs, devShell, flake `checks`, and clan machine composition (via `lib/mk-machine.nix`).
+- `clan.nix` — clan-core metadata, nixpkgs overlays, and the clan-service inventory instances.
+- `lib/mk-machine.nix` — `mkModuleArgs`, `commonBase`, `commonHeadful`.
+- `modules/` — shared NixOS modules (hardware, roles, apps, desktop, users, disko and stylix bases).
+- `service-modules/` — the `@clanarchy/*` clan services.
+- `machines/<name>/` — per-machine configuration, disko, and extras.
+- `vars/` — generated clan vars (encrypted in git; plaintext gitignored).
 - `sops/` — sops age keys.
-
----
 
 ## Adding a machine to syncthing
 
