@@ -117,7 +117,7 @@ whisper are children of `llama-swap.service`, so the group arbitrates them. The
 session is not, so it cannot evict — it aborts. The word "anything" was doing
 damage.
 
-`docs/roadmap.md`'s M15 close-out had also recorded the problem as
+`docs/history.md`'s M15 close-out had also recorded the problem as
 **UNPROVOKED** ("no service claims the render node"). M19 later added a re-open
 trigger noting it was provoked and that "something now arbitrates it". That
 arbitration is intra-llama-swap only, and the session is exactly the claimant

@@ -66,7 +66,7 @@
 #   unreserved topic is a BEARER SECRET.  Knowing it grants both read and
 #   publish, so a single leak — a screenshot, a pasted journal line, a public
 #   commit — hands over every pool alert this fleet emits and the ability to
-#   forge them.  That happened on 2026-08-24 (see docs/roadmap.md, M6), and
+#   forge them.  That happened on 2026-08-24 (see docs/history.md, M6), and
 #   rotation was the only available remedy because there was no second factor
 #   to revoke.  With a reserved topic set to deny anonymous access, a leaked
 #   TOPIC is worth nothing on its own, and a leaked TOKEN is revocable from
@@ -80,7 +80,7 @@
 #   THE ORDER MATTERS: account, reserve the topics, deny anonymous access, mint
 #   a token per machine, and only then flip the option.  The full sequence,
 #   including the negative test that proves the reservation actually took, is
-#   in docs/roadmap.md under "Enabling ntfy auth — the order matters".
+#   in M6's PRs, linked from docs/history.md.
 { config, lib, pkgs, ... }:
 let
   cfg = config.clanarchy.zfs.ntfy;

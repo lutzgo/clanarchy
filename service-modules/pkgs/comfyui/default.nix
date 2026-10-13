@@ -15,7 +15,7 @@
 # M19 shipped `roles.imagegen` written for the podman tier against a
 # digest-pinned community image, and M21 was framed as choosing which image.
 # The survey killed all three candidates and the tier along with them
-# (docs/roadmap.md §M21 carries the full record; the short version):
+# (the full record is in M21's PRs, linked from docs/history.md; the short version):
 #
 #   * AMD's OWN image, docker.io/rocm/comfyui, is built
 #     `PYTORCH_ROCM_ARCH=gfx942;gfx950` — Instinct only.  It has no kernels for

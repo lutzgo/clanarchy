@@ -383,13 +383,13 @@ let
   #   So this number exists to be PINNED AND BOUND TO LOOPBACK, not to be
   #   opened.  Left at Spring Boot's default it would be 8080 on 0.0.0.0 —
   #   i.e. on the veth, on VLAN 90 — which is the umlautadaptarr trap again.
-  #   8978 is the number docs/roadmap.md reserved for Janitorr, kept so the
+  #   8978 is the number docs/history.md reserved for Janitorr, kept so the
   #   roadmap and the repo agree even though nothing routes to it.
   janitorrPort = 8978;
 
   # ── M14 ports ─────────────────────────────────────────────────────────────
   #
-  # VERIFIED AGAINST UPSTREAM, as docs/roadmap.md's M14 requires — and one of
+  # VERIFIED AGAINST UPSTREAM, as docs/history.md's M14 requires — and one of
   # the four was wrong in the roadmap, which is exactly why it says "verify"
   # rather than listing them as fact:
   #
@@ -765,7 +765,7 @@ let
   #
   # NO NEW ACCOUNT IS DECLARED FOR IT.  Navidrome's users live in its own
   # database and are created in its UI; the credential Music Assistant
-  # authenticates with is a manual step (docs/roadmap.md M30).  This rule opens
+  # authenticates with is a manual step (docs/history.md M30).  This rule opens
   # the door; it does not hand over a key.
   massAddr = "10.0.90.30";
 
@@ -829,7 +829,7 @@ let
   # boundary inside the hardlink domain and invariant #2 is untouched.  Nothing
   # here is ever hardlinked: Audiobookshelf has no importer, and Storyteller
   # reads a pair and writes a new file rather than linking either.  That is why
-  # docs/roadmap.md exempts Audiobookshelf from M14's hardlink proof.
+  # docs/history.md exempts Audiobookshelf from M14's hardlink proof.
   audiobooksRoot = "/srv/audiobooks";
 
   # M13.  Janitorr's Jellyfin credentials, staged host-side out of sops and
@@ -1573,7 +1573,7 @@ in
   # There is deliberately NO `networking.firewall.allowedTCPPorts` here.  The
   # three web UIs are opened inside the container's own netns (below); on the
   # host they are not ports at all.  Reachability from the management VLANs is
-  # the UDM-Pro's job — ledger row L4 in docs/roadmap.md.
+  # the UDM-Pro's job — ledger row L4 in docs/ledger.md.
   #
   # KeepMaster, not Bridge=: nspawn creates this link AND enslaves it to br0
   # itself (--network-bridge=br0), so Bridge= would make networkd fight nspawn
@@ -1869,7 +1869,7 @@ in
       # Four of M12's six additions have no nixpkgs package and no NixOS
       # module, surveyed against ernst's own pin on the session date rather
       # than trusted from a table (2026-08-26; the 2026-08-25 survey in
-      # docs/roadmap.md still held).  Byparr is split out — see the M12 note
+      # docs/history.md still held).  Byparr is split out — see the M12 note
       # in the header — leaving three, in ./pkgs.
       #
       # callPackage from the CONTAINER's pkgs, not the host's: these end up in
@@ -1908,7 +1908,7 @@ in
       # Three of M14's six additions land in this container without a nixpkgs
       # package or module.  Surveyed against ernst's own pin on the session
       # date (2026-08-28, nixpkgs fcb8fcd) — the 2026-08-25 survey in
-      # docs/roadmap.md still held exactly.
+      # docs/history.md still held exactly.
       #
       # The three that DO have modules are lidarr and audiobookshelf (below)
       # and slskd (in the microvm guest).  The sixth, Storyteller, is not here
@@ -1921,7 +1921,7 @@ in
       #   soularr    a SCRIPT with no build system at all.  Its own header
       #              explains why that makes it a stdenv derivation rather
       #              than buildPythonApplication, and why it runs from a timer.
-      #   kapowarr   the release-artifact case docs/roadmap.md's packaging
+      #   kapowarr   the release-artifact case docs/history.md's packaging
       #              rule prefers: an upstream zip, unpacked, wrapped.
       #   questarr   the only REAL build in M14 — buildNpmPackage over a Vite
       #              frontend and a tsc server pass, because upstream publishes
@@ -2738,7 +2738,7 @@ in
       #
       # ── NO uid, AND THAT IS A DEPARTURE FROM THE ROADMAP ─────────────────
       #
-      # docs/roadmap.md reserves uid 3010 for this service, "own group, no
+      # docs/history.md reserves uid 3010 for this service, "own group, no
       # media access — a proxy, same argument as prowlarr".  The access half
       # of that is kept exactly; the static uid is not, and M12's own rule is
       # what overturns it:
@@ -2998,7 +2998,7 @@ in
       #     would degrade or break the capability it exists to provide.
       #
       # NOTE FOR M8: this is the milestone that changes whether M8 needs to
-      # exist at all.  See the M8 amendment in docs/roadmap.md.
+      # exist at all.  See the M8 amendment in docs/history.md.
       systemd.services.mediathekarr-indexer = {
         description = "MediathekArr indexer — ARD/ZDF Mediathek as Newznab";
         wantedBy    = [ "multi-user.target" ];
@@ -3133,7 +3133,7 @@ in
       #   archives under /srv/media/library
       #                              0
       #
-      # There is nothing for it to do.  SKIPPED, recorded in docs/roadmap.md so
+      # There is nothing for it to do.  SKIPPED, recorded in docs/history.md so
       # it is not re-litigated in six months, and uid 3013 stays reserved and
       # unused.
       #
@@ -3146,7 +3146,7 @@ in
       #
       # ── THE MODULE WAS RENAMED, AND THE OPTION YOU WANT IS `services.seerr` ─
       #
-      # docs/roadmap.md's M13 prompt says "jellyseerr HAS a module", surveyed
+      # docs/history.md's M13 prompt says "jellyseerr HAS a module", surveyed
       # 2026-08-25.  It still does, but in ernst's own pin it is reached under a
       # different name: nixos/modules/services/misc/seerr.nix declares
       # `services.seerr` and imports
@@ -3743,7 +3743,7 @@ in
       # NOT support the `*_FILE` form (upstream's config.yaml says so in a
       # comment).  Environment variables support both.
       #
-      # A NOTE AGAINST docs/roadmap.md, which says "env-var mode does NOT
+      # A NOTE AGAINST docs/history.md, which says "env-var mode does NOT
       # support multiple instances, so the file-based path is the only one that
       # works here."  That was true once; at v3.1.0 it is not.  Reading
       # src/scraparr/parser/__init__.py:
@@ -4498,7 +4498,7 @@ in
         # BOTH of these differ from the module's defaults, and both have to.
         #
         #   port  the module defaults to 8000; 13378 is what upstream, every
-        #         client and docs/roadmap.md use.
+        #         client and docs/history.md use.
         #   host  the module defaults to 127.0.0.1, which would make it
         #         unreachable from Traefik in another container entirely.  The
         #         container firewall is what restricts it, as everywhere else
@@ -4895,7 +4895,7 @@ in
       # automation.  Readarr is archived (its metadata backend died);
       # Bindery is the successor picked on FIT — see ./pkgs/bindery.nix for
       # the survey correction (upstream's own repo description was the stale
-      # artifact) and docs/roadmap.md's M17 for the full comparison.
+      # artifact) and docs/history.md's M17 for the full comparison.
       #
       # ── EVERY M14 DEPLOY DEFECT, ANSWERED IN PLACE ───────────────────────
       #
@@ -5965,7 +5965,7 @@ in
       # i.e. state under /var/lib/private/prowlarr owned by a uid systemd
       # allocates at run time.  That is a bad fit for a bind mount from zdata,
       # and this repo has already paid for the lesson once: see the Ollama rows
-      # in docs/roadmap.md, where DynamicUser plus persistent state left a
+      # in docs/history.md, where DynamicUser plus persistent state left a
       # stale symlink and a directory nothing could read.  The dynamic uid is
       # derived from the unit name and is usually stable — "usually" is the
       # problem, because the failure is a database the service cannot open.

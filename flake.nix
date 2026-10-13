@@ -58,7 +58,7 @@
     # remaining 26.05 readers are inert.
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    # microvm.nix — the microvm isolation tier (docs/roadmap.md invariant #1).
+    # microvm.nix — the microvm isolation tier (docs/invariants.md, invariant #1).
     #
     # Pre-approved by M3 and scoped to it: the VPN/qBittorrent guest is the one
     # workload on ernst that talks to the open internet on its own behalf, so it
@@ -390,7 +390,7 @@
           # It replaces M16's containers/cloudflared.nix, which was the
           # fleet's WAN ingress until the tunnel was dropped.  The fail-closed
           # argument that file carried now lives in traefik.nix's header and
-          # in docs/roadmap.md M16 — a deleted rationale is a rationale that
+          # in docs/history.md M16 — a deleted rationale is a rationale that
           # gets re-lost.
           ./machines/ernst/containers/crowdsec.nix
           # M22.  Immich — the household photo library, on the NSPAWN tier

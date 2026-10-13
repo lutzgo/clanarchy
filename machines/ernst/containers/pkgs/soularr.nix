@@ -22,7 +22,7 @@
 #
 # ── IT IS A ONE-SHOT, NOT A DAEMON.  THIS DECIDES THE UNIT ─────────────────
 #
-#   docs/roadmap.md's M14 prompt lists Soularr beside Lidarr and Kapowarr as
+#   docs/history.md's M14 prompt lists Soularr beside Lidarr and Kapowarr as
 #   though all three were services.  They are not the same shape: Soularr runs,
 #   does a pass, and EXITS.  Upstream's Docker image fakes a daemon with a
 #   `SCRIPT_INTERVAL` sleep loop, and its README's non-Docker instruction is a
@@ -58,7 +58,7 @@
 #
 #   v1.2.2 (2026-04-28) is the newest release; it carries no release assets, so
 #   the source tag is the artifact.  Pinned with a version and a hash rather
-#   than a flake input, for the reason docs/roadmap.md's packaging section
+#   than a flake input, for the reason docs/history.md's packaging section
 #   gives: `nix flake update` must not be able to move a service silently.
 {
   lib,

@@ -394,7 +394,7 @@
         #   Nothing here is ever hardlinked from anywhere.  Audiobookshelf has
         #   no importer — it scans a directory a human fills — and Storyteller
         #   READS a pair and WRITES a new file rather than linking either.  So
-        #   there is no chain to break, which is exactly why docs/roadmap.md
+        #   there is no chain to break, which is exactly why docs/history.md
         #   says Audiobookshelf is the one M14 service that does not owe the
         #   hardlink proof.
         #

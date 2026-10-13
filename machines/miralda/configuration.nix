@@ -111,7 +111,7 @@
   # `all_machines = list(flake.list_machines_full().values())`).  So a pending
   # prompt here blocks the ERNST deploy that would make the key obtainable —
   # measured on 2026-09-11, which is how this line came to be `false`.  See
-  # standing note SN5 in docs/roadmap.md.
+  # standing note SN5 in docs/standing-notes.md.
   #
   # TO TURN IT ON, once ernst is up and the accounts exist:
   #

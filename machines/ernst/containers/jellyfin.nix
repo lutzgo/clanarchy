@@ -12,7 +12,7 @@
 #   Jellyfin has its own L2 identity: a MAC-pinned veth pair whose host side
 #   (vb-jellyfin) is a VLAN-90 port on br0, so the UDM-Pro firewalls it as a
 #   distinct client rather than as "ernst".  That is what retired ledger row
-#   L3 in docs/roadmap.md — the host-side 8096/tcp opening is gone, because
+#   L3 in docs/history.md — the host-side 8096/tcp opening is gone, because
 #   the port is no longer a host port.  The ACL lives on the UDM-Pro now.
 #
 #   THREE THINGS THE v1 HEADER GOT WRONG, kept here so they are not retried:
@@ -253,7 +253,7 @@ in
   # There is deliberately NO `networking.firewall.allowedTCPPorts = [ 8096 ]`
   # here any more.  Under v1 the container shared the host netns, so Jellyfin's
   # port was a host port and had to be opened on the host; that was ledger row
-  # L3 in docs/roadmap.md and this milestone retires it.  8096 is now opened
+  # L3 in docs/history.md and this milestone retires it.  8096 is now opened
   # inside the container's own netns (see its networking.firewall block) and
   # reachability across VLANs is the UDM-Pro's job.
   #

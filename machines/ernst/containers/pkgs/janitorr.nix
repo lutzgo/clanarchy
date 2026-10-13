@@ -26,7 +26,7 @@
 #
 #   And the container route is closed anyway: `virtualisation.oci-containers`
 #   inside an nspawn container is REJECTED for this repo — see the packaging
-#   section of docs/roadmap.md.  So source build it is.
+#   section of docs/history.md.  So source build it is.
 #
 # ── THE FOUR THINGS THAT MAKE THE SOURCE BUILD NON-OBVIOUS ───────────────────
 #

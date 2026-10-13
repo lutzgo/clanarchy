@@ -78,7 +78,7 @@
   #
   # firing once per keypress. The result is a shell navigable only by
   # touchscreen, since touch goes straight to KWin and never enters the
-  # portal. That is upstream, not configuration — see docs/roadmap.md.
+  # portal. That is upstream, not configuration — see docs/history.md.
   #
   # An earlier revision shadowed plasma.desktop with Bigscreen so that
   # steamos-manager's fixed allowlist would land there. That worked, and is

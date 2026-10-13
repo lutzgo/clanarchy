@@ -2,7 +2,7 @@
 #
 # TubeSync on ernst: subscribe to YouTube channels and playlists, download with
 # yt-dlp on a schedule, and write straight into the tree Jellyfin already scans
-# — no import stage, no second copy (M9 in docs/roadmap.md).
+# — no import stage, no second copy (M9 — see docs/history.md).
 #
 # ── TIER: podman, AND THE PREMISE WAS RE-CHECKED RATHER THAN INHERITED ──────
 #
@@ -115,7 +115,7 @@
 #   **Authelia consumes that header as its own credential**: any request
 #   carrying one is rejected 401 by Authelia before it ever reaches the
 #   backend.  M8 lost most of a session to precisely this with Tvheadend's
-#   digest auth (see the M8 close-out in docs/roadmap.md).  The general rule,
+#   digest auth (see the M8 close-out in docs/history.md).  The general rule,
 #   now paid for twice: **a backend whose own auth uses the `Authorization`
 #   header cannot sit behind a forward-auth middleware.**  Leave both env vars
 #   unset; Authelia is the gate.

@@ -58,7 +58,7 @@
 #   2.20.15.  Taking them would mean a cross-channel module AND package import
 #   onto a stable machine, plus an embedding model llama-swap does not have and
 #   that M20 refused on the grounds that the only offer was an unpinned runtime
-#   HuggingFace download.  Recorded as a decision in docs/roadmap.md, deferred
+#   HuggingFace download.  Recorded as a decision in docs/history.md, deferred
 #   until 26.11 ships 3.x in-tree.  What 2.20.15 DOES have and what this relies
 #   on instead is the scikit-learn classifier, which learns tags, correspondents
 #   and document types from the household's own corrections.

@@ -1,6 +1,6 @@
 # machines/ernst/containers/immich.nix
 #
-# Immich — the household photo library (M22 in docs/roadmap.md).  An nspawn
+# Immich — the household photo library (M22 — see docs/history.md).  An nspawn
 # container on VLAN 90, serving `photos.goclan.org` through Traefik on BOTH
 # entrypoints, with its own accounts and no forward-auth.
 #
@@ -139,7 +139,7 @@
 #     2. THE PUBLIC A RECORD IS CREATED LAST.  `photos.goclan.org` is on the
 #        `wan` entrypoint from the moment this lands, but a name with no public
 #        A record is not reachable from the internet no matter what Traefik is
-#        willing to serve.  The manual steps in docs/roadmap.md M22 put the
+#        willing to serve.  The manual steps in docs/history.md M22 put the
 #        record AFTER both accounts exist, deliberately.
 #
 #   Either one alone would be sufficient.  Both are used because the cost is a
@@ -240,7 +240,7 @@ let
   # FIRST-RUN WINDOW" in the file header for why this exists at all and for the
   # second, independent control (the public A record is created last).
   #
-  # The procedure, in order, is in docs/roadmap.md M22's manual steps.  If you
+  # The procedure, in order, is in docs/history.md M22's manual steps.  If you
   # are reading this because signup returns an error: that is this line doing
   # its job, and flipping it is a deploy, not a restart.
   adminSetupOpen = false;

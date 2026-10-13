@@ -2,7 +2,7 @@
 #
 # UmlautAdaptarr — M12 (b).  Not in nixpkgs (surveyed against ernst's own pin on
 # 2026-08-26, the session date, exactly as the packaging section of
-# docs/roadmap.md requires; the 2026-08-25 table still held).
+# docs/history.md requires; the 2026-08-25 table still held).
 #
 # ── Why the upstream RELEASE ARTIFACT and not a source build ─────────────────
 #

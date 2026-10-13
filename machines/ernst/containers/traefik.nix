@@ -47,7 +47,7 @@
 #   M18 replaced the Cloudflare Tunnel with a UDM-Pro port forward.  The tunnel
 #   is gone and machines/ernst/containers/cloudflared.nix is deleted, so THIS
 #   COMMENT IS NOW THE ONLY PLACE THE ARGUMENT LIVES.  Read it before adding a
-#   router, and read docs/roadmap.md M16 for the tunnel-versus-forward history.
+#   router, and read docs/history.md M16 for the tunnel-versus-forward history.
 #
 #   WHAT M16 BOUGHT, PRECISELY.  Not "hides the home IP" — the address was
 #   already public and M3 recorded it.  Not DDoS absorption.  What it bought is
@@ -475,7 +475,7 @@ let
   # podman tier and therefore its own netns, MAC and DHCP reservation.
   #
   # Ports verified against upstream on 2026-08-28 — and audiobookshelf's is the
-  # one docs/roadmap.md got wrong: nixpkgs' module defaults to 8000, while
+  # one docs/history.md got wrong: nixpkgs' module defaults to 8000, while
   # 13378 is the Docker image's number and what every client expects.
   # containers/arr.nix sets it explicitly for that reason.
   lidarrPort         = 8686;
@@ -732,7 +732,7 @@ let
   # set has not grown.
   #
   # ADDING A NAME HERE IS GROWING THE INTERNET-FACING SURFACE OF THE HOUSE.
-  # It needs: a public A record at the registrar, a row in docs/roadmap.md's
+  # It needs: a public A record at the registrar, a row in docs/history.md's
   # ledger, and — for anything that is not Jellyseerr or the portal — an answer
   # to why the unauthenticated attack surface should stop being Authelia.
   #
@@ -895,7 +895,7 @@ let
     # Nextcloud (M23).  Off-LAN reach is most of the reason to run it: a phone
     # that only syncs on the home wifi is a phone that syncs when the photos
     # are already safe.  Same three separate acts as every other name here —
-    # this entry, a public A record, and the ledger row in docs/roadmap.md.
+    # this entry, a public A record, and the ledger row in docs/ledger.md.
     "nextcloud"
 
     # Home Assistant (M24).  Off-LAN reach is the requirement rather than a
@@ -906,7 +906,7 @@ let
     # hub reachable only on the home wifi cannot know anyone has left it.
     #
     # Same three separate acts as every other name here: this entry, a public A
-    # record, and the ledger row (L15) in docs/roadmap.md.
+    # record, and the ledger row (L15) in docs/ledger.md.
     "homeassistant"
 
     # The service index (M26).  Off-LAN reach is the modest half of the case
@@ -931,7 +931,7 @@ let
     # also no login endpoint on this backend to point a matcher at.
     #
     # Same three separate acts as every other name here: this entry, a public A
-    # record, and the ledger row (L16) in docs/roadmap.md.
+    # record, and the ledger row (L16) in docs/ledger.md.
     "homepage"
 
     # Karakeep (M27), and the interesting part is what is NOT here beside it.
@@ -949,7 +949,7 @@ let
     # login-path rate limit redundant behind forward-auth does not apply.
     #
     # Same three separate acts as every other name here: this entry, a public A
-    # record, and the ledger row (L17) in docs/roadmap.md.
+    # record, and the ledger row (L17) in docs/ledger.md.
     "karakeep"
 
     # Miniflux (M27, exposed afterwards).  UNLIKE EVERY OTHER NAME ADDED TO
@@ -967,7 +967,7 @@ let
     # bought nothing.
     #
     # Same three separate acts as every other name here: this entry, a public A
-    # record, and the ledger row (L18) in docs/roadmap.md.
+    # record, and the ledger row (L18) in docs/ledger.md.
     "miniflux"
 
     # Paperless-ngx (M32).  Off-LAN reach is the requirement rather than a side
@@ -982,7 +982,7 @@ let
     # login surface is addressable — see the entry below for the argument.
     #
     # Same three separate acts as every other name here: this entry, a public A
-    # record, and the ledger row (L21) in docs/roadmap.md.
+    # record, and the ledger row (L21) in docs/ledger.md.
     "paperless"
 
     # M31's MTA-STS policy.  THIS ONE HAS TO BE PUBLIC OR IT DOES NOTHING:
@@ -2600,7 +2600,7 @@ in
             #
             # This is the THIRD permanent bypass in the fleet, alongside
             # Jellyfin's native auth and the qBittorrent WebUI, and it is
-            # listed as such in docs/roadmap.md's interim-rule ledger — as a
+            # listed as such in docs/ledger.md — as a
             # `—` row, because it is permanent and must not be mistaken for
             # something to "fix" later by adding the middleware back.
             #

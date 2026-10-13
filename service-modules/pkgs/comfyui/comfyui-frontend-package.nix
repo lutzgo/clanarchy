@@ -9,7 +9,7 @@
 #
 # ── THE WHEEL IS THE UPSTREAM RELEASE ARTIFACT, AND THAT IS THE RULE ────────
 #
-#   docs/roadmap.md's packaging section, settled by M12: "take the upstream
+#   docs/history.md's packaging section, settled by M12: "take the upstream
 #   release artifact when there is one ... build from source only when there is
 #   not."  The frontend's source is a separate repository (Comfy-Org/
 #   ComfyUI_frontend, a Vue/Vite application), and building it would mean a

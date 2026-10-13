@@ -1,7 +1,7 @@
 # machines/ernst/containers/home-assistant.nix
 #
 # Home Assistant — the household's home-automation hub (M24 in
-# docs/roadmap.md).  An nspawn container with TWO legs on br0, serving
+# docs/history.md).  An nspawn container with TWO legs on br0, serving
 # `ha.goclan.org` through Traefik on both entrypoints, with its own accounts
 # and no forward-auth.
 #
@@ -44,7 +44,7 @@
 #
 #     "the fix for that is emphatically NOT to enable an SSDP/mDNS relay
 #      across a firewall boundary to save one config field"
-#         — M8's session prompt, docs/roadmap.md
+#         — M8's session prompt, docs/history.md
 #
 #     "Add a VLAN here only if the host itself needs to speak on it — which
 #      would also put Avahi's unpinned mDNS reflector onto that VLAN ... so it
