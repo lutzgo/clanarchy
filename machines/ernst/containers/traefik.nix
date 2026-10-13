@@ -22,7 +22,7 @@
 #   not repeated here.
 #
 #   MAC 02:00:00:90:00:04 was RESERVED for this container by M2b, in the
-#   allocation table in machines/ernst/networking.nix, against DHCP reservation
+#   allocation table in machines/ernst/allocations.nix, against DHCP reservation
 #   10.0.90.12.  M4 deliberately skipped to .13 so that .12 stayed free for it.
 #
 #   10.0.90.12 IS THE POINT OF THE MILESTONE.  It is the single address every
@@ -355,7 +355,7 @@ let
   ############################################################################
 
   # Guest-side MAC — 02:00:00:<vlan>:00:<seq>, RESERVED for this container by
-  # M2b in the allocation table in machines/ernst/networking.nix.  This is the
+  # M2b in machines/ernst/allocations.nix.  This is the
   # address the UDM-Pro sees and the one the DHCP reservation keys on; never
   # the host-side vb-traefik.
   traefikMac = "02:00:00:90:00:04";
@@ -656,7 +656,7 @@ let
   #
   # 02:00:00:90:00:0d / 10.0.90.21 — REUSED, not new.  This pair was M16's
   # cloudflared container and was marked FREE AGAIN by M18 when the tunnel was
-  # deleted.  The allocation table in machines/ernst/networking.nix is updated
+  # deleted.  The allocation table in machines/ernst/allocations.nix is updated
   # to say so; a DHCP reservation for the old MAC must be re-pointed rather
   # than added alongside, or the address gets handed out twice.
   cwaAddr = "10.0.90.21";

@@ -68,7 +68,7 @@
 #   uid 3001 IS host uid 3001.  Everything below follows from that.
 #
 #     uid 3001  qbittorrent     allocated here (see the id table in
-#                               machines/ernst/networking.nix's MAC block for
+#                               machines/ernst/allocations.nix for
 #                               the sibling convention)
 #     uid 3024  slskd           M14.  Same rule, same reason — see the M14
 #                               section below
@@ -265,7 +265,7 @@ let
 
   # ── M14: slskd ────────────────────────────────────────────────────────────
   #
-  # uid 3024, reserved for this service in machines/ernst/networking.nix and
+  # uid 3024, reserved for this service in machines/ernst/allocations.nix and
   # reserved THERE rather than here for the reason that file gives: the number
   # is a number on zdata, so it is allocated centrally and not by whichever
   # module happens to create the user first.

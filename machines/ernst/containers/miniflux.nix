@@ -409,7 +409,7 @@ in
     autoStart = true;
     ephemeral = false;
 
-    # MAC from the allocation table in machines/ernst/networking.nix; the DHCP
+    # MAC from machines/ernst/allocations.nix; the DHCP
     # reservation 10.0.90.28 on the UDM-Pro keys on it (manual step).  Sequence
     # 14, and the last octet is 8 + seq as everywhere else on this bridge.
     privateNetwork  = true;

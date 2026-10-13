@@ -112,7 +112,7 @@ zfs create \
 # /var/lib/nixos-containers/karakeep.  The reason is an id rather than a write
 # profile — the nixpkgs meilisearch module runs under DynamicUser with a
 # StateDirectory, so binding it out would land a systemd-ALLOCATED uid on zdata,
-# which is exactly what the uid table in machines/ernst/networking.nix exists
+# which is exactly what machines/ernst/allocations.nix exists
 # to prevent.  The index is DERIVED data (Karakeep rebuilds it from the SQLite
 # database on demand), so losing it costs a reindex and not a byte.  That is a
 # third answer to this file's question, beside "its own dataset" and "here":

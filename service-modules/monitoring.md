@@ -37,7 +37,7 @@ Everything is stock nixpkgs. No new flake input.
 
 | Setting | Default | Meaning |
 |---------|---------|---------|
-| `bridge` / `vlan` / `mac` | `br0` / `90` / — | The container's L2 identity; MAC is allocated in `machines/ernst/networking.nix` |
+| `bridge` / `vlan` / `mac` | `br0` / `90` / — | The container's L2 identity; MAC is allocated in `machines/ernst/allocations.nix` |
 | `proxyAddress` | — | Reverse proxy's address: the only source allowed to reach Grafana, and Traefik's own scrape target |
 | `stateDir` | `/srv/state/monitoring` | TSDB + Grafana database. Must not be on a rolling-back filesystem |
 | `domain` | `goclan.org` | Grafana is served at `grafana.<domain>` |

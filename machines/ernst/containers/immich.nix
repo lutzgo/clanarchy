@@ -220,7 +220,7 @@
 #   permits.
 { config, lib, pkgs, ... }:
 let
-  # Allocated in machines/ernst/networking.nix.  nspawn passes uids through
+  # Allocated in machines/ernst/allocations.nix.  nspawn passes uids through
   # unmapped, so 3036 inside this container IS 3036 on zdata.
   immichUid = 3036;
   immichGid = 3036;
@@ -827,7 +827,7 @@ in
     autoStart = true;
     ephemeral = false;
 
-    # MAC from the allocation table in machines/ernst/networking.nix; the DHCP
+    # MAC from machines/ernst/allocations.nix; the DHCP
     # reservation 10.0.90.25 on the UDM-Pro keys on it (manual step).  Sequence
     # 11, and the last octet is 8 + seq as everywhere else on this bridge.
     privateNetwork  = true;
@@ -942,7 +942,7 @@ in
         # would make the service unreachable from Traefik entirely; binding the
         # DHCP-assigned address instead is not expressible here, because the
         # address is the UDM-Pro's to hand out and this container deliberately
-        # does not declare it (see the MAC table in networking.nix for why that
+        # does not declare it (see machines/ernst/allocations.nix for why that
         # rule points this way).
         host = "0.0.0.0";
         port = immichPort;

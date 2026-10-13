@@ -134,6 +134,15 @@
 # port changes happen BEFORE this config is deployed, and are verified with
 # ernst still untouched.
 { config, lib, ... }:
+let
+  # The MAC / address / veth / uid ledger. Four comment tables until this
+  # change; see ./allocations.nix for why it is data now, and for the rules
+  # the assertions below enforce.
+  alloc = import ./allocations.nix;
+
+  macOf = vlan: seq:
+    "02:00:00:${vlan}:00:${lib.toLower (lib.fixedWidthString 2 "0" (lib.toHexString seq))}";
+in
 {
   ###########################################################################
   # Container veth names are a HOST-GLOBAL namespace — asserted, not trusted.
@@ -161,6 +170,65 @@
   ###########################################################################
   assertions =
     let
+      # ── The registry's own internal consistency ───────────────────────────
+      dupesOf = xs:
+        lib.attrNames (lib.filterAttrs (_: v: lib.length v > 1)
+          (lib.groupBy (x: toString x) xs));
+
+      seq90   = lib.mapAttrsToList (_: v: v.seq) alloc.vlan90;
+      seq20   = lib.mapAttrsToList (_: v: v.seq) alloc.vlan20;
+      allIps  = (lib.mapAttrsToList (_: v: v.ip) alloc.vlan90)
+                ++ (lib.mapAttrsToList (_: v: v.ip) alloc.vlan20);
+      allVeths = (lib.mapAttrsToList (_: v: v.veth) alloc.ula)
+                ++ (lib.mapAttrsToList (_: v: v.veth) alloc.vlan20);
+      # Uids among uids, gids among gids — NOT pooled together. A service
+      # conventionally takes the same number for both (prowlarr is 3004/3004),
+      # so a pooled check reports every such row as a duplicate. Measured:
+      # pooling flagged 20 rows, all of them correct.
+      uidList = lib.filter (x: x != null) (lib.mapAttrsToList (_: v: v.uid or null) alloc.ids);
+      gidList = lib.filter (x: x != null) (lib.mapAttrsToList (_: v: v.gid or null) alloc.ids);
+      numIds  = uidList ++ gidList;
+
+      # Next free, COMPUTED — the three disagreeing "NEXT FREE" sentences this
+      # replaces are why. Quoted in the failure messages so a collision tells
+      # you what to take.
+      nextSeq90 = 1 + lib.foldl' lib.max 0 seq90;
+      nextUid   = 1 + lib.foldl' lib.max 3000
+        (lib.filter (n: n >= 3000 && n < 4000) numIds);
+
+      # 10.0.90.<8 + seq>. Not enforced by anything outside this file, and
+      # worth enforcing: it is the only thing that makes a mistyped
+      # reservation visible by inspection.
+      wrongOctet = lib.attrNames (lib.filterAttrs
+        (_: v: v.ip != "10.0.90.${toString (8 + v.seq)}") alloc.vlan90);
+
+      # `vb-<name>` must fit IFNAMSIZ (15). Scoped to nspawn: the microvm's
+      # interface is named explicitly, so `wg-qbittorrent` at 14 is fine.
+      longNames = lib.attrNames (lib.filterAttrs
+        (n: v: v.kind == "nspawn" && lib.stringLength n > 12) alloc.vlan90);
+
+      # ── The registry against the configuration ───────────────────────────
+      #
+      # NOTHING CHECKED THIS BEFORE. A container's address is a DHCP
+      # reservation on the UDM-Pro keyed on its MAC, so a mistyped
+      # `localMacAddress` does not fail — it quietly takes a pool lease
+      # instead of its reserved address, and every indicator on this host
+      # stays green.
+      # COVERS THE NSPAWN TIER ONLY, and that is a real limit rather than an
+      # oversight: the podman tier sets its MAC with `ip link set address`
+      # inside each `<svc>-netns` oneshot, and the microvm's is a QEMU
+      # argument. Neither is reachable from `config.containers`. Measured
+      # 2026-10-13: 16 containers declare one here, all 16 matching.
+      declaredMacs = lib.mapAttrs (_: c: c.localMacAddress or null)
+        (lib.filterAttrs (_: c: (c.localMacAddress or null) != null) config.containers);
+
+      macMismatches = lib.filter (m: m.want != m.got) (lib.mapAttrsToList
+        (name: got: {
+          inherit name got;
+          want = if alloc.vlan90 ? ${name} then macOf "90" alloc.vlan90.${name}.seq else "(no registry row)";
+        }) declaredMacs);
+
+      # ── The pre-existing veth checks (unchanged) ─────────────────────────
       claims = lib.concatLists (lib.mapAttrsToList
         (container: cfg: map (veth: { inherit container veth; })
           (lib.attrNames (cfg.extraVeths or { })))
@@ -243,6 +311,81 @@
           Every bridge address must equal some container's
           `extraVeths.<name>.hostAddress6`.  Known ends:
           ${lib.concatStringsSep ", " vethHostAddrs}
+        '';
+      }
+
+      # ── The allocation registry ──────────────────────────────────────────
+      {
+        assertion = dupesOf seq90 == [ ] && dupesOf seq20 == [ ];
+        message = ''
+          ernst/allocations.nix: two rows share a sequence number, so they
+          share a MAC. VLAN 90: ${lib.concatStringsSep ", " (dupesOf seq90)}
+          VLAN 20: ${lib.concatStringsSep ", " (dupesOf seq20)}
+          Next free on VLAN 90 is ${toString nextSeq90}.
+        '';
+      }
+      {
+        assertion = dupesOf allIps == [ ];
+        message = ''
+          ernst/allocations.nix: two rows claim the same address:
+          ${lib.concatStringsSep ", " (dupesOf allIps)}
+        '';
+      }
+      {
+        assertion = dupesOf allVeths == [ ];
+        message = ''
+          ernst/allocations.nix: two rows claim the same veth name:
+          ${lib.concatStringsSep ", " (dupesOf allVeths)}
+
+          The name is used for BOTH ends of the pair, so it is a host-global
+          allocation. M19 and M27 both chose `ai0` and Open WebUI silently had
+          no second interface for five days.
+        '';
+      }
+      {
+        assertion = dupesOf uidList == [ ] && dupesOf gidList == [ ];
+        message = ''
+          ernst/allocations.nix: two rows claim the same id.
+          Duplicate uids: ${lib.concatStringsSep ", " (dupesOf uidList)}
+          Duplicate gids: ${lib.concatStringsSep ", " (dupesOf gidList)}
+          Next free in the 3000 block is ${toString nextUid}.
+        '';
+      }
+      {
+        assertion = wrongOctet == [ ];
+        message = ''
+          ernst/allocations.nix: these VLAN-90 rows break the 8 + seq rule,
+          so their address and their MAC disagree about which service they
+          are: ${lib.concatStringsSep ", " wrongOctet}
+
+          The rule does NOT apply on VLAN 20 — those addresses mirror the
+          host's VLAN-90 last octet as a mnemonic.
+        '';
+      }
+      {
+        assertion = longNames == [ ];
+        message = ''
+          ernst/allocations.nix: these nspawn container names are longer than
+          12 characters: ${lib.concatStringsSep ", " longNames}
+
+          nspawn derives the host veth as `vb-<name>` and 15 is IFNAMSIZ, so
+          this evaluates cleanly and fails at container START. It is why the
+          machines are `mail`, `mass` and `hass`.
+        '';
+      }
+      {
+        assertion = macMismatches == [ ];
+        message = ''
+          ernst: a container's MAC does not match its row in allocations.nix:
+
+          ${lib.concatMapStringsSep "\n"
+              (m: "  ${m.name}: declares ${m.got}, registry says ${m.want}")
+              macMismatches}
+
+          The address is a DHCP reservation on the UDM-Pro keyed on the MAC,
+          so a mismatch does not fail — the container quietly takes a pool
+          lease instead of its reserved address, and every indicator on this
+          host stays green. Either fix the MAC or add the registry row.
         '';
       }
     ];
@@ -396,1571 +539,24 @@
   ];
 
   #===========================================================================
-  # WORKED EXAMPLES for M2b / M3 / M5 — commented out on purpose.
-  #
-  # These are TWO patterns, not one.  Earlier notes said "MAC-pinned tap" for
-  # both nspawn containers and microvms; that is only correct for microvms.  A
-  # tap is a SINGLE netdev, and handing it to an nspawn container would move it
-  # out of the host netns and off the bridge.  nspawn's primitive is a veth
-  # PAIR.  Use A for microvms, B for nspawn containers.
-  #
-  # Do NOT use `containers.<n>.macvlans`.  A macvlan is not a bridge port:
-  # attached to br0 it rides br0's own "self" VLAN — 50, the HOST VLAN — and
-  # attached to enp13s0 it rides the trunk's native VLAN, also 50.  Either way
-  # it cannot be placed on VLAN 90, which is the entire point.  (The sketch
-  # that suggested it presumed a per-VLAN bridge fed by an enp13s0.90 VLAN
-  # netdev: a different architecture, rejected here in favour of one
-  # VLAN-aware br0.  It has been corrected in the header of
-  # machines/ernst/containers/jellyfin.nix, which M2b owns.)
-  #
-  # WHERE THE REAL UNITS LIVE.  Not here.  M2b's vb-jellyfin unit sits in
-  # machines/ernst/containers/jellyfin.nix, beside the container that creates
-  # the veth and the rest of that service's host-side footprint (udev alias,
-  # tmpfiles, perms oneshot).  Follow that convention: this file describes the
-  # TOPOLOGY — bridge, trunk, VLAN map, the two attachment patterns — and does
-  # not accumulate one unit per service as M3/M4/M5 land.  The MAC allocations
-  # are the exception worth tracking centrally; see the table below.
-  #
-  # MAC ALLOCATIONS on 02:00:00:<vlan>:00:<seq> (the whole point of a
-  # convention is that it is written down in one place), with the DHCP
-  # reservation each one keys.  The reservations live on the UDM-Pro and are
-  # NOT declared in the repo; they are listed here only so the two tables can
-  # be read against each other:
-  #   02:00:00:90:00:02   jellyfin container eth0   (M2b — allocated)  10.0.90.10
-  #   02:00:00:90:00:03   wg-qbittorrent guest eth0 (M3  — allocated)  10.0.90.11
-  #   02:00:00:90:00:04   traefik container eth0    (M5  — allocated)  10.0.90.12
-  #   02:00:00:90:00:05   arr container eth0        (M4  — allocated)  10.0.90.13
-  #   02:00:00:90:00:06   monitoring container eth0 (M6  — allocated)  10.0.90.14
-  #   02:00:00:90:00:07   authelia container eth0   (M7  — allocated)  10.0.90.15
-  #   02:00:00:90:00:0a   tvheadend container eth0  (M8  — allocated)  10.0.90.18
-  #   02:00:00:90:00:0b   tubesync netns eth0       (M9  — allocated)  10.0.90.19
-  #   02:00:00:90:00:0c   storyteller netns eth0    (M14 — allocated)  10.0.90.20
-  #   02:00:00:90:00:0d   cwa netns eth0    (cwa — REUSED)             10.0.90.21
-  #                       Calibre-Web-Automated, containers/cwa.nix, the
-  #                       podman tier's fourth occupant.
-  #
-  #                       THIS PAIR WAS FREED AND IS NOW TAKEN BACK.  It held
-  #                       M16's cloudflared container — the Cloudflare Tunnel
-  #                       that was this fleet's only WAN ingress from
-  #                       2026-08-29 until M18 dropped it for a UDM-Pro port
-  #                       forward terminating at Traefik and deleted
-  #                       containers/cloudflared.nix.  The row then read FREE
-  #                       AGAIN, and said the next container may take it.
-  #                       This is that container.
-  #
-  #                       CONSEQUENCE FOR THE UDM-Pro, and it is the reason
-  #                       this is spelled out rather than just edited: the MAC
-  #                       is UNCHANGED, so if cloudflared's DHCP reservation
-  #                       was never deleted it is already correct and there is
-  #                       nothing to do.  If it WAS deleted, recreate it for
-  #                       this MAC against 10.0.90.21.  What must not happen
-  #                       is a SECOND reservation for the same address on a
-  #                       different MAC, which is precisely the
-  #                       handed-out-twice failure the old row warned about.
-  #   02:00:00:90:00:0e   romm netns rm0            (romm — allocated) 10.0.90.22
-  #   02:00:00:90:00:0f   openwebui container eth0  (M19 — allocated)  10.0.90.23
-  #   02:00:00:90:00:10   searxng container eth0    (M20 — allocated)  10.0.90.24
-  #                       SearXNG, service-modules/local-ai.nix roles.search.
-  #                       nspawn, and the tier was the milestone — see the role
-  #                       header for why not podman and why not a microvm.
-  #
-  #                       THIS ONE HAS NO HOSTNAME AND NO TRAEFIK ROUTE, which
-  #                       is deliberate and is the only entry in this table for
-  #                       which that is true of a container on VLAN 90.  Open
-  #                       WebUI (.23) is the sole client and reaches it
-  #                       directly; the container's own firewall accepts .23
-  #                       and drops the rest of the VLAN, so there is nothing
-  #                       for a name to point at and nothing for Authelia to
-  #                       protect.
-  #
-  #                       IT HAS A VLAN 90 LEG FOR EGRESS, not for ingress.
-  #                       SearXNG is the one service in the local-AI stack that
-  #                       must reach the open internet, and it does so the
-  #                       ordinary way — DHCP default route to the UDM-Pro —
-  #                       so its outbound is subject to the same zone policy as
-  #                       every other container and is visible at the gateway.
-  #                       The point-to-point-veth-plus-host-SNAT alternative
-  #                       (the mon0 shape) was rejected: it would have hidden
-  #                       that traffic behind ernst's own address, and
-  #                       `networking.nat.externalInterface` is a single string
-  #                       already claimed by monitoring.nix for "zt+".
-  #
-  #   02:00:00:90:00:11   immich container eth0     (M22 — allocated)  10.0.90.25
-  #                       Immich, the household photo library,
-  #                       machines/ernst/containers/immich.nix.  nspawn —
-  #                       `services.immich` is a first-class NixOS module at
-  #                       this pin, so there is no image to escape to and the
-  #                       podman tier does not apply.
-  #
-  #                       PUBLIC.  `photos.goclan.org` rides BOTH entrypoints
-  #                       and carries NO forward-auth — the fleet's SIXTH
-  #                       appApiHosts name, on the client-compatibility clause
-  #                       (two phone apps and the TV add-on), plus one property
-  #                       none of the other five has: SHARED ALBUM LINKS ARE
-  #                       ANSWERED ANONYMOUSLY BY DESIGN.  See
-  #                       containers/ingress-policy.nix.
-  #
-  #                       ITS FIREWALL ADMITS EXACTLY TWO ADDRESSES and one of
-  #                       them is the surprise: Traefik (.12) on 2283, and the
-  #                       monitoring container (.14) on 8081.  The TV is NOT
-  #                       among them — Kodi runs on the ernst host and reaches
-  #                       this service through `photos.goclan.org`, i.e. via
-  #                       .12 under M5's existing `Allow Traefik` policy.
-  #
-  #                       THAT IS THE OPPOSITE CHOICE FROM M8's HTSP AND IT WAS
-  #                       MADE ON PURPOSE.  Tvheadend's Kodi client speaks a
-  #                       binary protocol that cannot go through a reverse
-  #                       proxy, so it needed a direct VLAN 50 → VLAN 90 hop,
-  #                       which needed ledger row L12's UDM-Pro policy — a rule
-  #                       broader than the flow it permits.  The Immich add-on
-  #                       speaks ordinary HTTPS, so it needs none of that:
-  #                       M22 adds NO UDM-Pro rule and NO ledger row.
-  #
-  #   02:00:00:90:00:12   nextcloud container eth0  (M23 — allocated)  10.0.90.26
-  #                       Nextcloud, the household file-sync / CalDAV / CardDAV
-  #                       server, machines/ernst/containers/nextcloud.nix.
-  #                       nspawn — `services.nextcloud` is a first-class NixOS
-  #                       module, so the podman tier does not apply.
-  #
-  #                       PUBLIC.  `cloud.goclan.org` rides BOTH entrypoints and
-  #                       carries NO forward-auth — the fleet's SEVENTH
-  #                       appApiHosts name, on the client-compatibility clause:
-  #                       the desktop sync client on three laptops, DAVx5 on the
-  #                       phones, and vdirsyncer on a headless user timer all
-  #                       authenticate with app passwords over
-  #                       /remote.php/dav/** and none of them has a browser.
-  #                       The BROWSER path takes Authelia's OIDC provider
-  #                       instead, which is CWA's arrangement and NOT Grafana's.
-  #
-  #                       ITS FIREWALL ADMITS EXACTLY ONE ADDRESS: Traefik (.12)
-  #                       on 80.  Not the monitoring container — Nextcloud's
-  #                       serverinfo endpoint is token-authenticated JSON and
-  #                       not an OpenMetrics exposition, so there is no scrape
-  #                       to permit.  Failed units inside it are still seen, via
-  #                       `machinectl` and the container-units collector.
-  #
-  #                       LIKE M22 IT ADDS NO UDM-PRO RULE AND NO LEDGER ROW for
-  #                       VLAN 50 → 90: every client arrives through .12.
-  #
-  #   02:00:00:90:00:13   hass container eth0       (M24 — allocated)  10.0.90.27
-  #                       Home Assistant, the household's home-automation hub,
-  #                       machines/ernst/containers/home-assistant.nix.  nspawn
-  #                       — `services.home-assistant` is a first-class NixOS
-  #                       module, so the podman tier does not apply.
-  #
-  #                       THE MACHINE IS `hass`, NOT `home-assistant`, and that
-  #                       is a hard constraint rather than a preference: nspawn
-  #                       names the host side of the veth `vb-<container>` and
-  #                       a Linux interface name caps at 15 characters, so
-  #                       `vb-home-assistant` (17) cannot be created at all.
-  #
-  #                       PUBLIC.  `ha.goclan.org` rides BOTH entrypoints and
-  #                       carries NO forward-auth — the fleet's EIGHTH
-  #                       appApiHosts name.  The companion app exchanges
-  #                       credentials once and then holds a WEBSOCKET, and a
-  #                       302 on an HTTP upgrade is not a login prompt an app
-  #                       can act on.  Unlike M23 there is no OIDC path behind
-  #                       it either; HA's own ip_ban + TOTP are the boundary.
-  #
-  #                       ITS FIREWALL ADMITTED EXACTLY ONE ADDRESS on eth0
-  #                       until M26: Traefik (.12) on 8123.  Not the monitoring
-  #                       container — HA's /api/prometheus is bearer-token
-  #                       gated, so there is no scrape to permit.  Failed units
-  #                       inside it are still seen, via the container-units
-  #                       collector.
-  #
-  #                       M26 ADDED A SECOND: the arr container (.13) on the
-  #                       same port, because the service index runs in there
-  #                       and reads /api/states with a long-lived token.  The
-  #                       claim above is corrected rather than deleted — it was
-  #                       true when written and the interesting part is that it
-  #                       stopped being true.  See the firewall block in
-  #                       containers/home-assistant.nix for why .13 must NOT be
-  #                       added to `http.trusted_proxies` to go with it.
-  #
-  #                       LIKE M22 AND M23 IT ADDS NO UDM-PRO RULE for VLAN 50
-  #                       → 90: every client arrives through .12.  It DOES take
-  #                       ledger row L15, for the WAN exposure.
-  #
-  #                       IT IS THE THIRD CONTAINER WITH A SECOND INTERFACE and
-  #                       the FIRST to put one on a second skynet VLAN — see
-  #                       the VLAN 20 table below.
-  #
-  #   M26 TOOK NOTHING FROM THIS TABLE, and that is recorded rather than left
-  #   to inference.  The service index (containers/homepage.nix) runs INSIDE
-  #   the arr container — it co-defines containers.arr the way crowdsec.nix
-  #   co-defines containers.traefik — so it has no L2 identity of its own, no
-  #   DHCP reservation, and nothing for the UDM-Pro to know about.  It listens
-  #   on 8082 on 10.0.90.13, behind that container's existing firewall.
-  #
-  #   A milestone that DECLINES a number has to say so here, for the same
-  #   reason M24 wrote the uid note below: a reader who finds a new service in
-  #   flake.nix and no row in this table has to be able to tell "recorded as
-  #   taking none" apart from "somebody forgot".
-  #
-  #   02:00:00:90:00:14   miniflux container eth0   (M27 — allocated)  10.0.90.28
-  #                       The feed reader, machines/ernst/containers/
-  #                       miniflux.nix.  nspawn — `services.miniflux` is a
-  #                       first-class NixOS module, so the podman tier does not
-  #                       apply.
-  #
-  #                       ITS FIREWALL ADMITS THREE ADDRESSES on eth0, which is
-  #                       one more than most containers here: Traefik (.12) for
-  #                       every human and reader client, the arr container
-  #                       (.13) because the service index reads its unread count,
-  #                       and the MONITORING container (.14) — which is the
-  #                       unusual one.  Miniflux serves a genuine OpenMetrics
-  #                       /metrics, unlike Nextcloud's and Home Assistant's
-  #                       token-gated JSON, so it is the first service since
-  #                       M19 to get a real Prometheus job rather than a note
-  #                       explaining why it cannot have one.
-  #
-  #                       PUBLIC, AND IT DID NOT SHIP THAT WAY.  It was
-  #                       LAN-only for one day, then moved from `appApiHosts`
-  #                       to `protectedHosts` and exposed, because lgo went to
-  #                       another LAN and wanted his feeds.  The posture it
-  #                       gained is STRONGER than the one it had: forward-auth
-  #                       in front on both entrypoints, rather than an
-  #                       unauthenticated vhost.  Ledger row L18.
-  #                       Still NO UDM-PRO RULE: every client arrives via .12.
-  #
-  #   02:00:00:90:00:15   karakeep container eth0   (M27 — allocated)  10.0.90.29
-  #                       Bookmarks, page archives and the search over both,
-  #                       machines/ernst/containers/karakeep.nix.  nspawn, same
-  #                       reason.
-  #
-  #                       IT IS THE FOURTH CONTAINER WITH A SECOND INTERFACE
-  #                       and the first whose second leg is on NO VLAN AT ALL:
-  #                       `ai0`, a point-to-point /128 ULA pair (fdca:fe92::1
-  #                       host, ::2 container) to llama-swap, declared as a peer
-  #                       in clan.nix's `@clanarchy/local-ai` instance.  It is
-  #                       therefore NOT in this table's VLAN sense and has no
-  #                       MAC, no reservation and nothing for the UDM-Pro to
-  #                       know — see the M19/M6 entries in the ULA discussion
-  #                       further down.
-  #
-  #                       PUBLIC.  `karakeep.goclan.org` rides both entrypoints
-  #                       and carries NO forward-auth — the fleet's NINTH
-  #                       appApiHosts name, and the first whose 302-incapable
-  #                       clients are ones THIS REPOSITORY INSTALLS (the
-  #                       Karakeep extension and the Floccus adapter, on
-  #                       miralda and jens).  It DOES take ledger row L17.
-  #
-  #                       LIKE M22, M23 AND M24 IT ADDS NO UDM-PRO RULE for
-  #                       VLAN 50 → 90: every client arrives through .12.
-  #
-  #   M28 TOOK NOTHING FROM THIS TABLE, and that is recorded rather than left
-  #   to inference.  The Miniflux → Karakeep bridge runs as an ordinary
-  #   systemd unit INSIDE containers.miniflux, bound to 127.0.0.1:8081, because
-  #   its only client is Miniflux in that same namespace.  So it has no L2
-  #   identity, no DHCP reservation, no veth, nothing for the UDM-Pro to know
-  #   about — and no uid either, since it keeps upstream's DynamicUser and
-  #   writes nothing to disk.  A milestone that DECLINES a number has to say so
-  #   here; see M26's row above for the same statement.
-  #
-  #   M29 TOOK NOTHING FROM THIS TABLE EITHER, same statement and a different
-  #   reason.  Its three new services — mneme (the conversation agent),
-  #   wyoming-faster-whisper and wyoming-piper — are ORDINARY HOST UNITS beside
-  #   llama-swap, not containers: their upstream is ernst's own loopback and
-  #   their one consumer is the hass container, which reaches them over a
-  #   point-to-point /128 pair.  So no MAC, no address, no DHCP reservation, no
-  #   Traefik router, no hostname and no ledger row.  It DOES add one veth
-  #   name, `ai3` on the hass container — see the ULA legs table further down,
-  #   where names are now tracked because M29 found that they are an allocation
-  #   too.
-  #
-  #   02:00:00:90:00:16   mass container eth0       (M30 — allocated)  10.0.90.30
-  #                       Music Assistant — the player controller over the
-  #                       library Navidrome indexes,
-  #                       machines/ernst/containers/music-assistant.nix.
-  #                       nspawn, because `services.music-assistant` is a
-  #                       first-class NixOS module; upstream recommends its
-  #                       Docker image and its HAOS add-on and neither applies.
-  #
-  #                       THE MACHINE IS `mass`, NOT `music-assistant`, and that
-  #                       is the M24 constraint again rather than a preference:
-  #                       `vb-music-assistant` is 18 characters against
-  #                       IFNAMSIZ - 1 = 15, so the host-side link cannot be
-  #                       created at all — a failure at container START, not at
-  #                       evaluation.  `mass` is upstream's own abbreviation
-  #                       (`_mass._tcp`), so nothing is invented here.
-  #
-  #                       ITS FIREWALL ADMITS TWO ADDRESSES ON eth0 AND ONE
-  #                       ELSEWHERE.  Traefik (.12) for every client including
-  #                       the hub, and the service index (.13) for a status
-  #                       probe.  The third is the Yamaha receiver on VLAN 20,
-  #                       reaching the STREAM server on 8097, and it is a
-  #                       SPEAKER rather than a service — see the VLAN 20 table
-  #                       below.
-  #
-  #                       IT SHIPPED WITH A THIRD eth0 SOURCE AND LOST IT.  An
-  #                       accept for HOME ASSISTANT (.27) was meant to carry the
-  #                       `music_assistant` integration's WebSocket on a direct
-  #                       L2 hop, skipping the proxy — which was the stated
-  #                       reason this hostname did not need a forward-auth
-  #                       exemption.  The integration cannot use it: its config
-  #                       flow drives the BROWSER and its own server-side calls
-  #                       from one url, so the hub arrives on .12 like everything
-  #                       else.  Removed rather than left as a rule nothing uses.
-  #
-  #                       IT IS THE SECOND CONTAINER WITH A LEG ON VLAN 20, and
-  #                       therefore the reason that table stops having one row.
-  #
-  #                       IT ALSO WIDENS ONE OTHER CONTAINER'S FIREWALL —
-  #                       containers/arr.nix, Navidrome's port, a third source
-  #                       list and Navidrome's first APPLICATION client.  That
-  #                       is the M26 shape (a new service reaching INTO an
-  #                       existing container) rather than the M27 shape.
-  #
-  #                       LAN-ONLY AND EXEMPT FROM forward-auth: `appApiHosts`,
-  #                       not in `wanExposed`, no public A record, NO LEDGER ROW.
-  #                       It shipped in `protectedHosts` on the argument that
-  #                       every client is a browser, and that premise was
-  #                       falsified by the hub's config flow — Home Assistant's
-  #                       exemption turns out to apply here after all.  IT IS THE
-  #                       ONLY NAME IN `appApiHosts` NOT ALSO IN `wanExposed`,
-  #                       which is what keeps the exemption proportionate: the
-  #                       application's own accounts are defending the house
-  #                       against the house, not against the internet.
-  #                       Like M22, M23, M24 and M27 it adds NO UDM-PRO RULE for
-  #                       VLAN 50 → 90: every human arrives through .12.
-  #
-  #   02:00:00:90:00:17   mail container eth0       (M31 — allocated)  10.0.90.31
-  #                       The household's SMTP and IMAP server for @goclan.org,
-  #                       machines/ernst/containers/mail.nix — Postfix, Dovecot,
-  #                       Rspamd, Redis and kresd behind
-  #                       simple-nixos-mailserver.  nspawn, for the same reason
-  #                       every other first-class-NixOS-module service here is.
-  #
-  #                       THE MACHINE IS `mail`, NOT `mailserver`, and that is
-  #                       the M24 constraint once more: `vb-mailserver` is 13
-  #                       characters and survives eval, so the failure would
-  #                       land at container START.
-  #
-  #                       IT IS THE FIRST SERVICE ON THIS HOST THAT DOES NOT
-  #                       ARRIVE THROUGH .12, and it is the row that makes this
-  #                       table's usual "every human arrives through Traefik"
-  #                       note false.  SMTP, IMAP and ManageSieve are not HTTP
-  #                       and :25 carries no SNI, so there is nothing for a TCP
-  #                       router to key on.  It therefore has NO ENTRY IN
-  #                       containers/ingress-policy.nix — not an omission: that
-  #                       file classifies hostnames ROUTED THROUGH THE PROXY, and
-  #                       none of these are.
-  #
-  #                       IT ADDS FOUR UDM-PRO DNATs, WHICH NO OTHER ROW HERE
-  #                       DOES.  WAN :25 → .31:25 (ledger L19) and WAN
-  #                       :465/:993/:4190 → .31 (ledger L20).  Before M31 the
-  #                       fleet had exactly one port forward, WAN :443 →
-  #                       10.0.90.12:8443, and "one forward" was load-bearing in
-  #                       several arguments elsewhere; it is now five.
-  #
-  #                       CROWDSEC DOES NOT COVER IT — containers/crowdsec.nix
-  #                       acquires only Traefik's journal — so the container runs
-  #                       fail2ban of its own against Postfix and Dovecot.
-  #
-  #   02:00:00:90:00:18   paperless container eth0   (M32)      10.0.90.32
-  #
-  #                       Paperless-ngx, the household document archive.
-  #                       containers/paperless.nix.
-  #
-  #                       SEQUENCE 17 IS SKIPPED HERE ON PURPOSE, and it is not
-  #                       a gap of the 08/09 kind: M31's mail container claimed
-  #                       it, in a branch developed concurrently with this one.
-  #                       Its row arrives with that branch; if you are reading
-  #                       this and 17 is absent from the table, that merge has
-  #                       not landed yet.
-  #
-  #                       THE FIREWALL ADMITS TWO SOURCES AND THEY ARE ON
-  #                       DIFFERENT FAMILIES.  Traefik (.12) on 28981 over v4,
-  #                       for every human client; and mneme over v6 on the
-  #                       `doc0` leg below, which is the only thing that reaches
-  #                       this service without passing the proxy.  Monitoring is
-  #                       NOT admitted — paperless exposes no OpenMetrics
-  #                       endpoint, so a scrape job could only ever be `up == 0`
-  #                       (SN3), the same call M23 and M27 made.  Neither is the
-  #                       dashboard: containers/homepage.nix gets a plain link
-  #                       tile rather than a widget, so it needs no accept here.
-  #
-  #                       PUBLIC AND EXEMPT FROM forward-auth: `appApiHosts`
-  #                       plus Authelia OIDC — CWA's and Nextcloud's
-  #                       arrangement, because the Paperless Mobile app on both
-  #                       phones authenticates against /api/token/ and cannot
-  #                       follow a 302.  Ledger row L21.  Unlike `cloud` it DOES
-  #                       carry a `wanLoginPaths` entry; traefik.nix argues the
-  #                       difference in place.
-  #                       Like M22, M23, M24, M27 and M30 it adds NO UDM-PRO
-  #                       RULE for VLAN 50 → 90: every human arrives through .12.
-  #
-  #   NEXT FREE SEQUENCE NUMBER IS 19; next free address is 10.0.90.33, keeping
-  #   the 8 + <seq> correspondence (8 + 0x19 = 33).  There is no free gap left
-  #   in the sequence — 08 and 09 lapsed and were never reclaimed, and 0d was
-  #   taken back by CWA.  17 is M31's and 18 is M32's.
-  #
-  # ── MAC ALLOCATIONS ON VLAN 20 (IoT) ────────────────────────────────────────
-  #
-  #   A SECOND TABLE, OPENED BY M24, and the reason it is separate is the
-  #   convention itself: the second octet-group of 02:00:00:<vlan>:00:<seq> is
-  #   the VLAN, so a VLAN-20 interface cannot take a number from the table
-  #   above without lying about which segment it is on.
-  #
-  #   02:00:00:20:00:01   hass container iot0       (M24 — allocated)  10.0.20.27
-  #                       Home Assistant's DISCOVERY leg.  mDNS and SSDP are
-  #                       link-local, and this repo refuses to relay them across
-  #                       a firewall boundary (M8's session prompt, and note 3
-  #                       above) — so the hub sits ON the segment its wifi
-  #                       devices are on instead.  Unicast to VLAN 20 needed no
-  #                       leg at all; discovery is the whole reason for it.
-  #
-  #                       THE 8 + <seq> CORRESPONDENCE DOES NOT APPLY HERE, and
-  #                       .27 matching this container's VLAN-90 address is a
-  #                       MNEMONIC RATHER THAN A RULE.  10.0.20.0/24 is a
-  #                       populated household segment with an established DHCP
-  #                       pool and devices already in it, not a services VLAN
-  #                       this repo laid out, so the address was simply a free
-  #                       one — chosen to match .27 because two legs of one
-  #                       container sharing a last octet is easier to hold in
-  #                       the head than two unrelated numbers.
-  #
-  #                       DO NOT DERIVE A SECOND VLAN-20 ADDRESS FROM ITS SEQ.
-  #                       The correspondence that makes a mis-typed reservation
-  #                       visible on VLAN 90 has nothing to check against here;
-  #                       the UDM-Pro is the source of truth for this segment
-  #                       and this row is a copy of it.
-  #
-  #                       THE MAC IS PINNED IN THE CONTAINER'S OWN networkd,
-  #                       not on `extraVeths`, which has no option for it.  See
-  #                       the `20-iot0` unit in containers/home-assistant.nix.
-  #
-  #   02:00:00:20:00:02   mass container iot1       (M30 — allocated)  10.0.20.30
-  #                       Music Assistant's DISCOVERY leg, and the second row
-  #                       this table has ever had.  Same argument as the first
-  #                       and one VLAN's worth of devices later: the `musiccast`
-  #                       provider is DISCOVERY-ONLY — its manifest declares
-  #                       `mdns_discovery: ["_http._tcp.local."]` and provider.py
-  #                       has no add-by-address flow at all — so without a leg on
-  #                       the speakers' segment there is no way to reach the one
-  #                       speaker in the house.
-  #
-  #                       THE VETH IS `iot1`, NOT `iot0`, AND THAT IS M29's
-  #                       OUTAGE NOT REPEATED.  `extraVeths.<name>` becomes
-  #                       nspawn's `--network-veth-extra=<name>`, which names
-  #                       BOTH ends, so the name is host-global and the hass
-  #                       container already holds `iot0`.  The assertion at the
-  #                       top of this file is what enforces that rather than this
-  #                       paragraph.
-  #
-  #                       TWO SOURCE-MATCHED RULES POINT AT THE RECEIVER AT
-  #                       10.0.20.31 and both are worth naming here, because
-  #                       neither is a service port in the ordinary sense:
-  #                       8097/tcp, the STREAM server — the speaker fetches the
-  #                       audio itself — and a UDP range, because aiomusiccast
-  #                       binds ("0.0.0.0", 0) and advertises the EPHEMERAL port
-  #                       in an `X-AppPort` header, so there is no fixed number
-  #                       to open.  Narrow in source, wide in port; without it
-  #                       playback works and the UI never updates.
-  #
-  #                       .30 MATCHES THE VLAN-90 LAST OCTET, AND THAT IS THE
-  #                       SAME MNEMONIC THE ROW ABOVE USES — not the 8 + <seq>
-  #                       rule, which does not apply on this segment and has
-  #                       nothing to check against here.  Read the previous row's
-  #                       final paragraph before touching this: the UDM-Pro is
-  #                       the source of truth for 10.0.20.0/24, this is a copy of
-  #                       it, and the address must be verified FREE on that
-  #                       segment rather than derived from anything in this file.
-  #                       Nothing in Nix depends on the number — the leg takes
-  #                       DHCP and the MAC is what the reservation keys on.
-  #
-  #   NEXT FREE SEQUENCE NUMBER ON VLAN 20 IS 03.
-  #
-  #   M18 ADDED NO MAC AND NO ADDRESS, which is worth stating because it is a
-  #   milestone that opened the house to the internet.  CrowdSec runs INSIDE
-  #   the traefik container's netns (containers/crowdsec.nix) — it is the only
-  #   namespace that sees the pre-DNAT source address of a WAN request, since
-  #   br0 forwards those frames at layer 2 and br_netfilter is not loaded on
-  #   this host (measured 2026-09-03).  So it shares .12 and needs nothing of
-  #   its own here.
-  #
-  # THE TUBESYNC ENTRY IS NOT A CONTAINER veth IN THE NSPAWN SENSE, and it is
-  # the first of its kind here: it is a veth into a BARE NETWORK NAMESPACE that
-  # machines/ernst/containers/tubesync.nix creates, which podman then joins
-  # with `--network=ns:`.  The DHCP reservation still keys on the MAC above,
-  # exactly as it does for every nspawn container — the namespace runs its own
-  # DHCP client because it has no networkd in it.  Pattern C, and that file is
-  # the worked example.
-  #
-  # THREE CONTAINERS HAVE A SECOND INTERFACE, and M24's is the only one on a
-  # second SKYNET VLAN — which is why it is the only one of the three that
-  # needed a MAC, a DHCP reservation and a row in a table.  The hass container's
-  # `iot0` is a veth onto br0 carrying VLAN 20, so the hub can see the mDNS and
-  # SSDP its wifi devices emit; the other two never leave ernst or never leave
-  # the FRITZ segment.  Its host-side unit uses `Bridge = "br0"` rather than
-  # `KeepMaster`, because --network-veth-extra creates the pair and enslaves
-  # NOTHING — so networkd owns that enslavement and nothing competes for it.
-  # The tvheadend container's
-  # `fritz0` (M8) is a veth onto `br-fritz`, the two-port bridge that joins
-  # enp12s0's direct FRITZ!Box link — static 192.168.178.2/24 on the FRITZ's
-  # own subnet, no DHCP, no gateway, no reservation; see
-  # machines/ernst/containers/tvheadend.nix.  The monitoring container's
-  # `mon0` came first: a point-to-point veth to this host on the ULA
-  # fdca:fe90::1 (host) / fdca:fe90::2 (container) — no bridge, no VLAN, no
-  # DHCP, and no reservation, because it never leaves ernst.  It exists so
-  # Prometheus can reach (a) this host's own exporters without hairpinning
-  # through the UDM-Pro and (b) the rest of the fleet over ZeroTier, which
-  # terminates in this netns and is invisible from VLAN 90.  The host forwards
-  # and SNATs for it; see service-modules/monitoring.nix.
-  #
-  # ── THE ULA LEGS, AND THE NAMING RULE M29 HAD TO ADD ──────────────────────
-  #
-  # Seven point-to-point /128 pairs now, each with exactly one peer, none on any
-  # VLAN and none with a MAC, a reservation or anything for the UDM-Pro:
-  #
-  #   fdca:fe90::1/::2   mon0   monitoring   Prometheus + llama-swap's /metrics
-  #   fdca:fe91::1/::2   ai1    openwebui    chat and STT (M19)
-  #   fdca:fe92::1/::2   ai2    karakeep     auto-tagging (M27)
-  #   fdca:fe93::1/::2   ai3    hass         the conversation agent, STT and TTS
-  #                                          — three ports on one leg (M29)
-  #   fdca:fe94::1/::2   web0   searxng      web search for the agent (M29b)
-  #   fdca:fe95::1/::2   doc0   paperless    document search for the agent (M32)
-  #   fdca:fe96::1/::2   kodi0  hass         Home Assistant -> Kodi's HTTP and
-  #                                          WebSocket control on the host
-  #
-  # `web0` AND `doc0` POINT THE OTHER WAY, which is why neither is called `ai4`
-  # or `ai5`.  Every `ai*` leg exists so a CONTAINER can reach a service on this
-  # host's loopback; `web0` and `doc0` exist so a HOST service (mneme) can reach
-  # a service in a container.  Naming either in the ai family would read as
-  # another consumer of llama-swap, which neither is.
-  #
-  # `kodi0` HAS THE `ai*` DIRECTION AND STILL IS NOT ONE, for the same reason
-  # read from the other side: the rule is about WHAT IS AT THE FAR END, not
-  # about which way the packets go.  A container reaching a host service is the
-  # `ai*` geometry, but the far end here is the couch session's media client,
-  # not llama-swap, so an `ai` name would promise a fifth inference consumer.
-  #
-  # IT IS ALSO THE FIRST LEG OF ITS DIRECTION WITH NO `mkBridges` CALL, and the
-  # absence is the interesting part.  Every `ai*` leg carries a socket proxy
-  # because llama-swap binds `127.0.0.1` and stays there — a container cannot
-  # reach it however the packets are routed.  Kodi binds the WILDCARD
-  # (measured 2026-10-12: `LISTEN [::]:8080` and `LISTEN 0.0.0.0:8080`), so it
-  # is already answering on `fdca:fe96::1` the moment the leg exists.  A proxy
-  # would be a second mechanism for a property the first one already has.
-  #
-  # AND IT REPLACES A UDM-Pro RULE THAT WAS NOT CREATED.  The alternative was a
-  # `Services -> Internal` permit for `10.0.90.27 -> 10.0.50.10:{8080,9090}`,
-  # which is the L12 shape; this follows L13/L14/L15 instead and keeps the
-  # traffic inside the box.  See the interim-rule ledger for why no row exists.
-  #
-  # `doc0` IS `web0`'S SHAPE AND NOT A NEW ONE, down to the security property:
-  # it adds NO host-side accept for `fdca:fe95::2` and no `mkBridges` call, so
-  # mneme dials into paperless and nothing accepts on the way back.  The only
-  # accept is inside containers/paperless.nix and it names `fdca:fe95::1`.
-  # Same reason for existing, too: the host's route to 10.0.90.32 is
-  # `via 10.0.50.1`, so widening paperless's VLAN-90 firewall to the host would
-  # hairpin every query out through the UDM-Pro and back.
-  #
-  # IT DOES NOT GIVE SearXNG A PATH INTO THE HOST, and that was the property
-  # its container block called load-bearing.  The host dials in; nothing
-  # accepts on the way back.  `nixos-fw` drops unmatched input and M29b adds no
-  # accept for `fdca:fe94::2`, so packets the container aims at the host are
-  # discarded — only replies on a connection the host opened return, through
-  # the conntrack rule that was already there.
-  #
-  # Why not widen SearXNG's `allowedSource` to the host instead: the host's
-  # route to 10.0.90.24 is `via 10.0.50.1` (measured 2026-09-25), so every
-  # search would leave ernst, cross the UDM-Pro and come back — the hairpin
-  # `mon0` was created to avoid.
-  #
-  # THE INTERFACE NAME IS AS MUCH AN ALLOCATION AS THE ADDRESS IS, and nothing
-  # said so until it cost an outage.  `extraVeths.<name>` becomes nspawn's
-  # `--network-veth-extra=<name>`, used for BOTH ends, so the name lives in
-  # this host's one flat interface namespace.  M19 named Open WebUI's leg
-  # `ai0`; M27 gave karakeep `extraVeths.ai0` as well; from M27's deploy on
-  # 2026-09-19 OPEN WEBUI HAD NO SECOND INTERFACE AT ALL.  Measured on
-  # 2026-09-24, sixteen days into one boot:
-  #
-  #   openwebui: ip -6 -br addr -> lo, eth0 only
-  #   host     : exactly one ai0, peered into karakeep
-  #   openwebui -> [fdca:fe91::1]:11434 -> curl (7), could not connect
-  #   karakeep  -> [fdca:fe92::1]:11434 -> 200        (the control)
-  #
-  # And the last `get_all_models()` in Open WebUI's journal was five days
-  # before the measurement — the day before M27 deployed.
-  #
-  # IT WAS INVISIBLE BECAUSE A LISTENING SOCKET IS NOT A WORKING LEG.  The host
-  # end binds whether or not any interface carries the address, so `ss -ltn`
-  # showed [fdca:fe91::1]:11434 LISTENing and both bridge units were
-  # active/running the whole time.  The facts needed to predict this were
-  # already written down at service-modules/monitoring.nix:182-184; what was
-  # missing was anything that checked.  The assertion at the top of this file
-  # is that check, and the names now track the ULA so a collision requires
-  # typing the same number twice.  `mon0` predates the rule and keeps its name.
-  #
-  # THE NAMESPACE IS NOT ULA-ONLY, AND M30 IS WHERE THAT STOPPED BEING
-  # THEORETICAL.  The VLAN legs created the same way live in the same flat host
-  # namespace and are NOT in the table above, because they have no ULA to track:
-  #
-  #   iot0   hass   VLAN 20, mDNS + SSDP discovery of the wifi devices (M24)
-  #   iot1   mass   VLAN 20, mDNS discovery of the MusicCast receiver  (M30)
-  #
-  # Two containers with a leg on the SAME VLAN therefore cannot share a name, and
-  # the obvious mistake was to give Music Assistant `iot0` "because that is the
-  # IoT leg" — which is the `ai0` collision exactly, with the same symptom (the
-  # container that loses the interface is discovered by nobody noticing it for
-  # days).  The assertion covers these too: it groups every container's
-  # `extraVeths` and does not care what the name means.
-  #
-  # The last octet is 8 + <seq>.  That correspondence is not enforced by
-  # anything and it is worth keeping anyway: it is the only thing that makes a
-  # mis-typed reservation visible by inspection.  M4 took .13 rather than the
-  # next free address so that M5 can still have .12 against the MAC already
-  # reserved for it.  Every reservation must be INSIDE the DHCP pool
-  # (10.0.90.6–.254) — UniFi accepts an address from the .2–.5 range the
-  # cutover runbook set aside and then silently hands out a pool lease instead.
-  #
-  # NUMERIC ID ALLOCATIONS across the storage boundary — the sibling
-  # convention, tracked here for the same reason.  virtiofs and nspawn both
-  # pass uids/gids through unmapped, so a number chosen inside a guest is a
-  # number on zdata:
-  #   gid 3000  media        shared read/write group (containers/jellyfin.nix)
-  #   uid  964  jellyfin     (containers/jellyfin.nix)
-  #   uid 3001  qbittorrent  (microvms/wg-qbittorrent.nix — M3)
-  #   uid 3002  sonarr       (containers/arr.nix — M4, group media)
-  #   uid 3003  radarr       (containers/arr.nix — M4, group media)
-  #   uid 3004  prowlarr     (containers/arr.nix — M4, NOT in media)
-  #   gid 3004  prowlarr     (containers/arr.nix — M4)
-  #   uid 3005  traefik      (containers/traefik.nix — M5, NOT in media)
-  #   gid 3005  traefik      (containers/traefik.nix — M5)
-  #   uid 3006  prometheus   (service-modules/monitoring.nix — M6, NOT in media)
-  #   gid 3006  prometheus   (service-modules/monitoring.nix — M6)
-  #   uid 3007  grafana      (service-modules/monitoring.nix — M6, NOT in media)
-  #   gid 3007  grafana      (service-modules/monitoring.nix — M6)
-  #   uid 3008  authelia-main (containers/authelia.nix — M7, NOT in media)
-  #   gid 3008  authelia-main (containers/authelia.nix — M7)
-  #   uid 3009  bazarr       (containers/arr.nix — M12, group media)
-  #   uid 3011  cleanuparr   (containers/arr.nix — M12, group media)
-  #   uid 3012  mediathekarr (containers/arr.nix — M12, group media; shared by
-  #                           the indexer and downloader units)
-  #   uid 3014  jellyseerr   (containers/arr.nix — M13, own group, NO media)
-  #   gid 3014  jellyseerr   (containers/arr.nix — M13)
-  #   uid 3015  janitorr     (containers/arr.nix — M13, group media — it
-  #                           DELETES files and builds the Leaving Soon tree)
-  #   uid 3016  scraparr     (containers/arr.nix — M13, own group, REST only)
-  #   gid 3016  scraparr     (containers/arr.nix — M13)
-  #   uid 3026  tvheadend    (containers/tvheadend.nix — M8, OWN group, NO
-  #                           media access: shape (ii) won, Jellyfin's DVR
-  #                           records and Tvheadend writes only its own state.
-  #                           Escalating to shape (i) is where media
-  #                           membership would come back — with an argument)
-  #   gid 3026  tvheadend    (containers/tvheadend.nix — M8)
-  #   uid 3017  lidarr       (containers/arr.nix — M14, group media PRIMARY —
-  #                           it hardlinks out of slskd's download tree, which
-  #                           is the second write path M14 exists to prove)
-  #   uid 3018  soularr      (containers/arr.nix — M14, group media PRIMARY.
-  #                           NOT the prowlarr shape, though it looks like it:
-  #                           it reads ID3 tags out of the downloads with
-  #                           music-tag and moves rejects aside, so it needs
-  #                           real access and not just REST)
-  #   uid 3019  kapowarr     (containers/arr.nix — M14, group media PRIMARY)
-  #   uid 3020  questarr     (containers/arr.nix — M14, OWN group, NO media.
-  #                           The prowlarr shape: IGDB and Prowlarr over REST,
-  #                           and it writes only to /srv/games/questarr, a
-  #                           different dataset outside the hardlink domain)
-  #   gid 3020  questarr     (containers/arr.nix — M14)
-  #   uid 3021  audiobookshelf (containers/arr.nix — M14, group media PRIMARY —
-  #                           but for /srv/audiobooks, NOT /srv/media, which it
-  #                           never touches.  The group is what it shares with
-  #                           storyteller on that dataset)
-  #   uid 3022  storyteller  (containers/storyteller.nix — M14, group media,
-  #                           and PODMAN rather than nspawn: upstream has no
-  #                           sane non-Docker build.  Rootful and unmapped, so
-  #                           the number is literal on zdata — see that file)
-  #   uid 3024  slskd        (microvms/wg-qbittorrent.nix — M14, group media
-  #                           PRIMARY, IN THE GUEST.  Soulseek is P2P on the
-  #                           open internet on ernst's behalf, so invariant #1
-  #                           puts it one tier up.  virtiofsd passes ids
-  #                           through unmapped, so guest uid 3024 IS host uid
-  #                           3024, exactly as qBittorrent's 3001 is)
-  #   uid 3027  tubesync     (containers/tubesync.nix — M9, group media
-  #                           PRIMARY — it writes downloads into the shared
-  #                           media dataset.  NO uid was ever reserved for
-  #                           this service: the reservation block below jumps
-  #                           from M8's 3026 to M14's 3017 group, so 3027 was
-  #                           allocated when M9 landed.  It is a PODMAN
-  #                           workload and the number is still literal on
-  #                           zdata, because the container is rootful and
-  #                           unmapped — see that file's ROOTFUL section for
-  #                           why rootless was rejected)
-  #   uid 3028  bindery      (containers/arr.nix — M17, group media PRIMARY.
-  #                           Ebook acquisition, the Readarr successor: a
-  #                           static Go binary from upstream's release
-  #                           tarball, ordinary NixOS unit in the arr
-  #                           container.  THIRD write path into /srv/media —
-  #                           its own hardlink proof is in M17's test plan,
-  #                           because M14's proof covers slskd's uid, not
-  #                           this one)
-  #   uid 3029  romm         (containers/romm.nix — the ROM library manager,
-  #                           OWN group 3029, NO media.  It is a PODMAN
-  #                           workload, rootful and unmapped, so the number is
-  #                           literal on zdata like tubesync's and
-  #                           storyteller's.
-  #
-  #                           ITS GROUP HAS A SECOND MEMBER, which is unusual
-  #                           enough to state here rather than only in that
-  #                           file: `syncthing` is added to gid 3029 so it can
-  #                           replicate /srv/roms to birte.  The library tree
-  #                           is 2770 root:romm — SETGID, so a file written by
-  #                           either principal stays writable by the other.
-  #
-  #                           NOT in `media`, deliberately: a ROM library has
-  #                           no hardlink relationship with the arr suite and
-  #                           nothing in it is served by Jellyfin.  It also
-  #                           does NOT live on /srv/games despite being games
-  #                           — that dataset carries exec ON for Steam and
-  #                           Questarr binaries, and ROMs are data that is read,
-  #                           never executed.  zdata/roms is its own dataset)
-  #   uid 3030  crowdsec     (containers/crowdsec.nix — M18, OWN group, NO
-  #                           media and no other group either.  A log parser
-  #                           has no business holding a handle to anything.
-  #
-  #                           IT RUNS IN THE TRAEFIK CONTAINER'S NETNS, not in
-  #                           one of its own — see that file's header — but the
-  #                           number is still literal on zdata, because
-  #                           /srv/state/crowdsec is bound in at
-  #                           /var/lib/crowdsec and holds the decisions
-  #                           database.
-  #
-  #                           PINNING IT IS NOT COSMETIC HERE.  nixpkgs'
-  #                           crowdsec module creates /var/lib/crowdsec/state
-  #                           but not its parent, so on a machine where that
-  #                           parent lands root-owned the agent registers
-  #                           itself in the database, fails to write its own
-  #                           API credentials beside it, and then crash-loops
-  #                           forever in the `activating` state — invisible to
-  #                           `systemctl list-units --failed`.  Measured in a
-  #                           VM, 2026-09-03.  A tmpfiles rule owning the bind
-  #                           mount as 3030 is what stops it)
-  #   gid 3030  crowdsec     (containers/crowdsec.nix — M18)
-  #
-  #===========================================================================
-  # RESERVED — M8 and M12–M16.  Comments only; nothing below is declared yet.
-  #===========================================================================
-  #
-  # M12 LANDED AND TOOK THREE OF ITS FIVE (2026-08-26).  3009, 3011 and 3012
-  # have moved up into the allocated table above.  The two it did NOT take are
-  # left here, still reserved and still unused, with the reason attached — a
-  # gap in a numbering scheme with no explanation gets closed by the next
-  # person who needs a number:
-  #
-  #   uid 3010  umlautadaptarr  RESERVED, NOT USED.  The service shipped with
-  #                             DynamicUser instead, because it has NO
-  #                             PERSISTENT STATE — verified against upstream:
-  #                             no SQLite anywhere in the repository, caching
-  #                             is IMemoryCache, and its docker-compose
-  #                             declares no volumes.  M12's own rule is that a
-  #                             service with nothing to persist has no reason
-  #                             to trade DynamicUser's six implied hardening
-  #                             directives for a static uid.  Its "no media
-  #                             access" half is kept exactly.  Do not reuse
-  #                             3010: if the service ever gains state, this is
-  #                             the number it takes.
-  #   uid 3013  unpackerr       RESERVED, NOT USED.  M12 (e) made it
-  #                             conditional on a measurement and the
-  #                             measurement said no: 50/50 Sonarr grabs and
-  #                             30/30 Radarr grabs were torrent protocol, the
-  #                             only download client configured is qBittorrent,
-  #                             and there are ZERO archive files among the 986
-  #                             in /srv/media/torrents.  Measured on ernst
-  #                             2026-08-26.  The trigger to revisit is a USENET
-  #                             download client being added, not a hunch.
-  #
-  # These are reservations, not configuration.  They exist so that two
-  # milestones written months apart cannot pick the same number, and so that a
-  # session opening one of them does not have to re-derive the next free id
-  # from six other files.  See docs/history.md for what each milestone is.
-  #
-  # THE NUMBERS ARE NUMBERS ON zdata.  nspawn does not remap them and virtiofs
-  # passes them through unmapped, so a uid chosen inside a container or a guest
-  # IS a uid on the pool.  That is why they are allocated here rather than left
-  # to whichever module happens to create the user first.
-  #
-  # The block starts at 3009 because 3005–3008 are ALREADY TAKEN by traefik,
-  # prometheus, grafana and authelia-main above.  An earlier draft of the arr
-  # expansion started at 3005 and would have collided with four live services.
-  #
-  #   uid 3009  bazarr          (M12, group media PRIMARY — it writes .srt
-  #                              sidecars NEXT TO THE MEDIA, so it needs the
-  #                              same primary-group treatment sonarr/radarr
-  #                              have, for the same PrivateUsers = true reason
-  #                              containers/arr.nix explains in its header)
-  #   uid 3010  umlautadaptarr  (M12, OWN group — NO media access.  It is a
-  #                              PROXY: it presents itself to the *arrs as an
-  #                              indexer and sits between them and the real
-  #                              one.  Same argument as prowlarr — the boundary
-  #                              protecting the library is the uid, not the
-  #                              container)
-  #   gid 3010  umlautadaptarr  (M12)
-  #   uid 3011  cleanuparr      (M12, group media PRIMARY — it DELETES files
-  #                              and therefore needs write, not just read)
-  #   uid 3012  mediathekarr    (M12, group media PRIMARY — unlike prowlarr it
-  #                              really does download: it is a Newznab-shim
-  #                              INDEXER *and* a SABnzbd DOWNLOADER, fetching
-  #                              video and subtitles over plain HTTP from the
-  #                              ARD/ZDF Mediatheken)
-  #   uid 3013  unpackerr       (M12, group media PRIMARY — CONDITIONAL.  Only
-  #                              if the last ~50 grabs actually contain
-  #                              archive-delivered releases; see M12(e).  Note
-  #                              pkgs.unpackerr exists (0.15.2, 2026-08-25) but
-  #                              there is no services.unpackerr module)
-  #
-  #   M13 LANDED AND TOOK ALL THREE (2026-08-26).  3014, 3015 and 3016 have
-  #   moved up into the allocated table above; the rows are removed from here
-  #   rather than left in both places.
-  #
-  #   M14 LANDED AND TOOK ALL SIX (2026-08-28).  3017–3022 and 3024 have moved
-  #   up into the allocated table above; the rows are removed from here rather
-  #   than left in both places.
-  #
-  #   TWO of them did not land in the shape this block predicted, and the
-  #   corrections are kept because both were reasoned, not typos:
-  #
-  #     3020 questarr    predicted "group media PRIMARY"; shipped OWN GROUP,
-  #                      NO MEDIA.  It never opens a file under /srv/media —
-  #                      it talks to IGDB and Prowlarr over REST and files
-  #                      games onto /srv/games, a different dataset entirely.
-  #                      Giving it gid 3000 would have been a strictly larger
-  #                      blast radius for no capability, which is the same test
-  #                      that made prowlarr and jellyseerr own-group.
-  #     3022 storyteller predicted to sit with the rest; shipped on the PODMAN
-  #                      TIER in its own container and its own netns, because
-  #                      upstream has no sane non-Docker build (Next.js
-  #                      standalone + whisper.cpp + a Readium binary lifted out
-  #                      of another image).  That is docs/history.md's own
-  #                      escape hatch firing exactly as written, not a
-  #                      departure from it.
-  #
-  #   uid 3023  tdarr           RESERVED, NOT USED.  M15 closed 2026-08-29
-  #                              without shipping anything: the measurement it
-  #                              was required to run first (a Muxarr strip pass
-  #                              reclaims 375 GiB — 1.7% of the library —
-  #                              against 57.6 TiB free) closed the milestone,
-  #                              and CPU-months of AV1 for ~5 TiB nobody is
-  #                              short of went with it.  See M15's close-out in
-  #                              docs/history.md for the re-open triggers; if
-  #                              one fires, the new milestone re-argues its
-  #                              shape (own container, media PRIMARY plus
-  #                              `render` for /dev/dri) rather than inheriting
-  #                              this comment.
-  #
-  #   uid 3028  bindery         M17 LANDED 2026-08-29 AND TOOK THIS — moved up
-  #                              into the allocated table.  Exactly the shape
-  #                              this row predicted: a Go single binary from
-  #                              upstream's release tarball (M12's packaging
-  #                              rule), an ordinary NixOS unit in the arr
-  #                              container, group media PRIMARY.  The hardlink
-  #                              proof this row said it owes is in M17's PR
-  #                              test plan — a THIRD write path into
-  #                              /srv/media, and M14's proof covers slskd's
-  #                              uid, not this one.
-  #
-  #   uid 3025  wizarr          RESERVED, NOT USED.  M16 evaluated it as its
-  #                              brief required and DROPPED it (2026-08-29):
-  #                              the household is three people, the accounts
-  #                              M16 actually creates numbered exactly ONE
-  #                              (sabine, in authelia.nix's autheliaUsers),
-  #                              and an invite service to automate one
-  #                              account is a standing web app to save five
-  #                              minutes once.  The identity question it
-  #                              would have posed is answered without it:
-  #                              AUTHELIA OWNS IDENTITY (users_database.yml,
-  #                              via clan vars), services own their own
-  #                              enrolment, and nothing provisions across.
-  #                              The trigger to revisit is the household
-  #                              growing past hand-managed size, not M16's
-  #                              ingress.  If taken, it STAYS INTERNAL: an
-  #                              invite endpoint reachable from outside is a
-  #                              self-service account creation endpoint.
-  #   gid 3025  wizarr          (same status)
-  #
-  #   uid 3029  cloudflared     M16 TOOK THIS AND M18 GAVE IT BACK — and it was
-  #                              COLLIDING while it lasted, which is the part
-  #                              worth keeping.  RomM holds 3029 in the
-  #                              allocated table above, and M16 allocated the
-  #                              same number to cloudflared here.  Nothing
-  #                              broke, for a reason that is luck rather than
-  #                              design: cloudflared was declared stateless and
-  #                              got no /srv/state directory, so the two
-  #                              principals never named the same file on zdata.
-  #                              They would have the moment anyone gave the
-  #                              tunnel something to persist.
-  #
-  #                              Recorded rather than quietly deleted, because
-  #                              the lesson is about this table and not about
-  #                              cloudflared: a uid was taken by editing the
-  #                              RESERVED block while the ALLOCATED block above
-  #                              already held it.  Read both halves before
-  #                              picking a number.  Next free is 3036 (M19 took
-  #                              3034 for open-webui, M20 took 3035 for searx).
-  #   uid 3031  komga        (containers/arr.nix — group media, READ-ONLY
-  #                           against the library.  The group is a WRITE grant
-  #                           (2770 root:media) and is taken back per unit with
-  #                           ProtectSystem=strict + ReadWritePaths; nixpkgs'
-  #                           komga module ships ProtectSystem="full", which
-  #                           does NOT cover /srv, so the mkForce to "strict"
-  #                           in that file is load-bearing rather than tidy)
-  #   uid 3032  navidrome    (containers/arr.nix — group media, READ-ONLY
-  #                           against Lidarr's music tree by the same
-  #                           mechanism, plus the upstream module's own
-  #                           RootDirectory + BindReadOnlyPaths chroot)
-  #   uid 3033  cwa          (containers/cwa.nix — Calibre-Web-Automated on the
-  #                           PODMAN tier, so the number is literal on zdata
-  #                           like tubesync's, storyteller's and romm's.
-  #
-  #                           OWN group 3033, NOT media, deliberately: CWA
-  #                           writes only into trees it owns outright (its own
-  #                           Calibre library and its own ingest folder) and
-  #                           has no hardlink relationship with anything the
-  #                           *arr manage.  It is also internet-facing without
-  #                           forward-auth, so a write handle on the film and
-  #                           television library would be a grant it could
-  #                           never use and an attacker could)
-  #   gid 3033  cwa          (containers/cwa.nix)
-  #
-  #   uid 3034  open-webui   (service-modules/local-ai.nix — M19, the web chat
-  #                           client, in an NSPAWN container on VLAN 90.
-  #
-  #                           OWN group 3034, NOT media, and it is not a close
-  #                           call: this service has no business anywhere near
-  #                           the library.  Its whole state is a SQLite
-  #                           database of conversations under
-  #                           /srv/state/open-webui, and its only outbound
-  #                           dependency is llama-swap over a point-to-point
-  #                           veth — not the pool, not the *arr, not /srv/media.
-  #
-  #                           It is browser-only, so it takes forward-auth AND
-  #                           OIDC (the Grafana pattern) rather than either
-  #                           alone.  See roles.webui in local-ai.nix)
-  #   gid 3034  open-webui   (service-modules/local-ai.nix)
-  #
-  #   NEXT FREE IS 3035, AND IT IS NOW UNCLAIMED — M21 GAVE IT BACK.
-  #
-  #   It was spoken for by M19's `imagegen` role (ComfyUI, podman tier), on the
-  #   assumption that enabling image generation meant a digest-pinned community
-  #   container.  M21 shipped image generation WITHOUT TAKING IT, and the
-  #   reason is worth keeping because it is the same shape as the byparr row
-  #   below: a component with no identity of its own has no reason to hold a
-  #   uid, and taking one anyway is not free.
-  #
-  #   ComfyUI is now BUILT (service-modules/pkgs/comfyui) and SPAWNED BY
-  #   llama-swap as an ordinary child process, exactly as llama-server and
-  #   whisper-server are.  It therefore runs as the `llama` user that already
-  #   exists on this machine, writes only into a directory owned by that user,
-  #   and is not a container at all — so there is no unmapped uid landing on
-  #   the pool, no netns, no MAC and no DHCP reservation.
-  #
-  #   Two findings forced that and both are recorded in M21 (docs/history.md):
-  #   no usable image exists (AMD's own rocm/comfyui is gfx942;gfx950 — no
-  #   kernels for this card; the best-provenance community image's digest pins
-  #   only its first install), and llama-swap runs unprivileged while this
-  #   machine's podman tier is rootful, so it could never have started or
-  #   stopped the container — which is what eviction requires.
-  #
-  #   So 3035 was free for whoever needed it next, and M20 (SearXNG) was the
-  #   milestone sharing the claim.  M20 LANDED AND TOOK IT — see below.
-  #
-  #   uid 3035  searx        (service-modules/local-ai.nix — M20, SearXNG, in an
-  #                           NSPAWN container on VLAN 90 with no hostname.
-  #
-  #                           OWN group 3035, NOT media, and this entry is the
-  #                           odd one in this table: IT OWNS NOTHING.  SearXNG
-  #                           is stateless — nixpkgs' searx module declares no
-  #                           StateDirectory, regenerates its settings into
-  #                           /run/searx on every start, and the container
-  #                           bind-mounts only its secret, read-only.  There is
-  #                           no /srv/state directory and no file on zdata with
-  #                           this number on it.
-  #
-  #                           It is pinned anyway, and the reason is the one
-  #                           this table's header gives: nspawn passes uids
-  #                           through unmapped, so a container-chosen number IS
-  #                           a number on the pool.  Pinning it means a process
-  #                           seen from the host is attributable to a service
-  #                           rather than to whatever the container happened to
-  #                           allocate — and it means that if SearXNG ever does
-  #                           acquire state (the favicon cache is the obvious
-  #                           candidate), the identity is already reserved
-  #                           instead of being invented at that moment.
-  #
-  #                           NEXT FREE IS 3036.)
-  #   gid 3035  searx        (service-modules/local-ai.nix)
-  #
-  #   uid 3036  immich       (containers/immich.nix — M22, the household photo
-  #                           library, in an NSPAWN container on VLAN 90.
-  #
-  #                           OWN group 3036, NOT media, and it is not a close
-  #                           call: this service has no hardlink relationship
-  #                           with anything in /srv/media, nothing else reads
-  #                           its files, and it is reachable from the internet.
-  #                           Its tree is 0700 immich:immich — no setgid, no
-  #                           shared group — which is the whole difference from
-  #                           the 2770 root:media trees.
-  #
-  #                           IT OWNS A WHOLE DATASET, which only jellyfin and
-  #                           the *arr can otherwise say: zdata/photos, mounted
-  #                           at /srv/photos and bound in at /var/lib/immich —
-  #                           the module's own default, so mediaLocation and
-  #                           StateDirectory agree with nothing overridden.
-  #                           Its DATABASE is elsewhere, on /srv/state/immich,
-  #                           because a 1M recordsize is right for photographs
-  #                           and wrong for PostgreSQL.
-  #
-  #                           PINNING IT IS LOAD-BEARING, not hygiene.  The
-  #                           nixpkgs module creates `immich` with NO uid, so
-  #                           the number would be whatever the container's
-  #                           useradd happened to pick — and nspawn passes ids
-  #                           through unmapped, so that number goes onto every
-  #                           file in the photo library.  Adding an unrelated
-  #                           user to this container could then change the
-  #                           owner of 200 GB of photographs.
-  #
-  #                           M23 TOOK 3037; NEXT FREE IS 3038.)
-  #   gid 3036  immich       (containers/immich.nix — M22)
-  #
-  #   uid 3037  nextcloud    (containers/nextcloud.nix — M23, the household
-  #                           file-sync / CalDAV / CardDAV server, in an NSPAWN
-  #                           container on VLAN 90.  It is what lets the hosted
-  #                           instance at citizengo.io be turned off.
-  #
-  #                           OWN group 3037, with `media` as a SECONDARY
-  #                           membership — which is the one place this row
-  #                           differs from Immich's.  Immich shares nothing;
-  #                           Nextcloud reads /srv/media read-only as external
-  #                           storage, and jellyfin.nix created group 3000
-  #                           anticipating exactly that ("a group-add, not a
-  #                           chown").  Its OWN tree is 0700 nextcloud:nextcloud
-  #                           on zdata/nextcloud — no setgid, no shared group,
-  #                           same as Immich's.  Making `media` PRIMARY would
-  #                           put gid 3000 on every file the household syncs,
-  #                           which is the opposite of what the secondary
-  #                           membership is for.
-  #
-  #                           IT OWNS A WHOLE DATASET: zdata/nextcloud, mounted
-  #                           at /srv/nextcloud and bound in at
-  #                           /var/lib/nextcloud — the module's own `home`, so
-  #                           `datadir` and its tmpfiles rules agree with
-  #                           nothing overridden.  Its DATABASE is elsewhere, on
-  #                           /srv/state/nextcloud, for the reason Immich's is:
-  #                           a 1M recordsize is right for a bulk file store and
-  #                           wrong for PostgreSQL.
-  #
-  #                           PINNING IT IS LOAD-BEARING for the same reason as
-  #                           3036.  The nixpkgs module creates `nextcloud` with
-  #                           `isSystemUser = true` and NO uid, so the number
-  #                           would be whatever the container's useradd picked —
-  #                           and it would then be the owner of the household's
-  #                           entire document store on the pool.
-  #
-  #                           NEXT FREE IS 3038, AND M24 DID NOT TAKE IT — see
-  #                           the note on uid 286 below.  M27 DID.)
-  #   gid 3037  nextcloud    (containers/nextcloud.nix — M23)
-  #
-  #   uid 3038  karakeep     (containers/karakeep.nix — M27, bookmarks, full-page
-  #   gid 3038  karakeep      archives and the search over both, in an NSPAWN
-  #                           container on VLAN 90.  It is the Floccus backend
-  #                           for miralda's and jens's browsers, and it retires
-  #                           the Linkwarden that browsers.nix has referred to
-  #                           since it was written and that never existed.
-  #
-  #                           OWN group, and NOT `media` even as a secondary —
-  #                           which is where this row differs from Nextcloud's
-  #                           above.  containers/romm.nix states the test and it
-  #                           answers cleanly here: `media` (gid 3000) is the
-  #                           *arr suite's shared HARDLINK domain, and a service
-  #                           that hardlinks nothing and never opens a path
-  #                           under /srv/media has no business in it.
-  #
-  #                           NO DATASET OF ITS OWN.  Its DATA_DIR — the SQLite
-  #                           database AND the archived page assets, which
-  #                           upstream keeps in one tree and says should not be
-  #                           split — lives at /srv/state/karakeep on
-  #                           `zdata/state` (128K, auto-snapshot ON).  The
-  #                           snapshot property is the load-bearing half: a
-  #                           crawled copy of a page that has since gone dark is
-  #                           not re-acquirable from anywhere, which is the
-  #                           argument disko.nix makes about Nextcloud in the
-  #                           words "it is deleted from by people".
-  #
-  #                           MEILISEARCH DELIBERATELY TAKES NO NUMBER HERE, and
-  #                           that is the interesting half of this row.  The
-  #                           nixpkgs module runs it under DynamicUser with a
-  #                           StateDirectory, so binding its index out to zdata
-  #                           would put a systemd-ALLOCATED id — one nobody
-  #                           chose and nothing records — on the pool, which is
-  #                           exactly what this table exists to prevent.  The
-  #                           index stays on the container rootfs because it is
-  #                           DERIVED: Karakeep rebuilds it from the SQLite
-  #                           database on demand.  Losing it costs a reindex.
-  #
-  #                           PINNING 3038 IS LOAD-BEARING for the same reason
-  #                           as 3036 and 3037 — nixpkgs creates `karakeep` with
-  #                           `isSystemUser = true` and no uid — and it was
-  #                           checked against `ids.uids` BEFORE being written
-  #                           down, which is the step M24 skipped and paid for.
-  #
-  #                           NEXT FREE IN THE 3000 BLOCK IS 3039.)
-  #
-  #   NO uid FOR ANY OF M29's THREE SERVICES, and NEXT FREE STAYS 3039.  mneme,
-  #   wyoming-faster-whisper and wyoming-piper all run `DynamicUser` on the
-  #   host and none of them writes to zdata — the one thing they do keep, the
-  #   Wyoming model downloads, lands under /var/lib/private/wyoming on the root
-  #   pool and is persisted there rather than bound out.  That is deliberate
-  #   and is M27's Meilisearch call again: binding a DynamicUser's
-  #   StateDirectory onto the pool would put a systemd-ALLOCATED uid on it,
-  #   which is the exact thing this table exists to prevent.
-  #
-  #   uid 3039  mneme        (service-modules/local-ai.nix — M29b, the household
-  #                           agent's memory.  OWN group, no media access: it
-  #                           writes a git repository at /srv/state/mneme/wiki
-  #                           and nothing else on the pool.
-  #
-  #                           M29 PREDICTED THIS LINE.  That milestone ran the
-  #                           daemon under DynamicUser because it owned nothing
-  #                           on disk, and said in this table that a wiki would
-  #                           change it.  A per-boot systemd-allocated id on
-  #                           zdata is the exact thing this table exists to
-  #                           prevent, so keeping state and keeping DynamicUser
-  #                           are mutually exclusive.
-  #
-  #                           CHECKED AGAINST nixpkgs' ids.nix before being
-  #                           written down — the step M24 skipped and paid for.
-  #
-  #                           It also owns /srv/state/home-assistant/www/mneme,
-  #                           created by hass-dirs, where generated pictures
-  #                           land so that the hub can serve them at /local.
-  #
-  #                           NEXT FREE IN THE 3000 BLOCK IS 3040.)
-  #
-  #   uid 3040  music-assistant (containers/music-assistant.nix — M30, the player
-  #   gid 3040                   controller over Navidrome's library, in an NSPAWN
-  #                              container on VLAN 90 with a second leg on VLAN
-  #                              20.  OWN group and NO MEDIA ACCESS AT ALL, which
-  #                              is the point of reading the library over the
-  #                              Subsonic API rather than off disk: this account
-  #                              holds no handle on /srv/media, so the boundary
-  #                              around 47 TB is the uid and not the container.
-  #                              Same argument as jellyseerr's row.
-  #
-  #                              IT OWNS /srv/state/music-assistant — a SQLite
-  #                              database plus the provider and player
-  #                              configuration, created by mass-dirs.  NO DATASET
-  #                              OF ITS OWN: that is `zdata/state`'s write profile
-  #                              exactly (128K, auto-snapshot ON), the call M24,
-  #                              M27 and M27 again all made before it.
-  #
-  #                              THE STATE IS NOT DERIVED AND THE SNAPSHOT
-  #                              PROPERTY MATTERS, which is why this is not
-  #                              Meilisearch's row: the library index IS
-  #                              re-derivable from Navidrome, but the Navidrome
-  #                              credential, the player it discovered and the
-  #                              queue are not, and re-entering them is a manual
-  #                              step in a browser.
-  #
-  #                              DynamicUser IS TURNED OFF TO GET THIS NUMBER, and
-  #                              that is the third time on this host:
-  #                              `StateDirectory` + `DynamicUser` MIGRATES
-  #                              /var/lib/music-assistant to
-  #                              /var/lib/private/music-assistant, and here that
-  #                              path is a BIND MOUNT.  containers/crowdsec.nix
-  #                              measured it with systemd's own log line and
-  #                              service-modules/local-ai.nix hit it with ollama
-  #                              before that.  The six protections DynamicUser
-  #                              implied are restated by hand in that file — the
-  #                              silent half of this trade.
-  #
-  #                              CHECKED AGAINST nixpkgs' ids.nix before being
-  #                              written down, the step M24 skipped and paid for:
-  #                              there is NO static `music-assistant` id upstream,
-  #                              so 3040 is this repo's to allocate.
-  #
-  #                              NEXT FREE IN THE 3000 BLOCK IS 3041.)
-  #
-  #   uid/gid 3041  virtualMail  (containers/mail.nix — M31, the owner of the
-  #                              Maildir at /srv/state/mail/vmail.)
-  #
-  #                              PINNED RATHER THAN DEFAULTED.  Upstream's
-  #                              `mailserver.storage.uid` defaults to 5000, which
-  #                              works and is outside every convention this table
-  #                              exists to keep.  The 3000 block is for ids that
-  #                              become VISIBLE ON THE POOL, and this is the one
-  #                              id in M31 that does — every message the household
-  #                              owns is a file owned by it.
-  #
-  #                              M31 TAKES EXACTLY TWO ids FROM THIS BLOCK —
-  #                              this one and `redis-rspamd` at 3043 below — and
-  #                              the four daemons are why that is worth stating:
-  #                              postfix 13, postdrop 14, dovecot2 46 and rspamd
-  #                              225 are ALL STATIC IN nixpkgs' ids.nix.  Pinning
-  #                              a 3000-block number onto any of them is an
-  #                              option conflict at EVAL — `conflicting definition
-  #                              values` — which is M24's lesson, and this time
-  #                              the check was run first.  They are recorded below
-  #                              beside 286 and 71 for the same reason those are.
-  #
-  #   gid 3042  docsin          M32's SHARED INGEST GROUP, and the only id that
-  #                              milestone takes from this block — paperless
-  #                              itself is upstream's 315 and is in the
-  #                              out-of-block table below.
-  #
-  #                              A GROUP WITH NO USER OF ITS OWN, which makes
-  #                              this gid 3000 `media`'s shape rather than any
-  #                              row above it.  Two principals share
-  #                              /srv/docs/inbox: Nextcloud (3037) writes a scan
-  #                              into it over WebDAV, and paperless (315) owns
-  #                              the directory and CONSUMES AND UNLINKS.  The
-  #                              directory is 2770 paperless:docsin — the owner
-  #                              bit is what lets paperless unlink, the group
-  #                              bit is what lets Nextcloud write, and the
-  #                              SETGID bit is what makes a Nextcloud-written
-  #                              file land in group `docsin` instead of group
-  #                              `nextcloud`.  Without it paperless, in neither
-  #                              group, would be reading on the `other` bits by
-  #                              luck — containers/cwa.nix:509-535 wrote that
-  #                              sentence first, about its own ingest tree.
-  #
-  #                              DECLARED IN TWO CONTAINER CONFIGS, which is not
-  #                              duplication to tidy away: each
-  #                              `containers.<n>.config` is its own NixOS
-  #                              evaluation and cannot read the host option
-  #                              tree, the same reason nextcloud.nix restates
-  #                              `mediaGid = 3000`.
-  #
-  #                              3041 IS SKIPPED: M31's `virtualMail` claimed
-  #                              it, in a branch developed concurrently with
-  #                              this one.  Its row arrives with that branch.
-  #
-  #
-  #   uid/gid 3043  redis-rspamd (containers/mail.nix — M31, Rspamd's BAYES
-  #                              CLASSIFIER, at /srv/state/mail/redis.)
-  #
-  #                              M31'S SECOND id, AND IT MOVED ONCE.  It was
-  #                              written as 3042 in the branch; M32 landed first
-  #                              and took that number for `docsin`, so this is
-  #                              3043.  Both milestones reserved the other's
-  #                              number in prose while developing concurrently —
-  #                              that is what the "3041 IS SKIPPED" note above
-  #                              and the seq-17 note in the MAC table are — and
-  #                              the one number neither side reserved is the one
-  #                              that collided.
-  #
-  #                              PINNED FOR THE ORDINARY REASON, not a clever
-  #                              one: `redis-rspamd` is a PER-SERVER user, so
-  #                              unlike postfix/dovecot2/rspamd it has no entry
-  #                              in nixpkgs' ids.nix, nixpkgs declares it
-  #                              `isSystemUser` with no uid, and nspawn passes
-  #                              container ids through UNMAPPED — so whatever
-  #                              useradd happens to pick would own the Bayes
-  #                              database on the pool.  Let it drift and Redis
-  #                              cannot read its own dump after a rebuild.
-  #
-  #                              DynamicUser IS NOT IN PLAY HERE, unlike
-  #                              crowdsec / ollama / music-assistant:
-  #                              `services.redis.servers.rspamd` already sets
-  #                              `User=`, so `StateDirectory=redis-rspamd` stays
-  #                              at /var/lib/redis-rspamd and does not migrate
-  #                              to /var/lib/private — the bind mount is safe as
-  #                              written and that trade is not owed.
-  #
-  #                              NEXT FREE IN THE 3000 BLOCK IS 3044.)
-  #
-  #   NO uid FOR miniflux, and it is recorded rather than left to inference.
-  #   M27's other container (containers/miniflux.nix) runs the daemon under
-  #   DynamicUser — upstream's own choice, kept — and stores everything in
-  #   PostgreSQL, so the only id that lands on zdata from it is 71, below.
-  #   That is M26's shape (a service with no id of its own) rather than M24's
-  #   (a collision with an upstream static id), and the two are worth telling
-  #   apart because only one of them is a trap.
-  #
-  #   uid 286   hass         (containers/home-assistant.nix — M24, the
-  #   gid 286   hass          household's home-automation hub, in an NSPAWN
-  #                           container on VLAN 90 with a second leg on VLAN 20.
-  #
-  #                           NOT FROM THE 3000 BLOCK, AND THAT IS THE POINT.
-  #                           This row exists because the file was first written
-  #                           with 3038 on exactly the argument rows 3036 and
-  #                           3037 make — nixpkgs creates the user with no uid,
-  #                           nspawn passes ids through unmapped, so whatever
-  #                           useradd picks owns the data.  IT FAILED AT
-  #                           EVALUATION:
-  #
-  #                             error: The option
-  #                             `containers.hass.users.users.hass.uid' has
-  #                             conflicting definition values: 286 / 3038
-  #
-  #                           `hass` is a WELL-KNOWN NixOS STATIC ID —
-  #                           `ids.uids.hass` and `ids.gids.hass` are both 286 —
-  #                           so the number is fixed by nixpkgs upstream and
-  #                           cannot drift.  It is the same situation as
-  #                           PostgreSQL's uid 71 further down: the 3000-block
-  #                           convention does not apply, and it must NOT be
-  #                           renumbered into the block.
-  #
-  #                           THE HALF OF THE ARGUMENT THAT STILL HOLDS is the
-  #                           one that matters for the bind mount: 286 is what
-  #                           lands on every file in /srv/state/home-assistant,
-  #                           so hass-dirs chowns to it numerically.
-  #
-  #                           IT OWNS NO DATASET.  Its state — the .storage
-  #                           tree that holds accounts and integrations, and the
-  #                           recorder's SQLite database — is small random
-  #                           writes, which is what zdata/state already is
-  #                           (128K, auto-snapshot on).  A dedicated dataset
-  #                           would carry identical properties and add a mount
-  #                           that can fail.
-  #
-  #                           M26 DID NOT TAKE 3038 EITHER, and for a different
-  #                           reason from M24's — not a collision with an
-  #                           upstream static id, but because the service index
-  #                           has no id at all.  The nixpkgs module runs it
-  #                           under DynamicUser with its configuration in /etc
-  #                           and its cache in a CacheDirectory, so it writes
-  #                           nothing to zdata and there is no number for this
-  #                           table to pin.  A service with no persistent state
-  #                           is the one shape that belongs in NEITHER half of
-  #                           this file, and that is worth a line so the next
-  #                           reader does not go looking for its row.
-  #
-  #                           NEXT FREE IN THE 3000 BLOCK REMAINS 3038.
-  #
-  #                           M27 TOOK 3038 — for Karakeep, whose row is above;
-  #                           its other container, Miniflux, took nothing, for
-  #                           M26's reason rather than M24's.  NEXT FREE IS NOW
-  #                           3039.)
-  #
-  #   uid   71  postgres     NOT ALLOCATED HERE, and listed so nobody allocates
-  #                           it.  Immich's PostgreSQL runs inside its container
-  #                           and lands on zdata unmapped like every other
-  #                           container uid, but 71 is a WELL-KNOWN NixOS static
-  #                           id (`ids.uids.postgres`) rather than one of ours.
-  #                           It appears on /srv/state/immich/postgresql, on
-  #                           /srv/state/nextcloud/postgresql since M23, and on
-  #                           /srv/state/miniflux/postgresql since M27 — three
-  #                           separate databases in three separate containers
-  #                           that happen to share a number, which is fine
-  #                           precisely because no tree is shared.  The
-  #                           3000-block convention does not apply to it and it
-  #                           must not be renumbered into the block.  Since M32
-  #                           it is also on /srv/state/paperless/postgresql —
-  #                           a fourth database in a fourth container, fine for
-  #                           the same reason: no tree is shared.
-  #
-  #   uid/gid 315  paperless  NOT ALLOCATED HERE, and this row exists so nobody
-  #                           tries.  M32's container lands on zdata unmapped
-  #                           like every other container uid, but 315 is a
-  #                           WELL-KNOWN NixOS static id (`ids.uids.paperless`)
-  #                           and the nixpkgs module assigns it unconditionally:
-  #
-  #                             users = lib.optionalAttrs (cfg.user == defaultUser) {
-  #                               users.${cfg.user} = { uid = config.ids.uids.paperless; … };
-  #
-  #                           So a 3000-block number on top of it is not an
-  #                           override, it is an evaluation conflict — THE
-  #                           `hass` = 286 FAILURE VERBATIM, and the good news
-  #                           is that it fails at eval rather than at container
-  #                           start:
-  #
-  #                             The option `containers.paperless.users.users
-  #                             .paperless.uid' has conflicting definition
-  #                             values: 315 / 3042
-  #
-  #                           The escape — setting `services.paperless.user` to
-  #                           something other than the default so the module's
-  #                           own `users` block is skipped, then declaring the
-  #                           account by hand — was considered and refused: it
-  #                           buys a tidier number and costs a hand-rolled
-  #                           system user.  This is what M24 learned the
-  #                           expensive way and M30 then checked for in advance;
-  #                           M32 checked ids.nix BEFORE writing the row, which
-  #                           is the whole point of that habit.
-  #
-  #                           /srv/docs and everything under it is
-  #                           315:315, except /srv/docs/inbox which is
-  #                           315:3042.  The 3000-block convention does not
-  #                           apply to it and it must not be renumbered into the
-  #                           block — and NEXT FREE in that block DID NOT
-  #                           ADVANCE for it.
-  #
-  #   uid   13  postfix      NOT ALLOCATED HERE, all four, and listed for the
-  #   gid   14  postdrop      reason 71 and 286 are.  M31's mail container
-  #   uid   46  dovecot2      (containers/mail.nix) runs four daemons that every
-  #   uid  225  rspamd        one of them has a WELL-KNOWN NixOS static id for —
-  #                           `ids.uids.postfix` 13, `ids.gids.postdrop` 14,
-  #                           `ids.uids.dovecot2` 46, `ids.uids.rspamd` 225 —
-  #                           and all four land on zdata unmapped, on
-  #                           /srv/state/mail/{postfix,dovecot,rspamd}.
-  #
-  #                           THE CHECK WAS RUN BEFORE THE NUMBERS WERE WRITTEN
-  #                           DOWN, which is the step M24 skipped: pinning a
-  #                           3000-block id onto any of these would have been
-  #                           hass's `conflicting definition values` error again,
-  #                           four times over.  The 3000-block convention does
-  #                           not apply to them and they must not be renumbered
-  #                           into the block.
-  #
-  #                           THE ONE id M31 DOES TAKE is 3041, `virtualMail`,
-  #                           whose row is in the allocated table above — the
-  #                           Maildir's owner, and the only M31 id that is this
-  #                           repo's to choose.
-  #
-  #   uid 3026  tvheadend       M8 LANDED 2026-08-27 AND TOOK THIS — moved up
-  #                              into the allocated table, as shape (ii): OWN
-  #                              group, NO media access.  The conditional
-  #                              this row used to carry resolved the other
-  #                              way: lgo opened M8 deliberately (live TV
-  #                              wanted despite MediathekArr), and Jellyfin's
-  #                              DVR records, so "group media PRIMARY" never
-  #                              happened.
-  #
-  # NO uid FOR TIKA OR GOTENBERG, M32's two helpers, and they are shape (c) —
-  # upstream's DynamicUser kept, nothing written to zdata.  `configureTika`
-  # brings both up inside containers/paperless.nix to turn office files into
-  # PDFs; `services.tika` defaults to listenAddress 127.0.0.1 and
-  # `services.gotenberg` to bindIP 127.0.0.1, both on the CONTAINER's loopback,
-  # so neither is reachable from VLAN 90 and neither has state to pin.  Listed
-  # because a reader who finds two new daemons in that container and no rows
-  # here has to be able to tell "recorded as taking none" from "somebody
-  # forgot".
-  #
-  # NO uid FOR byparr.  It replaces FlareSolverr and keeps upstream's
-  # DynamicUser, exactly as FlareSolverr does: there is no persistent state,
-  # only a RuntimeDirectory, so the Prowlarr trap cannot fire and there is
-  # nothing to gain by paying for it.  A service with no state has no reason to
-  # take a static uid — and taking one silently drops the six hardening options
-  # DynamicUser implies (NoNewPrivileges, PrivateTmp, ProtectSystem=strict,
-  # ProtectHome=read-only, RemoveIPC, RestrictSUIDSGID).
-  #
-  # THE cloudflared ROWS ARE GONE, and M18 is why: the tunnel was replaced by
-  # a UDM-Pro port forward terminating at Traefik, and containers/cloudflared.nix
-  # was deleted.  Its uid row is directly above, kept for the collision it
-  # recorded; its MAC and address are marked FREE AGAIN in the table further up.
-  #
-  # NO uid, NO MAC AND NO ADDRESS FOR M11 — stated so nobody adds one for
-  # symmetry.  Ollama already has its static uid on ernst (see
-  # service-modules/local-ai.nix, which turned DynamicUser off deliberately),
-  # and the coding agent runs as `lgo` on the CLIENT, not as a service here.
-  # M11 changes ernst's attack surface not at all.
-  #
-  #   *** M19 SUPERSEDES THAT LAST SENTENCE, AND IT MUST NOT BE READ AS STILL
-  #   TRUE.  Ollama is gone from ernst; llama-swap took its place and its port.
-  #   The inference listeners are still loopback-only, and the SSH forward is
-  #   unchanged down to the `permitopen` string — but M19 adds:
-  #
-  #     * a SECOND LISTENER on the mon0 ULA (fdca:fe90::1), a socket proxy that
-  #       lets the monitoring container scrape llama-server's /metrics.  Not on
-  #       any VLAN; the only peer of that /128 is the monitoring container.
-  #     * an nspawn container on VLAN 90 with a MAC, an address and a public
-  #       hostname behind Traefik + Authelia (Open WebUI, below).
-  #
-  #   So M19 DOES change ernst's attack surface, in two named places, and both
-  #   have ledger rows in docs/ledger.md.  The M11 sentence above is kept as
-  #   the record of what was true then, not as a claim about now. ***
-  #
-  # PORT NOTE, recorded here because it is a FLEET fact and not a milestone
-  # detail: 11434 IS ALREADY TAKEN ON MIRALDA by its own local ollama — which
-  # M19 deliberately did NOT migrate.  The tunnel to ernst uses local port
-  # 11435, and ernst's end is still 11434 because llama-swap took exactly the
-  # port ollama had, precisely so that this note and jens's `permitopen` did
-  # not have to change:
-  #
-  #     ssh -N -L 11435:127.0.0.1:11434 root@10.0.50.10
-  #
-  # Anyone copying the obvious `ssh -L 11434:...` gets a bind failure — or
-  # worse, on a machine where it DOES bind, silently talks to a local 7B at
-  # 4096 context and gets a plausible, wrong answer.  Check what you are
-  # talking to before trusting anything it says:
-  #
-  #     curl -s localhost:11435/v1/models | jq -r '.data[].id'
-  #
-  # (/v1/models, not /api/tags — the far end is llama-swap since M19 and has no
-  # ollama API.  miralda's LOCAL ollama on 11434 still answers /api/tags, which
-  # is a second way to tell the two apart if the port ever confuses you.)
-  #
-  #---------------------------------------------------------------------------
-  # MAC / ADDRESS RESERVATIONS on VLAN 90.  Far fewer than the uid list,
-  # deliberately.
-  #
-  # M12 NEEDS NONE — every service it adds lands in the EXISTING arr container
-  # on 10.0.90.13.  That is stated here so nobody creates a veth, a MAC and a
-  # reservation out of symmetry with M2b/M4/M5/M6/M7.  It is also why M12 goes
-  # first: it proves the hand-rolled-derivation approach M14 depends on without
-  # touching a network boundary.  Its only networking change is EXTENDING the
-  # one explicit port list containers/arr.nix feeds to its concatMapStrings
-  # Traefik source-restriction — not adding a second mechanism, and NOT
-  # extraInputRules, which is declared unconditionally but consumed only under
-  # networking.nftables and would produce no rule and no warning.
-  #
-  # M14 NEEDED EXACTLY ONE, and the asymmetry is the milestone's placement
-  # story in miniature.  Five of its six services are ordinary NixOS units and
-  # went into the EXISTING arr container on 10.0.90.13 — no veth, no MAC, no
-  # reservation, exactly as M12 and M13 did.  The sixth, Storyteller, is an
-  # opaque OCI image with no sane non-Docker build, so it took the podman tier
-  # and with it a netns, a MAC and a reservation of its own (0c → 10.0.90.20).
-  #
-  # slskd needed none either, for a different reason: it went into the EXISTING
-  # microvm guest, which already has 02:00:00:90:00:03.
-  #
-  # M19 TOOK 0f / 10.0.90.23 for the Open WebUI container — moved up into the
-  # allocated table.  NEXT FREE SEQUENCE NUMBER IS NOW 10; next free address is
-  # 10.0.90.24.
-  #
-  # M21 NEEDED NONE, and it is stated here for the same reason M12's row is:
-  # so nobody creates a veth, a MAC and a reservation out of symmetry.  Image
-  # generation shipped as a process spawned by llama-swap rather than as a
-  # podman-tier container, so it has no network namespace to name and nothing
-  # to reserve — it is reached over the EXISTING fdca:fe91::1 bridge that Open
-  # WebUI already uses for chat and STT, through llama-swap's
-  # `/upstream/comfyui` path.  No new listener and no new firewall rule.
-  # Sequence 10 / 10.0.90.24 therefore remain free.
-  #
-  # M20 TOOK SEQUENCE 10 / 10.0.90.24 — moved up into the allocated table.
-  # M22 TOOK SEQUENCE 11 → 02:00:00:90:00:11 / 10.0.90.25 for Immich, also
-  # moved up.
-  # M23 TOOK SEQUENCE 12 → 02:00:00:90:00:12 / 10.0.90.26 for Nextcloud, also
-  # moved up.
-  # M24 TOOK SEQUENCE 13 → 02:00:00:90:00:13 / 10.0.90.27 for Home Assistant,
-  # also moved up — AND OPENED A SECOND TABLE, for VLAN 20, with
-  # 02:00:00:20:00:01 as its only entry.  NEXT FREE SEQUENCE NUMBER ON VLAN 90
-  # IS 14; next free address is 10.0.90.28, keeping the 8 + <seq>
-  # correspondence (8 + 0x14 = 28).
-  #
-  # (0d / 10.0.90.21 was the free-again cloudflared pair and CWA reused it, as
-  # the note below intended.  There is no free gap left in the sequence.)
-  # (0e → 10.0.90.22 went to RomM, the podman tier's THIRD occupant.  Note for
-  # whoever takes 0f: containers/storyteller.nix's rule about UNIQUE namespace
-  # interface names still binds — `eth0`, `st0` and `rm0` are all taken. M19's Open WebUI is an NSPAWN container, not a podman netns, so it uses plain `eth0` inside its own namespace and adds nothing to that list.)
-  # (08/.16 and 09/.17 below are LAPSED reservations, kept as history so the
-  # gap in the sequence reads as a decision rather than an oversight.)
-  #   02:00:00:90:00:08   tdarr container eth0      (M15 — LAPSED: the
-  #                       milestone closed 2026-08-29 without shipping;
-  #                       see uid 3023's row below)                10.0.90.16
-  #   02:00:00:90:00:09   jellyseerr container eth0 (LAPSED: M13 shipped it
-  #                       inside the arr container and M16 kept it there —
-  #                       external ingress reaches it through Traefik, so
-  #                       no split-out ever happened)              10.0.90.17
-  #   02:00:00:90:00:0a   tvheadend container eth0  — M8 LANDED 2026-08-27,
-  #                       moved up into the allocated table (10.0.90.18).
-  #                       The scope challenge resolved by operator decision:
-  #                       live TV is wanted alongside MediathekArr.
-  #
-  # The 8 + <seq> correspondence holds for all three.  EVERY reservation must
-  # be INSIDE the DHCP pool (10.0.90.6–.254): UniFi accepts a .2–.5 address and
-  # then silently hands out an ordinary pool lease instead.  M2b, M5 and M6
-  # each lost a round to exactly that, and for M5 it was not cosmetic — the
-  # backend allow-rules hard-code .12, so Traefik on any other address made
-  # every route return 502.
-  #===========================================================================
-  #
-  # MAC policy for both: locally-administered (02:…) so it cannot collide with
-  # a vendor OUI.  Convention below: 02:00:00:<vlan>:00:<seq>.  The MAC the
-  # UDM-Pro sees — and that a DHCP reservation must key on — is the GUEST or
-  # CONTAINER side, never the host-side veth/tap.
+  # THE ALLOCATIONS LIVE IN ./allocations.nix, AND ARE CHECKED, NOT RECITED.
+  #
+  # Four comment tables used to sit here — ~1,570 lines of MAC/address rows,
+  # VLAN-20 rows, ULA legs and the 3000-uid block, plus commented-out worked
+  # examples of units that have since been written for real and live beside
+  # their services.  Nothing checked any of it, and it had drifted: three
+  # "NEXT FREE IN THE 3000 BLOCK" sentences disagreed with each other.
+  #
+  # The rows are now data in ./allocations.nix and the assertions at the top
+  # of this file read them, including two things nothing checked before — a
+  # container whose `localMacAddress` disagrees with its row (which costs it
+  # its DHCP reservation, silently), and an nspawn name over 12 characters
+  # (which fails at container START, not at eval).  `nextFree` is computed.
+  #
+  # The deleted worked examples are in git, and the real units they sketched
+  # are in the container files.  What this file still owns is the TOPOLOGY:
+  # the bridge, the trunk, the VLAN map, and the two attachment patterns
+  # below — which six container files cite as "pattern A".
   #===========================================================================
 
   # ── A. microvm / QEMU guest (M3: VPN + qBittorrent) ──────────────────────

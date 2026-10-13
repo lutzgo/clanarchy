@@ -1281,7 +1281,7 @@
         module.name  = "@clanarchy/monitoring";
 
         # ernst runs the stack.  MAC and the .12 proxy address are allocated
-        # in the tables in machines/ernst/networking.nix; the DHCP reservation
+        # in machines/ernst/allocations.nix; the DHCP reservation
         # for 02:00:00:90:00:06 → 10.0.90.14 lives on the UDM-Pro.
         roles.server.machines.ernst.settings = {
           mac          = "02:00:00:90:00:06";
@@ -1318,7 +1318,7 @@
           crowdsec.address = "10.0.90.12";
 
           # M13.  Four media-stack targets, all on VLAN 90 addresses from the
-          # table in machines/ernst/networking.nix, except Ollama which is on
+                    # table in machines/ernst/allocations.nix, except Ollama which is on
           # ernst itself.
           #
           # Each of these needs a matching source-restriction on the FAR end —

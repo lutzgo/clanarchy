@@ -111,7 +111,7 @@ let
   # module's own `users` block is skipped, then declaring the account by hand —
   # buys a 3000-block number and costs a hand-rolled user for no benefit.
   #
-  # So 315 it is, recorded in machines/ernst/networking.nix's OUT-OF-BLOCK
+  # So 315 it is, recorded in machines/ernst/allocations.nix's out-of-block
   # sub-table beside `hass` 286, `postgres` 71 and M31's four mail daemons, with
   # the same sentence they carry: the 3000-block convention does not apply to it
   # and it must not be renumbered into the block.  NEXT FREE in the 3000 block
@@ -1037,7 +1037,7 @@ in
     autoStart = true;
     ephemeral = false;
 
-    # MAC from the allocation table in machines/ernst/networking.nix; the DHCP
+    # MAC from machines/ernst/allocations.nix; the DHCP
     # reservation 10.0.90.32 on the UDM-Pro keys on it (manual step).  Sequence
     # 18, and the last octet is 8 + seq as everywhere else on this bridge.
     #
