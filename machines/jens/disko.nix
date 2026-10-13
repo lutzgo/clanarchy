@@ -25,6 +25,8 @@ import ../../modules/disko/base.nix {
   # See the `diskName` parameter in modules/disko/base.nix for the full story.
   diskName = "jens";
 
-  # jens's ZFS pool is encrypted (default) and has no swap partition —
-  # same as miralda.  See the hybridSleep note in configuration.nix.
+  # jens's ZFS pool is encrypted (default) and has no swap partition — same
+  # as miralda. ZFS also means hibernation is refused outright
+  # (modules/roles/laptop.nix), so there is nothing a swap partition would buy
+  # here beyond memory pressure.
 }

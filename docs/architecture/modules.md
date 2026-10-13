@@ -27,7 +27,7 @@ Where the shared code lives. Adding something new:
 |------|---------|
 | `base.nix` | Universal defaults: EFI boot, Plymouth, flakes, openssh baseline, zsh |
 | `channel.nix` | `clanarchy.channel` = `stable` \| `unstable`. Unstable swaps `nixpkgs.pkgs`, using `mkOverride 25` to win against clan-core's `mkForce` |
-| `rootfs.nix` | `clanarchy.rootfs` = `zfs` \| `btrfs`, plus the persist paths both backends share |
+| `rootfs.nix` | `clanarchy.rootfs` = `zfs` \| `btrfs`, plus the persist paths both backends share. **Derived, not set**: `stable` → `zfs`, `unstable` → `btrfs`, because OpenZFS is out-of-tree and gates the kernel — which is the only reason a machine is on unstable in the first place. The option is `readOnly`, so a machine that tries to set it gets an error rather than an unstable kernel paired with an out-of-tree filesystem |
 | `zfs-impermanence.nix` | ZFS backend: root **and** home roll back to `@blank` on boot (stage 1) |
 | `btrfs-impermanence.nix` | btrfs backend: `@root` and `@home` roll back to `@root-blank` / `@home-blank`, seeded on first boot |
 | `disko/base.nix` | Single-disk ZFS helper: 1G ESP + optional swap + `zroot`. Parameters: `device`, `enableSwap`, `swapSize`, `encryptSwap`, `enableEncryption` |
@@ -83,7 +83,7 @@ body on `clanarchy.rootfs`, the same pattern as `channel.nix`.
 
 | File | Purpose |
 |------|---------|
-| `roles/laptop.nix` | fwupd, thermald (Intel), power-profiles-daemon, weekly GC, lid-switch handling |
+| `roles/laptop.nix` | fwupd, thermald (Intel), power-profiles-daemon, weekly GC, lid-switch handling. `hybridSleep` defaults on only for a btrfs root and asserts its three preconditions, so hibernation cannot be half-configured |
 | `roles/server.nix` | Headless baseline: no GUI packages, `execWheelOnly`, store optimisation |
 | `roles/htpc.nix` | A gamescope Steam session and KDE Plasma behind one wrapper session, switched at runtime. Also arbitrates the TV's claim on a GPU shared with ROCm compute, and demotes a crash-looping session instead of letting the display manager relogin it forever |
 | `roles/vm.nix`, `roles/rpi.nix` | VM guest tools; Raspberry Pi firmware (unused) |

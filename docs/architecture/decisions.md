@@ -12,7 +12,9 @@ pointer rather than a second copy — a duplicated rationale is one that drifts.
 | `pinentry-qt`, never `pinentry-gnome3` — the latter needs `gnome-keyring-daemon`, absent on Niri, and every PIN prompt then fails silently | `modules/hardware/yubikey.nix` |
 | pcscd needs a polkit rule via `security.polkit.extraConfig` (not `extraRules`), because SSH sessions have no "active" logind session | `modules/hardware/zsa.nix`, `modules/hardware/yubikey.nix` |
 | greetd/tuigreet: pass `--sessions /run/current-system/sw/share/wayland-sessions`; never `--remember-session` or any cache-writing flag (tuigreet 0.9.1 panics on a stale cache after rollback, and greetd then hits its restart limit); never add TTY systemd overrides to the unit | `modules/desktop/desktop-common.nix` |
-| Why birte is btrfs: out-of-tree OpenZFS gates the kernel, and birte tracks unstable plus a Valve kernel | `machines/birte/disko.nix` |
+| Why birte is btrfs — and why that is not a separate decision from its channel | `modules/rootfs.nix` |
+| Why hibernation is refused on a ZFS root, and therefore on every stable machine | `modules/roles/laptop.nix` |
+| Why LUKS is opt-in on the btrfs template but ZFS encryption is on by default | `modules/disko/btrfs.nix` |
 | The niri overlay's `checkPhase = ":"` (an EMFILE sandbox test failure) | `lib/overlays.nix` |
 | Do **not** set `gtk.iconTheme` in `home-manager.sharedModules` — it conflicts with Stylix's GTK target and breaks HM activation for the affected user | `modules/icon-theme.nix` |
 | Machine composition: what `commonBase` and `commonHeadful` exist for | `lib/mk-machine.nix`, and [modules.md](modules.md) |

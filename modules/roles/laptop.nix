@@ -9,17 +9,67 @@ in
 
     hybridSleep.enable = lib.mkOption {
       type    = lib.types.bool;
-      default = true;
+      default = config.clanarchy.rootfs == "btrfs";
       description = ''
-        Enable hybrid-sleep on lid close (suspends to RAM and writes hibernation
-        image simultaneously). Requires a swap partition sized ≥ RAM and
-        boot.resumeDevice set in the machine's own configuration.nix.
-        Disable for machines without swap until a swap partition is added.
+        Hybrid-sleep on lid close: suspend to RAM and write a hibernation
+        image at the same time, so a battery that runs flat during sleep
+        costs nothing.
+
+        **ONLY AVAILABLE ON btrfs, AND THAT IS THE POINT** — hibernation with
+        a ZFS root is widely documented as unsafe (the pool's in-memory state
+        and its on-disk state diverge across the resume), and `clanarchy.rootfs`
+        is derived from `clanarchy.channel`, so in practice this is on for an
+        unstable-channel laptop and refused on a stable one. Enabling it on ZFS
+        is an assertion failure, not a silent risk. This is reasoned from
+        upstream's position, not measured here.
+
+        Also requires a swap partition sized >= RAM and `boot.resumeDevice`
+        set in the machine's own configuration.nix; both are asserted.
       '';
     };
   };
 
   config = lib.mkIf cfg.enable {
+
+    assertions = [
+      {
+        assertion = !(cfg.hybridSleep.enable && config.clanarchy.rootfs != "btrfs");
+        message = ''
+          clanarchy.roles.laptop.hybridSleep.enable is on, but this machine's
+          root is ${config.clanarchy.rootfs}. Hibernation with a ZFS root is
+          not supported here — see the option's description.
+
+          `clanarchy.rootfs` is derived from `clanarchy.channel`
+          (modules/rootfs.nix), so the way to make this machine capable of
+          hibernating is to move it to the unstable channel, which also moves
+          it to btrfs. There is no way to enable just one half.
+        '';
+      }
+      {
+        # The two runtime preconditions, which were a doc comment until now.
+        # A machine that enables hybrid-sleep with neither simply fails to
+        # resume, having already powered off — there is nothing to notice
+        # until the state is gone.
+        assertion = !(cfg.hybridSleep.enable && config.boot.resumeDevice == "");
+        message = ''
+          clanarchy.roles.laptop.hybridSleep.enable is on but
+          boot.resumeDevice is unset, so the hibernation image could be
+          written and never found. Set it to a stable
+          /dev/disk/by-partlabel/... path in the machine's configuration.nix.
+        '';
+      }
+      {
+        assertion = !(cfg.hybridSleep.enable && config.swapDevices == [ ]);
+        message = ''
+          clanarchy.roles.laptop.hybridSleep.enable is on but this machine
+          declares no swap. Pass `enableSwap = true` (and a `swapSize` of at
+          least RAM) to the disko template in the machine's disko.nix, and
+          `encryptSwap = false` — a randomly-keyed swap partition loses its
+          key across the suspend, which is the one thing hibernation needs it
+          to keep.
+        '';
+      }
+    ];
 
     # GPU / hardware graphics — delegate to shared options
     # (modules/hardware/gpu.nix).  Laptops get the baseline driver for the
