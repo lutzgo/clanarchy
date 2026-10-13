@@ -35,7 +35,7 @@ So both headful desktops depend on it, and a botched migration takes out the she
 What the migration has to deal with:
 
 - **Typed options → freeform TOML.** The current file leans on the module's type checking to catch mistakes at eval time. Freeform TOML moves those failures to runtime, where a bad key is a silently missing widget rather than a build error. Expect to lose the eval-time safety net and to need actual on-screen verification of every panel.
-- **Stylix interaction.** The Stylix noctalia target injects eight settings values (bar/dock/osd/notifications `backgroundOpacity`, bar `capsuleOpacity`, ui `panelBackgroundOpacity`, ui `fontDefault`/`fontFixed`). The current file uses `lib.mkForce` on these to win the merge. Freeform TOML has no option-merge semantics, so this coordination has to be re-established by hand — see the Stylix notes in `CLAUDE.md`.
+- **Stylix interaction.** The Stylix noctalia target injects eight settings values (bar/dock/osd/notifications `backgroundOpacity`, bar `capsuleOpacity`, ui `panelBackgroundOpacity`, ui `fontDefault`/`fontFixed`). The current file uses `lib.mkForce` on these to win the merge. Freeform TOML has no option-merge semantics, so this coordination has to be re-established by hand — see the Stylix notes in `modules/desktop/noctalia-hm.nix`.
 - **Float vs integer.** Opacity/scale/ratio values must stay floats (`1.0`, not `1`). Under typed options a wrong type is an eval error; under freeform TOML it is a wrong value at runtime.
 - **Per-user plugin state.** `modules/users/sabine.nix` writes `noctalia/plugins.json` with `force = true`, and biene's wallpaper handling pins `~/.cache/noctalia/wallpapers.json`. Both touch paths the new schema may relocate.
 
@@ -52,5 +52,5 @@ Until then, bumping `noctalia` in `flake.lock` will fail to evaluate or produce 
 ## Related
 
 - Pin comment in `flake.nix` (`inputs.noctalia`) — cross-references this page
-- `CLAUDE.md` → Noctalia Stylix target conflicts, Nix float vs integer
+- `modules/desktop/noctalia-hm.nix` → the Stylix target conflicts, and Nix float vs integer
 - [`docs/guides/noctalia-profiles.md`](noctalia-profiles.md) — Sabine's Shell Profile workflow, which the rewrite must preserve

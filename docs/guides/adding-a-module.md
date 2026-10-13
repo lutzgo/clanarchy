@@ -168,9 +168,8 @@ the published reference with no error:
   only on ernst, birte or jens never appears. If your module is not in `commonBase` or
   `commonHeadful`, check that one of those two machines imports it.
 
-Then update the module table in `CLAUDE.md` by hand — "Shared Module Layout" for
-`modules/`, "Service Modules" for `service-modules/`. That table is prose, not generated,
-and it is what a future session reads first.
+Then update the table in [docs/architecture/modules.md](../architecture/modules.md)
+by hand. It is prose, not generated, and it is what a future session reads first.
 
 ---
 

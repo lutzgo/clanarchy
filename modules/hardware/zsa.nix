@@ -44,7 +44,7 @@
 # `uaccess` needs an ACTIVE session on a LOCAL SEAT.  An SSH session has
 # neither, so flashing or live-training over SSH fails with a permission error
 # on a machine where it works perfectly from the desk.  That is the same class
-# of problem as pcscd and the YubiKey, which CLAUDE.md records at length:
+# of problem as pcscd and the YubiKey, which docs/architecture/decisions.md records:
 # "SSH sessions lack an 'active' logind session, so pcscd requires a polkit
 # rule".  The fix there was a polkit rule because pcscd is a system daemon;
 # there is no equivalent here and none is wanted — a keyboard is flashed by the

@@ -3,7 +3,7 @@
 Clanarchy is driven with [jj](https://jj-vcs.github.io/jj/), **colocated** with git. This
 guide is the reference for how a change gets from an idea to `main`. The short version —
 the invariants and the eight-step loop — lives in
-[CLAUDE.md → Version Control Workflow](https://github.com/lutzgo/clanarchy/blob/main/CLAUDE.md);
+[AGENTS.md](https://github.com/lutzgo/clanarchy/blob/main/AGENTS.md);
 this page is the why, the translation table, and the recovery paths.
 
 ---
@@ -101,7 +101,7 @@ Three hazards stop existing outright:
 - **"Accidentally committed on `main`."** Nothing is ever *on* a bookmark in jj. `main`
   moves only when you move it. jj's default `immutable_heads()` revset resolves through
   `trunk()` to `main@origin`, so jj mechanically refuses to rewrite anything that has
-  already landed — the CLAUDE.md invariant becomes enforced, not merely stated.
+  already landed — the AGENTS.md invariant becomes enforced, not merely stated.
 - **`git add -A` sweeping up unrelated work.** There is no index to over-stage.
 - **Baking a token into `.git/config` via `git push -u`.** jj bookmarks carry no per-branch
   `remote`/`merge` configuration, so there is nothing to bake a token into.
