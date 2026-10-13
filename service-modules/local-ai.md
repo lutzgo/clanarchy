@@ -1039,20 +1039,41 @@ own nixpkgs**, so the host's predicate is untouched.
 
 ## OpenCode config schema
 
+One `provider.<id>` entry per declared endpoint. miralda, which has both:
+
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "local/qwen3-coder-30b",
+  "model": "ernst/qwen3.6-35b-a3b",
   "provider": {
+    "ernst": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "llama.cpp (ernst, 32768)",
+      "options": { "baseURL": "http://127.0.0.1:11435/v1" },
+      "models": { "qwen3.6-35b-a3b": {}, "qwen3-coder-30b": {} }
+    },
     "local": {
       "npm": "@ai-sdk/openai-compatible",
-      "options": { "baseURL": "http://127.0.0.1:11435/v1" },
-      "models": { "qwen3-coder-30b": {} }
+      "name": "ollama (miralda, 4096)",
+      "options": { "baseURL": "http://127.0.0.1:11434/v1" },
+      "models": { "qwen2.5-coder:7b": {} }
     }
   },
   "instructions": ["/nix/store/…-opencode-tool-call-rule.md"]
 }
 ```
+
+**The fallback is manual, and that is the honest shape.** OpenCode reads one
+`model` at startup and has no failover; a second provider makes `/models` in the
+TUI a recovery step rather than a dead end. `ai-status` reports which endpoints
+answer. A routing proxy was considered and rejected: the two endpoints serve
+different model names, so it would have to rewrite the `model` field of every
+request — a new silent-failure surface in exchange for saving one keystroke.
+
+`contextBudgetTokens` is per machine, not per provider, so on miralda it is
+sized for ernst's 32768 window. Selecting the 4096 fallback makes it too large,
+and ollama answers an over-long prompt HTTP 200 with the head discarded. That is
+SN1, and it is the fallback's hazard alone — llama.cpp answers 400.
 
 This role previously wrote `providers.ollama.baseUrl` — plural key, camelCase
 `baseUrl`, no `npm` driver. That matches no version of the schema, so opencode
@@ -1060,7 +1081,6 @@ ignored the block entirely and fell through to its own defaults. It failed
 silently, which is why it went unnoticed. The provider's `models` map is not
 optional either: this provider has no catalogue for opencode to discover, so an
 undeclared name is not selectable even when the server has it.
-
 ## miralda still runs Ollama, deliberately
 
 `roles.ollama` is kept for exactly one machine. The case M19 measured is a
@@ -1123,9 +1143,14 @@ local-ai = {
   };
 
   roles.opencode.machines.jens.settings = {
-    user  = "lgo";
-    model = "local/qwen3-coder-30b";
-    tunnel.enable = true;
+    user = "lgo";
+    providers = [
+      { id = "ernst"; label = "llama.cpp (ernst, 32768)"; port = 11435;
+        models = [ "qwen3.6-35b-a3b" "qwen3-coder-30b" ]; }
+    ];
+    defaultModel        = "ernst/qwen3.6-35b-a3b";
+    tunnel.enable       = true;
+    contextBudgetTokens = 8000;
   };
 };
 ```

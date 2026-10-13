@@ -1194,40 +1194,67 @@
           # loud so a future model bump cannot move it silently.
           contextLength = 4096;
         };
+        # ── BOTH LAPTOPS DEFAULT TO ernst, AND ONLY miralda HAS A FALLBACK ──
+        #
+        # The fallback is manual: opencode reads one `model` at startup and has
+        # no failover, so a second provider is what makes `/models` a recovery
+        # step.  `ai-status` says which endpoints answer.
         roles.opencode.machines.miralda.settings = {
-          user  = "lgo";
-          # miralda talks to its OWN ollama, so the provider id and model name
-          # are ollama's, not llama-swap's.
-          providerName = "ollama";
-          model        = "ollama/qwen2.5-coder:7b";
-          # Restated, not inherited. This is the 4096-token window declared
-          # by `contextLength` just above, minus what opencode's system
-          # prompt and tool definitions already spend — the number the default was
-          # sized for in the first place. Writing it here means the window and
-          # the budget can be checked against each other in one glance, and a
-          # future `contextLength` bump has a visible partner to move.
-          contextBudgetTokens = 1000;
+          user = "lgo";
+
+          providers = [
+            {
+              id     = "ernst";
+              label  = "llama.cpp (ernst, 32768)";
+              port   = 11435;            # the tunnel's local end
+              models = [ "qwen3.6-35b-a3b" "qwen3-coder-30b" ];
+            }
+            {
+              id     = "local";
+              label  = "ollama (miralda, 4096)";
+              port   = 11434;            # this machine's own ollama
+              models = [ "qwen2.5-coder:7b" ];
+            }
+          ];
+
+          defaultModel = "ernst/qwen3.6-35b-a3b";
+
+          # miralda keeps its own ollama (above) AND now reaches ernst, which
+          # is why the two ports differ: 11434 is already taken locally, so the
+          # forward lands on 11435.  Nothing is needed at the far end — the
+          # inference role's `remoteClients.enable` is already on and the key
+          # is `permitopen`-restricted to one loopback socket.
+          tunnel.enable = true;
+
+          # Sized for the ernst endpoint's 32768, which is where the work
+          # happens.  SELECTING `local/qwen2.5-coder:7b` MAKES THIS TOO LARGE:
+          # its window is 4096 and ollama truncates the head silently.  See the
+          # option's description.
+          contextBudgetTokens = 8000;
         };
 
         # jens has no local inference: its iGPU is Intel, where the ROCm stack
         # this module is built around does not apply, and a 30B MoE on CPU is
-        # not something to sit in front of.  So opencode here talks to ernst's
-        # card over an SSH forward, with the listener staying loopback-only at
-        # both ends of the tunnel.
+        # not something to sit in front of.  So there is one provider here and
+        # no fallback — if the tunnel is down, there is no coding agent.
         roles.opencode.machines.jens.settings = {
-          user  = "lgo";
-          # Must match a KEY in ernst's roles.models above — no longer an
-          # ollama registry tag, which is the class of mistake that put
-          # `qwen3-coder:8b` into a restart loop for months.
-          model = "local/qwen3.6-35b-a3b";
+          user = "lgo";
+
+          providers = [
+            {
+              id     = "ernst";
+              label  = "llama.cpp (ernst, 32768)";
+              port   = 11435;
+              models = [ "qwen3.6-35b-a3b" "qwen3-coder-30b" ];
+            }
+          ];
+
+          defaultModel = "ernst/qwen3.6-35b-a3b";
           tunnel.enable = true;
+
           # ernst serves this model at 32768 (roles.models above), so the
-          # fleet default of 1000 — sized for miralda's 4096 — is not
-          # conservative here, it is broken: govim's own working diff measures
-          # ~2521 estimated tokens, so 1000 would refuse most real reviews and
-          # the refusal would look like a config fault rather than a budget.
-          # 8000 leaves ample room for the system prompt, the tools and the
-          # reply inside 32768.
+          # fleet default of 1000 is not conservative here, it is broken:
+          # govim's own working diff measures ~2521 estimated tokens.
           contextBudgetTokens = 8000;
         };
       };
