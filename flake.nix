@@ -213,6 +213,31 @@
       ];
 
       perSystem = { pkgs, system, ... }: {
+        # ── `nix flake check` ───────────────────────────────────────────────
+        #
+        # The same two things scripts/check.sh and CI cover, exposed as flake
+        # checks so `nix flake check` is not a weaker gate than `check`.
+        #
+        # `unsafeDiscardStringContext` is load-bearing: interpolating a
+        # `.drvPath` with its context intact makes the check DEPEND on the
+        # system being built, which would pull KDE, Steam and Plasma closures.
+        # Dropping the context keeps the forced evaluation — which is the whole
+        # point — without the build.
+        checks = {
+          eval-machines = pkgs.runCommand "eval-machines" { } ''
+            ${pkgs.lib.concatMapStringsSep "\n" (m:
+              "echo ${m}: ${builtins.unsafeDiscardStringContext
+                 inputs.self.nixosConfigurations.${m}.config.system.build.toplevel.drvPath}")
+              [ "miralda" "jens" "biene" "birte" "ernst" ]}
+            touch $out
+          '';
+
+          # 37 tests covering mneme's Ollama <-> OpenAI translation, which has
+          # no observable failure mode at runtime. They run at build time
+          # (`doCheck`), so this check is how they run without building ernst.
+          mneme = pkgs.callPackage ./service-modules/pkgs/mneme { };
+        };
+
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             # Clan docs recommend exposing the CLI via devShell

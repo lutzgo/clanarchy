@@ -1,0 +1,44 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(nix eval:*)",
+      "Bash(nix build --dry-run:*)",
+      "Bash(nix flake check:*)",
+      "Bash(nix flake metadata:*)",
+      "Bash(nix flake show:*)",
+      "Bash(nix-diff:*)",
+      "Bash(bash scripts/check.sh:*)",
+      "Bash(jj st:*)",
+      "Bash(jj status:*)",
+      "Bash(jj diff:*)",
+      "Bash(jj log:*)",
+      "Bash(jj op log:*)",
+      "Bash(jj show:*)",
+      "Bash(jj git fetch:*)",
+      "Bash(jj new:*)",
+      "Bash(jj describe:*)",
+      "Bash(jj bookmark:*)",
+      "Bash(jj git push:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)"
+    ],
+    "deny": [
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git merge:*)",
+      "Bash(git rebase:*)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)",
+      "Bash(clan machines update:*)",
+      "Bash(clan machines install:*)",
+      "Bash(clan vars generate:*)",
+      "Bash(clan flash:*)",
+      "Bash(nixos-rebuild:*)"
+    ]
+  }
+}

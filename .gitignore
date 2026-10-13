@@ -1,7 +1,12 @@
 result
 .direnv/
 .gstack/
-.claude/
+# Local, per-session Claude Code state — including settings.local.json, which
+# has accumulated over a thousand one-shot command allowances. The shared
+# settings.json is tracked (see the negation below) so the repo's conventions
+# reach a new session or a new person without being retyped.
+.claude/*
+!.claude/settings.json
 site/
 
 # Python bytecode from running pkgs/mneme's test suite in a workspace.
