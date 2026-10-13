@@ -1,7 +1,7 @@
 # machines/ernst/microvms/wg-qbittorrent.nix
 #
 # qBittorrent behind a commercial WireGuard VPN, in a microvm with a real
-# killswitch.  M3 in docs/roadmap.md.
+# killswitch.  M3 in docs/history.md.
 #
 # Why a microvm and not an nspawn container:
 #   Architecture invariant #1 puts a workload in a VM — its own kernel — when it
@@ -1369,15 +1369,20 @@ in
               ct state invalid drop
 
               iifname "eth0" ip saddr @api_clients tcp dport ${toString webuiPort} accept
-
               # M14.  slskd's web UI and REST API.
               #
-              # THE SET GROWS A SECOND PORT, NOT A SECOND CLIENT — which is
-              # what docs/roadmap.md's M14 requires, and it is exactly right
-              # here: the set already means "the humans, plus the arr
-              # container", and both of those want slskd for the same reasons
-              # they want qBittorrent.  A separate set would be a second list
-              # holding the same three entries, free to drift.
+              # THE SET GROWS A SECOND PORT, NOT A SECOND CLIENT, and that is
+              # exactly right here: the set already means "the humans, plus the
+              # arr container", and both of those want slskd for the same
+              # reasons they want qBittorrent.  A separate set would be a
+              # second list holding the same three entries, free to drift.
+              #
+              # NOTE FOR EDITORS: this text is INSIDE the nftables ruleset, so
+              # it is a file in the store rather than a Nix comment.  Changing
+              # it changes the guest's derivation and therefore bounces the
+              # microvm on the next deploy — measured 2026-10-13, when renaming
+              # a docs file moved 14 derivations and ernst's toplevel with them.
+              # Do not cite file paths from here; cite them in Nix comments.
               #
               # Contrast the exporter rule below, which really does need its
               # own line because its client is neither of those.

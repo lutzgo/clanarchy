@@ -6,7 +6,7 @@
 # ── IT DID NOT EXIST BEFORE THIS FILE, WHATEVER THE OTHER COMMENTS SAY ──────
 #
 #   containers/arr.nix says "Komga and CWA already serve the READING side in
-#   this household" and docs/roadmap.md repeats it in four places.  It was not
+#   this household" and docs/history.md repeats it in four places.  It was not
 #   true: there was no CWA in this repo, no container on ernst, no podman
 #   workload, and no Technitium record.  The sentence described an intention
 #   that was never built, and it was load-bearing in the wrong direction —

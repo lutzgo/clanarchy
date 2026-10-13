@@ -76,7 +76,7 @@
 #   So a pending prompt on a LAPTOP blocks the ERNST deploy that would make the
 #   key obtainable.  Not an ordering hazard — a deadlock, and one that also
 #   takes out every unrelated deploy in the fleet until it is broken.  It is
-#   recorded as standing note SN5 in docs/roadmap.md, because the next person
+#   recorded as standing note SN5 in docs/standing-notes.md, because the next person
 #   to add a prompted var will not be reading this file.
 #
 #   The sequence that does work: deploy ernst -> create the accounts -> mint a

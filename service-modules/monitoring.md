@@ -195,4 +195,4 @@ both publishers, which is what a *reserved* ntfy topic requires — and reservin
 the topic is the only thing that stops the topic itself from being the whole
 access control. Off by default. **Set up the ntfy side first**: the full order,
 and the negative test that proves the reservation took, is in
-`docs/roadmap.md` under "Enabling ntfy auth — the order matters".
+M6's PRs, linked from `docs/history.md`.

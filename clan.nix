@@ -400,7 +400,7 @@
       #
       # OLLAMA IS GONE FROM ernst.  It was replaced by llama-swap in front of
       # llama-server in router mode, and the replacement was measured before it
-      # was taken — see docs/roadmap.md §M19 and
+      # was taken — see M19 (docs/history.md) and
       # ~/.local/share/m19-llamacpp/PHASE0-NOTES.md.  The decisive result is
       # that context overflow stops being silent: ollama answers an over-long
       # prompt with HTTP 200, a truncated head and a fabricated answer, where
@@ -991,7 +991,7 @@
         # So ComfyUI is BUILT (service-modules/pkgs/comfyui) and spawned by
         # llama-swap like every other backend.  It is not on the podman tier,
         # takes no uid, no MAC and no address, and uid 3035 / sequence 10 /
-        # 10.0.90.24 went back to M20.  Full argument in docs/roadmap.md §M21.
+        # 10.0.90.24 went back to M20.  Full argument in M21's PRs — see docs/history.md.
         roles.imagegen.machines.ernst.settings = {
           # Only what ComfyUI itself writes — outputs, inputs, temp, user
           # settings, an empty custom_nodes.  On zdata (invariant #7).  The

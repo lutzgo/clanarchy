@@ -1,7 +1,7 @@
 # machines/ernst/containers/music-assistant.nix
 #
 # Music Assistant — the household's music player, over the library Navidrome
-# already indexes (M30 in docs/roadmap.md).  An nspawn container with TWO legs
+# already indexes (M30 — see docs/history.md).  An nspawn container with TWO legs
 # on br0, serving `music.goclan.org` through Traefik behind forward-auth.
 #
 # ── WHAT THIS IS, AND WHAT IT IS NOT ────────────────────────────────────────
@@ -61,7 +61,7 @@
 #   provider configuration in its own database under ${stateRoot}; there is no
 #   declarative option for a URL and a password, and there will not be one.
 #   The Navidrome account it authenticates with is a manual step — see
-#   docs/roadmap.md M30.
+#   docs/history.md M30.
 #
 #   "OUTSIDE THIS FILE" IS NOT THE SAME AS "IN THE BROWSER", and the difference
 #   bit twice: `musiccast` and `subsonic_scrobble` declare no config entries, so
@@ -252,7 +252,7 @@
 #   indefinitely waiting for somebody to notice.  It is still a deploy step and
 #   not a matter of taste: until that account exists, anybody who can reach this
 #   vhost can create it.  On the LAN, behind forward-auth, that is a much
-#   narrower window than the one docs/roadmap.md warns about for the WAN names —
+#   narrower window than the one docs/history.md warns about for the WAN names —
 #   which is exactly why this service is not one of them.
 #
 # ── THE HOME ASSISTANT INTEGRATION IS ALREADY OFFERABLE ─────────────────────
@@ -270,7 +270,7 @@
 #   nothing on VLAN 90 is heard in either direction.  Opening mDNS between the
 #   two containers to save one text field would put both services' multicast on
 #   the Services VLAN for no capability.  The config flow takes the URL by
-#   hand; see docs/roadmap.md M30.
+#   hand; see docs/history.md M30.
 #
 # ── THE CONTAINER IS CALLED `mass`, NOT `music-assistant` ───────────────────
 #
@@ -856,7 +856,7 @@ in
       #             source-matched rule with no interface is correct for both
       #             answers: same-segment via iot1, or routed to VLAN 90 via the
       #             UDM-Pro.  The published address can be pinned in the UI and
-      #             SHOULD be — see docs/roadmap.md M30 — but the firewall must
+      #             SHOULD be — see docs/history.md M30 — but the firewall must
       #             not depend on somebody having done it.
       #
       #   5353/udp  mDNS, ON iot1 ONLY.  The reason the leg exists.

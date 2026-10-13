@@ -13,7 +13,7 @@
 #   first so nobody adds it speculatively elsewhere.
 #
 #   THE SLOT IS JUSTIFIED ON LANGUAGE LEARNING AND ACCESSIBILITY, not on
-#   convenience, and docs/roadmap.md is explicit that a convenience argument
+#   convenience, and docs/history.md is explicit that a convenience argument
 #   would not survive the CPU cost.  Reading while listening, with the text
 #   tracking the narration, is the whole point.
 #
@@ -40,7 +40,7 @@
 #
 # ── TIER: PODMAN, AND THE ROADMAP'S OWN ESCAPE HATCH IS WHAT PUTS IT HERE ──
 #
-#   docs/roadmap.md instructs: "VERIFY the deploy story against the upstream
+#   docs/history.md instructs: "VERIFY the deploy story against the upstream
 #   GitLab repo, not blog posts.  If no sane non-Docker path exists, that
 #   argues for the PODMAN TIER M9 is opening, NOT for oci-containers inside
 #   nspawn."  Verified on 2026-08-28, and there is no sane non-Docker path.
@@ -146,7 +146,7 @@
 # ── ALIGNMENT QUALITY: BIND ONE PAIR AND CHECK IT BY HAND ─────────────────
 #
 #   Claimed accuracy is 90–95% on clean sources, and it degrades on long
-#   musical intros and messy EPUB formatting.  docs/roadmap.md requires ONE
+#   musical intros and messy EPUB formatting.  docs/history.md requires ONE
 #   known-good pair to be bound and its sync checked by hand BEFORE any batch,
 #   and that is in the PR test plan rather than here because nothing in Nix can
 #   enforce it.
@@ -718,7 +718,7 @@ in
     requires = [ "storyteller-netns.service" "storyteller-data-dir.service" ];
 
     serviceConfig = {
-      # THE CPU BUDGET, and docs/roadmap.md requires it explicitly.
+      # THE CPU BUDGET, and docs/history.md requires it explicitly.
       #
       # Forced alignment will happily saturate every core it is given.  It
       # competes with a Jellyfin transcode, an HTPC session on the TV, and —

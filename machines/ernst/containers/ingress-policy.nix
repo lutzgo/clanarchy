@@ -87,7 +87,7 @@
 #   throws at evaluation if a router's middlewares disagree with the list it is
 #   in, or if a routed hostname is in none of them.  Exposing it to the
 #   internet is a SEPARATE act — `wanExposed` in traefik.nix, plus a public A
-#   record, plus a ledger row in docs/roadmap.md.
+#   record, plus a ledger row in docs/ledger.md.
 { baseDomain }:
 
 let

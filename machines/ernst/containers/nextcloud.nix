@@ -1,7 +1,7 @@
 # machines/ernst/containers/nextcloud.nix
 #
 # Nextcloud — the household file-sync, calendar and contacts server (M23 in
-# docs/roadmap.md).  An nspawn container on VLAN 90, serving
+# docs/history.md).  An nspawn container on VLAN 90, serving
 # `cloud.goclan.org` through Traefik on BOTH entrypoints, with its own
 # accounts, no forward-auth, and Authelia as an OIDC provider for the browser.
 #
@@ -605,7 +605,7 @@ in
         # INSTANCE AND THIS ONE STARTS EMPTY: there is nothing to upgrade, so
         # all it bought was the module's legacy-install warning on every single
         # evaluation.  A deploy that always prints a warning is a deploy nobody
-        # reads — that is a standing item in docs/roadmap.md's backlog.
+        # reads — that is a standing item in docs/history.md's backlog.
         #
         # It is still written out rather than left to the default, because the
         # default moves with `system.stateVersion`, and a Nextcloud major must

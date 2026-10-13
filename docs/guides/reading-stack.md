@@ -5,7 +5,7 @@ part is for, how a link travels through them, and the decisions worth making
 once rather than every time.
 
 The infrastructure — containers, ingress, auth — is in
-[the M27 section of the roadmap](../roadmap.md). This page assumes it works.
+M27 — see [history](../history.md) for its PRs. This page assumes it works.
 
 ---
 

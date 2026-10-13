@@ -29,8 +29,7 @@
 # This module used to be `roles.ollama` + `roles.opencode`.  Ollama is gone from
 # ernst, replaced by llama-swap in front of llama-server in router mode.  The
 # migration was measured before it was taken — the full Phase 0 record is in
-# ~/.local/share/m19-llamacpp/PHASE0-NOTES.md and summarised in docs/roadmap.md
-# §M19.  Three results decided it:
+# ~/.local/share/m19-llamacpp/PHASE0-NOTES.md and summarised in docs/history.md, with M19's PRs linked there.  Three results decided it:
 #
 #   1. CONTEXT OVERFLOW STOPS BEING SILENT.  This is the whole reason.  Ollama
 #      answers an over-long prompt with HTTP 200, truncates to ~num_ctx/2,
@@ -276,7 +275,7 @@ in
       # at it.  llama-swap has no externally-managed-backend mode — `cmd` is
       # mandatory — so it spawns llama-server itself, which made the router
       # redundant and 11436 unused.  Recorded rather than silently dropped
-      # because docs/roadmap.md §M19 and PHASE0-NOTES.md both describe the
+      # because M19 (docs/history.md) and PHASE0-NOTES.md both describe the
       # two-layer shape, and this is where it stopped being true.
 
       swapPortRange = lib.mkOption {
@@ -1135,7 +1134,7 @@ in
         } (mkBridges {
           inherit pkgs;
           # The unit prefix stays `llama-bridge-<consumer>` as it has been since
-          # M19: runbooks, journal greps and docs/roadmap.md's L9 row all name
+          # M19: runbooks, journal greps and docs/history.md's L9 row all name
           # it, and a rename would buy nothing.
           unit       = "llama-bridge";
           what       = "llama-swap";
@@ -2767,7 +2766,7 @@ in
   # M19 wrote it as a digest-pinned community image on the podman tier, with
   # `image`, `uid`, `/dev/kfd` and an assertion refusing any tag.  All of that
   # is gone.  Two findings removed it, and both are recorded at length in
-  # service-modules/pkgs/comfyui/default.nix and docs/roadmap.md §M21:
+  # service-modules/pkgs/comfyui/default.nix and M21 (docs/history.md):
   #
   #   1. NO USABLE IMAGE EXISTS.  AMD's own docker.io/rocm/comfyui is built
   #      PYTORCH_ROCM_ARCH=gfx942;gfx950 — Instinct only, no kernels for
@@ -2873,7 +2872,7 @@ in
   #
   # ── THE TIER ARGUMENT, WHICH IS WHAT THIS MILESTONE IS ACTUALLY ABOUT ───────
   #
-  # docs/roadmap.md §M20 opens with a premise, and the premise is FALSE:
+  # M20 (docs/history.md) opens with a premise, and the premise is FALSE:
   #
   #   "SearXNG would be the first service here to talk to the open internet
   #    on its own behalf"
@@ -3513,7 +3512,7 @@ in
               #                         INBOUND firewall plus the fact that
               #                         this container is on no veth to the
               #                         host — proven by the reachability
-              #                         matrix in docs/roadmap.md §M20, where
+              #                         matrix in M20 (docs/history.md), where
               #                         every LAN target times out.
               #   ProtectSystem=strict is safe here BECAUSE searx writes
               #                         nothing: searx-init regenerates

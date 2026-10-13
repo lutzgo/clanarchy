@@ -1,7 +1,7 @@
 # machines/ernst/containers/karakeep.nix
 #
 # Karakeep — bookmarks, full-page archives and search over both.  The KEEP half
-# of M27's reading stack (see docs/roadmap.md); containers/miniflux.nix is the
+# of M27's reading stack (see docs/history.md); containers/miniflux.nix is the
 # intake half.  An nspawn container on VLAN 90 serving `karakeep.goclan.org`
 # through Traefik on BOTH entrypoints, with Authelia as its sole identity
 # provider and ernst's own inference server doing the tagging.
@@ -69,7 +69,7 @@
 #   Bookmark sync is the half of this stack that has to work from somewhere
 #   that is not the house: miralda and jens are laptops, and a Floccus that
 #   only syncs on the home LAN silently diverges the moment either one leaves.
-#   Reading feeds can wait for the LAN.  Ledger row L17 in docs/roadmap.md
+#   Reading feeds can wait for the LAN.  Ledger row L17 in docs/ledger.md
 #   records the exposure.
 #
 #   The compensating controls `appApiHosts` demands, in order: Karakeep's own

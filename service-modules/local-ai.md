@@ -38,7 +38,7 @@ Everything ships in nixpkgs 26.05 — **no external flake input**.
 
 Measured before it was taken; the full record is in
 `~/.local/share/m19-llamacpp/PHASE0-NOTES.md` and summarised in
-`docs/roadmap.md` §M19. Three results decided it.
+M19 — see `docs/history.md` for its PRs. Three results decided it.
 
 ### 1. Context overflow stops being silent — this is the whole reason
 
@@ -58,7 +58,7 @@ llama-server's refusal names both numbers:
 request (16694 tokens) exceeds the available context size (8192 tokens), try increasing it
 ```
 
-That is [SN1](../docs/roadmap.md#sn1)'s core hazard removed at the mechanism
+That is [SN1](../docs/standing-notes.md)'s core hazard removed at the mechanism
 rather than documented around. Note the fabrication differs from M11's
 (`00:11:22:33:44:55` then) — it is a fresh invention each time, not a memorised
 wrong answer.
@@ -258,10 +258,10 @@ nix store prefetch-file --hash-type sha256 --json <url> | jq -r .hash
 derived from the model tag and set by one global environment variable, so
 editing which model was served silently changed the context for every client.
 Here it sits on the model, is required, and moves only when someone edits that
-line — which is where [SN1](../docs/roadmap.md#sn1) now lives.
+line — which is where [SN1](../docs/standing-notes.md) now lives.
 
 The fetcher is a oneshot, not a fixed-output derivation: these are 18 GiB blobs
-and [invariant #7](../docs/roadmap.md#architecture-invariants) puts them on
+and [invariant #7](../docs/invariants.md) puts them on
 zdata, whereas the store is on `zroot`. It is idempotent by hash, so a correct
 file is skipped on every boot, and a **mismatch is a hard failure that leaves
 the existing file alone** — never a silent overwrite, because the thing on the

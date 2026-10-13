@@ -1175,7 +1175,7 @@
   # These are reservations, not configuration.  They exist so that two
   # milestones written months apart cannot pick the same number, and so that a
   # session opening one of them does not have to re-derive the next free id
-  # from six other files.  See docs/roadmap.md for what each milestone is.
+  # from six other files.  See docs/history.md for what each milestone is.
   #
   # THE NUMBERS ARE NUMBERS ON zdata.  nspawn does not remap them and virtiofs
   # passes them through unmapped, so a uid chosen inside a container or a guest
@@ -1233,7 +1233,7 @@
   #                      TIER in its own container and its own netns, because
   #                      upstream has no sane non-Docker build (Next.js
   #                      standalone + whisper.cpp + a Readium binary lifted out
-  #                      of another image).  That is docs/roadmap.md's own
+  #                      of another image).  That is docs/history.md's own
   #                      escape hatch firing exactly as written, not a
   #                      departure from it.
   #
@@ -1244,7 +1244,7 @@
   #                              against 57.6 TiB free) closed the milestone,
   #                              and CPU-months of AV1 for ~5 TiB nobody is
   #                              short of went with it.  See M15's close-out in
-  #                              docs/roadmap.md for the re-open triggers; if
+  #                              docs/history.md for the re-open triggers; if
   #                              one fires, the new milestone re-argues its
   #                              shape (own container, media PRIMARY plus
   #                              `render` for /dev/dri) rather than inheriting
@@ -1356,7 +1356,7 @@
   #   and is not a container at all — so there is no unmapped uid landing on
   #   the pool, no netns, no MAC and no DHCP reservation.
   #
-  #   Two findings forced that and both are recorded in docs/roadmap.md §M21:
+  #   Two findings forced that and both are recorded in M21 (docs/history.md):
   #   no usable image exists (AMD's own rocm/comfyui is gfx942;gfx950 — no
   #   kernels for this card; the best-provenance community image's digest pins
   #   only its first install), and llama-swap runs unprivileged while this
@@ -1859,7 +1859,7 @@
   #       hostname behind Traefik + Authelia (Open WebUI, below).
   #
   #   So M19 DOES change ernst's attack surface, in two named places, and both
-  #   have ledger rows in docs/roadmap.md.  The M11 sentence above is kept as
+  #   have ledger rows in docs/ledger.md.  The M11 sentence above is kept as
   #   the record of what was true then, not as a claim about now. ***
   #
   # PORT NOTE, recorded here because it is a FLEET fact and not a milestone

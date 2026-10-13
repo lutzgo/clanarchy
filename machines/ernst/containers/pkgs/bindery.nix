@@ -9,7 +9,7 @@
 #
 # ── THE RELEASE ARTIFACT IS TAKEN, NOT THE GIT TREE ────────────────────────
 #
-#   docs/roadmap.md's packaging rule, settled by M12.  v1.33.2 publishes
+#   docs/history.md's packaging rule, settled by M12.  v1.33.2 publishes
 #   per-platform tarballs WITH a checksums file and per-asset SPDX SBOMs —
 #   the tidiest upstream release discipline of anything packaged in this
 #   repo so far.  The sha256 below was verified against upstream's
@@ -36,7 +36,7 @@
 #
 #   The GitHub repo description still reads "for Usenet … download via
 #   SABnzbd", which is what a 2026-08-28 survey (recorded in the M14 section
-#   of docs/roadmap.md) took at its word — and this fleet measured zero
+#   of docs/history.md) took at its word — and this fleet measured zero
 #   Usenet in M12, which made Bindery look like a poor fit.  The README and
 #   settings surface at v1.33.2 tell the current story: qBittorrent /
 #   Transmission / Deluge / rTorrent as first-class download clients, and

@@ -316,7 +316,7 @@ forwarded and the SYN-ACK is dropped, which presents exactly as a dead service
 and logs nothing. The tell is a rule with a **non-zero hit count** and a
 connection that still hangs. Connection State `All` is fine and is *not* a
 substitute — see [M2b's
-table](../roadmap.md#the-udm-pro-half-cost-more-than-the-nix-half).
+table in M2b's PRs, linked from [history](../history.md).
 
 **Whether Servers (50) → Services needs its own rule is not established.** LAN
 and Servers are both in the `Internal` zone, so a rule whose source is the zone
@@ -481,7 +481,7 @@ jj git fetch && jj bookmark forget feat/ernst-vpn-microvm
 detached, so gh aborts after having already merged. See
 [the jj workflow guide](../guides/jj-workflow.md).)
 
-Then update the roadmap status row from **code landed — deploy pending** to
+Then update the status row in [history](../history.md) from **code landed — deploy pending** to
 **done — deployed \<date\>**, and write up anything this runbook got wrong. M2b's
 write-up is the model: what was measured, not what was expected.
 

@@ -43,7 +43,10 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Roadmap: roadmap.md
+  - Invariants: invariants.md
+  - Standing notes: standing-notes.md
+  - Interim-rule ledger: ledger.md
+  - History: history.md
   - Architecture:
     - Machines: architecture/machines.md
     - Modules and clan services: architecture/modules.md

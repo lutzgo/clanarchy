@@ -9,7 +9,7 @@
 #
 # ── THIS IS THE ONLY DERIVATION IN M14 THAT IS A REAL BUILD ───────────────
 #
-#   docs/roadmap.md's packaging rule is "take the upstream release artifact
+#   docs/history.md's packaging rule is "take the upstream release artifact
 #   when there is one".  Here there is NOT one: v1.4.2 (2026-08-11) publishes
 #   an EMPTY assets array — the only distribution channel is an OCI image.
 #   Checked against the releases API on 2026-08-28, not inferred from the
@@ -17,7 +17,7 @@
 #
 #   So this builds from source, and the build is genuine: a Vite/React/Tailwind
 #   frontend bundle plus a `tsc` pass over an Express server, exactly the step
-#   docs/roadmap.md's Storyteller note says Docker performs invisibly and a
+#   docs/history.md's Storyteller note says Docker performs invisibly and a
 #   from-source install has to perform by hand.
 #
 #   It stops well short of Storyteller, though, and the difference is why this
@@ -31,7 +31,7 @@
 #
 #   Worth recording because the public write-ups disagree with upstream: a
 #   widely-syndicated review of Questarr describes it as PostgreSQL-backed, and
-#   docs/roadmap.md says SQLite.  The roadmap is right and the review is stale —
+#   docs/history.md says SQLite.  The roadmap is right and the review is stale —
 #   upstream removed PostgreSQL in favour of SQLite's zero-configuration setup,
 #   and v1.4.2's dependency list carries `better-sqlite3` and `drizzle-orm` with
 #   no pg driver at all.

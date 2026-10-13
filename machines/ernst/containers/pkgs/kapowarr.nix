@@ -8,7 +8,7 @@
 #
 # ── MYLAR3 WAS CONSIDERED AND NOT CHOSEN.  RECORDING THE REASON ────────────
 #
-#   docs/roadmap.md requires this either way.  Mylar3 is the older and
+#   docs/history.md requires this either way.  Mylar3 is the older and
 #   more-mature comics automation tool, and "more mature" is a real argument
 #   this repo normally respects.
 #
@@ -29,7 +29,7 @@
 #
 # ── THE RELEASE ARTIFACT IS TAKEN, NOT THE GIT TREE ────────────────────────
 #
-#   docs/roadmap.md's packaging rule, settled by M12: take the upstream release
+#   docs/history.md's packaging rule, settled by M12: take the upstream release
 #   artifact when there is one, build from source only when there is not.  It
 #   is what nixpkgs itself does for sonarr, radarr, prowlarr and bazarr.
 #

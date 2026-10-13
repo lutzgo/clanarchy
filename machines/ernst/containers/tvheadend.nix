@@ -2,7 +2,7 @@
 #
 # Tvheadend as a SAT>IP client against the FRITZ!Box 6591's four DVB-C
 # tuners, publishing an M3U playlist and an XMLTV guide that Jellyfin
-# consumes as a Live TV tuner + EPG source (M8 in docs/roadmap.md).
+# consumes as a Live TV tuner + EPG source (M8 — see docs/history.md).
 #
 # ── TWO DEPARTURES FROM THE M8 PROMPT, both argued here ─────────────────────
 #

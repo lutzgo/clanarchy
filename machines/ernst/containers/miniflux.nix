@@ -1,7 +1,7 @@
 # machines/ernst/containers/miniflux.nix
 #
 # Miniflux — the feed reader, and the INTAKE half of M27's reading stack (see
-# docs/roadmap.md).  An nspawn container on VLAN 90 serving
+# docs/history.md).  An nspawn container on VLAN 90 serving
 # `miniflux.goclan.org` through Traefik on BOTH entrypoints, behind
 # forward-auth, with Authelia as its sole identity provider.
 #
