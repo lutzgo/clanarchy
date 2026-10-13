@@ -92,7 +92,7 @@ swap and there is no chroot step.
 
 The installer must match the flake's `clan-core` rev, otherwise `clan flash`
 build/eval will drift from the running config. Same rule as the initial
-install (see `CLAUDE.md` §Installing a Machine from Scratch).
+install (see [first-time-install](../guides/first-time-install.md)).
 
 ```bash
 REV=$(nix flake metadata --json . | jq -r '.locks.nodes."clan-core".locked.rev')

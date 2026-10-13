@@ -2,7 +2,7 @@
 
 Clanarchy uses a simple branch-per-change workflow: nothing lands on `main` except through a pull request. This guide covers reviewing and merging PRs, and the recovery steps when something goes wrong.
 
-Bookmark naming and PR conventions are described in [CLAUDE.md → Version Control Workflow](https://github.com/lutzgo/clanarchy/blob/main/CLAUDE.md); the mechanics of driving the repo are in [the jj workflow guide](jj-workflow.md).
+Bookmark naming and PR conventions are described in [AGENTS.md](https://github.com/lutzgo/clanarchy/blob/main/AGENTS.md); the mechanics of driving the repo are in [the jj workflow guide](jj-workflow.md).
 
 The repo is driven with jj, colocated with git — but **`gh` is unaffected**, so the entire review-and-merge path below is unchanged apart from the local checkout and cleanup steps.
 
@@ -117,6 +117,6 @@ Never `git push --force` (or `--force-with-lease`) to `main`. If a bad commit al
 
 When Claude Code creates a PR on your behalf:
 
-- The bookmark name follows the `<type>/<slug>` convention in [CLAUDE.md → Version Control Workflow](https://github.com/lutzgo/clanarchy/blob/main/CLAUDE.md).
+- The bookmark name follows the `<type>/<slug>` convention in [AGENTS.md](https://github.com/lutzgo/clanarchy/blob/main/AGENTS.md).
 - The PR title is imperative and unprefixed; the body contains a summary and a test plan.
 - Claude will not merge the PR itself unless you ask — merging is your call. Review, then run `gh pr merge <n> --squash` (plus the ref deletion above) when ready.

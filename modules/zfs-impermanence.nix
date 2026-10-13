@@ -22,7 +22,7 @@ in
     # @blank snapshots had never been created, `|| true` made a missing
     # snapshot indistinguishable from a successful rollback, and the machine
     # quietly accumulated state outside /persist since install.  Nothing
-    # anywhere said so — CLAUDE.md described ernst as rolling back, and it was
+    # anywhere said so — the docs described ernst as rolling back, and it was
     # only noticed because a stale symlink survived a reboot it should not
     # have.
     #

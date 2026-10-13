@@ -44,6 +44,10 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Roadmap: roadmap.md
+  - Architecture:
+    - Machines: architecture/machines.md
+    - Modules and clan services: architecture/modules.md
+    - Decisions that bite: architecture/decisions.md
   - Guides:
     - First-time install: guides/first-time-install.md
     - Deploying and testing: guides/deploy.md
