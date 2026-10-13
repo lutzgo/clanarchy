@@ -48,7 +48,7 @@
 #   rationale — including why this is a veth and not a macvlan or a tap.
 #
 #   MAC 02:00:00:90:00:07 → 10.0.90.15, the next free pair in the allocation
-#   table in machines/ernst/networking.nix.  DHCP with a reservation on the
+#   table in machines/ernst/allocations.nix.  DHCP with a reservation on the
 #   UDM-Pro keyed on the pinned MAC, never a static address here: the UDM-Pro
 #   owns the subnet and the pool, and a second copy in the repo diverges
 #   silently.  The reservation must be INSIDE the pool (10.0.90.6–.254).
@@ -1732,7 +1732,7 @@ in
 
       ##########################################################################
       # Users.  Numeric ids are the interface across the nspawn boundary - see
-      # the allocation table in machines/ernst/networking.nix.
+      # machines/ernst/allocations.nix.
       #
       # The upstream module declares users.users.authelia-main without a uid
       # (it lets NixOS allocate one from the system range) and the group

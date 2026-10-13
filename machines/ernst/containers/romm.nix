@@ -72,7 +72,7 @@
 { config, pkgs, lib, ... }:
 
 let
-  # uid/gid 3029, reserved in machines/ernst/networking.nix.
+  # uid/gid 3029, reserved in machines/ernst/allocations.nix.
   #
   # LITERAL ON zdata, because this container is ROOTFUL AND UNMAPPED — the
   # decision containers/tubesync.nix and containers/storyteller.nix both record
@@ -91,7 +91,7 @@ let
 
   # ── L2 / L3 ───────────────────────────────────────────────────────────────
   #
-  # Next free sequence in the allocation table in machines/ernst/networking.nix
+  # Next free sequence in machines/ernst/allocations.nix
   # was 0e (0c went to M14's storyteller, 0d to M16's cloudflared), and the last
   # octet follows that table's 8 + <seq> convention: 10.0.90.22.
   netns    = "romm";

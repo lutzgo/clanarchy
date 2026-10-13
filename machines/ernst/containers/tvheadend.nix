@@ -220,7 +220,7 @@
 #   same remap-to-upstream-default trick jellyfin.nix uses.  Everything
 #   Tvheadend persists — network/mux/service tree, channel map, access
 #   control, EPG database — lives there.  uid/gid 3026 on both sides (nspawn
-#   maps 1:1; the number is allocated in machines/ernst/networking.nix).
+#   maps 1:1; the number is allocated in machines/ernst/allocations.nix).
 { config, lib, pkgs, ... }:
 let
   # Built from source; see pkgs/tvheadend.nix for why nixpkgs cannot supply
@@ -232,7 +232,7 @@ let
   # the package's header carries the measurement.
   picons = pkgs.callPackage ./pkgs/picons.nix { };
 
-  tvheadendUid = 3026;   # allocated in machines/ernst/networking.nix
+  tvheadendUid = 3026;   # allocated in machines/ernst/allocations.nix
   tvheadendGid = 3026;
 
   # VLAN-90 peers allowed to reach the HTTP port (M3U, XMLTV, stream URLs,

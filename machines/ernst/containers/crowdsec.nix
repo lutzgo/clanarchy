@@ -275,7 +275,7 @@ let
   ############################################################################
   # Identity.
   #
-  # uid/gid 3030, allocated in the table in machines/ernst/networking.nix.
+  # uid/gid 3030, allocated in machines/ernst/allocations.nix.
   # nspawn passes ids through unmapped, so this is a number on zdata — and
   # /srv/state/crowdsec is on zdata.
   #

@@ -811,7 +811,7 @@ in
         # THE MAC IS PINNED HERE because `extraVeths` has no option for it and
         # the UDM-Pro reservation has to key on a value this repo chose rather
         # than on whatever nspawn derives from the machine name.  Second entry
-        # in the VLAN 20 allocation table in machines/ernst/networking.nix.
+        # in machines/ernst/allocations.nix.
         linkConfig = {
           MACAddress = "02:00:00:20:00:02";
           # NOT "routable".  A DHCP problem on the IoT VLAN must leave a

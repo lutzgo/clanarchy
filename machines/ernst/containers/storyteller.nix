@@ -153,7 +153,7 @@
 { config, pkgs, lib, ... }:
 
 let
-  # uid 3022, reserved for this service in machines/ernst/networking.nix.
+  # uid 3022, reserved for this service in machines/ernst/allocations.nix.
   #
   # LITERAL ON zdata, because this container is ROOTFUL AND UNMAPPED — the same
   # decision containers/tubesync.nix records at length.  Rootless podman always
@@ -165,7 +165,7 @@ let
 
   # ── L2 / L3 ───────────────────────────────────────────────────────────────
   #
-  # Next free sequence in the allocation table in machines/ernst/networking.nix:
+  # Next free sequence in machines/ernst/allocations.nix:
   # 08 and 09 are RESERVED (M15 tdarr, M16 jellyseerr), 0a went to M8's
   # tvheadend and 0b to M9's tubesync.  So 0c, and the last octet follows that
   # table's 8 + <seq> convention: 10.0.90.20.

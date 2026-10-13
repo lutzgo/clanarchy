@@ -2978,7 +2978,7 @@ in
       uid = lib.mkOption {
         type        = lib.types.int;
         description = ''
-          Static uid/gid, allocated in machines/ernst/networking.nix.
+          Static uid/gid, allocated in machines/ernst/allocations.nix.
 
           NOTHING ON THE HOST IS OWNED BY IT, which is worth saying because
           every other uid in that table exists to own something.  THIS ROLE HAS
@@ -3731,7 +3731,7 @@ in
       };
       uid = lib.mkOption {
         type        = lib.types.int;
-        description = "Static uid/gid, allocated in machines/ernst/networking.nix.";
+        description = "Static uid/gid, allocated in machines/ernst/allocations.nix.";
       };
       vlan = lib.mkOption {
         type    = lib.types.int;

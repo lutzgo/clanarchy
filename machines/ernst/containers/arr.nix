@@ -218,7 +218,7 @@ let
   prowlarrUid = 3004;
   prowlarrGid = 3004;
 
-  # M12's additions.  Reserved in machines/ernst/networking.nix.
+  # M12's additions.  Reserved in machines/ernst/allocations.nix.
   #
   # 3010 (umlautadaptarr) and 3013 (unpackerr) are RESERVED AND UNUSED, both
   # deliberately — see the umlautadaptarr block and the M12 section of the
@@ -228,7 +228,7 @@ let
   cleanuparrUid   = 3011;
   mediathekarrUid = 3012;
 
-  # M13's additions.  Also reserved in machines/ernst/networking.nix, which
+  # M13's additions.  Also reserved in machines/ernst/allocations.nix, which
   # already carried these three rows before this milestone started.
   #
   # Two own-group services and one media member, and the split is the same
@@ -247,7 +247,7 @@ let
   scraparrUid   = 3016;
   scraparrGid   = 3016;
 
-  # ── M14's additions.  Reserved in machines/ernst/networking.nix ────────────
+  # ── M14's additions.  Reserved in machines/ernst/allocations.nix ────────────
   #
   # FIVE here and a sixth elsewhere.  slskd's 3024 is NOT in this list: it runs
   # in the MICROVM GUEST, because Soulseek is P2P on the open internet on
@@ -303,7 +303,7 @@ let
   # burned by (see the SN2 gravestones in containers/traefik.nix), so the
   # mechanism is named at both ends.
   #
-  # Next free was 3031 per the table in machines/ernst/networking.nix; that
+  # Next free was 3031 per machines/ernst/allocations.nix; that
   # table is updated in the same commit.
   komgaUid          = 3031;
   navidromeUid      = 3032;

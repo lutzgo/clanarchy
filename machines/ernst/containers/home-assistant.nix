@@ -231,7 +231,7 @@ let
   # ── 286 IS NOT OURS TO CHOOSE, AND THAT IS THE POINT ──────────────────────
   #
   # This file was first written with 3038 — the next free number in the
-  # 3000-block registry in machines/ernst/networking.nix — on the argument
+  # 3000-block registry in machines/ernst/allocations.nix — on the argument
   # Immich's and Nextcloud's rows there make: the nixpkgs module creates its
   # user with `isSystemUser` and no fixed uid, nspawn passes ids through
   # UNMAPPED, so whatever the container's useradd happens to pick is the number
@@ -586,8 +586,12 @@ in
         install -d -o ${toString hassUid} -g ${toString hassGid} -m 0755 "${stateRoot}/www"
       fi
       # Owned by the agent, readable by Home Assistant and by the frontend.
-      # uid ${toString mnemeUid} is allocated in machines/ernst/networking.nix; it is named
-      # here because a bare number in a chown is how the two drift apart.
+      # uid ${toString mnemeUid} is the registry's; it is named here because a
+      # bare number in a chown is how the two drift apart.
+      #
+      # NOTE FOR EDITORS: this text is inside the script, so it is a file in
+      # the store rather than a Nix comment, and editing it rebuilds this unit.
+      # Cite file paths in Nix comments, not in here.
       install -d -o ${toString mnemeUid} -g ${toString mnemeUid} -m 0755 "${stateRoot}/www/mneme"
     '';
   };
@@ -1241,7 +1245,7 @@ in
         # THE MAC IS PINNED HERE because `extraVeths` has no option for it and
         # the UDM-Pro reservation has to key on a value this repo chose rather
         # than on whatever nspawn derives from the machine name.  First entry
-        # in the VLAN 20 allocation table in machines/ernst/networking.nix.
+        # in machines/ernst/allocations.nix.
         linkConfig = {
           MACAddress       = "02:00:00:20:00:01";
           # NOT "routable".  A DHCP problem on the IoT VLAN must leave a

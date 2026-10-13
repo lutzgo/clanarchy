@@ -86,7 +86,7 @@ let
   # Identity.
   ##############################################################################
 
-  # From the allocation table in machines/ernst/networking.nix.  OWN group, not
+  # From machines/ernst/allocations.nix.  OWN group, not
   # `media` — `media` is a SECONDARY membership below, for the external storage
   # mount, and making it primary would put the media gid on every file the
   # service writes into its own store.
@@ -483,7 +483,7 @@ in
     autoStart = true;
     ephemeral = false;
 
-    # MAC from the allocation table in machines/ernst/networking.nix; the DHCP
+    # MAC from machines/ernst/allocations.nix; the DHCP
     # reservation 10.0.90.26 on the UDM-Pro keys on it (manual step).  Sequence
     # 12, and the last octet is 8 + seq as everywhere else on this bridge.
     privateNetwork  = true;

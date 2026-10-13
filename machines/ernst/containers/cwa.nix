@@ -51,7 +51,7 @@
 #   reused is how the allocation table stops being trusted.
 #
 #   THE DHCP RESERVATION ON THE UDM-Pro MUST BE RE-POINTED, NOT ADDED
-#   ALONGSIDE.  networking.nix's table already warns that a reservation for a
+#   ALONGSIDE.  allocations.nix already warns that a reservation for a
 #   MAC nothing uses is how an address gets handed out twice; the MAC here is
 #   the same one cloudflared had, so if the old reservation still exists it is
 #   already correct and nothing needs doing.  Verify before deploying — this is
@@ -291,7 +291,7 @@ let
 
   # Continuing the 3000-range family.  Next free was 3031 before this round;
   # containers/arr.nix took 3031 (komga) and 3032 (navidrome) in the same
-  # change, so this is 3033.  The table in machines/ernst/networking.nix is
+  # change, so this is 3033.  The table in machines/ernst/allocations.nix is
   # updated alongside.
   #
   # OWN GROUP, NOT `media`.  CWA writes only into trees it owns outright — its

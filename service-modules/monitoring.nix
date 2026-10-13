@@ -1102,7 +1102,7 @@ in
           Guest-side MAC for the container's eth0, and the address the DHCP
           reservation keys on.  Never the host-side vb-* veth.
 
-          Allocated in the table in machines/ernst/networking.nix.
+          Allocated in machines/ernst/allocations.nix.
         '';
       };
 
@@ -1726,7 +1726,7 @@ in
           # containers/arr.nix (3002–3004) and containers/traefik.nix (3005).
           # nspawn passes uids and gids through unmapped, so an id chosen in
           # here is an id on zdata — and stateDir is on zdata.  Add a row to
-          # the table in machines/ernst/networking.nix for any new one.
+          # machines/ernst/allocations.nix for any new one.
           #
           # NOT in group media, either of them.  Neither service has any
           # business holding a handle to the library.

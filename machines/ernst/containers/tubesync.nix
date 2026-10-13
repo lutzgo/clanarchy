@@ -40,7 +40,7 @@
 #   deciding argument is the one the brief itself flagged as "the trap":
 #
 #     nspawn and virtiofs both pass uids/gids through UNMAPPED, which is why
-#     the allocation table in machines/ernst/networking.nix can say a number
+#     machines/ernst/allocations.nix can say a number
 #     chosen inside a guest IS a number on zdata.  **Rootless podman always
 #     has a user namespace**, so the in-container PUID/PGID are NOT what lands
 #     on disk — files appear as some sub-uid, or as nobody:nobody.  Recovering

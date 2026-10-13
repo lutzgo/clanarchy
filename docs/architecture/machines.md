@@ -69,7 +69,8 @@ because of the palette.
 | `configuration.nix` | Hostname, timezone, ZFS/systemd-boot, SSH daemon |
 | `disko.nix` | Hand-written multi-disk: mirrored encrypted `zroot` (2× 960 GB SAS SSD) + raidz1 encrypted `zdata` (6× 15.36 TB). Does **not** use `modules/disko/base.nix` |
 | `hardware-configuration.nix` | Bootloader + kernel modules for the AM5 / X870E board |
-| `networking.nix` | VLAN-filtering `br0`, the trunk, and the MAC / IP / uid / veth allocation ledger. Carries the two enforced assertions (veth-name uniqueness; every loopback bridge listens on an address some veth carries) |
+| `networking.nix` | VLAN-filtering `br0`, the trunk, the VLAN map, and the two attachment patterns six container files cite as "pattern A". Carries the assertions that check `allocations.nix` against the live configuration |
+| `allocations.nix` | The MAC / address / veth / uid registry — **data, checked by those assertions**, not a comment table. `nextFree` is computed |
 | `htpc.nix` | The `go` couch user (deliberately **not** in `wheel`) + its password generator, and the one set of HDMI/audio facts the HTPC role needs |
 | `courses.nix` | The Courses Jellyfin library + `course-import`. A separate library because Jellyfin's metadata providers are a **per-library** setting, and a sibling of `tvshows/` so Sonarr's root scan does not list every course as unmapped |
 | `courses/*.json` | One manifest per course. `slug` is **the download filename stem and nothing else** — it is not reliably the URL slug |
@@ -123,7 +124,7 @@ Containers are also declared from clan services: `monitoring` (in
 ### Allocation
 
 New services claim a sequence number, a MAC, an address and possibly a uid from
-the ledger in `machines/ernst/networking.nix`. Three things that bite:
+the registry in `machines/ernst/allocations.nix`. Three things that bite:
 
 - **Container names cap at 12 characters** — `vb-<name>` hits IFNAMSIZ and fails
   at container *start*, not at eval. Hence `mail`, `mass`, `hass`.
