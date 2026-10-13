@@ -132,7 +132,8 @@
           # it.  Not while a session merely exists — this machine autologins
           # into one at boot and holds it all day, so that would mean never
           # running inference at all.
-          gpu.preempt.units = [ "llama-swap.service" ];
+          gpu.preempt.units     = [ "llama-swap.service" ];
+          gpu.gamingHold.units  = [ "llama-swap.service" ];
 
           # Demote rather than relogin a dying session forever.
           #
