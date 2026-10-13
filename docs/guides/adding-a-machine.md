@@ -15,7 +15,7 @@ The full flow is:
 3. Generate secrets (`clan vars generate`)
 4. Install onto hardware (`clan machines install`)
 5. Add the SSH `HostKeyAlgorithms` workaround for YubiKey signing
-6. Ongoing updates via `deploy-<name>` or `clan machines update`
+6. Ongoing updates via `clan machines update`
 
 ---
 
@@ -118,20 +118,11 @@ clan.machines.<name> = {
 };
 ```
 
-Also add a `deploy-<name>` function to the `shellHook` in `perSystem.devShells.default`:
+There is nothing to add to the devShell. Deployment is `clan machines update
+<name>`, which reads the machine out of the inventory — a per-machine shell
+function would be a second deploy path that skips clan's inventory evaluation
+and therefore cannot apply vars. See [deploy](deploy.md).
 
-```bash
-deploy-<name>() {
-  local action=${1:-switch}
-  nixos-rebuild "$action" \
-    --flake .#<name> \
-    --target-host root@<name>.skynet.lan \
-    --no-reexec \
-    -j auto \
-    "${@:2}"
-}
-export -f deploy-<name>
-```
 
 ---
 
@@ -186,7 +177,7 @@ This runs **nixos-anywhere** under the hood:
 - Reboots into the new system
 
 !!! warning "Destructive"
-    `clan machines install` wipes and reformats the target's disks. Only run it for initial provisioning. For subsequent config changes use `deploy-<name>` or `clan machines update <name>`.
+    `clan machines install` wipes and reformats the target's disks. Only run it for initial provisioning. For subsequent config changes use `clan machines update <name>`.
 
 After reboot, the machine is fully provisioned. The `admin` and user accounts are active, SSH keys are in place.
 
@@ -210,22 +201,19 @@ deploy
 
 ---
 
-## 7. Ongoing updates
-
 ```bash
-deploy-<name>               # fast: nixos-rebuild, skips clan health check
-clan machines update <name> # full: re-evaluates vars/secrets
+clan machines update <name>
 ```
 
-See the [Updating machines](updating-machines.md) guide for details on when to use each.
+That is the whole interface. See [deploy](deploy.md) for what it does and why
+there is no faster variant.
 
 ---
 
 ## Checklist
 
-- [ ] `machines/<name>/` directory with all four required files
+- [ ] `machines/<name>/` directory with its required files
 - [ ] `clan.machines.<name>` block in `flake.nix` with correct imports
-- [ ] `deploy-<name>` function added to devShell `shellHook`
 - [ ] `networking.hostId` is unique (8 hex chars, not copied from another machine)
 - [ ] `clan vars generate <name>` completed with YubiKey inserted
 - [ ] `facter.json` generated from live hardware

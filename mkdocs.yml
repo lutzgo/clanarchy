@@ -51,35 +51,36 @@ nav:
     - Machines: architecture/machines.md
     - Modules and clan services: architecture/modules.md
     - Decisions that bite: architecture/decisions.md
-  - Guides:
-    - First-time install: guides/first-time-install.md
-    - Deploying and testing: guides/deploy.md
-    - Updating machines: guides/updating-machines.md
-    - Adding a machine: guides/adding-a-machine.md
-    - Adding a module or option: guides/adding-a-module.md
-    - The jj workflow: guides/jj-workflow.md
-    - Coding-agent workflow: guides/coding-agent-workflow.md
+  - Operate:
+    - Deploying: guides/deploy.md
     - Accepting pull requests: guides/accepting-pull-requests.md
     - Networking: guides/networking.md
-    - Authelia second factors: guides/authelia-2fa.md
-    - YubiKey: guides/yubikey.md
-    - YubiKey SSH setup: guides/yubikey-ssh-setup.md
     - Impermanence: guides/impermanence.md
     - Remote unlock: guides/remote-unlock.md
-    - ernst zdata datasets: guides/ernst-zdata-datasets.md
+    - Firmware updates: guides/firmware-updates.md
+    - YubiKey: guides/yubikey.md
+    - Authelia second factors: guides/authelia-2fa.md
+  - Build:
+    - The jj workflow: guides/jj-workflow.md
+    - Coding-agent workflow: guides/coding-agent-workflow.md
+    - Adding a module or option: guides/adding-a-module.md
+    - Adding a machine: guides/adding-a-machine.md
+    - First-time install: guides/first-time-install.md
+  - Services:
     - ernst app-API ingress: guides/ernst-app-api-ingress.md
-    - Mail on ernst: guides/mail.md
+    - ernst zdata datasets: guides/ernst-zdata-datasets.md
+    - Mail: guides/mail.md
     - The reading stack: guides/reading-stack.md
     - The music pipeline: guides/music-pipeline.md
+    - Navidrome clients: guides/navidrome-clients.md
     - The document store: guides/document-store.md
     - Video courses in Jellyfin: guides/courses.md
-    - Navidrome clients: guides/navidrome-clients.md
     - The agent's memory: guides/agent-memory.md
     - HACS dependencies: guides/hacs-dependencies.md
+  - Machines:
     - HTPC / Plasma Bigscreen: guides/htpc-bigscreen.md
     - HTPC / game controllers: guides/htpc-controllers.md
     - Emulation on birte: guides/birte-emulation.md
-    - Firmware updates: guides/firmware-updates.md
     - Noctalia profiles: guides/noctalia-profiles.md
     - Noctalia v5 migration: guides/noctalia-v5-migration.md
     - OBS / Sony webcam: guides/obs-sony-webcam.md

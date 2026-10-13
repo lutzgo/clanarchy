@@ -1,6 +1,6 @@
 # Runbook — opt existing machines into ZFS auto-snapshots
 
-**Status: outstanding.** Applies to every machine installed before [#38](https://github.com/lutzgo/clanarchy/pull/38) landed — currently **miralda, biene, ernst**. Takes about a minute per machine and needs no reboot.
+**Status: outstanding.** Applies to every machine installed before [#38](https://github.com/lutzgo/clanarchy/pull/38) landed — **miralda, biene, ernst**. jens and birte were installed after it and need nothing. Takes about a minute per machine and needs no reboot.
 
 ## Why this is needed
 
