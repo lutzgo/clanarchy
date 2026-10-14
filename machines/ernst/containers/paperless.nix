@@ -584,121 +584,6 @@ in
   # Host side — the datasets, the directories, the secrets and the veth.
   ##############################################################################
 
-  # ── THIS FILE DECLARES NO tmpfiles RULES, AND containers/immich.nix IS WHY ─
-  #
-  # That file records the measured failure: its host-side directories shipped as
-  # `systemd.tmpfiles.rules` and the container died five times into its start
-  # limit with
-  #
-  #     systemd-nspawn: Failed to clone /srv/state/immich/ml-cache:
-  #                     No such file or directory
-  #
-  # because activating a new configuration does not re-run
-  # systemd-tmpfiles-setup.service in time for a container the same activation
-  # starts.  Every host-side directory this container binds therefore belongs to
-  # the ordered unit below, and none of them is ALSO declared as a tmpfiles rule
-  # here — two declarations for one path is the M3 defect.
-  #
-  # ── ONE PATH IS THE EXCEPTION AND IT IS UPSTREAM'S, NOT OURS ───────────────
-  #
-  # `services.paperless` ships its own rule for the exporter's directory:
-  #
-  #     d '${exportDir}' - paperless paperless - -
-  #
-  # It runs INSIDE the container, through the bind, against the inode created
-  # below — so ${exportDir} settles at tmpfiles' default 0755 rather than the
-  # 0700 asked for here.  It is NOT forced back, for Nextcloud's two reasons:
-  # competing with a rule the module already declares IS the M3 defect, and the
-  # mode is not an exposure here.  The check is specific rather than
-  # reassuring: ${docsRoot} itself is 0700 and is owned by uid 315, and it is
-  # NOT bind-mounted into the container — only its children are — so nothing in
-  # here can re-mode it.  `go`, the couch account that autologins on the
-  # television without a password, cannot traverse into it at all, and an
-  # unreachable 0755 grants nobody anything.
-  #
-  # If ${docsRoot} is ever bound in whole, or its mode ever changes, re-read
-  # this paragraph rather than trusting it.
-  systemd.services.paperless-dirs = {
-    description = "Verify Paperless's datasets are mounted and create its directories";
-    wantedBy   = [ "multi-user.target" ];
-    after      = [ "srv-docs.mount" "srv-state.mount" "paperless-inbox.service" ];
-    requires   = [ "srv-docs.mount" "srv-state.mount" "paperless-inbox.service" ];
-    before     = [ "container@paperless.service" ];
-    requiredBy = [ "container@paperless.service" ];
-    serviceConfig = {
-      Type            = "oneshot";
-      RemainAfterExit = true;
-    };
-    path = [ pkgs.util-linux pkgs.coreutils ];
-
-    # BLOCKING (`requires` + `requiredBy`), not advisory, and the argument is
-    # Immich's and Nextcloud's rather than arr.nix's.  A paperless that starts
-    # without its dataset is not a degraded paperless — it is a NEW, EMPTY one
-    # on zroot, which will accept a phone's scans, report success to the app,
-    # and lose them at the next boot.  The paper original is in the recycling by
-    # then, which is the part that makes this worse than the sync case.
-    #
-    # It FAILS rather than repairing itself: a unit that silently fixes storage
-    # layout hides the fact that the layout was wrong.
-    script = ''
-      set -eu
-
-      # findmnt, not `mountpoint`: this has to check WHAT is mounted, not just
-      # that something is.  /srv/docs carries `nofail`
-      # (machines/ernst/disko.nix), so the mount unit can fail while /srv/docs
-      # still exists as an ordinary directory on zroot — precisely the case a
-      # bare mountpoint test passes.
-      src=$(findmnt --noheadings --output SOURCE --target ${docsRoot} || true)
-      fstype=$(findmnt --noheadings --output FSTYPE --target ${docsRoot} || true)
-
-      if [ "$src" != "zdata/docs" ] || [ "$fstype" != "zfs" ]; then
-        echo "paperless-dirs: ${docsRoot} is NOT zdata/docs." >&2
-        echo "  found: source='$src' fstype='$fstype'" >&2
-        echo "" >&2
-        echo "  Refusing to create it, because doing so would put the" >&2
-        echo "  household's document archive on zroot, which rolls back on" >&2
-        echo "  every boot — while the phones report every upload as a" >&2
-        echo "  success and the paper gets thrown away." >&2
-        echo "" >&2
-        echo "  The dataset must exist AND carry mountpoint=legacy — a ZFS" >&2
-        echo "  dataset without it cannot be mounted by mount(8) at all:" >&2
-        echo "" >&2
-        echo "    zfs create -o mountpoint=legacy -o recordsize=1M \\" >&2
-        echo "      -o exec=off -o setuid=off -o devices=off -o atime=off \\" >&2
-        echo "      -o com.sun:auto-snapshot=true zdata/docs" >&2
-        echo "" >&2
-        echo "  If it exists already:  zfs set mountpoint=legacy zdata/docs" >&2
-        echo "  Then:                  systemctl start srv-docs.mount" >&2
-        echo "  See docs/guides/ernst-zdata-datasets.md." >&2
-        exit 1
-      fi
-
-      # THE TARGET IS THE PARENT, NOT ${stateRoot}.  `findmnt --target` on a
-      # path that does not exist yet returns nothing — it does not walk up to
-      # the nearest existing ancestor — so checking ${stateRoot} here would fail
-      # on every first run, before this unit has created it.  immich-dirs
-      # refused its own first deploy that way on 2026-09-11.
-      ssrc=$(findmnt --noheadings --output SOURCE --target /srv/state || true)
-      if [ "$ssrc" != "zdata/state" ]; then
-        echo "paperless-dirs: /srv/state is not zdata/state (found '$ssrc')." >&2
-        echo "  Refusing to create Paperless's index and database directories," >&2
-        echo "  because they would land on zroot and be rolled back." >&2
-        exit 1
-      fi
-
-      # NUMERIC ids on purpose: `paperless` and `postgres` are CONTAINER users
-      # and the host has no matching passwd entries.
-      install -d -o ${toString paperlessUid} -g ${toString paperlessGid} -m 0700 ${docsRoot}
-      install -d -o ${toString paperlessUid} -g ${toString paperlessGid} -m 0700 ${mediaDir}
-      install -d -o ${toString paperlessUid} -g ${toString paperlessGid} -m 0700 ${exportDir}
-      # ${stateRoot} ITSELF IS NOT CREATED HERE — `paperless-inbox` below owns
-      # it, and this unit is ordered after that one.  Two units running
-      # `install -d` on one path is the M3 defect even when they agree about
-      # the mode today, because the next edit only changes one of them.
-      install -d -o ${toString paperlessUid} -g ${toString paperlessGid} -m 0700 ${dataDir}
-      install -d -o ${toString postgresUid}  -g ${toString postgresGid}  -m 0700 ${stateRoot}/postgresql
-    '';
-  };
 
   # ── THE SHARED INBOX GETS ITS OWN UNIT, AND THE SPLIT IS THE WHOLE POINT ───
   #
@@ -968,199 +853,96 @@ in
     '';
   };
 
-  ##############################################################################
-  # Host side of the veths.
-  ##############################################################################
-
-  # The VLAN-90 leg — a bridge port on br0.  Identical rationale to
-  # vb-nextcloud / vb-immich / vb-jellyfin; containers/traefik.nix carries the
-  # long form of KeepMaster-not-Bridge and why a bridge port holds no address.
-  systemd.network.networks."60-vb-paperless" = {
-    matchConfig.Name = "vb-paperless";
-    networkConfig = {
-      KeepMaster          = true;
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
-    };
-    bridgeVLANs = [ { VLAN = 90; PVID = 90; EgressUntagged = 90; } ];
-    linkConfig.RequiredForOnline = "enslaved";
+  # The generated dirs unit knows about the two MOUNTS it guards; the shared
+  # inbox is a unit, not a mount, and `paperless-dirs` must still follow it
+  # because it writes into ${stateRoot}, which that unit creates. Merged onto
+  # the module's definition rather than forking it.
+  systemd.services.paperless-dirs = {
+    after    = [ "paperless-inbox.service" ];
+    requires = [ "paperless-inbox.service" ];
   };
-
-  # ── THERE IS DELIBERATELY NO HOST-SIDE NETWORK FOR `doc0` ─────────────────
-  #
-  # MEASURED, and it cost this container four restarts on its first deploy
-  # (2026-10-05).  An earlier draft declared
-  #
-  #     systemd.network.networks."60-doc0" = {
-  #       matchConfig.Name = docVeth;
-  #       address = [ "${docHost}/128" ];
-  #       routes  = [ { Destination = "${docCont}/128"; Scope = "link"; } ];
-  #       ...
-  #
-  # on the reasoning that a leg needs configuring at both ends.  It does not:
-  # `containers.<n>.extraVeths.<v>.hostAddress6` is what nspawn's
-  # `--network-veth-extra` consumes, and the nixos-containers module assigns
-  # the HOST end from it directly.  Declaring it again in networkd means two
-  # things racing to own one address, and the loser is the container:
-  #
-  #     Error: ipv6: address already assigned.
-  #     container@paperless.service: Control process exited,
-  #                                  code=exited, status=2/INVALIDARGUMENT
-  #
-  # — a restart loop whose message names neither the veth nor this file.  The
-  # container booted far enough each time to start paperless, Tika and
-  # Gotenberg, so the only outward symptom was a 90-second stop job.
-  #
-  # The check that would have caught it is `grep -rn '60-mon0\|60-ai1\|60-web0'`
-  # over the repo: NONE of the four existing ULA legs has a host-side network,
-  # and that absence is the pattern rather than an omission.  The CONTAINER
-  # side does get one — `20-doc0` below, which matches `20-ai1` and `20-web0`
-  # exactly — because the container's networkd has no `extraVeths` to read.
-  #
-  # Only VLAN legs (`vb-*`, `iot0`, `iot1`) take a `60-*` network, and that is
-  # what the `Bridge`-versus-`KeepMaster` note in
-  # machines/ernst/networking.nix is about.  It does not apply here.
-
-  # Same VLAN race, same idempotent backstop, same "-" prefix as every other
-  # nspawn container on br0: networkd applies [BridgeVLAN] only once it observes
-  # the link's master, and nspawn sets that master out of band.  With
-  # DefaultPVID = "none" on br0 a miss is fail-CLOSED.
-  # `bridge vlan show dev vb-paperless` is the check.
-  systemd.services."container@paperless".serviceConfig.ExecStartPost = [
-    "-${pkgs.iproute2}/bin/bridge vlan add dev vb-paperless vid 90 pvid untagged"
-  ];
 
   ##############################################################################
   # The container.
   ##############################################################################
-  containers.paperless = {
-    autoStart = true;
-    ephemeral = false;
+  #
+  # modules/containers/nspawn.nix generates the dirs unit (with both mount
+  # guards), the host-side veth network, the VLAN backstop, the `doc0` leg, the
+  # container preamble, the in-container networking and the firewall. Its
+  # header carries the rationale that used to be restated here: no tmpfiles
+  # rules for a path a container binds, and no host-side network for a ULA leg.
+  #
+  # TWO UNITS STAY HAND-WRITTEN, each for its own reason:
+  #
+  #   `paperless-inbox` — one directory bound into TWO containers, so it is
+  #   ordered against only the dependencies both share (see its own header).
+  #
+  #   `paperless-secrets` — it stages two whole FILES plus an env file holding
+  #   a JSON blob, where the module's `secrets` option writes `KEY=value`.
+  clanarchy.containers.paperless = {
+    enable = true;
+    mac    = "02:00:00:90:00:18";
 
-    # MAC from machines/ernst/allocations.nix; the DHCP
-    # reservation 10.0.90.32 on the UDM-Pro keys on it (manual step).  Sequence
-    # 18, and the last octet is 8 + seq as everywhere else on this bridge.
+    # NO uid/gid PIN HERE, DELIBERATELY. `services.paperless` assigns
+    # `config.ids.uids.paperless` (315) unconditionally, so a second definition
+    # is an eval conflict rather than a pin — the `hass`=286 shape. See the let
+    # block. It is also why 315 does not come from ernst's 3000 block.
+
+    # Pins the PostgreSQL major through `services.postgresql.package`'s
+    # stateVersion-derived default — the thing that must not move under a
+    # running database.
+    stateVersion = "26.05";
+
+    # The document archive is its own dataset, checked by source AND fstype.
+    extraGuardedMounts = [
+      { path = docsRoot; source = "zdata/docs"; fstype = "zfs"; }
+    ];
+
+    # ── ONE PATH IS THE EXCEPTION AND IT IS UPSTREAM'S, NOT OURS ─────────────
     #
-    # The name is `paperless` and not something longer for the reason `hass` and
-    # `mass` are what they are: nspawn names the host side `vb-<container>` and
-    # a Linux interface name caps at 15 characters.  `vb-paperless` is 12.
-    privateNetwork  = true;
-    hostBridge      = "br0";
-    localMacAddress = "02:00:00:90:00:18";
+    # `services.paperless` ships `d '${exportDir}' - paperless paperless - -`,
+    # which runs INSIDE the container against the inode created here, so
+    # exportDir settles at tmpfiles' default 0755 rather than the 0700 below.
+    # It is not forced back: competing with a rule the module already declares
+    # IS the M3 defect, and the mode is not an exposure. docsRoot itself is
+    # 0700, owned by 315, and is NOT bound into the container — only its
+    # children are — so nothing in there can re-mode it, and `go`, the couch
+    # account that autologins without a password, cannot traverse it at all.
+    # If docsRoot is ever bound in whole, re-read this rather than trusting it.
+    stateDirs = [
+      { path = docsRoot;  owner = paperlessUid; group = paperlessGid; }
+      { path = mediaDir;  owner = paperlessUid; group = paperlessGid; }
+      { path = exportDir; owner = paperlessUid; group = paperlessGid; }
+      { path = dataDir;   owner = paperlessUid; group = paperlessGid; }
+      # PostgreSQL's own upstream-static id.
+      { path = "${stateRoot}/postgresql"; owner = postgresUid; group = postgresGid; }
+    ];
 
-    # Declared here so the veth and its row in networking.nix's assertion land
-    # together.  The host end is configured above; the container end is below.
-    extraVeths.${docVeth} = {
-      hostAddress6  = docHost;
-      localAddress6 = docCont;
-    };
+    # mneme's leg, pointing INWARD: M32b gives the agent `document_search`.
+    ula = [
+      { veth = docVeth; hostAddress6 = docHost; localAddress6 = docCont; }
+    ];
 
     bindMounts = {
-      # The archive and the originals.
-      "${mediaDir}" = {
-        hostPath   = mediaDir;
-        isReadOnly = false;
-      };
-
-      # The consumption directory, shared with Nextcloud and created by
-      # `paperless-inbox` rather than by `paperless-dirs`.
-      "${consumeDir}" = {
-        hostPath   = consumeDir;
-        isReadOnly = false;
-      };
-
-      # The exporter's output.  Inside /srv/docs on purpose, so it is covered by
-      # the same `com.sun:auto-snapshot=true` as the archive it protects.
-      "${exportDir}" = {
-        hostPath   = exportDir;
-        isReadOnly = false;
-      };
-
-      # The index, the classifier model and the logs.
-      "${dataDir}" = {
-        hostPath   = dataDir;
-        isReadOnly = false;
-      };
-
-      # The database.  The PARENT is bound, not the version subdirectory, so a
-      # future PostgreSQL major bump lands beside the old one on zdata instead
-      # of on the container's rootfs.
-      "/var/lib/postgresql" = {
-        hostPath   = "${stateRoot}/postgresql";
-        isReadOnly = false;
-      };
-
-      "${secretsDir}" = {
-        hostPath   = secretsDir;
-        isReadOnly = true;
-      };
+      "${mediaDir}"         = { hostPath = mediaDir;   isReadOnly = false; };
+      "${consumeDir}"       = { hostPath = consumeDir; isReadOnly = false; };
+      "${exportDir}"        = { hostPath = exportDir;  isReadOnly = false; };
+      "${dataDir}"          = { hostPath = dataDir;    isReadOnly = false; };
+      "/var/lib/postgresql" = { hostPath = "${stateRoot}/postgresql"; isReadOnly = false; };
+      # Staged by the hand-written secrets unit above.
+      "${secretsDir}"       = { hostPath = secretsDir; isReadOnly = true;  };
     };
 
+    allowFrom = [
+      # Every human client arrives through the proxy, over v4.
+      { peer = traefikAddr; port = paperlessPort; }
+      # mneme on doc0, over v6 — the only thing that reaches this service
+      # without going through Traefik. The family is inferred from the colon.
+      { peer = docHost;     port = paperlessPort; }
+    ];
+
     config = { config, pkgs, lib, ... }: {
-      # Pins the PostgreSQL major through `services.postgresql.package`'s
-      # stateVersion-derived default, which is the thing that must not move
-      # under a running database.
-      system.stateVersion = "26.05";
 
-      ##########################################################################
-      # Networking — two legs.
-      ##########################################################################
-      networking.useHostResolvConf = false;
-      networking.useNetworkd = true;
-      services.resolved.enable = true;
-
-      systemd.network.networks."10-eth0" = {
-        matchConfig.Name = "eth0";
-        networkConfig = {
-          DHCP         = "ipv4";
-          DNS          = "10.0.5.3";
-          Domains      = "~. skynet.lan";
-          IPv6AcceptRA = false;
-          # SN2: v4 only on this leg.  M18 measured that IPv6AcceptRA alone
-          # blocks an RA but NOT link-local assignment; this is the line that
-          # actually makes `ip -6 addr show dev eth0` empty.
-          LinkLocalAddressing = "no";
-        };
-        dhcpV4Config = {
-          UseDNS     = false;
-          UseDomains = false;
-        };
-        linkConfig.RequiredForOnline = "routable";
-      };
-
-      # The `doc0` end.  A single /128 with a link-scope route back to the host
-      # end and nothing else — no RA, no default route, no DNS.
-      systemd.network.networks."20-${docVeth}" = {
-        matchConfig.Name = docVeth;
-        address = [ "${docCont}/128" ];
-        routes  = [ { Destination = "${docHost}/128"; Scope = "link"; } ];
-        networkConfig.IPv6AcceptRA = false;
-        # No carrier until the host end exists.
-        linkConfig.RequiredForOnline = "no";
-      };
-
-      # Same 20 s cap as every sibling: a DHCP failure must leave a RUNNING
-      # container with one failed unit, not a host-side restart loop.
-      systemd.network.wait-online.timeout = 20;
-
-      # ── The container firewall — the only enforcement point for br0-local
-      #    traffic, since those frames are one L2 hop and the UDM-Pro never
-      #    sees them.
-      #
-      #   28981/tcp from Traefik, over v4.  Every human client arrives through
-      #             the proxy.
-      #   28981/tcp from fdca:fe95::1, over v6.  That is mneme, on the host,
-      #             and it is the ONLY thing that reaches this service without
-      #             going through Traefik.
-      #
-      # extraCommands, not extraInputRules: the latter is declared
-      # unconditionally but consumed only under networking.nftables, so here it
-      # would produce no rule and no warning.
-      networking.firewall.allowedTCPPorts = [ ];
-      networking.firewall.extraCommands = ''
-        iptables  -A nixos-fw -p tcp -s ${traefikAddr}/32 --dport ${toString paperlessPort} -j nixos-fw-accept
-        ip6tables -A nixos-fw -p tcp -s ${docHost}/128     --dport ${toString paperlessPort} -j nixos-fw-accept
-      '';
 
       ##########################################################################
       # The service.

@@ -56,8 +56,9 @@
       '' + lib.optionalString (m.fstype != null) ''
         fstype=$(findmnt --noheadings --output FSTYPE --target ${m.path} || true)
       '' + ''
-        if [ "$src" != ${lib.escapeShellArg m.source} ]${lib.optionalString (m.fstype != null) '' || [ "$fstype" != ${lib.escapeShellArg m.fstype} ]''}; then
-          echo "${name}-dirs: ${m.path} is not ${m.source} (found '$src')." >&2
+        if [ "$src" != ${lib.escapeShellArg m.source} ]${lib.optionalString (m.fstype != null) " || [ \"$fstype\" != ${lib.escapeShellArg m.fstype} ]"}; then
+          echo "${name}-dirs: ${m.path} is not ${m.source}${lib.optionalString (m.fstype != null) " (${m.fstype})"}." >&2
+          echo "  found: source='$src'${lib.optionalString (m.fstype != null) " fstype='$fstype'"}" >&2
           echo "  Refusing to create ${name}'s directories: they would land on" >&2
           echo "  a filesystem that is rolled back on the next boot." >&2
           echo "  See docs/guides/ernst-zdata-datasets.md." >&2
@@ -70,6 +71,20 @@
       installDir = d:
         "install -d -o ${toString d.owner} -g ${toString d.group} -m ${d.mode} ${d.path}\n";
     in
+    # ── AN ORDERED UNIT, AND NOT `systemd.tmpfiles.rules`, AND THAT IS
+    #    MEASURED ──────────────────────────────────────────────────────────
+    #
+    # immich's host-side directories once shipped as tmpfiles rules and the
+    # container died five times into its start limit with
+    #
+    #     systemd-nspawn: Failed to clone /srv/state/immich/ml-cache:
+    #                     No such file or directory
+    #
+    # because activating a configuration does not re-run
+    # systemd-tmpfiles-setup.service in time for a container the same
+    # activation starts. Nor is a path declared BOTH ways: tmpfiles re-applies
+    # mode and ownership on every run, so two definitions that disagree take
+    # turns winning, one per deploy.
     lib.optionalAttrs (stateDirs != [ ]) {
       "${name}-dirs" = {
         description = "Verify state is mounted and create ${name}'s directories";
@@ -160,12 +175,24 @@
     # Fields are emitted in iptables' own order, and each is omitted when it
     # is null rather than defaulted to something permissive: no `-s` means any
     # source, which is only ever correct deliberately.
+    #
+    # THE FAMILY IS INFERRED FROM THE PEER, because a ULA leg's accept has to
+    # be an `ip6tables` rule and getting that wrong fails in the direction that
+    # looks fine: the v4 rule loads, the unit is green, and the one consumer
+    # the leg exists for is refused. A v6 literal always contains a colon and a
+    # v4 one never does, so the inference is exact wherever a peer is named;
+    # `family` is there for the peerless rules, where there is nothing to read.
     extraCommands = lib.concatMapStrings (a:
+      let
+        v6 = if a.family != null
+             then a.family == "inet6"
+             else a.peer != null && lib.hasInfix ":" a.peer;
+      in
       lib.concatStringsSep " " (
-        [ "iptables -A nixos-fw" ]
+        [ "${if v6 then "ip6tables" else "iptables"} -A nixos-fw" ]
         ++ lib.optional (a.interface != null) "-i ${a.interface}"
         ++ [ "-p ${a.proto}" ]
-        ++ lib.optional (a.peer != null) "-s ${a.peer}/32"
+        ++ lib.optional (a.peer != null) "-s ${a.peer}/${if v6 then "128" else "32"}"
         ++ [ "--dport ${toString a.port}" "-j nixos-fw-accept" ]
       ) + "\n"
     ) allowFrom;

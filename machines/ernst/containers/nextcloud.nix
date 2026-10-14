@@ -250,127 +250,6 @@ in
   # to the ordered unit below, and NONE of them is also a tmpfiles rule — two
   # declarations for one path is the M3 defect, where two rules that disagree
   # about mode take turns winning, one per deploy.
-  systemd.services.nextcloud-dirs = {
-    description = "Verify Nextcloud's datasets are mounted and create its directories";
-    wantedBy   = [ "multi-user.target" ];
-    after      = [ "srv-nextcloud.mount" "srv-state.mount" ];
-    requires   = [ "srv-nextcloud.mount" "srv-state.mount" ];
-    before     = [ "container@nextcloud.service" ];
-    requiredBy = [ "container@nextcloud.service" ];
-    serviceConfig = {
-      Type            = "oneshot";
-      RemainAfterExit = true;
-    };
-    path = [ pkgs.util-linux pkgs.coreutils ];
-
-    # BLOCKING (`requires` + `requiredBy`), not advisory.  containers/arr.nix
-    # uses `before` only for /srv/audiobooks, on the argument that Sonarr must
-    # not go down because an unrelated library is missing.  That argument does
-    # not transfer: /srv/nextcloud is not one library among several inside a
-    # shared container, it is this container's entire reason to exist AND the
-    # module's `home`.  A Nextcloud that starts without it is not a degraded
-    # Nextcloud — it is a NEW, EMPTY one on zroot, which will accept a laptop's
-    # whole sync, report success to the client, and lose the lot at the next
-    # boot.  That is storyteller.nix's case, so it gets storyteller's treatment.
-    #
-    # It FAILS rather than repairing itself: a unit that silently fixes storage
-    # layout hides the fact that the layout was wrong.
-    script = ''
-      set -eu
-
-      # findmnt, not `mountpoint`: this has to check WHAT is mounted, not just
-      # that something is.  /srv/nextcloud carries `nofail`
-      # (machines/ernst/disko.nix), so the mount unit can fail while
-      # /srv/nextcloud still exists as an ordinary directory on zroot —
-      # precisely the case a bare mountpoint test passes.
-      src=$(findmnt --noheadings --output SOURCE --target ${dataRoot} || true)
-      fstype=$(findmnt --noheadings --output FSTYPE --target ${dataRoot} || true)
-
-      if [ "$src" != "zdata/nextcloud" ] || [ "$fstype" != "zfs" ]; then
-        echo "nextcloud-dirs: ${dataRoot} is NOT zdata/nextcloud." >&2
-        echo "  found: source='$src' fstype='$fstype'" >&2
-        echo "" >&2
-        echo "  Refusing to create it, because doing so would put the" >&2
-        echo "  household's file store on zroot, which rolls back on every" >&2
-        echo "  boot — and every sync client would report success meanwhile." >&2
-        echo "" >&2
-        echo "  The dataset must exist AND carry mountpoint=legacy — a ZFS" >&2
-        echo "  dataset without it cannot be mounted by mount(8) at all:" >&2
-        echo "" >&2
-        echo "    zfs create -o mountpoint=legacy -o recordsize=1M \\" >&2
-        echo "      -o exec=off -o setuid=off -o devices=off -o atime=off \\" >&2
-        echo "      -o com.sun:auto-snapshot=true zdata/nextcloud" >&2
-        echo "" >&2
-        echo "  If it exists already:  zfs set mountpoint=legacy zdata/nextcloud" >&2
-        echo "  Then:                  systemctl start srv-nextcloud.mount" >&2
-        echo "  See docs/guides/ernst-zdata-datasets.md." >&2
-        exit 1
-      fi
-
-      # THE TARGET IS THE PARENT, NOT ${stateRoot}, and that is not tidiness.
-      # `findmnt --target` on a path that DOES NOT EXIST YET returns nothing —
-      # it does not walk up to the nearest existing ancestor — so checking
-      # ${stateRoot} here would fail on every first run, before this unit has
-      # had a chance to create it.  immich-dirs refused its own first deploy
-      # that way on 2026-09-11.
-      ssrc=$(findmnt --noheadings --output SOURCE --target /srv/state || true)
-      if [ "$ssrc" != "zdata/state" ]; then
-        echo "nextcloud-dirs: /srv/state is not zdata/state (found '$ssrc')." >&2
-        echo "  Refusing to create Nextcloud's database directory, because it" >&2
-        echo "  would land on zroot and be rolled back on the next boot." >&2
-        exit 1
-      fi
-
-      # NUMERIC ids on purpose: `nextcloud` and `postgres` are CONTAINER users
-      # and the host has no matching passwd entries.  Same shape traefik.nix
-      # uses for uid 3005.
-      #
-      # ── 0700 IS ASKED FOR HERE AND 0750 IS WHAT LANDS.  MEASURED. ────────
-      #
-      # On the first deploy (2026-09-15) the store came out `drwxr-x---` on
-      # the host despite this line.  The nixpkgs module ships its own tmpfiles
-      # rules INSIDE the container —
-      #
-      #     d /var/lib/nextcloud            0750 nextcloud nextcloud
-      #     d /var/lib/nextcloud/config     0750 nextcloud nextcloud
-      #     d /var/lib/nextcloud/data       0750 nextcloud nextcloud
-      #     d /var/lib/nextcloud/store-apps 0750 nextcloud nextcloud
-      #
-      # — and those run on every container start, against the same inodes this
-      # line created, through the bind mount.  It is the Immich
-      # `StateDirectoryMode` finding in a different costume: upstream re-asserts
-      # a mode after we have set ours, and upstream wins.
-      #
-      # IT IS NOT FORCED BACK, and the two reasons are worth keeping apart.
-      #
-      #   The cheap one: fixing it would mean declaring a competing tmpfiles
-      #   rule for a path the module already declares, and two rules for one
-      #   path that disagree about mode take turns winning, one per deploy.
-      #   That is the M3 defect, which this file warns about twenty lines up.
-      #
-      #   The real one: 0750 IS NOT AN EXPOSURE HERE, and the check is
-      #   specific rather than reassuring.  The group is gid 3037, and
-      #   `getent group 3037` ON THE HOST RETURNS NOTHING — no host user is in
-      #   it.  `go`, the couch account that autologins on the television
-      #   without a password, is `uid=1001 gid=100(users)` plus audio, video
-      #   and input, and is not.  So the group bit grants nobody anything.
-      #
-      #   THAT IS EXACTLY WHERE THIS DIFFERS FROM IMMICH, and why that file
-      #   spends two lines forcing its mode and this one does not: /srv/photos
-      #   came out 0755, and the o+r bit is what `go` could have used.  0750
-      #   has no o+r bit.  If a host-side group 3037 is ever created, or a user
-      #   is ever added to it, this paragraph stops being true — re-read it
-      #   then rather than trusting it.
-      install -d -o ${toString nextcloudUid} -g ${toString nextcloudGid} -m 0700 ${dataRoot}
-
-      # The same applies to PostgreSQL's directory, which also settles at 0750.
-      # That one is fine by upstream's own rules: PostgreSQL refuses to start
-      # on a world-readable data directory, but has accepted group-readable
-      # (0750) since version 11.  It is running, which is the proof.
-      install -d -o ${toString nextcloudUid} -g ${toString nextcloudGid} -m 0700 ${stateRoot}
-      install -d -o ${toString postgresUid}  -g ${toString postgresGid}  -m 0700 ${stateRoot}/postgresql
-    '';
-  };
 
   # ── Stage the secrets where the container can see them ────────────────────
   #
@@ -452,143 +331,64 @@ in
     '';
   };
 
-  # Host side of the container's veth — a VLAN-90 port on br0.  Identical
-  # rationale to vb-immich / vb-jellyfin / vb-arr; see containers/traefik.nix
-  # for the long form of KeepMaster-not-Bridge and why a bridge port carries no
-  # address of its own.
-  systemd.network.networks."60-vb-nextcloud" = {
-    matchConfig.Name = "vb-nextcloud";
-    networkConfig = {
-      KeepMaster          = true;
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
-    };
-    bridgeVLANs = [ { VLAN = 90; PVID = 90; EgressUntagged = 90; } ];
-    linkConfig.RequiredForOnline = "enslaved";
-  };
-
-  # Same VLAN race, same idempotent backstop, same "-" prefix as every other
-  # nspawn container on br0: networkd applies [BridgeVLAN] only once it observes
-  # the link's master, and nspawn sets that master out of band.  With
-  # DefaultPVID = "none" on br0 a miss is fail-CLOSED.
-  # `bridge vlan show dev vb-nextcloud` is the check.
-  systemd.services."container@nextcloud".serviceConfig.ExecStartPost = [
-    "-${pkgs.iproute2}/bin/bridge vlan add dev vb-nextcloud vid 90 pvid untagged"
-  ];
-
   ##############################################################################
   # The container.
   ##############################################################################
-  containers.nextcloud = {
-    autoStart = true;
-    ephemeral = false;
+  #
+  # modules/containers/nspawn.nix generates the dirs unit (with BOTH mount
+  # guards), the host-side veth network, the VLAN backstop, the container
+  # preamble, the in-container networking and the firewall.
+  #
+  # `nextcloud-secrets` above STAYS HAND-WRITTEN, deliberately: it writes JSON
+  # for Nextcloud's `secretFile`, not the `KEY=value` env file the module's
+  # `secrets` option generates. A second format for one consumer would be
+  # generality bought on speculation.
+  clanarchy.containers.nextcloud = {
+    enable = true;
+    mac    = "02:00:00:90:00:12";
 
-    # MAC from machines/ernst/allocations.nix; the DHCP
-    # reservation 10.0.90.26 on the UDM-Pro keys on it (manual step).  Sequence
-    # 12, and the last octet is 8 + seq as everywhere else on this bridge.
-    privateNetwork  = true;
-    hostBridge      = "br0";
-    localMacAddress = "02:00:00:90:00:12";
+    uid  = nextcloudUid;
+    gid  = nextcloudGid;
+    user = "nextcloud";
+
+    # PINNED, AND LOAD-BEARING: `services.postgresql.package` derives its
+    # default from this, so the value is the database's major version. A bump
+    # is a deliberate edit plus a dump/restore, never a side effect.
+    stateVersion = "26.05";
+
+    # TWO DATASETS, TWO GUARDS. This service owns `zdata/nextcloud` as well as
+    # living on `zdata/state`, and the data one checks FSTYPE too.
+    extraGuardedMounts = [
+      { path = dataRoot; source = "zdata/nextcloud"; fstype = "zfs"; }
+    ];
+
+    stateDirs = [
+      { path = dataRoot;  owner = nextcloudUid; group = nextcloudGid; }
+      { path = stateRoot; owner = nextcloudUid; group = nextcloudGid; }
+      # PostgreSQL's own upstream-static id, not one from ernst's 3000 block.
+      # The PARENT of the version directory is bound, so a major bump lands
+      # beside the old one on zdata rather than needing a new mount.
+      { path = "${stateRoot}/postgresql"; owner = postgresUid; group = postgresGid; }
+    ];
 
     bindMounts = {
-      # The store, bound at the module's OWN default (`services.nextcloud.home`)
-      # so that `home`, `datadir` and the module's tmpfiles rules all agree with
-      # nothing overridden.  Same trick as Immich's /var/lib/immich.
-      "/var/lib/nextcloud" = {
-        hostPath   = dataRoot;
-        isReadOnly = false;
-      };
-
-      # The database.  The PARENT is bound, not the version subdirectory, so a
-      # future PostgreSQL major bump lands beside the old one on zdata instead
-      # of on the container's rootfs.
-      "/var/lib/postgresql" = {
-        hostPath   = "${stateRoot}/postgresql";
-        isReadOnly = false;
-      };
-
-      # The media library as external storage.  READ-ONLY at the mount, which
-      # is the actual boundary; the files_external entry below is only what
-      # makes it visible in the UI.
-      "${mediaRoot}" = {
-        hostPath   = mediaRoot;
-        isReadOnly = true;
-      };
-
-      # The scan inbox as WRITABLE external storage (M32).  See the let block
-      # for why read-only is not an option here and what bounds it instead.
-      #
-      # NOT created by this container: `paperless-inbox.service` owns it,
-      # because it is paperless's consumption directory and the mode it needs
-      # is paperless's to choose.  That unit declares
-      # `before`/`requiredBy` on container@nextcloud as well as on
-      # container@paperless, so the ordering this bind needs is expressed at
-      # the unit rather than left to activation order — which is the Immich
-      # lesson, and the reason a tmpfiles rule would not do.
-      "${docsInbox}" = {
-        hostPath   = docsInbox;
-        isReadOnly = false;
-      };
-
-      "${secretsDir}" = {
-        hostPath   = secretsDir;
-        isReadOnly = true;
-      };
+      "/var/lib/nextcloud"  = { hostPath = dataRoot;                  isReadOnly = false; };
+      "/var/lib/postgresql" = { hostPath = "${stateRoot}/postgresql"; isReadOnly = false; };
+      # The media tree, read-only: external storage is a view, not a second
+      # master. Nextcloud must never be able to write into Jellyfin's library.
+      "${mediaRoot}"        = { hostPath = mediaRoot;  isReadOnly = true;  };
+      # The shared scan inbox, writable — it IS paperless's consumption
+      # directory, which is why it sits on /srv/state and not /srv/docs.
+      "${docsInbox}"        = { hostPath = docsInbox;  isReadOnly = false; };
+      # Staged by the hand-written secrets unit above.
+      "${secretsDir}"       = { hostPath = secretsDir; isReadOnly = true;  };
     };
 
+    allowFrom = [
+      { peer = traefikAddr; port = nextcloudPort; }  # every client arrives through the proxy
+    ];
+
     config = { config, pkgs, lib, ... }: {
-      # Pins the PostgreSQL major version through
-      # `services.postgresql.package`'s stateVersion-derived default, which is
-      # the thing that must not move under a running database.  A bump is then
-      # a deliberate edit plus a dump/restore, not a side effect of a channel.
-      system.stateVersion = "26.05";
-
-      ##########################################################################
-      # Networking — one leg, the ordinary VLAN-90 shape.
-      ##########################################################################
-      networking.useHostResolvConf = false;
-      networking.useNetworkd = true;
-      services.resolved.enable = true;
-
-      systemd.network.networks."10-eth0" = {
-        matchConfig.Name = "eth0";
-        networkConfig = {
-          DHCP         = "ipv4";
-          DNS          = "10.0.5.3";
-          Domains      = "~. skynet.lan";
-          IPv6AcceptRA = false;
-          # SN2: v4 only.  M18 measured that IPv6AcceptRA alone blocks an RA
-          # but NOT link-local assignment; this is the line that actually makes
-          # `ip -6 addr show dev eth0` empty.
-          LinkLocalAddressing = "no";
-        };
-        dhcpV4Config = {
-          UseDNS     = false;
-          UseDomains = false;
-        };
-        linkConfig.RequiredForOnline = "routable";
-      };
-
-      # Same 20 s cap as every sibling: a DHCP failure must leave a RUNNING
-      # container with one failed unit, not a host-side restart loop.
-      systemd.network.wait-online.timeout = 20;
-
-      # ── The container firewall — the only enforcement point for br0-local
-      #    traffic, since those frames are one L2 hop and the UDM-Pro never
-      #    sees them.
-      #
-      #   80/tcp  ONLY from Traefik.  Every client of this service arrives
-      #           through the proxy.
-      #
-      # extraCommands, not extraInputRules: the latter is declared
-      # unconditionally but consumed only under networking.nftables, so here it
-      # would produce no rule and no warning.  containers/traefik.nix is the
-      # only nftables container on this machine.
-      networking.firewall.allowedTCPPorts = [ ];
-      networking.firewall.extraCommands = ''
-        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32 --dport ${toString nextcloudPort} -j nixos-fw-accept
-      '';
-
       ##########################################################################
       # The service.
       ##########################################################################
@@ -876,8 +676,6 @@ in
       # See the let block: unmapped nspawn ids mean a container-chosen number
       # is a number on the pool.  `media` is SECONDARY, for the read-only
       # external storage mount only.
-      users.users.nextcloud.uid  = nextcloudUid;
-      users.groups.nextcloud.gid = nextcloudGid;
       # `media` is SECONDARY, for the read-only external storage mount.
       # `docsin` is SECONDARY too, and is what lets a scan shared from a phone
       # be written into paperless's consumption directory (M32).  Neither is

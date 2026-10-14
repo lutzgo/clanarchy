@@ -628,145 +628,7 @@ in
   # ownership on EVERY run, so two that disagree take turns winning, silently,
   # one per deploy.
 
-  # ── Verify the datasets are mounted, then create every host-side directory ─
-  #
-  # The audiobooks-tree pattern from containers/arr.nix, with ONE deliberate
-  # difference: this unit BLOCKS ITS CONTAINER, and that one does not.
-  #
-  # containers/arr.nix uses `before` only, on the argument that Sonarr and
-  # Radarr have nothing to do with audiobooks and must not go down because a
-  # library dataset is missing — Audiobookshelf showing an empty library is a
-  # visible, harmless failure.
-  #
-  # THAT ARGUMENT DOES NOT TRANSFER.  /srv/photos is not one library among
-  # several inside a shared container; it is this container's ENTIRE reason to
-  # exist and also its StateDirectory.  An Immich that starts without it is not
-  # a degraded Immich — it is a NEW, EMPTY one on zroot, which will accept a
-  # phone's whole camera roll, report success to the app, and lose the lot at
-  # the next boot with the database pointing at files that no longer exist.
-  # That is containers/storyteller.nix's case, not containers/arr.nix's, so it
-  # gets storyteller's treatment: `requires` + `requiredBy`.
-  #
-  # It FAILS rather than repairing itself, for the reason arr.nix gives: a unit
-  # that silently fixes storage layout hides the fact that the layout was wrong.
-  systemd.services.immich-dirs = {
-    description = "Verify Immich's datasets are mounted and create its directories";
-    wantedBy   = [ "multi-user.target" ];
-    # BOTH mounts, because this unit now owns directories on both datasets —
-    # the library on zdata/photos and the database on zdata/state.  Missing the
-    # second would reintroduce the race in the other direction.
-    after      = [ "srv-photos.mount" "srv-state.mount" ];
-    requires   = [ "srv-photos.mount" "srv-state.mount" ];
-    before     = [ "container@immich.service" ];
-    requiredBy = [ "container@immich.service" ];
-    serviceConfig = {
-      Type            = "oneshot";
-      RemainAfterExit = true;
-    };
-    path = [ pkgs.util-linux pkgs.coreutils ];
-    script = ''
-      set -eu
 
-      # findmnt, not `mountpoint`: this has to check WHAT is mounted, not just
-      # that something is.  /srv/photos carries `nofail` (machines/ernst/disko.nix),
-      # so the mount unit can fail while /srv/photos still exists as an ordinary
-      # directory on zroot — precisely the case a bare mountpoint test passes.
-      src=$(findmnt --noheadings --output SOURCE --target ${photosRoot} || true)
-      fstype=$(findmnt --noheadings --output FSTYPE --target ${photosRoot} || true)
-
-      if [ "$src" != "zdata/photos" ] || [ "$fstype" != "zfs" ]; then
-        echo "immich-dirs: ${photosRoot} is NOT zdata/photos." >&2
-        echo "  found: source='$src' fstype='$fstype'" >&2
-        echo "" >&2
-        echo "  Refusing to create it, because doing so would put the family's" >&2
-        echo "  photo library on zroot, which rolls back on every boot — and" >&2
-        echo "  Immich would report every upload as successful in the meantime." >&2
-        echo "" >&2
-        echo "  The dataset must exist AND carry mountpoint=legacy — a ZFS" >&2
-        echo "  dataset without it cannot be mounted by mount(8) at all:" >&2
-        echo "" >&2
-        echo "    zfs create -o mountpoint=legacy -o recordsize=1M \\" >&2
-        echo "      -o exec=off -o setuid=off -o devices=off -o atime=off \\" >&2
-        echo "      -o com.sun:auto-snapshot=true zdata/photos" >&2
-        echo "" >&2
-        echo "  If it exists already:  zfs set mountpoint=legacy zdata/photos" >&2
-        echo "  Then:                  systemctl start srv-photos.mount" >&2
-        echo "  See docs/guides/ernst-zdata-datasets.md." >&2
-        exit 1
-      fi
-
-      # The same check for the state dataset.  /srv/state has no `nofail`, so a
-      # failure here is a much rarer bird than the one above — but the database
-      # landing on zroot is the same class of disaster as the library doing so,
-      # and "much rarer" is not a reason to find out the hard way.
-      #
-      # THE TARGET IS THE PARENT, NOT ${stateRoot}, and that is not tidiness.
-      # `findmnt --target` on a path that DOES NOT EXIST YET returns nothing —
-      # it does not walk up to the nearest existing ancestor — so checking
-      # ${stateRoot} here fails on every first run, before this unit has had a
-      # chance to create it.  Measured on ernst 2026-09-11: this guard refused
-      # its own first deploy, reporting an empty source.
-      #
-      # (Do not write that empty string as a quoted literal in this comment.
-      # Two single quotes close a Nix indented string, so the file stops
-      # parsing — which is the SECOND thing this line cost.)
-      #
-      # The check above gets away with the direct form only because
-      # /srv/photos is itself a mount point and therefore always exists.  The
-      # question being asked is in any case about the DATASET, which is
-      # /srv/state.
-      ssrc=$(findmnt --noheadings --output SOURCE --target /srv/state || true)
-      if [ "$ssrc" != "zdata/state" ]; then
-        echo "immich-dirs: /srv/state is not zdata/state (found '$ssrc')." >&2
-        echo "  Refusing to create Immich's database directory, because it" >&2
-        echo "  would land on zroot and be rolled back on the next boot." >&2
-        exit 1
-      fi
-
-      # 0700 immich:immich, matching what the module's own tmpfiles rule
-      # asserts for mediaLocation.  No `media` group and no setgid: nothing
-      # else on this machine reads these files, which is the whole difference
-      # from the 2770 root:media trees under /srv/media.
-      install -d -o ${toString immichUid} -g ${toString immichGid} -m 0700 ${photosRoot}
-
-      # The three on zdata/state, in parent-first order.  NUMERIC ids on
-      # purpose: `immich` and `postgres` are container users and the host has
-      # no matching passwd entries — the same shape containers/traefik.nix
-      # uses for uid 3005.
-      #
-      # postgres' 71 is NOT one of ours: it is a well-known NixOS static id,
-      # and nspawn passes ids through unmapped, so it lands on zdata as 71.
-      # 0700 is not cosmetic on that one — PostgreSQL refuses to start if its
-      # data directory is group- or world-readable.
-      install -d -o ${toString immichUid}   -g ${toString immichGid}   -m 0700 ${stateRoot}
-      install -d -o ${toString postgresUid} -g ${toString postgresGid} -m 0700 ${stateRoot}/postgresql
-      install -d -o ${toString immichUid}   -g ${toString immichGid}   -m 0700 ${stateRoot}/ml-cache
-    '';
-  };
-
-  # Host side of the container's veth — a VLAN-90 port on br0.  Identical
-  # rationale to vb-jellyfin / vb-arr / vb-tvheadend; see containers/traefik.nix
-  # for the long form of KeepMaster-not-Bridge and why a bridge port carries no
-  # address of its own.
-  systemd.network.networks."60-vb-immich" = {
-    matchConfig.Name = "vb-immich";
-    networkConfig = {
-      KeepMaster          = true;
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
-    };
-    bridgeVLANs = [ { VLAN = 90; PVID = 90; EgressUntagged = 90; } ];
-    linkConfig.RequiredForOnline = "enslaved";
-  };
-
-  # Same VLAN race, same idempotent backstop, same "-" prefix as every other
-  # nspawn container on br0: networkd applies [BridgeVLAN] only once it observes
-  # the link's master, and nspawn sets that master out of band.  With
-  # DefaultPVID = "none" on br0 a miss is fail-CLOSED.
-  # `bridge vlan show dev vb-immich` is the check.
-  systemd.services."container@immich".serviceConfig.ExecStartPost = [
-    "-${pkgs.iproute2}/bin/bridge vlan add dev vb-immich vid 90 pvid untagged"
-  ];
 
   ##############################################################################
   # `photo-import` — the one-way migration out of /srv/unsorted.
@@ -823,113 +685,63 @@ in
   ##############################################################################
   # The container.
   ##############################################################################
-  containers.immich = {
-    autoStart = true;
-    ephemeral = false;
+  #
+  # modules/containers/nspawn.nix generates the dirs unit (with both mount
+  # guards), the host-side veth network, the VLAN backstop, the container
+  # preamble, the in-container networking and the firewall. Its lib.nix header
+  # carries what used to be restated here: why these directories are an
+  # ORDERED UNIT and never also a tmpfiles rule — immich is the container that
+  # measured it — and why the unit BLOCKS this container rather than merely
+  # preceding it, which is the one place immich differs from arr.nix: /srv/photos
+  # is not one library among several, it is this container's entire reason to
+  # exist, and an Immich that starts without it is a new empty one on a
+  # filesystem that rolls back, accepting a camera roll and losing it.
+  clanarchy.containers.immich = {
+    enable = true;
+    mac    = "02:00:00:90:00:11";
 
-    # MAC from machines/ernst/allocations.nix; the DHCP
-    # reservation 10.0.90.25 on the UDM-Pro keys on it (manual step).  Sequence
-    # 11, and the last octet is 8 + seq as everywhere else on this bridge.
-    privateNetwork  = true;
-    hostBridge      = "br0";
-    localMacAddress = "02:00:00:90:00:11";
+    uid  = immichUid;
+    gid  = immichGid;
+    user = "immich";
+
+    # Pins the PostgreSQL major through `services.postgresql.package`'s
+    # stateVersion-derived default — the thing that must not move under a
+    # running database.
+    stateVersion = "26.05";
+
+    # The photo library is its own dataset, checked by source AND fstype.
+    extraGuardedMounts = [
+      { path = photosRoot; source = "zdata/photos"; fstype = "zfs"; }
+    ];
+
+    stateDirs = [
+      { path = photosRoot; owner = immichUid;   group = immichGid; }
+      { path = stateRoot;  owner = immichUid;   group = immichGid; }
+      # PostgreSQL's own upstream-static id.
+      { path = "${stateRoot}/postgresql"; owner = postgresUid; group = postgresGid; }
+      { path = "${stateRoot}/ml-cache";   owner = immichUid;   group = immichGid; }
+    ];
 
     bindMounts = {
-      # The library, remapped to the module's own default so that
-      # mediaLocation and StateDirectory agree with no override at all.
-      "/var/lib/immich" = {
-        hostPath   = photosRoot;
-        isReadOnly = false;
-      };
-
-      # The database.  The PARENT is bound, not the version subdirectory, so a
-      # future PostgreSQL major bump lands beside the old one on zdata instead
-      # of on the container's rootfs.
-      "/var/lib/postgresql" = {
-        hostPath   = "${stateRoot}/postgresql";
-        isReadOnly = false;
-      };
-
-      # The ML model cache (`CacheDirectory = "immich"` in the module).  On
-      # zdata so the HuggingFace download is a first-run event rather than
-      # something that repeats whenever this directory is lost.
-      "/var/cache/immich" = {
-        hostPath   = "${stateRoot}/ml-cache";
-        isReadOnly = false;
-      };
+      # The library, at the module's own default path so that `mediaLocation`
+      # and StateDirectory agree with no override at all.
+      "/var/lib/immich"     = { hostPath = photosRoot; isReadOnly = false; };
+      # The PARENT is bound, not the version subdirectory, so a future
+      # PostgreSQL major bump lands beside the old one on zdata.
+      "/var/lib/postgresql" = { hostPath = "${stateRoot}/postgresql"; isReadOnly = false; };
+      # The ML model cache (`CacheDirectory = "immich"`), on zdata so the
+      # HuggingFace download is a first-run event and not a recurring one.
+      "/var/cache/immich"   = { hostPath = "${stateRoot}/ml-cache";   isReadOnly = false; };
     };
 
+    allowFrom = [
+      { peer = traefikAddr;    port = immichPort; }   # every client arrives through the proxy
+      { peer = monitoringAddr; port = metricsPort; }  # the API's own metrics port
+      { peer = dashboardAddr;  port = immichPort; }   # the service index's widget
+    ];
+
     config = { config, pkgs, lib, ... }: {
-      # Pins the PostgreSQL major version through
-      # `services.postgresql.package`'s stateVersion-derived default, which is
-      # the thing that must not move under a running database.  A bump is then
-      # a deliberate edit plus a dump/restore, not a side effect of a channel.
-      system.stateVersion = "26.05";
 
-      ##########################################################################
-      # Networking — one leg, the ordinary VLAN-90 shape.
-      ##########################################################################
-      networking.useHostResolvConf = false;
-      networking.useNetworkd = true;
-      services.resolved.enable = true;
-
-      systemd.network.networks."10-eth0" = {
-        matchConfig.Name = "eth0";
-        networkConfig = {
-          DHCP         = "ipv4";
-          DNS          = "10.0.5.3";
-          Domains      = "~. skynet.lan";
-          IPv6AcceptRA = false;
-          # SN2: v4 only.  M18 measured that IPv6AcceptRA alone blocks an RA
-          # but NOT link-local assignment, and that a container with only the
-          # former still carries an fe80:: address.  This is the line that
-          # actually makes `ip -6 addr show dev eth0` empty.
-          LinkLocalAddressing = "no";
-        };
-        dhcpV4Config = {
-          UseDNS     = false;
-          UseDomains = false;
-        };
-        linkConfig.RequiredForOnline = "routable";
-      };
-
-      # Same 20 s cap as every sibling: a DHCP failure must leave a RUNNING
-      # container with one failed unit, not a host-side restart loop.
-      systemd.network.wait-online.timeout = 20;
-
-      # ── The container firewall — the only enforcement point for br0-local
-      #    traffic, since those frames are one L2 hop and the UDM-Pro never
-      #    sees them.
-      #
-      #   2283/tcp  From Traefik, and — since M26 — from the arr container.
-      #             Every HUMAN client arrives through the proxy, including the
-      #             TV: see "THE KODI PATH" in the file header for why that is
-      #             a design decision and not an accident of convenience.  This
-      #             is the backend-bypass hardening M5 calls mechanism (a).
-      #
-      #             THE SECOND SOURCE IS THE SERVICE INDEX (containers/
-      #             homepage.nix), which fetches photo/video/storage counts
-      #             server-side with a `server.statistics`-scoped API key.  It
-      #             is NOT a human path and must not become one — the tile it
-      #             renders links to photos.goclan.org, through the proxy, like
-      #             everything else.  This is stated rather than folded into
-      #             the line above because it is a real widening: an API key
-      #             held by another container now reaches this port directly,
-      #             and the M5 claim that every client arrives through Traefik
-      #             is no longer true without qualification.
-      #   8081/tcp  ONLY from the monitoring container.  Immich's telemetry
-      #             endpoint carries no authentication of its own.
-      #
-      # extraCommands, not extraInputRules: the latter is declared
-      # unconditionally but consumed only under networking.nftables, so here it
-      # would produce no rule and no warning.  containers/arr.nix carries the
-      # long form of that warning.
-      networking.firewall.allowedTCPPorts = [ ];
-      networking.firewall.extraCommands = ''
-        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32    --dport ${toString immichPort}  -j nixos-fw-accept
-        iptables -A nixos-fw -p tcp -s ${monitoringAddr}/32 --dport ${toString metricsPort} -j nixos-fw-accept
-        iptables -A nixos-fw -p tcp -s ${dashboardAddr}/32  --dport ${toString immichPort}  -j nixos-fw-accept
-      '';
 
       ##########################################################################
       # The service.
@@ -1021,13 +833,6 @@ in
       systemd.services.immich-server.serviceConfig.StateDirectoryMode = "0700";
       systemd.services.immich-machine-learning.serviceConfig.CacheDirectoryMode = "0700";
 
-      # Pin the ids.  The module creates `immich` with no uid, which would make
-      # it whatever the container's useradd picks — and nspawn passes ids
-      # through unmapped, so that number is what ends up on every file in
-      # /srv/photos.  An unpinned id here is a library that changes owner when
-      # an unrelated user is added to this container.
-      users.users.immich.uid  = immichUid;
-      users.groups.immich.gid = immichGid;
 
       # `curl` is the test plan's instrument for proving this backend is
       # reachable from Traefik and from nowhere else.
