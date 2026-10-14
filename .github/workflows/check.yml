@@ -52,8 +52,13 @@ jobs:
       - name: Evaluate all machine toplevels
         run: bash scripts/check.sh
 
-      - name: Run the package and module tests
+      # `checks.scripts` is the one that would have caught the 2026-10-14
+      # deploy failure: shellcheck runs at BUILD time, and nothing in the eval
+      # gates builds anything, so a generated script that fails it passed CI
+      # and then stopped `clan machines update` at `system-path.drv`.
+      - name: Run the package, module and script checks
         run: |
           nix build --no-update-lock-file -L --no-link \
             '.#checks.x86_64-linux.mneme' \
-            '.#checks.x86_64-linux.container-modules'
+            '.#checks.x86_64-linux.container-modules' \
+            '.#checks.x86_64-linux.scripts'
