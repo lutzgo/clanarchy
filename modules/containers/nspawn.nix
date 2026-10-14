@@ -33,6 +33,25 @@ let
   enabled = lib.filterAttrs (_: c: c.enable) cfg;
   perContainer = lib.mapAttrsToList mkOne enabled;
 
+  # A staged env value is either read from a clan var at activation time, or a
+  # constant. Making the caller say which is deliberate: the previous version
+  # took a bare path string, and a literal like an OIDC *client id* — which is
+  # not a secret — had no way to be expressed at all.
+  secretValueType = lib.types.submodule {
+    options = {
+      file = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Path to a clan var, read with a tolerant `readvar` at activation.";
+      };
+      value = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "A constant. Ends up in the store, so never a secret.";
+      };
+    };
+  };
+
   stateDirType = lib.types.submodule {
     options = {
       path  = lib.mkOption { type = lib.types.str; description = "Absolute path to create."; };
@@ -108,13 +127,18 @@ let
       };
 
       secrets = lib.mkOption {
-        type = lib.types.attrsOf (lib.types.attrsOf lib.types.str);
+        type = lib.types.attrsOf (lib.types.attrsOf secretValueType);
         default = { };
-        example = lib.literalExpression ''{ "oidc.env" = { OAUTH_CLIENT_SECRET = "/run/secrets/vars/…"; }; }'';
+        example = lib.literalExpression ''{ "oidc.env" = {
+            OAUTH_CLIENT_ID     = { value = "karakeep"; };
+            OAUTH_CLIENT_SECRET = { file = gen.files."secret".path; };
+          }; }'';
         description = ''
-          Env files to stage, as `<file>.<KEY> = <path to the var>`. Staged
-          host-side and bind-mounted, because a clan var path does not exist
-          inside the container — pointing an in-container unit at
+          Env files to stage, as `<file>.<KEY> = { file = …; }` for a value
+          read out of a clan var, or `{ value = "…"; }` for a constant.
+
+          Staged host-side and bind-mounted, because a clan var path does not
+          exist inside the container — pointing an in-container unit at
           `/run/secrets/vars/...` fails with a silent `243/CREDENTIALS`.
         '';
       };
