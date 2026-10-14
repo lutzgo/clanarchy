@@ -61,6 +61,62 @@ let
     };
   };
 
+  # A SECOND LEG ON A VLAN, which is not the same thing as a ULA leg.
+  #
+  # mDNS and SSDP are link-local, and this repo refuses to relay them across a
+  # firewall boundary — so a service that must discover devices on another VLAN
+  # gets its own port on the bridge rather than a relay. Two containers need
+  # one (Home Assistant for the wifi devices, Music Assistant for the MusicCast
+  # receiver).
+  #
+  # `extraVeths.<name>` becomes nspawn's `--network-veth-extra=<name>`, which
+  # names BOTH ends identically — so the host-side networkd file matches the
+  # plain name, not `vb-<name>`, and the name is a host-global allocation.
+  vlanLegType = lib.types.submodule {
+    options = {
+      veth = lib.mkOption {
+        type = lib.types.str;
+        example = "iot1";
+        description = "Interface name, used for both ends. Host-global; asserted unique.";
+      };
+      vlan = lib.mkOption {
+        type = lib.types.int;
+        description = "VLAN this leg is tagged into.";
+      };
+      mac = lib.mkOption {
+        type = lib.types.str;
+        description = ''
+          MAC for the container end. Pinned here because `extraVeths` has no
+          option for it and the DHCP reservation has to key on a value this
+          repo chose rather than on whatever nspawn derives from the machine
+          name.
+        '';
+      };
+      useGateway = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Accept a default route from this leg's DHCP lease.
+
+          FALSE IS LOAD-BEARING and the default for that reason: both legs take
+          DHCP and both servers hand out a default route, so with this on the
+          container ends up with TWO `default via` entries and its path
+          off-segment is decided by whichever lease applied last — a coin toss
+          on every boot.
+        '';
+      };
+      requiredForOnline = lib.mkOption {
+        type = lib.types.str;
+        default = "no";
+        description = ''
+          NOT "routable" by default: a DHCP problem on a secondary leg must
+          leave a RUNNING container with one failed unit, not a host-side
+          restart loop because a lease did not arrive.
+        '';
+      };
+    };
+  };
+
   ulaType = lib.types.submodule {
     options = {
       veth = lib.mkOption {
@@ -78,10 +134,38 @@ let
     };
   };
 
+  # One accept rule. The common case is "this peer, this TCP port"; the
+  # defaults make that the short form, and the other fields exist because real
+  # services needed them: mDNS is UDP to a fixed port with NO source, and a
+  # stream client answers on an ephemeral port RANGE.
   allowType = lib.types.submodule {
     options = {
-      peer = lib.mkOption { type = lib.types.str; description = "Source address allowed to reach `port`."; };
-      port = lib.mkOption { type = lib.types.port; description = "Destination port on the container."; };
+      peer = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Source address. Null omits `-s`, which is what a broadcast/multicast protocol needs.";
+      };
+      port = lib.mkOption {
+        type = lib.types.either lib.types.port lib.types.str;
+        description = ''
+          Destination port, or an iptables range as a string
+          (`"32768:60999"`).
+        '';
+      };
+      proto = lib.mkOption {
+        type = lib.types.enum [ "tcp" "udp" ];
+        default = "tcp";
+        description = "Protocol.";
+      };
+      interface = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Restrict the rule to one interface (`-i`). Used to confine a
+          discovery protocol to the leg it belongs on, so enabling mDNS for an
+          IoT leg does not also open it on the services VLAN.
+        '';
+      };
     };
   };
 
@@ -157,6 +241,17 @@ let
           in-container network with a link-scope route to the host end — the
           shape a loopback-bound producer needs in order to serve one consumer
           without listening on any VLAN.
+        '';
+      };
+
+      vlanLegs = lib.mkOption {
+        type = lib.types.listOf vlanLegType;
+        default = [ ];
+        description = ''
+          Additional legs on other VLANs, for link-local discovery that cannot
+          be relayed. Each gets an `extraVeths` entry, a VLAN-tagged host-side
+          network, the same idempotent `bridge vlan add` backstop as the
+          primary leg, and a DHCP network inside the container.
         '';
       };
 
@@ -261,14 +356,37 @@ let
         # `bridge vlan show dev vb-<name>` is the check. The "-" prefix makes
         # the command's failure non-fatal, since it is a backstop and not the
         # primary mechanism.
-        "container@${name}" = lib.mkIf (vlan != null) {
-          serviceConfig.ExecStartPost = [
-            "-${pkgs.iproute2}/bin/bridge vlan add dev ${vethHost} vid ${toString vlan} pvid untagged"
-          ];
+        "container@${name}" = {
+          serviceConfig.ExecStartPost =
+            lib.optional (vlan != null)
+              "-${pkgs.iproute2}/bin/bridge vlan add dev ${vethHost} vid ${toString vlan} pvid untagged"
+            # Every secondary leg needs the same backstop, against its own
+            # interface name — which for an extraVeth is the plain name, not
+            # `vb-<name>`.
+            ++ map (v:
+              "-${pkgs.iproute2}/bin/bridge vlan add dev ${v.veth} vid ${toString v.vlan} pvid untagged"
+            ) c.vlanLegs;
         };
       };
 
-      systemd.network.networks."60-${vethHost}" = {
+      # Host side of each secondary leg: a bridge port on its own VLAN. The
+      # name matches the plain interface, not `vb-<name>`, because
+      # --network-veth-extra names both ends identically.
+      systemd.network.networks = lib.listToAttrs (map (v:
+        lib.nameValuePair "60-${v.veth}" {
+          matchConfig.Name = v.veth;
+          networkConfig = {
+            Bridge              = bridge;
+            LinkLocalAddressing = "no";
+            IPv6AcceptRA        = false;
+          };
+          bridgeVLANs = [ { VLAN = v.vlan; PVID = v.vlan; EgressUntagged = v.vlan; } ];
+          # A bridge port's terminal state is "enslaved"; it never becomes
+          # routable.
+          linkConfig.RequiredForOnline = "enslaved";
+        }) c.vlanLegs)
+      // {
+      "60-${vethHost}" = {
         matchConfig.Name = vethHost;
         networkConfig = {
           # KeepMaster: nspawn enslaves the link itself, and networkd must not
@@ -281,6 +399,7 @@ let
           [ { VLAN = vlan; PVID = vlan; EgressUntagged = vlan; } ];
         linkConfig.RequiredForOnline = "enslaved";
       };
+      };
 
       containers.${name} = {
         autoStart = true;
@@ -290,10 +409,14 @@ let
         hostBridge      = bridge;
         localMacAddress = c.mac;
 
-        extraVeths = lib.listToAttrs (map (u:
-          lib.nameValuePair u.veth {
-            inherit (u) hostAddress6 localAddress6;
-          }) c.ula);
+        extraVeths =
+          lib.listToAttrs (map (u:
+            lib.nameValuePair u.veth {
+              inherit (u) hostAddress6 localAddress6;
+            }) c.ula)
+          # A VLAN leg takes no addresses here: nspawn creates the pair and
+          # the container end gets its address from DHCP.
+          // lib.listToAttrs (map (v: lib.nameValuePair v.veth { }) c.vlanLegs);
 
         bindMounts = c.bindMounts // lib.optionalAttrs (c.secrets != { }) {
           ${secretsDir} = { hostPath = secretsDir; isReadOnly = true; };
@@ -339,7 +462,33 @@ let
               routes  = [ { Destination = "${u.hostAddress6}/128"; Scope = "link"; } ];
               networkConfig.IPv6AcceptRA = false;
               linkConfig.RequiredForOnline = "no";
-            }) c.ula);
+            }) c.ula)
+
+          # A VLAN leg takes DHCP like the primary one, with two differences
+          # that both matter. `UseGateway`/`UseRoutes` are off by default
+          # because two leases each offering a default route leaves the
+          # container choosing its off-segment path by whichever applied last.
+          # And the MAC is pinned HERE because `extraVeths` has no option for
+          # it, while the DHCP reservation must key on a value this repo chose.
+          // lib.listToAttrs (map (v:
+            lib.nameValuePair "20-${v.veth}" {
+              matchConfig.Name = v.veth;
+              networkConfig = {
+                DHCP                = "ipv4";
+                IPv6AcceptRA        = false;
+                LinkLocalAddressing = "no";
+              };
+              dhcpV4Config = {
+                UseDNS     = false;
+                UseDomains = false;
+                UseGateway = v.useGateway;
+                UseRoutes  = v.useGateway;
+              };
+              linkConfig = {
+                MACAddress = v.mac;
+                RequiredForOnline = v.requiredForOnline;
+              };
+            }) c.vlanLegs);
 
           # A DHCP failure must leave a RUNNING container with one failed unit,
           # not a host-side restart loop.

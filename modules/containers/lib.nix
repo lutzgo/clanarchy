@@ -146,8 +146,17 @@
   # A test plan expecting a 200 there is testing something that cannot happen.
   mkFirewall = allowFrom: {
     allowedTCPPorts = [ ];
+    # Fields are emitted in iptables' own order, and each is omitted when it
+    # is null rather than defaulted to something permissive: no `-s` means any
+    # source, which is only ever correct deliberately.
     extraCommands = lib.concatMapStrings (a:
-      "iptables -A nixos-fw -p tcp -s ${a.peer}/32 --dport ${toString a.port} -j nixos-fw-accept\n"
+      lib.concatStringsSep " " (
+        [ "iptables -A nixos-fw" ]
+        ++ lib.optional (a.interface != null) "-i ${a.interface}"
+        ++ [ "-p ${a.proto}" ]
+        ++ lib.optional (a.peer != null) "-s ${a.peer}/32"
+        ++ [ "--dport ${toString a.port}" "-j nixos-fw-accept" ]
+      ) + "\n"
     ) allowFrom;
   };
 }

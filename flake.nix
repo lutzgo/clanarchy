@@ -323,6 +323,16 @@
                  (t.containers.widget.config.systemd.network.networks."10-eth0".networkConfig.DNS == "10.0.5.3")}
               ${must "IPv6 link-local is off inside the container"
                  (t.containers.widget.config.systemd.network.networks."10-eth0".networkConfig.LinkLocalAddressing == "no")}
+              ${must "an interface-confined UDP rule omits -s entirely"
+                 (has t.containers.gadget.config.networking.firewall.extraCommands
+                    "iptables -A nixos-fw -i iot9 -p udp --dport 5353 -j nixos-fw-accept")}
+              ${must "a port range and a source render in iptables order"
+                 (has t.containers.gadget.config.networking.firewall.extraCommands
+                    "iptables -A nixos-fw -i iot9 -p udp -s 10.0.20.31/32 --dport 32768:60999 -j nixos-fw-accept")}
+              ${must "the short form still renders exactly as before"
+                 (has t.containers.widget.config.networking.firewall.extraCommands
+                    "iptables -A nixos-fw -p tcp -s 10.0.90.12/32 --dport 8080 -j nixos-fw-accept")}
+
               ${must "the firewall admits only the named peer"
                  (has t.containers.widget.config.networking.firewall.extraCommands
                     "-s 10.0.90.12/32 --dport 8080 -j nixos-fw-accept")}
@@ -340,6 +350,25 @@
                   && t.containers.gadget.extraVeths.ai9.localAddress6 == "fdca:fe99::2")}
               ${must "the ULA leg does not gate wait-online"
                  (t.containers.gadget.config.systemd.network.networks."20-ai9".linkConfig.RequiredForOnline == "no")}
+
+              ${must "a VLAN leg gets an addressless extraVeth"
+                 (t.containers.gadget.extraVeths ? iot9
+                  && t.containers.gadget.extraVeths.iot9.hostAddress6 == null)}
+              ${must "a VLAN leg is tagged on the host side under its plain name"
+                 (t.systemd.network.networks."60-iot9".bridgeVLANs
+                    == [ { VLAN = 20; PVID = 20; EgressUntagged = 20; } ])}
+              ${must "a VLAN leg gets the same idempotent backstop"
+                 (pkgs.lib.any (x: has x "bridge vlan add dev iot9 vid 20 pvid untagged")
+                    (svc "container@gadget").serviceConfig.ExecStartPost)}
+              ${must "a VLAN leg takes DHCP but REFUSES its default route"
+                 (let n = t.containers.gadget.config.systemd.network.networks."20-iot9"; in
+                    n.networkConfig.DHCP == "ipv4"
+                    && n.dhcpV4Config.UseGateway == false
+                    && n.dhcpV4Config.UseRoutes == false)}
+              ${must "a VLAN leg pins its MAC and does not gate wait-online"
+                 (let n = t.containers.gadget.config.systemd.network.networks."20-iot9"; in
+                    n.linkConfig.MACAddress == "02:00:00:20:00:09"
+                    && n.linkConfig.RequiredForOnline == "no")}
 
               ${must "podman gets a prebuilt netns, not its own network"
                  (pkgs.lib.elem "--network=ns:/run/netns/doohickey"
