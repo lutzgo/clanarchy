@@ -78,6 +78,13 @@ rec {
     # whether to bind the on-screen keyboard, and that module is shared.
     ../modules/hardware/convertible.nix
     ../modules/virtualisation.nix
+    # Declarative containers for both tiers, plus the checks over whatever a
+    # machine declares. Fleet-wide and INERT until a machine declares one —
+    # the same shape as hardware/convertible.nix. Host-agnostic by
+    # construction: no bridge, VLAN or domain is named in them.
+    ../modules/containers/nspawn.nix
+    ../modules/containers/podman-netns.nix
+    ../modules/containers/assertions.nix
     # Distributed Nix builds. Declares `clanarchy.remoteBuilder` with both
     # roles off by default, so importing it fleet-wide is inert until a
     # machine opts into client or server.
