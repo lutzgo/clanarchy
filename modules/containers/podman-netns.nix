@@ -21,6 +21,25 @@ let
   enabled = lib.filterAttrs (_: c: c.enable) cfg;
   perContainer = lib.mapAttrsToList mkOne enabled;
 
+  # A staged env value is either read from a clan var at activation time, or a
+  # constant. Making the caller say which is deliberate: the previous version
+  # took a bare path string, and a literal like an OIDC *client id* — which is
+  # not a secret — had no way to be expressed at all.
+  secretValueType = lib.types.submodule {
+    options = {
+      file = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Path to a clan var, read with a tolerant `readvar` at activation.";
+      };
+      value = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "A constant. Ends up in the store, so never a secret.";
+      };
+    };
+  };
+
   stateDirType = lib.types.submodule {
     options = {
       path  = lib.mkOption { type = lib.types.str; };
@@ -75,7 +94,7 @@ let
 
       stateDirs = lib.mkOption { type = lib.types.listOf stateDirType; default = [ ]; };
       extraGuardedMounts = lib.mkOption { type = lib.types.listOf lib.types.str; default = [ ]; };
-      secrets = lib.mkOption { type = lib.types.attrsOf (lib.types.attrsOf lib.types.str); default = { }; };
+      secrets = lib.mkOption { type = lib.types.attrsOf (lib.types.attrsOf secretValueType); default = { }; };
       allowFrom = lib.mkOption { type = lib.types.listOf allowType; default = [ ]; };
 
       uidgid = lib.mkOption {

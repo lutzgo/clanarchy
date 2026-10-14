@@ -267,6 +267,8 @@
                  (has (svc "gadget-secrets").script "mv -f /run/gadget-secrets/oidc.env.tmp /run/gadget-secrets/oidc.env")}
               ${must "gadget-secrets locks the file down"
                  (has (svc "gadget-secrets").script "chmod 0400")}
+              ${must "a missing var does not take the container down"
+                 (has (svc "gadget-secrets").script "readvar() { [ -r \"$1\" ] && cat \"$1\" || true; }")}
               ${must "gadget binds its secrets directory read-only"
                  (t.containers.gadget.bindMounts."/run/gadget-secrets".isReadOnly)}
 

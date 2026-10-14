@@ -103,11 +103,30 @@
           set -euo pipefail
           install -d -m 0711 -o root -g root ${secretsDir}
           umask 077
+
+          # A MISSING VAR MUST NOT TAKE THE SERVICE DOWN. Under `set -eu` a
+          # bare `cat` on an ungenerated var exits the unit, and the unit is
+          # `requiredBy` the container — so a deploy that runs before
+          # `clan vars generate` does not degrade the service, it stops it.
+          # That took RomM down on 2026-09-07.
+          #
+          # The value lands empty instead, which the application then rejects
+          # in its own terms — a readable failure in one service rather than a
+          # container that will not start.
+          readvar() { [ -r "$1" ] && cat "$1" || true; }
+
           ${lib.concatStrings (lib.mapAttrsToList (envFile: vars: ''
             {
-            ${lib.concatStrings (lib.mapAttrsToList (k: path: ''
-              printf '%s=%s\n' ${lib.escapeShellArg k} "$(cat ${path})"
-            '') vars)}
+            ${lib.concatStrings (lib.mapAttrsToList (k: v:
+              # A key is either read from a var file or a literal constant.
+              # Both end up in the same env file, because systemd reads one
+              # `EnvironmentFile=` per service and splitting a client id from
+              # its secret would mean two files for one consumer.
+              if v.file != null then ''
+                printf '%s=%s\n' ${lib.escapeShellArg k} "$(readvar ${v.file})"
+              '' else ''
+                printf '%s=%s\n' ${lib.escapeShellArg k} ${lib.escapeShellArg v.value}
+              '') vars)}
             } > ${secretsDir}/${envFile}.tmp
             chmod 0400 ${secretsDir}/${envFile}.tmp
             mv -f ${secretsDir}/${envFile}.tmp ${secretsDir}/${envFile}

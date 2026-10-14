@@ -57,7 +57,10 @@ in
         stateDirs = [
           { path = "/srv/state/gadget"; owner = 71; group = 71; mode = "0700"; }
         ];
-        secrets."oidc.env" = { OAUTH_CLIENT_SECRET = "/run/secrets/vars/gadget/secret"; };
+        secrets."oidc.env" = {
+          OAUTH_CLIENT_ID     = { value = "gadget"; };
+          OAUTH_CLIENT_SECRET = { file = "/run/secrets/vars/gadget/secret"; };
+        };
         ula = [
           { veth = "ai9"; hostAddress6 = "fdca:fe99::1"; localAddress6 = "fdca:fe99::2"; }
         ];

@@ -23,6 +23,27 @@
   # ZFS pool alerts via ntfy.sh — URL prompted at `clan vars generate ernst` time.
   clanarchy.zfs.ntfy.enable = true;
 
+  # ── The per-host answers for modules/containers/ ──────────────────────────
+  #
+  # Every container on this machine shares these, and they are the only place
+  # the modules learn anything about ernst: the modules themselves name no
+  # bridge, VLAN, resolver or domain, which is what makes a second container
+  # host an inventory edit rather than a rewrite.
+  #
+  # `stateSource` is the one with teeth. Each container's `<svc>-dirs` unit
+  # refuses to create anything unless `/srv/state` is really backed by
+  # `zdata/state` — because a service that comes up without its state
+  # directory is not a degraded service, it is a NEW EMPTY one on zroot, which
+  # rolls back on the next boot. See docs/guides/ernst-zdata-datasets.md.
+  clanarchy.containerDefaults = {
+    bridge       = "br0";
+    vlan         = 90;
+    resolver     = "10.0.5.3";   # Technitium; pinned, never inherited
+    searchDomain = "skynet.lan";
+    stateMount   = "/srv/state";
+    stateSource  = "zdata/state";
+  };
+
   # Accept Nix builds dispatched by miralda's nix-daemon. The authorised key
   # is restricted to `nix-daemon --stdio`, so it buys builds, not a shell.
   clanarchy.remoteBuilder.server.enable = true;
