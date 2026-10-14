@@ -52,6 +52,21 @@ let
     };
   };
 
+  # A mount the dirs unit must verify before creating anything under it, with
+  # its OWN expected source — not the host's state source, because a service
+  # may own a dataset of its own.
+  guardedMountType = lib.types.submodule {
+    options = {
+      path   = lib.mkOption { type = lib.types.str; description = "Mount point to verify."; };
+      source = lib.mkOption { type = lib.types.str; description = "What `findmnt --output SOURCE` must report."; };
+      fstype = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Optionally also require this `FSTYPE`; a right-looking source can still be the wrong thing.";
+      };
+    };
+  };
+
   stateDirType = lib.types.submodule {
     options = {
       path  = lib.mkOption { type = lib.types.str; description = "Absolute path to create."; };
@@ -204,10 +219,14 @@ let
       };
 
       extraGuardedMounts = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
+        type = lib.types.listOf guardedMountType;
         default = [ ];
-        example = [ "/srv/photos" ];
-        description = "Further mounts the dirs unit must verify and order after, beyond the state mount.";
+        example = lib.literalExpression ''[ { path = "/srv/photos"; source = "zdata/photos"; fstype = "zfs"; } ]'';
+        description = ''
+          Further mounts the dirs unit must verify and order after, beyond the
+          state mount. Each names its OWN expected source, because a service
+          that owns a dataset of its own is not checking for the state one.
+        '';
       };
 
       secrets = lib.mkOption {

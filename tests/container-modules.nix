@@ -53,7 +53,9 @@ in
       clanarchy.containers.gadget = {
         enable = true;
         mac = "02:00:00:90:00:64";
-        extraGuardedMounts = [ "/srv/photos" ];
+        extraGuardedMounts = [
+          { path = "/srv/photos"; source = "zdata/photos"; fstype = "zfs"; }
+        ];
         stateDirs = [
           { path = "/srv/state/gadget"; owner = 71; group = 71; mode = "0700"; }
         ];
