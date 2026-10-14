@@ -720,6 +720,18 @@ in
         # `ContainerSystemdUnitFailed` stays quiet and correctly so.  It is
         # recorded because the error message is actively misleading about which
         # way to fix it.
+        #
+        # OBSERVED AGAIN 2026-10-14, as `dlna` rather than `chromecast`:
+        #
+        #     ModuleNotFoundError: No module named 'async_upnp_client'
+        #     RuntimeError: Configure dlna in `services.music-assistant.providers`
+        #
+        # Checked against this list before acting, which is the point of the
+        # paragraph above: `dlna` is absent here deliberately, so the provider
+        # is enabled in the UI and its requirements were never installed.
+        # Operator decision the same day: DLNA is not wanted, so the list stays
+        # as it is and the toggle comes off in the UI.  Do not "fix" this by
+        # adding a line.
         providers = [
           # THE LIBRARY.  Navidrome speaks OpenSubsonic, and this is the
           # provider that reads it — see the header for why this rather than
