@@ -459,17 +459,26 @@ let
         # Only what this stopped is started again — see heldMarker. Entering
         # the mode twice is idempotent: the second call finds the units
         # already inactive and leaves the marker as it is.
+        # ONE STATEMENT PER UNIT, generated — not a shell loop over a list
+        # that is already known at evaluation time.
+        #
+        # A shell `for` over an escaped one-element list expands to
+        # `for unit in llama-swap.service`, which shellcheck rejects as
+        # SC2043 ("this loop will only ever run once"), and
+        # writeShellApplication turns that into a BUILD FAILURE. It took
+        # `clan machines update ernst` down at build time — before activation,
+        # so nothing was half-applied, but the deploy did not happen.
         if [ "$mode" = gamescope ]; then
-          for unit in ${lib.escapeShellArgs cfg.gpu.gamingHold.units}; do
-            if systemctl is-active --quiet "$unit"; then
-              systemctl stop "$unit" || true
-              touch ${heldMarker}
-            fi
-          done
+        ${lib.concatMapStrings (u: ''
+          if systemctl is-active --quiet ${lib.escapeShellArg u}; then
+            systemctl stop ${lib.escapeShellArg u} || true
+            touch ${heldMarker}
+          fi
+        '') cfg.gpu.gamingHold.units}
         elif [ -e ${heldMarker} ]; then
-          for unit in ${lib.escapeShellArgs cfg.gpu.gamingHold.units}; do
-            systemctl start "$unit" || true
-          done
+        ${lib.concatMapStrings (u: ''
+          systemctl start ${lib.escapeShellArg u} || true
+        '') cfg.gpu.gamingHold.units}
           rm -f ${heldMarker}
         fi
       ''}
@@ -515,24 +524,24 @@ let
       # cmdline matches none of these patterns, so it survives to reach the
       # restart below. `loginctl terminate-session` was tried first and does
       # NOT reach an orphan — the scope it would terminate is already gone.
-      for pat in ${lib.escapeShellArgs sessionProcessPatterns}; do
-        pkill -TERM -u ${cfg.user} -f "$pat" 2>/dev/null || true
-      done
+      ${lib.concatMapStrings (p: ''
+        pkill -TERM -u ${cfg.user} -f ${lib.escapeShellArg p} 2>/dev/null || true
+      '') sessionProcessPatterns}
 
       # Give them a moment to release the card, then insist. A compositor that
       # ignores SIGTERM while holding KMS is the exact state that produced the
       # failure above, so this does not wait politely forever.
       for _ in 1 2 3 4 5 6; do
         still=0
-        for pat in ${lib.escapeShellArgs sessionProcessPatterns}; do
-          pkill -0 -u ${cfg.user} -f "$pat" 2>/dev/null && still=1
-        done
+      ${lib.concatMapStrings (p: ''
+        pkill -0 -u ${cfg.user} -f ${lib.escapeShellArg p} 2>/dev/null && still=1
+      '') sessionProcessPatterns}
         [ "$still" = 0 ] && break
         sleep 1
       done
-      for pat in ${lib.escapeShellArgs sessionProcessPatterns}; do
-        pkill -KILL -u ${cfg.user} -f "$pat" 2>/dev/null || true
-      done
+      ${lib.concatMapStrings (p: ''
+        pkill -KILL -u ${cfg.user} -f ${lib.escapeShellArg p} 2>/dev/null || true
+      '') sessionProcessPatterns}
 
       # Now the restart recreates the session on a card nothing else holds.
       exec systemctl restart display-manager.service
@@ -2115,12 +2124,12 @@ in
         script = ''
           mode=$(cat ${stateFile} 2>/dev/null || echo ${lib.escapeShellArg cfg.defaultSession})
           [ "$mode" = gamescope ] || exit 0
-          for unit in ${lib.escapeShellArgs cfg.gpu.gamingHold.units}; do
-            if systemctl is-active --quiet "$unit"; then
-              systemctl stop "$unit" || true
+          ${lib.concatMapStrings (u: ''
+            if systemctl is-active --quiet ${lib.escapeShellArg u}; then
+              systemctl stop ${lib.escapeShellArg u} || true
               touch ${heldMarker}
             fi
-          done
+          '') cfg.gpu.gamingHold.units}
         '';
       };
 

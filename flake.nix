@@ -237,6 +237,48 @@
           # (`doCheck`), so this check is how they run without building ernst.
           mneme = pkgs.callPackage ./service-modules/pkgs/mneme { };
 
+          # ── Every shell script this repo generates, BUILT ────────────────
+          #
+          # `writeShellApplication` runs shellcheck at BUILD time and fails on
+          # a finding. `check.sh` and the eval checks never build anything, so
+          # a script that evaluates fine and fails shellcheck passes CI and
+          # then takes `clan machines update` down — which is exactly what
+          # happened on 2026-10-14: a generated `for unit in <one item>` loop
+          # tripped SC2043 and ernst's deploy died at `system-path.drv`.
+          #
+          # Building each machine's whole toplevel would catch this and costs
+          # KDE, Steam and Plasma closures on every PR, which is why the repo
+          # does not. These derivations are tiny, and together they are every
+          # place in the fleet where we hand shellcheck something we wrote.
+          #
+          # IT IS A FILTER OVER systemPackages, NOT A HAND-WRITTEN LIST: a new
+          # script picked up by the prefixes below is covered without anyone
+          # remembering this check exists. Add a prefix when a new naming
+          # scheme appears, and `scriptsFound` asserts the filter still
+          # matches something on every machine, so a rename cannot silently
+          # empty it.
+          scripts =
+            let
+              inherit (pkgs.lib) filter hasPrefix elem concatLists;
+              named = [ "ai-status" "rom-import" "course-import" "photo-import"
+                        "music-stage" "storyteller-stage" ];
+              ours = p:
+                (p.name or null) != null
+                && (hasPrefix "clanarchy-" p.name
+                    || hasPrefix "steamos-" p.name
+                    || elem p.name named);
+              forMachine = m:
+                filter ours inputs.self.nixosConfigurations.${m}.config.environment.systemPackages;
+              all = concatLists (map forMachine [ "miralda" "jens" "biene" "birte" "ernst" ]);
+              scriptsFound =
+                if all == [ ] then
+                  throw "checks.scripts: the filter matched nothing — did a naming scheme change?"
+                else all;
+            in
+            pkgs.runCommand "scripts-build" { buildInputs = scriptsFound; } ''
+              touch $out
+            '';
+
           # The container modules ship with no consumers, so without this they
           # would be "evaluates clean" and nothing more. ./tests/ declares one
           # container of each tier and this asserts the units that come out.
