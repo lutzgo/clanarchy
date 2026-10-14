@@ -57,6 +57,38 @@ let
   # skipped instead.
   flagFile = "${stateDir}/bigscreen-active";
 
+  # Records that the gaming hold — not a person — is what stopped the compute
+  # units, so leaving the gaming session restarts only what this stopped.
+  # Without it, switching away would `start` a unit somebody had deliberately
+  # taken down, which is the mistake `gpu.preempt.units` avoids by using
+  # `try-restart`.
+  heldMarker = "${stateDir}/gpu-held";
+
+  # The compositors this role can start, as `pkill -f` patterns. Used to tear
+  # the outgoing session down explicitly — see the switcher, which explains why
+  # restarting the display manager is not enough on its own.
+  #
+  # Matched on the cmdline rather than the binary name because gamescope is
+  # exec'd through a wrapper (`steam-gamescope`), so `pkill -x` would miss it.
+  #
+  # `pkill -f` ON THE CMDLINE RAISES AN OBVIOUS SELF-MATCH WORRY, and it does
+  # not apply: the patterns live in the script FILE, so the running shell's
+  # cmdline is `clanarchy-session-select <mode>` and contains none of them.
+  # MEASURED on ernst 2026-10-13 with a script file invoked as `… kodi`, with
+  # Kodi up and gamescope down:
+  #
+  #   no match: gamescope --steam
+  #   MATCH:    kodi.bin
+  #   no match: startplasma-wayland
+  #
+  # Note the trap for whoever re-checks this INTERACTIVELY: a pattern typed on
+  # a shell's command line matches that shell, so the same test run as a
+  # one-liner reports every pattern alive. Put it in a file.
+  sessionProcessPatterns =
+    [ "gamescope --steam" ]
+    ++ lib.optional cfg.mediaClient.enable "kodi.bin"
+    ++ [ "startplasma-wayland" ];
+
   # Drop-box the Bigscreen container writes into to ask for a session change.
   #
   # The container has no route to host systemd, and giving it one (the host
@@ -371,10 +403,12 @@ let
   # same binary can back the `steamos-session-select` shim below.
   sessionSelect = pkgs.writeShellApplication {
     name = "clanarchy-session-select";
-    # coreutils for touch/rm on the flag file. Not optional: this is also
-    # invoked from clanarchy-session-request.service, whose PATH is systemd's
-    # minimal one rather than a login shell's.
-    runtimeInputs = [ pkgs.systemd pkgs.coreutils ];
+    # coreutils for touch/rm/sleep, procps for pkill. Not optional: this is
+    # also invoked from clanarchy-session-request.service, whose PATH is
+    # systemd's minimal one rather than a login shell's — and a missing pkill
+    # would surface as a session that fails to switch, at runtime, with
+    # shellcheck having had nothing to say about it.
+    runtimeInputs = [ pkgs.systemd pkgs.coreutils pkgs.procps ];
     text = ''
       mode="''${1:-}"
       case "$mode" in
@@ -416,6 +450,30 @@ let
         rm -f ${startLog} ${breakerNote}
       ''}
 
+      ${lib.optionalString (cfg.gpu.gamingHold.units != [ ]) ''
+        # ── Hold GPU compute off for the gaming session's duration ─────────
+        #
+        # Written BEFORE the display manager is restarted, so the card is
+        # already free when the session comes up rather than racing it.
+        #
+        # Only what this stopped is started again — see heldMarker. Entering
+        # the mode twice is idempotent: the second call finds the units
+        # already inactive and leaves the marker as it is.
+        if [ "$mode" = gamescope ]; then
+          for unit in ${lib.escapeShellArgs cfg.gpu.gamingHold.units}; do
+            if systemctl is-active --quiet "$unit"; then
+              systemctl stop "$unit" || true
+              touch ${heldMarker}
+            fi
+          done
+        elif [ -e ${heldMarker} ]; then
+          for unit in ${lib.escapeShellArgs cfg.gpu.gamingHold.units}; do
+            systemctl start "$unit" || true
+          done
+          rm -f ${heldMarker}
+        fi
+      ''}
+
       # The display manager and the Bigscreen container both want KMS on the
       # TV's GPU, so exactly one of them may run.  Whichever we are leaving
       # is stopped first and allowed to release the card before the other is
@@ -435,8 +493,48 @@ let
         systemctl stop ${bigscreenUnit} || true
       ''}
 
-      # Restarting the display manager tears down the current session —
-      # this is how SteamOS does it too, and why the write happens first.
+      # ── TEAR THE OUTGOING COMPOSITOR DOWN EXPLICITLY ────────────────────
+      #
+      # Restarting the display manager is how SteamOS does it, and it is NOT
+      # sufficient here. MEASURED on ernst 2026-10-13, switching gamescope ->
+      # kodi: gamescope had reparented to PID 1, so it was no longer in the
+      # session scope the restart tears down. It kept DRM master on the card,
+      # Kodi could not acquire it, and FOUR `go` session scopes failed in a
+      # row (406, 408, 410, 412) while the television carried on showing
+      # Steam. The switch reported nothing: the mode file said `kodi`, the
+      # display manager said `active`, and `clanarchy-session-select` had
+      # already exited 0.
+      #
+      # It is also invisible to the crash-loop breaker, because a DELIBERATE
+      # switch clears its counters a few lines above — so the one mechanism
+      # that would have demoted a session that cannot start had just been
+      # told this was fine.
+      #
+      # Killed BY NAME rather than by user, and that is what makes this safe
+      # to run from inside the session being replaced: this script's own
+      # cmdline matches none of these patterns, so it survives to reach the
+      # restart below. `loginctl terminate-session` was tried first and does
+      # NOT reach an orphan — the scope it would terminate is already gone.
+      for pat in ${lib.escapeShellArgs sessionProcessPatterns}; do
+        pkill -TERM -u ${cfg.user} -f "$pat" 2>/dev/null || true
+      done
+
+      # Give them a moment to release the card, then insist. A compositor that
+      # ignores SIGTERM while holding KMS is the exact state that produced the
+      # failure above, so this does not wait politely forever.
+      for _ in 1 2 3 4 5 6; do
+        still=0
+        for pat in ${lib.escapeShellArgs sessionProcessPatterns}; do
+          pkill -0 -u ${cfg.user} -f "$pat" 2>/dev/null && still=1
+        done
+        [ "$still" = 0 ] && break
+        sleep 1
+      done
+      for pat in ${lib.escapeShellArgs sessionProcessPatterns}; do
+        pkill -KILL -u ${cfg.user} -f "$pat" 2>/dev/null || true
+      done
+
+      # Now the restart recreates the session on a card nothing else holds.
       exec systemctl restart display-manager.service
     '';
   };
@@ -669,6 +767,43 @@ in
       transcoding HDR to SDR on the server instead of direct-playing it.
       Turning this on is what makes turning that off worthwhile
     '';
+
+    gpu.gamingHold.units = lib.mkOption {
+      type    = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "llama-swap.service" ];
+      description = ''
+        Units held STOPPED for as long as the gaming session is the selected
+        mode, and started again when the mode changes away from it.
+
+        WHY THIS IS NOT `gpu.preempt.units`.  That list is bounced once, at
+        session start, and it is sized by the VRAM reserve: the reserve
+        guarantees a compositor can keep its FRAMEBUFFER, which is what was
+        measured (Kodi 326 MiB, Steam Big Picture ~1350).  A GAME needs
+        gigabytes, and nothing in that arrangement reserves them.
+
+        MEASURED on ernst 2026-10-13, mid-session: card 24560 MiB total,
+        24075 used, 484 FREE — `qwen3.6-35b-a3b` resident at ~22.7 GiB
+        alongside Big Picture's ~1.35.  The game had nothing to allocate from.
+        Preempt could not have caught it: the session had been up for hours
+        and the model loaded afterwards, which is exactly the case
+        preempt-on-start-only excludes.
+
+        WHY A HOLD IS SAFE HERE WHEN A BLANKET CONFLICT IS NOT.  The objection
+        to "stop compute while a session exists" is that the session runs
+        twenty-four hours a day.  That is true of the DEFAULT session, and
+        ernst's default is `kodi` — so selecting `gamescope` is a deliberate,
+        temporary act, and holding compute off for its duration is bounded by
+        the person who chose it.
+
+        THE COST, WHICH IS REAL AND WAS ACCEPTED.  While the hold is on,
+        anything that wants inference gets connection refused: the Home
+        Assistant conversation agent, mneme, Open WebUI, and Karakeep's
+        auto-tagging — which has no backoff and will retry at roughly 60
+        requests a minute (see containers/karakeep.nix).  Switching back to
+        `kodi` or `plasma` restores them.
+      '';
+    };
 
     gpu.preempt.units = lib.mkOption {
       type    = lib.types.listOf lib.types.str;
@@ -1947,6 +2082,48 @@ in
     # the polkit grant on `manageableUnits`, which buys them "ask the host to
     # bounce the inference server" and nothing else — the unit list is fixed at
     # build time, so there is no argument to abuse.
+    # Re-apply the gaming hold at boot and on every session restart.
+    #
+    # The switcher stops the units when the mode is selected, but a reboot
+    # starts everything `multi-user.target` wants — including the compute that
+    # the selected mode says must stay down. This closes that gap.
+    #
+    # `wantedBy = display-manager.service`, NOT `multi-user.target`, for the
+    # reason spelled out on clanarchy-gpu-preempt below: `switch-to-configuration`
+    # starts every inactive unit wanted by an already-active target, so
+    # `multi-user.target` here would mean every deploy re-evaluated the hold —
+    # harmless when gamescope is selected and a surprise stop when it is not.
+    #
+    # Ordered after the units it stops, so activation cannot queue this
+    # alongside the system's own restart of the same unit and have systemd
+    # cancel one of the two jobs.
+    systemd.services.clanarchy-gaming-hold =
+      lib.mkIf (cfg.gpu.gamingHold.units != [ ]) {
+        description = "Hold GPU compute off while the gaming session is selected";
+        wantedBy = [ "display-manager.service" ];
+        before   = [ "display-manager.service" ];
+        after    = [ "local-fs.target" ] ++ cfg.gpu.gamingHold.units;
+
+        serviceConfig = {
+          Type = "oneshot";
+          # Re-runnable, same reasoning as the preempt unit: a session restart
+          # must be able to call this again, and a unit left "active (exited)"
+          # would silently do nothing from the second call onwards.
+          RemainAfterExit = false;
+        };
+        path = [ pkgs.systemd pkgs.coreutils ];
+        script = ''
+          mode=$(cat ${stateFile} 2>/dev/null || echo ${lib.escapeShellArg cfg.defaultSession})
+          [ "$mode" = gamescope ] || exit 0
+          for unit in ${lib.escapeShellArgs cfg.gpu.gamingHold.units}; do
+            if systemctl is-active --quiet "$unit"; then
+              systemctl stop "$unit" || true
+              touch ${heldMarker}
+            fi
+          done
+        '';
+      };
+
     systemd.services.clanarchy-gpu-preempt =
       lib.mkIf (cfg.gpu.preempt.units != [ ]) {
         description = "Reclaim GPU memory before the session starts";

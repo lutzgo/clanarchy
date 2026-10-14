@@ -93,6 +93,13 @@
         description = "Units bounced just before a session takes the GPU, so VRAM they hold is handed back first (see modules/roles/htpc.nix).";
       };
 
+      gpu.gamingHold.units = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "llama-swap.service" ];
+        description = "Units held stopped for as long as the gaming session is selected, because the VRAM reserve sizes a framebuffer and a game needs gigabytes (see modules/roles/htpc.nix).";
+      };
+
       crashLoop = {
         enable =
           lib.mkEnableOption "demoting the session instead of reloging a failing one forever (see modules/roles/htpc.nix)";
@@ -144,6 +151,7 @@
               display.hdr.enable = settings.display.hdr.enable;
               mediaClient.remoteControl.enable = settings.mediaClient.remoteControl.enable;
               gpu.preempt.units = settings.gpu.preempt.units;
+              gpu.gamingHold.units = settings.gpu.gamingHold.units;
               crashLoop = {
                 inherit (settings.crashLoop) enable fallbackChain;
               };
