@@ -51,8 +51,10 @@ let
 
   allowType = lib.types.submodule {
     options = {
-      peer = lib.mkOption { type = lib.types.str; };
-      port = lib.mkOption { type = lib.types.port; };
+      peer      = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
+      port      = lib.mkOption { type = lib.types.either lib.types.port lib.types.str; };
+      proto     = lib.mkOption { type = lib.types.enum [ "tcp" "udp" ]; default = "tcp"; };
+      interface = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
     };
   };
 

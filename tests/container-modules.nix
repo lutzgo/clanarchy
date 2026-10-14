@@ -64,9 +64,16 @@ in
         ula = [
           { veth = "ai9"; hostAddress6 = "fdca:fe99::1"; localAddress6 = "fdca:fe99::2"; }
         ];
+        vlanLegs = [
+          { veth = "iot9"; vlan = 20; mac = "02:00:00:20:00:09"; }
+        ];
         allowFrom = [
           { peer = "10.0.90.12"; port = 3000; }
           { peer = "10.0.90.14"; port = 3000; }
+          # mDNS: UDP, no source, confined to the IoT leg.
+          { interface = "iot9"; proto = "udp"; port = 5353; }
+          # A stream client answers on an ephemeral port range.
+          { interface = "iot9"; proto = "udp"; peer = "10.0.20.31"; port = "32768:60999"; }
         ];
       };
 
