@@ -35,18 +35,29 @@
     }:
     let
       # A mount unit's name is its path with slashes turned into dashes.
-      mountUnit = m: "${lib.replaceStrings [ "/" ] [ "-" ] (lib.removePrefix "/" m)}.mount";
-      guardedMounts = lib.unique ([ stateMount ] ++ extraMounts);
+      mountUnit = p: "${lib.replaceStrings [ "/" ] [ "-" ] (lib.removePrefix "/" p)}.mount";
+
+      # EACH MOUNT IS CHECKED AGAINST ITS OWN SOURCE, not one global one.
+      # immich owns `zdata/photos` as well as living on `zdata/state`, so a
+      # single expected source asserts the wrong thing for one of its mounts.
+      guardedMounts =
+        [ { path = stateMount; source = stateSource; fstype = null; } ] ++ extraMounts;
 
       # THE TARGET IS THE PARENT, NOT THE LEAF. `findmnt --target` on a path
       # that does not exist yet returns nothing — it does not walk up to the
       # nearest existing ancestor — so checking the directory this unit is
       # about to create fails on every first run. immich-dirs refused its own
       # first deploy that way on 2026-09-11.
-      guardFor = path: ''
-        src=$(findmnt --noheadings --output SOURCE --target ${path} || true)
-        if [ "$src" != ${lib.escapeShellArg stateSource} ]; then
-          echo "${name}-dirs: ${path} is not ${stateSource} (found '$src')." >&2
+      #
+      # fstype is checked where asked for: a path can be backed by a
+      # right-looking SOURCE and still not be the dataset intended.
+      guardFor = m: ''
+        src=$(findmnt --noheadings --output SOURCE --target ${m.path} || true)
+      '' + lib.optionalString (m.fstype != null) ''
+        fstype=$(findmnt --noheadings --output FSTYPE --target ${m.path} || true)
+      '' + ''
+        if [ "$src" != ${lib.escapeShellArg m.source} ]${lib.optionalString (m.fstype != null) '' || [ "$fstype" != ${lib.escapeShellArg m.fstype} ]''}; then
+          echo "${name}-dirs: ${m.path} is not ${m.source} (found '$src')." >&2
           echo "  Refusing to create ${name}'s directories: they would land on" >&2
           echo "  a filesystem that is rolled back on the next boot." >&2
           echo "  See docs/guides/ernst-zdata-datasets.md." >&2
@@ -63,8 +74,8 @@
       "${name}-dirs" = {
         description = "Verify state is mounted and create ${name}'s directories";
         wantedBy   = [ "multi-user.target" ];
-        after      = map mountUnit guardedMounts;
-        requires   = map mountUnit guardedMounts;
+        after      = map (m: mountUnit m.path) guardedMounts;
+        requires   = map (m: mountUnit m.path) guardedMounts;
         before     = [ unitFor ];
         # BLOCKING (`requires` + `requiredBy`), not advisory: a service that
         # comes up without its state directory is a NEW EMPTY one on a
