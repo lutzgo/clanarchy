@@ -28,7 +28,7 @@
 #   `SCRIPT_INTERVAL` sleep loop, and its README's non-Docker instruction is a
 #   cron entry.
 #
-#   containers/arr.nix therefore runs it from a systemd TIMER, not a
+#   containers/arr/ therefore runs it from a systemd TIMER, not a
 #   `Restart=always` service — see the soularr block there.  A `simple` unit
 #   would enter a restart loop by design and every successful pass would be
 #   logged as a service exit.
@@ -44,7 +44,7 @@
 #   requirements.txt lists flask and waitress for it.  It is not installed here
 #   and its two dependencies are not in the closure.
 #
-#   The reason is the same one containers/arr.nix applies to every port it does
+#   The reason is the same one containers/arr/ applies to every port it does
 #   not open: this would be a SECOND admin surface — one with no Traefik route,
 #   no Authelia middleware and no argument for its existence — in a container
 #   whose entire port policy is one explicit list.  Soularr's real interface is
@@ -106,7 +106,7 @@ stdenvNoCC.mkDerivation rec {
   # --config-dir and --var-dir are NOT defaulted here.  Upstream defaults both
   # to `os.getcwd()`, which for a systemd unit is `/`, and a service that
   # silently reads a config from the root directory is worse than one that
-  # fails.  containers/arr.nix passes both explicitly.
+  # fails.  containers/arr/ passes both explicitly.
   installPhase = ''
     runHook preInstall
 
@@ -115,7 +115,7 @@ stdenvNoCC.mkDerivation rec {
     # The shipped config.ini is an EXAMPLE full of placeholder credentials.  It
     # is installed as documentation only, under a name that cannot be mistaken
     # for live configuration — the real one is rendered into a tmpfs at run
-    # time from staged secrets (see containers/arr.nix).
+    # time from staged secrets (see containers/arr/).
     install -Dm644 config.ini $out/share/doc/soularr/config.ini.example
 
     makeWrapper ${pythonEnv}/bin/python $out/bin/soularr \

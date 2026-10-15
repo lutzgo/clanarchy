@@ -18,7 +18,7 @@ A one-word edit that reads as "use the smaller model" is actually "quarter the
 context and break tool calling", and nothing in the review says so.
 
 The consequence is not degraded output, which is what makes it dangerous.
-Measured at `num_ctx = 8192`: a **17,083-token** file (`containers/arr.nix`) was
+Measured at `num_ctx = 8192`: a **17,083-token** file (`containers/arr/`) was
 silently truncated to **4,098** tokens. HTTP 200, no flag, no warning anywhere in
 the response. Truncation **keeps the tail and drops the head** at roughly
 `num_ctx/2` — and the system message and tool definitions live at the front, so
@@ -95,7 +95,7 @@ date was written as if the fleet were v4-only, and until now nothing forced the
 question.
 
 **What the repo does today.** Every container sets `IPv6AcceptRA = false` and
-takes DHCPv4 only — `containers/jellyfin.nix`, `arr.nix`, `traefik.nix`,
+takes DHCPv4 only — `containers/jellyfin.nix`, `arr/`, `traefik.nix`,
 `authelia.nix`, the monitoring container, and the microvm guest, which disables
 v6 outright (M3 records that wg-quick aborts under `set -e` on a dual-stack
 `Address` line). VLAN 90 carries no GUA. The one v6 in the fleet is M6's `mon0`,

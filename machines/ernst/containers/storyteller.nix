@@ -89,7 +89,7 @@
 #   So this takes the podman tier, and it is that tier's SECOND occupant after
 #   M9's TubeSync.  `virtualisation.oci-containers` INSIDE AN NSPAWN CONTAINER
 #   IS REJECTED, as every milestone adding a service is required to restate:
-#   the entire value of containers/arr.nix is that upstream units, upstream
+#   the entire value of containers/arr/ is that upstream units, upstream
 #   hardening and `systemd-analyze` scores are legible, and an opaque image
 #   inside it is opaque to all three.  The escape hatch is this tier, not that
 #   hybrid.
@@ -233,7 +233,7 @@ let
   # last part is why this is not state — the outputs are library content, and
   # putting them on the same dataset as Audiobookshelf's library is what lets
   # ABS be pointed at them without a copy.  See the tmpfiles block in
-  # containers/arr.nix, which owns that tree.
+  # containers/arr/, which owns that tree.
   dataDir    = "/srv/audiobooks/storyteller";
   secretsDir = "/run/storyteller-secrets";
 
@@ -449,7 +449,7 @@ in
     };
   };
 
-  # The audiobooks tree is built by its own unit in containers/arr.nix, and
+  # The audiobooks tree is built by its own unit in containers/arr/, and
   # the generated dirs unit knows only about MOUNTS — so the dependency on
   # that unit is merged on here rather than forked into a second dirs unit.
   systemd.services.storyteller-dirs = {

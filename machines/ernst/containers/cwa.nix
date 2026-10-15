@@ -5,7 +5,7 @@
 #
 # ── IT DID NOT EXIST BEFORE THIS FILE, WHATEVER THE OTHER COMMENTS SAY ──────
 #
-#   containers/arr.nix says "Komga and CWA already serve the READING side in
+#   containers/arr/ says "Komga and CWA already serve the READING side in
 #   this household" and docs/history.md repeats it in four places.  It was not
 #   true: there was no CWA in this repo, no container on ernst, no podman
 #   workload, and no Technitium record.  The sentence described an intention
@@ -36,7 +36,7 @@
 #
 #   `virtualisation.oci-containers` INSIDE AN NSPAWN CONTAINER IS REJECTED, as
 #   every service on this tier is required to restate: the value of
-#   containers/arr.nix is that upstream units and their `systemd-analyze`
+#   containers/arr/ is that upstream units and their `systemd-analyze`
 #   scores stay legible, and an opaque image inside it is opaque to all three.
 #
 #   THE COST, accepted explicitly: an image we do not build, and a
@@ -158,11 +158,11 @@
 #
 #   WHERE THEY WERE, AND WHY NOBODY FOUND THEM: the whole Calibre library —
 #   metadata.db, the Author/Title (id) tree, metadata_db_prefs_backup.json —
-#   had been restored into /srv/audiobooks/ebooks, which containers/arr.nix
+#   had been restored into /srv/audiobooks/ebooks, which containers/arr/
 #   declares as "the DRM-free ebook halves, staged by hand" for Storyteller.
 #   NOTHING SCANS THAT DIRECTORY — Storyteller takes its input through its own
 #   web UI — so a complete library sat inert in it for weeks while this file
-#   described itself as empty.  arr.nix's comment is corrected alongside.
+#   described itself as empty.  arr/'s comment is corrected alongside.
 #
 #   HOW IT WAS MOVED, and the two options that were rejected:
 #
@@ -194,7 +194,7 @@
 #   was verified file-by-file against the source before the source was emptied.
 #
 #   /srv/audiobooks/ebooks IS NOW EMPTY and remains Storyteller's staging pool,
-#   still created by arr.nix's audiobooks-tree.service as 2770 root:media.  The
+#   still created by arr/'s audiobooks-tree.service as 2770 root:media.  The
 #   12 GB it gave up does not return to the pool immediately: zdata/audiobooks
 #   carries com.sun:auto-snapshot=true, so the data is pinned in the auto-snaps
 #   until retention rolls over.
@@ -290,7 +290,7 @@ let
   vlanId    = 90;
 
   # Continuing the 3000-range family.  Next free was 3031 before this round;
-  # containers/arr.nix took 3031 (komga) and 3032 (navidrome) in the same
+  # containers/arr/ took 3031 (komga) and 3032 (navidrome) in the same
   # change, so this is 3033.  The table in machines/ernst/allocations.nix is
   # updated alongside.
   #

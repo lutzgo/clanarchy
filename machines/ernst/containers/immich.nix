@@ -617,7 +617,7 @@ in
   # activation starts.  So nspawn was asked to bind-mount a path that nothing
   # had created yet.
   #
-  # containers/arr.nix already carries this lesson for /srv/audiobooks — "a
+  # containers/arr/ already carries this lesson for /srv/audiobooks — "a
   # tmpfiles rule alone races the mount", and "THESE THREE ARE NOT tmpfiles
   # RULES" — and this file took half of it.  All four directories now belong to
   # the ordered unit below, which is `requiredBy` the container, so the
@@ -692,7 +692,7 @@ in
   # carries what used to be restated here: why these directories are an
   # ORDERED UNIT and never also a tmpfiles rule — immich is the container that
   # measured it — and why the unit BLOCKS this container rather than merely
-  # preceding it, which is the one place immich differs from arr.nix: /srv/photos
+  # preceding it, which is the one place immich differs from arr/: /srv/photos
   # is not one library among several, it is this container's entire reason to
   # exist, and an Immich that starts without it is a new empty one on a
   # filesystem that rolls back, accepting a camera roll and losing it.

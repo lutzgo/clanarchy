@@ -37,7 +37,7 @@
 #   `{}` rather than an error — verified by reading scraparr.py at v3.1.0, not
 #   assumed from the name.
 #
-#   So the unit in containers/arr.nix ships NO YAML at all and configures the
+#   So the unit in containers/arr/ ships NO YAML at all and configures the
 #   exporter entirely from an EnvironmentFile.  The reason is the API keys: see
 #   the scraparr block in that file.
 {

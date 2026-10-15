@@ -1061,7 +1061,7 @@
         # them on a LOWER tier), and invariant #1's real line — as the repo has
         # actually applied it — is a killswitch requirement, which search does
         # not have.  Routing it through M3's VPN guest was considered and
-        # rejected on arr.nix's own eztvx.to measurement: a datacenter exit
+        # rejected on arr/'s own eztvx.to measurement: a datacenter exit
         # makes fetches fail that otherwise succeed, and search engines are
         # harsher about it than indexers are.
         #
@@ -1324,7 +1324,7 @@
           #
           # Each of these needs a matching source-restriction on the FAR end —
           # the monitoring container's address has to be permitted there, or
-          # the job simply times out.  Those rules are in containers/arr.nix,
+          # the job simply times out.  Those rules are in containers/arr/,
           # containers/jellyfin.nix and microvms/wg-qbittorrent.nix.
           # THREE, NOT THE FOUR M13 ASKED FOR.  There is deliberately no Ollama
           # target: ollama 0.32.3 answers 404 on /metrics (measured on ernst,
@@ -1348,7 +1348,7 @@
             #
             # The path is INSIDE the monitoring container, staged there by
             # monitoring-secrets from the `navidrome-metrics` generator that
-            # machines/ernst/containers/arr.nix declares.  One generator, two
+            # machines/ernst/containers/arr/ declares.  One generator, two
             # containers, two staging units — see that file for why the same
             # secret is emitted in two formats.
             navidromeAddress             = "10.0.90.13";

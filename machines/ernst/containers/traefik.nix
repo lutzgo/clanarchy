@@ -9,12 +9,12 @@
 # in-house services and never fetches attacker-supplied URLs on anyone's
 # behalf, so it is a trusted-tier workload sharing the host kernel.  (The
 # thing that DOES render hostile pages is FlareSolverr, and the argument for
-# where it lives is in containers/arr.nix.)
+# where it lives is in containers/arr/.)
 #
 # ── Networking: veth on br0, Services VLAN 90 ────────────────────────────────
 #
 #   Copied from containers/jellyfin.nix ("Networking — v2"), which is the
-#   WORKING version of this pattern, and followed again by containers/arr.nix:
+#   WORKING version of this pattern, and followed again by containers/arr/:
 #   KeepMaster rather than Bridge=, the ExecStartPost that settles the VLAN
 #   race, and the 20 s wait-online cap that stops a DHCP failure from
 #   restart-looping the container.  Read jellyfin.nix's header for the full
@@ -259,7 +259,7 @@
 #
 #   ONE mechanism, as the milestone requires, and it is (a): each backend's own
 #   firewall, in its own netns, accepts its web port ONLY from 10.0.90.12.  The
-#   rules live in containers/jellyfin.nix and containers/arr.nix beside the
+#   rules live in containers/jellyfin.nix and containers/arr/ beside the
 #   ports they restrict.  The rejected alternative was (b), a UDM-Pro intra-zone
 #   ZBF rule.
 #
@@ -268,7 +268,7 @@
 #     Jellyfin (.10), the arr (.13), qBittorrent's guest (.11) and this
 #     container (.12) are all ports on the SAME VLAN on the SAME bridge.
 #     Traffic between them is switched at layer 2 by br0 and the frames never
-#     reach the UDM-Pro at all.  containers/arr.nix relies on exactly this
+#     reach the UDM-Pro at all.  containers/arr/ relies on exactly this
 #     property in the other direction — it is why the arr needs no ZBF rule to
 #     talk to the download client.  A gateway cannot filter traffic it never
 #     sees, so an intra-zone rule would be a rule that looks like enforcement
@@ -365,7 +365,7 @@ let
   # --network-bridge= is used — "vb-", not "ve-".
   vethName = "vb-traefik";
 
-  # Numeric ids, continuing the 3000-range family that containers/arr.nix and
+  # Numeric ids, continuing the 3000-range family that containers/arr/ and
   # microvms/wg-qbittorrent.nix established.  nspawn passes uids and gids
   # through unmapped, so an id chosen in here is an id on zdata — and
   # /srv/state/traefik is on zdata.  Add a row to the table in
@@ -430,7 +430,7 @@ let
   # These three and only these three.  M12 also adds UmlautAdaptarr (5005 and
   # a proxy on 5006) and MediathekArr's Newznab indexer (5008), and neither
   # gets a route: their only client is Prowlarr, in the same netns, over
-  # 127.0.0.1.  containers/arr.nix keeps them off its firewall list for the
+  # 127.0.0.1.  containers/arr/ keeps them off its firewall list for the
   # same reason, and 5006 in particular is an HTTP proxy that has no business
   # being reachable.
   bazarrPort       = 6767;
@@ -443,7 +443,7 @@ let
   # container, while this one is there BECAUSE that is where the *arr API keys
   # it renders are staged.  containers/homepage.nix argues it at length and
   # co-defines containers.arr the way containers/crowdsec.nix co-defines this
-  # one — so `arr.nix` is not the whole of what listens on this address.
+  # one — so `arr/` is not the whole of what listens on this address.
   #
   # 8082 collides by NUMBER with the metrics entryPoint below and by nothing
   # else: that listener is in THIS container's namespace, this one is in the
@@ -477,7 +477,7 @@ let
   # Ports verified against upstream on 2026-08-28 — and audiobookshelf's is the
   # one docs/history.md got wrong: nixpkgs' module defaults to 8000, while
   # 13378 is the Docker image's number and what every client expects.
-  # containers/arr.nix sets it explicitly for that reason.
+  # containers/arr/ sets it explicitly for that reason.
   lidarrPort         = 8686;
   kapowarrPort       = 5656;
   questarrPort       = 5000;
@@ -1513,7 +1513,7 @@ in
   # reading a private key.
   #
   # NUMERIC ids on purpose — `traefik` is a container user and the host has no
-  # matching passwd entry.  Same shape containers/arr.nix uses for uid 3002.
+  # matching passwd entry.  Same shape containers/arr/ uses for uid 3002.
   systemd.tmpfiles.rules = [
     "d /srv/state/traefik 0700 ${toString traefikUid} ${toString traefikGid} -"
   ];
@@ -1695,7 +1695,7 @@ in
       # The certificate store, on zdata.  Remapped to the module's upstream
       # default dataDir so services.traefik needs no path override — the same
       # trick containers/jellyfin.nix uses for /var/lib/jellyfin and
-      # containers/arr.nix for /var/lib/{sonarr,radarr,prowlarr}.
+      # containers/arr/ for /var/lib/{sonarr,radarr,prowlarr}.
       "${dataDir}" = {
         hostPath   = "/srv/state/traefik";
         isReadOnly = false;
@@ -1718,7 +1718,7 @@ in
       # Matches the host.  Certificate expiry, renewal attempts and every
       # access-log line are rendered in local time, and a container that
       # silently defaults to UTC makes "when did the cert actually renew" a
-      # two-hour question.  Same call as containers/arr.nix.
+      # two-hour question.  Same call as containers/arr/.
       time.timeZone = "Europe/Berlin";
 
       ##########################################################################
@@ -1920,13 +1920,13 @@ in
       # NixOS allocate one dynamically from the system range) and
       # users.groups.traefik without a gid.  Both are plain definitions with no
       # uid/gid attribute, so adding one here is a MERGE and needs no mkForce —
-      # unlike containers/arr.nix, where the servarr modules DO set uid from
+      # unlike containers/arr/, where the servarr modules DO set uid from
       # config.ids.uids.* and the override has to fight them.
       #
       # isSystemUser is already true upstream and stays true; it is restated
       # because NixOS infers "effectively a system user" from uid < 1000, and
       # 3005 is not, so the inference stops working the moment the uid is
-      # pinned.  containers/arr.nix hit exactly this and the error names
+      # pinned.  containers/arr/ hit exactly this and the error names
       # neither the uid nor the cause.
       users.users.traefik = {
         isSystemUser = true;
@@ -2441,7 +2441,7 @@ in
 
             # ── The arr stack: admin routes, behind Authelia ───────────────
             #
-            # THREE HOSTNAMES, NOT THREE PATH PREFIXES.  containers/arr.nix
+            # THREE HOSTNAMES, NOT THREE PATH PREFIXES.  containers/arr/
             # anticipated this ("M5 can route three paths to one address
             # perfectly well") and subdomains are the better of the two:
             # Sonarr, Radarr and Prowlarr all need a matching `UrlBase` set in
@@ -3116,9 +3116,9 @@ in
             #
             # An ordinary protected router, and the only thing worth a note is
             # what it points AT: the arr container's address on a port that
-            # containers/arr.nix does not mention, because the service is
+            # containers/arr/ does not mention, because the service is
             # declared in containers/homepage.nix instead.  A reader chasing
-            # `homepageAddr` through arr.nix will not find it; that file's
+            # `homepageAddr` through arr/ will not find it; that file's
             # header and this comment are the two places that say where to
             # look.
             #

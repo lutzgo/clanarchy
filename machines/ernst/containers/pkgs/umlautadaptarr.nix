@@ -40,7 +40,7 @@
 #   derivations).  Pin each by tag or rev, never by branch."  The intent —
 #   nothing tracks a moving target — is kept in full; the mechanism is not, and
 #   the reason is the same one the recyclarr block already argues one file over
-#   in containers/arr.nix.
+#   in containers/arr/.
 #
 #   A flake input is a row in flake.lock, and `nix flake update` moves every
 #   row it can.  Nothing in this repo distinguishes "bump nixpkgs" from
@@ -59,14 +59,14 @@
 #   them and the real indexer, rewriting searches and results.  Two ports:
 #   5005 is its own HTTP API (Kestrel, appsettings.json pins http://[::]:5005)
 #   and 5006 is the internal PROXY that Prowlarr is pointed at.  Both are
-#   127.0.0.1-only in this deployment; see containers/arr.nix.
+#   127.0.0.1-only in this deployment; see containers/arr/.
 #
 #   IT TALKS TO A THIRD-PARTY API ON ITS OWN BEHALF.  appsettings.json ships
 #   Settings.UmlautAdaptarrApiHost = https://umlautadaptarr.pcjones.de/api/v1,
 #   the maintainer's title-lookup service.  That is stated here rather than
 #   discovered later: it is a fact about the service's network posture and it
 #   belongs next to the derivation that installs it.  The invariant-#1 argument
-#   for keeping it in the nspawn tier is made in containers/arr.nix.
+#   for keeping it in the nspawn tier is made in containers/arr/.
 #
 # ── NO PERSISTENT STATE, and that changes the uid decision ───────────────────
 #
@@ -77,7 +77,7 @@
 #   environment variable.
 #
 #   So it takes DynamicUser and NOT the uid 3010 the roadmap reserved — see
-#   the block in containers/arr.nix, where that departure is argued.
+#   the block in containers/arr/, where that departure is argued.
 {
   lib,
   stdenv,

@@ -1744,7 +1744,7 @@ in
       #
       # isSystemUser must be restated with the uid: NixOS infers "effectively a
       # system user" from uid < 1000, and 3008 is not, so the inference stops
-      # working the moment the uid is pinned.  containers/arr.nix hit exactly
+      # working the moment the uid is pinned.  containers/arr/ hit exactly
       # this and the error names neither the uid nor the cause.
       ##########################################################################
       users.users."authelia-${instanceName}" = {

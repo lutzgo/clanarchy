@@ -39,7 +39,7 @@
 #   deliberately NOT done, for two reasons that both matter:
 #
 #     1. IT WOULD PUT A SECOND INDEX ON THE SAME FILES.  Navidrome's database
-#        is not a cache of the library — containers/arr.nix says so at length:
+#        is not a cache of the library — containers/arr/ says so at length:
 #        it holds play counts, ratings, starred tracks and playlists that exist
 #        nowhere else.  A second scanner means two libraries that disagree
 #        about what is in them, and the one the phones use is the one that
@@ -307,7 +307,7 @@
 #   mneme.
 #
 #   So: uid/gid 3040, and the six protections `DynamicUser` had been implying
-#   are restated below — arr.nix's prowlarr and jellyseerr blocks are the
+#   are restated below — arr/'s prowlarr and jellyseerr blocks are the
 #   working examples.
 #
 # ── WHAT IS DELIBERATELY NOT DONE ───────────────────────────────────────────
@@ -444,7 +444,7 @@ let
   # NOTHING IS DECLARED HERE FOR NAVIDROME, and its absence is worth a line.
   # The library lives at 10.0.90.13:4533 inside containers.arr, and this
   # container reaches it OUTBOUND — so the accept it needs is on the far end,
-  # in containers/arr.nix, and nothing in this file's firewall block concerns
+  # in containers/arr/, and nothing in this file's firewall block concerns
   # it.  A reader looking for the Navidrome wiring should look there.
 
   # ── THE MusicCast SPEAKERS, AND THERE ARE TWO ──────────────────────────────
@@ -905,7 +905,7 @@ in
       # RemoveIPC and RestrictSUIDSGID.  The upstream module sets ProtectHome
       # and RestrictSUIDSGID itself, so the four below are exactly what turning
       # it off would otherwise have dropped — a silent widening of the sandbox
-      # that no build error reports.  arr.nix's prowlarr and jellyseerr blocks
+      # that no build error reports.  arr/'s prowlarr and jellyseerr blocks
       # are the working examples of this same restoration.
       #
       # Everything else the module sets survives untouched: an empty
@@ -929,7 +929,7 @@ in
         # 0700, matching what mass-dirs installs on the host.  Without this
         # systemd's default 0755 and the host-side install(1) take turns
         # winning, one per deploy — the M3 defect, and the same tug-of-war
-        # arr.nix records for sonarr and prowlarr.
+        # arr/ records for sonarr and prowlarr.
         StateDirectoryMode = "0700";
       };
 
@@ -945,7 +945,7 @@ in
 
         # NOT in any media group, and that is the point of reading the library
         # over HTTP: this account has no handle on /srv/media at all.  The
-        # jellyseerr block in arr.nix makes the same argument — a service that
+        # jellyseerr block in arr/ makes the same argument — a service that
         # only speaks REST has no business holding a file descriptor on 47 TB.
       };
 

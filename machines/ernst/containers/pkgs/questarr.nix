@@ -81,7 +81,7 @@
 #                                <cwd>/migrations/meta/_journal.json".
 #
 #   The wrapper therefore sets NO working directory at all, deliberately.
-#   containers/arr.nix supplies `WorkingDirectory=/var/lib/questarr` and a
+#   containers/arr/ supplies `WorkingDirectory=/var/lib/questarr` and a
 #   tmpfiles `L+` rule symlinking `migrations` from this store path into it —
 #   the same shape the game-library symlinks use, and `L+` because the store
 #   path changes on every upgrade and the link has to be re-forced.

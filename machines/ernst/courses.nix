@@ -42,7 +42,7 @@
 { pkgs, ... }:
 
 let
-  # Must agree with containers/jellyfin.nix (mediaGid) and containers/arr.nix.
+  # Must agree with containers/jellyfin.nix (mediaGid) and containers/arr/.
   # The library is 2770 root:media like every other directory under
   # /srv/media/library, so Jellyfin (uid 964, member of media) can read it.
   mediaGid = 3000;

@@ -285,7 +285,7 @@
         # data — an emulator reads it, nothing ever executes it — so putting
         # thousands of files downloaded from the internet on the one dataset in
         # this pool where files are allowed to run would be gratuitous.
-        # containers/arr.nix makes the same argument in the other direction
+        # containers/arr/ makes the same argument in the other direction
         # when it refuses to let `media` near /srv/games.
         #
         # recordsize=1M: dominated by large disc images.  ZFS uses variable

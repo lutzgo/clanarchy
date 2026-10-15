@@ -23,7 +23,7 @@
 #   file was written: it starts, logs its version, serves its UI, and its
 #   API answers 401 without a key.
 #
-# ── ONE TRAP, MEASURED, THAT THE UNIT IN arr.nix MUST HANDLE ───────────────
+# ── ONE TRAP, MEASURED, THAT THE UNIT IN arr/ MUST HANDLE ───────────────
 #
 #   BINDERY_DB_PATH does NOT follow BINDERY_DATA_DIR.  With DATA_DIR set and
 #   DB_PATH unset, the log shows dataDir at the configured path and dbPath
