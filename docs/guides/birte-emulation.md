@@ -504,7 +504,7 @@ They are not integrated, and should not be:
 - **The permission boundary is deliberate.** `/srv/games/questarr` is `0750
   questarr:questarr` precisely so that nothing else has a foothold on the one
   dataset in the pool where files may execute. Pointing RomM at it would
-  breach a decision `containers/arr.nix` argues for at length.
+  breach a decision `containers/arr/` argues for at length.
 - **There is no hand-off to build.** Questarr's output tree is not
   `roms/<platform>/`, so RomM would index it as noise.
 

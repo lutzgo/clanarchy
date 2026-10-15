@@ -1,6 +1,6 @@
 # Supersonic — a desktop client for the Navidrome/Subsonic API.
 #
-# Navidrome lives in containers/arr.nix on ernst and answers at
+# Navidrome lives in containers/arr/ on ernst and answers at
 # navidrome.goclan.org.  That name is in `appApiHosts` (exempt from
 # forward-auth, because the Subsonic protocol authenticates with a salted
 # token in query parameters and cannot follow a 302 to a login portal) and in

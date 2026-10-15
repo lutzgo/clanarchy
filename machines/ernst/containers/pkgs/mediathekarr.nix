@@ -56,7 +56,7 @@
 #   mentions 5007, which makes it very easy to package half the product: an
 #   indexer that answers searches, and nothing that can ever download a result.
 #   That is the fails-by-succeeding shape M12 warns about twice, so BOTH are
-#   built here and containers/arr.nix runs both.
+#   built here and containers/arr/ runs both.
 #
 #   The two are shipped as two attributes rather than one merged directory
 #   because each project publishes its own appsettings.Production.json — the
@@ -74,7 +74,7 @@
 #   The downloader half is why this service gets a media-group uid while
 #   Prowlarr, the other "indexer", gets none: it WRITES VIDEO FILES into the
 #   download tree, then remuxes them with ffmpeg and mkvmerge.  That argument
-#   is made where it belongs, in containers/arr.nix.
+#   is made where it belongs, in containers/arr/.
 #
 #   ffmpeg and mkvtoolnix are therefore RUNTIME DEPENDENCIES, not optional
 #   extras — upstream's Dockerfile apt-installs both and adds the mkvtoolnix
@@ -159,7 +159,7 @@ let
       #
       # So the downloader binds all interfaces and its exposure is controlled
       # where every other exposure in this container is controlled — the
-      # source-restricted firewall list in containers/arr.nix, which admits
+      # source-restricted firewall list in containers/arr/, which admits
       # 5007 from 10.0.90.12 and nothing else.  The INDEXER stays on
       # 127.0.0.1: its only client is Prowlarr, in this same netns, so it
       # gets both the firewall's default-deny AND a loopback bind.

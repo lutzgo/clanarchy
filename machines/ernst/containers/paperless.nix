@@ -220,7 +220,7 @@ let
   # calendars and its contacts, stopped by a dataset belonging to a service it
   # has nothing to do with.
   #
-  # That is precisely the coupling containers/arr.nix refuses when it orders
+  # That is precisely the coupling containers/arr/ refuses when it orders
   # only `before` on /srv/audiobooks — "Sonarr must not go down because an
   # unrelated library is missing" — and the answer here is the same in spirit:
   # the shared path lives where BOTH users already depend on it.  Nextcloud's

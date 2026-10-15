@@ -31,7 +31,7 @@
 # ── THIS FILE CO-DEFINES containers.arr.  THAT IS THE WHOLE DESIGN ──────────
 #
 #   It does not create a container.  It merges a service, a bind mount and one
-#   firewall rule into the one machines/ernst/containers/arr.nix declares, and
+#   firewall rule into the one machines/ernst/containers/arr/ declares, and
 #   adds the host-side secret staging.  `containers.<name>.config` merges
 #   multiple definitions like any other NixOS option, so the two files compose
 #   — exactly as containers/crowdsec.nix composes with containers/traefik.nix,
@@ -43,7 +43,7 @@
 #
 #   (1) THE *ARR API KEYS ARE NOT OURS TO CHOOSE, AND THEY LIVE HERE.
 #
-#       `arr-api-keys.service` (containers/arr.nix) EXTRACTS six keys at
+#       `arr-api-keys.service` (containers/arr/) EXTRACTS six keys at
 #       runtime from each service's own configuration — Sonarr, Radarr,
 #       Lidarr and Prowlarr from the servarr `<ApiKey>` element, Bazarr from
 #       the `auth:` block of its YAML, Jellyseerr from `.main.apiKey` in
@@ -60,7 +60,7 @@
 #       events.  Running where the stager already runs makes that impossible
 #       rather than unlikely.
 #
-#       This is the same argument containers/arr.nix makes for having ONE
+#       This is the same argument containers/arr/ makes for having ONE
 #       stager with three consumers instead of three copies of it, applied one
 #       consumer further out.  This file is the fourth consumer.
 #
@@ -109,7 +109,7 @@
 #
 #   LoadCredential rather than widening /run/arr-api-keys, and this is the
 #   third time this container answers that question the same way (scraparr and
-#   soularr are the other two, and containers/arr.nix explains it at length at
+#   soularr are the other two, and containers/arr/ explains it at length at
 #   the soularr render script): PID 1 reads the file as root BEFORE the drop to
 #   the unit's user and places a 0400 copy in $CREDENTIALS_DIRECTORY.  The
 #   staging directory stays 0700 root.  Widening it for a fourth consumer
@@ -234,7 +234,7 @@ let
   ############################################################################
   # Co-resident ports, on 127.0.0.1.
   #
-  # Restated from containers/arr.nix rather than imported, for the reason that
+  # Restated from containers/arr/ rather than imported, for the reason that
   # file gives for restating them from upstream: the alternative is a shared
   # attrset whose consumers stop being greppable.  These are loopback targets,
   # so a stale number here is a dead tile on one row and nothing else.
@@ -270,11 +270,11 @@ let
   # REPLACED on every deploy, so an nspawn bind established at container start
   # would keep exposing a deleted generation until the container restarted.
   # Same shape and same reasoning as janitorr-secrets and soularr-secrets in
-  # containers/arr.nix, and as traefik-secrets before both.
+  # containers/arr/, and as traefik-secrets before both.
   homepageSecretsDir = "/run/homepage-secrets";
 
   # Where arr-api-keys.service puts the six it extracts.  Restated from
-  # containers/arr.nix; the LoadCredential lines below are the only reader.
+  # containers/arr/; the LoadCredential lines below are the only reader.
   arrSecretsDir = "/run/arr-api-keys";
 
   tokensGen = config.clan.core.vars.generators.homepage-tokens;
@@ -499,13 +499,13 @@ in
       ##########################################################################
       # One more port through Traefik, and through nothing else.
       #
-      # This merges with the accept list in containers/arr.nix — both are
+      # This merges with the accept list in containers/arr/ — both are
       # definitions of `networking.firewall.extraCommands`, which is
       # types.lines and concatenates.  Written out here rather than added to
       # that file's list so the whole of M26's network surface is in one file.
       #
       # LOAD-BEARING, not belt-and-braces, and for the sharpest version of the
-      # reason questarr's comment in arr.nix gives: homepage binds 0.0.0.0 (the
+      # reason questarr's comment in arr/ gives: homepage binds 0.0.0.0 (the
       # module sets PORT and nothing else), so inside this netns it is on the
       # veth, on VLAN 90.  This rule and the nixos-fw-log-refuse at the end of
       # the chain are the only things keeping an authenticated-by-Authelia page

@@ -53,7 +53,7 @@
 #   integration M4 builds.  Do not "fix" this.
 #
 #   M4 ADDED A THIRD SOURCE, and it is enforced in exactly one place.  The arr
-#   container (10.0.90.13, machines/ernst/containers/arr.nix) drives this
+#   container (10.0.90.13, machines/ernst/containers/arr/) drives this
 #   client's API, and it sits on VLAN 90 — the same VLAN, on the same bridge, as
 #   this guest's own tap.  Those frames are switched by br0 and never reach the
 #   UDM-Pro, so the "enforced twice" above is NOT true of that source: the
@@ -273,7 +273,7 @@ let
 
   # Upstream defaults, restated because three things have to agree: the
   # module's own settings, this guest's nftables ruleset, and Soularr's
-  # config.ini over in containers/arr.nix.
+  # config.ini over in containers/arr/.
   #
   #   5030   the web UI and the REST API.  Reached from the management VLANs
   #          (a human) and from the arr container (Soularr).
@@ -433,7 +433,7 @@ let
   # incomplete and re-prompts every value it already holds, and nobody wants to
   # re-enter a WireGuard private key to add a Soulseek password.
   #
-  # Guarded rather than referenced directly, the same way containers/arr.nix
+  # Guarded rather than referenced directly, the same way containers/arr/
   # guards janitorr-jellyfin: naming a generator that does not exist yet is an
   # EVALUATION error, and an evaluation error names an attribute rather than
   # the thing a human forgot to run.  With the guard, a machine whose
@@ -994,7 +994,7 @@ in
   # ── TWO OUTPUT FILES, AND THE SPLIT IS DELIBERATE ─────────────────────────
   #
   #   slskd.env   the guest's EnvironmentFile.  Everything slskd needs.
-  #   api-key     the bare key, nothing else — consumed by containers/arr.nix,
+  #   api-key     the bare key, nothing else — consumed by containers/arr/,
   #               which renders it into Soularr's config.ini at run time.
   #
   #   The alternative was a second prompted secret in the arr container, which
@@ -1089,7 +1089,7 @@ in
       # as part of the value unless the WHOLE value is quoted, and a Soulseek
       # password that silently gains a pair of quotes fails authentication with
       # a message that says nothing about quoting — the same trap
-      # containers/arr.nix's janitorr-jellyfin generator documents.
+      # containers/arr/'s janitorr-jellyfin generator documents.
       {
         printf 'SLSKD_SLSK_USERNAME=%s\n' "$(cat "$prompts/slsk-username")"
         printf 'SLSKD_SLSK_PASSWORD=%s\n' "$(cat "$prompts/slsk-password")"
@@ -1876,7 +1876,7 @@ in
       # The module creates users.users.slskd itself, but only when `user` is
       # left at its default — and it assigns NO uid, leaving the allocation to
       # NixOS.  So setting one here is a new definition of an unset option and
-      # needs no mkForce, exactly like bazarr in containers/arr.nix.  It also
+      # needs no mkForce, exactly like bazarr in containers/arr/.  It also
       # declares the `slskd` GROUP only when group == "slskd"; it is "media"
       # below, so no stray group is created.
       users.users.slskd = {
@@ -2024,7 +2024,7 @@ in
 
           # NOT MemoryDenyWriteExecute.  slskd is .NET and the JIT maps
           # writable-then-executable pages, so it would start and then die on
-          # the first request.  Same rejection containers/arr.nix and
+          # the first request.  Same rejection containers/arr/ and
           # containers/jellyfin.nix record for the same runtime — and the same
           # one qBittorrent's block above does not need to make, because
           # nothing there is managed.

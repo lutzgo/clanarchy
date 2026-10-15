@@ -100,7 +100,7 @@ what was rejected. One line each here:
 | `crowdsec.nix` | — | Log-driven detection + nftables remediation **inside Traefik's netns** — the only place that sees the pre-DNAT source of a WAN request. Co-defines `containers.traefik` |
 | `authelia.nix` | nspawn | Identity provider: forward-auth, plus OIDC for the apps that can use it |
 | `ingress-policy.nix` | data | Not a module — a plain function imported by both `traefik.nix` and `authelia.nix`, classifying every hostname. `withWan` throws at eval if a router disagrees with it |
-| `arr.nix` | nspawn | ~18 services in one namespace: sonarr, radarr, prowlarr, bazarr, lidarr, jellyseerr, audiobookshelf, komga, navidrome, recyclarr and the helper daemons |
+| `arr/` | nspawn | ~18 services in one namespace: sonarr, radarr, prowlarr, bazarr, lidarr, jellyseerr, audiobookshelf, komga, navidrome, recyclarr and the helper daemons |
 | `homepage.nix` | — | The service index. Co-defines `containers.arr` |
 | `jellyfin.nix` | nspawn | Media server, on its own veth since M2b |
 | `tvheadend.nix` | nspawn | SAT>IP client against the FRITZ!Box's DVB-C tuners; publishes M3U + XMLTV |

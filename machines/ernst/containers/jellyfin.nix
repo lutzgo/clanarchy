@@ -261,7 +261,7 @@ in
   # about /srv/media, which this container only reads, and folding them into
   # the module's `stateDirs` would add a mount guard that refuses to start
   # Jellyfin when the media dataset is absent. An empty library is a visible,
-  # harmless failure — arr.nix's argument, which does apply here.
+  # harmless failure — arr/'s argument, which does apply here.
   clanarchy.containers.jellyfin = {
     enable = true;
 

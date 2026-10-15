@@ -549,7 +549,16 @@
           # courses, which jellyfin.nix bind-mounts into the container.
           ./machines/ernst/courses.nix
           ./machines/ernst/containers/jellyfin.nix
-          ./machines/ernst/containers/arr.nix
+          # The *arr stack, one container across six files. common.nix
+          # declares it; the rest merge into it by media domain. See its
+          # header — the single file was 6,218 lines, which is past what
+          # either a person or a 32k-context model can hold.
+          ./machines/ernst/containers/arr/common.nix
+          ./machines/ernst/containers/arr/video.nix
+          ./machines/ernst/containers/arr/indexers.nix
+          ./machines/ernst/containers/arr/music.nix
+          ./machines/ernst/containers/arr/books.nix
+          ./machines/ernst/containers/arr/lifecycle.nix
           ./machines/ernst/containers/traefik.nix
           ./machines/ernst/containers/authelia.nix
           ./machines/ernst/containers/tvheadend.nix
@@ -629,7 +638,7 @@
           # it up", with no history, no alerting and nothing stored.
           #
           # IT CO-DEFINES containers.arr, the way crowdsec.nix co-defines
-          # containers.traefik — so arr.nix is NOT the whole of what listens on
+          # containers.traefik — so arr/ is NOT the whole of what listens on
           # 10.0.90.13.  Read its header before assuming otherwise.  It is
           # there because that is where `arr-api-keys.service` stages the six
           # *arr keys it renders: those keys are EXTRACTED from each service's

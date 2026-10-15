@@ -217,7 +217,7 @@ let
 
     # One accept per bridge, appended to nixos-fw so it lands after
     # allowedTCPPorts and before the catch-all refuse — the placement
-    # monitoring.nix and containers/arr.nix rely on.  The chain is flushed and
+    # monitoring.nix and containers/arr/ rely on.  The chain is flushed and
     # rebuilt on every start, so extraStopCommands needs nothing.
     #
     # If a consumer times out while the stack is demonstrably alive:
@@ -2878,7 +2878,7 @@ in
   #    on its own behalf"
   #
   # It would not, and this is checkable in the repo rather than a matter of
-  # opinion.  containers/arr.nix already says of its own occupants: "Prowlarr
+  # opinion.  containers/arr/ already says of its own occupants: "Prowlarr
   # fetches from indexers, Sonarr/Radarr fetch metadata" — outbound, on their
   # own behalf, on nspawn.  tubesync pulls arbitrary videos off YouTube.  And
   # FlareSolverr, in that same file, RENDERS DELIBERATELY HOSTILE PAGES FROM
@@ -2890,7 +2890,7 @@ in
   # be in microvms.  Read against how it has actually been applied, the line it
   # draws is a KILLSWITCH REQUIREMENT: M3's guest is a microvm because
   # qBittorrent's traffic must never egress on the house IP, and a kernel of
-  # its own is what makes that enforceable.  arr.nix says exactly this in its
+  # its own is what makes that enforceable.  arr/ says exactly this in its
   # own words — "never talk to the internet on their own behalf IN A WAY THAT
   # NEEDS A KILLSWITCH".
   #
@@ -2898,7 +2898,7 @@ in
   # leaving on the house IP is what happens when they open a browser; there is
   # no privacy or legal property that a VPN egress would preserve and a direct
   # one would destroy.  Routing it through M3's guest was considered and
-  # rejected on evidence already in this repo: arr.nix measured eztvx.to
+  # rejected on evidence already in this repo: arr/ measured eztvx.to
   # returning HTTP 200 from the home WAN and HTTP 451 from the IVPN exit, so
   # the VPN path makes fetches FAIL that otherwise succeed.  Search engines
   # treat datacenter exits far more harshly than indexers do — a VPN egress is
@@ -3008,7 +3008,7 @@ in
           microvm, which is one layer-2 hop away on this same bridge and whose
           frames therefore never pass the UDM-Pro where a gateway rule could
           filter them.  Same reasoning as `proxyAddress` on the webui role and
-          as traefikAddr in containers/arr.nix.
+          as traefikAddr in containers/arr/.
 
           ernst's host firewall drops unmatched traffic silently, so a wrong
           value here presents as a search that times out with nothing logged on
@@ -3303,7 +3303,7 @@ in
 
             config = { config, lib, pkgs, ... }: {
 
-              # Matches the host, for the reason arr.nix, monitoring.nix and
+              # Matches the host, for the reason arr/, monitoring.nix and
               # the webui container all give: every timestamp a human reads is
               # local time, and a container that defaults to UTC makes each of
               # them a two-hour question.
@@ -4314,7 +4314,7 @@ in
               nixpkgs.config.allowUnfreePredicate =
                 pkg: builtins.elem (lib.getName pkg) [ "open-webui" ];
 
-              # Matches the host, for the reason arr.nix and monitoring.nix
+              # Matches the host, for the reason arr/ and monitoring.nix
               # both give: every timestamp a human reads is local time, and a
               # container that defaults to UTC makes each of them a two-hour
               # question.

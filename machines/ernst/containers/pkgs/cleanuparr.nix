@@ -30,7 +30,7 @@
 #        which reads as a corrupt install and is not one.
 #
 #     2. DOTNET_BUNDLE_EXTRACT_BASE_DIR is pinned by the UNIT, not here — see
-#        containers/arr.nix.  The default is $TMPDIR/.net/<app>/<hash>, and
+#        containers/arr/.  The default is $TMPDIR/.net/<app>/<hash>, and
 #        with PrivateTmp = true that is a fresh tmpfs on every start, i.e. an
 #        80 MB extraction per restart.  Pointing it at the cache directory
 #        makes it extract once.
@@ -45,7 +45,7 @@
 #   hardlink/orphan cleaner's own settings — is UI state.
 #
 #   That makes first-run configuration a MANUAL STEP, in the same shape as the
-#   *arr root folders in containers/arr.nix and for the same reason: faking it
+#   *arr root folders in containers/arr/ and for the same reason: faking it
 #   from Nix would create a second source of truth for state the application
 #   owns.  The PR body carries the steps, and the conservative-first-deploy
 #   rule M12 (d) sets out is part of them — a cleaner that deletes is a cleaner

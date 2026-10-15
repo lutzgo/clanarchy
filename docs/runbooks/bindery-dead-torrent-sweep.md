@@ -199,7 +199,7 @@ curl -s -b "$C" -d "hashes=$H" -d 'enable=true' \
 
 **The category save path and `BINDERY_AUDIOBOOK_DOWNLOAD_DIR` must agree.**
 Bindery's download-client health check compares them and reports `error` when
-they disagree. The env var is set in `machines/ernst/containers/arr.nix`; the
+they disagree. The env var is set in `machines/ernst/containers/arr/`; the
 category is runtime state in qBittorrent, so a deploy can move one without the
 other. Check with Settings → Download Clients → Test, or:
 

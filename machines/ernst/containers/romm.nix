@@ -46,7 +46,7 @@
 #
 #   `virtualisation.oci-containers` INSIDE AN NSPAWN CONTAINER IS REJECTED,
 #   restated here as every service on this tier is required to restate it: the
-#   value of containers/arr.nix is that upstream units and their
+#   value of containers/arr/ is that upstream units and their
 #   `systemd-analyze` scores stay legible, and an opaque image inside it is
 #   opaque to all three.  The escape hatch is this tier, not that hybrid.
 #
@@ -141,9 +141,9 @@ let
   # its redis spool.  It goes on zdata/state.  Keeping them apart is what lets
   # Syncthing be pointed at exactly the library and nothing else: replicating a
   # live MariaDB directory to a Steam Deck would be both useless and unsafe.
-  # NOT /srv/games, and containers/arr.nix is the reason.  That dataset carries
+  # NOT /srv/games, and containers/arr/ is the reason.  That dataset carries
   # exec ON — deliberately, because Steam and Questarr's PC games are binaries
-  # that must run, and arr.nix calls giving anything else a foothold there "the
+  # that must run, and arr/ calls giving anything else a foothold there "the
   # worst place in the fleet to do it".  A ROM is data: it is read by an
   # emulator and never executed.  Putting the library on the one dataset in the
   # pool where files are allowed to run would hand that property to thousands

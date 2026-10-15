@@ -98,7 +98,7 @@
 #   ip6tables and NOT the exporters' own `openFirewall`.  That option renders
 #   its filter through `ip46tables`, i.e. through the IPv4 binary too, and an
 #   IPv6 source address in an iptables rule fails.  extraCommands with an
-#   explicit ip6tables is the same escape hatch containers/arr.nix uses, for
+#   explicit ip6tables is the same escape hatch containers/arr/ uses, for
 #   the same reason: it fails loudly if a rule will not insert.
 #
 # ── ALERTING: ZED AND PROMETHEUS BOTH, WITH A HARD BOUNDARY ─────────────────
@@ -1055,7 +1055,7 @@ in
           # land before the refuse and after everything else, and nothing needs
           # to go in extraStopCommands because the chain is flushed and rebuilt
           # on every start and reload.  Same placement argument as
-          # machines/ernst/containers/arr.nix.
+          # machines/ernst/containers/arr/.
           #
           # If `up` is 0 for a machine that is demonstrably awake, this is the
           # first thing to check:
@@ -1148,7 +1148,7 @@ in
 
             Scraparr is ONE exporter covering Sonarr, Radarr, Prowlarr, Bazarr
             and Jellyseerr — see the rejection of Exportarr recorded in
-            machines/ernst/containers/arr.nix.  Its port must additionally be
+            machines/ernst/containers/arr/.  Its port must additionally be
             source-restricted to THIS container's address on the far end;
             adding the target here alone produces a job that times out.
           '';
@@ -1387,7 +1387,7 @@ in
             contents as the password, so a systemd-style environment file
             would authenticate as the literal string
             `ND_PROMETHEUS_PASSWORD=…`.  The generator in
-            machines/ernst/containers/arr.nix emits both forms from one
+            machines/ernst/containers/arr/ emits both forms from one
             secret for exactly this reason — `metrics.env` for Navidrome's
             EnvironmentFile and `password` for this.
 
@@ -1701,7 +1701,7 @@ in
           vethName = "vb-monitoring";
 
           # Numeric ids, continuing the 3000-range family established by
-          # containers/arr.nix (3002–3004) and containers/traefik.nix (3005).
+          # containers/arr/ (3002–3004) and containers/traefik.nix (3005).
           # nspawn passes uids and gids through unmapped, so an id chosen in
           # here is an id on zdata — and stateDir is on zdata.  Add a row to
           # machines/ernst/allocations.nix for any new one.
@@ -1792,7 +1792,7 @@ in
           # a generator that does not exist yet is an EVALUATION error, and an
           # evaluation error names an attribute rather than the command a
           # human forgot to run.  This one lives in
-          # machines/ernst/containers/arr.nix, so a fleet without a media
+          # machines/ernst/containers/arr/, so a fleet without a media
           # stack never defines it at all.
           navidromeMetricsGen =
             if config.clan.core.vars.generators ? navidrome-metrics
@@ -1884,7 +1884,7 @@ in
                 rather than as a missing credential.
                 Point it at the staged bare-value file (see the option's
                 description, and the navidrome-metrics generator in
-                machines/ernst/containers/arr.nix).
+                machines/ernst/containers/arr/).
               '';
             }
           ];
@@ -2267,7 +2267,7 @@ in
               # Matches the host.  Every alert timestamp, every "when did this
               # start firing", and every dashboard axis is rendered in local
               # time; a container that silently defaults to UTC makes all of
-              # them a two-hour question.  Same call as containers/arr.nix.
+              # them a two-hour question.  Same call as containers/arr/.
               time.timeZone = "Europe/Berlin";
 
               ################################################################
@@ -2287,7 +2287,7 @@ in
               # isSystemUser must be restated with the uid: NixOS infers
               # "effectively a system user" from uid < 1000, and 3006 is not,
               # so the inference stops working the moment the uid is pinned.
-              # containers/arr.nix hit exactly this and the error names
+              # containers/arr/ hit exactly this and the error names
               # neither the uid nor the cause.
               ################################################################
               users.users.prometheus = {
