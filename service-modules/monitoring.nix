@@ -1083,17 +1083,6 @@ in
     description = "Runs Prometheus, Alertmanager and Grafana in one nspawn container.";
 
     interface.options = {
-      bridge = lib.mkOption {
-        type        = lib.types.str;
-        default     = "br0";
-        description = "VLAN-filtering bridge the container's eth0 is a port on.";
-      };
-
-      vlan = lib.mkOption {
-        type        = lib.types.int;
-        default     = 90;
-        description = "VLAN id for the container's eth0 (the Services VLAN on ernst).";
-      };
 
       mac = lib.mkOption {
         type        = lib.types.str;
@@ -1106,17 +1095,6 @@ in
         '';
       };
 
-      resolver = lib.mkOption {
-        type        = lib.types.str;
-        default     = "10.0.5.3";
-        description = "Resolver for the container.  Declared, not inherited from DHCP.";
-      };
-
-      searchDomain = lib.mkOption {
-        type        = lib.types.str;
-        default     = "skynet.lan";
-        description = "Bare-hostname search suffix inside the container.";
-      };
 
       stateDir = lib.mkOption {
         type        = lib.types.path;
@@ -1918,19 +1896,6 @@ in
             each, commit vars/shared/, and re-deploy this machine.
           '';
 
-          ####################################################################
-          # State on zdata.  0700 and owned by the service, exactly like
-          # /srv/state/{jellyfin,sonarr,traefik}.
-          #
-          # NUMERIC ids on purpose: prometheus and grafana are CONTAINER users
-          # and the host has no matching passwd entry.  Same shape
-          # containers/arr.nix uses for uid 3002.
-          ####################################################################
-          systemd.tmpfiles.rules = [
-            "d ${settings.stateDir}            0755 root root -"
-            "d ${settings.stateDir}/prometheus 0700 ${toString prometheusUid} ${toString prometheusGid} -"
-            "d ${settings.stateDir}/grafana    0700 ${toString grafanaUid}    ${toString grafanaGid}    -"
-          ];
 
           ####################################################################
           # Stage both secrets.
@@ -2072,46 +2037,6 @@ in
               ''}
             '';
           };
-
-          ####################################################################
-          # Host side of the Services-VLAN veth — leg 1.
-          #
-          # Copied from containers/traefik.nix, which copied it from
-          # containers/jellyfin.nix ("Networking — v2"), the working version of
-          # this pattern.  KeepMaster rather than Bridge= because nspawn
-          # creates AND enslaves this link itself; no L3 of its own because a
-          # bridge port carries none; "enslaved" rather than "routable" because
-          # a bridge port never reaches routable and waiting for it hangs boot.
-          #
-          # There is deliberately NO networking.firewall.allowedTCPPorts here.
-          # Grafana's port is opened inside the container's own netns; on the
-          # host it is not a port at all.
-          ####################################################################
-          systemd.network.networks."60-${vethName}" = {
-            matchConfig.Name = vethName;
-            networkConfig = {
-              KeepMaster          = true;
-              LinkLocalAddressing = "no";
-              IPv6AcceptRA        = false;
-            };
-            bridgeVLANs = [ {
-              VLAN           = settings.vlan;
-              PVID           = settings.vlan;
-              EgressUntagged = settings.vlan;
-            } ];
-            linkConfig.RequiredForOnline = "enslaved";
-          };
-
-          # Re-assert the VLAN after nspawn has created the veth.  Same real
-          # race as vb-jellyfin / vb-arr / vb-traefik: networkd applies
-          # [BridgeVLAN] only once it observes the link's master, and nspawn
-          # sets that master out of band.  Idempotent, and "-" prefixed so a
-          # backstop cannot become a new failure mode.
-          #
-          # `bridge vlan show dev vb-monitoring` remains the check.
-          systemd.services."container@monitoring".serviceConfig.ExecStartPost = [
-            "-${pkgs.iproute2}/bin/bridge vlan add dev ${vethName} vid ${toString settings.vlan} pvid untagged"
-          ];
 
           ####################################################################
           # Leg 2's host half: forward and SNAT the container onto ZeroTier.
@@ -2261,46 +2186,83 @@ in
             '';
           };
 
-          ####################################################################
+          ##################################################################
           # The container.
-          ####################################################################
-          containers.monitoring = {
-            autoStart = true;
-            ephemeral = false;
+          ##################################################################
+          #
+          # Declared through modules/containers/nspawn.nix, which generates
+          # the dirs unit, the host-side veth network, the VLAN backstop, the
+          # `mon0` leg, the container preamble, the in-container networking
+          # and the firewall — taking bridge, VLAN, resolver and search
+          # domain from the HOST's `clanarchy.containerDefaults`.
+          #
+          # `monitoring-secrets` STAYS HAND-WRITTEN: it renders a YAML
+          # fragment for the ntfy bridge and installs five separate files
+          # with per-service ownership (grafana 3007, prometheus 3006), which
+          # is not the single env file the module's `secrets` option writes.
+          #
+          # The ZeroTier NAT above also stays. Forwarding and SNATting a
+          # container onto `zt+` is a fact about this host's topology.
+          clanarchy.containers.monitoring = {
+            enable = true;
+            mac    = settings.mac;
 
-            # Leg 1 — own netns, own L2 identity on the Services VLAN.
-            privateNetwork  = true;
-            hostBridge      = settings.bridge;
-            localMacAddress = settings.mac;
+            # NO uid/gid PIN: both upstream modules set uid AND gid from
+            # config.ids.*, so the in-container block below uses mkForce —
+            # see its own note.
 
-            # Leg 2 — the point-to-point link to the host.  /128 on each end;
-            # nixos-containers adds the matching host route on both sides, so
-            # there is no prefix and no on-link assumption to get wrong.
-            extraVeths.${monVeth} = {
-              hostAddress6  = monHostAddr;
-              localAddress6 = monContainerAddr;
-            };
+            # AN ORDERED UNIT RATHER THAN tmpfiles RULES: all three of these
+            # are bound into the container, and a tmpfiles rule for a bound
+            # path races the container's start (immich measured it). This
+            # also adds the /srv/state guard, so the TSDB and Grafana's
+            # database cannot land on a filesystem that rolls back.
+            #
+            # NUMERIC ids on purpose: prometheus and grafana are CONTAINER
+            # users and the host has no matching passwd entry.
+            stateDirs = [
+              { path = settings.stateDir;                 owner = "root";       group = "root";       mode = "0755"; }
+              { path = "${settings.stateDir}/prometheus"; owner = prometheusUid; group = prometheusGid; }
+              { path = "${settings.stateDir}/grafana";    owner = grafanaUid;    group = grafanaGid; }
+            ];
+
+            # Leg 2 — the ZeroTier-facing point-to-point leg. Its host half is
+            # the forward-and-SNAT block above; these routes are the other
+            # half, one per clan machine via the host end, and they are what
+            # makes Prometheus able to scrape anything off this bridge at all.
+            ula = [
+              {
+                veth = monVeth;
+                hostAddress6 = monHostAddr;
+                localAddress6 = monContainerAddr;
+                routes = map (name: {
+                  Destination = "${addrOf name}/128";
+                  Gateway     = monHostAddr;
+                }) (lib.filter (n: n != machine.name) resolvable);
+              }
+            ];
 
             bindMounts = {
-              "/var/lib/prometheus2" = {
-                hostPath   = "${settings.stateDir}/prometheus";
-                isReadOnly = false;
-              };
-              "/var/lib/grafana" = {
-                hostPath   = "${settings.stateDir}/grafana";
-                isReadOnly = false;
-              };
-              "${secretsDir}" = {
-                hostPath   = secretsDir;
-                isReadOnly = true;
-              };
+              "/var/lib/prometheus2" = { hostPath = "${settings.stateDir}/prometheus"; isReadOnly = false; };
+              "/var/lib/grafana"     = { hostPath = "${settings.stateDir}/grafana";    isReadOnly = false; };
+              "${secretsDir}"        = { hostPath = secretsDir;                        isReadOnly = true;  };
             };
 
-            ##################################################################
-            # NixOS config for the container's own root filesystem.
-            ##################################################################
+            # NOTHING is unconditionally open, and Grafana's 3000 is the only
+            # port here. Prometheus (9090), Alertmanager (9093) and the ntfy
+            # bridge (8000) are absent on purpose and must stay absent: each
+            # reaches the next on 127.0.0.1 and there was never a second
+            # inbound client.
+            #
+            # The second source is the BREAK-GLASS path. After M7 the Grafana
+            # route is behind Authelia forward-auth, so "keep the local admin
+            # as break-glass" is only true if there is a way in that does not
+            # pass through it — that is the ULA leg, over v6.
+            allowFrom = [
+              { peer = settings.proxyAddress; port = ports.grafana; }
+              { peer = monHostAddr;           port = ports.grafana; }
+            ];
+
             config = { config, pkgs, lib, ... }: {
-              system.stateVersion = "26.05";
 
               # Matches the host.  Every alert timestamp, every "when did this
               # start firing", and every dashboard axis is rendered in local
@@ -2311,139 +2273,6 @@ in
               ################################################################
               # Networking.
               ################################################################
-              networking.useHostResolvConf = false;
-              networking.useNetworkd       = true;
-              services.resolved.enable     = true;
-
-              # eth0 — the Services VLAN.  DHCP against the UDM-Pro
-              # reservation; resolver DECLARED, not inherited, so a future
-              # change to the Services network's DHCP options cannot silently
-              # move this container off Technitium.
-              systemd.network.networks."10-eth0" = {
-                matchConfig.Name = "eth0";
-                networkConfig = {
-                  DHCP         = "ipv4";
-                  DNS          = settings.resolver;
-                  Domains      = "~. ${settings.searchDomain}";
-                  IPv6AcceptRA = false;
-                };
-                dhcpV4Config = {
-                  UseDNS     = false;
-                  UseDomains = false;
-                };
-                linkConfig.RequiredForOnline = "routable";
-              };
-
-              # mon0 — the host link, and every scrape route.
-              #
-              # EVERYTHING IS DECLARED HERE even though container-init already
-              # assigned the address and the host route: networkd removes
-              # addresses and routes it does not know about once it takes a
-              # link over.  Restating them is what stops the link being
-              # configured and then quietly stripped a second later.
-              #
-              # The /128 host route needs Scope = "link" — with /128s on both
-              # ends there is no on-link prefix, so the neighbour is not
-              # implicitly reachable.
-              #
-              # ONE /128 ROUTE PER SCRAPE TARGET, rather than the ZeroTier /88.
-              # The addresses come from the same clan vars the targets do, so
-              # this costs nothing to maintain and buys least privilege: the
-              # container can reach the machines it scrapes and no other node
-              # on the mesh.
-              systemd.network.networks."20-${monVeth}" = {
-                matchConfig.Name = monVeth;
-                address = [ "${monContainerAddr}/128" ];
-                routes = [
-                  { Destination = "${monHostAddr}/128"; Scope = "link"; }
-                ] ++ map (name: {
-                  Destination = "${addrOf name}/128";
-                  Gateway     = monHostAddr;
-                }) (lib.filter (n: n != machine.name) resolvable);
-                networkConfig.IPv6AcceptRA = false;
-
-                # "no", and this is a MEASURED correction rather than a
-                # preference.  It was "degraded" on the first deploy, on the
-                # guess that a /128 p2p link never reaches "routable".  That
-                # guess was wrong twice: it does reach routable (it has a
-                # global address), and requiring ANY state here fails.
-                #
-                # The journal from the first successful start, 2026-08-24:
-                #
-                #   12:14:58  mon0: Link UP
-                #   12:14:58  Starting Wait for Network to be Online...
-                #   12:15:18  Timeout occurred while waiting for network
-                #   12:15:18  systemd-networkd-wait-online: FAILED
-                #   12:15:18  mon0: Gained carrier          ← same second
-                #
-                # A veth pair has NO CARRIER until BOTH ends are up, and the
-                # host end of mon0 is brought up by container@monitoring's
-                # postStart — which nixos-containers runs only after nspawn
-                # reports the container started, i.e. after the container's own
-                # boot has finished.  So mon0 cannot possibly be online while
-                # the container is booting: wait-online was waiting for an
-                # event that its own completion is a precondition for.
-                #
-                # It resolved itself only because of the 20 s cap below — the
-                # unit failed, boot finished, READY fired, postStart ran, and
-                # carrier appeared in that same second.  That is the cap doing
-                # exactly what containers/jellyfin.nix designed it for, and it
-                # left one permanently failed unit on every boot as the price.
-                #
-                # Nothing in the container needs mon0 at boot: Prometheus
-                # retries a failed scrape forever and the first one is
-                # seconds away.  eth0 still carries RequiredForOnline =
-                # "routable", so a missing DHCP reservation is still caught.
-                linkConfig.RequiredForOnline = "no";
-              };
-
-              # 20 s, for the reason containers/jellyfin.nix explains at
-              # length: container@monitoring is Type=notify with
-              # TimeoutStartSec=1min, so a wait-online that blocks for the
-              # stock 120 s turns a missing DHCP reservation into a container
-              # the host kills and restart-loops, with no reachable state to
-              # debug.  At 20 s the container always finishes booting and
-              # leaves one obviously failed unit instead.
-              systemd.network.wait-online.timeout = 20;
-
-              # The container's own firewall.
-              #
-              # NOTHING is unconditionally open.  Grafana's 3000 is reachable
-              # only from the reverse proxy — backend bypass hardening,
-              # mechanism (a), the same rule containers/arr.nix applies to the
-              # three *arr UIs and for the same reason: .11 is the qBittorrent
-              # microvm and it is one layer-2 hop away on this bridge.
-              #
-              # Prometheus (9090), Alertmanager (9093) and the ntfy bridge
-              # (8000) are absent on purpose and must stay absent.  Grafana
-              # reaches Prometheus on 127.0.0.1; Prometheus reaches
-              # Alertmanager on 127.0.0.1; Alertmanager reaches the bridge on
-              # 127.0.0.1.  There was never a second inbound client.
-              #
-              # extraCommands and not extraInputRules: the latter is declared
-              # unconditionally but consumed only under networking.nftables,
-              # which is off here, so it would produce no rule and no warning.
-              #
-              # ── M7 ADDS A SECOND SOURCE, AND IT IS THE BREAK-GLASS PATH ──
-              #
-              # After M7 the Grafana route is behind Authelia forward-auth, so
-              # "keep the local admin as break-glass" is only true if there is
-              # a way to REACH the login form when the identity provider is
-              # the thing that is down — and through Traefik there is not.
-              #
-              # mon0's host end is that way.  It is host-only (a
-              # point-to-point ULA veth that never leaves ernst), it needs
-              # root on ernst to use, and it costs one rule:
-              #
-              #   ssh -N -L 3000:[${monContainerAddr}]:3000 root@ernst
-              #   then http://localhost:3000  →  local admin login
-              #
-              # ip6tables and not iptables: mon0 is IPv6-only by construction.
-              networking.firewall.allowedTCPPorts = [ ];
-              networking.firewall.extraCommands = ''
-                iptables  -A nixos-fw -p tcp -s ${settings.proxyAddress}/32 --dport ${toString ports.grafana} -j nixos-fw-accept
-                ip6tables -A nixos-fw -p tcp -s ${monHostAddr}/128          --dport ${toString ports.grafana} -j nixos-fw-accept
-              '';
 
               ################################################################
               # Users.  Numeric ids are the interface across the nspawn

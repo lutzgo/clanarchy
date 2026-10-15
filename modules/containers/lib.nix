@@ -141,6 +141,25 @@
           # container that will not start.
           readvar() { [ -r "$1" ] && cat "$1" || true; }
 
+          # ── `required` INVERTS THAT, FOR THE SECRETS WHERE EMPTY IS WORSE
+          #    THAN ABSENT ──────────────────────────────────────────────────
+          #
+          # Tolerance is right when the application can reject the value and
+          # say so — RomM with no admin password logs a refusal. It is wrong
+          # for a session-signing key: SearXNG started with an empty
+          # `SEARXNG_SECRET` comes up and serves, with every session forgeable
+          # and nothing in the log to say why. For those, failing the staging
+          # unit with a message naming the fix is the better outcome, and it
+          # is what this unit did by hand before the module took it over.
+          needvar() {
+            if [ ! -s "$2" ]; then
+              echo "${name}-secrets: $1 is missing or empty at $2" >&2
+              echo "  Run: clan vars generate <machine>" >&2
+              exit 1
+            fi
+            cat "$2"
+          }
+
           ${lib.concatStrings (lib.mapAttrsToList (envFile: vars: ''
             {
             ${lib.concatStrings (lib.mapAttrsToList (k: v:
@@ -148,7 +167,9 @@
               # Both end up in the same env file, because systemd reads one
               # `EnvironmentFile=` per service and splitting a client id from
               # its secret would mean two files for one consumer.
-              if v.file != null then ''
+              if v.file != null && v.required then ''
+                printf '%s=%s\n' ${lib.escapeShellArg k} "$(needvar ${lib.escapeShellArg k} ${v.file})"
+              '' else if v.file != null then ''
                 printf '%s=%s\n' ${lib.escapeShellArg k} "$(readvar ${v.file})"
               '' else ''
                 printf '%s=%s\n' ${lib.escapeShellArg k} ${lib.escapeShellArg v.value}

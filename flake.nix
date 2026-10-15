@@ -329,6 +329,14 @@
               ${must "a port range and a source render in iptables order"
                  (has t.containers.gadget.config.networking.firewall.extraCommands
                     "iptables -A nixos-fw -i iot9 -p udp -s 10.0.20.31/32 --dport 32768:60999 -j nixos-fw-accept")}
+              ${must "a ULA leg keeps the link-scope route AND its own"
+                 (t.containers.gadget.config.systemd.network.networks."20-ai9".routes
+                    == [ { Destination = "fdca:fe99::1/128"; Scope = "link"; }
+                         { Destination = "fdda::9/128"; Gateway = "fdca:fe99::1"; } ])}
+              ${must "a required secret fails the staging unit when empty"
+                 (has (svc "gadget-secrets").script "needvar")}
+              ${must "a tolerant secret still stages empty"
+                 (has (svc "gadget-secrets").script "readvar")}
               ${must "resolved off means no DNS= on the link"
                  (t.containers.doodad.config.services.resolved.enable == false
                   && !(t.containers.doodad.config.systemd.network.networks."10-eth0".networkConfig ? DNS)

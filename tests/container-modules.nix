@@ -62,9 +62,19 @@ in
         secrets."oidc.env" = {
           OAUTH_CLIENT_ID     = { value = "gadget"; };
           OAUTH_CLIENT_SECRET = { file = "/run/secrets/vars/gadget/secret"; };
+          # Both arms in one file: a tolerant var that stages empty, and a
+          # `required` one that fails the unit instead. A session-signing key
+          # left empty starts happily and forges every session.
+          SESSION_KEY         = { file = "/run/secrets/vars/gadget/session"; required = true; };
         };
         ula = [
-          { veth = "ai9"; hostAddress6 = "fdca:fe99::1"; localAddress6 = "fdca:fe99::2"; }
+          {
+            veth = "ai9"; hostAddress6 = "fdca:fe99::1"; localAddress6 = "fdca:fe99::2";
+            # A leg that must reach PAST the host end, the way monitoring's
+            # Prometheus scrapes over ZeroTier. Dropping these leaves a leg
+            # that comes up and reaches nothing beyond the host.
+            routes = [ { Destination = "fdda::9/128"; Gateway = "fdca:fe99::1"; } ];
+          }
         ];
         vlanLegs = [
           { veth = "iot9"; vlan = 20; mac = "02:00:00:20:00:09"; }

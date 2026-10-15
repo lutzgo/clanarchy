@@ -2990,26 +2990,6 @@ in
           rather than to an arbitrary number the container allocated.
         '';
       };
-      vlan = lib.mkOption {
-        type    = lib.types.int;
-        default = 90;
-        description = "Services VLAN.";
-      };
-      bridge = lib.mkOption {
-        type    = lib.types.str;
-        default = "br0";
-        description = "Host bridge the container's eth0 is enslaved to.";
-      };
-      resolver = lib.mkOption {
-        type    = lib.types.str;
-        default = "10.0.5.3";
-        description = "Technitium. Declared, not inherited from DHCP.";
-      };
-      searchDomain = lib.mkOption {
-        type    = lib.types.str;
-        default = "skynet.lan";
-        description = "Search suffix inside the container.";
-      };
       port = lib.mkOption {
         type    = lib.types.port;
         default = 8888;
@@ -3219,7 +3199,10 @@ in
       nixosModule = { config, pkgs, lib, ... }:
         let
           vethName   = "vb-searxng";
-          secretsDir = "/run/searxng-secrets";
+          # Derived from the container name, the way the module derives it —
+          # see the note in the webui role, where restating it by hand moved
+          # the path out from under the service that reads it.
+          secretsDir = "${config.clanarchy.containerDefaults.secretsRoot}/searxng-secrets";
           secretGen  = config.clan.core.vars.generators.searxng-secret;
 
           # ── The leg to the host (M29b) ──────────────────────────────────
@@ -3265,205 +3248,66 @@ in
             '';
           };
 
-          ####################################################################
-          # Stage the secret host-side, then bind-mount it in.
+          ##################################################################
+          # The container.
+          ##################################################################
           #
-          # NEVER point an in-container unit at /run/secrets/vars/… — clan var
-          # paths do not exist inside an nspawn container's mount namespace and
-          # the failure is a silent 243/CREDENTIALS.  Same shape as
-          # open-webui-secrets above.
-          #
-          # The rendered file is an EnvironmentFile for searx-init, whose
-          # envsubst pass turns `$SEARXNG_SECRET` in the settings into the real
-          # value at runtime — so the key never enters the Nix store.  That is
-          # the whole reason this goes through `environmentFile` rather than
-          # being written into `settings.server.secret_key` directly, which the
-          # nixpkgs module warns is world-readable.
-          ####################################################################
-          systemd.services.searxng-secrets = {
-            description = "Stage SearXNG's secret key for its container";
-            wantedBy    = [ "multi-user.target" ];
-            before      = [ "container@searxng.service" ];
-            serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
-            script = ''
-              set -euo pipefail
+          # Declared through modules/containers/nspawn.nix, which generates
+          # the staging unit, the host-side veth network, the VLAN backstop,
+          # the container preamble, the in-container networking and the
+          # firewall — and takes its bridge, VLAN, resolver and search domain
+          # from the HOST's `clanarchy.containerDefaults` rather than from
+          # this role's settings. That is what makes this role portable: a
+          # second container host answers those four questions itself.
+          clanarchy.containers.searxng = {
+            enable = true;
+            mac    = settings.mac;
 
-              # ── WHY THIS IS A CHECK AND NOT A BARE `cat` ────────────────
-              #
-              # Before `clan vars generate ernst` has run, this generator's
-              # `.path` evaluates to the literal string /no-such-path — it is
-              # not a placeholder that fails at build time, it is a path that
-              # reaches the deployed unit.  This repo has already taken an
-              # outage from exactly that: a bare `cat` on it under `set -eu`
-              # took RomM down on 2026-09-07.
-              #
-              # Failing here, by name, is the whole point.  Without the check
-              # the quiet outcome is worse than the loud one: envsubst
-              # substitutes an UNSET variable with the EMPTY STRING, so
-              # SearXNG would come up with `secret_key: ""` and look healthy.
-              secret_file=${secretGen.files."searxng-secret".path}
-              if [ ! -s "$secret_file" ]; then
-                echo "  ✗ SearXNG secret missing or empty at $secret_file" >&2
-                echo "    Run: clan vars generate ernst" >&2
-                exit 1
-              fi
+            # NO uid/gid PIN: the in-container `users.users.searx` block below
+            # declares the user in full, and a second definition of the same
+            # uid is a conflict rather than a pin.
 
-              install -d -m 0750 -o ${toString settings.uid} -g ${toString settings.uid} ${secretsDir}
-              umask 077
-              printf 'SEARXNG_SECRET=%s\n' "$(cat "$secret_file")" \
-                > ${secretsDir}/searxng.env.new
-              chown ${toString settings.uid}:${toString settings.uid} ${secretsDir}/searxng.env.new
-              chmod 0400 ${secretsDir}/searxng.env.new
-              mv -f ${secretsDir}/searxng.env.new ${secretsDir}/searxng.env
-            '';
-          };
-
-          # FAIL CLOSED.  `before=` alone only orders the two units — it does
-          # not stop the container when staging fails, and nspawn would then
-          # start SearXNG with no EnvironmentFile, envsubst would substitute
-          # the empty string, and the instance would run with an empty
-          # cookie-signing key while reporting itself healthy.  `requires=`
-          # turns that into a container that does not start, which is the
-          # outcome worth having.
-          systemd.services."container@searxng" = {
-            requires = [ "searxng-secrets.service" ];
-            after    = [ "searxng-secrets.service" ];
-          };
-
-          ####################################################################
-          # Host side of the Services-VLAN veth.  Identical shape to the webui
-          # container's: KeepMaster because nspawn creates and enslaves the
-          # link itself, no L3 because a bridge port carries none, "enslaved"
-          # because a bridge port never reaches routable and waiting for it
-          # hangs boot.
-          ####################################################################
-          systemd.network.networks."60-${vethName}" = {
-            matchConfig.Name = vethName;
-            networkConfig = {
-              KeepMaster          = true;
-              LinkLocalAddressing = "no";
-              IPv6AcceptRA        = false;
-            };
-            bridgeVLANs = [ {
-              VLAN           = settings.vlan;
-              PVID           = settings.vlan;
-              EgressUntagged = settings.vlan;
-            } ];
-            linkConfig.RequiredForOnline = "enslaved";
-          };
-
-          # Re-assert the VLAN after nspawn has created the veth — the same
-          # real race as vb-jellyfin / vb-arr / vb-traefik / vb-monitoring /
-          # vb-openwebui.  networkd applies [BridgeVLAN] only once it observes
-          # the link's master, and nspawn sets that master out of band.
-          # Idempotent, "-" prefixed so a backstop cannot become a new failure.
-          systemd.services."container@searxng".serviceConfig.ExecStartPost = [
-            "-${pkgs.iproute2}/bin/bridge vlan add dev ${vethName} vid ${toString settings.vlan} pvid untagged"
-          ];
-
-          containers.searxng = {
-            autoStart = true;
-            ephemeral = false;
-
-            privateNetwork  = true;
-            hostBridge      = settings.bridge;
-            localMacAddress = settings.mac;
-
-            # ── A SECOND VETH, ADDED BY M29b, AND THE PROPERTY IT HAD IS KEPT
+            # ── THE SECRET IS `required`, WHICH INVERTS THE USUAL TOLERANCE ─
             #
-            # This block used to say "NO SECOND VETH, and its absence is
-            # load-bearing": the webui container has a leg to llama-swap, and
-            # this one had no path to anything ernst binds locally, so a
-            # compromised SearXNG could not reach the inference stack.
+            # Everywhere else a missing var stages empty, so the application
+            # rejects it in its own terms rather than the container refusing
+            # to start. Here empty is worse: envsubst would substitute the
+            # empty string and SearXNG would run with an empty cookie-signing
+            # key while reporting itself healthy. So the staging unit fails,
+            # and because it is `requiredBy` the container, the container does
+            # not start — the outcome worth having.
             #
-            # M29b needs the OPPOSITE DIRECTION — mneme is a host service and
-            # has to reach SearXNG — and the distinction is what preserves the
-            # property.  The host end dials in; nothing accepts on the way
-            # back.  ernst's `nixos-fw` drops unmatched input and this
-            # milestone adds NO accept for `fdca:fe94::2`, so the container can
-            # emit packets at the host and they are discarded; only replies on
-            # a connection the host opened come back, by the conntrack rule
-            # that is already there.  A compromised SearXNG is exactly as
-            # boxed in as it was.
-            #
-            # WHY NOT JUST WIDEN `allowedSource` TO THE HOST.  Two reasons.
-            # The host's route to 10.0.90.24 is `via 10.0.50.1` — measured —
-            # so search traffic would leave ernst, cross the UDM-Pro and come
-            # back, which is the hairpin M6's mon0 exists to avoid.  And
-            # `allowedSource` is documented as "the ONE address permitted";
-            # making it plural to admit a second, differently-shaped peer
-            # would spend that invariant on a case that does not need it.
-            extraVeths.${webVeth} = {
-              hostAddress6  = webHost;
-              localAddress6 = webCont;
-            };
-            bindMounts = {
-              ${secretsDir} = {
-                hostPath   = secretsDir;
-                isReadOnly = true;
-              };
+            # The rendered file is an EnvironmentFile for searx-init, whose
+            # envsubst pass turns `$SEARXNG_SECRET` in the settings into the
+            # value at runtime — which is why this goes through
+            # `environmentFile` and never into `settings.server.secret_key`,
+            # where the nixpkgs module warns it would be world-readable.
+            secrets."searxng.env".SEARXNG_SECRET = {
+              file     = secretGen.files."searxng-secret".path;
+              required = true;
             };
 
-            # NO STATE BIND MOUNT, deliberately, and this is a real property
-            # rather than an omission.  nixpkgs' searx module declares no
-            # StateDirectory: settings are regenerated into /run/searx on every
-            # start by searx-init, and the only persistent thing SearXNG can
-            # own is the favicon cache, which `faviconsSettings` would have to
-            # opt into and which is not enabled here.  So invariant #7 has
-            # nothing to bind — there is no service data to put on zdata.  If a
-            # future change enables favicons or any other cache, it acquires a
-            # /srv/state bind in the same edit.
+            # mneme's leg, pointing INWARD: it searches the web through this
+            # container rather than being given an egress path of its own.
+            ula = [
+              { veth = webVeth; hostAddress6 = webHost; localAddress6 = webCont; }
+            ];
+
+            # NOTHING is unconditionally open. Two sources, one port, and they
+            # are different address families on different legs: Open WebUI
+            # over VLAN 90, and mneme over the point-to-point ULA.
+            allowFrom = [
+              { peer = settings.allowedSource; port = settings.port; }
+              { peer = webHost;                port = settings.port; }
+            ];
 
             config = { config, lib, pkgs, ... }: {
-              system.stateVersion = "26.05";
 
               # Matches the host, for the reason arr.nix, monitoring.nix and
               # the webui container all give: every timestamp a human reads is
               # local time, and a container that defaults to UTC makes each of
               # them a two-hour question.
               time.timeZone = "Europe/Berlin";
-
-              networking.useHostResolvConf = false;
-              networking.useNetworkd       = true;
-              services.resolved.enable     = true;
-
-              systemd.network.networks."10-eth0" = {
-                matchConfig.Name = "eth0";
-                networkConfig = {
-                  DHCP         = "ipv4";
-                  DNS          = settings.resolver;
-                  Domains      = "~. ${settings.searchDomain}";
-                  IPv6AcceptRA = false;
-                };
-                dhcpV4Config = { UseDNS = false; UseDomains = false; };
-                linkConfig.RequiredForOnline = "routable";
-              };
-              systemd.network.wait-online.timeout = 20;
-
-              # ai-style leg to the host (M29b) — see extraVeths above.
-              systemd.network.networks."20-${webVeth}" = {
-                matchConfig.Name = webVeth;
-                address = [ "${webCont}/128" ];
-                routes  = [ { Destination = "${webHost}/128"; Scope = "link"; } ];
-                networkConfig.IPv6AcceptRA = false;
-                # A veth has no carrier until both ends exist, and the host end
-                # is created by the nspawn invocation that starts this
-                # container. "routable" would hang wait-online on that timing.
-                linkConfig.RequiredForOnline = "no";
-              };
-
-              # NOTHING is unconditionally open.  Two sources now, one port,
-              # and they are different address families on different legs:
-              # Open WebUI over VLAN 90, and mneme over the point-to-point ULA.
-              networking.firewall = {
-                enable = true;
-                extraCommands = ''
-                  iptables -A nixos-fw -p tcp --dport ${toString settings.port} \
-                    -s ${settings.allowedSource} -j nixos-fw-accept
-                  ip6tables -A nixos-fw -p tcp --dport ${toString settings.port} \
-                    -s ${webHost}/128 -j nixos-fw-accept
-                '';
-              };
 
               users.users.searx = {
                 isSystemUser = true;
@@ -3732,26 +3576,6 @@ in
       uid = lib.mkOption {
         type        = lib.types.int;
         description = "Static uid/gid, allocated in machines/ernst/allocations.nix.";
-      };
-      vlan = lib.mkOption {
-        type    = lib.types.int;
-        default = 90;
-        description = "Services VLAN.";
-      };
-      bridge = lib.mkOption {
-        type    = lib.types.str;
-        default = "br0";
-        description = "Host bridge the container's eth0 is enslaved to.";
-      };
-      resolver = lib.mkOption {
-        type    = lib.types.str;
-        default = "10.0.5.3";
-        description = "Technitium. Declared, not inherited from DHCP.";
-      };
-      searchDomain = lib.mkOption {
-        type    = lib.types.str;
-        default = "skynet.lan";
-        description = "Search suffix inside the container.";
       };
       port = lib.mkOption {
         type    = lib.types.port;
@@ -4256,7 +4080,15 @@ in
       nixosModule = { config, pkgs, lib, ... }:
         let
           oidcGen = config.clan.core.vars.generators.authelia-oidc-openwebui;
-          secretsDir = "/run/open-webui-secrets";
+
+          # DERIVED, NOT RESTATED. modules/containers/nspawn.nix builds this
+          # from the CONTAINER name, which is `openwebui` — not the service
+          # name `open-webui`. Writing the path out by hand here meant the
+          # module bound /run/openwebui-secrets while the service below read
+          # /run/open-webui-secrets/oidc.env, which is a missing
+          # EnvironmentFile and a unit that will not start. Nothing persists
+          # under /run, so the rename costs nothing.
+          secretsDir = "${config.clanarchy.containerDefaults.secretsRoot}/openwebui-secrets";
           vethName = "vb-openwebui";
           # ── THIS NAME IS HOST-GLOBAL, AND IT WAS `ai0` UNTIL M29 ──────────
           #
@@ -4370,8 +4202,14 @@ in
             files."openwebui-client-secret-digest".secret = true;
             files."openwebui-client-secret-digest".restartUnits =
               [ "authelia-secrets.service" "container@authelia.service" ];
+            # `openwebui-secrets`, not `open-webui-secrets`: the module names
+            # the staging unit after the CONTAINER, and a restartUnits entry
+            # naming a unit that does not exist is silent — the secret
+            # rotates, nothing restarts, and the container keeps serving the
+            # old value. The generator-name gate cannot catch this, because
+            # this is a value inside a generator rather than its name.
             files."openwebui-client-secret".restartUnits =
-              [ "open-webui-secrets.service" "container@openwebui.service" ];
+              [ "openwebui-secrets.service" "container@openwebui.service" ];
 
             runtimeInputs = [ pkgs.authelia pkgs.gnused pkgs.coreutils ];
             script = ''
@@ -4388,101 +4226,58 @@ in
             '';
           };
 
+
           ##################################################################
-          # Stage the secret host-side, then bind-mount it in.
+          # The container.
+          ##################################################################
           #
-          # NEVER point an in-container unit at /run/secrets/vars/… — clan var
-          # paths do not exist inside an nspawn container's mount namespace and
-          # the failure is a silent 243/CREDENTIALS. Staging into a directory
-          # that IS bind-mounted is the fleet pattern.
-          ##################################################################
-          systemd.services.open-webui-secrets = {
-            description = "Stage Open WebUI's OIDC secret for its container";
-            wantedBy    = [ "multi-user.target" ];
-            before      = [ "container@openwebui.service" ];
-            serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
-            script = ''
-              set -euo pipefail
-              install -d -m 0750 -o ${toString settings.uid} -g ${toString settings.uid} ${secretsDir}
-              # Open WebUI reads its env from a file; render the whole line so
-              # the value never appears in a unit's Environment= (world-readable
-              # via `systemctl show`).
-              umask 077
-              printf 'OAUTH_CLIENT_SECRET=%s\n' \
-                "$(cat ${oidcGen.files."openwebui-client-secret".path})" \
-                > ${secretsDir}/oidc.env.new
-              chown ${toString settings.uid}:${toString settings.uid} ${secretsDir}/oidc.env.new
-              chmod 0400 ${secretsDir}/oidc.env.new
-              mv -f ${secretsDir}/oidc.env.new ${secretsDir}/oidc.env
-            '';
-          };
+          # Declared through modules/containers/nspawn.nix, which generates
+          # the staging unit, the state directory, the host-side veth
+          # network, the VLAN backstop, the container preamble, the
+          # in-container networking and the firewall — taking bridge, VLAN,
+          # resolver and search domain from the HOST's
+          # `clanarchy.containerDefaults` rather than from this role.
+          clanarchy.containers.openwebui = {
+            enable = true;
+            mac    = settings.mac;
 
-          systemd.tmpfiles.rules = [
-            "d ${settings.stateDir} 0750 ${toString settings.uid} ${toString settings.uid} -"
-          ];
+            # NO uid/gid PIN: the in-container `users.users.open-webui` block
+            # declares the user in full.
 
-          ##################################################################
-          # Host side of the Services-VLAN veth.
-          #
-          # KeepMaster rather than Bridge= because nspawn creates AND enslaves
-          # this link itself; no L3 because a bridge port carries none;
-          # "enslaved" rather than "routable" because a bridge port never
-          # reaches routable and waiting for it hangs boot.
-          ##################################################################
-          systemd.network.networks."60-${vethName}" = {
-            matchConfig.Name = vethName;
-            networkConfig = {
-              KeepMaster          = true;
-              LinkLocalAddressing = "no";
-              IPv6AcceptRA        = false;
+            # AN ORDERED UNIT RATHER THAN A tmpfiles RULE. This path is bound
+            # into the container, and a tmpfiles rule for a bound path races
+            # the container's own start — immich measured that. It also gains
+            # the /srv/state mount guard, so state cannot land on a
+            # filesystem that rolls back.
+            stateDirs = [
+              { path = settings.stateDir; owner = settings.uid; group = settings.uid; mode = "0750"; }
+            ];
+
+            # `required`, preserving this unit's existing behaviour: it used a
+            # bare `cat` under `set -euo pipefail`, so a missing var already
+            # failed the unit and stopped the container. An empty OIDC client
+            # secret is every login broken, so failing closed is right here —
+            # unlike a password the application can refuse and log.
+            secrets."oidc.env".OAUTH_CLIENT_SECRET = {
+              file     = oidcGen.files."openwebui-client-secret".path;
+              required = true;
             };
-            bridgeVLANs = [ {
-              VLAN           = settings.vlan;
-              PVID           = settings.vlan;
-              EgressUntagged = settings.vlan;
-            } ];
-            linkConfig.RequiredForOnline = "enslaved";
-          };
 
-          # Re-assert the VLAN after nspawn has created the veth. The same real
-          # race as vb-jellyfin / vb-arr / vb-traefik / vb-monitoring: networkd
-          # applies [BridgeVLAN] only once it observes the link's master, and
-          # nspawn sets that master out of band. Idempotent, "-" prefixed so a
-          # backstop cannot become a new failure mode.
-          systemd.services."container@openwebui".serviceConfig.ExecStartPost = [
-            "-${pkgs.iproute2}/bin/bridge vlan add dev ${vethName} vid ${toString settings.vlan} pvid untagged"
-          ];
-
-          containers.openwebui = {
-            autoStart = true;
-            ephemeral = false;
-
-            privateNetwork  = true;
-            hostBridge      = settings.bridge;
-            localMacAddress = settings.mac;
-
-            # Leg 2 — the point-to-point link to the host, carrying exactly one
-            # thing: requests to llama-swap. /128 on each end, so
-            # nixos-containers adds the matching host route on both sides and
-            # there is no on-link assumption to get wrong.
-            extraVeths.${aiVeth} = {
-              hostAddress6  = aiHost;
-              localAddress6 = aiCont;
-            };
+            # The inference leg, point-to-point and inward.
+            ula = [
+              { veth = aiVeth; hostAddress6 = aiHost; localAddress6 = aiCont; }
+            ];
 
             bindMounts = {
-              "/var/lib/open-webui" = {
-                hostPath   = settings.stateDir;
-                isReadOnly = false;
-              };
-              ${secretsDir} = {
-                hostPath   = secretsDir;
-                isReadOnly = true;
-              };
+              "/var/lib/open-webui" = { hostPath = settings.stateDir; isReadOnly = false; };
             };
 
+            # Only the proxy. Nothing else on the services VLAN reaches it.
+            allowFrom = [
+              { peer = settings.proxyAddress; port = settings.port; }
+            ];
+
             config = { config, lib, ... }: {
-              system.stateVersion = "26.05";
 
               # ── OPEN WEBUI IS UNFREE, AND THE ALLOWANCE STAYS IN HERE ─────
               #
@@ -4524,47 +4319,6 @@ in
               # container that defaults to UTC makes each of them a two-hour
               # question.
               time.timeZone = "Europe/Berlin";
-
-              networking.useHostResolvConf = false;
-              networking.useNetworkd       = true;
-              services.resolved.enable     = true;
-
-              systemd.network.networks."10-eth0" = {
-                matchConfig.Name = "eth0";
-                networkConfig = {
-                  DHCP         = "ipv4";
-                  DNS          = settings.resolver;
-                  Domains      = "~. ${settings.searchDomain}";
-                  IPv6AcceptRA = false;
-                };
-                dhcpV4Config = { UseDNS = false; UseDomains = false; };
-                linkConfig.RequiredForOnline = "routable";
-              };
-
-              systemd.network.networks."20-${aiVeth}" = {
-                matchConfig.Name = aiVeth;
-                address = [ "${aiCont}/128" ];
-                routes  = [ { Destination = "${aiHost}/128"; Scope = "link"; } ];
-                networkConfig.IPv6AcceptRA = false;
-                # "no", for the reason monitoring.nix measured and wrote down:
-                # a veth pair has no carrier until both ends are up, and the
-                # host end is brought up by container@…'s postStart, which runs
-                # only after the container has finished booting. Requiring any
-                # state here waits for an event its own completion is a
-                # precondition for.
-                linkConfig.RequiredForOnline = "no";
-              };
-              systemd.network.wait-online.timeout = 20;
-
-              # NOTHING is unconditionally open. Traefik and only Traefik.
-              networking.firewall = {
-                enable = true;
-                extraCommands = ''
-                  iptables -A nixos-fw -p tcp --dport ${toString settings.port} \
-                    -s ${settings.proxyAddress} -j nixos-fw-accept
-                '';
-              };
-
               users.users.open-webui = {
                 isSystemUser = true;
                 group = "open-webui";

@@ -49,6 +49,21 @@ let
         default = null;
         description = "A constant. Ends up in the store, so never a secret.";
       };
+      required = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Fail the staging unit when the var is missing or empty, instead of
+          passing an empty value through.
+
+          FALSE BY DEFAULT because the unit is `requiredBy` the container, so
+          failing it stops the service rather than degrading it — that took
+          RomM down on 2026-09-07. Set it true only where an empty value is
+          WORSE than a stopped service: a session-signing key, where the
+          application starts happily and every session is forgeable with
+          nothing in the log to say so.
+        '';
+      };
     };
   };
 
@@ -193,6 +208,21 @@ let
       };
       hostAddress6  = lib.mkOption { type = lib.types.str; description = "Host end, a /128."; };
       localAddress6 = lib.mkOption { type = lib.types.str; description = "Container end, a /128."; };
+      routes = lib.mkOption {
+        type = lib.types.listOf (lib.types.attrsOf lib.types.anything);
+        default = [ ];
+        example = lib.literalExpression ''[ { Destination = "fdda::1/128"; Gateway = "fdca:fe90::1"; } ]'';
+        description = ''
+          Further routes on this leg, appended after the link-scope route to
+          the host end.
+
+          A leg that only answers its one consumer needs none. The monitoring
+          container needs one per clan machine, via the host end, because its
+          Prometheus SCRAPES them over ZeroTier and the host SNATs that
+          traffic out — without these the leg reaches the host and nothing
+          beyond it, which is a leg that looks up and scrapes nothing.
+        '';
+      };
     };
   };
 
@@ -619,7 +649,7 @@ let
             lib.nameValuePair "20-${u.veth}" {
               matchConfig.Name = u.veth;
               address = [ "${u.localAddress6}/128" ];
-              routes  = [ { Destination = "${u.hostAddress6}/128"; Scope = "link"; } ];
+              routes  = [ { Destination = "${u.hostAddress6}/128"; Scope = "link"; } ] ++ u.routes;
               networkConfig.IPv6AcceptRA = false;
               linkConfig.RequiredForOnline = "no";
             }) c.ula)
