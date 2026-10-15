@@ -1508,15 +1508,6 @@ in
   # Host-side wiring.
   ##############################################################################
 
-  # Certificate store on zdata.  0700 and owned by the service, exactly like
-  # /srv/state/{jellyfin,sonarr,radarr,prowlarr}: nothing else has any business
-  # reading a private key.
-  #
-  # NUMERIC ids on purpose — `traefik` is a container user and the host has no
-  # matching passwd entry.  Same shape containers/arr.nix uses for uid 3002.
-  systemd.tmpfiles.rules = [
-    "d /srv/state/traefik 0700 ${toString traefikUid} ${toString traefikGid} -"
-  ];
 
   # Stage the Cloudflare token where the container can see it.
   #
@@ -1575,18 +1566,6 @@ in
   #
   # 60- prefix so it sorts after the 50-* topology units in
   # machines/ernst/networking.nix and well ahead of the 99-* wildcards.
-  systemd.network.networks."60-${vethName}" = {
-    matchConfig.Name = vethName;
-    networkConfig = {
-      KeepMaster          = true;
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
-    };
-    bridgeVLANs = [ { VLAN = vlanId; PVID = vlanId; EgressUntagged = vlanId; } ];
-    # A bridge port's terminal operational state is "enslaved"; it never
-    # becomes routable, and waiting for that would hang boot.
-    linkConfig.RequiredForOnline = "enslaved";
-  };
 
   # Re-assert the VLAN membership after nspawn has created the veth.
   #
@@ -1604,9 +1583,6 @@ in
   #
   # `bridge vlan show dev vb-traefik` remains the check — do not trust silence
   # from either mechanism.
-  systemd.services."container@traefik".serviceConfig.ExecStartPost = [
-    "-${pkgs.iproute2}/bin/bridge vlan add dev ${vethName} vid ${toString vlanId} pvid untagged"
-  ];
 
   ##############################################################################
   # Vars generator: the Cloudflare DNS-01 credential.
@@ -1681,39 +1657,64 @@ in
   ##############################################################################
   # The container itself.
   ##############################################################################
-  containers.traefik = {
-    autoStart = true;
-    ephemeral = false;          # acme.json persists via the bind mount below
 
-    # Own netns, own L2 identity.  See the file header for why this is a veth
-    # on br0 and not a macvlan or a tap.
-    privateNetwork  = true;
-    hostBridge      = "br0";
-    localMacAddress = traefikMac;
+  ##############################################################################
+  # The container.
+  ##############################################################################
+  #
+  # modules/containers/nspawn.nix generates the dirs unit, the host-side veth
+  # network, the VLAN backstop, the container preamble and the in-container
+  # networking. It does NOT generate this container's firewall — see
+  # `manageFirewall` below.
+  #
+  # `traefik-secrets` STAYS HAND-WRITTEN: it installs the Cloudflare token as
+  # a whole file rather than composing an env file out of keys.
+  #
+  # containers/crowdsec.nix CO-DEFINES this container, adding its own daemon
+  # inside Traefik's netns — the only place that sees the pre-DNAT source of a
+  # WAN request. `containers.<n>.config` merges like any other option, and
+  # `clanarchy.containers.<n>.config` is passed through to it unchanged, so
+  # that arrangement is unaffected by this move.
+  clanarchy.containers.traefik = {
+    enable = true;
+    mac    = traefikMac;
+
+    # NO uid/gid PIN: the module allocates traefik dynamically and the
+    # in-container block handles it — see its own note.
+
+    stateVersion = "26.05";
+
+    # ── THE FIREWALL IS THIS CONTAINER'S OWN, AND THAT IS NOT A SHORTCUT ─────
+    #
+    # Two reasons, either of which is sufficient. First, "which peers" is the
+    # wrong question for the ingress: 80, 443 and the WAN port answer the
+    # whole internet, which is the entire point of the machine. Second, this
+    # is the one container here running `networking.nftables`, where the
+    # `extraCommands` the module emits is declared but never consumed — no
+    # rule, no warning, no firewall. Its rules use `extraInputRules`, below.
+    manageFirewall = false;
+
+    # AN ORDERED UNIT RATHER THAN A tmpfiles RULE: bound into the container,
+    # so a tmpfiles rule for it races the container's own start. The guard
+    # matters more here than anywhere — acme.json on a filesystem that rolls
+    # back means re-issuing every certificate on every boot, and Let's
+    # Encrypt rate-limits that.
+    #
+    # NUMERIC ids on purpose: `traefik` is a container user and the host has
+    # no matching passwd entry.
+    stateDirs = [
+      { path = "/srv/state/traefik"; owner = traefikUid; group = traefikGid; }
+    ];
 
     bindMounts = {
-      # The certificate store, on zdata.  Remapped to the module's upstream
-      # default dataDir so services.traefik needs no path override — the same
-      # trick containers/jellyfin.nix uses for /var/lib/jellyfin and
-      # containers/arr.nix for /var/lib/{sonarr,radarr,prowlarr}.
-      "${dataDir}" = {
-        hostPath   = "/srv/state/traefik";
-        isReadOnly = false;
-      };
-
-      # The staged Cloudflare token, read-only, at the identical path.  See the
-      # staging unit above for why this is not a bind of /run/secrets.
-      "${secretsDir}" = {
-        hostPath   = secretsDir;
-        isReadOnly = true;
-      };
+      # The certificate store, at the module's own default dataDir so
+      # services.traefik needs no path override.
+      "${dataDir}"    = { hostPath = "/srv/state/traefik"; isReadOnly = false; };
+      # The staged Cloudflare token, read-only, at the identical path.
+      "${secretsDir}" = { hostPath = secretsDir;           isReadOnly = true;  };
     };
 
-    ############################################################################
-    # NixOS config for the container's own root filesystem.
-    ############################################################################
     config = { config, pkgs, lib, ... }: {
-      system.stateVersion = "26.05";
 
       # Matches the host.  Certificate expiry, renewal attempts and every
       # access-log line are rendered in local time, and a container that
@@ -1729,65 +1730,6 @@ in
       # private netns the host's resolv.conf is a stale snapshot of someone
       # else's resolver anyway.  virtualisation/container-config.nix sets it
       # `mkDefault true`, so a plain `false` wins without mkForce.
-      networking.useHostResolvConf = false;
-
-      networking.useNetworkd   = true;
-      services.resolved.enable = true;
-
-      # eth0 — renamed from host0 by container-init before stage 2 runs.
-      #
-      # ADDRESS: DHCP, reserved on the UDM-Pro against the pinned MAC.
-      # RESOLVER: declared, not inherited.  UseDNS/UseDomains = false so a
-      # future change to the Services network's DHCP options cannot silently
-      # move this container off Technitium.  "~." is a ROUTING domain, so every
-      # lookup goes to 10.0.5.3; "skynet.lan" is the bare-hostname suffix.
-      #
-      # This resolver is what the BACKEND connections and Let's Encrypt's API
-      # hostname resolve through.  The ACME propagation check deliberately does
-      # NOT use it — see SPLIT HORIZON in the file header.
-      #
-      # Check on ernst with:  nixos-container run traefik -- resolvectl status eth0
-      systemd.network.networks."10-eth0" = {
-        matchConfig.Name = "eth0";
-        networkConfig = {
-          DHCP         = "ipv4";
-          DNS          = "10.0.5.3";
-          Domains      = "~. skynet.lan";
-          # SN2's enforcement, and the ONLY thing that actually enforces it
-          # here.  `IPv6AcceptRA = false` alone stops a ROUTER ADVERTISEMENT
-          # being accepted; it does not stop networkd assigning a link-local
-          # address, because LinkLocalAddressing defaults to `ipv6`.
-          #
-          # THIS PAIR IS ALREADY THE REPO'S IDIOM — machines/ernst/networking.nix
-          # and the br0 port at the top of this file both carry both lines.
-          # This network unit had only the second, which is why the container
-          # kept fe80::ff:fe90:4/64 while every other interface on VLAN 90 has
-          # no v6 at all.  It was an omission, not a decision.
-          #
-          # Do NOT try to do this with `boot.kernel.sysctl` disable_ipv6.  That
-          # was tried twice and lost twice: systemd-sysctl runs before eth0
-          # exists, so the per-interface key is skipped, and networkd then
-          # writes `disable_ipv6 = 0` on every link it configures.  Measured —
-          # with LinkLocalAddressing=no in place, eth0 has NO v6 address while
-          # `net.ipv6.conf.eth0.disable_ipv6` still reads 0.  networkd owns the
-          # link, so networkd is the layer that decides.
-          LinkLocalAddressing = "no";
-          IPv6AcceptRA        = false;
-        };
-        dhcpV4Config = {
-          UseDNS     = false;
-          UseDomains = false;
-        };
-        linkConfig.RequiredForOnline = "routable";
-      };
-
-      # 20 s, for the reason containers/jellyfin.nix explains at length:
-      # container@traefik is Type=notify with TimeoutStartSec=1min, so a
-      # wait-online that blocks for the stock 120 s turns a missing DHCP
-      # reservation into a container the host kills and restart-loops, with no
-      # reachable state to debug.  At 20 s the container always finishes booting
-      # and leaves one obviously failed unit instead.
-      systemd.network.wait-online.timeout = 20;
 
       ##########################################################################
       # THE FIREWALL IS nftables HERE, AND M18 IS WHY — argue before reverting.

@@ -55,6 +55,15 @@ let
     (_: net: lib.length (net.bridgeVLANs or [ ]))
     (lib.filterAttrs (n: _: lib.hasPrefix "60-" n) config.systemd.network.networks));
 
+  # ── allowFrom declared but never rendered ────────────────────────────────
+  #
+  # `manageFirewall = false` means the container writes its own rules, so an
+  # `allowFrom` list alongside it is not merely redundant: it reads like the
+  # enforcement and is not enforced anywhere.
+  unrenderedAllows = lib.attrNames (lib.filterAttrs
+    (_: c: c.enable && !c.manageFirewall && c.allowFrom != [ ])
+    (config.clanarchy.containers or { }));
+
   # ── a restartUnits target that does not exist ────────────────────────────
   #
   # Lives here because the container modules are what DERIVE unit names from
@@ -137,6 +146,18 @@ in
         nspawn derives the host veth as `vb-<name>` and 15 is IFNAMSIZ, so this
         evaluates cleanly and fails at container START. It is why ernst's are
         `mail`, `mass` and `hass` rather than the obvious spellings.
+      '';
+    }
+
+    {
+      assertion = unrenderedAllows == [ ];
+      message = ''
+        These containers set `manageFirewall = false` but still declare
+        `allowFrom`: ${lib.concatStringsSep ", " unrenderedAllows}
+
+        Those entries render nothing. A reader takes a peer list for the
+        enforcement, and here it is decoration — the container's own firewall
+        block is what decides. Delete one or the other.
       '';
     }
 
