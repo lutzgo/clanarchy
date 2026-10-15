@@ -554,6 +554,8 @@
           # header — the single file was 6,218 lines, which is past what
           # either a person or a 32k-context model can hold.
           ./machines/ernst/containers/arr/common.nix
+          ./machines/ernst/containers/arr/storage.nix
+          ./machines/ernst/containers/arr/users.nix
           ./machines/ernst/containers/arr/video.nix
           ./machines/ernst/containers/arr/indexers.nix
           ./machines/ernst/containers/arr/music.nix
