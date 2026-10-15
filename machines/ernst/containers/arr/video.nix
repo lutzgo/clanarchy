@@ -167,6 +167,81 @@ in
     openFirewall = false;
   };
 
+
+
+  ##########################################################################
+  # Recyclarr — TRaSH-Guides quality definitions, synced on a timer.
+  #
+  # SCOPE NOTE: M4's prompt says "recyclarr is explicitly OUT of scope; it
+  # is a backlog item to evaluate after this settles."  It is here because
+  # lgo asked for it during the milestone, not because the boundary drifted.
+  # Recorded so the prompt and the tree do not silently disagree.
+  #
+  # It is a good fit for this repo: the NixOS module takes the entire
+  # recyclarr config as a Nix attrset, so "which quality definitions apply"
+  # becomes a reviewable diff instead of UI state nobody can reconstruct.
+  # That is the same argument the root folders lost — those only exist in
+  # the UI, so they stay a documented manual step; this one does not have
+  # to.
+  ##########################################################################
+
+  # THE API KEYS, and why they are not a clan var.
+  #
+  # Recyclarr authenticates to Sonarr and Radarr with their API keys.  Those
+  # keys are not ours to choose: each app generates one on first run and
+  # writes it into its own config.xml on zdata.  There are two ways to get
+  # them to recyclarr and only one of them stays true.
+  #
+  #   A clan-vars prompt would work today and rot tomorrow.  It would mean
+  #   pasting a value that already exists elsewhere, creating a second copy
+  #   with no link to the first — and the day an API key is regenerated in
+  #   the UI (Settings → General → API Key, one button), the var still holds
+  #   the old one and every sync fails 401 while the repo looks correct.
+  #
+  #   Reading config.xml keeps ONE source of truth.  The key lives where the
+  #   app that owns it put it; rotating it in the UI is picked up on the
+  #   next sync with no deploy and no re-prompt.
+  #
+  # So this oneshot stages both keys into a root-only tmpfs directory, and
+  # services.recyclarr's `_secret` mechanism turns them into LoadCredential=
+  # entries.  The key is never in the Nix store and never in the repo, so
+  # invariant #8 is satisfied without a generator — there is no secret here
+  # that this machine did not already hold.
+  #
+  # CORRECTION, measured on ernst 2026-08-26.  An earlier version of this
+  # paragraph also claimed the key is "never in config.yml on disk".  THAT
+  # IS FALSE, and the correction matters more than the original claim did.
+  # The recyclarr module's ExecStartPre (recyclarr-pre-start) reads each
+  # credential and SUBSTITUTES IT INTO /var/lib/recyclarr/config.yml before
+  # the sync runs.  On this machine that file is:
+  #
+  #     -rw-r--r-- 1 recyclarr recyclarr  /var/lib/recyclarr/config.yml
+  #     drwxr-xr-x 7 recyclarr recyclarr  /var/lib/recyclarr
+  #
+  # i.e. both API keys in PLAINTEXT, world-readable, inside the container.
+  #
+  # It is left alone, deliberately, and the reasoning is worth writing down
+  # rather than re-deriving: the exposure is to processes already inside
+  # this netns, and every one of them — sonarr, radarr, prowlarr, bazarr,
+  # cleanuparr, mediathekarr, umlautadaptarr — either owns one of these keys
+  # or is handed it on purpose.  Widening nothing is what the uid boundary
+  # already does; the keys' real protection is that the container is not
+  # reachable except through Traefik.
+  #
+  # WHAT WOULD CHANGE THIS: a service landing in this container that is NOT
+  # trusted with *arr API access.  There is no such tenant today.  If one
+  # arrives, this is the line that has to be revisited, and the fix is
+  # upstream's (the module should chmod its rendered config), not a second
+  # mechanism here.
+  #
+  # RuntimeDirectoryPreserve = "yes" with RemainAfterExit = false is the
+  # combination that makes this re-run.  Without the preserve, the runtime
+  # directory is deleted the instant this oneshot exits — i.e. before
+  # recyclarr.service starts and before LoadCredential can read it.  With
+  # RemainAfterExit = true instead, the unit would stay active and never run
+  # again, so a rotated key would be staged once and then be stale forever.
+  # This pair keeps the directory and re-runs the extraction on every sync.
+  #
   services.recyclarr = {
     enable = true;
 
