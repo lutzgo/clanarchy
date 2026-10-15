@@ -330,6 +330,23 @@ let
         '';
       };
 
+      manageFirewall = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Generate the container's firewall from `allowFrom`. Set false where
+          the container's firewall is not a peer list at all.
+
+          THE ONE CONTAINER THAT SETS THIS IS THE INGRESS. Traefik opens 80,
+          443 and the WAN port to the whole internet — "which peers" is the
+          wrong question for it — and it is the only container here running
+          `networking.nftables`, where the `extraCommands` this module emits
+          is declared but never consumed: no rule, no warning, no firewall.
+          An opt-out is honest; translating `allowFrom` into nftables for a
+          single consumer would be a second renderer maintained on spec.
+        '';
+      };
+
       allowedDevices = lib.mkOption {
         type = lib.types.listOf (lib.types.attrsOf lib.types.anything);
         default = [ ];
@@ -664,7 +681,7 @@ let
           # The container firewall is the ONLY enforcement point for
           # bridge-local traffic: those frames are one L2 hop and the router
           # never sees them.
-          networking.firewall = clib.mkFirewall c.allowFrom;
+          networking.firewall = lib.mkIf c.manageFirewall (clib.mkFirewall c.allowFrom);
 
           users = lib.optionalAttrs (c.user != null && c.uid != null) {
             users.${c.user}.uid = c.uid;
