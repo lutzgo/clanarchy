@@ -368,223 +368,64 @@ in
   };
   users.groups.cwa.gid = cwaGid;
 
-  ##############################################################################
-  # The network namespace, its veth, and its firewall.
-  ##############################################################################
-
-  # Bridge=, NOT KeepMaster — pattern A in networking.nix.  The oneshot below
-  # only CREATES the pair; networkd owns the enslavement and so applies
-  # [BridgeVLAN] in the same step.  (The nspawn containers need KeepMaster
-  # because nspawn enslaves the link itself and networkd must not fight it.)
-  systemd.network.networks."60-${vethHost}" = {
-    matchConfig.Name = vethHost;
-    networkConfig = {
-      Bridge              = "br0";
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
-    };
-    bridgeVLANs = [ { VLAN = vlanId; PVID = vlanId; EgressUntagged = vlanId; } ];
-    linkConfig.RequiredForOnline = "enslaved";
-  };
-
-  systemd.services.cwa-netns = {
-    description = "Network namespace and veth for the CWA container";
-    wantedBy = [ "multi-user.target" ];
-    before   = [ "podman-cwa.service" ];
-    after    = [ "systemd-networkd.service" ];
-    serviceConfig = {
-      Type            = "oneshot";
-      RemainAfterExit = true;
-    };
-    path = [ pkgs.iproute2 pkgs.iptables ];
-    # Idempotent throughout: it must survive a `clan machines update` that
-    # restarts it while the container is running.
-    script = ''
-      set -eu
-
-      if ! ip netns list | grep -qw '${netns}'; then
-        ip netns add '${netns}'
-      fi
-      ip -n '${netns}' link set lo up
-
-      if ! ip link show '${vethHost}' >/dev/null 2>&1; then
-        ip link add '${vethHost}' type veth peer name '${vethNs}' netns '${netns}'
-      fi
-
-      # MAC pinned on the CONTAINER side — the address the UDM-Pro sees and the
-      # one the DHCP reservation keys on, never the host-side veth.  Set before
-      # the link comes up so it is stable from the first DHCP DISCOVER.
-      ip -n '${netns}' link set '${vethNs}' address '${mac}'
-      ip -n '${netns}' link set '${vethNs}' up
-      ip link set '${vethHost}' up
-
-      # Namespace firewall.  A bare netns handed to podman has NO rules, and
-      # podman adds none when it is given a namespace rather than asked to
-      # build one.  Rebuilt from scratch each run so it cannot accumulate
-      # duplicates.
-      ip netns exec '${netns}' iptables -F INPUT
-      ip netns exec '${netns}' iptables -P INPUT DROP
-      ip netns exec '${netns}' iptables -A INPUT -i lo -j ACCEPT
-      ip netns exec '${netns}' iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-
-      # The web UI and every app protocol, from Traefik and nothing else.
-      #
-      # THIS ONE RULE IS THE WHOLE BACKEND-BYPASS DEFENCE FOR AN
-      # INTERNET-FACING SERVICE.  cwa.goclan.org is in `wanExposed`, so
-      # requests reaching this port may have originated on the public internet
-      # — but they arrive FROM TRAEFIK, which is what makes a source
-      # restriction meaningful here at all.  Without this rule the container
-      # would be reachable directly from every host on VLAN 90, including the
-      # qBittorrent guest one layer-2 hop away, bypassing the rate limits,
-      # CrowdSec and the login limiter in one step.
-      ip netns exec '${netns}' iptables -A INPUT -p tcp -s ${traefikAddr}/32 --dport ${toString webPort} -j ACCEPT
-
-      # DHCP replies from the UDM-Pro (the client below runs in here).
-      ip netns exec '${netns}' iptables -A INPUT -p udp --sport 67 --dport 68 -j ACCEPT
-      # ICMP, so the thing is diagnosable at all.
-      ip netns exec '${netns}' iptables -A INPUT -p icmp -j ACCEPT
-    '';
-    preStop = ''
-      ${pkgs.iproute2}/bin/ip netns del '${netns}' 2>/dev/null || true
-      ${pkgs.iproute2}/bin/ip link del '${vethHost}' 2>/dev/null || true
-    '';
-  };
-
-  # DHCP inside the namespace — a bare netns has no networkd in it.
-  #
-  # `--nohook resolv.conf` is load-bearing: the MOUNT namespace is shared with
-  # the host, so without it dhcpcd would rewrite the HOST's /etc/resolv.conf
-  # from a lease meant for a container.  M9 documents this at length.  The
-  # resolver is declared on the podman side instead.
-  systemd.services.cwa-dhcp = {
-    description = "DHCP client inside the CWA network namespace";
-    wantedBy = [ "multi-user.target" ];
-    after    = [ "cwa-netns.service" ];
-    requires = [ "cwa-netns.service" ];
-    before   = [ "podman-cwa.service" ];
-    serviceConfig = {
-      NetworkNamespacePath = "/run/netns/${netns}";
-      ExecStart  = "${pkgs.dhcpcd}/bin/dhcpcd --nobackground --nohook resolv.conf --ipv4only ${vethNs}";
-      Restart    = "on-failure";
-      RestartSec = "5s";
-    };
-  };
-
-  ##############################################################################
-  # Storage.
-  ##############################################################################
-
-  # Ordered AFTER the datasets are mounted, and REQUIRING them — a tmpfiles
-  # rule alone races the mount, which containers/jellyfin.nix documents at
-  # length and every podman-tier sibling follows.
-  #
-  # The requirement is HARD rather than advisory: if zdata is not up, CWA
-  # starting anyway would create an empty Calibre library on the rolled-back
-  # root and then initialise a metadata.db in it.  The next boot would mount
-  # the real dataset over the top and the library would appear to have lost
-  # every book — recoverable, but only by someone who works out what happened.
-  systemd.services.cwa-dirs = {
-    description = "Create CWA's library, ingest and state directories";
-    wantedBy = [ "multi-user.target" ];
-    before   = [ "podman-cwa.service" ];
-    after    = [ "srv-media.mount" "srv-state.mount" ];
-    requires = [ "srv-media.mount" "srv-state.mount" ];
-    serviceConfig = {
-      Type            = "oneshot";
-      RemainAfterExit = true;
-    };
-    script = ''
-      set -eu
-      install=${pkgs.coreutils}/bin/install
-
-      # 0750 cwa:cwa for STATE AND LIBRARY, and the argument is unchanged for
-      # those two: no setgid and no shared group, because CWA is their only
-      # writer.  Syncthing does not replicate them and no *arr files into them.
-      # A shared-group tree with one member is a grant waiting to be inherited
-      # by something that should not have it.
-      $install -d -o ${toString cwaUid} -g ${toString cwaGid} -m 0750 ${stateDir}
-      $install -d -o ${toString cwaUid} -g ${toString cwaGid} -m 0750 ${stateDir}/config
-      $install -d -o ${toString cwaUid} -g ${toString cwaGid} -m 0750 ${libraryDir}
-
-      # ── THE INGEST DIRECTORY NOW HAS A SECOND PRINCIPAL, SO IT IS 2770 ────
-      #
-      # The paragraph above used to cover this directory too, on the premise
-      # that "CWA is the only writer to all three of these".  That premise
-      # died the moment Bindery's `cwa.ingest_path` was pointed here: Bindery
-      # (uid 3028, gid media) COPIES each finished ebook in, and CWA consumes
-      # and deletes it.  Two principals, so the directory is shared
-      # explicitly rather than by loosening something and hoping.
-      #
-      # THIS LINE ALONE IS NOT ENOUGH, AND IT SHIPPED THAT WAY IN #250.
-      # The container REVERTS it on every start — see
-      # cwa-ingest-perms.service below, which is what actually makes it
-      # stick.  Do not delete that unit believing this line covers it.
-      #
-      # WHAT THIS DOES NOT DO, because it is the thing the header's
-      # gid paragraph rules out: it does not put CWA in `media`.  CWA keeps
-      # uid/gid 3033 and OWNS this directory, so it retains rwx and can still
-      # unlink after ingest.  `media` appears on the GROUP of one directory —
-      # the drop box — and nowhere else.  CWA gains no write handle on the
-      # film and television library, which is the whole point of that
-      # paragraph and is still true afterwards.
-      #
-      # setgid (the 2) is load-bearing, not decoration: Bindery's unit runs
-      # UMask=0002, so a file it creates here lands 0664 with the directory's
-      # group.  Without the setgid bit the group would be `media` on the
-      # directory and `bindery` on the file, and CWA — which is in neither —
-      # would be reading on the `other` bits by luck.
-      $install -d -o ${toString cwaUid} -g ${toString mediaGid} -m 2770 ${ingestDir}
-    '';
-  };
 
   ##############################################################################
   # The container.
   ##############################################################################
-  virtualisation.oci-containers.containers.cwa = {
-    image = "ghcr.io/crocodilestick/calibre-web-automated@${cwaDigest}";
+  #
+  # Declared through modules/containers/podman-netns.nix, which generates the
+  # netns unit (namespace, veth, MAC, DROP policy and its accepts, teardown),
+  # the DHCP client, the host-side networkd file, the dirs unit, the
+  # oci-containers entry and the ordering between them.
+  clanarchy.podmanContainers.cwa = {
+    enable = true;
+    mac    = "02:00:00:90:00:0d";
+    interface = "cw0";
 
-    environment = {
-      TZ = "Europe/Berlin";
+    # NO `uidgid`: this image runs its entrypoint as root and drops to
+    # PUID/PGID itself, which is passed as environment below.
 
-      # The image drops to this uid/gid internally via its s6 init.  It must
-      # match the ownership cwa-dirs sets, or CWA cannot write its own library.
-      PUID = toString cwaUid;
-      PGID = toString cwaGid;
+    # THE LIBRARY AND THE INGEST TREE ARE BOTH UNDER /srv/media, so the guard
+    # names the MOUNT POINT. The dirs unit derives a mount unit from this
+    # path, and a subdirectory would produce a `Requires=` on a unit nothing
+    # defines; `findmnt --target` walks up to the same filesystem anyway.
+    extraGuardedMounts = [
+      { path = "/srv/media"; source = "zdata/media"; fstype = "zfs"; }
+    ];
 
-      # The image's default is 8083; set explicitly so the Traefik service, the
-      # firewall rule and the listener cannot drift apart.  `CWA_PORT_OVERRIDE`
-      # is the variable the image actually reads — confirmed by grepping the
-      # v4.0.6 source for environment reads, which is also how the absence of
-      # an OAuth/KOReader override was established.
-      CWA_PORT_OVERRIDE = toString webPort;
+    stateDirs = [
+      { path = stateDir;            owner = cwaUid; group = cwaGid;   mode = "0750"; }
+      { path = "${stateDir}/config"; owner = cwaUid; group = cwaGid;   mode = "0750"; }
+      { path = libraryDir;          owner = cwaUid; group = cwaGid;   mode = "0750"; }
+      # 2770 and group `media`, so Bindery can drop ebooks in. Re-applied
+      # after start by cwa-ingest-perms below — see its header for why.
+      { path = ingestDir;           owner = cwaUid; group = mediaGid; mode = "2770"; }
+    ];
+
+    allowFrom = [
+      { peer = traefikAddr; port = webPort; }
+    ];
+
+    # The health poll the ingest-perms unit below waits on. `podman-cwa` is
+    # "started" once the container is CREATED, so anything that needs a
+    # RUNNING CWA has to wait for this instead.
+    healthcheck.enable = true;
+
+    images.cwa = {
+      image = "ghcr.io/crocodilestick/calibre-web-automated@${cwaDigest}";
+      environment = {
+        TZ = "Europe/Berlin";
+        PUID = toString cwaUid;
+        PGID = toString cwaGid;
+        CWA_PORT_OVERRIDE = toString webPort;
+      };
+      volumes = [
+        "${stateDir}/config:/config"
+        "${libraryDir}:/calibre-library"
+        "${ingestDir}:/cwa-book-ingest"
+      ];
+      ports = [ ];
     };
-
-    volumes = [
-      # CWA's own state: app.db (users, settings, OAuth client config, the
-      # KOReader toggle) and logs.  The one directory here that is NOT
-      # re-derivable.
-      "${stateDir}/config:/config"
-
-      # The Calibre library CWA owns outright.  See the header for why this is
-      # not /srv/media/library/books.
-      "${libraryDir}:/calibre-library"
-
-      # The ingest watch folder.  FILES ARE DELETED FROM HERE AFTER
-      # PROCESSING — upstream's documented behaviour, restated at the mount
-      # because it is the surprising half: this is a hand-off point, never a
-      # place to keep the only copy of anything.
-      "${ingestDir}:/cwa-book-ingest"
-    ];
-
-    # Meaningless with `--network=ns:` and actively misleading — the port is
-    # published by the namespace's own firewall rule above, not by podman.
-    ports = [ ];
-
-    extraOptions = [
-      "--network=ns:/run/netns/${netns}"
-      "--dns=10.0.5.3"
-      "--dns-search=skynet.lan"
-    ];
   };
 
   ##############################################################################
@@ -638,7 +479,18 @@ in
     # just at boot.  `wantedBy` on the container unit rather than on
     # multi-user.target is what ties the two together.
     wantedBy = [ "podman-cwa.service" ];
-    after    = [ "podman-cwa.service" ];
+
+    # ORDERED AFTER THE HEALTH POLL, not after `podman-cwa`. That unit is
+    # "started" once the container is CREATED, which is before the image's s6
+    # init has run its chown pass — so this used to carry its own 60×2s
+    # `podman inspect` loop waiting for health. `healthcheck.enable` in the
+    # declaration above generates exactly that wait as `cwa-healthy.service`,
+    # with the same 120 s budget, so the loop is gone and the dependency says
+    # what it means. `requires` as well as `after`: if the container never
+    # becomes healthy there is nothing to correct, and a chown against a
+    # half-initialised tree is worse than not running.
+    after    = [ "cwa-healthy.service" ];
+    requires = [ "cwa-healthy.service" ];
 
     serviceConfig = {
       Type            = "oneshot";
@@ -647,20 +499,6 @@ in
 
     script = ''
       set -eu
-
-      # Wait for the image's s6 init to finish its chown pass.  Health is the
-      # only signal podman exposes that means "the init got that far".
-      for _ in $(${pkgs.coreutils}/bin/seq 1 60); do
-        status=$(${pkgs.podman}/bin/podman inspect \
-          -f '{{.State.Health.Status}}' cwa 2>/dev/null || echo starting)
-        [ "$status" = "healthy" ] && break
-        ${pkgs.coreutils}/bin/sleep 2
-      done
-
-      if [ "$status" != "healthy" ]; then
-        echo "cwa did not become healthy in ~120s; refusing to guess" >&2
-        exit 1
-      fi
 
       # Same line as cwa-dirs, and deliberately a duplicate rather than a
       # refactor: cwa-dirs must still create the directory correctly BEFORE
@@ -673,25 +511,28 @@ in
     '';
   };
 
-  systemd.services.podman-cwa = {
-    after    = [ "cwa-netns.service" "cwa-dhcp.service" "cwa-dirs.service" ];
-    requires = [ "cwa-netns.service" "cwa-dirs.service" ];
 
-    serviceConfig = {
-      # Ingest conversion is the expensive path: CWA shells out to Calibre's
-      # ebook-convert, which is single-threaded but CPU-hungry, and a bulk
-      # import runs it once per book.  Add the KOReader checksum backfill on
-      # top — which reads every file in the library — and this competes with
-      # Jellyfin transcodes, the HTPC session and an interactive Ollama
-      # session on the same box.
-      #
-      # Same two mechanisms as Storyteller's and RomM's:
-      #   Nice = 10        lowers priority against everything on the box.
-      #   CPUWeight = 40   biases the cgroup's share only under contention.
-      # Not CPUQuota: nobody is waiting on an import, so it should be free to
-      # use an otherwise idle box at full speed.
-      Nice      = 10;
-      CPUWeight = 40;
-    };
+  # ── SCHEDULING PRIORITY, MERGED ONTO THE GENERATED UNIT ─────────────────────
+  #
+  # Ordering comes from the module (the netns and dirs units declare it from
+  # their side). These two numbers do not: they are a judgement about THIS
+  # workload, they differ per service — Storyteller is niced harder — and a
+  # module option for them would be a passthrough with three different
+  # answers and no shared meaning.
+  #
+  # Ingest conversion is the expensive path: CWA shells out to Calibre's
+  # ebook-convert, single-threaded but CPU-hungry, once per book. Add the
+  # KOReader checksum backfill, which reads every file in the library, and
+  # this competes with Jellyfin transcodes, the HTPC session and an
+  # interactive Ollama session on the same box.
+  #
+  #   Nice = 10        lowers priority against everything on the box.
+  #   CPUWeight = 40   biases the cgroup's share only under contention.
+  #
+  # Not CPUQuota: nobody is waiting on an import, so it should be free to use
+  # an otherwise idle box at full speed.
+  systemd.services.podman-cwa.serviceConfig = {
+    Nice      = 10;
+    CPUWeight = 40;
   };
 }

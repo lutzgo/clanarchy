@@ -327,179 +327,6 @@ in
   ##############################################################################
 
   ##############################################################################
-  # The network namespace, its veth, and its firewall.
-  ##############################################################################
-
-  # Host side of the veth — an ordinary VLAN-90 port on br0.
-  #
-  # Bridge=, NOT KeepMaster: the nspawn containers need KeepMaster because
-  # nspawn enslaves the link itself and networkd must not fight it.  Here the
-  # oneshot below only CREATES the pair; networkd owns the enslavement, so it
-  # applies [BridgeVLAN] in the same step and the VLAN race the nspawn files
-  # work around cannot happen.  Pattern A in machines/ernst/networking.nix.
-  systemd.network.networks."60-${vethHost}" = {
-    matchConfig.Name = vethHost;
-    networkConfig = {
-      Bridge              = "br0";
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
-    };
-    bridgeVLANs = [ { VLAN = vlanId; PVID = vlanId; EgressUntagged = vlanId; } ];
-    linkConfig.RequiredForOnline = "enslaved";
-  };
-
-  # Create the namespace and the veth pair, then firewall the namespace.
-  #
-  # THE FIREWALL IS PART OF THIS UNIT, and it has to be: a bare netns handed to
-  # podman has NO rules at all, and podman adds none when it is given a
-  # namespace rather than asked to build one.  Without these lines 8001 would
-  # be reachable from everything on VLAN 90 — including the microvm that faces
-  # the open internet, one layer-2 hop away.
-  #
-  # Idempotent throughout: it must survive a `clan machines update` that
-  # restarts it while the container is running.
-  systemd.services.storyteller-netns = {
-    description = "Network namespace and veth for the Storyteller container";
-    wantedBy = [ "multi-user.target" ];
-    before   = [ "podman-storyteller.service" ];
-    after    = [ "systemd-networkd.service" ];
-    serviceConfig = {
-      Type            = "oneshot";
-      RemainAfterExit = true;
-    };
-    path = [ pkgs.iproute2 pkgs.iptables ];
-    script = ''
-      set -eu
-
-      if ! ip netns list | grep -qw '${netns}'; then
-        ip netns add '${netns}'
-      fi
-      ip -n '${netns}' link set lo up
-
-      if ! ip link show '${vethHost}' >/dev/null 2>&1; then
-        ip link add '${vethHost}' type veth peer name '${vethNs}' netns '${netns}'
-      fi
-
-      # MAC pinned on the CONTAINER side — the address the UDM-Pro sees and the
-      # one the DHCP reservation keys on, never the host-side veth.  Set before
-      # the link comes up so it is stable from the first DHCP DISCOVER.
-      ip -n '${netns}' link set '${vethNs}' address '${mac}'
-      ip -n '${netns}' link set '${vethNs}' up
-      ip link set '${vethHost}' up
-
-      # Namespace firewall.  Rebuilt from scratch on every run so it cannot
-      # accumulate duplicates.
-      ip netns exec '${netns}' iptables -F INPUT
-      ip netns exec '${netns}' iptables -P INPUT DROP
-      ip netns exec '${netns}' iptables -A INPUT -i lo -j ACCEPT
-      ip netns exec '${netns}' iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-      # The web UI, from Traefik and nothing else.
-      ip netns exec '${netns}' iptables -A INPUT -p tcp -s ${traefikAddr}/32 --dport ${toString webPort} -j ACCEPT
-      # DHCP replies from the UDM-Pro (the client below runs in here).
-      ip netns exec '${netns}' iptables -A INPUT -p udp --sport 67 --dport 68 -j ACCEPT
-      # ICMP, so the thing is diagnosable at all.
-      ip netns exec '${netns}' iptables -A INPUT -p icmp -j ACCEPT
-    '';
-    preStop = ''
-      ${pkgs.iproute2}/bin/ip netns del '${netns}' 2>/dev/null || true
-      ${pkgs.iproute2}/bin/ip link del '${vethHost}' 2>/dev/null || true
-    '';
-  };
-
-  # DHCP inside the namespace — a bare netns has no networkd in it.
-  #
-  # `--nohook resolv.conf` is load-bearing: the MOUNT namespace is shared with
-  # the host, so without it dhcpcd would rewrite the HOST's /etc/resolv.conf
-  # from a lease meant for a container.  The resolver is declared on the podman
-  # side instead.  M9 documents this at length.
-  systemd.services.storyteller-dhcp = {
-    description = "DHCP client inside the Storyteller network namespace";
-    wantedBy = [ "multi-user.target" ];
-    after    = [ "storyteller-netns.service" ];
-    requires = [ "storyteller-netns.service" ];
-    before   = [ "podman-storyteller.service" ];
-    serviceConfig = {
-      NetworkNamespacePath = "/run/netns/${netns}";
-      ExecStart = "${pkgs.dhcpcd}/bin/dhcpcd --nobackground --nohook resolv.conf --ipv4only ${vethNs}";
-      Restart    = "on-failure";
-      RestartSec = "5s";
-    };
-  };
-
-  ##############################################################################
-  # Storage.
-  ##############################################################################
-
-  # /data, ordered AFTER the audiobooks dataset is mounted.
-  #
-  # A tmpfiles rule alone races the mount — containers/jellyfin.nix documents
-  # that at length and containers/tubesync.nix follows it; read either before
-  # changing this.
-  #
-  # 0750 storyteller:media, not 2770 root:media like the library directories
-  # beside it.  The distinction is real: this is one application's private data
-  # directory (its SQLite database lives here), so the service owns it outright
-  # — but `media` keeps GROUP READ so Audiobookshelf, which is in that group,
-  # can be pointed at the produced EPUB3s without a copy or a chown.  Group
-  # WRITE is deliberately absent: nothing else should be modifying another
-  # application's database directory.
-  #
-  # `audiobooks-tree.service` (containers/arr.nix) is what actually VERIFIES
-  # the dataset is mounted, and this unit requires it rather than repeating the
-  # check.  The dependency is deliberately harder here than it is for the arr
-  # container: Storyteller's entire /data — its database included — lives on
-  # that dataset, so a Storyteller that starts without it is not a degraded
-  # Storyteller, it is a NEW EMPTY ONE that would then have to be reconciled
-  # with the real database by hand.  Audiobookshelf merely shows an empty
-  # library, so it is allowed to start.
-  systemd.services.storyteller-data-dir = {
-    description = "Create ${dataDir} as storyteller:media 0750";
-    wantedBy = [ "multi-user.target" ];
-    before   = [ "podman-storyteller.service" ];
-
-    # srv-media.mount joins the list because the container now mounts
-    # /srv/media/library/books as a source library.  Same hazard the paragraph
-    # above describes for zdata/audiobooks, one dataset over: start before the
-    # mount and podman bind-mounts a directory on the ROLLED-BACK root, so
-    # Storyteller sees an empty ebook library and the operator sees a bug in
-    # Storyteller.  It is `requires` for the same reason the other two are.
-    # srv-state.mount joins the list because $HOME now lives there (see
-    # homeDir).  Same hazard as the other two: start before the mount and
-    # podman bind-mounts a directory on the rolled-back root, so the container
-    # gets an empty home, re-downloads whisper.cpp into it, and the real one
-    # is shadowed at the next boot.
-    after    = [ "srv-audiobooks.mount" "srv-media.mount" "srv-state.mount" "audiobooks-tree.service" ];
-    requires = [ "srv-audiobooks.mount" "srv-media.mount" "srv-state.mount" "audiobooks-tree.service" ];
-    serviceConfig = {
-      Type            = "oneshot";
-      RemainAfterExit = true;
-    };
-    script = ''
-      ${pkgs.coreutils}/bin/install -d \
-        -o ${toString storytellerUid} -g ${toString mediaGid} -m 0750 ${dataDir}
-
-      # The staging directory: 2770, not 0750 like dataDir above, and the
-      # difference is deliberate.  dataDir has ONE writer (the container).
-      # This one has two: the container imports from it, and a human (or a
-      # script running as a member of `media`) stages pairs into it.  setgid
-      # so a hardlinked or copied file keeps group `media` and stays readable
-      # by the container regardless of who staged it.
-      #
-      # Podman here is ROOTFUL with --user=3022:3000, so these numbers are the
-      # numbers on zdata — no mapping to reason about, same property the rest
-      # of this file relies on.
-      ${pkgs.coreutils}/bin/install -d \
-        -o ${toString storytellerUid} -g ${toString mediaGid} -m 2770 ${importDir}
-
-      # $HOME.  0750 and owned by the container's uid — one writer, no sharing,
-      # so it gets the dataDir treatment rather than the importDir treatment.
-      # The OWNERSHIP is the load-bearing part: this directory's permissions
-      # REPLACE the image's 0750 storyteller:storyteller home when it is
-      # mounted over it, which is what makes the home traversable at all.
-      ${pkgs.coreutils}/bin/install -d \
-        -o ${toString storytellerUid} -g ${toString mediaGid} -m 0750 ${homeDir}
-    '';
-  };
 
   ##############################################################################
   # Secrets.
@@ -561,187 +388,73 @@ in
   ##############################################################################
   # The container.
   ##############################################################################
-  virtualisation.oci-containers.containers.storyteller = {
-    image = "registry.gitlab.com/storyteller-platform/storyteller@${imageDigest}";
 
-    environment = {
-      # Drives timestamps in the UI.  Matches the host.
-      TZ = "Europe/Berlin";
-      # See the secrets block: a FILE, not the key itself.
-      STORYTELLER_SECRET_KEY_FILE = "/run/secrets/secret-key";
+  ##############################################################################
+  # The container.
+  ##############################################################################
+  #
+  # Declared through modules/containers/podman-netns.nix, which generates the
+  # netns unit, the DHCP client, the host-side networkd file, the dirs unit,
+  # the oci-containers entry and the ordering between them.
+  #
+  # `storyteller-secrets` STAYS HAND-WRITTEN: it installs a whole file at 0440
+  # root:media for a container that reads it as a FILE
+  # (`STORYTELLER_SECRET_KEY_FILE`), not as an env var — so the module's
+  # `secrets` option, which composes `KEY=value` lines, is the wrong shape.
+  clanarchy.podmanContainers.storyteller = {
+    enable = true;
+    mac    = "02:00:00:90:00:0c";
+    interface = "st0";
 
-      # NO `HOME` OVERRIDE, and one shipped here briefly and was WRONG.
-      #
-      # #253 set HOME=/data to dodge an unwritable home.  It got one step
-      # further and then failed differently:
-      #
-      #   Failed to start whisper process: spawn
-      #     /data/.local/…/linux-x64-cpu/bin/whisper-cli EACCES
-      #
-      # because zdata/audiobooks carries `exec=off` (so does zdata/media;
-      # zdata/state does not) and a media dataset that refuses to execute
-      # binaries is CORRECT — the fix was pointing a binary install at it.
-      # $HOME is fixed by the /home/storyteller volume below instead, which
-      # lands on zdata/state where exec is permitted.
+    # Rootful and unmapped: these ids land on zdata, where a rootless subuid
+    # remap would write files the rest of the host cannot name.
+    uidgid = "${toString storytellerUid}:${toString mediaGid}";
+
+    # THREE DATASETS, AND EACH GUARD NAMES ITS MOUNT POINT — not the
+    # subdirectory under it, because the dirs unit derives a mount unit from
+    # this path. /srv/state is the host default and is already guarded.
+    extraGuardedMounts = [
+      { path = "/srv/audiobooks"; source = "zdata/audiobooks"; fstype = "zfs"; }
+      { path = "/srv/media";      source = "zdata/media";      fstype = "zfs"; }
+    ];
+
+    stateDirs = [
+      { path = dataDir;   owner = storytellerUid; group = mediaGid; mode = "0750"; }
+      # 2770 so a human can drop an epub+audiobook pair in for staging.
+      { path = importDir; owner = storytellerUid; group = mediaGid; mode = "2770"; }
+      { path = homeDir;   owner = storytellerUid; group = mediaGid; mode = "0750"; }
+    ];
+
+    allowFrom = [
+      { peer = traefikAddr; port = webPort; }
+    ];
+
+    images.storyteller = {
+      image = "registry.gitlab.com/storyteller-platform/storyteller@${imageDigest}";
+      environment = {
+        TZ = "Europe/Berlin";
+        STORYTELLER_SECRET_KEY_FILE = "/run/secrets/secret-key";
+      };
+      volumes = [
+        "${dataDir}:/data"
+        "${secretsDir}/secret-key:/run/secrets/secret-key:ro"
+        # The two source libraries, READ-ONLY: this service reads what the
+        # *arr stack and Bindery produce and writes only into its own tree.
+        "/srv/media/library/books:/library/ebooks:ro"
+        "/srv/audiobooks/library:/library/audiobooks:ro"
+        "${importDir}:/import"
+        "${homeDir}:/home/storyteller"
+      ];
+      ports = [ ];
     };
-
-    volumes = [
-      "${dataDir}:/data"
-      # Read-only, and mounted at the path the variable above names.
-      "${secretsDir}/secret-key:/run/secrets/secret-key:ro"
-
-      # ── THE TWO SOURCE LIBRARIES, READ-ONLY ───────────────────────────────
-      #
-      # lgo asked (2026-09-27) for Storyteller to be connected to the ebook
-      # and audiobook libraries.  Until now this container mounted /data and
-      # NOTHING ELSE, so the header's "Storyteller takes its input through its
-      # own web UI" was not a design preference — it was the only thing the
-      # container could physically do.  It could not see either library.
-      #
-      # These two mounts are what make the pairing possible at all: both
-      # halves of a title are now visible to the same process, at paths that
-      # match the host and every other container (invariant: nobody rewrites
-      # a path), so a pair can be picked without uploading gigabytes through
-      # a browser.
-      #
-      # `:ro` IS THE WHOLE POINT AND IS NOT NEGOTIABLE.  Storyteller is a
-      # PRODUCER — it reads pairs and writes synced EPUB3s into /data.  It has
-      # no business renaming, converting or deleting anything in the trees
-      # Bindery and Audiobookshelf own, and M14's "complementary, not
-      # overlapping" split is exactly this: ABS and Bindery serve libraries,
-      # Storyteller produces artifacts from them.  A read-write mount here
-      # would make that sentence false and give a third writer a handle on
-      # both libraries at once.
-      #
-      # WHAT IS STILL A MANUAL STEP, so nobody reads this and expects magic:
-      # the container can now SEE the files; it does not import them on its
-      # own.  Storyteller's `importPath` setting (its DB, its UI — there is no
-      # environment variable for it) has to be pointed at one of these paths.
-      # Checked in the deployed 2.9.3 build: the setting exists and is null.
-      "/srv/media/library/books:/library/ebooks:ro"
-      "/srv/audiobooks/library:/library/audiobooks:ro"
-
-      # ── THE AUTO-IMPORT WATCH FOLDER, AND THE ONE RW MOUNT ────────────────
-      #
-      # Read-write, unlike the two libraries above.  Nothing of value lives
-      # here: everything staged into it is a hardlink to, or a copy of, a file
-      # that still exists in the library it came from.  So the invariant the
-      # two `:ro` mounts protect is intact — Storyteller still cannot touch
-      # Bindery's or Audiobookshelf's trees — and the only thing it can write
-      # to besides its own /data is a scratch directory.
-      #
-      # CORRECTED 2026-10-05.  This used to justify the `rw` with "Storyteller
-      # may move, rename or delete what it has ingested".  It does NOT, and
-      # the opposite is what actually matters operationally: the DB stores the
-      # SOURCE PATHS (`audiobook.filepath` = `/import/<slug>`) and the splitter
-      # reads them when PROCESSING is started, which is a separate manual step
-      # that may happen days after the import.  Clearing the watch folder in
-      # between produces
-      #
-      #   ERROR: … task "SPLIT_TRACKS" … ENOENT: scandir '/import/consider-phlebas'
-      #
-      # observed 2026-09-28.  So `/import` is a HOLDING area until a book is
-      # ALIGNED, not a drop box.  The mount is left `rw` anyway — no write by
-      # the container has been observed, staging is done host-side by
-      # `storyteller-stage` as root, and tightening it is an untested change
-      # for no gain.
-      #
-      # Point Storyteller's Settings → Automatic import at `/import/` (the
-      # CONTAINER path, not the host path).  It is a DB/UI setting with no
-      # environment variable, so this file cannot set it; it was set by hand on
-      # 2026-09-27 and is in the DB.  See the guide.
-      "${importDir}:/import"
-
-      # ── $HOME, ON zdata/state, AND TRANSCRIPTION CANNOT RUN WITHOUT IT ────
-      #
-      # Two separate defects meet at this path, and both come from forcing
-      # `--user=${toString storytellerUid}:${toString mediaGid}` onto an image
-      # that baked its own user.
-      #
-      #   1. TRAVERSAL.  The image ships
-      #        drwxr-x--- 1 storyteller storyteller  /home/storyteller
-      #      0750, owned by a uid that is not 3022.  So the process cannot
-      #      even `cd` into its own $HOME — which is why it reported "No
-      #      variant configured or installed" while the image was carrying
-      #      whisper-cli the whole time, and then tried to download a copy and
-      #      died on `EACCES: mkdir`.  Mounting a directory OVER
-      #      /home/storyteller replaces those permissions with the host
-      #      directory's, so 3022 owns its home and traversal works.
-      #
-      #   2. NOEXEC.  #253's attempt to sidestep (1) by setting HOME=/data
-      #      failed on `spawn … whisper-cli EACCES`, because zdata/audiobooks
-      #      is `exec=off`.  So is zdata/media.  Only zdata/state permits
-      #      exec, which is why this volume comes from /srv/state and not from
-      #      the dataset everything else in this file uses.
-      #
-      # WHAT IS GIVEN UP, deliberately: this shadows the image's bundled
-      # binaries and its ggml-tiny.en.bin, so the app re-downloads whisper.cpp
-      # (6.6 MB) and whichever model is selected on first run.  Seeding the
-      # host directory from the image instead would preserve them and costs a
-      # copy-out step at deploy time that has to stay correct across image
-      # bumps; re-downloading is a few seconds and self-correcting.  The
-      # downloads PERSIST here, which is the part that matters — the `medium`
-      # model this fleet needs for its German audiobooks is ~1.5 GB, and
-      # without a volume it would be re-fetched into a fresh overlay on every
-      # container restart.
-      #
-      # The netns firewall already permits the egress this needs; only ingress
-      # is restricted.
-      "${homeDir}:/home/storyteller"
-    ];
-
-    # NO `ports` ENTRY, deliberately.  Publishing a port is meaningless with
-    # `--network=ns:` — there is no podman-managed network to publish from, and
-    # the service is reached at its own address on VLAN 90 like every other
-    # backend in this fleet.
-    ports = [ ];
-
-    extraOptions = [
-      # The namespace built above.  This is the whole networking decision.
-      "--network=ns:/run/netns/${netns}"
-      # Resolver declared rather than inherited, so Technitium's blocklists and
-      # logging cover this container too.
-      "--dns=10.0.5.3"
-      "--dns-search=skynet.lan"
-      # Run as the reserved uid and the shared media gid.  ROOTFUL AND
-      # UNMAPPED, so these are literal on zdata — see the header.
-      "--user=${toString storytellerUid}:${toString mediaGid}"
-    ];
   };
 
-  # Ordering and the CPU budget.
-  #
-  # oci-containers generates podman-storyteller.service; everything it depends
-  # on is declared here rather than inside the generated unit.
-  systemd.services.podman-storyteller = {
-    after    = [ "storyteller-netns.service" "storyteller-dhcp.service" "storyteller-data-dir.service" ];
-    requires = [ "storyteller-netns.service" "storyteller-data-dir.service" ];
-
-    serviceConfig = {
-      # THE CPU BUDGET, and docs/history.md requires it explicitly.
-      #
-      # Forced alignment will happily saturate every core it is given.  It
-      # competes with a Jellyfin transcode, an HTPC session on the TV, and —
-      # since M11 — an interactive Ollama session, which is the claimant whose
-      # degradation is hardest to attribute.
-      #
-      # TWO MECHANISMS, because they do different things and neither is
-      # sufficient:
-      #
-      #   Nice = 15         lowers scheduling priority against everything on
-      #                     the box, including processes outside this cgroup.
-      #   CPUWeight = 20    biases the cgroup's share when there IS contention
-      #                     (default 100).  Under no contention it still gets
-      #                     the whole machine, which is the point — a batch job
-      #                     should use idle cores, just never at the expense of
-      #                     something a human is waiting on.
-      #
-      # NOT CPUQuota.  A hard cap would make alignment slower even on an
-      # otherwise idle box, which trades away the only thing this workload has
-      # going for it (nobody is waiting on it) for no benefit.
-      Nice      = 15;
-      CPUWeight = 20;
-    };
+  # The audiobooks tree is built by its own unit in containers/arr.nix, and
+  # the generated dirs unit knows only about MOUNTS — so the dependency on
+  # that unit is merged on here rather than forked into a second dirs unit.
+  systemd.services.storyteller-dirs = {
+    after    = [ "audiobooks-tree.service" ];
+    requires = [ "audiobooks-tree.service" ];
   };
 
   ##############################################################################
@@ -897,5 +610,31 @@ the ebook path first (the matcher over-matches)." \
       Persistent   = true;   # a week the machine was down still gets its check
       RandomizedDelaySec = "30m";
     };
+  };
+
+  # ── SCHEDULING PRIORITY, MERGED ONTO THE GENERATED UNIT ─────────────────────
+  #
+  # Ordering comes from the module. These two numbers do not: they are a
+  # judgement about THIS workload, and this one is niced harder than cwa's or
+  # romm's because forced alignment is pure batch — nobody is ever waiting on
+  # it — whereas a library scan sometimes has a human behind it.
+  #
+  # Forced alignment pins a core for hours per book, competing with a Jellyfin
+  # transcode, the HTPC session on the TV, and an interactive Ollama session —
+  # the last being the claimant whose degradation is hardest to attribute.
+  #
+  # TWO MECHANISMS, because neither is sufficient alone:
+  #
+  #   Nice = 15        lowers scheduling priority against everything on the
+  #                    box, including processes outside this cgroup.
+  #   CPUWeight = 20   biases the cgroup's share when there IS contention
+  #                    (default 100). Under no contention it still gets the
+  #                    whole machine, which is the point.
+  #
+  # NOT CPUQuota: a hard cap would make alignment slower even on an idle box,
+  # trading away the only thing this workload has going for it.
+  systemd.services.podman-storyteller.serviceConfig = {
+    Nice      = 15;
+    CPUWeight = 20;
   };
 }

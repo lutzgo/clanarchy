@@ -44,6 +44,30 @@
     stateSource  = "zdata/state";
   };
 
+  # ── THE PODMAN TIER, ENABLED ONCE FOR THE HOST ──────────────────────────────
+  #
+  # This lived in containers/tubesync.nix only because tubesync was the tier's
+  # first occupant, which meant the three services that came after it had to
+  # know not to re-set it. `virtualisation.podman.enable = true` twice merges
+  # fine, but two `oci-containers.backend` definitions do not — so the switch
+  # belongs where the host's other once-per-machine answers are.
+  #
+  # `virtualisation.containers.enable` is what provides /etc/containers,
+  # policy.json in particular. Without it podman refuses every image with
+  # "no policy.json file found".
+  virtualisation.containers.enable = true;
+  virtualisation.oci-containers.backend = "podman";
+  virtualisation.podman = {
+    # No docker socket, no docker alias: nothing here speaks the docker API,
+    # and modules/apps/containers.nix (lgo's workstation bundle, which does
+    # enable dockerCompat) is not in scope on ernst.
+    enable = true;
+    dockerCompat = false;
+    # The default `podman.service` socket activation is not needed either:
+    # oci-containers drives podman by CLI from a systemd unit.
+    dockerSocket.enable = false;
+  };
+
   # Accept Nix builds dispatched by miralda's nix-daemon. The authorised key
   # is restricted to `nix-daemon --stdio`, so it buys builds, not a shell.
   clanarchy.remoteBuilder.server.enable = true;
