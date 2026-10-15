@@ -264,7 +264,7 @@ rec {
     #   the Karakeep browser extension on all four of lgo's browsers, which
     #   posts to /api/v1/bookmarks with a bearer token;
     #   the FLOCCUS adapter (service-modules/software.nix and
-    #   machines/miralda/home-modules/browsers.nix install it on miralda and
+    #   modules/users/lgo/browsers.nix install it on miralda and
     #   jens), syncing the browsers' own bookmark trees with the same token
     #   and no UI whatsoever;
     #   the mobile apps, same again.

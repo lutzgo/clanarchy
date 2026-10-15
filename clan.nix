@@ -1480,7 +1480,7 @@
       # ── Software: browsers and email clients ─────────────────────────────
       # miralda/lgo, jens/lgo:  all five browsers, no email.
       #   librewolf/chrome home.file configs are managed here (removed from
-      #   machines/miralda/home-modules/browsers.nix to avoid duplication).
+      #   modules/users/lgo/browsers.nix to avoid duplication).
       # biene/sabine: librewolf + edge; both email clients.
       #   Firefox is already configured in modules/users/sabine.nix.
       software = {
@@ -1491,7 +1491,7 @@
         # Karakeep saves a page to karakeep.goclan.org; Floccus syncs the
         # browser's own bookmark tree into the same Karakeep.  The other three
         # browsers get the same pair through three other mechanisms — see the
-        # header of machines/miralda/home-modules/browsers.nix for the table of
+        # header of modules/users/lgo/browsers.nix for the table of
         # which and why.
         #
         # THE IDs ARE WebExtension IDs, not AMO slugs, and they are the values

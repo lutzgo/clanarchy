@@ -289,7 +289,7 @@ artwork half is not a setting at all: ES-DE ignores the `<thumbnail>` and
 contain those tags — and locates media purely by directory convention. Flipping
 the setting alone yields metadata with no pictures.
 
-`machines/birte/romm-esde-bridge.nix` (`clanarchy.retrodeck.rommBridge`)
+`modules/retrodeck/romm-esde-bridge.nix` (`clanarchy.retrodeck.rommBridge`)
 publishes one layout into the other on a timer. It copies gamelists and
 symlinks media directories, and that asymmetry is deliberate: `es_settings.xml`
 has `SaveGamelistsMode = "always"`, so ES-DE rewrites `gamelist.xml` itself, and

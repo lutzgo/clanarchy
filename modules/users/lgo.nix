@@ -10,7 +10,7 @@ let
   #
   # THIS IS THE SECOND OF TWO CHROMIUM MECHANISMS, and the belt-and-braces one.
   # The first is `programs.chromium.extensions` in
-  # machines/miralda/home-modules/browsers.nix, which writes External
+  # modules/users/lgo/browsers.nix, which writes External
   # Extensions JSON and installs silently.  This one opens a tab per CRX on
   # first run so a human sees and confirms each install.  THE TWO LISTS HAVE
   # DRIFTED — SideTab Pro is over there and not here — and that drift predates
@@ -70,7 +70,7 @@ in
     # makes `mail-accounts/lutz.plain` decryptable on THIS machine — a clan
     # var reaches only the machines whose configuration declares its
     # generator.  aerc reads it through `passwordCommand`; see
-    # ../../machines/miralda/home-modules/console-desktop.nix.
+    # ./lgo/console-desktop.nix.
     #
     # The same file is imported by machines/ernst/containers/mail.nix, which
     # is the other end of the same secret.  Nix dedupes `imports` by path, so
@@ -279,9 +279,9 @@ in
         imports = [
           # Browser stack: ungoogled-chromium, librewolf config, firefox+arkenfox,
           # google-chrome, and KeePassXC native messaging for all four browsers.
-          ../../machines/miralda/home-modules/browsers.nix
+          ./lgo/browsers.nix
           # Console desktop tools: aerc (TUI email), oama (Gmail OAuth2), w3m (HTML mail).
-          ../../machines/miralda/home-modules/console-desktop.nix
+          ./lgo/console-desktop.nix
         ];
 
         clanarchy.consoleDesktop.enable = true;

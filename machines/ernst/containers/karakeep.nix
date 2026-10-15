@@ -18,7 +18,7 @@
 #
 # ── WHAT THIS REPLACES: A SERVER THAT NEVER EXISTED ─────────────────────────
 #
-#   machines/miralda/home-modules/browsers.nix has carried a Linkwarden
+#   modules/users/lgo/browsers.nix has carried a Linkwarden
 #   extension ID marked "⚠ spec-provided, unverified" since the browser stack
 #   was written, next to a Vimium keybinding whose target is the literal string
 #   YOUR_LINKWARDEN_INSTANCE, next to a comment doubting whether the Firefox

@@ -446,7 +446,7 @@ are not redundant, because only one of them survives a tidy-up.
 ### Setup, per browser
 
 Installed declaratively on miralda and jens for all four browsers — see
-`service-modules/software.nix` and `machines/miralda/home-modules/browsers.nix`.
+`service-modules/software.nix` and `modules/users/lgo/browsers.nix`.
 Configuring them is manual, because neither extension exposes a managed-storage
 schema:
 

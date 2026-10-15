@@ -477,7 +477,7 @@ see the warning under the table, which has already cost one round.
 ### aerc (miralda, jens)
 
 Already configured, in
-[`machines/miralda/home-modules/console-desktop.nix`](../../machines/miralda/home-modules/console-desktop.nix)
+[`modules/users/lgo/console-desktop.nix`](../../modules/users/lgo/console-desktop.nix)
 — shared through `modules/users/lgo.nix`, so one edit covers both laptops.
 The password comes from the shared clan var, so there is nothing to type.
 
