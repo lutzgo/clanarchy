@@ -55,6 +55,34 @@ let
     (_: net: lib.length (net.bridgeVLANs or [ ]))
     (lib.filterAttrs (n: _: lib.hasPrefix "60-" n) config.systemd.network.networks));
 
+  # ── a restartUnits target that does not exist ────────────────────────────
+  #
+  # Lives here because the container modules are what DERIVE unit names from
+  # container names: `<container>-secrets`, not `<service>-secrets`. Open WebUI
+  # was staged by `open-webui-secrets` by hand and became `openwebui-secrets`
+  # on migration, leaving a generator pointing at a unit that no longer
+  # existed — so the secret would rotate, nothing would restart, and the
+  # container would keep serving the old value with every indicator green.
+  #
+  # The clan-vars generator-name gate cannot catch this: `restartUnits` is a
+  # VALUE inside a generator, not one of the names that gate compares.
+  #
+  # SHARED GENERATORS ARE EXCLUDED, and that exclusion is load-bearing rather
+  # than a convenience. A `share = true` generator is declared identically on
+  # EVERY machine, so its `restartUnits` necessarily names units that exist on
+  # only one of them — `mail-accounts` names `container@mail.service`, which
+  # is ernst's alone. The first version of this check failed both laptops for
+  # exactly that, and the laptops were right. An unshared generator has no
+  # such excuse: it is declared on the machine that runs the service, so a
+  # target missing there is a typo or a rename.
+  hostUnits = lib.attrNames config.systemd.units;
+  ownGenerators = lib.filterAttrs (_: g: !g.share)
+    (config.clan.core.vars.generators or { });
+  restartTargets = lib.unique (lib.concatLists (lib.concatLists (lib.mapAttrsToList
+    (_: g: lib.mapAttrsToList (_: f: f.restartUnits or [ ]) g.files)
+    ownGenerators)));
+  danglingRestarts = lib.filter (t: !(lib.elem t hostUnits)) restartTargets;
+
   # ── podman-tier interface names ───────────────────────────────────────────
   podCfg = config.clanarchy.podmanContainers or { };
   podIfaces = lib.mapAttrsToList (_: c: c.interface) (lib.filterAttrs (_: c: c.enable) podCfg);
@@ -109,6 +137,21 @@ in
         nspawn derives the host veth as `vb-<name>` and 15 is IFNAMSIZ, so this
         evaluates cleanly and fails at container START. It is why ernst's are
         `mail`, `mass` and `hass` rather than the obvious spellings.
+      '';
+    }
+
+    {
+      assertion = danglingRestarts == [ ];
+      message = ''
+        These units are named in a clan-vars `restartUnits` but are not
+        defined on this host:
+        ${lib.concatStringsSep ", " danglingRestarts}
+
+        Nothing fails: `clan vars generate` rotates the secret, the named unit
+        is not there to restart, and the consumer keeps serving the old value.
+        Usually a staging unit that was renamed — the container modules derive
+        that name from the CONTAINER (`<container>-secrets`), which is not
+        always the service's name.
       '';
     }
 
