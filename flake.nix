@@ -329,6 +329,12 @@
               ${must "a port range and a source render in iptables order"
                  (has t.containers.gadget.config.networking.firewall.extraCommands
                     "iptables -A nixos-fw -i iot9 -p udp -s 10.0.20.31/32 --dport 32768:60999 -j nixos-fw-accept")}
+              ${must "a v6 peer renders as ip6tables with a /128"
+                 (has t.containers.gadget.config.networking.firewall.extraCommands
+                    "ip6tables -A nixos-fw -p tcp -s fdca:fe99::1/128 --dport 3000 -j nixos-fw-accept")}
+              ${must "a v4 peer is never handed to ip6tables"
+                 (!(has t.containers.gadget.config.networking.firewall.extraCommands
+                    "ip6tables -A nixos-fw -p tcp -s 10.0.90.12"))}
               ${must "the short form still renders exactly as before"
                  (has t.containers.widget.config.networking.firewall.extraCommands
                     "iptables -A nixos-fw -p tcp -s 10.0.90.12/32 --dport 8080 -j nixos-fw-accept")}

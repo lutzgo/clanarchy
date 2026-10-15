@@ -76,6 +76,11 @@ in
           { interface = "iot9"; proto = "udp"; port = 5353; }
           # A stream client answers on an ephemeral port range.
           { interface = "iot9"; proto = "udp"; peer = "10.0.20.31"; port = "32768:60999"; }
+          # The ULA leg's own consumer, which must render as ip6tables with a
+          # /128 — an inward-pointing leg whose accept went out as a v4 rule
+          # would leave the one client it exists for refused, with the unit
+          # green and the rule loaded. The family is inferred from the colon.
+          { peer = "fdca:fe99::1"; port = 3000; }
         ];
       };
 

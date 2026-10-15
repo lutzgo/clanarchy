@@ -172,6 +172,16 @@ let
         default = "tcp";
         description = "Protocol.";
       };
+
+      family = lib.mkOption {
+        type = lib.types.nullOr (lib.types.enum [ "inet" "inet6" ]);
+        default = null;
+        description = ''
+          Address family, which picks `iptables` or `ip6tables`. Null infers
+          it from `peer` — exact, since a v6 literal contains a colon and a v4
+          one does not. Only a rule with no peer needs to say it.
+        '';
+      };
       interface = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
@@ -428,6 +438,13 @@ let
         hostBridge      = bridge;
         localMacAddress = c.mac;
 
+        # A ULA LEG GETS NO HOST-SIDE `60-*` NETWORK, AND THAT IS MEASURED:
+        # `hostAddress6` here is what nixos-containers configures the host end
+        # from directly, so declaring it in networkd as well is two things
+        # racing for one address — and the loser is the container, which dies
+        # with `ipv6: address already assigned` and `status=2/INVALIDARGUMENT`
+        # in a restart loop naming neither the veth nor the file (paperless,
+        # 2026-10-05, four restarts). Only VLAN legs take a `60-*` network.
         extraVeths =
           lib.listToAttrs (map (u:
             lib.nameValuePair u.veth {

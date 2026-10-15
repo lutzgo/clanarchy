@@ -44,6 +44,17 @@ let
   # ── nspawn container names must fit IFNAMSIZ ──────────────────────────────
   longNames = lib.filter (n: lib.stringLength n > 12) (lib.attrNames config.containers);
 
+  # ── one [BridgeVLAN] per bridge port ─────────────────────────────────────
+  #
+  # A second definition of `systemd.network.networks."60-<iface>"` does not
+  # conflict: the attrsets merge, and `bridgeVLANs` being a LIST means the
+  # entries concatenate instead. So a hand-written block left behind next to a
+  # generated one renders the stanza twice and evaluates perfectly — which is
+  # exactly what paperless shipped for the length of one migration.
+  dupVlans = lib.filterAttrs (_: n: n > 1) (lib.mapAttrs
+    (_: net: lib.length (net.bridgeVLANs or [ ]))
+    (lib.filterAttrs (n: _: lib.hasPrefix "60-" n) config.systemd.network.networks));
+
   # ── podman-tier interface names ───────────────────────────────────────────
   podCfg = config.clanarchy.podmanContainers or { };
   podIfaces = lib.mapAttrsToList (_: c: c.interface) (lib.filterAttrs (_: c: c.enable) podCfg);
@@ -98,6 +109,21 @@ in
         nspawn derives the host veth as `vb-<name>` and 15 is IFNAMSIZ, so this
         evaluates cleanly and fails at container START. It is why ernst's are
         `mail`, `mass` and `hass` rather than the obvious spellings.
+      '';
+    }
+
+    {
+      assertion = dupVlans == { };
+      message = ''
+        These bridge-port networks carry more than one [BridgeVLAN] entry:
+
+        ${lib.concatStringsSep "\n" (lib.mapAttrsToList
+          (n: c: "  ${n}: ${toString c} entries") dupVlans)}
+
+        One port, one VLAN stanza. More than one means the network is defined
+        twice — usually a hand-written block left in place beside the one
+        modules/containers/nspawn.nix generates. It does not conflict and it
+        does not warn: the attrsets merge and the lists concatenate.
       '';
     }
 
