@@ -69,6 +69,15 @@ in
         vlanLegs = [
           { veth = "iot9"; vlan = 20; mac = "02:00:00:20:00:09"; }
         ];
+        # A leg on a bridge of its own, statically addressed — the shape of a
+        # segment the house router never sees. The bridge itself is the
+        # machine's to declare; this is only the container's end of it.
+        bridgeLegs = [
+          { veth = "frit9"; bridge = "br-test"; address = "192.168.178.9/24"; }
+        ];
+        # ANY entry turns the device filter on, so this also proves the filter
+        # does not come on for the containers that declare nothing.
+        allowedDevices = [ { node = "char-ttyACM"; modifier = "rw"; } ];
         allowFrom = [
           { peer = "10.0.90.12"; port = 3000; }
           { peer = "10.0.90.14"; port = 3000; }
@@ -81,7 +90,21 @@ in
           # would leave the one client it exists for refused, with the unit
           # green and the rule loaded. The family is inferred from the colon.
           { peer = "fdca:fe99::1"; port = 3000; }
+          # No port at all — a tuner streaming RTP back on ephemeral ports.
+          # Scoped to one peer, which is the only thing making it acceptable.
+          { peer = "192.168.178.1"; port = null; proto = "udp"; }
         ];
+      };
+
+      # The documented exception: a container that recurses DNS itself. It
+      # must come out with NO `DNS=` on its link — being pointed at the house
+      # resolver is the thing it opted out of.
+      clanarchy.containers.doodad = {
+        enable = true;
+        mac = "02:00:00:90:00:66";
+        useResolved = false;
+        allowFrom = [ { peer = "10.0.90.14"; port = 9154; } ];
+        config = { ... }: { services.kresd.enable = false; };
       };
 
       # The podman tier, two images in one namespace — the shape that keeps a

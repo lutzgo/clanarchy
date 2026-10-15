@@ -329,6 +329,26 @@
               ${must "a port range and a source render in iptables order"
                  (has t.containers.gadget.config.networking.firewall.extraCommands
                     "iptables -A nixos-fw -i iot9 -p udp -s 10.0.20.31/32 --dport 32768:60999 -j nixos-fw-accept")}
+              ${must "resolved off means no DNS= on the link"
+                 (t.containers.doodad.config.services.resolved.enable == false
+                  && !(t.containers.doodad.config.systemd.network.networks."10-eth0".networkConfig ? DNS)
+                  && !(t.containers.doodad.config.systemd.network.networks."10-eth0".networkConfig ? Domains))}
+              ${must "a rule with no port omits --dport entirely"
+                 (has t.containers.gadget.config.networking.firewall.extraCommands
+                    "iptables -A nixos-fw -p udp -s 192.168.178.1/32 -j nixos-fw-accept")}
+              ${must "a secondary-bridge leg is enslaved by networkd, not nspawn"
+                 (t.systemd.network.networks."60-frit9".networkConfig.Bridge == "br-test"
+                  && !(t.systemd.network.networks."60-frit9".networkConfig ? KeepMaster))}
+              ${must "a secondary-bridge leg carries no VLAN stanza"
+                 ((t.systemd.network.networks."60-frit9".bridgeVLANs or [ ]) == [ ])}
+              ${must "a static secondary leg takes no DHCP and no gateway"
+                 ((t.containers.gadget.config.systemd.network.networks."20-frit9".networkConfig.Address or null)
+                    == "192.168.178.9/24"
+                  && !(t.containers.gadget.config.systemd.network.networks."20-frit9".networkConfig ? DHCP))}
+              ${must "device passthrough reaches the container"
+                 (t.containers.gadget.allowedDevices == [ { node = "char-ttyACM"; modifier = "rw"; } ])}
+              ${must "a container that declares no devices gets an empty filter"
+                 (t.containers.widget.allowedDevices == [ ])}
               ${must "a v6 peer renders as ip6tables with a /128"
                  (has t.containers.gadget.config.networking.firewall.extraCommands
                     "ip6tables -A nixos-fw -p tcp -s fdca:fe99::1/128 --dport 3000 -j nixos-fw-accept")}

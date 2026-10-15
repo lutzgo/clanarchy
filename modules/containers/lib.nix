@@ -193,7 +193,8 @@
         ++ lib.optional (a.interface != null) "-i ${a.interface}"
         ++ [ "-p ${a.proto}" ]
         ++ lib.optional (a.peer != null) "-s ${a.peer}/${if v6 then "128" else "32"}"
-        ++ [ "--dport ${toString a.port}" "-j nixos-fw-accept" ]
+        ++ lib.optional (a.port != null) "--dport ${toString a.port}"
+        ++ [ "-j nixos-fw-accept" ]
       ) + "\n"
     ) allowFrom;
   };

@@ -132,6 +132,53 @@ let
     };
   };
 
+  # A LEG ON A BRIDGE THAT IS NOT THE PRIMARY ONE — a segment reached over L2
+  # that the house router never sees at all (tvheadend's FRITZ!Box leg).
+  #
+  # The host side uses `Bridge =` and NOT `KeepMaster`, which is the opposite
+  # of the primary leg and is load-bearing both ways: nspawn enslaves the
+  # `vb-<name>` veth itself, so networkd must be told to keep its hands off it
+  # — but nspawn only knows about `hostBridge`, so for an extraVeth on another
+  # bridge nothing enslaves it unless networkd does.
+  bridgeLegType = lib.types.submodule {
+    options = {
+      veth = lib.mkOption {
+        type = lib.types.str;
+        example = "fritz0";
+        description = "Interface name, used for both ends. Host-global; asserted unique.";
+      };
+      bridge = lib.mkOption {
+        type = lib.types.str;
+        example = "br-fritz";
+        description = "Host bridge networkd enslaves this leg into. Declared by the machine, not here.";
+      };
+      address = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "192.168.178.2/24";
+        description = ''
+          Static address for the container end. Null takes DHCP instead.
+          Static is the common case here: a foreign segment's DHCP server is
+          not ours to depend on, and the leg usually exists to reach exactly
+          one on-link address.
+        '';
+      };
+      mac = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Optionally pin the container end's MAC.";
+      };
+      requiredForOnline = lib.mkOption {
+        type = lib.types.str;
+        default = "no";
+        description = ''
+          NOT "routable": the far end of a leg like this is equipment nobody
+          here controls, and it being powered off must not hold up a boot.
+        '';
+      };
+    };
+  };
+
   ulaType = lib.types.submodule {
     options = {
       veth = lib.mkOption {
@@ -161,10 +208,15 @@ let
         description = "Source address. Null omits `-s`, which is what a broadcast/multicast protocol needs.";
       };
       port = lib.mkOption {
-        type = lib.types.either lib.types.port lib.types.str;
+        type = lib.types.nullOr (lib.types.either lib.types.port lib.types.str);
         description = ''
           Destination port, or an iptables range as a string
           (`"32768:60999"`).
+
+          `null` omits `--dport` — every port of that protocol from that
+          peer, which SAT>IP needs because the tuner streams RTP back on
+          ephemeral ports. It has NO DEFAULT on purpose: opening every port is
+          something a reader must see written down, not infer from an absence.
         '';
       };
       proto = lib.mkOption {
@@ -284,6 +336,33 @@ let
         '';
       };
 
+      bridgeLegs = lib.mkOption {
+        type = lib.types.listOf bridgeLegType;
+        default = [ ];
+        description = ''
+          Legs on a bridge other than the primary one. Each gets an
+          `extraVeths` entry, a host-side network that enslaves it, and a
+          static or DHCP network inside the container. The bridge itself — its
+          netdev, its physical port, any avahi exclusion — belongs to the
+          machine: those are facts about the house's wiring, not about a
+          container.
+        '';
+      };
+
+      allowedDevices = lib.mkOption {
+        type = lib.types.listOf (lib.types.attrsOf lib.types.anything);
+        default = [ ];
+        example = lib.literalExpression ''[ { node = "char-ttyACM"; modifier = "rw"; } ]'';
+        description = ''
+          Passed through to `containers.<name>.allowedDevices`.
+
+          ANY entry here turns the device filter ON, which means an incomplete
+          list takes access away rather than leaving it alone. Naming a
+          DIRECTORY grants nothing (service-modules/local-ai.nix measured
+          that); a device-node GROUP like `char-ttyACM` covers every minor.
+        '';
+      };
+
       allowFrom = lib.mkOption {
         type = lib.types.listOf allowType;
         default = [ ];
@@ -332,6 +411,13 @@ let
           Run `services.resolved` inside the container. The one service that
           sets this false is the mail container, whose kresd recurses itself —
           DNSBL operators refuse shared resolvers, so it cannot forward.
+
+          THERE IS DELIBERATELY NO ASSERTION that something else provides DNS.
+          The obvious one — "resolved off requires `networking.nameservers`" —
+          fails the only legitimate consumer: mail's `networking.nameservers`
+          is empty and kresd writes resolv.conf itself. A check that would
+          pass it has to know about simple-nixos-mailserver, which is exactly
+          what this module must not know.
         '';
       };
 
@@ -382,9 +468,13 @@ let
         # [BridgeVLAN] only once it observes the link's master, and nspawn sets
         # that master out of band. With `DefaultPVID = "none"` on the bridge a
         # miss is fail-CLOSED, so the container is simply unreachable.
-        # `bridge vlan show dev vb-<name>` is the check. The "-" prefix makes
-        # the command's failure non-fatal, since it is a backstop and not the
-        # primary mechanism.
+        # `bridge vlan show dev vb-<name>` is the check.
+        #
+        # The "-" prefix is load-bearing: a backstop must not become a new
+        # failure mode. Without it, `bridge` exiting non-zero — the link
+        # already gone during a restart, say — fails `container@<name>` and
+        # puts it in a restart loop, taking the service down to guard against
+        # a race networkd usually wins on its own.
         "container@${name}" = {
           serviceConfig.ExecStartPost =
             lib.optional (vlan != null)
@@ -414,12 +504,34 @@ let
           # routable.
           linkConfig.RequiredForOnline = "enslaved";
         }) c.vlanLegs)
+
+      # Host side of each leg on another bridge. `Bridge =`, not `KeepMaster`:
+      # nspawn only enslaves the primary veth, so for this one networkd is the
+      # only thing that will. No [BridgeVLAN] either — a dedicated segment has
+      # one port pair and nothing to filter.
+      // lib.listToAttrs (map (b:
+        lib.nameValuePair "60-${b.veth}" {
+          matchConfig.Name = b.veth;
+          networkConfig = {
+            Bridge              = b.bridge;
+            LinkLocalAddressing = "no";
+            IPv6AcceptRA        = false;
+          };
+          linkConfig.RequiredForOnline = b.requiredForOnline;
+        }) c.bridgeLegs)
       // {
       "60-${vethHost}" = {
         matchConfig.Name = vethHost;
         networkConfig = {
-          # KeepMaster: nspawn enslaves the link itself, and networkd must not
-          # fight it for ownership.
+          # KeepMaster AND NOT Bridge=. nspawn creates this link and enslaves
+          # it itself (`--network-bridge=`), so `Bridge =` here would have
+          # networkd fight nspawn for the master. KeepMaster leaves the
+          # enslavement alone while still applying [BridgeVLAN], which is the
+          # only thing we want networkd for on this link.
+          #
+          # No L3 either: a bridge port carries no address, and accepting an
+          # RA on one would have it answer advertisements meant for the hosts
+          # behind it.
           KeepMaster          = true;
           LinkLocalAddressing = "no";
           IPv6AcceptRA        = false;
@@ -452,7 +564,12 @@ let
             }) c.ula)
           # A VLAN leg takes no addresses here: nspawn creates the pair and
           # the container end gets its address from DHCP.
-          // lib.listToAttrs (map (v: lib.nameValuePair v.veth { }) c.vlanLegs);
+          // lib.listToAttrs (map (v: lib.nameValuePair v.veth { }) c.vlanLegs)
+          # Same for a secondary-bridge leg: the pair is all nspawn provides,
+          # and the container end is addressed by its own networkd below.
+          // lib.listToAttrs (map (b: lib.nameValuePair b.veth { }) c.bridgeLegs);
+
+        allowedDevices = c.allowedDevices;
 
         bindMounts = c.bindMounts // lib.optionalAttrs (c.secrets != { }) {
           ${secretsDir} = { hostPath = secretsDir; isReadOnly = true; };
@@ -473,13 +590,20 @@ let
             matchConfig.Name = "eth0";
             networkConfig = {
               DHCP         = "ipv4";
-              DNS          = resolver;
-              Domains      = "~. ${searchDomain}";
               IPv6AcceptRA = false;
               # SN2: v4 only. IPv6AcceptRA alone blocks an RA but NOT
               # link-local assignment; this is the line that actually makes
               # `ip -6 addr show dev eth0` empty.
               LinkLocalAddressing = "no";
+            }
+            # THE RESOLVER IS NAMED ONLY IF THE CONTAINER RUNS ONE. `DNS=` in
+            # a .network is consumed by resolved, so with resolved off it is
+            # at best inert — and the one container in that position (mail)
+            # must not be pointed at the house resolver at all, because its
+            # own kresd is the whole reason it opted out.
+            // lib.optionalAttrs c.useResolved {
+              DNS     = resolver;
+              Domains = "~. ${searchDomain}";
             };
               dhcpV4Config = { UseDNS = false; UseDomains = false; };
               linkConfig.RequiredForOnline = "routable";
@@ -524,7 +648,33 @@ let
                 MACAddress = v.mac;
                 RequiredForOnline = v.requiredForOnline;
               };
-            }) c.vlanLegs);
+            }) c.vlanLegs)
+
+          # A secondary-bridge leg: static by default, no gateway and no DNS.
+          # The leg exists to reach something on-link, and taking a default
+          # route from a segment we do not administer is how a container
+          # acquires a second, wrong path to the internet — which is what
+          # IPv6AcceptRA = false is here to prevent on a FRITZ!Box segment
+          # that advertises one over RA.
+          // lib.listToAttrs (map (b:
+            lib.nameValuePair "20-${b.veth}" {
+              matchConfig.Name = b.veth;
+              networkConfig = {
+                IPv6AcceptRA        = false;
+                LinkLocalAddressing = "no";
+              } // (if b.address != null
+                    then { Address = b.address; }
+                    else { DHCP = "ipv4"; })
+              ;
+              dhcpV4Config = lib.optionalAttrs (b.address == null) {
+                UseDNS     = false;
+                UseDomains = false;
+                UseGateway = false;
+                UseRoutes  = false;
+              };
+              linkConfig = lib.optionalAttrs (b.mac != null) { MACAddress = b.mac; }
+                // { RequiredForOnline = b.requiredForOnline; };
+            }) c.bridgeLegs);
 
           # A DHCP failure must leave a RUNNING container with one failed unit,
           # not a host-side restart loop.
