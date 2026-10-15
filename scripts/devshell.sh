@@ -146,3 +146,32 @@ post-deploy() {
   bash scripts/post-deploy-check.sh "$@"
 }
 export -f post-deploy
+
+# ── Formatting ───────────────────────────────────────────────────────────────
+
+# alejandra over the whole tree, or over the paths given.
+#
+# THE REPO IS NOT FORMATTED YET. Running this with no arguments reformats 160
+# files, which is a change that must not be mixed with anything else — see
+# docs/guides/formatting.md. With arguments it is safe and useful: format the
+# file you are editing and nothing else.
+#
+# Usage: fmt                       — the whole tree (see the warning above)
+#        fmt modules/containers/   — just this path
+fmt() {
+  if [ "$#" -eq 0 ]; then
+    echo "fmt: this reformats every .nix file in the repo." >&2
+    echo "     See docs/guides/formatting.md — the repo-wide pass is its own" >&2
+    echo "     change, deliberately. Pass a path to format just that." >&2
+    echo "     To do it anyway: alejandra ." >&2
+    return 1
+  fi
+  alejandra "$@"
+}
+export -f fmt
+
+# What `fmt` would change, without changing it. Safe to run any time.
+fmt-check() {
+  alejandra --check "${@:-.}"
+}
+export -f fmt-check
