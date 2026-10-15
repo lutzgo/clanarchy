@@ -20,12 +20,16 @@
 #
 # Nothing here names a host, a bridge, a VLAN or a domain.
 { lib, pkgs }:
-{
-  # `unitFor` is the only thing the two tiers differ on:
-  # `container@<name>.service` for nspawn, `podman-<name>.service` for podman.
+let
+  # `unitsFor` is the only thing the two tiers differ on:
+  # `container@<name>.service` for nspawn; for podman, EVERY image unit in the
+  # namespace — not just the primary one. romm has two, and its database unit
+  # is ordered only against the primary, so ordering the dirs unit before the
+  # primary alone would let the database start first and find no directory to
+  # mount.
   mkSupportUnits =
     { name
-    , unitFor
+    , unitsFor
     , stateMount
     , stateSource
     , secretsDir
@@ -91,11 +95,11 @@
         wantedBy   = [ "multi-user.target" ];
         after      = map (m: mountUnit m.path) guardedMounts;
         requires   = map (m: mountUnit m.path) guardedMounts;
-        before     = [ unitFor ];
+        before     = unitsFor;
         # BLOCKING (`requires` + `requiredBy`), not advisory: a service that
         # comes up without its state directory is a NEW EMPTY one on a
         # filesystem that rolls back, which will accept data and lose it.
-        requiredBy = [ unitFor ];
+        requiredBy = unitsFor;
         serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
         path = [ pkgs.util-linux pkgs.coreutils ];
         script = ''
@@ -107,10 +111,10 @@
     }
     // lib.optionalAttrs (secrets != { }) {
       "${name}-secrets" = {
-        description = "Stage ${name}'s credentials for ${unitFor}";
+        description = "Stage ${name}'s credentials for ${lib.concatStringsSep ", " unitsFor}";
         after       = [ "local-fs.target" ];
-        before      = [ unitFor ];
-        requiredBy  = [ unitFor ];
+        before      = unitsFor;
+        requiredBy  = unitsFor;
         serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
         path = [ pkgs.coreutils ];
         # NOT a bind of /run/secrets itself: that path is a symlink to a
@@ -182,6 +186,77 @@
       };
     };
 
+  allowType = lib.types.submodule {
+    options = {
+      peer = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Source address. Null omits `-s`, which is what a broadcast/multicast protocol needs.";
+      };
+      port = lib.mkOption {
+        type = lib.types.nullOr (lib.types.either lib.types.port lib.types.str);
+        description = ''
+          Destination port, or an iptables range as a string
+          (`"32768:60999"`).
+
+          `null` omits `--dport` — every port of that protocol from that
+          peer, which SAT>IP needs because the tuner streams RTP back on
+          ephemeral ports. It has NO DEFAULT on purpose: opening every port is
+          something a reader must see written down, not infer from an absence.
+        '';
+      };
+      proto = lib.mkOption {
+        type = lib.types.enum [ "tcp" "udp" ];
+        default = "tcp";
+        description = "Protocol.";
+      };
+
+      family = lib.mkOption {
+        type = lib.types.nullOr (lib.types.enum [ "inet" "inet6" ]);
+        default = null;
+        description = ''
+          Address family, which picks `iptables` or `ip6tables`. Null infers
+          it from `peer` — exact, since a v6 literal contains a colon and a v4
+          one does not. Only a rule with no peer needs to say it.
+        '';
+      };
+      interface = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Restrict the rule to one interface (`-i`). Used to confine a
+          discovery protocol to the leg it belongs on, so enabling mDNS for an
+          IoT leg does not also open it on the services VLAN.
+        '';
+      };
+    };
+  };
+
+  # ── HOW AN ACCEPT IS SPELLED, IN ONE PLACE ──────────────────────────────────
+  #
+  # Both tiers need the same rule in a different frame: the nspawn tier appends
+  # to `nixos-fw` through `extraCommands`, the podman tier runs
+  # `ip netns exec … iptables -A INPUT` from its netns unit. The podman side
+  # used to carry its own simplified copy that assumed tcp, a non-null peer and
+  # a non-null port — so `proto`, `interface`, `port = null` and a v6 peer were
+  # all silently wrong there, latent until the first consumer used one.
+  isV6 = a:
+    if a.family != null
+    then a.family == "inet6"
+    else a.peer != null && lib.hasInfix ":" a.peer;
+
+  # The command, which the address family picks.
+  ipt = a: if isV6 a then "ip6tables" else "iptables";
+
+  # The match arguments, in iptables' own order. Each is omitted when it is
+  # null rather than defaulted to something permissive: no `-s` means any
+  # source, which is only ever correct deliberately.
+  acceptParts = a:
+    lib.optional (a.interface != null) "-i ${a.interface}"
+    ++ [ "-p ${a.proto}" ]
+    ++ lib.optional (a.peer != null) "-s ${a.peer}/${if isV6 a then "128" else "32"}"
+    ++ lib.optional (a.port != null) "--dport ${toString a.port}";
+
   # One accept per named peer, and nothing else.
   #
   # `extraCommands`, NOT `extraInputRules`: the latter is declared
@@ -219,4 +294,7 @@
       ) + "\n"
     ) allowFrom;
   };
+in
+{
+  inherit allowType isV6 ipt acceptParts mkSupportUnits mkFirewall;
 }

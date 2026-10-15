@@ -215,180 +215,6 @@ let
   imageDigest = "sha256:f41658ebc890fa7aba037e3e1f113b5a2af81581799e23c59534b9faff258092";
 in
 {
-  ##############################################################################
-  # Podman itself.  ernst had no container runtime before this file.
-  ##############################################################################
-  #
-  # `virtualisation.containers.enable` is what provides /etc/containers —
-  # policy.json in particular.  Without it podman refuses every image with
-  # "no policy.json file found", which is the first thing that happens on a
-  # host where podman was installed but never configured (measured on ernst
-  # while proving the netns mechanism).
-  virtualisation.containers.enable = true;
-  virtualisation.podman = {
-    enable = true;
-    # No docker socket, no docker alias: nothing here speaks the docker API,
-    # and modules/apps/containers.nix (lgo's WORKSTATION bundle, which does
-    # enable dockerCompat) is not in scope on ernst — ernst uses commonBase,
-    # which does not import modules/apps at all.
-    dockerCompat = false;
-    # The default `podman.service` socket activation is not needed either:
-    # oci-containers drives podman by CLI from a systemd unit.
-    dockerSocket.enable = false;
-  };
-
-  ##############################################################################
-  # The network namespace, its veth, and its firewall.
-  ##############################################################################
-
-  # Host side of the veth — an ordinary VLAN-90 port on br0.
-  #
-  # Bridge=, NOT KeepMaster: the nspawn containers need KeepMaster because
-  # nspawn enslaves the link itself and networkd must not fight it.  Here the
-  # oneshot below only CREATES the pair; networkd owns the enslavement, so it
-  # applies [BridgeVLAN] in the same step and the VLAN race the nspawn files
-  # work around cannot happen.  Pattern A in machines/ernst/networking.nix.
-  systemd.network.networks."60-${vethHost}" = {
-    matchConfig.Name = vethHost;
-    networkConfig = {
-      Bridge              = "br0";
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
-    };
-    bridgeVLANs = [ { VLAN = vlanId; PVID = vlanId; EgressUntagged = vlanId; } ];
-    linkConfig.RequiredForOnline = "enslaved";
-  };
-
-  # Create the namespace and the veth pair, then firewall the namespace.
-  #
-  # Idempotent throughout: this must survive a `clan machines update` that
-  # restarts it while the container is running, and it must not fail the
-  # container when the netns already exists.
-  #
-  # THE FIREWALL IS PART OF THIS UNIT, and it has to be — a bare netns handed
-  # to podman has NO rules at all, and podman adds none when it is given a
-  # namespace rather than asked to build one.  Without these lines 4848 would
-  # be reachable from everything on VLAN 90, including the qBittorrent guest.
-  # That is the exact bypass the source-restriction hardening in
-  # containers/traefik.nix exists to prevent, so it is reproduced here in the
-  # only place that can enforce it.
-  systemd.services.tubesync-netns = {
-    description = "Network namespace and veth for the TubeSync container";
-    wantedBy = [ "multi-user.target" ];
-    before   = [ "podman-tubesync.service" ];
-    after    = [ "systemd-networkd.service" ];
-    serviceConfig = {
-      Type            = "oneshot";
-      RemainAfterExit = true;
-    };
-    path = [ pkgs.iproute2 pkgs.iptables ];
-    script = ''
-      set -eu
-
-      # The namespace.  `ip netns add` fails if it exists, which is the normal
-      # case on a re-run, so probe first rather than swallowing every error.
-      if ! ip netns list | grep -qw '${netns}'; then
-        ip netns add '${netns}'
-      fi
-      ip -n '${netns}' link set lo up
-
-      # The veth pair.  Existence of the host side is the test: if it is there
-      # the pair was made on an earlier run and the container end is already
-      # inside the namespace.
-      if ! ip link show '${vethHost}' >/dev/null 2>&1; then
-        ip link add '${vethHost}' type veth peer name '${vethNs}' netns '${netns}'
-      fi
-
-      # MAC is pinned on the CONTAINER side — that is the address the UDM-Pro
-      # sees and the one the DHCP reservation keys on, never the host-side
-      # veth.  Setting it before the link comes up means it is stable from the
-      # first DHCP DISCOVER, which is what a reservation needs.
-      ip -n '${netns}' link set '${vethNs}' address '${mac}'
-      ip -n '${netns}' link set '${vethNs}' up
-      ip link set '${vethHost}' up
-
-      # Namespace firewall.  Rebuilt from scratch on every run so it cannot
-      # accumulate duplicates.
-      ip netns exec '${netns}' iptables -F INPUT
-      ip netns exec '${netns}' iptables -P INPUT DROP
-      ip netns exec '${netns}' iptables -A INPUT -i lo -j ACCEPT
-      ip netns exec '${netns}' iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-      # The web UI, from Traefik and nothing else.
-      ip netns exec '${netns}' iptables -A INPUT -p tcp -s ${traefikAddr}/32 --dport ${toString webPort} -j ACCEPT
-      # DHCP replies from the UDM-Pro (the client below runs in here).
-      ip netns exec '${netns}' iptables -A INPUT -p udp --sport 67 --dport 68 -j ACCEPT
-      # ICMP, so the thing is diagnosable at all.
-      ip netns exec '${netns}' iptables -A INPUT -p icmp -j ACCEPT
-    '';
-    preStop = ''
-      ${pkgs.iproute2}/bin/ip netns del '${netns}' 2>/dev/null || true
-      ${pkgs.iproute2}/bin/ip link del '${vethHost}' 2>/dev/null || true
-    '';
-  };
-
-  # DHCP inside the namespace.
-  #
-  # ADDRESSING IS DHCP WITH A RESERVATION ON THE UDM-Pro, keyed on the pinned
-  # MAC — the same rule every sibling container follows, and for the same
-  # reason: the UDM-Pro owns the subnet, the pool and every other reservation,
-  # and a second copy in this repo diverges silently.
-  #
-  # It needs its own client because a bare namespace has no networkd in it.
-  # `NetworkNamespacePath=` is what puts this unit inside the namespace; the
-  # unit is otherwise an ordinary host service.
-  #
-  # `--nohook resolv.conf` is load-bearing: the MOUNT namespace is shared with
-  # the host, so without it dhcpcd would rewrite the HOST's /etc/resolv.conf
-  # from a lease meant for a container.  The container's resolver is set
-  # declaratively on the podman side (`--dns`) instead, mirroring what the
-  # nspawn containers declare in their own networkd config and for the same
-  # reason — a DHCP-supplied resolver that quietly changes does not fail
-  # loudly, it fails on the next metadata fetch.
-  systemd.services.tubesync-dhcp = {
-    description = "DHCP client inside the TubeSync network namespace";
-    wantedBy = [ "multi-user.target" ];
-    after    = [ "tubesync-netns.service" ];
-    requires = [ "tubesync-netns.service" ];
-    before   = [ "podman-tubesync.service" ];
-    serviceConfig = {
-      NetworkNamespacePath = "/run/netns/${netns}";
-      ExecStart = "${pkgs.dhcpcd}/bin/dhcpcd --nobackground --nohook resolv.conf --ipv4only ${vethNs}";
-      Restart    = "on-failure";
-      RestartSec = "5s";
-    };
-  };
-
-  ##############################################################################
-  # Storage.
-  ##############################################################################
-
-  # State on zdata.  0700 and owned by the container's numeric ids — which are
-  # literal here, because this container is rootful and unmapped.
-  systemd.tmpfiles.rules = [
-    "d ${stateDir} 0700 ${toString tubesyncUid} ${toString mediaGid} -"
-  ];
-
-  # The downloads directory, ordered AFTER the media dataset is mounted.
-  #
-  # A tmpfiles rule alone races the mount, which is why containers/jellyfin.nix
-  # pairs its rules with an ordered oneshot — read that file's long comment
-  # before changing either.  2770 = setgid + rwxrws---: new files inherit gid
-  # media, group members read and write, root owns.  Jellyfin (uid 964, member
-  # of media) can then read what TubeSync writes with no second chown.
-  systemd.services.tubesync-downloads-dir = {
-    description = "Create ${downloadsDir} as root:media 2770";
-    wantedBy = [ "multi-user.target" ];
-    before   = [ "podman-tubesync.service" ];
-    after    = [ "srv-media.mount" ];
-    requires = [ "srv-media.mount" ];
-    serviceConfig = {
-      Type            = "oneshot";
-      RemainAfterExit = true;
-    };
-    script = ''
-      ${pkgs.coreutils}/bin/install -d -o root -g ${toString mediaGid} -m 2770 ${downloadsDir}
-    '';
-  };
 
   ##############################################################################
   # Secrets.
@@ -461,53 +287,70 @@ in
   ##############################################################################
   # The container.
   ##############################################################################
-  virtualisation.oci-containers.backend = "podman";
-  virtualisation.oci-containers.containers.tubesync = {
-    image = "ghcr.io/meeb/tubesync@${imageDigest}";
+  #
+  # Declared through modules/containers/podman-netns.nix, which generates the
+  # tier switch, the netns unit (namespace, veth pair, MAC, the DROP policy
+  # and its accepts, and the teardown), the DHCP client inside the namespace,
+  # the host-side networkd file, the dirs unit, the oci-containers entry with
+  # its netns/DNS/user options, and the ordering between all of them.
+  #
+  # `tubesync-secrets` STAYS HAND-WRITTEN: it composes one env file out of a
+  # printf'd Django key AND the whole contents of a second var file
+  # (`jellyfin.env`). The module's `secrets` option writes KEY=value pairs; it
+  # has no way to splice another env file in, and teaching it one for a single
+  # caller would be generality bought on spec.
+  clanarchy.podmanContainers.tubesync = {
+    enable = true;
+    mac    = "02:00:00:90:00:0b";
 
-    environment = {
-      # Literal on disk — rootful, no userns.  See the ROOTFUL section.
-      PUID = toString tubesyncUid;
-      PGID = toString mediaGid;
-      # Drives the download SCHEDULE, so a wrong value silently shifts every
-      # window rather than failing.  Matches the host.
-      TZ = "Europe/Berlin";
-      # Django ALLOWED_HOSTS.  NOT left at the `*` default — see the
-      # AUTHENTICATION section.
-      TUBESYNC_HOSTS = "tubesync.goclan.org";
-      # Do NOT let it rewrite ownership across the media tree.  See STORAGE.
-      TUBESYNC_RESET_DOWNLOAD_DIR = "False";
+    # The namespace end of the veth pair. Host-global — see the module's note
+    # on why a duplicate here succeeds wrongly rather than failing.
+    interface = "eth0";
+
+    # TWO DIRECTORIES ON TWO DATASETS. The downloads tree lives under
+    # /srv/media, so the guard names THAT — the mount point, not the
+    # subdirectory — because the dirs unit derives a mount unit from this
+    # path and `srv-media-youtube.mount` is a unit nothing defines.
+    # `findmnt --target` walks up to the enclosing mount either way.
+    #
+    # The source-and-fstype check is new: it replaces an ordering
+    # (`requires srv-media.mount`) that said the same thing more weakly, since
+    # a mount unit being up does not prove what is under it.
+    #
+    # NO `uidgid`: this image runs its entrypoint as root and drops to
+    # PUID/PGID itself, so a `--user` would start it as a user that cannot do
+    # its own setup. The numbers are passed as environment below, which is
+    # what the image reads.
+    extraGuardedMounts = [
+      { path = "/srv/media"; source = "zdata/media"; fstype = "zfs"; }
+    ];
+
+    stateDirs = [
+      { path = stateDir;     owner = tubesyncUid; group = mediaGid; mode = "0700"; }
+      # root:media 2770 — written by the container as uid 3027, read by
+      # Jellyfin through the media group, and setgid so new files keep it.
+      { path = downloadsDir; owner = "root";      group = mediaGid; mode = "2770"; }
+    ];
+
+    allowFrom = [
+      { peer = traefikAddr; port = webPort; }
+    ];
+
+    images.tubesync = {
+      image = "ghcr.io/meeb/tubesync@${imageDigest}";
+      environment = {
+        PUID = toString tubesyncUid;
+        PGID = toString mediaGid;
+        TZ = "Europe/Berlin";
+        TUBESYNC_HOSTS = "tubesync.goclan.org";
+        TUBESYNC_RESET_DOWNLOAD_DIR = "False";
+      };
+      environmentFiles = [ "${secretsDir}/env" ];
+      volumes = [
+        "${stateDir}:/config"
+        "${downloadsDir}:/downloads"
+      ];
+      ports = [ ];
     };
-
-    environmentFiles = [ "${secretsDir}/env" ];
-
-    volumes = [
-      "${stateDir}:/config"
-      "${downloadsDir}:/downloads"
-    ];
-
-    # NO `ports` ENTRY, deliberately.  Publishing a port is meaningless with
-    # `--network=ns:` — there is no podman-managed network to publish from,
-    # and the service is reached at its own address on VLAN 90 like every
-    # other backend in this fleet.
-    ports = [ ];
-
-    extraOptions = [
-      # The namespace built above.  This is the whole networking decision.
-      "--network=ns:/run/netns/${netns}"
-      # Resolver declared rather than inherited, for the same reason the nspawn
-      # containers declare it: Technitium's blocklists and logging should cover
-      # this container, and a DHCP-supplied resolver that changes underneath us
-      # fails on the next fetch rather than loudly.
-      "--dns=10.0.5.3"
-      "--dns-search=skynet.lan"
-    ];
-  };
-
-  # Ordering.  oci-containers generates podman-tubesync.service; everything it
-  # depends on is declared here rather than inside the generated unit.
-  systemd.services.podman-tubesync = {
-    after    = [ "tubesync-netns.service" "tubesync-dhcp.service" "tubesync-downloads-dir.service" ];
-    requires = [ "tubesync-netns.service" "tubesync-downloads-dir.service" ];
   };
 }

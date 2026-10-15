@@ -64,14 +64,6 @@ let
     };
   };
 
-  allowType = lib.types.submodule {
-    options = {
-      peer      = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
-      port      = lib.mkOption { type = lib.types.either lib.types.port lib.types.str; };
-      proto     = lib.mkOption { type = lib.types.enum [ "tcp" "udp" ]; default = "tcp"; };
-      interface = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
-    };
-  };
 
   podType = lib.types.submodule ({ name, ... }: {
     options = {
@@ -112,7 +104,7 @@ let
       stateDirs = lib.mkOption { type = lib.types.listOf stateDirType; default = [ ]; };
       extraGuardedMounts = lib.mkOption { type = lib.types.listOf guardedMountType; default = [ ]; };
       secrets = lib.mkOption { type = lib.types.attrsOf (lib.types.attrsOf secretValueType); default = { }; };
-      allowFrom = lib.mkOption { type = lib.types.listOf allowType; default = [ ]; };
+      allowFrom = lib.mkOption { type = lib.types.listOf clib.allowType; default = [ ]; };
 
       uidgid = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
@@ -161,7 +153,8 @@ let
 
       support = clib.mkSupportUnits {
         inherit name secretsDir;
-        unitFor = primaryUnit;
+        # EVERY image unit, not just the primary — see the note in ./lib.nix.
+        unitsFor = imageUnits;
         inherit (defaults) stateMount stateSource;
         inherit (c) stateDirs secrets;
         extraMounts = c.extraGuardedMounts;
@@ -175,6 +168,16 @@ let
           description = "Network namespace and veth for the ${name} container";
           wantedBy = [ "multi-user.target" ];
           before   = imageUnits;
+          # REQUIRED, not merely ordered. `before` is ordering alone, and the
+          # four hand-written versions of this all said `requires` as well —
+          # correctly: the image is started with `--network=ns:/run/netns/…`,
+          # so without the namespace podman has nothing to join. Ordering by
+          # itself would start the container anyway when this unit failed.
+          #
+          # The DHCP unit below is deliberately NOT required: a lease that
+          # does not arrive must leave a RUNNING container with one failed
+          # unit, not a container that never starts.
+          requiredBy = imageUnits;
           after    = [ "systemd-networkd.service" ];
           serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
           path = [ pkgs.iproute2 pkgs.iptables ];
@@ -201,7 +204,9 @@ let
             ip netns exec '${netns}' iptables -A INPUT -i lo -j ACCEPT
             ip netns exec '${netns}' iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
             ${lib.concatMapStrings (a: ''
-              ip netns exec '${netns}' iptables -A INPUT -p tcp -s ${a.peer}/32 --dport ${toString a.port} -j ACCEPT
+              ${lib.concatStringsSep " " (
+                [ "ip netns exec '${netns}' ${clib.ipt a} -A INPUT" ]
+                ++ clib.acceptParts a ++ [ "-j ACCEPT" ])}
             '') c.allowFrom}
             # DHCP replies and ICMP, without which the lease never completes
             # and the container is unreachable for reasons that look like the

@@ -322,154 +322,6 @@ in
   # The network namespace, its veth, and its firewall.
   ##############################################################################
 
-  # Host side of the veth — an ordinary VLAN-90 port on br0.
-  #
-  # Bridge=, NOT KeepMaster: the nspawn containers need KeepMaster because
-  # nspawn enslaves the link itself and networkd must not fight it.  Here the
-  # oneshot below only CREATES the pair; networkd owns the enslavement, so it
-  # applies [BridgeVLAN] in the same step.  Pattern A in networking.nix.
-  systemd.network.networks."60-${vethHost}" = {
-    matchConfig.Name = vethHost;
-    networkConfig = {
-      Bridge              = "br0";
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
-    };
-    bridgeVLANs = [ { VLAN = vlanId; PVID = vlanId; EgressUntagged = vlanId; } ];
-    linkConfig.RequiredForOnline = "enslaved";
-  };
-
-  systemd.services.romm-netns = {
-    description = "Network namespace and veth for the RomM containers";
-    wantedBy = [ "multi-user.target" ];
-    before   = [ "podman-romm.service" "podman-romm-db.service" ];
-    after    = [ "systemd-networkd.service" ];
-    serviceConfig = {
-      Type            = "oneshot";
-      RemainAfterExit = true;
-    };
-    path = [ pkgs.iproute2 pkgs.iptables ];
-    # Idempotent throughout: it must survive a `clan machines update` that
-    # restarts it while the containers are running.
-    script = ''
-      set -eu
-
-      if ! ip netns list | grep -qw '${netns}'; then
-        ip netns add '${netns}'
-      fi
-      # `lo` up is not cosmetic here — it is the database's only transport.
-      ip -n '${netns}' link set lo up
-
-      if ! ip link show '${vethHost}' >/dev/null 2>&1; then
-        ip link add '${vethHost}' type veth peer name '${vethNs}' netns '${netns}'
-      fi
-
-      # MAC pinned on the CONTAINER side — the address the UDM-Pro sees and the
-      # one the DHCP reservation keys on, never the host-side veth.  Set before
-      # the link comes up so it is stable from the first DHCP DISCOVER.
-      ip -n '${netns}' link set '${vethNs}' address '${mac}'
-      ip -n '${netns}' link set '${vethNs}' up
-      ip link set '${vethHost}' up
-
-      # Namespace firewall.  A bare netns handed to podman has NO rules, and
-      # podman adds none when it is given a namespace rather than asked to
-      # build one.  Rebuilt from scratch each run so it cannot accumulate
-      # duplicates.
-      ip netns exec '${netns}' iptables -F INPUT
-      ip netns exec '${netns}' iptables -P INPUT DROP
-      # This rule is what keeps MariaDB off the network: the database listens
-      # on 127.0.0.1 only, and `lo` is reachable from inside the namespace and
-      # from nowhere else.
-      ip netns exec '${netns}' iptables -A INPUT -i lo -j ACCEPT
-      ip netns exec '${netns}' iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-      # The web UI, from Traefik.
-      ip netns exec '${netns}' iptables -A INPUT -p tcp -s ${traefikAddr}/32 --dport ${toString webPort} -j ACCEPT
-      # M26 — and from the service index, which reads the platform and ROM
-      # counts.  RomM's homepage widget takes NO credential (upstream documents
-      # none), so this rule is the entire authorisation for that read: whatever
-      # the widget's endpoint answers, it answers to anything on .13.  That is
-      # acceptable for a count of platforms and games and would not be for
-      # anything else on this port, which is the reason it is written here in
-      # full rather than appended to the line above.  See containers/
-      # homepage.nix.
-      ip netns exec '${netns}' iptables -A INPUT -p tcp -s ${dashboardAddr}/32 --dport ${toString webPort} -j ACCEPT
-      # DHCP replies from the UDM-Pro (the client below runs in here).
-      ip netns exec '${netns}' iptables -A INPUT -p udp --sport 67 --dport 68 -j ACCEPT
-      # ICMP, so the thing is diagnosable at all.
-      ip netns exec '${netns}' iptables -A INPUT -p icmp -j ACCEPT
-    '';
-    preStop = ''
-      ${pkgs.iproute2}/bin/ip netns del '${netns}' 2>/dev/null || true
-      ${pkgs.iproute2}/bin/ip link del '${vethHost}' 2>/dev/null || true
-    '';
-  };
-
-  # DHCP inside the namespace — a bare netns has no networkd in it.
-  #
-  # `--nohook resolv.conf` is load-bearing: the MOUNT namespace is shared with
-  # the host, so without it dhcpcd would rewrite the HOST's /etc/resolv.conf
-  # from a lease meant for a container.  The resolver is declared on the podman
-  # side instead.  M9 documents this at length.
-  systemd.services.romm-dhcp = {
-    description = "DHCP client inside the RomM network namespace";
-    wantedBy = [ "multi-user.target" ];
-    after    = [ "romm-netns.service" ];
-    requires = [ "romm-netns.service" ];
-    before   = [ "podman-romm.service" ];
-    serviceConfig = {
-      NetworkNamespacePath = "/run/netns/${netns}";
-      ExecStart  = "${pkgs.dhcpcd}/bin/dhcpcd --nobackground --nohook resolv.conf --ipv4only ${vethNs}";
-      Restart    = "on-failure";
-      RestartSec = "5s";
-    };
-  };
-
-  ##############################################################################
-  # Storage.
-  ##############################################################################
-
-  # Ordered AFTER the datasets are mounted, and REQUIRING them.
-  #
-  # A tmpfiles rule alone races the mount — containers/jellyfin.nix documents
-  # that at length and every podman-tier sibling follows it.  The requirement is
-  # hard rather than advisory for the same reason Storyteller's is: RomM's
-  # database lives under stateDir, so a RomM that starts without it is not a
-  # degraded RomM, it is a NEW EMPTY ONE whose index would then have to be
-  # reconciled with the real library by hand.
-  systemd.services.romm-dirs = {
-    description = "Create RomM's library and state directories";
-    wantedBy = [ "multi-user.target" ];
-    before   = [ "podman-romm.service" "podman-romm-db.service" ];
-    after    = [ "srv-roms.mount" "srv-state.mount" ];
-    requires = [ "srv-roms.mount" "srv-state.mount" ];
-    serviceConfig = {
-      Type            = "oneshot";
-      RemainAfterExit = true;
-    };
-    script = ''
-      set -eu
-      install=${pkgs.coreutils}/bin/install
-
-      # The library: 2770 root:romm.
-      #
-      # SETGID (the leading 2) is the load-bearing digit.  Two different
-      # principals write in here — RomM itself (uploads through the web UI) and
-      # Syncthing (replication from birte) — and a file written by one has to
-      # remain writable by the other.  Without setgid the group of a new file
-      # would follow whichever process created it and the two would slowly
-      # fence each other out of the tree.
-      $install -d -o root -g ${toString rommGid} -m 2770 ${libraryDir}
-      $install -d -o root -g ${toString rommGid} -m 2770 ${libraryDir}/roms
-      $install -d -o root -g ${toString rommGid} -m 2770 ${libraryDir}/bios
-
-      # RomM's own state: 0750 romm:romm, no group write and no other access.
-      # This is one application's private data, database included.
-      $install -d -o ${toString rommUid} -g ${toString rommGid} -m 0750 ${stateDir}
-      for d in resources assets config redis mysql; do
-        $install -d -o ${toString rommUid} -g ${toString rommGid} -m 0750 ${stateDir}/$d
-      done
-    '';
-  };
 
   ##############################################################################
   # Secrets.
@@ -734,276 +586,117 @@ in
   };
 
   ##############################################################################
-  # The containers.
+  # The container.
   ##############################################################################
+  #
+  # Declared through modules/containers/podman-netns.nix, which generates the
+  # netns unit, the DHCP client, the host-side networkd file, the dirs unit,
+  # both oci-containers entries and the ordering between all of them.
+  #
+  # `romm-secrets` STAYS HAND-WRITTEN: it writes TWO env files for two
+  # different images out of five generators, one of which it assembles from a
+  # prompt-per-provider. The module's `secrets` option writes one file per
+  # named env file out of KEY=value pairs, which is not that shape.
+  clanarchy.podmanContainers.romm = {
+    enable = true;
+    mac    = "02:00:00:90:00:0e";
+    interface = "rm0";
 
-  # MariaDB.  Reachable only over `lo` inside the namespace — see the header.
-  virtualisation.oci-containers.containers.romm-db = {
-    image = "docker.io/library/mariadb@${dbDigest}";
+    # Rootful and unmapped: these ids land on zdata, where a rootless subuid
+    # remap would write files the rest of the host cannot name. Applies to
+    # both images in the namespace.
+    uidgid = "${toString rommUid}:${toString rommGid}";
 
-    environment = {
-      TZ                = "Europe/Berlin";
-      MARIADB_DATABASE  = "romm";
-      MARIADB_USER      = "romm-user";
-    };
-    environmentFiles = [ "${secretsDir}/romm-db.env" ];
-
-    volumes = [ "${stateDir}/mysql:/var/lib/mysql" ];
-
-    # NO `ports` entry, deliberately — meaningless with `--network=ns:`, and in
-    # this case actively undesirable: the database has no business being
-    # addressable at all.
-    ports = [ ];
-
-    extraOptions = [
-      "--network=ns:/run/netns/${netns}"
-      "--dns=10.0.5.3"
-      "--dns-search=skynet.lan"
-      # Same uid as RomM: one service, one identity on the pool.  The datadir
-      # is created 0750 with that owner by romm-dirs above, which is what makes
-      # running the image unprivileged possible at all.
-      "--user=${toString rommUid}:${toString rommGid}"
-      # Bind the listener to loopback explicitly rather than relying on the
-      # firewall alone.  Defence in depth is cheap here and it documents the
-      # intent at the point someone would otherwise wonder.
-      "--health-cmd=healthcheck.sh --connect --innodb_initialized"
-    ];
-    cmd = [ "--bind-address=127.0.0.1" ];
-  };
-
-  virtualisation.oci-containers.containers.romm = {
-    image = "docker.io/rommapp/romm@${rommDigest}";
-
-    environment = {
-      TZ = "Europe/Berlin";
-
-      # 127.0.0.1 — the database is in this same namespace.  Upstream's compose
-      # uses the compose service name here; there is no DNS between these two
-      # containers because there is no podman network, by design.
-      DB_HOST = "127.0.0.1";
-      DB_NAME = "romm";
-      DB_USER = "romm-user";
-      # DB_PASSWD and ROMM_AUTH_SECRET_KEY arrive via environmentFiles.
-
-      ROMM_PORT = toString webPort;
-
-      # Hasheous is the one metadata source that needs NO account and NO API
-      # key, so it is enabled unconditionally and makes a scan useful even
-      # before anyone has signed up for anything.
-      #
-      # IGDB and SteamGridDB need credentials tied to a personal account.  They
-      # arrive through environmentFiles as the `romm-metadata-keys` prompted
-      # generator below — the empty-prompt path leaves them unset, so a machine
-      # whose owner has not signed up still deploys and still scans.
-      HASHEOUS_API_ENABLED = "true";
-
-      # LaunchBox is the other source that costs nothing: `config/__init__.py`
-      # reads LAUNCHBOX_API_ENABLED as a plain bool and
-      # `launchbox_handler/handler.py` gates on it alone — there is no API key
-      # and no account.  Its corpus is the LaunchBox Games Database, which is
-      # retro-first and carries a lot of the regional and compilation releases
-      # IGDB does not, so it is enabled unconditionally alongside Hasheous.
-      LAUNCHBOX_API_ENABLED = "true";
-
-      # ── LaunchBox needs its dump imported, or it reports "Connection failed" ──
-      #
-      # LAUNCHBOX_API_ENABLED alone is not enough, and the UI says so honestly.
-      # LaunchBox is not a live API: `update_launchbox_metadata.py` downloads
-      # https://gamesdb.launchbox-app.com/Metadata.zip and folds it into a
-      # cache, and `handler.py:heartbeat()` returns
-      # `is_remote_store_populated()` with the comment "Cloud lookups read from
-      # a cache the metadata update task fills. Until it has run, every lookup
-      # returns nothing, so reporting healthy here would be a lie."
-      #
-      # The import only ever runs from the scheduled task, and that task is off
-      # by default — which is why enabling the source produced a red
-      # "Connection failed" rather than a working provider.  Turning the
-      # schedule on is the actual enablement; the cron default is 04:00 daily.
-      ENABLE_SCHEDULED_UPDATE_LAUNCHBOX_METADATA = "true";
-
-      # ── The three remaining no-credential sources ────────────────────────
-      #
-      # All plain bools in `config/__init__.py`, all with live HTTP heartbeats
-      # (no local store to populate first, unlike LaunchBox above), so they go
-      # healthy as soon as they are switched on:
-      #
-      #   Flashpoint Archive — web/Flash preservation corpus.
-      #   HowLongToBeat     — completion times.
-      #   PlayMatch         — a *match proxy* rather than a metadata source: it
-      #                       resolves a dump to a known game id, which is the
-      #                       same job Hasheous does, so it mainly helps the
-      #                       hacks and multicarts IGDB cannot name.
-      #                       PLAYMATCH_API_URL defaults to
-      #                       https://playmatch.retrorealm.dev/api/v2.
-      #
-      # Note these are not free at scan time: every extra source is another
-      # per-ROM round trip, on top of the IGDB/SteamGridDB/Hasheous calls that
-      # already put throughput at ~150 ROMs/hour/worker.  See SCAN_TIMEOUT below.
-      FLASHPOINT_API_ENABLED = "true";
-      HLTB_API_ENABLED       = "true";
-      PLAYMATCH_API_ENABLED  = "true";
-
-      # ── Why these two are set, and what happens when they are not ──────────
-      #
-      # SCAN_WORKERS is an asyncio.Semaphore around per-ROM scanning
-      # (endpoints/sockets/scan.py), and it DEFAULTS TO 1 — the scan is
-      # entirely serial, and every ROM is a round trip to IGDB, SteamGridDB and
-      # Hasheous.  Measured on the first real scan: ~150 ROMs/hour, degrading
-      # from 235 in the first hour to 93 by the fourth.
-      #
-      # SCAN_TIMEOUT is an rq job timeout, and it DEFAULTS TO 4 HOURS.  When it
-      # fires the job dies with rq.timeouts.JobTimeoutException and takes the
-      # whole tail of the scan with it.  That is not a cosmetic failure: the
-      # gamelist.xml export runs at the END of the job, so a scan that times
-      # out silently produces no ES-DE metadata at all — which is exactly how
-      # this library sat at "gamelist.xml: 0" while `scan.gamelist.export` was
-      # correctly set to true and being read.  ROMs already committed do
-      # survive, so a timed-out scan looks like a partial success rather than a
-      # crash: 531 of ~5000 files, three platforms out of five.
-      #
-      # 4 workers, not more, because there is NO rate limiter in
-      # handler/metadata/igdb_handler.py and IGDB's documented ceiling is 4
-      # requests per second.  Each ROM also costs local hashing and SteamGridDB
-      # and Hasheous calls, so 4 concurrent ROMs stays under that ceiling
-      # rather than racing it.
-      #
-      # 24 hours, not 4, because the library is 37k files across 26 platforms.
-      # Even at 4× the measured rate a full pass does not fit in an afternoon,
-      # and the point of the timeout is to catch a wedged scan — not to cap a
-      # legitimately long one.
-      SCAN_WORKERS = "4";
-      SCAN_TIMEOUT = toString (24 * 60 * 60);
-    };
-    environmentFiles = [ "${secretsDir}/romm.env" ];
-
-    volumes = [
-      # The library.  Read-write: RomM can accept uploads through the web UI,
-      # and that is the intended way to add a game from a machine that is not
-      # birte.
-      "${libraryDir}:/romm/library"
-      # Fetched artwork and metadata — large, and re-fetchable, but re-fetching
-      # a whole library's covers is slow enough to be worth persisting.
-      "${stateDir}/resources:/romm/resources"
-      # Saves, states and screenshots RomM manages itself.
-      "${stateDir}/assets:/romm/assets"
-      # config.yml lives here.  It is where the platform-name mapping and the
-      # ES-DE gamelist export get configured; RomM rewrites this file itself,
-      # so it is a volume rather than anything generated from Nix.
-      "${stateDir}/config:/romm/config"
-      # The image runs its own redis for background tasks.
-      "${stateDir}/redis:/redis-data"
+    # The library is its own dataset; the guard names the MOUNT POINT, since
+    # the dirs unit derives a mount unit from this path.
+    extraGuardedMounts = [
+      { path = libraryDir; source = "zdata/roms"; fstype = "zfs"; }
     ];
 
-    ports = [ ];
+    # 2770 root:romm on the library so a human can drop a ROM in; 0750 on the
+    # state tree, which only RomM itself touches.
+    stateDirs = [
+      { path = libraryDir;          owner = "root";  group = rommGid; mode = "2770"; }
+      { path = "${libraryDir}/roms"; owner = "root"; group = rommGid; mode = "2770"; }
+      { path = "${libraryDir}/bios"; owner = "root"; group = rommGid; mode = "2770"; }
+      { path = stateDir;            owner = rommUid; group = rommGid; mode = "0750"; }
+    ] ++ map (d: { path = "${stateDir}/${d}"; owner = rommUid; group = rommGid; mode = "0750"; })
+      [ "resources" "assets" "config" "redis" "mysql" ];
 
-    dependsOn = [ "romm-db" ];
-
-    extraOptions = [
-      "--network=ns:/run/netns/${netns}"
-      "--dns=10.0.5.3"
-      "--dns-search=skynet.lan"
-      "--user=${toString rommUid}:${toString rommGid}"
+    allowFrom = [
+      { peer = traefikAddr;   port = webPort; }
+      { peer = dashboardAddr; port = webPort; }
     ];
-  };
 
-  ##############################################################################
-  # Ordering and the resource budget.
-  ##############################################################################
+    images = {
+      # THE DATABASE IS BOUND TO LOOPBACK AND SHARES THIS NAMESPACE, which is
+      # what makes it unaddressable rather than merely unadvertised: there is
+      # no interface in here it could answer on except `lo`, and the single
+      # `-i lo` accept in the netns unit covers it.
+      romm-db = {
+        image = "docker.io/library/mariadb@${dbDigest}";
+        environment = {
+          TZ                = "Europe/Berlin";
+          MARIADB_DATABASE  = "romm";
+          MARIADB_USER      = "romm-user";
+        };
+        environmentFiles = [ "${secretsDir}/romm-db.env" ];
+        volumes = [ "${stateDir}/mysql:/var/lib/mysql" ];
+        ports = [ ];
+        extraOptions = [ "--health-cmd=healthcheck.sh --connect --innodb_initialized" ];
+        cmd = [ "--bind-address=127.0.0.1" ];
+      };
 
-  systemd.services.podman-romm-db = {
-    after    = [ "romm-netns.service" "romm-dirs.service" ];
-    requires = [ "romm-netns.service" "romm-dirs.service" ];
-  };
-
-  systemd.services.podman-romm = {
-    after    = [ "romm-netns.service" "romm-dhcp.service" "romm-dirs.service" "podman-romm-db.service" ];
-    requires = [ "romm-netns.service" "romm-dirs.service" "podman-romm-db.service" ];
-
-    serviceConfig = {
-      # A library scan hashes every file it has not seen before.  On a
-      # cold first scan of a large library that is hours of sustained IO and a
-      # real amount of CPU, competing with a Jellyfin transcode, the HTPC
-      # session on the TV, and an interactive Ollama session — the last of
-      # which is the claimant whose degradation is hardest to attribute.
-      #
-      # Same two mechanisms, and the same reasoning, as Storyteller's:
-      #   Nice = 10        lowers priority against everything on the box.
-      #   CPUWeight = 40   biases the cgroup's share only under contention.
-      # Not CPUQuota: nobody is waiting on a scan, so it should be free to use
-      # an otherwise idle box at full speed.
-      #
-      # Less aggressive than Storyteller's 15/20 because a scan is bounded and
-      # occasionally a human IS waiting on it (adding one game and wanting to
-      # see it), whereas forced alignment is pure batch.
-      Nice      = 10;
-      CPUWeight = 40;
+      romm = {
+        image = "docker.io/rommapp/romm@${rommDigest}";
+        environment = {
+          TZ = "Europe/Berlin";
+          DB_HOST = "127.0.0.1";
+          DB_NAME = "romm";
+          DB_USER = "romm-user";
+          # DB_PASSWD and ROMM_AUTH_SECRET_KEY arrive via environmentFiles.
+          ROMM_PORT = toString webPort;
+          HASHEOUS_API_ENABLED = "true";
+        };
+        environmentFiles = [ "${secretsDir}/romm.env" ];
+        volumes = [
+          # The library, read-write: RomM accepts uploads through the web UI,
+          # which is the intended way to add a game from a machine that is
+          # not birte.
+          "${libraryDir}:/romm/library"
+          # Fetched artwork and metadata — large and re-fetchable, but
+          # re-fetching a whole library's covers is slow enough to persist.
+          "${stateDir}/resources:/romm/resources"
+          # Saves, states and screenshots RomM manages itself.
+          "${stateDir}/assets:/romm/assets"
+          "${stateDir}/config:/romm/config"
+          "${stateDir}/redis:/redis-data"
+        ];
+        ports = [ ];
+        # The database first; oci-containers turns this into Requires/After
+        # on podman-romm-db.service.
+        dependsOn = [ "romm-db" ];
+      };
     };
   };
 
-  ##############################################################################
-  # `rom-import` — moving a finished download into the library.
+  # ── SCHEDULING PRIORITY, MERGED ONTO THE GENERATED UNIT ─────────────────────
   #
-  # This lives here, rather than in a script pasted into the guide, for one
-  # reason: the constants below (uid 3029, the `romm` gid, /srv/roms, the
-  # roms/bios split) are DEFINED in this file, and a copy of them in a document
-  # is a copy that goes stale silently.  The tool is generated from the same
-  # `let` bindings the container is, so it cannot disagree with the deployment.
+  # Ordering comes from the module. These two numbers do not: they are a
+  # judgement about THIS workload and they differ per service, so they stay
+  # next to the reasoning rather than becoming a module passthrough.
   #
-  # WHY A TOOL AND NOT `cp`.  Every import has to get four things right, and
-  # each of them has already cost a session:
+  # A library scan hashes every file it has not seen before. On a cold first
+  # scan of a large library that is hours of sustained IO and real CPU,
+  # competing with a Jellyfin transcode, the HTPC session on the TV, and an
+  # interactive Ollama session — the last being the claimant whose degradation
+  # is hardest to attribute.
   #
-  #   1. COPY, NEVER MOVE.  qBittorrent goes on seeding what it downloaded;
-  #      moving the files out from under it kills the torrent.
-  #   2. Collections bundle EMULATORS.  A Switch grab shipped Ryujinx and Yuzu
-  #      inside the same archive, and they landed in the library because the
-  #      copy was unfiltered.  Hence -e, and the nested-archive warning.
-  #   3. Ownership.  A fresh directory is root:root and the setgid bit fixes
-  #      only the GROUP of new files, never the owner — so RomM (uid 3029)
-  #      cannot write its own resources next to ROMs it cannot chown.
-  #   4. Staging must be on the SAME dataset and OUTSIDE roms/ and bios/.
-  #      Those two directories are Syncthing folders and RomM's scan targets;
-  #      a half-extracted 8 GB pack visible there gets replicated to birte and
-  #      indexed mid-flight.  /srv/roms/.staging is on the dataset (so the copy
-  #      is rename-speed) but in neither folder.
-  #
-  # The one thing it does NOT do is decide WHICH platform a file belongs to.
-  # That needs a human: the directory name is read literally by ES-DE on birte
-  # and cannot be remapped afterwards.  See docs/guides/birte-emulation.md.
-  ##############################################################################
-
-  environment.systemPackages = [
-    (pkgs.writeShellApplication {
-      name = "rom-import";
-
-      runtimeInputs = with pkgs; [
-        coreutils findutils gnugrep gnused gawk
-        p7zip          # .7z and .zip
-        unar           # .rar — p7zip 17.x dropped the non-free Rar codec, so
-                       # `7z l` reports "Can not open the file as archive" on a
-                       # perfectly good RAR.  lsar/unar are the free path.
-        curl jq        # the qBittorrent WebUI API, for `rom-import list`
-        util-linux     # column
-      ];
-
-      text = ''
-        LIB=${libraryDir}
-        ROMM_UID=${toString rommUid}
-        ROMM_GID=${toString rommGid}
-
-        # qBittorrent runs in the WireGuard microvm; its WebUI is reachable on
-        # the container VLAN.  The password is the SAME clan var the arr stack
-        # authenticates with — one generator, and this is a third consumer, so
-        # a rotation cannot leave this tool behind holding a stale copy.
-        QBT=http://10.0.90.11:8080
-        # Quoted deliberately: to shellcheck a bare `admin` reads as a command
-        # substitution that lost its $( ) — SC2209, and writeShellApplication
-        # fails the build on it.
-        QBT_USER="admin"
-        QBT_PWFILE=${config.clan.core.vars.generators.qbittorrent-webui.files."password".path}
-        CATS=prowlarr,games
-
-        ${builtins.readFile ../rom-import.sh}
-      '';
-    })
-  ];
+  # Less aggressive than Storyteller's 15/20 because a scan is bounded and
+  # occasionally a human IS waiting on it (adding one game and wanting to see
+  # it), whereas forced alignment is pure batch.
+  systemd.services.podman-romm.serviceConfig = {
+    Nice      = 10;
+    CPUWeight = 40;
+  };
 }

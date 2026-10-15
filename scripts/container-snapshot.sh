@@ -63,13 +63,36 @@ netFields() {
   done
 }
 
+# THE TWO TIERS ARE DIFFERENT SHAPES, so the probes differ. An nspawn service
+# is `containers.<name>`; a podman one is a netns unit, a dhcp unit and one or
+# more `oci-containers` entries with no `containers.<name>` at all. Detected
+# rather than passed in, so the caller does not have to know.
+if ev "containers" --apply 'cs: builtins.hasAttr "'"$name"'" cs' | grep -q true; then
+  tier=nspawn
+else
+  tier=podman
+fi
+echo "### tier: ${tier}"
+
+echo
 echo "### container attributes"
-# The service's own config is excluded: it is the half a migration does not
-# touch, and including it buries the half that matters in thousands of lines.
-nix eval --no-update-lock-file --json \
-  "${flake}#nixosConfigurations.${machine}.config.containers.${name}" \
-  --apply 'c: builtins.removeAttrs c [ "config" "path" "pkgs" "specialArgs" "nixpkgs" ]' 2>/dev/null \
-  | jq -S . 2>/dev/null || echo "(container attributes unavailable)"
+if [ "$tier" = nspawn ]; then
+  # The service's own config is excluded: it is the half a migration does not
+  # touch, and including it buries the half that matters in thousands of lines.
+  nix eval --no-update-lock-file --json \
+    "${flake}#nixosConfigurations.${machine}.config.containers.${name}" \
+    --apply 'c: builtins.removeAttrs c [ "config" "path" "pkgs" "specialArgs" "nixpkgs" ]' 2>/dev/null \
+    | jq -S . 2>/dev/null || echo "(container attributes unavailable)"
+else
+  # Every image in this namespace, and the options that place it there: the
+  # netns path, the DNS, and `--user`. A second image sharing the namespace is
+  # the whole reason romm's database is unaddressable, so the set matters.
+  ev "virtualisation.oci-containers.containers" \
+    --apply 'cs: builtins.listToAttrs (map (n: { name = n; value = cs.${n}; })
+               (builtins.filter (n: n == "'"$name"'" || builtins.match "'"$name"'-.*" n != null)
+                 (builtins.attrNames cs)))' \
+    | jq -S 'with_entries(.value |= { image, user, extraOptions, environmentFiles, volumes, ports, dependsOn })' 2>/dev/null
+fi
 
 echo
 echo "### host units touching it"
@@ -77,7 +100,14 @@ echo "### host units touching it"
 # `<name>-secrets` unit, and asking for a missing attribute's `.text` is an
 # eval error — indistinguishable from a real failure unless existence is
 # tested first. jellyfin reported two phantom probe failures that way.
-for u in "${name}-dirs" "${name}-secrets" "container@${name}"; do
+if [ "$tier" = nspawn ]; then
+  units="${name}-dirs ${name}-secrets container@${name}"
+else
+  # The podman tier's skeleton IS these units: the namespace, the DHCP client
+  # inside it, the container itself and its optional health poll.
+  units="${name}-dirs ${name}-secrets ${name}-netns ${name}-dhcp podman-${name} ${name}-healthy"
+fi
+for u in $units; do
   echo "--- ${u}.service"
   if ev "systemd.units" --apply 'us: builtins.hasAttr "'"${u}.service"'" us' | grep -q true; then
     ev "systemd.units.\"${u}.service\".text" | jq -r . 2>/dev/null
@@ -94,8 +124,14 @@ echo "### host networkd"
 # A VLAN leg's network is named after the VETH, not the container (`60-iot1`
 # is mass's), so the set is derived from the container's own `extraVeths`
 # rather than by matching the container's name.
-legs=$(ev "containers.${name}.extraVeths" --apply 'builtins.attrNames' \
-       | jq -r '.[]? // empty')
+# The podman tier has no `extraVeths` — its one leg is `vb-<name>`, created by
+# the netns unit and enslaved by networkd.
+if [ "$tier" = nspawn ]; then
+  legs=$(ev "containers.${name}.extraVeths" --apply 'builtins.attrNames' \
+         | jq -r '.[]? // empty')
+else
+  legs=""
+fi
 for iface in "vb-${name}" $legs; do
   net="60-${iface}"
   if ev "systemd.network.networks" --apply 'ns: builtins.hasAttr "'"$net"'" ns' \
@@ -108,25 +144,41 @@ for iface in "vb-${name}" $legs; do
 done
 
 echo
-echo "### in-container networking"
-for net in $(ev "containers.${name}.config.systemd.network.networks" \
-               --apply 'builtins.attrNames' 2>/dev/null | jq -r '.[]? // empty' | sort); do
-  echo "--- $net"
-  netFields "containers.${name}.config." "$net"
-done
+if [ "$tier" = nspawn ]; then
+  echo "### in-container networking"
+  for net in $(ev "containers.${name}.config.systemd.network.networks" \
+                 --apply 'builtins.attrNames' 2>/dev/null | jq -r '.[]? // empty' | sort); do
+    echo "--- $net"
+    netFields "containers.${name}.config." "$net"
+  done
 
-echo
-echo "### in-container firewall and ids"
-for a in \
-  "containers.${name}.config.networking.firewall.extraCommands" \
-  "containers.${name}.config.networking.firewall.allowedTCPPorts" \
-  "containers.${name}.config.systemd.network.wait-online.timeout" \
-  "containers.${name}.config.services.resolved.enable" \
-  "containers.${name}.config.system.stateVersion"
-do
-  echo "--- $a"
-  ev "$a" | jq -S . 2>/dev/null
-done
+  echo
+  echo "### in-container firewall and ids"
+  for a in \
+    "containers.${name}.config.networking.firewall.extraCommands" \
+    "containers.${name}.config.networking.firewall.allowedTCPPorts" \
+    "containers.${name}.config.systemd.network.wait-online.timeout" \
+    "containers.${name}.config.services.resolved.enable" \
+    "containers.${name}.config.system.stateVersion"
+  do
+    echo "--- $a"
+    ev "$a" | jq -S . 2>/dev/null
+  done
+else
+  # The podman tier has no in-container NixOS config to probe — the firewall
+  # lives in the netns unit's script, which the unit texts above already carry
+  # verbatim. What is worth naming separately is the tier-wide switch, because
+  # two different backends on one host is the failure storyteller.nix records.
+  echo "### podman tier"
+  for a in \
+    "virtualisation.oci-containers.backend" \
+    "virtualisation.podman.enable" \
+    "virtualisation.containers.enable"
+  do
+    echo "--- $a"
+    ev "$a" | jq -S . 2>/dev/null
+  done
+fi
 
 # `ev` runs inside `$(…)` in places, where a flag set in the subshell is lost,
 # so the markers in the output are the reliable signal and this is the backstop

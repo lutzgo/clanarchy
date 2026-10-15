@@ -83,6 +83,23 @@ let
     ownGenerators)));
   danglingRestarts = lib.filter (t: !(lib.elem t hostUnits)) restartTargets;
 
+  # ── a guarded mount that is not a mount point ────────────────────────────
+  #
+  # `extraGuardedMounts.<n>.path` is used for two things: it is the
+  # `findmnt --target` argument, and it is where the mount UNIT name is
+  # derived from (`/srv/media` → `srv-media.mount`). The first works for any
+  # path — findmnt walks up to the enclosing mount — but the second only works
+  # if the path IS the mount point. Name a subdirectory and the dirs unit
+  # acquires `Requires=srv-media-youtube.mount`, which nothing defines, so it
+  # fails to start and takes the container down with it. tubesync's migration
+  # shipped exactly that, for the length of one snapshot diff.
+  declaredMounts = lib.attrNames config.fileSystems;
+  allGuarded = lib.concatLists (lib.mapAttrsToList
+    (n: c: map (m: { container = n; inherit (m) path; }) c.extraGuardedMounts)
+    (lib.filterAttrs (_: c: c.enable)
+      ((config.clanarchy.containers or { }) // (config.clanarchy.podmanContainers or { }))));
+  notMountPoints = lib.filter (g: !(lib.elem g.path declaredMounts)) allGuarded;
+
   # ── podman-tier interface names ───────────────────────────────────────────
   podCfg = config.clanarchy.podmanContainers or { };
   podIfaces = lib.mapAttrsToList (_: c: c.interface) (lib.filterAttrs (_: c: c.enable) podCfg);
@@ -167,6 +184,22 @@ in
         twice — usually a hand-written block left in place beside the one
         modules/containers/nspawn.nix generates. It does not conflict and it
         does not warn: the attrsets merge and the lists concatenate.
+      '';
+    }
+
+    {
+      assertion = notMountPoints == [ ];
+      message = ''
+        These guarded mounts name a path that is not a declared mount point:
+
+        ${lib.concatMapStringsSep "\n" (g: "  ${g.container}: ${g.path}") notMountPoints}
+
+        The dirs unit derives a mount UNIT from this path, so a subdirectory
+        produces `Requires=` on a unit nothing defines — the unit fails to
+        start and takes its container with it. Name the mount point and let
+        `findmnt --target` do the walking; it reaches the same filesystem.
+
+        Declared here: ${lib.concatStringsSep ", " declaredMounts}
       '';
     }
 

@@ -226,55 +226,6 @@ let
     };
   };
 
-  # One accept rule. The common case is "this peer, this TCP port"; the
-  # defaults make that the short form, and the other fields exist because real
-  # services needed them: mDNS is UDP to a fixed port with NO source, and a
-  # stream client answers on an ephemeral port RANGE.
-  allowType = lib.types.submodule {
-    options = {
-      peer = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = "Source address. Null omits `-s`, which is what a broadcast/multicast protocol needs.";
-      };
-      port = lib.mkOption {
-        type = lib.types.nullOr (lib.types.either lib.types.port lib.types.str);
-        description = ''
-          Destination port, or an iptables range as a string
-          (`"32768:60999"`).
-
-          `null` omits `--dport` — every port of that protocol from that
-          peer, which SAT>IP needs because the tuner streams RTP back on
-          ephemeral ports. It has NO DEFAULT on purpose: opening every port is
-          something a reader must see written down, not infer from an absence.
-        '';
-      };
-      proto = lib.mkOption {
-        type = lib.types.enum [ "tcp" "udp" ];
-        default = "tcp";
-        description = "Protocol.";
-      };
-
-      family = lib.mkOption {
-        type = lib.types.nullOr (lib.types.enum [ "inet" "inet6" ]);
-        default = null;
-        description = ''
-          Address family, which picks `iptables` or `ip6tables`. Null infers
-          it from `peer` — exact, since a v6 literal contains a colon and a v4
-          one does not. Only a rule with no peer needs to say it.
-        '';
-      };
-      interface = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = ''
-          Restrict the rule to one interface (`-i`). Used to confine a
-          discovery protocol to the leg it belongs on, so enabling mDNS for an
-          IoT leg does not also open it on the services VLAN.
-        '';
-      };
-    };
-  };
 
   containerType = lib.types.submodule ({ name, ... }: {
     options = {
@@ -394,7 +345,7 @@ let
       };
 
       allowFrom = lib.mkOption {
-        type = lib.types.listOf allowType;
+        type = lib.types.listOf clib.allowType;
         default = [ ];
         description = "Peers allowed in, one accept each. Everything else is refused.";
       };
@@ -472,7 +423,7 @@ let
     let
       vethHost   = "vb-${name}";
       secretsDir = "${defaults.secretsRoot}/${name}-secrets";
-      unitFor    = "container@${name}.service";
+      unitsFor   = [ "container@${name}.service" ];
 
       # Fallbacks are resolved HERE, in the config phase, and not as option
       # defaults. An option default that reads `config` is evaluated while the
@@ -485,7 +436,7 @@ let
       stateVersion = if c.stateVersion != null then c.stateVersion else config.system.stateVersion;
 
       support = clib.mkSupportUnits {
-        inherit name unitFor secretsDir;
+        inherit name unitsFor secretsDir;
         inherit (defaults) stateMount stateSource;
         inherit (c) stateDirs secrets;
         extraMounts = c.extraGuardedMounts;
