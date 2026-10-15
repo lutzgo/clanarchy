@@ -135,7 +135,7 @@ in
         }) mailboxes)
         ++
         # Consumed by aerc on miralda and jens — see
-        # machines/miralda/home-modules/console-desktop.nix.  No restartUnits:
+        # modules/users/lgo/console-desktop.nix.  No restartUnits:
         # nothing on ernst reads it, and aerc re-runs passwordCommand on every
         # start, so there is no daemon to poke.
         (map (m: lib.nameValuePair "${m.key}.plain" {

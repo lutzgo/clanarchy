@@ -223,7 +223,7 @@
   # Installs the privacy-hardened Chromium fork.  Privacy flags are baked into
   # the binary via the pkgsForSystem overlay in clan.nix; managed policies and
   # extensions should be configured per-machine in environment.etc and/or a
-  # dedicated home-module (see machines/miralda/home-modules/browsers.nix for
+  # dedicated home-module (see modules/users/lgo/browsers.nix for
   # the full miralda setup).
   roles.chromium = {
     description = "ungoogled-chromium (privacy-hardened Chromium; flags via clan.nix overlay).";

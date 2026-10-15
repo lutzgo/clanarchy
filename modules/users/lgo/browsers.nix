@@ -1,5 +1,5 @@
 # ============================================================
-# BROWSER STACK — machines/miralda/home-modules/browsers.nix
+# BROWSER STACK — modules/users/lgo/browsers.nix
 # ============================================================
 #
 # Four browsers with defined roles:
@@ -14,11 +14,14 @@
 # Extension first-run tabs and the chromiumFirstRun reset service
 # are in modules/users/lgo.nix (lgo-specific extension list).
 #
-# ── THIS FILE IS SHARED, DESPITE ITS PATH ───────────────────────────────
+# ── SHARED BY EVERY MACHINE CARRYING `roles.lgo` ────────────────────────
 #
-# It lives under machines/miralda/ for historical reasons only.  Nothing in
-# flake.nix imports it; modules/users/lgo.nix does, so every machine carrying
-# `roles.lgo` gets it — miralda AND jens.  One edit here changes both.
+# Nothing in flake.nix imports this; modules/users/lgo.nix does, so one edit
+# here changes miralda AND jens.
+#
+# It lived under machines/miralda/home-modules/ until this move, which is why
+# older comments elsewhere may still describe it as miralda-specific. It never
+# was — the old header said so itself.
 #
 # ── FOUR BROWSERS, FOUR DIFFERENT EXTENSION MECHANISMS ──────────────────
 #

@@ -45,7 +45,7 @@ roles.librewolf.machines.miralda.settings.extensions = [
 
 Only LibreWolf has this setting. The other three browsers each need a different
 mechanism; the table is in the header of
-`machines/miralda/home-modules/browsers.nix`.
+`modules/users/lgo/browsers.nix`.
 
 ## Email roles
 
