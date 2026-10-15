@@ -596,62 +596,6 @@ in
     '';
   };
 
-  ##############################################################################
-  # The two veths.
-  ##############################################################################
-
-  # Leg 1 — the host side of eth0, a VLAN-90 port on br0.  Identical rationale
-  # to vb-nextcloud / vb-immich / vb-jellyfin; see containers/traefik.nix for
-  # the long form of KeepMaster-not-Bridge and why a bridge port carries no
-  # address of its own.
-  systemd.network.networks."60-vb-hass" = {
-    matchConfig.Name = "vb-hass";
-    networkConfig = {
-      KeepMaster          = true;
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
-    };
-    bridgeVLANs = [ { VLAN = 90; PVID = 90; EgressUntagged = 90; } ];
-    linkConfig.RequiredForOnline = "enslaved";
-  };
-
-  # Leg 2 — the host side of iot0, a VLAN-20 port on br0.
-  #
-  # `Bridge = "br0"`, NOT `KeepMaster`, and the difference is not cosmetic.
-  # nspawn's --network-bridge creates the eth0 veth AND enslaves it, so
-  # networkd must be told to keep its hands off the master (KeepMaster, leg 1).
-  # --network-veth-extra, which is what `extraVeths` below becomes, creates the
-  # pair and enslaves NOTHING — so here networkd owns the enslavement and
-  # nothing competes for it.  This is machines/ernst/networking.nix's Pattern A
-  # and it is the same shape containers/tvheadend.nix uses for fritz0.
-  #
-  # NOTE THE NAME.  --network-veth-extra names BOTH ends identically, so this
-  # matches the plain `iot0` and not `vb-iot0`.
-  systemd.network.networks."60-iot0" = {
-    matchConfig.Name = "iot0";
-    networkConfig = {
-      Bridge              = "br0";
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
-    };
-    bridgeVLANs = [ { VLAN = 20; PVID = 20; EgressUntagged = 20; } ];
-    # A bridge port's terminal state is "enslaved"; it never becomes routable.
-    linkConfig.RequiredForOnline = "enslaved";
-  };
-
-  # Same VLAN race, same idempotent backstop, same "-" prefix as every other
-  # nspawn container on br0: networkd applies [BridgeVLAN] only once it observes
-  # the link's master, and nspawn sets that master out of band.  With
-  # DefaultPVID = "none" on br0 a miss is fail-CLOSED — the port is dead rather
-  # than silently joining VLAN 50.
-  #
-  # `bridge vlan show dev vb-hass` and `bridge vlan show dev iot0` are the
-  # checks.
-  systemd.services."container@hass".serviceConfig.ExecStartPost = [
-    "-${pkgs.iproute2}/bin/bridge vlan add dev vb-hass vid 90 pvid untagged"
-    "-${pkgs.iproute2}/bin/bridge vlan add dev iot0 vid 20 pvid untagged"
-  ];
-
   # Avahi must not discover the IoT segment through this veth.  The host side
   # holds no address, so avahi has nothing to bind and would skip it anyway —
   # but containers/tvheadend.nix states the same exclusion rather than relying
@@ -664,62 +608,55 @@ in
   ##############################################################################
   # The container.
   ##############################################################################
-  containers.hass = {
-    autoStart = true;
-    ephemeral = false;
+  #
+  # modules/containers/nspawn.nix generates both host-side leg networks, the
+  # VLAN backstop for each, the container preamble, all three in-container leg
+  # networks and the firewall.
+  #
+  # `hass-dirs` STAYS HAND-WRITTEN above: it does not only create directories,
+  # it SEEDS `automations.yaml`, `scenes.yaml` and `scripts.yaml` when they are
+  # absent and fixes up `www`. `stateDirs` creates directories; it does not
+  # write files, and teaching it to would be a second mechanism for one caller.
+  #
+  # `services.avahi.denyInterfaces` also stays: which interfaces the host's own
+  # mDNS reflector must not touch is a host fact.
+  clanarchy.containers.hass = {
+    enable = true;
+    mac    = "02:00:00:90:00:13";
 
-    # Leg 1 — eth0 on br0 / VLAN 90.  MAC from the allocation table in
-    # machines/ernst/networking.nix; the DHCP reservation 10.0.90.27 on the
-    # UDM-Pro keys on it (manual step).  Sequence 13, and the last octet is
-    # 8 + seq as everywhere else on this bridge.
-    privateNetwork  = true;
-    hostBridge      = "br0";
-    localMacAddress = "02:00:00:90:00:13";
+    # NO uid/gid PIN: `services.home-assistant` assigns 286 from
+    # `config.ids.uids` unconditionally, so a pin here is an option conflict
+    # rather than a pin. It is also why 286 is not from ernst's 3000 block.
 
-    # Leg 2 — iot0 on br0 / VLAN 20.  Same mechanism as tvheadend's fritz0 and
-    # the monitoring container's mon0: nspawn --network-veth-extra names both
-    # ends iot0.
-    #
-    # NO ADDRESS AND NO MAC HERE.  `extraVeths` has no MAC option at all, and
-    # `localAddress` would be applied by container-init before networkd starts
-    # and then fight it over the same interface — tvheadend.nix records that.
-    # Both are set by the container's own networkd, below.
-    extraVeths.iot0 = { };
+    stateVersion = "26.05";
 
-    # Leg 3 — the AI link (M29).  UNLIKE iot0 this one DOES carry its addresses
-    # here: nixos-containers adds the matching /128 host route on both sides
-    # from these, and there is no bridge, no VLAN and no MAC to race over.
-    # containers/karakeep.nix does exactly this and is the working example.
-    extraVeths.${aiVeth} = {
-      hostAddress6  = aiHost;
-      localAddress6 = aiCont;
-    };
+    # Leg 2 — VLAN 20, the IoT segment. mDNS and SSDP are link-local and this
+    # repo refuses to relay them across a firewall boundary, so Home Assistant
+    # gets a port ON that segment rather than a reflector pointed at it.
+    vlanLegs = [
+      { veth = "iot0"; vlan = 20; mac = "02:00:00:20:00:01"; }
+    ];
 
-    # Leg 4 — the Kodi link. Same shape as leg 3 and for the same reasons; see
-    # the `kodiVeth` note above for why it carries no proxy and no `ai` name.
-    extraVeths.${kodiVeth} = {
-      hostAddress6  = kodiHost;
-      localAddress6 = kodiCont;
-    };
+    # Legs 3 and 4 — point-to-point, inward. `ai3` reaches llama-swap for the
+    # conversation agent; `kodi0` reaches the television's JSON-RPC. Neither
+    # is on the IoT leg or on VLAN 90: either would work and both would make a
+    # private channel reachable by everything sharing that segment.
+    ula = [
+      { veth = aiVeth;   hostAddress6 = aiHost;   localAddress6 = aiCont; }
+      { veth = kodiVeth; hostAddress6 = kodiHost; localAddress6 = kodiCont; }
+    ];
 
-    # ── THE eBPF DEVICE FILTER: GROUP FORM, NOT PATH FORM ─────────────────
-    #
-    # NixOS passes these straight through to systemd's DeviceAllow=
-    # (nixos-containers.nix:341).  containers/jellyfin.nix names a PATH there
-    # and that is right for a DRM render node, whose major:minor is fixed by
-    # PCI topology.  It would be WRONG here: systemd stat()s the path once to
-    # derive major:minor, and a USB-serial minor changes when the device
-    # re-enumerates.  The filter would be correct at start and wrong after a
-    # replug, denying a device that is plainly present.
-    #
-    # `char-ttyACM` is the device-node GROUP — major 166, confirmed in ernst's
-    # /proc/devices — and covers every minor.  It is also exactly what the
-    # nixpkgs home-assistant module emits for itself when a serial component is
-    # enabled, so the two layers of filter agree instead of racing.
-    #
-    # The trap avoided here is service-modules/local-ai.nix's: naming a
-    # DIRECTORY grants nothing, and because ANY DeviceAllow turns the filter
-    # on, it takes access away.
+    allowFrom = [
+      { peer = traefikAddr;   port = hassPort; }  # the web UI and the companion app
+      { peer = dashboardAddr; port = hassPort; }  # the service index's widget
+      # mDNS and SSDP, confined to the IoT leg with `-i` rather than `-s`:
+      # the sources are multicast groups and every device on the segment, so
+      # there is no address to name. The interface IS the restriction —
+      # nothing on VLAN 90 gains a port from these two lines.
+      { interface = "iot0"; proto = "udp"; port = 5353; }
+      { interface = "iot0"; proto = "udp"; port = 1900; }
+    ];
+
     allowedDevices = [
       { node = "char-ttyACM"; modifier = "rw"; }
     ];
@@ -1136,211 +1073,6 @@ in
         '';
       };
     in {
-      system.stateVersion = "26.05";
-
-      ##########################################################################
-      # Networking — two legs, one netns.
-      ##########################################################################
-      networking.useHostResolvConf = false;
-      networking.useNetworkd = true;
-      services.resolved.enable = true;
-
-      # ── resolved MUST NOT HOLD :5353, AND MUST NOT ANSWER ON THE IoT VLAN ──
-      #
-      # Measured on the first deploy (2026-09-16), inside the running container:
-      #
-      #     ss -lunp | grep 5353
-      #       0.0.0.0:5353   users:((".hass-wrapped",pid=282))
-      #       0.0.0.0:5353   users:(("systemd-resolve",pid=65))
-      #       [::]:5353      users:(("systemd-resolve",pid=65))
-      #
-      # TWO mDNS SOCKETS IN ONE NETNS.  Per-link mDNS was already off —
-      # `resolvectl status` showed `-mDNS` on both eth0 and iot0, because
-      # neither .network unit sets MulticastDNS — so resolved was not answering
-      # or querying, and this is precautionary rather than a measured failure.
-      # What it closes is narrow and would be miserable to debug: multicast
-      # responses are delivered to EVERY socket joined to 224.0.0.251, so
-      # python-zeroconf gets those regardless, but a UNICAST mDNS response
-      # (what a QU query asks for) is load-balanced between the two sockets by
-      # SO_REUSEPORT. The symptom would be discovery that finds most devices
-      # most of the time, which reads as a flaky network rather than as a
-      # second listener.
-      #
-      # Turning it off at the daemon rather than per-link is what makes
-      # resolved release the socket entirely — and it takes the stray `[::]`
-      # listener with it, which is an SN2 tidy-up this container otherwise gets
-      # right everywhere else.
-      #
-      # LLMNR goes too, for containers/tvheadend.nix's reason rather than this
-      # one: it was `+LLMNR` on BOTH links, so the container was answering name
-      # queries on the household IoT segment. Nothing here wants that, and a
-      # hub that responds to broadcast name lookups on the VLAN it is meant to
-      # be quietly observing is the opposite of the posture the avahi
-      # `denyInterfaces` line on the host takes.
-      #
-      # Nothing is lost: this container resolves through Technitium on eth0,
-      # declared explicitly below, and Home Assistant brings its own mDNS
-      # stack (python-zeroconf) which is the one doing the discovery.
-      services.resolved.settings.Resolve = {
-        MulticastDNS = "no";
-        LLMNR        = "no";
-      };
-
-      # eth0 — VLAN 90.  The same block as every sibling container: DHCP
-      # against the UDM-Pro reservation, resolver declared rather than
-      # inherited.
-      systemd.network.networks."10-eth0" = {
-        matchConfig.Name = "eth0";
-        networkConfig = {
-          DHCP         = "ipv4";
-          DNS          = "10.0.5.3";
-          Domains      = "~. skynet.lan";
-          IPv6AcceptRA = false;
-          # SN2: v4 only.  M18 measured that IPv6AcceptRA alone blocks an RA
-          # but NOT link-local assignment; this is the line that actually makes
-          # `ip -6 addr show dev eth0` empty.
-          LinkLocalAddressing = "no";
-        };
-        dhcpV4Config = {
-          UseDNS     = false;
-          UseDomains = false;
-        };
-        linkConfig.RequiredForOnline = "routable";
-      };
-
-      # iot0 — VLAN 20, the discovery leg.
-      systemd.network.networks."20-iot0" = {
-        matchConfig.Name = "iot0";
-        networkConfig = {
-          DHCP                = "ipv4";
-          IPv6AcceptRA        = false;
-          LinkLocalAddressing = "no";
-        };
-
-        # ── UseGateway = false IS LOAD-BEARING ────────────────────────────
-        #
-        # Both legs take DHCP, and both DHCP servers hand out a default route.
-        # Without this, the container ends up with TWO `default via` entries
-        # and its path to the internet is decided by whichever lease was
-        # applied last — which is a coin toss on every boot, and a coin toss
-        # that changes which VLAN Home Assistant's outbound traffic (updates,
-        # weather, the companion app's push relay) is seen leaving on.
-        #
-        # UseRoutes = false for the same reason one level down: a classless
-        # static route option on VLAN 20 would install routes here that belong
-        # to the other leg's routing decision.  VLAN 20 is ON-LINK for this
-        # interface, and on-link is the whole job — the /24 route networkd
-        # derives from the address is all this leg needs.
-        #
-        # DNS stays on eth0's Technitium (10.0.5.3), so UseDNS/UseDomains are
-        # off for the same non-negotiable reason they are off there: an IoT
-        # VLAN's DHCP server is not this container's resolver.
-        dhcpV4Config = {
-          UseDNS     = false;
-          UseDomains = false;
-          UseGateway = false;
-          UseRoutes  = false;
-        };
-
-        # THE MAC IS PINNED HERE because `extraVeths` has no option for it and
-        # the UDM-Pro reservation has to key on a value this repo chose rather
-        # than on whatever nspawn derives from the machine name.  First entry
-        # in machines/ernst/allocations.nix.
-        linkConfig = {
-          MACAddress       = "02:00:00:20:00:01";
-          # NOT "routable".  A DHCP problem on the IoT VLAN must leave a
-          # RUNNING container with one failed unit and a working web UI, not a
-          # host-side restart loop that takes the whole hub down because a
-          # lease did not arrive.
-          RequiredForOnline = "no";
-        };
-      };
-
-      # ai3 — the point-to-point link to the host (M29).
-      #
-      # No DHCP, no RA, no gateway: a /128 on each end and an explicit link
-      # route to the peer.  nixos-containers already applied both addresses
-      # from `extraVeths` above; this unit is what keeps networkd from
-      # reconsidering them and what installs the route, exactly as
-      # containers/karakeep.nix's `20-ai2` does.
-      systemd.network.networks."20-${aiVeth}" = {
-        matchConfig.Name = aiVeth;
-        address = [ "${aiCont}/128" ];
-        routes  = [ { Destination = "${aiHost}/128"; Scope = "link"; } ];
-        networkConfig.IPv6AcceptRA = false;
-        # A veth has no carrier until BOTH ends exist, and the host end is
-        # created by the same nspawn invocation that starts this container.
-        # "routable" here would hang wait-online on the host's own timing.
-        linkConfig.RequiredForOnline = "no";
-      };
-
-      # kodi0 — the point-to-point link to Kodi on the host. Byte-for-byte the
-      # shape above; the two differ only in which host service is at the far
-      # end, which is the point of having a shape at all.
-      systemd.network.networks."20-${kodiVeth}" = {
-        matchConfig.Name = kodiVeth;
-        address = [ "${kodiCont}/128" ];
-        routes  = [ { Destination = "${kodiHost}/128"; Scope = "link"; } ];
-        networkConfig.IPv6AcceptRA = false;
-        linkConfig.RequiredForOnline = "no";
-      };
-
-      # Same 20 s cap as every sibling: a DHCP failure must leave a RUNNING
-      # container with one failed unit, not a host-side restart loop.
-      systemd.network.wait-online.timeout = 20;
-
-      # ── The container firewall — the only enforcement point for br0-local
-      #    traffic, since those frames are one L2 hop and the UDM-Pro never
-      #    sees them.
-      #
-      #   8123/tcp  from Traefik, and — since M26 — from the arr container.
-      #             Every client of the web UI and of the companion app's API
-      #             arrives through the proxy.
-      #
-      #             THE SECOND SOURCE IS THE SERVICE INDEX (containers/
-      #             homepage.nix), reading /api/states with a long-lived access
-      #             token to render lights-on and people-home counts.  It is
-      #             worth more than one line, because this one interacts with
-      #             the control this container leans on: HA's `ip_ban_enabled`
-      #             keys on the client address, and `http.trusted_proxies`
-      #             names Traefik — so requests arriving from .13 are NOT a
-      #             trusted proxy and are banned on their own address if the
-      #             token is wrong.  That is the correct behaviour and the
-      #             right blast radius (a wrong token bans the dashboard, not
-      #             the house), but it means a 403 on this tile after a token
-      #             rotation may be a BAN and not an auth failure.  Clear it
-      #             with `ip_bans.yaml`, not by widening trusted_proxies —
-      #             adding .13 there would let a compromised dashboard forge
-      #             X-Forwarded-For and evade the ban entirely.
-      #   5353/udp  mDNS, ON iot0 ONLY.
-      #   1900/udp  SSDP, ON iot0 ONLY.
-      #
-      # THE TWO UDP RULES ARE THE WHOLE REASON THE SECOND LEG EXISTS.  Both
-      # protocols work by the client LISTENING for multicast responses, so
-      # without an inbound accept python-zeroconf and the ssdp component send
-      # queries and hear nothing — and the leg is decorative while looking
-      # correct.  That failure mode is silent: discovery simply finds nothing,
-      # which is indistinguishable from a household with no discoverable
-      # devices.
-      #
-      # `-i iot0` rather than the `-s <addr>/32` form every other container in
-      # this repo uses, and the difference is deliberate: the sources here are
-      # multicast groups (224.0.0.251, 239.255.255.250) and every device on the
-      # segment, so there is no address to name.  The INTERFACE is the
-      # restriction — nothing on VLAN 90 gains a port from these two lines.
-      #
-      # extraCommands, not extraInputRules: the latter is declared
-      # unconditionally but consumed only under networking.nftables, so here it
-      # would produce no rule and no warning.  containers/traefik.nix is the
-      # only nftables container on this machine.
-      networking.firewall.allowedTCPPorts = [ ];
-      networking.firewall.extraCommands = ''
-        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32   --dport ${toString hassPort} -j nixos-fw-accept
-        iptables -A nixos-fw -p tcp -s ${dashboardAddr}/32 --dport ${toString hassPort} -j nixos-fw-accept
-        iptables -A nixos-fw -i iot0 -p udp --dport 5353 -j nixos-fw-accept
-        iptables -A nixos-fw -i iot0 -p udp --dport 1900 -j nixos-fw-accept
-      '';
-
       ##########################################################################
       # The service.
       ##########################################################################

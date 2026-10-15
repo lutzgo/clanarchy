@@ -325,19 +325,6 @@ in
     linkConfig.RequiredForOnline = "no";
   };
 
-  # Host side of the container's fritz0 veth (nspawn --network-veth-extra
-  # names both ends identically; see extraVeths below).  networkd enslaves it
-  # to br-fritz on appearance.
-  systemd.network.networks."60-fritz0" = {
-    matchConfig.Name = "fritz0";
-    networkConfig = {
-      Bridge              = "br-fritz";
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
-    };
-    linkConfig.RequiredForOnline = "no";
-  };
-
   # Avahi must not discover this segment.  With no host address here it has
   # nothing to bind, but the exclusion is stated rather than left to that
   # accident — during Phase 0, a manually-addressed enp12s0 had avahi
@@ -359,49 +346,53 @@ in
 
   # State dir on zdata.  Numeric ids: the tvheadend user exists only inside
   # the container; nspawn maps 1:1 (same as jellyfin's 964).
-  systemd.tmpfiles.rules = [
-    "d /srv/state/tvheadend 0700 ${toString tvheadendUid} ${toString tvheadendGid} -"
-  ];
-
-  # Host side of the VLAN-90 veth — identical rationale to vb-jellyfin /
-  # vb-arr, see jellyfin.nix's "Host-side wiring" for the long form.
-  systemd.network.networks."60-vb-tvheadend" = {
-    matchConfig.Name = "vb-tvheadend";
-    networkConfig = {
-      KeepMaster          = true;
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
-    };
-    bridgeVLANs = [ { VLAN = 90; PVID = 90; EgressUntagged = 90; } ];
-    linkConfig.RequiredForOnline = "enslaved";
-  };
-
-  # Same VLAN race, same idempotent backstop, same "-" prefix as every other
-  # nspawn container on br0.  `bridge vlan show dev vb-tvheadend` is the check.
-  systemd.services."container@tvheadend".serviceConfig.ExecStartPost = [
-    "-${pkgs.iproute2}/bin/bridge vlan add dev vb-tvheadend vid 90 pvid untagged"
-  ];
 
   ##############################################################################
   # The container.
   ##############################################################################
-  containers.tvheadend = {
-    autoStart = true;
-    ephemeral = false;
+  #
+  # modules/containers/nspawn.nix generates the dirs unit, the VLAN-90 leg and
+  # its backstop, the `fritz0` leg on br-fritz, the container preamble, the
+  # in-container networking and the firewall.
+  #
+  # The br-fritz BRIDGE ITSELF stays above, and that split is the point: a
+  # bridge, which physical port is enslaved to it, and which interfaces avahi
+  # must not touch are facts about this house's wiring. Only the container's
+  # own end of it is a container concern.
+  clanarchy.containers.tvheadend = {
+    enable = true;
+    mac    = "02:00:00:90:00:0a";
 
-    # Leg 1 — eth0 on br0 / VLAN 90.  MAC from the allocation table in
-    # machines/ernst/networking.nix; DHCP reservation 10.0.90.18 on the
-    # UDM-Pro keys on it (manual step).
-    privateNetwork  = true;
-    hostBridge      = "br0";
-    localMacAddress = "02:00:00:90:00:0a";
+    # NO uid/gid PIN: the in-container user block declares it in full.
 
-    # Leg 2 — fritz0 on br-fritz, to the FRITZ!Box.  Same mechanism as the
-    # monitoring container's mon0: nspawn --network-veth-extra names both
-    # ends fritz0.  All addressing is done by the container's own networkd
-    # (below), not here — localAddress would be applied by container-init
-    # before networkd starts and then fight it over the same interface.
-    extraVeths.fritz0 = { };
+    stateVersion = "26.05";
+
+    # AN ORDERED UNIT RATHER THAN A tmpfiles RULE, same fix as jellyfin: this
+    # path is bound into the container, and a tmpfiles rule for a bound path
+    # races the container's own start.
+    stateDirs = [
+      { path = "/srv/state/tvheadend"; owner = tvheadendUid; group = tvheadendGid; }
+    ];
+
+    # The FRITZ segment. Static, no gateway, no DNS: the only thing this leg
+    # exists for is 192.168.178.1, which is on-link. The FRITZ advertises a
+    # default route over RA (measured — see the file header), and the module's
+    # `IPv6AcceptRA = false` is what keeps this container from acquiring a
+    # second, wrong path to the internet.
+    bridgeLegs = [
+      { veth = "fritz0"; bridge = "br-fritz"; address = containerFritzAddr; }
+    ];
+
+    allowFrom = [
+      { peer = traefikAddr;  port = httpPort; }  # the web UI via tvheadend.goclan.org
+      { peer = jellyfinAddr; port = httpPort; }  # M3U tuner, XMLTV guide, streams
+      { peer = kodiHostAddr; port = htspPort; }  # Kodi's native protocol
+      { peer = kodiHostAddr; port = httpPort; }  # and its guide/stream fetches
+      # SAT>IP: the tuner streams RTP back on ephemeral ports, so this one
+      # names no port at all. Scoped to the FRITZ's own address, on a segment
+      # nothing else sits on.
+      { peer = fritzAddr;    port = null; proto = "udp"; }
+    ];
 
     bindMounts = {
       # Tvheadend state, remapped to the upstream default path so the unit
@@ -436,53 +427,8 @@ in
       };
     };
 
+
     config = { config, pkgs, lib, ... }: {
-      system.stateVersion = "26.05";
-
-      ##########################################################################
-      # Networking — two legs, one netns.
-      ##########################################################################
-      networking.useHostResolvConf = false;
-      networking.useNetworkd = true;
-      services.resolved.enable = true;
-
-      # eth0 — VLAN 90.  Same block as every sibling container: DHCP against
-      # the UDM-Pro reservation, resolver declared rather than inherited.
-      systemd.network.networks."10-eth0" = {
-        matchConfig.Name = "eth0";
-        networkConfig = {
-          DHCP         = "ipv4";
-          DNS          = "10.0.5.3";
-          Domains      = "~. skynet.lan";
-          IPv6AcceptRA = false;
-        };
-        dhcpV4Config = {
-          UseDNS     = false;
-          UseDomains = false;
-        };
-        linkConfig.RequiredForOnline = "routable";
-      };
-
-      # fritz0 — the FRITZ segment.  Static, no gateway, no DNS, no RA: the
-      # only thing this leg is for is 192.168.178.1, which is on-link.  The
-      # FRITZ advertises a default route over RA (measured — see the file
-      # header); IPv6AcceptRA=false is what keeps this container from
-      # acquiring a second, wrong path to the internet.
-      systemd.network.networks."20-fritz0" = {
-        matchConfig.Name = "fritz0";
-        networkConfig = {
-          Address             = containerFritzAddr;
-          IPv6AcceptRA        = false;
-          LinkLocalAddressing = "no";
-        };
-        # The FRITZ end being down must not hold up the container's boot.
-        linkConfig.RequiredForOnline = "no";
-      };
-
-      # Same 20 s cap as jellyfin.nix, same reasoning: a DHCP failure on eth0
-      # must leave a RUNNING container with one failed unit, not a host-side
-      # restart loop.
-      systemd.network.wait-online.timeout = 20;
 
       # The container's firewall — the only enforcement point for br0-local
       # traffic (one L2 hop; the UDM-Pro never sees it).
@@ -587,15 +533,6 @@ in
       # extraCommands, not extraInputRules — the latter is consumed only under
       # networking.nftables and silently produces nothing here (the arr
       # container's header carries the long form of that warning).
-      networking.firewall.allowedTCPPorts = [ ];
-      networking.firewall.extraCommands = ''
-        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32  --dport ${toString httpPort} -j nixos-fw-accept
-        iptables -A nixos-fw -p tcp -s ${jellyfinAddr}/32 --dport ${toString httpPort} -j nixos-fw-accept
-        iptables -A nixos-fw -p tcp -s ${kodiHostAddr}/32 --dport ${toString htspPort} -j nixos-fw-accept
-        iptables -A nixos-fw -p tcp -s ${kodiHostAddr}/32 --dport ${toString httpPort} -j nixos-fw-accept
-        iptables -A nixos-fw -p udp -s ${fritzAddr}/32 -j nixos-fw-accept
-      '';
-
       ##########################################################################
       # The service.  Hand-written — nixpkgs removed services.tvheadend.
       ##########################################################################

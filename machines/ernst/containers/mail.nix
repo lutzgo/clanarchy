@@ -280,93 +280,6 @@ in
   # Host side — the directories, the secrets and the veth.
   ##############################################################################
 
-  # ── NO tmpfiles RULES IN THIS FILE, AND containers/immich.nix IS WHY ───────
-  #
-  # That file records the measured failure: host-side directories shipped as
-  # `systemd.tmpfiles.rules` and the container died five times into its start
-  # limit with `Failed to clone …: No such file or directory`, because
-  # activating a new configuration does not re-run systemd-tmpfiles-setup in
-  # time for a container the same activation starts.
-  systemd.services.mail-dirs = {
-    description = "Verify /srv/state is mounted and create the mail server's directories";
-    wantedBy   = [ "multi-user.target" ];
-    after      = [ "srv-state.mount" ];
-    requires   = [ "srv-state.mount" ];
-    before     = [ "container@mail.service" ];
-    requiredBy = [ "container@mail.service" ];
-    serviceConfig = {
-      Type            = "oneshot";
-      RemainAfterExit = true;
-    };
-    path = [ pkgs.util-linux pkgs.coreutils ];
-
-    # BLOCKING (`requires` + `requiredBy`), not advisory, and harder here than
-    # anywhere else this pattern is used.  A Miniflux that starts without its
-    # database loses subscriptions, which are re-addable.  A mail server that
-    # starts without /var/vmail accepts mail into a directory on zroot and
-    # loses it at the next boot — and the sender got a 250, so nobody will ever
-    # retry.  It FAILS rather than repairing itself: a unit that silently fixes
-    # storage layout hides the fact that the layout was wrong.
-    script = ''
-      set -eu
-
-      # THE TARGET IS THE PARENT, NOT ${stateRoot}.  `findmnt --target` on a
-      # path that does not exist yet returns nothing — it does not walk up to
-      # the nearest existing ancestor — so checking the leaf would fail on
-      # every first run, before this unit has had a chance to create it.
-      # immich-dirs refused its own first deploy that way on 2026-09-11.
-      ssrc=$(findmnt --noheadings --output SOURCE --target /srv/state || true)
-      if [ "$ssrc" != "zdata/state" ]; then
-        echo "mail-dirs: /srv/state is not zdata/state (found '$ssrc')." >&2
-        echo "  Refusing to create the mail spool, because it would land on" >&2
-        echo "  zroot and be rolled back on the next boot — taking every" >&2
-        echo "  message delivered since with it." >&2
-        echo "  See docs/guides/ernst-zdata-datasets.md." >&2
-        exit 1
-      fi
-
-      # NUMERIC ids on purpose: every one of these is a CONTAINER user and the
-      # host has no matching passwd entry.  Same shape miniflux-dirs uses for
-      # postgres 71 and traefik.nix for uid 3005.
-      install -d -o root -g root -m 0755 ${stateRoot}
-
-      # The Maildir.  0700 — nothing outside the container has any business
-      # reading the household's mail, including root-adjacent tooling on the
-      # host that might wander in.
-      install -d -o ${toString vmailUid} -g ${toString vmailGid} -m 0700 ${stateRoot}/vmail
-
-      # THE QUEUE, and the reason this one is bound out at all.  Postfix holds
-      # accepted-but-undelivered mail here; on a residential line with
-      # deferrals being normal (see the header) that is not an empty directory.
-      # Ownership is left to Postfix's own setup, which builds a tree with
-      # several owners and modes under it — this only has to exist and be root.
-      install -d -o root -g root -m 0755 ${stateRoot}/postfix
-
-      # Dovecot's indices.  Rebuildable in principle, but rebuilding them for a
-      # multi-gigabyte mailbox is a visible outage for the person whose client
-      # is resyncing, so they persist.
-      install -d -o root -g root -m 0755 ${stateRoot}/dovecot
-
-      # Rspamd's own state, and Redis's, which is where the BAYES CLASSIFIER
-      # lives.  Losing this is not fatal and is not harmless: the filter
-      # forgets everything the household has taught it and starts scoring from
-      # the static rules alone.
-      install -d -o ${toString rspamdUid} -g ${toString rspamdUid} -m 0700 ${stateRoot}/rspamd
-      install -d -o ${toString redisUid} -g ${toString redisGid} -m 0700 ${stateRoot}/redis
-
-      # ACME state for the mail certificate.  Its own, NOT a share of
-      # Traefik's acme.json — see the security.acme block below.
-      install -d -o root -g root -m 0755 ${stateRoot}/acme
-    '';
-  };
-
-  # ── Stage the account hashes, the DKIM key and the ACME token ─────────────
-  #
-  # ROTATING ANY OF THESE needs a restart, not just a deploy: this unit's
-  # script embeds the sops PATH and not the contents, so systemd sees an
-  # unchanged unit and does not re-run a oneshot that is RemainAfterExit.  The
-  # generators therefore carry `restartUnits`.  By hand it is:
-  #     systemctl restart mail-secrets container@mail
   systemd.services.mail-secrets = {
     description = "Stage the mail server's credentials for container@mail";
     after       = [ "local-fs.target" ];
@@ -569,48 +482,63 @@ in
     "container@mail.service"
   ];
 
-  # Host side of the container's veth — a VLAN-90 port on br0.  Identical
-  # rationale to vb-miniflux / vb-nextcloud / vb-jellyfin; see containers/
-  # traefik.nix for the long form of KeepMaster-not-Bridge and why a bridge
-  # port carries no address of its own.
-  systemd.network.networks."60-vb-mail" = {
-    matchConfig.Name = "vb-mail";
-    networkConfig = {
-      KeepMaster          = true;
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
-    };
-    bridgeVLANs = [ { VLAN = 90; PVID = 90; EgressUntagged = 90; } ];
-    linkConfig.RequiredForOnline = "enslaved";
-  };
-
-  # Same VLAN race, same idempotent backstop, same "-" prefix as every other
-  # nspawn container on br0: networkd applies [BridgeVLAN] only once it observes
-  # the link's master, and nspawn sets that master out of band.  With
-  # DefaultPVID = "none" on br0 a miss is fail-CLOSED.
-  # `bridge vlan show dev vb-mail` is the check.
-  systemd.services."container@mail".serviceConfig.ExecStartPost = [
-    "-${pkgs.iproute2}/bin/bridge vlan add dev vb-mail vid 90 pvid untagged"
-  ];
-
   ##############################################################################
   # The container.
   ##############################################################################
-  containers.mail = {
-    autoStart = true;
-    ephemeral = false;
+  #
+  # modules/containers/nspawn.nix generates the dirs unit, the host-side veth
+  # network, the VLAN backstop, the container preamble, the in-container
+  # networking and the firewall. Its lib.nix header carries the "no tmpfiles
+  # rules for a path a container binds" measurement this file used to restate.
+  #
+  # `mail-secrets` STAYS HAND-WRITTEN: it stages account hashes, DKIM keys and
+  # the ACME environment with per-file ownership that three different services
+  # read (dovecot 46, rspamd 225, root), which is not the single env file the
+  # module's `secrets` option writes.
+  clanarchy.containers.mail = {
+    enable = true;
+    mac    = "02:00:00:90:00:17";
 
-    # MAC from machines/ernst/allocations.nix; the DHCP
-    # reservation 10.0.90.31 on the UDM-Pro keys on it (manual step).  Sequence
-    # 17, and the last octet is 8 + seq as everywhere else on this bridge.
+    # NO uid/gid PIN: simple-nixos-mailserver and nixpkgs create these users,
+    # and two of them (dovecot 46, rspamd 225) are upstream-static ids that
+    # must NOT be renumbered into ernst's 3000 block.
+
+    stateVersion = "26.05";
+
+    # ── THE ONE CONTAINER THAT RUNS NO systemd-resolved ──────────────────────
     #
-    # The container is `mail` and not `mailserver` for the reason hass is not
-    # `home-assistant`: nspawn names the host veth `vb-<container>` and an
-    # interface name caps at 15 characters, which fails at container START and
-    # not at eval, so a clean build proves nothing about it.
-    privateNetwork  = true;
-    hostBridge      = "br0";
-    localMacAddress = "02:00:00:90:00:17";
+    # Convention 4 in the header: Rspamd's DNSBL lookups must come from a
+    # resolver that is not shared, or the blocklist silently reads as empty —
+    # DNSBL operators rate-limit and then refuse shared resolvers.
+    # `mailserver.localDnsResolver` (default true) provides kresd instead, and
+    # resolved would be a second resolver racing it for /etc/resolv.conf.
+    useResolved = false;
+
+    stateDirs = [
+      { path = stateRoot;                 owner = "root";    group = "root";    mode = "0755"; }
+      { path = "${stateRoot}/vmail";      owner = vmailUid;  group = vmailGid;  mode = "0700"; }
+      { path = "${stateRoot}/postfix";    owner = "root";    group = "root";    mode = "0755"; }
+      { path = "${stateRoot}/dovecot";    owner = "root";    group = "root";    mode = "0755"; }
+      { path = "${stateRoot}/rspamd";     owner = rspamdUid; group = rspamdUid; mode = "0700"; }
+      { path = "${stateRoot}/redis";      owner = redisUid;  group = redisGid;  mode = "0700"; }
+      { path = "${stateRoot}/acme";       owner = "root";    group = "root";    mode = "0755"; }
+    ];
+
+    # ── THE NEGATIVE CONTROL IS INVERTED HERE, FOR FOUR PORTS ────────────────
+    #
+    # `mailserver.openFirewall` opens 25, 465, 993 and 4190 on ALL interfaces
+    # from ANY source, which is the point: :25 must answer any MTA on earth,
+    # and the client ports must answer a phone from whatever address a carrier
+    # hands it. This is the one container here that cannot work from a peer
+    # list, so `nc -vz 10.0.90.31 25` from ernst SUCCEEDS — correct, and the
+    # opposite of every sibling file.
+    #
+    # It still holds for the exporter: 9154 names a peer, so
+    # `curl http://10.0.90.31:9154/metrics` from ernst is REFUSED.
+    allowFrom = [
+      { peer = monitoringAddr; port = exporterPort; }  # Prometheus
+      { peer = traefikAddr;    port = mtaStsPort; }    # the MTA-STS policy file
+    ];
 
     bindMounts = {
       # The Maildir.
@@ -653,114 +581,9 @@ in
       };
     };
 
+
     config = { config, pkgs, lib, ... }: {
       imports = [ inputs.simple-nixos-mailserver.nixosModules.default ];
-
-      system.stateVersion = "26.05";
-
-      ##########################################################################
-      # Networking — one leg, and the ONE container on this host that does not
-      # point at Technitium.  See convention 4 in the header: Rspamd's DNSBL
-      # lookups must come from a resolver that is not shared, or every
-      # blocklist silently reads as empty.  `mailserver.localDnsResolver`
-      # (default true) is what provides kresd; these lines only make sure
-      # nothing overrides resolv.conf out from under it.
-      ##########################################################################
-      networking.useHostResolvConf = false;
-      networking.useNetworkd = true;
-
-      # ── resolved OFF, AND THIS IS THE LINE THE WHOLE DNSBL ARGUMENT ──────
-      #    HANGS ON
-      #
-      #   Every sibling container leaves systemd-resolved on, because
-      #   `networking.useNetworkd = true` turns it on by default and pointing
-      #   it at Technitium is the right answer there.  Here it is the wrong
-      #   one twice over.  Left enabled, resolved owns /etc/resolv.conf via
-      #   the 127.0.0.53 stub, kresd sits on 127.0.0.1:53 with nothing talking
-      #   to it, and — because this link deliberately takes no DNS= and sets
-      #   UseDNS=false — resolved falls through to its compiled-in FallbackDNS
-      #   at Cloudflare and Google.  Which is to say: every Rspamd blocklist
-      #   query would arrive at Spamhaus from a public resolver and be REFUSED
-      #   with 127.255.255.254, exactly as measured in the header, and the
-      #   filter would read every list as empty and say nothing about it.
-      #
-      #   Off, `networking.resolvconf.enable` flips true (its default is the
-      #   negation of this) and the kresd module's own
-      #   `resolvconf.useLocalResolver = mkDefault true` writes
-      #   `nameserver 127.0.0.1`.  That is upstream's intended wiring; it is
-      #   only reachable once resolved is out of the way.
-      #
-      #   The assertion below is the check, because this is a SILENT failure:
-      #   mail still flows, spam just stops being caught.
-      services.resolved.enable = false;
-
-      assertions = [
-        {
-          assertion = config.networking.resolvconf.useLocalResolver;
-          message = ''
-            containers/mail.nix: /etc/resolv.conf would not point at kresd.
-
-            Rspamd's DNSBL lookups must come from this container's own
-            recursive resolver — a query that arrives at Spamhaus via a shared
-            or public resolver is refused, and Rspamd scores the refusal as
-            "not listed".  The filter keeps running and stops working.
-          '';
-        }
-      ];
-
-      systemd.network.networks."10-eth0" = {
-        matchConfig.Name = "eth0";
-        networkConfig = {
-          DHCP         = "ipv4";
-          IPv6AcceptRA = false;
-          # SN2: v4 only.  M18 measured that IPv6AcceptRA alone blocks an RA
-          # but NOT link-local assignment; this is the line that actually makes
-          # `ip -6 addr show dev eth0` empty.
-          #
-          # It matters more here than in any sibling.  A v6 listener on :25
-          # would be reachable from the internet WITHOUT passing the UDM-Pro
-          # DNAT, so it would carry no ledger row and no port forward to
-          # remove — and fail2ban's jails below are v4 chains.  Reachable and
-          # unbannable at once is exactly what SN2 exists to prevent.
-          LinkLocalAddressing = "no";
-        };
-        # No DNS= / Domains= here, unlike every sibling: kresd is the resolver.
-        dhcpV4Config = {
-          UseDNS     = false;
-          UseDomains = false;
-        };
-        linkConfig.RequiredForOnline = "routable";
-      };
-
-      # Same 20 s cap as every sibling: a DHCP failure must leave a RUNNING
-      # container with one failed unit, not a host-side restart loop.
-      systemd.network.wait-online.timeout = 20;
-
-      # ── The firewall, and the inverted negative control ───────────────────
-      #
-      #   `mailserver.openFirewall` opens exactly the ports the enables below
-      #   turn on: 25, 465, 993, 4190.  ON ALL INTERFACES AND FROM EVERY
-      #   SOURCE, which is the point — :25 must answer any MTA on earth and the
-      #   client ports must answer Sarinah's phone from whatever address her
-      #   carrier hands it.  This is the one container here that cannot work
-      #   from a peer list.
-      #
-      #   SO THE USUAL NEGATIVE CONTROL IS INVERTED FOR THOSE FOUR PORTS.
-      #   `nc -vz 10.0.90.31 25` from ernst SUCCEEDS, and that is correct; in
-      #   every sibling file the equivalent is refused by design and a reader
-      #   who has internalised that will misread a success here as a leak.
-      #
-      #   IT STILL HOLDS FOR THE EXPORTER.  9154 is the one rule below that
-      #   names a peer, and `curl http://10.0.90.31:9154/metrics` from ernst IS
-      #   REFUSED — ernst is 10.0.50.10 and matches nothing.
-      #
-      #   extraCommands, not extraInputRules: the latter is declared
-      #   unconditionally but consumed only under networking.nftables, so here
-      #   it would produce no rule and no warning.
-      networking.firewall.extraCommands = ''
-        iptables -A nixos-fw -p tcp -s ${monitoringAddr}/32 --dport ${toString exporterPort} -j nixos-fw-accept
-        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32    --dport ${toString mtaStsPort}  -j nixos-fw-accept
-      '';
 
       ##########################################################################
       # The MTA-STS policy file.

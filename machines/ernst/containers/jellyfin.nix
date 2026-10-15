@@ -214,7 +214,6 @@ in
     "d /srv/media/torrents           0755 root       root       -"
     "d /srv/media/torrents/movies    2770 root       media      -"
     "d /srv/media/torrents/tv        2770 root       media      -"
-    "d /srv/state/jellyfin           0700 ${toString jellyfinUid} ${toString jellyfinGid} -"
   ];
 
   # Ownership + setgid on the media subdirs — now a REDUNDANT BACKSTOP that
@@ -248,104 +247,67 @@ in
     };
   };
 
-  # Host side of the container's veth — a VLAN-90 port on br0.
-  #
-  # There is deliberately NO `networking.firewall.allowedTCPPorts = [ 8096 ]`
-  # here any more.  Under v1 the container shared the host netns, so Jellyfin's
-  # port was a host port and had to be opened on the host; that was ledger row
-  # L3 in docs/history.md and this milestone retires it.  8096 is now opened
-  # inside the container's own netns (see its networking.firewall block) and
-  # reachability across VLANs is the UDM-Pro's job.
-  #
-  # NOT Bridge= — KeepMaster.  nspawn creates this link AND enslaves it to br0
-  # itself (--network-bridge=br0).  Setting Bridge= would make networkd fight
-  # nspawn over the master; KeepMaster tells networkd to leave the enslavement
-  # alone while still applying the [BridgeVLAN] section, which is the only
-  # thing we actually want from it.
-  #
-  # No L3 of its own: a bridge port carries no address, and IPv6AcceptRA on a
-  # port would have it answer router advertisements meant for the container.
-  #
-  # 60- prefix, so it sorts after the 50-* topology units in
-  # machines/ernst/networking.nix and well ahead of the 99-* wildcards.
-  systemd.network.networks."60-vb-jellyfin" = {
-    matchConfig.Name = "vb-jellyfin";   # "vb-", not "ve-" — see the header
-    networkConfig = {
-      KeepMaster          = true;
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
-    };
-    bridgeVLANs = [ { VLAN = 90; PVID = 90; EgressUntagged = 90; } ];
-    # A bridge port's terminal operational state is "enslaved"; it never
-    # becomes routable, and waiting for that would hang boot.
-    linkConfig.RequiredForOnline = "enslaved";
-  };
-
-  # Re-assert the VLAN membership after nspawn has created the veth.
-  #
-  # This is a real race, not a defensive tic.  networkd applies [BridgeVLAN]
-  # only once it observes the link's master — and nspawn sets that master out
-  # of band, from container@jellyfin.service, after the link appears.  If
-  # networkd processes the "new link" event before nspawn's `ip link set …
-  # master br0`, the bridgeVLANs block above is applied to a link that is not
-  # yet a bridge port and quietly does nothing.
-  #
-  # With DefaultPVID = "none" on br0 (machines/ernst/networking.nix, note 4)
-  # the failure is fail-CLOSED — the container ends up on no VLAN at all and
-  # has no connectivity — rather than fail-open onto VLAN 50, the host VLAN.
-  # That is the right failure, but it is still a failure, and one that looks
-  # like "Jellyfin is down" rather than like a VLAN problem.
-  #
-  # `bridge vlan add` is idempotent: re-adding an existing vid/pvid/untagged
-  # tuple is a no-op, so this agrees with networkd rather than competing with
-  # it.  Same belt-and-braces shape as jellyfin-igpu-render-symlink above.
-  # `bridge vlan show dev vb-jellyfin` remains the check — do not trust
-  # silence from either mechanism.
-  #
-  # The "-" prefix is deliberate: a backstop must not become a new failure
-  # mode.  Without it, `bridge` exiting non-zero (link already gone during a
-  # restart, say) would fail container@jellyfin and put it in a restart loop —
-  # taking Jellyfin down to protect against a race that networkd usually wins
-  # on its own.
-  systemd.services."container@jellyfin".serviceConfig.ExecStartPost = [
-    "-${pkgs.iproute2}/bin/bridge vlan add dev vb-jellyfin vid 90 pvid untagged"
-  ];
-
   ##############################################################################
   # The container itself.
   ##############################################################################
-  containers.jellyfin = {
-    autoStart      = true;
-    ephemeral      = false;         # jellyfin state persists via bind mount below
+  #
+  # modules/containers/nspawn.nix generates the host-side veth network, the
+  # VLAN backstop, the container preamble, the in-container networking and the
+  # firewall. It carries the long form of what this file used to hold for the
+  # whole repo: KeepMaster-not-Bridge, the VLAN race and its idempotent
+  # backstop, and why the "-" prefix on that backstop is load-bearing.
+  #
+  # `jellyfin-library-perms` and the media tmpfiles rules above STAY: they are
+  # about /srv/media, which this container only reads, and folding them into
+  # the module's `stateDirs` would add a mount guard that refuses to start
+  # Jellyfin when the media dataset is absent. An empty library is a visible,
+  # harmless failure — arr.nix's argument, which does apply here.
+  clanarchy.containers.jellyfin = {
+    enable = true;
 
-    # Own netns, own L2 identity.  See the file header for why this is a veth
-    # on br0 and not a macvlan or a tap.
-    #
-    # hostBridge makes nixos-containers pass --network-bridge=br0 to nspawn,
-    # which creates the pair, names the HOST side vb-jellyfin (not ve-) and
-    # enslaves it to br0 itself.  The container side is renamed host0 → eth0
-    # by container-init, which also applies the MAC below before the interface
-    # is brought up — so the address is stable from the first DHCP DISCOVER,
-    # which is exactly what a reservation needs.
-    #
-    # Locally-administered (02:…) so it cannot collide with a vendor OUI.
-    # Convention 02:00:00:<vlan>:00:<seq>; the allocation table lives in
-    # machines/ernst/networking.nix.  This is the MAC the UDM-Pro sees and the
-    # one the DHCP reservation must key on — never the host-side vb-jellyfin.
-    #
-    # No hostAddress/localAddress: those are for the point-to-point veth mode,
-    # where nspawn's veth is not on a bridge and the host routes to it.  Here
-    # the bridge carries the traffic and the UDM-Pro supplies the address.
-    privateNetwork  = true;
-    hostBridge      = "br0";
-    localMacAddress = "02:00:00:90:00:02";
+    # Locally-administered (02:…) so it cannot collide with a vendor's.
+    # Convention 02:00:00:<vlan>:00:<seq>; this is the MAC the UDM-Pro
+    # reservation keys on — never the host-side veth's.
+    mac = "02:00:00:90:00:02";
 
-    # Only expose the iGPU render node to the container.  card0 is deliberately
-    # NOT bound: modern VAAPI on mesa/radeonsi uses only the render node, and
-    # keeping the card node out means the container cannot touch KMS, DPMS, or
-    # anything else that requires the primary DRM device.
+    # NO uid/gid PIN HERE: the in-container `users.users.jellyfin` block below
+    # declares the user in full (isSystemUser, group, extraGroups), and a
+    # second definition of the same uid is a conflict rather than a pin.
+
+    # Pinned, not inherited from the host.
+    stateVersion = "26.05";
+
+    # STATE AS AN ORDERED UNIT, NOT A tmpfiles RULE, which is a fix rather
+    # than a move: /srv/state/jellyfin is bound into the container AND was
+    # declared as a tmpfiles rule, which is exactly the immich failure
+    # (`Failed to clone …: No such file or directory`) surviving only because
+    # the directory already existed. Now it is created before the container
+    # starts, with /srv/state checked first.
+    stateDirs = [
+      { path = "/srv/state/jellyfin"; owner = jellyfinUid; group = jellyfinGid; }
+    ];
+
+    # Only the iGPU RENDER node. card0 is deliberately absent: VAAPI on
+    # mesa/radeonsi uses only the render node, and keeping the card node out
+    # means the container cannot touch KMS, DPMS, or anything else needing the
+    # primary DRM device.
     allowedDevices = [
       { node = iGpuRenderNode; modifier = "rw"; }
+    ];
+
+    # 8096/tcp AND NOTHING ELSE. Each exclusion is deliberate:
+    #   8920/tcp  HTTPS — TLS terminates at Traefik; this listener is unused.
+    #   7359/udp  client auto-discovery — broadcast, so it only reaches what
+    #             already shares this broadcast domain.
+    #   1900/udp  DLNA/SSDP — same, plus a well-worn RCE surface. Also off in
+    #             the Jellyfin UI (Dashboard -> DLNA).
+    #
+    # The monitoring accept is strictly weaker than Authelia: Jellyfin's
+    # metrics sit behind no auth of their own. Stated rather than glossed.
+    allowFrom = [
+      { peer = traefikAddr;    port = 8096; }  # every human client
+      { peer = arrAddr;        port = 8096; }  # the *arr stack's library refresh
+      { peer = monitoringAddr; port = 8096; }  # Prometheus
     ];
 
     bindMounts = {
@@ -440,168 +402,7 @@ in
       };
     };
 
-    ############################################################################
-    # NixOS config for the container's own root filesystem.
-    ############################################################################
     config = { config, pkgs, lib, ... }: {
-      system.stateVersion = "26.05";
-
-      ##########################################################################
-      # Networking.  The container owns its netns now, so it owns all of this.
-      ##########################################################################
-
-      # v1 inherited the host's resolv.conf, which was only ever correct
-      # BECAUSE the container shared the host's netns.  With a private netns
-      # that copy is a stale snapshot of someone else's resolver, so it has to
-      # go — and it has to go for a second reason: services.resolved asserts
-      # !networking.useHostResolvConf, so leaving it true is a hard eval error
-      # rather than a subtle one.  virtualisation/container-config.nix sets it
-      # `mkDefault true`, so a plain `false` wins without mkForce.
-      networking.useHostResolvConf = false;
-
-      # networkd + resolved, mirroring the host (machines/ernst/networking.nix)
-      # rather than inventing a second idiom for the same job.  networkd on its
-      # own never writes /etc/resolv.conf — that is resolved's half of the pair,
-      # and without it the DNS= line below would be inert.
-      networking.useNetworkd = true;
-      services.resolved.enable = true;
-
-      # eth0 — renamed from host0 by container-init before stage 2 runs, so it
-      # already exists under this name by the time networkd starts.
-      #
-      # ADDRESS: DHCP, reserved on the UDM-Pro against the pinned MAC.  See the
-      # file header for why the reservation is not duplicated here.
-      #
-      # RESOLVER: declared, not inherited.  UseDNS/UseDomains = false so a
-      # future change to the Services network's DHCP options cannot silently
-      # move Jellyfin off Technitium — the same reasoning as note 1 in
-      # machines/ernst/networking.nix, and the same failure mode: it would not
-      # error, it would just start resolving somewhere else.
-      #
-      # "~." is a ROUTING domain — every lookup goes to 10.0.5.3, so
-      # Technitium's blocklists and logging cover the container too.
-      # "skynet.lan" is the bare-hostname search suffix.
-      #
-      # Check on ernst with:  nixos-container run jellyfin -- resolvectl status eth0
-      systemd.network.networks."10-eth0" = {
-        matchConfig.Name = "eth0";
-        networkConfig = {
-          DHCP         = "ipv4";
-          DNS          = "10.0.5.3";
-          Domains      = "~. skynet.lan";
-          IPv6AcceptRA = false;
-        };
-        dhcpV4Config = {
-          UseDNS     = false;
-          UseDomains = false;
-        };
-        linkConfig.RequiredForOnline = "routable";
-      };
-
-      # 20 s, and the number is load-bearing — do not raise it past ~50.
-      #
-      # services.jellyfin is `after`/`wants` network-online.target, so inside
-      # the container systemd-networkd-wait-online gates Jellyfin's start on
-      # eth0 reaching "routable", i.e. on a DHCP lease.  That ordering is what
-      # we want in the happy path.
-      #
-      # The trap is the interaction with the HOST unit.  container@jellyfin is
-      # Type=notify with TimeoutStartSec=1min (the nixos-containers default),
-      # and the container only notifies READY once its own boot completes.  At
-      # the stock 120 s wait-online timeout, a DHCP failure — a missing UDM-Pro
-      # reservation, a VLAN 90 that did not land — would stall the container's
-      # boot past 60 s, so the host would kill it and Restart=on-failure would
-      # loop it forever, never reaching a state you can log into and debug.
-      #
-      # At 20 s the container finishes booting in every case: wait-online fails,
-      # network-online.target is reached anyway (a failed Wants= does not block
-      # a target), Jellyfin starts, and you are left with a RUNNING container
-      # holding one obviously failed unit.  That is the diagnosable failure.
-      systemd.network.wait-online.timeout = 20;
-
-      # The container's own firewall, in its own netns.  NixOS enables the
-      # firewall by default and virtualisation/container-config.nix does not
-      # turn it off, so this is a real enforcement point rather than a
-      # decoration — but it is now the ONLY one in the repo: under v1 the host
-      # opened this port (ledger row L3), and cross-VLAN reachability is the
-      # UDM-Pro's job from here on.
-      #
-      # 8096/tcp (HTTP) only.  The v1 rationale for each exclusion is unchanged
-      # and, if anything, stronger on an isolated VLAN:
-      #   8920/tcp   HTTPS.  TLS terminates at Traefik (M5); Jellyfin's own
-      #              HTTPS listener is unused.
-      #   7359/udp   client auto-discovery.  Broadcast-based, so it is worth
-      #              even less on VLAN 90 than it was on VLAN 50 — nothing that
-      #              would answer it shares this broadcast domain.
-      #   1900/udp   DLNA/SSDP.  Same, plus a well-worn RCE surface.  Disable
-      #              it in the Jellyfin UI too (Dashboard → DLNA).
-      #
-      # ── M5: 8096 IS NO LONGER OPEN TO THE VLAN ────────────────────────────
-      #
-      # It was `allowedTCPPorts = [ 8096 ]` until M5.  Now the only source that
-      # may reach it is Traefik, and the list is EMPTY so that nothing grants
-      # the port unconditionally before the restricted rule below is reached.
-      #
-      # Why extraCommands and not allowedTCPPorts: the NixOS firewall has no
-      # per-source form of that option.  `extraInputRules` looks like the
-      # modern answer and is a TRAP HERE — it is declared unconditionally in
-      # nixos/modules/services/networking/firewall-nftables.nix but consumed
-      # ONLY when networking.nftables.enable is true, which it is not.  Setting
-      # it would produce no rule, no warning and no error: a bypass protection
-      # that silently does not exist.  extraCommands is the iptables backend's
-      # own escape hatch and cannot fail quietly — a rule that will not insert
-      # fails the firewall unit.
-      #
-      # PLACEMENT IS WHAT MAKES IT WORK.  firewall-iptables.nix's start script
-      # emits, in order: the allowedTCPPorts accepts, then extraCommands, then
-      # a final `-A nixos-fw -j nixos-fw-log-refuse`.  So appending here lands
-      # after every other accept and before the catch-all refuse — traffic from
-      # traefikAddr is accepted, everything else to 8096 falls through and is
-      # rejected.  There is nothing to add to extraStopCommands: the script
-      # flushes and recreates the nixos-fw chain on every start and reload, so
-      # these rules are rebuilt from scratch rather than accumulated.
-      #
-      # `iptables`, not `ip46tables`: traefikAddr is IPv4 and IPv6AcceptRA is
-      # off on eth0, so there is no v6 path to this port to restrict.
-      #
-      # CONSEQUENCE: `curl http://10.0.90.10:8096` from a laptop or from ernst
-      # now fails, and that is the milestone working.  To reach Jellyfin
-      # directly for debugging, go in through the container, where `lo` is
-      # always trusted by the NixOS firewall:
-      #     nixos-container run jellyfin -- curl -sS localhost:8096/health
-      #
-      # ── M13: TWO MORE SOURCES, AND NEITHER IS A BROWSER ───────────────────
-      #
-      # Until M13 this list had exactly one entry, because 8096 only ever
-      # fronted a browser and Traefik was the only way to a browser.  M13 adds
-      # two API clients that are not behind the proxy and cannot be:
-      #
-      #   10.0.90.13  the arr container — JANITORR.  It needs Jellyfin's API to
-      #               build the "Leaving Soon" collections and, once dry-run is
-      #               turned off, to issue deletes.  It authenticates as a real
-      #               Jellyfin USER (see the janitorr blocks in arr.nix); it is
-      #               not riding Traefik's session.
-      #   10.0.90.14  the monitoring container — PROMETHEUS.  Jellyfin's NATIVE
-      #               /metrics endpoint, enabled below.  No exporter.
-      #
-      # Both are single layer-2 hops on br0, so — as with the Traefik rule —
-      # their frames never reach the UDM-Pro and this chain is the only
-      # enforcement point that exists for them.
-      #
-      # THE SAME PORT, THREE SOURCES, AND THAT IS THE COST OF JELLYFIN'S
-      # DESIGN: /metrics is served on 8096 alongside the media API rather than
-      # on a separate listener, so permitting a scrape necessarily permits the
-      # monitoring container to reach everything else on 8096 too.  That is
-      # accepted here — the monitoring container runs Prometheus, Alertmanager
-      # and Grafana and nothing that takes untrusted input — but it is stated
-      # rather than glossed, because it is strictly weaker than Authelia's and
-      # Traefik's arrangement, where the telemetry listener is its own port.
-      networking.firewall.allowedTCPPorts = [ ];
-      networking.firewall.extraCommands = ''
-        iptables -A nixos-fw -p tcp -s ${traefikAddr}/32 --dport 8096 -j nixos-fw-accept
-        iptables -A nixos-fw -p tcp -s ${arrAddr}/32 --dport 8096 -j nixos-fw-accept
-        iptables -A nixos-fw -p tcp -s ${monitoringAddr}/32 --dport 8096 -j nixos-fw-accept
-      '';
 
       # Pin jellyfin's numeric UID/GID to match the host-side chown above so
       # the /var/lib/jellyfin bind is owned correctly from first boot.
