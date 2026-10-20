@@ -20,9 +20,16 @@ Architecture, for when a change needs it:
 - `.claude/settings.json` is tracked and shared; `.claude/settings.local.json`
   is not. The shared file denies mutating `git` commands on purpose — this repo
   is driven with jj, and mixing the two in one session is the documented failure
-  mode. It also denies `clan machines update`, `clan vars generate`,
+  mode. It also denies `clan machines install`, `clan vars generate`,
   `clan flash` and `nixos-rebuild`: those are the operator's to run, they need a
   TTY, and a deny turns a confusing failure into a clear block.
+- `clan machines update` is NOT denied, as of 2026-10-20 and on request. A
+  deploy still needs the YubiKey unlocked for ssh — the key must have been
+  touched and its PIN entered in this session, or the deploy dies at
+  `agent refused operation` with no prompt anyone can answer. So the operator
+  is still in the loop; what changed is that they no longer have to type the
+  command. Verify afterwards with `./scripts/post-deploy-check.sh <machine>`,
+  which fails fast and names that exact failure.
 - Open a PR with `gh pr create --head <bookmark>`. Without `--head` it fails
   with `not on any branch`, because jj leaves git's `HEAD` detached.
 - Do not merge a PR unless asked. Merging is the operator's call.

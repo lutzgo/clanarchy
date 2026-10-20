@@ -34,7 +34,6 @@
       "Bash(git rebase:*)",
       "Bash(git reset:*)",
       "Bash(git checkout:*)",
-      "Bash(clan machines update:*)",
       "Bash(clan machines install:*)",
       "Bash(clan vars generate:*)",
       "Bash(clan flash:*)",
