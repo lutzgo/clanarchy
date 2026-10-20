@@ -135,3 +135,14 @@ check() {
   bash scripts/check.sh "$@"
 }
 export -f check
+
+# ── After a deploy ───────────────────────────────────────────────────────────
+
+# The round of findings, gathered in one pass. See the script's header for why
+# each check is there — every one answers a question a green `systemctl status`
+# does not.
+# Usage: post-deploy ernst
+post-deploy() {
+  bash scripts/post-deploy-check.sh "$@"
+}
+export -f post-deploy
