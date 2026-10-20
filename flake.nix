@@ -213,6 +213,17 @@
       ];
 
       perSystem = { pkgs, system, ... }: {
+        # ── `nix fmt` ───────────────────────────────────────────────────────
+        #
+        # alejandra rather than nixfmt: lgo's choice, and it is the one with a
+        # single opinion and no options to argue about later.
+        #
+        # THE REPO IS NOT FORMATTED YET, and that is deliberate. Declaring the
+        # formatter is safe; running it over 160 files is not something to mix
+        # with anything else, so the reformat is its own change — see
+        # docs/guides/formatting.md for the order and the reason.
+        formatter = pkgs.alejandra;
+
         # ── `nix flake check` ───────────────────────────────────────────────
         #
         # The same two things scripts/check.sh and CI cover, exposed as flake
@@ -432,6 +443,7 @@
           packages = with pkgs; [
             # Clan docs recommend exposing the CLI via devShell
             clan-core.packages.${system}.clan-cli
+            alejandra           # the formatter; `fmt` and `fmt-check` wrap it
             git
             jujutsu             # jj — the VCS front end for this repo, git-colocated.
                                 #      Also in lgo's home.packages, so it is on PATH

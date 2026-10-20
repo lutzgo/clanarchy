@@ -62,6 +62,7 @@ nav:
     - Authelia second factors: guides/authelia-2fa.md
   - Build:
     - The jj workflow: guides/jj-workflow.md
+    - Formatting: guides/formatting.md
     - Coding-agent workflow: guides/coding-agent-workflow.md
     - Adding a module or option: guides/adding-a-module.md
     - Adding a machine: guides/adding-a-machine.md
