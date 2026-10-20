@@ -2964,7 +2964,7 @@ in
             # that the clients which cannot follow a 302 are ones THIS
             # REPOSITORY INSTALLS — the Karakeep extension and the Floccus
             # adapter, declared for lgo in service-modules/software.nix and
-            # machines/miralda/home-modules/browsers.nix.  Moving this name to
+            # modules/users/lgo/browsers.nix.  Moving this name to
             # `protectedHosts` would break an unattended sync between two
             # laptops, which presents as bookmarks quietly failing to
             # propagate rather than as an error anybody sees.

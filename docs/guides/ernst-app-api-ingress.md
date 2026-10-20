@@ -43,7 +43,7 @@ fails in the app"*, check this first — it is almost always the cause.
 argued from a client somebody *might* install. This one is argued from clients
 declared in this repository, on machines it deploys —
 `service-modules/software.nix`, `clan.nix` and
-`machines/miralda/home-modules/browsers.nix` put the Karakeep extension and
+`modules/users/lgo/browsers.nix` put the Karakeep extension and
 Floccus into all four of lgo's browsers on miralda and jens. Moving the name to
 `protectedHosts` would break an **unattended** sync between two laptops, and
 the symptom is bookmarks quietly failing to propagate rather than an error

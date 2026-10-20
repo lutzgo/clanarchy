@@ -153,7 +153,7 @@
   # neither the gamelist location nor the artwork layout RomM writes, so
   # without this the Deck shows a full library with no names and no boxart.
   # atari2600 is excluded because it was scraped in ES-DE itself, which is
-  # richer than the export — see machines/birte/romm-esde-bridge.nix.
+  # richer than the export — see modules/retrodeck/romm-esde-bridge.nix.
   clanarchy.retrodeck.rommBridge.enable = true;
 
   # The shared group above.  `deck` needs it to keep writing its own library;
