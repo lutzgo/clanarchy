@@ -586,14 +586,6 @@ in
   # Host-side wiring.
   ##############################################################################
 
-  # State on zdata.  0700 and owned by the service, exactly like
-  # /srv/state/{jellyfin,sonarr,traefik,monitoring}.
-  #
-  # NUMERIC ids on purpose — `authelia-main` is a container user and the host
-  # has no matching passwd entry.
-  systemd.tmpfiles.rules = [
-    "d /srv/state/authelia 0700 ${toString autheliaUid} ${toString autheliaGid} -"
-  ];
 
   ##############################################################################
   # `authelia-code` — print the LATEST one-time code, and only that.
@@ -1145,40 +1137,6 @@ in
     '';
   };
 
-  # Host side of the container's veth - a VLAN-90 port on br0.
-  #
-  # There is deliberately NO `networking.firewall.allowedTCPPorts` here.  9091
-  # is opened inside the container's own netns; on the host it is not a port at
-  # all.  Nothing on any consumer VLAN is permitted to reach this container:
-  # the portal is served through Traefik like every other name.
-  #
-  # KeepMaster, not Bridge=: nspawn creates this link AND enslaves it to br0
-  # itself, so Bridge= would make networkd fight nspawn over the master.
-  systemd.network.networks."60-${vethName}" = {
-    matchConfig.Name = vethName;
-    networkConfig = {
-      KeepMaster          = true;
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
-    };
-    bridgeVLANs = [ { VLAN = vlanId; PVID = vlanId; EgressUntagged = vlanId; } ];
-    # A bridge port's terminal operational state is "enslaved"; it never
-    # becomes routable, and waiting for that would hang boot.
-    linkConfig.RequiredForOnline = "enslaved";
-  };
-
-  # Re-assert the VLAN membership after nspawn has created the veth.  Same real
-  # race as vb-jellyfin, vb-arr, vb-traefik and vb-monitoring: networkd applies
-  # [BridgeVLAN] only once it observes the link's master, and nspawn sets that
-  # master out of band.  `bridge vlan add` is idempotent; the "-" prefix keeps
-  # a backstop from becoming a new failure mode.
-  #
-  # `bridge vlan show dev vb-authelia` remains the check - do not trust silence
-  # from either mechanism.
-  systemd.services."container@authelia".serviceConfig.ExecStartPost = [
-    "-${pkgs.iproute2}/bin/bridge vlan add dev ${vethName} vid ${toString vlanId} pvid untagged"
-  ];
-
   ##############################################################################
   # Vars generators.
   ##############################################################################
@@ -1643,40 +1601,53 @@ in
     '';
   };
 
-  ##############################################################################
-  # The container itself.
-  ##############################################################################
-  containers.authelia = {
-    autoStart = true;
-    ephemeral = false;          # db.sqlite3 persists via the bind mount below
 
-    # Own netns, own L2 identity.  See the file header for why this is a veth
-    # on br0 and not a macvlan or a tap.
-    privateNetwork  = true;
-    hostBridge      = "br0";
-    localMacAddress = autheliaMac;
+  ##############################################################################
+  # The container.
+  ##############################################################################
+  #
+  # modules/containers/nspawn.nix generates the dirs unit, the host-side veth
+  # network, the VLAN backstop, the container preamble, the in-container
+  # networking and the firewall.
+  #
+  # `authelia-secrets` STAYS HAND-WRITTEN: it renders the users database, the
+  # OIDC client registry and seven client secrets with per-file ownership,
+  # which is not the single env file the module's `secrets` option writes.
+  clanarchy.containers.authelia = {
+    enable = true;
+    mac    = autheliaMac;
+
+    # NO uid/gid PIN: the in-container user block declares it in full.
+
+    stateVersion = "26.05";
+
+    # AN ORDERED UNIT RATHER THAN A tmpfiles RULE: this path is bound into the
+    # container, and a tmpfiles rule for a bound path races the container's own
+    # start. It also gains the /srv/state guard — an Authelia that comes up on
+    # a filesystem that rolls back loses every TOTP enrolment in the house.
+    #
+    # NUMERIC ids on purpose: `authelia-main` is a container user and the host
+    # has no matching passwd entry.
+    stateDirs = [
+      { path = "/srv/state/authelia"; owner = autheliaUid; group = autheliaGid; }
+    ];
 
     bindMounts = {
-      # The SQLite database and the notifier's file, on zdata.  Remapped to the
-      # unit's own StateDirectory so services.authelia needs no path override -
-      # the same trick containers/jellyfin.nix uses for /var/lib/jellyfin.
-      "${dataDir}" = {
-        hostPath   = "/srv/state/authelia";
-        isReadOnly = false;
-      };
-
+      # The SQLite database and the notifier's file, on zdata. Remapped to the
+      # unit's own StateDirectory so services.authelia needs no path override.
+      "${dataDir}"    = { hostPath = "/srv/state/authelia"; isReadOnly = false; };
       # The staged secrets, read-only, at the identical path.
-      "${secretsDir}" = {
-        hostPath   = secretsDir;
-        isReadOnly = true;
-      };
+      "${secretsDir}" = { hostPath = secretsDir;            isReadOnly = true;  };
     };
 
-    ############################################################################
-    # NixOS config for the container's own root filesystem.
-    ############################################################################
+    # Traefik for the auth flow, monitoring for the metrics port. Nothing else
+    # on the services VLAN reaches either.
+    allowFrom = [
+      { peer = proxyAddress;      port = autheliaPort; }
+      { peer = monitoringAddress; port = metricsPort; }
+    ];
+
     config = { config, pkgs, lib, ... }: {
-      system.stateVersion = "26.05";
 
       # Matches the host.  Every "when was this account banned", every session
       # expiry and every line in the access log is rendered in local time, and
@@ -1687,48 +1658,6 @@ in
       ##########################################################################
       # Networking.  The container owns its netns, so it owns all of this.
       ##########################################################################
-      networking.useHostResolvConf = false;
-      networking.useNetworkd       = true;
-      services.resolved.enable     = true;
-
-      # eth0 - renamed from host0 by container-init before stage 2 runs.
-      # DHCP against the UDM-Pro reservation; resolver DECLARED, not inherited,
-      # so a future change to the Services network's DHCP options cannot
-      # silently move this container off Technitium.
-      systemd.network.networks."10-eth0" = {
-        matchConfig.Name = "eth0";
-        networkConfig = {
-          DHCP         = "ipv4";
-          DNS          = "10.0.5.3";
-          Domains      = "~. skynet.lan";
-          IPv6AcceptRA = false;
-        };
-        dhcpV4Config = {
-          UseDNS     = false;
-          UseDomains = false;
-        };
-        linkConfig.RequiredForOnline = "routable";
-      };
-
-      # 20 s, for the reason containers/jellyfin.nix explains at length:
-      # container@authelia is Type=notify with TimeoutStartSec=1min, so a
-      # wait-online that blocks for the stock 120 s turns a missing DHCP
-      # reservation into a container the host kills and restart-loops, with no
-      # reachable state to debug.
-      systemd.network.wait-online.timeout = 20;
-
-      # The container's own firewall, in its own netns.
-      #
-      # NOTHING is unconditionally open - backend bypass hardening, mechanism
-      # (a), and it matters more here than for any other backend: see the
-      # X-Forwarded-* paragraph in the file header.  9091 accepts the reverse
-      # proxy and 9959 accepts the monitoring container, and no other source
-      # reaches either.
-      networking.firewall.allowedTCPPorts = [ ];
-      networking.firewall.extraCommands = ''
-        iptables -A nixos-fw -p tcp -s ${proxyAddress}/32      --dport ${toString autheliaPort} -j nixos-fw-accept
-        iptables -A nixos-fw -p tcp -s ${monitoringAddress}/32 --dport ${toString metricsPort}  -j nixos-fw-accept
-      '';
 
       ##########################################################################
       # Users.  Numeric ids are the interface across the nspawn boundary - see

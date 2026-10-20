@@ -319,11 +319,18 @@ in
   # NUMERIC ids on purpose — `crowdsec` is a container user and the host has no
   # matching passwd entry.  Same shape containers/traefik.nix uses for 3005.
   #
-  # THIS RULE IS ALSO WHAT KEEPS UPSTREAM DEFECT (1) FROM FIRING: the bind
+  # THIS ENTRY IS ALSO WHAT KEEPS UPSTREAM DEFECT (1) FROM FIRING: the bind
   # mount arrives already owned by the crowdsec uid, so the first
   # `cscli machines add` can write its credentials beside the database.
-  systemd.tmpfiles.rules = [
-    "d ${stateDirHost} 0750 ${toString crowdsecUid} ${toString crowdsecGid} -"
+  #
+  # MERGED INTO TRAEFIK'S `stateDirs`, not declared as a tmpfiles rule, and
+  # the difference is the one immich measured: a tmpfiles rule for a path a
+  # container binds races that container's own start, because activating a
+  # configuration does not re-run systemd-tmpfiles-setup in time. `stateDirs`
+  # is a list, so this composes with traefik.nix's entry exactly the way the
+  # rest of this file composes with its `containers.traefik`.
+  clanarchy.containers.traefik.stateDirs = [
+    { path = stateDirHost; owner = crowdsecUid; group = crowdsecGid; mode = "0750"; }
   ];
 
   ##############################################################################
