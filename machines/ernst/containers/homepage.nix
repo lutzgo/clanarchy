@@ -82,11 +82,11 @@
 #   the least load-bearing thing on this host by construction.
 #
 #   WHAT IT DOES NOT COST, because the numbers are the kind that get assumed:
-#   M26 CONSUMES NO MAC, NO ADDRESS AND NO UID.  The three NEXT FREE markers
-#   in machines/ernst/networking.nix are unchanged, and that file says so.
-#   The nixpkgs module runs under DynamicUser with its configuration in
-#   /etc and its cache in a CacheDirectory, so nothing here touches zdata and
-#   invariant #7 has nothing to check.
+#   M26 CONSUMES NO MAC, NO ADDRESS AND NO UID, so the computed next-free in
+#   machines/ernst/allocations.nix does not move.  The nixpkgs module runs
+#   under DynamicUser with its configuration in /etc and its cache in a
+#   CacheDirectory, so nothing here touches zdata and invariant #7 has nothing
+#   to check.
 #
 #   THE TIER QUESTION (invariant #1) never arises.  `services.homepage-
 #   dashboard` is a first-class nixpkgs module at this pin (homepage-dashboard

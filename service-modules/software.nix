@@ -153,7 +153,7 @@
         home-manager.users.${settings.user} = {...}: {
           # ── Privacy overrides ────────────────────────────────────────
           # Evaluated after LibreWolf's built-in defaults (librewolf.cfg).
-          # Mirrors the configuration used on miralda (home-modules/browsers.nix).
+          # Mirrors the configuration used on miralda (modules/users/lgo/browsers.nix).
           home.file.".librewolf/librewolf.overrides.cfg".text = ''
             // librewolf.overrides.cfg — evaluated after LibreWolf's built-in defaults.
 

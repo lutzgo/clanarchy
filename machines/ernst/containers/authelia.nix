@@ -1,69 +1,56 @@
 # machines/ernst/containers/authelia.nix
 #
-# Authelia 4.39, in a declarative systemd-nspawn NixOS container.  One identity
-# provider behind Traefik, doing two jobs that are easy to confuse:
+# Authelia 4.39, in an nspawn container.  One identity provider behind Traefik,
+# doing two jobs that are easy to confuse:
 #
 #   1. FORWARD-AUTH for the admin UIs.  Traefik asks this container "may this
 #      request through?" before it proxies anything to the *arr or to Grafana.
-#      This is what retires ledger row L5 — the interim `mgmt-only` ipAllowList
-#      M5 shipped precisely so that M7 would have something to replace.
+#      This retires ledger row L5 — the interim `mgmt-only` ipAllowList M5
+#      shipped precisely so that M7 would have something to replace.
 #   2. OIDC PROVIDER for Grafana, which speaks OpenID Connect natively and
 #      therefore gets real users and roles rather than an anonymous pass.
 #
-# Why nspawn: architecture invariant #1.  Authelia holds credentials and talks
-# to nothing on the internet on anyone's behalf — no outbound fetches, no
-# attacker-supplied URLs, no SMTP (see NOTIFIER).  Trusted tier, shared kernel.
+# nspawn per invariant #1: Authelia holds credentials and talks to nothing on
+# the internet on anyone's behalf — no outbound fetches, no attacker-supplied
+# URLs, no SMTP (see NOTIFIER).  Trusted tier, shared kernel.
 #
 # ── AUTHELIA, NOT KEYCLOAK.  Recorded so it reads as a choice ────────────────
 #
-#   Keycloak was the alternative and was rejected before any code was written:
-#
 #     - ONE GO BINARY versus a JVM stack.  Authelia's container is ~50 MB and
-#       its resident set is tens of megabytes; Keycloak wants a JVM, a heap
-#       setting, and a warm-up.  On a box that also runs a raidz1, a GPU
-#       compute service and a TV session, that is not free.
+#       its resident set tens of megabytes; Keycloak wants a JVM, a heap
+#       setting and a warm-up.  On a box that also runs a raidz1, a GPU compute
+#       service and a TV session, that is not free.
 #     - FORWARD-AUTH IS NATIVE.  Authelia's `/api/authz/forward-auth` endpoint
 #       exists for exactly the Traefik middleware below.  Keycloak has no
-#       equivalent; putting it in front of the *arr means running a second
-#       component (oauth2-proxy) as well, i.e. two moving parts where the whole
-#       point of this milestone is one.
+#       equivalent, so putting it in front of the *arr means running
+#       oauth2-proxy as well — two moving parts where the point is one.
 #     - IT IS STILL AN OIDC PROVIDER, which is the other half of the milestone.
-#       Grafana needs a real IdP, and Authelia is one.
 #     - NO FEDERATION REQUIREMENT.  Keycloak's weight buys SAML, identity
-#       brokering, realms and user federation against LDAP/AD.  This is a
-#       household with two accounts and no directory to federate with.  Paying
-#       for capability nobody has a use for is how a homelab acquires a service
-#       it cannot debug.
+#       brokering, realms and LDAP/AD federation.  This is a household with two
+#       accounts and no directory.  Paying for capability nobody uses is how a
+#       homelab acquires a service it cannot debug.
 #
 #   Do not re-litigate this.  What WOULD reopen it: an actual SAML consumer, or
 #   a second person's directory to federate against.
 #
 # ── Networking: veth on br0, Services VLAN 90 ────────────────────────────────
 #
-#   Copied from containers/traefik.nix, which copied it from
-#   containers/jellyfin.nix ("Networking — v2"), the working version of this
-#   pattern: KeepMaster rather than Bridge=, the ExecStartPost that settles the
-#   VLAN race, and the 20 s wait-online cap that stops a DHCP failure from
-#   restart-looping the container.  Read jellyfin.nix's header for the full
-#   rationale — including why this is a veth and not a macvlan or a tap.
-#
-#   MAC 02:00:00:90:00:07 → 10.0.90.15, the next free pair in the allocation
-#   table in machines/ernst/allocations.nix.  DHCP with a reservation on the
-#   UDM-Pro keyed on the pinned MAC, never a static address here: the UDM-Pro
-#   owns the subnet and the pool, and a second copy in the repo diverges
-#   silently.  The reservation must be INSIDE the pool (10.0.90.6–.254).
+#   The skeleton is modules/containers/nspawn.nix; its header owns the
+#   rationale.  MAC 02:00:00:90:00:07 → 10.0.90.15, allocated in
+#   machines/ernst/allocations.nix, with the reservation on the UDM-Pro keyed
+#   on the pinned MAC and inside the pool (10.0.90.6–.254).
 #
 #   THIS CONTAINER IS NOT REACHABLE FROM ANY CLIENT VLAN, and that is the
 #   design.  The only consumer-zone rule on the UDM-Pro points at Traefik's
-#   .12; the login portal is served at auth.goclan.org THROUGH Traefik, exactly
-#   like every other name.  9091 accepts .12 and nothing else.
+#   .12; the login portal is served at auth.goclan.org THROUGH Traefik like
+#   every other name.  9091 accepts .12 and nothing else.
 #
-#   That restriction is not cosmetic.  Authelia's authz endpoints TRUST the
+#   THAT RESTRICTION IS NOT COSMETIC.  Authelia's authz endpoints TRUST the
 #   X-Forwarded-* headers on every request they receive — they have to, that is
-#   how a forward-auth endpoint learns what the user asked for.  Anything that
-#   can reach 9091 directly can therefore assert any target URL it likes.  The
-#   source restriction is what makes that trust safe, and it is the same
-#   mechanism (a) containers/traefik.nix imposes on Jellyfin and the *arr.
+#   how a forward-auth endpoint learns what the user asked for.  So anything
+#   that can reach 9091 directly can assert any target URL it likes.  The
+#   source restriction is what makes that trust safe; it is the same mechanism
+#   containers/traefik.nix imposes on Jellyfin and the *arr.
 #
 # ── WHAT IS BEHIND IT, AND WHAT IS NOT ───────────────────────────────────────
 #
@@ -71,53 +58,49 @@
 #   Not behind it:        jellyfin                            (forever)
 #                         auth.goclan.org itself              (necessarily)
 #
-#   JELLYFIN IS EXEMPT, PERMANENTLY.  containers/traefik.nix states this at
-#   length under "JELLYFIN KEEPS NATIVE AUTH, FOREVER" and it is repeated here
-#   because this is the file whose existence creates the temptation: TV apps,
-#   the mobile clients, Chromecast senders and every DLNA-ish device
-#   authenticate with Jellyfin's own token API and cannot perform an
-#   interactive OIDC redirect.  Put this middleware on that route and the app
-#   fails with an opaque network error rather than a login prompt.
+#   JELLYFIN IS EXEMPT, PERMANENTLY — its native clients cannot perform an
+#   interactive OIDC redirect.  containers/ingress-policy.nix owns that
+#   argument; it is named here only because this is the file whose existence
+#   creates the temptation.
 #
 #   THERE ARE NO BYPASS RULES, and that is a finding rather than an omission.
-#   The milestone brief said to enumerate the OIDC endpoints and health checks
-#   that must be unauthenticated "for the flow to work".  Enumerated, the list
-#   is empty: `auth.goclan.org` carries no middleware on its Traefik router at
-#   all, so `/.well-known/openid-configuration`, `/api/oidc/authorization`,
-#   `/api/oidc/token`, `/api/oidc/userinfo` and `/api/health` are reached
-#   without passing through forward-auth in the first place.  A `bypass` rule
-#   in access_control would apply to requests Traefik forwards for AUTHORIZATION
-#   — and no request to those paths is ever one of those.  Adding rules that
-#   cannot match would be worse than adding none: it would read as enforcement.
+#   Enumerating the OIDC endpoints and health checks that must be
+#   unauthenticated "for the flow to work" produces an EMPTY list:
+#   `auth.goclan.org` carries no middleware on its Traefik router at all, so
+#   `/.well-known/openid-configuration`, `/api/oidc/authorization`,
+#   `/api/oidc/token`, `/api/oidc/userinfo` and `/api/health` never pass
+#   through forward-auth in the first place.  A `bypass` rule in access_control
+#   applies to requests Traefik forwards FOR AUTHORIZATION, and no request to
+#   those paths is ever one.  Rules that cannot match would be worse than none:
+#   they would read as enforcement.
 #
 # ── THE ipAllowList IS REMOVED, NOT STACKED.  Decision, with its cost ────────
 #
 #   M5's `mgmt-only` middleware (10.0.10/24 LAN, 10.0.50/24 Servers, 10.0.70/24
-#   travel-wg) is DELETED in this milestone rather than kept underneath
-#   forward-auth as defence in depth.  Three reasons, and one real cost:
+#   travel-wg) is DELETED rather than kept underneath forward-auth as defence
+#   in depth.  Three reasons and one real cost:
 #
 #     - AN IP ALLOW-LIST UNDER AN IdP DEFEATS THE IdP.  The point of adding
 #       credentials plus TOTP is that access stops depending on where you are.
 #       Keeping the list means valid credentials and a correct TOTP code still
-#       fail from a phone on the IoT VLAN or from any network nobody
+#       fail from a phone on the IoT VLAN, or from any network nobody
 #       pre-declared — which is most of what this milestone was for.
-#     - TWO MECHANISMS FOR ONE PROPERTY is the thing containers/traefik.nix
-#       argues against in its own words: "two sources of truth for one property
-#       is how you get a rule nobody dares delete because nobody can prove what
-#       it does."  The same reasoning applies to the control it shipped as
-#       interim.
-#     - THE LAYERING IS ALREADY THERE, and it is untouched.  Every backend
-#       still refuses its own web port from anything but 10.0.90.12, so the
-#       only path to the *arr is through Traefik — and after this PR the only
-#       way through Traefik is through here.
+#     - TWO MECHANISMS FOR ONE PROPERTY is what containers/traefik.nix argues
+#       against in its own words: "two sources of truth for one property is how
+#       you get a rule nobody dares delete because nobody can prove what it
+#       does."  That applies to the control it shipped as interim.
+#     - THE LAYERING IS ALREADY THERE and is untouched.  Every backend still
+#       refuses its own web port from anything but 10.0.90.12, so the only path
+#       to the *arr is through Traefik — and the only way through Traefik is
+#       through here.
 #
-#   THE COST, stated plainly rather than buried: the LOGIN PORTAL becomes
-#   reachable from the IoT VLAN.  The `Allow Traefik` ZBF policy already
-#   permits IoT → 10.0.90.12:443, so a compromised smart device can now see a
-#   login page it previously could not.  What it meets there is a two_factor
-#   policy and Authelia's regulation (below): three failures in five minutes
-#   costs a fifteen-minute ban, per user.  That is the trade — an exposed login
-#   form in exchange for access that does not depend on the source address.
+#   THE COST, stated plainly: the LOGIN PORTAL becomes reachable from the IoT
+#   VLAN.  The `Allow Traefik` ZBF policy already permits IoT →
+#   10.0.90.12:443, so a compromised smart device can now see a login page it
+#   previously could not.  What it meets there is a two_factor policy and
+#   Authelia's regulation: three failures in five minutes costs a
+#   fifteen-minute ban, per user.  That is the trade — an exposed login form in
+#   exchange for access that does not depend on the source address.
 #
 # ── SECRETS ──────────────────────────────────────────────────────────────────
 #
@@ -125,51 +108,46 @@
 #
 #     authelia-secrets   jwt / session / storage-encryption / oidc-hmac /
 #                        oidc-issuer-private-key      GENERATED — nobody types
-#                        these, so prompting for them would only invite a weak
-#                        value.
+#                        these, so prompting would only invite a weak value.
 #     authelia-users     one password PROMPT per account, hashed with argon2id
-#                        by authelia's own CLI, emitted as a users_database.yml
-#                        — a human types these into a login form.
+#                        by authelia's own CLI, emitted as a users_database.yml.
 #     authelia-oidc      Grafana's client secret, generated ONCE as a pair: the
 #                        plaintext for Grafana and the pbkdf2 digest for the
 #                        client block here, so the two cannot drift apart.
 #     authelia-oidc-cwa  CWA's client secret, the same pair shape.  ITS OWN
 #                        GENERATOR RATHER THAN TWO MORE FILES IN THE ONE ABOVE,
-#                        because a clan vars generator is ATOMIC — adding a
-#                        file makes clan re-run the whole script, which would
-#                        rotate Grafana's working secret as a side effect of
-#                        adding an unrelated client.  One generator per
-#                        relying party; see the block at the bottom.
+#                        because a clan vars generator is ATOMIC — adding a file
+#                        makes clan re-run the whole script, rotating Grafana's
+#                        working secret as a side effect of adding an unrelated
+#                        client.  One generator per relying party.
 #
 #   STAGED, not bound out of /run/secrets: that path is a symlink to a
 #   per-generation directory REPLACED on every deploy, so an nspawn bind
-#   established at container start keeps exposing a deleted generation.  Same
-#   shape and the same reason as containers/traefik.nix.
+#   established at container start keeps exposing a deleted generation.
 #
 #   OWNERSHIP DIFFERS FROM TRAEFIK'S, and it matters.  Traefik's token is read
-#   by PID 1 as an EnvironmentFile before it drops privileges, so it is
-#   0400 root:root.  Authelia reads its own secret files, unprivileged, from
-#   the paths in AUTHELIA_*_FILE — so every file here is 0400 uid 3008, inside
-#   a 0711 directory.  PR #84 shipped that shape broken once (a file the
-#   consumer could read, in a directory it could not traverse); 0711 is what
-#   prevents the repeat.
+#   by PID 1 as an EnvironmentFile before it drops privileges, so it is 0400
+#   root:root.  Authelia reads its own secret files, unprivileged, from the
+#   paths in AUTHELIA_*_FILE — so every file here is 0400 uid 3008, inside a
+#   0711 directory.  PR #84 shipped that shape broken once (a file the consumer
+#   could read, in a directory it could not traverse); 0711 prevents the repeat.
 #
 #   GENERATE BEFORE YOU DEPLOY.  clan-core cannot know a sops secret's path
 #   until the secret exists; until then `files.<n>.path` evaluates to the
 #   literal "/no-such-path" and THAT is baked into the staging script.  The
-#   failure is fail-closed and loud — the staging unit fails, container@authelia
-#   never starts, and there is no identity provider rather than one that lets
-#   everything through.
+#   failure is fail-closed and loud — the staging unit fails,
+#   container@authelia never starts, and there is no identity provider rather
+#   than one that lets everything through.
 #
 # ── NOTIFIER: filesystem, and TOTP enrolment is an operator step ─────────────
 #
-#   Authelia requires exactly one notifier.  The choices are SMTP and a file.
-#   SMTP would mean a mail credential, an outbound path to a mail host, and a
-#   third-party dependency in the login path of every admin UI in the house.
-#   The file costs one `cat`.
+#   Authelia requires exactly one notifier, and the choices are SMTP and a
+#   file.  SMTP would mean a mail credential, an outbound path to a mail host,
+#   and a third-party dependency in the login path of every admin UI in the
+#   house.  The file costs one `cat`.
 #
-#   The consequence is real, it is worse than it first looks, and it cost a
-#   round on deploy day.  READ THIS BEFORE ENROLLING ANYONE.
+#   The consequence is real, worse than it first looks, and it cost a round on
+#   deploy day.  READ THIS BEFORE ENROLLING ANYONE.
 #
 #   Authelia 4.39 does not let you register a 2FA device on a merely
 #   authenticated session.  It first requires a SESSION ELEVATION: it sends an
@@ -181,29 +159,24 @@
 #
 #   THREE TRAPS, ALL OF WHICH FIRED ON 2026-08-24:
 #
-#     1. THE FILE IS OVERWRITTEN, NOT APPENDED, and the trap is the opposite
-#        of what it looks like.  Authelia's filesystem notifier truncates on
-#        every send, so notification.txt always holds EXACTLY the newest
-#        notification and nothing else.  Measured: six rows in `one_time_code`,
-#        one `Date:` block in the file, mtime frozen at the last send.
+#     1. THE FILE IS OVERWRITTEN, NOT APPENDED, and the trap is the opposite of
+#        what it looks like.  The filesystem notifier truncates on every send,
+#        so notification.txt always holds EXACTLY the newest notification.
+#        Measured: six rows in `one_time_code`, one `Date:` block in the file,
+#        mtime frozen at the last send.
 #
-#        So the file is never stale — YOUR TERMINAL IS.  Read a code, take
-#        four minutes over it, and the thing you paste is expired even though
-#        the file has since been rewritten with a fresh one.  The errors are
-#          "the code didn't match any recorded code challenges"
-#        and "the code challenge has expired", and BOTH mean the same thing:
-#        the code you typed is not the code that is currently valid.  Re-read
-#        the file; do not re-read your scrollback.
-#
-#        (An earlier revision of this comment asserted the file was
-#        append-only and that `cat` showed the oldest code.  That was inferred
-#        from a single `tail` and never checked — the same
-#        prediction-recorded-as-measurement this repo keeps catching itself
-#        doing.  `cat` was fine all along; the AGE is what mattered.)
+#        So the file is never stale — YOUR TERMINAL IS.  Read a code, take four
+#        minutes over it, and what you paste is expired even though the file has
+#        since been rewritten with a fresh one.  The errors are "the code
+#        didn't match any recorded code challenges" and "the code challenge has
+#        expired", and BOTH mean the same thing: the code you typed is not the
+#        code that is currently valid.  Re-read the file; do not re-read your
+#        scrollback.  (An earlier revision of this comment claimed the file was
+#        append-only, inferred from a single `tail` and never checked.)
 #     2. THE CODE EXPIRES in five minutes (identity_validation's default).
-#        This is the real failure mode, which is why `authelia-code` prints
-#        the age in front of the code and says EXPIRED rather than letting a
-#        stale one be typed.
+#        This is the real failure mode, which is why `authelia-code` prints the
+#        age in front of the code and says EXPIRED rather than letting a stale
+#        one be typed.
 #     3. GENERATING CODES IS RATE-LIMITED, in stacked buckets, and clicking
 #        again because "it didn't work" is what makes it much worse:
 #          Rate Limit Exceeded  bucket=1 delay=35s
@@ -212,33 +185,32 @@
 #        The UI reports this as "Failed to generate the One-Time Code. Please
 #        try again later", which sounds like a broken notifier and is not.
 #
-#        WHILE RATE-LIMITED, NO NEW NOTIFICATION IS WRITTEN — so the file
-#        keeps showing the last (expired) code, which reads exactly like "the
-#        helper is broken" and is in fact the rate limit being obeyed.  Check
-#        the log before believing anything else:
+#        WHILE RATE-LIMITED, NO NEW NOTIFICATION IS WRITTEN — so the file keeps
+#        showing the last (expired) code, which reads exactly like "the helper
+#        is broken" and is in fact the rate limit being obeyed.  Check the log
+#        before believing anything else:
 #          nixos-container run authelia -- \
 #            journalctl -u authelia-main | grep "Rate Limit"
 #
-#        THE LIMITER IS IN-MEMORY.  There is no rate-limit table in the
-#        schema (checked), so `machinectl restart authelia` clears it
-#        immediately — at the cost of every active session, since the session
-#        store is in-memory too.  That is the escape hatch when the 29-minute
-#        bucket is in the way; STOP CLICKING first, because each click
-#        re-arms it.
+#        THE LIMITER IS IN-MEMORY.  There is no rate-limit table in the schema
+#        (checked), so `machinectl restart authelia` clears it immediately — at
+#        the cost of every active session, since the session store is in-memory
+#        too.  That is the escape hatch when the 29-minute bucket is in the
+#        way; STOP CLICKING first, because each click re-arms it.
 #
 #   The whole flow, once, per account:
 #       log in with the password  →  Settings → 2FA → One-Time Password → ADD
 #       →  `authelia-code` on ernst  →  type it  →  QR appears  →  scan.
 #
 #   WebAuthn enrolment (a YubiKey, or an Android fingerprint through Google
-#   Password Manager) goes through this same elevation, with the same three
+#   Password Manager) goes through this same elevation with the same three
 #   traps.  The procedure, and the four upstream webauthn defaults that make a
 #   GPM passkey work without a deploy, are in docs/guides/authelia-2fa.md.
 #
 #   AND ONE UI TRAP THAT IS NOT OURS: the 2FA page can land on "Security Key"
 #   (WebAuthn) even when the account's preferred method is TOTP.  With nothing
-#   registered it then shows only "Register device" and no code box, which
-#   looks like a broken login.  Click METHODS and pick One-Time Password.
+#   registered it then shows only "Register device" and no code box, which looks
+#   like a broken login.  Click METHODS and pick One-Time Password.
 #
 # ── Storage layout on this host (see machines/ernst/disko.nix) ───────────────
 #
@@ -248,11 +220,11 @@
 #                                       records, the regulation ledger
 #     notification.txt                  the "mail" above
 #
-#   INVARIANT #7 APPLIES HARDER HERE THAN ANYWHERE ELSE SO FAR.  zroot rolls
-#   back; every TOTP secret in the house lives in that one SQLite file.  A
-#   deploy that put it on zroot would work perfectly until the next reboot and
-#   then lock every account out of every admin UI at once, with the recovery
-#   path itself behind the thing that broke.  It is on zdata.
+#   INVARIANT #7 APPLIES HARDER HERE THAN ANYWHERE ELSE.  zroot rolls back, and
+#   every TOTP secret in the house lives in that one SQLite file.  A deploy that
+#   put it on zroot would work perfectly until the next reboot and then lock
+#   every account out of every admin UI at once, with the recovery path itself
+#   behind the thing that broke.  It is on zdata.
 {
   config,
   lib,
@@ -262,15 +234,10 @@
   ############################################################################
   # Identity.
   ############################################################################
-  # Guest-side MAC — 02:00:00:<vlan>:00:<seq>, allocated in the table in
-  # machines/ernst/networking.nix against DHCP reservation 10.0.90.15.  This is
+  # Guest-side MAC — 02:00:00:<vlan>:00:<seq>, allocated in
+  # machines/ernst/allocations.nix against DHCP reservation 10.0.90.15.  This is
   # the address the UDM-Pro sees; never the host-side vb-authelia.
   autheliaMac = "02:00:00:90:00:07";
-  vlanId = 90;
-
-  # Host side of the veth pair.  nspawn names it vb-<container> when
-  # --network-bridge= is used — "vb-", not "ve-".
-  vethName = "vb-authelia";
 
   # Numeric ids, continuing the 3000-range family.  3006/3007 are M6's
   # prometheus and grafana.  nspawn passes uids and gids through unmapped, so

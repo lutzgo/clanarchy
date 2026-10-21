@@ -7,7 +7,7 @@
 # ── WHAT THIS SERVES, AND FOR WHOM ──────────────────────────────────────────
 #
 #   lgo      FP5 app auto-backup, plus finished darktable exports pushed from
-#            miralda and jens (see modules/desktop/immich-upload-hm.nix).
+#            miralda and jens (see modules/immich-upload.nix).
 #   sgo      FP4 app auto-backup.  Sarinah's own account, her own library.
 #   Sabine   NO ACCOUNT.  She is sent shared album links, which Immich serves
 #            UNAUTHENTICATED to whoever holds the URL.  That is a property of
@@ -70,13 +70,11 @@
 #     assertion = !isPostgresUnixSocket -> cfg.secretsFile != null;
 #
 #   Both stay on their sockets here, so THIS FILE DECLARES NO CLAN VAR AND NO
-#   STAGING UNIT.  That is worth stating rather than leaving as an absence: the
-#   roadmap's M22 brief budgeted a `immich-db-password` generator and a
-#   `immich-secrets` oneshot in the traefik-secrets shape, and neither is
-#   needed.  Every failure mode those two would have introduced — a var
-#   generated after the deploy so `.path` is `/no-such-path`, a staged copy
-#   going stale until someone restarts the unit, a blank prompt stored as an
-#   empty credential — is absent by construction rather than handled.
+#   STAGING UNIT — stated rather than left as an absence.  Every failure mode
+#   a generator plus a staging oneshot would have introduced (a var generated
+#   after the deploy so `.path` is `/no-such-path`, a staged copy going stale
+#   until someone restarts the unit, a blank prompt stored as an empty
+#   credential) is absent by construction rather than handled.
 #
 #   THE ONE CREDENTIAL THIS SERVICE DOES INVOLVE is an Immich API key, and it
 #   does not exist until after the first deploy: it is minted in the web UI by
@@ -85,45 +83,27 @@
 #   environment at the moment an operator runs it (see below), and the laptop
 #   uploader — which is a recurring timer and so genuinely needs a stored one —
 #   takes it from a clan var on ITS machine, generated as an explicit ordered
-#   step.  See modules/desktop/immich-upload-hm.nix.
+#   step.  See modules/immich-upload.nix.
 #
 # ── AUTH: THE APPLICATION'S, AND THIS IS THE FLEET'S THIRD app-API NAME ─────
 #
 #   `photos.goclan.org` is in `ingressPolicy.appApiHosts`, so the guard in
 #   containers/traefik.nix REFUSES TO BUILD if anyone attaches the `authelia`
-#   middleware to its router.  The argument is the one in that policy file:
-#   CAN EVERY CLIENT OF THIS HOSTNAME RENDER A LOGIN PAGE AND FOLLOW A 302?
+#   middleware to its router.  That file owns the argument — the mobile app's
+#   bearer token, the Kodi add-on's `x-api-key`, and the shared album link —
+#   and the compensation stack that stands in for forward-auth on the public
+#   path.
 #
-#     Immich mobile (FP5, FP4)  no.  It posts to /api/auth/login and then
-#                               carries a bearer token; a 302 to a portal is
-#                               an opaque network error to it.
-#     The Kodi add-on           no.  It speaks `x-api-key` over http.client
-#                               with no cookie jar and no browser at all.
-#     A SHARED ALBUM LINK       no, and this one is different in kind — see
-#                               below.
-#
-#   THE SHARED-LINK CLAUSE IS THE INTERESTING ONE AND IT CUTS BOTH WAYS.  A
-#   shared album is a URL that Immich answers to an ANONYMOUS caller by
-#   design; that is the entire feature, and it is how Sabine sees the albums
-#   lgo sends her.  Forward-auth would break it completely — she has no account
-#   here and could not get past the portal.  So the exemption is not merely
-#   about native clients; part of this vhost is MEANT to be unauthenticated.
-#
-#   WHICH MEANS THE HONEST STATEMENT OF THE POSTURE IS NOT "Immich's accounts
-#   are the boundary".  It is: Immich's accounts are the boundary for the
-#   LIBRARY, and possession of a link is the boundary for anything explicitly
-#   shared.  A leaked link is a leaked album, permanently, until it is revoked
-#   in the UI.  Immich supports an expiry date and a password on each shared
-#   link; USE THEM for anything that is not meant to be world-readable, because
-#   nothing in this file can.
-#
-#   WHAT COMPENSATES ON THE PUBLIC PATH, in the order it is relied on:
-#     1. Immich's own accounts, which must be strong — a precondition this
-#        file cannot enforce; it is in the deploy checklist.
-#     2. `wan-ratelimit` + `wan-inflight`, inherited by the wan router.
-#     3. `wan-login-ratelimit` on /api/auth/login, a much stricter limit on a
-#        higher-priority router — see `wanLoginPaths` in traefik.nix.
-#     4. CrowdSec, which sees Immich's 401s in Traefik's access log.
+#   THE SHARED-LINK CLAUSE IS THE ONE WORTH REPEATING, because it changes what
+#   the posture statement means.  A shared album is a URL Immich answers to an
+#   ANONYMOUS caller by design; that is the entire feature, and it is how
+#   Sabine sees the albums lgo sends her.  So the honest statement is NOT
+#   "Immich's accounts are the boundary".  It is: Immich's accounts are the
+#   boundary for the LIBRARY, and possession of a link is the boundary for
+#   anything explicitly shared.  A leaked link is a leaked album, permanently,
+#   until it is revoked in the UI.  Immich supports an expiry date and a
+#   password on each shared link; USE THEM for anything not meant to be
+#   world-readable, because nothing in this file can.
 #
 # ── THE FIRST-RUN WINDOW, AND THE TWO THINGS THAT CLOSE IT ──────────────────
 #

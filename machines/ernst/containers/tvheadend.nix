@@ -1,218 +1,185 @@
 # machines/ernst/containers/tvheadend.nix
 #
-# Tvheadend as a SAT>IP client against the FRITZ!Box 6591's four DVB-C
-# tuners, publishing an M3U playlist and an XMLTV guide that Jellyfin
-# consumes as a Live TV tuner + EPG source (M8 — see docs/history.md).
+# Tvheadend as a SAT>IP client against the FRITZ!Box 6591's four DVB-C tuners,
+# publishing an M3U playlist and an XMLTV guide that Jellyfin consumes as a
+# Live TV tuner + EPG source (M8 — see docs/history.md).
 #
-# ── TWO DEPARTURES FROM THE M8 PROMPT, both argued here ─────────────────────
+# ── THE PACKAGE IS HAND-ROLLED ──────────────────────────────────────────────
 #
-# 1. THE PACKAGE IS HAND-ROLLED.  The prompt said "tvheadend is in nixpkgs; no
-#    image escape hatch is needed".  nixpkgs REMOVED both pkgs.tvheadend and
-#    services.tvheadend (PR #332259 — unmaintained, stuck on FFmpeg 4);
-#    verified gone from stable pin and nixos-unstable on 2026-08-27.  Rather
-#    than moving tiers (podman + linuxserver image), this follows M13's
-#    Janitorr precedent: build from source, in pkgs/tvheadend.nix, with
-#    --disable-libav so the FFmpeg coupling that killed the nixpkgs package
-#    does not exist here at all.  Transcoding is Jellyfin's job on the iGPU;
-#    Tvheadend only remuxes.  The unit below is hand-written since there is no
-#    module to configure.
+#   nixpkgs REMOVED both pkgs.tvheadend and services.tvheadend (PR #332259 —
+#   unmaintained, stuck on FFmpeg 4); verified gone from the stable pin and
+#   from nixos-unstable on 2026-08-27.  Rather than moving tiers (podman + the
+#   linuxserver image) this follows M13's Janitorr precedent: built from source
+#   in pkgs/tvheadend.nix with `--disable-libav`, so the FFmpeg coupling that
+#   killed the nixpkgs package does not exist here at all.  Transcoding is
+#   Jellyfin's job on the iGPU; Tvheadend only remuxes.  The unit below is
+#   hand-written because there is no module to configure.
 #
-# 2. THE FRITZ!BOX IS DIRECTLY ATTACHED — no VLAN, no UDM-Pro, no ZBF rule.
-#    The prompt's 0.2 assumed the FRITZ!Box lands on a UniFi VLAN and budgeted
-#    an ACL (TCP 49000 + 554) plus the ephemeral-UDP return problem (ledger
-#    row L7).  What actually happened (2026-08-27): a FRITZ LAN port is
-#    cabled STRAIGHT INTO enp12s0, ernst's second NIC, previously unused.
-#    The whole flow — RTSP control and the unicast RTP return — stays on a
-#    two-port bridge (br-fritz) that never touches the UDM-Pro, so:
-#      - L6 and L7 are RETIRED AS NEVER-CREATED (see the roadmap ledger);
-#      - the RTP return path is ONE iptables line in this container;
-#      - the FRITZ's DHCP server and IPv6 RAs cannot reach any skynet VLAN.
-#    The prompt itself blessed the degenerate case ("if the FRITZ!Box ends up
-#    on the same VLAN as Tvheadend, there is no ACL at all"); a dedicated
-#    point-to-point segment is that, minus the shared-VLAN exposure.
+# ── THE FRITZ!BOX IS DIRECTLY ATTACHED — no VLAN, no UDM-Pro, no ZBF rule ───
+#
+#   A FRITZ LAN port is cabled STRAIGHT INTO enp12s0, ernst's second NIC.  The
+#   whole flow — RTSP control and the unicast RTP return — stays on a two-port
+#   bridge (br-fritz) that never touches the UDM-Pro, so the RTP return path is
+#   ONE iptables line in this container, and the FRITZ's DHCP server and IPv6
+#   RAs cannot reach any skynet VLAN.  Ledger rows L6 and L7 are retired as
+#   never-created.
+#
+#   FRITZ!Box 6591 Cable (Vodafone), MAC 2c:91:ab:73:3f:35, in bridge mode for
+#   the house uplink (the UDM-Pro holds the public IP).  Its LAN side
+#   nonetheless serves all of 192.168.178.0/24: DHCP on, UI and SAT>IP at
+#   192.168.178.1.  Provider CPE — we do not administer it, and its firmware
+#   can change under us on Vodafone's schedule.
+#
+#   NOT ALL ITS LAN PORTS ARE EQUAL.  One (the guest port) is IPv4-silent: no
+#   ARP, no DHCPv4, IPv6 RAs only, all services blocked.  That port is what
+#   made the first cabling attempt look dead.  IF THIS LINK EVER GOES IPv4-DARK
+#   AFTER SOMEBODY RE-PLUGS CABLES, CHECK WHICH LAN PORT THE CABLE IS IN before
+#   debugging anything here.
+#
+#   The FRITZ side also sends IPv6 RAs carrying a DEFAULT ROUTE (observed: a
+#   6to4 prefix plus an fd93: ULA).  ernst must never accept them — SN2 — which
+#   is why every interface in this file pins `IPv6AcceptRA = false`.  During
+#   Phase 0 the host briefly picked up a v6 default route via the FRITZ from a
+#   manually-upped enp12s0; the networkd units below make that impossible by
+#   construction.
 #
 # ── PHASE 0 EVIDENCE (measured 2026-08-27, from ernst over this very link) ──
 #
-#   satipdesc.xml     <satip:X_SATIPCAP>DVBC-4</satip:X_SATIPCAP> — four
-#                     DVB-C frontends, present despite the Vodafone-branded
-#                     firmware (modelNumber 6591lgi).  No branding lock.
+#   satipdesc.xml     <satip:X_SATIPCAP>DVBC-4</satip:X_SATIPCAP> — four DVB-C
+#                     frontends, present despite the Vodafone-branded firmware
+#                     (modelNumber 6591lgi).  No branding lock.
 #   Stream test       ZDF HD (freq=450, 256qam, sr 6900): 12 s of RTP →
-#                     13.7 MB MPEG-TS (~9.1 Mbit/s), ffprobe: h264 1280x720
-#                     @50fps + 2× ac3 + an EPG data stream.  EIT rides the
-#                     mux, so the over-the-air grabber needs no external
-#                     XMLTV source.
+#                     13.7 MB MPEG-TS (~9.1 Mbit/s); ffprobe: h264 1280x720
+#                     @50fps + 2× ac3 + an EPG data stream.  EIT rides the mux,
+#                     so the OTA grabber needs no external XMLTV source.
 #   Mux sweep         all 8 probed frequencies lock, quality 13–14, level
 #                     114–131.  330 MHz (Das Erste) locks noticeably SLOWER
 #                     than the rest — expect its first tune to take seconds.
-#   RTP transport     interleaved-TCP is NOT available: SETUP with
-#                     RTP/AVP/TCP returns "461 Unsupported Transport".
-#                     UDP unicast RTP is the mode, hence the firewall rule
-#                     below.  (This is also why ffprobe's RTSP client
-#                     appeared to hang during Phase 0 — it stalls silently
-#                     when RTP never arrives.)
-#   Channel list      the box publishes its OWN M3U with tuning parameters:
-#                     http://192.168.178.1/dvb/m3u/channellist.m3u
-#                     (213 channels).  Useful for cross-checking mux config.
-#
-# ── THE FRITZ!BOX, as peer (provider CPE — we do not administer it) ─────────
-#
-#   FRITZ!Box 6591 Cable (Vodafone), MAC 2c:91:ab:73:3f:35, in Vodafone
-#   bridge/Kabelmodem mode for the house uplink (the UDM-Pro holds the public
-#   IP).  Its LAN side nonetheless serves the full 192.168.178.0/24 network:
-#   DHCP on, UI and SAT>IP at 192.168.178.1.  Its firmware can change under
-#   us on Vodafone's schedule.
-#
-#   NOT ALL ITS LAN PORTS ARE EQUAL — one port (the guest port) is
-#   IPv4-silent: no ARP, no DHCPv4, IPv6 RAs only, all services blocked.
-#   That port is what made the first cabling attempt look dead.  If this link
-#   ever goes IPv4-dark after someone re-plugs cables at the FRITZ end,
-#   CHECK WHICH LAN PORT THE CABLE IS IN before debugging anything here.
-#
-#   The FRITZ side also sends IPv6 RAs carrying a DEFAULT ROUTE (observed:
-#   6to4 prefix + fd93: ULA).  Ernst must never accept them — SN2 in the
-#   roadmap decided IPv6 off — which is why every interface in this file
-#   pins IPv6AcceptRA = false.  During Phase 0 the host briefly picked up a
-#   v6 default route via the FRITZ from a manually-upped enp12s0; the
-#   networkd units below make that impossible by construction.
+#   RTP transport     interleaved-TCP is NOT available: SETUP with RTP/AVP/TCP
+#                     returns "461 Unsupported Transport".  UDP unicast RTP is
+#                     the mode, hence the firewall rule below.  (It is also why
+#                     ffprobe's RTSP client appeared to hang during Phase 0 —
+#                     it stalls silently when RTP never arrives.)
+#   Channel list      the box publishes its OWN M3U with tuning parameters at
+#                     http://192.168.178.1/dvb/m3u/channellist.m3u (213
+#                     channels).  Useful for cross-checking mux config.
 #
 # ── TUNER CEILING — 4, and every consumer counts ────────────────────────────
 #
 #   SAT>IP maps ONE RTSP session to ONE frontend: two clients on the same mux
-#   still burn two tuners (unlike a local DVB card, where one frontend feeds
-#   any number of demuxed services).  The pool is shared with:
-#     - EPG grabbing (the OTA EIT grabber periodically tunes muxes),
-#     - anything the FRITZ!Box itself does with its tuners (FRITZ!App TV),
-#     - every concurrent live stream and every DVR recording.
-#   THERE IS NO "MAX INPUT STREAMS" SETTING TO SET, and the M8 prompt's
-#   instruction to set one was based on a wrong model of the SAT>IP client.
-#   The ceiling is not a limit applied to a network — it is the NUMBER OF
-#   FRONTENDS Tvheadend creates, which comes from the SAT>IP device's "Tuner
-#   configuration" (`tunercfgu`).  That is left at **"Auto"**, which reads
-#   X_SATIPCAP from satipdesc.xml — `DVBC-4` here — and creates exactly four
-#   DVB-C frontends.  Verified on the running instance 2026-08-27: four
-#   tuners under "GoFRITZ - 192.168.178.1", and `tunercfgu: "Auto"` on disk.
-#   Auto is preferable to pinning `DVBC-4` by hand: if Vodafone's firmware
-#   ever changes the tuner count, Auto follows it and a hand-pinned value
-#   silently would not.
+#   still burn two tuners, unlike a local DVB card where one frontend feeds any
+#   number of demuxed services.  The pool is shared with EPG grabbing (the OTA
+#   EIT grabber periodically tunes muxes), anything the FRITZ!Box does with its
+#   own tuners (FRITZ!App TV), and every concurrent stream and DVR recording.
+#
+#   THERE IS NO "MAX INPUT STREAMS" SETTING TO SET.  The ceiling is not a limit
+#   applied to a network — it is the NUMBER OF FRONTENDS Tvheadend creates,
+#   which comes from the SAT>IP device's "Tuner configuration" (`tunercfgu`).
+#   That is left at **"Auto"**, which reads X_SATIPCAP from satipdesc.xml —
+#   `DVBC-4` here — and creates exactly four DVB-C frontends.  Verified on the
+#   running instance 2026-08-27: four tuners under "GoFRITZ - 192.168.178.1",
+#   `tunercfgu: "Auto"` on disk.  Auto beats pinning `DVBC-4` by hand: if
+#   Vodafone's firmware ever changes the tuner count, Auto follows and a
+#   hand-pinned value silently would not.
 #
 #   Contention is resolved by SUBSCRIPTION WEIGHT, not by a cap: the EPG
 #   grabber subscribes at weight 4 and live viewing at 100, so a live tune
-#   PREEMPTS an EPG grab rather than failing.  That is why the initial EPG
-#   scan happily saturates all four tuners and is not a problem.  Headroom
-#   decision: live viewing wins; recordings are shape (ii) (Jellyfin DVR) and
-#   a failed recording shows up in Jellyfin's activity log.  A fifth
-#   concurrent tune fails cleanly at the RTSP layer (the box refuses the
-#   SETUP; Tvheadend reports "no free adapter").
+#   PREEMPTS an EPG grab rather than failing — which is why the initial EPG
+#   scan happily saturates all four tuners and is not a problem.  A fifth
+#   concurrent tune fails cleanly at the RTSP layer (the box refuses the SETUP;
+#   Tvheadend reports "no free adapter").
 #
 #   The same auto-detection got the transport right without being told:
-#   `tcp_mode: false` on disk, matching Phase 0's measured 461 rejection of
-#   interleaved TCP.
+#   `tcp_mode: false` on disk, matching the measured 461 above.
 #
-# ── SHAPE (ii): TVHEADEND SHARES TUNERS, JELLYFIN RECORDS ───────────────────
+# ── TVHEADEND SHARES TUNERS, JELLYFIN RECORDS ───────────────────────────────
 #
-#   The roadmap's M8 amendment asks this file to argue shape (i) (Tvheadend
-#   records + a bespoke bridge tool) vs shape (ii) (Tvheadend is a
-#   tuner-sharing + EPG daemon; Jellyfin's DVR schedules and records).  This
-#   ships (ii), per the amendment's own instruction ("shape (ii) may collapse
-#   most of M8 — TEST IT BEFORE BUILDING (i)"):
-#     - recordings land in a library Jellyfin already indexes, BY
-#       CONSTRUCTION — the expensive half of (i) (the recordings→library
-#       bridge, unsolved upstream) is never built;
-#     - MediathekArr (M12) already covers öffentlich-rechtliche catch-up, so
-#       the DVR's remaining job — live sport, private broadcasters,
-#       Depublizierung — is modest and does not need Tvheadend's conflict
-#       resolution;
-#     - the cost, stated: DVR state lives in Jellyfin's database, and its
-#       scheduler is materially weaker (no priorities, no timeshift).
-#   CONSEQUENCE FOR THIS FILE: uid 3026 has its OWN group and NO media
-#   access — Tvheadend writes nothing outside /srv/state/tvheadend.  If (ii)
-#   proves too weak in use, escalating to (i) means: media group membership
-#   here, a recordings subdirectory under /srv/media, and the bridge tool the
-#   roadmap budgets — a new argument, not a config flip.
-#   The Jellyfin-side recordings directory (/srv/media/library/recordings,
-#   bound RW into the jellyfin container) is declared in jellyfin.nix.
+#   Tvheadend is a tuner-sharing + EPG daemon; Jellyfin's DVR schedules and
+#   records.  Recordings therefore land in a library Jellyfin already indexes
+#   BY CONSTRUCTION, so the recordings→library bridge — unsolved upstream — is
+#   never built.  MediathekArr (M12) already covers öffentlich-rechtliche
+#   catch-up, so the DVR's remaining job is modest.  The cost, stated: DVR
+#   state lives in Jellyfin's database and its scheduler is materially weaker
+#   (no priorities, no timeshift).
+#
+#   CONSEQUENCE FOR THIS FILE: uid 3026 has its OWN group and NO media access —
+#   Tvheadend writes nothing outside /srv/state/tvheadend.  Moving recording
+#   here would mean media group membership, a recordings subdirectory under
+#   /srv/media, and that bridge tool: a new argument, not a config flip.  The
+#   Jellyfin-side recordings directory is declared in jellyfin.nix.
 #
 # ── AUTHENTICATION: NONE HERE, AUTHELIA OWNS IT (--noacl) ───────────────────
 #
-#   THE M8 PROMPT ASKED FOR A TVHEADEND SUPERUSER AND A SEPARATE
-#   STREAMING-ONLY USER FOR JELLYFIN.  Both are gone, and the first deploy is
-#   why: Tvheadend's own HTTP auth CANNOT COEXIST with Authelia forward-auth,
-#   because the two contend for the same header.
-#
-#   Measured through the real chain on 2026-08-27:
+#   TVHEADEND'S OWN HTTP AUTH CANNOT COEXIST WITH AUTHELIA FORWARD-AUTH,
+#   because the two contend for the same header.  Measured through the real
+#   chain on 2026-08-27:
 #
 #     no Authorization header          -> 302  (Authelia redirect, normal)
 #     ANY Authorization header         -> 401  (from AUTHELIA, not Tvheadend)
 #
-#   Tvheadend challenges with **Digest only** — it offers no Basic at all
+#   Tvheadend challenges with **Digest only** — no Basic at all
 #   (`WWW-Authenticate: Digest realm="tvheadend", qop=auth, …`, verified
-#   against the built binary).  The browser answers in the `Authorization`
-#   header; Traefik's forwardAuth hands that request to Authelia, which
-#   treats the header as ITS OWN credential, fails to find `tvhadmin` in its
-#   user database, and returns 401 before the request ever reaches this
-#   container.  The browser re-prompts, forever.  The observable symptom is a
-#   login box that reappears after every attempt — which looks exactly like a
-#   wrong password and is not one.
+#   against the built binary).  The browser answers in `Authorization`,
+#   Traefik's forwardAuth hands that request to Authelia, which treats the
+#   header as ITS OWN credential, fails to find `tvhadmin`, and returns 401
+#   before the request reaches this container.  The browser re-prompts for
+#   ever.  The symptom is a login box that reappears after every attempt —
+#   which looks exactly like a wrong password and is not one.
 #
-#   So the choice was never "which credential" but "which layer authenticates".
-#   lgo chose Authelia, 2026-08-27.  Consequences, stated plainly:
+#   So the choice was never "which credential" but "which layer
+#   authenticates".  Authelia, per lgo 2026-08-27.  Consequences:
 #
 #     - Anyone who clears Authelia reaches Tvheadend AS ADMIN.  Today that is
 #       `lgo` and `go`, both already in Authelia's `admins` group, so no
 #       privilege is actually widened.
-#     - 9981 is NOT a public port.  The container firewall below admits
-#       exactly two sources — Traefik (10.0.90.12, behind two-factor) and
-#       Jellyfin (10.0.90.10) — and nothing else on VLAN 90, let alone off it.
-#       That firewall is now the ONLY thing standing between the LAN and an
-#       unauthenticated admin UI, so DO NOT WIDEN IT without revisiting this
-#       decision.
-#     - Jellyfin needs no credential in its M3U/XMLTV URLs, which is the
-#       second half of what the prompt's "streaming-only user" was for.
+#     - 9981 is NOT a public port.  The container firewall below admits exactly
+#       two sources — Traefik (10.0.90.12, behind two-factor) and Jellyfin
+#       (10.0.90.10).  That firewall is now the ONLY thing between the LAN and
+#       an unauthenticated admin UI, so DO NOT WIDEN IT without revisiting this.
+#     - Jellyfin needs no credential in its M3U/XMLTV URLs.
 #
-#   IF THIS EVER NEEDS REVISITING, the two coherent alternatives are: drop the
-#   `authelia` middleware from the tvheadend router in containers/traefik.nix
-#   and let Tvheadend's digest auth be the gate (loses 2FA and the portal); or
-#   keep both and give Traefik's address an anonymous full-rights ACCESS ENTRY
-#   inside Tvheadend so no Authorization header is ever needed (defence in
-#   depth, but that entry is hand-made UI state that a lost state dir takes
-#   with it).  Neither is better by inspection — they trade different things.
+#   THE TWO COHERENT ALTERNATIVES, if this ever needs revisiting: drop the
+#   `authelia` middleware from the tvheadend router and let digest auth be the
+#   gate (loses 2FA and the portal); or keep both and give Traefik's address an
+#   anonymous full-rights ACCESS ENTRY inside Tvheadend so no Authorization
+#   header is ever needed (defence in depth, but that entry is hand-made UI
+#   state a lost state dir takes with it).  Neither is better by inspection.
 #
 # ── CHANNEL LOGOS (picons) — DECLARATIVE DATA, RUNTIME SETTING ─────────────
 #
-#   The logos themselves are a pinned package (pkgs/picons.nix), bind-mounted
-#   read-only at the stable path /picons.  The two settings that make
-#   Tvheadend USE them are runtime state in /srv/state/tvheadend/config and
-#   cannot be declared here — the same situation as the access entries above
-#   and the tuner configuration.
+#   The logos are a pinned package (pkgs/picons.nix), bind-mounted read-only at
+#   the stable path /picons.  The two settings that make Tvheadend USE them are
+#   runtime state in /srv/state/tvheadend/config and cannot be declared here —
+#   same as the access entries and the tuner configuration.
 #
 #   Configuration -> General -> Base, with "Expert" view level showing:
 #
 #     Channel icon path         file:///picons/%C.png
 #     Channel icon name scheme  Service name picons
 #
-#   IT IS THE *CHANNEL ICON* PATH, NOT THE *PICON* PATH, and getting that
-#   wrong is the single easiest way to end up with no logos and no error.
-#   Tvheadend has both, and they drive different schemes:
+#   IT IS THE *CHANNEL ICON* PATH, NOT THE *PICON* PATH, and getting that wrong
+#   is the single easiest way to end up with no logos and no error.  Tvheadend
+#   has both and they drive different schemes:
 #
-#     chiconpath + chiconscheme  name-based.  %C is substituted with the
-#                                channel name run through svcnamepicons(),
-#                                which is what pkgs/picons.nix renames to.
+#     chiconpath + chiconscheme  name-based.  %C is the channel name run
+#                                through svcnamepicons(), which is what
+#                                pkgs/picons.nix renames to.
 #     piconpath  + piconscheme   service-REFERENCE based (`1_0_1_…`), keyed to
 #                                a satellite bouquet's service refs.  This is
-#                                DVB-C off a FRITZ!Box, so those refs do not
-#                                match anything in any published pack.
+#                                DVB-C off a FRITZ!Box, so those refs match
+#                                nothing in any published pack.
 #
-#   Most guides on the internet describe the second and call it "picons",
-#   which is why this note exists.  `chiconscheme` = 2 (CHICON_SVCNAME,
+#   Most guides on the internet describe the second and call it "picons", which
+#   is why this note exists.  `chiconscheme` = 2 (CHICON_SVCNAME,
 #   src/tvheadend.h:106) is the value that matters.
 #
 #   COVERAGE, measured against the 198 channels this instance carries
-#   (2026-09-11): 104/117 TV (88%), 49/81 radio (60%), 153/198 overall.
-#   Radio is the weak half and structurally will be — the pack is built for
-#   satellite TV bouquets.
+#   (2026-09-11): 104/117 TV (88%), 49/81 radio (60%), 153/198 overall.  Radio
+#   is the weak half and structurally will be — the pack is built for satellite
+#   TV bouquets.
 #
-#   Kodi gets these for free: pvr.hts pulls channel icons over HTSP from this
-#   server, so there is nothing to configure on the TV side.
+#   Kodi gets these for free: pvr.hts pulls channel icons over HTSP, so there
+#   is nothing to configure on the TV side.
 #
 # ── STORAGE ─────────────────────────────────────────────────────────────────
 #
@@ -220,7 +187,7 @@
 #   same remap-to-upstream-default trick jellyfin.nix uses.  Everything
 #   Tvheadend persists — network/mux/service tree, channel map, access
 #   control, EPG database — lives there.  uid/gid 3026 on both sides (nspawn
-#   maps 1:1; the number is allocated in machines/ernst/allocations.nix).
+#   maps 1:1; allocated in machines/ernst/allocations.nix).
 {
   config,
   lib,

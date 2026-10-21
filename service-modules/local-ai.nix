@@ -2989,8 +2989,8 @@ in {
         type = lib.types.str;
         example = "02:00:00:90:00:10";
         description = ''
-          Container eth0 MAC, allocated in the table in
-          machines/ernst/networking.nix.  The UDM-Pro DHCP reservation keys on
+          Container eth0 MAC, allocated in
+          machines/ernst/allocations.nix.  The UDM-Pro DHCP reservation keys on
           this, and the reservation must be INSIDE the 10.0.90.6–.254 pool —
           UniFi accepts one outside it and then silently hands out a pool lease
           instead, which M2b, M5 and M6 each lost a round to.
@@ -3616,8 +3616,8 @@ in {
         type = lib.types.str;
         example = "02:00:00:90:00:0f";
         description = ''
-          Container eth0 MAC, allocated in the table in
-          machines/ernst/networking.nix.  The UDM-Pro DHCP reservation keys on
+          Container eth0 MAC, allocated in
+          machines/ernst/allocations.nix.  The UDM-Pro DHCP reservation keys on
           this; a reservation outside the 10.0.90.6–.254 pool is accepted by
           UniFi and then silently ignored, which M2b, M5 and M6 each lost a
           round to.

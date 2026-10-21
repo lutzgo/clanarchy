@@ -63,24 +63,17 @@
 #
 # ── NO forward-auth ON THIS HOSTNAME ────────────────────────────────────────
 #
-#   `ha.goclan.org` is in `appApiHosts` (containers/ingress-policy.nix).  The
-#   test that file states is whether EVERY client can render a login page and
-#   follow a 302, and the companion app cannot: it exchanges credentials once
-#   at /auth/token and then holds an authenticated WebSocket at /api/websocket
-#   for the life of the session, with no browser anywhere in the process.  It
-#   is also the endpoint the app PUSHES location to, in the background, with no
-#   user present to log in to anything.
+#   `ha.goclan.org` is in `appApiHosts`; containers/ingress-policy.nix owns the
+#   argument (the companion app holds an authenticated WebSocket with no
+#   browser anywhere in the process, and it PUSHES location in the background
+#   with no user present) and names the compensations.  Two of those are
+#   configured below: `ip_ban_enabled` — a real per-source ban written to
+#   ip_bans.yaml — and native TOTP MFA on Home Assistant's own accounts.
 #
-#   The compensations are unusually strong for a name in that list, and they
-#   are named rather than assumed: Home Assistant ships `ip_ban_enabled` — a
-#   real per-source ban written to ip_bans.yaml — and native TOTP MFA on its
-#   own accounts.  Both are configured below.  `wan-ratelimit`,
-#   `wan-login-ratelimit` and CrowdSec sit in front of them.
-#
-#   THE ip_ban CONTROL HAS A PREREQUISITE and it is one line: `trusted_proxies`
+#   THE ip_ban CONTROL HAS A PREREQUISITE, and it is one line: `trusted_proxies`
 #   must name Traefik, or every request appears to come from 10.0.90.12 and the
-#   ban either never fires or locks out the entire household at once.  This is
-#   ledger row L14's lesson (containers/nextcloud.nix) in a second costume.
+#   ban either never fires or locks out the entire household at once.  Ledger
+#   row L14's lesson in a second costume.
 #
 # ── THREAD AND MATTER ARE NOT IN THIS FILE.  DELIBERATELY. ──────────────────
 #
@@ -105,10 +98,9 @@
 #
 # ── THE CONTAINER IS CALLED `hass`, NOT `home-assistant` ────────────────────
 #
-#   Not a preference.  systemd-nspawn's --network-bridge names the host side of
-#   the veth `vb-<container>`, and a Linux interface name is capped at 15
-#   characters (IFNAMSIZ - 1).  `vb-home-assistant` is 17 and the link cannot
-#   be created at all.  `vb-hass` is 7.
+#   `vb-home-assistant` is 17 characters and IFNAMSIZ caps at 15, so the link
+#   cannot be created at all — a failure at container START, not at
+#   evaluation.  modules/containers/assertions.nix catches it now.
 #
 #   So: the FILE is home-assistant.nix, the SERVICE is home-assistant.service
 #   inside, and the MACHINE is `hass` —
@@ -344,8 +336,8 @@
   kodiHost = "fdca:fe96::1";
   kodiCont = "fdca:fe96::2";
 
-  # M29b.  The agent's uid, allocated in the table in
-  # machines/ernst/networking.nix, named here because `hass-dirs` has to create
+  # M29b.  The agent's uid, allocated in
+  # machines/ernst/allocations.nix, named here because `hass-dirs` has to create
   # a directory inside this container's state tree that the agent can write —
   # see the note at that unit for what it is for and what the mode change on
   # `www` does and does not expose.
