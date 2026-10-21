@@ -5,8 +5,8 @@
 #
 # ── THIS FILE CO-DEFINES NOTHING INSIDE THE CONTAINER ───────────────────────
 #
-# It is host-side only: tmpfiles rules and `audiobooks-tree.service`. It is
-# separate from ./common.nix because the per-directory reasoning is the
+# It is host-side only: the container's `stateDirs` and `audiobooks-tree.service`.
+# It is separate from ./common.nix because the per-directory reasoning is the
 # largest single body of text in this service — which dataset, which mode,
 # which group, and what went wrong the time it was different — and none of it
 # is needed to read the container's own definition.
@@ -48,32 +48,91 @@
   beetsStagingRoot = ids.paths.beetsStaging;
   beetsStateDir = ids.paths.beetsState;
 in {
-  # State directories on zdata.
+  # ── Every host-side directory the container binds ─────────────────────────
   #
-  # 0700 and owned by the service, exactly like /srv/state/jellyfin: nothing
-  # else needs to read an *arr database, and the media group has no business
-  # in it.
+  # AN ORDERED, GUARDED UNIT — NOT tmpfiles RULES, AND THE DIFFERENCE IS
+  # MEASURED. These were `systemd.tmpfiles.rules` until this change. tmpfiles
+  # runs early and unconditionally: if a dataset is not mounted, it cheerfully
+  # creates the directory on zroot, which rolls back on the next boot, and the
+  # service writes into it reporting success the whole time. immich measured
+  # the other half of it — a tmpfiles rule for a path a container BINDS races
+  # the container's own start, because activating a configuration does not
+  # re-run systemd-tmpfiles-setup in time:
   #
-  # NUMERIC ids on purpose.  `media` exists on the host (jellyfin.nix declares
-  # it) but sonarr/radarr/prowlarr do NOT — they are container users, and the
-  # host has no matching passwd entry.  tmpfiles takes numeric ids happily and
-  # this is the same shape jellyfin.nix uses for uid 964.
+  #     systemd-nspawn: Failed to clone …: No such file or directory
   #
-  # These rules matter beyond first creation: systemd's StateDirectory= logic
-  # inside the container adjusts ownership of the state directory when it does
-  # not match, and a recursive chown of a directory holding an *arr database is
-  # not something to trigger by accident on every boot.  Getting the ownership
-  # right here means it always matches and nothing recurses.
-  systemd.tmpfiles.rules = [
-    "d ${stateRoot}/sonarr   0700 ${toString sonarrUid}   ${toString mediaGid}    -"
-    "d ${stateRoot}/radarr   0700 ${toString radarrUid}   ${toString mediaGid}    -"
-    "d ${stateRoot}/prowlarr 0700 ${toString prowlarrUid} ${toString prowlarrGid} -"
+  # `stateDirs` creates them from `arr-dirs.service`, which verifies each
+  # mount FIRST and is `requiredBy` the container. So a missing dataset now
+  # stops arr instead of giving it an empty tree on the wrong filesystem.
+  #
+  # The modes and ownership are unchanged, and they matter beyond first
+  # creation: systemd's StateDirectory inside the container adjusts ownership
+  # when it does not match, and a recursive chown over an *arr database is not
+  # something to trigger by accident on every boot. Getting them right here
+  # means it always matches and nothing recurses.
+  #
+  # NUMERIC ids throughout: `media` exists on the host, but sonarr/radarr/
+  # prowlarr do not — they are container users with no host passwd entry.
+  clanarchy.containers.arr.extraGuardedMounts = [
+    # /srv/state is the host default and already guarded. These three are
+    # arr's own, and each names the dataset it must be backed by — a mount
+    # unit being up does not prove what is under it.
+    #
+    # The path is the MOUNT POINT, never a subdirectory: the dirs unit derives
+    # a mount unit name from it, so `/srv/media/torrents` would produce
+    # `Requires=srv-media-torrents.mount`, which nothing defines.
+    {
+      path = "/srv/media";
+      source = "zdata/media";
+      fstype = "zfs";
+    }
+    {
+      path = "/srv/games";
+      source = "zdata/games";
+      fstype = "zfs";
+    }
+  ];
+
+  clanarchy.containers.arr.stateDirs = [
+    {
+      path = "${stateRoot}/sonarr";
+      owner = sonarrUid;
+      group = mediaGid;
+      mode = "0700";
+    }
+    {
+      path = "${stateRoot}/radarr";
+      owner = radarrUid;
+      group = mediaGid;
+      mode = "0700";
+    }
+    {
+      path = "${stateRoot}/prowlarr";
+      owner = prowlarrUid;
+      group = prowlarrGid;
+      mode = "0700";
+    }
 
     # M12.  Same shape, same reasoning — numeric ids because these are
     # container users with no passwd entry on the host.
-    "d ${stateRoot}/bazarr       0700 ${toString bazarrUid}       ${toString mediaGid} -"
-    "d ${stateRoot}/cleanuparr   0700 ${toString cleanuparrUid}   ${toString mediaGid} -"
-    "d ${stateRoot}/mediathekarr 0700 ${toString mediathekarrUid} ${toString mediaGid} -"
+    {
+      path = "${stateRoot}/bazarr";
+      owner = bazarrUid;
+      group = mediaGid;
+      mode = "0700";
+    }
+    {
+      path = "${stateRoot}/cleanuparr";
+      owner = cleanuparrUid;
+      group = mediaGid;
+      mode = "0700";
+    }
+    {
+      path = "${stateRoot}/mediathekarr";
+      owner = mediathekarrUid;
+      group = mediaGid;
+      mode = "0700";
+    }
 
     # MediathekArr's download tree, and it is NOT under ${stateRoot}.
     #
@@ -88,9 +147,24 @@ in {
     # microvms/wg-qbittorrent.nix declare for the rest of the tree: setgid so
     # everything created inside inherits `media`, group-writable so sonarr and
     # radarr can remove the source after a successful import.
-    "d /srv/media/torrents/mediathek            2770 root ${toString mediaGid} -"
-    "d /srv/media/torrents/mediathek/incomplete 2770 root ${toString mediaGid} -"
-    "d /srv/media/torrents/mediathek/complete   2770 root ${toString mediaGid} -"
+    {
+      path = "/srv/media/torrents/mediathek";
+      owner = "root";
+      group = mediaGid;
+      mode = "2770";
+    }
+    {
+      path = "/srv/media/torrents/mediathek/incomplete";
+      owner = "root";
+      group = mediaGid;
+      mode = "2770";
+    }
+    {
+      path = "/srv/media/torrents/mediathek/complete";
+      owner = "root";
+      group = mediaGid;
+      mode = "2770";
+    }
 
     # ── M13 ────────────────────────────────────────────────────────────────
     #
@@ -101,8 +175,18 @@ in {
     # Jellyseerr's directory is named `jellyseerr` on zdata but binds to
     # /var/lib/SEERR inside, and the mismatch is deliberate — see the bind
     # mount below for why the two names differ.
-    "d ${stateRoot}/jellyseerr 0700 ${toString jellyseerrUid} ${toString jellyseerrGid} -"
-    "d ${stateRoot}/janitorr   0700 ${toString janitorrUid}   ${toString mediaGid}      -"
+    {
+      path = "${stateRoot}/jellyseerr";
+      owner = jellyseerrUid;
+      group = jellyseerrGid;
+      mode = "0700";
+    }
+    {
+      path = "${stateRoot}/janitorr";
+      owner = janitorrUid;
+      group = mediaGid;
+      mode = "0700";
+    }
 
     # Janitorr's "Leaving Soon" tree, and — like MediathekArr's download tree
     # above — it is NOT under ${stateRoot}.
@@ -121,7 +205,12 @@ in {
     # DELETING THIS DIRECTORY DELETES SYMLINKS, NOT MEDIA.  Worth stating
     # plainly next to a path owned by a service whose job is deletion: nothing
     # under here is a real file.
-    "d /srv/media/leaving-soon 2770 root ${toString mediaGid} -"
+    {
+      path = "/srv/media/leaving-soon";
+      owner = "root";
+      group = mediaGid;
+      mode = "2770";
+    }
 
     # The *arr RECYCLE BIN, and it is NOT under ${stateRoot} either.
     #
@@ -142,7 +231,12 @@ in {
     # guarantees the directory exists with the right ownership when they are
     # pointed at it.  Faking the setting from Nix would be a second source of
     # truth for a value the applications own; see the Cleanuparr block.
-    "d /srv/media/.recycle-bin 2770 root ${toString mediaGid} -"
+    {
+      path = "/srv/media/.recycle-bin";
+      owner = "root";
+      group = mediaGid;
+      mode = "2770";
+    }
 
     # ── M14 ────────────────────────────────────────────────────────────────
     #
@@ -154,7 +248,12 @@ in {
     # firings from overlapping on a long search, so it has to live somewhere
     # that survives a restart — a tmpfs would silently disable the interlock.
     # It also keeps `.current_page.txt` and `failed_imports.json` there.
-    "d ${stateRoot}/lidarr         0700 ${toString lidarrUid}         ${toString mediaGid}    -"
+    {
+      path = "${stateRoot}/lidarr";
+      owner = lidarrUid;
+      group = mediaGid;
+      mode = "0700";
+    }
 
     # LIDARR'S `.config` PARENT — and this one is not housekeeping, it is what
     # makes Lidarr able to start at all.
@@ -201,11 +300,36 @@ in {
     # declares (the module owns `.config/Lidarr`, this owns `.config`), so it
     # does not reintroduce the two-declarations-take-turns problem the
     # MediathekArr note above warns about.
-    "d ${stateRoot}/lidarr/.config 0700 ${toString lidarrUid}         ${toString mediaGid}    -"
-    "d ${stateRoot}/soularr        0700 ${toString soularrUid}        ${toString mediaGid}    -"
-    "d ${stateRoot}/kapowarr       0700 ${toString kapowarrUid}       ${toString mediaGid}    -"
-    "d ${stateRoot}/questarr       0700 ${toString questarrUid}       ${toString questarrGid} -"
-    "d ${stateRoot}/audiobookshelf 0700 ${toString audiobookshelfUid} ${toString mediaGid}    -"
+    {
+      path = "${stateRoot}/lidarr/.config";
+      owner = lidarrUid;
+      group = mediaGid;
+      mode = "0700";
+    }
+    {
+      path = "${stateRoot}/soularr";
+      owner = soularrUid;
+      group = mediaGid;
+      mode = "0700";
+    }
+    {
+      path = "${stateRoot}/kapowarr";
+      owner = kapowarrUid;
+      group = mediaGid;
+      mode = "0700";
+    }
+    {
+      path = "${stateRoot}/questarr";
+      owner = questarrUid;
+      group = questarrGid;
+      mode = "0700";
+    }
+    {
+      path = "${stateRoot}/audiobookshelf";
+      owner = audiobookshelfUid;
+      group = mediaGid;
+      mode = "0700";
+    }
 
     # 2026-09-08 — Komga's and Navidrome's state, on zdata for the reason
     # everything else here is: zroot ROLLS BACK on every boot (invariant #7),
@@ -218,8 +342,18 @@ in {
     # That is also why it gets a backup schedule of its own — a rollback is
     # not the only way to lose it, and ZFS snapshots of this dataset are NOT
     # currently running (see the note in the navidrome block below).
-    "d ${stateRoot}/komga          0700 ${toString komgaUid}          ${toString mediaGid}    -"
-    "d ${stateRoot}/navidrome      0700 ${toString navidromeUid}      ${toString mediaGid}    -"
+    {
+      path = "${stateRoot}/komga";
+      owner = komgaUid;
+      group = mediaGid;
+      mode = "0700";
+    }
+    {
+      path = "${stateRoot}/navidrome";
+      owner = navidromeUid;
+      group = mediaGid;
+      mode = "0700";
+    }
 
     # ── THE BACKUP DIRECTORY IS NOT OPTIONAL, AND UPSTREAM DOES NOT MAKE IT ──
     #
@@ -249,13 +383,23 @@ in {
     #
     # 0700 like its parent: backups of the database are exactly as sensitive
     # as the database.
-    "d ${stateRoot}/navidrome/backup 0700 ${toString navidromeUid} ${toString mediaGid} -"
+    {
+      path = "${stateRoot}/navidrome/backup";
+      owner = navidromeUid;
+      group = mediaGid;
+      mode = "0700";
+    }
 
     # M17 — Bindery's state.  Owned by the service uid so there is no
     # ownership transition on the FIRST run for tmpfiles to deadlock on —
     # the lidarr lesson above, applied pre-emptively to a service whose
     # state directory is guaranteed empty on deploy day.
-    "d ${stateRoot}/bindery        0700 ${toString binderyUid}        ${toString mediaGid}    -"
+    {
+      path = "${stateRoot}/bindery";
+      owner = binderyUid;
+      group = mediaGid;
+      mode = "0700";
+    }
 
     # THE MUSIC LIBRARY — Lidarr's import TARGET, and it is inside /srv/media
     # because that is the hardlink domain.
@@ -266,7 +410,12 @@ in {
     # and the path belongs to the file that owns the service which writes it.
     # Jellyfin does not serve music in this deployment; Lidarr is the only
     # thing that writes here.
-    "d /srv/media/library/music 2770 root ${toString mediaGid} -"
+    {
+      path = "/srv/media/library/music";
+      owner = "root";
+      group = mediaGid;
+      mode = "2770";
+    }
 
     # ── THE BEETS STAGING TREE ──────────────────────────────────────────────
     #
@@ -310,22 +459,57 @@ in {
     #
     # Inside /srv/media, so the copy into the library stays within one dataset
     # (invariant #2 — the domain is the dataset).
-    "d /srv/media/staging          2770 root ${toString mediaGid} -"
-    "d ${beetsStagingRoot}         2770 root ${toString mediaGid} -"
-    "d ${beetsStateDir}            0770 root ${toString mediaGid} -"
+    {
+      path = "/srv/media/staging";
+      owner = "root";
+      group = mediaGid;
+      mode = "2770";
+    }
+    {
+      path = "${beetsStagingRoot}";
+      owner = "root";
+      group = mediaGid;
+      mode = "2770";
+    }
+    {
+      path = "${beetsStateDir}";
+      owner = "root";
+      group = mediaGid;
+      mode = "0770";
+    }
 
     # KAPOWARR'S DOWNLOAD TREE, and — like MediathekArr's — it is NOT under
     # ${stateRoot}.  It is media: Kapowarr downloads .cbz files here and then
     # files them into its own library, and both ends must be inside the one
     # dataset or the move degrades into a copy.
-    "d /srv/media/torrents/comics 2770 root ${toString mediaGid} -"
-    "d /srv/media/library/comics  2770 root ${toString mediaGid} -"
+    {
+      path = "/srv/media/torrents/comics";
+      owner = "root";
+      group = mediaGid;
+      mode = "2770";
+    }
+    {
+      path = "/srv/media/library/comics";
+      owner = "root";
+      group = mediaGid;
+      mode = "2770";
+    }
 
     # M17 — BINDERY'S TREES, the same shape for the same reason: download and
     # library ends BOTH inside /srv/media, so the import is a rename (or a
     # hardlink) on one dataset rather than a copy across two (invariant #2).
-    "d /srv/media/torrents/books  2770 root ${toString mediaGid} -"
-    "d /srv/media/library/books   2770 root ${toString mediaGid} -"
+    {
+      path = "/srv/media/torrents/books";
+      owner = "root";
+      group = mediaGid;
+      mode = "2770";
+    }
+    {
+      path = "/srv/media/library/books";
+      owner = "root";
+      group = mediaGid;
+      mode = "2770";
+    }
 
     # The AUDIOBOOK download tree, a SIBLING of torrents/books rather than a
     # subdirectory of it — same argument slskd's and sldl's trees get in
@@ -344,7 +528,12 @@ in {
     # is deliberately left unrouted".  That was falsified on 2026-09-27 and
     # the unit below has said so since; this removes the last copy of the
     # claim rather than leaving the two statements to contradict each other.
-    "d /srv/media/torrents/audiobooks 2770 root ${toString mediaGid} -"
+    {
+      path = "/srv/media/torrents/audiobooks";
+      owner = "root";
+      group = mediaGid;
+      mode = "2770";
+    }
 
     # AUDIOBOOKSHELF'S TREE, on its own dataset.
     #
@@ -399,7 +588,12 @@ in {
     # and the only reader, so there is no group to share with — and giving
     # `media` a foothold on the one dataset on this pool where files are
     # ALLOWED TO EXECUTE would be the worst place in the fleet to do it.
-    "d /srv/games/questarr 0750 ${toString questarrUid} ${toString questarrGid} -"
+    {
+      path = "/srv/games/questarr";
+      owner = questarrUid;
+      group = questarrGid;
+      mode = "0750";
+    }
   ];
 
   ##############################################################################
