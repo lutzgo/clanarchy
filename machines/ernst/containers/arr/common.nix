@@ -130,57 +130,31 @@ in {
   #
   # 60- prefix so it sorts after the 50-* topology units in
   # machines/ernst/networking.nix and well ahead of the 99-* wildcards.
-  systemd.network.networks."60-${vethName}" = {
-    matchConfig.Name = vethName;
-    networkConfig = {
-      KeepMaster = true;
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA = false;
-    };
-    bridgeVLANs = [
-      {
-        VLAN = vlanId;
-        PVID = vlanId;
-        EgressUntagged = vlanId;
-      }
-    ];
-    # A bridge port's terminal operational state is "enslaved"; it never
-    # becomes routable, and waiting for that would hang boot.
-    linkConfig.RequiredForOnline = "enslaved";
-  };
-
-  # Re-assert the VLAN membership after nspawn has created the veth.
+  # ── The container ──────────────────────────────────────────────────────────
   #
-  # Same real race as vb-jellyfin: networkd applies [BridgeVLAN] only once it
-  # observes the link's master, and nspawn sets that master out of band from
-  # container@arr.service.  With DefaultPVID = "none" on br0 a miss is
-  # fail-CLOSED — no connectivity at all — rather than fail-open onto VLAN 50,
-  # which is the right failure but still presents as "the arr is down".
+  # modules/containers/nspawn.nix generates the dirs unit (with mount guards),
+  # the host-side veth network, the VLAN backstop, the container preamble and
+  # the in-container networking. ./storage.nix supplies the directories.
   #
-  # `bridge vlan add` is idempotent, so this agrees with networkd rather than
-  # competing with it.  The "-" prefix is deliberate: a backstop must not
-  # become a new failure mode, so `bridge` exiting non-zero (link already gone
-  # during a restart, say) must not fail the container and restart-loop it.
-  #
-  # `bridge vlan show dev vb-arr` remains the check — do not trust silence
-  # from either mechanism.  networkd won unaided for both vb-jellyfin and
-  # tap-vpn across the 2026-08-20 reboot; that is not a guarantee.
-  systemd.services."container@arr".serviceConfig.ExecStartPost = [
-    "-${pkgs.iproute2}/bin/bridge vlan add dev ${vethName} vid ${toString vlanId} pvid untagged"
-  ];
+  # THE FIREWALL IS THIS FILE'S OWN, and that is why `manageFirewall = false`.
+  # `allowFrom` is a list of (peer, port) pairs; this container's rules are
+  # three source lists over twenty-odd ports, built with `concatMapStrings`
+  # and carrying the argument for each exclusion inline. Flattening that into
+  # twenty-odd `allowFrom` entries would lose the grouping that makes "what
+  # can Traefik reach?" answerable by reading one list — which is the property
+  # the block below was written for. Same opt-out traefik.nix takes, for a
+  # related reason.
+  clanarchy.containers.arr = {
+    enable = true;
+    mac = arrMac;
 
-  ##############################################################################
-  # The container itself.
-  ##############################################################################
-  containers.arr = {
-    autoStart = true;
-    ephemeral = false; # state persists via the bind mounts below
+    # NO uid/gid PIN: ./users.nix declares all twenty-two in full.
 
-    # Own netns, own L2 identity.  See the file header for why this is a veth
-    # on br0 and not a macvlan or a tap.
-    privateNetwork = true;
-    hostBridge = "br0";
-    localMacAddress = arrMac;
+    # Pinned, and load-bearing for the services whose state directories were
+    # created under it.
+    stateVersion = "26.05";
+
+    manageFirewall = false;
 
     bindMounts = {
       # THE MEDIA TREE, read-write, at the IDENTICAL PATH.
@@ -419,13 +393,6 @@ in {
       lib,
       ...
     }: {
-      system.stateVersion = "26.05";
-
-      # Matches the host.  Unlike Jellyfin, these three are calendar- and
-      # schedule-driven: Sonarr's air dates, the RSS sync interval and every
-      # timestamp in the UI are rendered in the container's local time, and a
-      # container that silently defaults to UTC makes "why did this grab an
-      # hour late" a two-hour question.
       time.timeZone = "Europe/Berlin";
 
       ##########################################################################
@@ -436,65 +403,6 @@ in {
       # private netns the host's resolv.conf is a stale snapshot of someone
       # else's resolver anyway.  virtualisation/container-config.nix sets it
       # `mkDefault true`, so a plain `false` wins without mkForce.
-      networking.useHostResolvConf = false;
-
-      networking.useNetworkd = true;
-      services.resolved.enable = true;
-
-      # eth0 — renamed from host0 by container-init before stage 2 runs.
-      #
-      # ADDRESS: DHCP, reserved on the UDM-Pro against the pinned MAC.
-      # RESOLVER: declared, not inherited.  UseDNS/UseDomains = false so a
-      # future change to the Services network's DHCP options cannot silently
-      # move the arr off Technitium.  "~." is a ROUTING domain, so every lookup
-      # goes to 10.0.5.3 and Technitium's blocklists and logging cover this
-      # container too; "skynet.lan" is the bare-hostname search suffix.
-      #
-      # Check on ernst with:  nixos-container run arr -- resolvectl status eth0
-      systemd.network.networks."10-eth0" = {
-        matchConfig.Name = "eth0";
-        networkConfig = {
-          DHCP = "ipv4";
-          DNS = "10.0.5.3";
-          Domains = "~. skynet.lan";
-          IPv6AcceptRA = false;
-        };
-        dhcpV4Config = {
-          UseDNS = false;
-          UseDomains = false;
-        };
-        linkConfig.RequiredForOnline = "routable";
-      };
-
-      # 20 s, for the reason machines/ernst/containers/jellyfin.nix explains at
-      # length: container@arr is Type=notify with TimeoutStartSec=1min, so a
-      # wait-online that blocks for the stock 120 s turns a missing DHCP
-      # reservation into a container the host kills and restart-loops, with no
-      # reachable state to debug.  At 20 s the container always finishes
-      # booting and leaves one obviously failed unit instead.
-      systemd.network.wait-online.timeout = 20;
-
-      # ── THE FIREWALL IS THE ONLY ENFORCEMENT POINT FOR THESE PORTS ────────
-      #
-      # It runs in this container's own netns; cross-VLAN reachability is the
-      # UDM-Pro's job, and these frames never reach it.
-      #
-      # `allowedTCPPorts` IS EMPTY ON PURPOSE. Everything reachable is
-      # source-restricted to Traefik by the rules below, so nothing is granted
-      # unconditionally. One list in one place is also what makes checking it
-      # against the UDM-Pro rule a ten-second job.
-      #
-      # 8191 (flaresolverr) IS ABSENT AND MUST STAY ABSENT. Its entire API is
-      # "fetch this URL for me", so opening it to the services VLAN hands
-      # every host there an SSRF primitive. Prowlarr is in this netns and
-      # reaches it on 127.0.0.1.
-      #
-      # `extraCommands`, not `extraInputRules`: the latter is declared
-      # unconditionally but consumed only under `networking.nftables`, which
-      # is off here — it would produce no rule and no warning. Appends land
-      # after the allowedTCPPorts accepts and before the terminal
-      # `nixos-fw-log-refuse`, and the chain is rebuilt on every start, so
-      # nothing accumulates and `extraStopCommands` is not needed.
       networking.firewall.allowedTCPPorts = [];
       networking.firewall.extraCommands =
         lib.concatMapStrings (port: ''
