@@ -42,12 +42,13 @@
 # gone, which is the point. A patch that silently stopped applying would
 # hand back the exact failure it was written for, and that failure looks
 # like a broken living room rather than a broken build.
-{ youtube }:
-
+{youtube}:
 youtube.overrideAttrs (old: {
-  postPatch = (old.postPatch or "") + ''
-    substituteInPlace resources/lib/youtube_plugin/youtube/client/player_client.py \
-      --replace-fail "                'android_vr'," \
-                     "                # 'android_vr',  # patched out: GVS 403, see modules/roles/pkgs/youtube-kodi.nix"
-  '';
+  postPatch =
+    (old.postPatch or "")
+    + ''
+      substituteInPlace resources/lib/youtube_plugin/youtube/client/player_client.py \
+        --replace-fail "                'android_vr'," \
+                       "                # 'android_vr',  # patched out: GVS 403, see modules/roles/pkgs/youtube-kodi.nix"
+    '';
 })

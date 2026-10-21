@@ -78,7 +78,6 @@
   buildKodiAddon,
   fetchFromGitHub,
 }:
-
 buildKodiAddon rec {
   pname = "immich";
   namespace = "plugin.video.immich";

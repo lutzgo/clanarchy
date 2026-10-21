@@ -23,7 +23,6 @@
   comfyui-workflow-templates-core,
   comfyui-workflow-templates-json,
 }:
-
 buildPythonPackage rec {
   pname = "comfyui-workflow-templates";
   version = "0.11.57";
@@ -78,7 +77,7 @@ buildPythonPackage rec {
 
   doCheck = false;
 
-  pythonImportsCheck = [ "comfyui_workflow_templates" ];
+  pythonImportsCheck = ["comfyui_workflow_templates"];
 
   meta = {
     description = "Example workflow templates bundled with ComfyUI";

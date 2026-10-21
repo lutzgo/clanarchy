@@ -1,4 +1,4 @@
-{ lib, ... }:
+{lib, ...}:
 #
 # @clanarchy/software — browser and email application profiles for machines.
 #
@@ -16,7 +16,6 @@
   manifest.name = "@clanarchy/software";
   manifest.description = "Browser and email application profiles (librewolf, firefox, chromium, chrome, edge, thunderbird, geary).";
   manifest.readme = builtins.readFile ./software.md;
-
 
   # ═══════════════════════════════════════════════════════════════════════════
   # BROWSER ROLES
@@ -48,8 +47,8 @@
   roles.librewolf = {
     description = "LibreWolf browser: system package, privacy overrides, KeePassXC native messaging, policy-installed extensions.";
     interface.options.user = lib.mkOption {
-      type        = lib.types.str;
-      default     = "sabine";
+      type = lib.types.str;
+      default = "sabine";
       description = "Home Manager user to configure LibreWolf for.";
     };
 
@@ -62,7 +61,7 @@
     # policies already work here, and it is fine because the machines this is
     # set on have one LibreWolf user each.
     interface.options.extensions = lib.mkOption {
-      default = [ ];
+      default = [];
       description = ''
         Extensions to install into LibreWolf via an `ExtensionSettings`
         enterprise policy.  Empty (the default) changes nothing.
@@ -98,8 +97,8 @@
       type = lib.types.listOf (lib.types.submodule {
         options = {
           id = lib.mkOption {
-            type        = lib.types.str;
-            example     = "floccus@handmadeideas.org";
+            type = lib.types.str;
+            example = "floccus@handmadeideas.org";
             description = ''
               The WebExtension ID from the add-on's manifest — NOT the AMO slug
               and not a Chrome Web Store ID.  A wrong value here installs
@@ -108,8 +107,8 @@
             '';
           };
           installUrl = lib.mkOption {
-            type        = lib.types.str;
-            example     = "https://addons.mozilla.org/firefox/downloads/latest/floccus@handmadeideas.org/latest.xpi";
+            type = lib.types.str;
+            example = "https://addons.mozilla.org/firefox/downloads/latest/floccus@handmadeideas.org/latest.xpi";
             description = ''
               Where the .xpi comes from.  AMO's `latest` URL is the same form
               LibreWolf itself uses for uBlock Origin, and it follows upstream
@@ -120,76 +119,78 @@
       });
     };
 
-    perInstance = { settings, ... }: {
-      nixosModule = { pkgs, lib, ... }:
-        let
-          # Capture the NixOS-level keepassxc path for the native-messaging manifest.
-          # Using a let-binding so the HM module can reference it via closure without
-          # receiving a separate pkgs argument.
-          keepassxcProxy = "${pkgs.keepassxc}/bin/keepassxc-proxy";
+    perInstance = {settings, ...}: {
+      nixosModule = {
+        pkgs,
+        lib,
+        ...
+      }: let
+        # Capture the NixOS-level keepassxc path for the native-messaging manifest.
+        # Using a let-binding so the HM module can reference it via closure without
+        # receiving a separate pkgs argument.
+        keepassxcProxy = "${pkgs.keepassxc}/bin/keepassxc-proxy";
 
-          # `.override` on the WRAPPER, which is what `pkgs.librewolf` is
-          # (`wrapFirefox librewolf-unwrapped`).  Overriding the unwrapped
-          # package would do nothing — policies are a property of the wrapper.
-          librewolfPackage =
-            if settings.extensions == [ ] then pkgs.librewolf
-            else pkgs.librewolf.override {
+        # `.override` on the WRAPPER, which is what `pkgs.librewolf` is
+        # (`wrapFirefox librewolf-unwrapped`).  Overriding the unwrapped
+        # package would do nothing — policies are a property of the wrapper.
+        librewolfPackage =
+          if settings.extensions == []
+          then pkgs.librewolf
+          else
+            pkgs.librewolf.override {
               extraPolicies.ExtensionSettings = lib.listToAttrs (map (e: {
-                name  = e.id;
-                value = {
-                  installation_mode = "normal_installed";
-                  install_url       = e.installUrl;
-                };
-              }) settings.extensions);
+                  name = e.id;
+                  value = {
+                    installation_mode = "normal_installed";
+                    install_url = e.installUrl;
+                  };
+                })
+                settings.extensions);
             };
-        in
-        {
-          environment.systemPackages = [ librewolfPackage pkgs.keepassxc ];
+      in {
+        environment.systemPackages = [librewolfPackage pkgs.keepassxc];
 
-          home-manager.users.${settings.user} = { ... }: {
+        home-manager.users.${settings.user} = {...}: {
+          # ── Privacy overrides ────────────────────────────────────────
+          # Evaluated after LibreWolf's built-in defaults (librewolf.cfg).
+          # Mirrors the configuration used on miralda (home-modules/browsers.nix).
+          home.file.".librewolf/librewolf.overrides.cfg".text = ''
+            // librewolf.overrides.cfg — evaluated after LibreWolf's built-in defaults.
 
-            # ── Privacy overrides ────────────────────────────────────────
-            # Evaluated after LibreWolf's built-in defaults (librewolf.cfg).
-            # Mirrors the configuration used on miralda (home-modules/browsers.nix).
-            home.file.".librewolf/librewolf.overrides.cfg".text = ''
-              // librewolf.overrides.cfg — evaluated after LibreWolf's built-in defaults.
+            // ── Mozilla push WebSocket ────────────────────────────────────
+            // Resolves to Google Cloud infrastructure on startup (port 443,
+            // push.services.mozilla.com).  Disabling it also disables Web Push
+            // notifications; re-enable per-origin via site permissions if needed.
+            user_pref("dom.push.connection.enabled", false);
+            user_pref("dom.push.enabled", false);
 
-              // ── Mozilla push WebSocket ────────────────────────────────────
-              // Resolves to Google Cloud infrastructure on startup (port 443,
-              // push.services.mozilla.com).  Disabling it also disables Web Push
-              // notifications; re-enable per-origin via site permissions if needed.
-              user_pref("dom.push.connection.enabled", false);
-              user_pref("dom.push.enabled", false);
+            // ── Telemetry hardening ───────────────────────────────────────
+            user_pref("toolkit.telemetry.enabled", false);
+            user_pref("toolkit.telemetry.unified", false);
+            user_pref("datareporting.healthreport.uploadEnabled", false);
+            user_pref("datareporting.policy.dataSubmissionEnabled", false);
+            user_pref("app.shield.optoutstudies.enabled", false);
+            user_pref("app.normandy.enabled", false);
+            user_pref("browser.newtabpage.activity-stream.feeds.telemetry", false);
+            user_pref("browser.newtabpage.activity-stream.telemetry", false);
+            user_pref("browser.ping-centre.telemetry", false);
+            user_pref("breakpad.reportURL", "");
+          '';
 
-              // ── Telemetry hardening ───────────────────────────────────────
-              user_pref("toolkit.telemetry.enabled", false);
-              user_pref("toolkit.telemetry.unified", false);
-              user_pref("datareporting.healthreport.uploadEnabled", false);
-              user_pref("datareporting.policy.dataSubmissionEnabled", false);
-              user_pref("app.shield.optoutstudies.enabled", false);
-              user_pref("app.normandy.enabled", false);
-              user_pref("browser.newtabpage.activity-stream.feeds.telemetry", false);
-              user_pref("browser.newtabpage.activity-stream.telemetry", false);
-              user_pref("browser.ping-centre.telemetry", false);
-              user_pref("breakpad.reportURL", "");
-            '';
-
-            # ── KeePassXC native-messaging manifest ───────────────────────
-            # Firefox-based browsers use "allowed_extensions" with the WebExtension
-            # ID (not the Chrome-style "allowed_origins" with chrome-extension://).
-            home.file.".librewolf/native-messaging-hosts/org.keepassxc.keepassxc_browser.json".text =
-              builtins.toJSON {
-                name               = "org.keepassxc.keepassxc_browser";
-                description        = "KeePassXC integration with native messaging";
-                path               = keepassxcProxy;
-                type               = "stdio";
-                allowed_extensions = [ "keepassxc-browser@keepassxc.org" ];
-              };
+          # ── KeePassXC native-messaging manifest ───────────────────────
+          # Firefox-based browsers use "allowed_extensions" with the WebExtension
+          # ID (not the Chrome-style "allowed_origins" with chrome-extension://).
+          home.file.".librewolf/native-messaging-hosts/org.keepassxc.keepassxc_browser.json".text = builtins.toJSON {
+            name = "org.keepassxc.keepassxc_browser";
+            description = "KeePassXC integration with native messaging";
+            path = keepassxcProxy;
+            type = "stdio";
+            allowed_extensions = ["keepassxc-browser@keepassxc.org"];
           };
         };
+      };
     };
   };
-
 
   # ── Firefox ───────────────────────────────────────────────────────────────
   # Enables Firefox and wires the HM module.  Profile creation and Stylix
@@ -200,16 +201,16 @@
   roles.firefox = {
     description = "Firefox browser; profile setup and Stylix theming left to per-machine config.";
     interface.options.user = lib.mkOption {
-      type        = lib.types.str;
-      default     = "sabine";
+      type = lib.types.str;
+      default = "sabine";
       description = "Home Manager user to enable Firefox for.";
     };
 
-    perInstance = { settings, ... }: {
-      nixosModule = { ... }: {
-        home-manager.users.${settings.user} = { ... }: {
+    perInstance = {settings, ...}: {
+      nixosModule = {...}: {
+        home-manager.users.${settings.user} = {...}: {
           programs.firefox = {
-            enable     = true;
+            enable = true;
             # Explicit path silences the stateVersion < 26.05 migration warning.
             configPath = ".mozilla/firefox";
           };
@@ -217,7 +218,6 @@
       };
     };
   };
-
 
   # ── ungoogled-chromium ────────────────────────────────────────────────────
   # Installs the privacy-hardened Chromium fork.  Privacy flags are baked into
@@ -228,41 +228,41 @@
   roles.chromium = {
     description = "ungoogled-chromium (privacy-hardened Chromium; flags via clan.nix overlay).";
     interface.options.user = lib.mkOption {
-      type        = lib.types.str;
-      default     = "sabine";
+      type = lib.types.str;
+      default = "sabine";
       description = "Home Manager user to configure Chromium for (reserved for future use).";
     };
 
-    perInstance = { ... }: {
-      nixosModule = { pkgs, ... }: {
-        environment.systemPackages = [ pkgs.ungoogled-chromium ];
+    perInstance = {...}: {
+      nixosModule = {pkgs, ...}: {
+        environment.systemPackages = [pkgs.ungoogled-chromium];
 
         # Chromium managed policies — must be root-owned (/etc/); home.file paths
         # are silently rejected as mandatory policies even if the dir exists.
         environment.etc."chromium/policies/managed/privacy.json".text = builtins.toJSON {
           # ── Telemetry and account features ──────────────────────────
-          MetricsReportingEnabled                        = false;
-          SafeBrowsingEnabled                            = false; # deprecated in 130+
-          SafeBrowsingProtectionLevel                    = 0;     # 0 = disabled
-          PasswordManagerEnabled                         = false;
-          AutofillAddressEnabled                         = false;
-          AutofillCreditCardEnabled                      = false;
-          UserFeedbackAllowed                            = false;
-          UrlKeyedAnonymizedDataCollectionEnabled        = false;
+          MetricsReportingEnabled = false;
+          SafeBrowsingEnabled = false; # deprecated in 130+
+          SafeBrowsingProtectionLevel = 0; # 0 = disabled
+          PasswordManagerEnabled = false;
+          AutofillAddressEnabled = false;
+          AutofillCreditCardEnabled = false;
+          UserFeedbackAllowed = false;
+          UrlKeyedAnonymizedDataCollectionEnabled = false;
 
           # ── Privacy Sandbox ──────────────────────────────────────────
-          PrivacySandboxAdMeasurementEnabled             = false;
-          PrivacySandboxAdTopicsEnabled                  = false;
-          PrivacySandboxSiteEnabledAdsEnabled            = false;
+          PrivacySandboxAdMeasurementEnabled = false;
+          PrivacySandboxAdTopicsEnabled = false;
+          PrivacySandboxSiteEnabledAdsEnabled = false;
 
           # ── Cookies ──────────────────────────────────────────────────
-          BlockThirdPartyCookies                         = true; # deprecated 130+, harmless
-          DefaultCookiesSetting                          = 1;    # 1 = allow first-party
+          BlockThirdPartyCookies = true; # deprecated 130+, harmless
+          DefaultCookiesSetting = 1; # 1 = allow first-party
 
           # ── Network leaks ────────────────────────────────────────────
-          WebRtcIPHandlingPolicy                         = "disable_non_proxied_udp";
-          NetworkPredictionOptions                       = 2; # 2 = disabled
-          SearchSuggestEnabled                           = false;
+          WebRtcIPHandlingPolicy = "disable_non_proxied_udp";
+          NetworkPredictionOptions = 2; # 2 = disabled
+          SearchSuggestEnabled = false;
 
           # ── Encrypted DNS (system-resolver mode) ─────────────────────
           # "automatic" = Chrome's "With your current service provider":
@@ -272,39 +272,42 @@
           # served by our LAN resolver (e.g. *.skynet.lan via Technitium)
           # resolve — "secure" mode with a public DoH template bypasses
           # systemd-resolved entirely and NXDOMAINs on private zones.
-          DnsOverHttpsMode                               = "automatic";
+          DnsOverHttpsMode = "automatic";
 
           # ── Permission defaults (2 = block) ─────────────────────────
-          DefaultGeolocationSetting                      = 2;
-          DefaultNotificationsSetting                    = 2;
-          DefaultCameraSetting                           = 2;
-          DefaultMicrophoneSetting                       = 2;
-          DefaultPopupsSetting                           = 2;
-          DefaultSensorsSetting                          = 2;
-          DefaultSerialSetting                           = 2;
-          DefaultHidSetting                              = 2;
-          DefaultBluetoothSetting                        = 2;
-          DefaultFileSystemReadGuardSetting              = 2;
-          DefaultFileSystemWriteGuardSetting             = 2;
+          DefaultGeolocationSetting = 2;
+          DefaultNotificationsSetting = 2;
+          DefaultCameraSetting = 2;
+          DefaultMicrophoneSetting = 2;
+          DefaultPopupsSetting = 2;
+          DefaultSensorsSetting = 2;
+          DefaultSerialSetting = 2;
+          DefaultHidSetting = 2;
+          DefaultBluetoothSetting = 2;
+          DefaultFileSystemReadGuardSetting = 2;
+          DefaultFileSystemWriteGuardSetting = 2;
 
           # ── JavaScript JIT ───────────────────────────────────────────
-          DefaultJavaScriptJitSetting                    = 2; # 2 = block globally
-          JavaScriptJitAllowedForSites                   = [];
+          DefaultJavaScriptJitSetting = 2; # 2 = block globally
+          JavaScriptJitAllowedForSites = [];
 
           # ── Search engines ───────────────────────────────────────────
-          DefaultSearchProviderEnabled                   = true;
-          DefaultSearchProviderName                      = "DuckDuckGo";
-          DefaultSearchProviderSearchURL                 = "https://duckduckgo.com/?q={searchTerms}";
-          DefaultSearchProviderSuggestURL                = "https://duckduckgo.com/ac/?q={searchTerms}&type=list";
+          DefaultSearchProviderEnabled = true;
+          DefaultSearchProviderName = "DuckDuckGo";
+          DefaultSearchProviderSearchURL = "https://duckduckgo.com/?q={searchTerms}";
+          DefaultSearchProviderSuggestURL = "https://duckduckgo.com/ac/?q={searchTerms}&type=list";
           # ManagedSearchEngines: Chrome 116+. nixpkgs 25.11 = Chromium 131+.
           ManagedSearchEngines = [
-            { name = "Startpage"; keyword = "sp"; url = "https://www.startpage.com/search?q={searchTerms}"; }
+            {
+              name = "Startpage";
+              keyword = "sp";
+              url = "https://www.startpage.com/search?q={searchTerms}";
+            }
           ];
         };
       };
     };
   };
-
 
   # ── Google Chrome ─────────────────────────────────────────────────────────
   # Unfree package.  Intended for work / DRM / SSO fallback only.
@@ -312,46 +315,41 @@
   roles.chrome = {
     description = "Google Chrome (unfree) for work, DRM, and SSO fallback.";
     interface.options.user = lib.mkOption {
-      type        = lib.types.str;
-      default     = "sabine";
+      type = lib.types.str;
+      default = "sabine";
       description = "Home Manager user to install the KeePassXC native-messaging manifest for Chrome.";
     };
 
-    perInstance = { settings, ... }: {
-      nixosModule = { pkgs, ... }:
-        let
-          keepassxcProxy = "${pkgs.keepassxc}/bin/keepassxc-proxy";
-        in
-        {
-          environment.systemPackages = [ pkgs.google-chrome pkgs.keepassxc ];
+    perInstance = {settings, ...}: {
+      nixosModule = {pkgs, ...}: let
+        keepassxcProxy = "${pkgs.keepassxc}/bin/keepassxc-proxy";
+      in {
+        environment.systemPackages = [pkgs.google-chrome pkgs.keepassxc];
 
-          home-manager.users.${settings.user} = { ... }: {
-            # Chrome / Chromium manifest format: allowed_origins with chrome-extension:// scheme.
-            home.file.".config/google-chrome/NativeMessagingHosts/org.keepassxc.keepassxc_browser.json".text =
-              builtins.toJSON {
-                name            = "org.keepassxc.keepassxc_browser";
-                description     = "KeePassXC integration with native messaging";
-                path            = keepassxcProxy;
-                type            = "stdio";
-                allowed_origins = [ "chrome-extension://oboonakemofpalcgghocfoadofidjkkk/" ];
-              };
+        home-manager.users.${settings.user} = {...}: {
+          # Chrome / Chromium manifest format: allowed_origins with chrome-extension:// scheme.
+          home.file.".config/google-chrome/NativeMessagingHosts/org.keepassxc.keepassxc_browser.json".text = builtins.toJSON {
+            name = "org.keepassxc.keepassxc_browser";
+            description = "KeePassXC integration with native messaging";
+            path = keepassxcProxy;
+            type = "stdio";
+            allowed_origins = ["chrome-extension://oboonakemofpalcgghocfoadofidjkkk/"];
           };
         };
+      };
     };
   };
-
 
   # ── Microsoft Edge ────────────────────────────────────────────────────────
   # Unfree package.  No additional configuration applied.
   roles.edge = {
     description = "Microsoft Edge (unfree).";
-    perInstance = { ... }: {
-      nixosModule = { pkgs, ... }: {
-        environment.systemPackages = [ pkgs.microsoft-edge ];
+    perInstance = {...}: {
+      nixosModule = {pkgs, ...}: {
+        environment.systemPackages = [pkgs.microsoft-edge];
       };
     };
   };
-
 
   # ═══════════════════════════════════════════════════════════════════════════
   # EMAIL ROLES
@@ -361,34 +359,33 @@
   roles.thunderbird = {
     description = "Mozilla Thunderbird email client.";
     interface.options.user = lib.mkOption {
-      type        = lib.types.str;
-      default     = "sabine";
+      type = lib.types.str;
+      default = "sabine";
       description = "Home Manager user to install Thunderbird for.";
     };
 
-    perInstance = { settings, ... }: {
-      nixosModule = { pkgs, ... }: {
-        home-manager.users.${settings.user} = { ... }: {
-          home.packages = [ pkgs.thunderbird ];
+    perInstance = {settings, ...}: {
+      nixosModule = {pkgs, ...}: {
+        home-manager.users.${settings.user} = {...}: {
+          home.packages = [pkgs.thunderbird];
         };
       };
     };
   };
 
-
   # ── Geary ─────────────────────────────────────────────────────────────────
   roles.geary = {
     description = "GNOME Geary email client.";
     interface.options.user = lib.mkOption {
-      type        = lib.types.str;
-      default     = "sabine";
+      type = lib.types.str;
+      default = "sabine";
       description = "Home Manager user to install Geary for.";
     };
 
-    perInstance = { settings, ... }: {
-      nixosModule = { pkgs, ... }: {
-        home-manager.users.${settings.user} = { ... }: {
-          home.packages = [ pkgs.geary ];
+    perInstance = {settings, ...}: {
+      nixosModule = {pkgs, ...}: {
+        home-manager.users.${settings.user} = {...}: {
+          home.packages = [pkgs.geary];
         };
       };
     };

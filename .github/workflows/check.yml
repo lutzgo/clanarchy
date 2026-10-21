@@ -49,8 +49,12 @@ jobs:
       #
       # --no-update-lock-file so a PR cannot silently pass against a lock it did
       # not commit.
-      - name: Evaluate all machine toplevels
-        run: bash scripts/check.sh
+      # `check.sh` ends with `alejandra --check .`, which needs alejandra on
+      # PATH or it SKIPS rather than fails — so CI provides it explicitly
+      # instead of relying on the runner image. A skipped format check that
+      # reads as a pass is the failure mode worth avoiding here.
+      - name: Evaluate all machine toplevels (and check formatting)
+        run: nix shell nixpkgs#alejandra -c bash scripts/check.sh
 
       # `checks.scripts` is the one that would have caught the 2026-10-14
       # deploy failure: shellcheck runs at BUILD time, and nothing in the eval

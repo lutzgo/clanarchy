@@ -107,13 +107,10 @@
   pkgs,
   lib,
   ...
-}:
-
-let
+}: let
   ##############################################################################
   # Identity.
   ##############################################################################
-
   # Not ours to choose: a well-known NixOS static id (`ids.uids.postgres`).  It
   # lands on zdata unmapped like every other container uid here.  The
   # 3000-block convention does not apply to it and it must not be renumbered
@@ -144,7 +141,7 @@ let
   minifluxPort = 8080;
 
   baseDomain = "goclan.org";
-  hostName   = "miniflux.${baseDomain}";
+  hostName = "miniflux.${baseDomain}";
 
   # Authelia's portal, as the OIDC issuer.  Restated rather than shared, for
   # the same reason baseDomain is restated in traefik.nix and authelia.nix.
@@ -169,8 +166,8 @@ let
   # generation.  A directory we own has a stable identity and is rewritten in
   # place.  containers/traefik.nix carries the long form of this.
   ##############################################################################
-  secretsDir    = "/run/miniflux-secrets";
-  oidcEnvFile   = "${secretsDir}/oidc.env";
+  secretsDir = "/run/miniflux-secrets";
+  oidcEnvFile = "${secretsDir}/oidc.env";
   bridgeEnvFile = "${secretsDir}/bridge.env";
 
   # M28's bridge (see the section at the bottom of this file).  Its two values
@@ -185,8 +182,7 @@ let
   # reaches across rather than declaring its own.  Authelia takes the DIGEST;
   # this container takes the PLAINTEXT half of the same pair.
   oidcGen = config.clan.core.vars.generators.authelia-oidc-miniflux;
-in
-{
+in {
   ##############################################################################
   # Host side — the directories, the secrets and the veth.
   ##############################################################################
@@ -216,11 +212,21 @@ in
     # NOT be renumbered into the 3000 block. This is the only uid this
     # container puts on the pool.
     stateDirs = [
-      { path = stateRoot;                 owner = "root";       group = "root";       mode = "0755"; }
+      {
+        path = stateRoot;
+        owner = "root";
+        group = "root";
+        mode = "0755";
+      }
       # The PARENT of the version directory is bound, not the version
       # directory itself, so a future PostgreSQL major bump lands beside the
       # old one on zdata instead of on the container's rootfs.
-      { path = "${stateRoot}/postgresql"; owner = postgresUid;  group = postgresGid;  mode = "0700"; }
+      {
+        path = "${stateRoot}/postgresql";
+        owner = postgresUid;
+        group = postgresGid;
+        mode = "0700";
+      }
     ];
 
     # TWO FILES, NOT FOUR LINES IN ONE, because the two are consumed by
@@ -229,31 +235,40 @@ in
     # credential in a process with no use for it.
     secrets = {
       "oidc.env" = {
-        OAUTH2_CLIENT_ID     = { value = "miniflux"; };
-        OAUTH2_CLIENT_SECRET = { file = oidcGen.files."miniflux-client-secret".path; };
+        OAUTH2_CLIENT_ID = {value = "miniflux";};
+        OAUTH2_CLIENT_SECRET = {file = oidcGen.files."miniflux-client-secret".path;};
       };
       "bridge.env" = {
-        WEBHOOK_SECRET     = { file = bridgeGen.files."webhook-secret".path; };
-        KARAKEEP_API_TOKEN = { file = bridgeGen.files."karakeep-api-token".path; };
+        WEBHOOK_SECRET = {file = bridgeGen.files."webhook-secret".path;};
+        KARAKEEP_API_TOKEN = {file = bridgeGen.files."karakeep-api-token".path;};
       };
     };
 
     bindMounts."/var/lib/postgresql" = {
-      hostPath   = "${stateRoot}/postgresql";
+      hostPath = "${stateRoot}/postgresql";
       isReadOnly = false;
     };
 
     # The only peers allowed at the web surface. Everything else — including a
     # curl from ernst itself — is refused, by design.
     allowFrom = [
-      { peer = traefikAddr;    port = minifluxPort; }  # every browser arrives here
-      { peer = dashboardAddr;  port = minifluxPort; }  # the service index's unread count
-      { peer = monitoringAddr; port = minifluxPort; }  # a real OpenMetrics endpoint
+      {
+        peer = traefikAddr;
+        port = minifluxPort;
+      } # every browser arrives here
+      {
+        peer = dashboardAddr;
+        port = minifluxPort;
+      } # the service index's unread count
+      {
+        peer = monitoringAddr;
+        port = minifluxPort;
+      } # a real OpenMetrics endpoint
     ];
   };
   clan.core.vars.generators.miniflux-karakeep-bridge = {
-    files."webhook-secret".secret      = true;
-    files."karakeep-api-token".secret  = true;
+    files."webhook-secret".secret = true;
+    files."karakeep-api-token".secret = true;
 
     # WITHOUT THESE THE VALUES NEVER REACH THE CONTAINER.  The staging script
     # embeds the sops PATH rather than the contents, so rewriting an encrypted
@@ -279,7 +294,7 @@ in
       type = "hidden";
     };
 
-    runtimeInputs = [ pkgs.coreutils ];
+    runtimeInputs = [pkgs.coreutils];
     script = ''
       cat "$prompts/webhook-secret"     > "$out/webhook-secret"
       cat "$prompts/karakeep-api-token" > "$out/karakeep-api-token"
@@ -287,215 +302,218 @@ in
   };
 
   # ── The container, declared rather than assembled ─────────────────────────
-  clanarchy.containers.miniflux.config = { config, pkgs, lib, ... }:
-    let
-      bridgePkg = pkgs.callPackage ./pkgs/miniflux-karakeep-bridge.nix { };
-    in
-    {
-      services.miniflux = {
-        enable = true;
+  clanarchy.containers.miniflux.config = {
+    config,
+    pkgs,
+    lib,
+    ...
+  }: let
+    bridgePkg = pkgs.callPackage ./pkgs/miniflux-karakeep-bridge.nix {};
+  in {
+    services.miniflux = {
+      enable = true;
 
-        # Local PostgreSQL over the unix socket at /run/postgresql.
+      # Local PostgreSQL over the unix socket at /run/postgresql.
+      #
+      # THIS FILE THEREFORE DECLARES NO DATABASE PASSWORD AND NO DATABASE
+      # STAGING UNIT, the same argument containers/immich.nix and
+      # containers/nextcloud.nix both make: socket connections use peer
+      # authentication, and a credential that is never checked is a
+      # credential that should not exist.
+      createDatabaseLocally = true;
+
+      config = {
+        # 0.0.0.0, not the module's localhost default: the listener has to be
+        # reachable across the veth.  What bounds it is the firewall above,
+        # which is the boundary the rest of this host relies on too.
+        LISTEN_ADDR = "0.0.0.0:${toString minifluxPort}";
+
+        # Miniflux builds absolute URLs from this — share links, the OIDC
+        # redirect, and the cookie path.  Getting it wrong fails closed at
+        # Authelia with `invalid_redirect_uri`, which reads as an Authelia
+        # fault.  Nextcloud's `overwriteprotocol` note is the same trap.
+        BASE_URL = "https://${hostName}";
+
+        # ── Authentication.  SEE THE HEADER — this removes local login ────
         #
-        # THIS FILE THEREFORE DECLARES NO DATABASE PASSWORD AND NO DATABASE
-        # STAGING UNIT, the same argument containers/immich.nix and
-        # containers/nextcloud.nix both make: socket connections use peer
-        # authentication, and a credential that is never checked is a
-        # credential that should not exist.
-        createDatabaseLocally = true;
+        # CREATE_ADMIN = 0 means the module does not require (and asserts
+        # against) an `adminCredentialsFile`, so there is no admin generator
+        # in this file at all.  DISABLE_LOCAL_AUTH hides the password form.
+        # OAUTH2_USER_CREATION is what lets the first Authelia login create
+        # the account, which is the only way an account can exist here.
+        CREATE_ADMIN = 0;
+        DISABLE_LOCAL_AUTH = "true";
+        OAUTH2_PROVIDER = "oidc";
+        OAUTH2_OIDC_PROVIDER_NAME = "Authelia";
+        OAUTH2_USER_CREATION = 1;
 
-        config = {
-          # 0.0.0.0, not the module's localhost default: the listener has to be
-          # reachable across the veth.  What bounds it is the firewall above,
-          # which is the boundary the rest of this host relies on too.
-          LISTEN_ADDR = "0.0.0.0:${toString minifluxPort}";
+        # No `/.well-known/openid-configuration` suffix — the library appends
+        # it.  See the note on autheliaIssuer in the let block.
+        OAUTH2_OIDC_DISCOVERY_ENDPOINT = autheliaIssuer;
 
-          # Miniflux builds absolute URLs from this — share links, the OIDC
-          # redirect, and the cookie path.  Getting it wrong fails closed at
-          # Authelia with `invalid_redirect_uri`, which reads as an Authelia
-          # fault.  Nextcloud's `overwriteprotocol` note is the same trap.
-          BASE_URL = "https://${hostName}";
+        # Registered verbatim as the client's sole redirect_uri in
+        # containers/authelia.nix.  The path is Miniflux's, not a convention:
+        # /oauth2/oidc/callback.
+        OAUTH2_REDIRECT_URL = "https://${hostName}/oauth2/oidc/callback";
 
-          # ── Authentication.  SEE THE HEADER — this removes local login ────
-          #
-          # CREATE_ADMIN = 0 means the module does not require (and asserts
-          # against) an `adminCredentialsFile`, so there is no admin generator
-          # in this file at all.  DISABLE_LOCAL_AUTH hides the password form.
-          # OAUTH2_USER_CREATION is what lets the first Authelia login create
-          # the account, which is the only way an account can exist here.
-          CREATE_ADMIN              = 0;
-          DISABLE_LOCAL_AUTH        = "true";
-          OAUTH2_PROVIDER           = "oidc";
-          OAUTH2_OIDC_PROVIDER_NAME = "Authelia";
-          OAUTH2_USER_CREATION      = 1;
+        # ── Metrics.  A REAL endpoint, unlike most services on this host ──
+        #
+        # containers/nextcloud.nix declines a Prometheus job because its
+        # serverinfo endpoint is token-authenticated JSON and a target
+        # pointed at it could only ever read `up == 0` — M13's Ollama lesson,
+        # SN3.  Miniflux is the other case: /metrics is a genuine OpenMetrics
+        # exposition, so service-modules/monitoring.nix DOES get a job here.
+        #
+        # METRICS_ALLOWED_NETWORKS is a SECOND gate in front of it, inside
+        # the application, and it defaults to 127.0.0.1/8 — so without this
+        # line the scrape would be refused by Miniflux itself even though the
+        # firewall let it through, and the job would read `up == 0` with
+        # nothing in the container's log saying why.
+        METRICS_COLLECTOR = 1;
+        METRICS_ALLOWED_NETWORKS = "${monitoringAddr}/32";
 
-          # No `/.well-known/openid-configuration` suffix — the library appends
-          # it.  See the note on autheliaIssuer in the let block.
-          OAUTH2_OIDC_DISCOVERY_ENDPOINT = autheliaIssuer;
-
-          # Registered verbatim as the client's sole redirect_uri in
-          # containers/authelia.nix.  The path is Miniflux's, not a convention:
-          # /oauth2/oidc/callback.
-          OAUTH2_REDIRECT_URL = "https://${hostName}/oauth2/oidc/callback";
-
-          # ── Metrics.  A REAL endpoint, unlike most services on this host ──
-          #
-          # containers/nextcloud.nix declines a Prometheus job because its
-          # serverinfo endpoint is token-authenticated JSON and a target
-          # pointed at it could only ever read `up == 0` — M13's Ollama lesson,
-          # SN3.  Miniflux is the other case: /metrics is a genuine OpenMetrics
-          # exposition, so service-modules/monitoring.nix DOES get a job here.
-          #
-          # METRICS_ALLOWED_NETWORKS is a SECOND gate in front of it, inside
-          # the application, and it defaults to 127.0.0.1/8 — so without this
-          # line the scrape would be refused by Miniflux itself even though the
-          # firewall let it through, and the job would read `up == 0` with
-          # nothing in the container's log saying why.
-          METRICS_COLLECTOR        = 1;
-          METRICS_ALLOWED_NETWORKS = "${monitoringAddr}/32";
-
-          # ── THE LINE WITHOUT WHICH M28's BRIDGE RECEIVES NOTHING ─────────
-          #
-          # MEASURED 2026-09-20, and it is M23's Nextcloud finding in a second
-          # costume.  Miniflux has its own SSRF guard, and it refused every
-          # webhook delivery:
-          #
-          #     Unable to send new entries to Webhook … nb_entries=1
-          #     error="connection to private network is blocked:
-          #            host \"127.0.0.1\" resolves to a non-public IP address"
-          #
-          # The bridge was correctly configured, listening, and signature-
-          # verified end to end by hand — it simply never got a request,
-          # because Miniflux would not make one.  Nothing failed; a unit that
-          # is never called looks exactly like a unit that works.
-          #
-          # ── TWO OPTIONS EXIST AND ONLY THE NARROW ONE IS SET ─────────────
-          #
-          # Read out of the built binary rather than guessed:
-          #
-          #   INTEGRATION_ALLOW_PRIVATE_NETWORKS  — integrations (this)
-          #   FETCHER_ALLOW_PRIVATE_NETWORKS      — FEED FETCHING (not this)
-          #
-          # The second one is the dangerous half and stays OFF.  A feed URL is
-          # attacker-controlled the moment you subscribe to something, so a
-          # fetcher permitted into RFC1918 is a server-side request forgery
-          # primitive pointed at VLAN 90.  An INTEGRATION target is a URL the
-          # administrator typed into a settings page, and here it is
-          # 127.0.0.1:8081 — a process in this same namespace.
-          #
-          # So this relaxes the guard for the one destination we chose and
-          # leaves it in force for the one an outsider influences.
-          INTEGRATION_ALLOW_PRIVATE_NETWORKS = 1;
-        };
+        # ── THE LINE WITHOUT WHICH M28's BRIDGE RECEIVES NOTHING ─────────
+        #
+        # MEASURED 2026-09-20, and it is M23's Nextcloud finding in a second
+        # costume.  Miniflux has its own SSRF guard, and it refused every
+        # webhook delivery:
+        #
+        #     Unable to send new entries to Webhook … nb_entries=1
+        #     error="connection to private network is blocked:
+        #            host \"127.0.0.1\" resolves to a non-public IP address"
+        #
+        # The bridge was correctly configured, listening, and signature-
+        # verified end to end by hand — it simply never got a request,
+        # because Miniflux would not make one.  Nothing failed; a unit that
+        # is never called looks exactly like a unit that works.
+        #
+        # ── TWO OPTIONS EXIST AND ONLY THE NARROW ONE IS SET ─────────────
+        #
+        # Read out of the built binary rather than guessed:
+        #
+        #   INTEGRATION_ALLOW_PRIVATE_NETWORKS  — integrations (this)
+        #   FETCHER_ALLOW_PRIVATE_NETWORKS      — FEED FETCHING (not this)
+        #
+        # The second one is the dangerous half and stays OFF.  A feed URL is
+        # attacker-controlled the moment you subscribe to something, so a
+        # fetcher permitted into RFC1918 is a server-side request forgery
+        # primitive pointed at VLAN 90.  An INTEGRATION target is a URL the
+        # administrator typed into a settings page, and here it is
+        # 127.0.0.1:8081 — a process in this same namespace.
+        #
+        # So this relaxes the guard for the one destination we chose and
+        # leaves it in force for the one an outsider influences.
+        INTEGRATION_ALLOW_PRIVATE_NETWORKS = 1;
       };
-
-      ##########################################################################
-      # M28 — the Miniflux → Karakeep bridge.
-      #
-      # ── WHY IT LIVES IN THIS CONTAINER ────────────────────────────────────
-      #
-      # Its ONLY client is Miniflux, in this same namespace, so the webhook is
-      # a loopback call: no MAC, no address, no DHCP reservation, no uid, no
-      # veth and no firewall rule anywhere.  containers/homepage.nix makes the
-      # same argument for living inside containers.arr — put a service where
-      # its caller already is, and the network question does not arise.
-      #
-      # ── WHAT IT IS FOR, GIVEN KARAKEEP SUBSCRIBES TO RSS ITSELF ───────────
-      #
-      # Karakeep's own feed subscriptions take a name, a URL, an enabled flag
-      # and a tag-import toggle — no rules, no keyword blocking, no regex.  So
-      # for a feed you want in full, Karakeep alone is the right answer and
-      # this bridge is redundant; docs/guides/reading-stack.md says so.
-      #
-      # What this buys is FILTERING.  Miniflux's per-feed block/keep rules
-      # decide what survives, and only survivors are forwarded.  Its rewrite
-      # rules matter just as much, for a reason that is not obvious: Karakeep
-      # deduplicates on the EXACT url, so `?utm_source=...` makes a second
-      # bookmark for the same page.  Stripping those before forwarding is
-      # something no amount of work on Karakeep's side could do.
-      #
-      # ── `PORT` IS AN ADDRESS, NOT A NUMBER, AND ITS DEFAULT IS WRONG ──────
-      #
-      # Upstream passes this string straight to `http.ListenAndServe`, so it
-      # must be Go's `host:port` form.  Two traps in one variable:
-      #
-      #   * `PORT = "8081"` does NOT work — Go rejects it with "missing port in
-      #     address".  The colon is mandatory.
-      #   * the default is `":8080"`, which is BOTH a collision with Miniflux
-      #     itself (LISTEN_ADDR above) and a bind on every interface, including
-      #     the VLAN-90 leg.  Either alone would be a defect.
-      #
-      # 127.0.0.1 is therefore load-bearing rather than tidy: it is what keeps
-      # the webhook off VLAN 90 entirely, so the container firewall needs no
-      # rule for it and nothing outside this namespace can reach it.
-      ##########################################################################
-      systemd.services.miniflux-karakeep-bridge = {
-        description = "Forward Miniflux entries to Karakeep";
-        wantedBy    = [ "multi-user.target" ];
-        after       = [ "network.target" ];
-
-        environment = {
-          PORT = "127.0.0.1:8081";
-
-          # Through Traefik by name, not to 10.0.90.29 directly — the same
-          # call the in-app integration makes, and for the same reason: the
-          # direct route costs an accept rule in containers/karakeep.nix and a
-          # hardcoded peer address.  `karakeep.goclan.org` is an appApiHosts
-          # name, so the bearer token passes straight through forward-auth.
-          KARAKEEP_API_URL = "https://karakeep.${baseDomain}";
-
-          # THE WHOLE POINT.  Without this the bridge only forwards entries a
-          # human has explicitly starred, which is the manual workflow this
-          # milestone exists to replace.
-          SAVE_NEW_ENTRIES = "true";
-
-          # Deliberately FALSE, and it interacts with M27's workflow.  Adding
-          # forwarded entries to a list would make them `is:inlist`, which is
-          # exactly what the `Inbox` smart list (`-is:archived -is:inlist`)
-          # excludes — so every arriving item would skip the triage queue it is
-          # supposed to land in.  Unfiled is the correct state for something
-          # nobody has looked at yet.
-          ADD_TO_LIST = "false";
-        };
-
-        serviceConfig = {
-          ExecStart       = lib.getExe bridgePkg;
-          EnvironmentFile = bridgeEnvFile;
-
-          # No state, no files, nothing to own.  DynamicUser also gives the
-          # hardening set (ProtectSystem=strict, PrivateTmp, NoNewPrivileges …)
-          # for free, which is worth more here than a static uid would be —
-          # this process holds a Karakeep API token and parses attacker-shaped
-          # input from the internet's feeds.
-          DynamicUser     = true;
-          Restart         = "on-failure";
-          RestartSec      = "10s";
-
-          CapabilityBoundingSet = [ "" ];
-          LockPersonality       = true;
-          MemoryDenyWriteExecute = true;
-          PrivateDevices        = true;
-          ProtectClock          = true;
-          ProtectControlGroups  = true;
-          ProtectHostname       = true;
-          ProtectKernelLogs     = true;
-          ProtectKernelModules  = true;
-          ProtectKernelTunables = true;
-          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" ];
-          RestrictNamespaces    = true;
-          RestrictRealtime      = true;
-          RestrictSUIDSGID      = true;
-          SystemCallArchitectures = "native";
-        };
-      };
-
-      # The client id and secret, out of the staged environment file rather
-      # than out of the store.  A drop-in rather than a `config` entry for the
-      # reason the staging unit's header gives.
-      #
-      # An ADDITIVE directive: `EnvironmentFile=` accumulates, so this does not
-      # replace anything the module sets (it sets none) and needs none of the
-      # empty-string reset that ExecStart would.
-      systemd.services.miniflux.serviceConfig.EnvironmentFile = [ oidcEnvFile ];
     };
+
+    ##########################################################################
+    # M28 — the Miniflux → Karakeep bridge.
+    #
+    # ── WHY IT LIVES IN THIS CONTAINER ────────────────────────────────────
+    #
+    # Its ONLY client is Miniflux, in this same namespace, so the webhook is
+    # a loopback call: no MAC, no address, no DHCP reservation, no uid, no
+    # veth and no firewall rule anywhere.  containers/homepage.nix makes the
+    # same argument for living inside containers.arr — put a service where
+    # its caller already is, and the network question does not arise.
+    #
+    # ── WHAT IT IS FOR, GIVEN KARAKEEP SUBSCRIBES TO RSS ITSELF ───────────
+    #
+    # Karakeep's own feed subscriptions take a name, a URL, an enabled flag
+    # and a tag-import toggle — no rules, no keyword blocking, no regex.  So
+    # for a feed you want in full, Karakeep alone is the right answer and
+    # this bridge is redundant; docs/guides/reading-stack.md says so.
+    #
+    # What this buys is FILTERING.  Miniflux's per-feed block/keep rules
+    # decide what survives, and only survivors are forwarded.  Its rewrite
+    # rules matter just as much, for a reason that is not obvious: Karakeep
+    # deduplicates on the EXACT url, so `?utm_source=...` makes a second
+    # bookmark for the same page.  Stripping those before forwarding is
+    # something no amount of work on Karakeep's side could do.
+    #
+    # ── `PORT` IS AN ADDRESS, NOT A NUMBER, AND ITS DEFAULT IS WRONG ──────
+    #
+    # Upstream passes this string straight to `http.ListenAndServe`, so it
+    # must be Go's `host:port` form.  Two traps in one variable:
+    #
+    #   * `PORT = "8081"` does NOT work — Go rejects it with "missing port in
+    #     address".  The colon is mandatory.
+    #   * the default is `":8080"`, which is BOTH a collision with Miniflux
+    #     itself (LISTEN_ADDR above) and a bind on every interface, including
+    #     the VLAN-90 leg.  Either alone would be a defect.
+    #
+    # 127.0.0.1 is therefore load-bearing rather than tidy: it is what keeps
+    # the webhook off VLAN 90 entirely, so the container firewall needs no
+    # rule for it and nothing outside this namespace can reach it.
+    ##########################################################################
+    systemd.services.miniflux-karakeep-bridge = {
+      description = "Forward Miniflux entries to Karakeep";
+      wantedBy = ["multi-user.target"];
+      after = ["network.target"];
+
+      environment = {
+        PORT = "127.0.0.1:8081";
+
+        # Through Traefik by name, not to 10.0.90.29 directly — the same
+        # call the in-app integration makes, and for the same reason: the
+        # direct route costs an accept rule in containers/karakeep.nix and a
+        # hardcoded peer address.  `karakeep.goclan.org` is an appApiHosts
+        # name, so the bearer token passes straight through forward-auth.
+        KARAKEEP_API_URL = "https://karakeep.${baseDomain}";
+
+        # THE WHOLE POINT.  Without this the bridge only forwards entries a
+        # human has explicitly starred, which is the manual workflow this
+        # milestone exists to replace.
+        SAVE_NEW_ENTRIES = "true";
+
+        # Deliberately FALSE, and it interacts with M27's workflow.  Adding
+        # forwarded entries to a list would make them `is:inlist`, which is
+        # exactly what the `Inbox` smart list (`-is:archived -is:inlist`)
+        # excludes — so every arriving item would skip the triage queue it is
+        # supposed to land in.  Unfiled is the correct state for something
+        # nobody has looked at yet.
+        ADD_TO_LIST = "false";
+      };
+
+      serviceConfig = {
+        ExecStart = lib.getExe bridgePkg;
+        EnvironmentFile = bridgeEnvFile;
+
+        # No state, no files, nothing to own.  DynamicUser also gives the
+        # hardening set (ProtectSystem=strict, PrivateTmp, NoNewPrivileges …)
+        # for free, which is worth more here than a static uid would be —
+        # this process holds a Karakeep API token and parses attacker-shaped
+        # input from the internet's feeds.
+        DynamicUser = true;
+        Restart = "on-failure";
+        RestartSec = "10s";
+
+        CapabilityBoundingSet = [""];
+        LockPersonality = true;
+        MemoryDenyWriteExecute = true;
+        PrivateDevices = true;
+        ProtectClock = true;
+        ProtectControlGroups = true;
+        ProtectHostname = true;
+        ProtectKernelLogs = true;
+        ProtectKernelModules = true;
+        ProtectKernelTunables = true;
+        RestrictAddressFamilies = ["AF_INET" "AF_INET6"];
+        RestrictNamespaces = true;
+        RestrictRealtime = true;
+        RestrictSUIDSGID = true;
+        SystemCallArchitectures = "native";
+      };
+    };
+
+    # The client id and secret, out of the staged environment file rather
+    # than out of the store.  A drop-in rather than a `config` entry for the
+    # reason the staging unit's header gives.
+    #
+    # An ADDITIVE directive: `EnvironmentFile=` accumulates, so this does not
+    # replace anything the module sets (it sets none) and needs none of the
+    # empty-string reset that ExecStart would.
+    systemd.services.miniflux.serviceConfig.EnvironmentFile = [oidcEnvFile];
+  };
 }

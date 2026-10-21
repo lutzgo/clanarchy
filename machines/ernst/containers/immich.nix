@@ -218,8 +218,12 @@
 #   widening the rule.  That trade was already made once, in the other
 #   direction, and it cost a ZBF policy that is broader than the thing it
 #   permits.
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   # Allocated in machines/ernst/allocations.nix.  nspawn passes uids through
   # unmapped, so 3036 inside this container IS 3036 on zdata.
   immichUid = 3036;
@@ -262,11 +266,11 @@ let
   # peer.
   monitoringAddr = "10.0.90.14";
 
-  immichPort  = 2283;   # services.immich.port default; the app itself
-  metricsPort = 8081;   # IMMICH_API_METRICS_PORT || 8081, read off the build
+  immichPort = 2283; # services.immich.port default; the app itself
+  metricsPort = 8081; # IMMICH_API_METRICS_PORT || 8081, read off the build
 
   photosRoot = "/srv/photos";
-  stateRoot  = "/srv/state/immich";
+  stateRoot = "/srv/state/immich";
 
   ##############################################################################
   # ── THE IMPORT, AND WHY ITS SOURCE LISTS ARE NIX AND NOT A GLOB ───────────
@@ -591,8 +595,7 @@ let
   importSourcesSgoNextcloud = ''
     /srv/unsorted/nextcloud/sgo/files/SGo
   '';
-in
-{
+in {
   ##############################################################################
   # Host side — the state tree, the media-location guard, and the veth.
   ##############################################################################
@@ -628,8 +631,6 @@ in
   # ownership on EVERY run, so two that disagree take turns winning, silently,
   # one per deploy.
 
-
-
   ##############################################################################
   # `photo-import` — the one-way migration out of /srv/unsorted.
   #
@@ -660,9 +661,10 @@ in
 
       runtimeInputs = with pkgs; [
         immich-go
-        coreutils findutils
-        curl           # `photo-import check`, and the error messages that
-                       # distinguish "no route" from "bad key"
+        coreutils
+        findutils
+        curl # `photo-import check`, and the error messages that
+        # distinguish "no route" from "bad key"
       ];
 
       text = ''
@@ -698,10 +700,10 @@ in
   # filesystem that rolls back, accepting a camera roll and losing it.
   clanarchy.containers.immich = {
     enable = true;
-    mac    = "02:00:00:90:00:11";
+    mac = "02:00:00:90:00:11";
 
-    uid  = immichUid;
-    gid  = immichGid;
+    uid = immichUid;
+    gid = immichGid;
     user = "immich";
 
     # Pins the PostgreSQL major through `services.postgresql.package`'s
@@ -711,38 +713,79 @@ in
 
     # The photo library is its own dataset, checked by source AND fstype.
     extraGuardedMounts = [
-      { path = photosRoot; source = "zdata/photos"; fstype = "zfs"; }
+      {
+        path = photosRoot;
+        source = "zdata/photos";
+        fstype = "zfs";
+      }
     ];
 
     stateDirs = [
-      { path = photosRoot; owner = immichUid;   group = immichGid; }
-      { path = stateRoot;  owner = immichUid;   group = immichGid; }
+      {
+        path = photosRoot;
+        owner = immichUid;
+        group = immichGid;
+      }
+      {
+        path = stateRoot;
+        owner = immichUid;
+        group = immichGid;
+      }
       # PostgreSQL's own upstream-static id.
-      { path = "${stateRoot}/postgresql"; owner = postgresUid; group = postgresGid; }
-      { path = "${stateRoot}/ml-cache";   owner = immichUid;   group = immichGid; }
+      {
+        path = "${stateRoot}/postgresql";
+        owner = postgresUid;
+        group = postgresGid;
+      }
+      {
+        path = "${stateRoot}/ml-cache";
+        owner = immichUid;
+        group = immichGid;
+      }
     ];
 
     bindMounts = {
       # The library, at the module's own default path so that `mediaLocation`
       # and StateDirectory agree with no override at all.
-      "/var/lib/immich"     = { hostPath = photosRoot; isReadOnly = false; };
+      "/var/lib/immich" = {
+        hostPath = photosRoot;
+        isReadOnly = false;
+      };
       # The PARENT is bound, not the version subdirectory, so a future
       # PostgreSQL major bump lands beside the old one on zdata.
-      "/var/lib/postgresql" = { hostPath = "${stateRoot}/postgresql"; isReadOnly = false; };
+      "/var/lib/postgresql" = {
+        hostPath = "${stateRoot}/postgresql";
+        isReadOnly = false;
+      };
       # The ML model cache (`CacheDirectory = "immich"`), on zdata so the
       # HuggingFace download is a first-run event and not a recurring one.
-      "/var/cache/immich"   = { hostPath = "${stateRoot}/ml-cache";   isReadOnly = false; };
+      "/var/cache/immich" = {
+        hostPath = "${stateRoot}/ml-cache";
+        isReadOnly = false;
+      };
     };
 
     allowFrom = [
-      { peer = traefikAddr;    port = immichPort; }   # every client arrives through the proxy
-      { peer = monitoringAddr; port = metricsPort; }  # the API's own metrics port
-      { peer = dashboardAddr;  port = immichPort; }   # the service index's widget
+      {
+        peer = traefikAddr;
+        port = immichPort;
+      } # every client arrives through the proxy
+      {
+        peer = monitoringAddr;
+        port = metricsPort;
+      } # the API's own metrics port
+      {
+        peer = dashboardAddr;
+        port = immichPort;
+      } # the service index's widget
     ];
 
-    config = { config, pkgs, lib, ... }: {
-
-
+    config = {
+      config,
+      pkgs,
+      lib,
+      ...
+    }: {
       ##########################################################################
       # The service.
       ##########################################################################
@@ -778,7 +821,7 @@ in
         # PrivateDevices = true, so the container cannot reach a render node at
         # all.  `null` would have given it every device on the machine,
         # including the card driving the television.
-        accelerationDevices = [ ];
+        accelerationDevices = [];
 
         environment = {
           # Immich sits behind Traefik, so without this every request appears
@@ -833,11 +876,10 @@ in
       systemd.services.immich-server.serviceConfig.StateDirectoryMode = "0700";
       systemd.services.immich-machine-learning.serviceConfig.CacheDirectoryMode = "0700";
 
-
       # `curl` is the test plan's instrument for proving this backend is
       # reachable from Traefik and from nowhere else.
-      environment.systemPackages = with pkgs; [ curl ];
-      documentation.enable       = false;
+      environment.systemPackages = with pkgs; [curl];
+      documentation.enable = false;
       documentation.nixos.enable = false;
     };
   };

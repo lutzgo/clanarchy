@@ -1,5 +1,4 @@
-{ ... }:
-{
+{...}: {
   imports = [
     ./media.nix
     ./graphics.nix

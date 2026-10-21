@@ -88,12 +88,9 @@
 #   in, or if a routed hostname is in none of them.  Exposing it to the
 #   internet is a SEPARATE act — `wanExposed` in traefik.nix, plus a public A
 #   record, plus a ledger row in docs/ledger.md.
-{ baseDomain }:
-
-let
+{baseDomain}: let
   h = name: "${name}.${baseDomain}";
-in
-rec {
+in rec {
   ############################################################################
   # appApiHosts — EXEMPT FROM forward-auth, PERMANENTLY.
   #

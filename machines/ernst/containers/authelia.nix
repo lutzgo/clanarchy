@@ -253,17 +253,20 @@
 #   deploy that put it on zroot would work perfectly until the next reboot and
 #   then lock every account out of every admin UI at once, with the recovery
 #   path itself behind the thing that broke.  It is on zdata.
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   ############################################################################
   # Identity.
   ############################################################################
-
   # Guest-side MAC — 02:00:00:<vlan>:00:<seq>, allocated in the table in
   # machines/ernst/networking.nix against DHCP reservation 10.0.90.15.  This is
   # the address the UDM-Pro sees; never the host-side vb-authelia.
   autheliaMac = "02:00:00:90:00:07";
-  vlanId      = 90;
+  vlanId = 90;
 
   # Host side of the veth pair.  nspawn names it vb-<container> when
   # --network-bridge= is used — "vb-", not "ve-".
@@ -283,7 +286,7 @@ let
   # is the path the bind mount below has to match.
   instanceName = "main";
   stateDirName = "authelia-${instanceName}";
-  dataDir      = "/var/lib/${stateDirName}";
+  dataDir = "/var/lib/${stateDirName}";
 
   ############################################################################
   # Names, addresses, ports.
@@ -301,8 +304,8 @@ let
   # a second source of truth that diverges silently from the UDM-Pro's pool,
   # while a reference to a peer cannot diverge quietly — if a reservation
   # moves, the thing that depends on it fails immediately and loudly.
-  proxyAddress      = "10.0.90.12";   # traefik   — the only client of 9091
-  monitoringAddress = "10.0.90.14";   # M6        — the only client of 9959
+  proxyAddress = "10.0.90.12"; # traefik   — the only client of 9091
+  monitoringAddress = "10.0.90.14"; # M6        — the only client of 9959
 
   autheliaPort = 9091;
 
@@ -426,17 +429,37 @@ let
   #   argued where it belongs, in containers/mail.nix, and is deliberately NOT
   #   acted on here: a mail outage must not be able to take out 2FA enrolment.
   autheliaUsers = [
-    { name = "lgo";     displayName = "Lutz";    email = "lutz0go@gmail.com";     groups = [ "admins" ]; }
-    { name = "go";      displayName = "Go";      email = "go@${baseDomain}";      groups = [ "admins" ]; }
-    { name = "sgo";     displayName = "Sarinah"; email = "sarinah@${baseDomain}"; groups = [ "household" ]; }
+    {
+      name = "lgo";
+      displayName = "Lutz";
+      email = "lutz0go@gmail.com";
+      groups = ["admins"];
+    }
+    {
+      name = "go";
+      displayName = "Go";
+      email = "go@${baseDomain}";
+      groups = ["admins"];
+    }
+    {
+      name = "sgo";
+      displayName = "Sarinah";
+      email = "sarinah@${baseDomain}";
+      groups = ["household"];
+    }
     # M31.  Max — `household`, not `admins`: the group that reaches exactly one
     # name (`jellyseerr`) and nothing else, which is the right default for a
     # member who has not asked for anything beyond mail.  Widening it later is
     # one word; narrowing it after someone has used it is not.
-    { name = "mgo";     displayName = "Max";     email = "max@${baseDomain}";     groups = [ "household" ]; }
+    {
+      name = "mgo";
+      displayName = "Max";
+      email = "max@${baseDomain}";
+      groups = ["household"];
+    }
   ];
 
-  adminGroup     = "admins";
+  adminGroup = "admins";
   householdGroup = "household";
 
   # ── THE HOSTNAME LISTS NOW LIVE IN ./ingress-policy.nix ───────────────────
@@ -464,7 +487,7 @@ let
   # plain function call crosses that boundary; an option would have to be
   # threaded through `containers.<n>.config` by hand, which is the coupling
   # this is trying to remove.
-  ingressPolicy = import ./ingress-policy.nix { inherit baseDomain; };
+  ingressPolicy = import ./ingress-policy.nix {inherit baseDomain;};
 
   inherit (ingressPolicy) householdHosts protectedHosts;
 
@@ -473,17 +496,17 @@ let
   ############################################################################
   secretsDir = "/run/authelia-secrets";
 
-  jwtFile        = "${secretsDir}/jwt-secret";
-  sessionFile    = "${secretsDir}/session-secret";
+  jwtFile = "${secretsDir}/jwt-secret";
+  sessionFile = "${secretsDir}/session-secret";
   storageKeyFile = "${secretsDir}/storage-encryption-key";
-  oidcHmacFile   = "${secretsDir}/oidc-hmac-secret";
-  oidcKeyFile    = "${secretsDir}/oidc-issuer-private-key";
-  usersFile      = "${secretsDir}/users_database.yml";
+  oidcHmacFile = "${secretsDir}/oidc-hmac-secret";
+  oidcKeyFile = "${secretsDir}/oidc-issuer-private-key";
+  usersFile = "${secretsDir}/users_database.yml";
   oidcClientFile = "${secretsDir}/oidc-clients.yml";
 
   secretsGen = config.clan.core.vars.generators.authelia-secrets;
-  usersGen   = config.clan.core.vars.generators.authelia-users;
-  oidcGen    = config.clan.core.vars.generators.authelia-oidc;
+  usersGen = config.clan.core.vars.generators.authelia-users;
+  oidcGen = config.clan.core.vars.generators.authelia-oidc;
   oidcCwaGen = config.clan.core.vars.generators.authelia-oidc-cwa;
 
   # Grafana's OIDC redirect target.  Grafana's generic_oauth provider always
@@ -576,16 +599,13 @@ let
   # emits depends on `htaccess.RewriteBase`; allauth has no such fallback and
   # paperless's own `PAPERLESS_SOCIALACCOUNT_PROVIDERS` pins `redirect_uri`
   # explicitly, so there is exactly one value either side can produce.
-  paperlessRedirectUri =
-    "https://docs.${baseDomain}/accounts/oidc/authelia/login/callback/";
+  paperlessRedirectUri = "https://docs.${baseDomain}/accounts/oidc/authelia/login/callback/";
 
   oidcPaperlessGen = config.clan.core.vars.generators.authelia-oidc-paperless;
-in
-{
+in {
   ##############################################################################
   # Host-side wiring.
   ##############################################################################
-
 
   ##############################################################################
   # `authelia-code` — print the LATEST one-time code, and only that.
@@ -627,7 +647,7 @@ in
   environment.systemPackages = [
     (pkgs.writeShellApplication {
       name = "authelia-code";
-      runtimeInputs = [ pkgs.coreutils pkgs.gnused pkgs.gnugrep pkgs.gawk ];
+      runtimeInputs = [pkgs.coreutils pkgs.gnused pkgs.gnugrep pkgs.gawk];
       text = ''
         f=/srv/state/authelia/notification.txt
 
@@ -743,14 +763,14 @@ in
   #     systemctl restart authelia-secrets container@authelia
   systemd.services.authelia-secrets = {
     description = "Stage Authelia's secrets and user database for container@authelia";
-    after       = [ "local-fs.target" ];
-    before      = [ "container@authelia.service" ];
-    requiredBy  = [ "container@authelia.service" ];
+    after = ["local-fs.target"];
+    before = ["container@authelia.service"];
+    requiredBy = ["container@authelia.service"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
     };
-    path = [ pkgs.coreutils ];
+    path = [pkgs.coreutils];
     script = ''
       set -euo pipefail
 
@@ -761,16 +781,34 @@ in
       install -d -m 0711 -o root -g root ${secretsDir}
 
       ${lib.concatMapStrings (spec: ''
-        install -m 0400 -o ${toString autheliaUid} -g ${toString autheliaGid} \
-          ${spec.src} ${spec.dst}
-      '') [
-        { src = secretsGen.files."jwt-secret".path;              dst = jwtFile; }
-        { src = secretsGen.files."session-secret".path;          dst = sessionFile; }
-        { src = secretsGen.files."storage-encryption-key".path;  dst = storageKeyFile; }
-        { src = secretsGen.files."oidc-hmac-secret".path;        dst = oidcHmacFile; }
-        { src = secretsGen.files."oidc-issuer-private-key".path; dst = oidcKeyFile; }
-        { src = usersGen.files."users_database.yml".path;        dst = usersFile; }
-      ]}
+          install -m 0400 -o ${toString autheliaUid} -g ${toString autheliaGid} \
+            ${spec.src} ${spec.dst}
+        '') [
+          {
+            src = secretsGen.files."jwt-secret".path;
+            dst = jwtFile;
+          }
+          {
+            src = secretsGen.files."session-secret".path;
+            dst = sessionFile;
+          }
+          {
+            src = secretsGen.files."storage-encryption-key".path;
+            dst = storageKeyFile;
+          }
+          {
+            src = secretsGen.files."oidc-hmac-secret".path;
+            dst = oidcHmacFile;
+          }
+          {
+            src = secretsGen.files."oidc-issuer-private-key".path;
+            dst = oidcKeyFile;
+          }
+          {
+            src = usersGen.files."users_database.yml".path;
+            dst = usersFile;
+          }
+        ]}
 
       # ── The OIDC client block ───────────────────────────────────────────
       #
@@ -1171,19 +1209,19 @@ in
   # Authelia rejects, and it removes the SIGPIPE-under-pipefail trap that
   # `tr -dc … | head -c N` carries.
   clan.core.vars.generators.authelia-secrets = {
-    files."jwt-secret".secret              = true;
-    files."session-secret".secret          = true;
-    files."storage-encryption-key".secret  = true;
-    files."oidc-hmac-secret".secret        = true;
+    files."jwt-secret".secret = true;
+    files."session-secret".secret = true;
+    files."storage-encryption-key".secret = true;
+    files."oidc-hmac-secret".secret = true;
     files."oidc-issuer-private-key".secret = true;
 
-    files."jwt-secret".restartUnits              = [ "authelia-secrets.service" "container@authelia.service" ];
-    files."session-secret".restartUnits          = [ "authelia-secrets.service" "container@authelia.service" ];
-    files."storage-encryption-key".restartUnits  = [ "authelia-secrets.service" "container@authelia.service" ];
-    files."oidc-hmac-secret".restartUnits        = [ "authelia-secrets.service" "container@authelia.service" ];
-    files."oidc-issuer-private-key".restartUnits = [ "authelia-secrets.service" "container@authelia.service" ];
+    files."jwt-secret".restartUnits = ["authelia-secrets.service" "container@authelia.service"];
+    files."session-secret".restartUnits = ["authelia-secrets.service" "container@authelia.service"];
+    files."storage-encryption-key".restartUnits = ["authelia-secrets.service" "container@authelia.service"];
+    files."oidc-hmac-secret".restartUnits = ["authelia-secrets.service" "container@authelia.service"];
+    files."oidc-issuer-private-key".restartUnits = ["authelia-secrets.service" "container@authelia.service"];
 
-    runtimeInputs = [ pkgs.authelia pkgs.openssl pkgs.gnused pkgs.coreutils ];
+    runtimeInputs = [pkgs.authelia pkgs.openssl pkgs.gnused pkgs.coreutils];
 
     script = ''
       set -euo pipefail
@@ -1230,18 +1268,19 @@ in
   # m=65536 t=3 p=4 - the profile Authelia recommends for a machine with
   # memory to spare, which this one has.
   clan.core.vars.generators.authelia-users = {
-    files."users_database.yml".secret       = true;
-    files."users_database.yml".restartUnits = [ "authelia-secrets.service" "container@authelia.service" ];
+    files."users_database.yml".secret = true;
+    files."users_database.yml".restartUnits = ["authelia-secrets.service" "container@authelia.service"];
 
     prompts = lib.listToAttrs (map (u: {
-      name  = "password-${u.name}";
-      value = {
-        description = "Authelia password for ${u.name} (${u.displayName}) at https://${authHost}";
-        type        = "hidden";
-      };
-    }) autheliaUsers);
+        name = "password-${u.name}";
+        value = {
+          description = "Authelia password for ${u.name} (${u.displayName}) at https://${authHost}";
+          type = "hidden";
+        };
+      })
+      autheliaUsers);
 
-    runtimeInputs = [ pkgs.authelia pkgs.gnused pkgs.coreutils ];
+    runtimeInputs = [pkgs.authelia pkgs.gnused pkgs.coreutils];
 
     script = ''
       set -euo pipefail
@@ -1286,10 +1325,11 @@ in
       }
 
       ${lib.concatMapStrings (u: ''
-        emit_user ${lib.escapeShellArg u.name} ${lib.escapeShellArg u.displayName} \
-          ${lib.escapeShellArg u.email} "$prompts/password-${u.name}" \
-          ${lib.escapeShellArgs u.groups}
-      '') autheliaUsers}
+          emit_user ${lib.escapeShellArg u.name} ${lib.escapeShellArg u.displayName} \
+            ${lib.escapeShellArg u.email} "$prompts/password-${u.name}" \
+            ${lib.escapeShellArgs u.groups}
+        '')
+        autheliaUsers}
     '';
   };
 
@@ -1310,13 +1350,12 @@ in
   # declares the restartUnits for it, because those units exist only on the
   # machine holding that role.
   clan.core.vars.generators.authelia-oidc = {
-    files."grafana-client-secret".secret        = true;
+    files."grafana-client-secret".secret = true;
     files."grafana-client-secret-digest".secret = true;
 
-    files."grafana-client-secret-digest".restartUnits =
-      [ "authelia-secrets.service" "container@authelia.service" ];
+    files."grafana-client-secret-digest".restartUnits = ["authelia-secrets.service" "container@authelia.service"];
 
-    runtimeInputs = [ pkgs.authelia pkgs.gnused pkgs.coreutils ];
+    runtimeInputs = [pkgs.authelia pkgs.gnused pkgs.coreutils];
 
     script = ''
       set -euo pipefail
@@ -1384,13 +1423,12 @@ in
   # docs/guides/ernst-app-api-ingress.md.
   ##############################################################################
   clan.core.vars.generators.authelia-oidc-cwa = {
-    files."cwa-client-secret".secret        = true;
+    files."cwa-client-secret".secret = true;
     files."cwa-client-secret-digest".secret = true;
 
-    files."cwa-client-secret-digest".restartUnits =
-      [ "authelia-secrets.service" "container@authelia.service" ];
+    files."cwa-client-secret-digest".restartUnits = ["authelia-secrets.service" "container@authelia.service"];
 
-    runtimeInputs = [ pkgs.authelia pkgs.gnused pkgs.coreutils ];
+    runtimeInputs = [pkgs.authelia pkgs.gnused pkgs.coreutils];
 
     script = ''
       set -euo pipefail
@@ -1440,16 +1478,14 @@ in
   # the consumer).
   ##############################################################################
   clan.core.vars.generators.authelia-oidc-nextcloud = {
-    files."nextcloud-client-secret".secret        = true;
+    files."nextcloud-client-secret".secret = true;
     files."nextcloud-client-secret-digest".secret = true;
 
-    files."nextcloud-client-secret-digest".restartUnits =
-      [ "authelia-secrets.service" "container@authelia.service" ];
+    files."nextcloud-client-secret-digest".restartUnits = ["authelia-secrets.service" "container@authelia.service"];
 
-    files."nextcloud-client-secret".restartUnits =
-      [ "nextcloud-secrets.service" "container@nextcloud.service" ];
+    files."nextcloud-client-secret".restartUnits = ["nextcloud-secrets.service" "container@nextcloud.service"];
 
-    runtimeInputs = [ pkgs.authelia pkgs.gnused pkgs.coreutils ];
+    runtimeInputs = [pkgs.authelia pkgs.gnused pkgs.coreutils];
 
     script = ''
       set -euo pipefail
@@ -1481,16 +1517,14 @@ in
   # digest bounces Authelia; the plaintext bounces paperless.
   ##############################################################################
   clan.core.vars.generators.authelia-oidc-paperless = {
-    files."paperless-client-secret".secret        = true;
+    files."paperless-client-secret".secret = true;
     files."paperless-client-secret-digest".secret = true;
 
-    files."paperless-client-secret-digest".restartUnits =
-      [ "authelia-secrets.service" "container@authelia.service" ];
+    files."paperless-client-secret-digest".restartUnits = ["authelia-secrets.service" "container@authelia.service"];
 
-    files."paperless-client-secret".restartUnits =
-      [ "paperless-secrets.service" "container@paperless.service" ];
+    files."paperless-client-secret".restartUnits = ["paperless-secrets.service" "container@paperless.service"];
 
-    runtimeInputs = [ pkgs.authelia pkgs.gnused pkgs.coreutils ];
+    runtimeInputs = [pkgs.authelia pkgs.gnused pkgs.coreutils];
 
     script = ''
       set -euo pipefail
@@ -1527,16 +1561,14 @@ in
   # is involved at all.
   ##############################################################################
   clan.core.vars.generators.authelia-oidc-miniflux = {
-    files."miniflux-client-secret".secret        = true;
+    files."miniflux-client-secret".secret = true;
     files."miniflux-client-secret-digest".secret = true;
 
-    files."miniflux-client-secret-digest".restartUnits =
-      [ "authelia-secrets.service" "container@authelia.service" ];
+    files."miniflux-client-secret-digest".restartUnits = ["authelia-secrets.service" "container@authelia.service"];
 
-    files."miniflux-client-secret".restartUnits =
-      [ "miniflux-secrets.service" "container@miniflux.service" ];
+    files."miniflux-client-secret".restartUnits = ["miniflux-secrets.service" "container@miniflux.service"];
 
-    runtimeInputs = [ pkgs.authelia pkgs.gnused pkgs.coreutils ];
+    runtimeInputs = [pkgs.authelia pkgs.gnused pkgs.coreutils];
 
     script = ''
       set -euo pipefail
@@ -1569,16 +1601,14 @@ in
   # THE CLIENT BLOCK ITSELF — see `claims_policies` in the staging script.
   ##############################################################################
   clan.core.vars.generators.authelia-oidc-karakeep = {
-    files."karakeep-client-secret".secret        = true;
+    files."karakeep-client-secret".secret = true;
     files."karakeep-client-secret-digest".secret = true;
 
-    files."karakeep-client-secret-digest".restartUnits =
-      [ "authelia-secrets.service" "container@authelia.service" ];
+    files."karakeep-client-secret-digest".restartUnits = ["authelia-secrets.service" "container@authelia.service"];
 
-    files."karakeep-client-secret".restartUnits =
-      [ "karakeep-secrets.service" "container@karakeep.service" ];
+    files."karakeep-client-secret".restartUnits = ["karakeep-secrets.service" "container@karakeep.service"];
 
-    runtimeInputs = [ pkgs.authelia pkgs.gnused pkgs.coreutils ];
+    runtimeInputs = [pkgs.authelia pkgs.gnused pkgs.coreutils];
 
     script = ''
       set -euo pipefail
@@ -1601,7 +1631,6 @@ in
     '';
   };
 
-
   ##############################################################################
   # The container.
   ##############################################################################
@@ -1615,7 +1644,7 @@ in
   # which is not the single env file the module's `secrets` option writes.
   clanarchy.containers.authelia = {
     enable = true;
-    mac    = autheliaMac;
+    mac = autheliaMac;
 
     # NO uid/gid PIN: the in-container user block declares it in full.
 
@@ -1629,26 +1658,46 @@ in
     # NUMERIC ids on purpose: `authelia-main` is a container user and the host
     # has no matching passwd entry.
     stateDirs = [
-      { path = "/srv/state/authelia"; owner = autheliaUid; group = autheliaGid; }
+      {
+        path = "/srv/state/authelia";
+        owner = autheliaUid;
+        group = autheliaGid;
+      }
     ];
 
     bindMounts = {
       # The SQLite database and the notifier's file, on zdata. Remapped to the
       # unit's own StateDirectory so services.authelia needs no path override.
-      "${dataDir}"    = { hostPath = "/srv/state/authelia"; isReadOnly = false; };
+      "${dataDir}" = {
+        hostPath = "/srv/state/authelia";
+        isReadOnly = false;
+      };
       # The staged secrets, read-only, at the identical path.
-      "${secretsDir}" = { hostPath = secretsDir;            isReadOnly = true;  };
+      "${secretsDir}" = {
+        hostPath = secretsDir;
+        isReadOnly = true;
+      };
     };
 
     # Traefik for the auth flow, monitoring for the metrics port. Nothing else
     # on the services VLAN reaches either.
     allowFrom = [
-      { peer = proxyAddress;      port = autheliaPort; }
-      { peer = monitoringAddress; port = metricsPort; }
+      {
+        peer = proxyAddress;
+        port = autheliaPort;
+      }
+      {
+        peer = monitoringAddress;
+        port = metricsPort;
+      }
     ];
 
-    config = { config, pkgs, lib, ... }: {
-
+    config = {
+      config,
+      pkgs,
+      lib,
+      ...
+    }: {
       # Matches the host.  Every "when was this account banned", every session
       # expiry and every line in the access log is rendered in local time, and
       # a container that silently defaults to UTC makes all of them a two-hour
@@ -1678,10 +1727,10 @@ in
       ##########################################################################
       users.users."authelia-${instanceName}" = {
         isSystemUser = true;
-        uid          = autheliaUid;
-        group        = "authelia-${instanceName}";
+        uid = autheliaUid;
+        group = "authelia-${instanceName}";
       };
-      users.groups."authelia-${instanceName}" = { gid = autheliaGid; };
+      users.groups."authelia-${instanceName}" = {gid = autheliaGid;};
 
       ##########################################################################
       # Authelia.
@@ -1699,10 +1748,10 @@ in
         # the supported way to keep a private key out of the store, and it is
         # why the key is a FILE here and not a settings value.
         secrets = {
-          jwtSecretFile            = jwtFile;
-          sessionSecretFile        = sessionFile;
+          jwtSecretFile = jwtFile;
+          sessionSecretFile = sessionFile;
           storageEncryptionKeyFile = storageKeyFile;
-          oidcHmacSecretFile       = oidcHmacFile;
+          oidcHmacSecretFile = oidcHmacFile;
           oidcIssuerPrivateKeyFile = oidcKeyFile;
         };
 
@@ -1710,7 +1759,7 @@ in
         # --config file it is given, and the module's preStart runs
         # `validate-config` across all of them - so a malformed staged file
         # fails the unit before it can serve a single request.
-        settingsFiles = [ oidcClientFile ];
+        settingsFiles = [oidcClientFile];
 
         settings = {
           theme = "dark";
@@ -1770,7 +1819,7 @@ in
             # authenticate to AUTHELIA with a Basic header, this is the line
             # that stops it, and it should get an OIDC client instead.
             endpoints.authz.forward-auth.authn_strategies = [
-              { name = "CookieSession"; }
+              {name = "CookieSession";}
             ];
           };
 
@@ -1780,7 +1829,7 @@ in
           # module defaults to JSON, which is the right choice for a log
           # shipper and the wrong one for a human with journalctl.
           log = {
-            level  = "info";
+            level = "info";
             format = "text";
           };
 
@@ -1811,12 +1860,12 @@ in
           ######################################################################
           session.cookies = [
             {
-              domain       = baseDomain;
+              domain = baseDomain;
               authelia_url = "https://${authHost}";
-              name         = "authelia_session";
-              expiration   = "12 hours";
-              inactivity   = "1 hour";
-              remember_me  = "1 month";
+              name = "authelia_session";
+              expiration = "12 hours";
+              inactivity = "1 hour";
+              remember_me = "1 month";
             }
           ];
 
@@ -1837,7 +1886,7 @@ in
           ######################################################################
           notifier = {
             disable_startup_check = true;
-            filesystem.filename   = "${dataDir}/notification.txt";
+            filesystem.filename = "${dataDir}/notification.txt";
           };
 
           ######################################################################
@@ -1856,11 +1905,11 @@ in
           ######################################################################
           authentication_backend = {
             password_reset.disable = true;
-            refresh_interval       = "5 minutes";
+            refresh_interval = "5 minutes";
             file = {
-              path            = usersFile;
-              watch           = false;
-              search.email    = true;
+              path = usersFile;
+              watch = false;
+              search.email = true;
               search.case_insensitive = true;
             };
           };
@@ -1878,11 +1927,11 @@ in
           ######################################################################
           default_2fa_method = "totp";
           totp = {
-            issuer    = baseDomain;
-            algorithm = "sha1";     # what every authenticator app implements
-            digits    = 6;
-            period    = 30;
-            skew      = 1;          # ±30 s, for a phone with a drifting clock
+            issuer = baseDomain;
+            algorithm = "sha1"; # what every authenticator app implements
+            digits = 6;
+            period = 30;
+            skew = 1; # ±30 s, for a phone with a drifting clock
           };
 
           ######################################################################
@@ -1901,8 +1950,8 @@ in
           ######################################################################
           regulation = {
             max_retries = 3;
-            find_time   = "5 minutes";
-            ban_time    = "15 minutes";
+            find_time = "5 minutes";
+            ban_time = "15 minutes";
           };
 
           ######################################################################
@@ -1925,9 +1974,9 @@ in
             default_policy = "deny";
             rules = [
               {
-                domain  = protectedHosts;
-                policy  = "two_factor";
-                subject = [ "group:${adminGroup}" ];
+                domain = protectedHosts;
+                policy = "two_factor";
+                subject = ["group:${adminGroup}"];
               }
 
               # M16 — Jellyseerr, the one name a NON-admin may reach.  Two
@@ -1942,9 +1991,9 @@ in
               # containers/traefik.nix.  Internally it costs a TOTP prompt
               # once per remember-me period.
               {
-                domain  = householdHosts;
-                policy  = "two_factor";
-                subject = [ "group:${adminGroup}" "group:${householdGroup}" ];
+                domain = householdHosts;
+                policy = "two_factor";
+                subject = ["group:${adminGroup}" "group:${householdGroup}"];
               }
             ];
           };
@@ -1964,8 +2013,8 @@ in
             # stating is that an ID token outliving the session it was minted
             # from would let Grafana keep a login the portal has already
             # expired.  One hour, matching `inactivity` above.
-            lifespans.access_token  = "1 hour";
-            lifespans.id_token      = "1 hour";
+            lifespans.access_token = "1 hour";
+            lifespans.id_token = "1 hour";
             lifespans.refresh_token = "90 minutes";
 
             # Never enable this without knowing what it does: it lets a client
@@ -2014,8 +2063,8 @@ in
       # endpoint answers from HERE and, run anywhere else, that it does not.
       # `dig` checks the container resolves through Technitium.  `sqlite` reads
       # the regulation and TOTP tables when a login misbehaves.
-      environment.systemPackages = with pkgs; [ curl dnsutils sqlite ];
-      documentation.enable       = false;
+      environment.systemPackages = with pkgs; [curl dnsutils sqlite];
+      documentation.enable = false;
       documentation.nixos.enable = false;
     };
   };

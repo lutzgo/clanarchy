@@ -11,7 +11,6 @@
   buildPythonPackage,
   fetchurl,
 }:
-
 buildPythonPackage rec {
   pname = "comfyui-embedded-docs";
   version = "0.5.11";
@@ -24,7 +23,7 @@ buildPythonPackage rec {
 
   doCheck = false;
 
-  pythonImportsCheck = [ "comfyui_embedded_docs" ];
+  pythonImportsCheck = ["comfyui_embedded_docs"];
 
   meta = {
     description = "Embedded per-node documentation for ComfyUI";

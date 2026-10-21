@@ -1,4 +1,4 @@
-{ lib, ... }:
+{lib, ...}:
 #
 # @clanarchy/desktop — assign each machine a desktop environment via inventory.
 #
@@ -43,20 +43,16 @@
       };
     };
 
-    perInstance =
-      { settings, ... }:
-      {
-        nixosModule =
-          { ... }:
-          {
-            imports = [ ../modules/desktop/niri.nix ];
-            clanarchy.desktop.niri.enable = true;
-            clanarchy.desktop.niri.display.scale = settings.display.scale;
-            clanarchy.desktop.niri.display.resolution.width = settings.display.width;
-            clanarchy.desktop.niri.display.resolution.height = settings.display.height;
-            clanarchy.desktop.niri.input.pointerSpeed = settings.input.pointerSpeed;
-          };
+    perInstance = {settings, ...}: {
+      nixosModule = {...}: {
+        imports = [../modules/desktop/niri.nix];
+        clanarchy.desktop.niri.enable = true;
+        clanarchy.desktop.niri.display.scale = settings.display.scale;
+        clanarchy.desktop.niri.display.resolution.width = settings.display.width;
+        clanarchy.desktop.niri.display.resolution.height = settings.display.height;
+        clanarchy.desktop.niri.input.pointerSpeed = settings.input.pointerSpeed;
       };
+    };
   };
 
   roles.labwc = {
@@ -74,31 +70,23 @@
       };
     };
 
-    perInstance =
-      { settings, ... }:
-      {
-        nixosModule =
-          { ... }:
-          {
-            imports = [ ../modules/desktop/labwc.nix ];
-            clanarchy.desktop.labwc.enable = true;
-            clanarchy.desktop.labwc.display.scale = settings.display.scale;
-            clanarchy.desktop.labwc.input.pointerSpeed = settings.input.pointerSpeed;
-          };
+    perInstance = {settings, ...}: {
+      nixosModule = {...}: {
+        imports = [../modules/desktop/labwc.nix];
+        clanarchy.desktop.labwc.enable = true;
+        clanarchy.desktop.labwc.display.scale = settings.display.scale;
+        clanarchy.desktop.labwc.input.pointerSpeed = settings.input.pointerSpeed;
       };
+    };
   };
 
   roles.kde = {
     description = "KDE Plasma 6 desktop environment with SDDM Wayland session.";
-    perInstance =
-      { ... }:
-      {
-        nixosModule =
-          { ... }:
-          {
-            imports = [ ../modules/desktop/kde.nix ];
-            clanarchy.desktop.kde.enable = true;
-          };
+    perInstance = {...}: {
+      nixosModule = {...}: {
+        imports = [../modules/desktop/kde.nix];
+        clanarchy.desktop.kde.enable = true;
       };
+    };
   };
 }

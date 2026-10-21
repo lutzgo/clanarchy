@@ -335,16 +335,16 @@
     boot.extraModprobeConfig = lib.mkAfter ''
       options v4l2loopback devices=1 video_nr=10 card_label="OBS Virtual Camera" exclusive_caps=1
     '';
-    environment.systemPackages = [ pkgs.v4l-utils ];
+    environment.systemPackages = [pkgs.v4l-utils];
 
     # fprintd service (controlled by fprintd option)
     services.fprintd.enable = lib.mkDefault config.clanarchy.desktop.niri.fprintd.enable;
 
     # Fingerprint PAM auth — use per-service sub-attribute form so each service's
     # other options (unixAuth, etc.) are preserved via normal submodule merging.
-    security.pam.services.login.fprintAuth   = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
-    security.pam.services.greetd.fprintAuth  = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
-    security.pam.services.sudo.fprintAuth    = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
+    security.pam.services.login.fprintAuth = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
+    security.pam.services.greetd.fprintAuth = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
+    security.pam.services.sudo.fprintAuth = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
     # Noctalia lockscreen — PamContext in QML requires a dedicated PAM service.
     security.pam.services.noctalia.fprintAuth = lib.mkIf config.clanarchy.desktop.niri.fprintd.enable true;
 

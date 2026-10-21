@@ -5,12 +5,14 @@
 #       set the IOMMU kernel parameters appropriate for the configured CPU
 #       vendor (clanarchy.hardware.cpu).  IOMMU is required for PCI device
 #       passthrough and harmless on host-only VMs.
-{ config, lib, ... }:
-let
+{
+  config,
+  lib,
+  ...
+}: let
   cfg = config.clanarchy.virtualisation;
   cpu = config.clanarchy.hardware.cpu;
-in
-{
+in {
   options.clanarchy.virtualisation = {
     libvirtd.enable =
       lib.mkEnableOption "libvirtd (KVM/QEMU) + IOMMU kernel params";
@@ -59,13 +61,15 @@ in
     # unit that actually owns that job.
     #
     # mkForce because the upstream module sets it unconditionally.
-    systemd.services.libvirtd.wantedBy = lib.mkForce [ ];
+    systemd.services.libvirtd.wantedBy = lib.mkForce [];
 
     boot.kernelParams =
-      (if cpu == "amd"
-       then [ "amd_iommu=on" ]
-       else [ "intel_iommu=on" ])
-      ++ [ "iommu=pt" ];
+      (
+        if cpu == "amd"
+        then ["amd_iommu=on"]
+        else ["intel_iommu=on"]
+      )
+      ++ ["iommu=pt"];
 
     environment.persistence."/persist".directories = [
       "/var/lib/libvirt"

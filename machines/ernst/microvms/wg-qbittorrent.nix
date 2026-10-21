@@ -242,9 +242,13 @@
 #   a machine module through _module.args, and reading _module.args from
 #   `imports` is an infinite recursion — the module system has to know the
 #   import list before it can compute the arguments.
-{ config, lib, pkgs, ... }:
-let
-  vmName  = "wg-qbittorrent";
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
+  vmName = "wg-qbittorrent";
 
   # Host-side tap.  The name matters twice: machines/ernst/networking.nix
   # already lists "interface-name:tap-*" as NetworkManager-unmanaged, and the
@@ -255,12 +259,12 @@ let
   # machines/ernst/networking.nix.  This is the address the UDM-Pro sees and
   # the one the DHCP reservation keys on; never the host-side tap.
   guestMac = "02:00:00:90:00:03";
-  vlanId   = 90;
+  vlanId = 90;
 
-  qbtUid   = 3001;
+  qbtUid = 3001;
   mediaGid = 3000;
 
-  webuiPort   = 8080;
+  webuiPort = 8080;
   torrentPort = 6881;
 
   # ── M14: slskd ────────────────────────────────────────────────────────────
@@ -281,7 +285,7 @@ let
   #          on wg0 ONLY, exactly like qBittorrent's torrentPort, and for the
   #          same reason: an incoming peer connection arriving on eth0 would be
   #          a peer that found this host at its real address.
-  slskdWebPort    = 5030;
+  slskdWebPort = 5030;
   slskdListenPort = 50300;
 
   # slskd's download tree, and it is a SIBLING of downloadRoot rather than a
@@ -322,7 +326,7 @@ let
   # It is also inside the killswitch, which is the right side of it: the
   # exporter has no reason to reach the internet, and the output chain below
   # gives it no way to.
-  exporterPort   = 8000;
+  exporterPort = 8000;
   monitoringAddr = "10.0.90.14";
 
   # M14.  Traefik's veth address on VLAN 90 (M5, reservation keyed on
@@ -362,7 +366,7 @@ let
   traefikAddr = "10.0.90.12";
 
   downloadRoot = "/srv/media/torrents";
-  stateSource  = "/srv/state/qbittorrent";
+  stateSource = "/srv/state/qbittorrent";
 
   # Management networks allowed to reach the WebUI and SSH.  LAN (1) is where
   # lgo's machines live; Servers (50) is ernst itself, so a port-forward from
@@ -372,7 +376,7 @@ let
   # are on the far side of the UDM-Pro, so a reply to one has to be steered out
   # of eth0 explicitly or wg-quick's `suppress_prefixlength 0` sends it into the
   # tunnel — the failure written up at length at the routes = ... below.
-  mgmtNets = [ "10.0.10.0/24" "10.0.50.0/24" ];
+  mgmtNets = ["10.0.10.0/24" "10.0.50.0/24"];
 
   # M4: the arr container, on the guest's OWN link (VLAN 90).  Sonarr and Radarr
   # drive qBittorrent through its WebUI API, so this address needs the two
@@ -397,8 +401,8 @@ let
   # M14 hoisted the bare address out of the list: slskd's CIDR-scoped API key
   # needs the same address in a different syntax, and two literals for one host
   # is how they drift apart.
-  arrAddr   = "10.0.90.13";
-  arrClient = [ "${arrAddr}/32" ];
+  arrAddr = "10.0.90.13";
+  arrClient = ["${arrAddr}/32"];
 
   # The union, and it has exactly TWO consumers: the input chain's WebUI accept
   # and the output chain's established-reply accept.  That coupling is the point
@@ -418,7 +422,7 @@ let
   # symlink to a per-generation directory which is replaced on every deploy, so
   # a running virtiofsd would keep serving a deleted generation.  A directory
   # we own has a stable identity and is rewritten in place.
-  hostSecretsDir  = "/run/microvm-${vmName}-secrets";
+  hostSecretsDir = "/run/microvm-${vmName}-secrets";
   guestSecretsDir = "/run/wg-secrets";
 
   gen = config.clan.core.vars.generators.wg-qbittorrent;
@@ -448,7 +452,7 @@ let
   slskdGen =
     if config.clan.core.vars.generators ? slskd-credentials
     then config.clan.core.vars.generators.slskd-credentials
-    else { files."slskd.env".path = "/no-such-path"; };
+    else {files."slskd.env".path = "/no-such-path";};
 
   # qBittorrent.conf, with the WebUI password hash left as a placeholder that
   # the guest substitutes at start.  The ExecStartPre that renders it carries
@@ -505,8 +509,7 @@ let
     WebUI\ClickjackingProtection=true
     WebUI\HostHeaderValidation=true
   '';
-in
-{
+in {
   ##############################################################################
   # Host side.
   ##############################################################################
@@ -592,11 +595,11 @@ in
   ##############################################################################
   systemd.services."microvm-secrets-${vmName}" = {
     description = "Stage clan-vars secrets for MicroVM '${vmName}'";
-    after       = [ "local-fs.target" ];
-    before      = [ "microvm-virtiofsd@${vmName}.service" "microvm@${vmName}.service" ];
-    requiredBy  = [ "microvm@${vmName}.service" ];
+    after = ["local-fs.target"];
+    before = ["microvm-virtiofsd@${vmName}.service" "microvm@${vmName}.service"];
+    requiredBy = ["microvm@${vmName}.service"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
     };
     script = ''
@@ -668,11 +671,17 @@ in
   systemd.network.networks."60-${tapName}" = {
     matchConfig.Name = tapName;
     networkConfig = {
-      Bridge              = "br0";
+      Bridge = "br0";
       LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
+      IPv6AcceptRA = false;
     };
-    bridgeVLANs = [ { VLAN = vlanId; PVID = vlanId; EgressUntagged = vlanId; } ];
+    bridgeVLANs = [
+      {
+        VLAN = vlanId;
+        PVID = vlanId;
+        EgressUntagged = vlanId;
+      }
+    ];
     linkConfig.RequiredForOnline = "enslaved";
   };
 
@@ -695,31 +704,31 @@ in
   # everyone to click through the warning that is supposed to mean something.
   ##############################################################################
   clan.core.vars.generators.wg-qbittorrent = {
-    files."wg0.conf".secret              = true;
-    files."endpoint-ip".secret           = true;
-    files."endpoint-port".secret         = true;
-    files."ssh-host-key".secret          = true;
-    files."ssh-host-key.pub".secret      = false;
+    files."wg0.conf".secret = true;
+    files."endpoint-ip".secret = true;
+    files."endpoint-port".secret = true;
+    files."ssh-host-key".secret = true;
+    files."ssh-host-key.pub".secret = false;
 
     prompts."private-key" = {
       description = "WireGuard PRIVATE key for this peer (from the VPN provider's config)";
-      type        = "hidden";
+      type = "hidden";
     };
     prompts."peer-public-key" = {
       description = "WireGuard PUBLIC key of the provider's server";
-      type        = "line";
+      type = "line";
     };
     prompts."endpoint" = {
       description = "Provider endpoint as IP:PORT — an IP LITERAL, not a hostname (e.g. 193.32.127.70:51820)";
-      type        = "line";
+      type = "line";
     };
     prompts."address" = {
       description = "Tunnel address assigned by the provider, with prefix (e.g. 10.68.4.21/32)";
-      type        = "line";
+      type = "line";
     };
     prompts."dns" = {
       description = "In-tunnel DNS server supplied by the provider (IVPN standard: 172.16.0.1)";
-      type        = "line";
+      type = "line";
     };
     prompts."mtu" = {
       # Optional, and the only prompt that accepts an empty answer.
@@ -734,13 +743,13 @@ in
       # Empty answer → no MTU line at all → wg-quick's derivation, which is the
       # right default for a provider that does not specify one.
       description = "MTU from the provider's config, or EMPTY for wg-quick's default (IVPN: 1412)";
-      type        = "line";
+      type = "line";
     };
     # THE WebUI PASSWORD IS NOT PROMPTED HERE ANY MORE — see the
     # `qbittorrent-webui` generator below for where it went and why moving it
     # was not optional.
 
-    runtimeInputs = [ pkgs.coreutils pkgs.gnugrep pkgs.python3 pkgs.openssh ];
+    runtimeInputs = [pkgs.coreutils pkgs.gnugrep pkgs.python3 pkgs.openssh];
 
     script = ''
       set -euo pipefail
@@ -933,15 +942,15 @@ in
   #   declared by any generator and can be deleted after this lands.  Leaving
   #   it does no harm — nothing reads it — but it is a stale copy of a secret.
   clan.core.vars.generators.qbittorrent-webui = {
-    files."password".secret        = true;
+    files."password".secret = true;
     files."password-pbkdf2".secret = true;
 
     prompts."password" = {
       description = "qBittorrent WebUI password for user 'admin' (the EXISTING one, unless you mean to change it)";
-      type        = "hidden";
+      type = "hidden";
     };
 
-    runtimeInputs = [ pkgs.coreutils pkgs.python3 ];
+    runtimeInputs = [pkgs.coreutils pkgs.python3];
 
     script = ''
       set -euo pipefail
@@ -1030,7 +1039,7 @@ in
   ##############################################################################
   clan.core.vars.generators.slskd-credentials = {
     files."slskd.env".secret = true;
-    files."api-key".secret   = true;
+    files."api-key".secret = true;
 
     # ── THESE THREE PROMPTS ARE TWO DIFFERENT ACCOUNTS ────────────────────
     #
@@ -1054,7 +1063,7 @@ in
         So do NOT use `admin`, `slskd`, your first name, or anything short:
         those are all long since taken. Pick something distinctive.
       '';
-      type        = "line";
+      type = "line";
     };
     prompts."slsk-password" = {
       description = ''
@@ -1065,7 +1074,7 @@ in
         over a protocol with weak credential protection; reusing it would mean
         a leak there also hands over this machine's admin panel.
       '';
-      type        = "hidden";
+      type = "hidden";
     };
     prompts."web-password" = {
       description = ''
@@ -1075,10 +1084,10 @@ in
         Nothing outside ernst knows this account exists. Unrelated to the
         Soulseek credentials above.
       '';
-      type        = "hidden";
+      type = "hidden";
     };
 
-    runtimeInputs = [ pkgs.coreutils pkgs.openssl ];
+    runtimeInputs = [pkgs.coreutils pkgs.openssl];
 
     script = ''
       set -euo pipefail
@@ -1107,7 +1116,12 @@ in
   microvm.vms.${vmName} = {
     autostart = true;
 
-    config = { config, lib, pkgs, ... }: {
+    config = {
+      config,
+      lib,
+      pkgs,
+      ...
+    }: {
       system.stateVersion = "26.05";
 
       microvm = {
@@ -1124,13 +1138,15 @@ in
         # qemu hangs when the guest has precisely 2 GB
         # (microvm-nix/microvm.nix#171).  4096 also leaves headroom for
         # libtorrent's piece cache once the session is large; ernst has 256 GB.
-        mem  = 4096;
+        mem = 4096;
 
-        interfaces = [ {
-          type = "tap";
-          id   = tapName;
-          mac  = guestMac;
-        } ];
+        interfaces = [
+          {
+            type = "tap";
+            id = tapName;
+            mac = guestMac;
+          }
+        ];
 
         # posixAcl = false on every share — see the ZFS caveat in the header.
         shares = [
@@ -1248,15 +1264,15 @@ in
       systemd.network.networks."10-eth0" = {
         matchConfig.Name = "eth0";
         networkConfig = {
-          DHCP         = "ipv4";
+          DHCP = "ipv4";
           IPv6AcceptRA = false;
         };
         dhcpV4Config = {
           # The lease supplies an address and a gateway and nothing else.  A
           # resolver from DHCP would be a LAN resolver, i.e. a name leak.
-          UseDNS     = false;
+          UseDNS = false;
           UseDomains = false;
-          UseNTP     = false;
+          UseNTP = false;
         };
 
         # The carve-out that keeps replies to management clients out of the
@@ -1305,10 +1321,12 @@ in
         # and the one actually in use here is 10.0.254.4 — and a /16 carve-out
         # would route every DNS query at eth0, where the killswitch correctly
         # drops it.  Tunnel up, `wg show` perfect, not one name resolving.
-        routes = map (net: {
-          Destination = net;
-          Gateway     = "_dhcp4";
-        }) mgmtNets;
+        routes =
+          map (net: {
+            Destination = net;
+            Gateway = "_dhcp4";
+          })
+          mgmtNets;
 
         linkConfig.RequiredForOnline = "routable";
       };
@@ -1489,12 +1507,12 @@ in
       # way out.  Ordered before wg-quick for the obvious reason.
       systemd.services.vpn-killswitch-endpoint = {
         description = "Populate the killswitch's VPN endpoint set";
-        after       = [ "nftables.service" ];
-        partOf      = [ "nftables.service" ];
-        before      = [ "wg-quick-wg0.service" ];
-        requiredBy  = [ "wg-quick-wg0.service" ];
+        after = ["nftables.service"];
+        partOf = ["nftables.service"];
+        before = ["wg-quick-wg0.service"];
+        requiredBy = ["wg-quick-wg0.service"];
         serviceConfig = {
-          Type            = "oneshot";
+          Type = "oneshot";
           RemainAfterExit = true;
         };
         script = ''
@@ -1527,13 +1545,13 @@ in
       services.openssh = {
         enable = true;
         settings = {
-          PermitRootLogin        = "prohibit-password";
+          PermitRootLogin = "prohibit-password";
           PasswordAuthentication = false;
           KbdInteractiveAuthentication = false;
         };
         # Host key from the vars generator: root is a tmpfs, so a
         # self-generated key would be new on every boot.
-        hostKeys = [ ];
+        hostKeys = [];
         extraConfig = ''
           HostKey ${guestSecretsDir}/ssh_host_ed25519_key
         '';
@@ -1551,16 +1569,16 @@ in
       # supplementary one.
       users.users.qbittorrent = {
         isSystemUser = true;
-        uid          = qbtUid;
-        group        = "media";
+        uid = qbtUid;
+        group = "media";
       };
-      users.groups.media = { gid = mediaGid; };
+      users.groups.media = {gid = mediaGid;};
 
       services.qbittorrent = {
-        enable         = true;
-        user           = "qbittorrent";
-        group          = "media";
-        webuiPort      = webuiPort;
+        enable = true;
+        user = "qbittorrent";
+        group = "media";
+        webuiPort = webuiPort;
         torrentingPort = torrentPort;
 
         # Reachability is the firewall's job, above; upstream's openFirewall
@@ -1575,12 +1593,12 @@ in
         # password hash must not be in the store.  Setting both would mean two
         # ExecStartPre definitions of the same option, which is a merge
         # conflict, not an append.
-        serverConfig = { };
+        serverConfig = {};
 
         # --confirm-legal-notice as well as [LegalNotice] Accepted=true: the
         # conf covers the normal path, the flag covers the first start, when
         # the file is written after the check.
-        extraArgs = [ "--confirm-legal-notice" ];
+        extraArgs = ["--confirm-legal-notice"];
       };
 
       ##########################################################################
@@ -1611,25 +1629,25 @@ in
       # with nothing in its log.  Re-run that before reaching for it again.
       systemd.services.qbittorrent-exporter = {
         description = "Prometheus exporter for qBittorrent";
-        wantedBy    = [ "multi-user.target" ];
-        after       = [ "qbittorrent.service" ];
-        wants       = [ "qbittorrent.service" ];
+        wantedBy = ["multi-user.target"];
+        after = ["qbittorrent.service"];
+        wants = ["qbittorrent.service"];
 
         # Same reasoning as the qbittorrent unit above, one path instead of
         # three: LoadCredential= below reads from the secrets share, and a
         # LoadCredential whose source is missing fails the unit.  That failure
         # would at least be loud, unlike qBittorrent's — but ordering it
         # correctly means it does not happen at all.
-        unitConfig.RequiresMountsFor = [ guestSecretsDir ];
+        unitConfig.RequiresMountsFor = [guestSecretsDir];
 
         environment = {
           # 127.0.0.1: the exporter and qBittorrent share this guest's netns,
           # so the WebUI API conversation never touches the wire.  That is the
           # whole reason the exporter lives in here rather than beside
           # Prometheus — see the exporterPort note at the top of this file.
-          QBITTORRENT_BASE_URL       = "http://127.0.0.1:${toString webuiPort}";
-          QBITTORRENT_USERNAME       = "admin";
-          QBITTORRENT_PASSWORD_FILE  = "%d/webui-password";
+          QBITTORRENT_BASE_URL = "http://127.0.0.1:${toString webuiPort}";
+          QBITTORRENT_USERNAME = "admin";
+          QBITTORRENT_PASSWORD_FILE = "%d/webui-password";
 
           # ── THE COOKIE NAME.  WITHOUT THIS THE EXPORTER NEVER SERVES ──────
           #
@@ -1663,7 +1681,7 @@ in
           # Derived from webuiPort rather than written as a literal, because
           # the port is in the name — changing the WebUI port and not this
           # would resurrect the loop.
-          QBITTORRENT_COOKIE_NAME    = "QBT_SID_${toString webuiPort}";
+          QBITTORRENT_COOKIE_NAME = "QBT_SID_${toString webuiPort}";
 
           # 0.0.0.0, restricted by the nftables rule above to the monitoring
           # container's address alone.  Stated rather than left to the
@@ -1674,12 +1692,12 @@ in
         };
 
         serviceConfig = {
-          Type      = "simple";
+          Type = "simple";
           ExecStart = "${pkgs.prometheus-qbittorrent-exporter}/bin/qbit-exp";
-          Restart   = "on-failure";
+          Restart = "on-failure";
           RestartSec = "30s";
 
-          LoadCredential = [ "webui-password:${guestSecretsDir}/webui-password" ];
+          LoadCredential = ["webui-password:${guestSecretsDir}/webui-password"];
 
           # DynamicUser, and KEPT — this is the flaresolverr shape, not the
           # prowlarr one.  The exporter holds no state, writes nothing, and
@@ -1687,21 +1705,21 @@ in
           # gain by pinning a uid and six hardening directives to lose by it.
           DynamicUser = true;
 
-          CapabilityBoundingSet   = "";
-          PrivateDevices          = true;
-          ProtectClock            = true;
-          ProtectHostname         = true;
-          ProtectKernelLogs       = true;
-          ProtectKernelModules    = true;
-          ProtectKernelTunables   = true;
-          ProtectProc             = "invisible";
-          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" ];
-          RestrictNamespaces      = true;
-          RestrictRealtime        = true;
-          LockPersonality         = true;
+          CapabilityBoundingSet = "";
+          PrivateDevices = true;
+          ProtectClock = true;
+          ProtectHostname = true;
+          ProtectKernelLogs = true;
+          ProtectKernelModules = true;
+          ProtectKernelTunables = true;
+          ProtectProc = "invisible";
+          RestrictAddressFamilies = ["AF_INET" "AF_INET6"];
+          RestrictNamespaces = true;
+          RestrictRealtime = true;
+          LockPersonality = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
-          UMask                   = "0077";
+          SystemCallFilter = ["@system-service" "~@privileged" "~@debug" "~@mount"];
+          UMask = "0077";
         };
       };
 
@@ -1711,14 +1729,14 @@ in
         # state M6 alerts on.  Without this a permanently-broken qBittorrent
         # would restart forever and stay just as invisible as it is today.
         startLimitIntervalSec = 300;
-        startLimitBurst       = 5;
+        startLimitBurst = 5;
 
         # Start after the tunnel, but do not depend on it: `wants`, not
         # `requires`.  If wg0 fails, qBittorrent should still come up so the
         # WebUI can say so — it is bound to wg0 at the application level and
         # will not move a byte regardless.
-        wants = [ "wg-quick-wg0.service" ];
-        after = [ "wg-quick-wg0.service" ];
+        wants = ["wg-quick-wg0.service"];
+        after = ["wg-quick-wg0.service"];
 
         # ── ORDER AFTER THE VIRTIOFS SHARES.  THIS WAS MISSING ──────────────
         #
@@ -1811,7 +1829,7 @@ in
           #
           # Five attempts in five minutes: comfortably more than a race needs,
           # and far too few to hammer a genuinely broken configuration.
-          Restart    = "always";
+          Restart = "always";
           RestartSec = "10s";
 
           # THE line that makes M4's hardlinks possible.  0002 → files 0664,
@@ -1881,14 +1899,14 @@ in
       # below, so no stray group is created.
       users.users.slskd = {
         isSystemUser = true;
-        uid          = slskdUid;
-        group        = "media";
+        uid = slskdUid;
+        group = "media";
       };
 
       services.slskd = {
         enable = true;
-        user   = "slskd";
-        group  = "media";
+        user = "slskd";
+        group = "media";
 
         # Reachability is the killswitch's job, above.  Upstream's openFirewall
         # opens soulseek.listen_port via networking.firewall — which is
@@ -1915,7 +1933,7 @@ in
 
         settings = {
           directories = {
-            downloads  = "${soulseekRoot}/complete";
+            downloads = "${soulseekRoot}/complete";
             incomplete = "${soulseekRoot}/incomplete";
           };
 
@@ -1943,7 +1961,7 @@ in
           # different decision entirely from "download music".  If sharing is
           # ever wanted it needs its own directory, its own argument, and a
           # read-only share into this guest — not a line added here.
-          shares.directories = [ ];
+          shares.directories = [];
         };
       };
 
@@ -1953,8 +1971,8 @@ in
         # at the application level, so if wg0 is down it should come up and say
         # so rather than vanish.  The module's own `after = [ "network.target" ]`
         # is merged with this, not replaced by it.
-        wants = [ "wg-quick-wg0.service" ];
-        after = [ "wg-quick-wg0.service" ];
+        wants = ["wg-quick-wg0.service"];
+        after = ["wg-quick-wg0.service"];
 
         serviceConfig = {
           # THE line that makes M14's hardlinks possible, and upstream does NOT
@@ -1995,10 +2013,10 @@ in
 
           # AF_INET/AF_INET6 for the Soulseek network and the API, AF_UNIX for
           # logging.  slskd speaks no other address family.
-          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+          RestrictAddressFamilies = ["AF_INET" "AF_INET6" "AF_UNIX"];
 
-          LockPersonality         = true;
-          RestrictRealtime        = true;
+          LockPersonality = true;
+          RestrictRealtime = true;
           SystemCallArchitectures = "native";
 
           # `@chown` is added back after `~@privileged` removes it, and the
@@ -2020,7 +2038,7 @@ in
           # there is no CAP_CHOWN and the kernel only permits chown to this
           # process's own uid/gid.  nixpkgs' own sonarr and radarr units permit
           # chown for the same class of workload.
-          SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" "@chown" ];
+          SystemCallFilter = ["@system-service" "~@privileged" "~@debug" "~@mount" "@chown"];
 
           # NOT MemoryDenyWriteExecute.  slskd is .NET and the JIT maps
           # writable-then-executable pages, so it would start and then die on

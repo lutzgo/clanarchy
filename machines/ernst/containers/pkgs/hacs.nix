@@ -88,7 +88,6 @@
   buildHomeAssistantComponent,
   aiogithubapi,
 }:
-
 buildHomeAssistantComponent rec {
   owner = "hacs";
   domain = "hacs";

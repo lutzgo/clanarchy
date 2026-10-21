@@ -46,10 +46,8 @@
 #   4. Copy the current ESP contents from system-a to system-b's new ESP
 #      and re-run `nixos-rebuild switch` so systemd-boot writes matching
 #      entries into both.
-{ ... }:
-{
+{...}: {
   disko.devices = {
-
     # ── System pool: 2× 960 GB SAS SSD, mirrored ─────────────────────────────
     disk.system-a = {
       type = "disk";
@@ -61,24 +59,27 @@
             size = "1G";
             type = "EF00";
             content = {
-              type         = "filesystem";
-              format       = "vfat";
-              mountpoint   = "/boot";
-              extraArgs    = [ "-n" "ESP" ];
-              mountOptions = [ "umask=0077" ];
+              type = "filesystem";
+              format = "vfat";
+              mountpoint = "/boot";
+              extraArgs = ["-n" "ESP"];
+              mountOptions = ["umask=0077"];
             };
           };
           swap = {
             size = "16G";
             content = {
-              type             = "swap";
+              type = "swap";
               randomEncryption = true;
-              discardPolicy    = "both";
+              discardPolicy = "both";
             };
           };
           zfs = {
-            size    = "100%";
-            content = { type = "zfs"; pool = "zroot"; };
+            size = "100%";
+            content = {
+              type = "zfs";
+              pool = "zroot";
+            };
           };
         };
       };
@@ -108,8 +109,11 @@
           # };
 
           zfs = {
-            size    = "100%";
-            content = { type = "zfs"; pool = "zroot"; };
+            size = "100%";
+            content = {
+              type = "zfs";
+              pool = "zroot";
+            };
           };
         };
       };
@@ -117,23 +121,89 @@
 
     # ── Data pool: 6× 15.36 TB SAS SSD, raidz1 ───────────────────────────────
     # Ordered by serial number for repeatability across re-installs.
-    disk.data-1 = { type = "disk"; device = "/dev/disk/by-id/wwn-0x5002538b0213bbe0"; # PM1643a 15.36T  S5DENE0T100746
-      content = { type = "gpt"; partitions.zfs = { size = "100%"; content = { type = "zfs"; pool = "zdata"; }; }; };
+    disk.data-1 = {
+      type = "disk";
+      device = "/dev/disk/by-id/wwn-0x5002538b0213bbe0"; # PM1643a 15.36T  S5DENE0T100746
+      content = {
+        type = "gpt";
+        partitions.zfs = {
+          size = "100%";
+          content = {
+            type = "zfs";
+            pool = "zdata";
+          };
+        };
+      };
     };
-    disk.data-2 = { type = "disk"; device = "/dev/disk/by-id/wwn-0x5002538b0213bc20"; # PM1643a 15.36T  S5DENE0T100750
-      content = { type = "gpt"; partitions.zfs = { size = "100%"; content = { type = "zfs"; pool = "zdata"; }; }; };
+    disk.data-2 = {
+      type = "disk";
+      device = "/dev/disk/by-id/wwn-0x5002538b0213bc20"; # PM1643a 15.36T  S5DENE0T100750
+      content = {
+        type = "gpt";
+        partitions.zfs = {
+          size = "100%";
+          content = {
+            type = "zfs";
+            pool = "zdata";
+          };
+        };
+      };
     };
-    disk.data-3 = { type = "disk"; device = "/dev/disk/by-id/wwn-0x5002538b0213bc30"; # PM1643a 15.36T  S5DENE0T100751
-      content = { type = "gpt"; partitions.zfs = { size = "100%"; content = { type = "zfs"; pool = "zdata"; }; }; };
+    disk.data-3 = {
+      type = "disk";
+      device = "/dev/disk/by-id/wwn-0x5002538b0213bc30"; # PM1643a 15.36T  S5DENE0T100751
+      content = {
+        type = "gpt";
+        partitions.zfs = {
+          size = "100%";
+          content = {
+            type = "zfs";
+            pool = "zdata";
+          };
+        };
+      };
     };
-    disk.data-4 = { type = "disk"; device = "/dev/disk/by-id/wwn-0x5002538b0213bc80"; # PM1643a 15.36T  S5DENE0T100756
-      content = { type = "gpt"; partitions.zfs = { size = "100%"; content = { type = "zfs"; pool = "zdata"; }; }; };
+    disk.data-4 = {
+      type = "disk";
+      device = "/dev/disk/by-id/wwn-0x5002538b0213bc80"; # PM1643a 15.36T  S5DENE0T100756
+      content = {
+        type = "gpt";
+        partitions.zfs = {
+          size = "100%";
+          content = {
+            type = "zfs";
+            pool = "zdata";
+          };
+        };
+      };
     };
-    disk.data-5 = { type = "disk"; device = "/dev/disk/by-id/wwn-0x5002538b0214e620"; # PM1643a 15.36T  S5DENE0T100909
-      content = { type = "gpt"; partitions.zfs = { size = "100%"; content = { type = "zfs"; pool = "zdata"; }; }; };
+    disk.data-5 = {
+      type = "disk";
+      device = "/dev/disk/by-id/wwn-0x5002538b0214e620"; # PM1643a 15.36T  S5DENE0T100909
+      content = {
+        type = "gpt";
+        partitions.zfs = {
+          size = "100%";
+          content = {
+            type = "zfs";
+            pool = "zdata";
+          };
+        };
+      };
     };
-    disk.data-6 = { type = "disk"; device = "/dev/disk/by-id/wwn-0x5002538b0311c2b0"; # PM1643a 15.36T  S5DENA0W101156
-      content = { type = "gpt"; partitions.zfs = { size = "100%"; content = { type = "zfs"; pool = "zdata"; }; }; };
+    disk.data-6 = {
+      type = "disk";
+      device = "/dev/disk/by-id/wwn-0x5002538b0311c2b0"; # PM1643a 15.36T  S5DENA0W101156
+      content = {
+        type = "gpt";
+        partitions.zfs = {
+          size = "100%";
+          content = {
+            type = "zfs";
+            pool = "zdata";
+          };
+        };
+      };
     };
 
     # ── zroot: mirror, encrypted, root filesystems ───────────────────────────
@@ -143,9 +213,9 @@
 
       rootFsOptions = {
         compression = "zstd";
-        atime       = "off";
-        encryption  = "aes-256-gcm";
-        keyformat   = "passphrase";
+        atime = "off";
+        encryption = "aes-256-gcm";
+        keyformat = "passphrase";
         keylocation = "prompt";
       };
 
@@ -156,9 +226,15 @@
       # @blank every boot and /nix is reproducible, so neither is worth
       # snapshotting.
       datasets = {
-        root    = { type = "zfs_fs"; mountpoint = "/"; };
-        nix     = { type = "zfs_fs"; mountpoint = "/nix"; };
-        home    = {
+        root = {
+          type = "zfs_fs";
+          mountpoint = "/";
+        };
+        nix = {
+          type = "zfs_fs";
+          mountpoint = "/nix";
+        };
+        home = {
           type = "zfs_fs";
           mountpoint = "/home";
           options = {
@@ -174,7 +250,10 @@
             "com.sun:auto-snapshot" = "true";
           };
         };
-        tmp     = { type = "zfs_fs"; mountpoint = "/tmp"; };
+        tmp = {
+          type = "zfs_fs";
+          mountpoint = "/tmp";
+        };
       };
     };
 
@@ -185,12 +264,12 @@
 
       rootFsOptions = {
         compression = "zstd";
-        atime       = "off";
-        encryption  = "aes-256-gcm";
-        keyformat   = "passphrase";
+        atime = "off";
+        encryption = "aes-256-gcm";
+        keyformat = "passphrase";
         keylocation = "prompt";
         # Pool is for bulk storage; do not auto-mount at /.
-        mountpoint  = "none";
+        mountpoint = "none";
       };
 
       # Datasets on the bulk pool.
@@ -224,10 +303,10 @@
           options = {
             mountpoint = "legacy";
             recordsize = "1M";
-            exec       = "off";
-            setuid     = "off";
-            devices    = "off";
-            atime      = "off";
+            exec = "off";
+            setuid = "off";
+            devices = "off";
+            atime = "off";
           };
         };
 
@@ -250,9 +329,9 @@
           mountpoint = "/srv/state";
           options = {
             mountpoint = "legacy";
-            setuid     = "off";
-            devices    = "off";
-            atime      = "off";
+            setuid = "off";
+            devices = "off";
+            atime = "off";
             "com.sun:auto-snapshot" = "true";
           };
         };
@@ -270,9 +349,9 @@
           mountpoint = "/srv/games";
           options = {
             mountpoint = "legacy";
-            setuid     = "off";
-            devices    = "off";
-            atime      = "off";
+            setuid = "off";
+            devices = "off";
+            atime = "off";
           };
         };
 
@@ -306,10 +385,10 @@
           options = {
             mountpoint = "legacy";
             recordsize = "1M";
-            exec       = "off";
-            setuid     = "off";
-            devices    = "off";
-            atime      = "off";
+            exec = "off";
+            setuid = "off";
+            devices = "off";
+            atime = "off";
             "com.sun:auto-snapshot" = "true";
           };
         };
@@ -342,11 +421,11 @@
           options = {
             mountpoint = "legacy";
             recordsize = "1M";
-            exec       = "off";
-            setuid     = "off";
-            devices    = "off";
-            atime      = "off";
-            acltype    = "posix";
+            exec = "off";
+            setuid = "off";
+            devices = "off";
+            atime = "off";
+            acltype = "posix";
             "com.sun:auto-snapshot" = "true";
           };
         };
@@ -369,11 +448,11 @@
           mountpoint = "/srv/gardens";
           options = {
             mountpoint = "legacy";
-            exec       = "off";
-            setuid     = "off";
-            devices    = "off";
-            atime      = "off";
-            acltype    = "posix";
+            exec = "off";
+            setuid = "off";
+            devices = "off";
+            atime = "off";
+            acltype = "posix";
             "com.sun:auto-snapshot" = "true";
           };
         };
@@ -420,10 +499,10 @@
           options = {
             mountpoint = "legacy";
             recordsize = "1M";
-            exec       = "off";
-            setuid     = "off";
-            devices    = "off";
-            atime      = "off";
+            exec = "off";
+            setuid = "off";
+            devices = "off";
+            atime = "off";
             "com.sun:auto-snapshot" = "true";
           };
         };
@@ -482,10 +561,10 @@
           options = {
             mountpoint = "legacy";
             recordsize = "1M";
-            exec       = "off";
-            setuid     = "off";
-            devices    = "off";
-            atime      = "off";
+            exec = "off";
+            setuid = "off";
+            devices = "off";
+            atime = "off";
             "com.sun:auto-snapshot" = "true";
           };
         };
@@ -529,10 +608,10 @@
           options = {
             mountpoint = "legacy";
             recordsize = "1M";
-            exec       = "off";
-            setuid     = "off";
-            devices    = "off";
-            atime      = "off";
+            exec = "off";
+            setuid = "off";
+            devices = "off";
+            atime = "off";
             "com.sun:auto-snapshot" = "true";
           };
         };
@@ -578,10 +657,10 @@
           options = {
             mountpoint = "legacy";
             recordsize = "1M";
-            exec       = "off";
-            setuid     = "off";
-            devices    = "off";
-            atime      = "off";
+            exec = "off";
+            setuid = "off";
+            devices = "off";
+            atime = "off";
             "com.sun:auto-snapshot" = "true";
           };
         };
@@ -635,7 +714,7 @@
   #   `[ "defaults" ]`, so this MERGES with it rather than replacing it — no
   #   mkForce, and `defaults,nofail` is what reaches the mount unit.
   ##############################################################################
-  fileSystems."/srv/audiobooks".options = [ "nofail" ];
+  fileSystems."/srv/audiobooks".options = ["nofail"];
 
   ##############################################################################
   # `nofail` on /srv/photos — M22, and the same argument, applied deliberately
@@ -667,7 +746,7 @@
   # the Audiobookshelf one, and it is why this dataset's consumer is blocked by
   # its check while the arr container's is not.
   ##############################################################################
-  fileSystems."/srv/photos".options = [ "nofail" ];
+  fileSystems."/srv/photos".options = ["nofail"];
 
   ##############################################################################
   # `nofail` on /srv/nextcloud — M23, third and last application of the same
@@ -690,7 +769,7 @@
   # making sure the service that could do that damage cannot start at all
   # unless its storage is the storage it thinks it is.
   ##############################################################################
-  fileSystems."/srv/nextcloud".options = [ "nofail" ];
+  fileSystems."/srv/nextcloud".options = ["nofail"];
 
   ##############################################################################
   # `nofail` on /srv/docs — M32, fourth application, and the shortest argument
@@ -708,5 +787,5 @@
   # silently writes to zroot is the only service on this machine that can
   # destroy something which exists nowhere else.
   ##############################################################################
-  fileSystems."/srv/docs".options = [ "nofail" ];
+  fileSystems."/srv/docs".options = ["nofail"];
 }

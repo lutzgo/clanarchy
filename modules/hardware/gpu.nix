@@ -6,11 +6,14 @@
 #   clanarchy.hardware.gpu.amd.enable        — amdgpu + mesa + radeonsi Rusticl
 #   clanarchy.hardware.gpu.amd.rocm.enable   — full ROCm stack (HIP, OpenCL, rocminfo)
 #   clanarchy.hardware.gpu.intel.enable      — intel-media-driver (i965/iHD)
-{ config, lib, pkgs, ... }:
-let
-  cfg = config.clanarchy.hardware.gpu;
-in
 {
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
+  cfg = config.clanarchy.hardware.gpu;
+in {
   options.clanarchy.hardware.gpu = {
     amd.enable = lib.mkEnableOption "AMD GPU baseline (amdgpu kernel module + mesa + Rusticl)";
     amd.rocm.enable = lib.mkEnableOption "ROCm compute stack (HIP runtime, OpenCL ICD, rocminfo)";
@@ -19,7 +22,7 @@ in
 
   config = lib.mkMerge [
     (lib.mkIf cfg.amd.enable {
-      boot.initrd.kernelModules = [ "amdgpu" ];
+      boot.initrd.kernelModules = ["amdgpu"];
       hardware.graphics.enable = true;
       # `pkgs.mesa` is already the default `hardware.graphics.package` on
       # stock nixpkgs, so listing it in `extraPackages` was a no-op — until
@@ -27,9 +30,9 @@ in
       # at which point both mesa builds landed in the graphics-drivers
       # buildEnv and collided on `libEGL_mesa.so.0.0.0`.  Only ship the
       # extras that aren't already covered by `package`.
-      hardware.graphics.extraPackages = [ pkgs.rocmPackages.clr.icd ];
+      hardware.graphics.extraPackages = [pkgs.rocmPackages.clr.icd];
       environment.variables.RUSTICL_ENABLE = "radeonsi";
-      environment.systemPackages = [ pkgs.clinfo ];
+      environment.systemPackages = [pkgs.clinfo];
     })
 
     (lib.mkIf cfg.amd.rocm.enable {

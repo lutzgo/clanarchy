@@ -19,47 +19,58 @@
 # stops the tiers drifting in the parts that are the same.
 #
 # Nothing here names a host, a bridge, a VLAN or a domain.
-{ lib, pkgs }:
-let
+{
+  lib,
+  pkgs,
+}: let
   # `unitsFor` is the only thing the two tiers differ on:
   # `container@<name>.service` for nspawn; for podman, EVERY image unit in the
   # namespace — not just the primary one. romm has two, and its database unit
   # is ordered only against the primary, so ordering the dirs unit before the
   # primary alone would let the database start first and find no directory to
   # mount.
-  mkSupportUnits =
-    { name
-    , unitsFor
-    , stateMount
-    , stateSource
-    , secretsDir
-    , stateDirs ? [ ]
-    , secrets ? { }
-    , extraMounts ? [ ]
-    }:
-    let
-      # A mount unit's name is its path with slashes turned into dashes.
-      mountUnit = p: "${lib.replaceStrings [ "/" ] [ "-" ] (lib.removePrefix "/" p)}.mount";
+  mkSupportUnits = {
+    name,
+    unitsFor,
+    stateMount,
+    stateSource,
+    secretsDir,
+    stateDirs ? [],
+    secrets ? {},
+    extraMounts ? [],
+  }: let
+    # A mount unit's name is its path with slashes turned into dashes.
+    mountUnit = p: "${lib.replaceStrings ["/"] ["-"] (lib.removePrefix "/" p)}.mount";
 
-      # EACH MOUNT IS CHECKED AGAINST ITS OWN SOURCE, not one global one.
-      # immich owns `zdata/photos` as well as living on `zdata/state`, so a
-      # single expected source asserts the wrong thing for one of its mounts.
-      guardedMounts =
-        [ { path = stateMount; source = stateSource; fstype = null; } ] ++ extraMounts;
+    # EACH MOUNT IS CHECKED AGAINST ITS OWN SOURCE, not one global one.
+    # immich owns `zdata/photos` as well as living on `zdata/state`, so a
+    # single expected source asserts the wrong thing for one of its mounts.
+    guardedMounts =
+      [
+        {
+          path = stateMount;
+          source = stateSource;
+          fstype = null;
+        }
+      ]
+      ++ extraMounts;
 
-      # THE TARGET IS THE PARENT, NOT THE LEAF. `findmnt --target` on a path
-      # that does not exist yet returns nothing — it does not walk up to the
-      # nearest existing ancestor — so checking the directory this unit is
-      # about to create fails on every first run. immich-dirs refused its own
-      # first deploy that way on 2026-09-11.
-      #
-      # fstype is checked where asked for: a path can be backed by a
-      # right-looking SOURCE and still not be the dataset intended.
-      guardFor = m: ''
+    # THE TARGET IS THE PARENT, NOT THE LEAF. `findmnt --target` on a path
+    # that does not exist yet returns nothing — it does not walk up to the
+    # nearest existing ancestor — so checking the directory this unit is
+    # about to create fails on every first run. immich-dirs refused its own
+    # first deploy that way on 2026-09-11.
+    #
+    # fstype is checked where asked for: a path can be backed by a
+    # right-looking SOURCE and still not be the dataset intended.
+    guardFor = m:
+      ''
         src=$(findmnt --noheadings --output SOURCE --target ${m.path} || true)
-      '' + lib.optionalString (m.fstype != null) ''
+      ''
+      + lib.optionalString (m.fstype != null) ''
         fstype=$(findmnt --noheadings --output FSTYPE --target ${m.path} || true)
-      '' + ''
+      ''
+      + ''
         if [ "$src" != ${lib.escapeShellArg m.source} ]${lib.optionalString (m.fstype != null) " || [ \"$fstype\" != ${lib.escapeShellArg m.fstype} ]"}; then
           echo "${name}-dirs: ${m.path} is not ${m.source}${lib.optionalString (m.fstype != null) " (${m.fstype})"}." >&2
           echo "  found: source='$src'${lib.optionalString (m.fstype != null) " fstype='$fstype'"}" >&2
@@ -70,11 +81,10 @@ let
         fi
       '';
 
-      # Numeric ids on purpose: these are CONTAINER users, and the host has no
-      # matching passwd entry to resolve a name against.
-      installDir = d:
-        "install -d -o ${toString d.owner} -g ${toString d.group} -m ${d.mode} ${d.path}\n";
-    in
+    # Numeric ids on purpose: these are CONTAINER users, and the host has no
+    # matching passwd entry to resolve a name against.
+    installDir = d: "install -d -o ${toString d.owner} -g ${toString d.group} -m ${d.mode} ${d.path}\n";
+  in
     # ── AN ORDERED UNIT, AND NOT `systemd.tmpfiles.rules`, AND THAT IS
     #    MEASURED ──────────────────────────────────────────────────────────
     #
@@ -89,19 +99,22 @@ let
     # activation starts. Nor is a path declared BOTH ways: tmpfiles re-applies
     # mode and ownership on every run, so two definitions that disagree take
     # turns winning, one per deploy.
-    lib.optionalAttrs (stateDirs != [ ]) {
+    lib.optionalAttrs (stateDirs != []) {
       "${name}-dirs" = {
         description = "Verify state is mounted and create ${name}'s directories";
-        wantedBy   = [ "multi-user.target" ];
-        after      = map (m: mountUnit m.path) guardedMounts;
-        requires   = map (m: mountUnit m.path) guardedMounts;
-        before     = unitsFor;
+        wantedBy = ["multi-user.target"];
+        after = map (m: mountUnit m.path) guardedMounts;
+        requires = map (m: mountUnit m.path) guardedMounts;
+        before = unitsFor;
         # BLOCKING (`requires` + `requiredBy`), not advisory: a service that
         # comes up without its state directory is a NEW EMPTY one on a
         # filesystem that rolls back, which will accept data and lose it.
         requiredBy = unitsFor;
-        serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
-        path = [ pkgs.util-linux pkgs.coreutils ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        path = [pkgs.util-linux pkgs.coreutils];
         script = ''
           set -eu
           ${lib.concatMapStrings guardFor guardedMounts}
@@ -109,14 +122,17 @@ let
         '';
       };
     }
-    // lib.optionalAttrs (secrets != { }) {
+    // lib.optionalAttrs (secrets != {}) {
       "${name}-secrets" = {
         description = "Stage ${name}'s credentials for ${lib.concatStringsSep ", " unitsFor}";
-        after       = [ "local-fs.target" ];
-        before      = unitsFor;
-        requiredBy  = unitsFor;
-        serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
-        path = [ pkgs.coreutils ];
+        after = ["local-fs.target"];
+        before = unitsFor;
+        requiredBy = unitsFor;
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        path = [pkgs.coreutils];
         # NOT a bind of /run/secrets itself: that path is a symlink to a
         # per-generation directory REPLACED on every deploy, so a bind
         # established at container start keeps exposing a deleted generation.
@@ -165,23 +181,29 @@ let
           }
 
           ${lib.concatStrings (lib.mapAttrsToList (envFile: vars: ''
-            {
-            ${lib.concatStrings (lib.mapAttrsToList (k: v:
-              # A key is either read from a var file or a literal constant.
-              # Both end up in the same env file, because systemd reads one
-              # `EnvironmentFile=` per service and splitting a client id from
-              # its secret would mean two files for one consumer.
-              if v.file != null && v.required then ''
-                printf '%s=%s\n' ${lib.escapeShellArg k} "$(needvar ${lib.escapeShellArg k} ${v.file})"
-              '' else if v.file != null then ''
-                printf '%s=%s\n' ${lib.escapeShellArg k} "$(readvar ${v.file})"
-              '' else ''
-                printf '%s=%s\n' ${lib.escapeShellArg k} ${lib.escapeShellArg v.value}
-              '') vars)}
-            } > ${secretsDir}/${envFile}.tmp
-            chmod 0400 ${secretsDir}/${envFile}.tmp
-            mv -f ${secretsDir}/${envFile}.tmp ${secretsDir}/${envFile}
-          '') secrets)}
+              {
+              ${lib.concatStrings (lib.mapAttrsToList (k: v:
+                # A key is either read from a var file or a literal constant.
+                # Both end up in the same env file, because systemd reads one
+                # `EnvironmentFile=` per service and splitting a client id from
+                # its secret would mean two files for one consumer.
+                  if v.file != null && v.required
+                  then ''
+                    printf '%s=%s\n' ${lib.escapeShellArg k} "$(needvar ${lib.escapeShellArg k} ${v.file})"
+                  ''
+                  else if v.file != null
+                  then ''
+                    printf '%s=%s\n' ${lib.escapeShellArg k} "$(readvar ${v.file})"
+                  ''
+                  else ''
+                    printf '%s=%s\n' ${lib.escapeShellArg k} ${lib.escapeShellArg v.value}
+                  '')
+              vars)}
+              } > ${secretsDir}/${envFile}.tmp
+              chmod 0400 ${secretsDir}/${envFile}.tmp
+              mv -f ${secretsDir}/${envFile}.tmp ${secretsDir}/${envFile}
+            '')
+            secrets)}
         '';
       };
     };
@@ -206,13 +228,13 @@ let
         '';
       };
       proto = lib.mkOption {
-        type = lib.types.enum [ "tcp" "udp" ];
+        type = lib.types.enum ["tcp" "udp"];
         default = "tcp";
         description = "Protocol.";
       };
 
       family = lib.mkOption {
-        type = lib.types.nullOr (lib.types.enum [ "inet" "inet6" ]);
+        type = lib.types.nullOr (lib.types.enum ["inet" "inet6"]);
         default = null;
         description = ''
           Address family, which picks `iptables` or `ip6tables`. Null infers
@@ -246,15 +268,22 @@ let
     else a.peer != null && lib.hasInfix ":" a.peer;
 
   # The command, which the address family picks.
-  ipt = a: if isV6 a then "ip6tables" else "iptables";
+  ipt = a:
+    if isV6 a
+    then "ip6tables"
+    else "iptables";
 
   # The match arguments, in iptables' own order. Each is omitted when it is
   # null rather than defaulted to something permissive: no `-s` means any
   # source, which is only ever correct deliberately.
   acceptParts = a:
     lib.optional (a.interface != null) "-i ${a.interface}"
-    ++ [ "-p ${a.proto}" ]
-    ++ lib.optional (a.peer != null) "-s ${a.peer}/${if isV6 a then "128" else "32"}"
+    ++ ["-p ${a.proto}"]
+    ++ lib.optional (a.peer != null) "-s ${a.peer}/${
+      if isV6 a
+      then "128"
+      else "32"
+    }"
     ++ lib.optional (a.port != null) "--dport ${toString a.port}";
 
   # One accept per named peer, and nothing else.
@@ -267,7 +296,7 @@ let
   # own address is REFUSED, by design — the host matches none of these accepts.
   # A test plan expecting a 200 there is testing something that cannot happen.
   mkFirewall = allowFrom: {
-    allowedTCPPorts = [ ];
+    allowedTCPPorts = [];
     # Fields are emitted in iptables' own order, and each is omitted when it
     # is null rather than defaulted to something permissive: no `-s` means any
     # source, which is only ever correct deliberately.
@@ -278,23 +307,36 @@ let
     # the leg exists for is refused. A v6 literal always contains a colon and a
     # v4 one never does, so the inference is exact wherever a peer is named;
     # `family` is there for the peerless rules, where there is nothing to read.
-    extraCommands = lib.concatMapStrings (a:
-      let
-        v6 = if a.family != null
-             then a.family == "inet6"
-             else a.peer != null && lib.hasInfix ":" a.peer;
-      in
-      lib.concatStringsSep " " (
-        [ "${if v6 then "ip6tables" else "iptables"} -A nixos-fw" ]
-        ++ lib.optional (a.interface != null) "-i ${a.interface}"
-        ++ [ "-p ${a.proto}" ]
-        ++ lib.optional (a.peer != null) "-s ${a.peer}/${if v6 then "128" else "32"}"
-        ++ lib.optional (a.port != null) "--dport ${toString a.port}"
-        ++ [ "-j nixos-fw-accept" ]
-      ) + "\n"
-    ) allowFrom;
+    extraCommands =
+      lib.concatMapStrings (
+        a: let
+          v6 =
+            if a.family != null
+            then a.family == "inet6"
+            else a.peer != null && lib.hasInfix ":" a.peer;
+        in
+          lib.concatStringsSep " " (
+            [
+              "${
+                if v6
+                then "ip6tables"
+                else "iptables"
+              } -A nixos-fw"
+            ]
+            ++ lib.optional (a.interface != null) "-i ${a.interface}"
+            ++ ["-p ${a.proto}"]
+            ++ lib.optional (a.peer != null) "-s ${a.peer}/${
+              if v6
+              then "128"
+              else "32"
+            }"
+            ++ lib.optional (a.port != null) "--dport ${toString a.port}"
+            ++ ["-j nixos-fw-accept"]
+          )
+          + "\n"
+      )
+      allowFrom;
   };
-in
-{
+in {
   inherit allowType isV6 ipt acceptParts mkSupportUnits mkFirewall;
 }

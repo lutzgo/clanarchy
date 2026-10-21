@@ -98,9 +98,7 @@
   fetchFromGitHub,
   makeWrapper,
   python3,
-}:
-
-let
+}: let
   # ── The one ROCm-enabled Python set everything below is built from ───────
   #
   # See the long note above for why this is a set override rather than a
@@ -120,16 +118,16 @@ let
   # The seven dependencies nixpkgs does not carry.  Each has its own file with
   # its own argument; comfy-aimdo.nix is the one to read first, because it
   # explains the pure-wheel choice the whole build rests on.
-  comfyui-frontend-package = py.callPackage ./comfyui-frontend-package.nix { };
-  comfyui-workflow-templates-core = py.callPackage ./comfyui-workflow-templates-core.nix { };
-  comfyui-workflow-templates-json = py.callPackage ./comfyui-workflow-templates-json.nix { };
+  comfyui-frontend-package = py.callPackage ./comfyui-frontend-package.nix {};
+  comfyui-workflow-templates-core = py.callPackage ./comfyui-workflow-templates-core.nix {};
+  comfyui-workflow-templates-json = py.callPackage ./comfyui-workflow-templates-json.nix {};
   comfyui-workflow-templates = py.callPackage ./comfyui-workflow-templates.nix {
     inherit comfyui-workflow-templates-core comfyui-workflow-templates-json;
   };
-  comfyui-embedded-docs = py.callPackage ./comfyui-embedded-docs.nix { };
-  comfy-aimdo = py.callPackage ./comfy-aimdo.nix { };
-  comfy-kitchen = py.callPackage ./comfy-kitchen.nix { };
-  spandrel = py.callPackage ./spandrel.nix { };
+  comfyui-embedded-docs = py.callPackage ./comfyui-embedded-docs.nix {};
+  comfy-aimdo = py.callPackage ./comfy-aimdo.nix {};
+  comfy-kitchen = py.callPackage ./comfy-kitchen.nix {};
+  spandrel = py.callPackage ./spandrel.nix {};
 
   # ── The interpreter ComfyUI actually runs under ──────────────────────────
   #
@@ -176,90 +174,89 @@ let
     ps.pydantic-settings
     ps.pyopengl
   ]);
-
 in
-stdenvNoCC.mkDerivation (finalAttrs: {
-  pname = "comfyui";
-  version = "0.35.0";
+  stdenvNoCC.mkDerivation (finalAttrs: {
+    pname = "comfyui";
+    version = "0.35.0";
 
-  # ── THE REPOSITORY MOVED, AND THE OLD NAME STILL REDIRECTS ───────────────
-  #
-  # `comfyanonymous/ComfyUI` is now `Comfy-Org/ComfyUI` (checked 2026-09-09 —
-  # the GitHub API answers the old path with a 301 to repository id 589831718).
-  # The canonical owner is used here, because a redirect is a thing that works
-  # until it does not, and because ComfyUI's OWN cli_args.py still carries
-  # `DEFAULT_VERSION_STRING = "comfyanonymous/ComfyUI@latest"` — so the stale
-  # name is in the source too, and a reader comparing the two should know which
-  # is which.
-  src = fetchFromGitHub {
-    owner = "Comfy-Org";
-    repo = "ComfyUI";
-    tag = "v${finalAttrs.version}";
-    hash = "sha256-ffT9euBDsxpmq4wzd9R2QUcCgI/YnfQOsvC5HuAekUM=";
-  };
+    # ── THE REPOSITORY MOVED, AND THE OLD NAME STILL REDIRECTS ───────────────
+    #
+    # `comfyanonymous/ComfyUI` is now `Comfy-Org/ComfyUI` (checked 2026-09-09 —
+    # the GitHub API answers the old path with a 301 to repository id 589831718).
+    # The canonical owner is used here, because a redirect is a thing that works
+    # until it does not, and because ComfyUI's OWN cli_args.py still carries
+    # `DEFAULT_VERSION_STRING = "comfyanonymous/ComfyUI@latest"` — so the stale
+    # name is in the source too, and a reader comparing the two should know which
+    # is which.
+    src = fetchFromGitHub {
+      owner = "Comfy-Org";
+      repo = "ComfyUI";
+      tag = "v${finalAttrs.version}";
+      hash = "sha256-ffT9euBDsxpmq4wzd9R2QUcCgI/YnfQOsvC5HuAekUM=";
+    };
 
-  nativeBuildInputs = [ makeWrapper ];
+    nativeBuildInputs = [makeWrapper];
 
-  dontConfigure = true;
-  dontBuild = true;
+    dontConfigure = true;
+    dontBuild = true;
 
-  # ── A SOURCE TREE PLUS A WRAPPER, NOT buildPythonApplication ─────────────
-  #
-  # ComfyUI is not a Python distribution: it has no setup.py and no
-  # pyproject.toml declaring an installable package, and it is run as
-  # `python main.py` from its own directory, resolving `comfy/`,
-  # `comfy_extras/` and `custom_nodes/` relative to main.py's realpath.
-  # buildPythonApplication would have nothing to install.
-  installPhase = ''
-    runHook preInstall
+    # ── A SOURCE TREE PLUS A WRAPPER, NOT buildPythonApplication ─────────────
+    #
+    # ComfyUI is not a Python distribution: it has no setup.py and no
+    # pyproject.toml declaring an installable package, and it is run as
+    # `python main.py` from its own directory, resolving `comfy/`,
+    # `comfy_extras/` and `custom_nodes/` relative to main.py's realpath.
+    # buildPythonApplication would have nothing to install.
+    installPhase = ''
+      runHook preInstall
 
-    mkdir -p $out/share/comfyui
-    cp -r . $out/share/comfyui/
+      mkdir -p $out/share/comfyui
+      cp -r . $out/share/comfyui/
 
-    makeWrapper ${pythonEnv}/bin/python $out/bin/comfyui \
-      --add-flags $out/share/comfyui/main.py
+      makeWrapper ${pythonEnv}/bin/python $out/bin/comfyui \
+        --add-flags $out/share/comfyui/main.py
 
-    runHook postInstall
-  '';
+      runHook postInstall
+    '';
 
-  # ── THE STORE COPY IS READ-ONLY, AND ComfyUI EXPECTS TO WRITE ────────────
-  #
-  # Run bare, ComfyUI writes models/, input/, output/, temp/, user/ and
-  # custom_nodes/ next to main.py — i.e. into the store, which fails.
-  # `--base-directory <path>` relocates ALL SIX in one flag (comfy/cli_args.py),
-  # and the caller is expected to pass it.  service-modules/local-ai.nix does,
-  # pointing at the inference role's stateDir on zdata, which is where
-  # architecture invariant #7 requires service state to live.
-  #
-  # It is not defaulted here because there is no honest default: a store path
-  # would be wrong, /var/lib would bypass the invariant, and a silent fallback
-  # to $PWD is how state ends up somewhere nobody declared.
-  passthru = {
-    inherit pythonEnv;
-    python = pythonRocm;
-    # Exposed for the same reason the fetcher and the preset INI share one
-    # attrset in the inference role: so a reader can check the dependency set
-    # without re-deriving it.
-    inherit
-      comfyui-frontend-package
-      comfyui-workflow-templates
-      comfyui-workflow-templates-core
-      comfyui-workflow-templates-json
-      comfyui-embedded-docs
-      comfy-aimdo
-      comfy-kitchen
-      spandrel
-      ;
-  };
+    # ── THE STORE COPY IS READ-ONLY, AND ComfyUI EXPECTS TO WRITE ────────────
+    #
+    # Run bare, ComfyUI writes models/, input/, output/, temp/, user/ and
+    # custom_nodes/ next to main.py — i.e. into the store, which fails.
+    # `--base-directory <path>` relocates ALL SIX in one flag (comfy/cli_args.py),
+    # and the caller is expected to pass it.  service-modules/local-ai.nix does,
+    # pointing at the inference role's stateDir on zdata, which is where
+    # architecture invariant #7 requires service state to live.
+    #
+    # It is not defaulted here because there is no honest default: a store path
+    # would be wrong, /var/lib would bypass the invariant, and a silent fallback
+    # to $PWD is how state ends up somewhere nobody declared.
+    passthru = {
+      inherit pythonEnv;
+      python = pythonRocm;
+      # Exposed for the same reason the fetcher and the preset INI share one
+      # attrset in the inference role: so a reader can check the dependency set
+      # without re-deriving it.
+      inherit
+        comfyui-frontend-package
+        comfyui-workflow-templates
+        comfyui-workflow-templates-core
+        comfyui-workflow-templates-json
+        comfyui-embedded-docs
+        comfy-aimdo
+        comfy-kitchen
+        spandrel
+        ;
+    };
 
-  meta = {
-    description = "Node-graph interface for diffusion models, built against ROCm PyTorch";
-    homepage = "https://github.com/Comfy-Org/ComfyUI";
-    license = lib.licenses.gpl3Only;
-    mainProgram = "comfyui";
-    platforms = lib.platforms.linux;
-  };
-})
+    meta = {
+      description = "Node-graph interface for diffusion models, built against ROCm PyTorch";
+      homepage = "https://github.com/Comfy-Org/ComfyUI";
+      license = lib.licenses.gpl3Only;
+      mainProgram = "comfyui";
+      platforms = lib.platforms.linux;
+    };
+  })
 # ── WHAT IS DELIBERATELY NOT IN THE ENVIRONMENT ───────────────────────────
 #
 # `comfy-angle` — redistributable ANGLE (OpenGL-over-Vulkan) libraries, listed
@@ -280,3 +277,4 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 # read-only filesystem) rather than a silently mutating deployment.  A node
 # that is genuinely wanted becomes a derivation and an entry in the environment
 # above, reviewed like everything else.
+

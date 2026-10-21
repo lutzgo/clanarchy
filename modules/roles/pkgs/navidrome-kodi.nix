@@ -121,7 +121,6 @@
   buildKodiAddon,
   fetchFromGitHub,
 }:
-
 buildKodiAddon rec {
   pname = "navidrome";
   namespace = "plugin.kodi.navidrome";

@@ -348,18 +348,21 @@
 #   decisions database lives at /srv/state/crowdsec on zdata, bound separately.
 #   That file co-defines `containers.traefik.config`; read its header before
 #   assuming this file is the whole of what runs in here.
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   ############################################################################
   # Identity.
   ############################################################################
-
   # Guest-side MAC — 02:00:00:<vlan>:00:<seq>, RESERVED for this container by
   # M2b in machines/ernst/allocations.nix.  This is the
   # address the UDM-Pro sees and the one the DHCP reservation keys on; never
   # the host-side vb-traefik.
   traefikMac = "02:00:00:90:00:04";
-  vlanId     = 90;
+  vlanId = 90;
 
   # Host side of the veth pair.  nspawn names it vb-<container> when
   # --network-bridge= is used — "vb-", not "ve-".
@@ -406,7 +409,7 @@ let
   # address from somewhere, and there is no service discovery here to learn it
   # from.
   jellyfinAddr = "10.0.90.10";
-  arrAddr      = "10.0.90.13";
+  arrAddr = "10.0.90.13";
 
   # M6.  The monitoring container: Grafana's backend, and the one host on
   # VLAN 90 permitted to read this container's metrics endpoint.
@@ -419,9 +422,9 @@ let
 
   jellyfinPort = 8096;
   prowlarrPort = 9696;
-  sonarrPort   = 8989;
-  radarrPort   = 7878;
-  grafanaPort  = 3000;
+  sonarrPort = 8989;
+  radarrPort = 7878;
+  grafanaPort = 3000;
   autheliaPort = 9091;
 
   # M12.  Three more backends in the SAME arr container, on arrAddr — no new
@@ -433,10 +436,10 @@ let
   # 127.0.0.1.  containers/arr/ keeps them off its firewall list for the
   # same reason, and 5006 in particular is an HTTP proxy that has no business
   # being reachable.
-  bazarrPort       = 6767;
-  cleanuparrPort   = 11011;
-  mediathekarrPort = 5007;   # the downloader's SABnzbd API and setup wizard
-  jellyseerrPort   = 5055;   # M13 — the household's request UI
+  bazarrPort = 6767;
+  cleanuparrPort = 11011;
+  mediathekarrPort = 5007; # the downloader's SABnzbd API and setup wizard
+  jellyseerrPort = 5055; # M13 — the household's request UI
 
   # M26.  The service index, and a backend on `arrAddr` for a reason unlike
   # M12's: those three were services that happened to be installed in that
@@ -478,14 +481,14 @@ let
   # one docs/history.md got wrong: nixpkgs' module defaults to 8000, while
   # 13378 is the Docker image's number and what every client expects.
   # containers/arr/ sets it explicitly for that reason.
-  lidarrPort         = 8686;
-  kapowarrPort       = 5656;
-  questarrPort       = 5000;
+  lidarrPort = 8686;
+  kapowarrPort = 5656;
+  questarrPort = 5000;
   audiobookshelfPort = 13378;
 
   # M17 — Bindery, in the arr container.  Verified by RUNNING the binary
   # (2026-08-29): BINDERY_PORT, default 8787, kept.
-  binderyPort        = 8787;
+  binderyPort = 8787;
 
   # ── 2026-09-08: two more ports on the arr container's ONE address ─────────
   #
@@ -502,8 +505,8 @@ let
   #                     assumes.
   #   navidrome   4533  the module default, and the Subsonic ecosystem's
   #                     conventional port.  Kept rather than moved.
-  komgaPort          = 25600;
-  navidromePort      = 4533;
+  komgaPort = 25600;
+  navidromePort = 4533;
 
   # Storyteller, the podman tier's SECOND occupant, on its own address.
   # 02:00:00:90:00:0c → 10.0.90.20, following the 8 + <seq> convention in
@@ -600,7 +603,7 @@ let
   # one.  What IS routed is the MTA-STS policy file — a fixed HTTPS URL by
   # RFC 8461 — served by a four-line nginx vhost in that container so the
   # policy and the MX it names cannot drift apart.
-  mailAddr   = "10.0.90.31";
+  mailAddr = "10.0.90.31";
   mtaStsPort = 8080;
 
   # Karakeep (M27) — bookmarks and page archives, in an NSPAWN container on
@@ -1206,7 +1209,7 @@ let
   # any router below — it carries the whole argument for which names may be
   # answered by the application instead of by Authelia.
   ############################################################################
-  ingressPolicy = import ./ingress-policy.nix { inherit baseDomain; };
+  ingressPolicy = import ./ingress-policy.nix {inherit baseDomain;};
 
   # Extract the Host(`x`) literal from a router's rule, so the guard can check
   # a router against the policy without a second hand-maintained mapping from
@@ -1218,9 +1221,12 @@ let
   # A rule this cannot parse returns null and is REPORTED by the guard rather
   # than skipped — a router the policy cannot see is the failure mode this
   # whole mechanism exists to prevent.
-  hostOfRule = rule:
-    let m = builtins.match ".*Host\\(`([^`]+)`\\).*" rule;
-    in if m == null then null else builtins.head m;
+  hostOfRule = rule: let
+    m = builtins.match ".*Host\\(`([^`]+)`\\).*" rule;
+  in
+    if m == null
+    then null
+    else builtins.head m;
   ############################################################################
 
   # ── THE GUARD AND THE GENERATOR, IN ONE FUNCTION ──────────────────────────
@@ -1255,209 +1261,227 @@ let
   # `throw` and not `assertions`: a throw fires wherever the config is
   # evaluated, including `nix flake check` and the CI eval, and it cannot be
   # demoted to a warning.
-  withWan = lanRouters:
-    let
-      names   = lib.attrNames lanRouters;
-      missing = lib.filter (n: !(lanRouters.${n} ? entryPoints)) names;
-      unknown = lib.filter (n: !(lanRouters ? ${n})) wanExposed;
-      stray   = lib.filter (n: lib.elem wanEntryPoint lanRouters.${n}.entryPoints) names;
+  withWan = lanRouters: let
+    names = lib.attrNames lanRouters;
+    missing = lib.filter (n: !(lanRouters.${n} ? entryPoints)) names;
+    unknown = lib.filter (n: !(lanRouters ? ${n})) wanExposed;
+    stray = lib.filter (n: lib.elem wanEntryPoint lanRouters.${n}.entryPoints) names;
 
-      # ── CHECKS (d)–(f): THE INGRESS POLICY, ENFORCED ─────────────────────
-      #
-      # See ./ingress-policy.nix for why this is a mechanism rather than a
-      # fourth comment.  The short version: the same decision used to be
-      # written in three files and enforced in none, and it cost a production
-      # 403 on RomM.
-      #
-      # These run over the LAN routers, BEFORE `mkWan` copies any of them —
-      # so a policy violation is caught whether or not the name is exposed.
-      # A wrong middleware on a LAN-only router is still wrong; it just has a
-      # smaller blast radius until someone adds it to `wanExposed`.
-      hostOf   = n: hostOfRule lanRouters.${n}.rule;
-      hasAuth  = n: lib.elem "authelia" (lanRouters.${n}.middlewares or [ ]);
+    # ── CHECKS (d)–(f): THE INGRESS POLICY, ENFORCED ─────────────────────
+    #
+    # See ./ingress-policy.nix for why this is a mechanism rather than a
+    # fourth comment.  The short version: the same decision used to be
+    # written in three files and enforced in none, and it cost a production
+    # 403 on RomM.
+    #
+    # These run over the LAN routers, BEFORE `mkWan` copies any of them —
+    # so a policy violation is caught whether or not the name is exposed.
+    # A wrong middleware on a LAN-only router is still wrong; it just has a
+    # smaller blast radius until someone adds it to `wanExposed`.
+    hostOf = n: hostOfRule lanRouters.${n}.rule;
+    hasAuth = n: lib.elem "authelia" (lanRouters.${n}.middlewares or []);
 
-      # (d) a rule this cannot parse is a router the policy cannot see.
-      unparsable = lib.filter (n: hostOf n == null) names;
+    # (d) a rule this cannot parse is a router the policy cannot see.
+    unparsable = lib.filter (n: hostOf n == null) names;
 
-      # (e) an appApi host that carries forward-auth.  This is the regression
-      #     the whole file exists to prevent: it breaks every native client of
-      #     that service, and it breaks them with an opaque network error
-      #     rather than a login prompt, so it does not look like an auth
-      #     change when it is reported.
-      wronglyProtected = lib.filter
-        (n: hostOf n != null && lib.elem (hostOf n) ingressPolicy.appApiHosts && hasAuth n)
-        names;
+    # (e) an appApi host that carries forward-auth.  This is the regression
+    #     the whole file exists to prevent: it breaks every native client of
+    #     that service, and it breaks them with an opaque network error
+    #     rather than a login prompt, so it does not look like an auth
+    #     change when it is reported.
+    wronglyProtected =
+      lib.filter
+      (n: hostOf n != null && lib.elem (hostOf n) ingressPolicy.appApiHosts && hasAuth n)
+      names;
 
-      # (f) a routed hostname that is in NONE of the policy lists.  Left
-      #     unchecked this is the RomM failure exactly — the router exists,
-      #     Authelia has never heard of the name, and the user gets a 403
-      #     after a successful login.  Catching it here turns a support
-      #     ticket into a build error that names the file to edit.
-      unclassified = lib.filter
-        (n:
-          let host = hostOf n; in
-          host != null
-          && !(lib.elem host ingressPolicy.appApiHosts)
-          && !(lib.elem host ingressPolicy.protectedHosts)
-          && !(lib.elem host ingressPolicy.householdHosts)
-          && host != ingressPolicy.portalHost)
-        names;
+    # (f) a routed hostname that is in NONE of the policy lists.  Left
+    #     unchecked this is the RomM failure exactly — the router exists,
+    #     Authelia has never heard of the name, and the user gets a 403
+    #     after a successful login.  Catching it here turns a support
+    #     ticket into a build error that names the file to edit.
+    unclassified =
+      lib.filter
+      (n: let
+        host = hostOf n;
+      in
+        host
+        != null
+        && !(lib.elem host ingressPolicy.appApiHosts)
+        && !(lib.elem host ingressPolicy.protectedHosts)
+        && !(lib.elem host ingressPolicy.householdHosts)
+        && host != ingressPolicy.portalHost)
+      names;
 
-      # (g) the mirror of (e): a host the policy says is protected, whose
-      #     router forgot the middleware.  Authelia's default_policy = "deny"
-      #     does NOT save this case — the middleware is what sends the request
-      #     to Authelia at all, so a missing one means the request goes
-      #     straight to the backend unauthenticated.  This is the fail-OPEN
-      #     direction and is the more dangerous of the two.
-      wronglyOpen = lib.filter
-        (n:
-          let host = hostOf n; in
-          host != null
-          && (lib.elem host ingressPolicy.protectedHosts
-              || lib.elem host ingressPolicy.householdHosts)
-          && !(hasAuth n))
-        names;
+    # (g) the mirror of (e): a host the policy says is protected, whose
+    #     router forgot the middleware.  Authelia's default_policy = "deny"
+    #     does NOT save this case — the middleware is what sends the request
+    #     to Authelia at all, so a missing one means the request goes
+    #     straight to the backend unauthenticated.  This is the fail-OPEN
+    #     direction and is the more dangerous of the two.
+    wronglyOpen =
+      lib.filter
+      (n: let
+        host = hostOf n;
+      in
+        host
+        != null
+        && (lib.elem host ingressPolicy.protectedHosts
+          || lib.elem host ingressPolicy.householdHosts)
+        && !(hasAuth n))
+      names;
 
-      # ── The order of the middlewares is deliberate ────────────────────────
-      #
-      # Rate limit and concurrency cap FIRST, then whatever the LAN twin
-      # carries (forward-auth, for everything but the portal).  A flood is shed
-      # here rather than being turned into one Authelia authz call per request:
-      # Authelia is a single container in the login path of every admin UI in
-      # the house, and letting the internet drive it at line rate would hand an
-      # attacker a lever on the household's own access.
-      mkWan = n: {
-        name  = "${n}-wan";
-        value = lanRouters.${n} // {
-          entryPoints = [ wanEntryPoint ];
+    # ── The order of the middlewares is deliberate ────────────────────────
+    #
+    # Rate limit and concurrency cap FIRST, then whatever the LAN twin
+    # carries (forward-auth, for everything but the portal).  A flood is shed
+    # here rather than being turned into one Authelia authz call per request:
+    # Authelia is a single container in the login path of every admin UI in
+    # the house, and letting the internet drive it at line rate would hand an
+    # attacker a lever on the household's own access.
+    mkWan = n: {
+      name = "${n}-wan";
+      value =
+        lanRouters.${n}
+        // {
+          entryPoints = [wanEntryPoint];
           middlewares =
-            [ "wan-ratelimit" "wan-inflight" ]
-            ++ (lanRouters.${n}.middlewares or [ ]);
+            ["wan-ratelimit" "wan-inflight"]
+            ++ (lanRouters.${n}.middlewares or []);
         };
-      };
+    };
 
-      # ── The login routers, generated the same way and for the same reason ─
-      #
-      # Generated HERE rather than declared by hand next to their twins,
-      # because a hand-declared router naming `wan` is exactly what check (c)
-      # forbids — and it forbids it for a good reason.  Generating them keeps
-      # the rule, the service and the forward-auth state inherited from the
-      # LAN twin, so the login path and the ordinary path cannot disagree
-      # about which backend they reach or whether they are authenticated.
-      #
-      # PRIORITY IS EXPLICIT.  Traefik's default priority is the rule's
-      # length, and `Host(x) && PathPrefix(y)` is longer than `Host(x)`, so
-      # these would win anyway today — but that is an accident of string
-      # length, not a guarantee, and it silently inverts the day someone
-      # lengthens a Host rule.  An explicit high priority makes it a property.
-      #
-      # Only generated for names that are BOTH exposed and listed in
-      # `wanLoginPaths`; an entry for an unexposed service is inert rather
-      # than an error, since the point of the list is the wan surface.
-      mkWanLogin = n: {
-        name  = "${n}-wan-login";
-        value = lanRouters.${n} // {
-          entryPoints = [ wanEntryPoint ];
-          rule        = "${lanRouters.${n}.rule} && ${wanLoginPaths.${n}}";
-          priority    = 1000;
+    # ── The login routers, generated the same way and for the same reason ─
+    #
+    # Generated HERE rather than declared by hand next to their twins,
+    # because a hand-declared router naming `wan` is exactly what check (c)
+    # forbids — and it forbids it for a good reason.  Generating them keeps
+    # the rule, the service and the forward-auth state inherited from the
+    # LAN twin, so the login path and the ordinary path cannot disagree
+    # about which backend they reach or whether they are authenticated.
+    #
+    # PRIORITY IS EXPLICIT.  Traefik's default priority is the rule's
+    # length, and `Host(x) && PathPrefix(y)` is longer than `Host(x)`, so
+    # these would win anyway today — but that is an accident of string
+    # length, not a guarantee, and it silently inverts the day someone
+    # lengthens a Host rule.  An explicit high priority makes it a property.
+    #
+    # Only generated for names that are BOTH exposed and listed in
+    # `wanLoginPaths`; an entry for an unexposed service is inert rather
+    # than an error, since the point of the list is the wan surface.
+    mkWanLogin = n: {
+      name = "${n}-wan-login";
+      value =
+        lanRouters.${n}
+        // {
+          entryPoints = [wanEntryPoint];
+          rule = "${lanRouters.${n}.rule} && ${wanLoginPaths.${n}}";
+          priority = 1000;
           middlewares =
-            [ "wan-login-ratelimit" "wan-inflight" ]
-            ++ (lanRouters.${n}.middlewares or [ ]);
+            ["wan-login-ratelimit" "wan-inflight"]
+            ++ (lanRouters.${n}.middlewares or []);
         };
-      };
+    };
 
-      wanLoginNames = lib.filter (n: wanLoginPaths ? ${n}) wanExposed;
+    wanLoginNames = lib.filter (n: wanLoginPaths ? ${n}) wanExposed;
 
-      # A `wanLoginPaths` entry whose router does not exist is a typo that
-      # would otherwise silently protect nothing — same failure shape as check
-      # (b), so it gets the same treatment.
-      unknownLogin = lib.filter (n: !(lanRouters ? ${n})) (lib.attrNames wanLoginPaths);
-    in
-      if missing != [ ] then
-        throw ''
-          traefik.nix: these routers do not name their entryPoints, and Traefik
-          binds such a router to EVERY entrypoint — including `wan`, which is
-          the internet:
-            ${lib.concatStringsSep ", " missing}
-          Add `entryPoints = [ "websecure" ];` to each.  See the TWO
-          ENTRYPOINTS block in this file's header.
-        ''
-      else if unknown != [ ] then
-        throw ''
-          traefik.nix: `wanExposed` names routers that do not exist:
-            ${lib.concatStringsSep ", " unknown}
-          It takes ROUTER names (e.g. `authelia`), not host labels (`auth`).
-        ''
-      else if stray != [ ] then
-        throw ''
-          traefik.nix: these routers put themselves on the `wan` entrypoint by
-          hand:
-            ${lib.concatStringsSep ", " stray}
-          `wan` is the internet, and exposure is an edit to `wanExposed` plus a
-          public A record plus a ledger row — never an entryPoints list on an
-          existing router.  See the TWO ENTRYPOINTS block in this file's
-          header.
-        ''
-      else if unparsable != [ ] then
-        throw ''
-          traefik.nix: the ingress-policy guard cannot find a Host(`…`) literal
-          in the rule of these routers, so it cannot tell whether they are
-          allowed to carry forward-auth:
-            ${lib.concatStringsSep ", " unparsable}
-          Every router here must match on a literal hostname.  If you genuinely
-          need a different matcher, extend `hostOfRule` — do NOT skip the
-          check, which is the one thing that keeps this file and
-          containers/authelia.nix from disagreeing.
-        ''
-      else if wronglyProtected != [ ] then
-        throw ''
-          traefik.nix: these routers carry the `authelia` forward-auth
-          middleware, but their hostnames are in `appApiHosts`:
-            ${lib.concatStringsSep ", " wronglyProtected}
-          THIS BREAKS EVERY NATIVE CLIENT OF THAT SERVICE.  forward-auth is a
-          redirect protocol; an app with a bearer token has no browser to
-          follow a 302 to the portal, so it fails with an opaque network error
-          that reads as a broken server rather than a login prompt.
-          If you are ADDING auth deliberately, the hostname must move out of
-          `appApiHosts` in ./ingress-policy.nix — and read the block there
-          first, because each entry is in that list for a measured reason.
-        ''
-      else if wronglyOpen != [ ] then
-        throw ''
-          traefik.nix: these routers are missing the `authelia` middleware, but
-          their hostnames are declared protected in ./ingress-policy.nix:
-            ${lib.concatStringsSep ", " wronglyOpen}
-          THIS IS THE FAIL-OPEN DIRECTION.  Authelia's default_policy = "deny"
-          does not save it: the middleware is what sends the request to
-          Authelia at all, so without it the request reaches the backend
-          unauthenticated and Authelia is never consulted.
-          Add `middlewares = [ "authelia" ];`, or move the hostname into
-          `appApiHosts` with an argument for why a native client needs it.
-        ''
-      else if unclassified != [ ] then
-        throw ''
-          traefik.nix: these routers serve hostnames that appear in NO list in
-          ./ingress-policy.nix:
-            ${lib.concatStringsSep ", " unclassified}
-          Every routed hostname must be classified, because Authelia derives
-          its access_control rules from the same file.  A name routed here and
-          absent there returns 403 to a user who has just logged in
-          successfully — which reads as an Authelia fault and is a missing line
-          in a list.  That is not hypothetical; it is what happened to RomM.
-          Add the hostname to `appApiHosts`, `protectedHosts` or
-          `householdHosts`.
-        ''
-      else if unknownLogin != [ ] then
-        throw ''
-          traefik.nix: `wanLoginPaths` names routers that do not exist:
-            ${lib.concatStringsSep ", " unknownLogin}
-          An entry here that matches nothing produces no login rate limit and
-          reads in review as though it does.  It takes ROUTER names.
-        ''
-      else
-        lanRouters
-        // lib.listToAttrs (map mkWan wanExposed)
-        // lib.listToAttrs (map mkWanLogin wanLoginNames);
+    # A `wanLoginPaths` entry whose router does not exist is a typo that
+    # would otherwise silently protect nothing — same failure shape as check
+    # (b), so it gets the same treatment.
+    unknownLogin = lib.filter (n: !(lanRouters ? ${n})) (lib.attrNames wanLoginPaths);
+  in
+    if missing != []
+    then
+      throw ''
+        traefik.nix: these routers do not name their entryPoints, and Traefik
+        binds such a router to EVERY entrypoint — including `wan`, which is
+        the internet:
+          ${lib.concatStringsSep ", " missing}
+        Add `entryPoints = [ "websecure" ];` to each.  See the TWO
+        ENTRYPOINTS block in this file's header.
+      ''
+    else if unknown != []
+    then
+      throw ''
+        traefik.nix: `wanExposed` names routers that do not exist:
+          ${lib.concatStringsSep ", " unknown}
+        It takes ROUTER names (e.g. `authelia`), not host labels (`auth`).
+      ''
+    else if stray != []
+    then
+      throw ''
+        traefik.nix: these routers put themselves on the `wan` entrypoint by
+        hand:
+          ${lib.concatStringsSep ", " stray}
+        `wan` is the internet, and exposure is an edit to `wanExposed` plus a
+        public A record plus a ledger row — never an entryPoints list on an
+        existing router.  See the TWO ENTRYPOINTS block in this file's
+        header.
+      ''
+    else if unparsable != []
+    then
+      throw ''
+        traefik.nix: the ingress-policy guard cannot find a Host(`…`) literal
+        in the rule of these routers, so it cannot tell whether they are
+        allowed to carry forward-auth:
+          ${lib.concatStringsSep ", " unparsable}
+        Every router here must match on a literal hostname.  If you genuinely
+        need a different matcher, extend `hostOfRule` — do NOT skip the
+        check, which is the one thing that keeps this file and
+        containers/authelia.nix from disagreeing.
+      ''
+    else if wronglyProtected != []
+    then
+      throw ''
+        traefik.nix: these routers carry the `authelia` forward-auth
+        middleware, but their hostnames are in `appApiHosts`:
+          ${lib.concatStringsSep ", " wronglyProtected}
+        THIS BREAKS EVERY NATIVE CLIENT OF THAT SERVICE.  forward-auth is a
+        redirect protocol; an app with a bearer token has no browser to
+        follow a 302 to the portal, so it fails with an opaque network error
+        that reads as a broken server rather than a login prompt.
+        If you are ADDING auth deliberately, the hostname must move out of
+        `appApiHosts` in ./ingress-policy.nix — and read the block there
+        first, because each entry is in that list for a measured reason.
+      ''
+    else if wronglyOpen != []
+    then
+      throw ''
+        traefik.nix: these routers are missing the `authelia` middleware, but
+        their hostnames are declared protected in ./ingress-policy.nix:
+          ${lib.concatStringsSep ", " wronglyOpen}
+        THIS IS THE FAIL-OPEN DIRECTION.  Authelia's default_policy = "deny"
+        does not save it: the middleware is what sends the request to
+        Authelia at all, so without it the request reaches the backend
+        unauthenticated and Authelia is never consulted.
+        Add `middlewares = [ "authelia" ];`, or move the hostname into
+        `appApiHosts` with an argument for why a native client needs it.
+      ''
+    else if unclassified != []
+    then
+      throw ''
+        traefik.nix: these routers serve hostnames that appear in NO list in
+        ./ingress-policy.nix:
+          ${lib.concatStringsSep ", " unclassified}
+        Every routed hostname must be classified, because Authelia derives
+        its access_control rules from the same file.  A name routed here and
+        absent there returns 403 to a user who has just logged in
+        successfully — which reads as an Authelia fault and is a missing line
+        in a list.  That is not hypothetical; it is what happened to RomM.
+        Add the hostname to `appApiHosts`, `protectedHosts` or
+        `householdHosts`.
+      ''
+    else if unknownLogin != []
+    then
+      throw ''
+        traefik.nix: `wanLoginPaths` names routers that do not exist:
+          ${lib.concatStringsSep ", " unknownLogin}
+        An entry here that matches nothing produces no login rate limit and
+        reads in review as though it does.  It takes ROUTER names.
+      ''
+    else
+      lanRouters
+      // lib.listToAttrs (map mkWan wanExposed)
+      // lib.listToAttrs (map mkWanLogin wanLoginNames);
 
   # ── WHERE THE `mgmt-only` ipAllowList WENT ────────────────────────────────
   #
@@ -1494,7 +1518,7 @@ let
   # hit this first and its header explains it at length.  A directory we own
   # has a stable identity and is rewritten in place.
   secretsDir = "/run/traefik-secrets";
-  envFile    = "${secretsDir}/cloudflare.env";
+  envFile = "${secretsDir}/cloudflare.env";
 
   gen = config.clan.core.vars.generators.traefik-acme;
 
@@ -1502,12 +1526,10 @@ let
   # the static config has to agree with the bind mount, and one binding is
   # cheaper to keep in step than two string literals.
   dataDir = "/var/lib/traefik";
-in
-{
+in {
   ##############################################################################
   # Host-side wiring.
   ##############################################################################
-
 
   # Stage the Cloudflare token where the container can see it.
   #
@@ -1534,11 +1556,11 @@ in
   #     systemctl restart traefik-secrets container@traefik
   systemd.services.traefik-secrets = {
     description = "Stage the Cloudflare ACME token for container@traefik";
-    after       = [ "local-fs.target" ];
-    before      = [ "container@traefik.service" ];
-    requiredBy  = [ "container@traefik.service" ];
+    after = ["local-fs.target"];
+    before = ["container@traefik.service"];
+    requiredBy = ["container@traefik.service"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
     };
     script = ''
@@ -1612,10 +1634,10 @@ in
 
     prompts."cloudflare-dns-api-token" = {
       description = "Cloudflare API token, scoped Zone:DNS:Edit + Zone:Zone:Read on ${baseDomain}";
-      type        = "hidden";
+      type = "hidden";
     };
 
-    runtimeInputs = [ pkgs.coreutils pkgs.gnugrep ];
+    runtimeInputs = [pkgs.coreutils pkgs.gnugrep];
 
     script = ''
       set -euo pipefail
@@ -1677,7 +1699,7 @@ in
   # that arrangement is unaffected by this move.
   clanarchy.containers.traefik = {
     enable = true;
-    mac    = traefikMac;
+    mac = traefikMac;
 
     # NO uid/gid PIN: the module allocates traefik dynamically and the
     # in-container block handles it — see its own note.
@@ -1703,19 +1725,33 @@ in
     # NUMERIC ids on purpose: `traefik` is a container user and the host has
     # no matching passwd entry.
     stateDirs = [
-      { path = "/srv/state/traefik"; owner = traefikUid; group = traefikGid; }
+      {
+        path = "/srv/state/traefik";
+        owner = traefikUid;
+        group = traefikGid;
+      }
     ];
 
     bindMounts = {
       # The certificate store, at the module's own default dataDir so
       # services.traefik needs no path override.
-      "${dataDir}"    = { hostPath = "/srv/state/traefik"; isReadOnly = false; };
+      "${dataDir}" = {
+        hostPath = "/srv/state/traefik";
+        isReadOnly = false;
+      };
       # The staged Cloudflare token, read-only, at the identical path.
-      "${secretsDir}" = { hostPath = secretsDir;           isReadOnly = true;  };
+      "${secretsDir}" = {
+        hostPath = secretsDir;
+        isReadOnly = true;
+      };
     };
 
-    config = { config, pkgs, lib, ... }: {
-
+    config = {
+      config,
+      pkgs,
+      lib,
+      ...
+    }: {
       # Matches the host.  Certificate expiry, renewal attempts and every
       # access-log line are rendered in local time, and a container that
       # silently defaults to UTC makes "when did the cert actually renew" a
@@ -1794,7 +1830,7 @@ in
       # every route name, backend address and TLS setting in the house off an
       # unauthenticated endpoint, which is most of what the dashboard was
       # switched off to avoid.
-      networking.firewall.allowedTCPPorts = [ 80 443 wanPort ];
+      networking.firewall.allowedTCPPorts = [80 443 wanPort];
 
       # M6: the metrics endpoint, source-restricted to the monitoring
       # container.  Same mechanism and the same reasoning as the backend
@@ -1872,9 +1908,9 @@ in
       # neither the uid nor the cause.
       users.users.traefik = {
         isSystemUser = true;
-        uid          = traefikUid;
+        uid = traefikUid;
       };
-      users.groups.traefik = { gid = traefikGid; };
+      users.groups.traefik = {gid = traefikGid;};
 
       ##########################################################################
       # Traefik.
@@ -1883,7 +1919,7 @@ in
         enable = true;
 
         # dataDir left at its default — /var/lib/traefik is the bind mount.
-        environmentFiles = [ envFile ];
+        environmentFiles = [envFile];
 
         ########################################################################
         # STATIC configuration — entryPoints, the ACME resolver, logging.
@@ -1898,13 +1934,13 @@ in
         staticConfigOptions = {
           # Neither of these should reach the internet from a box whose whole
           # point is that it does not need to.
-          global.checkNewVersion    = false;
+          global.checkNewVersion = false;
           global.sendAnonymousUsage = false;
 
           # To the journal.  `journalctl -u traefik` inside the container is
           # where the ACME exchange and every routing decision are visible, and
           # it is the instrument the PR test plan uses.
-          log.level     = "INFO";
+          log.level = "INFO";
 
           # ── M18: JSON, because CrowdSec reads this ─────────────────────────
           #
@@ -1936,7 +1972,7 @@ in
           # a log a second daemon reads.
           accessLog = {
             format = "json";
-            fields.headers.defaultMode  = "drop";
+            fields.headers.defaultMode = "drop";
             fields.headers.names."User-Agent" = "keep";
           };
 
@@ -1951,10 +1987,10 @@ in
           # addresses are the one thing in this config worth not publishing to
           # an endpoint, even a restricted one.
           metrics.prometheus = {
-            entryPoint            = "metrics";
-            addEntryPointsLabels  = true;
-            addRoutersLabels      = false;
-            addServicesLabels     = false;
+            entryPoint = "metrics";
+            addEntryPointsLabels = true;
+            addRoutersLabels = false;
+            addServicesLabels = false;
           };
 
           # THE API AND DASHBOARD ARE OFF, deliberately and by omission: there
@@ -1975,8 +2011,8 @@ in
             web = {
               address = "0.0.0.0:80";
               http.redirections.entryPoint = {
-                to        = "websecure";
-                scheme    = "https";
+                to = "websecure";
+                scheme = "https";
                 permanent = true;
               };
             };
@@ -2000,8 +2036,8 @@ in
             # it fails loudly and for free, as a browser warning naming
             # TRAEFIK DEFAULT CERT.  `http.tls = { }` still turns TLS on.
             ${wanEntryPoint} = {
-              address  = "0.0.0.0:${toString wanPort}";
-              http.tls = { };
+              address = "0.0.0.0:${toString wanPort}";
+              http.tls = {};
 
               # See THE 60-SECOND CEILING on `websecure` below.  30 minutes
               # here rather than an hour, and the difference is the threat
@@ -2090,7 +2126,7 @@ in
                 domains = [
                   {
                     main = baseDomain;
-                    sans = [ "*.${baseDomain}" ];
+                    sans = ["*.${baseDomain}"];
                   }
                 ];
               };
@@ -2105,7 +2141,7 @@ in
           };
 
           certificatesResolvers.cloudflare.acme = {
-            email   = acmeEmail;
+            email = acmeEmail;
             storage = "${dataDir}/acme.json";
 
             # STAGING, for when something here changes.  Let's Encrypt's
@@ -2140,7 +2176,7 @@ in
               # choice.  (An earlier revision of this comment asserted the
               # Technitium-authoritative case as fact.  It was a prediction, and
               # it did not fire — the thing that did is below.)
-              resolvers = [ "1.1.1.1:53" "9.9.9.9:53" ];
+              resolvers = ["1.1.1.1:53" "9.9.9.9:53"];
 
               # ── THE 30-MINUTE NEGATIVE CACHE.  MEASURED ON ernst 2026-08-23 ──
               #
@@ -2228,7 +2264,7 @@ in
             # container and nothing else.  Forward-auth is the outer boundary;
             # mechanism (a) is still the inner one.
             authelia.forwardAuth = {
-              address            = "http://${autheliaAddr}:${toString autheliaPort}/api/authz/forward-auth";
+              address = "http://${autheliaAddr}:${toString autheliaPort}/api/authz/forward-auth";
               trustForwardHeader = false;
               authResponseHeaders = [
                 "Remote-User"
@@ -2272,8 +2308,8 @@ in
             # or a flood that passes — not tidiness.
             wan-ratelimit.rateLimit = {
               average = 50;
-              burst   = 100;
-              period  = "1s";
+              burst = 100;
+              period = "1s";
             };
 
             # Concurrency, which the rate limit does not cover: 50/s of
@@ -2315,8 +2351,8 @@ in
             # is expressed by lengthening the period.
             wan-login-ratelimit.rateLimit = {
               average = 1;
-              burst   = 5;
-              period  = "10s";
+              burst = 5;
+              period = "10s";
             };
           };
 
@@ -2344,9 +2380,9 @@ in
             # NO MIDDLEWARE, and never a forward-auth one.  See "JELLYFIN KEEPS
             # NATIVE AUTH, FOREVER" in the file header.
             jellyfin = {
-              rule        = "Host(`jellyfin.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              service     = "jellyfin";
+              rule = "Host(`jellyfin.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              service = "jellyfin";
             };
 
             # ── Authelia: the portal itself (M7) ───────────────────────────
@@ -2376,9 +2412,9 @@ in
             # is this login form, per-user regulation (3 failures / 5 min → 15
             # min ban) and mandatory 2FA — which was the design intent.
             authelia = {
-              rule        = "Host(`auth.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              service     = "authelia";
+              rule = "Host(`auth.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              service = "authelia";
             };
 
             # ── The arr stack: admin routes, behind Authelia ───────────────
@@ -2393,22 +2429,22 @@ in
             # so there is nothing to keep in step between this file and three
             # web UIs.
             prowlarr = {
-              rule        = "Host(`prowlarr.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "prowlarr";
+              rule = "Host(`prowlarr.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "prowlarr";
             };
             sonarr = {
-              rule        = "Host(`sonarr.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "sonarr";
+              rule = "Host(`sonarr.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "sonarr";
             };
             radarr = {
-              rule        = "Host(`radarr.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "radarr";
+              rule = "Host(`radarr.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "radarr";
             };
 
             # ── M12's three, same treatment ────────────────────────────────
@@ -2431,25 +2467,25 @@ in
             # No UrlBase needed on any of them, for the reason the three above
             # give: distinct hostnames rather than path prefixes.
             bazarr = {
-              rule        = "Host(`bazarr.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "bazarr";
+              rule = "Host(`bazarr.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "bazarr";
             };
             cleanuparr = {
-              rule        = "Host(`cleanuparr.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "cleanuparr";
+              rule = "Host(`cleanuparr.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "cleanuparr";
             };
             # MediathekArr's DOWNLOADER, which is also its setup wizard — the
             # page a human opens to configure the thing.  The indexer half on
             # 5008 is deliberately not routed.
             mediathekarr = {
-              rule        = "Host(`mediathekarr.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "mediathekarr";
+              rule = "Host(`mediathekarr.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "mediathekarr";
             };
 
             # ── Tvheadend (M8): admin route, behind Authelia ───────────────
@@ -2462,10 +2498,10 @@ in
             # commit (deny-by-default: middleware without the name fails
             # CLOSED as a 403).
             tvheadend = {
-              rule        = "Host(`tvheadend.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "tvheadend";
+              rule = "Host(`tvheadend.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "tvheadend";
             };
 
             # ── TubeSync (M9): admin route, behind Authelia ────────────────
@@ -2479,10 +2515,10 @@ in
             # `Authorization` header, which Authelia consumes as its own
             # credential and rejects.  M8 paid for that lesson with Tvheadend.
             tubesync = {
-              rule        = "Host(`tubesync.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "tubesync";
+              rule = "Host(`tubesync.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "tubesync";
             };
 
             # ── M14's five, and one of them is NOT like the others ─────────
@@ -2496,22 +2532,22 @@ in
             # AUDIOBOOKSHELF IS THE EXCEPTION, and it is the THIRD permanent
             # bypass in this fleet.  See its router below.
             lidarr = {
-              rule        = "Host(`lidarr.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "lidarr";
+              rule = "Host(`lidarr.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "lidarr";
             };
             kapowarr = {
-              rule        = "Host(`kapowarr.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "kapowarr";
+              rule = "Host(`kapowarr.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "kapowarr";
             };
             questarr = {
-              rule        = "Host(`questarr.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "questarr";
+              rule = "Host(`questarr.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "questarr";
             };
             # ── Bindery (M17): admin route, behind Authelia ────────────────
             #
@@ -2522,10 +2558,10 @@ in
             # is in authelia.nix's protectedHosts in the same commit
             # (deny-by-default: middleware without the name fails CLOSED).
             bindery = {
-              rule        = "Host(`bindery.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "bindery";
+              rule = "Host(`bindery.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "bindery";
             };
             # ── Audiobookshelf (M14): NO MIDDLEWARE.  A permanent bypass ────
             #
@@ -2570,9 +2606,9 @@ in
             # rests on the client-compatibility clause.  Both end at the same
             # place; do not merge the reasoning.
             audiobookshelf = {
-              rule        = "Host(`audiobookshelf.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              service     = "audiobookshelf";
+              rule = "Host(`audiobookshelf.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              service = "audiobookshelf";
             };
 
             # ── Komga: app-API tier, no forward-auth ──────────────────────
@@ -2609,9 +2645,9 @@ in
             # and Komga has no first-run window (it creates no account until
             # one is posted).
             komga = {
-              rule        = "Host(`komga.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              service     = "komga";
+              rule = "Host(`komga.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              service = "komga";
             };
 
             # ── Navidrome: app-API tier, no forward-auth ──────────────────
@@ -2631,9 +2667,9 @@ in
             # break the event stream and present as "the UI stops updating"
             # rather than as an error.
             navidrome = {
-              rule        = "Host(`navidrome.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              service     = "navidrome";
+              rule = "Host(`navidrome.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              service = "navidrome";
             };
 
             # ── CWA: app-API tier, no forward-auth on this router ─────────
@@ -2651,9 +2687,9 @@ in
             # the e-reader would choke on, which is the outcome a
             # proxy-level bypass alone cannot reach.
             cwa = {
-              rule        = "Host(`cwa.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              service     = "cwa";
+              rule = "Host(`cwa.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              service = "cwa";
             };
             # ── Storyteller: NO forward-auth, and NOT on `wan` ────────────
             #
@@ -2671,9 +2707,9 @@ in
             # the public internet, which is what makes dropping forward-auth a
             # smaller decision here than it was for the five WAN names.
             storyteller = {
-              rule        = "Host(`storyteller.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              service     = "storyteller";
+              rule = "Host(`storyteller.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              service = "storyteller";
             };
 
             # ── RomM: admin route, behind Authelia ────────────────────────
@@ -2689,10 +2725,10 @@ in
             # That distinction matters because it is exactly the argument
             # Jellyfin and Audiobookshelf won and this one does not get to.
             romm = {
-              rule        = "Host(`romm.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "romm";
+              rule = "Host(`romm.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "romm";
             };
 
             # Open WebUI (M19) — the local-AI chat client.
@@ -2718,10 +2754,10 @@ in
             # BOTH now matter on an internet-facing path, which is the reason
             # the pairing was worth having before it was needed.
             openwebui = {
-              rule        = "Host(`chat.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "openwebui";
+              rule = "Host(`chat.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "openwebui";
             };
 
             # ── Immich (M22): app-API tier, no forward-auth ────────────────
@@ -2752,9 +2788,9 @@ in
             # "the phone stopped backing up" rather than as an error anyone
             # sees.
             immich = {
-              rule        = "Host(`photos.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              service     = "immich";
+              rule = "Host(`photos.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              service = "immich";
             };
 
             # ── Nextcloud (M23) — NO forward-auth, and the reason is in ────
@@ -2781,9 +2817,9 @@ in
             #   the default; the same ceiling bounds a PUT to this backend,
             #   because it covers the entire request including the body.
             nextcloud = {
-              rule        = "Host(`cloud.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              service     = "nextcloud";
+              rule = "Host(`cloud.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              service = "nextcloud";
             };
 
             # ── Paperless-ngx (M32) — NO forward-auth, and the reason is in ──
@@ -2805,9 +2841,9 @@ in
             # sees.  The `readTimeout` on `websecure` (3600s) and `wan` (1800s)
             # bounds it and is already generous.
             paperless = {
-              rule        = "Host(`docs.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              service     = "paperless";
+              rule = "Host(`docs.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              service = "paperless";
             };
 
             # ── Home Assistant (M24) — NO forward-auth, and the reason is in ─
@@ -2837,9 +2873,9 @@ in
             # forwarding it, which would break the WebSocket upgrade and
             # present as "the app never connects" rather than as an error.
             homeassistant = {
-              rule        = "Host(`ha.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              service     = "homeassistant";
+              rule = "Host(`ha.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              service = "homeassistant";
             };
 
             # ── Miniflux (M27) — the feed reader ──────────────────────────
@@ -2869,10 +2905,10 @@ in
             # — 3 attempts in 5 minutes, per user rather than per path.  Same
             # reasoning as `homepage`.
             miniflux = {
-              rule        = "Host(`miniflux.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "miniflux";
+              rule = "Host(`miniflux.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "miniflux";
             };
 
             # ── MTA-STS (M31) — one static file, for remote mail servers ──
@@ -2894,9 +2930,9 @@ in
             # deliberate: the policy names this server's own MX, so the two
             # live together and cannot drift.
             mtasts = {
-              rule        = "Host(`mta-sts.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              service     = "mtasts";
+              rule = "Host(`mta-sts.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              service = "mtasts";
             };
 
             # ── Karakeep (M27) — bookmarks and page archives ──────────────
@@ -2914,9 +2950,9 @@ in
             # ON THE INTERNET (`wanExposed` + ledger row L17), with a
             # `wanLoginPaths` entry above.
             karakeep = {
-              rule        = "Host(`karakeep.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              service     = "karakeep";
+              rule = "Host(`karakeep.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              service = "karakeep";
             };
 
             # ── Music Assistant (M30) — the player controller ──────────────
@@ -2952,9 +2988,9 @@ in
             # mechanism protects a credential path facing the internet, and this
             # one faces the living room.
             mass = {
-              rule        = "Host(`music.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              service     = "mass";
+              rule = "Host(`music.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              service = "mass";
             };
 
             # slskd's web UI — in the microvm guest, not a container.  Behind
@@ -2967,10 +3003,10 @@ in
             # better than the direct path it replaces — that path died on the
             # websocket while ordinary GETs still succeeded.
             slskd = {
-              rule        = "Host(`slskd.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "slskd";
+              rule = "Host(`slskd.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "slskd";
             };
 
             # ── Jellyseerr: the HOUSEHOLD route — posture set by M16 ───────
@@ -3024,10 +3060,10 @@ in
             # feeds the admins-only rule, and this is the one protected name
             # in the fleet a non-admin must be able to reach.
             jellyseerr = {
-              rule        = "Host(`jellyseerr.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "jellyseerr";
+              rule = "Host(`jellyseerr.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "jellyseerr";
             };
 
             # ── Grafana (M6): admin route, behind Authelia ─────────────────
@@ -3048,10 +3084,10 @@ in
             # Traefik proxies an Upgrade request transparently, and the
             # entryPoint sets no forwardedHeaders that could interfere.
             grafana = {
-              rule        = "Host(`grafana.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "grafana";
+              rule = "Host(`grafana.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "grafana";
             };
 
             # ── The service index (M26): admin route, behind Authelia ──────
@@ -3070,10 +3106,10 @@ in
             # user who has just logged in successfully, which is the RomM
             # failure.  The guard below catches the reverse direction too.
             homepage = {
-              rule        = "Host(`home.${baseDomain}`)";
-              entryPoints = [ "websecure" ];
-              middlewares = [ "authelia" ];
-              service     = "homepage";
+              rule = "Host(`home.${baseDomain}`)";
+              entryPoints = ["websecure"];
+              middlewares = ["authelia"];
+              service = "homepage";
             };
           };
 
@@ -3139,81 +3175,81 @@ in
           http.serversTransports.shortIdle.forwardingTimeouts.idleConnTimeout = "5s";
 
           http.services = {
-            jellyfin.loadBalancer.servers = [ { url = "http://${jellyfinAddr}:${toString jellyfinPort}/"; } ];
-            prowlarr.loadBalancer.servers = [ { url = "http://${arrAddr}:${toString prowlarrPort}/"; } ];
-            sonarr.loadBalancer.servers   = [ { url = "http://${arrAddr}:${toString sonarrPort}/"; } ];
-            radarr.loadBalancer.servers   = [ { url = "http://${arrAddr}:${toString radarrPort}/"; } ];
+            jellyfin.loadBalancer.servers = [{url = "http://${jellyfinAddr}:${toString jellyfinPort}/";}];
+            prowlarr.loadBalancer.servers = [{url = "http://${arrAddr}:${toString prowlarrPort}/";}];
+            sonarr.loadBalancer.servers = [{url = "http://${arrAddr}:${toString sonarrPort}/";}];
+            radarr.loadBalancer.servers = [{url = "http://${arrAddr}:${toString radarrPort}/";}];
 
             # M12 — same container, same address, three more ports.
-            bazarr.loadBalancer.servers       = [ { url = "http://${arrAddr}:${toString bazarrPort}/"; } ];
-            cleanuparr.loadBalancer.servers   = [ { url = "http://${arrAddr}:${toString cleanuparrPort}/"; } ];
-            mediathekarr.loadBalancer.servers = [ { url = "http://${arrAddr}:${toString mediathekarrPort}/"; } ];
+            bazarr.loadBalancer.servers = [{url = "http://${arrAddr}:${toString bazarrPort}/";}];
+            cleanuparr.loadBalancer.servers = [{url = "http://${arrAddr}:${toString cleanuparrPort}/";}];
+            mediathekarr.loadBalancer.servers = [{url = "http://${arrAddr}:${toString mediathekarrPort}/";}];
 
             # M13 — same container, same address, one more port.
-            jellyseerr.loadBalancer.servers   = [ { url = "http://${arrAddr}:${toString jellyseerrPort}/"; } ];
+            jellyseerr.loadBalancer.servers = [{url = "http://${arrAddr}:${toString jellyseerrPort}/";}];
 
             # M26 — the same address again, from containers/homepage.nix.
-            homepage.loadBalancer.servers     = [ { url = "http://${arrAddr}:${toString homepagePort}/"; } ];
+            homepage.loadBalancer.servers = [{url = "http://${arrAddr}:${toString homepagePort}/";}];
 
             # M8 — its own container on .18.
-            tvheadend.loadBalancer.servers    = [ { url = "http://${tvheadendAddr}:${toString tvheadendPort}/"; } ];
+            tvheadend.loadBalancer.servers = [{url = "http://${tvheadendAddr}:${toString tvheadendPort}/";}];
 
             # M9 — its own address, in a podman netns on VLAN 90.
-            tubesync.loadBalancer.servers     = [ { url = "http://${tubesyncAddr}:${toString tubesyncPort}/"; } ];
+            tubesync.loadBalancer.servers = [{url = "http://${tubesyncAddr}:${toString tubesyncPort}/";}];
 
             # M14 — four more ports on the arr container's address …
-            lidarr.loadBalancer.servers         = [ { url = "http://${arrAddr}:${toString lidarrPort}/"; } ];
-            kapowarr.loadBalancer.servers       = [ { url = "http://${arrAddr}:${toString kapowarrPort}/"; } ];
-            questarr.loadBalancer.servers       = [ { url = "http://${arrAddr}:${toString questarrPort}/"; } ];
-            audiobookshelf.loadBalancer.servers = [ { url = "http://${arrAddr}:${toString audiobookshelfPort}/"; } ];
+            lidarr.loadBalancer.servers = [{url = "http://${arrAddr}:${toString lidarrPort}/";}];
+            kapowarr.loadBalancer.servers = [{url = "http://${arrAddr}:${toString kapowarrPort}/";}];
+            questarr.loadBalancer.servers = [{url = "http://${arrAddr}:${toString questarrPort}/";}];
+            audiobookshelf.loadBalancer.servers = [{url = "http://${arrAddr}:${toString audiobookshelfPort}/";}];
 
             # 2026-09-08.  Two more on the arr container's existing address,
             # and one on the podman tier.
-            komga.loadBalancer.servers          = [ { url = "http://${arrAddr}:${toString komgaPort}/"; } ];
-            navidrome.loadBalancer.servers      = [ { url = "http://${arrAddr}:${toString navidromePort}/"; } ];
-            cwa.loadBalancer.servers            = [ { url = "http://${cwaAddr}:${toString cwaPort}/"; } ];
+            komga.loadBalancer.servers = [{url = "http://${arrAddr}:${toString komgaPort}/";}];
+            navidrome.loadBalancer.servers = [{url = "http://${arrAddr}:${toString navidromePort}/";}];
+            cwa.loadBalancer.servers = [{url = "http://${cwaAddr}:${toString cwaPort}/";}];
 
             # M17 — a fifth port on the arr container's address.
-            bindery.loadBalancer.servers        = [ { url = "http://${arrAddr}:${toString binderyPort}/"; } ];
+            bindery.loadBalancer.servers = [{url = "http://${arrAddr}:${toString binderyPort}/";}];
 
             # … and one more podman netns of its own, the tier's second.
-            storyteller.loadBalancer.servers    = [ { url = "http://${storytellerAddr}:${toString storytellerPort}/"; } ];
-            romm.loadBalancer.servers           = [ { url = "http://${rommAddr}:${toString rommPort}/"; } ];
-            openwebui.loadBalancer.servers      = [ { url = "http://${openWebuiAddr}:${toString openWebuiPort}/"; } ];
+            storyteller.loadBalancer.servers = [{url = "http://${storytellerAddr}:${toString storytellerPort}/";}];
+            romm.loadBalancer.servers = [{url = "http://${rommAddr}:${toString rommPort}/";}];
+            openwebui.loadBalancer.servers = [{url = "http://${openWebuiAddr}:${toString openWebuiPort}/";}];
 
             # M22 — its own nspawn container on .25.
-            immich.loadBalancer.servers         = [ { url = "http://${immichAddr}:${toString immichPort}/"; } ];
+            immich.loadBalancer.servers = [{url = "http://${immichAddr}:${toString immichPort}/";}];
 
             # M23 — its own nspawn container on .26, answering on plain 80
             # from the module's own nginx.
-            nextcloud.loadBalancer.servers      = [ { url = "http://${nextcloudAddr}:${toString nextcloudPort}/"; } ];
-            paperless.loadBalancer.servers      = [ { url = "http://${paperlessAddr}:${toString paperlessPort}/"; } ];
+            nextcloud.loadBalancer.servers = [{url = "http://${nextcloudAddr}:${toString nextcloudPort}/";}];
+            paperless.loadBalancer.servers = [{url = "http://${paperlessAddr}:${toString paperlessPort}/";}];
 
             # M24 — its own nspawn container on .27.  Plain HTTP, and a
             # WebSocket rides the same backend; Traefik proxies the upgrade with
             # no configuration as long as nothing buffers.
-            homeassistant.loadBalancer.servers  = [ { url = "http://${homeassistantAddr}:${toString homeassistantPort}/"; } ];
+            homeassistant.loadBalancer.servers = [{url = "http://${homeassistantAddr}:${toString homeassistantPort}/";}];
 
             # M27 — two nspawn containers on .28 and .29.  Plain HTTP on both;
             # neither terminates TLS, because the wildcard is terminated once,
             # here.
-            miniflux.loadBalancer.servers       = [ { url = "http://${minifluxAddr}:${toString minifluxPort}/"; } ];
-            karakeep.loadBalancer.servers       = [ { url = "http://${karakeepAddr}:${toString karakeepPort}/"; } ];
+            miniflux.loadBalancer.servers = [{url = "http://${minifluxAddr}:${toString minifluxPort}/";}];
+            karakeep.loadBalancer.servers = [{url = "http://${karakeepAddr}:${toString karakeepPort}/";}];
 
             # M31 — nginx inside the MAIL container, serving one static file.
             # The only backend on this proxy that is not a web application;
             # see the router above for why it lives there.
-            mtasts.loadBalancer.servers         = [ { url = "http://${mailAddr}:${toString mtaStsPort}/"; } ];
+            mtasts.loadBalancer.servers = [{url = "http://${mailAddr}:${toString mtaStsPort}/";}];
 
             # M30 — its own nspawn container on .30, answering plain HTTP on
             # the API port.  A WebSocket rides the same backend and Traefik
             # proxies the upgrade with no configuration.  The stream server on
             # 8097 is NOT here and must not be — see the note at `massAddr`.
-            mass.loadBalancer.servers           = [ { url = "http://${massAddr}:${toString massPort}/"; } ];
+            mass.loadBalancer.servers = [{url = "http://${massAddr}:${toString massPort}/";}];
 
             # … and one in the microvm guest, the first non-container backend.
-            slskd.loadBalancer.servers          = [ { url = "http://${slskdAddr}:${toString slskdPort}/"; } ];
-            grafana.loadBalancer.servers  = [ { url = "http://${monitoringAddr}:${toString grafanaPort}/"; } ];
+            slskd.loadBalancer.servers = [{url = "http://${slskdAddr}:${toString slskdPort}/";}];
+            grafana.loadBalancer.servers = [{url = "http://${monitoringAddr}:${toString grafanaPort}/";}];
 
             # M7.  The same address the forwardAuth middleware above calls,
             # reached over the same plain-HTTP layer-2 hop — one backend, two
@@ -3221,7 +3257,7 @@ in
             # middleware's is a server-to-server call on a different path
             # (/api/authz/forward-auth) of the same listener.
             authelia.loadBalancer = {
-              servers = [ { url = "http://${autheliaAddr}:${toString autheliaPort}/"; } ];
+              servers = [{url = "http://${autheliaAddr}:${toString autheliaPort}/";}];
               serversTransport = "shortIdle";
             };
           };
@@ -3263,25 +3299,25 @@ in
       #     internet plus the LAN.  Inbound restriction is the container
       #     firewall's and the UDM-Pro's job.
       systemd.services.traefik.serviceConfig = {
-        ProtectClock            = true;
-        ProtectHostname         = true;
-        ProtectProc             = "invisible";
-        RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
-        RestrictRealtime        = true;
-        RestrictSUIDSGID        = true;
-        RemoveIPC               = true;
-        LockPersonality         = true;
+        ProtectClock = true;
+        ProtectHostname = true;
+        ProtectProc = "invisible";
+        RestrictAddressFamilies = ["AF_INET" "AF_INET6" "AF_UNIX"];
+        RestrictRealtime = true;
+        RestrictSUIDSGID = true;
+        RemoveIPC = true;
+        LockPersonality = true;
         SystemCallArchitectures = "native";
-        SystemCallFilter        = [ "@system-service" "~@privileged" "~@debug" "~@mount" ];
-        UMask                   = "0077";
+        SystemCallFilter = ["@system-service" "~@privileged" "~@debug" "~@mount"];
+        UMask = "0077";
       };
 
       # `curl` and `dig` are the test plan's instruments: curl proves each
       # backend is reachable from HERE (and, from anywhere else, that it is
       # not), and dig is what checks the split-horizon answer differs from the
       # public one.  `openssl` reads the SANs off the issued certificate.
-      environment.systemPackages = with pkgs; [ curl dnsutils openssl ];
-      documentation.enable       = false;
+      environment.systemPackages = with pkgs; [curl dnsutils openssl];
+      documentation.enable = false;
       documentation.nixos.enable = false;
     };
   };

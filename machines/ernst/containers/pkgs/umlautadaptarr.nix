@@ -89,7 +89,6 @@
   openssl,
   icu,
 }:
-
 stdenv.mkDerivation (finalAttrs: {
   pname = "umlautadaptarr";
   version = "0.7.6";
@@ -192,7 +191,7 @@ stdenv.mkDerivation (finalAttrs: {
     # System.Globalization.Invariant so the ICU shim is never loaded at all.
     makeWrapper $out/share/umlautadaptarr/UmlautAdaptarr $out/bin/umlautadaptarr \
       --set ASPNETCORE_CONTENTROOT $out/share/umlautadaptarr \
-      --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath [ openssl ]}"
+      --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath [openssl]}"
 
     runHook postInstall
   '';
@@ -201,8 +200,8 @@ stdenv.mkDerivation (finalAttrs: {
     description = "Proxy that fixes Sonarr/Radarr handling of umlauts and German titles";
     homepage = "https://github.com/PCJones/UmlautAdaptarr";
     license = lib.licenses.gpl3Only;
-    platforms = [ "x86_64-linux" ];
-    sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
+    platforms = ["x86_64-linux"];
+    sourceProvenance = with lib.sourceTypes; [binaryNativeCode];
     mainProgram = "umlautadaptarr";
   };
 })

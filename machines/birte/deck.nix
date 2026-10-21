@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 #
 # `deck` — the primary user on birte. Jovian wires the Steam gaming session
 # to a user named "deck" (see jovian.steam.user in jovian.nix) but does NOT
@@ -18,13 +23,13 @@
 {
   users.users.deck = {
     isNormalUser = true;
-    home         = "/home/deck";
-    shell        = pkgs.bashInteractive;
+    home = "/home/deck";
+    shell = pkgs.bashInteractive;
     # `gamemode` for Jovian's gamescope-session; the rest are the usual
     # desktop groups so KDE / audio / networking work in Desktop Mode.
     # `roms` is the group shared with `syncthing` for the replicated ROM and
     # BIOS trees — see the tmpfiles rules below.
-    extraGroups  = [ "wheel" "networkmanager" "video" "audio" "input" "gamemode" "roms" ];
+    extraGroups = ["wheel" "networkmanager" "video" "audio" "input" "gamemode" "roms"];
     hashedPasswordFile =
       config.clan.core.vars.generators.deck-password.files."hashed-password".path;
   };
@@ -32,18 +37,18 @@
   # Clan vars: deck password generator
   clan.core.vars.generators.deck-password = {
     files."hashed-password" = {
-      secret    = true;
+      secret = true;
       neededFor = "users";
     };
     prompts."password" = {
       description = "Password for the deck user (sudo + local login in Desktop Mode)";
-      type        = "hidden";
+      type = "hidden";
     };
     # Pipe via stdin so a leading '-' in the password isn't parsed as a flag.
     script = ''
       ${pkgs.mkpasswd}/bin/mkpasswd -m sha-512 -s < "$prompts/password" > "$out/hashed-password"
     '';
-    runtimeInputs = [ pkgs.mkpasswd ];
+    runtimeInputs = [pkgs.mkpasswd];
   };
 
   # deck's home is rolled back to blank on every boot, same as every other
@@ -54,11 +59,11 @@
   # clanarchy.gaming.persistenceDirectories.
   environment.persistence."/persist".users.deck = {
     directories = [
-      ".config"      # Plasma / KDE config, HM-managed dotfiles
+      ".config" # Plasma / KDE config, HM-managed dotfiles
       ".local/share" # KDE data + Steam client data (library is symlinked out)
       ".local/state" # HM profile symlinks, systemd user state
-      ".cache"       # shader caches — re-derivable, but recompiling them on
-                     # every boot is exactly the stutter a Deck must avoid
+      ".cache" # shader caches — re-derivable, but recompiling them on
+      # every boot is exactly the stutter a Deck must avoid
 
       # Flatpak's per-app state.  Every Flatpak app keeps its config, data and
       # cache under ~/.var/app/<app-id>/ and NOTHING else — none of it lands
@@ -176,16 +181,20 @@
   #
   # `users.groups.<name>.members` has neither problem: it names a user without
   # defining one.
-  users.groups.roms.members = [ "syncthing" ];
+  users.groups.roms.members = ["syncthing"];
 
   # Home Manager for `deck`. Stylix's HM auto-enable is the default when the
   # HM integration imports it (see stylix.nix at the NixOS level); autoEnable
   # covers the plasma6/kde, GTK, Qt, cursor, and font targets based on the
   # active base16 scheme.
-  home-manager.users.deck = { config, lib, ... }: {
-    home.username      = "deck";
+  home-manager.users.deck = {
+    config,
+    lib,
+    ...
+  }: {
+    home.username = "deck";
     home.homeDirectory = "/home/deck";
-    home.stateVersion  = "25.11";
+    home.stateVersion = "25.11";
 
     stylix.autoEnable = true;
 

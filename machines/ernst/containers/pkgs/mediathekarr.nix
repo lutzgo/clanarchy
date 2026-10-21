@@ -89,9 +89,7 @@
   ffmpeg,
   mkvtoolnix-cli,
   which,
-}:
-
-let
+}: let
   version = "1.0-beta.12";
 
   src = fetchFromGitHub {
@@ -104,14 +102,13 @@ let
   # One shape, twice.  The only differences between the indexer and the
   # downloader are the project, the executable and the port, so everything
   # else is written once.
-  mkComponent =
-    {
-      pname,
-      projectFile,
-      executable,
-      listen,
-      description,
-    }:
+  mkComponent = {
+    pname,
+    projectFile,
+    executable,
+    listen,
+    description,
+  }:
     buildDotnetModule {
       inherit pname version src projectFile;
 
@@ -124,9 +121,9 @@ let
       dotnet-sdk = dotnetCorePackages.sdk_9_0;
       dotnet-runtime = dotnetCorePackages.aspnetcore_9_0;
 
-      executables = [ executable ];
+      executables = [executable];
 
-      nativeBuildInputs = [ makeWrapper ];
+      nativeBuildInputs = [makeWrapper];
 
       # ASPNETCORE_ENVIRONMENT is not decoration.  The port lives in
       # appsettings.PRODUCTION.json, which ASP.NET only loads when the
@@ -179,43 +176,42 @@ let
           --set ASPNETCORE_ENVIRONMENT Production \
           --set Kestrel__Endpoints__Http__Url "${listen}" \
           --prefix PATH : ${
-            lib.makeBinPath [
-              ffmpeg
-              mkvtoolnix-cli
-              # `which` IS A RUNTIME DEPENDENCY, and it is not obvious.
-              #
-              # Measured on ernst 2026-08-26, first deploy: the downloader
-              # read its config, initialised, and then aborted with
-              #
-              #   An error occurred trying to start process 'which' …
-              #   No such file or directory
-              #   Main process exited, code=dumped, signal=ABRT
-              #
-              # FfmpegUtils.EnsureFfmpegExistsAsync and its mkvmerge twin do
-              # not probe $PATH themselves — they SHELL OUT to `which` via
-              # Process.Start and read its stdout.  systemd's unit PATH is
-              # coreutils/findutils/gnugrep/gnused/systemd, and `which` is in
-              # none of them.
-              #
-              # THE LOCAL SMOKE TEST HID THIS.  Run by hand it logged
-              # "mkvmerge found in PATH" and "ffmpeg found in PATH" — because
-              # the interactive shell's PATH had `which` in it.  A smoke test
-              # inherits the tester's environment; a unit does not.
-              which
-            ]
-          }
+          lib.makeBinPath [
+            ffmpeg
+            mkvtoolnix-cli
+            # `which` IS A RUNTIME DEPENDENCY, and it is not obvious.
+            #
+            # Measured on ernst 2026-08-26, first deploy: the downloader
+            # read its config, initialised, and then aborted with
+            #
+            #   An error occurred trying to start process 'which' …
+            #   No such file or directory
+            #   Main process exited, code=dumped, signal=ABRT
+            #
+            # FfmpegUtils.EnsureFfmpegExistsAsync and its mkvmerge twin do
+            # not probe $PATH themselves — they SHELL OUT to `which` via
+            # Process.Start and read its stdout.  systemd's unit PATH is
+            # coreutils/findutils/gnugrep/gnused/systemd, and `which` is in
+            # none of them.
+            #
+            # THE LOCAL SMOKE TEST HID THIS.  Run by hand it logged
+            # "mkvmerge found in PATH" and "ffmpeg found in PATH" — because
+            # the interactive shell's PATH had `which` in it.  A smoke test
+            # inherits the tester's environment; a unit does not.
+            which
+          ]
+        }
       '';
 
       meta = {
         inherit description;
         homepage = "https://github.com/PCJones/MediathekArr";
         license = lib.licenses.gpl3Only;
-        platforms = [ "x86_64-linux" ];
+        platforms = ["x86_64-linux"];
         mainProgram = executable;
       };
     };
-in
-{
+in {
   indexer = mkComponent {
     pname = "mediathekarr-indexer";
     projectFile = "MediathekArrServer/MediathekArrServer.csproj";

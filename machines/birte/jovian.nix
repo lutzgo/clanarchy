@@ -1,4 +1,8 @@
-{ lib, pkgs, ... }:
+{
+  lib,
+  pkgs,
+  ...
+}:
 #
 # Jovian-NixOS wiring for the Steam Deck (OLED / Galileo).
 #
@@ -18,9 +22,9 @@
     devices.steamdeck.enable = true;
 
     steam = {
-      enable    = true;
-      autoStart = true;             # boot straight into Gaming Mode
-      user      = "deck";           # Jovian provisions the `deck` user
+      enable = true;
+      autoStart = true; # boot straight into Gaming Mode
+      user = "deck"; # Jovian provisions the `deck` user
 
       # "Switch to Desktop" lands in Plasma Bigscreen, not the ordinary Plasma
       # desktop. Bigscreen is a 10-foot shell built for a controller, which is
@@ -58,7 +62,7 @@
   # Decky keeps installed plugins and their settings here. Without this the
   # rollback discards every plugin on each boot, and Decky comes back looking
   # freshly installed with no indication why.
-  environment.persistence."/persist".directories = [ "/var/lib/decky-loader" ];
+  environment.persistence."/persist".directories = ["/var/lib/decky-loader"];
 
   # Registers plasma-bigscreen-wayland.desktop with the display manager.
   # jovian.steam.desktopSession is validated against
@@ -85,7 +89,7 @@
   # the technique to restore once the portal is fixed; it is reverted rather
   # than left in place because a session nobody can navigate is worse than
   # the plain desktop.
-  services.displayManager.sessionPackages = [ pkgs.kdePackages.plasma-bigscreen ];
+  services.displayManager.sessionPackages = [pkgs.kdePackages.plasma-bigscreen];
 
   # Steam's in-UI "Switch to Desktop" button shells out to
   # `steamos-session-select`. Jovian no longer ships that name: the script was
@@ -113,7 +117,7 @@
   #
   # The loader survives and serves plugins, but its service_stop/service_active
   # helpers are dead, so anything Decky wants to restart silently does nothing.
-  systemd.services.decky-loader.path = [ pkgs.systemd pkgs.python3 ];
+  systemd.services.decky-loader.path = [pkgs.systemd pkgs.python3];
 
   # A way back to Gaming Mode that does not require a terminal.
   #
@@ -154,7 +158,7 @@
       comment = "Leave the desktop and go back to Steam Big Picture";
       icon = "steam";
       exec = "steamos-session-select gamescope";
-      categories = [ "Game" ];
+      categories = ["Game"];
       # Bigscreen's launcher only lists applications that declare themselves
       # for it; without this the entry is invisible in exactly the session
       # that most needs it.

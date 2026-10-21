@@ -22,15 +22,15 @@
     };
 
     keepassxc.enable = lib.mkEnableOption "autostart KeePassXC password manager";
-    nextcloud.enable  = lib.mkEnableOption "autostart Nextcloud desktop sync client";
-    valent.enable     = lib.mkEnableOption "Valent KDE Connect daemon (for Noctalia valent-connect plugin)";
+    nextcloud.enable = lib.mkEnableOption "autostart Nextcloud desktop sync client";
+    valent.enable = lib.mkEnableOption "Valent KDE Connect daemon (for Noctalia valent-connect plugin)";
   };
 
   config = lib.mkIf config.clanarchy.desktop.labwc.enable {
     # labwc compositor + Wayland utilities
     environment.systemPackages = with pkgs;
-      [ labwc wlopm swappy satty ]
-      ++ lib.optionals config.clanarchy.desktop.labwc.valent.enable [ valent glib ];
+      [labwc wlopm swappy satty]
+      ++ lib.optionals config.clanarchy.desktop.labwc.valent.enable [valent glib];
 
     # UWSM — creates a uwsm-labwc.desktop session file picked up by regreet.
     programs.uwsm.waylandCompositors.labwc = {
@@ -58,19 +58,29 @@
     # (which would trigger a blocking pinentry prompt for the headless service).
     systemd.user.services.valent = lib.mkIf config.clanarchy.desktop.labwc.valent.enable {
       description = "Valent - KDE Connect protocol";
-      wantedBy    = [ "graphical-session.target" ];
-      partOf      = [ "graphical-session.target" ];
+      wantedBy = ["graphical-session.target"];
+      partOf = ["graphical-session.target"];
       environment.GCR_SSH_AGENT_PIPE = "";
       serviceConfig = {
         ExecStart = "${pkgs.valent}/bin/valent --gapplication-service";
-        Restart    = "on-failure";
+        Restart = "on-failure";
         RestartSec = 5;
       };
     };
 
     networking.firewall = lib.mkIf config.clanarchy.desktop.labwc.valent.enable {
-      allowedTCPPortRanges = [{ from = 1714; to = 1764; }];
-      allowedUDPPortRanges = [{ from = 1714; to = 1764; }];
+      allowedTCPPortRanges = [
+        {
+          from = 1714;
+          to = 1764;
+        }
+      ];
+      allowedUDPPortRanges = [
+        {
+          from = 1714;
+          to = 1764;
+        }
+      ];
     };
   };
 }

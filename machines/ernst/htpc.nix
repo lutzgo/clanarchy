@@ -11,15 +11,18 @@
 # it runs on fronts the storage array.  The switcher doesn't need it — the
 # session state dir is user-owned and the display-manager restart is granted
 # by a narrow polkit rule in the role module.
-{ config, pkgs, ... }:
 {
+  config,
+  pkgs,
+  ...
+}: {
   users.users.go = {
     isNormalUser = true;
     home = "/home/go";
     shell = pkgs.bashInteractive;
     # video/audio/input for the session; gamemode for gamescope's scheduling
     # hints.  No wheel, no networkmanager (ernst is networkd + wired).
-    extraGroups = [ "video" "audio" "input" "gamemode" ];
+    extraGroups = ["video" "audio" "input" "gamemode"];
     hashedPasswordFile =
       config.clan.core.vars.generators.go-password.files."hashed-password".path;
   };
@@ -37,7 +40,7 @@
     script = ''
       ${pkgs.mkpasswd}/bin/mkpasswd -m sha-512 -s < "$prompts/password" > "$out/hashed-password"
     '';
-    runtimeInputs = [ pkgs.mkpasswd ];
+    runtimeInputs = [pkgs.mkpasswd];
   };
 
   # ernst rolls back BOTH zroot/root and zroot/home to @blank on every boot
@@ -49,13 +52,13 @@
   # Everything Gaming Mode needs to not re-onboard on every reboot:
   environment.persistence."/persist".users.go = {
     directories = [
-      ".config"      # Plasma / KDE config, gamescope + Steam client settings
+      ".config" # Plasma / KDE config, gamescope + Steam client settings
       ".local/share" # Steam client data (the library itself is symlinked out, below)
       ".local/state" # systemd user state
       # ".steam" is contributed by modules/gaming-common.nix via
       # clanarchy.gaming.persistenceDirectories — not repeated here.
-      ".cache"       # shader caches — re-derivable, but recompiling them on
-                     # every boot is exactly the stutter this box exists to avoid
+      ".cache" # shader caches — re-derivable, but recompiling them on
+      # every boot is exactly the stutter this box exists to avoid
     ];
   };
 
@@ -103,81 +106,79 @@
     # capabilities" — no Atmos, no bitstreaming, and no error to explain it.
     audioProfile = "output:hdmi-surround71-extra3";
 
-    guiSettings =
-      let
-        # Exactly as Kodi stores it: the PipeWire node name, "|", the display
-        # name. Both halves must match a device Kodi enumerated, and the
-        # `-extra3`/"(HDMI 4)" tail is the connector the cable is in — so this
-        # and audioProfile above change together or not at all.
-        device =
-          "PIPEWIRE:alsa_output.pci-0000_03_00.1.hdmi-surround71-extra3"
-          + "|Navi 31 HDMI/DP Audio Digital Surround 7.1 (HDMI 4)";
-      in
-      {
-        # WHICH CONNECTOR KODI DRAWS ON. Runtime state until 2026-09-15,
-        # when it stopped being enough.
-        #
-        # Kodi in GBM mode picks a CARD before it reads this: CDRMUtils::
-        # OpenDrm takes the first DRM device with any connected connector,
-        # and only then does FindConnector look for this name WITHIN that
-        # card — falling back to any connected connector there if the name
-        # is absent. ernst has two cards with outputs on them (the iGPU and
-        # the dGPU the TV hangs off), so "first device with something
-        # plugged in" is not a decision, it is a coin flip.
-        #
-        # It landed wrong on 2026-09-15. Same hardware, no hotplug in seven
-        # days of uptime, two consecutive runs of the same binary:
-        #
-        #   Sep 14  using connector: HDMI-A-1  'LG Electronics' 'LG TV SSCR2'
-        #   Sep 15  using connector: HDMI-A-2  'PNP(GLI)'       'GLKVM'
-        #
-        # — a KVM capture dongle on the iGPU's HDMI port. Kodi was fine:
-        # skin loaded, PVR started, widgets populated, rendering every frame
-        # into a dongle nobody was watching. FROM THE SOFA THAT IS A HANG,
-        # and it was diagnosed as one twice before the log was read. The
-        # setting was ALREADY "HDMI-A-1" at the time and was powerless,
-        # because the wrong card had been chosen before it was consulted.
-        #
-        # So this pin does not fix that, and must not be mistaken for the
-        # fix: what fixes it is having only one card with an output on it,
-        # or having both outputs on the SAME card, where this name then
-        # decides correctly. The pin's job is narrower and still worth
-        # having — Kodi rewrites guisettings.xml on exit, so a single
-        # fallback to the wrong connector would persist the wrong value and
-        # survive every rebuild after it.
-        #
-        # IF THE TV GOES DARK WHILE KODI IS CLEARLY ALIVE, read
-        # ~/.kodi/temp/kodi.log for `FindConnector` and `[display-info]`
-        # before touching anything else. Those two lines name the screen it
-        # is actually drawing on, and they answer in one second a question
-        # that otherwise looks like a hung session.
-        "videoscreen.monitor" = "HDMI-A-1";
+    guiSettings = let
+      # Exactly as Kodi stores it: the PipeWire node name, "|", the display
+      # name. Both halves must match a device Kodi enumerated, and the
+      # `-extra3`/"(HDMI 4)" tail is the connector the cable is in — so this
+      # and audioProfile above change together or not at all.
+      device =
+        "PIPEWIRE:alsa_output.pci-0000_03_00.1.hdmi-surround71-extra3"
+        + "|Navi 31 HDMI/DP Audio Digital Surround 7.1 (HDMI 4)";
+    in {
+      # WHICH CONNECTOR KODI DRAWS ON. Runtime state until 2026-09-15,
+      # when it stopped being enough.
+      #
+      # Kodi in GBM mode picks a CARD before it reads this: CDRMUtils::
+      # OpenDrm takes the first DRM device with any connected connector,
+      # and only then does FindConnector look for this name WITHIN that
+      # card — falling back to any connected connector there if the name
+      # is absent. ernst has two cards with outputs on them (the iGPU and
+      # the dGPU the TV hangs off), so "first device with something
+      # plugged in" is not a decision, it is a coin flip.
+      #
+      # It landed wrong on 2026-09-15. Same hardware, no hotplug in seven
+      # days of uptime, two consecutive runs of the same binary:
+      #
+      #   Sep 14  using connector: HDMI-A-1  'LG Electronics' 'LG TV SSCR2'
+      #   Sep 15  using connector: HDMI-A-2  'PNP(GLI)'       'GLKVM'
+      #
+      # — a KVM capture dongle on the iGPU's HDMI port. Kodi was fine:
+      # skin loaded, PVR started, widgets populated, rendering every frame
+      # into a dongle nobody was watching. FROM THE SOFA THAT IS A HANG,
+      # and it was diagnosed as one twice before the log was read. The
+      # setting was ALREADY "HDMI-A-1" at the time and was powerless,
+      # because the wrong card had been chosen before it was consulted.
+      #
+      # So this pin does not fix that, and must not be mistaken for the
+      # fix: what fixes it is having only one card with an output on it,
+      # or having both outputs on the SAME card, where this name then
+      # decides correctly. The pin's job is narrower and still worth
+      # having — Kodi rewrites guisettings.xml on exit, so a single
+      # fallback to the wrong connector would persist the wrong value and
+      # survive every rebuild after it.
+      #
+      # IF THE TV GOES DARK WHILE KODI IS CLEARLY ALIVE, read
+      # ~/.kodi/temp/kodi.log for `FindConnector` and `[display-info]`
+      # before touching anything else. Those two lines name the screen it
+      # is actually drawing on, and they answer in one second a question
+      # that otherwise looks like a hung session.
+      "videoscreen.monitor" = "HDMI-A-1";
 
-        "audiooutput.audiodevice" = device;
-        "audiooutput.passthroughdevice" = device;
+      "audiooutput.audiodevice" = device;
+      "audiooutput.passthroughdevice" = device;
 
-        # 10 = AE_CH_LAYOUT_7_1. The enum is Kodi's own, from
-        # share/kodi/system/settings/settings.xml in the package — read there,
-        # not guessed, because the numbering has no relation to channel count.
-        "audiooutput.channels" = "10";
+      # 10 = AE_CH_LAYOUT_7_1. The enum is Kodi's own, from
+      # share/kodi/system/settings/settings.xml in the package — read there,
+      # not guessed, because the numbering has no relation to channel count.
+      "audiooutput.channels" = "10";
 
-        # THE MASTER GATE. With this false the per-codec toggles below are
-        # inert, which is a confusing way to have no Atmos while every setting
-        # that appears to control Atmos reads "true".
-        "audiooutput.passthrough" = "true";
+      # THE MASTER GATE. With this false the per-codec toggles below are
+      # inert, which is a confusing way to have no Atmos while every setting
+      # that appears to control Atmos reads "true".
+      "audiooutput.passthrough" = "true";
 
-        # Atmos rides inside Dolby Digital Plus on streaming sources, so E-AC3
-        # is the switch that actually puts Atmos on the soundbar. TrueHD is
-        # the rarer disc-era carrier and now works too — it needs 8-channel
-        # HBR, which the stereo profile could not offer.
-        "audiooutput.ac3passthrough" = "true";
-        "audiooutput.eac3passthrough" = "true";
-        "audiooutput.truehdpassthrough" = "true";
+      # Atmos rides inside Dolby Digital Plus on streaming sources, so E-AC3
+      # is the switch that actually puts Atmos on the soundbar. TrueHD is
+      # the rarer disc-era carrier and now works too — it needs 8-channel
+      # HBR, which the stereo profile could not offer.
+      "audiooutput.ac3passthrough" = "true";
+      "audiooutput.eac3passthrough" = "true";
+      "audiooutput.truehdpassthrough" = "true";
 
-        # Backstop for sources whose codec cannot be bitstreamed: re-encode to
-        # DD 5.1 rather than collapsing to stereo.
-        "audiooutput.ac3transcode" = "true";
-      };
+      # Backstop for sources whose codec cannot be bitstreamed: re-encode to
+      # DD 5.1 rather than collapsing to stereo.
+      "audiooutput.ac3transcode" = "true";
+    };
   };
 
   # The library itself belongs on the bulk pool, not on zroot: zdata/games

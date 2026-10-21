@@ -56,7 +56,6 @@
   buildPythonPackage,
   fetchurl,
 }:
-
 buildPythonPackage rec {
   pname = "comfy-aimdo";
   version = "0.5.3";

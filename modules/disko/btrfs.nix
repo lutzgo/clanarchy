@@ -65,28 +65,38 @@
   enableEncryption ? false,
   luksName ? "cryptroot",
   gamesMountpoint ? "/games",
-}:
-{ lib, ... }:
+}: {lib, ...}:
 assert lib.assertMsg (diskName != "main") ''
   modules/disko/btrfs.nix: diskName must not be "main" — it collides with the
   Clan installer USB's partition labels during `clan machines install`.
-'';
-let
+''; let
   # Mirrors the ZFS template's rootFsOptions (compression = zstd,
   # atime = off) so both backends behave the same way.
-  commonOpts = [ "compress=zstd" "noatime" ];
+  commonOpts = ["compress=zstd" "noatime"];
 
   # The filesystem itself, independent of whether it sits on bare partition or
   # on a LUKS mapping. Pulled out so the two cases cannot drift: the subvolume
   # set is the thing modules/btrfs-impermanence.nix knows about.
   btrfsContent = {
     type = "btrfs";
-    extraArgs = [ "-L" "btrfsroot" ];
+    extraArgs = ["-L" "btrfsroot"];
     subvolumes = {
-      "@root" = { mountpoint = "/"; mountOptions = commonOpts; };
-      "@nix" = { mountpoint = "/nix"; mountOptions = commonOpts; };
-      "@home" = { mountpoint = "/home"; mountOptions = commonOpts; };
-      "@persist" = { mountpoint = "/persist"; mountOptions = commonOpts; };
+      "@root" = {
+        mountpoint = "/";
+        mountOptions = commonOpts;
+      };
+      "@nix" = {
+        mountpoint = "/nix";
+        mountOptions = commonOpts;
+      };
+      "@home" = {
+        mountpoint = "/home";
+        mountOptions = commonOpts;
+      };
+      "@persist" = {
+        mountpoint = "/persist";
+        mountOptions = commonOpts;
+      };
 
       # Steam library.  Kept out of the rollback path entirely
       # (see modules/btrfs-impermanence.nix) and mounted
@@ -97,12 +107,11 @@ let
       # are already compressed.
       "@games" = {
         mountpoint = gamesMountpoint;
-        mountOptions = [ "nodatacow" "noatime" ];
+        mountOptions = ["nodatacow" "noatime"];
       };
     };
   };
-in
-{
+in {
   disko.devices = {
     disk.${diskName} = {
       type = "disk";
@@ -118,8 +127,8 @@ in
                 type = "filesystem";
                 format = "vfat";
                 mountpoint = "/boot";
-                extraArgs = [ "-n" "ESP" ];
-                mountOptions = [ "umask=0077" ];
+                extraArgs = ["-n" "ESP"];
+                mountOptions = ["umask=0077"];
               };
             };
           }
@@ -127,15 +136,16 @@ in
             swap = {
               size = swapSize;
               content =
-                { type = "swap"; }
-                // lib.optionalAttrs encryptSwap { randomEncryption = true; };
+                {type = "swap";}
+                // lib.optionalAttrs encryptSwap {randomEncryption = true;};
             };
           }
           // {
             btrfs = {
               size = "100%";
               content =
-                if enableEncryption then {
+                if enableEncryption
+                then {
                   type = "luks";
                   name = luksName;
                   # Discards reach the SSD through the mapping. Standard for
@@ -143,8 +153,8 @@ in
                   # usual and accepted trade.
                   settings.allowDiscards = true;
                   content = btrfsContent;
-                } else
-                  btrfsContent;
+                }
+                else btrfsContent;
             };
           };
       };

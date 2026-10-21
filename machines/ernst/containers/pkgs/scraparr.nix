@@ -45,7 +45,6 @@
   python3Packages,
   fetchFromGitHub,
 }:
-
 python3Packages.buildPythonApplication rec {
   pname = "scraparr";
   version = "3.1.0";
@@ -58,7 +57,7 @@ python3Packages.buildPythonApplication rec {
     hash = "sha256-3VtZJNwjUfOw/nlA4J5NG/RdakYp0Hk84rmY286isWg=";
   };
 
-  build-system = [ python3Packages.setuptools ];
+  build-system = [python3Packages.setuptools];
 
   dependencies = with python3Packages; [
     prometheus-client
@@ -74,7 +73,7 @@ python3Packages.buildPythonApplication rec {
   # its own /metrics output — which the PR test plan checks directly.
   doCheck = false;
 
-  pythonImportsCheck = [ "scraparr" ];
+  pythonImportsCheck = ["scraparr"];
 
   meta = {
     description = "Prometheus exporter for the *arr suite";

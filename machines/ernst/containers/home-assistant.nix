@@ -221,13 +221,10 @@
   pkgs,
   lib,
   ...
-}:
-
-let
+}: let
   ##############################################################################
   # Identity.
   ##############################################################################
-
   # ── 286 IS NOT OURS TO CHOOSE, AND THAT IS THE POINT ──────────────────────
   #
   # This file was first written with 3038 — the next free number in the
@@ -403,8 +400,7 @@ let
 
   zigbeeNode = "/dev/zigbee-coordinator";
   threadNode = "/dev/thread-radio";
-in
-{
+in {
   ##############################################################################
   # Host side — the udev aliases, the state directory, and the two veths.
   ##############################################################################
@@ -443,11 +439,11 @@ in
   # as hard as one that is never used.
   systemd.services.hass-radio-symlinks = {
     description = "Ensure the ZBT-2 radio aliases exist for container@hass";
-    wantedBy    = [ "container@hass.service" ];
-    before      = [ "container@hass.service" ];
-    after       = [ "systemd-udevd.service" ];
+    wantedBy = ["container@hass.service"];
+    before = ["container@hass.service"];
+    after = ["systemd-udevd.service"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = false;
       ExecStart = [
         "${pkgs.systemd}/bin/udevadm trigger --subsystem-match=tty --action=add"
@@ -469,16 +465,16 @@ in
   # about mode take turns winning, one per deploy.
   systemd.services.hass-dirs = {
     description = "Verify /srv/state is mounted and create Home Assistant's directories";
-    wantedBy   = [ "multi-user.target" ];
-    after      = [ "srv-state.mount" ];
-    requires   = [ "srv-state.mount" ];
-    before     = [ "container@hass.service" ];
-    requiredBy = [ "container@hass.service" ];
+    wantedBy = ["multi-user.target"];
+    after = ["srv-state.mount"];
+    requires = ["srv-state.mount"];
+    before = ["container@hass.service"];
+    requiredBy = ["container@hass.service"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
     };
-    path = [ pkgs.util-linux pkgs.coreutils ];
+    path = [pkgs.util-linux pkgs.coreutils];
 
     # BLOCKING (`requires` + `requiredBy`), not advisory, and for Nextcloud's
     # reason rather than arr's: a Home Assistant that starts without its state
@@ -603,7 +599,7 @@ in
   # briefly-addressed interface had ernst's mDNS on a foreign segment within
   # seconds.  modules/networking/mdns.nix runs the reflector with no interface
   # pinning, which is what makes this worth stating.
-  services.avahi.denyInterfaces = [ "iot0" ];
+  services.avahi.denyInterfaces = ["iot0"];
 
   ##############################################################################
   # The container.
@@ -622,7 +618,7 @@ in
   # mDNS reflector must not touch is a host fact.
   clanarchy.containers.hass = {
     enable = true;
-    mac    = "02:00:00:90:00:13";
+    mac = "02:00:00:90:00:13";
 
     # NO uid/gid PIN: `services.home-assistant` assigns 286 from
     # `config.ids.uids` unconditionally, so a pin here is an option conflict
@@ -634,7 +630,11 @@ in
     # repo refuses to relay them across a firewall boundary, so Home Assistant
     # gets a port ON that segment rather than a reflector pointed at it.
     vlanLegs = [
-      { veth = "iot0"; vlan = 20; mac = "02:00:00:20:00:01"; }
+      {
+        veth = "iot0";
+        vlan = 20;
+        mac = "02:00:00:20:00:01";
+      }
     ];
 
     # Legs 3 and 4 — point-to-point, inward. `ai3` reaches llama-swap for the
@@ -642,30 +642,55 @@ in
     # is on the IoT leg or on VLAN 90: either would work and both would make a
     # private channel reachable by everything sharing that segment.
     ula = [
-      { veth = aiVeth;   hostAddress6 = aiHost;   localAddress6 = aiCont; }
-      { veth = kodiVeth; hostAddress6 = kodiHost; localAddress6 = kodiCont; }
+      {
+        veth = aiVeth;
+        hostAddress6 = aiHost;
+        localAddress6 = aiCont;
+      }
+      {
+        veth = kodiVeth;
+        hostAddress6 = kodiHost;
+        localAddress6 = kodiCont;
+      }
     ];
 
     allowFrom = [
-      { peer = traefikAddr;   port = hassPort; }  # the web UI and the companion app
-      { peer = dashboardAddr; port = hassPort; }  # the service index's widget
+      {
+        peer = traefikAddr;
+        port = hassPort;
+      } # the web UI and the companion app
+      {
+        peer = dashboardAddr;
+        port = hassPort;
+      } # the service index's widget
       # mDNS and SSDP, confined to the IoT leg with `-i` rather than `-s`:
       # the sources are multicast groups and every device on the segment, so
       # there is no address to name. The interface IS the restriction —
       # nothing on VLAN 90 gains a port from these two lines.
-      { interface = "iot0"; proto = "udp"; port = 5353; }
-      { interface = "iot0"; proto = "udp"; port = 1900; }
+      {
+        interface = "iot0";
+        proto = "udp";
+        port = 5353;
+      }
+      {
+        interface = "iot0";
+        proto = "udp";
+        port = 1900;
+      }
     ];
 
     allowedDevices = [
-      { node = "char-ttyACM"; modifier = "rw"; }
+      {
+        node = "char-ttyACM";
+        modifier = "rw";
+      }
     ];
 
     bindMounts = {
       # The state tree, bound at the module's OWN default so configDir, the
       # StateDirectory and the module's tmpfiles rules all agree.
       "${configDir}" = {
-        hostPath   = stateRoot;
+        hostPath = stateRoot;
         isReadOnly = false;
       };
 
@@ -689,16 +714,21 @@ in
       # obvious fix and is its own failure mode against a flapping device.
       # These dongles are permanently seated in a server; build it if it bites.
       "${zigbeeNode}" = {
-        hostPath   = zigbeeNode;
+        hostPath = zigbeeNode;
         isReadOnly = false;
       };
       "${threadNode}" = {
-        hostPath   = threadNode;
+        hostPath = threadNode;
         isReadOnly = false;
       };
     };
 
-    config = { config, pkgs, lib, ... }: let
+    config = {
+      config,
+      pkgs,
+      lib,
+      ...
+    }: let
       # HACS — the Home Assistant Community Store.  The derivation, and the
       # reasons it is built from the release zip rather than the git tag, are in
       # ./pkgs/hacs.nix; what its presence means for this container is in the
@@ -748,9 +778,9 @@ in
             version = "3.7.3";
             src = pkgs.fetchFromGitHub {
               owner = "bluetooth-devices";
-              repo  = "bleak-esphome";
-              tag   = "v${version}";
-              hash  = "sha256-zEa8l3ob05BoT/GHhwClzOreZyC3uPaG05VIJV7ZZ00=";
+              repo = "bleak-esphome";
+              tag = "v${version}";
+              hash = "sha256-zEa8l3ob05BoT/GHhwClzOreZyC3uPaG05VIJV7ZZ00=";
             };
             # The package's own pytest suite is left ON and PASSES at this
             # version — built and checked on ernst 2026-09-24 before this was
@@ -766,7 +796,7 @@ in
       # and the difference is load-bearing now that the line above overrides the
       # scope: the two would be different package sets, and the comment below
       # about installing two incompatible copies would stop being hypothetical.
-      hacs = hassPackage.python3Packages.callPackage ./pkgs/hacs.nix { };
+      hacs = hassPackage.python3Packages.callPackage ./pkgs/hacs.nix {};
 
       # ── pytoyoda, FOR THE `toyota` HACS INTEGRATION ──────────────────────
       #
@@ -778,7 +808,7 @@ in
       # It is a ./pkgs file rather than `ps.pytoyoda` because nixpkgs has no
       # such attribute — see that file for why the block `hacs-deps-check`
       # printed could not be pasted as-is.
-      pytoyoda = hassPackage.python3Packages.callPackage ./pkgs/pytoyoda.nix { };
+      pytoyoda = hassPackage.python3Packages.callPackage ./pkgs/pytoyoda.nix {};
 
       # ── EVERY PACKAGED INTEGRATION, BEHIND ONE PYTHONPATH ENTRY ───────
       #
@@ -858,19 +888,17 @@ in
         "kef" # aiokef 0.2.17: get_event_loop() at init, broken on python3.14
       ];
 
-      buildableComponents =
-        let
-          evaluates = component:
-            let
-              result = builtins.tryEval (builtins.deepSeq
-                (map (drv: drv.outPath)
-                  (hassPackage.getPackages component hassPackage.python3Packages))
-                true);
-            in
-            result.success && result.value;
-          usable = component:
-            !(builtins.elem component unbuildableComponents) && evaluates component;
+      buildableComponents = let
+        evaluates = component: let
+          result = builtins.tryEval (builtins.deepSeq
+            (map (drv: drv.outPath)
+              (hassPackage.getPackages component hassPackage.python3Packages))
+            true);
         in
+          result.success && result.value;
+        usable = component:
+          !(builtins.elem component unbuildableComponents) && evaluates component;
+      in
         builtins.filter usable hassPackage.availableComponents;
 
       # Used twice on purpose — see the `extraPackages` note above.
@@ -974,33 +1002,33 @@ in
       # remove the only `brotli` there is and `import brotli` would fail
       # outright for surepetcare — a silently worse outcome than the bug.  The
       # throw below is what makes that a build failure instead.
-      shadowedDists = [ "brotlipy" ];
+      shadowedDists = ["brotlipy"];
 
-      hassPythonEnv =
-        let
-          ps = hassPackage.python3Packages;
-          deps = lib.unique (
-            lib.concatMap (c: hassPackage.getPackages c ps) buildableComponents
-            ++ hassExtraPackages ps
-          );
-          fullClosure = ps.requiredPythonModules deps;
-          closure =
-            lib.filter (d: !(lib.elem (d.pname or "") shadowedDists)) fullClosure;
-          keptPnames = map (d: d.pname or "") closure;
-          allOutputs =
-            lib.concatMap (d: map (o: d.${o}) (d.outputs or [ "out" ])) closure;
+      hassPythonEnv = let
+        ps = hassPackage.python3Packages;
+        deps = lib.unique (
+          lib.concatMap (c: hassPackage.getPackages c ps) buildableComponents
+          ++ hassExtraPackages ps
+        );
+        fullClosure = ps.requiredPythonModules deps;
+        closure =
+          lib.filter (d: !(lib.elem (d.pname or "") shadowedDists)) fullClosure;
+        keptPnames = map (d: d.pname or "") closure;
+        allOutputs =
+          lib.concatMap (d: map (o: d.${o}) (d.outputs or ["out"])) closure;
 
-          # `throw` and not `assertions`, for containers/traefik.nix's reason:
-          # it fires wherever this is evaluated — `nix flake check`, the CI
-          # eval, `nix build --dry-run` — and cannot be demoted to a warning.
-          env = pkgs.buildEnv {
-            name = "hass-python-deps";
-            paths = allOutputs;
-            pathsToLink = [ "/lib/${ps.python.libPrefix}/site-packages" ];
-            ignoreCollisions = true;
-          };
-        in
-        if !(lib.elem "brotli" keptPnames) then
+        # `throw` and not `assertions`, for containers/traefik.nix's reason:
+        # it fires wherever this is evaluated — `nix flake check`, the CI
+        # eval, `nix build --dry-run` — and cannot be demoted to a warning.
+        env = pkgs.buildEnv {
+          name = "hass-python-deps";
+          paths = allOutputs;
+          pathsToLink = ["/lib/${ps.python.libPrefix}/site-packages"];
+          ignoreCollisions = true;
+        };
+      in
+        if !(lib.elem "brotli" keptPnames)
+        then
           throw ''
             home-assistant.nix: brotlipy is filtered out of hassPythonEnv so
             that `import brotli` resolves to Brotli — but Brotli is no longer
@@ -1009,8 +1037,7 @@ in
             Re-read the "TWO DISTRIBUTIONS, ONE IMPORT NAME" block above and
             re-derive the fix against the current channel.
           ''
-        else
-          env;
+        else env;
 
       # ── THE REQUIREMENTS CHECKER ────────────────────────────────────────
       #
@@ -1061,11 +1088,11 @@ in
       # used to pick the matching `packaging`.
       checkPython =
         config.services.home-assistant.package.python3Packages.python.withPackages
-          (ps: [ ps.packaging ]);
+        (ps: [ps.packaging]);
 
       hacsDepsCheck = pkgs.writeShellApplication {
         name = "hacs-deps-check";
-        runtimeInputs = [ ];
+        runtimeInputs = [];
         text = ''
           export PYTHONPATH=${hassPythonPath}
           exec ${checkPython}/bin/python3 \
@@ -1112,80 +1139,81 @@ in
         # the build FAIL if one ever stops being packaged, where the filtered
         # set would quietly drop it.
         extraComponents = lib.unique ([
-          "zha"           # Zigbee, via the ZBT-2 on /dev/zigbee-coordinator
-          "mobile_app"    # the companion app's registration + push endpoint
-          "zeroconf"      # mDNS discovery — the iot0 leg's reason to exist
-          "ssdp"          # SSDP discovery, same
-          "met"           # weather, met.no: no API key, no account
-          "radio_browser" # offered by the onboarding wizard; absent = a 404
-          "backup"        # HA's own backup UI, onto the state tree
+            "zha" # Zigbee, via the ZBT-2 on /dev/zigbee-coordinator
+            "mobile_app" # the companion app's registration + push endpoint
+            "zeroconf" # mDNS discovery — the iot0 leg's reason to exist
+            "ssdp" # SSDP discovery, same
+            "met" # weather, met.no: no API key, no account
+            "radio_browser" # offered by the onboarding wizard; absent = a 404
+            "backup" # HA's own backup UI, onto the state tree
 
-          # ── M29: the local AI path ──────────────────────────────────────
-          #
-          # `ollama` IS THE CONVERSATION AGENT, and it is not talking to
-          # Ollama.  This release has no `llama_cpp` integration — that landed
-          # in 2026.8, and ernst is on 26.05's 2026.5.4 — and
-          # `openai_conversation` here has no base-URL option, so it can only
-          # reach api.openai.com.  `ollama` is the only conversation platform
-          # in this release that can be pointed at a local endpoint, so
-          # service-modules/local-ai.nix's mneme daemon presents the Ollama
-          # wire protocol on [fdca:fe93::1]:11435 and translates.  The full
-          # argument is in that module's roles.agent header.
-          #
-          # When this hub's nixpkgs reaches 2026.8, `llama_cpp` replaces this
-          # line and the browser-side change is deleting one integration and
-          # adding another against the same daemon.
-          "ollama"
+            # ── M29: the local AI path ──────────────────────────────────────
+            #
+            # `ollama` IS THE CONVERSATION AGENT, and it is not talking to
+            # Ollama.  This release has no `llama_cpp` integration — that landed
+            # in 2026.8, and ernst is on 26.05's 2026.5.4 — and
+            # `openai_conversation` here has no base-URL option, so it can only
+            # reach api.openai.com.  `ollama` is the only conversation platform
+            # in this release that can be pointed at a local endpoint, so
+            # service-modules/local-ai.nix's mneme daemon presents the Ollama
+            # wire protocol on [fdca:fe93::1]:11435 and translates.  The full
+            # argument is in that module's roles.agent header.
+            #
+            # When this hub's nixpkgs reaches 2026.8, `llama_cpp` replaces this
+            # line and the browser-side change is deleting one integration and
+            # adding another against the same daemon.
+            "ollama"
 
-          # Wyoming — the protocol Assist speaks to speech services.  Both
-          # servers run on the host (roles.voice) and are reached over the same
-          # ai3 leg.  `default_config` does NOT pull this in.
-          "wyoming"
+            # Wyoming — the protocol Assist speaks to speech services.  Both
+            # servers run on the host (roles.voice) and are reached over the same
+            # ai3 leg.  `default_config` does NOT pull this in.
+            "wyoming"
 
-          # The pipeline itself and its two halves.  `default_config` brings
-          # `conversation` and `assist_pipeline`, but `stt` and `tts` are only
-          # loaded as dependencies of a provider — and they have to be
-          # offerable before the Voice assistants UI can build a pipeline, so
-          # all four are named rather than inferred.
-          "conversation"
-          "assist_pipeline"
-          "stt"
-          "tts"
+            # The pipeline itself and its two halves.  `default_config` brings
+            # `conversation` and `assist_pipeline`, but `stt` and `tts` are only
+            # loaded as dependencies of a provider — and they have to be
+            # offerable before the Voice assistants UI can build a pipeline, so
+            # all four are named rather than inferred.
+            "conversation"
+            "assist_pipeline"
+            "stt"
+            "tts"
 
-          # ── The Voice Preview Edition is an ESPHome device ───────────────
-          #
-          # It is not a Wyoming satellite and does not need one: the hardware
-          # runs microWakeWord ON DEVICE and speaks the ESPHome native API to
-          # this hub, which then drives the pipeline built from the Wyoming
-          # STT/TTS servers on the host.  So there is no
-          # `services.wyoming.openwakeword` anywhere in this fleet and there
-          # should not be — wake-word detection on the server would be a second
-          # implementation of a job the satellite already does better, on audio
-          # it would have to stream continuously.
-          #
-          # THIS IS THE ONE COMPONENT HERE WITH A PINNED DEPENDENCY.  See the
-          # `hassPackage` note above: the manifest wants bleak-esphome==3.7.3
-          # and nixpkgs 26.05 ships 3.7.5.
-          #
-          # It also depends on `bluetooth`, which it pulls in itself — that is
-          # the BLE-proxy half of the device, and it is why this integration
-          # carries dbus-fast, habluetooth and bluetooth-auto-recovery.
-          # ernst's own Bluetooth adapter is not involved and is not required.
-          "esphome"
+            # ── The Voice Preview Edition is an ESPHome device ───────────────
+            #
+            # It is not a Wyoming satellite and does not need one: the hardware
+            # runs microWakeWord ON DEVICE and speaks the ESPHome native API to
+            # this hub, which then drives the pipeline built from the Wyoming
+            # STT/TTS servers on the host.  So there is no
+            # `services.wyoming.openwakeword` anywhere in this fleet and there
+            # should not be — wake-word detection on the server would be a second
+            # implementation of a job the satellite already does better, on audio
+            # it would have to stream continuously.
+            #
+            # THIS IS THE ONE COMPONENT HERE WITH A PINNED DEPENDENCY.  See the
+            # `hassPackage` note above: the manifest wants bleak-esphome==3.7.3
+            # and nixpkgs 26.05 ships 3.7.5.
+            #
+            # It also depends on `bluetooth`, which it pulls in itself — that is
+            # the BLE-proxy half of the device, and it is why this integration
+            # carries dbus-fast, habluetooth and bluetooth-auto-recovery.
+            # ernst's own Bluetooth adapter is not involved and is not required.
+            "esphome"
 
-          # ── Added because the UI offered them and they did not work ────────
-          #
-          # The two that started all of this.  Both were listed in "Add
-          # Integration", both failed their config flow on import, and both
-          # have their requirement packaged in nixpkgs — they were simply not
-          # named here.  Naming a component is the whole fix; the module pulls
-          # the requirement in from component-packages.nix.
-          "yamaha_musiccast"      # the Yamaha AV receiver, MusicCast API
-          "dwd_weather_warnings"  # DWD severe-weather warnings, by warncell
+            # ── Added because the UI offered them and they did not work ────────
+            #
+            # The two that started all of this.  Both were listed in "Add
+            # Integration", both failed their config flow on import, and both
+            # have their requirement packaged in nixpkgs — they were simply not
+            # named here.  Naming a component is the whole fix; the module pulls
+            # the requirement in from component-packages.nix.
+            "yamaha_musiccast" # the Yamaha AV receiver, MusicCast API
+            "dwd_weather_warnings" # DWD severe-weather warnings, by warncell
 
-          # `kef` is the counter-example, and it is excluded by
-          # `unbuildableComponents` above rather than merely unnamed here.
-        ] ++ buildableComponents);
+            # `kef` is the counter-example, and it is excluded by
+            # `unbuildableComponents` above rather than merely unnamed here.
+          ]
+          ++ buildableComponents);
 
         # ── Requirements for HACS-downloaded integrations ────────────────────
         #
@@ -1231,7 +1259,7 @@ in
         # two-step migration and not a collision: remove it in HACS first, add
         # it here second, because a store symlink and a downloaded directory
         # cannot occupy the same name.
-        customComponents = [ hacs ];
+        customComponents = [hacs];
 
         # ── configuration.yaml IS DECLARATIVE AND READ-ONLY ────────────────
         #
@@ -1246,7 +1274,7 @@ in
         config = {
           # The meta-integration: ~40 components including recorder, history,
           # logbook, the energy dashboard, and config-flow discovery.
-          default_config = { };
+          default_config = {};
 
           homeassistant = {
             name = "Home";
@@ -1278,7 +1306,7 @@ in
             # the iptables rules below do not cover is a question someone has to
             # answer later, and the answer being "harmless" does not save them
             # the work of establishing it.
-            server_host = [ "0.0.0.0" ];
+            server_host = ["0.0.0.0"];
 
             # ── THE LINE THAT TURNS A CONTROL INTO A DECORATION ────────────
             #
@@ -1299,7 +1327,7 @@ in
             # must put THE PHONE'S address in ip_bans.yaml's counters, never
             # 10.0.90.12.
             use_x_forwarded_for = true;
-            trusted_proxies = [ traefikAddr ];
+            trusted_proxies = [traefikAddr];
 
             # Home Assistant's own brute-force control, and the first of the
             # compensations containers/ingress-policy.nix demands for a name
@@ -1330,8 +1358,8 @@ in
           # target and refuses to start.  hass-dirs above seeds all three, once,
           # and never truncates them afterwards.
           automation = "!include automations.yaml";
-          scene      = "!include scenes.yaml";
-          script     = "!include scripts.yaml";
+          scene = "!include scenes.yaml";
+          script = "!include scripts.yaml";
         };
       };
 
@@ -1412,13 +1440,14 @@ in
       # `hacs-deps-check` reads its interpreter and PYTHONPATH off THIS value
       # (see `hassPythonPath` above), so the checker follows automatically and
       # keeps answering the question it exists to answer.
-      systemd.services.home-assistant.environment.PYTHONPATH = lib.mkForce
+      systemd.services.home-assistant.environment.PYTHONPATH =
+        lib.mkForce
         "${hassPythonEnv}/lib/${hassPackage.python3Packages.python.libPrefix}/site-packages";
 
       systemd.services.hass-hacs-deps = {
         description = "Check HACS-downloaded integrations for unsatisfiable Python requirements";
-        wantedBy = [ "home-assistant.service" ];
-        after    = [ "home-assistant.service" ];
+        wantedBy = ["home-assistant.service"];
+        after = ["home-assistant.service"];
         serviceConfig = {
           Type = "oneshot";
 
@@ -1438,16 +1467,16 @@ in
           # a later run succeeds — which is what clears the alert.
           RemainAfterExit = false;
 
-          ExecStart       = "${hacsDepsCheck}/bin/hacs-deps-check ${configDir}/custom_components";
+          ExecStart = "${hacsDepsCheck}/bin/hacs-deps-check ${configDir}/custom_components";
 
           # Read-only, and as the service user rather than root: it inspects
           # the same tree home-assistant.service owns and has no business being
           # able to change it.
-          User            = "hass";
-          Group           = "hass";
-          ProtectSystem   = "strict";
-          ProtectHome     = true;
-          PrivateTmp      = true;
+          User = "hass";
+          Group = "hass";
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          PrivateTmp = true;
           NoNewPrivileges = true;
         };
       };
@@ -1455,7 +1484,7 @@ in
       # The download-time half of the pair above.
       systemd.timers.hass-hacs-deps = {
         description = "Daily sweep for HACS integrations with unsatisfiable requirements";
-        wantedBy    = [ "timers.target" ];
+        wantedBy = ["timers.target"];
         timerConfig = {
           OnCalendar = "daily";
 
@@ -1480,8 +1509,8 @@ in
       # `extraPackages` block already filled in:
       #
       #     nixos-container run hass -- hacs-deps-check
-      environment.systemPackages = with pkgs; [ curl hacsDepsCheck ];
-      documentation.enable       = false;
+      environment.systemPackages = with pkgs; [curl hacsDepsCheck];
+      documentation.enable = false;
       documentation.nixos.enable = false;
     };
   };

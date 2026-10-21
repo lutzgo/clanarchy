@@ -1,4 +1,4 @@
-{ ... }:
+{...}:
 #
 # @clanarchy/users — assign user profiles to machines via inventory.
 #
@@ -22,29 +22,21 @@
 
   roles.lgo = {
     description = "lgo power user: Niri desktop, browsers, devtools, YubiKey.";
-    perInstance =
-      { ... }:
-      {
-        nixosModule =
-          { ... }:
-          {
-            imports = [ ../modules/users/lgo.nix ];
-            clanarchy.users.lgo.enable = true;
-          };
+    perInstance = {...}: {
+      nixosModule = {...}: {
+        imports = [../modules/users/lgo.nix];
+        clanarchy.users.lgo.enable = true;
       };
+    };
   };
 
   roles.sabine = {
     description = "sabine personal user: GNOME, LibreOffice, Thunderbird, Firefox.";
-    perInstance =
-      { ... }:
-      {
-        nixosModule =
-          { ... }:
-          {
-            imports = [ ../modules/users/sabine.nix ];
-            clanarchy.users.sabine.enable = true;
-          };
+    perInstance = {...}: {
+      nixosModule = {...}: {
+        imports = [../modules/users/sabine.nix];
+        clanarchy.users.sabine.enable = true;
       };
+    };
   };
 }

@@ -1,5 +1,4 @@
-{ inputs, ... }:
-{
+{inputs, ...}: {
   clan = {
     # Instantiate pkgs once per system with overlays applied.
     # nixpkgs.overlays in NixOS modules is ignored when pkgsForSystem is set
@@ -7,11 +6,12 @@
     # The overlay list itself lives in lib/overlays.nix, because
     # lib/mk-machine.nix has to apply the same one to the unstable pkgs
     # instance — see the header there.
-    pkgsForSystem = system: import inputs.nixpkgs {
-      inherit system;
-      config.allowUnfree = true;
-      overlays = [ (import ./lib/overlays.nix) ];
-    };
+    pkgsForSystem = system:
+      import inputs.nixpkgs {
+        inherit system;
+        config.allowUnfree = true;
+        overlays = [(import ./lib/overlays.nix)];
+      };
 
     meta.name = "clanarchy";
     meta.domain = "goclan.org";
@@ -21,24 +21,23 @@
     # Other clans can consume these by adding clanarchy as a flake input and
     # referencing module.input = "clanarchy".
     modules."@clanarchy/machine-type" = import ./service-modules/machine-type.nix;
-    modules."@clanarchy/desktop"      = import ./service-modules/desktop.nix;
-    modules."@clanarchy/users"        = import ./service-modules/users.nix;
-    modules."@clanarchy/software"     = import ./service-modules/software.nix;
-    modules."@clanarchy/local-ai"     = import ./service-modules/local-ai.nix;
-    modules."@clanarchy/monitoring"   = import ./service-modules/monitoring.nix;
-    modules."@clanarchy/yubikey"      = import ./service-modules/yubikey.nix;
-    modules."@clanarchy/printing"     = import ./service-modules/printing.nix;
+    modules."@clanarchy/desktop" = import ./service-modules/desktop.nix;
+    modules."@clanarchy/users" = import ./service-modules/users.nix;
+    modules."@clanarchy/software" = import ./service-modules/software.nix;
+    modules."@clanarchy/local-ai" = import ./service-modules/local-ai.nix;
+    modules."@clanarchy/monitoring" = import ./service-modules/monitoring.nix;
+    modules."@clanarchy/yubikey" = import ./service-modules/yubikey.nix;
+    modules."@clanarchy/printing" = import ./service-modules/printing.nix;
 
     inventory.machines = {
-      miralda = { };
-      jens    = { };
-      biene   = { };
-      ernst   = { };
-      birte   = { };
+      miralda = {};
+      jens = {};
+      biene = {};
+      ernst = {};
+      birte = {};
     };
 
     inventory.instances = {
-
       # ── Machine archetypes ─────────────────────────────────────────────────
       # Each machine is assigned to a hardware/role archetype.  Most machines
       # take exactly one; ernst takes two — it stays a headless server (SSH
@@ -46,12 +45,12 @@
       # HTPC stack.  The roles are composed, not exclusive.
       machine-type = {
         module.input = "self";
-        module.name  = "@clanarchy/machine-type";
+        module.name = "@clanarchy/machine-type";
         roles.laptop.machines.miralda.settings.framework.enable = true;
-        roles.laptop.machines.jens.settings.framework.enable = true;  # Framework 12
-        roles.laptop.machines.biene = { };   # no Framework hardware
-        roles.laptop.machines.birte = { };   # Steam Deck OLED — battery-backed handheld
-        roles.server.machines.ernst = { };
+        roles.laptop.machines.jens.settings.framework.enable = true; # Framework 12
+        roles.laptop.machines.biene = {}; # no Framework hardware
+        roles.laptop.machines.birte = {}; # Steam Deck OLED — battery-backed handheld
+        roles.server.machines.ernst = {};
         # ernst doubles as the living-room machine: boots into Kodi on the TV
         # and switches to Steam Big Picture or Plasma at runtime.  Stable
         # channel + ZFS throughout — the gaming arm is the stock nixpkgs
@@ -132,8 +131,8 @@
           # it.  Not while a session merely exists — this machine autologins
           # into one at boot and holds it all day, so that would mean never
           # running inference at all.
-          gpu.preempt.units     = [ "llama-swap.service" ];
-          gpu.gamingHold.units  = [ "llama-swap.service" ];
+          gpu.preempt.units = ["llama-swap.service"];
+          gpu.gamingHold.units = ["llama-swap.service"];
 
           # Demote rather than relogin a dying session forever.
           #
@@ -143,8 +142,8 @@
           # — and it is the one a person on the sofa can drive with a remote.
           # `plasma` after it, as the last rung that still draws something.
           crashLoop = {
-            enable        = true;
-            fallbackChain = [ "kodi" "plasma" ];
+            enable = true;
+            fallbackChain = ["kodi" "plasma"];
           };
 
           # The living-room set is an HDR LG, and the couch use case is
@@ -192,14 +191,14 @@
       # The service imports only the relevant desktop module for that machine.
       desktop = {
         module.input = "self";
-        module.name  = "@clanarchy/desktop";
+        module.name = "@clanarchy/desktop";
         # miralda: Niri with Framework 13 display — default settings match hardware
-        roles.niri.machines.miralda = { };
+        roles.niri.machines.miralda = {};
         # jens: same Niri desktop, Framework 12 panel — 1920×1200 at 12.2"
         # (~186 PPI).  The role's resolution defaults are miralda's 2256×1504,
         # so they have to be named here; scale 1.25 is right for both.
         roles.niri.machines.jens.settings.display = {
-          width  = 1920;
+          width = 1920;
           height = 1200;
         };
         # biene: labwc with Noctalia shell (replaces GNOME/GDM).
@@ -210,51 +209,51 @@
         # Gaming Mode / Steam Big Picture is provided by Jovian (see
         # machines/birte/jovian.nix); Plasma is only reached when the user
         # exits gamescope-session.
-        roles.kde.machines.birte = { };
+        roles.kde.machines.birte = {};
       };
 
       # ── Users ───────────────────────────────────────────────────────────────
       # admin is imported directly in flake.nix (sets system-wide HM options).
       users = {
         module.input = "self";
-        module.name  = "@clanarchy/users";
-        roles.lgo.machines.miralda  = { };
-        roles.lgo.machines.jens     = { };
-        roles.sabine.machines.biene = { };
+        module.name = "@clanarchy/users";
+        roles.lgo.machines.miralda = {};
+        roles.lgo.machines.jens = {};
+        roles.sabine.machines.biene = {};
       };
 
       # ── SSH baseline ────────────────────────────────────────────────────────
       sshd = {
-        roles.server.tags.all = { };
+        roles.server.tags.all = {};
         roles.server.settings.authorizedKeys = {
           "admin-machine-1" = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPo4uZn6hVFTnJ0K7eagj1XL0jVn9t6sSU8RAejhWBy+ clanarchy_admin";
-          "lgo-yubikey"     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDjwV5tzb5mAhtUqgrfzU1FR35btJrvIjPM+PfxBAz4W openpgp:0x5E293E5A";
+          "lgo-yubikey" = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDjwV5tzb5mAhtUqgrfzU1FR35btJrvIjPM+PfxBAz4W openpgp:0x5E293E5A";
         };
       };
 
       # ── Zerotier VPN ────────────────────────────────────────────────────────
       # miralda is the controller; all machines are peers.
       zerotier = {
-        roles.controller.machines."miralda" = { };
-        roles.peer.tags.all = { };
+        roles.controller.machines."miralda" = {};
+        roles.peer.tags.all = {};
       };
 
       # ── YubiKey ────────────────────────────────────────────────────────────
       yubikey = {
         module.input = "self";
-        module.name  = "@clanarchy/yubikey";
-        roles.default.machines.miralda = { };
+        module.name = "@clanarchy/yubikey";
+        roles.default.machines.miralda = {};
         # The key travels with lgo, so every machine lgo logs into needs the
         # pcscd + pinentry-qt wiring — not just the one it was first set up on.
-        roles.default.machines.jens    = { };
+        roles.default.machines.jens = {};
       };
 
       # ── Printing ───────────────────────────────────────────────────────────
       printing = {
         module.input = "self";
-        module.name  = "@clanarchy/printing";
-        roles.default.machines.miralda = { };
-        roles.default.machines.jens    = { };
+        module.name = "@clanarchy/printing";
+        roles.default.machines.miralda = {};
+        roles.default.machines.jens = {};
       };
 
       # ── Syncthing: TWO SEPARATE CLUSTERS, NOT ONE ──────────────────────────
@@ -304,7 +303,10 @@
 
       # The laptops: lgo's and Sabine's ~/Public.
       syncthing-home = {
-        module = { name = "syncthing"; input = "clan-core"; };
+        module = {
+          name = "syncthing";
+          input = "clan-core";
+        };
         roles.peer.machines.miralda.settings = {
           openDefaultPorts = true;
           folders.public.path = "/home/lgo/Public";
@@ -372,16 +374,31 @@
       # So the permissions are owned by each machine and the CONTENT is what
       # replicates.  That is the correct division here, not a concession.
       syncthing-roms = {
-        module = { name = "syncthing"; input = "clan-core"; };
+        module = {
+          name = "syncthing";
+          input = "clan-core";
+        };
         roles.peer.machines.ernst.settings = {
           openDefaultPorts = true;
-          folders.roms = { path = "/srv/roms/roms"; ignorePerms = true; };
-          folders.bios = { path = "/srv/roms/bios"; ignorePerms = true; };
+          folders.roms = {
+            path = "/srv/roms/roms";
+            ignorePerms = true;
+          };
+          folders.bios = {
+            path = "/srv/roms/bios";
+            ignorePerms = true;
+          };
         };
         roles.peer.machines.birte.settings = {
           openDefaultPorts = true;
-          folders.roms = { path = "/games/retrodeck/roms"; ignorePerms = true; };
-          folders.bios = { path = "/games/retrodeck/bios"; ignorePerms = true; };
+          folders.roms = {
+            path = "/games/retrodeck/roms";
+            ignorePerms = true;
+          };
+          folders.bios = {
+            path = "/games/retrodeck/bios";
+            ignorePerms = true;
+          };
         };
       };
 
@@ -390,13 +407,13 @@
       # the wifi-home vars generator.  The SSID and PSK are prompted at
       # `clan vars generate <machine>` time (shared across machines via share = true).
       wifi = {
-        roles.default.machines.miralda = { };
-        roles.default.machines.jens    = { };
-        roles.default.machines.biene   = { };
-        roles.default.machines.birte   = { };   # Steam Deck — wifi only
+        roles.default.machines.miralda = {};
+        roles.default.machines.jens = {};
+        roles.default.machines.biene = {};
+        roles.default.machines.birte = {}; # Steam Deck — wifi only
         # ernst is wired-only — intentionally excluded.
         roles.default.settings.networks = {
-          home = { };   # prompts: SSID "skynet", PSK; keyMgmt defaults to wpa-psk
+          home = {}; # prompts: SSID "skynet", PSK; keyMgmt defaults to wpa-psk
         };
       };
 
@@ -417,7 +434,7 @@
       # `roles.ollama`, which is why that role still exists in the module.
       local-ai = {
         module.input = "self";
-        module.name  = "@clanarchy/local-ai";
+        module.name = "@clanarchy/local-ai";
 
         # ── ernst: the inference server ──────────────────────────────────
         #
@@ -492,7 +509,11 @@
           exposeOn = [
             # M6's mon0. Prometheus scrapes llama-swap's /metrics here — the
             # target M13 declined to add because ollama served none.
-            { name = "monitoring"; address = "fdca:fe90::1"; allowedSource = "fdca:fe90::2"; }
+            {
+              name = "monitoring";
+              address = "fdca:fe90::1";
+              allowedSource = "fdca:fe90::2";
+            }
             # ai1, one /64 along so the two links cannot be confused in a
             # routing table. Carries Open WebUI's chat AND its STT.
             #
@@ -504,7 +525,11 @@
             # whether or not the address exists anywhere, so every indicator
             # here and on the host said healthy.  The legs are now named for
             # their ULA and machines/ernst/networking.nix asserts uniqueness.
-            { name = "webui";      address = "fdca:fe91::1"; allowedSource = "fdca:fe91::2"; }
+            {
+              name = "webui";
+              address = "fdca:fe91::1";
+              allowedSource = "fdca:fe91::2";
+            }
             # M27's karakeep container, one /64 further along again.  Auto-
             # tagging and summarisation of every saved page.
             #
@@ -514,7 +539,11 @@
             # holds resident for the coding agent — so nothing is evicted and
             # nothing is loaded twice.  Naming any other text model there would
             # turn every bookmark into an eviction and stall the agent.
-            { name = "karakeep";   address = "fdca:fe92::1"; allowedSource = "fdca:fe92::2"; }
+            {
+              name = "karakeep";
+              address = "fdca:fe92::1";
+              allowedSource = "fdca:fe92::2";
+            }
           ];
         };
 
@@ -548,9 +577,9 @@
           # with it (`rm /srv/state/local-ai/models/Qwen3-Coder-30B*`), because
           # the fetcher only adds.
           qwen3-coder-30b = {
-            url  = "https://huggingface.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/resolve/main/Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf";
+            url = "https://huggingface.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/resolve/main/Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf";
             hash = "sha256-KEGqMU2RZDSGDPuJkDR1KNzf5cNQ28udFGHb7oj/JTM=";
-            filename    = "Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf";
+            filename = "Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf";
             description = "Qwen3 Coder 30B (A3B, UD-Q4_K_XL)";
 
             # SN1 LIVES HERE NOW, and that is the point of the placement: the
@@ -709,9 +738,9 @@
           # PATH in Nix and would silently declare `qwen3."6-35b-a3b"` — the
           # same trap the vision entry below documents.
           "qwen3.6-35b-a3b" = {
-            url  = "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf";
+            url = "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf";
             hash = "sha256-cHpVqKQ5fs3kTeDEmdPmjBrR0kDR2mWCa0lJ0QQ/RFA=";
-            filename    = "Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf";
+            filename = "Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf";
             description = "Qwen3.6 35B-A3B (UD-Q4_K_XL) — M29c candidate";
 
             # 32768 TO MATCH THE INCUMBENT, deliberately, so the bake-off
@@ -720,7 +749,7 @@
             # measured table above, this model needs two expert layers
             # offloaded just to fit the window it already has.
             contextLength = 32768;
-            kvCacheType   = "f16";
+            kvCacheType = "f16";
 
             # MEASURED on ernst 2026-10-10 with `-c 32768 --n-cpu-moe 2`:
             # 22672 MiB, 288 MiB under the 22960 ceiling.  Re-measure this
@@ -739,7 +768,7 @@
             # Without this the model is 23699 MiB and the reserve cannot be
             # honoured — which is not an abstract overrun: it is the
             # television crash-looping, measured, on 2026-10-09.
-            extraArgs = [ "--n-cpu-moe 2" ];
+            extraArgs = ["--n-cpu-moe 2"];
 
             # `mmproj-F16.gguf` IS A GENERIC NAME IN A FLAT STORE, and that is
             # recorded rather than worked around.  The other vision entry uses
@@ -751,7 +780,7 @@
             # is `subdir` on both entries rather than a rename here.
             mmproj = "mmproj-F16.gguf";
             extraFiles."mmproj-F16.gguf" = {
-              url  = "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/mmproj-F16.gguf";
+              url = "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/mmproj-F16.gguf";
               hash = "sha256-iXHuTzMf8KTGCTdPMphLPU5twIbAqjXx1jf60YKeiH8=";
             };
           };
@@ -784,15 +813,15 @@
           # else.  It is not a GGUF and llama-server never loads it; the
           # inference role skips non-LLM entries when rendering the preset INI.
           whisper-large-v3-turbo = {
-            url  = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin";
+            url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin";
             hash = "sha256-OUIhcJzVrR9AxG5gMcphvOiJMebgiMGIKUxtWlX/p+I=";
-            filename    = "ggml-large-v3-turbo-q5_0.bin";
+            filename = "ggml-large-v3-turbo-q5_0.bin";
             description = "Whisper large-v3-turbo (q5_0)";
             # Unused for this entry — whisper-server takes neither — but the
             # option is required, deliberately, so that no model can be
             # declared without someone stating its window.
             contextLength = 1;
-            kvCacheType   = "f16";
+            kvCacheType = "f16";
             servedByLlama = false;
           };
 
@@ -831,16 +860,16 @@
           # matches HuggingFace's own LFS oid for the file.  Two independent
           # sources agreeing, not one download trusted.
           sdxl-base-1_0 = {
-            url  = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors";
+            url = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors";
             hash = "sha256-MeNcgPxIKdFPkBU/THTNWckLd59q/gWnTNYSC4k/fls=";
-            filename    = "sd_xl_base_1.0.safetensors";
-            subdir      = "checkpoints";
+            filename = "sd_xl_base_1.0.safetensors";
+            subdir = "checkpoints";
             description = "Stable Diffusion XL base 1.0";
             # Neither applies to a diffusion model; both are required options,
             # deliberately, so that nothing can be declared without a stated
             # window.  Same non-answer the whisper entry gives.
             contextLength = 1;
-            kvCacheType   = "f16";
+            kvCacheType = "f16";
             servedByLlama = false;
           };
         };
@@ -854,7 +883,7 @@
         # and whisper-server takes --inference-path, so it is OpenAI-shaped
         # with no wrapper and no new flake input.
         roles.speech.machines.ernst.settings = {
-          model    = "ggml-large-v3-turbo-q5_0.bin";
+          model = "ggml-large-v3-turbo-q5_0.bin";
           # "auto" rather than "de": this household dictates German prose with
           # English package names in it, and pinning the language gets the
           # second half wrong.
@@ -896,7 +925,11 @@
 
           exposeOn = [
             # ai3, one /64 beyond karakeep's.  The hub's conversation agent.
-            { name = "hass"; address = "fdca:fe93::1"; allowedSource = "fdca:fe93::2"; }
+            {
+              name = "hass";
+              address = "fdca:fe93::1";
+              allowedSource = "fdca:fe93::2";
+            }
           ];
 
           # ── M29b: it remembers, it can look things up, it can draw ──────
@@ -911,7 +944,7 @@
           # back; this keeps it inside the machine, which is M6's mon0 argument
           # exactly.  The container end of the leg is the URL.
           webSearch.enable = true;
-          webSearch.url    = "http://[fdca:fe94::2]:8888";
+          webSearch.url = "http://[fdca:fe94::2]:8888";
 
           # ── THE PAPER ARCHIVE (M32b), AND IT COSTS NOTHING ──────────────
           #
@@ -926,8 +959,8 @@
           # DELETE, PATCH and the upload endpoint were each measured answering
           # 403 to it.  So the worst a confused model can do here is read the
           # household's own paper back to the household.
-          documents.enable    = true;
-          documents.url       = "http://[fdca:fe95::2]:28981";
+          documents.enable = true;
+          documents.url = "http://[fdca:fe95::2]:28981";
           # LITERAL, not `config.clan.core.vars.generators.…files."token".path`,
           # which is the obvious spelling and does not work here: these are
           # inventory instance SETTINGS, a plain attrset with no module
@@ -953,12 +986,12 @@
           #
           # The tool's own description tells the model it is expensive, which
           # is the only thing that stops a model treating it as free.
-          imageGen.enable     = true;
-          imageGen.url        = "http://127.0.0.1:11434/upstream/comfyui";
+          imageGen.enable = true;
+          imageGen.url = "http://127.0.0.1:11434/upstream/comfyui";
           # Home Assistant serves this at /local/mneme — see the `hass-dirs`
           # note in containers/home-assistant.nix for why the hub and not mneme
           # is what delivers the picture.
-          imageGen.outputDir  = "/srv/state/home-assistant/www/mneme";
+          imageGen.outputDir = "/srv/state/home-assistant/www/mneme";
           imageGen.publicBase = "https://ha.goclan.org/local/mneme";
           # Must name a roles.models entry with subdir = "checkpoints".
           imageGen.checkpoint = "sd_xl_base_1.0.safetensors";
@@ -976,7 +1009,11 @@
         # and TTS; three services, three loopback ports, one /128 pair.
         roles.voice.machines.ernst.settings = {
           exposeOn = [
-            { name = "hass"; address = "fdca:fe93::1"; allowedSource = "fdca:fe93::2"; }
+            {
+              name = "hass";
+              address = "fdca:fe93::1";
+              allowedSource = "fdca:fe93::2";
+            }
           ];
         };
 
@@ -1041,7 +1078,7 @@
           # the apple test above.  It costs some speed and it is the
           # difference between image generation and an expensive random image
           # generator.
-          extraArgs = [ "--use-split-cross-attention" ];
+          extraArgs = ["--use-split-cross-attention"];
 
           # NOTHING ELSE BELONGS HERE.  --lowvram and friends are for a card
           # that has to share, and this one does not: the exclusive group
@@ -1182,7 +1219,7 @@
           # that makes outbound connections; and nothing pulls an unpinned
           # embedding model off HuggingFace at runtime.  Full argument on the
           # `searchFetchesPages` / `searchEmbedsResults` options.
-          searchFetchesPages  = false;
+          searchFetchesPages = false;
           searchEmbedsResults = false;
         };
 
@@ -1194,7 +1231,7 @@
         roles.ollama.machines.miralda.settings = {
           # qwen3-coder publishes only 30b/480b — there is no 8b, which is why
           # ollama-model-loader had been failing since this was configured.
-          models = [ "qwen2.5-coder:7b" ];
+          models = ["qwen2.5-coder:7b"];
           hsaOverrideGfxVersion = "11.0.3";
           # 4096 is what this tag derives on its own; pinning it says so out
           # loud so a future model bump cannot move it silently.
@@ -1210,16 +1247,16 @@
 
           providers = [
             {
-              id     = "ernst";
-              label  = "llama.cpp (ernst, 32768)";
-              port   = 11435;            # the tunnel's local end
-              models = [ "qwen3.6-35b-a3b" "qwen3-coder-30b" ];
+              id = "ernst";
+              label = "llama.cpp (ernst, 32768)";
+              port = 11435; # the tunnel's local end
+              models = ["qwen3.6-35b-a3b" "qwen3-coder-30b"];
             }
             {
-              id     = "local";
-              label  = "ollama (miralda, 4096)";
-              port   = 11434;            # this machine's own ollama
-              models = [ "qwen2.5-coder:7b" ];
+              id = "local";
+              label = "ollama (miralda, 4096)";
+              port = 11434; # this machine's own ollama
+              models = ["qwen2.5-coder:7b"];
             }
           ];
 
@@ -1248,10 +1285,10 @@
 
           providers = [
             {
-              id     = "ernst";
-              label  = "llama.cpp (ernst, 32768)";
-              port   = 11435;
-              models = [ "qwen3.6-35b-a3b" "qwen3-coder-30b" ];
+              id = "ernst";
+              label = "llama.cpp (ernst, 32768)";
+              port = 11435;
+              models = ["qwen3.6-35b-a3b" "qwen3-coder-30b"];
             }
           ];
 
@@ -1279,13 +1316,13 @@
       # the ntfy topic that also carries "the array is degraded".
       monitoring = {
         module.input = "self";
-        module.name  = "@clanarchy/monitoring";
+        module.name = "@clanarchy/monitoring";
 
         # ernst runs the stack.  MAC and the .12 proxy address are allocated
         # in machines/ernst/allocations.nix; the DHCP reservation
         # for 02:00:00:90:00:06 → 10.0.90.14 lives on the UDM-Pro.
         roles.server.machines.ernst.settings = {
-          mac          = "02:00:00:90:00:06";
+          mac = "02:00:00:90:00:06";
           proxyAddress = "10.0.90.12";
 
           # M7.  The identity provider, at the address allocated in the table
@@ -1296,8 +1333,8 @@
           #                stays; see the break-glass note in
           #                service-modules/monitoring.nix.
           authelia = {
-            address        = "10.0.90.15";
-            oidc.enable    = true;
+            address = "10.0.90.15";
+            oidc.enable = true;
             oidc.issuerUrl = "https://auth.goclan.org";
           };
 
@@ -1319,7 +1356,7 @@
           crowdsec.address = "10.0.90.12";
 
           # M13.  Four media-stack targets, all on VLAN 90 addresses from the
-                    # table in machines/ernst/allocations.nix, except Ollama which is on
+          # table in machines/ernst/allocations.nix, except Ollama which is on
           # ernst itself.
           #
           # Each of these needs a matching source-restriction on the FAR end —
@@ -1331,8 +1368,8 @@
           # 2026-08-26), so the job could only ever be down.  The reasoning and
           # what M15 should do instead are in service-modules/monitoring.nix.
           mediaStack = {
-            arrAddress         = "10.0.90.13";
-            jellyfinAddress    = "10.0.90.10";
+            arrAddress = "10.0.90.13";
+            jellyfinAddress = "10.0.90.10";
             qbittorrentAddress = "10.0.90.11";
 
             # Navidrome, added 2026-09-08.  THE SAME ADDRESS AS arrAddress —
@@ -1351,7 +1388,7 @@
             # machines/ernst/containers/arr/ declares.  One generator, two
             # containers, two staging units — see that file for why the same
             # secret is emitted in two formats.
-            navidromeAddress             = "10.0.90.13";
+            navidromeAddress = "10.0.90.13";
             navidromeMetricsPasswordFile = "/run/monitoring-secrets/navidrome-metrics-password";
 
             # Immich, added 2026-09-11 (M22).  Its own container, its own
@@ -1425,14 +1462,14 @@
         # they die, and the unit set — containers, secret staging, the
         # impermanence tripwire — that fails quietly if nobody looks.
         roles.client.machines.ernst.settings = {
-          alwaysOn           = true;
-          exporters.zfs      = true;
+          alwaysOn = true;
+          exporters.zfs = true;
           exporters.smartctl = true;
-          exporters.systemd  = true;
+          exporters.systemd = true;
           # M13.  ARC statistics, which the pool exporter above does NOT cover
           # — see the option's description for why the two are not
           # interchangeable.  ernst only: on a laptop this series is noise.
-          exporters.arc      = true;
+          exporters.arc = true;
           # Failed units INSIDE the seven nspawn containers, which
           # exporters.systemd above cannot see: it reads the host's systemd and
           # each container runs its own init.  ernst is the only machine in the
@@ -1443,7 +1480,7 @@
           # their services, so a process can die repeatedly without any unit
           # ever changing state.  The laptops have someone sitting in front of
           # them when something crashes.
-          exporters.coredumps  = true;
+          exporters.coredumps = true;
           # M18 follow-up.  SN2's IPv4-only decision, made observable instead
           # of re-measured by hand.  ernst only, and not because the other
           # machines do not matter: they ROAM, and a café network handing out
@@ -1451,7 +1488,7 @@
           # global address on ernst means the line itself changed — and after
           # M18 that is the event that would make every router in the house
           # reachable on a path the `wan` entryPoint does not gate.
-          exporters.ipv6Guard  = true;
+          exporters.ipv6Guard = true;
 
           # M31.  The two external facts outbound mail rests on — a PTR
           # Vodafone set on request, and staying off the blocklists — both
@@ -1471,10 +1508,10 @@
         # laptop dying, and ZED already reports that; smartctl re-queries every
         # device on a timer, which is a battery cost for data nobody acts on
         # before the machine is replaced anyway.
-        roles.client.machines.miralda = { };
-        roles.client.machines.jens    = { };
-        roles.client.machines.biene   = { };
-        roles.client.machines.birte   = { };
+        roles.client.machines.miralda = {};
+        roles.client.machines.jens = {};
+        roles.client.machines.biene = {};
+        roles.client.machines.birte = {};
       };
 
       # ── Software: browsers and email clients ─────────────────────────────
@@ -1485,7 +1522,7 @@
       #   Firefox is already configured in modules/users/sabine.nix.
       software = {
         module.input = "self";
-        module.name  = "@clanarchy/software";
+        module.name = "@clanarchy/software";
         # ── M27's two extensions, for LibreWolf on lgo's machines ───────────
         #
         # Karakeep saves a page to karakeep.goclan.org; Floccus syncs the
@@ -1503,48 +1540,59 @@
         # has no Karakeep account and no reason for either.  An empty list also
         # leaves `pkgs.librewolf` un-overridden there, so biene keeps the
         # cached binary rather than rebuilding a wrapper for two policy lines.
-        roles.librewolf.machines.miralda.settings.extensions =
-          let amo = id: "https://addons.mozilla.org/firefox/downloads/latest/${id}/latest.xpi";
-          in [
-            { id = "addon@karakeep.app";        installUrl = amo "addon@karakeep.app"; }
-            { id = "floccus@handmadeideas.org"; installUrl = amo "floccus@handmadeideas.org"; }
-          ];
-        roles.librewolf.machines.jens.settings.extensions =
-          let amo = id: "https://addons.mozilla.org/firefox/downloads/latest/${id}/latest.xpi";
-          in [
-            { id = "addon@karakeep.app";        installUrl = amo "addon@karakeep.app"; }
-            { id = "floccus@handmadeideas.org"; installUrl = amo "floccus@handmadeideas.org"; }
-          ];
+        roles.librewolf.machines.miralda.settings.extensions = let
+          amo = id: "https://addons.mozilla.org/firefox/downloads/latest/${id}/latest.xpi";
+        in [
+          {
+            id = "addon@karakeep.app";
+            installUrl = amo "addon@karakeep.app";
+          }
+          {
+            id = "floccus@handmadeideas.org";
+            installUrl = amo "floccus@handmadeideas.org";
+          }
+        ];
+        roles.librewolf.machines.jens.settings.extensions = let
+          amo = id: "https://addons.mozilla.org/firefox/downloads/latest/${id}/latest.xpi";
+        in [
+          {
+            id = "addon@karakeep.app";
+            installUrl = amo "addon@karakeep.app";
+          }
+          {
+            id = "floccus@handmadeideas.org";
+            installUrl = amo "floccus@handmadeideas.org";
+          }
+        ];
 
         # browsers — lgo
-        roles.librewolf.machines.miralda.settings.user  = "lgo";
-        roles.firefox.machines.miralda.settings.user    = "lgo";
-        roles.chromium.machines.miralda.settings.user   = "lgo";
-        roles.chrome.machines.miralda.settings.user     = "lgo";
-        roles.edge.machines.miralda                     = { };
+        roles.librewolf.machines.miralda.settings.user = "lgo";
+        roles.firefox.machines.miralda.settings.user = "lgo";
+        roles.chromium.machines.miralda.settings.user = "lgo";
+        roles.chrome.machines.miralda.settings.user = "lgo";
+        roles.edge.machines.miralda = {};
         # browsers — lgo on jens, the same five
-        roles.librewolf.machines.jens.settings.user     = "lgo";
-        roles.firefox.machines.jens.settings.user       = "lgo";
-        roles.chromium.machines.jens.settings.user      = "lgo";
-        roles.chrome.machines.jens.settings.user        = "lgo";
-        roles.edge.machines.jens                        = { };
+        roles.librewolf.machines.jens.settings.user = "lgo";
+        roles.firefox.machines.jens.settings.user = "lgo";
+        roles.chromium.machines.jens.settings.user = "lgo";
+        roles.chrome.machines.jens.settings.user = "lgo";
+        roles.edge.machines.jens = {};
         # browsers — deck, in birte's Desktop Mode.  Gaming Mode has Steam's
         # own built-in browser; these are for the KDE session behind
         # "Switch to Desktop".  Chromium carries the same hardened flags and
         # managed policies as the laptops (the overlay in lib/overlays.nix
         # now reaches unstable too), and Chrome is here for the same reason
         # it is anywhere — DRM and SSO that Chromium refuses.
-        roles.chromium.machines.birte.settings.user     = "deck";
-        roles.chrome.machines.birte.settings.user       = "deck";
+        roles.chromium.machines.birte.settings.user = "deck";
+        roles.chrome.machines.birte.settings.user = "deck";
         # browsers — sabine
-        roles.librewolf.machines.biene.settings.user    = "sabine";
-        roles.edge.machines.biene                       = { };
+        roles.librewolf.machines.biene.settings.user = "sabine";
+        roles.edge.machines.biene = {};
         # email — sabine
-        roles.thunderbird.machines.biene.settings.user  = "sabine";
+        roles.thunderbird.machines.biene.settings.user = "sabine";
       };
-
     };
 
-    machines = { };
+    machines = {};
   };
 }

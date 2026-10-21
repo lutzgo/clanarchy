@@ -13,8 +13,12 @@
 #
 # containers/storyteller.nix depends on `audiobooks-tree.service`, so that
 # unit's name is part of this file's interface rather than an internal detail.
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   ids = import ./ids.nix;
 
   # The old flat names — see ./video.nix for why the bodies are unchanged.
@@ -42,9 +46,8 @@ let
   questarrGid = ids.gids.questarr;
   mediaGid = ids.gids.media;
   beetsStagingRoot = ids.paths.beetsStaging;
-  beetsStateDir    = ids.paths.beetsState;
-in
-{
+  beetsStateDir = ids.paths.beetsState;
+in {
   # State directories on zdata.
   #
   # 0700 and owned by the service, exactly like /srv/state/jellyfin: nothing
@@ -450,16 +453,16 @@ in
   ##############################################################################
   systemd.services.audiobooks-tree = {
     description = "Verify zdata/audiobooks is mounted and create its tree";
-    wantedBy = [ "multi-user.target" ];
-    after    = [ "srv-audiobooks.mount" ];
+    wantedBy = ["multi-user.target"];
+    after = ["srv-audiobooks.mount"];
     # Ordering only.  See BLAST RADIUS above — a failure here must not stop
     # the arr container.
-    before   = [ "container@arr.service" ];
+    before = ["container@arr.service"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
     };
-    path = [ pkgs.util-linux pkgs.coreutils ];
+    path = [pkgs.util-linux pkgs.coreutils];
     script = ''
       set -eu
 
@@ -499,5 +502,4 @@ in
       install -d -o root -g ${toString mediaGid} -m 2770 ${audiobooksRoot}/ebooks
     '';
   };
-
 }

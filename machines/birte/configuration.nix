@@ -1,8 +1,7 @@
-{ config, ... }:
-{
+{config, ...}: {
   networking.hostName = "birte";
   # Regenerate if cloning: head -c4 /dev/urandom | od -A none -t x4 | tr -d ' '
-  networking.hostId   = "fe39bcd8";
+  networking.hostId = "fe39bcd8";
   # DNS: no global `networking.search` — search + routing attach to the
   # "home" NM profile.  See modules/networking/{resolved,skynet-dns-nm}.nix.
 
@@ -10,14 +9,14 @@
 
   # Locale: English US everywhere (matches Steam / gamescope defaults).
   clanarchy.locale = {
-    language        = "en_US";
+    language = "en_US";
     keyboard.layout = "us";
   };
 
   # machine-type (laptop, no Framework hw) and desktop (kde) are assigned via
   # inventory.instances in clan.nix. Wifi is provisioned via the clan wifi
   # service (home SSID prompted at `clan vars generate birte` time).
-  clanarchy.hardware.cpu       = "amd";   # Van Gogh APU (Zen 2 + RDNA 2 iGPU)
+  clanarchy.hardware.cpu = "amd"; # Van Gogh APU (Zen 2 + RDNA 2 iGPU)
   clanarchy.users.admin.enable = true;
 
   # Build against nixpkgs-unstable — Jovian-NixOS only supports unstable,
@@ -34,7 +33,7 @@
   # Bluetooth pairings. A handheld pairs controllers and headphones and must
   # not forget them on every boot; nothing else in the fleet persists this
   # because no other machine depends on pairing as a matter of course.
-  environment.persistence."/persist".directories = [ "/var/lib/bluetooth" ];
+  environment.persistence."/persist".directories = ["/var/lib/bluetooth"];
 
   # Impermanence is on. It previously made this machine unbootable, and the
   # cause is worth keeping written down because the symptom pointed nowhere
@@ -66,10 +65,9 @@
   # disk-main-swap is what hung birte's first boot on the renamed layout: the
   # device unit for a swap partition that no longer existed sat in a start job
   # with "no limit", so the boot never progressed and never timed out either.
-  boot.resumeDevice =
-    "/dev/disk/by-partlabel/disk-${
-      builtins.head (builtins.attrNames config.disko.devices.disk)
-    }-swap";
+  boot.resumeDevice = "/dev/disk/by-partlabel/disk-${
+    builtins.head (builtins.attrNames config.disko.devices.disk)
+  }-swap";
 
   # (Steam / Proton are unfree — `allowUnfree = true` is already baked into
   # the pkgs instance built in lib/mk-machine.nix, so we intentionally do
@@ -79,13 +77,13 @@
 
   # App categories — keep minimal on the Deck. Flatpak is useful in Desktop Mode
   # for GUI apps that don't ship on Steam.
-  clanarchy.apps.flatpak.enable       = true;
-  clanarchy.apps.desktopTools.enable  = true;
+  clanarchy.apps.flatpak.enable = true;
+  clanarchy.apps.desktopTools.enable = true;
 
   # Supersonic, for Navidrome in Desktop Mode. The default package is the
   # right one here: birte is `clanarchy.channel = "unstable"`, where
   # `supersonic-wayland` no longer exists.
-  clanarchy.apps.subsonic.enable      = true;
+  clanarchy.apps.subsonic.enable = true;
 
   # Switch emulation. RetroDECK (installed as a Flatpak, see deck.nix for the
   # persistence and data-folder wiring it needs) covers everything up to the
@@ -97,7 +95,7 @@
   # Jovian / Deck-hardware wiring lives in jovian.nix and deck.nix.
   clanarchy.gaming = {
     enable = true;
-    user   = "deck";
+    user = "deck";
     # persistenceDirectories keeps its default ([ ".steam" ]): birte's home
     # is rolled back like the rest of the fleet, so the Steam runtime
     # bootstrap genuinely needs declaring.  The remaining per-user paths are

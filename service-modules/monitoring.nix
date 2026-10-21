@@ -151,23 +151,22 @@
   clanLib,
   directory,
   ...
-}:
-let
+}: let
   ############################################################################
   # Ports.  Upstream defaults throughout — restated once so the firewall
   # rules, the scrape config and the Traefik backend in
   # machines/ernst/containers/traefik.nix can all be read against one list.
   ############################################################################
   ports = {
-    node        = 9100;   # prometheus-node-exporter
-    zfs         = 9134;   # prometheus-zfs-exporter
-    smartctl    = 9633;   # prometheus-smartctl-exporter
-    traefik     = 8082;   # Traefik's metrics entryPoint (M5, added by M6)
-    prometheus  = 9090;
+    node = 9100; # prometheus-node-exporter
+    zfs = 9134; # prometheus-zfs-exporter
+    smartctl = 9633; # prometheus-smartctl-exporter
+    traefik = 8082; # Traefik's metrics entryPoint (M5, added by M6)
+    prometheus = 9090;
     alertmanager = 9093;
-    ntfyBridge  = 8000;   # alertmanager-ntfy, loopback only
-    grafana     = 3000;
-    llama       = 11434;  # llama-swap (M19), via the mon0 proxy
+    ntfyBridge = 8000; # alertmanager-ntfy, loopback only
+    grafana = 3000;
+    llama = 11434; # llama-swap (M19), via the mon0 proxy
   };
 
   ############################################################################
@@ -183,9 +182,9 @@ let
   # --network-veth-extra=NAME with a single name), so it appears as mon0 on the
   # host and as mon0 in the container.
   ############################################################################
-  monVeth          = "mon0";
-  monHostAddr      = "fdca:fe90::1";   # ernst
-  monContainerAddr = "fdca:fe90::2";   # the monitoring container
+  monVeth = "mon0";
+  monHostAddr = "fdca:fe90::1"; # ernst
+  monContainerAddr = "fdca:fe90::2"; # the monitoring container
 
   ############################################################################
   # Reading a peer machine's ZeroTier address out of clan vars.
@@ -202,18 +201,18 @@ let
   # error about a file nobody has heard of.  Null is filtered out below and
   # reported as a warning instead.
   ############################################################################
-  ztIpOf = instance: machineName: clanLib.getPublicValue {
-    generator = "zerotier-ip-${machineName}-${instance}";
-    file      = "ip";
-    flake     = directory;
-    default   = null;
-  };
-in
-{
+  ztIpOf = instance: machineName:
+    clanLib.getPublicValue {
+      generator = "zerotier-ip-${machineName}-${instance}";
+      file = "ip";
+      flake = directory;
+      default = null;
+    };
+in {
   _class = "clan.service";
-  manifest.name        = "@clanarchy/monitoring";
+  manifest.name = "@clanarchy/monitoring";
   manifest.description = "Prometheus, Alertmanager and Grafana on one machine; node_exporter on all of them.";
-  manifest.readme      = builtins.readFile ./monitoring.md;
+  manifest.readme = builtins.readFile ./monitoring.md;
 
   ##############################################################################
   # roles.client — every machine in the clan.
@@ -223,8 +222,8 @@ in
 
     interface.options = {
       alwaysOn = lib.mkOption {
-        type        = lib.types.bool;
-        default     = false;
+        type = lib.types.bool;
+        default = false;
         description = ''
           Whether this machine is expected to be reachable at all times.
 
@@ -244,8 +243,8 @@ in
 
       exporters = {
         zfs = lib.mkOption {
-          type        = lib.types.bool;
-          default     = false;
+          type = lib.types.bool;
+          default = false;
           description = ''
             Run prometheus-zfs-exporter (pool health, capacity, fragmentation).
 
@@ -262,8 +261,8 @@ in
         };
 
         smartctl = lib.mkOption {
-          type        = lib.types.bool;
-          default     = false;
+          type = lib.types.bool;
+          default = false;
           description = ''
             Run prometheus-smartctl-exporter (per-device SMART, including the
             self-assessment that backs the `SmartFailurePredicted` alert).
@@ -279,8 +278,8 @@ in
         };
 
         arc = lib.mkOption {
-          type        = lib.types.bool;
-          default     = false;
+          type = lib.types.bool;
+          default = false;
           description = ''
             Enable node_exporter's `zfs` collector, which reports ARC
             statistics (hit ratio, size, evictions) from
@@ -301,8 +300,8 @@ in
         };
 
         systemd = lib.mkOption {
-          type        = lib.types.bool;
-          default     = false;
+          type = lib.types.bool;
+          default = false;
           description = ''
             Enable node_exporter's `systemd` collector, which exports
             `node_systemd_unit_state` per unit and backs both the
@@ -322,8 +321,8 @@ in
         };
 
         containers = lib.mkOption {
-          type        = lib.types.bool;
-          default     = false;
+          type = lib.types.bool;
+          default = false;
           description = ''
             Export failed systemd units from inside this machine's
             systemd-nspawn containers, via node_exporter's textfile collector.
@@ -344,8 +343,8 @@ in
         };
 
         coredumps = lib.mkOption {
-          type        = lib.types.bool;
-          default     = false;
+          type = lib.types.bool;
+          default = false;
           description = ''
             Export a rolling one-hour count of coredumps per executable, via
             node_exporter's textfile collector. Backs the
@@ -369,8 +368,8 @@ in
         };
 
         ipv6Guard = lib.mkOption {
-          type        = lib.types.bool;
-          default     = false;
+          type = lib.types.bool;
+          default = false;
           description = ''
             Export a count of IPv6 GLOBAL-scope addresses on this machine, via
             node_exporter's textfile collector. Backs the
@@ -410,8 +409,8 @@ in
         };
 
         mailReputation = lib.mkOption {
-          type        = lib.types.bool;
-          default     = false;
+          type = lib.types.bool;
+          default = false;
           description = ''
             Export the two external facts M31's outbound mail depends on —
             forward-confirmed reverse DNS, and DNSBL listing status — via
@@ -463,616 +462,641 @@ in
       };
     };
 
-    perInstance = { settings, roles, ... }: {
-      nixosModule = { config, lib, pkgs, ... }:
-        let
-          # Every address permitted to scrape this machine.  See FIREWALL in
-          # the file header for why both entries are present on every machine.
-          #
-          # The zerotier instance name is read per SERVER MACHINE rather than
-          # off `roles.server.settings`: clan-core deprecated role-level
-          # settings access in perInstance (it warns at eval and says the
-          # attribute goes away next release), and the per-machine path is
-          # both supported and more correct — nothing stops two servers being
-          # on two different meshes.
-          serverMachines = roles.server.machines or { };
-          serverZtIps = lib.filter (v: v != null) (lib.mapAttrsToList
-            (name: m: ztIpOf m.settings.zerotierInstance name)
-            serverMachines);
-          scrapeSources = serverZtIps ++ [ monContainerAddr ];
+    perInstance = {
+      settings,
+      roles,
+      ...
+    }: {
+      nixosModule = {
+        config,
+        lib,
+        pkgs,
+        ...
+      }: let
+        # Every address permitted to scrape this machine.  See FIREWALL in
+        # the file header for why both entries are present on every machine.
+        #
+        # The zerotier instance name is read per SERVER MACHINE rather than
+        # off `roles.server.settings`: clan-core deprecated role-level
+        # settings access in perInstance (it warns at eval and says the
+        # attribute goes away next release), and the per-machine path is
+        # both supported and more correct — nothing stops two servers being
+        # on two different meshes.
+        serverMachines = roles.server.machines or {};
+        serverZtIps = lib.filter (v: v != null) (lib.mapAttrsToList
+          (name: m: ztIpOf m.settings.zerotierInstance name)
+          serverMachines);
+        scrapeSources = serverZtIps ++ [monContainerAddr];
 
-          # Where the container-unit collector drops its .prom file.
-          #
-          # Under /var/lib and not /run: node_exporter reads whatever is in
-          # here at scrape time, and a tmpfs would mean every reboot has a
-          # window in which the file is absent and the metric silently missing
-          # rather than zero.
-          textfileDir = "/var/lib/prometheus-node-exporter-textfile";
+        # Where the container-unit collector drops its .prom file.
+        #
+        # Under /var/lib and not /run: node_exporter reads whatever is in
+        # here at scrape time, and a tmpfs would mean every reboot has a
+        # window in which the file is absent and the metric silently missing
+        # rather than zero.
+        textfileDir = "/var/lib/prometheus-node-exporter-textfile";
 
-          # ── M31's deliverability facts, as data ──────────────────────────
-          #
-          # Not options, deliberately. Every one of these is a property of
-          # THIS deployment that already appears verbatim in
-          # machines/ernst/containers/mail.nix and docs/guides/mail.md, and a
-          # third configurable copy is a third thing to leave stale. A fleet
-          # that grows a second mail server can promote them then.
-          #
-          # `reversedIp` is precomputed rather than reversed in shell, so a
-          # typo is an evaluation error here instead of a query against the
-          # wrong address that comes back clean and reassuring.
-          mailRep = rec {
-            container   = "mail";
-            publicIp    = "78.94.91.74";
-            reversedIp  = "74.91.94.78";
-            expectedPtr = "mail.goclan.org";
+        # ── M31's deliverability facts, as data ──────────────────────────
+        #
+        # Not options, deliberately. Every one of these is a property of
+        # THIS deployment that already appears verbatim in
+        # machines/ernst/containers/mail.nix and docs/guides/mail.md, and a
+        # third configurable copy is a third thing to leave stale. A fleet
+        # that grows a second mail server can promote them then.
+        #
+        # `reversedIp` is precomputed rather than reversed in shell, so a
+        # typo is an evaluation error here instead of a query against the
+        # wrong address that comes back clean and reassuring.
+        mailRep = rec {
+          container = "mail";
+          publicIp = "78.94.91.74";
+          reversedIp = "74.91.94.78";
+          expectedPtr = "mail.goclan.org";
 
-            # Only lists that publish the 127.0.0.2 / 127.0.0.1 test points,
-            # because the positive control is what makes an answer
-            # trustworthy. A list without one cannot be distinguished from a
-            # list that has stopped answering, so it would be monitoring
-            # theatre. UCEPROTECT is excluded on different grounds: it lists
-            # entire ranges as policy and would be permanently red.
-            blocklists = [
-              "zen.spamhaus.org"
-              "b.barracudacentral.org"
-              "bl.spamcop.net"
-            ];
-          };
+          # Only lists that publish the 127.0.0.2 / 127.0.0.1 test points,
+          # because the positive control is what makes an answer
+          # trustworthy. A list without one cannot be distinguished from a
+          # list that has stopped answering, so it would be monitoring
+          # theatre. UCEPROTECT is excluded on different grounds: it lists
+          # entire ranges as policy and would be permanently red.
+          blocklists = [
+            "zen.spamhaus.org"
+            "b.barracudacentral.org"
+            "bl.spamcop.net"
+          ];
+        };
 
-          # Failed units inside the nspawn containers, as Prometheus metrics.
-          #
-          # `systemctl -M <name>` talks to the container's init through
-          # machined — no exporter inside each container, no extra port, no
-          # per-container firewall rule. Measured at 2 ms per container on
-          # ernst, against seven of them.
-          #
-          # ONLY FAILED UNITS ARE EMITTED. The steady state is an empty file,
-          # so this costs nothing in cardinality, and an alert on
-          # `== 1` needs no `state=` matcher.
-          containerUnitsCollector = pkgs.writeShellApplication {
-            name = "clanarchy-container-units-collector";
-            runtimeInputs = [ pkgs.systemd pkgs.jq pkgs.gawk pkgs.coreutils ];
-            text = ''
-              out=${textfileDir}/container-units.prom
-              # Written aside and renamed. node_exporter reads this file
-              # whenever a scrape lands, and rename(2) is what stops it from
-              # ever seeing a half-written one.
-              tmp=$(mktemp "$out.XXXXXX")
-              trap 'rm -f "$tmp"' EXIT
+        # Failed units inside the nspawn containers, as Prometheus metrics.
+        #
+        # `systemctl -M <name>` talks to the container's init through
+        # machined — no exporter inside each container, no extra port, no
+        # per-container firewall rule. Measured at 2 ms per container on
+        # ernst, against seven of them.
+        #
+        # ONLY FAILED UNITS ARE EMITTED. The steady state is an empty file,
+        # so this costs nothing in cardinality, and an alert on
+        # `== 1` needs no `state=` matcher.
+        containerUnitsCollector = pkgs.writeShellApplication {
+          name = "clanarchy-container-units-collector";
+          runtimeInputs = [pkgs.systemd pkgs.jq pkgs.gawk pkgs.coreutils];
+          text = ''
+            out=${textfileDir}/container-units.prom
+            # Written aside and renamed. node_exporter reads this file
+            # whenever a scrape lands, and rename(2) is what stops it from
+            # ever seeing a half-written one.
+            tmp=$(mktemp "$out.XXXXXX")
+            trap 'rm -f "$tmp"' EXIT
 
-              {
-                echo "# HELP clanarchy_container_systemd_unit_failed A systemd unit inside an nspawn container is in the failed state."
-                echo "# TYPE clanarchy_container_systemd_unit_failed gauge"
-              } > "$tmp"
+            {
+              echo "# HELP clanarchy_container_systemd_unit_failed A systemd unit inside an nspawn container is in the failed state."
+              echo "# TYPE clanarchy_container_systemd_unit_failed gauge"
+            } > "$tmp"
 
-              ok=1
-              for c in $(machinectl list --no-legend | awk '{print $1}'); do
-                # A container that is starting, stopping or wedged answers
-                # nothing. Do not treat that as "no failures" — that is the
-                # exact shape of a monitoring blind spot — mark the run bad and
-                # let the collector-health metric below carry it.
-                if units=$(systemctl -M "$c" list-units --state=failed \
-                             --no-legend --plain --no-pager -o json 2>/dev/null); then
-                  jq -r --arg c "$c" \
-                    '.[] | "clanarchy_container_systemd_unit_failed{container=\"\($c)\",name=\"\(.unit)\"} 1"' \
-                    <<< "$units" >> "$tmp"
-                else
-                  ok=0
-                fi
-              done
+            ok=1
+            for c in $(machinectl list --no-legend | awk '{print $1}'); do
+              # A container that is starting, stopping or wedged answers
+              # nothing. Do not treat that as "no failures" — that is the
+              # exact shape of a monitoring blind spot — mark the run bad and
+              # let the collector-health metric below carry it.
+              if units=$(systemctl -M "$c" list-units --state=failed \
+                           --no-legend --plain --no-pager -o json 2>/dev/null); then
+                jq -r --arg c "$c" \
+                  '.[] | "clanarchy_container_systemd_unit_failed{container=\"\($c)\",name=\"\(.unit)\"} 1"' \
+                  <<< "$units" >> "$tmp"
+              else
+                ok=0
+              fi
+            done
 
-              # Who watches the watcher. Same argument as the ZedNotRunning
-              # rule: the one thing a collector cannot report is its own
-              # failure, so it reports its own success and the absence of that
-              # is what alerts.
-              {
-                echo "# HELP clanarchy_container_units_collector_success Whether the last container-unit collection queried every container successfully."
-                echo "# TYPE clanarchy_container_units_collector_success gauge"
-                echo "clanarchy_container_units_collector_success $ok"
-              } >> "$tmp"
+            # Who watches the watcher. Same argument as the ZedNotRunning
+            # rule: the one thing a collector cannot report is its own
+            # failure, so it reports its own success and the absence of that
+            # is what alerts.
+            {
+              echo "# HELP clanarchy_container_units_collector_success Whether the last container-unit collection queried every container successfully."
+              echo "# TYPE clanarchy_container_units_collector_success gauge"
+              echo "clanarchy_container_units_collector_success $ok"
+            } >> "$tmp"
 
-              chmod 0644 "$tmp"
-              mv -f "$tmp" "$out"
-              trap - EXIT
-            '';
-          };
-
-          # Coredumps in the last hour, per executable, as Prometheus metrics.
-          #
-          # Read from the journal rather than from /var/lib/systemd/coredump,
-          # because the directory is vacuumed under storage pressure — which is
-          # exactly what a crash loop causes — so counting files there
-          # UNDERCOUNTS precisely when the number matters most. The journal
-          # entry survives the core file it describes.
-          #
-          # No collector-success metric here, unlike the container collector
-          # next door. That one deliberately swallows a per-container failure
-          # so one wedged container cannot hide the other six, which means its
-          # unit exits 0 and something else has to notice. This script has no
-          # such case: writeShellApplication sets -euo pipefail, so any failure
-          # fails the UNIT, and a failed host unit already trips
-          # SystemdUnitFailed.
-          coredumpCollector = pkgs.writeShellApplication {
-            name = "clanarchy-coredump-collector";
-            runtimeInputs = [ pkgs.systemd pkgs.jq pkgs.coreutils ];
-            text = ''
-              out=${textfileDir}/coredumps.prom
-              tmp=$(mktemp "$out.XXXXXX")
-              trap 'rm -f "$tmp"' EXIT
-
-              {
-                echo "# HELP clanarchy_coredumps_recent Coredumps written in the last hour, by executable and signal."
-                echo "# TYPE clanarchy_coredumps_recent gauge"
-
-                journalctl -t systemd-coredump --since "-1h" -o json \
-                  --output-fields=COREDUMP_EXE,COREDUMP_SIGNAL_NAME 2>/dev/null \
-                  | jq -r -s '
-                      map(select(.COREDUMP_EXE))
-                      | group_by([.COREDUMP_EXE, .COREDUMP_SIGNAL_NAME])
-                      | .[]
-                      | "clanarchy_coredumps_recent{exe="
-                        + ((.[0].COREDUMP_EXE | split("/") | last) | @json)
-                        + ",signal="
-                        + ((.[0].COREDUMP_SIGNAL_NAME // "unknown") | @json)
-                        + "} " + (length | tostring)
-                    '
-              } > "$tmp"
-
-              chmod 0644 "$tmp"
-              mv -f "$tmp" "$out"
-              trap - EXIT
-            '';
-          };
-
-          # IPv6 global-scope addresses, as a Prometheus metric.
-          #
-          # SN2's safe state, made observable. See the option description for
-          # why this is worth a timer: the property was previously established
-          # by a human typing `ip -6 addr` and reading it, twice, three weeks
-          # apart.
-          #
-          # `scope global` is doing the filtering. It excludes link-local
-          # (fe80::/10) by definition, which is what every container has. ULA
-          # IS scope global to the kernel, so M6's own fdca:fe90::/64
-          # monitoring network and ZeroTier's fd00::/8 rfc4193 addresses have
-          # to be dropped by prefix or the steady state would never be zero —
-          # and a metric whose steady state is "some" is one nobody alerts on.
-          #
-          # Emitted unconditionally, including the zero. Unlike the container
-          # and coredump collectors, whose steady state is an ABSENT series,
-          # this one's whole job is to assert a negative: an absent series here
-          # would be indistinguishable from the collector having died, and the
-          # alert would then be silent in exactly the case it exists for.
-          ipv6GuardCollector = pkgs.writeShellApplication {
-            name = "clanarchy-ipv6-guard-collector";
-            runtimeInputs = [ pkgs.iproute2 pkgs.gnugrep pkgs.coreutils ];
-            text = ''
-              out=${textfileDir}/ipv6-guard.prom
-              tmp=$(mktemp "$out.XXXXXX")
-              trap 'rm -f "$tmp"' EXIT
-
-              # fd00::/8 is ULA. Matching on the first two hex digits covers
-              # both fdca: (M6's monitoring net) and fdda: (ZeroTier) without
-              # naming either, so a new ULA does not become a false alarm.
-              #
-              # `grep -vc` and not `grep -v | wc -l`, because SC2126 is an
-              # error under writeShellApplication's lint pass and fails the
-              # DERIVATION rather than the run. (Do not open a comment line
-              # here with the linter's own name: it is read as a directive and
-              # SC1072 fails the build too. Both of these were found by
-              # BUILDING, which `nix eval` does not do.)
-              #
-              # The count still reaches stdout when it is zero — grep prints
-              # "0" and then exits 1 — so `|| true` is load-bearing under
-              # `set -o pipefail`, and zero is the GOOD case.
-              n=$(ip -6 -o addr show scope global 2>/dev/null \
-                    | grep -vciE 'inet6 f[cd][0-9a-f]{2}:' || true)
-
-              {
-                echo "# HELP clanarchy_ipv6_global_addresses IPv6 global-scope addresses present, excluding ULA. SN2 expects zero."
-                echo "# TYPE clanarchy_ipv6_global_addresses gauge"
-                echo "clanarchy_ipv6_global_addresses ''${n:-0}"
-              } > "$tmp"
-
-              chmod 0644 "$tmp"
-              mv -f "$tmp" "$out"
-              trap - EXIT
-            '';
-          };
-
-          # ── M31's deliverability tripwire ───────────────────────────────
-          #
-          # Emits three families, all unconditionally including their zeros —
-          # ipv6Guard's reasoning: this collector asserts negatives, and an
-          # absent series would be indistinguishable from the collector having
-          # died, which is the one case the alerts exist for.
-          #
-          # EVERY QUERY GOES THROUGH THE MAIL CONTAINER, not the host. The
-          # option's description carries the measurement; the short version is
-          # that Technitium forwards, Spamhaus refuses forwarded queries with
-          # 127.255.255.254, and a host-side check would therefore read
-          # "refused" as "clean" forever.
-          #
-          # `nixos-container run` and not `systemd-run --machine`: the latter
-          # leaves a failed transient unit behind on any error, which trips
-          # `ContainerSystemdUnitFailed` and pages about the monitoring rather
-          # than the thing monitored. That cost four false alerts on
-          # 2026-09-27 and is written down in the runbooks.
-          mailReputationCollector = pkgs.writeShellApplication {
-            name = "clanarchy-mail-reputation-collector";
-            runtimeInputs = [ pkgs.coreutils pkgs.gnused pkgs.gnugrep ];
-            text = ''
-              out=${textfileDir}/mail-reputation.prom
-              tmp=$(mktemp "$out.XXXXXX")
-              trap 'rm -f "$tmp"' EXIT
-
-              ip=${mailRep.publicIp}
-              want=${mailRep.expectedPtr}
-              rev=${mailRep.reversedIp}
-
-              # One place that knows how to ask, so the host resolver cannot
-              # creep back in via a later edit.
-              #
-              # ABSOLUTE PATH, not a runtimeInput: `nixos-container` is built
-              # by the containers module into the system profile, not exposed
-              # as a package this file could add to `runtimeInputs`.
-              # writeShellApplication prepends to PATH rather than replacing
-              # it, so the ambient one would usually work — but "usually" is
-              # the wrong guarantee for the command every single metric here
-              # depends on, and this is the exact string the hardened probe
-              # was measured with on 2026-10-07.
-              #
-              # `dig` resolves inside the container, where M31 puts it.
-              q() { /run/current-system/sw/bin/nixos-container run ${mailRep.container} -- dig +short +time=5 +tries=2 "$@" 2>/dev/null || true; }
-
-              ##############################################################
-              # Forward-confirmed reverse DNS.  BOTH directions must agree —
-              # a PTR alone proves nothing, because anyone can point a PTR at
-              # a name they do not control.  Receivers check the pair.
-              ##############################################################
-              ptr=$(q -x "$ip" | sed 's/\.$//' | head -1)
-              fwd=$(q A "$want" | head -1)
-              fcrdns=0
-              if [ "$ptr" = "$want" ] && [ "$fwd" = "$ip" ]; then fcrdns=1; fi
-
-              {
-                echo "# HELP clanarchy_mail_fcrdns_ok Forward-confirmed reverse DNS for the mail sender address. 1 is healthy."
-                echo "# TYPE clanarchy_mail_fcrdns_ok gauge"
-                echo "clanarchy_mail_fcrdns_ok $fcrdns"
-              } > "$tmp"
-
-              ##############################################################
-              # DNSBLs, each gated on its own positive control.
-              #
-              # 127.0.0.2 is the address every DNSBL in this list publishes as
-              # permanently listed, and 127.0.0.1 as permanently clean.  If a
-              # list does not answer correctly for BOTH, it is not answering
-              # for us either, and `listed` is not emitted at all — only
-              # `usable 0`.  Emitting `listed 0` from a refused query is the
-              # precise failure this whole collector was written to avoid.
-              ##############################################################
-              # Grouped, not four `>>` in a row: writeShellApplication's lint
-              # pass treats SC2129 as an error and fails the DERIVATION, which
-              # `nix eval` does not surface — ipv6-guard's comment above
-              # records the same lesson about SC2126.
-              {
-                echo "# HELP clanarchy_mail_dnsbl_usable DNSBL answered its own test points correctly this run. 1 is healthy."
-                echo "# TYPE clanarchy_mail_dnsbl_usable gauge"
-                echo "# HELP clanarchy_mail_dnsbl_listed Our public IP is listed on this DNSBL. 0 is healthy."
-                echo "# TYPE clanarchy_mail_dnsbl_listed gauge"
-              } >> "$tmp"
-
-              for bl in ${lib.concatStringsSep " " mailRep.blocklists}; do
-                pos=$(q "2.0.0.127.$bl" | grep -c '^127\.' || true)
-                neg=$(q "1.0.0.127.$bl" | grep -c '^127\.' || true)
-
-                if [ "''${pos:-0}" -ge 1 ] && [ "''${neg:-0}" -eq 0 ]; then
-                  echo "clanarchy_mail_dnsbl_usable{list=\"$bl\"} 1" >> "$tmp"
-                  hit=$(q "$rev.$bl" | grep -c '^127\.' || true)
-                  if [ "''${hit:-0}" -ge 1 ]; then
-                    echo "clanarchy_mail_dnsbl_listed{list=\"$bl\"} 1" >> "$tmp"
-                  else
-                    echo "clanarchy_mail_dnsbl_listed{list=\"$bl\"} 0" >> "$tmp"
-                  fi
-                else
-                  echo "clanarchy_mail_dnsbl_usable{list=\"$bl\"} 0" >> "$tmp"
-                fi
-              done
-
-              chmod 0644 "$tmp"
-              mv -f "$tmp" "$out"
-              trap - EXIT
-            '';
-          };
-
-          # Ports this machine actually exposes.
-          exposedPorts =
-            [ ports.node ]
-            ++ lib.optional settings.exporters.zfs      ports.zfs
-            ++ lib.optional settings.exporters.smartctl ports.smartctl;
-        in
-        {
-          ####################################################################
-          # node_exporter.
-          #
-          # LISTENING ON [::] AND NOT 0.0.0.0, which is the module default.
-          # Every scrape of a laptop arrives over ZeroTier, and clan's ZeroTier
-          # is rfc4193 IPv6 ONLY — there is no v4 address on that mesh to bind.
-          # Linux's default bindv6only=0 means the [::] socket still accepts
-          # v4-mapped connections, so ernst's own loopback-ish scrape over mon0
-          # and any future v4 path both keep working.
-          ####################################################################
-          services.prometheus.exporters.node = {
-            enable        = true;
-            listenAddress = "[::]";
-            port          = ports.node;
-
-            # Restriction is done below with an explicit ip6tables rule; see
-            # FIREWALL in the file header for why openFirewall cannot be used.
-            openFirewall = false;
-
-            enabledCollectors = lib.optional settings.exporters.systemd "systemd";
-
-            # TRIMMED DEFAULTS.  node_exporter is idle between scrapes — it does
-            # no background work — so the cost of running it is the cost of one
-            # scrape per interval, and these are the default collectors whose
-            # per-scrape cost is real and whose output nothing here reads:
-            #
-            #   arp, btrfs, dmi, edac, entropy, fibrechannel, infiniband,
-            #   ipvs, mdadm, nfs, nfsd, nvme, powersupplyclass, rapl,
-            #   selinux, softnet, tapestats, thermal_zone, xfs, zfs
-            #
-            # `hwmon` and `thermal_zone` walk sysfs trees that are large on a
-            # laptop; `nvme` and `mdadm` and `fibrechannel` are hardware nobody
-            # in this fleet has in the shape those collectors expect; `zfs` is
-            # ARC statistics, which the dedicated exporter's pool metrics
-            # supersede for every question asked here.
-            #
-            # `netdev`, `filesystem`, `cpu`, `meminfo`, `loadavg`, `diskstats`,
-            # `stat`, `time`, `uname`, `os` are all KEPT — they are what the
-            # dashboard and every alert are built from.
-            #
-            # ── M13 CORRECTS THE `zfs` LINE ABOVE ───────────────────────────
-            #
-            # It said the dedicated exporter's pool metrics "supersede" this
-            # collector for every question asked here.  That was true of the
-            # questions M6 asked and is NOT true in general: the two answer
-            # different things and neither can stand in for the other.
-            #
-            #   zfs_exporter          POOL — health, capacity, fragmentation.
-            #   node_exporter `zfs`   ARC — hit ratio, size, evictions, read
-            #                         from /proc/spl/kstat/zfs.
-            #
-            # M13 asks for ARC specifically, and on ernst it is worth having:
-            # it is the machine with 47 TB behind it, and ARC hit ratio is what
-            # explains "why did the library get slow" when the pool is healthy
-            # and the disks are not busy.
-            #
-            # It stays OFF everywhere else.  On a laptop ARC behaviour is
-            # decided by whether the lid was shut, which is not a series
-            # anybody reads.
-            disabledCollectors = [
-              "arp" "btrfs" "dmi" "edac" "entropy" "fibrechannel" "infiniband"
-              "ipvs" "mdadm" "nfs" "nfsd" "nvme" "powersupplyclass" "rapl"
-              "selinux" "softnet" "tapestats" "thermal_zone" "xfs"
-            ] ++ lib.optional (!settings.exporters.arc) "zfs";
-
-            # The textfile collector is on by default in node_exporter, but it
-            # reads nothing until it is told where to look. One flag serves
-            # every feeder, so it is set if any of them is enabled.
-            extraFlags = lib.optional
-              (settings.exporters.containers || settings.exporters.coredumps)
-              "--collector.textfile.directory=${textfileDir}";
-          };
-
-          ####################################################################
-          # Failed units inside the nspawn containers.
-          #
-          # A HOST timer, not an exporter per container. The alternative —
-          # node_exporter inside each of ernst's seven containers — is seven
-          # processes, seven ports and seven firewall rules to answer one
-          # question, and each one would then need its own scrape config that
-          # nobody would remember to add for container number eight.
-          #
-          # Every minute rather than on demand, because the textfile collector
-          # is a file read: node_exporter has no way to trigger this, so the
-          # file has to already be current when a scrape lands. A minute is
-          # well inside the 15m `for` on the alert.
-          ####################################################################
-          systemd.tmpfiles.rules = lib.optional
-            (settings.exporters.containers || settings.exporters.coredumps
-             || settings.exporters.ipv6Guard || settings.exporters.mailReputation)
-            "d ${textfileDir} 0755 root root -";
-
-          systemd.services.clanarchy-container-units =
-            lib.mkIf settings.exporters.containers {
-              description = "Collect failed systemd units from nspawn containers";
-              serviceConfig = {
-                Type = "oneshot";
-                ExecStart = lib.getExe containerUnitsCollector;
-                # Talks to machined and to each container's init over D-Bus,
-                # and writes one file. It needs no network and no devices.
-                PrivateNetwork = true;
-                PrivateDevices = true;
-                ProtectHome = true;
-                ProtectSystem = "strict";
-                ReadWritePaths = [ textfileDir ];
-                NoNewPrivileges = true;
-              };
-            };
-
-          systemd.timers.clanarchy-container-units =
-            lib.mkIf settings.exporters.containers {
-              description = "Collect failed nspawn container units every minute";
-              wantedBy = [ "timers.target" ];
-              timerConfig = {
-                OnBootSec = "2m";
-                OnUnitActiveSec = "1m";
-                # No Persistent: a missed run is worthless, the next one in
-                # sixty seconds supersedes it entirely.
-              };
-            };
-
-          systemd.services.clanarchy-coredumps =
-            lib.mkIf settings.exporters.coredumps {
-              description = "Collect recent coredump counts for node_exporter";
-              serviceConfig = {
-                Type = "oneshot";
-                ExecStart = lib.getExe coredumpCollector;
-                # Reads the journal and writes one file.
-                PrivateNetwork = true;
-                PrivateDevices = true;
-                ProtectHome = true;
-                ProtectSystem = "strict";
-                ReadWritePaths = [ textfileDir ];
-                NoNewPrivileges = true;
-              };
-            };
-
-          systemd.timers.clanarchy-coredumps =
-            lib.mkIf settings.exporters.coredumps {
-              description = "Collect recent coredump counts every minute";
-              wantedBy = [ "timers.target" ];
-              timerConfig = {
-                OnBootSec = "2m";
-                OnUnitActiveSec = "1m";
-              };
-            };
-
-          systemd.services.clanarchy-ipv6-guard =
-            lib.mkIf settings.exporters.ipv6Guard {
-              description = "Collect IPv6 global-address count for node_exporter";
-              serviceConfig = {
-                Type = "oneshot";
-                ExecStart = lib.getExe ipv6GuardCollector;
-                # NOT PrivateNetwork, unlike its two neighbours above. This one
-                # reads the network configuration, and a private netns would
-                # give it an empty one — it would report zero addresses
-                # forever, which is the answer the alert is looking for. A
-                # collector that cannot fail is not a collector.
-                PrivateDevices = true;
-                ProtectHome = true;
-                ProtectSystem = "strict";
-                ReadWritePaths = [ textfileDir ];
-                NoNewPrivileges = true;
-              };
-            };
-
-          systemd.timers.clanarchy-ipv6-guard =
-            lib.mkIf settings.exporters.ipv6Guard {
-              description = "Check for unexpected IPv6 global addresses every 5 minutes";
-              wantedBy = [ "timers.target" ];
-              timerConfig = {
-                OnBootSec = "2m";
-                # Five minutes, not one: a delegated prefix arriving is a
-                # change measured in ISP outages and router reboots, and the
-                # alert waits 15m anyway. There is nothing to gain from
-                # polling this at the rate of a crash loop.
-                OnUnitActiveSec = "5m";
-              };
-            };
-
-          systemd.services.clanarchy-mail-reputation =
-            lib.mkIf settings.exporters.mailReputation {
-              description = "Collect mail FCrDNS and DNSBL status for node_exporter";
-              # The container has to be up to answer: every query goes through
-              # its resolver. Without this the collector reports an outage of
-              # the mail server as a reputation failure, which is true but
-              # names the wrong thing.
-              after = [ "container@${mailRep.container}.service" ];
-              serviceConfig = {
-                Type = "oneshot";
-                ExecStart = lib.getExe mailReputationCollector;
-                # NOT PrivateNetwork — this one is entirely network. Same
-                # exception ipv6-guard takes above, for the mirror-image
-                # reason: there it would see no addresses, here it would
-                # resolve nothing, and in both cases the collector would
-                # cheerfully report the healthy answer forever.
-                #
-                # NOT PrivateDevices either: `nixos-container run` needs
-                # /dev/ptmx to allocate the pty it runs the command on.
-                ProtectHome = true;
-                ProtectSystem = "strict";
-                ReadWritePaths = [ textfileDir ];
-                NoNewPrivileges = true;
-              };
-            };
-
-          systemd.timers.clanarchy-mail-reputation =
-            lib.mkIf settings.exporters.mailReputation {
-              description = "Check mail reverse DNS and blocklist status twice daily";
-              wantedBy = [ "timers.target" ];
-              timerConfig = {
-                # Twice a day, against a guide that said QUARTERLY and meant
-                # "when somebody remembers". Both facts change on somebody
-                # else's schedule — an ISP renumbering, a listing by a
-                # neighbour's infected host — so the useful question is how
-                # long we are willing to be silently undeliverable, not how
-                # fast the value moves. Half a day, against the alert's own
-                # 6h `for`, puts the worst case under a day.
-                #
-                # Not faster: these are third-party nameservers answering
-                # queries we are a guest of, and the `usable` control doubles
-                # the query count already.
-                OnBootSec = "10m";
-                OnUnitActiveSec = "12h";
-                RandomizedDelaySec = "30m";
-              };
-            };
-
-          ####################################################################
-          # zfs_exporter — pool health, capacity, fragmentation.
-          ####################################################################
-          services.prometheus.exporters.zfs = lib.mkIf settings.exporters.zfs {
-            enable        = true;
-            listenAddress = "[::]";
-            port          = ports.zfs;
-            openFirewall  = false;
-          };
-
-          ####################################################################
-          # smartctl_exporter — per-device SMART.
-          #
-          # `devices` left empty so it autodiscovers.  ernst's disks sit behind
-          # an HBA and their /dev/sd* names are not stable across a reboot (see
-          # docs/incidents/ernst-slot12-drop-2026-08-11.md); a hand-listed
-          # device path would monitor whatever landed on that letter this boot,
-          # which is worse than useless because it would look like it worked.
-          ####################################################################
-          services.prometheus.exporters.smartctl = lib.mkIf settings.exporters.smartctl {
-            enable        = true;
-            listenAddress = "[::]";
-            port          = ports.smartctl;
-            openFirewall  = false;
-          };
-
-          ####################################################################
-          # The scrape ACL.
-          #
-          # One accept per (source, port) pair, appended to nixos-fw.  The
-          # firewall's start script emits allowedTCPPorts first, then
-          # extraCommands, then the catch-all -j nixos-fw-log-refuse — so these
-          # land before the refuse and after everything else, and nothing needs
-          # to go in extraStopCommands because the chain is flushed and rebuilt
-          # on every start and reload.  Same placement argument as
-          # machines/ernst/containers/arr/.
-          #
-          # If `up` is 0 for a machine that is demonstrably awake, this is the
-          # first thing to check:
-          #   ip6tables -L nixos-fw -n --line-numbers | grep 9100
-          ####################################################################
-          networking.firewall.extraCommands = lib.concatMapStrings (src:
-            lib.concatMapStrings (port: ''
-              ip6tables -A nixos-fw -p tcp -s ${src}/128 --dport ${toString port} -j nixos-fw-accept
-            '') exposedPorts
-          ) scrapeSources;
-
-          warnings = lib.optional (serverZtIps == [ ] && serverMachines != { }) ''
-            @clanarchy/monitoring: no ZeroTier address is known for the machine
-            holding roles.server, so nothing is permitted to scrape this host.
-            Run `clan vars generate <server machine>` and re-deploy.
+            chmod 0644 "$tmp"
+            mv -f "$tmp" "$out"
+            trap - EXIT
           '';
         };
+
+        # Coredumps in the last hour, per executable, as Prometheus metrics.
+        #
+        # Read from the journal rather than from /var/lib/systemd/coredump,
+        # because the directory is vacuumed under storage pressure — which is
+        # exactly what a crash loop causes — so counting files there
+        # UNDERCOUNTS precisely when the number matters most. The journal
+        # entry survives the core file it describes.
+        #
+        # No collector-success metric here, unlike the container collector
+        # next door. That one deliberately swallows a per-container failure
+        # so one wedged container cannot hide the other six, which means its
+        # unit exits 0 and something else has to notice. This script has no
+        # such case: writeShellApplication sets -euo pipefail, so any failure
+        # fails the UNIT, and a failed host unit already trips
+        # SystemdUnitFailed.
+        coredumpCollector = pkgs.writeShellApplication {
+          name = "clanarchy-coredump-collector";
+          runtimeInputs = [pkgs.systemd pkgs.jq pkgs.coreutils];
+          text = ''
+            out=${textfileDir}/coredumps.prom
+            tmp=$(mktemp "$out.XXXXXX")
+            trap 'rm -f "$tmp"' EXIT
+
+            {
+              echo "# HELP clanarchy_coredumps_recent Coredumps written in the last hour, by executable and signal."
+              echo "# TYPE clanarchy_coredumps_recent gauge"
+
+              journalctl -t systemd-coredump --since "-1h" -o json \
+                --output-fields=COREDUMP_EXE,COREDUMP_SIGNAL_NAME 2>/dev/null \
+                | jq -r -s '
+                    map(select(.COREDUMP_EXE))
+                    | group_by([.COREDUMP_EXE, .COREDUMP_SIGNAL_NAME])
+                    | .[]
+                    | "clanarchy_coredumps_recent{exe="
+                      + ((.[0].COREDUMP_EXE | split("/") | last) | @json)
+                      + ",signal="
+                      + ((.[0].COREDUMP_SIGNAL_NAME // "unknown") | @json)
+                      + "} " + (length | tostring)
+                  '
+            } > "$tmp"
+
+            chmod 0644 "$tmp"
+            mv -f "$tmp" "$out"
+            trap - EXIT
+          '';
+        };
+
+        # IPv6 global-scope addresses, as a Prometheus metric.
+        #
+        # SN2's safe state, made observable. See the option description for
+        # why this is worth a timer: the property was previously established
+        # by a human typing `ip -6 addr` and reading it, twice, three weeks
+        # apart.
+        #
+        # `scope global` is doing the filtering. It excludes link-local
+        # (fe80::/10) by definition, which is what every container has. ULA
+        # IS scope global to the kernel, so M6's own fdca:fe90::/64
+        # monitoring network and ZeroTier's fd00::/8 rfc4193 addresses have
+        # to be dropped by prefix or the steady state would never be zero —
+        # and a metric whose steady state is "some" is one nobody alerts on.
+        #
+        # Emitted unconditionally, including the zero. Unlike the container
+        # and coredump collectors, whose steady state is an ABSENT series,
+        # this one's whole job is to assert a negative: an absent series here
+        # would be indistinguishable from the collector having died, and the
+        # alert would then be silent in exactly the case it exists for.
+        ipv6GuardCollector = pkgs.writeShellApplication {
+          name = "clanarchy-ipv6-guard-collector";
+          runtimeInputs = [pkgs.iproute2 pkgs.gnugrep pkgs.coreutils];
+          text = ''
+            out=${textfileDir}/ipv6-guard.prom
+            tmp=$(mktemp "$out.XXXXXX")
+            trap 'rm -f "$tmp"' EXIT
+
+            # fd00::/8 is ULA. Matching on the first two hex digits covers
+            # both fdca: (M6's monitoring net) and fdda: (ZeroTier) without
+            # naming either, so a new ULA does not become a false alarm.
+            #
+            # `grep -vc` and not `grep -v | wc -l`, because SC2126 is an
+            # error under writeShellApplication's lint pass and fails the
+            # DERIVATION rather than the run. (Do not open a comment line
+            # here with the linter's own name: it is read as a directive and
+            # SC1072 fails the build too. Both of these were found by
+            # BUILDING, which `nix eval` does not do.)
+            #
+            # The count still reaches stdout when it is zero — grep prints
+            # "0" and then exits 1 — so `|| true` is load-bearing under
+            # `set -o pipefail`, and zero is the GOOD case.
+            n=$(ip -6 -o addr show scope global 2>/dev/null \
+                  | grep -vciE 'inet6 f[cd][0-9a-f]{2}:' || true)
+
+            {
+              echo "# HELP clanarchy_ipv6_global_addresses IPv6 global-scope addresses present, excluding ULA. SN2 expects zero."
+              echo "# TYPE clanarchy_ipv6_global_addresses gauge"
+              echo "clanarchy_ipv6_global_addresses ''${n:-0}"
+            } > "$tmp"
+
+            chmod 0644 "$tmp"
+            mv -f "$tmp" "$out"
+            trap - EXIT
+          '';
+        };
+
+        # ── M31's deliverability tripwire ───────────────────────────────
+        #
+        # Emits three families, all unconditionally including their zeros —
+        # ipv6Guard's reasoning: this collector asserts negatives, and an
+        # absent series would be indistinguishable from the collector having
+        # died, which is the one case the alerts exist for.
+        #
+        # EVERY QUERY GOES THROUGH THE MAIL CONTAINER, not the host. The
+        # option's description carries the measurement; the short version is
+        # that Technitium forwards, Spamhaus refuses forwarded queries with
+        # 127.255.255.254, and a host-side check would therefore read
+        # "refused" as "clean" forever.
+        #
+        # `nixos-container run` and not `systemd-run --machine`: the latter
+        # leaves a failed transient unit behind on any error, which trips
+        # `ContainerSystemdUnitFailed` and pages about the monitoring rather
+        # than the thing monitored. That cost four false alerts on
+        # 2026-09-27 and is written down in the runbooks.
+        mailReputationCollector = pkgs.writeShellApplication {
+          name = "clanarchy-mail-reputation-collector";
+          runtimeInputs = [pkgs.coreutils pkgs.gnused pkgs.gnugrep];
+          text = ''
+            out=${textfileDir}/mail-reputation.prom
+            tmp=$(mktemp "$out.XXXXXX")
+            trap 'rm -f "$tmp"' EXIT
+
+            ip=${mailRep.publicIp}
+            want=${mailRep.expectedPtr}
+            rev=${mailRep.reversedIp}
+
+            # One place that knows how to ask, so the host resolver cannot
+            # creep back in via a later edit.
+            #
+            # ABSOLUTE PATH, not a runtimeInput: `nixos-container` is built
+            # by the containers module into the system profile, not exposed
+            # as a package this file could add to `runtimeInputs`.
+            # writeShellApplication prepends to PATH rather than replacing
+            # it, so the ambient one would usually work — but "usually" is
+            # the wrong guarantee for the command every single metric here
+            # depends on, and this is the exact string the hardened probe
+            # was measured with on 2026-10-07.
+            #
+            # `dig` resolves inside the container, where M31 puts it.
+            q() { /run/current-system/sw/bin/nixos-container run ${mailRep.container} -- dig +short +time=5 +tries=2 "$@" 2>/dev/null || true; }
+
+            ##############################################################
+            # Forward-confirmed reverse DNS.  BOTH directions must agree —
+            # a PTR alone proves nothing, because anyone can point a PTR at
+            # a name they do not control.  Receivers check the pair.
+            ##############################################################
+            ptr=$(q -x "$ip" | sed 's/\.$//' | head -1)
+            fwd=$(q A "$want" | head -1)
+            fcrdns=0
+            if [ "$ptr" = "$want" ] && [ "$fwd" = "$ip" ]; then fcrdns=1; fi
+
+            {
+              echo "# HELP clanarchy_mail_fcrdns_ok Forward-confirmed reverse DNS for the mail sender address. 1 is healthy."
+              echo "# TYPE clanarchy_mail_fcrdns_ok gauge"
+              echo "clanarchy_mail_fcrdns_ok $fcrdns"
+            } > "$tmp"
+
+            ##############################################################
+            # DNSBLs, each gated on its own positive control.
+            #
+            # 127.0.0.2 is the address every DNSBL in this list publishes as
+            # permanently listed, and 127.0.0.1 as permanently clean.  If a
+            # list does not answer correctly for BOTH, it is not answering
+            # for us either, and `listed` is not emitted at all — only
+            # `usable 0`.  Emitting `listed 0` from a refused query is the
+            # precise failure this whole collector was written to avoid.
+            ##############################################################
+            # Grouped, not four `>>` in a row: writeShellApplication's lint
+            # pass treats SC2129 as an error and fails the DERIVATION, which
+            # `nix eval` does not surface — ipv6-guard's comment above
+            # records the same lesson about SC2126.
+            {
+              echo "# HELP clanarchy_mail_dnsbl_usable DNSBL answered its own test points correctly this run. 1 is healthy."
+              echo "# TYPE clanarchy_mail_dnsbl_usable gauge"
+              echo "# HELP clanarchy_mail_dnsbl_listed Our public IP is listed on this DNSBL. 0 is healthy."
+              echo "# TYPE clanarchy_mail_dnsbl_listed gauge"
+            } >> "$tmp"
+
+            for bl in ${lib.concatStringsSep " " mailRep.blocklists}; do
+              pos=$(q "2.0.0.127.$bl" | grep -c '^127\.' || true)
+              neg=$(q "1.0.0.127.$bl" | grep -c '^127\.' || true)
+
+              if [ "''${pos:-0}" -ge 1 ] && [ "''${neg:-0}" -eq 0 ]; then
+                echo "clanarchy_mail_dnsbl_usable{list=\"$bl\"} 1" >> "$tmp"
+                hit=$(q "$rev.$bl" | grep -c '^127\.' || true)
+                if [ "''${hit:-0}" -ge 1 ]; then
+                  echo "clanarchy_mail_dnsbl_listed{list=\"$bl\"} 1" >> "$tmp"
+                else
+                  echo "clanarchy_mail_dnsbl_listed{list=\"$bl\"} 0" >> "$tmp"
+                fi
+              else
+                echo "clanarchy_mail_dnsbl_usable{list=\"$bl\"} 0" >> "$tmp"
+              fi
+            done
+
+            chmod 0644 "$tmp"
+            mv -f "$tmp" "$out"
+            trap - EXIT
+          '';
+        };
+
+        # Ports this machine actually exposes.
+        exposedPorts =
+          [ports.node]
+          ++ lib.optional settings.exporters.zfs ports.zfs
+          ++ lib.optional settings.exporters.smartctl ports.smartctl;
+      in {
+        ####################################################################
+        # node_exporter.
+        #
+        # LISTENING ON [::] AND NOT 0.0.0.0, which is the module default.
+        # Every scrape of a laptop arrives over ZeroTier, and clan's ZeroTier
+        # is rfc4193 IPv6 ONLY — there is no v4 address on that mesh to bind.
+        # Linux's default bindv6only=0 means the [::] socket still accepts
+        # v4-mapped connections, so ernst's own loopback-ish scrape over mon0
+        # and any future v4 path both keep working.
+        ####################################################################
+        services.prometheus.exporters.node = {
+          enable = true;
+          listenAddress = "[::]";
+          port = ports.node;
+
+          # Restriction is done below with an explicit ip6tables rule; see
+          # FIREWALL in the file header for why openFirewall cannot be used.
+          openFirewall = false;
+
+          enabledCollectors = lib.optional settings.exporters.systemd "systemd";
+
+          # TRIMMED DEFAULTS.  node_exporter is idle between scrapes — it does
+          # no background work — so the cost of running it is the cost of one
+          # scrape per interval, and these are the default collectors whose
+          # per-scrape cost is real and whose output nothing here reads:
+          #
+          #   arp, btrfs, dmi, edac, entropy, fibrechannel, infiniband,
+          #   ipvs, mdadm, nfs, nfsd, nvme, powersupplyclass, rapl,
+          #   selinux, softnet, tapestats, thermal_zone, xfs, zfs
+          #
+          # `hwmon` and `thermal_zone` walk sysfs trees that are large on a
+          # laptop; `nvme` and `mdadm` and `fibrechannel` are hardware nobody
+          # in this fleet has in the shape those collectors expect; `zfs` is
+          # ARC statistics, which the dedicated exporter's pool metrics
+          # supersede for every question asked here.
+          #
+          # `netdev`, `filesystem`, `cpu`, `meminfo`, `loadavg`, `diskstats`,
+          # `stat`, `time`, `uname`, `os` are all KEPT — they are what the
+          # dashboard and every alert are built from.
+          #
+          # ── M13 CORRECTS THE `zfs` LINE ABOVE ───────────────────────────
+          #
+          # It said the dedicated exporter's pool metrics "supersede" this
+          # collector for every question asked here.  That was true of the
+          # questions M6 asked and is NOT true in general: the two answer
+          # different things and neither can stand in for the other.
+          #
+          #   zfs_exporter          POOL — health, capacity, fragmentation.
+          #   node_exporter `zfs`   ARC — hit ratio, size, evictions, read
+          #                         from /proc/spl/kstat/zfs.
+          #
+          # M13 asks for ARC specifically, and on ernst it is worth having:
+          # it is the machine with 47 TB behind it, and ARC hit ratio is what
+          # explains "why did the library get slow" when the pool is healthy
+          # and the disks are not busy.
+          #
+          # It stays OFF everywhere else.  On a laptop ARC behaviour is
+          # decided by whether the lid was shut, which is not a series
+          # anybody reads.
+          disabledCollectors =
+            [
+              "arp"
+              "btrfs"
+              "dmi"
+              "edac"
+              "entropy"
+              "fibrechannel"
+              "infiniband"
+              "ipvs"
+              "mdadm"
+              "nfs"
+              "nfsd"
+              "nvme"
+              "powersupplyclass"
+              "rapl"
+              "selinux"
+              "softnet"
+              "tapestats"
+              "thermal_zone"
+              "xfs"
+            ]
+            ++ lib.optional (!settings.exporters.arc) "zfs";
+
+          # The textfile collector is on by default in node_exporter, but it
+          # reads nothing until it is told where to look. One flag serves
+          # every feeder, so it is set if any of them is enabled.
+          extraFlags =
+            lib.optional
+            (settings.exporters.containers || settings.exporters.coredumps)
+            "--collector.textfile.directory=${textfileDir}";
+        };
+
+        ####################################################################
+        # Failed units inside the nspawn containers.
+        #
+        # A HOST timer, not an exporter per container. The alternative —
+        # node_exporter inside each of ernst's seven containers — is seven
+        # processes, seven ports and seven firewall rules to answer one
+        # question, and each one would then need its own scrape config that
+        # nobody would remember to add for container number eight.
+        #
+        # Every minute rather than on demand, because the textfile collector
+        # is a file read: node_exporter has no way to trigger this, so the
+        # file has to already be current when a scrape lands. A minute is
+        # well inside the 15m `for` on the alert.
+        ####################################################################
+        systemd.tmpfiles.rules =
+          lib.optional
+          (settings.exporters.containers
+            || settings.exporters.coredumps
+            || settings.exporters.ipv6Guard
+            || settings.exporters.mailReputation)
+          "d ${textfileDir} 0755 root root -";
+
+        systemd.services.clanarchy-container-units = lib.mkIf settings.exporters.containers {
+          description = "Collect failed systemd units from nspawn containers";
+          serviceConfig = {
+            Type = "oneshot";
+            ExecStart = lib.getExe containerUnitsCollector;
+            # Talks to machined and to each container's init over D-Bus,
+            # and writes one file. It needs no network and no devices.
+            PrivateNetwork = true;
+            PrivateDevices = true;
+            ProtectHome = true;
+            ProtectSystem = "strict";
+            ReadWritePaths = [textfileDir];
+            NoNewPrivileges = true;
+          };
+        };
+
+        systemd.timers.clanarchy-container-units = lib.mkIf settings.exporters.containers {
+          description = "Collect failed nspawn container units every minute";
+          wantedBy = ["timers.target"];
+          timerConfig = {
+            OnBootSec = "2m";
+            OnUnitActiveSec = "1m";
+            # No Persistent: a missed run is worthless, the next one in
+            # sixty seconds supersedes it entirely.
+          };
+        };
+
+        systemd.services.clanarchy-coredumps = lib.mkIf settings.exporters.coredumps {
+          description = "Collect recent coredump counts for node_exporter";
+          serviceConfig = {
+            Type = "oneshot";
+            ExecStart = lib.getExe coredumpCollector;
+            # Reads the journal and writes one file.
+            PrivateNetwork = true;
+            PrivateDevices = true;
+            ProtectHome = true;
+            ProtectSystem = "strict";
+            ReadWritePaths = [textfileDir];
+            NoNewPrivileges = true;
+          };
+        };
+
+        systemd.timers.clanarchy-coredumps = lib.mkIf settings.exporters.coredumps {
+          description = "Collect recent coredump counts every minute";
+          wantedBy = ["timers.target"];
+          timerConfig = {
+            OnBootSec = "2m";
+            OnUnitActiveSec = "1m";
+          };
+        };
+
+        systemd.services.clanarchy-ipv6-guard = lib.mkIf settings.exporters.ipv6Guard {
+          description = "Collect IPv6 global-address count for node_exporter";
+          serviceConfig = {
+            Type = "oneshot";
+            ExecStart = lib.getExe ipv6GuardCollector;
+            # NOT PrivateNetwork, unlike its two neighbours above. This one
+            # reads the network configuration, and a private netns would
+            # give it an empty one — it would report zero addresses
+            # forever, which is the answer the alert is looking for. A
+            # collector that cannot fail is not a collector.
+            PrivateDevices = true;
+            ProtectHome = true;
+            ProtectSystem = "strict";
+            ReadWritePaths = [textfileDir];
+            NoNewPrivileges = true;
+          };
+        };
+
+        systemd.timers.clanarchy-ipv6-guard = lib.mkIf settings.exporters.ipv6Guard {
+          description = "Check for unexpected IPv6 global addresses every 5 minutes";
+          wantedBy = ["timers.target"];
+          timerConfig = {
+            OnBootSec = "2m";
+            # Five minutes, not one: a delegated prefix arriving is a
+            # change measured in ISP outages and router reboots, and the
+            # alert waits 15m anyway. There is nothing to gain from
+            # polling this at the rate of a crash loop.
+            OnUnitActiveSec = "5m";
+          };
+        };
+
+        systemd.services.clanarchy-mail-reputation = lib.mkIf settings.exporters.mailReputation {
+          description = "Collect mail FCrDNS and DNSBL status for node_exporter";
+          # The container has to be up to answer: every query goes through
+          # its resolver. Without this the collector reports an outage of
+          # the mail server as a reputation failure, which is true but
+          # names the wrong thing.
+          after = ["container@${mailRep.container}.service"];
+          serviceConfig = {
+            Type = "oneshot";
+            ExecStart = lib.getExe mailReputationCollector;
+            # NOT PrivateNetwork — this one is entirely network. Same
+            # exception ipv6-guard takes above, for the mirror-image
+            # reason: there it would see no addresses, here it would
+            # resolve nothing, and in both cases the collector would
+            # cheerfully report the healthy answer forever.
+            #
+            # NOT PrivateDevices either: `nixos-container run` needs
+            # /dev/ptmx to allocate the pty it runs the command on.
+            ProtectHome = true;
+            ProtectSystem = "strict";
+            ReadWritePaths = [textfileDir];
+            NoNewPrivileges = true;
+          };
+        };
+
+        systemd.timers.clanarchy-mail-reputation = lib.mkIf settings.exporters.mailReputation {
+          description = "Check mail reverse DNS and blocklist status twice daily";
+          wantedBy = ["timers.target"];
+          timerConfig = {
+            # Twice a day, against a guide that said QUARTERLY and meant
+            # "when somebody remembers". Both facts change on somebody
+            # else's schedule — an ISP renumbering, a listing by a
+            # neighbour's infected host — so the useful question is how
+            # long we are willing to be silently undeliverable, not how
+            # fast the value moves. Half a day, against the alert's own
+            # 6h `for`, puts the worst case under a day.
+            #
+            # Not faster: these are third-party nameservers answering
+            # queries we are a guest of, and the `usable` control doubles
+            # the query count already.
+            OnBootSec = "10m";
+            OnUnitActiveSec = "12h";
+            RandomizedDelaySec = "30m";
+          };
+        };
+
+        ####################################################################
+        # zfs_exporter — pool health, capacity, fragmentation.
+        ####################################################################
+        services.prometheus.exporters.zfs = lib.mkIf settings.exporters.zfs {
+          enable = true;
+          listenAddress = "[::]";
+          port = ports.zfs;
+          openFirewall = false;
+        };
+
+        ####################################################################
+        # smartctl_exporter — per-device SMART.
+        #
+        # `devices` left empty so it autodiscovers.  ernst's disks sit behind
+        # an HBA and their /dev/sd* names are not stable across a reboot (see
+        # docs/incidents/ernst-slot12-drop-2026-08-11.md); a hand-listed
+        # device path would monitor whatever landed on that letter this boot,
+        # which is worse than useless because it would look like it worked.
+        ####################################################################
+        services.prometheus.exporters.smartctl = lib.mkIf settings.exporters.smartctl {
+          enable = true;
+          listenAddress = "[::]";
+          port = ports.smartctl;
+          openFirewall = false;
+        };
+
+        ####################################################################
+        # The scrape ACL.
+        #
+        # One accept per (source, port) pair, appended to nixos-fw.  The
+        # firewall's start script emits allowedTCPPorts first, then
+        # extraCommands, then the catch-all -j nixos-fw-log-refuse — so these
+        # land before the refuse and after everything else, and nothing needs
+        # to go in extraStopCommands because the chain is flushed and rebuilt
+        # on every start and reload.  Same placement argument as
+        # machines/ernst/containers/arr/.
+        #
+        # If `up` is 0 for a machine that is demonstrably awake, this is the
+        # first thing to check:
+        #   ip6tables -L nixos-fw -n --line-numbers | grep 9100
+        ####################################################################
+        networking.firewall.extraCommands =
+          lib.concatMapStrings (
+            src:
+              lib.concatMapStrings (port: ''
+                ip6tables -A nixos-fw -p tcp -s ${src}/128 --dport ${toString port} -j nixos-fw-accept
+              '')
+              exposedPorts
+          )
+          scrapeSources;
+
+        warnings = lib.optional (serverZtIps == [] && serverMachines != {}) ''
+          @clanarchy/monitoring: no ZeroTier address is known for the machine
+          holding roles.server, so nothing is permitted to scrape this host.
+          Run `clan vars generate <server machine>` and re-deploy.
+        '';
+      };
     };
   };
 
@@ -1083,10 +1107,9 @@ in
     description = "Runs Prometheus, Alertmanager and Grafana in one nspawn container.";
 
     interface.options = {
-
       mac = lib.mkOption {
-        type        = lib.types.str;
-        example     = "02:00:00:90:00:06";
+        type = lib.types.str;
+        example = "02:00:00:90:00:06";
         description = ''
           Guest-side MAC for the container's eth0, and the address the DHCP
           reservation keys on.  Never the host-side vb-* veth.
@@ -1095,10 +1118,9 @@ in
         '';
       };
 
-
       stateDir = lib.mkOption {
-        type        = lib.types.path;
-        default     = "/srv/state/monitoring";
+        type = lib.types.path;
+        default = "/srv/state/monitoring";
         description = ''
           Host path holding the Prometheus TSDB and Grafana's database.  Must
           be on a filesystem that does NOT roll back (invariant #7).
@@ -1106,14 +1128,14 @@ in
       };
 
       domain = lib.mkOption {
-        type        = lib.types.str;
-        default     = "goclan.org";
+        type = lib.types.str;
+        default = "goclan.org";
         description = "Public zone; Grafana is served at grafana.<domain> through Traefik.";
       };
 
       proxyAddress = lib.mkOption {
-        type        = lib.types.str;
-        example     = "10.0.90.12";
+        type = lib.types.str;
+        example = "10.0.90.12";
         description = ''
           The reverse proxy's address on the Services VLAN.  The ONLY source
           permitted to reach Grafana's port, and the address Traefik's metrics
@@ -1139,9 +1161,9 @@ in
       # dashboard and the history.
       mediaStack = {
         arrAddress = lib.mkOption {
-          type        = lib.types.str;
-          default     = "";
-          example     = "10.0.90.13";
+          type = lib.types.str;
+          default = "";
+          example = "10.0.90.13";
           description = ''
             Address of the *arr container on the Services VLAN.  Empty disables
             the `scraparr` job.
@@ -1155,15 +1177,15 @@ in
         };
 
         scraparrPort = lib.mkOption {
-          type        = lib.types.port;
-          default     = 7100;
+          type = lib.types.port;
+          default = 7100;
           description = "Scraparr's listener (its own upstream default).";
         };
 
         jellyfinAddress = lib.mkOption {
-          type        = lib.types.str;
-          default     = "";
-          example     = "10.0.90.10";
+          type = lib.types.str;
+          default = "";
+          example = "10.0.90.10";
           description = ''
             Address of the Jellyfin container on the Services VLAN.  Empty
             disables the `jellyfin` job.
@@ -1180,8 +1202,8 @@ in
         };
 
         jellyfinPort = lib.mkOption {
-          type        = lib.types.port;
-          default     = 8096;
+          type = lib.types.port;
+          default = 8096;
           description = ''
             Jellyfin's HTTP port.  Metrics share it with the media API rather
             than getting a listener of their own, which is why permitting this
@@ -1191,9 +1213,9 @@ in
         };
 
         immichAddress = lib.mkOption {
-          type        = lib.types.str;
-          default     = "";
-          example     = "10.0.90.25";
+          type = lib.types.str;
+          default = "";
+          example = "10.0.90.25";
           description = ''
             Address of the Immich container on the Services VLAN (M22).  Empty
             disables the `immich` job.
@@ -1221,8 +1243,8 @@ in
         };
 
         immichMetricsPort = lib.mkOption {
-          type        = lib.types.port;
-          default     = 8081;
+          type = lib.types.port;
+          default = 8081;
           description = ''
             Immich's API-metrics listener.
 
@@ -1241,9 +1263,9 @@ in
         };
 
         minifluxAddress = lib.mkOption {
-          type        = lib.types.str;
-          default     = "";
-          example     = "10.0.90.28";
+          type = lib.types.str;
+          default = "";
+          example = "10.0.90.28";
           description = ''
             Address of the Miniflux container on the Services VLAN (M27).
             Empty disables the `miniflux` job.
@@ -1271,8 +1293,8 @@ in
         };
 
         minifluxPort = lib.mkOption {
-          type        = lib.types.port;
-          default     = 8080;
+          type = lib.types.port;
+          default = 8080;
           description = ''
             Miniflux's HTTP port.  Metrics share it with the application and
             with the reader APIs rather than getting a listener of their own —
@@ -1283,9 +1305,9 @@ in
         };
 
         mailAddress = lib.mkOption {
-          type        = lib.types.str;
-          default     = "";
-          example     = "10.0.90.31";
+          type = lib.types.str;
+          default = "";
+          example = "10.0.90.31";
           description = ''
             Address of the mail container on the Services VLAN (M31).
             Empty disables the `mail` job.
@@ -1323,8 +1345,8 @@ in
         };
 
         mailPort = lib.mkOption {
-          type        = lib.types.port;
-          default     = 9154;
+          type = lib.types.port;
+          default = 9154;
           description = ''
             `prometheus-postfix-exporter`'s upstream default port.
 
@@ -1336,9 +1358,9 @@ in
         };
 
         navidromeAddress = lib.mkOption {
-          type        = lib.types.str;
-          default     = "";
-          example     = "10.0.90.13";
+          type = lib.types.str;
+          default = "";
+          example = "10.0.90.13";
           description = ''
             Address of the container running Navidrome on the Services VLAN.
             Empty disables the `navidrome` job.
@@ -1364,8 +1386,8 @@ in
         };
 
         navidromePort = lib.mkOption {
-          type        = lib.types.port;
-          default     = 4533;
+          type = lib.types.port;
+          default = 4533;
           description = ''
             Navidrome's HTTP port.  Metrics share it with the Subsonic API and
             the web UI rather than getting a listener of their own, which is
@@ -1376,9 +1398,9 @@ in
         };
 
         navidromeMetricsPasswordFile = lib.mkOption {
-          type        = lib.types.nullOr lib.types.path;
-          default     = null;
-          example     = "/run/monitoring-secrets/navidrome-metrics-password";
+          type = lib.types.nullOr lib.types.path;
+          default = null;
+          example = "/run/monitoring-secrets/navidrome-metrics-password";
           description = ''
             Path INSIDE the monitoring container to a file containing the bare
             Navidrome metrics password, for Prometheus' `basic_auth`.
@@ -1399,9 +1421,9 @@ in
         };
 
         qbittorrentAddress = lib.mkOption {
-          type        = lib.types.str;
-          default     = "";
-          example     = "10.0.90.11";
+          type = lib.types.str;
+          default = "";
+          example = "10.0.90.11";
           description = ''
             Address of the qBittorrent guest on the Services VLAN.  Empty
             disables the `qbittorrent` job.
@@ -1414,8 +1436,8 @@ in
         };
 
         qbittorrentExporterPort = lib.mkOption {
-          type        = lib.types.port;
-          default     = 8000;
+          type = lib.types.port;
+          default = 8000;
           description = "prometheus-qbittorrent-exporter's listener (its own default).";
         };
 
@@ -1467,9 +1489,9 @@ in
       # than one that requires it.
       authelia = {
         address = lib.mkOption {
-          type        = lib.types.str;
-          default     = "";
-          example     = "10.0.90.15";
+          type = lib.types.str;
+          default = "";
+          example = "10.0.90.15";
           description = ''
             Address of the Authelia container on the Services VLAN.  Empty
             disables the scrape job entirely.
@@ -1481,15 +1503,15 @@ in
         };
 
         metricsPort = lib.mkOption {
-          type        = lib.types.port;
-          default     = 9959;
+          type = lib.types.port;
+          default = 9959;
           description = "Authelia's telemetry listener (its own upstream default).";
         };
 
         oidc = {
           enable = lib.mkOption {
-            type        = lib.types.bool;
-            default     = false;
+            type = lib.types.bool;
+            default = false;
             description = ''
               Point Grafana's generic_oauth provider at an OIDC issuer.
 
@@ -1500,21 +1522,21 @@ in
           };
 
           issuerUrl = lib.mkOption {
-            type        = lib.types.str;
-            default     = "";
-            example     = "https://auth.goclan.org";
+            type = lib.types.str;
+            default = "";
+            example = "https://auth.goclan.org";
             description = "Issuer base URL, no trailing slash.  Required when oidc.enable is set.";
           };
 
           clientId = lib.mkOption {
-            type        = lib.types.str;
-            default     = "grafana";
+            type = lib.types.str;
+            default = "grafana";
             description = "OIDC client id.  Must match the client block on the issuer.";
           };
 
           secretGenerator = lib.mkOption {
-            type        = lib.types.str;
-            default     = "authelia-oidc";
+            type = lib.types.str;
+            default = "authelia-oidc";
             description = ''
               Name of the clan vars generator holding the client secret, and
               the file inside it, as `secretFile`.
@@ -1528,14 +1550,14 @@ in
           };
 
           secretFile = lib.mkOption {
-            type    = lib.types.str;
+            type = lib.types.str;
             default = "grafana-client-secret";
             description = "File name inside secretGenerator holding the plaintext client secret.";
           };
 
           adminGroup = lib.mkOption {
-            type        = lib.types.str;
-            default     = "admins";
+            type = lib.types.str;
+            default = "admins";
             description = ''
               Group in the `groups` claim that maps to Grafana's Admin role.
               Everyone else who gets through forward-auth lands on Viewer.
@@ -1558,9 +1580,9 @@ in
       # and answers on a port of its own.
       crowdsec = {
         address = lib.mkOption {
-          type        = lib.types.str;
-          default     = "";
-          example     = "10.0.90.12";
+          type = lib.types.str;
+          default = "";
+          example = "10.0.90.12";
           description = ''
             Address of the CrowdSec agent's Prometheus listener.  Empty
             disables the scrape job AND the ExposedAndUnprotected alert.
@@ -1576,8 +1598,8 @@ in
         };
 
         metricsPort = lib.mkOption {
-          type        = lib.types.port;
-          default     = 6060;
+          type = lib.types.port;
+          default = 6060;
           description = "CrowdSec's Prometheus listener (its own upstream default).";
         };
 
@@ -1648,8 +1670,8 @@ in
       };
 
       zerotierInstance = lib.mkOption {
-        type        = lib.types.str;
-        default     = "zerotier";
+        type = lib.types.str;
+        default = "zerotier";
         description = ''
           Name of the clan zerotier inventory instance.  It is part of the
           generator name the client addresses are read from
@@ -1659,8 +1681,8 @@ in
       };
 
       retentionTime = lib.mkOption {
-        type        = lib.types.str;
-        default     = "400d";
+        type = lib.types.str;
+        default = "400d";
         description = ''
           Prometheus TSDB retention.  See the disk-math comment in the module
           for how this number was arrived at — briefly: disk is not the binding
@@ -1671,8 +1693,8 @@ in
       };
 
       retentionSize = lib.mkOption {
-        type        = lib.types.str;
-        default     = "64GB";
+        type = lib.types.str;
+        default = "64GB";
         description = ''
           Hard cap on TSDB size, ~8x the estimate.  This is not a capacity
           plan; it is the thing that stops a cardinality explosion from filling
@@ -1681,8 +1703,8 @@ in
       };
 
       scrapeInterval = lib.mkOption {
-        type        = lib.types.str;
-        default     = "60s";
+        type = lib.types.str;
+        default = "60s";
         description = ''
           Global scrape interval.  60s and not the 15s Prometheus defaults to:
           three of the four machines are battery-powered, sample volume and
@@ -1692,1592 +1714,1685 @@ in
       };
     };
 
-    perInstance = { settings, roles, machine, ... }: {
-      nixosModule = { config, lib, pkgs, ... }:
-        let
-          ##################################################################
-          # Identity on the Services VLAN.
-          ##################################################################
-          vethName = "vb-monitoring";
+    perInstance = {
+      settings,
+      roles,
+      machine,
+      ...
+    }: {
+      nixosModule = {
+        config,
+        lib,
+        pkgs,
+        ...
+      }: let
+        ##################################################################
+        # Identity on the Services VLAN.
+        ##################################################################
+        vethName = "vb-monitoring";
 
-          # Numeric ids, continuing the 3000-range family established by
-          # containers/arr/ (3002–3004) and containers/traefik.nix (3005).
-          # nspawn passes uids and gids through unmapped, so an id chosen in
-          # here is an id on zdata — and stateDir is on zdata.  Add a row to
-          # machines/ernst/allocations.nix for any new one.
-          #
-          # NOT in group media, either of them.  Neither service has any
-          # business holding a handle to the library.
-          prometheusUid = 3006;
-          prometheusGid = 3006;
-          grafanaUid    = 3007;
-          grafanaGid    = 3007;
+        # Numeric ids, continuing the 3000-range family established by
+        # containers/arr/ (3002–3004) and containers/traefik.nix (3005).
+        # nspawn passes uids and gids through unmapped, so an id chosen in
+        # here is an id on zdata — and stateDir is on zdata.  Add a row to
+        # machines/ernst/allocations.nix for any new one.
+        #
+        # NOT in group media, either of them.  Neither service has any
+        # business holding a handle to the library.
+        prometheusUid = 3006;
+        prometheusGid = 3006;
+        grafanaUid = 3007;
+        grafanaGid = 3007;
 
-          ##################################################################
-          # Targets, generated from clan role membership.
-          ##################################################################
-          clientRole   = roles.client or { machines = { }; };
-          clientNames  = lib.attrNames clientRole.machines;
+        ##################################################################
+        # Targets, generated from clan role membership.
+        ##################################################################
+        clientRole = roles.client or {machines = {};};
+        clientNames = lib.attrNames clientRole.machines;
 
-          # The machine holding this role scrapes ITSELF over mon0, and every
-          # other client over ZeroTier.  Two different addresses, one rule:
-          # "how do I get to that machine from inside this container".
-          addrOf = name:
-            if name == machine.name then monHostAddr
-            else ztIpOf settings.zerotierInstance name;
+        # The machine holding this role scrapes ITSELF over mon0, and every
+        # other client over ZeroTier.  Two different addresses, one rule:
+        # "how do I get to that machine from inside this container".
+        addrOf = name:
+          if name == machine.name
+          then monHostAddr
+          else ztIpOf settings.zerotierInstance name;
 
-          # Machines whose address could not be resolved are dropped rather
-          # than throwing — see ztIpOf.  They are reported in `warnings`.
-          resolvable   = lib.filter (n: addrOf n != null) clientNames;
-          unresolvable = lib.filter (n: addrOf n == null) clientNames;
+        # Machines whose address could not be resolved are dropped rather
+        # than throwing — see ztIpOf.  They are reported in `warnings`.
+        resolvable = lib.filter (n: addrOf n != null) clientNames;
+        unresolvable = lib.filter (n: addrOf n == null) clientNames;
 
-          settingsOf = name: clientRole.machines.${name}.settings;
+        settingsOf = name: clientRole.machines.${name}.settings;
 
-          # An IPv6 literal has to be bracketed in a Prometheus target.
-          targetFor = name: port:
-            let a = addrOf name; in "[${a}]:${toString port}";
+        # An IPv6 literal has to be bracketed in a Prometheus target.
+        targetFor = name: port: let a = addrOf name; in "[${a}]:${toString port}";
 
-          # One static_config per machine so each carries its own labels.
-          # `instance` is set explicitly: Prometheus would otherwise derive it
-          # from __address__, and a dashboard legend full of
-          # [fdda:106a:...:711f]:9100 is unreadable and changes if a machine's
-          # ZeroTier identity is ever regenerated.
-          staticFor = name: port: {
-            targets = [ (targetFor name port) ];
-            labels = {
-              instance  = name;
-              always_on = if (settingsOf name).alwaysOn then "true" else "false";
-            };
+        # One static_config per machine so each carries its own labels.
+        # `instance` is set explicitly: Prometheus would otherwise derive it
+        # from __address__, and a dashboard legend full of
+        # [fdda:106a:...:711f]:9100 is unreadable and changes if a machine's
+        # ZeroTier identity is ever regenerated.
+        staticFor = name: port: {
+          targets = [(targetFor name port)];
+          labels = {
+            instance = name;
+            always_on =
+              if (settingsOf name).alwaysOn
+              then "true"
+              else "false";
           };
+        };
 
-          # Machines that run a given optional exporter.
-          withExporter = which: lib.filter (n: (settingsOf n).exporters.${which}) resolvable;
+        # Machines that run a given optional exporter.
+        withExporter = which: lib.filter (n: (settingsOf n).exporters.${which}) resolvable;
 
-          ##################################################################
-          # Secrets staging (host side).
-          #
-          # Same shape and the same reasoning as containers/traefik.nix: a
-          # directory WE own, rewritten in place, rather than a bind of
-          # /run/secrets — which is a symlink to a per-generation directory
-          # that is REPLACED on every deploy, so an nspawn bind established at
-          # container start would keep exposing a deleted generation.
-          #
-          # The directory is 0711 root:root: traversable by anyone, listable by
-          # nobody.  It holds two files with DIFFERENT consumers and therefore
-          # different owners, which is the thing to get right here:
-          #
-          #   ntfy.yml              0400 root:root  — read by PID 1 as a
-          #                         systemd credential, before it drops to the
-          #                         alertmanager-ntfy dynamic user.
-          #   grafana-password      0400 uid 3007   — read by GRAFANA ITSELF,
-          #                         unprivileged, via $__file{}.
-          #
-          # PR #84 shipped the second shape broken once: a file the
-          # unprivileged consumer could read, inside a directory it could not
-          # traverse.  0711 on the directory is what prevents the repeat.
-          ##################################################################
-          secretsDir     = "/run/monitoring-secrets";
-          ntfyConfFile   = "${secretsDir}/ntfy.yml";
-          grafanaPwFile  = "${secretsDir}/grafana-admin-password";
-          grafanaKeyFile = "${secretsDir}/grafana-secret-key";
+        ##################################################################
+        # Secrets staging (host side).
+        #
+        # Same shape and the same reasoning as containers/traefik.nix: a
+        # directory WE own, rewritten in place, rather than a bind of
+        # /run/secrets — which is a symlink to a per-generation directory
+        # that is REPLACED on every deploy, so an nspawn bind established at
+        # container start would keep exposing a deleted generation.
+        #
+        # The directory is 0711 root:root: traversable by anyone, listable by
+        # nobody.  It holds two files with DIFFERENT consumers and therefore
+        # different owners, which is the thing to get right here:
+        #
+        #   ntfy.yml              0400 root:root  — read by PID 1 as a
+        #                         systemd credential, before it drops to the
+        #                         alertmanager-ntfy dynamic user.
+        #   grafana-password      0400 uid 3007   — read by GRAFANA ITSELF,
+        #                         unprivileged, via $__file{}.
+        #
+        # PR #84 shipped the second shape broken once: a file the
+        # unprivileged consumer could read, inside a directory it could not
+        # traverse.  0711 on the directory is what prevents the repeat.
+        ##################################################################
+        secretsDir = "/run/monitoring-secrets";
+        ntfyConfFile = "${secretsDir}/ntfy.yml";
+        grafanaPwFile = "${secretsDir}/grafana-admin-password";
+        grafanaKeyFile = "${secretsDir}/grafana-secret-key";
 
-          # Navidrome's metrics password, staged for Prometheus' basic_auth.
-          #
-          # THE BARE-VALUE FILE, not the KEY=value one the same generator
-          # emits for Navidrome's own EnvironmentFile.  Prometheus reads the
-          # whole file as the password.
-          navidromePwFile = "${secretsDir}/navidrome-metrics-password";
+        # Navidrome's metrics password, staged for Prometheus' basic_auth.
+        #
+        # THE BARE-VALUE FILE, not the KEY=value one the same generator
+        # emits for Navidrome's own EnvironmentFile.  Prometheus reads the
+        # whole file as the password.
+        navidromePwFile = "${secretsDir}/navidrome-metrics-password";
 
-          # Guarded the same way grafanaGen and the ntfy generator are: naming
-          # a generator that does not exist yet is an EVALUATION error, and an
-          # evaluation error names an attribute rather than the command a
-          # human forgot to run.  This one lives in
-          # machines/ernst/containers/arr/, so a fleet without a media
-          # stack never defines it at all.
-          navidromeMetricsGen =
-            if config.clan.core.vars.generators ? navidrome-metrics
-            then config.clan.core.vars.generators.navidrome-metrics
-            else { files."password".path = "/no-such-path"; };
+        # Guarded the same way grafanaGen and the ntfy generator are: naming
+        # a generator that does not exist yet is an EVALUATION error, and an
+        # evaluation error names an attribute rather than the command a
+        # human forgot to run.  This one lives in
+        # machines/ernst/containers/arr/, so a fleet without a media
+        # stack never defines it at all.
+        navidromeMetricsGen =
+          if config.clan.core.vars.generators ? navidrome-metrics
+          then config.clan.core.vars.generators.navidrome-metrics
+          else {files."password".path = "/no-such-path";};
 
-          # Guarded rather than selected directly.  Without the guard, a
-          # machine holding this role with `clanarchy.zfs.ntfy.enable = false`
-          # fails evaluation on a missing attribute, and the error names a
-          # generator rather than the option that was never turned on — so the
-          # assertion below would never get the chance to say the useful thing.
-          ntfyUrlFile =
-            if config.clan.core.vars.generators ? zfs-ntfy
-            then config.clan.core.vars.generators.zfs-ntfy.files."url".path
-            else "/no-such-path";
+        # Guarded rather than selected directly.  Without the guard, a
+        # machine holding this role with `clanarchy.zfs.ntfy.enable = false`
+        # fails evaluation on a missing attribute, and the error names a
+        # generator rather than the option that was never turned on — so the
+        # assertion below would never get the chance to say the useful thing.
+        ntfyUrlFile =
+          if config.clan.core.vars.generators ? zfs-ntfy
+          then config.clan.core.vars.generators.zfs-ntfy.files."url".path
+          else "/no-such-path";
 
-          grafanaGen = config.clan.core.vars.generators.monitoring-grafana;
+        grafanaGen = config.clan.core.vars.generators.monitoring-grafana;
 
-          # ── M7: Grafana's OIDC client secret ────────────────────────────
-          #
-          # Guarded the same way ntfyUrlFile is, and for the same reason: a
-          # machine that has not enabled OIDC must not fail evaluation on a
-          # generator that legitimately does not exist there.  The `enable`
-          # flag is the thing that decides, not the presence of an attribute.
-          oidc            = settings.authelia.oidc;
-          grafanaOidcFile = "${secretsDir}/grafana-oidc-client-secret";
-          oidcSecretPath  =
-            if oidc.enable
-            then config.clan.core.vars.generators.${oidc.secretGenerator}.files.${oidc.secretFile}.path
-            else "/no-such-path";
+        # ── M7: Grafana's OIDC client secret ────────────────────────────
+        #
+        # Guarded the same way ntfyUrlFile is, and for the same reason: a
+        # machine that has not enabled OIDC must not fail evaluation on a
+        # generator that legitimately does not exist there.  The `enable`
+        # flag is the thing that decides, not the presence of an attribute.
+        oidc = settings.authelia.oidc;
+        grafanaOidcFile = "${secretsDir}/grafana-oidc-client-secret";
+        oidcSecretPath =
+          if oidc.enable
+          then config.clan.core.vars.generators.${oidc.secretGenerator}.files.${oidc.secretFile}.path
+          else "/no-such-path";
 
-          # Optional ntfy bearer token, from the same module and the same
-          # opt-in that gates the zedlet's — one switch, both publishers, so
-          # they cannot end up disagreeing about whether the topic is
-          # authenticated.
-          ntfyAuth      = config.clanarchy.zfs.ntfy.auth.enable;
-          ntfyTokenFile =
-            if ntfyAuth
-            then config.clan.core.vars.generators.zfs-ntfy-token.files."token".path
-            else "/no-such-path";
+        # Optional ntfy bearer token, from the same module and the same
+        # opt-in that gates the zedlet's — one switch, both publishers, so
+        # they cannot end up disagreeing about whether the topic is
+        # authenticated.
+        ntfyAuth = config.clanarchy.zfs.ntfy.auth.enable;
+        ntfyTokenFile =
+          if ntfyAuth
+          then config.clan.core.vars.generators.zfs-ntfy-token.files."token".path
+          else "/no-such-path";
 
-          ##################################################################
-          # The single dashboard, as code.
-          #
-          # Grafana's file provider wants a DIRECTORY, so the one JSON file is
-          # wrapped in one.  Adding a second dashboard means adding a second
-          # cp — which is deliberately slightly annoying, because "exactly one
-          # dashboard" is a decision and not an accident.
-          ##################################################################
-          dashboardDir = pkgs.runCommand "clanarchy-grafana-dashboards" { } ''
-            mkdir -p $out
-            cp ${./monitoring-dashboard.json} $out/clanarchy-fleet.json
-          '';
-        in
+        ##################################################################
+        # The single dashboard, as code.
+        #
+        # Grafana's file provider wants a DIRECTORY, so the one JSON file is
+        # wrapped in one.  Adding a second dashboard means adding a second
+        # cp — which is deliberately slightly annoying, because "exactly one
+        # dashboard" is a decision and not an accident.
+        ##################################################################
+        dashboardDir = pkgs.runCommand "clanarchy-grafana-dashboards" {} ''
+          mkdir -p $out
+          cp ${./monitoring-dashboard.json} $out/clanarchy-fleet.json
+        '';
+      in
         lib.mkMerge [
-        {
-          ####################################################################
-          # It is an error to hold this role without the ntfy var.
-          #
-          # Without it the staging unit below evaluates
-          # `files."url".path` to the literal "/no-such-path" and the failure
-          # surfaces at deploy time as a container that will not start, with
-          # nothing in the message about zfs-ntfy.  Say it at eval time
-          # instead.
-          ####################################################################
-          assertions = [
-            {
-              assertion = config.clanarchy.zfs.ntfy.enable;
-              message = ''
-                @clanarchy/monitoring's server role reuses the ntfy topic from
-                modules/observability/zfs-ntfy.nix — one alerting path, not two.
-                Set `clanarchy.zfs.ntfy.enable = true` on this machine and run
-                `clan vars generate <machine>`.
-              '';
-            }
-            {
-              # A target without its credential is WORSE than no target: the
-              # job reports up=0 with a 401, which is indistinguishable from
-              # Navidrome being down and will be investigated as an outage.
-              # Fail the build instead.
-              assertion =
-                settings.mediaStack.navidromeAddress == ""
-                || settings.mediaStack.navidromeMetricsPasswordFile != null;
-              message = ''
-                @clanarchy/monitoring: mediaStack.navidromeAddress is set but
-                mediaStack.navidromeMetricsPasswordFile is null.  Navidrome's
-                /metrics demands HTTP Basic, so the scrape would 401 and the
-                job would report up=0 — which reads as the service being down
-                rather than as a missing credential.
-                Point it at the staged bare-value file (see the option's
-                description, and the navidrome-metrics generator in
-                machines/ernst/containers/arr/).
-              '';
-            }
-          ];
-
-          warnings = lib.optional (unresolvable != [ ]) ''
-            @clanarchy/monitoring: no ZeroTier address on record for
-            ${lib.concatStringsSep ", " unresolvable} — they hold roles.client
-            but are NOT being scraped.  Run `clan vars generate <machine>` for
-            each, commit vars/shared/, and re-deploy this machine.
-          '';
-
-
-          ####################################################################
-          # Stage both secrets.
-          #
-          # GENERATE BEFORE YOU DEPLOY, for the reason containers/traefik.nix
-          # spells out: clan-core cannot know a sops secret's path until the
-          # secret exists, so a deploy that runs before `clan vars generate`
-          # bakes "/no-such-path" into this script and produces a system whose
-          # staging unit can never succeed however often it is restarted.  The
-          # failure is at least fail-closed — this unit fails, the container
-          # never starts, and there is no monitoring rather than monitoring
-          # that silently never alerts.
-          #
-          # ROTATING EITHER SECRET needs a restart, not just a deploy: if this
-          # unit's text is unchanged systemd will not re-run it when the
-          # underlying sops file changes.  After `clan vars generate`:
-          #     systemctl restart monitoring-secrets container@monitoring
-          ####################################################################
-          systemd.services.monitoring-secrets = {
-            description = "Stage the ntfy topic and Grafana admin password for container@monitoring";
-            after       = [ "local-fs.target" ];
-            before      = [ "container@monitoring.service" ];
-            requiredBy  = [ "container@monitoring.service" ];
-            serviceConfig = {
-              Type            = "oneshot";
-              RemainAfterExit = true;
-            };
-            script = ''
-              set -euo pipefail
-
-              install -d -m 0711 -o root -g root ${secretsDir}
-
-              # ── ntfy ────────────────────────────────────────────────────
-              #
-              # zfs-ntfy stores ONE value, and it is EITHER a full topic URL
-              # OR a bare topic — the prompt asks for a URL and in the same
-              # sentence suggests `openssl rand -hex 12`, which is a topic.
-              # ernst's is a bare topic.
-              #
-              # alertmanager-ntfy needs the two halves separately (baseurl for
-              # the instance, topic for the channel), so they are split with
-              # THE ZEDLET'S OWN SPLITTER — not a second copy of the logic
-              # here.  Two publishers that disagree about how to read one
-              # value is exactly how "one alerting path" quietly becomes two,
-              # and this milestone's ZED/Prometheus split is built on them
-              # landing on the same topic.
-              #
-              # A second clan var was the obvious alternative and is worse: it
-              # would be a second thing to keep in step, with nothing checking
-              # that it agrees.
-              #
-              # This FAILS THE UNIT on a value it cannot read, which stops the
-              # container — deliberate.  alertmanager-ntfy with an empty topic
-              # starts fine and posts into the void, and a monitoring stack
-              # that silently cannot notify is worse than one that is
-              # obviously down.  It is also how the bare-topic shape was found
-              # at all: the zedlet had been failing on it in silence.
-              if ! split=$(${config.clanarchy.zfs.ntfy.splitScript} ${ntfyUrlFile}); then
-                echo "cannot read a base URL and topic out of the zfs-ntfy var" >&2
-                exit 1
-              fi
-              base=''${split%% *}
-              topic=''${split##* }
-
-              # Built line by line rather than with a heredoc, because the
-              # optional token has to come out of a FILE and never out of a
-              # shell variable: this unit runs as root and its environment is
-              # inherited by everything it forks.  `tr` writes the value
-              # straight into the redirect.
-              umask 077
-              {
-                echo "ntfy:"
-                echo "  baseurl: $base"
-                ${lib.optionalString ntfyAuth ''
-                echo "  auth:"
-                printf '    token: '
-                tr -d '[:space:]' < ${ntfyTokenFile}
-                echo
-                ''}
-                echo "  notification:"
-                echo "    topic: $topic"
-              } > ${ntfyConfFile}.new
-              chown root:root ${ntfyConfFile}.new
-              chmod 0400 ${ntfyConfFile}.new
-              mv -f ${ntfyConfFile}.new ${ntfyConfFile}
-
-              # ── Grafana admin password ──────────────────────────────────
-              #
-              # Owned by the GRAFANA uid, unlike everything else here: grafana
-              # reads it itself, unprivileged, through the $__file{} provider
-              # in its own config.  0400 with the right owner, inside a 0711
-              # directory — see the secretsDir comment.
-              install -m 0400 -o ${toString grafanaUid} -g ${toString grafanaGid} \
-                ${grafanaGen.files."admin-password".path} ${grafanaPwFile}
-
-              # ── Navidrome's metrics password, for Prometheus basic_auth ──
-              #
-              # Owned by the PROMETHEUS uid: prometheus opens it itself,
-              # unprivileged, through `basic_auth.password_file`.  Same shape
-              # as the grafana pair above and for the same reason.
-              #
-              # Staged unconditionally but tolerantly — an absent generator
-              # leaves an EMPTY file rather than failing this unit.  This unit
-              # is `requiredBy` container@monitoring, so failing here takes
-              # the whole monitoring stack down; losing every dashboard and
-              # every alert because ONE scrape credential is missing is a
-              # wildly disproportionate failure.  With an empty file the
-              # navidrome job 401s and everything else keeps working, and the
-              # `up == 0` on that job is the signal.
-              if [ -r ${navidromeMetricsGen.files."password".path} ]; then
-                install -m 0400 -o ${toString prometheusUid} -g ${toString prometheusGid} \
-                  ${navidromeMetricsGen.files."password".path} ${navidromePwFile}
-              else
-                echo "monitoring-secrets: no Navidrome metrics password at ${navidromeMetricsGen.files."password".path} — run 'clan vars generate ernst'. Staging an empty file; the navidrome scrape will 401 until it exists." >&2
-                install -m 0400 -o ${toString prometheusUid} -g ${toString prometheusGid} \
-                  /dev/null ${navidromePwFile}
-              fi
-
-              # ── Grafana secret_key ──────────────────────────────────────
-              #
-              # Same ownership, and it matters more than the password does:
-              # this key encrypts the datasource credentials and any API
-              # tokens in grafana.db.  Change it and every stored secret
-              # becomes undecryptable — which is why it is generated ONCE and
-              # never rotated by a deploy.  See the generator.
-              install -m 0400 -o ${toString grafanaUid} -g ${toString grafanaGid} \
-                ${grafanaGen.files."secret-key".path} ${grafanaKeyFile}
-
-              ${lib.optionalString oidc.enable ''
-              # ── M7: the OIDC client secret ──────────────────────────────
-              #
-              # Same ownership as the two above — Grafana reads it itself
-              # through $__file{}, unprivileged.  Its counterpart, the hashed
-              # form the issuer stores, is staged on the other side of this
-              # machine by machines/ernst/containers/authelia.nix out of the
-              # SAME generator run.
-              install -m 0400 -o ${toString grafanaUid} -g ${toString grafanaGid} \
-                ${oidcSecretPath} ${grafanaOidcFile}
-              ''}
-            '';
-          };
-
-          ####################################################################
-          # Leg 2's host half: forward and SNAT the container onto ZeroTier.
-          #
-          # WHAT THIS DOES:  a packet from ${monContainerAddr} to a client's
-          # ZeroTier address arrives on mon0, is forwarded (hence the sysctl
-          # networking.nat sets), leaves on zt*, and has its source rewritten
-          # to ernst's own ZeroTier address.  Without the rewrite the reply
-          # would be addressed to a ULA the laptop has never heard of and would
-          # be routed out of its default interface into nothing.
-          #
-          # externalInterface = "zt+", a WILDCARD, because ZeroTier names its
-          # interface after the network id (ztXXXXXXXX) and that name is not
-          # known here.  iptables accepts the "+" suffix; nothing else on this
-          # host is named zt*.
-          #
-          # SCOPE:  internalIPv6s is a single /128 and there are no
-          # internalInterfaces, so this NATs exactly one address and nothing
-          # else.  IPv4 NAT is inert — no internalIPs, no forwardPorts.
-          #
-          # SIDE EFFECT WORTH KNOWING: net.ipv6.conf.all.forwarding = 1 makes
-          # the kernel stop accepting router advertisements by default.  That
-          # is a no-op on ernst, which already sets IPv6AcceptRA = false on br0
-          # and on the trunk (machines/ernst/networking.nix) and holds no
-          # RA-derived address anywhere.  It would NOT be a no-op on a machine
-          # that gets its IPv6 from RA — do not copy this block to one.
-          ####################################################################
-          networking.nat = {
-            enable            = true;
-            enableIPv6        = true;
-            externalInterface = "zt+";
-            internalIPv6s     = [ "${monContainerAddr}/128" ];
-          };
-
-          # KEEP NetworkManager OFF mon0, and this one is easy to miss.
-          #
-          # nixpkgs ships a udev rule marking `v[eb]-*` as NM_UNMANAGED
-          # whenever NetworkManager is enabled, which is why no container veth
-          # in this repo has ever needed listing (see the note in
-          # machines/ernst/networking.nix).  `mon0` does NOT match that glob.
-          #
-          # On a host running BOTH networkd and NetworkManager — which ernst
-          # does, via the htpc role pulling in kde.nix — an unlisted,
-          # unmatched link is exactly what NM auto-connects to: it would create
-          # a profile, start DHCP on a point-to-point ULA link with no server
-          # on it, and can strip the address the container's start script put
-          # there.  The symptom would be every scrape failing at once, some
-          # minutes after boot, with the config unchanged.
-          #
-          # This appends to the list in machines/ernst/networking.nix rather
-          # than replacing it.
-          networking.networkmanager.unmanaged = [ "interface-name:${monVeth}" ];
-
-          ####################################################################
-          # Vars generator: Grafana's admin password.
-          #
-          # PROMPTED, like go-password and traefik-acme, rather than generated:
-          # a human types this into a login form, so a value nobody chose and
-          # nobody can remember has to be looked up out of sops every time.
-          #
-          # It stays relevant after M7.  Authelia will front the ROUTE, but
-          # Grafana's local admin is the account that still works when the
-          # identity provider is the thing that is broken — which is exactly
-          # when someone needs to look at a dashboard.
-          ####################################################################
-          # ── Make a rotated ntfy secret re-stage itself ──────────────────
-          #
-          # The 2026-08-24 rotation needed a manual
-          # `systemctl restart monitoring-secrets container@monitoring`,
-          # and the reason it is easy to forget is that nothing looks wrong
-          # without it: the staging unit's SCRIPT is unchanged (it embeds the
-          # sops PATH, not the contents), so systemd sees an unchanged unit,
-          # does not re-run it, and the previous topic stays staged in /run
-          # while the deploy reports success.  Alerts then keep going to the
-          # topic that was just rotated away from.
-          #
-          # BOTH units are listed and both are needed.  Restarting
-          # container@monitoring alone would not re-run the staging oneshot
-          # (RemainAfterExit=true, already active); restarting the staging
-          # oneshot alone would rewrite /run while alertmanager-ntfy keeps the
-          # copy it loaded as a systemd credential at start.  systemd orders
-          # them correctly on its own through the existing Before=.
-          #
-          # Declared HERE and not in modules/observability/zfs-ntfy.nix
-          # because monitoring-secrets exists only on the machine holding this
-          # role — naming it fleet-wide would point sops-nix at a unit that is
-          # absent on three machines out of four.
-          #
-          # NOTE THE SHAPE of the token half: `mkIf` wraps a CONFIG BLOCK, not
-          # a value.  Written the obvious way —
-          #
-          #   generators.zfs-ntfy-token.files."token".restartUnits =
-          #     lib.mkIf ntfyAuth [ … ];
-          #
-          # — the *value* is conditional but the *attribute path* is not, so
-          # the module system materialises `generators.zfs-ntfy-token` with its
-          # defaults even when auth is off.  That is enough to make clan
-          # believe the generator exists, and `clan vars check` then reports
-          #
-          #   Secret var 'token' for service 'zfs-ntfy-token' … is missing
-          #
-          # on a machine that has deliberately not enabled auth.  Measured
-          # 2026-08-24.  Guard the definition, not the value.
-          clan.core.vars.generators.zfs-ntfy.files."url".restartUnits = [
-            "monitoring-secrets.service"
-            "container@monitoring.service"
-          ];
-
-          # ── AND Grafana's secret_key, which is NOT prompted ─────────────
-          #
-          # nixpkgs 26.05 removed the compiled-in default for
-          # `security.secret_key` and asserts on a config that does not set
-          # one, which is the right call: it is the key grafana.db's stored
-          # datasource credentials and API tokens are encrypted with.
-          #
-          # GENERATED, not prompted, because nobody ever types it — and
-          # GENERATED ONCE, because changing it makes every secret already in
-          # the database undecryptable.  There is no supported rotation; the
-          # upstream assertion message points at a third-party re-encryption
-          # tool.  clan vars only runs a generator when its output is missing,
-          # so this is stable for the life of the machine unless someone
-          # deletes it deliberately.
-          clan.core.vars.generators.monitoring-grafana = {
-            files."admin-password".secret = true;
-            files."secret-key".secret     = true;
-
-            prompts."admin-password" = {
-              description = "Grafana admin password (user: admin) at grafana.${settings.domain}";
-              type        = "hidden";
-            };
-
-            runtimeInputs = [ pkgs.coreutils ];
-
-            script = ''
-              set -euo pipefail
-
-              pw=$(tr -d '\n' < "$prompts/admin-password")
-              if [ "''${#pw}" -lt 12 ]; then
-                echo "  ✗ too short — Grafana's admin account is reachable from every management VLAN" >&2
-                exit 1
-              fi
-              printf '%s' "$pw" > "$out/admin-password"
-
-              # base64 of 32 random bytes, newline stripped: Grafana reads the
-              # file verbatim and a trailing newline becomes part of the key.
-              head -c 32 /dev/urandom | base64 | tr -d '\n' > "$out/secret-key"
-            '';
-          };
-
-          ##################################################################
-          # The container.
-          ##################################################################
-          #
-          # Declared through modules/containers/nspawn.nix, which generates
-          # the dirs unit, the host-side veth network, the VLAN backstop, the
-          # `mon0` leg, the container preamble, the in-container networking
-          # and the firewall — taking bridge, VLAN, resolver and search
-          # domain from the HOST's `clanarchy.containerDefaults`.
-          #
-          # `monitoring-secrets` STAYS HAND-WRITTEN: it renders a YAML
-          # fragment for the ntfy bridge and installs five separate files
-          # with per-service ownership (grafana 3007, prometheus 3006), which
-          # is not the single env file the module's `secrets` option writes.
-          #
-          # The ZeroTier NAT above also stays. Forwarding and SNATting a
-          # container onto `zt+` is a fact about this host's topology.
-          clanarchy.containers.monitoring = {
-            enable = true;
-            mac    = settings.mac;
-
-            # NO uid/gid PIN: both upstream modules set uid AND gid from
-            # config.ids.*, so the in-container block below uses mkForce —
-            # see its own note.
-
-            # AN ORDERED UNIT RATHER THAN tmpfiles RULES: all three of these
-            # are bound into the container, and a tmpfiles rule for a bound
-            # path races the container's start (immich measured it). This
-            # also adds the /srv/state guard, so the TSDB and Grafana's
-            # database cannot land on a filesystem that rolls back.
+          {
+            ####################################################################
+            # It is an error to hold this role without the ntfy var.
             #
-            # NUMERIC ids on purpose: prometheus and grafana are CONTAINER
-            # users and the host has no matching passwd entry.
-            stateDirs = [
-              { path = settings.stateDir;                 owner = "root";       group = "root";       mode = "0755"; }
-              { path = "${settings.stateDir}/prometheus"; owner = prometheusUid; group = prometheusGid; }
-              { path = "${settings.stateDir}/grafana";    owner = grafanaUid;    group = grafanaGid; }
-            ];
-
-            # Leg 2 — the ZeroTier-facing point-to-point leg. Its host half is
-            # the forward-and-SNAT block above; these routes are the other
-            # half, one per clan machine via the host end, and they are what
-            # makes Prometheus able to scrape anything off this bridge at all.
-            ula = [
+            # Without it the staging unit below evaluates
+            # `files."url".path` to the literal "/no-such-path" and the failure
+            # surfaces at deploy time as a container that will not start, with
+            # nothing in the message about zfs-ntfy.  Say it at eval time
+            # instead.
+            ####################################################################
+            assertions = [
               {
-                veth = monVeth;
-                hostAddress6 = monHostAddr;
-                localAddress6 = monContainerAddr;
-                routes = map (name: {
-                  Destination = "${addrOf name}/128";
-                  Gateway     = monHostAddr;
-                }) (lib.filter (n: n != machine.name) resolvable);
+                assertion = config.clanarchy.zfs.ntfy.enable;
+                message = ''
+                  @clanarchy/monitoring's server role reuses the ntfy topic from
+                  modules/observability/zfs-ntfy.nix — one alerting path, not two.
+                  Set `clanarchy.zfs.ntfy.enable = true` on this machine and run
+                  `clan vars generate <machine>`.
+                '';
+              }
+              {
+                # A target without its credential is WORSE than no target: the
+                # job reports up=0 with a 401, which is indistinguishable from
+                # Navidrome being down and will be investigated as an outage.
+                # Fail the build instead.
+                assertion =
+                  settings.mediaStack.navidromeAddress
+                  == ""
+                  || settings.mediaStack.navidromeMetricsPasswordFile != null;
+                message = ''
+                  @clanarchy/monitoring: mediaStack.navidromeAddress is set but
+                  mediaStack.navidromeMetricsPasswordFile is null.  Navidrome's
+                  /metrics demands HTTP Basic, so the scrape would 401 and the
+                  job would report up=0 — which reads as the service being down
+                  rather than as a missing credential.
+                  Point it at the staged bare-value file (see the option's
+                  description, and the navidrome-metrics generator in
+                  machines/ernst/containers/arr/).
+                '';
               }
             ];
 
-            bindMounts = {
-              "/var/lib/prometheus2" = { hostPath = "${settings.stateDir}/prometheus"; isReadOnly = false; };
-              "/var/lib/grafana"     = { hostPath = "${settings.stateDir}/grafana";    isReadOnly = false; };
-              "${secretsDir}"        = { hostPath = secretsDir;                        isReadOnly = true;  };
+            warnings = lib.optional (unresolvable != []) ''
+              @clanarchy/monitoring: no ZeroTier address on record for
+              ${lib.concatStringsSep ", " unresolvable} — they hold roles.client
+              but are NOT being scraped.  Run `clan vars generate <machine>` for
+              each, commit vars/shared/, and re-deploy this machine.
+            '';
+
+            ####################################################################
+            # Stage both secrets.
+            #
+            # GENERATE BEFORE YOU DEPLOY, for the reason containers/traefik.nix
+            # spells out: clan-core cannot know a sops secret's path until the
+            # secret exists, so a deploy that runs before `clan vars generate`
+            # bakes "/no-such-path" into this script and produces a system whose
+            # staging unit can never succeed however often it is restarted.  The
+            # failure is at least fail-closed — this unit fails, the container
+            # never starts, and there is no monitoring rather than monitoring
+            # that silently never alerts.
+            #
+            # ROTATING EITHER SECRET needs a restart, not just a deploy: if this
+            # unit's text is unchanged systemd will not re-run it when the
+            # underlying sops file changes.  After `clan vars generate`:
+            #     systemctl restart monitoring-secrets container@monitoring
+            ####################################################################
+            systemd.services.monitoring-secrets = {
+              description = "Stage the ntfy topic and Grafana admin password for container@monitoring";
+              after = ["local-fs.target"];
+              before = ["container@monitoring.service"];
+              requiredBy = ["container@monitoring.service"];
+              serviceConfig = {
+                Type = "oneshot";
+                RemainAfterExit = true;
+              };
+              script = ''
+                set -euo pipefail
+
+                install -d -m 0711 -o root -g root ${secretsDir}
+
+                # ── ntfy ────────────────────────────────────────────────────
+                #
+                # zfs-ntfy stores ONE value, and it is EITHER a full topic URL
+                # OR a bare topic — the prompt asks for a URL and in the same
+                # sentence suggests `openssl rand -hex 12`, which is a topic.
+                # ernst's is a bare topic.
+                #
+                # alertmanager-ntfy needs the two halves separately (baseurl for
+                # the instance, topic for the channel), so they are split with
+                # THE ZEDLET'S OWN SPLITTER — not a second copy of the logic
+                # here.  Two publishers that disagree about how to read one
+                # value is exactly how "one alerting path" quietly becomes two,
+                # and this milestone's ZED/Prometheus split is built on them
+                # landing on the same topic.
+                #
+                # A second clan var was the obvious alternative and is worse: it
+                # would be a second thing to keep in step, with nothing checking
+                # that it agrees.
+                #
+                # This FAILS THE UNIT on a value it cannot read, which stops the
+                # container — deliberate.  alertmanager-ntfy with an empty topic
+                # starts fine and posts into the void, and a monitoring stack
+                # that silently cannot notify is worse than one that is
+                # obviously down.  It is also how the bare-topic shape was found
+                # at all: the zedlet had been failing on it in silence.
+                if ! split=$(${config.clanarchy.zfs.ntfy.splitScript} ${ntfyUrlFile}); then
+                  echo "cannot read a base URL and topic out of the zfs-ntfy var" >&2
+                  exit 1
+                fi
+                base=''${split%% *}
+                topic=''${split##* }
+
+                # Built line by line rather than with a heredoc, because the
+                # optional token has to come out of a FILE and never out of a
+                # shell variable: this unit runs as root and its environment is
+                # inherited by everything it forks.  `tr` writes the value
+                # straight into the redirect.
+                umask 077
+                {
+                  echo "ntfy:"
+                  echo "  baseurl: $base"
+                  ${lib.optionalString ntfyAuth ''
+                  echo "  auth:"
+                  printf '    token: '
+                  tr -d '[:space:]' < ${ntfyTokenFile}
+                  echo
+                ''}
+                  echo "  notification:"
+                  echo "    topic: $topic"
+                } > ${ntfyConfFile}.new
+                chown root:root ${ntfyConfFile}.new
+                chmod 0400 ${ntfyConfFile}.new
+                mv -f ${ntfyConfFile}.new ${ntfyConfFile}
+
+                # ── Grafana admin password ──────────────────────────────────
+                #
+                # Owned by the GRAFANA uid, unlike everything else here: grafana
+                # reads it itself, unprivileged, through the $__file{} provider
+                # in its own config.  0400 with the right owner, inside a 0711
+                # directory — see the secretsDir comment.
+                install -m 0400 -o ${toString grafanaUid} -g ${toString grafanaGid} \
+                  ${grafanaGen.files."admin-password".path} ${grafanaPwFile}
+
+                # ── Navidrome's metrics password, for Prometheus basic_auth ──
+                #
+                # Owned by the PROMETHEUS uid: prometheus opens it itself,
+                # unprivileged, through `basic_auth.password_file`.  Same shape
+                # as the grafana pair above and for the same reason.
+                #
+                # Staged unconditionally but tolerantly — an absent generator
+                # leaves an EMPTY file rather than failing this unit.  This unit
+                # is `requiredBy` container@monitoring, so failing here takes
+                # the whole monitoring stack down; losing every dashboard and
+                # every alert because ONE scrape credential is missing is a
+                # wildly disproportionate failure.  With an empty file the
+                # navidrome job 401s and everything else keeps working, and the
+                # `up == 0` on that job is the signal.
+                if [ -r ${navidromeMetricsGen.files."password".path} ]; then
+                  install -m 0400 -o ${toString prometheusUid} -g ${toString prometheusGid} \
+                    ${navidromeMetricsGen.files."password".path} ${navidromePwFile}
+                else
+                  echo "monitoring-secrets: no Navidrome metrics password at ${navidromeMetricsGen.files."password".path} — run 'clan vars generate ernst'. Staging an empty file; the navidrome scrape will 401 until it exists." >&2
+                  install -m 0400 -o ${toString prometheusUid} -g ${toString prometheusGid} \
+                    /dev/null ${navidromePwFile}
+                fi
+
+                # ── Grafana secret_key ──────────────────────────────────────
+                #
+                # Same ownership, and it matters more than the password does:
+                # this key encrypts the datasource credentials and any API
+                # tokens in grafana.db.  Change it and every stored secret
+                # becomes undecryptable — which is why it is generated ONCE and
+                # never rotated by a deploy.  See the generator.
+                install -m 0400 -o ${toString grafanaUid} -g ${toString grafanaGid} \
+                  ${grafanaGen.files."secret-key".path} ${grafanaKeyFile}
+
+                ${lib.optionalString oidc.enable ''
+                  # ── M7: the OIDC client secret ──────────────────────────────
+                  #
+                  # Same ownership as the two above — Grafana reads it itself
+                  # through $__file{}, unprivileged.  Its counterpart, the hashed
+                  # form the issuer stores, is staged on the other side of this
+                  # machine by machines/ernst/containers/authelia.nix out of the
+                  # SAME generator run.
+                  install -m 0400 -o ${toString grafanaUid} -g ${toString grafanaGid} \
+                    ${oidcSecretPath} ${grafanaOidcFile}
+                ''}
+              '';
             };
 
-            # NOTHING is unconditionally open, and Grafana's 3000 is the only
-            # port here. Prometheus (9090), Alertmanager (9093) and the ntfy
-            # bridge (8000) are absent on purpose and must stay absent: each
-            # reaches the next on 127.0.0.1 and there was never a second
-            # inbound client.
+            ####################################################################
+            # Leg 2's host half: forward and SNAT the container onto ZeroTier.
             #
-            # The second source is the BREAK-GLASS path. After M7 the Grafana
-            # route is behind Authelia forward-auth, so "keep the local admin
-            # as break-glass" is only true if there is a way in that does not
-            # pass through it — that is the ULA leg, over v6.
-            allowFrom = [
-              { peer = settings.proxyAddress; port = ports.grafana; }
-              { peer = monHostAddr;           port = ports.grafana; }
+            # WHAT THIS DOES:  a packet from ${monContainerAddr} to a client's
+            # ZeroTier address arrives on mon0, is forwarded (hence the sysctl
+            # networking.nat sets), leaves on zt*, and has its source rewritten
+            # to ernst's own ZeroTier address.  Without the rewrite the reply
+            # would be addressed to a ULA the laptop has never heard of and would
+            # be routed out of its default interface into nothing.
+            #
+            # externalInterface = "zt+", a WILDCARD, because ZeroTier names its
+            # interface after the network id (ztXXXXXXXX) and that name is not
+            # known here.  iptables accepts the "+" suffix; nothing else on this
+            # host is named zt*.
+            #
+            # SCOPE:  internalIPv6s is a single /128 and there are no
+            # internalInterfaces, so this NATs exactly one address and nothing
+            # else.  IPv4 NAT is inert — no internalIPs, no forwardPorts.
+            #
+            # SIDE EFFECT WORTH KNOWING: net.ipv6.conf.all.forwarding = 1 makes
+            # the kernel stop accepting router advertisements by default.  That
+            # is a no-op on ernst, which already sets IPv6AcceptRA = false on br0
+            # and on the trunk (machines/ernst/networking.nix) and holds no
+            # RA-derived address anywhere.  It would NOT be a no-op on a machine
+            # that gets its IPv6 from RA — do not copy this block to one.
+            ####################################################################
+            networking.nat = {
+              enable = true;
+              enableIPv6 = true;
+              externalInterface = "zt+";
+              internalIPv6s = ["${monContainerAddr}/128"];
+            };
+
+            # KEEP NetworkManager OFF mon0, and this one is easy to miss.
+            #
+            # nixpkgs ships a udev rule marking `v[eb]-*` as NM_UNMANAGED
+            # whenever NetworkManager is enabled, which is why no container veth
+            # in this repo has ever needed listing (see the note in
+            # machines/ernst/networking.nix).  `mon0` does NOT match that glob.
+            #
+            # On a host running BOTH networkd and NetworkManager — which ernst
+            # does, via the htpc role pulling in kde.nix — an unlisted,
+            # unmatched link is exactly what NM auto-connects to: it would create
+            # a profile, start DHCP on a point-to-point ULA link with no server
+            # on it, and can strip the address the container's start script put
+            # there.  The symptom would be every scrape failing at once, some
+            # minutes after boot, with the config unchanged.
+            #
+            # This appends to the list in machines/ernst/networking.nix rather
+            # than replacing it.
+            networking.networkmanager.unmanaged = ["interface-name:${monVeth}"];
+
+            ####################################################################
+            # Vars generator: Grafana's admin password.
+            #
+            # PROMPTED, like go-password and traefik-acme, rather than generated:
+            # a human types this into a login form, so a value nobody chose and
+            # nobody can remember has to be looked up out of sops every time.
+            #
+            # It stays relevant after M7.  Authelia will front the ROUTE, but
+            # Grafana's local admin is the account that still works when the
+            # identity provider is the thing that is broken — which is exactly
+            # when someone needs to look at a dashboard.
+            ####################################################################
+            # ── Make a rotated ntfy secret re-stage itself ──────────────────
+            #
+            # The 2026-08-24 rotation needed a manual
+            # `systemctl restart monitoring-secrets container@monitoring`,
+            # and the reason it is easy to forget is that nothing looks wrong
+            # without it: the staging unit's SCRIPT is unchanged (it embeds the
+            # sops PATH, not the contents), so systemd sees an unchanged unit,
+            # does not re-run it, and the previous topic stays staged in /run
+            # while the deploy reports success.  Alerts then keep going to the
+            # topic that was just rotated away from.
+            #
+            # BOTH units are listed and both are needed.  Restarting
+            # container@monitoring alone would not re-run the staging oneshot
+            # (RemainAfterExit=true, already active); restarting the staging
+            # oneshot alone would rewrite /run while alertmanager-ntfy keeps the
+            # copy it loaded as a systemd credential at start.  systemd orders
+            # them correctly on its own through the existing Before=.
+            #
+            # Declared HERE and not in modules/observability/zfs-ntfy.nix
+            # because monitoring-secrets exists only on the machine holding this
+            # role — naming it fleet-wide would point sops-nix at a unit that is
+            # absent on three machines out of four.
+            #
+            # NOTE THE SHAPE of the token half: `mkIf` wraps a CONFIG BLOCK, not
+            # a value.  Written the obvious way —
+            #
+            #   generators.zfs-ntfy-token.files."token".restartUnits =
+            #     lib.mkIf ntfyAuth [ … ];
+            #
+            # — the *value* is conditional but the *attribute path* is not, so
+            # the module system materialises `generators.zfs-ntfy-token` with its
+            # defaults even when auth is off.  That is enough to make clan
+            # believe the generator exists, and `clan vars check` then reports
+            #
+            #   Secret var 'token' for service 'zfs-ntfy-token' … is missing
+            #
+            # on a machine that has deliberately not enabled auth.  Measured
+            # 2026-08-24.  Guard the definition, not the value.
+            clan.core.vars.generators.zfs-ntfy.files."url".restartUnits = [
+              "monitoring-secrets.service"
+              "container@monitoring.service"
             ];
 
-            config = { config, pkgs, lib, ... }: {
+            # ── AND Grafana's secret_key, which is NOT prompted ─────────────
+            #
+            # nixpkgs 26.05 removed the compiled-in default for
+            # `security.secret_key` and asserts on a config that does not set
+            # one, which is the right call: it is the key grafana.db's stored
+            # datasource credentials and API tokens are encrypted with.
+            #
+            # GENERATED, not prompted, because nobody ever types it — and
+            # GENERATED ONCE, because changing it makes every secret already in
+            # the database undecryptable.  There is no supported rotation; the
+            # upstream assertion message points at a third-party re-encryption
+            # tool.  clan vars only runs a generator when its output is missing,
+            # so this is stable for the life of the machine unless someone
+            # deletes it deliberately.
+            clan.core.vars.generators.monitoring-grafana = {
+              files."admin-password".secret = true;
+              files."secret-key".secret = true;
 
-              # Matches the host.  Every alert timestamp, every "when did this
-              # start firing", and every dashboard axis is rendered in local
-              # time; a container that silently defaults to UTC makes all of
-              # them a two-hour question.  Same call as containers/arr/.
-              time.timeZone = "Europe/Berlin";
-
-              ################################################################
-              # Networking.
-              ################################################################
-
-              ################################################################
-              # Users.  Numeric ids are the interface across the nspawn
-              # boundary — see the allocation table in
-              # machines/ernst/networking.nix.
-              #
-              # Both upstream modules set uid AND gid from config.ids.*, as
-              # plain definitions, so both need mkForce — unlike
-              # containers/traefik.nix, where the module allocates
-              # dynamically and a plain merge sufficed.
-              #
-              # isSystemUser must be restated with the uid: NixOS infers
-              # "effectively a system user" from uid < 1000, and 3006 is not,
-              # so the inference stops working the moment the uid is pinned.
-              # containers/arr/ hit exactly this and the error names
-              # neither the uid nor the cause.
-              ################################################################
-              users.users.prometheus = {
-                isSystemUser = true;
-                uid          = lib.mkForce prometheusUid;
+              prompts."admin-password" = {
+                description = "Grafana admin password (user: admin) at grafana.${settings.domain}";
+                type = "hidden";
               };
-              users.groups.prometheus.gid = lib.mkForce prometheusGid;
 
-              users.users.grafana = {
-                isSystemUser = true;
-                uid          = lib.mkForce grafanaUid;
-              };
-              users.groups.grafana.gid = lib.mkForce grafanaGid;
+              runtimeInputs = [pkgs.coreutils];
 
-              ################################################################
-              # Prometheus.
-              #
-              # ── RETENTION, WITH THE ARITHMETIC ─────────────────────────────
-              #
-              # series, estimated per scrape target:
-              #   node_exporter, laptop  (trimmed collectors)          ~700
-              #   node_exporter, ernst   (+systemd, ~250 units)       ~2500
-              #   zfs_exporter    (2 pools, ~12 datasets)               ~90
-              #   smartctl_exporter (8 SAS/NVMe devices)               ~280
-              #   prometheus self                                     ~1100
-              #   alertmanager                                         ~400
-              #   grafana                                              ~400
-              #   traefik (M5, metrics entryPoint)                     ~200
-              #                                                      -------
-              #   3 laptops + ernst + the four local jobs             ~7100
-              #                                            round up:  8000
-              #
-              #   samples/second = 8000 / 60s scrape interval        =  133
-              #   bytes/sample, after Prometheus' delta-of-delta +
-              #     XOR compression (upstream quotes 1–2)            =  1.8
-              #
-              #   per day  = 133 x 86400 x 1.8                       = 21 MB
-              #   per year =                                          7.6 GB
-              #
-              # zdata has ~47 TB free.  DISK IS NOT THE BINDING CONSTRAINT — it
-              # is off by four orders of magnitude, and a retention chosen to
-              # "fit the disk" here would be a decade, which is not a decision,
-              # it is an absence of one.
-              #
-              # So retention is chosen from USEFULNESS: 400 days, i.e. thirteen
-              # months, so that a year-over-year comparison always has last
-              # year's same month still in the window.  ~8.3 GB.
-              #
-              # And it is backstopped by a SIZE CAP at 64 GB, ~8x the estimate.
-              # That cap is not capacity planning; it is what stops a
-              # cardinality explosion — a new exporter with a per-request label,
-              # the classic — from filling the dataset that also holds every
-              # *arr database.  Prometheus enforces whichever limit is hit
-              # first.
-              #
-              # CHECK THE ESTIMATE ONCE IT IS RUNNING, because the series count
-              # is the only guessed number above:
-              #   nixos-container run monitoring -- curl -s \
-              #     'localhost:9090/api/v1/query?query=prometheus_tsdb_head_series'
-              ################################################################
-              services.prometheus = {
-                enable        = true;
-                listenAddress = "127.0.0.1";
-                port          = ports.prometheus;
-                retentionTime = settings.retentionTime;
-                extraFlags    = [ "--storage.tsdb.retention.size=${settings.retentionSize}" ];
+              script = ''
+                set -euo pipefail
 
-                globalConfig = {
-                  scrape_interval     = settings.scrapeInterval;
-                  evaluation_interval = settings.scrapeInterval;
-                  external_labels.clan = "clanarchy";
+                pw=$(tr -d '\n' < "$prompts/admin-password")
+                if [ "''${#pw}" -lt 12 ]; then
+                  echo "  ✗ too short — Grafana's admin account is reachable from every management VLAN" >&2
+                  exit 1
+                fi
+                printf '%s' "$pw" > "$out/admin-password"
+
+                # base64 of 32 random bytes, newline stripped: Grafana reads the
+                # file verbatim and a trailing newline becomes part of the key.
+                head -c 32 /dev/urandom | base64 | tr -d '\n' > "$out/secret-key"
+              '';
+            };
+
+            ##################################################################
+            # The container.
+            ##################################################################
+            #
+            # Declared through modules/containers/nspawn.nix, which generates
+            # the dirs unit, the host-side veth network, the VLAN backstop, the
+            # `mon0` leg, the container preamble, the in-container networking
+            # and the firewall — taking bridge, VLAN, resolver and search
+            # domain from the HOST's `clanarchy.containerDefaults`.
+            #
+            # `monitoring-secrets` STAYS HAND-WRITTEN: it renders a YAML
+            # fragment for the ntfy bridge and installs five separate files
+            # with per-service ownership (grafana 3007, prometheus 3006), which
+            # is not the single env file the module's `secrets` option writes.
+            #
+            # The ZeroTier NAT above also stays. Forwarding and SNATting a
+            # container onto `zt+` is a fact about this host's topology.
+            clanarchy.containers.monitoring = {
+              enable = true;
+              mac = settings.mac;
+
+              # NO uid/gid PIN: both upstream modules set uid AND gid from
+              # config.ids.*, so the in-container block below uses mkForce —
+              # see its own note.
+
+              # AN ORDERED UNIT RATHER THAN tmpfiles RULES: all three of these
+              # are bound into the container, and a tmpfiles rule for a bound
+              # path races the container's start (immich measured it). This
+              # also adds the /srv/state guard, so the TSDB and Grafana's
+              # database cannot land on a filesystem that rolls back.
+              #
+              # NUMERIC ids on purpose: prometheus and grafana are CONTAINER
+              # users and the host has no matching passwd entry.
+              stateDirs = [
+                {
+                  path = settings.stateDir;
+                  owner = "root";
+                  group = "root";
+                  mode = "0755";
+                }
+                {
+                  path = "${settings.stateDir}/prometheus";
+                  owner = prometheusUid;
+                  group = prometheusGid;
+                }
+                {
+                  path = "${settings.stateDir}/grafana";
+                  owner = grafanaUid;
+                  group = grafanaGid;
+                }
+              ];
+
+              # Leg 2 — the ZeroTier-facing point-to-point leg. Its host half is
+              # the forward-and-SNAT block above; these routes are the other
+              # half, one per clan machine via the host end, and they are what
+              # makes Prometheus able to scrape anything off this bridge at all.
+              ula = [
+                {
+                  veth = monVeth;
+                  hostAddress6 = monHostAddr;
+                  localAddress6 = monContainerAddr;
+                  routes = map (name: {
+                    Destination = "${addrOf name}/128";
+                    Gateway = monHostAddr;
+                  }) (lib.filter (n: n != machine.name) resolvable);
+                }
+              ];
+
+              bindMounts = {
+                "/var/lib/prometheus2" = {
+                  hostPath = "${settings.stateDir}/prometheus";
+                  isReadOnly = false;
                 };
+                "/var/lib/grafana" = {
+                  hostPath = "${settings.stateDir}/grafana";
+                  isReadOnly = false;
+                };
+                "${secretsDir}" = {
+                  hostPath = secretsDir;
+                  isReadOnly = true;
+                };
+              };
 
-                ##############################################################
-                # SCRAPE TARGETS — GENERATED, NEVER LISTED.
-                #
-                # Every entry below is derived from `roles.client.machines`.
-                # Adding a machine to that role in clan.nix is the only step
-                # needed to monitor it: its address comes from the ZeroTier
-                # var clan already generated for it, and its labels come from
-                # its own role settings.  There is no list in this file to
-                # forget to update, which is the specific bug M6's prompt
-                # forbids.
-                ##############################################################
-                scrapeConfigs = [
-                  {
-                    job_name = "node";
-                    static_configs = map (n: staticFor n ports.node) resolvable;
-                  }
-                  {
-                    job_name = "zfs";
-                    static_configs = map (n: staticFor n ports.zfs) (withExporter "zfs");
-                  }
-                  {
-                    job_name = "smartctl";
-                    static_configs = map (n: staticFor n ports.smartctl) (withExporter "smartctl");
-                  }
-                  # Traefik's metrics entryPoint (M5).  Same VLAN, same
-                  # bridge, so this is a layer-2 hop that never reaches the
-                  # UDM-Pro.  It is the ONLY source of certificate expiry
-                  # data — it is the process that owns acme.json.
-                  {
-                    job_name = "traefik";
-                    static_configs = [ {
-                      targets = [ "${settings.proxyAddress}:${toString ports.traefik}" ];
-                      labels.instance = "traefik";
-                    } ];
-                  }
-                  # Authelia's telemetry listener (M7).  Same VLAN, same
-                  # bridge, same layer-2 hop as Traefik's — and the same
-                  # source restriction on the other end, keyed on this
-                  # container's address.
-                  #
-                  # Conditional on an address being configured, because the
-                  # module must stay usable on a fleet that has no identity
-                  # provider.  There is no alert on it: `InstanceDown` keys on
-                  # always_on="true", which is a label only the machine
-                  # targets carry, and the same is true of the traefik job
-                  # above.  What this buys is the dashboard and the history —
-                  # authentication_attempts, request latency, and the `up`
-                  # series to look at after an outage.
-                ] ++ lib.optional (settings.authelia.address != "") {
-                  job_name = "authelia";
-                  static_configs = [ {
-                    targets = [ "${settings.authelia.address}:${toString settings.authelia.metricsPort}" ];
-                    labels.instance = "authelia";
-                  } ];
+              # NOTHING is unconditionally open, and Grafana's 3000 is the only
+              # port here. Prometheus (9090), Alertmanager (9093) and the ntfy
+              # bridge (8000) are absent on purpose and must stay absent: each
+              # reaches the next on 127.0.0.1 and there was never a second
+              # inbound client.
+              #
+              # The second source is the BREAK-GLASS path. After M7 the Grafana
+              # route is behind Authelia forward-auth, so "keep the local admin
+              # as break-glass" is only true if there is a way in that does not
+              # pass through it — that is the ULA leg, over v6.
+              allowFrom = [
+                {
+                  peer = settings.proxyAddress;
+                  port = ports.grafana;
                 }
-                # ── M18: CrowdSec ─────────────────────────────────────────
-                #
-                # Unlike the traefik and authelia jobs, this target DOES carry
-                # an alert — see ExposedAndUnprotected below.  The reason is
-                # the asymmetry M18 introduced: those two failing is an
-                # OUTAGE, which the household reports within minutes.
-                # CrowdSec failing is SILENT, and silent in the direction that
-                # matters — everything keeps working, including from outside.
-                ++ lib.optional (settings.crowdsec.address != "") {
-                  job_name = "crowdsec";
-                  static_configs = [ {
-                    targets = [ "${settings.crowdsec.address}:${toString settings.crowdsec.metricsPort}" ];
-                    labels.instance = "crowdsec";
-                  } ];
+                {
+                  peer = monHostAddr;
+                  port = ports.grafana;
                 }
-                # ── M13's media-stack targets ──────────────────────────────
+              ];
+
+              config = {
+                config,
+                pkgs,
+                lib,
+                ...
+              }: {
+                # Matches the host.  Every alert timestamp, every "when did this
+                # start firing", and every dashboard axis is rendered in local
+                # time; a container that silently defaults to UTC makes all of
+                # them a two-hour question.  Same call as containers/arr/.
+                time.timeZone = "Europe/Berlin";
+
+                ################################################################
+                # Networking.
+                ################################################################
+
+                ################################################################
+                # Users.  Numeric ids are the interface across the nspawn
+                # boundary — see the allocation table in
+                # machines/ernst/networking.nix.
                 #
-                # Each conditional on its own address, so a fleet without a
-                # media stack — or an ernst part-way through M13 — evaluates
-                # and runs with whichever subset is configured.
+                # Both upstream modules set uid AND gid from config.ids.*, as
+                # plain definitions, so both need mkForce — unlike
+                # containers/traefik.nix, where the module allocates
+                # dynamically and a plain merge sufficed.
                 #
-                # NO TDARR JOB.  That arrives with M15, which owns it: queue
-                # depth is only a meaningful series once there is a queue.
-                ++ lib.optional (settings.mediaStack.arrAddress != "") {
-                  job_name = "scraparr";
-                  static_configs = [ {
-                    targets = [ "${settings.mediaStack.arrAddress}:${toString settings.mediaStack.scraparrPort}" ];
-                    labels.instance = "scraparr";
-                  } ];
-                }
-                ++ lib.optional (settings.mediaStack.jellyfinAddress != "") {
-                  job_name = "jellyfin";
-                  static_configs = [ {
-                    targets = [ "${settings.mediaStack.jellyfinAddress}:${toString settings.mediaStack.jellyfinPort}" ];
-                    labels.instance = "jellyfin";
-                  } ];
-                }
-                # Immich (M22).  See the option's description: this target is
-                # UNVERIFIED at write time and the test plan's job is to
-                # confirm `immich_*` series exist or delete it.
-                ++ lib.optional (settings.mediaStack.immichAddress != "") {
-                  job_name = "immich";
-                  static_configs = [ {
-                    targets = [ "${settings.mediaStack.immichAddress}:${toString settings.mediaStack.immichMetricsPort}" ];
-                    labels.instance = "immich";
-                  } ];
-                }
-                # M27 — Miniflux.  A real OpenMetrics endpoint, unlike the two
-                # services this milestone's neighbours declined to scrape.
+                # isSystemUser must be restated with the uid: NixOS infers
+                # "effectively a system user" from uid < 1000, and 3006 is not,
+                # so the inference stops working the moment the uid is pinned.
+                # containers/arr/ hit exactly this and the error names
+                # neither the uid nor the cause.
+                ################################################################
+                users.users.prometheus = {
+                  isSystemUser = true;
+                  uid = lib.mkForce prometheusUid;
+                };
+                users.groups.prometheus.gid = lib.mkForce prometheusGid;
+
+                users.users.grafana = {
+                  isSystemUser = true;
+                  uid = lib.mkForce grafanaUid;
+                };
+                users.groups.grafana.gid = lib.mkForce grafanaGid;
+
+                ################################################################
+                # Prometheus.
                 #
-                # NO JOB FOR KARAKEEP, and it is written here rather than left
-                # as an absence: Karakeep exposes no metrics endpoint at all,
-                # so a target pointed at it could only ever read `up == 0`.
-                # That is M13's Ollama lesson and standing note SN3 — a broken
-                # instrument is indistinguishable from a bad result.  Failed
-                # units inside that container are still seen, through
-                # `machinectl` and the container-units collector below, which
-                # is the same alerting story Nextcloud and Home Assistant have.
-                ++ lib.optional (settings.mediaStack.minifluxAddress != "") {
-                  job_name = "miniflux";
-                  static_configs = [ {
-                    targets = [ "${settings.mediaStack.minifluxAddress}:${toString settings.mediaStack.minifluxPort}" ];
-                    labels.instance = "miniflux";
-                  } ];
-                }
-                # Mail (M31).  The one target here whose interesting signal is
-                # not "is it up" — see the option's description for why this
-                # clears SN3 where Nextcloud, Home Assistant and Karakeep did
-                # not.  Watch `postfix_showq_message_age_seconds` and the
-                # queue-size series; `up` going to 0 is the boring case.
-                ++ lib.optional (settings.mediaStack.mailAddress != "") {
-                  job_name = "mail";
-                  static_configs = [ {
-                    targets = [ "${settings.mediaStack.mailAddress}:${toString settings.mediaStack.mailPort}" ];
-                    labels.instance = "mail";
-                  } ];
-                }
-                # Navidrome, and the only authenticated scrape in this file.
+                # ── RETENTION, WITH THE ARITHMETIC ─────────────────────────────
                 #
-                # `basic_auth.password_file` reads the file's CONTENTS as the
-                # password, which is why the generator emits a bare-value file
-                # alongside the KEY=value one Navidrome's EnvironmentFile
-                # wants.  Getting that backwards authenticates as the literal
-                # string `ND_PROMETHEUS_PASSWORD=…` and 401s.
+                # series, estimated per scrape target:
+                #   node_exporter, laptop  (trimmed collectors)          ~700
+                #   node_exporter, ernst   (+systemd, ~250 units)       ~2500
+                #   zfs_exporter    (2 pools, ~12 datasets)               ~90
+                #   smartctl_exporter (8 SAS/NVMe devices)               ~280
+                #   prometheus self                                     ~1100
+                #   alertmanager                                         ~400
+                #   grafana                                              ~400
+                #   traefik (M5, metrics entryPoint)                     ~200
+                #                                                      -------
+                #   3 laptops + ernst + the four local jobs             ~7100
+                #                                            round up:  8000
                 #
-                # The username is not configurable in Navidrome — it checks
-                # for `navidrome` and any password matching the setting.
-                ++ lib.optional (settings.mediaStack.navidromeAddress != "") {
-                  job_name = "navidrome";
-                  basic_auth = {
-                    username      = "navidrome";
-                    password_file = settings.mediaStack.navidromeMetricsPasswordFile;
+                #   samples/second = 8000 / 60s scrape interval        =  133
+                #   bytes/sample, after Prometheus' delta-of-delta +
+                #     XOR compression (upstream quotes 1–2)            =  1.8
+                #
+                #   per day  = 133 x 86400 x 1.8                       = 21 MB
+                #   per year =                                          7.6 GB
+                #
+                # zdata has ~47 TB free.  DISK IS NOT THE BINDING CONSTRAINT — it
+                # is off by four orders of magnitude, and a retention chosen to
+                # "fit the disk" here would be a decade, which is not a decision,
+                # it is an absence of one.
+                #
+                # So retention is chosen from USEFULNESS: 400 days, i.e. thirteen
+                # months, so that a year-over-year comparison always has last
+                # year's same month still in the window.  ~8.3 GB.
+                #
+                # And it is backstopped by a SIZE CAP at 64 GB, ~8x the estimate.
+                # That cap is not capacity planning; it is what stops a
+                # cardinality explosion — a new exporter with a per-request label,
+                # the classic — from filling the dataset that also holds every
+                # *arr database.  Prometheus enforces whichever limit is hit
+                # first.
+                #
+                # CHECK THE ESTIMATE ONCE IT IS RUNNING, because the series count
+                # is the only guessed number above:
+                #   nixos-container run monitoring -- curl -s \
+                #     'localhost:9090/api/v1/query?query=prometheus_tsdb_head_series'
+                ################################################################
+                services.prometheus = {
+                  enable = true;
+                  listenAddress = "127.0.0.1";
+                  port = ports.prometheus;
+                  retentionTime = settings.retentionTime;
+                  extraFlags = ["--storage.tsdb.retention.size=${settings.retentionSize}"];
+
+                  globalConfig = {
+                    scrape_interval = settings.scrapeInterval;
+                    evaluation_interval = settings.scrapeInterval;
+                    external_labels.clan = "clanarchy";
                   };
-                  static_configs = [ {
-                    targets = [ "${settings.mediaStack.navidromeAddress}:${toString settings.mediaStack.navidromePort}" ];
-                    labels.instance = "navidrome";
-                  } ];
-                }
-                ++ lib.optional (settings.mediaStack.qbittorrentAddress != "") {
-                  job_name = "qbittorrent";
-                  static_configs = [ {
-                    targets = [ "${settings.mediaStack.qbittorrentAddress}:${toString settings.mediaStack.qbittorrentExporterPort}" ];
-                    labels.instance = "qbittorrent";
-                  } ];
-                }
-                # M19 — the inference stack, replacing the ollama job that never
-                # existed.  Ollama 0.32.3 answered 404 on /metrics, so M13
-                # deliberately shipped three media-stack targets rather than
-                # four; this closes it.
-                #
-                # THE TARGET IS llama-swap, NOT llama-server, and that changed
-                # late.  The first cut scraped llama-server's router, whose
-                # /metrics answers HTTP 400 "model name is missing from the
-                # request" unless `params.model` names a model — and then
-                # reports `up == 0` whenever that model's file is absent, which
-                # reads as an outage rather than as "nothing is loaded".  It was
-                # measured at exactly that: up == 0 while the coder model was
-                # still downloading.
-                #
-                # llama-swap serves a plain /metrics with `llamaswap_*` series,
-                # no parameter, up whether or not a model is resident.  That is
-                # the right semantics for "is the inference stack alive", and it
-                # needs no per-model configuration here at all.
-                #
-                # The address is monHostAddr, not a configured one: the stack is
-                # on ernst itself and binds loopback, so the mon0 proxy on the
-                # host end of this container's own veth is how it is reached.
-                # See `exposeOn` in service-modules/local-ai.nix (the option was
-                # called metricsProxy when this comment was written).
-                ++ lib.optional settings.localAi.enable {
-                  job_name = "llama";
-                  static_configs = [ {
-                    targets = [ "[${monHostAddr}]:${toString ports.llama}" ];
-                    labels.instance = "llama-swap";
-                  } ];
-                }
-                ++ [
-                  # The stack watching itself.  All on loopback inside this
-                  # netns, so none of these needs a port opened.
-                  {
-                    job_name = "prometheus";
-                    static_configs = [ {
-                      targets = [ "127.0.0.1:${toString ports.prometheus}" ];
-                      labels.instance = "prometheus";
-                    } ];
-                  }
-                  {
-                    job_name = "alertmanager";
-                    static_configs = [ {
-                      targets = [ "127.0.0.1:${toString ports.alertmanager}" ];
-                      labels.instance = "alertmanager";
-                    } ];
-                  }
-                  {
-                    job_name = "grafana";
-                    static_configs = [ {
-                      targets = [ "127.0.0.1:${toString ports.grafana}" ];
-                      labels.instance = "grafana";
-                    } ];
-                  }
-                ];
 
-                alertmanagers = [
-                  { static_configs = [ { targets = [ "127.0.0.1:${toString ports.alertmanager}" ]; } ]; }
-                ];
-
-                ##############################################################
-                # RULES.  Six, plus the interlock.  Written as JSON because
-                # YAML is a superset of it — which removes indentation from
-                # the list of things that can be wrong in a file nothing
-                # validates until Prometheus refuses to start.
-                #
-                # There is deliberately NO rule on zfs_pool_health.  ZED owns
-                # pool state; see ALERTING in the file header.
-                ##############################################################
-                rules = [
-                  (builtins.toJSON {
-                    groups = [ {
-                      name = "clanarchy";
-                      rules = [
-                      ] ++ lib.optional (settings.crowdsec.address != "") (
-                        # ── M18: EXPOSED AND UNPROTECTED ──────────────────
-                        #
-                        # THE ONLY ALERT M18 ADDS, and deliberately not "many
-                        # bans".  A busy ban list is the system working; the
-                        # thing nobody would ever notice is the opposite —
-                        # the house open to the internet with nothing
-                        # watching it.  Every other failure in this milestone
-                        # announces itself: Traefik down is an outage,
-                        # Authelia down is every admin UI down, a bad DNAT is
-                        # "Jellyseerr does not work from my phone".  CrowdSec
-                        # down changes NOTHING observable, from inside or
-                        # out.
-                        #
-                        # TWO DISJUNCTS, because there are two ways to be
-                        # unprotected and only one of them is obvious:
-                        #
-                        #   up{job="crowdsec"} == 0
-                        #     the agent or its whole netns is gone.
-                        #
-                        #   the bouncer has stopped pulling decisions
-                        #     the agent is alive, healthy, detecting and
-                        #     recording — and NOTHING IS BEING DROPPED.
-                        #     This is the one worth building the alert for.
-                        #     It is also a measured failure and not a
-                        #     hypothetical: in the probe VM the bouncer
-                        #     started before the local API was listening,
-                        #     died on "connection refused", and — with
-                        #     upstream's Restart=no — stayed dead while
-                        #     `systemctl list-units --failed` was empty.
-                        #
-                        # THE BOUNCER IS INVISIBLE TO node_exporter, which is
-                        # why this is not a SystemdUnitFailed rule: it is a
-                        # unit inside an nspawn container, and the systemd
-                        # collector runs on the host and sees the host's
-                        # units only.  The LAPI's own view is the only view
-                        # there is.
-                        #
-                        # `cs_lapi_bouncer_requests_total` VERIFIED BY
-                        # READING /metrics IN THE PROBE VM, not inferred:
-                        #   cs_lapi_bouncer_requests_total{
-                        #     bouncer="crowdsec-firewall-bouncer",
-                        #     method="GET", route="/v1/decisions/stream"}
-                        # The bouncer polls it every 10 s by default, so a
-                        # flat 10-minute rate means it is not pulling.
-                        #
-                        # `or vector(0)` MATTERS: if the bouncer never
-                        # registered at all the series does not exist, and a
-                        # bare rate() would return an empty vector that
-                        # cannot compare to 0 — the alert would be silent for
-                        # the worst case of all.  vector(0) makes "absent"
-                        # and "stopped" both fire.
-                        #
-                        # 15m so a deploy, a container restart or the
-                        # bouncer's own retry backoff does not page anyone.
+                  ##############################################################
+                  # SCRAPE TARGETS — GENERATED, NEVER LISTED.
+                  #
+                  # Every entry below is derived from `roles.client.machines`.
+                  # Adding a machine to that role in clan.nix is the only step
+                  # needed to monitor it: its address comes from the ZeroTier
+                  # var clan already generated for it, and its labels come from
+                  # its own role settings.  There is no list in this file to
+                  # forget to update, which is the specific bug M6's prompt
+                  # forbids.
+                  ##############################################################
+                  scrapeConfigs =
+                    [
+                      {
+                        job_name = "node";
+                        static_configs = map (n: staticFor n ports.node) resolvable;
+                      }
+                      {
+                        job_name = "zfs";
+                        static_configs = map (n: staticFor n ports.zfs) (withExporter "zfs");
+                      }
+                      {
+                        job_name = "smartctl";
+                        static_configs = map (n: staticFor n ports.smartctl) (withExporter "smartctl");
+                      }
+                      # Traefik's metrics entryPoint (M5).  Same VLAN, same
+                      # bridge, so this is a layer-2 hop that never reaches the
+                      # UDM-Pro.  It is the ONLY source of certificate expiry
+                      # data — it is the process that owns acme.json.
+                      {
+                        job_name = "traefik";
+                        static_configs = [
+                          {
+                            targets = ["${settings.proxyAddress}:${toString ports.traefik}"];
+                            labels.instance = "traefik";
+                          }
+                        ];
+                      }
+                      # Authelia's telemetry listener (M7).  Same VLAN, same
+                      # bridge, same layer-2 hop as Traefik's — and the same
+                      # source restriction on the other end, keyed on this
+                      # container's address.
+                      #
+                      # Conditional on an address being configured, because the
+                      # module must stay usable on a fleet that has no identity
+                      # provider.  There is no alert on it: `InstanceDown` keys on
+                      # always_on="true", which is a label only the machine
+                      # targets carry, and the same is true of the traefik job
+                      # above.  What this buys is the dashboard and the history —
+                      # authentication_attempts, request latency, and the `up`
+                      # series to look at after an outage.
+                    ]
+                    ++ lib.optional (settings.authelia.address != "") {
+                      job_name = "authelia";
+                      static_configs = [
                         {
-                          alert = "ExposedAndUnprotected";
-                          expr = ''
-                            (
-                              (up{job="crowdsec"} == 0)
-                              or
-                              (
-                                (sum(rate(cs_lapi_bouncer_requests_total{route="/v1/decisions/stream"}[10m])) or vector(0))
-                                == 0
-                              )
-                            )
-                            and on() (up{job="traefik"} == 1)
-                          '';
-                          "for" = "15m";
-                          labels.severity = "critical";
-                          annotations = {
-                            summary     = "WAN ingress is up and CrowdSec is not protecting it";
-                            description = "Traefik is serving — which means the `wan` entryPoint is bound and reachable from the internet — while either the CrowdSec agent is not answering scrapes or the firewall bouncer has stopped pulling decisions. Bans are not being enforced. Check `nixos-container run traefik -- systemctl status crowdsec crowdsec-firewall-bouncer`.";
-                          };
-                        }
-                      ) ++ [
-                        # ── SN2's tripwire ───────────────────────────────
-                        #
-                        # SN2 decided the fleet is IPv4-only.  M18 enforces
-                        # that inside the Traefik netns with
-                        # `disable_ipv6 = 1`; this fires if the assumption
-                        # underneath the decision stops being true anywhere.
-                        #
-                        # ERNST ONLY, via `exporters.ipv6Guard` in clan.nix.
-                        # The tempting generalisation is that a delegated
-                        # prefix arrives on the LINE and therefore reaches
-                        # every machine at once, so every machine should watch
-                        # for it.  That is wrong for the four laptops: they
-                        # roam, and a café or a phone hotspot hands out a real
-                        # IPv6 GUA as a matter of course.  On those machines
-                        # this would fire constantly and correctly, and be
-                        # ignored within a week — which would also teach
-                        # everyone to ignore it on ernst.
-                        #
-                        # ernst never leaves VLAN 90, so on ernst a global
-                        # address means the LINE changed.  That is the event.
-                        #
-                        # `> 0` and not `>= 1` for readability only; the
-                        # metric is a count and the expected value is 0.
-                        # `absent()` is folded in because a collector that
-                        # stopped writing the file would otherwise leave this
-                        # silently unable to fire — the same failure mode the
-                        # ExposedAndUnprotected note above is about.
-                        #
-                        # 15m: a prefix that shows up and vanishes inside one
-                        # DHCPv6 lease is still worth knowing about, but not
-                        # worth paging for at 03:00 during an ISP flap.
-                        {
-                          alert = "UnexpectedIPv6GlobalAddress";
-                          expr = ''
-                            (clanarchy_ipv6_global_addresses > 0)
-                            or
-                            (absent(clanarchy_ipv6_global_addresses) == 1)
-                          '';
-                          "for" = "15m";
-                          labels.severity = "critical";
-                          annotations = {
-                            summary     = "IPv6 global address on {{ $labels.instance }} — SN2 assumed none exist";
-                            description = "An IPv6 global-scope address (non-ULA) appeared, or the collector stopped reporting. SN2's IPv4-only decision rests on there being none. On ernst this is urgent: Traefik's entryPoints are wildcard listens, so a global address makes every router reachable on a path that bypasses the UDM-Pro DNAT and therefore the `wan` entryPoint, and the firewall bouncer has no ip6 table so those routers would also be unbannable. Check `ip -6 addr show scope global` and `journalctl -u clanarchy-ipv6-guard`.";
-                          };
-                        }
-
-                        # ── M31 deliverability ───────────────────────────
-                        #
-                        # Three rules and not one, because they are three
-                        # different jobs for the person woken by them: fix
-                        # the PTR, request a delisting, or fix the check.
-                        # Collapsing them would produce an alert whose
-                        # runbook starts "first work out which of these it
-                        # is", which is the alert doing none of its work.
-                        {
-                          alert = "MailReverseDnsBroken";
-                          expr = ''
-                            (clanarchy_mail_fcrdns_ok == 0)
-                            or
-                            (absent(clanarchy_mail_fcrdns_ok) == 1)
-                          '';
-                          "for" = "6h";
-                          labels.severity = "critical";
-                          annotations = {
-                            summary     = "Mail reverse DNS no longer forward-confirmed";
-                            description = "The PTR for the public address and its forward A record no longer agree, or the collector stopped reporting. This is the single fact M31's outbound mail rests on: Vodafone set the PTR to mail.goclan.org on request, and if a tariff change or renumbering takes it away, Outlook rejects outright and Gmail/GMX junk — silently, with nothing wrong on this host. Check `dig -x` and `dig A` by hand (docs/guides/mail.md, Phase 0), then either get the PTR restored or enable the smarthost escape hatch. 6h because DNS propagation and a brief resolver wobble are not worth paging for.";
-                          };
-                        }
-
-                        {
-                          alert = "MailIpBlocklisted";
-                          expr = ''clanarchy_mail_dnsbl_listed == 1'';
-                          "for" = "6h";
-                          labels.severity = "warning";
-                          annotations = {
-                            summary     = "Mail IP listed on {{ $labels.list }}";
-                            description = "The public address is listed on {{ $labels.list }}. It was delisted from Barracuda by hand on 2026-10-06; a residential address can be re-listed because of something a neighbour's infected machine does, and the symptom is mail quietly not arriving. Most lists have a free self-service removal form — docs/guides/mail.md, Phase 0, carries the links. Warning and not critical: one list is a degradation, and the FCrDNS alert covers the case where delivery stops outright.";
-                          };
-                        }
-
-                        {
-                          alert = "MailDnsblCheckUnusable";
-                          expr = ''clanarchy_mail_dnsbl_usable == 0'';
-                          "for" = "24h";
-                          labels.severity = "warning";
-                          annotations = {
-                            summary     = "Blocklist check for {{ $labels.list }} is not answering its own test points";
-                            description = "{{ $labels.list }} failed the positive control — 127.0.0.2 should answer listed and 127.0.0.1 clean — so its verdict for our address is not trustworthy and no `listed` series is being emitted for it. The usual cause is the query being refused rather than the list being down: Spamhaus answers 127.255.255.254 to anything arriving via a large public resolver, which is why these queries go through the mail container's kresd. Check that container@mail is up and that `nixos-container run mail -- dig +short 2.0.0.127.zen.spamhaus.org` returns 127.0.0.x. SN3: this alert exists so a refused query cannot masquerade as a clean one.";
-                          };
-                        }
-
-                        # ── host down ────────────────────────────────────
-                        #
-                        # always_on only.  A laptop with the lid shut is not
-                        # an incident; see the alwaysOn option's description.
-                        # 10m so a reboot or a `clan machines update` does not
-                        # page anyone.
-                        {
-                          alert = "InstanceDown";
-                          expr  = ''up{always_on="true"} == 0'';
-                          "for" = "10m";
-                          labels.severity = "critical";
-                          annotations = {
-                            summary     = "{{ $labels.instance }} is not answering scrapes";
-                            description = "job {{ $labels.job }} on {{ $labels.instance }} has been down for 10 minutes.";
-                          };
-                        }
-
-                        # ── SMART failure predicted ──────────────────────
-                        #
-                        # smartctl_device_smart_status is the drive's own
-                        # self-assessment: 1 = passed, 0 = FAILING.  A drive
-                        # that says this about itself is a drive to replace,
-                        # not one to investigate.
-                        {
-                          alert = "SmartFailurePredicted";
-                          expr  = "smartctl_device_smart_status == 0";
-                          "for" = "15m";
-                          labels.severity = "critical";
-                          annotations = {
-                            summary     = "SMART self-assessment FAILED on {{ $labels.instance }}";
-                            description = "device {{ $labels.device }} ({{ $labels.model_name }}) reports its own health check as failing. Replace it.";
-                          };
-                        }
-
-                        # ── filesystem filling up ────────────────────────
-                        #
-                        # The pseudo-filesystem exclusion list is the whole
-                        # difficulty here: without it this fires permanently
-                        # on /nix/store (a read-only bind at 100%), on every
-                        # tmpfs, and on the impermanence overlays.
-                        #
-                        # 1h, because filling a filesystem is a slope and not
-                        # an event — and because an *arr import can push a
-                        # dataset past a threshold for minutes and then hard-
-                        # link the file away again.
-                        {
-                          alert = "FilesystemFillingUp";
-                          expr = ''
-                            100 - (
-                              node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|nsfs|devtmpfs|efivarfs"}
-                              / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|nsfs|devtmpfs|efivarfs"}
-                              * 100
-                            ) > 85
-                          '';
-                          "for" = "1h";
-                          labels.severity = "warning";
-                          annotations = {
-                            summary     = "{{ $labels.mountpoint }} on {{ $labels.instance }} is over 85% full";
-                            description = "{{ $labels.mountpoint }} ({{ $labels.fstype }}) has been above 85% for an hour.";
-                          };
-                        }
-
-                        # ── any failed systemd unit ──────────────────────
-                        #
-                        # Only fires where the systemd collector is enabled,
-                        # which today is ernst alone.  That is where it earns
-                        # its keep: clanarchy-impermanence-check, the
-                        # container units, the secret-staging oneshots and the
-                        # zdata import all fail loudly and then sit there
-                        # failed with nobody looking.
-                        {
-                          alert = "SystemdUnitFailed";
-                          expr  = ''node_systemd_unit_state{state="failed"} == 1'';
-                          "for" = "15m";
-                          labels.severity = "warning";
-                          annotations = {
-                            summary     = "{{ $labels.name }} has failed on {{ $labels.instance }}";
-                            description = "systemd unit {{ $labels.name }} has been in the failed state for 15 minutes.";
-                          };
-                        }
-
-                        # ── any failed unit INSIDE an nspawn container ───
-                        #
-                        # SystemdUnitFailed above cannot see these. It is fed
-                        # by node_exporter's systemd collector, which reads
-                        # the HOST's systemd; every container runs its own
-                        # init with its own unit namespace.
-                        #
-                        # The gap was not hypothetical. soularr.service in
-                        # ernst's `arr` container failed 1412 times across
-                        # nine days, never once completing a pass, and
-                        # nothing alerted — a failed oneshot on a timer is
-                        # invisible unless something is watching for exactly
-                        # this.
-                        {
-                          alert = "ContainerSystemdUnitFailed";
-                          expr  = ''clanarchy_container_systemd_unit_failed == 1'';
-                          "for" = "15m";
-                          labels.severity = "warning";
-                          annotations = {
-                            summary     = "{{ $labels.name }} has failed in container {{ $labels.container }} on {{ $labels.instance }}";
-                            description = "systemd unit {{ $labels.name }} inside nspawn container {{ $labels.container }} has been in the failed state for 15 minutes. Inspect with: systemctl -M {{ $labels.container }} status {{ $labels.name }}";
-                          };
-                        }
-
-                        # ── a process is crash-looping ───────────────────
-                        #
-                        # A crashing PROCESS is not a failed UNIT, so neither
-                        # SystemdUnitFailed nor its container sibling can see
-                        # this at all.
-                        #
-                        # Threshold 3, chosen against the four crash loops
-                        # this machine has actually had rather than picked
-                        # round: DrKonqi 180363, tvheadend 237, the two arr
-                        # downloaders 71 — and Kodi FOUR, in six minutes, in
-                        # the couch session. Kodi is the one that sets the
-                        # bar: at 5 it would not have alerted, and Kodi is
-                        # the case where nothing else would ever have told
-                        # anyone, because the role's relaunch loop restarts
-                        # it and no unit changes state.
-                        #
-                        # A one-off segfault stays quiet, which is the point.
-                        {
-                          alert = "ProcessCrashLooping";
-                          expr  = ''clanarchy_coredumps_recent >= 3'';
-                          "for" = "5m";
-                          labels.severity = "warning";
-                          annotations = {
-                            summary     = "{{ $labels.exe }} has dumped core {{ $value }} times in an hour on {{ $labels.instance }}";
-                            description = "{{ $labels.exe }} is crash-looping with {{ $labels.signal }}. Inspect with: coredumpctl list {{ $labels.exe }}";
-                          };
-                        }
-
-                        # ── the container collector itself is broken ─────
-                        #
-                        # Its whole value is answering "is anything failing in
-                        # there", so a collector that silently answers "no"
-                        # because it could not reach machined is worse than
-                        # not having it. It publishes its own success and this
-                        # is what reads it — the same interlock argument as
-                        # ZedNotRunning immediately below.
-                        {
-                          alert = "ContainerUnitCollectorFailing";
-                          expr  = ''clanarchy_container_units_collector_success == 0'';
-                          "for" = "15m";
-                          labels.severity = "warning";
-                          annotations = {
-                            summary     = "Container unit collector could not query every container on {{ $labels.instance }}";
-                            description = "At least one nspawn container did not answer systemctl -M for 15 minutes, so ContainerSystemdUnitFailed is blind to it. Check `machinectl list` and journalctl -u clanarchy-container-units.";
-                          };
-                        }
-
-                        # ── THE INTERLOCK: ZED is not running ────────────
-                        #
-                        # This is the rule that makes "keep both alerting
-                        # systems" a design rather than an omission.  ZED is
-                        # the only thing that reports a pool going degraded,
-                        # and the only thing it cannot report is its own
-                        # death.  A unit that is stopped rather than failed
-                        # does not trip SystemdUnitFailed above, so this asks
-                        # the opposite question.
-                        {
-                          alert = "ZedNotRunning";
-                          expr  = ''node_systemd_unit_state{name="zfs-zed.service",state="active"} == 0'';
-                          "for" = "15m";
-                          labels.severity = "critical";
-                          annotations = {
-                            summary     = "ZFS event daemon is not running on {{ $labels.instance }}";
-                            description = "zfs-zed is the ONLY path that alerts on a pool going degraded (modules/observability/zfs-ntfy.nix). While it is down, pool state changes are unmonitored.";
-                          };
-                        }
-
-                        # ── TLS certificate expiring ─────────────────────
-                        #
-                        # traefik_tls_certs_not_after is a unix timestamp, so
-                        # the expression is "days remaining".  M5's wildcard
-                        # renews at 30 days left; 14 means two renewal
-                        # attempts have already failed silently, which is
-                        # exactly the failure that file's header says has no
-                        # monitoring "until M6".
-                        {
-                          alert = "CertificateExpiringSoon";
-                          expr  = "(traefik_tls_certs_not_after - time()) / 86400 < 14";
-                          "for" = "1h";
-                          labels.severity = "critical";
-                          annotations = {
-                            summary     = "TLS certificate expires in under 14 days";
-                            description = "{{ $labels.cn }}{{ $labels.sans }} has {{ $value | printf \"%.0f\" }} days left. Renewal has already failed at least twice — check `journalctl -u traefik` in the traefik container.";
-                          };
+                          targets = ["${settings.authelia.address}:${toString settings.authelia.metricsPort}"];
+                          labels.instance = "authelia";
                         }
                       ];
-                    } ];
-                  })
-                ];
-              };
+                    }
+                    # ── M18: CrowdSec ─────────────────────────────────────────
+                    #
+                    # Unlike the traefik and authelia jobs, this target DOES carry
+                    # an alert — see ExposedAndUnprotected below.  The reason is
+                    # the asymmetry M18 introduced: those two failing is an
+                    # OUTAGE, which the household reports within minutes.
+                    # CrowdSec failing is SILENT, and silent in the direction that
+                    # matters — everything keeps working, including from outside.
+                    ++ lib.optional (settings.crowdsec.address != "") {
+                      job_name = "crowdsec";
+                      static_configs = [
+                        {
+                          targets = ["${settings.crowdsec.address}:${toString settings.crowdsec.metricsPort}"];
+                          labels.instance = "crowdsec";
+                        }
+                      ];
+                    }
+                    # ── M13's media-stack targets ──────────────────────────────
+                    #
+                    # Each conditional on its own address, so a fleet without a
+                    # media stack — or an ernst part-way through M13 — evaluates
+                    # and runs with whichever subset is configured.
+                    #
+                    # NO TDARR JOB.  That arrives with M15, which owns it: queue
+                    # depth is only a meaningful series once there is a queue.
+                    ++ lib.optional (settings.mediaStack.arrAddress != "") {
+                      job_name = "scraparr";
+                      static_configs = [
+                        {
+                          targets = ["${settings.mediaStack.arrAddress}:${toString settings.mediaStack.scraparrPort}"];
+                          labels.instance = "scraparr";
+                        }
+                      ];
+                    }
+                    ++ lib.optional (settings.mediaStack.jellyfinAddress != "") {
+                      job_name = "jellyfin";
+                      static_configs = [
+                        {
+                          targets = ["${settings.mediaStack.jellyfinAddress}:${toString settings.mediaStack.jellyfinPort}"];
+                          labels.instance = "jellyfin";
+                        }
+                      ];
+                    }
+                    # Immich (M22).  See the option's description: this target is
+                    # UNVERIFIED at write time and the test plan's job is to
+                    # confirm `immich_*` series exist or delete it.
+                    ++ lib.optional (settings.mediaStack.immichAddress != "") {
+                      job_name = "immich";
+                      static_configs = [
+                        {
+                          targets = ["${settings.mediaStack.immichAddress}:${toString settings.mediaStack.immichMetricsPort}"];
+                          labels.instance = "immich";
+                        }
+                      ];
+                    }
+                    # M27 — Miniflux.  A real OpenMetrics endpoint, unlike the two
+                    # services this milestone's neighbours declined to scrape.
+                    #
+                    # NO JOB FOR KARAKEEP, and it is written here rather than left
+                    # as an absence: Karakeep exposes no metrics endpoint at all,
+                    # so a target pointed at it could only ever read `up == 0`.
+                    # That is M13's Ollama lesson and standing note SN3 — a broken
+                    # instrument is indistinguishable from a bad result.  Failed
+                    # units inside that container are still seen, through
+                    # `machinectl` and the container-units collector below, which
+                    # is the same alerting story Nextcloud and Home Assistant have.
+                    ++ lib.optional (settings.mediaStack.minifluxAddress != "") {
+                      job_name = "miniflux";
+                      static_configs = [
+                        {
+                          targets = ["${settings.mediaStack.minifluxAddress}:${toString settings.mediaStack.minifluxPort}"];
+                          labels.instance = "miniflux";
+                        }
+                      ];
+                    }
+                    # Mail (M31).  The one target here whose interesting signal is
+                    # not "is it up" — see the option's description for why this
+                    # clears SN3 where Nextcloud, Home Assistant and Karakeep did
+                    # not.  Watch `postfix_showq_message_age_seconds` and the
+                    # queue-size series; `up` going to 0 is the boring case.
+                    ++ lib.optional (settings.mediaStack.mailAddress != "") {
+                      job_name = "mail";
+                      static_configs = [
+                        {
+                          targets = ["${settings.mediaStack.mailAddress}:${toString settings.mediaStack.mailPort}"];
+                          labels.instance = "mail";
+                        }
+                      ];
+                    }
+                    # Navidrome, and the only authenticated scrape in this file.
+                    #
+                    # `basic_auth.password_file` reads the file's CONTENTS as the
+                    # password, which is why the generator emits a bare-value file
+                    # alongside the KEY=value one Navidrome's EnvironmentFile
+                    # wants.  Getting that backwards authenticates as the literal
+                    # string `ND_PROMETHEUS_PASSWORD=…` and 401s.
+                    #
+                    # The username is not configurable in Navidrome — it checks
+                    # for `navidrome` and any password matching the setting.
+                    ++ lib.optional (settings.mediaStack.navidromeAddress != "") {
+                      job_name = "navidrome";
+                      basic_auth = {
+                        username = "navidrome";
+                        password_file = settings.mediaStack.navidromeMetricsPasswordFile;
+                      };
+                      static_configs = [
+                        {
+                          targets = ["${settings.mediaStack.navidromeAddress}:${toString settings.mediaStack.navidromePort}"];
+                          labels.instance = "navidrome";
+                        }
+                      ];
+                    }
+                    ++ lib.optional (settings.mediaStack.qbittorrentAddress != "") {
+                      job_name = "qbittorrent";
+                      static_configs = [
+                        {
+                          targets = ["${settings.mediaStack.qbittorrentAddress}:${toString settings.mediaStack.qbittorrentExporterPort}"];
+                          labels.instance = "qbittorrent";
+                        }
+                      ];
+                    }
+                    # M19 — the inference stack, replacing the ollama job that never
+                    # existed.  Ollama 0.32.3 answered 404 on /metrics, so M13
+                    # deliberately shipped three media-stack targets rather than
+                    # four; this closes it.
+                    #
+                    # THE TARGET IS llama-swap, NOT llama-server, and that changed
+                    # late.  The first cut scraped llama-server's router, whose
+                    # /metrics answers HTTP 400 "model name is missing from the
+                    # request" unless `params.model` names a model — and then
+                    # reports `up == 0` whenever that model's file is absent, which
+                    # reads as an outage rather than as "nothing is loaded".  It was
+                    # measured at exactly that: up == 0 while the coder model was
+                    # still downloading.
+                    #
+                    # llama-swap serves a plain /metrics with `llamaswap_*` series,
+                    # no parameter, up whether or not a model is resident.  That is
+                    # the right semantics for "is the inference stack alive", and it
+                    # needs no per-model configuration here at all.
+                    #
+                    # The address is monHostAddr, not a configured one: the stack is
+                    # on ernst itself and binds loopback, so the mon0 proxy on the
+                    # host end of this container's own veth is how it is reached.
+                    # See `exposeOn` in service-modules/local-ai.nix (the option was
+                    # called metricsProxy when this comment was written).
+                    ++ lib.optional settings.localAi.enable {
+                      job_name = "llama";
+                      static_configs = [
+                        {
+                          targets = ["[${monHostAddr}]:${toString ports.llama}"];
+                          labels.instance = "llama-swap";
+                        }
+                      ];
+                    }
+                    ++ [
+                      # The stack watching itself.  All on loopback inside this
+                      # netns, so none of these needs a port opened.
+                      {
+                        job_name = "prometheus";
+                        static_configs = [
+                          {
+                            targets = ["127.0.0.1:${toString ports.prometheus}"];
+                            labels.instance = "prometheus";
+                          }
+                        ];
+                      }
+                      {
+                        job_name = "alertmanager";
+                        static_configs = [
+                          {
+                            targets = ["127.0.0.1:${toString ports.alertmanager}"];
+                            labels.instance = "alertmanager";
+                          }
+                        ];
+                      }
+                      {
+                        job_name = "grafana";
+                        static_configs = [
+                          {
+                            targets = ["127.0.0.1:${toString ports.grafana}"];
+                            labels.instance = "grafana";
+                          }
+                        ];
+                      }
+                    ];
 
-              ################################################################
-              # Alertmanager.
-              #
-              # ONE receiver, because there is one destination.  Everything is
-              # grouped by alertname and instance so a machine that comes back
-              # with four failed units produces one notification, not four.
-              #
-              # repeat_interval is 24h and not the 4h default: these are phone
-              # notifications for a household, and a still-degraded pool does
-              # not become more actionable by being announced six times a day.
-              ################################################################
-              services.prometheus.alertmanager = {
-                enable        = true;
-                listenAddress = "127.0.0.1";
-                port          = ports.alertmanager;
-                configuration = {
-                  route = {
-                    receiver        = "ntfy";
-                    group_by        = [ "alertname" "instance" ];
-                    group_wait      = "30s";
-                    group_interval  = "5m";
-                    repeat_interval = "24h";
-                  };
-                  receivers = [ {
-                    name = "ntfy";
-                    webhook_configs = [ {
-                      url           = "http://127.0.0.1:${toString ports.ntfyBridge}/hook";
-                      send_resolved = true;
-                    } ];
-                  } ];
+                  alertmanagers = [
+                    {static_configs = [{targets = ["127.0.0.1:${toString ports.alertmanager}"];}];}
+                  ];
+
+                  ##############################################################
+                  # RULES.  Six, plus the interlock.  Written as JSON because
+                  # YAML is a superset of it — which removes indentation from
+                  # the list of things that can be wrong in a file nothing
+                  # validates until Prometheus refuses to start.
+                  #
+                  # There is deliberately NO rule on zfs_pool_health.  ZED owns
+                  # pool state; see ALERTING in the file header.
+                  ##############################################################
+                  rules = [
+                    (builtins.toJSON {
+                      groups = [
+                        {
+                          name = "clanarchy";
+                          rules =
+                            [
+                            ]
+                            ++ lib.optional (settings.crowdsec.address != "") (
+                              # ── M18: EXPOSED AND UNPROTECTED ──────────────────
+                              #
+                              # THE ONLY ALERT M18 ADDS, and deliberately not "many
+                              # bans".  A busy ban list is the system working; the
+                              # thing nobody would ever notice is the opposite —
+                              # the house open to the internet with nothing
+                              # watching it.  Every other failure in this milestone
+                              # announces itself: Traefik down is an outage,
+                              # Authelia down is every admin UI down, a bad DNAT is
+                              # "Jellyseerr does not work from my phone".  CrowdSec
+                              # down changes NOTHING observable, from inside or
+                              # out.
+                              #
+                              # TWO DISJUNCTS, because there are two ways to be
+                              # unprotected and only one of them is obvious:
+                              #
+                              #   up{job="crowdsec"} == 0
+                              #     the agent or its whole netns is gone.
+                              #
+                              #   the bouncer has stopped pulling decisions
+                              #     the agent is alive, healthy, detecting and
+                              #     recording — and NOTHING IS BEING DROPPED.
+                              #     This is the one worth building the alert for.
+                              #     It is also a measured failure and not a
+                              #     hypothetical: in the probe VM the bouncer
+                              #     started before the local API was listening,
+                              #     died on "connection refused", and — with
+                              #     upstream's Restart=no — stayed dead while
+                              #     `systemctl list-units --failed` was empty.
+                              #
+                              # THE BOUNCER IS INVISIBLE TO node_exporter, which is
+                              # why this is not a SystemdUnitFailed rule: it is a
+                              # unit inside an nspawn container, and the systemd
+                              # collector runs on the host and sees the host's
+                              # units only.  The LAPI's own view is the only view
+                              # there is.
+                              #
+                              # `cs_lapi_bouncer_requests_total` VERIFIED BY
+                              # READING /metrics IN THE PROBE VM, not inferred:
+                              #   cs_lapi_bouncer_requests_total{
+                              #     bouncer="crowdsec-firewall-bouncer",
+                              #     method="GET", route="/v1/decisions/stream"}
+                              # The bouncer polls it every 10 s by default, so a
+                              # flat 10-minute rate means it is not pulling.
+                              #
+                              # `or vector(0)` MATTERS: if the bouncer never
+                              # registered at all the series does not exist, and a
+                              # bare rate() would return an empty vector that
+                              # cannot compare to 0 — the alert would be silent for
+                              # the worst case of all.  vector(0) makes "absent"
+                              # and "stopped" both fire.
+                              #
+                              # 15m so a deploy, a container restart or the
+                              # bouncer's own retry backoff does not page anyone.
+                              {
+                                alert = "ExposedAndUnprotected";
+                                expr = ''
+                                  (
+                                    (up{job="crowdsec"} == 0)
+                                    or
+                                    (
+                                      (sum(rate(cs_lapi_bouncer_requests_total{route="/v1/decisions/stream"}[10m])) or vector(0))
+                                      == 0
+                                    )
+                                  )
+                                  and on() (up{job="traefik"} == 1)
+                                '';
+                                "for" = "15m";
+                                labels.severity = "critical";
+                                annotations = {
+                                  summary = "WAN ingress is up and CrowdSec is not protecting it";
+                                  description = "Traefik is serving — which means the `wan` entryPoint is bound and reachable from the internet — while either the CrowdSec agent is not answering scrapes or the firewall bouncer has stopped pulling decisions. Bans are not being enforced. Check `nixos-container run traefik -- systemctl status crowdsec crowdsec-firewall-bouncer`.";
+                                };
+                              }
+                            )
+                            ++ [
+                              # ── SN2's tripwire ───────────────────────────────
+                              #
+                              # SN2 decided the fleet is IPv4-only.  M18 enforces
+                              # that inside the Traefik netns with
+                              # `disable_ipv6 = 1`; this fires if the assumption
+                              # underneath the decision stops being true anywhere.
+                              #
+                              # ERNST ONLY, via `exporters.ipv6Guard` in clan.nix.
+                              # The tempting generalisation is that a delegated
+                              # prefix arrives on the LINE and therefore reaches
+                              # every machine at once, so every machine should watch
+                              # for it.  That is wrong for the four laptops: they
+                              # roam, and a café or a phone hotspot hands out a real
+                              # IPv6 GUA as a matter of course.  On those machines
+                              # this would fire constantly and correctly, and be
+                              # ignored within a week — which would also teach
+                              # everyone to ignore it on ernst.
+                              #
+                              # ernst never leaves VLAN 90, so on ernst a global
+                              # address means the LINE changed.  That is the event.
+                              #
+                              # `> 0` and not `>= 1` for readability only; the
+                              # metric is a count and the expected value is 0.
+                              # `absent()` is folded in because a collector that
+                              # stopped writing the file would otherwise leave this
+                              # silently unable to fire — the same failure mode the
+                              # ExposedAndUnprotected note above is about.
+                              #
+                              # 15m: a prefix that shows up and vanishes inside one
+                              # DHCPv6 lease is still worth knowing about, but not
+                              # worth paging for at 03:00 during an ISP flap.
+                              {
+                                alert = "UnexpectedIPv6GlobalAddress";
+                                expr = ''
+                                  (clanarchy_ipv6_global_addresses > 0)
+                                  or
+                                  (absent(clanarchy_ipv6_global_addresses) == 1)
+                                '';
+                                "for" = "15m";
+                                labels.severity = "critical";
+                                annotations = {
+                                  summary = "IPv6 global address on {{ $labels.instance }} — SN2 assumed none exist";
+                                  description = "An IPv6 global-scope address (non-ULA) appeared, or the collector stopped reporting. SN2's IPv4-only decision rests on there being none. On ernst this is urgent: Traefik's entryPoints are wildcard listens, so a global address makes every router reachable on a path that bypasses the UDM-Pro DNAT and therefore the `wan` entryPoint, and the firewall bouncer has no ip6 table so those routers would also be unbannable. Check `ip -6 addr show scope global` and `journalctl -u clanarchy-ipv6-guard`.";
+                                };
+                              }
+
+                              # ── M31 deliverability ───────────────────────────
+                              #
+                              # Three rules and not one, because they are three
+                              # different jobs for the person woken by them: fix
+                              # the PTR, request a delisting, or fix the check.
+                              # Collapsing them would produce an alert whose
+                              # runbook starts "first work out which of these it
+                              # is", which is the alert doing none of its work.
+                              {
+                                alert = "MailReverseDnsBroken";
+                                expr = ''
+                                  (clanarchy_mail_fcrdns_ok == 0)
+                                  or
+                                  (absent(clanarchy_mail_fcrdns_ok) == 1)
+                                '';
+                                "for" = "6h";
+                                labels.severity = "critical";
+                                annotations = {
+                                  summary = "Mail reverse DNS no longer forward-confirmed";
+                                  description = "The PTR for the public address and its forward A record no longer agree, or the collector stopped reporting. This is the single fact M31's outbound mail rests on: Vodafone set the PTR to mail.goclan.org on request, and if a tariff change or renumbering takes it away, Outlook rejects outright and Gmail/GMX junk — silently, with nothing wrong on this host. Check `dig -x` and `dig A` by hand (docs/guides/mail.md, Phase 0), then either get the PTR restored or enable the smarthost escape hatch. 6h because DNS propagation and a brief resolver wobble are not worth paging for.";
+                                };
+                              }
+
+                              {
+                                alert = "MailIpBlocklisted";
+                                expr = ''clanarchy_mail_dnsbl_listed == 1'';
+                                "for" = "6h";
+                                labels.severity = "warning";
+                                annotations = {
+                                  summary = "Mail IP listed on {{ $labels.list }}";
+                                  description = "The public address is listed on {{ $labels.list }}. It was delisted from Barracuda by hand on 2026-10-06; a residential address can be re-listed because of something a neighbour's infected machine does, and the symptom is mail quietly not arriving. Most lists have a free self-service removal form — docs/guides/mail.md, Phase 0, carries the links. Warning and not critical: one list is a degradation, and the FCrDNS alert covers the case where delivery stops outright.";
+                                };
+                              }
+
+                              {
+                                alert = "MailDnsblCheckUnusable";
+                                expr = ''clanarchy_mail_dnsbl_usable == 0'';
+                                "for" = "24h";
+                                labels.severity = "warning";
+                                annotations = {
+                                  summary = "Blocklist check for {{ $labels.list }} is not answering its own test points";
+                                  description = "{{ $labels.list }} failed the positive control — 127.0.0.2 should answer listed and 127.0.0.1 clean — so its verdict for our address is not trustworthy and no `listed` series is being emitted for it. The usual cause is the query being refused rather than the list being down: Spamhaus answers 127.255.255.254 to anything arriving via a large public resolver, which is why these queries go through the mail container's kresd. Check that container@mail is up and that `nixos-container run mail -- dig +short 2.0.0.127.zen.spamhaus.org` returns 127.0.0.x. SN3: this alert exists so a refused query cannot masquerade as a clean one.";
+                                };
+                              }
+
+                              # ── host down ────────────────────────────────────
+                              #
+                              # always_on only.  A laptop with the lid shut is not
+                              # an incident; see the alwaysOn option's description.
+                              # 10m so a reboot or a `clan machines update` does not
+                              # page anyone.
+                              {
+                                alert = "InstanceDown";
+                                expr = ''up{always_on="true"} == 0'';
+                                "for" = "10m";
+                                labels.severity = "critical";
+                                annotations = {
+                                  summary = "{{ $labels.instance }} is not answering scrapes";
+                                  description = "job {{ $labels.job }} on {{ $labels.instance }} has been down for 10 minutes.";
+                                };
+                              }
+
+                              # ── SMART failure predicted ──────────────────────
+                              #
+                              # smartctl_device_smart_status is the drive's own
+                              # self-assessment: 1 = passed, 0 = FAILING.  A drive
+                              # that says this about itself is a drive to replace,
+                              # not one to investigate.
+                              {
+                                alert = "SmartFailurePredicted";
+                                expr = "smartctl_device_smart_status == 0";
+                                "for" = "15m";
+                                labels.severity = "critical";
+                                annotations = {
+                                  summary = "SMART self-assessment FAILED on {{ $labels.instance }}";
+                                  description = "device {{ $labels.device }} ({{ $labels.model_name }}) reports its own health check as failing. Replace it.";
+                                };
+                              }
+
+                              # ── filesystem filling up ────────────────────────
+                              #
+                              # The pseudo-filesystem exclusion list is the whole
+                              # difficulty here: without it this fires permanently
+                              # on /nix/store (a read-only bind at 100%), on every
+                              # tmpfs, and on the impermanence overlays.
+                              #
+                              # 1h, because filling a filesystem is a slope and not
+                              # an event — and because an *arr import can push a
+                              # dataset past a threshold for minutes and then hard-
+                              # link the file away again.
+                              {
+                                alert = "FilesystemFillingUp";
+                                expr = ''
+                                  100 - (
+                                    node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|nsfs|devtmpfs|efivarfs"}
+                                    / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|nsfs|devtmpfs|efivarfs"}
+                                    * 100
+                                  ) > 85
+                                '';
+                                "for" = "1h";
+                                labels.severity = "warning";
+                                annotations = {
+                                  summary = "{{ $labels.mountpoint }} on {{ $labels.instance }} is over 85% full";
+                                  description = "{{ $labels.mountpoint }} ({{ $labels.fstype }}) has been above 85% for an hour.";
+                                };
+                              }
+
+                              # ── any failed systemd unit ──────────────────────
+                              #
+                              # Only fires where the systemd collector is enabled,
+                              # which today is ernst alone.  That is where it earns
+                              # its keep: clanarchy-impermanence-check, the
+                              # container units, the secret-staging oneshots and the
+                              # zdata import all fail loudly and then sit there
+                              # failed with nobody looking.
+                              {
+                                alert = "SystemdUnitFailed";
+                                expr = ''node_systemd_unit_state{state="failed"} == 1'';
+                                "for" = "15m";
+                                labels.severity = "warning";
+                                annotations = {
+                                  summary = "{{ $labels.name }} has failed on {{ $labels.instance }}";
+                                  description = "systemd unit {{ $labels.name }} has been in the failed state for 15 minutes.";
+                                };
+                              }
+
+                              # ── any failed unit INSIDE an nspawn container ───
+                              #
+                              # SystemdUnitFailed above cannot see these. It is fed
+                              # by node_exporter's systemd collector, which reads
+                              # the HOST's systemd; every container runs its own
+                              # init with its own unit namespace.
+                              #
+                              # The gap was not hypothetical. soularr.service in
+                              # ernst's `arr` container failed 1412 times across
+                              # nine days, never once completing a pass, and
+                              # nothing alerted — a failed oneshot on a timer is
+                              # invisible unless something is watching for exactly
+                              # this.
+                              {
+                                alert = "ContainerSystemdUnitFailed";
+                                expr = ''clanarchy_container_systemd_unit_failed == 1'';
+                                "for" = "15m";
+                                labels.severity = "warning";
+                                annotations = {
+                                  summary = "{{ $labels.name }} has failed in container {{ $labels.container }} on {{ $labels.instance }}";
+                                  description = "systemd unit {{ $labels.name }} inside nspawn container {{ $labels.container }} has been in the failed state for 15 minutes. Inspect with: systemctl -M {{ $labels.container }} status {{ $labels.name }}";
+                                };
+                              }
+
+                              # ── a process is crash-looping ───────────────────
+                              #
+                              # A crashing PROCESS is not a failed UNIT, so neither
+                              # SystemdUnitFailed nor its container sibling can see
+                              # this at all.
+                              #
+                              # Threshold 3, chosen against the four crash loops
+                              # this machine has actually had rather than picked
+                              # round: DrKonqi 180363, tvheadend 237, the two arr
+                              # downloaders 71 — and Kodi FOUR, in six minutes, in
+                              # the couch session. Kodi is the one that sets the
+                              # bar: at 5 it would not have alerted, and Kodi is
+                              # the case where nothing else would ever have told
+                              # anyone, because the role's relaunch loop restarts
+                              # it and no unit changes state.
+                              #
+                              # A one-off segfault stays quiet, which is the point.
+                              {
+                                alert = "ProcessCrashLooping";
+                                expr = ''clanarchy_coredumps_recent >= 3'';
+                                "for" = "5m";
+                                labels.severity = "warning";
+                                annotations = {
+                                  summary = "{{ $labels.exe }} has dumped core {{ $value }} times in an hour on {{ $labels.instance }}";
+                                  description = "{{ $labels.exe }} is crash-looping with {{ $labels.signal }}. Inspect with: coredumpctl list {{ $labels.exe }}";
+                                };
+                              }
+
+                              # ── the container collector itself is broken ─────
+                              #
+                              # Its whole value is answering "is anything failing in
+                              # there", so a collector that silently answers "no"
+                              # because it could not reach machined is worse than
+                              # not having it. It publishes its own success and this
+                              # is what reads it — the same interlock argument as
+                              # ZedNotRunning immediately below.
+                              {
+                                alert = "ContainerUnitCollectorFailing";
+                                expr = ''clanarchy_container_units_collector_success == 0'';
+                                "for" = "15m";
+                                labels.severity = "warning";
+                                annotations = {
+                                  summary = "Container unit collector could not query every container on {{ $labels.instance }}";
+                                  description = "At least one nspawn container did not answer systemctl -M for 15 minutes, so ContainerSystemdUnitFailed is blind to it. Check `machinectl list` and journalctl -u clanarchy-container-units.";
+                                };
+                              }
+
+                              # ── THE INTERLOCK: ZED is not running ────────────
+                              #
+                              # This is the rule that makes "keep both alerting
+                              # systems" a design rather than an omission.  ZED is
+                              # the only thing that reports a pool going degraded,
+                              # and the only thing it cannot report is its own
+                              # death.  A unit that is stopped rather than failed
+                              # does not trip SystemdUnitFailed above, so this asks
+                              # the opposite question.
+                              {
+                                alert = "ZedNotRunning";
+                                expr = ''node_systemd_unit_state{name="zfs-zed.service",state="active"} == 0'';
+                                "for" = "15m";
+                                labels.severity = "critical";
+                                annotations = {
+                                  summary = "ZFS event daemon is not running on {{ $labels.instance }}";
+                                  description = "zfs-zed is the ONLY path that alerts on a pool going degraded (modules/observability/zfs-ntfy.nix). While it is down, pool state changes are unmonitored.";
+                                };
+                              }
+
+                              # ── TLS certificate expiring ─────────────────────
+                              #
+                              # traefik_tls_certs_not_after is a unix timestamp, so
+                              # the expression is "days remaining".  M5's wildcard
+                              # renews at 30 days left; 14 means two renewal
+                              # attempts have already failed silently, which is
+                              # exactly the failure that file's header says has no
+                              # monitoring "until M6".
+                              {
+                                alert = "CertificateExpiringSoon";
+                                expr = "(traefik_tls_certs_not_after - time()) / 86400 < 14";
+                                "for" = "1h";
+                                labels.severity = "critical";
+                                annotations = {
+                                  summary = "TLS certificate expires in under 14 days";
+                                  description = "{{ $labels.cn }}{{ $labels.sans }} has {{ $value | printf \"%.0f\" }} days left. Renewal has already failed at least twice — check `journalctl -u traefik` in the traefik container.";
+                                };
+                              }
+                            ];
+                        }
+                      ];
+                    })
+                  ];
                 };
-              };
 
-              ################################################################
-              # alertmanager-ntfy — the bridge to the SAME topic the ZFS
-              # zedlet already publishes to.
-              #
-              # Alertmanager's own webhook receiver cannot do this on its own:
-              # it POSTs a fixed JSON envelope, and ntfy renders the request
-              # BODY as the message, so a direct webhook to the topic URL
-              # produces a phone notification containing raw Alertmanager JSON.
-              # ntfy's title/priority/tags live in HTTP HEADERS, which
-              # Alertmanager cannot template.  This bridge exists to do exactly
-              # that translation and nothing else.
-              #
-              # The topic is a PASSWORD on a public ntfy instance — anyone who
-              # knows it can both read and publish — so it never appears in the
-              # Nix store.  `settings` here carries only the shape; the two
-              # values that matter arrive through extraConfigFiles as a
-              # systemd credential, and the module merges the files in order
-              # with later ones winning.
-              ################################################################
-              services.prometheus.alertmanager-ntfy = {
-                enable = true;
-                settings = {
-                  http.addr = "127.0.0.1:${toString ports.ntfyBridge}";
-                  ntfy = {
-                    # Both overridden by the staged credential below.  The
-                    # placeholders are here because the options are required
-                    # and because a config that failed to merge should look
-                    # obviously wrong on the phone rather than subtly right.
-                    baseurl = "https://ntfy.invalid";
-                    notification = {
-                      topic    = "";
-                      priority = ''status == "firing" ? "high" : "default"'';
-                      # The module's own defaults, restated so the two
-                      # conditions are visible next to the priority they pair
-                      # with.  Nothing cleverer: the tag conditions are gval
-                      # expressions evaluated at notification time, and a
-                      # typo in one is a crash in the bridge rather than a
-                      # missing emoji — which would take the whole alerting
-                      # path down to make a notification prettier.
-                      tags = [
-                        { tag = "red_circle";   condition = ''status == "firing"''; }
-                        { tag = "green_circle"; condition = ''status == "resolved"''; }
+                ################################################################
+                # Alertmanager.
+                #
+                # ONE receiver, because there is one destination.  Everything is
+                # grouped by alertname and instance so a machine that comes back
+                # with four failed units produces one notification, not four.
+                #
+                # repeat_interval is 24h and not the 4h default: these are phone
+                # notifications for a household, and a still-degraded pool does
+                # not become more actionable by being announced six times a day.
+                ################################################################
+                services.prometheus.alertmanager = {
+                  enable = true;
+                  listenAddress = "127.0.0.1";
+                  port = ports.alertmanager;
+                  configuration = {
+                    route = {
+                      receiver = "ntfy";
+                      group_by = ["alertname" "instance"];
+                      group_wait = "30s";
+                      group_interval = "5m";
+                      repeat_interval = "24h";
+                    };
+                    receivers = [
+                      {
+                        name = "ntfy";
+                        webhook_configs = [
+                          {
+                            url = "http://127.0.0.1:${toString ports.ntfyBridge}/hook";
+                            send_resolved = true;
+                          }
+                        ];
+                      }
+                    ];
+                  };
+                };
+
+                ################################################################
+                # alertmanager-ntfy — the bridge to the SAME topic the ZFS
+                # zedlet already publishes to.
+                #
+                # Alertmanager's own webhook receiver cannot do this on its own:
+                # it POSTs a fixed JSON envelope, and ntfy renders the request
+                # BODY as the message, so a direct webhook to the topic URL
+                # produces a phone notification containing raw Alertmanager JSON.
+                # ntfy's title/priority/tags live in HTTP HEADERS, which
+                # Alertmanager cannot template.  This bridge exists to do exactly
+                # that translation and nothing else.
+                #
+                # The topic is a PASSWORD on a public ntfy instance — anyone who
+                # knows it can both read and publish — so it never appears in the
+                # Nix store.  `settings` here carries only the shape; the two
+                # values that matter arrive through extraConfigFiles as a
+                # systemd credential, and the module merges the files in order
+                # with later ones winning.
+                ################################################################
+                services.prometheus.alertmanager-ntfy = {
+                  enable = true;
+                  settings = {
+                    http.addr = "127.0.0.1:${toString ports.ntfyBridge}";
+                    ntfy = {
+                      # Both overridden by the staged credential below.  The
+                      # placeholders are here because the options are required
+                      # and because a config that failed to merge should look
+                      # obviously wrong on the phone rather than subtly right.
+                      baseurl = "https://ntfy.invalid";
+                      notification = {
+                        topic = "";
+                        priority = ''status == "firing" ? "high" : "default"'';
+                        # The module's own defaults, restated so the two
+                        # conditions are visible next to the priority they pair
+                        # with.  Nothing cleverer: the tag conditions are gval
+                        # expressions evaluated at notification time, and a
+                        # typo in one is a crash in the bridge rather than a
+                        # missing emoji — which would take the whole alerting
+                        # path down to make a notification prettier.
+                        tags = [
+                          {
+                            tag = "red_circle";
+                            condition = ''status == "firing"'';
+                          }
+                          {
+                            tag = "green_circle";
+                            condition = ''status == "resolved"'';
+                          }
+                        ];
+                      };
+                    };
+                  };
+                  extraConfigFiles = [ntfyConfFile];
+                };
+
+                ################################################################
+                # Grafana.
+                #
+                # Behind Traefik, and since M7 behind Authelia forward-auth —
+                # ledger row L5's ipAllowList is gone, not stacked underneath.
+                # Its own login stays either way; see the break-glass block
+                # below and the vars generator above.
+                ################################################################
+                services.grafana = {
+                  enable = true;
+
+                  settings = {
+                    server = {
+                      http_addr = "0.0.0.0";
+                      http_port = ports.grafana;
+                      # domain / root_url are what make Grafana emit correct
+                      # absolute URLs behind a proxy.  Without them every
+                      # redirect and every OAuth callback points at
+                      # http://10.0.90.14:3000/, which nothing on a client VLAN
+                      # can reach — the classic reverse-proxy failure where the
+                      # login page loads and the login itself does not.
+                      domain = "grafana.${settings.domain}";
+                      root_url = "https://grafana.${settings.domain}/";
+                      enforce_domain = false;
+                    };
+
+                    security = {
+                      admin_user = "admin";
+                      admin_password = "$__file{${grafanaPwFile}}";
+                      # Encrypts stored datasource credentials and API tokens.
+                      # See the generator: created once, never rotated.
+                      secret_key = "$__file{${grafanaKeyFile}}";
+                      # Nothing renders this in a frame, and saying so removes a
+                      # clickjacking surface for free.
+                      disable_gravatar = true;
+                      cookie_secure = true;
+                    };
+
+                    # A household dashboard, not a SaaS.  Local sign-up off,
+                    # anonymous off.
+                    #
+                    # `users.allow_sign_up` governs the LOCAL form and stays
+                    # false; `auth.generic_oauth.allow_sign_up` below is a
+                    # different switch and has to be true, or an OIDC login
+                    # succeeds at the issuer and then fails at Grafana with
+                    # "signup is not allowed".  They look like the same setting
+                    # and are not.
+                    users.allow_sign_up = false;
+                    "auth.anonymous".enabled = false;
+
+                    ############################################################
+                    # M7 — BREAK-GLASS.  Read this before "tidying" it away.
+                    #
+                    # `disable_login_form` is NOT set, so the local admin form
+                    # stays.  That is deliberate and it is the entire reason the
+                    # monitoring-grafana generator still prompts for a password.
+                    #
+                    # The account that matters is the one that works when the
+                    # identity provider is broken — which is exactly when
+                    # somebody wants a dashboard.  After M7 the Grafana ROUTE is
+                    # behind Authelia forward-auth, so reaching that form when
+                    # Authelia is down means going around Traefik entirely:
+                    #
+                    #   ssh -N -L 3000:[${monContainerAddr}]:3000 root@ernst
+                    #   open http://localhost:3000, log in as `admin`
+                    #
+                    # The ip6tables rule that makes that work is in the firewall
+                    # block above; it is host-only and needs root on ernst.
+                    #
+                    # `signout_redirect_url` is deliberately NOT set either: a
+                    # Grafana logout should end the Grafana session and leave
+                    # the Authelia one alone, so that signing out of a dashboard
+                    # is not also signing out of the *arr.
+                    ############################################################
+                    "auth".disable_login_form = false;
+
+                    "auth.generic_oauth" = lib.mkIf oidc.enable {
+                      enabled = true;
+                      name = "Authelia";
+                      icon = "signin";
+
+                      # See the note on users.allow_sign_up above — this is the
+                      # OAuth-side switch and it must be on for a first login to
+                      # create the Grafana account.
+                      allow_sign_up = true;
+                      # NOT auto_login: it would send anyone hitting /login
+                      # straight to the issuer, including the person trying to
+                      # reach the break-glass form on localhost.
+                      auto_login = false;
+
+                      client_id = oidc.clientId;
+                      client_secret = "$__file{${grafanaOidcFile}}";
+
+                      # `groups` is not a standard OIDC scope; Authelia serves it
+                      # and it is what role_attribute_path reads below.  Without
+                      # it every OIDC user silently lands on Viewer.
+                      scopes = "openid profile email groups";
+
+                      auth_url = "${oidc.issuerUrl}/api/oidc/authorization";
+                      token_url = "${oidc.issuerUrl}/api/oidc/token";
+                      api_url = "${oidc.issuerUrl}/api/oidc/userinfo";
+
+                      # PKCE is REQUIRED by the client block on the issuer side,
+                      # so this is not optional hardening — without it the
+                      # authorization request is rejected before a password is
+                      # ever typed.
+                      use_pkce = true;
+
+                      login_attribute_path = "preferred_username";
+                      name_attribute_path = "name";
+                      groups_attribute_path = "groups";
+
+                      # JMESPath over the claims.  Membership of the admin group
+                      # is the only distinction drawn; everyone else who gets
+                      # this far is a Viewer.  `role_attribute_strict = false`
+                      # so a claim shape that does not match leaves the user on
+                      # the fallback rather than refusing the login outright —
+                      # a locked-out admin is worse here than a demoted one.
+                      role_attribute_path = "contains(groups[*], '${oidc.adminGroup}') && 'Admin' || 'Viewer'";
+                      role_attribute_strict = false;
+                    };
+
+                    analytics = {
+                      reporting_enabled = false;
+                      check_for_updates = false;
+                    };
+                  };
+
+                  ##############################################################
+                  # Provisioning — datasource and dashboard as code.
+                  #
+                  # `uid` is pinned on the datasource because the dashboard JSON
+                  # references it by uid.  Left to Grafana it would be random,
+                  # and the dashboard would provision successfully with every
+                  # panel reporting "datasource not found" — which looks like a
+                  # Prometheus problem and is not.
+                  ##############################################################
+                  provision = {
+                    enable = true;
+
+                    datasources.settings = {
+                      apiVersion = 1;
+                      datasources = [
+                        {
+                          name = "Prometheus";
+                          uid = "clanarchy-prometheus";
+                          type = "prometheus";
+                          access = "proxy";
+                          url = "http://127.0.0.1:${toString ports.prometheus}";
+                          isDefault = true;
+                        }
+                      ];
+                    };
+
+                    dashboards.settings = {
+                      apiVersion = 1;
+                      providers = [
+                        {
+                          name = "clanarchy";
+                          type = "file";
+                          # The dashboard is code; editing it in the UI and not
+                          # here would be lost on the next deploy, so say so
+                          # rather than letting someone find out.
+                          allowUiUpdates = false;
+                          options.path = dashboardDir;
+                        }
                       ];
                     };
                   };
                 };
-                extraConfigFiles = [ ntfyConfFile ];
+
+                ################################################################
+                # `curl` is the test plan's instrument — it is what proves each
+                # target is reachable from HERE and, run anywhere else, that the
+                # backends are not.  `dig` checks the container resolves through
+                # Technitium.  Nothing else is added.
+                ################################################################
+                environment.systemPackages = with pkgs; [curl dnsutils];
+                documentation.enable = false;
+                documentation.nixos.enable = false;
               };
-
-              ################################################################
-              # Grafana.
-              #
-              # Behind Traefik, and since M7 behind Authelia forward-auth —
-              # ledger row L5's ipAllowList is gone, not stacked underneath.
-              # Its own login stays either way; see the break-glass block
-              # below and the vars generator above.
-              ################################################################
-              services.grafana = {
-                enable = true;
-
-                settings = {
-                  server = {
-                    http_addr = "0.0.0.0";
-                    http_port = ports.grafana;
-                    # domain / root_url are what make Grafana emit correct
-                    # absolute URLs behind a proxy.  Without them every
-                    # redirect and every OAuth callback points at
-                    # http://10.0.90.14:3000/, which nothing on a client VLAN
-                    # can reach — the classic reverse-proxy failure where the
-                    # login page loads and the login itself does not.
-                    domain    = "grafana.${settings.domain}";
-                    root_url  = "https://grafana.${settings.domain}/";
-                    enforce_domain = false;
-                  };
-
-                  security = {
-                    admin_user     = "admin";
-                    admin_password = "$__file{${grafanaPwFile}}";
-                    # Encrypts stored datasource credentials and API tokens.
-                    # See the generator: created once, never rotated.
-                    secret_key     = "$__file{${grafanaKeyFile}}";
-                    # Nothing renders this in a frame, and saying so removes a
-                    # clickjacking surface for free.
-                    disable_gravatar = true;
-                    cookie_secure    = true;
-                  };
-
-                  # A household dashboard, not a SaaS.  Local sign-up off,
-                  # anonymous off.
-                  #
-                  # `users.allow_sign_up` governs the LOCAL form and stays
-                  # false; `auth.generic_oauth.allow_sign_up` below is a
-                  # different switch and has to be true, or an OIDC login
-                  # succeeds at the issuer and then fails at Grafana with
-                  # "signup is not allowed".  They look like the same setting
-                  # and are not.
-                  users.allow_sign_up = false;
-                  "auth.anonymous".enabled = false;
-
-                  ############################################################
-                  # M7 — BREAK-GLASS.  Read this before "tidying" it away.
-                  #
-                  # `disable_login_form` is NOT set, so the local admin form
-                  # stays.  That is deliberate and it is the entire reason the
-                  # monitoring-grafana generator still prompts for a password.
-                  #
-                  # The account that matters is the one that works when the
-                  # identity provider is broken — which is exactly when
-                  # somebody wants a dashboard.  After M7 the Grafana ROUTE is
-                  # behind Authelia forward-auth, so reaching that form when
-                  # Authelia is down means going around Traefik entirely:
-                  #
-                  #   ssh -N -L 3000:[${monContainerAddr}]:3000 root@ernst
-                  #   open http://localhost:3000, log in as `admin`
-                  #
-                  # The ip6tables rule that makes that work is in the firewall
-                  # block above; it is host-only and needs root on ernst.
-                  #
-                  # `signout_redirect_url` is deliberately NOT set either: a
-                  # Grafana logout should end the Grafana session and leave
-                  # the Authelia one alone, so that signing out of a dashboard
-                  # is not also signing out of the *arr.
-                  ############################################################
-                  "auth".disable_login_form = false;
-
-                  "auth.generic_oauth" = lib.mkIf oidc.enable {
-                    enabled = true;
-                    name    = "Authelia";
-                    icon    = "signin";
-
-                    # See the note on users.allow_sign_up above — this is the
-                    # OAuth-side switch and it must be on for a first login to
-                    # create the Grafana account.
-                    allow_sign_up = true;
-                    # NOT auto_login: it would send anyone hitting /login
-                    # straight to the issuer, including the person trying to
-                    # reach the break-glass form on localhost.
-                    auto_login    = false;
-
-                    client_id     = oidc.clientId;
-                    client_secret = "$__file{${grafanaOidcFile}}";
-
-                    # `groups` is not a standard OIDC scope; Authelia serves it
-                    # and it is what role_attribute_path reads below.  Without
-                    # it every OIDC user silently lands on Viewer.
-                    scopes = "openid profile email groups";
-
-                    auth_url  = "${oidc.issuerUrl}/api/oidc/authorization";
-                    token_url = "${oidc.issuerUrl}/api/oidc/token";
-                    api_url   = "${oidc.issuerUrl}/api/oidc/userinfo";
-
-                    # PKCE is REQUIRED by the client block on the issuer side,
-                    # so this is not optional hardening — without it the
-                    # authorization request is rejected before a password is
-                    # ever typed.
-                    use_pkce = true;
-
-                    login_attribute_path  = "preferred_username";
-                    name_attribute_path   = "name";
-                    groups_attribute_path = "groups";
-
-                    # JMESPath over the claims.  Membership of the admin group
-                    # is the only distinction drawn; everyone else who gets
-                    # this far is a Viewer.  `role_attribute_strict = false`
-                    # so a claim shape that does not match leaves the user on
-                    # the fallback rather than refusing the login outright —
-                    # a locked-out admin is worse here than a demoted one.
-                    role_attribute_path   = "contains(groups[*], '${oidc.adminGroup}') && 'Admin' || 'Viewer'";
-                    role_attribute_strict = false;
-                  };
-
-                  analytics = {
-                    reporting_enabled = false;
-                    check_for_updates = false;
-                  };
-                };
-
-                ##############################################################
-                # Provisioning — datasource and dashboard as code.
-                #
-                # `uid` is pinned on the datasource because the dashboard JSON
-                # references it by uid.  Left to Grafana it would be random,
-                # and the dashboard would provision successfully with every
-                # panel reporting "datasource not found" — which looks like a
-                # Prometheus problem and is not.
-                ##############################################################
-                provision = {
-                  enable = true;
-
-                  datasources.settings = {
-                    apiVersion = 1;
-                    datasources = [ {
-                      name      = "Prometheus";
-                      uid       = "clanarchy-prometheus";
-                      type      = "prometheus";
-                      access    = "proxy";
-                      url       = "http://127.0.0.1:${toString ports.prometheus}";
-                      isDefault = true;
-                    } ];
-                  };
-
-                  dashboards.settings = {
-                    apiVersion = 1;
-                    providers = [ {
-                      name    = "clanarchy";
-                      type    = "file";
-                      # The dashboard is code; editing it in the UI and not
-                      # here would be lost on the next deploy, so say so
-                      # rather than letting someone find out.
-                      allowUiUpdates = false;
-                      options.path   = dashboardDir;
-                    } ];
-                  };
-                };
-              };
-
-              ################################################################
-              # `curl` is the test plan's instrument — it is what proves each
-              # target is reachable from HERE and, run anywhere else, that the
-              # backends are not.  `dig` checks the container resolves through
-              # Technitium.  Nothing else is added.
-              ################################################################
-              environment.systemPackages = with pkgs; [ curl dnsutils ];
-              documentation.enable       = false;
-              documentation.nixos.enable = false;
             };
-          };
-        }
+          }
 
-        # The token's restart wiring, added ONLY when auth is on.
-        #
-        # `mkMerge` + `mkIf` on a WHOLE CONFIG BLOCK, and both halves of that
-        # are load-bearing:
-        #
-        #   - `mkIf` on the VALUE (`restartUnits = mkIf ntfyAuth [ … ]`) leaves
-        #     the attribute PATH defined, which materialises the
-        #     `zfs-ntfy-token` generator on machines that never enabled auth.
-        #     `clan vars check` then reports its token as missing. Measured
-        #     2026-08-24.
-        #   - `//  lib.optionalAttrs ntfyAuth { … }` fixes that and introduces
-        #     INFINITE RECURSION: it forces `config.clanarchy.zfs.ntfy.auth`
-        #     while the module's own attribute structure is still being
-        #     determined. Also measured, immediately after.
-        #
-        # `mkIf` defers the condition until after the structure is known,
-        # which is exactly the property needed here.
-        (lib.mkIf ntfyAuth {
-          clan.core.vars.generators.zfs-ntfy-token.files."token".restartUnits = [
-            "monitoring-secrets.service"
-            "container@monitoring.service"
-          ];
-        })
+          # The token's restart wiring, added ONLY when auth is on.
+          #
+          # `mkMerge` + `mkIf` on a WHOLE CONFIG BLOCK, and both halves of that
+          # are load-bearing:
+          #
+          #   - `mkIf` on the VALUE (`restartUnits = mkIf ntfyAuth [ … ]`) leaves
+          #     the attribute PATH defined, which materialises the
+          #     `zfs-ntfy-token` generator on machines that never enabled auth.
+          #     `clan vars check` then reports its token as missing. Measured
+          #     2026-08-24.
+          #   - `//  lib.optionalAttrs ntfyAuth { … }` fixes that and introduces
+          #     INFINITE RECURSION: it forces `config.clanarchy.zfs.ntfy.auth`
+          #     while the module's own attribute structure is still being
+          #     determined. Also measured, immediately after.
+          #
+          # `mkIf` defers the condition until after the structure is known,
+          # which is exactly the property needed here.
+          (lib.mkIf ntfyAuth {
+            clan.core.vars.generators.zfs-ntfy-token.files."token".restartUnits = [
+              "monitoring-secrets.service"
+              "container@monitoring.service"
+            ];
+          })
 
-        # M7's OIDC wiring, added ONLY when it is switched on.
-        #
-        # Same `mkIf`-on-a-CONFIG-BLOCK shape as the token above, and for the
-        # identical reason: `restartUnits = mkIf oidc.enable [ … ]` would leave
-        # the attribute PATH defined, materialising a generator this module
-        # does not own on every machine that holds the server role without an
-        # identity provider — and `clan vars check` would then report its
-        # secret as missing.  Guard the definition, not the value.
-        #
-        # The generator is named by settings, so this is where the two halves
-        # of the client secret are tied to the units that consume the plaintext
-        # one.  The hashed half's restartUnits are declared beside the issuer,
-        # in machines/ernst/containers/authelia.nix, because those units exist
-        # only there.
-        (lib.mkIf oidc.enable {
-          assertions = [
-            {
-              assertion = oidc.issuerUrl != "";
-              message = ''
-                @clanarchy/monitoring: authelia.oidc.enable is set but
-                authelia.oidc.issuerUrl is empty.  Grafana would be configured
-                with auth_url = "/api/oidc/authorization", which is a relative
-                URL Grafana accepts and then cannot redirect to.  Set it to the
-                issuer's base URL (e.g. "https://auth.goclan.org") in clan.nix.
-              '';
-            }
-          ];
+          # M7's OIDC wiring, added ONLY when it is switched on.
+          #
+          # Same `mkIf`-on-a-CONFIG-BLOCK shape as the token above, and for the
+          # identical reason: `restartUnits = mkIf oidc.enable [ … ]` would leave
+          # the attribute PATH defined, materialising a generator this module
+          # does not own on every machine that holds the server role without an
+          # identity provider — and `clan vars check` would then report its
+          # secret as missing.  Guard the definition, not the value.
+          #
+          # The generator is named by settings, so this is where the two halves
+          # of the client secret are tied to the units that consume the plaintext
+          # one.  The hashed half's restartUnits are declared beside the issuer,
+          # in machines/ernst/containers/authelia.nix, because those units exist
+          # only there.
+          (lib.mkIf oidc.enable {
+            assertions = [
+              {
+                assertion = oidc.issuerUrl != "";
+                message = ''
+                  @clanarchy/monitoring: authelia.oidc.enable is set but
+                  authelia.oidc.issuerUrl is empty.  Grafana would be configured
+                  with auth_url = "/api/oidc/authorization", which is a relative
+                  URL Grafana accepts and then cannot redirect to.  Set it to the
+                  issuer's base URL (e.g. "https://auth.goclan.org") in clan.nix.
+                '';
+              }
+            ];
 
-          clan.core.vars.generators.${oidc.secretGenerator}.files.${oidc.secretFile}.restartUnits = [
-            "monitoring-secrets.service"
-            "container@monitoring.service"
-          ];
-        })
+            clan.core.vars.generators.${oidc.secretGenerator}.files.${oidc.secretFile}.restartUnits = [
+              "monitoring-secrets.service"
+              "container@monitoring.service"
+            ];
+          })
         ];
     };
   };

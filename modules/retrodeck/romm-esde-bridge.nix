@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 #
 # Publish RomM's ES-DE export into the layout ES-DE actually reads.
 #
@@ -56,17 +61,17 @@ let
   # Most agree; three do not, and two RomM types have no ES-DE equivalent
   # (miximages_v2, bezels) and are deliberately left unlinked.
   mediaMap = {
-    covers       = "covers";
-    screenshots  = "screenshots";
-    backcovers   = "backcovers";
-    fanart       = "fanart";
-    marquees     = "marquees";
-    miximages    = "miximages";
+    covers = "covers";
+    screenshots = "screenshots";
+    backcovers = "backcovers";
+    fanart = "fanart";
+    marquees = "marquees";
+    miximages = "miximages";
     titlescreens = "titlescreens";
-    videos       = "videos";
-    manuals      = "manuals";
-    boxes        = "3dboxes";      # RomM "boxes" is ES-DE "3dboxes"
-    physical     = "physicalmedia";
+    videos = "videos";
+    manuals = "manuals";
+    boxes = "3dboxes"; # RomM "boxes" is ES-DE "3dboxes"
+    physical = "physicalmedia";
   };
 
   mapPairs = lib.concatStringsSep " " (
@@ -75,7 +80,7 @@ let
 
   bridge = pkgs.writeShellApplication {
     name = "romm-esde-bridge";
-    runtimeInputs = [ pkgs.coreutils pkgs.findutils ];
+    runtimeInputs = [pkgs.coreutils pkgs.findutils];
     text = ''
       roms=${lib.escapeShellArg cfg.romsDir}
       gamelists=${lib.escapeShellArg cfg.esdeDir}/gamelists
@@ -133,8 +138,7 @@ let
       echo "romm-esde-bridge: bridged=$bridged gamelists_refreshed=$refreshed excluded=$skipped"
     '';
   };
-in
-{
+in {
   options.clanarchy.retrodeck.rommBridge = {
     enable = lib.mkEnableOption "publishing RomM's ES-DE export into RetroDECK's ES-DE layout";
 
@@ -164,8 +168,8 @@ in
 
     excludeSystems = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ "atari2600" ];
-      example = [ "atari2600" "nes" ];
+      default = ["atari2600"];
+      example = ["atari2600" "nes"];
       description = ''
         Systems left entirely to ES-DE's own scraper.  A system scraped in
         ES-DE gets descriptions, videos, manuals, miximages and 3D boxes, which
@@ -193,8 +197,8 @@ in
       description = "Publish RomM's ES-DE export into RetroDECK's ES-DE layout";
       # The ROM tree is a btrfs subvolume outside the impermanence rollback, so
       # it is there as soon as local filesystems are.
-      after    = [ "local-fs.target" ];
-      wantedBy = [ "multi-user.target" ];
+      after = ["local-fs.target"];
+      wantedBy = ["multi-user.target"];
       serviceConfig = {
         Type = "oneshot";
         ExecStart = lib.getExe bridge;
@@ -202,14 +206,14 @@ in
         # by syncthing rather than by deck.
         PrivateNetwork = true;
         ProtectSystem = "strict";
-        ReadWritePaths = [ cfg.esdeDir ];
+        ReadWritePaths = [cfg.esdeDir];
         NoNewPrivileges = true;
       };
     };
 
     systemd.timers.romm-esde-bridge = {
       description = "Re-publish RomM's ES-DE export when it changes";
-      wantedBy = [ "timers.target" ];
+      wantedBy = ["timers.target"];
       timerConfig = {
         OnBootSec = "3min";
         OnUnitActiveSec = cfg.interval;

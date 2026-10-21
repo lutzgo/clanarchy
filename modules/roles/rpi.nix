@@ -1,5 +1,8 @@
-{ config, lib, ... }:
 {
+  config,
+  lib,
+  ...
+}: {
   options.clanarchy.roles.rpi = {
     enable = lib.mkEnableOption "Raspberry Pi role (headless, no desktop by default)";
   };

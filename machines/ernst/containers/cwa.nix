@@ -248,14 +248,17 @@
 #                                            toggle.  NOT re-derivable.
 #   /srv/media/library/calibre zdata/media   RW at /calibre-library
 #   /srv/media/ingest/cwa      zdata/media   RW at /cwa-book-ingest
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   ############################################################################
   # Identity.
   ############################################################################
-
-  netns     = "cwa";
-  vethHost  = "vb-cwa";
+  netns = "cwa";
+  vethHost = "vb-cwa";
 
   # ── `cw0`, NOT `eth0`.  THIS FILE SHIPPED WITH `eth0` AND IT DID NOT WORK ──
   #
@@ -285,9 +288,9 @@ let
   # container-init renames host0 to eth0 and each has its own mount namespace,
   # so there is no shared /run to collide in. The two tiers look alike here and
   # are not. A FIFTH podman service must not be `eth0`, `st0`, `rm0` or `cw0`.
-  vethNs    = "cw0";
-  mac       = "02:00:00:90:00:0d";   # reused from M16's cloudflared — see header
-  vlanId    = 90;
+  vethNs = "cw0";
+  mac = "02:00:00:90:00:0d"; # reused from M16's cloudflared — see header
+  vlanId = 90;
 
   # Continuing the 3000-range family.  Next free was 3031 before this round;
   # containers/arr/ took 3031 (komga) and 3032 (navidrome) in the same
@@ -314,9 +317,9 @@ let
   # is unchanged and still the reason.
   mediaGid = 3000;
 
-  stateDir   = "/srv/state/cwa";
+  stateDir = "/srv/state/cwa";
   libraryDir = "/srv/media/library/calibre";
-  ingestDir  = "/srv/media/ingest/cwa";
+  ingestDir = "/srv/media/ingest/cwa";
 
   ############################################################################
   # The image, pinned by DIGEST — never by tag.
@@ -351,10 +354,9 @@ let
   # longer a reason to be relaxed about a version bump.  See "THE LIBRARY IS NO
   # LONGER EMPTY" in the header.
   ############################################################################
-  cwaTag    = "v4.0.6";
+  cwaTag = "v4.0.6";
   cwaDigest = "sha256:c31a738b6d5ec6982c050063dd3f063b6943eb1051fc81144789f840d9093a8d";
-in
-{
+in {
   ##############################################################################
   # Podman is enabled by containers/tubesync.nix (M9), the tier's first
   # occupant, and is NOT re-enabled here — one owner, one place.
@@ -362,12 +364,11 @@ in
 
   users.users.cwa = {
     isSystemUser = true;
-    uid          = cwaUid;
-    group        = "cwa";
-    home         = stateDir;
+    uid = cwaUid;
+    group = "cwa";
+    home = stateDir;
   };
   users.groups.cwa.gid = cwaGid;
-
 
   ##############################################################################
   # The container.
@@ -379,7 +380,7 @@ in
   # oci-containers entry and the ordering between them.
   clanarchy.podmanContainers.cwa = {
     enable = true;
-    mac    = "02:00:00:90:00:0d";
+    mac = "02:00:00:90:00:0d";
     interface = "cw0";
 
     # NO `uidgid`: this image runs its entrypoint as root and drops to
@@ -390,20 +391,47 @@ in
     # path, and a subdirectory would produce a `Requires=` on a unit nothing
     # defines; `findmnt --target` walks up to the same filesystem anyway.
     extraGuardedMounts = [
-      { path = "/srv/media"; source = "zdata/media"; fstype = "zfs"; }
+      {
+        path = "/srv/media";
+        source = "zdata/media";
+        fstype = "zfs";
+      }
     ];
 
     stateDirs = [
-      { path = stateDir;            owner = cwaUid; group = cwaGid;   mode = "0750"; }
-      { path = "${stateDir}/config"; owner = cwaUid; group = cwaGid;   mode = "0750"; }
-      { path = libraryDir;          owner = cwaUid; group = cwaGid;   mode = "0750"; }
+      {
+        path = stateDir;
+        owner = cwaUid;
+        group = cwaGid;
+        mode = "0750";
+      }
+      {
+        path = "${stateDir}/config";
+        owner = cwaUid;
+        group = cwaGid;
+        mode = "0750";
+      }
+      {
+        path = libraryDir;
+        owner = cwaUid;
+        group = cwaGid;
+        mode = "0750";
+      }
       # 2770 and group `media`, so Bindery can drop ebooks in. Re-applied
       # after start by cwa-ingest-perms below — see its header for why.
-      { path = ingestDir;           owner = cwaUid; group = mediaGid; mode = "2770"; }
+      {
+        path = ingestDir;
+        owner = cwaUid;
+        group = mediaGid;
+        mode = "2770";
+      }
     ];
 
     allowFrom = [
-      { peer = traefikAddr; port = webPort; }
+      {
+        peer = traefikAddr;
+        port = webPort;
+      }
     ];
 
     # The health poll the ingest-perms unit below waits on. `podman-cwa` is
@@ -424,7 +452,7 @@ in
         "${libraryDir}:/calibre-library"
         "${ingestDir}:/cwa-book-ingest"
       ];
-      ports = [ ];
+      ports = [];
     };
   };
 
@@ -478,7 +506,7 @@ in
     # Runs whenever the container starts, including on every restart — not
     # just at boot.  `wantedBy` on the container unit rather than on
     # multi-user.target is what ties the two together.
-    wantedBy = [ "podman-cwa.service" ];
+    wantedBy = ["podman-cwa.service"];
 
     # ORDERED AFTER THE HEALTH POLL, not after `podman-cwa`. That unit is
     # "started" once the container is CREATED, which is before the image's s6
@@ -489,11 +517,11 @@ in
     # what it means. `requires` as well as `after`: if the container never
     # becomes healthy there is nothing to correct, and a chown against a
     # half-initialised tree is worse than not running.
-    after    = [ "cwa-healthy.service" ];
-    requires = [ "cwa-healthy.service" ];
+    after = ["cwa-healthy.service"];
+    requires = ["cwa-healthy.service"];
 
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
     };
 
@@ -510,7 +538,6 @@ in
       echo "re-applied 2770 ${toString cwaUid}:${toString mediaGid} on ${ingestDir}"
     '';
   };
-
 
   # ── SCHEDULING PRIORITY, MERGED ONTO THE GENERATED UNIT ─────────────────────
   #
@@ -532,7 +559,7 @@ in
   # Not CPUQuota: nobody is waiting on an import, so it should be free to use
   # an otherwise idle box at full speed.
   systemd.services.podman-cwa.serviceConfig = {
-    Nice      = 10;
+    Nice = 10;
     CPUWeight = 40;
   };
 }

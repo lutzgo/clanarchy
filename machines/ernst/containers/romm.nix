@@ -69,9 +69,12 @@
 #   The alternative — a podman network between them — would have put the
 #   database on an addressable interface and made its exposure a matter of
 #   getting rules right.  This way it is structural.
-{ config, pkgs, lib, ... }:
-
-let
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}: let
   # uid/gid 3029, reserved in machines/ernst/allocations.nix.
   #
   # LITERAL ON zdata, because this container is ROOTFUL AND UNMAPPED — the
@@ -94,7 +97,7 @@ let
   # Next free sequence in machines/ernst/allocations.nix
   # was 0e (0c went to M14's storyteller, 0d to M16's cloudflared), and the last
   # octet follows that table's 8 + <seq> convention: 10.0.90.22.
-  netns    = "romm";
+  netns = "romm";
   vethHost = "vb-romm";
 
   # `rm0` — NOT `eth0`, and NOT `st0` either.
@@ -110,9 +113,9 @@ let
   #
   # This is that instruction being followed.  A fourth service must not reuse
   # `rm0` either.
-  vethNs   = "rm0";
-  mac      = "02:00:00:90:00:0e";
-  vlanId   = 90;
+  vethNs = "rm0";
+  mac = "02:00:00:90:00:0e";
+  vlanId = 90;
 
   # ROMM_PORT's default.  Named rather than left implicit because the firewall
   # rule and traefik.nix both have to agree with it.
@@ -157,7 +160,7 @@ let
   # the DATASET is the library root, and "structure A" puts the games in a
   # `roms/` directory inside it beside `bios/`.
   libraryDir = "/srv/roms";
-  stateDir   = "/srv/state/romm";
+  stateDir = "/srv/state/romm";
   secretsDir = "/run/romm-secrets";
 
   # Images pinned by DIGEST, never by tag.
@@ -180,17 +183,16 @@ let
   # upstream's compose would work — and would keep working right up until it
   # silently didn't, which is exactly how containers/storyteller.nix found a
   # major-version beta in a household service.
-  rommTag     = "5.2.0";
-  rommDigest  = "sha256:3512f2ca455782f90247271bed23116e6bc675bc74e379be2c41696e607ab11e";
+  rommTag = "5.2.0";
+  rommDigest = "sha256:3512f2ca455782f90247271bed23116e6bc675bc74e379be2c41696e607ab11e";
 
   # MariaDB 11.4, the current LTS series.  Pinned to the `11.4` tag's digest
   # rather than to `lts`: the two resolve to DIFFERENT images (measured the
   # same day), and a floating alias that moves across major versions under a
   # database is the last place to accept that.
-  dbTag       = "11.4";
-  dbDigest    = "sha256:611a2fcc5fa7c6ceb8644c6f74b25ede004ff6c3a6b38c8f8c23d3bbf6c26430";
-in
-{
+  dbTag = "11.4";
+  dbDigest = "sha256:611a2fcc5fa7c6ceb8644c6f74b25ede004ff6c3a6b38c8f8c23d3bbf6c26430";
+in {
   ##############################################################################
   # Podman is already enabled by containers/tubesync.nix (M9), the tier's first
   # occupant.  It is NOT re-enabled here — one owner, one place, so that two
@@ -304,7 +306,7 @@ in
     #
     # `members` names a user without defining one, so it is inert when the
     # account does not exist and correct when it does.
-    members = [ "syncthing" ];
+    members = ["syncthing"];
   };
 
   # Syncthing replicates the library to birte, so it needs to read and write
@@ -322,7 +324,6 @@ in
   # The network namespace, its veth, and its firewall.
   ##############################################################################
 
-
   ##############################################################################
   # Secrets.
   ##############################################################################
@@ -335,7 +336,7 @@ in
   # Losing it logs everyone out; leaking it is worse.
   clan.core.vars.generators.romm-auth-secret = {
     files."secret-key".secret = true;
-    runtimeInputs = [ pkgs.coreutils pkgs.openssl ];
+    runtimeInputs = [pkgs.coreutils pkgs.openssl];
     script = ''
       openssl rand -hex 32 | tr -d '\n' > "$out/secret-key"
     '';
@@ -352,7 +353,7 @@ in
   # syntax rather than data.
   clan.core.vars.generators.romm-db-password = {
     files."password".secret = true;
-    runtimeInputs = [ pkgs.coreutils pkgs.openssl ];
+    runtimeInputs = [pkgs.coreutils pkgs.openssl];
     script = ''
       openssl rand -base64 32 | tr -d '\n=' > "$out/password"
     '';
@@ -387,12 +388,12 @@ in
   # comment there before changing either.
   clan.core.vars.generators.romm-metadata-keys = {
     files."steamgriddb-api-key".secret = true;
-    files."igdb-client-id".secret      = true;
-    files."igdb-client-secret".secret  = true;
+    files."igdb-client-id".secret = true;
+    files."igdb-client-secret".secret = true;
 
     prompts."steamgriddb-api-key" = {
       description = "SteamGridDB API key for RomM cover art (steamgriddb.com/profile/preferences/api) — blank to leave disabled";
-      type        = "hidden";
+      type = "hidden";
     };
     # IGDB is RomM's primary metadata source and the one that fills in names,
     # release dates and genres; SteamGridDB only supplies artwork.  Prompted
@@ -400,14 +401,14 @@ in
     # application already backs Questarr.
     prompts."igdb-client-id" = {
       description = "IGDB (Twitch) client ID for RomM metadata — blank to leave disabled";
-      type        = "hidden";
+      type = "hidden";
     };
     prompts."igdb-client-secret" = {
       description = "IGDB (Twitch) client secret for RomM metadata — blank to leave disabled";
-      type        = "hidden";
+      type = "hidden";
     };
 
-    runtimeInputs = [ pkgs.coreutils ];
+    runtimeInputs = [pkgs.coreutils];
     script = ''
       # `tr -d` strips the trailing newline the prompt adds: these end up in an
       # env file, where a newline would terminate the value early and leave the
@@ -445,17 +446,17 @@ in
   # Same empty-answer contract as the generator above: blank leaves the source
   # disabled and the deploy still succeeds.
   clan.core.vars.generators.romm-metadata-keys-extra = {
-    files."screenscraper-user".secret        = true;
-    files."screenscraper-password".secret    = true;
+    files."screenscraper-user".secret = true;
+    files."screenscraper-password".secret = true;
     files."retroachievements-api-key".secret = true;
 
     prompts."screenscraper-user" = {
       description = "ScreenScraper username (screenscraper.fr) — hash-based matching, best for hacks and multicarts IGDB misses; blank to leave disabled";
-      type        = "hidden";
+      type = "hidden";
     };
     prompts."screenscraper-password" = {
       description = "ScreenScraper password — blank to leave disabled";
-      type        = "hidden";
+      type = "hidden";
     };
     # NO MOBYGAMES PROMPT, DELIBERATELY.  MobyGames' API is a paid tier and
     # there is no key for this clan, so declaring the prompt only ever produces
@@ -466,10 +467,10 @@ in
     # a key to type into it, not before.
     prompts."retroachievements-api-key" = {
       description = "RetroAchievements API key (retroachievements.org/controlpanel.php) — blank to leave disabled";
-      type        = "hidden";
+      type = "hidden";
     };
 
-    runtimeInputs = [ pkgs.coreutils ];
+    runtimeInputs = [pkgs.coreutils];
     script = ''
       # Same newline strip as romm-metadata-keys: these land in an env file.
       for f in screenscraper-user screenscraper-password retroachievements-api-key; do
@@ -480,7 +481,7 @@ in
 
   clan.core.vars.generators.romm-db-root-password = {
     files."password".secret = true;
-    runtimeInputs = [ pkgs.coreutils pkgs.openssl ];
+    runtimeInputs = [pkgs.coreutils pkgs.openssl];
     script = ''
       openssl rand -base64 32 | tr -d '\n=' > "$out/password"
     '';
@@ -504,85 +505,83 @@ in
   # different unit's journal.
   systemd.services.romm-secrets = {
     description = "Stage RomM's generated secrets as container env files";
-    requiredBy = [ "podman-romm.service" "podman-romm-db.service" ];
-    before     = [ "podman-romm.service" "podman-romm-db.service" ];
-    after      = [ "local-fs.target" ];
+    requiredBy = ["podman-romm.service" "podman-romm-db.service"];
+    before = ["podman-romm.service" "podman-romm-db.service"];
+    after = ["local-fs.target"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
     };
-    script =
-      let
-        authKey = config.clan.core.vars.generators.romm-auth-secret.files."secret-key".path;
-        dbPw    = config.clan.core.vars.generators.romm-db-password.files."password".path;
-        rootPw  = config.clan.core.vars.generators.romm-db-root-password.files."password".path;
-        meta    = config.clan.core.vars.generators.romm-metadata-keys.files;
-        sgdbKey = meta."steamgriddb-api-key".path;
-        igdbId  = meta."igdb-client-id".path;
-        igdbSec = meta."igdb-client-secret".path;
-        extra   = config.clan.core.vars.generators.romm-metadata-keys-extra.files;
-        ssUser  = extra."screenscraper-user".path;
-        ssPass  = extra."screenscraper-password".path;
-        raKey   = extra."retroachievements-api-key".path;
-      in
-      ''
-        set -eu
-        umask 077
-        ${pkgs.coreutils}/bin/install -d -m 0700 -o root -g root ${secretsDir}
+    script = let
+      authKey = config.clan.core.vars.generators.romm-auth-secret.files."secret-key".path;
+      dbPw = config.clan.core.vars.generators.romm-db-password.files."password".path;
+      rootPw = config.clan.core.vars.generators.romm-db-root-password.files."password".path;
+      meta = config.clan.core.vars.generators.romm-metadata-keys.files;
+      sgdbKey = meta."steamgriddb-api-key".path;
+      igdbId = meta."igdb-client-id".path;
+      igdbSec = meta."igdb-client-secret".path;
+      extra = config.clan.core.vars.generators.romm-metadata-keys-extra.files;
+      ssUser = extra."screenscraper-user".path;
+      ssPass = extra."screenscraper-password".path;
+      raKey = extra."retroachievements-api-key".path;
+    in ''
+      set -eu
+      umask 077
+      ${pkgs.coreutils}/bin/install -d -m 0700 -o root -g root ${secretsDir}
 
-        # ── Required secrets: a bare cat, so a genuine absence fails loudly ──
-        auth=$(${pkgs.coreutils}/bin/cat ${authKey})
-        dbpw=$(${pkgs.coreutils}/bin/cat ${dbPw})
-        rootpw=$(${pkgs.coreutils}/bin/cat ${rootPw})
+      # ── Required secrets: a bare cat, so a genuine absence fails loudly ──
+      auth=$(${pkgs.coreutils}/bin/cat ${authKey})
+      dbpw=$(${pkgs.coreutils}/bin/cat ${dbPw})
+      rootpw=$(${pkgs.coreutils}/bin/cat ${rootPw})
 
-        # ── Optional provider credentials ───────────────────────────────────
-        #
-        # BLANK IS A VALID ANSWER, AND IT HAS TO BE HANDLED HERE.  Both metadata
-        # generators tell the operator they may press enter to leave a source
-        # disabled.  That promise was false: clan does not store an empty answer
-        # to a prompt — it writes no secret file at all, and the var's `.path`
-        # then evaluates to the literal string `/no-such-path`.  Under `set -eu`
-        # a bare `cat` on that exits 1, this unit fails, and podman-romm.service
-        # and podman-romm-db.service never start because they order after it.
-        #
-        # That is exactly what happened on 2026-09-07: MobyGames is a paid tier,
-        # the prompt was answered blank as the comment invited, and RomM went
-        # down on the next deploy.  `ls vars/per-machine/ernst/…/mobygames-api-key`
-        # shows `machines users` where the answered ones show `machines secret
-        # users` — the missing `secret/` is the whole failure.
-        #
-        # An unset value is what RomM wants anyway: config/__init__.py reads each
-        # key with _get_env and every handler gates on bool(), so empty means
-        # "source disabled" rather than "misconfigured".
-        optional_secret() {
-          if [ -r "$1" ]; then ${pkgs.coreutils}/bin/cat "$1"; fi
-        }
+      # ── Optional provider credentials ───────────────────────────────────
+      #
+      # BLANK IS A VALID ANSWER, AND IT HAS TO BE HANDLED HERE.  Both metadata
+      # generators tell the operator they may press enter to leave a source
+      # disabled.  That promise was false: clan does not store an empty answer
+      # to a prompt — it writes no secret file at all, and the var's `.path`
+      # then evaluates to the literal string `/no-such-path`.  Under `set -eu`
+      # a bare `cat` on that exits 1, this unit fails, and podman-romm.service
+      # and podman-romm-db.service never start because they order after it.
+      #
+      # That is exactly what happened on 2026-09-07: MobyGames is a paid tier,
+      # the prompt was answered blank as the comment invited, and RomM went
+      # down on the next deploy.  `ls vars/per-machine/ernst/…/mobygames-api-key`
+      # shows `machines users` where the answered ones show `machines secret
+      # users` — the missing `secret/` is the whole failure.
+      #
+      # An unset value is what RomM wants anyway: config/__init__.py reads each
+      # key with _get_env and every handler gates on bool(), so empty means
+      # "source disabled" rather than "misconfigured".
+      optional_secret() {
+        if [ -r "$1" ]; then ${pkgs.coreutils}/bin/cat "$1"; fi
+      }
 
-        sgdb=$(optional_secret "${sgdbKey}")
-        igdbid=$(optional_secret "${igdbId}")
-        igdbsec=$(optional_secret "${igdbSec}")
-        ssuser=$(optional_secret "${ssUser}")
-        sspass=$(optional_secret "${ssPass}")
-        rakey=$(optional_secret "${raKey}")
+      sgdb=$(optional_secret "${sgdbKey}")
+      igdbid=$(optional_secret "${igdbId}")
+      igdbsec=$(optional_secret "${igdbSec}")
+      ssuser=$(optional_secret "${ssUser}")
+      sspass=$(optional_secret "${ssPass}")
+      rakey=$(optional_secret "${raKey}")
 
-        ${pkgs.coreutils}/bin/install -m 0400 -o root -g root /dev/null ${secretsDir}/romm.env
-        ${pkgs.coreutils}/bin/cat > ${secretsDir}/romm.env <<EOF
-        ROMM_AUTH_SECRET_KEY=$auth
-        DB_PASSWD=$dbpw
-        STEAMGRIDDB_API_KEY=$sgdb
-        IGDB_CLIENT_ID=$igdbid
-        IGDB_CLIENT_SECRET=$igdbsec
-        SCREENSCRAPER_USER=$ssuser
-        SCREENSCRAPER_PASSWORD=$sspass
-        RETROACHIEVEMENTS_API_KEY=$rakey
-        EOF
+      ${pkgs.coreutils}/bin/install -m 0400 -o root -g root /dev/null ${secretsDir}/romm.env
+      ${pkgs.coreutils}/bin/cat > ${secretsDir}/romm.env <<EOF
+      ROMM_AUTH_SECRET_KEY=$auth
+      DB_PASSWD=$dbpw
+      STEAMGRIDDB_API_KEY=$sgdb
+      IGDB_CLIENT_ID=$igdbid
+      IGDB_CLIENT_SECRET=$igdbsec
+      SCREENSCRAPER_USER=$ssuser
+      SCREENSCRAPER_PASSWORD=$sspass
+      RETROACHIEVEMENTS_API_KEY=$rakey
+      EOF
 
-        ${pkgs.coreutils}/bin/install -m 0400 -o root -g root /dev/null ${secretsDir}/romm-db.env
-        ${pkgs.coreutils}/bin/cat > ${secretsDir}/romm-db.env <<EOF
-        MARIADB_ROOT_PASSWORD=$rootpw
-        MARIADB_PASSWORD=$dbpw
-        EOF
-      '';
+      ${pkgs.coreutils}/bin/install -m 0400 -o root -g root /dev/null ${secretsDir}/romm-db.env
+      ${pkgs.coreutils}/bin/cat > ${secretsDir}/romm-db.env <<EOF
+      MARIADB_ROOT_PASSWORD=$rootpw
+      MARIADB_PASSWORD=$dbpw
+      EOF
+    '';
   };
 
   ##############################################################################
@@ -599,7 +598,7 @@ in
   # named env file out of KEY=value pairs, which is not that shape.
   clanarchy.podmanContainers.romm = {
     enable = true;
-    mac    = "02:00:00:90:00:0e";
+    mac = "02:00:00:90:00:0e";
     interface = "rm0";
 
     # Rootful and unmapped: these ids land on zdata, where a rootless subuid
@@ -610,22 +609,59 @@ in
     # The library is its own dataset; the guard names the MOUNT POINT, since
     # the dirs unit derives a mount unit from this path.
     extraGuardedMounts = [
-      { path = libraryDir; source = "zdata/roms"; fstype = "zfs"; }
+      {
+        path = libraryDir;
+        source = "zdata/roms";
+        fstype = "zfs";
+      }
     ];
 
     # 2770 root:romm on the library so a human can drop a ROM in; 0750 on the
     # state tree, which only RomM itself touches.
-    stateDirs = [
-      { path = libraryDir;          owner = "root";  group = rommGid; mode = "2770"; }
-      { path = "${libraryDir}/roms"; owner = "root"; group = rommGid; mode = "2770"; }
-      { path = "${libraryDir}/bios"; owner = "root"; group = rommGid; mode = "2770"; }
-      { path = stateDir;            owner = rommUid; group = rommGid; mode = "0750"; }
-    ] ++ map (d: { path = "${stateDir}/${d}"; owner = rommUid; group = rommGid; mode = "0750"; })
-      [ "resources" "assets" "config" "redis" "mysql" ];
+    stateDirs =
+      [
+        {
+          path = libraryDir;
+          owner = "root";
+          group = rommGid;
+          mode = "2770";
+        }
+        {
+          path = "${libraryDir}/roms";
+          owner = "root";
+          group = rommGid;
+          mode = "2770";
+        }
+        {
+          path = "${libraryDir}/bios";
+          owner = "root";
+          group = rommGid;
+          mode = "2770";
+        }
+        {
+          path = stateDir;
+          owner = rommUid;
+          group = rommGid;
+          mode = "0750";
+        }
+      ]
+      ++ map (d: {
+        path = "${stateDir}/${d}";
+        owner = rommUid;
+        group = rommGid;
+        mode = "0750";
+      })
+      ["resources" "assets" "config" "redis" "mysql"];
 
     allowFrom = [
-      { peer = traefikAddr;   port = webPort; }
-      { peer = dashboardAddr; port = webPort; }
+      {
+        peer = traefikAddr;
+        port = webPort;
+      }
+      {
+        peer = dashboardAddr;
+        port = webPort;
+      }
     ];
 
     images = {
@@ -636,15 +672,15 @@ in
       romm-db = {
         image = "docker.io/library/mariadb@${dbDigest}";
         environment = {
-          TZ                = "Europe/Berlin";
-          MARIADB_DATABASE  = "romm";
-          MARIADB_USER      = "romm-user";
+          TZ = "Europe/Berlin";
+          MARIADB_DATABASE = "romm";
+          MARIADB_USER = "romm-user";
         };
-        environmentFiles = [ "${secretsDir}/romm-db.env" ];
-        volumes = [ "${stateDir}/mysql:/var/lib/mysql" ];
-        ports = [ ];
-        extraOptions = [ "--health-cmd=healthcheck.sh --connect --innodb_initialized" ];
-        cmd = [ "--bind-address=127.0.0.1" ];
+        environmentFiles = ["${secretsDir}/romm-db.env"];
+        volumes = ["${stateDir}/mysql:/var/lib/mysql"];
+        ports = [];
+        extraOptions = ["--health-cmd=healthcheck.sh --connect --innodb_initialized"];
+        cmd = ["--bind-address=127.0.0.1"];
       };
 
       romm = {
@@ -658,7 +694,7 @@ in
           ROMM_PORT = toString webPort;
           HASHEOUS_API_ENABLED = "true";
         };
-        environmentFiles = [ "${secretsDir}/romm.env" ];
+        environmentFiles = ["${secretsDir}/romm.env"];
         volumes = [
           # The library, read-write: RomM accepts uploads through the web UI,
           # which is the intended way to add a game from a machine that is
@@ -672,10 +708,10 @@ in
           "${stateDir}/config:/romm/config"
           "${stateDir}/redis:/redis-data"
         ];
-        ports = [ ];
+        ports = [];
         # The database first; oci-containers turns this into Requires/After
         # on podman-romm-db.service.
-        dependsOn = [ "romm-db" ];
+        dependsOn = ["romm-db"];
       };
     };
   };
@@ -696,7 +732,7 @@ in
   # occasionally a human IS waiting on it (adding one game and wanting to see
   # it), whereas forced alignment is pure batch.
   systemd.services.podman-romm.serviceConfig = {
-    Nice      = 10;
+    Nice = 10;
     CPUWeight = 40;
   };
 }

@@ -20,12 +20,16 @@
 # `nixpkgs.pkgs = lib.mkForce <clan-pinned pkgs>` on every machine.
 # Two `mkForce` definitions collide on a unique option, so we need a
 # stronger priority than mkForce (50) — `mkOverride 25` wins the tie.
-{ config, lib, pkgs-unstable, ... }:
 {
+  config,
+  lib,
+  pkgs-unstable,
+  ...
+}: {
   options.clanarchy.channel = lib.mkOption {
-    type        = lib.types.enum [ "stable" "unstable" ];
-    default     = "stable";
-    example     = "unstable";
+    type = lib.types.enum ["stable" "unstable"];
+    default = "stable";
+    example = "unstable";
     description = ''
       Which nixpkgs channel this machine builds against.
       - `stable`   — clan-core's pinned nixpkgs (the flake default).

@@ -15,8 +15,13 @@
 # also matters because the persisted `.local/share` is an impermanence
 # bind-mount: a subvol mounted underneath that path would be shadowed by
 # the bind and silently disappear.
-{ config, lib, pkgs, utils, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  utils,
+  ...
+}: let
   # disko names partitions `disk-<disk>-<partition>`.  The disk name is
   # per-machine and deliberately not "main" (see modules/disko/btrfs.nix for
   # why), so derive it from the disko config rather than hardcoding — a
@@ -29,10 +34,9 @@ let
   # systemd's unit name for that device, e.g.
   # dev-disk-by\x2dpartlabel-disk\x2dbirte\x2dbtrfs.device
   rootPartUnit = "${utils.escapeSystemdPath rootPart}.device";
-in
-{
+in {
   config = lib.mkIf (config.clanarchy.rootfs == "btrfs") {
-    boot.supportedFilesystems = [ "btrfs" "exfat" "ntfs" "vfat" ];
+    boot.supportedFilesystems = ["btrfs" "exfat" "ntfs" "vfat"];
 
     # Roll @root and @home back to their blank snapshots on every boot
     # (stage 1).
@@ -49,7 +53,7 @@ in
     # works for either backend without special-casing.
     boot.initrd.systemd.services.rollback = lib.mkIf config.clanarchy.impermanence.rollback.enable {
       description = "Rollback btrfs @root and @home to blank";
-      wantedBy = [ "initrd.target" ];
+      wantedBy = ["initrd.target"];
       # The by-partlabel symlink is created by udev, and `DefaultDependencies
       # = no` strips the implicit ordering that would otherwise wait for it.
       # Without this the unit runs too early and dies with
@@ -62,9 +66,9 @@ in
       # rather than `wants` — with no device there is nothing sane to do, and
       # failing here is safe now that the script no longer deletes anything
       # before its replacement exists.
-      after = [ rootPartUnit ];
-      requires = [ rootPartUnit ];
-      before = [ "sysroot.mount" ];
+      after = [rootPartUnit];
+      requires = [rootPartUnit];
+      before = ["sysroot.mount"];
       unitConfig.DefaultDependencies = "no";
       serviceConfig.Type = "oneshot";
       script = ''
@@ -171,12 +175,12 @@ in
     # state the machine is not actually in.
     systemd.services.clanarchy-impermanence-check = lib.mkIf config.clanarchy.impermanence.rollback.enable {
       description = "Verify the btrfs rollback snapshots this machine depends on exist";
-      wantedBy = [ "multi-user.target" ];
+      wantedBy = ["multi-user.target"];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
       };
-      path = [ pkgs.btrfs-progs ];
+      path = [pkgs.btrfs-progs];
       script = ''
         # `-a` prefixes top-level paths with <FS_TREE>/; strip it so the
         # names compare equal to the @root-blank / @home-blank we create.

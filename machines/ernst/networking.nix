@@ -133,17 +133,18 @@
 # Cutover procedure: docs/runbooks/ernst-vlan-bridge-cutover.md.  The UDM-Pro
 # port changes happen BEFORE this config is deployed, and are verified with
 # ernst still untouched.
-{ config, lib, ... }:
-let
+{
+  config,
+  lib,
+  ...
+}: let
   # The MAC / address / veth / uid ledger. Four comment tables until this
   # change; see ./allocations.nix for why it is data now, and for the rules
   # the assertions below enforce.
   alloc = import ./allocations.nix;
 
-  macOf = vlan: seq:
-    "02:00:00:${vlan}:00:${lib.toLower (lib.fixedWidthString 2 "0" (lib.toHexString seq))}";
-in
-{
+  macOf = vlan: seq: "02:00:00:${vlan}:00:${lib.toLower (lib.fixedWidthString 2 "0" (lib.toHexString seq))}";
+in {
   ###########################################################################
   # Container veth names are a HOST-GLOBAL namespace — asserted, not trusted.
   #
@@ -168,227 +169,247 @@ in
   # a uid colliding with nixpkgs' ids.nix — where the build is green and the
   # running system is wrong.
   ###########################################################################
-  assertions =
-    let
-      # ── The registry's own internal consistency ───────────────────────────
-      dupesOf = xs:
-        lib.attrNames (lib.filterAttrs (_: v: lib.length v > 1)
-          (lib.groupBy (x: toString x) xs));
+  assertions = let
+    # ── The registry's own internal consistency ───────────────────────────
+    dupesOf = xs:
+      lib.attrNames (lib.filterAttrs (_: v: lib.length v > 1)
+        (lib.groupBy (x: toString x) xs));
 
-      seq90   = lib.mapAttrsToList (_: v: v.seq) alloc.vlan90;
-      seq20   = lib.mapAttrsToList (_: v: v.seq) alloc.vlan20;
-      allIps  = (lib.mapAttrsToList (_: v: v.ip) alloc.vlan90)
-                ++ (lib.mapAttrsToList (_: v: v.ip) alloc.vlan20);
-      allVeths = (lib.mapAttrsToList (_: v: v.veth) alloc.ula)
-                ++ (lib.mapAttrsToList (_: v: v.veth) alloc.vlan20);
-      # Uids among uids, gids among gids — NOT pooled together. A service
-      # conventionally takes the same number for both (prowlarr is 3004/3004),
-      # so a pooled check reports every such row as a duplicate. Measured:
-      # pooling flagged 20 rows, all of them correct.
-      uidList = lib.filter (x: x != null) (lib.mapAttrsToList (_: v: v.uid or null) alloc.ids);
-      gidList = lib.filter (x: x != null) (lib.mapAttrsToList (_: v: v.gid or null) alloc.ids);
-      numIds  = uidList ++ gidList;
+    seq90 = lib.mapAttrsToList (_: v: v.seq) alloc.vlan90;
+    seq20 = lib.mapAttrsToList (_: v: v.seq) alloc.vlan20;
+    allIps =
+      (lib.mapAttrsToList (_: v: v.ip) alloc.vlan90)
+      ++ (lib.mapAttrsToList (_: v: v.ip) alloc.vlan20);
+    allVeths =
+      (lib.mapAttrsToList (_: v: v.veth) alloc.ula)
+      ++ (lib.mapAttrsToList (_: v: v.veth) alloc.vlan20);
+    # Uids among uids, gids among gids — NOT pooled together. A service
+    # conventionally takes the same number for both (prowlarr is 3004/3004),
+    # so a pooled check reports every such row as a duplicate. Measured:
+    # pooling flagged 20 rows, all of them correct.
+    uidList = lib.filter (x: x != null) (lib.mapAttrsToList (_: v: v.uid or null) alloc.ids);
+    gidList = lib.filter (x: x != null) (lib.mapAttrsToList (_: v: v.gid or null) alloc.ids);
+    numIds = uidList ++ gidList;
 
-      # Next free, COMPUTED — the three disagreeing "NEXT FREE" sentences this
-      # replaces are why. Quoted in the failure messages so a collision tells
-      # you what to take.
-      nextSeq90 = 1 + lib.foldl' lib.max 0 seq90;
-      nextUid   = 1 + lib.foldl' lib.max 3000
-        (lib.filter (n: n >= 3000 && n < 4000) numIds);
+    # Next free, COMPUTED — the three disagreeing "NEXT FREE" sentences this
+    # replaces are why. Quoted in the failure messages so a collision tells
+    # you what to take.
+    nextSeq90 = 1 + lib.foldl' lib.max 0 seq90;
+    nextUid =
+      1
+      + lib.foldl' lib.max 3000
+      (lib.filter (n: n >= 3000 && n < 4000) numIds);
 
-      # 10.0.90.<8 + seq>. Not enforced by anything outside this file, and
-      # worth enforcing: it is the only thing that makes a mistyped
-      # reservation visible by inspection.
-      wrongOctet = lib.attrNames (lib.filterAttrs
-        (_: v: v.ip != "10.0.90.${toString (8 + v.seq)}") alloc.vlan90);
+    # 10.0.90.<8 + seq>. Not enforced by anything outside this file, and
+    # worth enforcing: it is the only thing that makes a mistyped
+    # reservation visible by inspection.
+    wrongOctet = lib.attrNames (lib.filterAttrs
+      (_: v: v.ip != "10.0.90.${toString (8 + v.seq)}")
+      alloc.vlan90);
 
-      # `vb-<name>` must fit IFNAMSIZ (15). Scoped to nspawn: the microvm's
-      # interface is named explicitly, so `wg-qbittorrent` at 14 is fine.
-      longNames = lib.attrNames (lib.filterAttrs
-        (n: v: v.kind == "nspawn" && lib.stringLength n > 12) alloc.vlan90);
+    # `vb-<name>` must fit IFNAMSIZ (15). Scoped to nspawn: the microvm's
+    # interface is named explicitly, so `wg-qbittorrent` at 14 is fine.
+    longNames = lib.attrNames (lib.filterAttrs
+      (n: v: v.kind == "nspawn" && lib.stringLength n > 12)
+      alloc.vlan90);
 
-      # ── The registry against the configuration ───────────────────────────
-      #
-      # NOTHING CHECKED THIS BEFORE. A container's address is a DHCP
-      # reservation on the UDM-Pro keyed on its MAC, so a mistyped
-      # `localMacAddress` does not fail — it quietly takes a pool lease
-      # instead of its reserved address, and every indicator on this host
-      # stays green.
-      # COVERS THE NSPAWN TIER ONLY, and that is a real limit rather than an
-      # oversight: the podman tier sets its MAC with `ip link set address`
-      # inside each `<svc>-netns` oneshot, and the microvm's is a QEMU
-      # argument. Neither is reachable from `config.containers`. Measured
-      # 2026-10-13: 16 containers declare one here, all 16 matching.
-      declaredMacs = lib.mapAttrs (_: c: c.localMacAddress or null)
-        (lib.filterAttrs (_: c: (c.localMacAddress or null) != null) config.containers);
+    # ── The registry against the configuration ───────────────────────────
+    #
+    # NOTHING CHECKED THIS BEFORE. A container's address is a DHCP
+    # reservation on the UDM-Pro keyed on its MAC, so a mistyped
+    # `localMacAddress` does not fail — it quietly takes a pool lease
+    # instead of its reserved address, and every indicator on this host
+    # stays green.
+    # COVERS THE NSPAWN TIER ONLY, and that is a real limit rather than an
+    # oversight: the podman tier sets its MAC with `ip link set address`
+    # inside each `<svc>-netns` oneshot, and the microvm's is a QEMU
+    # argument. Neither is reachable from `config.containers`. Measured
+    # 2026-10-13: 16 containers declare one here, all 16 matching.
+    declaredMacs =
+      lib.mapAttrs (_: c: c.localMacAddress or null)
+      (lib.filterAttrs (_: c: (c.localMacAddress or null) != null) config.containers);
 
-      macMismatches = lib.filter (m: m.want != m.got) (lib.mapAttrsToList
-        (name: got: {
-          inherit name got;
-          want = if alloc.vlan90 ? ${name} then macOf "90" alloc.vlan90.${name}.seq else "(no registry row)";
-        }) declaredMacs);
+    macMismatches = lib.filter (m: m.want != m.got) (lib.mapAttrsToList
+      (name: got: {
+        inherit name got;
+        want =
+          if alloc.vlan90 ? ${name}
+          then macOf "90" alloc.vlan90.${name}.seq
+          else "(no registry row)";
+      })
+      declaredMacs);
 
-      # ── The pre-existing veth checks (unchanged) ─────────────────────────
-      claims = lib.concatLists (lib.mapAttrsToList
-        (container: cfg: map (veth: { inherit container veth; })
-          (lib.attrNames (cfg.extraVeths or { })))
-        config.containers);
-      byName = lib.groupBy (c: c.veth) claims;
-      collisions = lib.filterAttrs (_: cs: lib.length cs > 1) byName;
+    # ── The pre-existing veth checks (unchanged) ─────────────────────────
+    claims = lib.concatLists (lib.mapAttrsToList
+      (container: cfg:
+        map (veth: {inherit container veth;})
+        (lib.attrNames (cfg.extraVeths or {})))
+      config.containers);
+    byName = lib.groupBy (c: c.veth) claims;
+    collisions = lib.filterAttrs (_: cs: lib.length cs > 1) byName;
 
-      # Every host end a container actually brings up.
-      vethHostAddrs = lib.concatLists (lib.mapAttrsToList
-        (_: cfg: lib.filter (a: a != null)
-          (lib.mapAttrsToList (_: v: v.hostAddress6 or null) (cfg.extraVeths or { })))
-        config.containers);
+    # Every host end a container actually brings up.
+    vethHostAddrs = lib.concatLists (lib.mapAttrsToList
+      (_: cfg:
+        lib.filter (a: a != null)
+        (lib.mapAttrsToList (_: v: v.hostAddress6 or null) (cfg.extraVeths or {})))
+      config.containers);
 
-      # Every loopback bridge this host declares, whatever generated it —
-      # `llama-bridge-*`, `mneme-bridge-*`, `wyoming-*-bridge-*`.  Matching on
-      # the naming convention rather than on a list means a fifth generator
-      # added later is covered without anyone remembering to add it here.
-      bridgeSockets = lib.filterAttrs
-        (n: _: lib.hasInfix "-bridge-" n)
-        config.systemd.sockets;
+    # Every loopback bridge this host declares, whatever generated it —
+    # `llama-bridge-*`, `mneme-bridge-*`, `wyoming-*-bridge-*`.  Matching on
+    # the naming convention rather than on a list means a fifth generator
+    # added later is covered without anyone remembering to add it here.
+    bridgeSockets =
+      lib.filterAttrs
+      (n: _: lib.hasInfix "-bridge-" n)
+      config.systemd.sockets;
 
-      # ListenStream is "[addr]:port"; take what is between the brackets.
-      # The brackets are matched with POSIX bracket expressions — `builtins.match`
-      # is ERE, where a backslash-escaped `[` is rejected outright rather than
-      # treated as a literal.
-      addrOf = sock:
-        let m = builtins.match "[[]([^]]+)[]]:[0-9]+" (sock.socketConfig.ListenStream or "");
-        in if m == null then null else lib.head m;
-
-      missingBridgeAddrs = lib.filter (b: b.addr != null && !(lib.elem b.addr vethHostAddrs))
-        (lib.mapAttrsToList (unit: sock: { inherit unit; addr = addrOf sock; }) bridgeSockets);
+    # ListenStream is "[addr]:port"; take what is between the brackets.
+    # The brackets are matched with POSIX bracket expressions — `builtins.match`
+    # is ERE, where a backslash-escaped `[` is rejected outright rather than
+    # treated as a literal.
+    addrOf = sock: let
+      m = builtins.match "[[]([^]]+)[]]:[0-9]+" (sock.socketConfig.ListenStream or "");
     in
-    [
-      {
-        assertion = collisions == { };
-        message = ''
-          ernst: two or more containers declare the same extraVeths name, and
-          only one of them can have it — the other silently gets no interface:
+      if m == null
+      then null
+      else lib.head m;
 
-          ${lib.concatStringsSep "\n" (lib.mapAttrsToList
-            (veth: cs: "  ${veth}: ${lib.concatMapStringsSep ", " (c: c.container) cs}")
-            collisions)}
+    missingBridgeAddrs =
+      lib.filter (b: b.addr != null && !(lib.elem b.addr vethHostAddrs))
+      (lib.mapAttrsToList (unit: sock: {
+          inherit unit;
+          addr = addrOf sock;
+        })
+        bridgeSockets);
+  in [
+    {
+      assertion = collisions == {};
+      message = ''
+        ernst: two or more containers declare the same extraVeths name, and
+        only one of them can have it — the other silently gets no interface:
 
-          The name is used for BOTH ends of the veth, so it must be unique
-          across every container on this machine.  The convention here is to
-          track the peer's ULA: fdca:fe91:: -> ai1, fdca:fe92:: -> ai2,
-          fdca:fe93:: -> ai3.  Monitoring's mon0 predates it and keeps its name.
+        ${lib.concatStringsSep "\n" (lib.mapAttrsToList
+          (veth: cs: "  ${veth}: ${lib.concatMapStringsSep ", " (c: c.container) cs}")
+          collisions)}
 
-          A leg on a VLAN has no ULA to track and is numbered in order instead:
-          iot0 (hass), iot1 (mass).  Two containers on the SAME VLAN still need
-          different names — the name is an interface, not a description.
-        '';
-      }
+        The name is used for BOTH ends of the veth, so it must be unique
+        across every container on this machine.  The convention here is to
+        track the peer's ULA: fdca:fe91:: -> ai1, fdca:fe92:: -> ai2,
+        fdca:fe93:: -> ai3.  Monitoring's mon0 predates it and keeps its name.
 
-      # ── AND THE OTHER HALF: A BRIDGE MUST LISTEN ON AN ADDRESS THAT EXISTS
-      #
-      # The uniqueness check above catches two containers fighting over one
-      # interface.  This one catches the simpler, equally silent mistake it
-      # sits next to: a bridge socket bound to a ULA that NO container's veth
-      # carries — a typo'd nibble in an `exposeOn` entry, or an entry kept
-      # after its consumer was removed.
-      #
-      # It is worth a separate assertion because the symptom is identical and
-      # equally uninformative.  systemd binds the socket anyway (FreeBind, and
-      # in fact even without it — measured), the unit reads active/running,
-      # `ss -ltn` shows it LISTENing, and the consumer times out with nothing
-      # logged anywhere, because the packet never reaches the proxy.
-      #
-      # `hostAddress6` is the authority rather than the host's own networkd:
-      # these legs are created by nixos-containers from that option, and no
-      # `.network` unit on this side declares them.
-      {
-        assertion = missingBridgeAddrs == [ ];
-        message = ''
-          ernst: these loopback bridges listen on addresses that no container
-          veth carries, so nothing can ever reach them:
+        A leg on a VLAN has no ULA to track and is numbered in order instead:
+        iot0 (hass), iot1 (mass).  Two containers on the SAME VLAN still need
+        different names — the name is an interface, not a description.
+      '';
+    }
 
-          ${lib.concatMapStringsSep "\n" (b: "  ${b.unit} -> ${b.addr}") missingBridgeAddrs}
+    # ── AND THE OTHER HALF: A BRIDGE MUST LISTEN ON AN ADDRESS THAT EXISTS
+    #
+    # The uniqueness check above catches two containers fighting over one
+    # interface.  This one catches the simpler, equally silent mistake it
+    # sits next to: a bridge socket bound to a ULA that NO container's veth
+    # carries — a typo'd nibble in an `exposeOn` entry, or an entry kept
+    # after its consumer was removed.
+    #
+    # It is worth a separate assertion because the symptom is identical and
+    # equally uninformative.  systemd binds the socket anyway (FreeBind, and
+    # in fact even without it — measured), the unit reads active/running,
+    # `ss -ltn` shows it LISTENing, and the consumer times out with nothing
+    # logged anywhere, because the packet never reaches the proxy.
+    #
+    # `hostAddress6` is the authority rather than the host's own networkd:
+    # these legs are created by nixos-containers from that option, and no
+    # `.network` unit on this side declares them.
+    {
+      assertion = missingBridgeAddrs == [];
+      message = ''
+        ernst: these loopback bridges listen on addresses that no container
+        veth carries, so nothing can ever reach them:
 
-          Every bridge address must equal some container's
-          `extraVeths.<name>.hostAddress6`.  Known ends:
-          ${lib.concatStringsSep ", " vethHostAddrs}
-        '';
-      }
+        ${lib.concatMapStringsSep "\n" (b: "  ${b.unit} -> ${b.addr}") missingBridgeAddrs}
 
-      # ── The allocation registry ──────────────────────────────────────────
-      {
-        assertion = dupesOf seq90 == [ ] && dupesOf seq20 == [ ];
-        message = ''
-          ernst/allocations.nix: two rows share a sequence number, so they
-          share a MAC. VLAN 90: ${lib.concatStringsSep ", " (dupesOf seq90)}
-          VLAN 20: ${lib.concatStringsSep ", " (dupesOf seq20)}
-          Next free on VLAN 90 is ${toString nextSeq90}.
-        '';
-      }
-      {
-        assertion = dupesOf allIps == [ ];
-        message = ''
-          ernst/allocations.nix: two rows claim the same address:
-          ${lib.concatStringsSep ", " (dupesOf allIps)}
-        '';
-      }
-      {
-        assertion = dupesOf allVeths == [ ];
-        message = ''
-          ernst/allocations.nix: two rows claim the same veth name:
-          ${lib.concatStringsSep ", " (dupesOf allVeths)}
+        Every bridge address must equal some container's
+        `extraVeths.<name>.hostAddress6`.  Known ends:
+        ${lib.concatStringsSep ", " vethHostAddrs}
+      '';
+    }
 
-          The name is used for BOTH ends of the pair, so it is a host-global
-          allocation. M19 and M27 both chose `ai0` and Open WebUI silently had
-          no second interface for five days.
-        '';
-      }
-      {
-        assertion = dupesOf uidList == [ ] && dupesOf gidList == [ ];
-        message = ''
-          ernst/allocations.nix: two rows claim the same id.
-          Duplicate uids: ${lib.concatStringsSep ", " (dupesOf uidList)}
-          Duplicate gids: ${lib.concatStringsSep ", " (dupesOf gidList)}
-          Next free in the 3000 block is ${toString nextUid}.
-        '';
-      }
-      {
-        assertion = wrongOctet == [ ];
-        message = ''
-          ernst/allocations.nix: these VLAN-90 rows break the 8 + seq rule,
-          so their address and their MAC disagree about which service they
-          are: ${lib.concatStringsSep ", " wrongOctet}
+    # ── The allocation registry ──────────────────────────────────────────
+    {
+      assertion = dupesOf seq90 == [] && dupesOf seq20 == [];
+      message = ''
+        ernst/allocations.nix: two rows share a sequence number, so they
+        share a MAC. VLAN 90: ${lib.concatStringsSep ", " (dupesOf seq90)}
+        VLAN 20: ${lib.concatStringsSep ", " (dupesOf seq20)}
+        Next free on VLAN 90 is ${toString nextSeq90}.
+      '';
+    }
+    {
+      assertion = dupesOf allIps == [];
+      message = ''
+        ernst/allocations.nix: two rows claim the same address:
+        ${lib.concatStringsSep ", " (dupesOf allIps)}
+      '';
+    }
+    {
+      assertion = dupesOf allVeths == [];
+      message = ''
+        ernst/allocations.nix: two rows claim the same veth name:
+        ${lib.concatStringsSep ", " (dupesOf allVeths)}
 
-          The rule does NOT apply on VLAN 20 — those addresses mirror the
-          host's VLAN-90 last octet as a mnemonic.
-        '';
-      }
-      {
-        assertion = longNames == [ ];
-        message = ''
-          ernst/allocations.nix: these nspawn container names are longer than
-          12 characters: ${lib.concatStringsSep ", " longNames}
+        The name is used for BOTH ends of the pair, so it is a host-global
+        allocation. M19 and M27 both chose `ai0` and Open WebUI silently had
+        no second interface for five days.
+      '';
+    }
+    {
+      assertion = dupesOf uidList == [] && dupesOf gidList == [];
+      message = ''
+        ernst/allocations.nix: two rows claim the same id.
+        Duplicate uids: ${lib.concatStringsSep ", " (dupesOf uidList)}
+        Duplicate gids: ${lib.concatStringsSep ", " (dupesOf gidList)}
+        Next free in the 3000 block is ${toString nextUid}.
+      '';
+    }
+    {
+      assertion = wrongOctet == [];
+      message = ''
+        ernst/allocations.nix: these VLAN-90 rows break the 8 + seq rule,
+        so their address and their MAC disagree about which service they
+        are: ${lib.concatStringsSep ", " wrongOctet}
 
-          nspawn derives the host veth as `vb-<name>` and 15 is IFNAMSIZ, so
-          this evaluates cleanly and fails at container START. It is why the
-          machines are `mail`, `mass` and `hass`.
-        '';
-      }
-      {
-        assertion = macMismatches == [ ];
-        message = ''
-          ernst: a container's MAC does not match its row in allocations.nix:
+        The rule does NOT apply on VLAN 20 — those addresses mirror the
+        host's VLAN-90 last octet as a mnemonic.
+      '';
+    }
+    {
+      assertion = longNames == [];
+      message = ''
+        ernst/allocations.nix: these nspawn container names are longer than
+        12 characters: ${lib.concatStringsSep ", " longNames}
 
-          ${lib.concatMapStringsSep "\n"
-              (m: "  ${m.name}: declares ${m.got}, registry says ${m.want}")
-              macMismatches}
+        nspawn derives the host veth as `vb-<name>` and 15 is IFNAMSIZ, so
+        this evaluates cleanly and fails at container START. It is why the
+        machines are `mail`, `mass` and `hass`.
+      '';
+    }
+    {
+      assertion = macMismatches == [];
+      message = ''
+        ernst: a container's MAC does not match its row in allocations.nix:
 
-          The address is a DHCP reservation on the UDM-Pro keyed on the MAC,
-          so a mismatch does not fail — the container quietly takes a pool
-          lease instead of its reserved address, and every indicator on this
-          host stays green. Either fix the MAC or add the registry row.
-        '';
-      }
-    ];
+        ${lib.concatMapStringsSep "\n"
+          (m: "  ${m.name}: declares ${m.got}, registry says ${m.want}")
+          macMismatches}
+
+        The address is a DHCP reservation on the UDM-Pro keyed on the MAC,
+        so a mismatch does not fail — the container quietly takes a pool
+        lease instead of its reserved address, and every indicator on this
+        host stays green. Either fix the MAC or add the registry row.
+      '';
+    }
+  ];
 
   ###########################################################################
   # The bridge device.
@@ -432,10 +453,10 @@ in
     };
     bridgeConfig = {
       VLANFiltering = true;
-      DefaultPVID   = "none";   # note 4 — fail-closed for unconfigured ports
+      DefaultPVID = "none"; # note 4 — fail-closed for unconfigured ports
       # Single uplink, so there is no loop to detect; STP would only emit
       # BPDUs at the UDM-Pro and delay every new port reaching forwarding.
-      STP           = false;
+      STP = false;
     };
   };
 
@@ -446,11 +467,11 @@ in
   systemd.network.networks."50-br0" = {
     matchConfig.Name = "br0";
     networkConfig = {
-      Address      = "10.0.50.10/24";
-      Gateway      = "10.0.50.1";
-      DNS          = "10.0.5.3";
-      Domains      = "~. skynet.lan";   # note 1 — do not drop, do not reorder
-      MulticastDNS = true;              # note 2
+      Address = "10.0.50.10/24";
+      Gateway = "10.0.50.1";
+      DNS = "10.0.5.3";
+      Domains = "~. skynet.lan"; # note 1 — do not drop, do not reorder
+      MulticastDNS = true; # note 2
       # Configure the address even before the trunk has carrier (atlantic
       # needs ~10 s).  Services binding 10.0.50.10 then do not race the link,
       # and on the KVM console "address present, no L2" is distinguishable
@@ -460,7 +481,13 @@ in
 
     # note 3 — applied to the bridge device itself (BRIDGE_FLAGS_SELF).
     # This single block is what makes the HOST work untagged on VLAN 50.
-    bridgeVLANs = [ { VLAN = 50; PVID = 50; EgressUntagged = 50; } ];
+    bridgeVLANs = [
+      {
+        VLAN = 50;
+        PVID = 50;
+        EgressUntagged = 50;
+      }
+    ];
 
     linkConfig.RequiredForOnline = "routable";
   };
@@ -471,21 +498,25 @@ in
   systemd.network.networks."50-enp13s0" = {
     matchConfig.Name = "enp13s0";
     networkConfig = {
-      Bridge              = "br0";
+      Bridge = "br0";
       # A bridge port carries no L3 of its own.
       LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
+      IPv6AcceptRA = false;
     };
 
     bridgeVLANs = [
       # Untagged / PVID — the Servers VLAN.  This is ernst's own traffic, and
       # the VLAN stage-1 initrd SSH depends on (see the initrdSsh block).
-      { VLAN = 50; PVID = 50; EgressUntagged = 50; }
+      {
+        VLAN = 50;
+        PVID = 50;
+        EgressUntagged = 50;
+      }
       # Tagged, for guests later milestones place on br0.
-      { VLAN = 1;  }   # LAN / "Family"
-      { VLAN = 5;  }   # DNS-Container (Technitium 10.0.5.3)
-      { VLAN = 20; }   # IoT
-      { VLAN = 90; }   # Services — M2b Jellyfin, M5 Traefik
+      {VLAN = 1;} # LAN / "Family"
+      {VLAN = 5;} # DNS-Container (Technitium 10.0.5.3)
+      {VLAN = 20;} # IoT
+      {VLAN = 90;} # Services — M2b Jellyfin, M5 Traefik
     ];
 
     # "enslaved", not "yes": a bridge port's terminal operational state IS
@@ -512,7 +543,7 @@ in
   ###########################################################################
   systemd.network.networks."99-ethernet-default-dhcp".matchConfig = {
     Type = "ether";
-    Kind = "!*";   # physical devices only — bridges/veths/taps have a Kind
+    Kind = "!*"; # physical devices only — bridges/veths/taps have a Kind
   };
 
   ###########################################################################
@@ -644,13 +675,13 @@ in
   # docs/guides/remote-unlock.md for the operator flow from miralda.
   ###########################################################################
   clanarchy.initrdSsh = {
-    enable        = true;
-    interface     = "enp13s0";
-    address       = "10.0.50.10/24";   # same as running-system; never up simultaneously
-    gateway       = "10.0.50.1";
-    kernelModules = [ "atlantic" "igc" ];
+    enable = true;
+    interface = "enp13s0";
+    address = "10.0.50.10/24"; # same as running-system; never up simultaneously
+    gateway = "10.0.50.1";
+    kernelModules = ["atlantic" "igc"];
     authorizedKeyFiles = [
-      ../miralda/yubikey_ed25519.pub   # mirrors modules/users/admin.nix
+      ../miralda/yubikey_ed25519.pub # mirrors modules/users/admin.nix
     ];
   };
 }

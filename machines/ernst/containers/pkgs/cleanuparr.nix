@@ -61,7 +61,6 @@
   openssl,
   icu,
 }:
-
 stdenv.mkDerivation (finalAttrs: {
   pname = "cleanuparr";
   version = "2.10.5";
@@ -99,13 +98,13 @@ stdenv.mkDerivation (finalAttrs: {
     makeWrapper $out/share/cleanuparr/Cleanuparr $out/bin/cleanuparr \
       --set ASPNETCORE_CONTENTROOT $out/share/cleanuparr \
       --prefix LD_LIBRARY_PATH : "${
-        lib.makeLibraryPath [
-          stdenv.cc.cc.lib
-          zlib
-          openssl
-          icu
-        ]
-      }"
+      lib.makeLibraryPath [
+        stdenv.cc.cc.lib
+        zlib
+        openssl
+        icu
+      ]
+    }"
 
     runHook postInstall
   '';
@@ -114,8 +113,8 @@ stdenv.mkDerivation (finalAttrs: {
     description = "Cleans stalled, blocked, orphaned and unlinked downloads out of the *arr stack";
     homepage = "https://github.com/Cleanuparr/Cleanuparr";
     license = lib.licenses.gpl3Only;
-    platforms = [ "x86_64-linux" ];
-    sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
+    platforms = ["x86_64-linux"];
+    sourceProvenance = with lib.sourceTypes; [binaryNativeCode];
     mainProgram = "cleanuparr";
   };
 })

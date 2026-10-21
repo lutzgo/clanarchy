@@ -58,7 +58,6 @@
   python3Packages,
   fetchFromGitHub,
 }:
-
 python3Packages.buildPythonPackage rec {
   pname = "slskd-api";
   version = "0.1.5";
@@ -93,9 +92,9 @@ python3Packages.buildPythonPackage rec {
       --replace-fail 'setup_requires = ["setuptools-git-versioning"],' 'version="${version}",'
   '';
 
-  build-system = [ python3Packages.setuptools ];
+  build-system = [python3Packages.setuptools];
 
-  dependencies = [ python3Packages.requests ];
+  dependencies = [python3Packages.requests];
 
   # The test suite drives a LIVE slskd instance — it needs a reachable server,
   # an API key and, for the transfer tests, a peer on the Soulseek network.
@@ -105,7 +104,7 @@ python3Packages.buildPythonPackage rec {
   # a pure-Python client can actually introduce.
   doCheck = false;
 
-  pythonImportsCheck = [ "slskd_api" ];
+  pythonImportsCheck = ["slskd_api"];
 
   meta = {
     description = "Python client for the slskd REST API";

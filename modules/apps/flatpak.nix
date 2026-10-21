@@ -1,5 +1,10 @@
-{ config, lib, pkgs, ... }:
-let cfg = config.clanarchy.apps.flatpak;
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
+  cfg = config.clanarchy.apps.flatpak;
 in {
   options.clanarchy.apps.flatpak.enable =
     lib.mkEnableOption "Flatpak sandbox with Flathub remote";
@@ -8,7 +13,7 @@ in {
     services.flatpak.enable = true;
 
     # Flatpak app state (installed apps, runtimes, remotes) must survive ZFS rollback.
-    environment.persistence."/persist".directories = [ "/var/lib/flatpak" ];
+    environment.persistence."/persist".directories = ["/var/lib/flatpak"];
 
     # XDG_DATA_DIRS must include flatpak export paths so launchers (Noctalia/Quickshell)
     # see installed apps' .desktop files. NixOS adds these via /etc/profile.d/flatpak.sh
@@ -21,9 +26,9 @@ in {
 
     systemd.services.flatpak-add-flathub = {
       description = "Add Flathub remote for Flatpak";
-      wantedBy    = [ "multi-user.target" ];
-      after       = [ "network-online.target" ];
-      wants       = [ "network-online.target" ];
+      wantedBy = ["multi-user.target"];
+      after = ["network-online.target"];
+      wants = ["network-online.target"];
       # network-online.target above is necessary but not sufficient: it fires
       # when a link is up, which on a wifi-only machine can still precede
       # working DNS. birte failed every boot with
@@ -33,13 +38,13 @@ in {
       # rather than tightening the ordering, since there is no target that
       # means "resolver answers".
       startLimitIntervalSec = 300;
-      startLimitBurst       = 5;
+      startLimitBurst = 5;
       serviceConfig = {
-        Type            = "oneshot";
+        Type = "oneshot";
         RemainAfterExit = true;
-        Restart         = "on-failure";
-        RestartSec      = 15;
-        ExecStart       = "${pkgs.flatpak}/bin/flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo";
+        Restart = "on-failure";
+        RestartSec = 15;
+        ExecStart = "${pkgs.flatpak}/bin/flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo";
       };
     };
   };

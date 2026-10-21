@@ -1,4 +1,4 @@
-{ ... }:
+{...}:
 #
 # @clanarchy/yubikey — assign YubiKey hardware support to machines via inventory.
 #
@@ -7,20 +7,16 @@
 #
 {
   _class = "clan.service";
-  manifest.name        = "@clanarchy/yubikey";
+  manifest.name = "@clanarchy/yubikey";
   manifest.description = "YubiKey support: pcscd, GnuPG agent, polkit PCSC rule.";
-  manifest.readme      = builtins.readFile ./yubikey.md;
+  manifest.readme = builtins.readFile ./yubikey.md;
 
   roles.default = {
     description = "Full YubiKey support stack for a machine.";
-    perInstance =
-      { ... }:
-      {
-        nixosModule =
-          { ... }:
-          {
-            imports = [ ../modules/hardware/yubikey.nix ];
-          };
+    perInstance = {...}: {
+      nixosModule = {...}: {
+        imports = [../modules/hardware/yubikey.nix];
       };
+    };
   };
 }

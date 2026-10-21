@@ -15,8 +15,12 @@
 # The app password is created in Nextcloud:
 #   Settings → Security → App passwords → Add new app password
 #
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.clanarchy.caldavSync;
 
   # ── org-to-ics Python script ───────────────────────────────────────────
@@ -156,15 +160,15 @@ let
             f.unlink()
   '';
 
-  pythonEnv = pkgs.python3.withPackages (ps: [ ps.orgparse ps.icalendar ]);
+  pythonEnv = pkgs.python3.withPackages (ps: [ps.orgparse ps.icalendar]);
 
   org-to-ics = pkgs.writeShellScriptBin "org-to-ics" ''
     exec ${pythonEnv}/bin/python3 ${orgToIcsSrc} "$@"
   '';
 
   # ── Derived paths ──────────────────────────────────────────────────────
-  vdirBase  = "/home/${cfg.username}/.local/share/vdirsyncer";
-  orgVdir   = "${vdirBase}/org";
+  vdirBase = "/home/${cfg.username}/.local/share/vdirsyncer";
+  orgVdir = "${vdirBase}/org";
   statusDir = "${vdirBase}/status";
   orgOutDir = "${orgVdir}/${cfg.calendarName}";
 
@@ -174,59 +178,59 @@ let
   # The file is written by `clan vars generate miralda` and encrypted with
   # the YubiKey age key; it lives outside the Nix store.
   passwordPath = config.clan.core.vars.generators.caldav-app-password.files."password".path;
-
-in
-{
+in {
   options.clanarchy.caldavSync = {
     enable = lib.mkEnableOption "CalDAV org-push sync via vdirsyncer";
 
     nextcloudHost = lib.mkOption {
-      type        = lib.types.str;
-      default     = "citizengo.io";
+      type = lib.types.str;
+      default = "citizengo.io";
       description = "Nextcloud hostname (without scheme, e.g. citizengo.io).";
     };
 
     username = lib.mkOption {
-      type        = lib.types.str;
-      default     = "lgo";
+      type = lib.types.str;
+      default = "lgo";
       description = "Nextcloud username.";
     };
 
     calendarName = lib.mkOption {
-      type        = lib.types.str;
-      default     = "lgo";
+      type = lib.types.str;
+      default = "lgo";
       description = "CalDAV calendar slug (collection name in Nextcloud).";
     };
 
     orgNoteDir = lib.mkOption {
-      type        = lib.types.str;
-      default     = "citizengo/note";
+      type = lib.types.str;
+      default = "citizengo/note";
       description = "Path to the org notes directory, relative to home.";
     };
 
     syncFiles = lib.mkOption {
-      type        = lib.types.listOf lib.types.str;
-      default     = [ "todo.org" "habits.org" ];
+      type = lib.types.listOf lib.types.str;
+      default = ["todo.org" "habits.org"];
       description = "Org files to convert and push (relative to orgNoteDir).";
     };
 
     journalDir = lib.mkOption {
-      type        = lib.types.nullOr lib.types.str;
-      default     = null;
+      type = lib.types.nullOr lib.types.str;
+      default = null;
       description = "Path to org-roam dailies directory (relative to home) for VJOURNAL export. Set to null to disable.";
     };
   };
 
   config = lib.mkIf cfg.enable {
-
     # ── Clan var: Nextcloud app password ─────────────────────────────────
     clan.core.vars.generators.caldav-app-password = {
-      files."password"  = { secret = true; neededFor = "users"; };
+      files."password" = {
+        secret = true;
+        neededFor = "users";
+      };
       prompts."password" = {
         description = "Nextcloud app password for CalDAV (Settings → Security → App passwords)";
-        type        = "hidden";
+        type = "hidden";
       };
-      runtimeInputs = [ pkgs.coreutils ];
+      runtimeInputs = [pkgs.coreutils];
       script = ''${pkgs.coreutils}/bin/cat "$prompts/password" > "$out/password"'';
     };
 
@@ -234,7 +238,7 @@ in
     # per-file owner option exposed.  Run a chown after setupSecretsForUsers
     # so the user service can read the password without sudo.
     system.activationScripts.caldav-secret-perms = {
-      deps = [ "setupSecretsForUsers" ];
+      deps = ["setupSecretsForUsers"];
       text = ''
         if [ -f /run/secrets-for-users/vars/caldav-app-password/password ]; then
           chown ${cfg.username} /run/secrets-for-users/vars/caldav-app-password/password
@@ -243,8 +247,7 @@ in
     };
 
     # ── Home Manager config for lgo ───────────────────────────────────────
-    home-manager.users.${cfg.username} = { ... }: {
-
+    home-manager.users.${cfg.username} = {...}: {
       # vdirsyncer config — rendered at build time with all options resolved.
       # The password is read at runtime from the clan vars file path.
       xdg.configFile."vdirsyncer/config".text = ''
@@ -286,50 +289,51 @@ in
         timezone       = Europe/Berlin
       '';
 
-      home.packages = [ pkgs.khal org-to-ics ];
+      home.packages = [pkgs.khal org-to-ics];
 
       # ── org-to-ics: convert org files on every save ───────────────────
       systemd.user.services.org-to-ics = {
         Unit.Description = "Convert org TODO/habit entries to VTODO iCalendar";
         Service = {
-          Type      = "oneshot";
-          ExecStart = "${org-to-ics}/bin/org-to-ics ${lib.concatStringsSep " " orgFilePaths} --output-dir ${orgOutDir}"
+          Type = "oneshot";
+          ExecStart =
+            "${org-to-ics}/bin/org-to-ics ${lib.concatStringsSep " " orgFilePaths} --output-dir ${orgOutDir}"
             + lib.optionalString (cfg.journalDir != null) " --journal-dir /home/${cfg.username}/${cfg.journalDir}";
         };
       };
 
       # Path unit watches the org files; fires org-to-ics on every write.
       systemd.user.paths.org-to-ics = {
-        Unit.Description  = "Watch org files for changes, trigger org-to-ics";
+        Unit.Description = "Watch org files for changes, trigger org-to-ics";
         Path = {
           PathModified = orgFilePaths;
-          Unit         = "org-to-ics.service";
+          Unit = "org-to-ics.service";
         };
-        Install.WantedBy = [ "default.target" ];
+        Install.WantedBy = ["default.target"];
       };
 
       # ── vdirsyncer: push vdir to Nextcloud CalDAV ─────────────────────
       systemd.user.services.vdirsyncer = {
         Unit = {
           Description = "Push org iCalendar entries to Nextcloud CalDAV";
-          After       = [ "network.target" ];
+          After = ["network.target"];
         };
         Service = {
           Type = "oneshot";
           # Ensure the vdir collection and status dirs exist before syncing.
           ExecStartPre = "${pkgs.coreutils}/bin/mkdir -p ${orgOutDir} ${statusDir}";
-          ExecStart    = "${pkgs.vdirsyncer}/bin/vdirsyncer sync org_push";
+          ExecStart = "${pkgs.vdirsyncer}/bin/vdirsyncer sync org_push";
         };
       };
 
       systemd.user.timers.vdirsyncer = {
         Unit.Description = "Run vdirsyncer CalDAV push every 15 minutes";
         Timer = {
-          OnBootSec       = "2min";
+          OnBootSec = "2min";
           OnUnitActiveSec = "15min";
-          Unit            = "vdirsyncer.service";
+          Unit = "vdirsyncer.service";
         };
-        Install.WantedBy = [ "timers.target" ];
+        Install.WantedBy = ["timers.target"];
       };
     };
   };

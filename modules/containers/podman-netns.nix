@@ -12,11 +12,15 @@
 # Storage and secrets are NOT duplicated here — ./lib.nix generates those, the
 # same ones the nspawn tier gets, which is what stops the two drifting in the
 # parts that are genuinely the same.
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.clanarchy.podmanContainers;
   defaults = config.clanarchy.containerDefaults;
-  clib = import ./lib.nix { inherit lib pkgs; };
+  clib = import ./lib.nix {inherit lib pkgs;};
 
   enabled = lib.filterAttrs (_: c: c.enable) cfg;
   perContainer = lib.mapAttrsToList mkOne enabled;
@@ -45,8 +49,14 @@ let
   # may own a dataset of its own.
   guardedMountType = lib.types.submodule {
     options = {
-      path   = lib.mkOption { type = lib.types.str; description = "Mount point to verify."; };
-      source = lib.mkOption { type = lib.types.str; description = "What `findmnt --output SOURCE` must report."; };
+      path = lib.mkOption {
+        type = lib.types.str;
+        description = "Mount point to verify.";
+      };
+      source = lib.mkOption {
+        type = lib.types.str;
+        description = "What `findmnt --output SOURCE` must report.";
+      };
       fstype = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
@@ -57,21 +67,32 @@ let
 
   stateDirType = lib.types.submodule {
     options = {
-      path  = lib.mkOption { type = lib.types.str; };
-      owner = lib.mkOption { type = lib.types.either lib.types.int lib.types.str; };
-      group = lib.mkOption { type = lib.types.either lib.types.int lib.types.str; };
-      mode  = lib.mkOption { type = lib.types.str; default = "0700"; };
+      path = lib.mkOption {type = lib.types.str;};
+      owner = lib.mkOption {type = lib.types.either lib.types.int lib.types.str;};
+      group = lib.mkOption {type = lib.types.either lib.types.int lib.types.str;};
+      mode = lib.mkOption {
+        type = lib.types.str;
+        default = "0700";
+      };
     };
   };
 
-
-  podType = lib.types.submodule ({ name, ... }: {
+  podType = lib.types.submodule ({name, ...}: {
     options = {
       enable = lib.mkEnableOption "this podman container";
 
-      mac = lib.mkOption { type = lib.types.str; description = "MAC of the namespace end, which the DHCP reservation keys on."; };
-      vlan = lib.mkOption { type = lib.types.nullOr lib.types.int; default = null; };
-      bridge = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
+      mac = lib.mkOption {
+        type = lib.types.str;
+        description = "MAC of the namespace end, which the DHCP reservation keys on.";
+      };
+      vlan = lib.mkOption {
+        type = lib.types.nullOr lib.types.int;
+        default = null;
+      };
+      bridge = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+      };
 
       interface = lib.mkOption {
         type = lib.types.str;
@@ -90,7 +111,7 @@ let
 
       images = lib.mkOption {
         type = lib.types.attrsOf (lib.types.attrsOf lib.types.anything);
-        default = { };
+        default = {};
         description = ''
           Passed through to `virtualisation.oci-containers.containers`, with
           the netns, DNS and user options added. More than one entry shares
@@ -101,10 +122,22 @@ let
         '';
       };
 
-      stateDirs = lib.mkOption { type = lib.types.listOf stateDirType; default = [ ]; };
-      extraGuardedMounts = lib.mkOption { type = lib.types.listOf guardedMountType; default = [ ]; };
-      secrets = lib.mkOption { type = lib.types.attrsOf (lib.types.attrsOf secretValueType); default = { }; };
-      allowFrom = lib.mkOption { type = lib.types.listOf clib.allowType; default = [ ]; };
+      stateDirs = lib.mkOption {
+        type = lib.types.listOf stateDirType;
+        default = [];
+      };
+      extraGuardedMounts = lib.mkOption {
+        type = lib.types.listOf guardedMountType;
+        default = [];
+      };
+      secrets = lib.mkOption {
+        type = lib.types.attrsOf (lib.types.attrsOf secretValueType);
+        default = {};
+      };
+      allowFrom = lib.mkOption {
+        type = lib.types.listOf clib.allowType;
+        default = [];
+      };
 
       uidgid = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
@@ -119,8 +152,14 @@ let
         '';
       };
 
-      resolver = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
-      searchDomain = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
+      resolver = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+      };
+      searchDomain = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+      };
 
       healthcheck.enable = lib.mkEnableOption ''
         a unit that polls `podman inspect` until the container reports
@@ -135,39 +174,51 @@ let
     };
   });
 
-  mkOne = name: c:
-    let
-      netns      = name;
-      vethHost   = "vb-${name}";
-      secretsDir = "${defaults.secretsRoot}/${name}-secrets";
-      primaryUnit = "podman-${name}.service";
+  mkOne = name: c: let
+    netns = name;
+    vethHost = "vb-${name}";
+    secretsDir = "${defaults.secretsRoot}/${name}-secrets";
+    primaryUnit = "podman-${name}.service";
 
-      # Resolved here rather than as option defaults — an option default that
-      # reads `config` is evaluated while the option set is still being built,
-      # which is infinite recursion.
-      vlan         = if c.vlan         != null then c.vlan         else defaults.vlan;
-      bridge       = if c.bridge       != null then c.bridge       else defaults.bridge;
-      resolver     = if c.resolver     != null then c.resolver     else defaults.resolver;
-      searchDomain = if c.searchDomain != null then c.searchDomain else defaults.searchDomain;
-      imageUnits = map (n: "podman-${n}.service") (lib.attrNames c.images);
+    # Resolved here rather than as option defaults — an option default that
+    # reads `config` is evaluated while the option set is still being built,
+    # which is infinite recursion.
+    vlan =
+      if c.vlan != null
+      then c.vlan
+      else defaults.vlan;
+    bridge =
+      if c.bridge != null
+      then c.bridge
+      else defaults.bridge;
+    resolver =
+      if c.resolver != null
+      then c.resolver
+      else defaults.resolver;
+    searchDomain =
+      if c.searchDomain != null
+      then c.searchDomain
+      else defaults.searchDomain;
+    imageUnits = map (n: "podman-${n}.service") (lib.attrNames c.images);
 
-      support = clib.mkSupportUnits {
-        inherit name secretsDir;
-        # EVERY image unit, not just the primary — see the note in ./lib.nix.
-        unitsFor = imageUnits;
-        inherit (defaults) stateMount stateSource;
-        inherit (c) stateDirs secrets;
-        extraMounts = c.extraGuardedMounts;
-      };
+    support = clib.mkSupportUnits {
+      inherit name secretsDir;
+      # EVERY image unit, not just the primary — see the note in ./lib.nix.
+      unitsFor = imageUnits;
+      inherit (defaults) stateMount stateSource;
+      inherit (c) stateDirs secrets;
+      extraMounts = c.extraGuardedMounts;
+    };
 
-      fw = clib.mkFirewall c.allowFrom;
-    in
-    {
-      systemd.services = support // {
+    fw = clib.mkFirewall c.allowFrom;
+  in {
+    systemd.services =
+      support
+      // {
         "${name}-netns" = {
           description = "Network namespace and veth for the ${name} container";
-          wantedBy = [ "multi-user.target" ];
-          before   = imageUnits;
+          wantedBy = ["multi-user.target"];
+          before = imageUnits;
           # REQUIRED, not merely ordered. `before` is ordering alone, and the
           # four hand-written versions of this all said `requires` as well —
           # correctly: the image is started with `--network=ns:/run/netns/…`,
@@ -178,9 +229,12 @@ let
           # does not arrive must leave a RUNNING container with one failed
           # unit, not a container that never starts.
           requiredBy = imageUnits;
-          after    = [ "systemd-networkd.service" ];
-          serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
-          path = [ pkgs.iproute2 pkgs.iptables ];
+          after = ["systemd-networkd.service"];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+          };
+          path = [pkgs.iproute2 pkgs.iptables];
           # Idempotent throughout: this is a RemainAfterExit oneshot that a
           # deploy may re-run against a namespace that already exists.
           script = ''
@@ -204,10 +258,12 @@ let
             ip netns exec '${netns}' iptables -A INPUT -i lo -j ACCEPT
             ip netns exec '${netns}' iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
             ${lib.concatMapStrings (a: ''
-              ${lib.concatStringsSep " " (
-                [ "ip netns exec '${netns}' ${clib.ipt a} -A INPUT" ]
-                ++ clib.acceptParts a ++ [ "-j ACCEPT" ])}
-            '') c.allowFrom}
+                ${lib.concatStringsSep " " (
+                  ["ip netns exec '${netns}' ${clib.ipt a} -A INPUT"]
+                  ++ clib.acceptParts a ++ ["-j ACCEPT"]
+                )}
+              '')
+              c.allowFrom}
             # DHCP replies and ICMP, without which the lease never completes
             # and the container is unreachable for reasons that look like the
             # firewall is right.
@@ -222,28 +278,32 @@ let
 
         "${name}-dhcp" = {
           description = "DHCP client inside the ${name} network namespace";
-          wantedBy = [ "multi-user.target" ];
-          after    = [ "${name}-netns.service" ];
-          requires = [ "${name}-netns.service" ];
-          before   = imageUnits;
+          wantedBy = ["multi-user.target"];
+          after = ["${name}-netns.service"];
+          requires = ["${name}-netns.service"];
+          before = imageUnits;
           serviceConfig = {
             NetworkNamespacePath = "/run/netns/${netns}";
             # --nohook resolv.conf IS LOAD-BEARING: the MOUNT namespace is
             # shared with the host, so without it dhcpcd rewrites the HOST's
             # /etc/resolv.conf from a lease meant for a container.
-            ExecStart  = "${pkgs.dhcpcd}/bin/dhcpcd --nobackground --nohook resolv.conf --ipv4only ${c.interface}";
-            Restart    = "on-failure";
+            ExecStart = "${pkgs.dhcpcd}/bin/dhcpcd --nobackground --nohook resolv.conf --ipv4only ${c.interface}";
+            Restart = "on-failure";
             RestartSec = "5s";
           };
         };
-      } // lib.optionalAttrs c.healthcheck.enable {
+      }
+      // lib.optionalAttrs c.healthcheck.enable {
         "${name}-healthy" = {
           description = "Wait until the ${name} container reports healthy";
-          wantedBy = [ "multi-user.target" ];
-          after    = [ primaryUnit ];
-          requires = [ primaryUnit ];
-          serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
-          path = [ pkgs.podman pkgs.coreutils ];
+          wantedBy = ["multi-user.target"];
+          after = [primaryUnit];
+          requires = [primaryUnit];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+          };
+          path = [pkgs.podman pkgs.coreutils];
           script = ''
             for _ in $(seq 1 120); do
               s=$(podman inspect -f '{{.State.Health.Status}}' ${name} 2>/dev/null || echo starting)
@@ -256,43 +316,55 @@ let
         };
       };
 
-      # Bridge=, NOT KeepMaster, and the difference is the whole of pattern A:
-      # the nspawn tier needs KeepMaster because nspawn enslaves the link
-      # itself and networkd must not fight it. Here the oneshot above only
-      # CREATES the pair, so networkd owns the enslavement and applies
-      # [BridgeVLAN] in the same step — no race, and no backstop needed.
-      systemd.network.networks."60-${vethHost}" = {
-        matchConfig.Name = vethHost;
-        networkConfig = {
-          Bridge              = bridge;
-          LinkLocalAddressing = "no";
-          IPv6AcceptRA        = false;
-        };
-        bridgeVLANs = lib.optionals (vlan != null)
-          [ { VLAN = vlan; PVID = vlan; EgressUntagged = vlan; } ];
-        linkConfig.RequiredForOnline = "enslaved";
+    # Bridge=, NOT KeepMaster, and the difference is the whole of pattern A:
+    # the nspawn tier needs KeepMaster because nspawn enslaves the link
+    # itself and networkd must not fight it. Here the oneshot above only
+    # CREATES the pair, so networkd owns the enslavement and applies
+    # [BridgeVLAN] in the same step — no race, and no backstop needed.
+    systemd.network.networks."60-${vethHost}" = {
+      matchConfig.Name = vethHost;
+      networkConfig = {
+        Bridge = bridge;
+        LinkLocalAddressing = "no";
+        IPv6AcceptRA = false;
       };
+      bridgeVLANs =
+        lib.optionals (vlan != null)
+        [
+          {
+            VLAN = vlan;
+            PVID = vlan;
+            EgressUntagged = vlan;
+          }
+        ];
+      linkConfig.RequiredForOnline = "enslaved";
+    };
 
-      virtualisation.oci-containers.containers = lib.mapAttrs (_: image:
-        image // {
-          extraOptions = (image.extraOptions or [ ]) ++ [
+    virtualisation.oci-containers.containers = lib.mapAttrs (_: image:
+      image
+      // {
+        extraOptions =
+          (image.extraOptions or [])
+          ++ [
             "--network=ns:/run/netns/${netns}"
             "--dns=${resolver}"
             "--dns-search=${searchDomain}"
-          ] ++ lib.optional (c.uidgid != null) "--user=${c.uidgid}";
-        }) c.images;
+          ]
+          ++ lib.optional (c.uidgid != null) "--user=${c.uidgid}";
+      })
+    c.images;
 
-      # Unused on this tier — the firewall is iptables inside the namespace,
-      # above — but computed so the shape stays identical to nspawn's and a
-      # reader can see the two are the same policy.
-      warnings = lib.optional (fw.allowedTCPPorts != [ ])
-        "clanarchy.podmanContainers.${name}: allowedTCPPorts is not used on the podman tier";
-    };
-in
-{
+    # Unused on this tier — the firewall is iptables inside the namespace,
+    # above — but computed so the shape stays identical to nspawn's and a
+    # reader can see the two are the same policy.
+    warnings =
+      lib.optional (fw.allowedTCPPorts != [])
+      "clanarchy.podmanContainers.${name}: allowedTCPPorts is not used on the podman tier";
+  };
+in {
   options.clanarchy.podmanContainers = lib.mkOption {
     type = lib.types.attrsOf podType;
-    default = { };
+    default = {};
     description = ''
       Podman containers given a pre-built network namespace.
 
@@ -308,9 +380,9 @@ in
   # here must not depend on `config`, or `_module.freeformType` cannot be
   # collected without forcing the very thing being defined.
   config = {
-    systemd.services         = lib.mkMerge (map (x: x.systemd.services) perContainer);
+    systemd.services = lib.mkMerge (map (x: x.systemd.services) perContainer);
     systemd.network.networks = lib.mkMerge (map (x: x.systemd.network.networks) perContainer);
-    warnings                 = lib.concatMap (x: x.warnings) perContainer;
+    warnings = lib.concatMap (x: x.warnings) perContainer;
     virtualisation.oci-containers.containers =
       lib.mkMerge (map (x: x.virtualisation.oci-containers.containers) perContainer);
   };

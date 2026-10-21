@@ -31,16 +31,19 @@
 # The initrd sshd host key differs from the running-system host key.  Use
 # `HostKeyAlias` on the client so both keys can coexist in known_hosts
 # without conflict — see the "ernst-initrd" block in modules/users/lgo.nix.
-{ config, lib, pkgs, ... }:
-let
-  cfg = config.clanarchy.initrdSsh;
-in
 {
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
+  cfg = config.clanarchy.initrdSsh;
+in {
   options.clanarchy.initrdSsh = {
     enable = lib.mkEnableOption "stage-1 SSH server for remote pool/passphrase unlock";
 
     port = lib.mkOption {
-      type    = lib.types.port;
+      type = lib.types.port;
       default = 2222;
       description = ''
         TCP port for the initrd sshd.  Off 22 so the initrd and running-system
@@ -49,7 +52,7 @@ in
     };
 
     hostKey = lib.mkOption {
-      type    = lib.types.path;
+      type = lib.types.path;
       default = "/persist/etc/secrets/initrd/ssh_host_ed25519_key";
       description = ''
         Path (on the target) to the ed25519 host key.  Must exist at
@@ -60,8 +63,8 @@ in
     };
 
     authorizedKeyFiles = lib.mkOption {
-      type    = lib.types.listOf lib.types.path;
-      default = [ ];
+      type = lib.types.listOf lib.types.path;
+      default = [];
       description = ''
         Public-key files whose contents authorise root logins to the
         initrd sshd.  Read at eval time (same pattern as modules/users/
@@ -87,14 +90,14 @@ in
     };
 
     kernelModules = lib.mkOption {
-      type    = lib.types.listOf lib.types.str;
-      default = [ ];
-      example = [ "atlantic" "igc" ];
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      example = ["atlantic" "igc"];
       description = "NIC drivers to include in the initrd so the interface is up before sshd starts.";
     };
 
     debug = lib.mkOption {
-      type    = lib.types.bool;
+      type = lib.types.bool;
       default = false;
       description = ''
         Instrument stage 1 for ONE diagnostic boot, then turn it off again.
@@ -125,11 +128,11 @@ in
     assertions = [
       {
         assertion = config.boot.initrd.systemd.enable;
-        message   = "clanarchy.initrdSsh requires boot.initrd.systemd.enable = true.";
+        message = "clanarchy.initrdSsh requires boot.initrd.systemd.enable = true.";
       }
       {
-        assertion = cfg.authorizedKeyFiles != [ ];
-        message   = "clanarchy.initrdSsh.authorizedKeyFiles must not be empty.";
+        assertion = cfg.authorizedKeyFiles != [];
+        message = "clanarchy.initrdSsh.authorizedKeyFiles must not be empty.";
       }
     ];
 
@@ -142,7 +145,7 @@ in
     boot.initrd.network.enable = true;
     boot.initrd.systemd.network.networks."50-initrd-${cfg.interface}" = {
       matchConfig.Name = cfg.interface;
-      networkConfig    = {
+      networkConfig = {
         Address = cfg.address;
         Gateway = cfg.gateway;
 
@@ -191,9 +194,9 @@ in
     # (nixos/modules/system/boot/initrd-ssh.nix) wires this via
     # boot.initrd.systemd.services.sshd + /etc/ssh/authorized_keys.d/root.
     boot.initrd.network.ssh = {
-      enable             = true;
-      port               = cfg.port;
-      hostKeys           = [ cfg.hostKey ];
+      enable = true;
+      port = cfg.port;
+      hostKeys = [cfg.hostKey];
       authorizedKeyFiles = cfg.authorizedKeyFiles;
 
       # OPT-IN ONLY — see clanarchy.initrdSsh.debug.  At the default LogLevel
@@ -223,15 +226,15 @@ in
     # and a stale neighbour entry upstream is one candidate explanation for
     # packets that never arrive.
     boot.initrd.systemd.storePaths =
-      lib.mkIf cfg.debug [ pkgs.iproute2 ];
+      lib.mkIf cfg.debug [pkgs.iproute2];
 
     boot.initrd.systemd.services.clanarchy-initrd-netdebug = lib.mkIf cfg.debug {
       description = "Record stage-1 network state for post-mortem";
-      wantedBy    = [ "initrd.target" ];
-      after       = [ "systemd-networkd.service" "network.target" ];
+      wantedBy = ["initrd.target"];
+      after = ["systemd-networkd.service" "network.target"];
       unitConfig.DefaultDependencies = false;
       serviceConfig = {
-        Type            = "oneshot";
+        Type = "oneshot";
         RemainAfterExit = true;
       };
       script = ''

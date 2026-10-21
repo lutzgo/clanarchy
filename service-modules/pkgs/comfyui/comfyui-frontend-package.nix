@@ -35,7 +35,6 @@
   buildPythonPackage,
   fetchurl,
 }:
-
 buildPythonPackage rec {
   pname = "comfyui-frontend-package";
   version = "1.51.10";
@@ -52,7 +51,7 @@ buildPythonPackage rec {
   # A wheel of static assets: there is nothing to test and no test suite in it.
   doCheck = false;
 
-  pythonImportsCheck = [ "comfyui_frontend_package" ];
+  pythonImportsCheck = ["comfyui_frontend_package"];
 
   meta = {
     description = "Prebuilt web frontend assets for ComfyUI";

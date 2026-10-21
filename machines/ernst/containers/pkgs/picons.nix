@@ -118,9 +118,7 @@
   fetchurl,
   python3,
   xz,
-}:
-
-let
+}: let
   # Dated release tag. Assets under a GitHub release have stable URLs, unlike
   # the "latest" redirect, so this is pinnable.
   release = "2026-09-06--00-52-42";
@@ -133,120 +131,120 @@ let
   # here — this derivation copies the files it keeps anyway.
   variant = "utf8snp-full.220x132-190x102.light.on.transparent";
 in
-stdenvNoCC.mkDerivation {
-  pname = "picons-tvheadend-svcname";
-  version = release;
+  stdenvNoCC.mkDerivation {
+    pname = "picons-tvheadend-svcname";
+    version = release;
 
-  src = fetchurl {
-    url = "https://github.com/picons/picons/releases/download/${release}/${variant}_${release}.hardlink.tar.xz";
-    hash = "sha256-QVQNGj4kNMphP7sjL1B9ar37kLqq769k6fSN+bQoShA=";
-  };
+    src = fetchurl {
+      url = "https://github.com/picons/picons/releases/download/${release}/${variant}_${release}.hardlink.tar.xz";
+      hash = "sha256-QVQNGj4kNMphP7sjL1B9ar37kLqq769k6fSN+bQoShA=";
+    };
 
-  nativeBuildInputs = [ python3 xz ];
+    nativeBuildInputs = [python3 xz];
 
-  dontConfigure = true;
-  dontFixup = true;
+    dontConfigure = true;
+    dontFixup = true;
 
-  # `tar` unpacks into a single versioned directory; the rename pass below
-  # walks whatever it finds rather than hard-coding that name, so a future
-  # release that changes the layout fails loudly on "no PNGs" instead of
-  # silently producing an empty output.
-  unpackPhase = ''
-    runHook preUnpack
-    mkdir -p source
-    tar -xJf "$src" -C source
-    runHook postUnpack
-  '';
-
-  buildPhase = ''
-    runHook preBuild
-    python3 "$rename" source "$out/picons"
-    runHook postBuild
-  '';
-
-  installPhase = "true";  # buildPhase writes straight into $out
-
-  # A port of tvheadend's svcnamepicons(), byte for byte. If Tvheadend ever
-  # changes that function, THIS IS THE FILE THAT HAS TO CHANGE WITH IT, and
-  # the symptom of forgetting would be logos quietly disappearing rather than
-  # an error.
-  rename = builtins.toFile "picon-rename.py" ''
-    import os, sys, pathlib, collections
-
-    def svcnamepicons(s):
-        """Exact port of tvheadend src/channels.c:svcnamepicons().
-
-        Operates on BYTES, like the C does: a multi-byte character is dropped
-        entirely rather than transliterated. That is why 'Türk' -> 'trk'.
-        """
-        out = []
-        for b in s.encode("utf-8"):
-            c = chr(b)
-            if   c == '&': out.append("and")
-            elif c == '+': out.append("plus")
-            elif c == '*': out.append("star")
-            elif 'a' <= c <= 'z': out.append(c)
-            elif 'A' <= c <= 'Z': out.append(c.lower())
-            elif '0' <= c <= '9': out.append(c)
-        return "".join(out)
-
-    src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
-    pngs = sorted(src.rglob("*.png"))
-    if not pngs:
-        sys.exit("picons: no PNGs under %s — the release layout changed" % src)
-
-    keys = collections.defaultdict(list)
-    dropped_empty = 0
-    for p in pngs:
-        stem = p.name[:-4]
-        k = svcnamepicons(stem)
-        if not k:
-            # Entirely non-ASCII names normalise to nothing. Keeping them would
-            # create a single ".png" that Tvheadend serves for every channel
-            # whose name is pure punctuation — see this file's header.
-            dropped_empty += 1
-            continue
-        keys[k].append(p)
-
-    dst.mkdir(parents=True, exist_ok=True)
-    collisions = 0
-    for k, group in sorted(keys.items()):
-        if len(group) > 1:
-            collisions += 1
-        # Tie-break, in order: the file already named exactly the normalised
-        # form, else the lexicographically smallest. Deterministic by
-        # construction, which a build has to be.
-        exact = [p for p in group if p.name[:-4] == k]
-        pick = sorted(exact or group, key=lambda p: p.name)[0]
-        (dst / (k + ".png")).write_bytes(pick.read_bytes())
-
-    print("picons: %d source files -> %d logos "
-          "(%d empty-name dropped, %d keys had collisions)"
-          % (len(pngs), len(keys), dropped_empty, collisions))
-  '';
-
-  meta = {
-    description = "Channel logos renamed to Tvheadend's service-name scheme";
-    longDescription = ''
-      The picons project's utf8snp pack, with every file renamed through a port
-      of tvheadend's own svcnamepicons(). Consumed by
-      machines/ernst/containers/tvheadend.nix, which bind-mounts it at the
-      stable path /picons inside the container.
+    # `tar` unpacks into a single versioned directory; the rename pass below
+    # walks whatever it finds rather than hard-coding that name, so a future
+    # release that changes the layout fails loudly on "no PNGs" instead of
+    # silently producing an empty output.
+    unpackPhase = ''
+      runHook preUnpack
+      mkdir -p source
+      tar -xJf "$src" -C source
+      runHook postUnpack
     '';
-    homepage = "https://github.com/picons/picons";
-    # UPSTREAM'S OWN DECLARATION, not an inference. github.com/picons/picons
-    # ships a LICENSE file and GitHub reports it as GPL-3.0, so that is what
-    # goes here.
-    #
-    # An earlier draft of this file said `unfree`, reasoning that the artwork
-    # is broadcaster trademarks and therefore cannot be freely licensed. That
-    # reasoning is not wrong about trademarks — but it is a claim UPSTREAM DOES
-    # NOT MAKE, and encoding someone else's licence as stricter than they
-    # declare it is as much an error as the reverse. It also broke the build
-    # for no reason. The trademark point stands as a fact about the content and
-    # is recorded here rather than as a licence attribute: these are channel
-    # logos used to identify those same channels on a household TV.
-    license = lib.licenses.gpl3Only;
-    platforms = lib.platforms.all;
-  };
-}
+
+    buildPhase = ''
+      runHook preBuild
+      python3 "$rename" source "$out/picons"
+      runHook postBuild
+    '';
+
+    installPhase = "true"; # buildPhase writes straight into $out
+
+    # A port of tvheadend's svcnamepicons(), byte for byte. If Tvheadend ever
+    # changes that function, THIS IS THE FILE THAT HAS TO CHANGE WITH IT, and
+    # the symptom of forgetting would be logos quietly disappearing rather than
+    # an error.
+    rename = builtins.toFile "picon-rename.py" ''
+      import os, sys, pathlib, collections
+
+      def svcnamepicons(s):
+          """Exact port of tvheadend src/channels.c:svcnamepicons().
+
+          Operates on BYTES, like the C does: a multi-byte character is dropped
+          entirely rather than transliterated. That is why 'Türk' -> 'trk'.
+          """
+          out = []
+          for b in s.encode("utf-8"):
+              c = chr(b)
+              if   c == '&': out.append("and")
+              elif c == '+': out.append("plus")
+              elif c == '*': out.append("star")
+              elif 'a' <= c <= 'z': out.append(c)
+              elif 'A' <= c <= 'Z': out.append(c.lower())
+              elif '0' <= c <= '9': out.append(c)
+          return "".join(out)
+
+      src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+      pngs = sorted(src.rglob("*.png"))
+      if not pngs:
+          sys.exit("picons: no PNGs under %s — the release layout changed" % src)
+
+      keys = collections.defaultdict(list)
+      dropped_empty = 0
+      for p in pngs:
+          stem = p.name[:-4]
+          k = svcnamepicons(stem)
+          if not k:
+              # Entirely non-ASCII names normalise to nothing. Keeping them would
+              # create a single ".png" that Tvheadend serves for every channel
+              # whose name is pure punctuation — see this file's header.
+              dropped_empty += 1
+              continue
+          keys[k].append(p)
+
+      dst.mkdir(parents=True, exist_ok=True)
+      collisions = 0
+      for k, group in sorted(keys.items()):
+          if len(group) > 1:
+              collisions += 1
+          # Tie-break, in order: the file already named exactly the normalised
+          # form, else the lexicographically smallest. Deterministic by
+          # construction, which a build has to be.
+          exact = [p for p in group if p.name[:-4] == k]
+          pick = sorted(exact or group, key=lambda p: p.name)[0]
+          (dst / (k + ".png")).write_bytes(pick.read_bytes())
+
+      print("picons: %d source files -> %d logos "
+            "(%d empty-name dropped, %d keys had collisions)"
+            % (len(pngs), len(keys), dropped_empty, collisions))
+    '';
+
+    meta = {
+      description = "Channel logos renamed to Tvheadend's service-name scheme";
+      longDescription = ''
+        The picons project's utf8snp pack, with every file renamed through a port
+        of tvheadend's own svcnamepicons(). Consumed by
+        machines/ernst/containers/tvheadend.nix, which bind-mounts it at the
+        stable path /picons inside the container.
+      '';
+      homepage = "https://github.com/picons/picons";
+      # UPSTREAM'S OWN DECLARATION, not an inference. github.com/picons/picons
+      # ships a LICENSE file and GitHub reports it as GPL-3.0, so that is what
+      # goes here.
+      #
+      # An earlier draft of this file said `unfree`, reasoning that the artwork
+      # is broadcaster trademarks and therefore cannot be freely licensed. That
+      # reasoning is not wrong about trademarks — but it is a claim UPSTREAM DOES
+      # NOT MAKE, and encoding someone else's licence as stricter than they
+      # declare it is as much an error as the reverse. It also broke the build
+      # for no reason. The trademark point stands as a fact about the content and
+      # is recorded here rather than as a licence attribute: these are channel
+      # logos used to identify those same channels on a household TV.
+      license = lib.licenses.gpl3Only;
+      platforms = lib.platforms.all;
+    };
+  }

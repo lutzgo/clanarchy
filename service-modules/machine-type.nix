@@ -1,4 +1,4 @@
-{ lib, ... }:
+{lib, ...}:
 #
 # @clanarchy/machine-type — assign each machine to a hardware/role archetype.
 #
@@ -24,31 +24,23 @@
     interface.options.framework.enable =
       lib.mkEnableOption "Framework laptop hardware (fprintd, fwupd, backpack-wake udev rule)";
 
-    perInstance =
-      { settings, ... }:
-      {
-        nixosModule =
-          { ... }:
-          {
-            imports = [ ../modules/roles/laptop.nix ];
-            clanarchy.roles.laptop.enable = true;
-            clanarchy.roles.laptop.framework.enable = settings.framework.enable;
-          };
+    perInstance = {settings, ...}: {
+      nixosModule = {...}: {
+        imports = [../modules/roles/laptop.nix];
+        clanarchy.roles.laptop.enable = true;
+        clanarchy.roles.laptop.framework.enable = settings.framework.enable;
       };
+    };
   };
 
   roles.server = {
     description = "Headless server: SSH hardening, nix store optimisation, weekly GC.";
-    perInstance =
-      { ... }:
-      {
-        nixosModule =
-          { ... }:
-          {
-            imports = [ ../modules/roles/server.nix ];
-            clanarchy.roles.server.enable = true;
-          };
+    perInstance = {...}: {
+      nixosModule = {...}: {
+        imports = [../modules/roles/server.nix];
+        clanarchy.roles.server.enable = true;
       };
+    };
   };
 
   roles.htpc = {
@@ -60,7 +52,7 @@
         example = "htpc";
       };
       defaultSession = lib.mkOption {
-        type = lib.types.enum [ "gamescope" "plasma" "kodi" "bigscreen" ];
+        type = lib.types.enum ["gamescope" "plasma" "kodi" "bigscreen"];
         default = "gamescope";
         description = "Session to land in before any choice has been made.";
       };
@@ -88,15 +80,15 @@
 
       gpu.preempt.units = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [ ];
-        example = [ "llama-swap.service" ];
+        default = [];
+        example = ["llama-swap.service"];
         description = "Units bounced just before a session takes the GPU, so VRAM they hold is handed back first (see modules/roles/htpc.nix).";
       };
 
       gpu.gamingHold.units = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [ ];
-        example = [ "llama-swap.service" ];
+        default = [];
+        example = ["llama-swap.service"];
         description = "Units held stopped for as long as the gaming session is selected, because the VRAM reserve sizes a framebuffer and a game needs gigabytes (see modules/roles/htpc.nix).";
       };
 
@@ -106,8 +98,8 @@
 
         fallbackChain = lib.mkOption {
           type = lib.types.listOf lib.types.str;
-          default = [ ];
-          example = [ "kodi" "plasma" ];
+          default = [];
+          example = ["kodi" "plasma"];
           description = "Modes to demote through, cheapest first. Required when crashLoop.enable is set.";
         };
       };
@@ -136,62 +128,51 @@
       };
     };
 
-    perInstance =
-      { settings, ... }:
-      {
-        nixosModule =
-          { ... }:
-          {
-            imports = [ ../modules/roles/htpc.nix ];
-            clanarchy.roles.htpc = {
-              enable = true;
-              inherit (settings) user defaultSession;
-              autologin.enable = settings.autologin.enable;
-              display.gpuPciAddress = settings.display.gpuPciAddress;
-              display.hdr.enable = settings.display.hdr.enable;
-              mediaClient.remoteControl.enable = settings.mediaClient.remoteControl.enable;
-              gpu.preempt.units = settings.gpu.preempt.units;
-              gpu.gamingHold.units = settings.gpu.gamingHold.units;
-              crashLoop = {
-                inherit (settings.crashLoop) enable fallbackChain;
-              };
-              bigscreen = {
-                inherit (settings.bigscreen) enable gid;
-              }
-              // lib.optionalAttrs settings.bigscreen.enable {
-                inherit (settings.bigscreen) uid;
-                gpu.pciAddress = settings.bigscreen.gpu.pciAddress;
-              };
-            };
+    perInstance = {settings, ...}: {
+      nixosModule = {...}: {
+        imports = [../modules/roles/htpc.nix];
+        clanarchy.roles.htpc = {
+          enable = true;
+          inherit (settings) user defaultSession;
+          autologin.enable = settings.autologin.enable;
+          display.gpuPciAddress = settings.display.gpuPciAddress;
+          display.hdr.enable = settings.display.hdr.enable;
+          mediaClient.remoteControl.enable = settings.mediaClient.remoteControl.enable;
+          gpu.preempt.units = settings.gpu.preempt.units;
+          gpu.gamingHold.units = settings.gpu.gamingHold.units;
+          crashLoop = {
+            inherit (settings.crashLoop) enable fallbackChain;
           };
+          bigscreen =
+            {
+              inherit (settings.bigscreen) enable gid;
+            }
+            // lib.optionalAttrs settings.bigscreen.enable {
+              inherit (settings.bigscreen) uid;
+              gpu.pciAddress = settings.bigscreen.gpu.pciAddress;
+            };
+        };
       };
+    };
   };
 
   roles.vm = {
     description = "QEMU/KVM guest: server baseline + SPICE/qemu-guest tools.";
-    perInstance =
-      { ... }:
-      {
-        nixosModule =
-          { ... }:
-          {
-            imports = [ ../modules/roles/vm.nix ];
-            clanarchy.roles.vm.enable = true;
-          };
+    perInstance = {...}: {
+      nixosModule = {...}: {
+        imports = [../modules/roles/vm.nix];
+        clanarchy.roles.vm.enable = true;
       };
+    };
   };
 
   roles.rpi = {
     description = "Raspberry Pi: non-free redistributable firmware. Boot loader must be configured per machine.";
-    perInstance =
-      { ... }:
-      {
-        nixosModule =
-          { ... }:
-          {
-            imports = [ ../modules/roles/rpi.nix ];
-            clanarchy.roles.rpi.enable = true;
-          };
+    perInstance = {...}: {
+      nixosModule = {...}: {
+        imports = [../modules/roles/rpi.nix];
+        clanarchy.roles.rpi.enable = true;
       };
+    };
   };
 }

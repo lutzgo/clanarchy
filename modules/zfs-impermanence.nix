@@ -2,15 +2,18 @@
 # fleet default).  The option itself and the shared persist/stage-1 bits
 # live in modules/rootfs.nix; the btrfs sibling is
 # modules/btrfs-impermanence.nix.
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   # The datasets rolled back on every boot. Kept in one place so the stage-1
   # rollback and the post-boot check below cannot disagree about the set.
-  rollbackDatasets = [ "zroot/root" "zroot/home" ];
-in
-{
+  rollbackDatasets = ["zroot/root" "zroot/home"];
+in {
   config = lib.mkIf (config.clanarchy.rootfs == "zfs") {
-    boot.supportedFilesystems = [ "zfs" "exfat" "ntfs" "vfat" ];
+    boot.supportedFilesystems = ["zfs" "exfat" "ntfs" "vfat"];
     boot.zfs.forceImportRoot = false;
 
     # Roll back root and home to @blank ZFS snapshots on every boot (stage 1).
@@ -37,9 +40,9 @@ in
     #     holding the snapshot).  That now aborts instead of being swallowed.
     boot.initrd.systemd.services.rollback = lib.mkIf config.clanarchy.impermanence.rollback.enable {
       description = "Rollback ZFS datasets to blank";
-      wantedBy = [ "initrd.target" ];
-      after = [ "zfs-import-zroot.service" ];
-      before = [ "sysroot.mount" ];
+      wantedBy = ["initrd.target"];
+      after = ["zfs-import-zroot.service"];
+      before = ["sysroot.mount"];
       unitConfig.DefaultDependencies = "no";
       serviceConfig.Type = "oneshot";
       script = ''
@@ -66,12 +69,12 @@ in
     # it is the one people actually read.
     systemd.services.clanarchy-impermanence-check = {
       description = "Verify the ZFS rollback snapshots this machine depends on exist";
-      wantedBy = [ "multi-user.target" ];
+      wantedBy = ["multi-user.target"];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
       };
-      path = [ config.boot.zfs.package ];
+      path = [config.boot.zfs.package];
       script = ''
         missing=""
         for ds in ${lib.escapeShellArgs rollbackDatasets}; do

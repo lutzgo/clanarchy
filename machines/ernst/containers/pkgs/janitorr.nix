@@ -113,7 +113,6 @@
   temurin-jre-bin-25,
   makeWrapper,
 }:
-
 # ── DO NOT ADD A `jre_headless` ARGUMENT HERE ────────────────────────────────
 #
 #   The first version of this file took `jre_headless ? temurin-bin-25`, on the
@@ -140,77 +139,77 @@ let
   jdk = temurin-bin-25;
   jre = temurin-jre-bin-25;
 in
-stdenv.mkDerivation (finalAttrs: {
-  pname = "janitorr";
-  version = "2.2.0";
+  stdenv.mkDerivation (finalAttrs: {
+    pname = "janitorr";
+    version = "2.2.0";
 
-  src = fetchFromGitHub {
-    owner = "Schaka";
-    repo = "janitorr";
-    tag = "v${finalAttrs.version}";
-    hash = "sha256-zAb2fs/+DyFOMZ+uAHlxvMUjbfkfJQ4Q9VcFz60oyNM=";
-  };
+    src = fetchFromGitHub {
+      owner = "Schaka";
+      repo = "janitorr";
+      tag = "v${finalAttrs.version}";
+      hash = "sha256-zAb2fs/+DyFOMZ+uAHlxvMUjbfkfJQ4Q9VcFz60oyNM=";
+    };
 
-  # See header item 1.  The vendor pin is removed so that toolchain resolution
-  # cannot fall through to a foojay download; `temurin-bin-25` would satisfy it
-  # anyway, and having both is deliberate.
-  postPatch = ''
-    substituteInPlace build.gradle.kts \
-      --replace-fail 'vendor.set(JvmVendorSpec.ADOPTIUM)' ""
-  '';
+    # See header item 1.  The vendor pin is removed so that toolchain resolution
+    # cannot fall through to a foojay download; `temurin-bin-25` would satisfy it
+    # anyway, and having both is deliberate.
+    postPatch = ''
+      substituteInPlace build.gradle.kts \
+        --replace-fail 'vendor.set(JvmVendorSpec.ADOPTIUM)' ""
+    '';
 
-  nativeBuildInputs = [
-    gradle_9
-    makeWrapper
-  ];
+    nativeBuildInputs = [
+      gradle_9
+      makeWrapper
+    ];
 
-  mitmCache = gradle_9.fetchDeps {
-    pkg = finalAttrs.finalPackage;
-    data = ./janitorr-deps.json;
-  };
+    mitmCache = gradle_9.fetchDeps {
+      pkg = finalAttrs.finalPackage;
+      data = ./janitorr-deps.json;
+    };
 
-  # Point Gradle at the Nix JDK and forbid it from fetching another one.  See
-  # header item 1: auto-download=false is what turns a toolchain miss into a
-  # loud configure-time failure instead of a sandbox network hang.
-  gradleFlags = [
-    "-Dorg.gradle.java.home=${jdk}"
-    "-Dorg.gradle.java.installations.auto-download=false"
-    "-Dorg.gradle.java.installations.paths=${jdk}"
-  ];
+    # Point Gradle at the Nix JDK and forbid it from fetching another one.  See
+    # header item 1: auto-download=false is what turns a toolchain miss into a
+    # loud configure-time failure instead of a sandbox network hang.
+    gradleFlags = [
+      "-Dorg.gradle.java.home=${jdk}"
+      "-Dorg.gradle.java.installations.auto-download=false"
+      "-Dorg.gradle.java.installations.paths=${jdk}"
+    ];
 
-  # bootJar, not build: `tasks.named<Jar>("jar") { enabled = false }` means the
-  # plain jar task produces nothing, and `build` would additionally run the
-  # test suite, which upstream's CI runs against testcontainers (i.e. Docker).
-  gradleBuildTask = "bootJar";
+    # bootJar, not build: `tasks.named<Jar>("jar") { enabled = false }` means the
+    # plain jar task produces nothing, and `build` would additionally run the
+    # test suite, which upstream's CI runs against testcontainers (i.e. Docker).
+    gradleBuildTask = "bootJar";
 
-  doCheck = false;
+    doCheck = false;
 
-  installPhase = ''
-    runHook preInstall
+    installPhase = ''
+      runHook preInstall
 
-    # Found rather than globbed by name.  gradle.properties pins `version=1.0.0`
-    # regardless of the release tag (see the version note in the header), and
-    # BootJar sets an empty archiveClassifier — so the produced filename tracks
-    # a number this derivation deliberately does NOT use.  Matching *.jar and
-    # asserting there is exactly one is stable across both.
-    echo "build/libs contains:" && ls -l build/libs
-    jars=(build/libs/*.jar)
-    [ "''${#jars[@]}" -eq 1 ] || { echo "expected exactly one jar, got ''${jars[*]}" >&2; exit 1; }
+      # Found rather than globbed by name.  gradle.properties pins `version=1.0.0`
+      # regardless of the release tag (see the version note in the header), and
+      # BootJar sets an empty archiveClassifier — so the produced filename tracks
+      # a number this derivation deliberately does NOT use.  Matching *.jar and
+      # asserting there is exactly one is stable across both.
+      echo "build/libs contains:" && ls -l build/libs
+      jars=(build/libs/*.jar)
+      [ "''${#jars[@]}" -eq 1 ] || { echo "expected exactly one jar, got ''${jars[*]}" >&2; exit 1; }
 
-    mkdir -p $out/share/janitorr
-    install -Dm644 "''${jars[0]}" $out/share/janitorr/janitorr.jar
+      mkdir -p $out/share/janitorr
+      install -Dm644 "''${jars[0]}" $out/share/janitorr/janitorr.jar
 
-    makeWrapper ${lib.getExe' jre "java"} $out/bin/janitorr \
-      --add-flags "-jar $out/share/janitorr/janitorr.jar"
+      makeWrapper ${lib.getExe' jre "java"} $out/bin/janitorr \
+        --add-flags "-jar $out/share/janitorr/janitorr.jar"
 
-    runHook postInstall
-  '';
+      runHook postInstall
+    '';
 
-  meta = {
-    description = "Cleans up your media library based on available disk space";
-    homepage = "https://github.com/Schaka/janitorr";
-    license = lib.licenses.gpl3Only;
-    platforms = [ "x86_64-linux" "aarch64-linux" ];
-    mainProgram = "janitorr";
-  };
-})
+    meta = {
+      description = "Cleans up your media library based on available disk space";
+      homepage = "https://github.com/Schaka/janitorr";
+      license = lib.licenses.gpl3Only;
+      platforms = ["x86_64-linux" "aarch64-linux"];
+      mainProgram = "janitorr";
+    };
+  })

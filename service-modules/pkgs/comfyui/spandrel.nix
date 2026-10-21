@@ -49,7 +49,6 @@
   einops,
   typing-extensions,
 }:
-
 buildPythonPackage rec {
   pname = "spandrel";
   version = "0.4.2";
@@ -60,7 +59,7 @@ buildPythonPackage rec {
     hash = "sha256-/vpOqWbGpbdyHc8k8+IGKlqWo5XIvty1cPtVlx/cvMs=";
   };
 
-  build-system = [ setuptools ];
+  build-system = [setuptools];
 
   dependencies = [
     torch
@@ -77,7 +76,7 @@ buildPythonPackage rec {
   # pythonImportsCheck is the guard, as it is for the rest of ./pkgs.
   doCheck = false;
 
-  pythonImportsCheck = [ "spandrel" ];
+  pythonImportsCheck = ["spandrel"];
 
   meta = {
     description = "Auto-detection and loading of PyTorch image model architectures";

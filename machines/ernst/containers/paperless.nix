@@ -85,13 +85,10 @@
   pkgs,
   lib,
   ...
-}:
-
-let
+}: let
   ##############################################################################
   # Identity.
   ##############################################################################
-
   # ── NOT FROM THE 3000 BLOCK, AND THAT IS NOT AN OVERSIGHT ──────────────────
   #
   # `ids.uids.paperless` is 315, a well-known NixOS static id, and the nixpkgs
@@ -182,7 +179,7 @@ let
   paperlessPort = 28981;
 
   baseDomain = "goclan.org";
-  hostName   = "docs.${baseDomain}";
+  hostName = "docs.${baseDomain}";
 
   # Authelia's portal as the OIDC issuer.  Restated rather than shared, as in
   # traefik.nix, authelia.nix and nextcloud.nix.
@@ -199,11 +196,11 @@ let
   # small random writes and belong at /srv/state's 128K default.  That is why
   # `dataDir` and `mediaDir` are set apart rather than left at the module's
   # default, which nests media inside data.
-  docsRoot   = "/srv/docs";
-  mediaDir   = "${docsRoot}/media";
-  exportDir  = "${docsRoot}/export";
-  stateRoot  = "/srv/state/paperless";
-  dataDir    = "${stateRoot}/data";
+  docsRoot = "/srv/docs";
+  mediaDir = "${docsRoot}/media";
+  exportDir = "${docsRoot}/export";
+  stateRoot = "/srv/state/paperless";
+  dataDir = "${stateRoot}/data";
 
   # ── THE INGEST DIRECTORY, AND WHY IT IS NOT UNDER /srv/docs ────────────────
   #
@@ -246,7 +243,7 @@ let
   # bind established at container start would keep exposing a deleted
   # generation.  containers/traefik.nix carries the long form.
   ##############################################################################
-  secretsDir    = "/run/paperless-secrets";
+  secretsDir = "/run/paperless-secrets";
   adminPassFile = "${secretsDir}/admin-pass";
   mnemeTokenDst = "${secretsDir}/mneme-token";
 
@@ -578,12 +575,10 @@ let
         backfilled += 1
     print(f"backfill: view granted on {backfilled} existing document(s)")
   '';
-in
-{
+in {
   ##############################################################################
   # Host side — the datasets, the directories, the secrets and the veth.
   ##############################################################################
-
 
   # ── THE SHARED INBOX GETS ITS OWN UNIT, AND THE SPLIT IS THE WHOLE POINT ───
   #
@@ -600,16 +595,16 @@ in
   # the M3 defect even when the two agree today.
   systemd.services.paperless-inbox = {
     description = "Create the shared scan-ingest directory for paperless and Nextcloud";
-    wantedBy   = [ "multi-user.target" ];
-    after      = [ "srv-state.mount" ];
-    requires   = [ "srv-state.mount" ];
-    before     = [ "container@paperless.service" "container@nextcloud.service" ];
-    requiredBy = [ "container@paperless.service" "container@nextcloud.service" ];
+    wantedBy = ["multi-user.target"];
+    after = ["srv-state.mount"];
+    requires = ["srv-state.mount"];
+    before = ["container@paperless.service" "container@nextcloud.service"];
+    requiredBy = ["container@paperless.service" "container@nextcloud.service"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
     };
-    path = [ pkgs.util-linux pkgs.coreutils ];
+    path = [pkgs.util-linux pkgs.coreutils];
     script = ''
       set -eu
 
@@ -692,14 +687,14 @@ in
   #     systemctl restart paperless-secrets container@paperless
   systemd.services.paperless-secrets = {
     description = "Stage Paperless's secret key, admin password, OIDC secret and mneme token";
-    after       = [ "local-fs.target" ];
-    before      = [ "container@paperless.service" ];
-    requiredBy  = [ "container@paperless.service" ];
+    after = ["local-fs.target"];
+    before = ["container@paperless.service"];
+    requiredBy = ["container@paperless.service"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
     };
-    path = [ pkgs.coreutils ];
+    path = [pkgs.coreutils];
     script = ''
       set -euo pipefail
 
@@ -772,7 +767,7 @@ in
       "paperless-secrets.service"
       "container@paperless.service"
     ];
-    runtimeInputs = [ pkgs.coreutils pkgs.openssl ];
+    runtimeInputs = [pkgs.coreutils pkgs.openssl];
     script = ''
       openssl rand -base64 64 | tr -d '\n=+/' | cut -c1-64 > "$out/secret-key"
     '';
@@ -794,7 +789,7 @@ in
       "paperless-secrets.service"
       "container@paperless.service"
     ];
-    runtimeInputs = [ pkgs.coreutils pkgs.openssl ];
+    runtimeInputs = [pkgs.coreutils pkgs.openssl];
     script = ''
       openssl rand -base64 48 | tr -d '\n=+/' | cut -c1-48 > "$out/admin-pass"
     '';
@@ -847,7 +842,7 @@ in
       # restartUnit naming a unit that does not exist yet is not an error.
       "mneme.service"
     ];
-    runtimeInputs = [ pkgs.coreutils pkgs.openssl ];
+    runtimeInputs = [pkgs.coreutils pkgs.openssl];
     script = ''
       openssl rand -hex 20 | tr -d '\n' > "$out/token"
     '';
@@ -858,8 +853,8 @@ in
   # because it writes into ${stateRoot}, which that unit creates. Merged onto
   # the module's definition rather than forking it.
   systemd.services.paperless-dirs = {
-    after    = [ "paperless-inbox.service" ];
-    requires = [ "paperless-inbox.service" ];
+    after = ["paperless-inbox.service"];
+    requires = ["paperless-inbox.service"];
   };
 
   ##############################################################################
@@ -881,7 +876,7 @@ in
   #   a JSON blob, where the module's `secrets` option writes `KEY=value`.
   clanarchy.containers.paperless = {
     enable = true;
-    mac    = "02:00:00:90:00:18";
+    mac = "02:00:00:90:00:18";
 
     # NO uid/gid PIN HERE, DELIBERATELY. `services.paperless` assigns
     # `config.ids.uids.paperless` (315) unconditionally, so a second definition
@@ -895,7 +890,11 @@ in
 
     # The document archive is its own dataset, checked by source AND fstype.
     extraGuardedMounts = [
-      { path = docsRoot; source = "zdata/docs"; fstype = "zfs"; }
+      {
+        path = docsRoot;
+        source = "zdata/docs";
+        fstype = "zfs";
+      }
     ];
 
     # ── ONE PATH IS THE EXCEPTION AND IT IS UPSTREAM'S, NOT OURS ─────────────
@@ -910,40 +909,91 @@ in
     # account that autologins without a password, cannot traverse it at all.
     # If docsRoot is ever bound in whole, re-read this rather than trusting it.
     stateDirs = [
-      { path = docsRoot;  owner = paperlessUid; group = paperlessGid; }
-      { path = mediaDir;  owner = paperlessUid; group = paperlessGid; }
-      { path = exportDir; owner = paperlessUid; group = paperlessGid; }
-      { path = dataDir;   owner = paperlessUid; group = paperlessGid; }
+      {
+        path = docsRoot;
+        owner = paperlessUid;
+        group = paperlessGid;
+      }
+      {
+        path = mediaDir;
+        owner = paperlessUid;
+        group = paperlessGid;
+      }
+      {
+        path = exportDir;
+        owner = paperlessUid;
+        group = paperlessGid;
+      }
+      {
+        path = dataDir;
+        owner = paperlessUid;
+        group = paperlessGid;
+      }
       # PostgreSQL's own upstream-static id.
-      { path = "${stateRoot}/postgresql"; owner = postgresUid; group = postgresGid; }
+      {
+        path = "${stateRoot}/postgresql";
+        owner = postgresUid;
+        group = postgresGid;
+      }
     ];
 
     # mneme's leg, pointing INWARD: M32b gives the agent `document_search`.
     ula = [
-      { veth = docVeth; hostAddress6 = docHost; localAddress6 = docCont; }
+      {
+        veth = docVeth;
+        hostAddress6 = docHost;
+        localAddress6 = docCont;
+      }
     ];
 
     bindMounts = {
-      "${mediaDir}"         = { hostPath = mediaDir;   isReadOnly = false; };
-      "${consumeDir}"       = { hostPath = consumeDir; isReadOnly = false; };
-      "${exportDir}"        = { hostPath = exportDir;  isReadOnly = false; };
-      "${dataDir}"          = { hostPath = dataDir;    isReadOnly = false; };
-      "/var/lib/postgresql" = { hostPath = "${stateRoot}/postgresql"; isReadOnly = false; };
+      "${mediaDir}" = {
+        hostPath = mediaDir;
+        isReadOnly = false;
+      };
+      "${consumeDir}" = {
+        hostPath = consumeDir;
+        isReadOnly = false;
+      };
+      "${exportDir}" = {
+        hostPath = exportDir;
+        isReadOnly = false;
+      };
+      "${dataDir}" = {
+        hostPath = dataDir;
+        isReadOnly = false;
+      };
+      "/var/lib/postgresql" = {
+        hostPath = "${stateRoot}/postgresql";
+        isReadOnly = false;
+      };
       # Staged by the hand-written secrets unit above.
-      "${secretsDir}"       = { hostPath = secretsDir; isReadOnly = true;  };
+      "${secretsDir}" = {
+        hostPath = secretsDir;
+        isReadOnly = true;
+      };
     };
 
     allowFrom = [
       # Every human client arrives through the proxy, over v4.
-      { peer = traefikAddr; port = paperlessPort; }
+      {
+        peer = traefikAddr;
+        port = paperlessPort;
+      }
       # mneme on doc0, over v6 — the only thing that reaches this service
       # without going through Traefik. The family is inferred from the colon.
-      { peer = docHost;     port = paperlessPort; }
+      {
+        peer = docHost;
+        port = paperlessPort;
+      }
     ];
 
-    config = { config, pkgs, lib, ... }: {
-
-
+    config = {
+      config,
+      pkgs,
+      lib,
+      ...
+    }: {
       ##########################################################################
       # The service.
       ##########################################################################
@@ -971,7 +1021,7 @@ in
         # is Traefik getting a 502 while mneme keeps working, and the fix is
         # two listeners rather than one.
         address = "::";
-        port    = paperlessPort;
+        port = paperlessPort;
 
         inherit dataDir mediaDir;
         consumptionDir = consumeDir;
@@ -1025,7 +1075,7 @@ in
           # OIDC redirect depends on it, and so does every absolute URL
           # paperless generates.  Rendered as a JSON array by the module, which
           # JSON-encodes any list or attrset in `settings`.
-          PAPERLESS_PROXY_SSL_HEADER = [ "HTTP_X_FORWARDED_PROTO" "https" ];
+          PAPERLESS_PROXY_SSL_HEADER = ["HTTP_X_FORWARDED_PROTO" "https"];
 
           # ── THIS SETTING BUILDS THE PACKAGE, IT DOES NOT ONLY CONFIGURE IT ─
           #
@@ -1158,7 +1208,7 @@ in
       # definition is an evaluation conflict rather than an override.  What
       # this block does is the group membership that the shared inbox needs.
       users.groups.docsin.gid = docsinGid;
-      users.users.paperless.extraGroups = [ "docsin" ];
+      users.users.paperless.extraGroups = ["docsin"];
 
       # ── AND THE RULE THAT WOULD OTHERWISE UNDO THE INBOX'S GROUP ──────────
       #
@@ -1184,7 +1234,7 @@ in
       # the host-side `install -d` having run first and left 2770 behind.
       systemd.tmpfiles.settings."10-paperless".${consumeDir}.d = {
         group = lib.mkForce "docsin";
-        mode  = "2770";
+        mode = "2770";
       };
 
       ##########################################################################
@@ -1201,9 +1251,9 @@ in
       ##########################################################################
       systemd.services.paperless-provision = {
         description = "Provision mneme's read-only paperless account and API token";
-        wantedBy = [ "multi-user.target" ];
-        after    = [ "paperless-web.service" "paperless-scheduler.service" ];
-        requires = [ "paperless-scheduler.service" ];
+        wantedBy = ["multi-user.target"];
+        after = ["paperless-web.service" "paperless-scheduler.service"];
+        requires = ["paperless-scheduler.service"];
 
         # It retries because the migrations it depends on run in
         # paperless-scheduler's own start, and losing that race on a cold boot
@@ -1219,14 +1269,14 @@ in
         startLimitBurst = 10;
 
         serviceConfig = {
-          Type            = "oneshot";
+          Type = "oneshot";
           RemainAfterExit = true;
-          Restart         = "on-failure";
-          RestartSec      = "60s";
-          User  = "paperless";
+          Restart = "on-failure";
+          RestartSec = "60s";
+          User = "paperless";
           Group = "paperless";
         };
-        path = [ config.services.paperless.manage pkgs.coreutils ];
+        path = [config.services.paperless.manage pkgs.coreutils];
         script = ''
           set -euo pipefail
           paperless-manage shell < ${provisionScript}
@@ -1235,8 +1285,8 @@ in
 
       # `curl` is the test plan's instrument for proving this backend is
       # reachable from Traefik and from mneme, and from nowhere else.
-      environment.systemPackages = with pkgs; [ curl ];
-      documentation.enable       = false;
+      environment.systemPackages = with pkgs; [curl];
+      documentation.enable = false;
       documentation.nixos.enable = false;
     };
   };

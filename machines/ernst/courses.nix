@@ -39,9 +39,7 @@
 #
 # See docs/guides/courses.md for the ingest workflow and the Jellyfin library
 # settings, which are UI state and NOT declarative.
-{ pkgs, ... }:
-
-let
+{pkgs, ...}: let
   # Must agree with containers/jellyfin.nix (mediaGid) and containers/arr/.
   # The library is 2770 root:media like every other directory under
   # /srv/media/library, so Jellyfin (uid 964, member of media) can read it.
@@ -60,8 +58,7 @@ let
   # adding a file here; adding a chapter is editing one.  Nothing in this
   # module needs to change for either.
   manifestDir = ./courses;
-in
-{
+in {
   systemd.tmpfiles.rules = [
     "d ${libraryDir} 2770 root ${toString mediaGid} -"
     "d ${ingestDir}  0750 root ${toString mediaGid} -"
@@ -78,12 +75,12 @@ in
   # above.  Idempotent: chown/chmod on an already-correct directory is a no-op.
   systemd.services.courses-library-perms = {
     description = "Create and permission the Jellyfin Courses library and ingest directories";
-    wantedBy    = [ "multi-user.target" ];
-    before      = [ "container@jellyfin.service" ];
-    after       = [ "srv-media.mount" ];
-    requires    = [ "srv-media.mount" ];
+    wantedBy = ["multi-user.target"];
+    before = ["container@jellyfin.service"];
+    after = ["srv-media.mount"];
+    requires = ["srv-media.mount"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
       ExecStart = [
         "${pkgs.coreutils}/bin/mkdir -p ${libraryDir} ${ingestDir}"
@@ -109,9 +106,12 @@ in
       name = "course-import";
 
       runtimeInputs = with pkgs; [
-        coreutils findutils gnused gawk
-        jq               # the manifests
-        ffmpeg-headless  # ffprobe, for <runtime> in the episode NFO
+        coreutils
+        findutils
+        gnused
+        gawk
+        jq # the manifests
+        ffmpeg-headless # ffprobe, for <runtime> in the episode NFO
       ];
 
       text = ''

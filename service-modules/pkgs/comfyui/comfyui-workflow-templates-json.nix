@@ -28,7 +28,6 @@
   buildPythonPackage,
   fetchurl,
 }:
-
 buildPythonPackage rec {
   pname = "comfyui-workflow-templates-json";
   version = "0.1.72";
@@ -41,7 +40,7 @@ buildPythonPackage rec {
 
   doCheck = false;
 
-  pythonImportsCheck = [ "comfyui_workflow_templates_json" ];
+  pythonImportsCheck = ["comfyui_workflow_templates_json"];
 
   meta = {
     description = "Workflow template JSON definitions for ComfyUI";

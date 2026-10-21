@@ -161,13 +161,10 @@
   pkgs,
   lib,
   ...
-}:
-
-let
+}: let
   ##############################################################################
   # Identity.
   ##############################################################################
-
   # From machines/ernst/allocations.nix.  See the header
   # for why pinning it is load-bearing rather than hygiene.
   karakeepUid = 3038;
@@ -191,7 +188,7 @@ let
   karakeepPort = 3000;
 
   baseDomain = "goclan.org";
-  hostName   = "karakeep.${baseDomain}";
+  hostName = "karakeep.${baseDomain}";
 
   # ── The inference leg ─────────────────────────────────────────────────────
   #
@@ -235,15 +232,14 @@ let
   # bind established at container start would keep exposing a deleted
   # generation.  containers/traefik.nix carries the long form of this.
   ##############################################################################
-  secretsDir  = "/run/karakeep-secrets";
+  secretsDir = "/run/karakeep-secrets";
   oidcEnvFile = "${secretsDir}/oidc.env";
 
   # Declared in containers/authelia.nix, beside the other relying parties —
   # ONE GENERATOR PER RELYING PARTY is that file's rule.  Authelia takes the
   # DIGEST; this container takes the PLAINTEXT half of the same pair.
   oidcGen = config.clan.core.vars.generators.authelia-oidc-karakeep;
-in
-{
+in {
   ##############################################################################
   # Host side — the directories, the secrets and the veth.
   ##############################################################################
@@ -262,21 +258,26 @@ in
 
     # nspawn passes ids through UNMAPPED, so a number chosen inside the
     # container is a number on zdata. Pinned rather than left to the module.
-    uid  = karakeepUid;
-    gid  = karakeepGid;
+    uid = karakeepUid;
+    gid = karakeepGid;
     user = "karakeep";
 
     stateDirs = [
-      { path = dataRoot; owner = karakeepUid; group = karakeepGid; mode = "0700"; }
+      {
+        path = dataRoot;
+        owner = karakeepUid;
+        group = karakeepGid;
+        mode = "0700";
+      }
     ];
 
     secrets."oidc.env" = {
-      OAUTH_CLIENT_ID     = { value = "karakeep"; };
-      OAUTH_CLIENT_SECRET = { file = oidcGen.files."karakeep-client-secret".path; };
+      OAUTH_CLIENT_ID = {value = "karakeep";};
+      OAUTH_CLIENT_SECRET = {file = oidcGen.files."karakeep-client-secret".path;};
     };
 
     bindMounts."/var/lib/karakeep" = {
-      hostPath   = dataRoot;
+      hostPath = dataRoot;
       isReadOnly = false;
     };
 
@@ -285,16 +286,31 @@ in
     # already resident for the coding agent — which is why this is a third
     # consumer rather than an argument about the budget.
     ula = [
-      { veth = aiVeth; hostAddress6 = aiHost; localAddress6 = aiCont; }
+      {
+        veth = aiVeth;
+        hostAddress6 = aiHost;
+        localAddress6 = aiCont;
+      }
     ];
 
     allowFrom = [
-      { peer = traefikAddr;   port = karakeepPort; }  # every browser arrives here
-      { peer = dashboardAddr; port = karakeepPort; }  # the service index's tile
+      {
+        peer = traefikAddr;
+        port = karakeepPort;
+      } # every browser arrives here
+      {
+        peer = dashboardAddr;
+        port = karakeepPort;
+      } # the service index's tile
     ];
 
     # The service itself — the irreducible half.
-    config = { config, pkgs, lib, ... }: {
+    config = {
+      config,
+      pkgs,
+      lib,
+      ...
+    }: {
       # identical message, and the stack trace named
       # `containers.karakeep.systemd.services.karakeep-init.script`.  Keeping
       # it here also makes the grant as narrow as the mechanism allows: it
@@ -316,7 +332,7 @@ in
       # Revisit when a patched pnpm lands — this line should come out on its
       # own rather than be renewed by habit.
       ##########################################################################
-      nixpkgs.config.permittedInsecurePackages = [ "pnpm-9.15.9" ];
+      nixpkgs.config.permittedInsecurePackages = ["pnpm-9.15.9"];
 
       # The service.
       ##########################################################################
@@ -352,8 +368,8 @@ in
 
           # ── Authentication.  SEE THE HEADER — no local password exists ────
           DISABLE_PASSWORD_AUTH = "true";
-          OAUTH_PROVIDER_NAME   = "Authelia";
-          OAUTH_WELLKNOWN_URL   = autheliaWellKnown;
+          OAUTH_PROVIDER_NAME = "Authelia";
+          OAUTH_WELLKNOWN_URL = autheliaWellKnown;
 
           # ── DISABLE_SIGNUPS GATES OAUTH TOO.  MEASURED, NOT ASSUMED. ──────
           #
@@ -429,12 +445,12 @@ in
           # Qwen3.6-35B-A3B is multimodal, so the same resident model answers
           # both.  The eviction is not mitigated, it is GONE: there is no
           # second model to swap to.
-          INFERENCE_TEXT_MODEL  = "qwen3.6-35b-a3b";
+          INFERENCE_TEXT_MODEL = "qwen3.6-35b-a3b";
           INFERENCE_IMAGE_MODEL = "qwen3.6-35b-a3b";
 
-          INFERENCE_ENABLE_AUTO_TAGGING       = "true";
+          INFERENCE_ENABLE_AUTO_TAGGING = "true";
           INFERENCE_ENABLE_AUTO_SUMMARIZATION = "true";
-          INFERENCE_LANG                      = "english";
+          INFERENCE_LANG = "english";
 
           # 8192, not the 2048 default and not the 32768 the model serves.  The
           # default truncates most long-form articles before the tagger sees
@@ -538,9 +554,9 @@ in
       # All three units that declare `StateDirectory = "karakeep"` need it;
       # setting it on one and not the others means the next start of whichever
       # was missed puts 0755 back.
-      systemd.services.karakeep-init.serviceConfig.StateDirectoryMode    = "0700";
+      systemd.services.karakeep-init.serviceConfig.StateDirectoryMode = "0700";
       systemd.services.karakeep-workers.serviceConfig.StateDirectoryMode = "0700";
-      systemd.services.karakeep-web.serviceConfig.StateDirectoryMode     = "0700";
+      systemd.services.karakeep-web.serviceConfig.StateDirectoryMode = "0700";
 
       # ── Pin the ids ───────────────────────────────────────────────────────
       #

@@ -1,7 +1,10 @@
-{ lib, pkgs, ... }:
 {
+  lib,
+  pkgs,
+  ...
+}: {
   networking.hostName = "biene";
-  networking.hostId   = "cd9ef50b";
+  networking.hostId = "cd9ef50b";
   # DNS: no global `networking.search` — search + routing attach to the
   # "home" NM profile.  See modules/networking/{resolved,skynet-dns-nm}.nix.
 
@@ -13,7 +16,7 @@
   # Locale: German everywhere (CLI + desktop UI).
   # de layout for the greeter; us is added as a secondary layout by the compositor.
   clanarchy.locale = {
-    language        = "de_DE";
+    language = "de_DE";
     keyboard.layout = "de";
   };
 
@@ -25,14 +28,17 @@
   # are assigned via inventory.instances in clan.nix.
   # Home wifi is provisioned via the clan wifi service (clan.nix).
   # Fritz!Box is biene-specific — managed via the bespoke modules/wifi.nix.
-  clanarchy.hardware.cpu              = "intel";
-  clanarchy.users.admin.enable        = true;
+  clanarchy.hardware.cpu = "intel";
+  clanarchy.users.admin.enable = true;
   clanarchy.desktop.labwc.valent.enable = true;
 
   # Fritz!Box 7590 MX — biene-specific second wifi network.
   # Run `clan vars generate biene --generator wifi-fritzbox` to store the PSK.
   clanarchy.wifi.networks = [
-    { ssid = "Fritz!Box 7590 MX"; varName = "wifi-fritzbox"; }
+    {
+      ssid = "Fritz!Box 7590 MX";
+      varName = "wifi-fritzbox";
+    }
   ];
 
   # Syncthing — run as sabine so it can write to /home/sabine/Public.
@@ -50,7 +56,7 @@
   # this machine is on the stable channel and therefore ZFS — so this is a
   # preference about suspend, not about hibernation. Docked behaviour
   # (HandleLidSwitchDocked) keeps the systemd default: ignore.
-  services.logind.settings.Login.HandleLidSwitch              = lib.mkForce "poweroff";
+  services.logind.settings.Login.HandleLidSwitch = lib.mkForce "poweroff";
   services.logind.settings.Login.HandleLidSwitchExternalPower = lib.mkForce "poweroff";
 
   # Swap partition is retained for memory pressure only. resumeDevice stays
@@ -63,7 +69,7 @@
   # Removable-media filesystem compatibility (USB sticks, SD cards, externals
   # handed over from Windows / Android / older Macs). Adds native kernel
   # drivers; userspace tools are added to systemPackages below.
-  boot.supportedFilesystems = [ "ntfs" "exfat" "vfat" "f2fs" "hfsplus" ];
+  boot.supportedFilesystems = ["ntfs" "exfat" "vfat" "f2fs" "hfsplus"];
 
   # Force udisks2 (and every other mount consumer) to route NTFS through
   # ntfs-3g FUSE instead of the in-kernel ntfs3 driver. ntfs3 refuses to
@@ -78,18 +84,18 @@
 
   # App categories — package lists and services live in modules/apps/*.nix.
   clanarchy.apps.graphics.simple.enable = true;
-  clanarchy.apps.media.enable           = true;
-  clanarchy.apps.gnomeCoreApps.enable   = true;
-  clanarchy.apps.desktopTools.enable    = true;
-  clanarchy.apps.flatpak.enable         = true;
+  clanarchy.apps.media.enable = true;
+  clanarchy.apps.gnomeCoreApps.enable = true;
+  clanarchy.apps.desktopTools.enable = true;
+  clanarchy.apps.flatpak.enable = true;
 
   # Supersonic, for Navidrome. biene is on the stable channel, where the
   # Wayland build is still a separate derivation — plain `supersonic` there is
   # the X11 one and would run through XWayland under labwc. Unstable removed
   # this attribute after folding Wayland support into the main package, so
   # this override must NOT be copied to a machine on `channel = "unstable"`.
-  clanarchy.apps.subsonic.enable        = true;
-  clanarchy.apps.subsonic.package       = pkgs.supersonic-wayland;
+  clanarchy.apps.subsonic.enable = true;
+  clanarchy.apps.subsonic.package = pkgs.supersonic-wayland;
 
   # GUI applications available to all biene users (file manager, doc viewer).
   # gvfs provides virtual filesystem support for nautilus
@@ -118,7 +124,7 @@
 
   # libgphoto2's udev rules tag Apple/PTP devices with uaccess so the active
   # logind session user (sabine) gets device access without root or plugdev.
-  services.udev.packages = [ pkgs.libgphoto2 ];
+  services.udev.packages = [pkgs.libgphoto2];
   services.gvfs.enable = true;
 
   system.stateVersion = "25.11";

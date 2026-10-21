@@ -4,8 +4,11 @@
 # bits: `stylix.base16Scheme`, `stylix.image`, `stylix.fonts.sizes`, and
 # `stylix.targets.regreet.enable` where the machine actually uses regreet
 # (birte skips it — SDDM is provisioned by Jovian).
-{ lib, pkgs, ... }:
 {
+  lib,
+  pkgs,
+  ...
+}: {
   stylix = {
     enable = true;
 
@@ -19,10 +22,22 @@
     enableReleaseChecks = false;
 
     fonts = {
-      serif     = { package = pkgs.nerd-fonts.monaspace;   name = "MonaspiceXe Nerd Font Propo"; };
-      sansSerif = { package = pkgs.nerd-fonts.monaspace;   name = "MonaspiceNe Nerd Font Propo"; };
-      monospace = { package = pkgs.nerd-fonts.monaspace;   name = "MonaspiceAr Nerd Font Mono";  };
-      emoji     = { package = pkgs.noto-fonts-color-emoji; name = "Noto Color Emoji"; };
+      serif = {
+        package = pkgs.nerd-fonts.monaspace;
+        name = "MonaspiceXe Nerd Font Propo";
+      };
+      sansSerif = {
+        package = pkgs.nerd-fonts.monaspace;
+        name = "MonaspiceNe Nerd Font Propo";
+      };
+      monospace = {
+        package = pkgs.nerd-fonts.monaspace;
+        name = "MonaspiceAr Nerd Font Mono";
+      };
+      emoji = {
+        package = pkgs.noto-fonts-color-emoji;
+        name = "Noto Color Emoji";
+      };
     };
 
     # Adwaita cursor — matches XCURSOR_THEME env var set by desktop modules.

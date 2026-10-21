@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 #
 # ZSA keyboard support — Oryx web configurator, Keymapp, and the udev rules
 # both of them need.  Written for the Voyager; the same rules cover the
@@ -78,7 +83,7 @@
     '';
 
     keymapp.enable = lib.mkOption {
-      type    = lib.types.bool;
+      type = lib.types.bool;
       default = config.clanarchy.hardware.zsa.enable;
       description = ''
         Install Keymapp, ZSA's native desktop configurator.
@@ -96,7 +101,7 @@
     };
 
     wally.enable = lib.mkOption {
-      type    = lib.types.bool;
+      type = lib.types.bool;
       default = false;
       description = ''
         Install `wally-cli`, ZSA's older command-line flasher (MIT).

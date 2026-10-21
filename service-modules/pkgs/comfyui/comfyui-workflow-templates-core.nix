@@ -28,7 +28,6 @@
   buildPythonPackage,
   fetchurl,
 }:
-
 buildPythonPackage rec {
   pname = "comfyui-workflow-templates-core";
   version = "0.3.337";
@@ -41,7 +40,7 @@ buildPythonPackage rec {
 
   doCheck = false;
 
-  pythonImportsCheck = [ "comfyui_workflow_templates_core" ];
+  pythonImportsCheck = ["comfyui_workflow_templates_core"];
 
   meta = {
     description = "Manifest helpers for ComfyUI's workflow templates";

@@ -57,7 +57,6 @@
   fetchurl,
   torch,
 }:
-
 buildPythonPackage rec {
   pname = "comfy-kitchen";
   version = "0.2.33";
@@ -73,7 +72,7 @@ buildPythonPackage rec {
   # environment without one, and so it takes the SAME torch as everything else
   # (default.nix builds one ROCm-enabled python set; two torches on one
   # PYTHONPATH is a failure that presents as an unrelated import error).
-  dependencies = [ torch ];
+  dependencies = [torch];
 
   # ── torch DRAGS IN ninja's SETUP HOOK, AND A WHEEL HAS NOTHING TO BUILD ──
   #
@@ -96,7 +95,7 @@ buildPythonPackage rec {
 
   doCheck = false;
 
-  pythonImportsCheck = [ "comfy_kitchen" ];
+  pythonImportsCheck = ["comfy_kitchen"];
 
   meta = {
     description = "Kernel library for ComfyUI (pure-Python backends; CUDA kernels not built)";

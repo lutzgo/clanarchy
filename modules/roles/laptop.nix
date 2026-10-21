@@ -1,14 +1,17 @@
-{ config, lib, pkgs, ... }:
-let
-  cfg = config.clanarchy.roles.laptop;
-in
 {
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
+  cfg = config.clanarchy.roles.laptop;
+in {
   options.clanarchy.roles.laptop = {
-    enable           = lib.mkEnableOption "laptop role";
+    enable = lib.mkEnableOption "laptop role";
     framework.enable = lib.mkEnableOption "Framework-specific hardware (fprintd, fwupd, backpack-wake udev rule)";
 
     hybridSleep.enable = lib.mkOption {
-      type    = lib.types.bool;
+      type = lib.types.bool;
       default = config.clanarchy.rootfs == "btrfs";
       description = ''
         Hybrid-sleep on lid close: suspend to RAM and write a hibernation
@@ -30,7 +33,6 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-
     assertions = [
       {
         assertion = !(cfg.hybridSleep.enable && config.clanarchy.rootfs != "btrfs");
@@ -59,7 +61,7 @@ in
         '';
       }
       {
-        assertion = !(cfg.hybridSleep.enable && config.swapDevices == [ ]);
+        assertion = !(cfg.hybridSleep.enable && config.swapDevices == []);
         message = ''
           clanarchy.roles.laptop.hybridSleep.enable is on but this machine
           declares no swap. Pass `enableSwap = true` (and a `swapSize` of at
@@ -74,7 +76,7 @@ in
     # GPU / hardware graphics — delegate to shared options
     # (modules/hardware/gpu.nix).  Laptops get the baseline driver for the
     # configured CPU vendor; ROCm/iGPU-only flavour ships clr.icd anyway.
-    clanarchy.hardware.gpu.amd.enable   = config.clanarchy.hardware.cpu == "amd";
+    clanarchy.hardware.gpu.amd.enable = config.clanarchy.hardware.cpu == "amd";
     clanarchy.hardware.gpu.intel.enable = config.clanarchy.hardware.cpu == "intel";
 
     # Framework-specific hardware: fprintd + udev wake rule.
@@ -116,7 +118,7 @@ in
 
     # Enrolled fingerprints must survive ZFS rollback.
     environment.persistence."/persist".directories =
-      lib.mkIf cfg.framework.enable [ "/var/lib/fprint" ];
+      lib.mkIf cfg.framework.enable ["/var/lib/fprint"];
 
     # Prevent backpack-wake: disable LID ACPI device as a kernel wakeup source.
     # This stops the lid sensor from generating spurious wakeups when bag pressure
@@ -138,9 +140,12 @@ in
     #   hybridSleep.enable=true  → hybrid-sleep on battery, suspend on AC
     #   hybridSleep.enable=false → suspend only (use until swap partition exists)
     services.logind.settings.Login = {
-      HandleLidSwitch              = if cfg.hybridSleep.enable then "hybrid-sleep" else "suspend";
+      HandleLidSwitch =
+        if cfg.hybridSleep.enable
+        then "hybrid-sleep"
+        else "suspend";
       HandleLidSwitchExternalPower = "suspend";
-      KillUserProcesses            = false;
+      KillUserProcesses = false;
     };
 
     # Hibernate via clean shutdown (most compatible across firmwares).
@@ -153,8 +158,8 @@ in
     # Server role uses 30-day retention; laptops rebuild more frequently.
     nix.gc = {
       automatic = true;
-      dates     = "weekly";
-      options   = "--delete-older-than 14d";
+      dates = "weekly";
+      options = "--delete-older-than 14d";
     };
     nix.settings.auto-optimise-store = true;
   };

@@ -1,7 +1,11 @@
-{ config, lib, pkgs, osConfig, ... }:
-
-let
-  cfg     = config.clanarchy.consoleDesktop;
+{
+  config,
+  lib,
+  pkgs,
+  osConfig,
+  ...
+}: let
+  cfg = config.clanarchy.consoleDesktop;
   cfgAerc = cfg.aerc;
 
   # M31.  lutz@goclan.org's password, staged by sops on THIS machine because
@@ -13,18 +17,16 @@ let
   # path is a property of the deployment, not of the home.
   mailPasswordFile =
     osConfig.clan.core.vars.generators.mail-accounts.files."lutz.plain".path;
-in
-{
+in {
   options.clanarchy.consoleDesktop = {
-    enable     = (lib.mkEnableOption "console desktop tools (aerc, oama, w3m)") // { default = true; };
-    aerc.enable = (lib.mkEnableOption "aerc TUI email client") // { default = true; };
+    enable = (lib.mkEnableOption "console desktop tools (aerc, oama, w3m)") // {default = true;};
+    aerc.enable = (lib.mkEnableOption "aerc TUI email client") // {default = true;};
   };
 
   config = lib.mkIf cfg.enable {
-
     home.packages = lib.mkIf cfgAerc.enable (with pkgs; [
-      oama  # OAuth2 credential manager — used as aerc passwordCommand
-      w3m   # HTML mail rendering (register as aerc [[ html ]] open handler)
+      oama # OAuth2 credential manager — used as aerc passwordCommand
+      w3m # HTML mail rendering (register as aerc [[ html ]] open handler)
     ]);
 
     # ~/.config/aerc is covered by the ".config" persist directory in
@@ -45,19 +47,19 @@ in
       # confirm them and align j/k/g/G with lgo's helix/nvim muscle memory).
       extraBinds = {
         messages = {
-          j         = ":next<Enter>";
-          k         = ":prev<Enter>";
-          g         = ":select 0<Enter>";
-          G         = ":select -1<Enter>";
+          j = ":next<Enter>";
+          k = ":prev<Enter>";
+          g = ":select 0<Enter>";
+          G = ":select -1<Enter>";
           "<Enter>" = ":view<Enter>";
-          C         = ":compose<Enter>";
-          r         = ":reply<Enter>";
-          R         = ":reply -a<Enter>";
-          D         = ":delete<Enter>";
-          "/"       = ":search<space>";
-          n         = ":next-result<Enter>";
-          N         = ":prev-result<Enter>";
-          q         = ":quit<Enter>";
+          C = ":compose<Enter>";
+          r = ":reply<Enter>";
+          R = ":reply -a<Enter>";
+          D = ":delete<Enter>";
+          "/" = ":search<space>";
+          n = ":next-result<Enter>";
+          N = ":prev-result<Enter>";
+          q = ":quit<Enter>";
         };
         view = {
           q = ":close<Enter>";
@@ -85,8 +87,8 @@ in
     #   path in docs/guides/mail.md.  Nothing about that is visible from here
     #   — aerc will report a cheerful 250 either way.
     accounts.email.accounts.goclan = lib.mkIf cfgAerc.enable {
-      primary  = true;
-      address  = "lutz@goclan.org";
+      primary = true;
+      address = "lutz@goclan.org";
       userName = "lutz@goclan.org";
       realName = "Lutz Go";
 
@@ -94,8 +96,16 @@ in
       # and 465 for submission.  143 and 587 are switched OFF on ernst per
       # RFC 8314, so there is no STARTTLS port to fall back to and that is
       # deliberate — see the port note in containers/mail.nix.
-      imap = { host = "mail.goclan.org"; port = 993; tls.enable = true; };
-      smtp = { host = "mail.goclan.org"; port = 465; tls.enable = true; };
+      imap = {
+        host = "mail.goclan.org";
+        port = 993;
+        tls.enable = true;
+      };
+      smtp = {
+        host = "mail.goclan.org";
+        port = 465;
+        tls.enable = true;
+      };
 
       # `cat` on a 0400 file owned by lgo.  aerc re-runs this on every start,
       # so rotating the clan var needs no daemon restart — only a restart of
@@ -113,7 +123,7 @@ in
         # the `@` would otherwise terminate the userinfo component early,
         # leaving aerc trying to reach a host called `goclan.org@mail...`.
         extraAccounts = {
-          source   = "imaps://lutz%40goclan.org@mail.goclan.org:993";
+          source = "imaps://lutz%40goclan.org@mail.goclan.org:993";
           outgoing = "smtps://lutz%40goclan.org@mail.goclan.org:465";
         };
       };

@@ -1,8 +1,12 @@
 # Shared NixOS config for all Noctalia-based Wayland compositors (niri, labwc).
 # Imported by both niri.nix and labwc.nix; each machine only loads one compositor
 # module so this file is never double-imported within a single configuration.
-{ pkgs, pkgs-unstable, inputs, ... }:
 {
+  pkgs,
+  pkgs-unstable,
+  inputs,
+  ...
+}: {
   imports = [../icon-theme.nix];
 
   # ReGreet — GTK4 greeter via cage; Stylix-themed in stylix.nix.
@@ -13,7 +17,7 @@
   # Persist regreet state so it remembers the last user/session across reboots.
   # state.toml records last_user and user_to_last_sess — without this the user
   # must manually pick their name and session after every boot (root rolls back).
-  environment.persistence."/persist".directories = [ "/var/lib/regreet" ];
+  environment.persistence."/persist".directories = ["/var/lib/regreet"];
 
   # UWSM — compositor-specific waylandCompositors entry is set per compositor.
   programs.uwsm.enable = true;
@@ -132,14 +136,14 @@
   # Noctalia plugin runtime dependencies — packages required by specific Noctalia
   # plugins regardless of compositor.
   environment.systemPackages = with pkgs; [
-    gpu-screen-recorder   # screen-shot-and-record: GPU-accelerated screen capture
-    calibre               # calibre-provider: book library search via >cb launcher
-    obs-studio            # obs-control: recording/streaming control from bar
-    khal                  # khal-agenda-widget: upcoming events for next 7 days
+    gpu-screen-recorder # screen-shot-and-record: GPU-accelerated screen capture
+    calibre # calibre-provider: book library search via >cb launcher
+    obs-studio # obs-control: recording/streaming control from bar
+    khal # khal-agenda-widget: upcoming events for next 7 days
     evolution-data-server # weekly-calendar: CalendarService.qml backend (D-Bus activated)
-    wlr-randr             # display-settings: live display info and configuration
-    fd                    # file-search: fast file lookup via >file launcher
-    networkmanagerapplet  # network-manager-vpn: nm-connection-editor for VPN profiles
+    wlr-randr # display-settings: live display info and configuration
+    fd # file-search: fast file lookup via >file launcher
+    networkmanagerapplet # network-manager-vpn: nm-connection-editor for VPN profiles
     kdePackages.qtwebsockets # hassio + obs-control: Qt6 WebSocket support
   ];
 
@@ -168,7 +172,7 @@
   };
 
   environment.variables = {
-    XCURSOR_SIZE  = "24";
+    XCURSOR_SIZE = "24";
     XCURSOR_THEME = "Adwaita";
     NIXOS_OZONE_WL = "1";
   };

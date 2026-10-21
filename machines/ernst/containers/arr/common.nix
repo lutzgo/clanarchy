@@ -42,17 +42,22 @@
 # attrset being read would be the one being defined, which is infinite
 # recursion at eval. If a global application is ever wanted it needs an
 # explicit list of unit names, not a fold over the service set.
-{ config, lib, pkgs, inputs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  inputs,
+  ...
+}: let
   ids = import ./ids.nix;
 
   # The old flat names, so every block below is unchanged from the file it
   # came out of. See the header.
   inherit (ids) stateRoot audiobooksRoot;
   arrSyscallFilter = ids.syscallFilter;
-  arrSecretsDir    = ids.secretsDirs.arrApiKeys;
-  arrMac   = "02:00:00:90:00:05";
-  vlanId   = 90;
+  arrSecretsDir = ids.secretsDirs.arrApiKeys;
+  arrMac = "02:00:00:90:00:05";
+  vlanId = 90;
   vethName = "vb-arr";
   mediaGid = ids.gids.media;
   sonarrUid = ids.uids.sonarr;
@@ -93,18 +98,17 @@ let
   komgaPort = ids.ports.komga;
   navidromePort = ids.ports.navidrome;
   mediathekarrDownloaderPort = ids.ports.mediathekarrDownloader;
-  umlautadaptarrPort         = ids.ports.umlautadaptarr;
-  umlautadaptarrProxyPort    = ids.ports.umlautadaptarrProxy;
-  traefikAddr    = ids.peers.traefik;
+  umlautadaptarrPort = ids.ports.umlautadaptarr;
+  umlautadaptarrProxyPort = ids.ports.umlautadaptarrProxy;
+  traefikAddr = ids.peers.traefik;
   monitoringAddr = ids.peers.monitoring;
-  massAddr       = ids.peers.mass;
+  massAddr = ids.peers.mass;
   beetsStagingRoot = ids.paths.beetsStaging;
-  beetsStateDir    = ids.paths.beetsState;
-  janitorrSecretsDir  = ids.secretsDirs.janitorr;
+  beetsStateDir = ids.paths.beetsState;
+  janitorrSecretsDir = ids.secretsDirs.janitorr;
   navidromeSecretsDir = ids.secretsDirs.navidrome;
-  soularrSecretsDir   = ids.secretsDirs.soularr;
-in
-{
+  soularrSecretsDir = ids.secretsDirs.soularr;
+in {
   ##############################################################################
   # Host-side wiring.
   ##############################################################################
@@ -129,11 +133,17 @@ in
   systemd.network.networks."60-${vethName}" = {
     matchConfig.Name = vethName;
     networkConfig = {
-      KeepMaster          = true;
+      KeepMaster = true;
       LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
+      IPv6AcceptRA = false;
     };
-    bridgeVLANs = [ { VLAN = vlanId; PVID = vlanId; EgressUntagged = vlanId; } ];
+    bridgeVLANs = [
+      {
+        VLAN = vlanId;
+        PVID = vlanId;
+        EgressUntagged = vlanId;
+      }
+    ];
     # A bridge port's terminal operational state is "enslaved"; it never
     # becomes routable, and waiting for that would hang boot.
     linkConfig.RequiredForOnline = "enslaved";
@@ -164,12 +174,12 @@ in
   ##############################################################################
   containers.arr = {
     autoStart = true;
-    ephemeral = false;          # state persists via the bind mounts below
+    ephemeral = false; # state persists via the bind mounts below
 
     # Own netns, own L2 identity.  See the file header for why this is a veth
     # on br0 and not a macvlan or a tap.
-    privateNetwork  = true;
-    hostBridge      = "br0";
+    privateNetwork = true;
+    hostBridge = "br0";
     localMacAddress = arrMac;
 
     bindMounts = {
@@ -187,22 +197,22 @@ in
       # subdirectories are two mounts, and Sonarr checks `st_dev` before it
       # tries to hardlink.  One bind, one st_dev, one hardlink domain.
       "/srv/media" = {
-        hostPath   = "/srv/media";
+        hostPath = "/srv/media";
         isReadOnly = false;
       };
 
       # Per-service state, remapped to each package's upstream default path so
       # the packaged units need no dataDir override.
       "/var/lib/sonarr" = {
-        hostPath   = "${stateRoot}/sonarr";
+        hostPath = "${stateRoot}/sonarr";
         isReadOnly = false;
       };
       "/var/lib/radarr" = {
-        hostPath   = "${stateRoot}/radarr";
+        hostPath = "${stateRoot}/radarr";
         isReadOnly = false;
       };
       "/var/lib/prowlarr" = {
-        hostPath   = "${stateRoot}/prowlarr";
+        hostPath = "${stateRoot}/prowlarr";
         isReadOnly = false;
       };
 
@@ -224,7 +234,7 @@ in
       # entries above, because `music-stage`'s config is generated from
       # `beetsStateDir` and the two must agree.
       "${beetsStateDir}" = {
-        hostPath   = beetsStateDir;
+        hostPath = beetsStateDir;
         isReadOnly = false;
       };
 
@@ -234,15 +244,15 @@ in
       # UmlautAdaptarr has no entry, and that is not an omission — it has no
       # persistent state at all.  See its block below.
       "/var/lib/bazarr" = {
-        hostPath   = "${stateRoot}/bazarr";
+        hostPath = "${stateRoot}/bazarr";
         isReadOnly = false;
       };
       "/var/lib/cleanuparr" = {
-        hostPath   = "${stateRoot}/cleanuparr";
+        hostPath = "${stateRoot}/cleanuparr";
         isReadOnly = false;
       };
       "/var/lib/mediathekarr" = {
-        hostPath   = "${stateRoot}/mediathekarr";
+        hostPath = "${stateRoot}/mediathekarr";
         isReadOnly = false;
       };
 
@@ -268,7 +278,7 @@ in
       # "jellyseerr" is what the service is called everywhere else in this
       # repo — in the Traefik router, in the DNS name, and in the uid table.
       "/var/lib/seerr" = {
-        hostPath   = "${stateRoot}/jellyseerr";
+        hostPath = "${stateRoot}/jellyseerr";
         isReadOnly = false;
       };
 
@@ -280,7 +290,7 @@ in
       # tmpfs under /run on every start, because it contains four API keys and
       # a password.  See the janitorr-config block.
       "/var/lib/janitorr" = {
-        hostPath   = "${stateRoot}/janitorr";
+        hostPath = "${stateRoot}/janitorr";
         isReadOnly = false;
       };
 
@@ -290,21 +300,21 @@ in
       # Janitorr's Jellyfin credentials, READ-ONLY, at the same path as on the
       # host.  One of the two bind mounts in this file that carry a secret.
       "${janitorrSecretsDir}" = {
-        hostPath   = janitorrSecretsDir;
+        hostPath = janitorrSecretsDir;
         isReadOnly = true;
       };
 
       # The other one: slskd's API key, for Soularr.  Same shape, same reason —
       # a clan var's own /run/secrets path does not exist inside the container.
       "${soularrSecretsDir}" = {
-        hostPath   = soularrSecretsDir;
+        hostPath = soularrSecretsDir;
         isReadOnly = true;
       };
 
       # The THIRD: Navidrome's Prometheus password.  Same shape and the same
       # reason as the two above — see navidromeSecretsDir in the let block.
       "${navidromeSecretsDir}" = {
-        hostPath   = navidromeSecretsDir;
+        hostPath = navidromeSecretsDir;
         isReadOnly = true;
       };
 
@@ -320,23 +330,23 @@ in
       # creates `.config/Lidarr` inside it on first start.  Binding the deeper
       # path instead would work until Lidarr wrote anything else into its home.
       "/var/lib/lidarr" = {
-        hostPath   = "${stateRoot}/lidarr";
+        hostPath = "${stateRoot}/lidarr";
         isReadOnly = false;
       };
       "/var/lib/soularr" = {
-        hostPath   = "${stateRoot}/soularr";
+        hostPath = "${stateRoot}/soularr";
         isReadOnly = false;
       };
       "/var/lib/kapowarr" = {
-        hostPath   = "${stateRoot}/kapowarr";
+        hostPath = "${stateRoot}/kapowarr";
         isReadOnly = false;
       };
       "/var/lib/questarr" = {
-        hostPath   = "${stateRoot}/questarr";
+        hostPath = "${stateRoot}/questarr";
         isReadOnly = false;
       };
       "/var/lib/audiobookshelf" = {
-        hostPath   = "${stateRoot}/audiobookshelf";
+        hostPath = "${stateRoot}/audiobookshelf";
         isReadOnly = false;
       };
 
@@ -353,11 +363,11 @@ in
       #              database on zdata, and DataFolder is deliberately LEFT
       #              UNSET below rather than pointed somewhere else.
       "/var/lib/komga" = {
-        hostPath   = "${stateRoot}/komga";
+        hostPath = "${stateRoot}/komga";
         isReadOnly = false;
       };
       "/var/lib/navidrome" = {
-        hostPath   = "${stateRoot}/navidrome";
+        hostPath = "${stateRoot}/navidrome";
         isReadOnly = false;
       };
 
@@ -369,7 +379,7 @@ in
       # unset points the service at the compiled-in /config default and it
       # dies on mkdir at first start.
       "/var/lib/bindery" = {
-        hostPath   = "${stateRoot}/bindery";
+        hostPath = "${stateRoot}/bindery";
         isReadOnly = false;
       };
 
@@ -381,7 +391,7 @@ in
       # ${audiobooksRoot}/synced from a DIFFERENT container, and the two only
       # agree about what a path means if neither of them rewrites it.
       "${audiobooksRoot}" = {
-        hostPath   = audiobooksRoot;
+        hostPath = audiobooksRoot;
         isReadOnly = false;
       };
 
@@ -395,7 +405,7 @@ in
       # flaresolverr, an opaque .NET indexer proxy — a writable, EXECUTABLE
       # tree.  One subdirectory is what Questarr needs.
       "/srv/games/questarr" = {
-        hostPath   = "/srv/games/questarr";
+        hostPath = "/srv/games/questarr";
         isReadOnly = false;
       };
     };
@@ -403,7 +413,12 @@ in
     ############################################################################
     # NixOS config for the container's own root filesystem.
     ############################################################################
-    config = { config, pkgs, lib, ... }: {
+    config = {
+      config,
+      pkgs,
+      lib,
+      ...
+    }: {
       system.stateVersion = "26.05";
 
       # Matches the host.  Unlike Jellyfin, these three are calendar- and
@@ -423,7 +438,7 @@ in
       # `mkDefault true`, so a plain `false` wins without mkForce.
       networking.useHostResolvConf = false;
 
-      networking.useNetworkd  = true;
+      networking.useNetworkd = true;
       services.resolved.enable = true;
 
       # eth0 — renamed from host0 by container-init before stage 2 runs.
@@ -439,13 +454,13 @@ in
       systemd.network.networks."10-eth0" = {
         matchConfig.Name = "eth0";
         networkConfig = {
-          DHCP         = "ipv4";
-          DNS          = "10.0.5.3";
-          Domains      = "~. skynet.lan";
+          DHCP = "ipv4";
+          DNS = "10.0.5.3";
+          Domains = "~. skynet.lan";
           IPv6AcceptRA = false;
         };
         dhcpV4Config = {
-          UseDNS     = false;
+          UseDNS = false;
           UseDomains = false;
         };
         linkConfig.RequiredForOnline = "routable";
@@ -480,7 +495,7 @@ in
       # after the allowedTCPPorts accepts and before the terminal
       # `nixos-fw-log-refuse`, and the chain is rebuilt on every start, so
       # nothing accumulates and `extraStopCommands` is not needed.
-      networking.firewall.allowedTCPPorts = [ ];
+      networking.firewall.allowedTCPPorts = [];
       networking.firewall.extraCommands =
         lib.concatMapStrings (port: ''
           iptables -A nixos-fw -p tcp -s ${traefikAddr}/32 --dport ${toString port} -j nixos-fw-accept
@@ -560,7 +575,6 @@ in
           navidromePort
         ];
 
-
       ##########################################################################
       # `arr-api-keys` — extract Sonarr's and Radarr's API keys at start.
       #
@@ -573,15 +587,15 @@ in
       # M12 renamed it from `recyclarr-api-keys` for that reason.
       systemd.services.arr-api-keys = {
         description = "Stage Sonarr/Radarr API keys for recyclarr and UmlautAdaptarr";
-        before     = [ "recyclarr.service" "umlautadaptarr.service" ];
-        requiredBy = [ "recyclarr.service" "umlautadaptarr.service" ];
+        before = ["recyclarr.service" "umlautadaptarr.service"];
+        requiredBy = ["recyclarr.service" "umlautadaptarr.service"];
         serviceConfig = {
-          Type                    = "oneshot";
-          RemainAfterExit         = false;
-          RuntimeDirectory        = "arr-api-keys";
-          RuntimeDirectoryMode    = "0700";
+          Type = "oneshot";
+          RemainAfterExit = false;
+          RuntimeDirectory = "arr-api-keys";
+          RuntimeDirectoryMode = "0700";
           RuntimeDirectoryPreserve = "yes";
-          UMask                   = "0077";
+          UMask = "0077";
 
           # This unit is ours, so nothing upstream hardens it and a bare root
           # oneshot scores 9.4 UNSAFE.  It runs as root for exactly one reason —
@@ -605,29 +619,29 @@ in
           #
           # PrivateNetwork is the big one: this handles credentials and has no
           # business having a network stack at all.
-          PrivateNetwork          = true;
-          IPAddressDeny           = "any";
-          CapabilityBoundingSet   = [ "CAP_DAC_READ_SEARCH" ];
-          NoNewPrivileges         = true;
-          ProtectSystem           = "strict";
-          ProtectHome             = true;
-          PrivateTmp              = true;
-          PrivateDevices          = true;
-          ProtectClock            = true;
-          ProtectControlGroups    = true;
-          ProtectHostname         = true;
-          ProtectKernelLogs       = true;
-          ProtectKernelModules    = true;
-          ProtectKernelTunables   = true;
-          ProtectProc             = "invisible";
-          RestrictAddressFamilies = [ "AF_UNIX" ];
-          RestrictNamespaces      = true;
-          RestrictRealtime        = true;
-          RestrictSUIDSGID        = true;
-          RemoveIPC               = true;
-          LockPersonality         = true;
+          PrivateNetwork = true;
+          IPAddressDeny = "any";
+          CapabilityBoundingSet = ["CAP_DAC_READ_SEARCH"];
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          PrivateTmp = true;
+          PrivateDevices = true;
+          ProtectClock = true;
+          ProtectControlGroups = true;
+          ProtectHostname = true;
+          ProtectKernelLogs = true;
+          ProtectKernelModules = true;
+          ProtectKernelTunables = true;
+          ProtectProc = "invisible";
+          RestrictAddressFamilies = ["AF_UNIX"];
+          RestrictNamespaces = true;
+          RestrictRealtime = true;
+          RestrictSUIDSGID = true;
+          RemoveIPC = true;
+          LockPersonality = true;
           SystemCallArchitectures = "native";
-          SystemCallFilter        = arrSyscallFilter;
+          SystemCallFilter = arrSyscallFilter;
 
           ExecStart = pkgs.writeShellScript "recyclarr-stage-api-keys" ''
             set -euo pipefail
@@ -929,7 +943,7 @@ in
       # ProtectSystem=strict needs no ReadWritePaths here: StateDirectory=
       # makes /var/lib/prowlarr writable implicitly, and Prowlarr writes
       # nowhere else.  PrivateTmp covers /tmp and /var/tmp.
-      documentation.enable       = false;
+      documentation.enable = false;
       documentation.nixos.enable = false;
     };
   };

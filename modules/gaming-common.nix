@@ -1,12 +1,15 @@
-{ config, lib, pkgs, ... }:
-let
-  cfg = config.clanarchy.gaming;
-in
 {
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
+  cfg = config.clanarchy.gaming;
+in {
   # `clanarchy.gaming.shortcuts` — non-Steam library entries, merged into
   # Steam's binary shortcuts.vdf at boot.  Split out because that is a
   # self-contained mechanism with a long explanation attached.
-  imports = [ ./gaming-shortcuts.nix ];
+  imports = [./gaming-shortcuts.nix];
 
   options.clanarchy.gaming = {
     enable = lib.mkEnableOption "shared gaming stack (Steam + Proton-GE + gaming-user persistence)";
@@ -25,7 +28,7 @@ in
 
     persistenceDirectories = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ ".steam" ];
+      default = [".steam"];
       description = ''
         Home-relative directories to persist across ZFS rollback for the
         gaming user. Defaults to `.steam` (Steam runtime bootstrap).
@@ -36,10 +39,9 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-
     programs.steam = {
-      enable              = true;
-      extraCompatPackages = with pkgs; [ proton-ge-bin ];
+      enable = true;
+      extraCompatPackages = with pkgs; [proton-ge-bin];
     };
 
     environment.persistence."/persist".users.${cfg.user} = {

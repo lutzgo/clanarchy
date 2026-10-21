@@ -175,9 +175,12 @@
 #   of them.  The four tokens below are still the most concentrated set of
 #   read credentials on this host; they are scoped read-only where the service
 #   allows it, and that scoping is the operator's job, not this file's.
-{ config, lib, pkgs, ... }:
-
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   baseDomain = "goclan.org";
 
   ############################################################################
@@ -198,32 +201,32 @@ let
   # The four backends in OTHER namespaces that carry a widget.  Each one costs
   # exactly one accept rule in its own container file, added in this milestone
   # and commented there with this file's name.
-  jellyfinAddr  = "10.0.90.10";
-  jellyfinPort  = 8096;
-  rommAddr      = "10.0.90.22";
-  rommPort      = 8080;
-  immichAddr    = "10.0.90.25";
-  immichPort    = 2283;
-  hassAddr      = "10.0.90.27";
-  hassPort      = 8123;
+  jellyfinAddr = "10.0.90.10";
+  jellyfinPort = 8096;
+  rommAddr = "10.0.90.22";
+  rommPort = 8080;
+  immichAddr = "10.0.90.25";
+  immichPort = 2283;
+  hassAddr = "10.0.90.27";
+  hassPort = 8123;
 
   # M27 added two more, so the count in the comment above is now SIX rather
   # than four — corrected here rather than in that paragraph, because the
   # paragraph is a true statement about M26 and this is a true statement about
   # what the file holds today.  Each still costs exactly one accept rule in its
   # own container file, commented there with this file's address.
-  minifluxAddr  = "10.0.90.28";
-  minifluxPort  = 8080;
-  karakeepAddr  = "10.0.90.29";
-  karakeepPort  = 3000;
+  minifluxAddr = "10.0.90.28";
+  minifluxPort = 8080;
+  karakeepAddr = "10.0.90.29";
+  karakeepPort = 3000;
 
   # M30 makes it SEVEN, and this one is the cheapest of the set: a `siteMonitor`
   # and no widget, so there is no credential to hold and no generator prompt.
   # `/` is on Music Assistant's own auth bypass list, so an up/down probe needs
   # nothing — which is the whole reason the accept rule in
   # containers/music-assistant.nix was worth adding rather than declining.
-  massAddr      = "10.0.90.30";
-  massPort      = 8095;
+  massAddr = "10.0.90.30";
+  massPort = 8095;
 
   # NEXTCLOUD HAS NO ENTRY HERE ON PURPOSE.  Its widget is the one that goes
   # through Traefik by name, because Nextcloud refuses a Host header that is
@@ -239,20 +242,20 @@ let
   # attrset whose consumers stop being greppable.  These are loopback targets,
   # so a stale number here is a dead tile on one row and nothing else.
   ############################################################################
-  sonarrPort         = 8989;
-  radarrPort         = 7878;
-  prowlarrPort       = 9696;
-  bazarrPort         = 6767;
-  lidarrPort         = 8686;
-  jellyseerrPort     = 5055;
+  sonarrPort = 8989;
+  radarrPort = 7878;
+  prowlarrPort = 9696;
+  bazarrPort = 6767;
+  lidarrPort = 8686;
+  jellyseerrPort = 5055;
   audiobookshelfPort = 13378;
-  komgaPort          = 25600;
-  navidromePort      = 4533;
-  cleanuparrPort     = 11011;
-  mediathekarrPort   = 5007;
-  kapowarrPort       = 5656;
-  questarrPort       = 5000;
-  binderyPort        = 8787;
+  komgaPort = 25600;
+  navidromePort = 4533;
+  cleanuparrPort = 11011;
+  mediathekarrPort = 5007;
+  kapowarrPort = 5656;
+  questarrPort = 5000;
+  binderyPort = 8787;
 
   ############################################################################
   # Homepage itself.
@@ -286,8 +289,7 @@ let
   # never the backend address — the tile is for a browser, which has to go
   # through the proxy for TLS and for Authelia.
   pub = name: "https://${name}.${baseDomain}";
-in
-{
+in {
   ##############################################################################
   # The four tokens that are not derivable.
   #
@@ -348,7 +350,7 @@ in
       # Komga and the rest, and bouncing all of them to pick up a DASHBOARD
       # credential is a cure worse than the disease.  The script below restarts
       # the one unit that actually reads the file instead.
-      restartUnits = [ "homepage-secrets.service" ];
+      restartUnits = ["homepage-secrets.service"];
     };
 
     prompts."jellyfin-key" = {
@@ -420,7 +422,7 @@ in
         printf 'HOMEPAGE_VAR_KARAKEEP_KEY=%s\n'  "$(cat "$prompts/karakeep-key")"
       } > "$out/tokens.env"
     '';
-    runtimeInputs = [ pkgs.coreutils ];
+    runtimeInputs = [pkgs.coreutils];
   };
 
   ##############################################################################
@@ -443,11 +445,11 @@ in
   ##############################################################################
   systemd.services.homepage-secrets = {
     description = "Stage the dashboard's service tokens for container@arr";
-    after       = [ "local-fs.target" ];
-    before      = [ "container@arr.service" ];
-    wantedBy    = [ "container@arr.service" ];
+    after = ["local-fs.target"];
+    before = ["container@arr.service"];
+    wantedBy = ["container@arr.service"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
     };
     script = ''
@@ -491,11 +493,11 @@ in
     # READ-ONLY, at the identical path.  The third bind mount in this container
     # that carries a secret.
     bindMounts."${homepageSecretsDir}" = {
-      hostPath   = homepageSecretsDir;
+      hostPath = homepageSecretsDir;
       isReadOnly = true;
     };
 
-    config = { ... }: {
+    config = {...}: {
       ##########################################################################
       # One more port through Traefik, and through nothing else.
       #
@@ -516,7 +518,7 @@ in
       '';
 
       services.homepage-dashboard = {
-        enable     = true;
+        enable = true;
         listenPort = homepagePort;
 
         # REQUIRED since homepage 1.0, and a wrong value here presents as a
@@ -564,11 +566,36 @@ in
           # the *arr are what a human opens this page to check, and the fleet
           # tiles are links into Grafana that nobody needs above the fold.
           layout = [
-            { "Media automation" = { style = "row"; columns = 3; }; }
-            { "Household"        = { style = "row"; columns = 3; }; }
-            { "Libraries"        = { style = "row"; columns = 4; }; }
-            { "Infrastructure"   = { style = "row"; columns = 4; }; }
-            { "Fleet"            = { style = "row"; columns = 5; }; }
+            {
+              "Media automation" = {
+                style = "row";
+                columns = 3;
+              };
+            }
+            {
+              "Household" = {
+                style = "row";
+                columns = 3;
+              };
+            }
+            {
+              "Libraries" = {
+                style = "row";
+                columns = 4;
+              };
+            }
+            {
+              "Infrastructure" = {
+                style = "row";
+                columns = 4;
+              };
+            }
+            {
+              "Fleet" = {
+                style = "row";
+                columns = 5;
+              };
+            }
           ];
         };
 
@@ -579,22 +606,71 @@ in
         #
         # No `resources` entry — see the header.
         widgets = [
-          { search = { provider = "duckduckgo"; target = "_blank"; }; }
-          { datetime = { text_size = "l"; format = { dateStyle = "long"; timeStyle = "short"; hourCycle = "h23"; }; }; }
+          {
+            search = {
+              provider = "duckduckgo";
+              target = "_blank";
+            };
+          }
+          {
+            datetime = {
+              text_size = "l";
+              format = {
+                dateStyle = "long";
+                timeStyle = "short";
+                hourCycle = "h23";
+              };
+            };
+          }
         ];
 
         bookmarks = [
           {
             "clanarchy" = [
-              { "Repository" = [ { abbr = "GH"; href = "https://github.com/lutzgo/clanarchy"; } ]; }
-              { "Docs"       = [ { abbr = "DC"; href = "https://lutzgo.github.io/clanarchy"; } ]; }
+              {
+                "Repository" = [
+                  {
+                    abbr = "GH";
+                    href = "https://github.com/lutzgo/clanarchy";
+                  }
+                ];
+              }
+              {
+                "Docs" = [
+                  {
+                    abbr = "DC";
+                    href = "https://lutzgo.github.io/clanarchy";
+                  }
+                ];
+              }
             ];
           }
           {
             "Network" = [
-              { "UDM-Pro"    = [ { abbr = "UI"; href = "https://10.0.1.1/"; } ]; }
-              { "Technitium" = [ { abbr = "DNS"; href = "http://10.0.5.3:5380/"; } ]; }
-              { "Cloudflare" = [ { abbr = "CF"; href = "https://dash.cloudflare.com/"; } ]; }
+              {
+                "UDM-Pro" = [
+                  {
+                    abbr = "UI";
+                    href = "https://10.0.1.1/";
+                  }
+                ];
+              }
+              {
+                "Technitium" = [
+                  {
+                    abbr = "DNS";
+                    href = "http://10.0.5.3:5380/";
+                  }
+                ];
+              }
+              {
+                "Cloudflare" = [
+                  {
+                    abbr = "CF";
+                    href = "https://dash.cloudflare.com/";
+                  }
+                ];
+              }
             ];
           }
         ];
@@ -617,118 +693,118 @@ in
             "Media automation" = [
               {
                 "Sonarr" = {
-                  icon        = "sonarr.png";
-                  href        = pub "sonarr";
+                  icon = "sonarr.png";
+                  href = pub "sonarr";
                   description = "Television";
                   siteMonitor = local sonarrPort;
                   widget = {
                     type = "sonarr";
-                    url  = local sonarrPort;
-                    key  = "{{HOMEPAGE_FILE_SONARR_KEY}}";
+                    url = local sonarrPort;
+                    key = "{{HOMEPAGE_FILE_SONARR_KEY}}";
                   };
                 };
               }
               {
                 "Radarr" = {
-                  icon        = "radarr.png";
-                  href        = pub "radarr";
+                  icon = "radarr.png";
+                  href = pub "radarr";
                   description = "Film";
                   siteMonitor = local radarrPort;
                   widget = {
                     type = "radarr";
-                    url  = local radarrPort;
-                    key  = "{{HOMEPAGE_FILE_RADARR_KEY}}";
+                    url = local radarrPort;
+                    key = "{{HOMEPAGE_FILE_RADARR_KEY}}";
                   };
                 };
               }
               {
                 "Lidarr" = {
-                  icon        = "lidarr.png";
-                  href        = pub "lidarr";
+                  icon = "lidarr.png";
+                  href = pub "lidarr";
                   description = "Music";
                   siteMonitor = local lidarrPort;
                   widget = {
                     type = "lidarr";
-                    url  = local lidarrPort;
-                    key  = "{{HOMEPAGE_FILE_LIDARR_KEY}}";
+                    url = local lidarrPort;
+                    key = "{{HOMEPAGE_FILE_LIDARR_KEY}}";
                   };
                 };
               }
               {
                 "Prowlarr" = {
-                  icon        = "prowlarr.png";
-                  href        = pub "prowlarr";
+                  icon = "prowlarr.png";
+                  href = pub "prowlarr";
                   description = "Indexers";
                   siteMonitor = local prowlarrPort;
                   widget = {
                     type = "prowlarr";
-                    url  = local prowlarrPort;
-                    key  = "{{HOMEPAGE_FILE_PROWLARR_KEY}}";
+                    url = local prowlarrPort;
+                    key = "{{HOMEPAGE_FILE_PROWLARR_KEY}}";
                   };
                 };
               }
               {
                 "Bazarr" = {
-                  icon        = "bazarr.png";
-                  href        = pub "bazarr";
+                  icon = "bazarr.png";
+                  href = pub "bazarr";
                   description = "Subtitles";
                   siteMonitor = local bazarrPort;
                   widget = {
                     type = "bazarr";
-                    url  = local bazarrPort;
-                    key  = "{{HOMEPAGE_FILE_BAZARR_KEY}}";
+                    url = local bazarrPort;
+                    key = "{{HOMEPAGE_FILE_BAZARR_KEY}}";
                   };
                 };
               }
               {
                 "Jellyseerr" = {
-                  icon        = "jellyseerr.png";
-                  href        = pub "jellyseerr";
+                  icon = "jellyseerr.png";
+                  href = pub "jellyseerr";
                   description = "Requests — the household's front door";
                   siteMonitor = local jellyseerrPort;
                   widget = {
                     type = "jellyseerr";
-                    url  = local jellyseerrPort;
-                    key  = "{{HOMEPAGE_FILE_JELLYSEERR_KEY}}";
+                    url = local jellyseerrPort;
+                    key = "{{HOMEPAGE_FILE_JELLYSEERR_KEY}}";
                   };
                 };
               }
               {
                 "Cleanuparr" = {
-                  icon        = "cleanuparr.png";
-                  href        = pub "cleanuparr";
+                  icon = "cleanuparr.png";
+                  href = pub "cleanuparr";
                   description = "Stalled-download reaper";
                   siteMonitor = local cleanuparrPort;
                 };
               }
               {
                 "MediathekArr" = {
-                  icon        = "mdi-television-classic";
-                  href        = pub "mediathekarr";
+                  icon = "mdi-television-classic";
+                  href = pub "mediathekarr";
                   description = "Öffentlich-rechtliche Mediatheken";
                   siteMonitor = local mediathekarrPort;
                 };
               }
               {
                 "Kapowarr" = {
-                  icon        = "kapowarr.png";
-                  href        = pub "kapowarr";
+                  icon = "kapowarr.png";
+                  href = pub "kapowarr";
                   description = "Comics";
                   siteMonitor = local kapowarrPort;
                 };
               }
               {
                 "Questarr" = {
-                  icon        = "mdi-gamepad-variant";
-                  href        = pub "questarr";
+                  icon = "mdi-gamepad-variant";
+                  href = pub "questarr";
                   description = "Games";
                   siteMonitor = local questarrPort;
                 };
               }
               {
                 "Bindery" = {
-                  icon        = "mdi-book-cog";
-                  href        = pub "bindery";
+                  icon = "mdi-book-cog";
+                  href = pub "bindery";
                   description = "Ebooks";
                   siteMonitor = local binderyPort;
                 };
@@ -750,24 +826,24 @@ in
             "Libraries" = [
               {
                 "Audiobookshelf" = {
-                  icon        = "audiobookshelf.png";
-                  href        = pub "audiobookshelf";
+                  icon = "audiobookshelf.png";
+                  href = pub "audiobookshelf";
                   description = "Audiobooks and podcasts";
                   siteMonitor = local audiobookshelfPort;
                 };
               }
               {
                 "Komga" = {
-                  icon        = "komga.png";
-                  href        = pub "komga";
+                  icon = "komga.png";
+                  href = pub "komga";
                   description = "Comics and manga";
                   siteMonitor = local komgaPort;
                 };
               }
               {
                 "Navidrome" = {
-                  icon        = "navidrome.png";
-                  href        = pub "navidrome";
+                  icon = "navidrome.png";
+                  href = pub "navidrome";
                   description = "Music library, over Subsonic";
                   siteMonitor = local navidromePort;
                 };
@@ -783,16 +859,16 @@ in
                 # container rather than this one — so it costs an accept rule
                 # there, as the six before it did.
                 "Music Assistant" = {
-                  icon        = "music-assistant.png";
-                  href        = pub "music";
+                  icon = "music-assistant.png";
+                  href = pub "music";
                   description = "Plays it, to the speakers";
                   siteMonitor = "http://${massAddr}:${toString massPort}";
                 };
               }
               {
                 "Calibre-Web" = {
-                  icon        = "calibre-web.png";
-                  href        = pub "cwa";
+                  icon = "calibre-web.png";
+                  href = pub "cwa";
                   description = "Ebooks, OPDS, Kobo and KOReader sync";
                 };
               }
@@ -819,27 +895,27 @@ in
             "Household" = [
               {
                 "Jellyfin" = {
-                  icon        = "jellyfin.png";
-                  href        = pub "jellyfin";
+                  icon = "jellyfin.png";
+                  href = pub "jellyfin";
                   description = "Film, television and live TV";
                   siteMonitor = "http://${jellyfinAddr}:${toString jellyfinPort}/health";
                   widget = {
-                    type             = "jellyfin";
-                    url              = "http://${jellyfinAddr}:${toString jellyfinPort}";
-                    key              = "{{HOMEPAGE_VAR_JELLYFIN_KEY}}";
+                    type = "jellyfin";
+                    url = "http://${jellyfinAddr}:${toString jellyfinPort}";
+                    key = "{{HOMEPAGE_VAR_JELLYFIN_KEY}}";
                     enableNowPlaying = true;
                   };
                 };
               }
               {
                 "Immich" = {
-                  icon        = "immich.png";
-                  href        = pub "photos";
+                  icon = "immich.png";
+                  href = pub "photos";
                   description = "The household photo library";
                   widget = {
-                    type    = "immich";
-                    url     = "http://${immichAddr}:${toString immichPort}";
-                    key     = "{{HOMEPAGE_VAR_IMMICH_KEY}}";
+                    type = "immich";
+                    url = "http://${immichAddr}:${toString immichPort}";
+                    key = "{{HOMEPAGE_VAR_IMMICH_KEY}}";
                     # Required for Immich >= v1.118; without it the widget
                     # calls a removed endpoint and reports an API error while
                     # the service itself is perfectly healthy.
@@ -849,8 +925,8 @@ in
               }
               {
                 "Nextcloud" = {
-                  icon        = "nextcloud.png";
-                  href        = pub "cloud";
+                  icon = "nextcloud.png";
+                  href = pub "cloud";
                   description = "Files, calendars and contacts";
                   widget = {
                     type = "nextcloud";
@@ -895,7 +971,7 @@ in
                     # middleware and this request is passed straight through.
                     # It would NOT work for a protectedHosts name — the call
                     # would collect a 302 to the portal instead of JSON.
-                    url  = pub "cloud";
+                    url = pub "cloud";
                     # The serverinfo NC-Token, not a user password.  Both are
                     # accepted by the widget and only one of them is a
                     # credential that can log in.
@@ -904,69 +980,69 @@ in
                     # dead end: the serverinfo app reads this from app config
                     # and never generates one.  It is set once, by hand:
                     #   nextcloud-occ config:app:set serverinfo token --value …
-                    key  = "{{HOMEPAGE_VAR_NEXTCLOUD_KEY}}";
+                    key = "{{HOMEPAGE_VAR_NEXTCLOUD_KEY}}";
                   };
                 };
               }
               {
                 "Home Assistant" = {
-                  icon        = "home-assistant.png";
-                  href        = pub "ha";
+                  icon = "home-assistant.png";
+                  href = pub "ha";
                   description = "Home automation";
                   widget = {
                     type = "homeassistant";
-                    url  = "http://${hassAddr}:${toString hassPort}";
-                    key  = "{{HOMEPAGE_VAR_HASS_TOKEN}}";
+                    url = "http://${hassAddr}:${toString hassPort}";
+                    key = "{{HOMEPAGE_VAR_HASS_TOKEN}}";
                   };
                 };
               }
               {
                 "RomM" = {
-                  icon        = "romm.png";
-                  href        = pub "romm";
+                  icon = "romm.png";
+                  href = pub "romm";
                   description = "ROM library — mastered here, synced to birte";
                   widget = {
                     type = "romm";
-                    url  = "http://${rommAddr}:${toString rommPort}";
+                    url = "http://${rommAddr}:${toString rommPort}";
                   };
                 };
               }
               {
                 "Miniflux" = {
-                  icon        = "miniflux.png";
-                  href        = pub "miniflux";
+                  icon = "miniflux.png";
+                  href = pub "miniflux";
                   description = "Feeds — the reading intake";
                   widget = {
                     type = "miniflux";
-                    url  = "http://${minifluxAddr}:${toString minifluxPort}";
+                    url = "http://${minifluxAddr}:${toString minifluxPort}";
                     # A per-user API key, made in Miniflux's own Settings →
                     # API keys.  NOT a password: Miniflux has none here, since
                     # `DISABLE_LOCAL_AUTH` leaves Authelia as the only login.
-                    key  = "{{HOMEPAGE_VAR_MINIFLUX_KEY}}";
+                    key = "{{HOMEPAGE_VAR_MINIFLUX_KEY}}";
                   };
                 };
               }
               {
                 "Karakeep" = {
-                  icon        = "karakeep.png";
-                  href        = pub "karakeep";
+                  icon = "karakeep.png";
+                  href = pub "karakeep";
                   description = "Bookmarks and page archives — the reading keep";
                   widget = {
                     type = "karakeep";
-                    url  = "http://${karakeepAddr}:${toString karakeepPort}";
+                    url = "http://${karakeepAddr}:${toString karakeepPort}";
                     # An API key from Karakeep's Settings → API keys.  The SAME
                     # kind of key the browser extension and the Floccus adapter
                     # hold, which is worth knowing before rotating one: revoke
                     # the wrong row and bookmark sync stops silently on two
                     # laptops.  Make the dashboard its own and label it.
-                    key  = "{{HOMEPAGE_VAR_KARAKEEP_KEY}}";
+                    key = "{{HOMEPAGE_VAR_KARAKEEP_KEY}}";
                   };
                 };
               }
               {
                 "Paperless" = {
-                  icon        = "paperless-ngx.png";
-                  href        = pub "docs";
+                  icon = "paperless-ngx.png";
+                  href = pub "docs";
                   description = "Scanned documents — searchable, OCR'd";
 
                   # ── A LINK, NOT A WIDGET, AND NOT BECAUSE ONE DOES NOT ────
@@ -1019,50 +1095,50 @@ in
             "Infrastructure" = [
               {
                 "Grafana" = {
-                  icon        = "grafana.png";
-                  href        = pub "grafana";
+                  icon = "grafana.png";
+                  href = pub "grafana";
                   description = "Metrics, alerts and ZFS — the ops truth";
                 };
               }
               {
                 "Authelia" = {
-                  icon        = "authelia.png";
-                  href        = pub "auth";
+                  icon = "authelia.png";
+                  href = pub "auth";
                   description = "Identity — you came through here";
                 };
               }
               {
                 "Open WebUI" = {
-                  icon        = "open-webui.png";
-                  href        = pub "chat";
+                  icon = "open-webui.png";
+                  href = pub "chat";
                   description = "The local model";
                 };
               }
               {
                 "Tvheadend" = {
-                  icon        = "tvheadend.png";
-                  href        = pub "tvheadend";
+                  icon = "tvheadend.png";
+                  href = pub "tvheadend";
                   description = "DVB-C tuners and the EPG";
                 };
               }
               {
                 "TubeSync" = {
-                  icon        = "tubesync.png";
-                  href        = pub "tubesync";
+                  icon = "tubesync.png";
+                  href = pub "tubesync";
                   description = "YouTube subscriptions";
                 };
               }
               {
                 "Storyteller" = {
-                  icon        = "mdi-book-music";
-                  href        = pub "storyteller";
+                  icon = "mdi-book-music";
+                  href = pub "storyteller";
                   description = "Ebook/audiobook alignment";
                 };
               }
               {
                 "slskd" = {
-                  icon        = "slskd.png";
-                  href        = pub "slskd";
+                  icon = "slskd.png";
+                  href = pub "slskd";
                   description = "Soulseek, in the microvm";
                 };
               }
@@ -1086,36 +1162,36 @@ in
             "Fleet" = [
               {
                 "miralda" = {
-                  icon        = "mdi-laptop";
-                  href        = "${pub "grafana"}/d/clanarchy-fleet?var-instance=miralda";
+                  icon = "mdi-laptop";
+                  href = "${pub "grafana"}/d/clanarchy-fleet?var-instance=miralda";
                   description = "Framework 13 AMD — lgo";
                 };
               }
               {
                 "jens" = {
-                  icon        = "mdi-tablet";
-                  href        = "${pub "grafana"}/d/clanarchy-fleet?var-instance=jens";
+                  icon = "mdi-tablet";
+                  href = "${pub "grafana"}/d/clanarchy-fleet?var-instance=jens";
                   description = "Framework 12 Intel — lgo";
                 };
               }
               {
                 "biene" = {
-                  icon        = "mdi-laptop";
-                  href        = "${pub "grafana"}/d/clanarchy-fleet?var-instance=biene";
+                  icon = "mdi-laptop";
+                  href = "${pub "grafana"}/d/clanarchy-fleet?var-instance=biene";
                   description = "Lenovo — Sabine";
                 };
               }
               {
                 "birte" = {
-                  icon        = "mdi-gamepad";
-                  href        = "${pub "grafana"}/d/clanarchy-fleet?var-instance=birte";
+                  icon = "mdi-gamepad";
+                  href = "${pub "grafana"}/d/clanarchy-fleet?var-instance=birte";
                   description = "Steam Deck OLED";
                 };
               }
               {
                 "ernst" = {
-                  icon        = "mdi-server";
-                  href        = "${pub "grafana"}/d/clanarchy-fleet?var-instance=ernst";
+                  icon = "mdi-server";
+                  href = "${pub "grafana"}/d/clanarchy-fleet?var-instance=ernst";
                   description = "This machine";
                 };
               }
@@ -1125,7 +1201,7 @@ in
 
         # The four clan-var tokens.  Read by PID 1 as root before the drop to
         # the dynamic user, which is what lets the staged file stay 0400 root.
-        environmentFiles = [ "${homepageSecretsDir}/tokens.env" ];
+        environmentFiles = ["${homepageSecretsDir}/tokens.env"];
       };
 
       ##########################################################################
@@ -1152,15 +1228,15 @@ in
       # empty first element; nothing in this block is one.)
       ##########################################################################
       systemd.services.homepage-dashboard = {
-        after    = [ "arr-api-keys.service" ];
-        requires = [ "arr-api-keys.service" ];
+        after = ["arr-api-keys.service"];
+        requires = ["arr-api-keys.service"];
 
         environment = {
-          HOMEPAGE_FILE_SONARR_KEY     = "%d/sonarr-api-key";
-          HOMEPAGE_FILE_RADARR_KEY     = "%d/radarr-api-key";
-          HOMEPAGE_FILE_LIDARR_KEY     = "%d/lidarr-api-key";
-          HOMEPAGE_FILE_PROWLARR_KEY   = "%d/prowlarr-api-key";
-          HOMEPAGE_FILE_BAZARR_KEY     = "%d/bazarr-api-key";
+          HOMEPAGE_FILE_SONARR_KEY = "%d/sonarr-api-key";
+          HOMEPAGE_FILE_RADARR_KEY = "%d/radarr-api-key";
+          HOMEPAGE_FILE_LIDARR_KEY = "%d/lidarr-api-key";
+          HOMEPAGE_FILE_PROWLARR_KEY = "%d/prowlarr-api-key";
+          HOMEPAGE_FILE_BAZARR_KEY = "%d/bazarr-api-key";
           HOMEPAGE_FILE_JELLYSEERR_KEY = "%d/jellyseerr-api-key";
         };
 

@@ -44,9 +44,12 @@
 #   per-machine file subset.  That is a real cost, and a small one in this
 #   case specifically: ernst is the machine holding every message in the
 #   mailbox the password protects.
-{ config, lib, pkgs, ... }:
-
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.clanarchy.mail.accounts;
 
   # ── THE MAILBOXES, AS DATA ────────────────────────────────────────────────
@@ -67,24 +70,43 @@ let
   #   password itself, so there is no hash-only shape that works.  Everyone
   #   else types theirs into a client once and the client keeps it.
   mailboxes = [
-    { key = "admin";   address = "admin@goclan.org";   plaintext = false;
-      note = "also postmaster@/abuse@/hostmaster@/dmarc@"; }
-    { key = "lutz";    address = "lutz@goclan.org";    plaintext = true;
-      note = "aerc on miralda and jens reads this"; }
-    { key = "sarinah"; address = "sarinah@goclan.org"; plaintext = false;
-      note = "Sarinah types this into K-9"; }
-    { key = "max";     address = "max@goclan.org";     plaintext = false;
-      note = "Max's mailbox"; }
-    { key = "go";      address = "go@goclan.org";      plaintext = false;
-      note = "the couch/admin account"; }
+    {
+      key = "admin";
+      address = "admin@goclan.org";
+      plaintext = false;
+      note = "also postmaster@/abuse@/hostmaster@/dmarc@";
+    }
+    {
+      key = "lutz";
+      address = "lutz@goclan.org";
+      plaintext = true;
+      note = "aerc on miralda and jens reads this";
+    }
+    {
+      key = "sarinah";
+      address = "sarinah@goclan.org";
+      plaintext = false;
+      note = "Sarinah types this into K-9";
+    }
+    {
+      key = "max";
+      address = "max@goclan.org";
+      plaintext = false;
+      note = "Max's mailbox";
+    }
+    {
+      key = "go";
+      address = "go@goclan.org";
+      plaintext = false;
+      note = "the couch/admin account";
+    }
   ];
-in
-{
+in {
   options.clanarchy.mail.accounts = {
     enable = lib.mkEnableOption "the shared @goclan.org mailbox password generator";
 
     plaintextOwner = lib.mkOption {
-      type    = lib.types.str;
+      type = lib.types.str;
       default = "root";
       example = "lgo";
       description = ''
@@ -129,28 +151,33 @@ in
       # `mailboxes` list above rather than written out five times, so adding a
       # sixth mailbox is one line in one place and cannot half-land.
       files = lib.listToAttrs (
-        (map (m: lib.nameValuePair "${m.key}.hash" {
-          secret       = true;
-          restartUnits = [ "mail-secrets.service" "container@mail.service" ];
-        }) mailboxes)
+        (map (m:
+          lib.nameValuePair "${m.key}.hash" {
+            secret = true;
+            restartUnits = ["mail-secrets.service" "container@mail.service"];
+          })
+        mailboxes)
         ++
         # Consumed by aerc on miralda and jens — see
         # modules/users/lgo/console-desktop.nix.  No restartUnits:
         # nothing on ernst reads it, and aerc re-runs passwordCommand on every
         # start, so there is no daemon to poke.
-        (map (m: lib.nameValuePair "${m.key}.plain" {
-          secret = true;
-          owner  = cfg.plaintextOwner;
-          mode   = "0400";
-        }) (lib.filter (m: m.plaintext) mailboxes))
+        (map (m:
+          lib.nameValuePair "${m.key}.plain" {
+            secret = true;
+            owner = cfg.plaintextOwner;
+            mode = "0400";
+          }) (lib.filter (m: m.plaintext) mailboxes))
       );
 
-      prompts = lib.listToAttrs (map (m: lib.nameValuePair m.key {
-        description = "Password for ${m.address} — ${m.note} (min 12 chars)";
-        type        = "hidden";
-      }) mailboxes);
+      prompts = lib.listToAttrs (map (m:
+        lib.nameValuePair m.key {
+          description = "Password for ${m.address} — ${m.note} (min 12 chars)";
+          type = "hidden";
+        })
+      mailboxes);
 
-      runtimeInputs = [ pkgs.mkpasswd pkgs.coreutils ];
+      runtimeInputs = [pkgs.mkpasswd pkgs.coreutils];
 
       # `mkpasswd -s` reads the password on stdin and picks libxcrypt's
       # strongest available scheme (yescrypt at this pin).  Dovecot verifies
@@ -192,8 +219,8 @@ in
         ${lib.concatMapStringsSep "\n" (m: ''hash_one ${m.key} ${m.address}'') mailboxes}
 
         ${lib.concatMapStringsSep "\n"
-            (m: ''printf '%s' "$(cat "$prompts/${m.key}")" > "$out/${m.key}.plain"'')
-            (lib.filter (m: m.plaintext) mailboxes)}
+          (m: ''printf '%s' "$(cat "$prompts/${m.key}")" > "$out/${m.key}.plain"'')
+          (lib.filter (m: m.plaintext) mailboxes)}
       '';
     };
   };
