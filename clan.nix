@@ -785,23 +785,13 @@
             };
           };
 
-          # ── THE VISION MODEL USED TO BE HERE, AND M29c DELETED IT ────────
-          #
-          # `qwen2.5-vl-7b` (Qwen2.5-VL 7B + its own mmproj) occupied this
-          # space from M19 until 2026-09-25.  It existed because the coder
-          # model had no vision tower, and it cost an eviction every time it
-          # was used — it is in the same exclusive GPU group, so reading an
-          # image unloaded the resident text model and the next request paid a
-          # reload.  containers/karakeep.nix priced that for image bookmarks
-          # and local-ai.md had a section explaining the manual model switch a
-          # human had to perform to look at a picture.
-          #
-          # The model above is multimodal, so all of that is gone rather than
-          # mitigated: one resident model answers text and images, karakeep
-          # names it in both slots, and there is no second model to swap to.
-          # Verified before deleting this — a two-colour test image through
-          # `--mmproj` on ernst, 2026-09-25, read correctly including a third
-          # region the prompt had not mentioned.
+          # THE VISION MODEL USED TO BE HERE (`qwen2.5-vl-7b`), AND M29c
+          # DELETED IT.  The model above is multimodal, so the eviction it
+          # caused is gone rather than mitigated: one resident model answers
+          # text and images, karakeep names it in both slots, and there is no
+          # second model to swap to.  Verified before deleting — a two-colour
+          # test image through `--mmproj` on ernst, 2026-09-25, read correctly
+          # including a region the prompt had not mentioned.
           #
           # Its ~5.7 GiB of weights stay on disk until somebody removes them;
           # the fetcher only adds.  `rm /srv/state/local-ai/models/Qwen2.5-VL*`

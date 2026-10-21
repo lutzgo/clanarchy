@@ -1059,40 +1059,23 @@ in {
               # with no models on disk; a request for one that is missing fails
               # per-request, which is the correct granularity.
 
-              # ── THERE WAS A 503 GATE HERE, AND IT WAS REMOVED ──────────
+              # THERE WAS A 503 GATE HERE AND IT IS GONE (#309).  Do not
+              # reinstate it: it stood a `503` + `Retry-After` responder on
+              # karakeep's leg whenever the card belonged to something else,
+              # and what that bought — measured — was a lower REQUEST RATE on
+              # a loopback path.  It did not save the bookmark (karakeep burns
+              # its three hard-coded retries and `keepFailedJobs: false` drops
+              # it either way), so the benefit was fewer journal lines.  It
+              # cost five follow-up fixes in three days and one live outage,
+              # and its watchdog stopped this unit whenever an outside claimant
+              # held the card — taking the model away from mneme, Assist and
+              # OpenCode, which without it merely fail a load and recover.
               #
-              # It stood a `503` + `Retry-After` responder on karakeep's leg
-              # whenever the card belonged to something outside this unit's
-              # exclusive group, so karakeep would back off instead of retrying
-              # a server that could not answer.  It worked, and it was not
-              # worth it.
-              #
-              # WHAT IT ACTUALLY BOUGHT, once measured rather than assumed: a
-              # lower REQUEST RATE on a loopback path.  It did not save the
-              # bookmark — the job still burns karakeep's hard-coded three
-              # retries and `keepFailedJobs: false` drops it either way — so
-              # the whole benefit was fewer journal lines during a gaming
-              # session.  Nothing a person could see.
-              #
-              # WHAT IT COST: five follow-up fixes in three days, each a defect
-              # in the gate itself — a socket that could never bind, a
-              # `Conflicts=` that stops but does not order, a dead sentinel, a
-              # handover racing every activation — and one live outage, where a
-              # deploy left the gate holding the leg in front of a perfectly
-              # healthy llama-swap and karakeep got a permanent 503.
-              #
-              # Its watchdog also stopped this unit whenever an outside
-              # claimant held the card, which is worse than it sounds: a gaming
-              # session took the model away from mneme, Home Assistant's Assist
-              # pipeline and OpenCode, where without it they merely fail a load
-              # and recover the moment the card frees.
-              #
-              # So the card is now arbitrated by the three things that protect
-              # something a person would notice — the VRAM reserve, the htpc
-              # role's `gpu.preempt.units`, and its crash-loop breaker — and a
-              # model that cannot load simply answers 500, as it did before any
-              # of this.  machines/ernst/containers/karakeep.nix records what
-              # that costs and why no knob exists to soften it.
+              # The card is arbitrated instead by the three things that protect
+              # something a person would notice: the VRAM reserve, the htpc
+              # role's `gpu.preempt.units`, and its crash-loop breaker.  A model
+              # that cannot load answers 500.  containers/karakeep.nix records
+              # what that costs and why no knob exists to soften it.
 
               environment = {
                 ROCR_VISIBLE_DEVICES = "0";
@@ -1605,88 +1588,31 @@ in {
             # address range worth pinning.  The hash check is the control that
             # matters here, not the address.
 
-            # Pick llama-swap up once the models are actually on disk.
+            # THERE IS DELIBERATELY NO `try-restart llama-swap` HERE, and it is
+            # deleted rather than fixed (M29c) because it could never have
+            # worked.
             #
-            # Needed because it renders each backend's command at startup: a
-            # model whose file did not exist yet is listed but unusable until
-            # it re-reads. `try-restart` and not `restart`, so this is a no-op
-            # when it is deliberately stopped rather than something that
-            # starts it behind an operator's back.
-            #
-            # ── `ExecStartPost`, NOT `postStart`, AND THE `-` IS WHY ───────
-            #
-            # This was `postStart = "-…/systemctl try-restart …"`, and the `-`
-            # was there to make exactly the failure it caused impossible.
-            #
-            # `-` is a SYSTEMD UNIT-FILE PREFIX, honoured at the start of an
-            # `ExecStartPost=` value, where it means "ignore a non-zero exit".
-            # NixOS's `postStart` is not that: it wraps the string in a
-            # GENERATED BASH SCRIPT under `set -e`, so the `-` became the
-            # first character of a command NAME and bash went looking for a
-            # binary called `-/nix/store/…/systemctl`:
-            #
-            #   llama-models-fetch-post-start: line 4:
-            #     -/nix/store/…-systemd-260.2/bin/systemctl: No such file or
-            #     directory
-            #   llama-models-fetch.service: Control process exited,
-            #     code=exited, status=127/n/a
-            #   Failed to start Fetch and verify declared local-ai models.
-            #
-            # So the guard inverted itself: rather than preventing a failed
-            # unit after a completed download, it GUARANTEED one. Every run
-            # since M19 introduced it (fd8ac45) has ended `failed` on ernst
-            # with every model correctly on disk — ExecStart exits 0/SUCCESS
-            # and the journal shows `done`/`ok` for each file immediately
-            # above the 127.
-            #
-            # AND NOTHING SAID SO, which is standing note SN4 exactly: a
-            # failed oneshot on a timer is silent. It surfaced only because
-            # M21 added a model, which made somebody run the unit by hand and
-            # watch it. That is the concrete case for the "alert on failed
-            # timer units" backlog item.
-            #
-            # In list form the prefix lands where systemd parses it, so the
-            # original intent — a completed fetch is a success even if the
-            # restart cannot be delivered — is what now happens.
-            #
-            # ── AND IT IS GONE (M29c), BECAUSE IT COULD NEVER HAVE WORKED ──
-            #
-            # The call is deleted, not fixed, and the premise above is the
-            # part that was wrong rather than the plumbing.
-            #
-            # IT IS NOT PERMITTED. This unit runs `User=llama`, unprivileged,
-            # with no ambient capabilities — measured on ernst 2026-09-25 —
-            # and an unprivileged user cannot restart a system unit:
+            # IT IS NOT PERMITTED.  This unit runs `User=llama` with no ambient
+            # capabilities — measured on ernst 2026-09-25 — and an
+            # unprivileged user cannot restart a system unit:
             #
             #   Failed to try-restart llama-swap.service: Access denied as
             #   the requested operation requires interactive authentication.
             #
-            # So every version of this line has been a no-op since M19: first
-            # a 127 that failed the unit, then a `-`-prefixed denial that did
-            # not. Two rounds of fixing the SYNTAX of a call that was never
-            # going to be authorised.
-            #
-            # AND IT IS NOT NEEDED, which is the part that settles it. The
-            # claim above — "a model whose file did not exist yet is listed
-            # but unusable until it re-reads" — was refuted by exactly the
-            # case it describes. On 2026-09-25 the fetcher downloaded a
-            # newly-declared 21 GiB model, this restart was DENIED, llama-swap
-            # was never restarted, and the very first request naming that
-            # model loaded and served it:
-            #
-            #   [INFO] <qwen3.6-35b-a3b> Health check passed on :11503/health
-            #   [INFO] "POST /v1/chat/completions" 200 ... 4.641790064s
-            #
-            # Which is what the code does: llama-swap renders each backend's
-            # COMMAND from its config at startup, and the command contains a
-            # PATH. Nothing opens that path until a request arrives and the
-            # child llama-server is spawned, so a file that appears later is
-            # simply found. There is nothing to re-read.
+            # AND IT IS NOT NEEDED, which settles it.  The premise was "a model
+            # whose file did not exist yet is listed but unusable until
+            # llama-swap re-reads", and the case that would have shown it
+            # refuted it: on 2026-09-25 the fetcher downloaded a newly-declared
+            # 21 GiB model, this restart was DENIED, llama-swap was never
+            # restarted, and the first request naming that model loaded and
+            # served it.  llama-swap renders each backend's COMMAND at startup
+            # and the command contains a PATH; nothing opens that path until a
+            # request spawns the child llama-server, so a file that appears
+            # later is simply found.  There is nothing to re-read.
             #
             # If a future change makes llama-swap cache something about the
             # files themselves, the fix is a polkit rule scoped to this one
-            # unit and action — not a restart the fetcher is not allowed to
-            # perform.
+            # unit and action — not a restart the fetcher cannot perform.
           };
 
           script = ''

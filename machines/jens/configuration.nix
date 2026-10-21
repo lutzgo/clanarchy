@@ -88,58 +88,35 @@
   clanarchy.apps.flatpak.enable = true;
   clanarchy.apps.desktopTools.enable = true;
 
-  # M22 — the darktable end of the photo pipeline.  Finished JPEG exports
-  # dropped into ~/Pictures/immich-inbox are pushed to Immich on ernst by a
-  # timer; see modules/immich-upload.nix.
+  # M22 — the darktable end of the photo pipeline; see modules/immich-upload.nix.
   #
-  # ── OFF, AND IT IS TURNED ON IN A SECOND STEP.  THIS IS NOT A TODO ────────
+  # OFF DELIBERATELY, AND NOT A TODO.  Enabling it declares the
+  # `immich-api-key` generator, whose prompt cannot be answered until Immich is
+  # deployed and its accounts exist — and a pending prompt blocks the deploy of
+  # EVERY machine in the flake, including the ernst deploy that would make the
+  # key obtainable.  The deadlock and the two-step turn-on are in that module's
+  # header and in SN5.  To turn it on, in this order and at a TTY:
   #
-  # Enabling this declares the `immich-api-key` generator, whose value is an
-  # Immich API key — and an Immich API key CANNOT EXIST until Immich is
-  # deployed and the accounts have been created in its web UI.
-  #
-  # That is not an ordering hazard, it is a DEADLOCK, because
-  # `clan machines update` runs the generators for EVERY MACHINE IN THE FLAKE
-  # and not just the one being updated (clan_cli/machines/update.py:
-  # `all_machines = list(flake.list_machines_full().values())`).  So a pending
-  # prompt here blocks the ERNST deploy that would make the key obtainable —
-  # measured on 2026-09-11, which is how this line came to be `false`.  See
-  # standing note SN5 in docs/standing-notes.md.
-  #
-  # TO TURN IT ON, once ernst is up and the accounts exist:
-  #
-  #     # flip this to true, then, at a terminal:
   #     clan vars generate jens --generator immich-api-key
   #     clan machines update jens
-  #
-  # In that order.  The prompt needs a TTY and must NOT be answered blank.
   clanarchy.immich.upload.enable = false;
 
-  # Mount the ESP by disk-id, not by the partlabel disko assigns.
-  #
-  # Every machine in this clan uses disko's disk name `main`, so every ESP in
-  # the fleet is labelled `disk-main-ESP` — including the ones on Clan
-  # installer USB sticks, which are flashed with `--disk main`. Plug a stick
-  # into this machine and udev resolves
-  # /dev/disk/by-partlabel/disk-main-ESP to whichever device it saw last,
-  # which is how miralda ended up with the installer's ESP mounted at /boot.
-  # A bootloader update in that window writes to the USB stick instead of the
-  # internal drive: it corrupts the installer and leaves the real ESP stale,
-  # and nothing warns you.
+  # Mount the ESP by DISK-ID — not by the partlabel disko assigns, and not by
+  # PARTUUID.  modules/disko/base.nix owns the partlabel ambiguity
+  # (`disk-main-ESP` on every machine in the fleet and on every installer
+  # stick) and what it costs.
   #
   # THIS WAS A PARTUUID UNTIL 2026-09-22, AND THAT IS A TRAP ON REINSTALL.
-  # PARTUUID is the GPT partition GUID: unique per partition, which fixes the
-  # ambiguity above, but *regenerated every time the disk is repartitioned*.
-  # So the value went stale the moment `clan machines install jens` re-ran
-  # disko, and the machine came up with a /boot device that does not exist.
-  # Worse, it is circular: the new PARTUUID can only be read off the installed
-  # machine, and updating it needs a deploy the machine must boot to accept.
+  # PARTUUID is minted afresh by each `mkfs`, so the value went stale the
+  # moment `clan machines install jens` re-ran disko and the machine came up
+  # with a /boot device that does not exist — circularly, because the new value
+  # can only be read off the installed machine and updating it needs a deploy
+  # the machine must boot to accept.
   #
-  # The disk-id path has neither problem. It names model+serial, so it is
-  # unique to this internal NVMe and can never resolve to a USB stick, and the
-  # partition *number* is fixed by modules/disko/base.nix (ESP is always
-  # partition 1) rather than minted afresh by each `mkfs`. Survives reinstalls
-  # untouched. Same device string as machines/jens/disko.nix, plus `-part1`.
+  # The disk-id path has neither problem: it names model+serial, so it can
+  # never resolve to a USB stick, and the partition number is fixed by
+  # modules/disko/base.nix (ESP is always partition 1).  Survives reinstalls
+  # untouched.  Same device string as machines/jens/disko.nix, plus `-part1`.
   fileSystems."/boot".device =
     lib.mkForce "/dev/disk/by-id/nvme-WD_BLACK_SN770M_2TB_252738400046-part1";
 

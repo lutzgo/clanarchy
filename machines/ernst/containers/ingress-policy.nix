@@ -289,35 +289,24 @@ in rec {
     # DAY LATER, which is the direction this file's header warns about — so the
     # reason has to be better than "it did not work".
     #
-    # THE ORIGINAL ENTRY WAS ARGUED FROM A FACT THAT IS FALSE.  It said "the only
-    # client of this hostname is a browser", and therefore that Home Assistant's
-    # WebSocket did not matter because the hub reached the container directly on
-    # 10.0.90.30:8095, one L2 hop, never through this proxy.  That is not how the
-    # integration works.  Read out of the deployed code
-    # (homeassistant/components/music_assistant/config_flow.py):
+    # THE HOSTNAME HAS A NON-BROWSER CLIENT, which the original entry denied.
+    # Home Assistant's integration uses the ONE url typed into its config flow
+    # for BOTH halves (config_flow.py): the browser is redirected to
+    # `{url}/login`, and the hub's own server-side calls — `GET {url}/info`,
+    # `POST {url}/auth/login`, and the persistent `{url}/ws` — go to the same
+    # place.  There is no second field for an internal address.  So it fails the
+    # test at the top of this file exactly as `ha` does: `/ws` is an HTTP
+    # UPGRADE with no cookie jar, and a 302 on it never completes.
     #
-    #     login_url = f"{self.url}/login?{params}"
-    #     return self.async_external_step(step_id="auth", url=login_url)
-    #
-    # `self.url` is the ONE url typed into the config flow, and it is used for
-    # BOTH halves: the browser is redirected to `{url}/login`, and the hub's own
-    # server-side calls — `GET {url}/info`, `POST {url}/auth/login` for the
-    # long-lived token, and the persistent `{url}/ws` — go to the same place.
-    # There is no second field for an internal address.
-    #
-    # So the hostname has a non-browser client after all, and it fails the test
-    # at the top of this file exactly as `ha` does: `/ws` is an HTTP UPGRADE with
-    # no cookie jar, and a 302 on it is a handshake that never completes.
-    #
-    # MEASURED RATHER THAN REASONED.  With the hub pointed at the direct address
-    # the browser half is what broke instead — it was sent to
+    # MEASURED RATHER THAN REASONED: with the hub pointed at the direct address
+    # instead, the browser half broke — it was sent to
     # `http://10.0.90.30:8095/login?...`, which no human's machine may reach
     # (that container admits .12, .27 and .13 and nothing else), so the external
-    # step hung on a blank page forever.  Neither URL can satisfy both halves;
+    # step hung on a blank page forever.  Neither URL satisfies both halves;
     # only dropping the middleware makes one URL work for both.
     #
-    # WHAT DEFENDS IT, and this list is unusually strong for a name here because
-    # the application was READ rather than assumed (2.8.7):
+    # WHAT DEFENDS IT, unusually strong for a name here because the application
+    # was READ rather than assumed (2.8.7):
     #
     #   * its own accounts, with roles (`UserRole.ADMIN`) and a per-user
     #     `player_filter`, so a household account can be scoped to some speakers;
@@ -330,18 +319,15 @@ in rec {
     #     window: 3-5 failures 30 s, 6-9 60 s, 10-14 120 s, 15+ 300 s.  Nextcloud's
     #     per-ACCOUNT shape, not Home Assistant's per-SOURCE `ip_ban`.
     #
-    # AND IT IS THE ONLY NAME IN THIS LIST THAT IS NOT ON THE INTERNET.  Every
-    # other entry here is also in `wanExposed`, which is what makes this list a
-    # deliberate unauthenticated surface facing the world; this one is LAN-only,
-    # with no public A record and no ledger row.  The compensation stack above is
-    # therefore defending the house against the house, which is a different and
-    # much smaller claim than the one the header is written for.
+    # AND IT IS THE ONLY NAME IN THIS LIST THAT IS NOT ON THE INTERNET — no
+    # public A record, no ledger row.  The compensation stack above is therefore
+    # defending the house against the house, a much smaller claim than the one
+    # this file's header is written for.
     #
-    # THE DIRECT-HOP FIREWALL RULE FOR THE HUB IS GONE, not left behind: with the
-    # hub arriving through Traefik like everything else, an accept for .27 on
-    # 8095 would be a rule nothing uses and whose comment asserted the very thing
-    # this entry disproves.  M26's first deploy-day defect REMOVED a firewall
-    # rule rather than adding one; same move.
+    # THE DIRECT-HOP FIREWALL RULE FOR THE HUB IS GONE, not left behind: with
+    # the hub arriving through Traefik, an accept for .27 on 8095 would be a
+    # rule nothing uses whose comment asserted the very thing this entry
+    # disproves.
     (h "music")
 
     # Paperless-ngx (M32).  ONE client class, and it is the cleanest case in

@@ -99,44 +99,25 @@
   # dropped into ~/Pictures/immich-inbox are pushed to Immich on ernst by a
   # timer; see modules/immich-upload.nix.
   #
-  # ── OFF, AND IT IS TURNED ON IN A SECOND STEP.  THIS IS NOT A TODO ────────
-  #
-  # Enabling this declares the `immich-api-key` generator, whose value is an
-  # Immich API key — and an Immich API key CANNOT EXIST until Immich is
-  # deployed and the accounts have been created in its web UI.
-  #
-  # That is not an ordering hazard, it is a DEADLOCK, because
-  # `clan machines update` runs the generators for EVERY MACHINE IN THE FLAKE
-  # and not just the one being updated (clan_cli/machines/update.py:
-  # `all_machines = list(flake.list_machines_full().values())`).  So a pending
-  # prompt here blocks the ERNST deploy that would make the key obtainable —
-  # measured on 2026-09-11, which is how this line came to be `false`.  See
-  # standing note SN5 in docs/standing-notes.md.
-  #
-  # TO TURN IT ON, once ernst is up and the accounts exist:
-  #
-  #     # flip this to true, then, at a terminal:
-  #     clan vars generate miralda --generator immich-api-key
-  #     clan machines update miralda
-  #
-  # In that order.  The prompt needs a TTY and must NOT be answered blank.
+  # Enabling this declares the `immich-api-key` generator, whose prompt cannot
+  # be answered until Immich is deployed and its accounts exist — a DEADLOCK,
+  # not an ordering hazard, because a pending prompt blocks the deploy of every
+  # machine in the flake.  That module's header and SN5 own the explanation;
+  # the two-step turn-on is `clan vars generate miralda --generator
+  # immich-api-key` and then `clan machines update miralda`, in that order,
+  # at a TTY, never answered blank.
   clanarchy.immich.upload.enable = true;
 
-  # Mount the ESP by PARTUUID, not by the partlabel disko assigns.
+  # Mount the ESP by PARTUUID, not by the partlabel disko assigns: every
+  # machine here uses disko's disk name `main`, so every ESP in the fleet —
+  # including the ones on Clan installer USB sticks — is labelled
+  # `disk-main-ESP`.  modules/disko/base.nix owns that ambiguity and what it
+  # costs (a bootloader update writing to the stick).
   #
-  # Every machine in this clan uses disko's disk name `main`, so every ESP in
-  # the fleet is labelled `disk-main-ESP` — including the ones on Clan
-  # installer USB sticks, which are flashed with `--disk main`. Plug a stick
-  # into this machine and udev resolves
-  # /dev/disk/by-partlabel/disk-main-ESP to whichever device it saw last,
-  # which is how this machine ended up with the installer's ESP mounted at
-  # /boot. A bootloader update in that window writes to the USB stick instead
-  # of the internal drive: it corrupts the installer and leaves the real ESP
-  # stale, and nothing warns you.
-  #
-  # PARTUUID is the GPT partition GUID and is unique per partition. It is
-  # regenerated if this disk is ever repartitioned, so a reinstall of miralda
-  # means updating the value below — `lsblk -o NAME,PARTUUID /dev/nvme0n1`.
+  # PARTUUID is regenerated if this disk is ever repartitioned, so a reinstall
+  # of miralda means updating the value below —
+  # `lsblk -o NAME,PARTUUID /dev/nvme0n1`.  jens moved to a by-id path for
+  # exactly that reason; this machine has not.
   fileSystems."/boot".device =
     lib.mkForce "/dev/disk/by-partuuid/7f729396-f5cf-4125-a095-84e666aa8b09";
 

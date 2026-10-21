@@ -113,28 +113,16 @@ in {
   # Host-side wiring.
   ##############################################################################
 
-  # Host side of the container's veth — a VLAN-90 port on br0.
-  #
-  # There is deliberately NO `networking.firewall.allowedTCPPorts` here.  The
-  # three web UIs are opened inside the container's own netns (below); on the
-  # host they are not ports at all.  Reachability from the management VLANs is
-  # the UDM-Pro's job — ledger row L4 in docs/ledger.md.
-  #
-  # KeepMaster, not Bridge=: nspawn creates this link AND enslaves it to br0
-  # itself (--network-bridge=br0), so Bridge= would make networkd fight nspawn
-  # over the master.  KeepMaster leaves the enslavement alone while still
-  # applying the [BridgeVLAN] section, which is the only thing wanted from it.
-  #
-  # No L3 of its own: a bridge port carries no address, and IPv6AcceptRA on a
-  # port would have it answer router advertisements meant for the container.
-  #
-  # 60- prefix so it sorts after the 50-* topology units in
-  # machines/ernst/networking.nix and well ahead of the 99-* wildcards.
   # ── The container ──────────────────────────────────────────────────────────
   #
   # modules/containers/nspawn.nix generates the dirs unit (with mount guards),
   # the host-side veth network, the VLAN backstop, the container preamble and
   # the in-container networking. ./storage.nix supplies the directories.
+  #
+  # There is deliberately NO `networking.firewall.allowedTCPPorts` on the HOST.
+  # The web UIs are opened inside the container's own netns; on the host they
+  # are not ports at all, and reachability from the management VLANs is the
+  # UDM-Pro's job — ledger row L4 in docs/ledger.md.
   #
   # THE FIREWALL IS THIS FILE'S OWN, and that is why `manageFirewall = false`.
   # `allowFrom` is a list of (peer, port) pairs; this container's rules are
@@ -396,13 +384,10 @@ in {
       time.timeZone = "Europe/Berlin";
 
       ##########################################################################
-      # Networking.  The container owns its netns, so it owns all of this.
+      # The in-container firewall.  Everything else about this netns — the
+      # address, the resolver, useHostResolvConf — is the module's.
       ##########################################################################
 
-      # services.resolved asserts !networking.useHostResolvConf, and with a
-      # private netns the host's resolv.conf is a stale snapshot of someone
-      # else's resolver anyway.  virtualisation/container-config.nix sets it
-      # `mkDefault true`, so a plain `false` wins without mkForce.
       networking.firewall.allowedTCPPorts = [];
       networking.firewall.extraCommands =
         lib.concatMapStrings (port: ''
