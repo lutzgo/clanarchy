@@ -36,12 +36,12 @@
   # directory is not a degraded service, it is a NEW EMPTY one on zroot, which
   # rolls back on the next boot. See docs/guides/ernst-zdata-datasets.md.
   clanarchy.containerDefaults = {
-    bridge       = "br0";
-    vlan         = 90;
-    resolver     = "10.0.5.3";   # Technitium; pinned, never inherited
+    bridge = "br0";
+    vlan = 90;
+    resolver = "10.0.5.3"; # Technitium; pinned, never inherited
     searchDomain = "skynet.lan";
-    stateMount   = "/srv/state";
-    stateSource  = "zdata/state";
+    stateMount = "/srv/state";
+    stateSource = "zdata/state";
   };
 
   # ── THE PODMAN TIER, ENABLED ONCE FOR THE HOST ──────────────────────────────
@@ -78,7 +78,7 @@
   # `environment.defaultPackages`, so the NixOS-default rsync is absent, and
   # every future push/pull from another host lands on ssh's remote shell needing
   # rsync in root's PATH.
-  environment.systemPackages = [ pkgs.pciutils pkgs.rsync pkgs.zellij ];
+  environment.systemPackages = [pkgs.pciutils pkgs.rsync pkgs.zellij];
   services.smartd.enable = true;
 
   # Swap is defined as a partition on system-a in disko.nix; the kernel picks

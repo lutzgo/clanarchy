@@ -73,13 +73,11 @@
   python3,
   makeWrapper,
   callPackage,
-}:
-
-let
+}: let
   # Nine of the ten runtime dependencies are in nixpkgs; `bencoding` is not and
   # is hand-rolled next door.  The list follows upstream's requirements.txt at
   # V1.3.1 verbatim.
-  bencoding = callPackage ./bencoding.nix { };
+  bencoding = callPackage ./bencoding.nix {};
 
   pythonEnv = python3.withPackages (ps: [
     ps.typing-extensions
@@ -94,51 +92,51 @@ let
     bencoding
   ]);
 in
-stdenvNoCC.mkDerivation rec {
-  pname = "kapowarr";
-  version = "1.3.1";
+  stdenvNoCC.mkDerivation rec {
+    pname = "kapowarr";
+    version = "1.3.1";
 
-  src = fetchurl {
-    url = "https://github.com/Casvt/Kapowarr/releases/download/V${version}/Kapowarr-release.zip";
-    hash = "sha256-dDGONAGfjfIsl5Ri53DUOuReL8q9mWsSHsFTFzyaNtk=";
-  };
+    src = fetchurl {
+      url = "https://github.com/Casvt/Kapowarr/releases/download/V${version}/Kapowarr-release.zip";
+      hash = "sha256-dDGONAGfjfIsl5Ri53DUOuReL8q9mWsSHsFTFzyaNtk=";
+    };
 
-  nativeBuildInputs = [
-    unzip
-    makeWrapper
-  ];
+    nativeBuildInputs = [
+      unzip
+      makeWrapper
+    ];
 
-  # The zip has no single root directory — it unpacks `backend/`, `frontend/`
-  # and the two top-level files straight into the current directory.
-  sourceRoot = ".";
+    # The zip has no single root directory — it unpacks `backend/`, `frontend/`
+    # and the two top-level files straight into the current directory.
+    sourceRoot = ".";
 
-  dontConfigure = true;
-  dontBuild = true;
+    dontConfigure = true;
+    dontBuild = true;
 
-  # `requests[socks]` in requirements.txt is the socks extra, which pulls
-  # PySocks.  It is NOT added: this deployment gives Kapowarr no SOCKS proxy —
-  # its downloads go out through the container's ordinary route — and an extra
-  # that is never configured is closure for nothing.  If a proxy is ever
-  # configured in its UI, `ps.pysocks` is the line to add, and the symptom
-  # without it is an explicit "Missing dependencies for SOCKS support".
-  installPhase = ''
-    runHook preInstall
+    # `requests[socks]` in requirements.txt is the socks extra, which pulls
+    # PySocks.  It is NOT added: this deployment gives Kapowarr no SOCKS proxy —
+    # its downloads go out through the container's ordinary route — and an extra
+    # that is never configured is closure for nothing.  If a proxy is ever
+    # configured in its UI, `ps.pysocks` is the line to add, and the symptom
+    # without it is an explicit "Missing dependencies for SOCKS support".
+    installPhase = ''
+      runHook preInstall
 
-    mkdir -p $out/share/kapowarr
-    cp -r backend frontend Kapowarr.py $out/share/kapowarr/
+      mkdir -p $out/share/kapowarr
+      cp -r backend frontend Kapowarr.py $out/share/kapowarr/
 
-    makeWrapper ${pythonEnv}/bin/python $out/bin/kapowarr \
-      --add-flags "-u" \
-      --add-flags "$out/share/kapowarr/Kapowarr.py"
+      makeWrapper ${pythonEnv}/bin/python $out/bin/kapowarr \
+        --add-flags "-u" \
+        --add-flags "$out/share/kapowarr/Kapowarr.py"
 
-    runHook postInstall
-  '';
+      runHook postInstall
+    '';
 
-  meta = {
-    description = "Comic book library manager and downloader for the *arr suite";
-    homepage = "https://github.com/Casvt/Kapowarr";
-    license = lib.licenses.gpl3Only;
-    mainProgram = "kapowarr";
-    platforms = lib.platforms.linux;
-  };
-}
+    meta = {
+      description = "Comic book library manager and downloader for the *arr suite";
+      homepage = "https://github.com/Casvt/Kapowarr";
+      license = lib.licenses.gpl3Only;
+      mainProgram = "kapowarr";
+      platforms = lib.platforms.linux;
+    };
+  }

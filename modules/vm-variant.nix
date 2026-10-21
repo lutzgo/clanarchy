@@ -1,5 +1,4 @@
-{ lib, ... }:
-{
+{lib, ...}: {
   # `virtualisation.vmVariant` is a NixOS option: any config set here only
   # applies to the QEMU VM output (`config.system.build.vm`), never to the
   # real deploy. `nixos-rebuild build-vm --flake .#<machine>` produces a
@@ -17,17 +16,17 @@
 
     virtualisation = {
       memorySize = 4096;
-      cores      = 4;
-      diskSize   = 8192;
-      graphics   = true;
-      qemu.options = [ "-vga virtio" ];
+      cores = 4;
+      diskSize = 8192;
+      graphics = true;
+      qemu.options = ["-vga virtio"];
     };
 
     # No ZFS pool in the VM — drop the zpool import and the blank-rollback
     # unit from modules/zfs-impermanence.nix so stage 1 doesn't wait forever
     # on a `zroot` that will never appear.
-    boot.supportedFilesystems         = lib.mkForce [ "ext4" "vfat" ];
-    boot.zfs.forceImportRoot          = lib.mkForce false;
+    boot.supportedFilesystems = lib.mkForce ["ext4" "vfat"];
+    boot.zfs.forceImportRoot = lib.mkForce false;
     boot.initrd.systemd.services.rollback.enable = lib.mkForce false;
 
     # biene sets boot.resumeDevice to a /dev/disk/by-partlabel/... path for
@@ -35,7 +34,7 @@
     # sits in a ~90 s timeout waiting on it. Clear swapDevices too as a
     # safety net in case disko leaks any residuals past enableConfig=false.
     boot.resumeDevice = lib.mkForce "";
-    swapDevices       = lib.mkForce [];
+    swapDevices = lib.mkForce [];
 
     # …and with both of those cleared, the laptop role's hybrid-sleep
     # assertions would fail for any machine that has it on (birte). Turn the

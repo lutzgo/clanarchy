@@ -68,7 +68,6 @@
   dtv-scan-tables,
   libdvbcsa,
 }:
-
 stdenv.mkDerivation rec {
   pname = "tvheadend";
   version = "4.3-unstable-2026-08-22";
@@ -105,7 +104,7 @@ stdenv.mkDerivation rec {
   #   treatment the function already gives a completely invalid lead byte.
   #   Upstream-shaped, so it should be offered upstream rather than carried
   #   forever; re-check it on every rev bump.
-  patches = [ ./tvheadend-xmltv-utf8.patch ];
+  patches = [./tvheadend-xmltv-utf8.patch];
 
   nativeBuildInputs = [
     makeWrapper
@@ -161,7 +160,7 @@ stdenv.mkDerivation rec {
   postInstall = ''
     # config backup/restore shells out to tar and bzip2 at runtime.
     wrapProgram $out/bin/tvheadend \
-      --prefix PATH : ${lib.makeBinPath [ bzip2 gnutar ]}
+      --prefix PATH : ${lib.makeBinPath [bzip2 gnutar]}
   '';
 
   meta = {

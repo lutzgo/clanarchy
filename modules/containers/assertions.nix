@@ -9,20 +9,25 @@
 # Every one of them exists because the failure it catches is SILENT. None of
 # these produce an error at runtime; they produce a container that is simply
 # unreachable while every indicator says healthy.
-{ config, lib, ... }:
-let
+{
+  config,
+  lib,
+  ...
+}: let
   # ── veth names are a host-global namespace ────────────────────────────────
   claims = lib.concatLists (lib.mapAttrsToList
-    (container: cfg: map (veth: { inherit container veth; })
-      (lib.attrNames (cfg.extraVeths or { })))
+    (container: cfg:
+      map (veth: {inherit container veth;})
+      (lib.attrNames (cfg.extraVeths or {})))
     config.containers);
   byName = lib.groupBy (c: c.veth) claims;
   collisions = lib.filterAttrs (_: cs: lib.length cs > 1) byName;
 
   # Every host end a container actually brings up.
   vethHostAddrs = lib.concatLists (lib.mapAttrsToList
-    (_: cfg: lib.filter (a: a != null)
-      (lib.mapAttrsToList (_: v: v.hostAddress6 or null) (cfg.extraVeths or { })))
+    (_: cfg:
+      lib.filter (a: a != null)
+      (lib.mapAttrsToList (_: v: v.hostAddress6 or null) (cfg.extraVeths or {})))
     config.containers);
 
   # Every loopback bridge this host declares, whatever generated it. Matching
@@ -34,12 +39,20 @@ let
   # brackets are matched with POSIX bracket expressions — `builtins.match` is
   # ERE, where a backslash-escaped `[` is rejected outright rather than treated
   # as a literal.
-  addrOf = sock:
-    let m = builtins.match "[[]([^]]+)[]]:[0-9]+" (sock.socketConfig.ListenStream or "");
-    in if m == null then null else lib.head m;
+  addrOf = sock: let
+    m = builtins.match "[[]([^]]+)[]]:[0-9]+" (sock.socketConfig.ListenStream or "");
+  in
+    if m == null
+    then null
+    else lib.head m;
 
-  missingBridgeAddrs = lib.filter (b: b.addr != null && !(lib.elem b.addr vethHostAddrs))
-    (lib.mapAttrsToList (unit: sock: { inherit unit; addr = addrOf sock; }) bridgeSockets);
+  missingBridgeAddrs =
+    lib.filter (b: b.addr != null && !(lib.elem b.addr vethHostAddrs))
+    (lib.mapAttrsToList (unit: sock: {
+        inherit unit;
+        addr = addrOf sock;
+      })
+      bridgeSockets);
 
   # ── nspawn container names must fit IFNAMSIZ ──────────────────────────────
   longNames = lib.filter (n: lib.stringLength n > 12) (lib.attrNames config.containers);
@@ -52,7 +65,7 @@ let
   # generated one renders the stanza twice and evaluates perfectly — which is
   # exactly what paperless shipped for the length of one migration.
   dupVlans = lib.filterAttrs (_: n: n > 1) (lib.mapAttrs
-    (_: net: lib.length (net.bridgeVLANs or [ ]))
+    (_: net: lib.length (net.bridgeVLANs or []))
     (lib.filterAttrs (n: _: lib.hasPrefix "60-" n) config.systemd.network.networks));
 
   # ── allowFrom declared but never rendered ────────────────────────────────
@@ -61,8 +74,8 @@ let
   # `allowFrom` list alongside it is not merely redundant: it reads like the
   # enforcement and is not enforced anywhere.
   unrenderedAllows = lib.attrNames (lib.filterAttrs
-    (_: c: c.enable && !c.manageFirewall && c.allowFrom != [ ])
-    (config.clanarchy.containers or { }));
+    (_: c: c.enable && !c.manageFirewall && c.allowFrom != [])
+    (config.clanarchy.containers or {}));
 
   # ── a restartUnits target that does not exist ────────────────────────────
   #
@@ -85,10 +98,11 @@ let
   # such excuse: it is declared on the machine that runs the service, so a
   # target missing there is a typo or a rename.
   hostUnits = lib.attrNames config.systemd.units;
-  ownGenerators = lib.filterAttrs (_: g: !g.share)
-    (config.clan.core.vars.generators or { });
+  ownGenerators =
+    lib.filterAttrs (_: g: !g.share)
+    (config.clan.core.vars.generators or {});
   restartTargets = lib.unique (lib.concatLists (lib.concatLists (lib.mapAttrsToList
-    (_: g: lib.mapAttrsToList (_: f: f.restartUnits or [ ]) g.files)
+    (_: g: lib.mapAttrsToList (_: f: f.restartUnits or []) g.files)
     ownGenerators)));
   danglingRestarts = lib.filter (t: !(lib.elem t hostUnits)) restartTargets;
 
@@ -104,20 +118,24 @@ let
   # shipped exactly that, for the length of one snapshot diff.
   declaredMounts = lib.attrNames config.fileSystems;
   allGuarded = lib.concatLists (lib.mapAttrsToList
-    (n: c: map (m: { container = n; inherit (m) path; }) c.extraGuardedMounts)
+    (n: c:
+      map (m: {
+        container = n;
+        inherit (m) path;
+      })
+      c.extraGuardedMounts)
     (lib.filterAttrs (_: c: c.enable)
-      ((config.clanarchy.containers or { }) // (config.clanarchy.podmanContainers or { }))));
+      ((config.clanarchy.containers or {}) // (config.clanarchy.podmanContainers or {}))));
   notMountPoints = lib.filter (g: !(lib.elem g.path declaredMounts)) allGuarded;
 
   # ── podman-tier interface names ───────────────────────────────────────────
-  podCfg = config.clanarchy.podmanContainers or { };
+  podCfg = config.clanarchy.podmanContainers or {};
   podIfaces = lib.mapAttrsToList (_: c: c.interface) (lib.filterAttrs (_: c: c.enable) podCfg);
   podDupes = lib.attrNames (lib.filterAttrs (_: v: lib.length v > 1) (lib.groupBy (x: x) podIfaces));
-in
-{
+in {
   config.assertions = [
     {
-      assertion = collisions == { };
+      assertion = collisions == {};
       message = ''
         Two or more containers declare the same extraVeths name, and only one
         of them can have it — the other silently gets no interface:
@@ -136,7 +154,7 @@ in
     }
 
     {
-      assertion = missingBridgeAddrs == [ ];
+      assertion = missingBridgeAddrs == [];
       message = ''
         These loopback bridges listen on addresses that no container veth
         carries, so nothing can ever reach them:
@@ -155,7 +173,7 @@ in
     }
 
     {
-      assertion = longNames == [ ];
+      assertion = longNames == [];
       message = ''
         These nspawn container names are longer than 12 characters:
         ${lib.concatStringsSep ", " longNames}
@@ -167,7 +185,7 @@ in
     }
 
     {
-      assertion = unrenderedAllows == [ ];
+      assertion = unrenderedAllows == [];
       message = ''
         These containers set `manageFirewall = false` but still declare
         `allowFrom`: ${lib.concatStringsSep ", " unrenderedAllows}
@@ -179,7 +197,7 @@ in
     }
 
     {
-      assertion = danglingRestarts == [ ];
+      assertion = danglingRestarts == [];
       message = ''
         These units are named in a clan-vars `restartUnits` but are not
         defined on this host:
@@ -194,12 +212,13 @@ in
     }
 
     {
-      assertion = dupVlans == { };
+      assertion = dupVlans == {};
       message = ''
         These bridge-port networks carry more than one [BridgeVLAN] entry:
 
         ${lib.concatStringsSep "\n" (lib.mapAttrsToList
-          (n: c: "  ${n}: ${toString c} entries") dupVlans)}
+          (n: c: "  ${n}: ${toString c} entries")
+          dupVlans)}
 
         One port, one VLAN stanza. More than one means the network is defined
         twice — usually a hand-written block left in place beside the one
@@ -209,7 +228,7 @@ in
     }
 
     {
-      assertion = notMountPoints == [ ];
+      assertion = notMountPoints == [];
       message = ''
         These guarded mounts name a path that is not a declared mount point:
 
@@ -225,7 +244,7 @@ in
     }
 
     {
-      assertion = podDupes == [ ];
+      assertion = podDupes == [];
       message = ''
         Two or more podman containers claim the same interface name:
         ${lib.concatStringsSep ", " podDupes}

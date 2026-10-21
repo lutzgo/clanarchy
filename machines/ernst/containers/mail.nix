@@ -151,9 +151,13 @@
 #   SAY THE QUIET PART: those ZFS snapshots are the ONLY backup this fleet
 #   has.  There is no borg, no restic, no replication anywhere in this repo.
 #   For media that was a shrug — it is re-acquirable.  Mail is not.
-{ config, pkgs, lib, inputs, ... }:
-
-let
+{
+  config,
+  pkgs,
+  lib,
+  inputs,
+  ...
+}: let
   ##############################################################################
   # Identity.
   #
@@ -187,8 +191,8 @@ let
   redisUid = 3043;
   redisGid = 3043;
 
-  dovecotUid = 46;   # nixpkgs ids.nix — reads the password hashes
-  rspamdUid  = 225;  # nixpkgs ids.nix — reads the DKIM private key
+  dovecotUid = 46; # nixpkgs ids.nix — reads the password hashes
+  rspamdUid = 225; # nixpkgs ids.nix — reads the DKIM private key
 
   ##############################################################################
   # Peers, ports and paths.
@@ -260,8 +264,7 @@ let
   # folding a new file into an old one rotates unrelated secrets as a side
   # effect.  Nothing is being added to this generator — it is being READ.
   acmeGen = config.clan.core.vars.generators.traefik-acme;
-in
-{
+in {
   # The three mailbox passwords.  NOT DECLARED HERE, even though this is the
   # only machine that serves mail, because a clan var reaches only the
   # machines whose configuration declares its generator — and aerc on miralda
@@ -269,7 +272,7 @@ in
   # module, imported by both consumers; that file's header carries the full
   # argument, including why splitting it in two would let the two copies of
   # lutz's password diverge.
-  imports = [ ../../../modules/mail-accounts.nix ];
+  imports = [../../../modules/mail-accounts.nix];
 
   clanarchy.mail.accounts.enable = true;
   # `root`, the default, restated to be explicit: there is no `lgo` on ernst,
@@ -282,14 +285,14 @@ in
 
   systemd.services.mail-secrets = {
     description = "Stage the mail server's credentials for container@mail";
-    after       = [ "local-fs.target" ];
-    before      = [ "container@mail.service" ];
-    requiredBy  = [ "container@mail.service" ];
+    after = ["local-fs.target"];
+    before = ["container@mail.service"];
+    requiredBy = ["container@mail.service"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
     };
-    path = [ pkgs.coreutils ];
+    path = [pkgs.coreutils];
 
     # ── OWNERSHIP IS PER READER, NOT PER FILE ───────────────────────────────
     #
@@ -342,8 +345,8 @@ in
       # here by half.  A hash that is declared but never staged produces an
       # account Dovecot refuses every password for, which reads as a typo.
       ${lib.concatMapStringsSep "\n      "
-          (f: "stage ${acctGen.files.${f}.path} ${secretsDir}/${f} ${toString dovecotUid}")
-          (lib.filter (lib.hasSuffix ".hash") (lib.attrNames acctGen.files))}
+        (f: "stage ${acctGen.files.${f}.path} ${secretsDir}/${f} ${toString dovecotUid}")
+        (lib.filter (lib.hasSuffix ".hash") (lib.attrNames acctGen.files))}
 
       # noreply@ comes from its OWN generator (see mail-system-sender below),
       # so it is not in the loop above — that one walks `mail-accounts` only.
@@ -395,12 +398,12 @@ in
   ##############################################################################
   clan.core.vars.generators.mail-dkim = {
     files."dkim.key" = {
-      secret       = true;
-      restartUnits = [ "mail-secrets.service" "container@mail.service" ];
+      secret = true;
+      restartUnits = ["mail-secrets.service" "container@mail.service"];
     };
     files."dkim.txt".secret = false;
 
-    runtimeInputs = [ pkgs.rspamd pkgs.coreutils ];
+    runtimeInputs = [pkgs.rspamd pkgs.coreutils];
 
     # rspamadm writes the private key to -k and the DNS record to stdout.
     # 2048-bit RSA: RFC 8301 sets the floor at 1024 and recommends 2048, and
@@ -448,15 +451,15 @@ in
   ##############################################################################
   clan.core.vars.generators.mail-system-sender = {
     files."noreply.hash" = {
-      secret       = true;
-      restartUnits = [ "mail-secrets.service" "container@mail.service" ];
+      secret = true;
+      restartUnits = ["mail-secrets.service" "container@mail.service"];
     };
     files."noreply.plain" = {
-      secret       = true;
-      restartUnits = [ "nextcloud-secrets.service" "container@nextcloud.service" ];
+      secret = true;
+      restartUnits = ["nextcloud-secrets.service" "container@nextcloud.service"];
     };
 
-    runtimeInputs = [ pkgs.coreutils pkgs.openssl pkgs.mkpasswd ];
+    runtimeInputs = [pkgs.coreutils pkgs.openssl pkgs.mkpasswd];
     script = ''
       set -euo pipefail
       pw=$(openssl rand -base64 48 | tr -d '\n=+/' | cut -c1-48)
@@ -497,7 +500,7 @@ in
   # module's `secrets` option writes.
   clanarchy.containers.mail = {
     enable = true;
-    mac    = "02:00:00:90:00:17";
+    mac = "02:00:00:90:00:17";
 
     # NO uid/gid PIN: simple-nixos-mailserver and nixpkgs create these users,
     # and two of them (dovecot 46, rspamd 225) are upstream-static ids that
@@ -515,13 +518,48 @@ in
     useResolved = false;
 
     stateDirs = [
-      { path = stateRoot;                 owner = "root";    group = "root";    mode = "0755"; }
-      { path = "${stateRoot}/vmail";      owner = vmailUid;  group = vmailGid;  mode = "0700"; }
-      { path = "${stateRoot}/postfix";    owner = "root";    group = "root";    mode = "0755"; }
-      { path = "${stateRoot}/dovecot";    owner = "root";    group = "root";    mode = "0755"; }
-      { path = "${stateRoot}/rspamd";     owner = rspamdUid; group = rspamdUid; mode = "0700"; }
-      { path = "${stateRoot}/redis";      owner = redisUid;  group = redisGid;  mode = "0700"; }
-      { path = "${stateRoot}/acme";       owner = "root";    group = "root";    mode = "0755"; }
+      {
+        path = stateRoot;
+        owner = "root";
+        group = "root";
+        mode = "0755";
+      }
+      {
+        path = "${stateRoot}/vmail";
+        owner = vmailUid;
+        group = vmailGid;
+        mode = "0700";
+      }
+      {
+        path = "${stateRoot}/postfix";
+        owner = "root";
+        group = "root";
+        mode = "0755";
+      }
+      {
+        path = "${stateRoot}/dovecot";
+        owner = "root";
+        group = "root";
+        mode = "0755";
+      }
+      {
+        path = "${stateRoot}/rspamd";
+        owner = rspamdUid;
+        group = rspamdUid;
+        mode = "0700";
+      }
+      {
+        path = "${stateRoot}/redis";
+        owner = redisUid;
+        group = redisGid;
+        mode = "0700";
+      }
+      {
+        path = "${stateRoot}/acme";
+        owner = "root";
+        group = "root";
+        mode = "0755";
+      }
     ];
 
     # ── THE NEGATIVE CONTROL IS INVERTED HERE, FOR FOUR PORTS ────────────────
@@ -536,54 +574,64 @@ in
     # It still holds for the exporter: 9154 names a peer, so
     # `curl http://10.0.90.31:9154/metrics` from ernst is REFUSED.
     allowFrom = [
-      { peer = monitoringAddr; port = exporterPort; }  # Prometheus
-      { peer = traefikAddr;    port = mtaStsPort; }    # the MTA-STS policy file
+      {
+        peer = monitoringAddr;
+        port = exporterPort;
+      } # Prometheus
+      {
+        peer = traefikAddr;
+        port = mtaStsPort;
+      } # the MTA-STS policy file
     ];
 
     bindMounts = {
       # The Maildir.
       "/var/vmail" = {
-        hostPath   = "${stateRoot}/vmail";
+        hostPath = "${stateRoot}/vmail";
         isReadOnly = false;
       };
 
       # The QUEUE — accepted-but-undelivered mail.  This is the bind that makes
       # a container restart lossless.
       "/var/lib/postfix" = {
-        hostPath   = "${stateRoot}/postfix";
+        hostPath = "${stateRoot}/postfix";
         isReadOnly = false;
       };
 
       "/var/lib/dovecot" = {
-        hostPath   = "${stateRoot}/dovecot";
+        hostPath = "${stateRoot}/dovecot";
         isReadOnly = false;
       };
 
       # Rspamd's state, and Redis's — the Bayes classifier.
       "/var/lib/rspamd" = {
-        hostPath   = "${stateRoot}/rspamd";
+        hostPath = "${stateRoot}/rspamd";
         isReadOnly = false;
       };
       "/var/lib/redis-rspamd" = {
-        hostPath   = "${stateRoot}/redis";
+        hostPath = "${stateRoot}/redis";
         isReadOnly = false;
       };
 
       # This container's own ACME account and certificate.
       "/var/lib/acme" = {
-        hostPath   = "${stateRoot}/acme";
+        hostPath = "${stateRoot}/acme";
         isReadOnly = false;
       };
 
       "${secretsDir}" = {
-        hostPath   = secretsDir;
+        hostPath = secretsDir;
         isReadOnly = true;
       };
     };
 
-
-    config = { config, pkgs, lib, ... }: {
-      imports = [ inputs.simple-nixos-mailserver.nixosModules.default ];
+    config = {
+      config,
+      pkgs,
+      lib,
+      ...
+    }: {
+      imports = [inputs.simple-nixos-mailserver.nixosModules.default];
 
       ##########################################################################
       # The MTA-STS policy file.
@@ -633,7 +681,12 @@ in
         # to remote MTAs. Gzip, proxy tuning and the TLS defaults are all for
         # workloads this is not, and TLS in particular is Traefik's job here.
         virtualHosts."mta-sts.${baseDomain}" = {
-          listen = [ { addr = "0.0.0.0"; port = mtaStsPort; } ];
+          listen = [
+            {
+              addr = "0.0.0.0";
+              port = mtaStsPort;
+            }
+          ];
           locations."= /.well-known/mta-sts.txt" = {
             # CRLF line endings: RFC 8461 §3.2 specifies them, and while most
             # implementations tolerate LF there is no reason to find out which
@@ -668,8 +721,8 @@ in
         # how data gets lost.
         stateVersion = 5;
 
-        fqdn    = fqdn;
-        domains = [ baseDomain ];
+        fqdn = fqdn;
+        domains = [baseDomain];
 
         # Only required by tlsrpt today, but it is the address RFC 2142 says
         # must exist and it is aliased onto admin@ below, so state it.
@@ -737,17 +790,17 @@ in
 
         accounts."lutz@${baseDomain}" = {
           hashedPasswordFile = "${secretsDir}/lutz.hash";
-          aliases = [ "lgo@${baseDomain}" ];
+          aliases = ["lgo@${baseDomain}"];
         };
 
         accounts."sarinah@${baseDomain}" = {
           hashedPasswordFile = "${secretsDir}/sarinah.hash";
-          aliases = [ "sgo@${baseDomain}" ];
+          aliases = ["sgo@${baseDomain}"];
         };
 
         accounts."max@${baseDomain}" = {
           hashedPasswordFile = "${secretsDir}/max.hash";
-          aliases = [ "mgo@${baseDomain}" ];
+          aliases = ["mgo@${baseDomain}"];
         };
 
         # The couch/admin account.  NO ALIAS, and that is not an oversight:
@@ -784,9 +837,9 @@ in
         #   STARTTLS port — downgradeable by an active attacker — to the
         #   internet-facing surface in exchange for compatibility with no
         #   client this household owns.
-        enableImapSsl       = true;
+        enableImapSsl = true;
         enableSubmissionSsl = true;
-        enableManageSieve   = true;
+        enableManageSieve = true;
 
         # See the firewall note above: this opens exactly the four ports the
         # enables turn on.
@@ -823,11 +876,28 @@ in
         #   `fts_autoindex = false` on Trash and Junk follows upstream: there
         #   is no reason to spend index on either.
         mailboxes = {
-          Trash   = { auto = "subscribe"; special_use = "\\Trash";   fts_autoindex = false; };
-          Junk    = { auto = "subscribe"; special_use = "\\Junk";    fts_autoindex = false; };
-          Drafts  = { auto = "subscribe"; special_use = "\\Drafts"; };
-          Sent    = { auto = "subscribe"; special_use = "\\Sent"; };
-          Archive = { auto = "subscribe"; special_use = "\\Archive"; };
+          Trash = {
+            auto = "subscribe";
+            special_use = "\\Trash";
+            fts_autoindex = false;
+          };
+          Junk = {
+            auto = "subscribe";
+            special_use = "\\Junk";
+            fts_autoindex = false;
+          };
+          Drafts = {
+            auto = "subscribe";
+            special_use = "\\Drafts";
+          };
+          Sent = {
+            auto = "subscribe";
+            special_use = "\\Sent";
+          };
+          Archive = {
+            auto = "subscribe";
+            special_use = "\\Archive";
+          };
         };
 
         # ── DKIM from sops, not from /var/dkim ──────────────────────────────
@@ -870,7 +940,7 @@ in
         #   read; `_smtp._tls` went in with MTA-STS, so the reading half works
         #   too.
         dmarcReporting.enable = true;
-        tlsrpt.enable         = true;
+        tlsrpt.enable = true;
 
         # ── TLS ─────────────────────────────────────────────────────────────
         #   The cert itself is requested by the security.acme block below.
@@ -920,9 +990,9 @@ in
           # NXDOMAIN for _acme-challenge forever, and goclan.org's SOA minimum
           # of 1800 caches a too-early NXDOMAIN for thirty minutes, poisoning
           # every retry.  Measured 2026-08-23.
-          dnsResolver         = "1.1.1.1:53";
+          dnsResolver = "1.1.1.1:53";
           dnsPropagationCheck = true;
-          reloadServices      = [ "postfix.service" "dovecot.service" ];
+          reloadServices = ["postfix.service" "dovecot.service"];
         };
       };
 
@@ -942,13 +1012,13 @@ in
       #   group.  The symptom would have been a container that starts cleanly
       #   and then refuses :465 and :993 — the two ports the whole household
       #   uses — with the failure in a TLS log line and not in unit state.
-      users.users.postfix.extraGroups  = [ "acme" ];
-      users.users.dovecot2.extraGroups = [ "acme" ];
+      users.users.postfix.extraGroups = ["acme"];
+      users.users.dovecot2.extraGroups = ["acme"];
 
       # Pin Redis's ids — see the `redisUid` note at the top of this file.
       # nspawn passes ids through unmapped, so an unpinned per-server user is
       # a number chosen by useradd that ends up owning Bayes on zdata.
-      users.users.redis-rspamd.uid  = redisUid;
+      users.users.redis-rspamd.uid = redisUid;
       users.groups.redis-rspamd.gid = redisGid;
 
       # ── fail2ban, because CrowdSec cannot see this container ──────────────
@@ -968,21 +1038,21 @@ in
       #   proxy, but the reasoning is identical and the fix is one line.
       services.fail2ban = {
         enable = true;
-        bantime  = "1h";
+        bantime = "1h";
         maxretry = 5;
-        ignoreIP = [ "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16" ];
+        ignoreIP = ["10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16"];
 
         jails.postfix-sasl.settings = {
-          filter   = "postfix[mode=auth]";
-          action   = ''iptables-multiport[name=postfix-sasl, port="25,465"]'';
+          filter = "postfix[mode=auth]";
+          action = ''iptables-multiport[name=postfix-sasl, port="25,465"]'';
           maxretry = 5;
         };
 
         # aggressive mode also counts aborted connections, which is most of
         # what an IMAP password sweep looks like from the server's side.
         jails.dovecot.settings = {
-          filter   = "dovecot[mode=aggressive]";
-          action   = ''iptables-multiport[name=dovecot, port="993,4190"]'';
+          filter = "dovecot[mode=aggressive]";
+          action = ''iptables-multiport[name=dovecot, port="993,4190"]'';
           maxretry = 5;
         };
       };
@@ -1006,9 +1076,9 @@ in
       #   be reachable across the veth; what bounds it is the single accept
       #   rule above.
       services.prometheus.exporters.postfix = {
-        enable        = true;
+        enable = true;
         listenAddress = "0.0.0.0";
-        port          = exporterPort;
+        port = exporterPort;
         systemd.enable = true;
       };
 
@@ -1021,7 +1091,7 @@ in
         dig
       ];
 
-      documentation.enable       = false;
+      documentation.enable = false;
       documentation.nixos.enable = false;
     };
   };

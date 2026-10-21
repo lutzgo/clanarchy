@@ -29,7 +29,6 @@
 # label upstream, (b) Technitium's DNSSEC posture is confirmed end-to-end,
 # or (c) we want a per-machine pilot on ernst (fixed home LAN, easiest to
 # reason about).
-{ ... }:
-{
+{...}: {
   services.resolved.settings.Resolve.FallbackDNS = "1.1.1.1 9.9.9.9";
 }

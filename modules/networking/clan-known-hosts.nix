@@ -1,4 +1,4 @@
-{ lib, ... }:
+{lib, ...}:
 #
 # System-wide known_hosts for every clan machine, on every address it answers on.
 #
@@ -57,16 +57,18 @@ let
   # Extra addresses that cannot be derived from vars: static LAN addresses.
   # The laptops are DHCP and are reached by name, so only ernst has one.
   extraHostNames = {
-    ernst = [ "10.0.50.10" ];
+    ernst = ["10.0.50.10"];
   };
 
   candidates = lib.attrNames (
     lib.filterAttrs (_: type: type == "directory") (builtins.readDir "${varsRoot}/per-machine")
   );
 
-  machines = lib.filter (
-    m: builtins.pathExists (hostKeyFile m) && builtins.pathExists (zerotierFile m)
-  ) candidates;
+  machines =
+    lib.filter (
+      m: builtins.pathExists (hostKeyFile m) && builtins.pathExists (zerotierFile m)
+    )
+    candidates;
 
   # `clan machines update` defaults to <name>.<domain>, and the host certs are
   # issued for exactly that principal — but lgo's ssh_config forces
@@ -86,11 +88,10 @@ let
           "${m}.goclan.org"
           (readTrimmed (zerotierFile m))
         ]
-        ++ (extraHostNames.${m} or [ ]);
+        ++ (extraHostNames.${m} or []);
       publicKey = readTrimmed (hostKeyFile m);
     };
   };
-in
-{
+in {
   programs.ssh.knownHosts = lib.listToAttrs (map entryFor machines);
 }

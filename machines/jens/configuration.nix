@@ -1,4 +1,4 @@
-{ lib, ... }: {
+{lib, ...}: {
   networking.hostName = "jens";
   networking.hostId = "f815e992";
   # DNS: no global `networking.search` — see modules/networking/resolved.nix
@@ -26,7 +26,11 @@
   # required" on the phone this already works on) — add one here if EDUDUS
   # publishes a RADIUS server cert and stricter validation is wanted.
   clanarchy.wifi.networks = [
-    { ssid = "EDUDUS"; varName = "wifi-edudus"; auth = "peap"; }
+    {
+      ssid = "EDUDUS";
+      varName = "wifi-edudus";
+      auth = "peap";
+    }
   ];
   #
   # Framework Laptop 12 is Intel (Raptor Lake U) where miralda is AMD.  That
@@ -194,7 +198,7 @@
   # Syncthing — run as lgo so it can write to /home/lgo/Public.
   services.syncthing.user = "lgo";
   # Syncthing state survives ZFS rollback.
-  environment.persistence."/persist".directories = [ "/var/lib/syncthing" ];
+  environment.persistence."/persist".directories = ["/var/lib/syncthing"];
 
   system.stateVersion = "25.11";
 }

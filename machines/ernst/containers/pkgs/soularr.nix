@@ -67,13 +67,11 @@
   python3,
   makeWrapper,
   callPackage,
-}:
-
-let
+}: let
   # slskd-api is hand-rolled next door; the other two are in nixpkgs, and
   # `pyarr` is there at EXACTLY the 5.2.0 upstream's requirements.txt pins
   # (checked 2026-08-28), so nothing has to be overridden to satisfy it.
-  slskd-api = callPackage ./slskd-api.nix { };
+  slskd-api = callPackage ./slskd-api.nix {};
 
   pythonEnv = python3.withPackages (ps: [
     ps.music-tag
@@ -81,54 +79,54 @@ let
     slskd-api
   ]);
 in
-stdenvNoCC.mkDerivation rec {
-  pname = "soularr";
-  version = "1.2.2";
+  stdenvNoCC.mkDerivation rec {
+    pname = "soularr";
+    version = "1.2.2";
 
-  src = fetchFromGitHub {
-    owner = "mrusse";
-    repo = "soularr";
-    tag = "v${version}";
-    hash = "sha256-gtz99+DiFjJZuq54qo5C+5Exx++S+ePzldgDM9NHAOA=";
-  };
+    src = fetchFromGitHub {
+      owner = "mrusse";
+      repo = "soularr";
+      tag = "v${version}";
+      hash = "sha256-gtz99+DiFjJZuq54qo5C+5Exx++S+ePzldgDM9NHAOA=";
+    };
 
-  nativeBuildInputs = [ makeWrapper ];
+    nativeBuildInputs = [makeWrapper];
 
-  # No build system, so no configure/build phase to run.
-  dontConfigure = true;
-  dontBuild = true;
+    # No build system, so no configure/build phase to run.
+    dontConfigure = true;
+    dontBuild = true;
 
-  # soularr.py is copied rather than symlinked, and the wrapper passes the
-  # store path explicitly: the script resolves nothing relative to its own
-  # location, so the only thing that has to be right is that the interpreter
-  # can find its three dependencies.
-  #
-  # --config-dir and --var-dir are NOT defaulted here.  Upstream defaults both
-  # to `os.getcwd()`, which for a systemd unit is `/`, and a service that
-  # silently reads a config from the root directory is worse than one that
-  # fails.  containers/arr/ passes both explicitly.
-  installPhase = ''
-    runHook preInstall
+    # soularr.py is copied rather than symlinked, and the wrapper passes the
+    # store path explicitly: the script resolves nothing relative to its own
+    # location, so the only thing that has to be right is that the interpreter
+    # can find its three dependencies.
+    #
+    # --config-dir and --var-dir are NOT defaulted here.  Upstream defaults both
+    # to `os.getcwd()`, which for a systemd unit is `/`, and a service that
+    # silently reads a config from the root directory is worse than one that
+    # fails.  containers/arr/ passes both explicitly.
+    installPhase = ''
+      runHook preInstall
 
-    install -Dm644 soularr.py $out/share/soularr/soularr.py
+      install -Dm644 soularr.py $out/share/soularr/soularr.py
 
-    # The shipped config.ini is an EXAMPLE full of placeholder credentials.  It
-    # is installed as documentation only, under a name that cannot be mistaken
-    # for live configuration — the real one is rendered into a tmpfs at run
-    # time from staged secrets (see containers/arr/).
-    install -Dm644 config.ini $out/share/doc/soularr/config.ini.example
+      # The shipped config.ini is an EXAMPLE full of placeholder credentials.  It
+      # is installed as documentation only, under a name that cannot be mistaken
+      # for live configuration — the real one is rendered into a tmpfs at run
+      # time from staged secrets (see containers/arr/).
+      install -Dm644 config.ini $out/share/doc/soularr/config.ini.example
 
-    makeWrapper ${pythonEnv}/bin/python $out/bin/soularr \
-      --add-flags "$out/share/soularr/soularr.py"
+      makeWrapper ${pythonEnv}/bin/python $out/bin/soularr \
+        --add-flags "$out/share/soularr/soularr.py"
 
-    runHook postInstall
-  '';
+      runHook postInstall
+    '';
 
-  meta = {
-    description = "Connects Lidarr's wanted list to Soulseek downloads via slskd";
-    homepage = "https://github.com/mrusse/soularr";
-    license = lib.licenses.gpl3Only;
-    mainProgram = "soularr";
-    platforms = lib.platforms.linux;
-  };
-}
+    meta = {
+      description = "Connects Lidarr's wanted list to Soulseek downloads via slskd";
+      homepage = "https://github.com/mrusse/soularr";
+      license = lib.licenses.gpl3Only;
+      mainProgram = "soularr";
+      platforms = lib.platforms.linux;
+    };
+  }

@@ -40,8 +40,12 @@
 # outright.  Selecting it therefore means "stop the display manager, start
 # the container" rather than "exec a different session binary", and the two
 # arms are mutually exclusive because both want KMS on the same card.
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.clanarchy.roles.htpc;
 
   stateDir = "/var/lib/clanarchy-session";
@@ -85,9 +89,9 @@ let
   # a shell's command line matches that shell, so the same test run as a
   # one-liner reports every pattern alive. Put it in a file.
   sessionProcessPatterns =
-    [ "gamescope --steam" ]
+    ["gamescope --steam"]
     ++ lib.optional cfg.mediaClient.enable "kodi.bin"
-    ++ [ "startplasma-wayland" ];
+    ++ ["startplasma-wayland"];
 
   # Drop-box the Bigscreen container writes into to ask for a session change.
   #
@@ -105,11 +109,12 @@ let
   # The exact set of units the couch user may start/stop. Kept as a list so
   # the polkit rule below is a membership test rather than a growing chain of
   # string comparisons.
-  manageableUnits = [
-    "display-manager.service"
-  ]
-  ++ lib.optional (cfg.gpu.preempt.units != [ ]) "clanarchy-gpu-preempt.service"
-  ++ lib.optional cfg.bigscreen.enable bigscreenUnit;
+  manageableUnits =
+    [
+      "display-manager.service"
+    ]
+    ++ lib.optional (cfg.gpu.preempt.units != []) "clanarchy-gpu-preempt.service"
+    ++ lib.optional cfg.bigscreen.enable bigscreenUnit;
 
   # Where the crash-loop breaker keeps its working state.
   #
@@ -126,8 +131,8 @@ let
   #
   # The durable record is the journal, which is in the persist set; these two
   # files only describe what is happening now, which is what /run is for.
-  runDir      = "/run/clanarchy-session";
-  startLog    = "${runDir}/starts";
+  runDir = "/run/clanarchy-session";
+  startLog = "${runDir}/starts";
   breakerNote = "${runDir}/breaker-note";
 
   # Wait for the TV before handing the card to a compositor.
@@ -183,25 +188,23 @@ let
   # part encodes which HDMI connector is in use (`hdmi-stereo-extra3` = the
   # TV's current HDMI 4). Moving the cable to another port on the same card
   # renames the node; it must not silently un-fix this.
-  tvAudioNodeMatch =
-    let
-      # 0000:03:00.0 (display) -> 0000:03:00.1 (its HDMI audio function)
-      audioAddress = (lib.removeSuffix ".0" cfg.display.gpuPciAddress) + ".1";
-      # PipeWire spells PCI addresses with underscores for the colons, keeping
-      # the dot before the function: 0000:03:00.1 -> 0000_03_00.1
-      prefix = "alsa_output.pci-" + builtins.replaceStrings [ ":" ] [ "_" ] audioAddress + ".";
-    in
-    "~" + builtins.replaceStrings [ "." ] [ "\\." ] prefix + ".*";
+  tvAudioNodeMatch = let
+    # 0000:03:00.0 (display) -> 0000:03:00.1 (its HDMI audio function)
+    audioAddress = (lib.removeSuffix ".0" cfg.display.gpuPciAddress) + ".1";
+    # PipeWire spells PCI addresses with underscores for the colons, keeping
+    # the dot before the function: 0000:03:00.1 -> 0000_03_00.1
+    prefix = "alsa_output.pci-" + builtins.replaceStrings [":"] ["_"] audioAddress + ".";
+  in
+    "~" + builtins.replaceStrings ["."] ["\\."] prefix + ".*";
 
   # The ALSA *card* behind those nodes. Same address arithmetic, different
   # object: profiles are a property of the card, nodes are what a profile
   # produces, so mediaClient.audioProfile cannot match on tvAudioNodeMatch
   # above. Exact rather than a regex — there is one card at one address.
-  tvAudioCardName =
-    let
-      audioAddress = (lib.removeSuffix ".0" cfg.display.gpuPciAddress) + ".1";
-    in
-    "alsa_card.pci-" + builtins.replaceStrings [ ":" ] [ "_" ] audioAddress;
+  tvAudioCardName = let
+    audioAddress = (lib.removeSuffix ".0" cfg.display.gpuPciAddress) + ".1";
+  in
+    "alsa_card.pci-" + builtins.replaceStrings [":"] ["_"] audioAddress;
 
   waitForDisplay = lib.optionalString (cfg.display.gpuPciAddress != null) ''
     drmDir=/sys/bus/pci/devices/${cfg.display.gpuPciAddress}/drm
@@ -255,69 +258,70 @@ let
   # switch clears the counter in `clanarchy-session-select`, and a clean Kodi
   # exit clears it on its own branch below, so what is left is exactly
   # "something died and we were put back".
-  crashBreaker = lib.optionalString
-    (cfg.crashLoop.enable && cfg.crashLoop.fallbackChain != [ ]) ''
-    now=$(${pkgs.coreutils}/bin/date +%s)
-    cutoff=$(( now - ${toString cfg.crashLoop.windowSec} ))
+  crashBreaker =
+    lib.optionalString
+    (cfg.crashLoop.enable && cfg.crashLoop.fallbackChain != []) ''
+          now=$(${pkgs.coreutils}/bin/date +%s)
+          cutoff=$(( now - ${toString cfg.crashLoop.windowSec} ))
 
-    starts=1
-    kept=""
-    if [ -r ${startLog} ]; then
-      while read -r t; do
-        case "$t" in ''' | *[!0-9]* ) continue ;; esac
-        if [ "$t" -ge "$cutoff" ]; then
-          kept="$kept$t
-"
-          starts=$(( starts + 1 ))
-        fi
-      done < ${startLog}
-    fi
-    printf '%s%s\n' "$kept" "$now" > ${startLog} 2>/dev/null || true
+          starts=1
+          kept=""
+          if [ -r ${startLog} ]; then
+            while read -r t; do
+              case "$t" in ''' | *[!0-9]* ) continue ;; esac
+              if [ "$t" -ge "$cutoff" ]; then
+                kept="$kept$t
+      "
+                starts=$(( starts + 1 ))
+              fi
+            done < ${startLog}
+          fi
+          printf '%s%s\n' "$kept" "$now" > ${startLog} 2>/dev/null || true
 
-    if [ "$starts" -ge ${toString cfg.crashLoop.threshold} ]; then
-      next=""
-      seen=""
-      for m in ${lib.concatStringsSep " " cfg.crashLoop.fallbackChain}; do
-        if [ -n "$seen" ] && [ -z "$next" ]; then next="$m"; fi
-        if [ "$m" = "$mode" ]; then seen=yes; fi
-      done
-      # A mode that is not in the chain at all — `gamescope`, normally —
-      # enters it at the top rather than being treated as its last rung.
-      if [ -z "$seen" ]; then
-        next="${builtins.head cfg.crashLoop.fallbackChain}"
-      fi
+          if [ "$starts" -ge ${toString cfg.crashLoop.threshold} ]; then
+            next=""
+            seen=""
+            for m in ${lib.concatStringsSep " " cfg.crashLoop.fallbackChain}; do
+              if [ -n "$seen" ] && [ -z "$next" ]; then next="$m"; fi
+              if [ "$m" = "$mode" ]; then seen=yes; fi
+            done
+            # A mode that is not in the chain at all — `gamescope`, normally —
+            # enters it at the top rather than being treated as its last rung.
+            if [ -z "$seen" ]; then
+              next="${builtins.head cfg.crashLoop.fallbackChain}"
+            fi
 
-      if [ -n "$next" ]; then
-        printf 'clanarchy-session: %s started %s times in %ss — demoting to %s\n' \
-          "$mode" "$starts" '${toString cfg.crashLoop.windowSec}' "$next" >&2
-        printf '%s: %s looped (%s starts), demoted to %s\n' \
-          "$(${pkgs.coreutils}/bin/date -Is)" "$mode" "$starts" "$next" \
-          > ${breakerNote} 2>/dev/null || true
-        printf '%s\n' "$next" > ${stateFile}
-        : > ${startLog} 2>/dev/null || true
-        mode="$next"
-      else
-        # END OF THE CHAIN. Do NOT exit — exiting is what the display manager
-        # answers with another relogin, which is the loop this exists to
-        # break. Holding the session process open is what stops it, and it
-        # leaves a message on the screen instead of a black flicker.
-        printf 'clanarchy-session: %s also looped (%s starts). Every fallback is exhausted.\n' \
-          "$mode" "$starts" >&2
-        printf 'Nothing further to try automatically. Over SSH:\n' >&2
-        # The session's stderr goes to SDDM's per-session log, NOT the
-        # journal — MEASURED on ernst 2026-10-12, where a demotion printed
-        # here was absent from `journalctl -t clanarchy-session` and present
-        # in the file below. Advice on a screen nobody can scroll has to be
-        # the command that actually works.
-        printf '  tail ~go/.local/share/sddm/wayland-session.log\n' >&2
-        printf '  clanarchy-session-select gamescope   # to clear and retry\n' >&2
-        printf '%s: %s looped (%s starts), chain exhausted — holding\n' \
-          "$(${pkgs.coreutils}/bin/date -Is)" "$mode" "$starts" \
-          > ${breakerNote} 2>/dev/null || true
-        while :; do ${pkgs.coreutils}/bin/sleep 3600; done
-      fi
-    fi
-  '';
+            if [ -n "$next" ]; then
+              printf 'clanarchy-session: %s started %s times in %ss — demoting to %s\n' \
+                "$mode" "$starts" '${toString cfg.crashLoop.windowSec}' "$next" >&2
+              printf '%s: %s looped (%s starts), demoted to %s\n' \
+                "$(${pkgs.coreutils}/bin/date -Is)" "$mode" "$starts" "$next" \
+                > ${breakerNote} 2>/dev/null || true
+              printf '%s\n' "$next" > ${stateFile}
+              : > ${startLog} 2>/dev/null || true
+              mode="$next"
+            else
+              # END OF THE CHAIN. Do NOT exit — exiting is what the display manager
+              # answers with another relogin, which is the loop this exists to
+              # break. Holding the session process open is what stops it, and it
+              # leaves a message on the screen instead of a black flicker.
+              printf 'clanarchy-session: %s also looped (%s starts). Every fallback is exhausted.\n' \
+                "$mode" "$starts" >&2
+              printf 'Nothing further to try automatically. Over SSH:\n' >&2
+              # The session's stderr goes to SDDM's per-session log, NOT the
+              # journal — MEASURED on ernst 2026-10-12, where a demotion printed
+              # here was absent from `journalctl -t clanarchy-session` and present
+              # in the file below. Advice on a screen nobody can scroll has to be
+              # the command that actually works.
+              printf '  tail ~go/.local/share/sddm/wayland-session.log\n' >&2
+              printf '  clanarchy-session-select gamescope   # to clear and retry\n' >&2
+              printf '%s: %s looped (%s starts), chain exhausted — holding\n' \
+                "$(${pkgs.coreutils}/bin/date -Is)" "$mode" "$starts" \
+                > ${breakerNote} 2>/dev/null || true
+              while :; do ${pkgs.coreutils}/bin/sleep 3600; done
+            fi
+          fi
+    '';
 
   # Ask the host to hand back GPU memory before a compositor takes the card.
   #
@@ -328,7 +332,7 @@ let
   # Never fatal. A session that refuses to start because the inference server
   # would not bounce is strictly worse than one that starts and might abort —
   # the second case at least has the breaker behind it.
-  gpuPreempt = lib.optionalString (cfg.gpu.preempt.units != [ ]) ''
+  gpuPreempt = lib.optionalString (cfg.gpu.preempt.units != []) ''
     ${pkgs.systemd}/bin/systemctl start --no-ask-password \
       clanarchy-gpu-preempt.service \
       || printf 'clanarchy-session: GPU preempt failed — starting anyway\n' >&2
@@ -342,48 +346,50 @@ let
     ${gpuPreempt}
     case "$mode" in
       ${
-        # "bigscreen" lands on Plasma only while that arm is actually built.
-        # If the display manager is running at all then bigscreen is not the
-        # active mode — the boot dispatcher stops the DM before starting the
-        # container — so reaching this point with mode=bigscreen means
-        # something got out of step, and Plasma is a usable desktop rather
-        # than a black screen.
-        #
-        # With the arm not built, a recorded "bigscreen" is stale state from
-        # when it was (the value survives in /persist), and honouring it would
-        # land the couch user in a mouse-and-keyboard desktop on a machine
-        # configured to boot into Big Picture.  Let it fall through to the
-        # default instead.
-        if cfg.bigscreen.enable then "plasma|bigscreen)" else "plasma)"
-      } exec ${pkgs.kdePackages.plasma-workspace}/bin/startplasma-wayland ;;
+      # "bigscreen" lands on Plasma only while that arm is actually built.
+      # If the display manager is running at all then bigscreen is not the
+      # active mode — the boot dispatcher stops the DM before starting the
+      # container — so reaching this point with mode=bigscreen means
+      # something got out of step, and Plasma is a usable desktop rather
+      # than a black screen.
+      #
+      # With the arm not built, a recorded "bigscreen" is stale state from
+      # when it was (the value survives in /persist), and honouring it would
+      # land the couch user in a mouse-and-keyboard desktop on a machine
+      # configured to boot into Big Picture.  Let it fall through to the
+      # default instead.
+      if cfg.bigscreen.enable
+      then "plasma|bigscreen)"
+      else "plasma)"
+    } exec ${pkgs.kdePackages.plasma-workspace}/bin/startplasma-wayland ;;
       ${lib.optionalString cfg.mediaClient.enable ''
-        kodi|media)
-          # NOT exec: we need to run something after Kodi exits.
-          #
-          # Kodi's power menu offers "Exit", and the display manager is set to
-          # relogin, so the wrapper would be re-entered, read "kodi" from the
-          # state file again and restart Kodi — an inescapable loop on a
-          # machine whose only input device may be a game controller. Dropping
-          # back to the gaming session on exit mirrors what SteamOS does with
-          # its own mode switch, and leaves the couch user somewhere they can
-          # navigate rather than staring at the same screen they just tried to
-          # leave.
-          #
-          # Only rewritten when Kodi exits cleanly. A crash leaves the choice
-          # alone, so the relogin brings Kodi back rather than silently
-          # demoting the machine out of media mode because of a segfault.
-          if ${cfg.mediaClient.exe} ${cfg.mediaClient.arguments}; then
-            printf 'gamescope\n' > ${stateFile}
-            ${lib.optionalString cfg.crashLoop.enable
-              # Clean exit, so the relogin that follows is expected and must
-              # not be counted. Only on this branch — the `if` already
-              # distinguishes a clean exit from a crash, and a crash has to
-              # keep counting or Kodi could loop forever one abort at a time.
-              "rm -f ${startLog} ${breakerNote}"}
-          fi
-          exit 0
-          ;;
-      ''}
+      kodi|media)
+        # NOT exec: we need to run something after Kodi exits.
+        #
+        # Kodi's power menu offers "Exit", and the display manager is set to
+        # relogin, so the wrapper would be re-entered, read "kodi" from the
+        # state file again and restart Kodi — an inescapable loop on a
+        # machine whose only input device may be a game controller. Dropping
+        # back to the gaming session on exit mirrors what SteamOS does with
+        # its own mode switch, and leaves the couch user somewhere they can
+        # navigate rather than staring at the same screen they just tried to
+        # leave.
+        #
+        # Only rewritten when Kodi exits cleanly. A crash leaves the choice
+        # alone, so the relogin brings Kodi back rather than silently
+        # demoting the machine out of media mode because of a segfault.
+        if ${cfg.mediaClient.exe} ${cfg.mediaClient.arguments}; then
+          printf 'gamescope\n' > ${stateFile}
+          ${lib.optionalString cfg.crashLoop.enable
+        # Clean exit, so the relogin that follows is expected and must
+        # not be counted. Only on this branch — the `if` already
+        # distinguishes a clean exit from a crash, and a crash has to
+        # keep counting or Kodi could loop forever one abort at a time.
+        "rm -f ${startLog} ${breakerNote}"}
+        fi
+        exit 0
+        ;;
+    ''}
       *)      exec /run/current-system/sw/bin/steam-gamescope ;;
     esac
   '';
@@ -397,7 +403,7 @@ let
       Exec=${sessionRun}
       Type=Application
     '').overrideAttrs
-      (_: { passthru.providedSessions = [ "clanarchy-htpc" ]; });
+    (_: {passthru.providedSessions = ["clanarchy-htpc"];});
 
   # The switcher.  Accepts our own names plus the ones SteamOS uses, so the
   # same binary can back the `steamos-session-select` shim below.
@@ -408,27 +414,27 @@ let
     # systemd's minimal one rather than a login shell's — and a missing pkill
     # would surface as a session that fails to switch, at runtime, with
     # shellcheck having had nothing to say about it.
-    runtimeInputs = [ pkgs.systemd pkgs.coreutils pkgs.procps ];
+    runtimeInputs = [pkgs.systemd pkgs.coreutils pkgs.procps];
     text = ''
       mode="''${1:-}"
       case "$mode" in
         gamescope|gamescope-wayland|steamos|gaming) mode=gamescope ;;
         plasma|plasma-wayland|plasma-x11|desktop)   mode=plasma ;;
         ${lib.optionalString cfg.mediaClient.enable ''
-          kodi|media|tv)                             mode=kodi ;;
-        ''}
+        kodi|media|tv)                             mode=kodi ;;
+      ''}
         ${
-          # Only accept "bigscreen" when the container was actually built —
-          # otherwise the switcher would happily record a mode whose unit
-          # does not exist and leave the machine with no session at all.
-          lib.optionalString cfg.bigscreen.enable ''
-            bigscreen|tv|mediacenter)                   mode=bigscreen ;;
-          ''
-        }
+        # Only accept "bigscreen" when the container was actually built —
+        # otherwise the switcher would happily record a mode whose unit
+        # does not exist and leave the machine with no session at all.
+        lib.optionalString cfg.bigscreen.enable ''
+          bigscreen|tv|mediacenter)                   mode=bigscreen ;;
+        ''
+      }
         *)
           echo "usage: clanarchy-session-select {gamescope|plasma${
-            lib.optionalString cfg.mediaClient.enable "|kodi"
-          }${lib.optionalString cfg.bigscreen.enable "|bigscreen"}}" >&2
+        lib.optionalString cfg.mediaClient.enable "|kodi"
+      }${lib.optionalString cfg.bigscreen.enable "|bigscreen"}}" >&2
           exit 2
           ;;
       esac
@@ -450,7 +456,7 @@ let
         rm -f ${startLog} ${breakerNote}
       ''}
 
-      ${lib.optionalString (cfg.gpu.gamingHold.units != [ ]) ''
+      ${lib.optionalString (cfg.gpu.gamingHold.units != []) ''
         # ── Hold GPU compute off for the gaming session's duration ─────────
         #
         # Written BEFORE the display manager is restarted, so the card is
@@ -470,15 +476,17 @@ let
         # so nothing was half-applied, but the deploy did not happen.
         if [ "$mode" = gamescope ]; then
         ${lib.concatMapStrings (u: ''
-          if systemctl is-active --quiet ${lib.escapeShellArg u}; then
-            systemctl stop ${lib.escapeShellArg u} || true
-            touch ${heldMarker}
-          fi
-        '') cfg.gpu.gamingHold.units}
+            if systemctl is-active --quiet ${lib.escapeShellArg u}; then
+              systemctl stop ${lib.escapeShellArg u} || true
+              touch ${heldMarker}
+            fi
+          '')
+          cfg.gpu.gamingHold.units}
         elif [ -e ${heldMarker} ]; then
         ${lib.concatMapStrings (u: ''
-          systemctl start ${lib.escapeShellArg u} || true
-        '') cfg.gpu.gamingHold.units}
+            systemctl start ${lib.escapeShellArg u} || true
+          '')
+          cfg.gpu.gamingHold.units}
           rm -f ${heldMarker}
         fi
       ''}
@@ -525,8 +533,9 @@ let
       # restart below. `loginctl terminate-session` was tried first and does
       # NOT reach an orphan — the scope it would terminate is already gone.
       ${lib.concatMapStrings (p: ''
-        pkill -TERM -u ${cfg.user} -f ${lib.escapeShellArg p} 2>/dev/null || true
-      '') sessionProcessPatterns}
+          pkill -TERM -u ${cfg.user} -f ${lib.escapeShellArg p} 2>/dev/null || true
+        '')
+        sessionProcessPatterns}
 
       # Give them a moment to release the card, then insist. A compositor that
       # ignores SIGTERM while holding KMS is the exact state that produced the
@@ -534,14 +543,16 @@ let
       for _ in 1 2 3 4 5 6; do
         still=0
       ${lib.concatMapStrings (p: ''
-        pkill -0 -u ${cfg.user} -f ${lib.escapeShellArg p} 2>/dev/null && still=1
-      '') sessionProcessPatterns}
+          pkill -0 -u ${cfg.user} -f ${lib.escapeShellArg p} 2>/dev/null && still=1
+        '')
+        sessionProcessPatterns}
         [ "$still" = 0 ] && break
         sleep 1
       done
       ${lib.concatMapStrings (p: ''
-        pkill -KILL -u ${cfg.user} -f ${lib.escapeShellArg p} 2>/dev/null || true
-      '') sessionProcessPatterns}
+          pkill -KILL -u ${cfg.user} -f ${lib.escapeShellArg p} 2>/dev/null || true
+        '')
+        sessionProcessPatterns}
 
       # Now the restart recreates the session on a card nothing else holds.
       exec systemctl restart display-manager.service
@@ -553,7 +564,7 @@ let
   # button works instead of only our own launcher.
   steamosShim = pkgs.writeShellApplication {
     name = "steamos-session-select";
-    runtimeInputs = [ sessionSelect ];
+    runtimeInputs = [sessionSelect];
     text = ''
       # Steam passes "plasma" / "plasma-wayland" / "desktop" here; anything
       # we don't recognise falls through to the usage error.
@@ -588,18 +599,17 @@ let
   # that same gradient renders the logo all but invisible (tried, looked like
   # a broken image). Dark backing makes it pop, and Steam does not draw the
   # name over portrait art, so the label is baked in.
-  mediaArtwork =
-    let
-      src = cfg.mediaClient.artwork;
-      label = lib.escapeShellArg cfg.mediaClient.name;
-    in
-    {
-      icon = pkgs.runCommand "media-client-icon.png" {
-        nativeBuildInputs = [ pkgs.librsvg ];
-      } "rsvg-convert -w 256 -h 256 ${src} -o $out";
+  mediaArtwork = let
+    src = cfg.mediaClient.artwork;
+    label = lib.escapeShellArg cfg.mediaClient.name;
+  in {
+    icon = pkgs.runCommand "media-client-icon.png" {
+      nativeBuildInputs = [pkgs.librsvg];
+    } "rsvg-convert -w 256 -h 256 ${src} -o $out";
 
-      cover = pkgs.runCommand "media-client-cover.png" {
-        nativeBuildInputs = [ pkgs.librsvg pkgs.imagemagick ];
+    cover =
+      pkgs.runCommand "media-client-cover.png" {
+        nativeBuildInputs = [pkgs.librsvg pkgs.imagemagick];
       } ''
         rsvg-convert -w 380 -h 380 ${src} -o logo.png
         magick -size 600x900 gradient:'#241a33-#0c0c12' \
@@ -608,7 +618,7 @@ let
           -pointsize 64 -fill '#f2f2f7' -gravity center -annotate +0+220 ${label} \
           png:$out
       '';
-    };
+  };
 
   # `osmcSkinFor` USED TO BE HERE — a repair of nixpkgs' dead source pin for
   # the OSMC skin (upstream renamed the tag, so the fetch 404'd). Both it and
@@ -647,10 +657,9 @@ let
   # Whatever the Steam entry should actually run — the wrapper when a scale
   # factor is configured, the client itself when it is not.
   mediaClientShortcutExe =
-    if cfg.mediaClient.scaleFactor == null then
-      cfg.mediaClient.exe
-    else
-      "/run/current-system/sw/bin/clanarchy-media-client-tv";
+    if cfg.mediaClient.scaleFactor == null
+    then cfg.mediaClient.exe
+    else "/run/current-system/sw/bin/clanarchy-media-client-tv";
 
   # Desktop-mode launcher for the trip back, so returning to Gaming Mode
   # doesn't require a terminal.
@@ -660,7 +669,7 @@ let
     comment = "Restart into the Steam Big Picture session";
     icon = "steam";
     exec = "${sessionSelect}/bin/clanarchy-session-select gamescope";
-    categories = [ "Game" ];
+    categories = ["Game"];
   };
 
   # The same trip back, for the arm the machine actually boots into.
@@ -675,7 +684,7 @@ let
     comment = "Restart into the ${cfg.mediaClient.name} session";
     icon = "kodi";
     exec = "${sessionSelect}/bin/clanarchy-session-select kodi";
-    categories = [ "AudioVideo" ];
+    categories = ["AudioVideo"];
   };
 
   # Kodi settings this role owns. See mediaClient.guiSettings for what each
@@ -696,8 +705,7 @@ let
   # attrset is REPLACED wholesale by any definition, so declaring one setting
   # would silently drop the other three.
   effectiveGuiSettings = baselineGuiSettings // cfg.mediaClient.guiSettings;
-in
-{
+in {
   imports = [
     ../desktop/kde.nix
     ../desktop/bigscreen.nix
@@ -718,7 +726,7 @@ in
     };
 
     defaultSession = lib.mkOption {
-      type = lib.types.enum [ "gamescope" "plasma" "kodi" "bigscreen" ];
+      type = lib.types.enum ["gamescope" "plasma" "kodi" "bigscreen"];
       default = "gamescope";
       description = ''
         Which session to land in when no choice has been made yet — i.e.
@@ -778,9 +786,9 @@ in
     '';
 
     gpu.gamingHold.units = lib.mkOption {
-      type    = lib.types.listOf lib.types.str;
-      default = [ ];
-      example = [ "llama-swap.service" ];
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      example = ["llama-swap.service"];
       description = ''
         Units held STOPPED for as long as the gaming session is the selected
         mode, and started again when the mode changes away from it.
@@ -815,9 +823,9 @@ in
     };
 
     gpu.preempt.units = lib.mkOption {
-      type    = lib.types.listOf lib.types.str;
-      default = [ ];
-      example = [ "llama-swap.service" ];
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      example = ["llama-swap.service"];
       description = ''
         Units bounced just before a session takes the card, so whatever VRAM
         they are holding is handed back first.
@@ -859,7 +867,7 @@ in
       '';
 
       windowSec = lib.mkOption {
-        type    = lib.types.ints.positive;
+        type = lib.types.ints.positive;
         default = 600;
         description = ''
           Rolling window, in seconds, over which unexpected session starts
@@ -868,7 +876,7 @@ in
       };
 
       threshold = lib.mkOption {
-        type    = lib.types.ints.positive;
+        type = lib.types.ints.positive;
         default = 5;
         description = ''
           Unexpected starts within the window before the session is demoted.
@@ -883,9 +891,9 @@ in
       };
 
       fallbackChain = lib.mkOption {
-        type    = lib.types.listOf lib.types.str;
-        default = [ ];
-        example = [ "kodi" "plasma" ];
+        type = lib.types.listOf lib.types.str;
+        default = [];
+        example = ["kodi" "plasma"];
         description = ''
           Modes to demote through, in order, each time the breaker trips.
 
@@ -942,7 +950,7 @@ in
 
       extraPackages = lib.mkOption {
         type = lib.types.listOf lib.types.package;
-        default = [ ];
+        default = [];
         description = ''
           Applications to install inside the container. Must come from
           `pkgs-unstable`, not the host's `pkgs` — see the corresponding
@@ -955,12 +963,12 @@ in
     mediaClient = {
       enable =
         lib.mkEnableOption "a couch media client alongside the gaming session"
-        // { default = true; };
+        // {default = true;};
 
       addons = lib.mkOption {
         type = lib.types.functionTo (lib.types.listOf lib.types.package);
-        default =
-          p: with p; [
+        default = p:
+          with p; [
             # The server integration itself: syncs the Jellyfin library into
             # Kodi's own database, so browsing is local and instant.
             jellyfin
@@ -1016,7 +1024,7 @@ in
             # uses it: the override has to be built against the same kodi
             # this list is being wrapped for, or `withPackages` discards it
             # without a word.
-            (p.callPackage ./pkgs/youtube-kodi.nix { })
+            (p.callPackage ./pkgs/youtube-kodi.nix {})
 
             # The Tvheadend HTSP client — live TV and the DVR, against the
             # Tvheadend ernst already runs.
@@ -1098,7 +1106,7 @@ in
             #
             # From `p` like everything else here — see the withPackages trap
             # at the top of this file.
-            (p.callPackage ./pkgs/mediathekview-kodi.nix { })
+            (p.callPackage ./pkgs/mediathekview-kodi.nix {})
 
             # Immich (M22) — the household photo library on the TV.
             #
@@ -1124,7 +1132,7 @@ in
             # TRAEFIK, not the container's VLAN-90 address, which is also why
             # this needed no UDM-Pro rule where `pvr-hts` needed two firewalls.
             # See machines/ernst/containers/immich.nix.
-            (p.callPackage ./pkgs/immich-kodi.nix { })
+            (p.callPackage ./pkgs/immich-kodi.nix {})
 
             # Navidrome — the household music library on the TV, closing the
             # last gap in this list: video, photos and live TV were all here
@@ -1157,7 +1165,7 @@ in
             #
             # It registers an `xbmc.service` as well as a plugin; that is the
             # scrobbler, and it is expected.
-            (p.callPackage ./pkgs/navidrome-kodi.nix { })
+            (p.callPackage ./pkgs/navidrome-kodi.nix {})
 
             # NO SKIN IS SHIPPED, and that is a change from how this role
             # started. `osmc-skin` was here — the only skin nixpkgs packages —
@@ -1321,7 +1329,7 @@ in
       # box added between GPU and TV invalidates all of them at once.
       persistenceDirectories = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [ ".kodi" ];
+        default = [".kodi"];
         description = ''
           Home-relative directories the client keeps its state in, added to
           the couch user's impermanence set.
@@ -1336,7 +1344,7 @@ in
 
       guiSettings = lib.mkOption {
         type = lib.types.attrsOf lib.types.str;
-        default = { };
+        default = {};
         example = lib.literalExpression ''
           {
             "audiooutput.passthrough" = "true";
@@ -1705,14 +1713,15 @@ in
     # `coredumpctl` on the host is how they were being read anyway. What goes
     # away is the GUI "report this to KDE" dialog, which no one was ever going
     # to see on a television.
-    systemd.services."drkonqi-coredump-processor@".wantedBy = lib.mkForce [ ];
+    systemd.services."drkonqi-coredump-processor@".wantedBy = lib.mkForce [];
 
     # Bigscreen mode. The role holds the couch-user identity; the desktop
     # module owns the container and the GPU plumbing.
     clanarchy.desktop.bigscreen = lib.mkIf cfg.bigscreen.enable {
       enable = true;
       user = cfg.user;
-      inherit (cfg.bigscreen)
+      inherit
+        (cfg.bigscreen)
         uid
         gid
         extraPackages
@@ -1735,8 +1744,8 @@ in
     # Discovery needs no port of its own: the fleet already runs Avahi
     # (modules/networking/mdns.nix) and Kodi advertises over it.
     networking.firewall = lib.mkIf (cfg.mediaClient.enable && cfg.mediaClient.remoteControl.enable) {
-      allowedTCPPorts = [ 8080 9090 ];
-      allowedUDPPorts = [ 9777 ];
+      allowedTCPPorts = [8080 9090];
+      allowedUDPPorts = [9777];
     };
 
     # Hand the couch session exactly one GPU: the TV's.
@@ -1785,18 +1794,17 @@ in
     # Settings is stored in ~/.local/state/wireplumber (persisted for the
     # couch user) and still wins over priority — this only decides what
     # happens when nobody has chosen, which includes every fresh install.
-    services.pipewire.wireplumber.extraConfig."51-htpc-tv-audio" =
-      lib.mkIf (cfg.display.gpuPciAddress != null) {
-        "monitor.alsa.rules" = [
-          {
-            matches = [ { "node.name" = tvAudioNodeMatch; } ];
-            actions.update-props = {
-              "priority.session" = 2000;
-              "priority.driver" = 2000;
-            };
-          }
-        ];
-      };
+    services.pipewire.wireplumber.extraConfig."51-htpc-tv-audio" = lib.mkIf (cfg.display.gpuPciAddress != null) {
+      "monitor.alsa.rules" = [
+        {
+          matches = [{"node.name" = tvAudioNodeMatch;}];
+          actions.update-props = {
+            "priority.session" = 2000;
+            "priority.driver" = 2000;
+          };
+        }
+      ];
+    };
 
     # Hold the TV's audio card on one profile — see mediaClient.audioProfile
     # for why this is the setting that decides whether passthrough exists.
@@ -1813,18 +1821,17 @@ in
     # Verified on ernst 2026-09-14 rather than assumed: the card was forced to
     # `hdmi-stereo-extra3`, the session restarted, and it came up on
     # `hdmi-surround71-extra3`.
-    services.pipewire.wireplumber.extraConfig."52-htpc-tv-audio-profile" =
-      lib.mkIf (cfg.display.gpuPciAddress != null && cfg.mediaClient.audioProfile != null) {
-        "monitor.alsa.rules" = [
-          {
-            matches = [ { "device.name" = tvAudioCardName; } ];
-            actions.update-props = {
-              "api.acp.auto-profile" = false;
-              "device.profile" = cfg.mediaClient.audioProfile;
-            };
-          }
-        ];
-      };
+    services.pipewire.wireplumber.extraConfig."52-htpc-tv-audio-profile" = lib.mkIf (cfg.display.gpuPciAddress != null && cfg.mediaClient.audioProfile != null) {
+      "monitor.alsa.rules" = [
+        {
+          matches = [{"device.name" = tvAudioCardName;}];
+          actions.update-props = {
+            "api.acp.auto-profile" = false;
+            "device.profile" = cfg.mediaClient.audioProfile;
+          };
+        }
+      ];
+    };
 
     # Kill Plasma's screen locker on the TV.
     #
@@ -1883,9 +1890,15 @@ in
       shortcuts = lib.optional (cfg.mediaClient.enable && cfg.mediaClient.steamShortcut.enable) {
         inherit (cfg.mediaClient) name arguments;
         exe = mediaClientShortcutExe;
-        tags = [ "Media" ];
-        icon = if cfg.mediaClient.artwork == null then null else mediaArtwork.icon;
-        coverArt = if cfg.mediaClient.artwork == null then null else mediaArtwork.cover;
+        tags = ["Media"];
+        icon =
+          if cfg.mediaClient.artwork == null
+          then null
+          else mediaArtwork.icon;
+        coverArt =
+          if cfg.mediaClient.artwork == null
+          then null
+          else mediaArtwork.cover;
       };
     };
 
@@ -1896,7 +1909,7 @@ in
     #   gamescope --steam ${args} -- steam ${steamArgs}
     # so this lands before the `--`, i.e. as a gamescope flag rather than a
     # Steam one. See programs/steam.nix in nixpkgs.
-    programs.steam.gamescopeSession.args = lib.mkIf cfg.display.hdr.enable [ "--hdr-enabled" ];
+    programs.steam.gamescopeSession.args = lib.mkIf cfg.display.hdr.enable ["--hdr-enabled"];
 
     # Steam and Proton are unfree.  birte gets this from the pkgs instance
     # built in lib/mk-machine.nix (`allowUnfree = true` baked in), but HTPC
@@ -1912,8 +1925,7 @@ in
     # `clanarchy.channel = "unstable"` (an externally-created pkgs instance
     # trips a NixOS assertion), so this role and that option are mutually
     # exclusive by construction.
-    nixpkgs.config.allowUnfreePredicate =
-      pkg:
+    nixpkgs.config.allowUnfreePredicate = pkg:
       builtins.elem (lib.getName pkg) [
         "steam"
         "steam-unwrapped"
@@ -1931,7 +1943,7 @@ in
 
     # Point the display manager at the wrapper session rather than at
     # "steam" or "plasma" directly; the wrapper decides at launch.
-    services.displayManager.sessionPackages = [ sessionFile ];
+    services.displayManager.sessionPackages = [sessionFile];
     services.displayManager.defaultSession = "clanarchy-htpc";
 
     services.displayManager.autoLogin = lib.mkIf cfg.autologin.enable {
@@ -1992,14 +2004,15 @@ in
     # manual step (Library → Add a Non-Steam Game, once, by hand); it is now
     # declared, which also means it comes back on its own after an
     # impermanence rollback wipes the Steam config.
-    environment.systemPackages = [
-      sessionSelect
-      steamosShim
-      returnLauncher
-    ]
-    ++ lib.optional cfg.mediaClient.enable mediaLauncher
-    ++ lib.optional cfg.mediaClient.enable cfg.mediaClient.package
-    ++ lib.optional (cfg.mediaClient.enable && cfg.mediaClient.scaleFactor != null) mediaClientTvLauncher;
+    environment.systemPackages =
+      [
+        sessionSelect
+        steamosShim
+        returnLauncher
+      ]
+      ++ lib.optional cfg.mediaClient.enable mediaLauncher
+      ++ lib.optional cfg.mediaClient.enable cfg.mediaClient.package
+      ++ lib.optional (cfg.mediaClient.enable && cfg.mediaClient.scaleFactor != null) mediaClientTvLauncher;
 
     # Owned by the couch user so switching needs no privilege escalation.
     #
@@ -2016,37 +2029,38 @@ in
     # `f` seeds it with the configured default when absent; `z` re-asserts
     # ownership on every boot, which is what actually repairs the root-owned
     # case rather than merely avoiding it.
-    systemd.tmpfiles.rules = [
-      "d ${stateDir} 0755 ${cfg.user} ${config.users.users.${cfg.user}.group} -"
-      "f ${stateFile} 0644 ${cfg.user} ${config.users.users.${cfg.user}.group} - ${cfg.defaultSession}"
-      "z ${stateFile} 0644 ${cfg.user} ${config.users.users.${cfg.user}.group} -"
-    ]
-    # The breaker's working directory. Only the directory is declared: the
-    # two files inside it are created on demand and are meaningless when
-    # absent, so there is no equivalent of the `f` seed above — and on tmpfs
-    # the whole thing is recreated each boot, which is the reset.
-    ++ lib.optional cfg.crashLoop.enable
+    systemd.tmpfiles.rules =
+      [
+        "d ${stateDir} 0755 ${cfg.user} ${config.users.users.${cfg.user}.group} -"
+        "f ${stateFile} 0644 ${cfg.user} ${config.users.users.${cfg.user}.group} - ${cfg.defaultSession}"
+        "z ${stateFile} 0644 ${cfg.user} ${config.users.users.${cfg.user}.group} -"
+      ]
+      # The breaker's working directory. Only the directory is declared: the
+      # two files inside it are created on demand and are meaningless when
+      # absent, so there is no equivalent of the `f` seed above — and on tmpfs
+      # the whole thing is recreated each boot, which is the reset.
+      ++ lib.optional cfg.crashLoop.enable
       "d ${runDir} 0755 ${cfg.user} ${config.users.users.${cfg.user}.group} -";
 
     # The media client's own state. Home is rolled back on every boot, and
     # Kodi keeps the Jellyfin add-on, the paired server, the login and every
     # setting under ~/.kodi — so without this the client is a fresh install
     # after each reboot and someone re-adds the server from the sofa.
-    environment.persistence."/persist".users.${cfg.user} =
-      lib.mkIf (cfg.mediaClient.enable && cfg.mediaClient.persistenceDirectories != [ ]) {
-        directories = cfg.mediaClient.persistenceDirectories;
-      };
+    environment.persistence."/persist".users.${cfg.user} = lib.mkIf (cfg.mediaClient.enable && cfg.mediaClient.persistenceDirectories != []) {
+      directories = cfg.mediaClient.persistenceDirectories;
+    };
 
     # Survive impermanence rollback, so the machine comes back up in the
     # session it was left in.
-    environment.persistence."/persist".directories = [
-      stateDir
-    ]
-    # Controller pairings. This machine rolls its root back on every boot, so
-    # without persisting them the pad would have to be re-paired after each
-    # reboot — exactly the papercut impermanence is meant to make you notice
-    # once and then fix for good.
-    ++ lib.optional cfg.controller.enable "/var/lib/bluetooth";
+    environment.persistence."/persist".directories =
+      [
+        stateDir
+      ]
+      # Controller pairings. This machine rolls its root back on every boot, so
+      # without persisting them the pad would have to be re-paired after each
+      # reboot — exactly the papercut impermanence is meant to make you notice
+      # once and then fix for good.
+      ++ lib.optional cfg.controller.enable "/var/lib/bluetooth";
 
     # Kodi's selected skin, repaired when it points at something that is not
     # installed.
@@ -2106,110 +2120,110 @@ in
     # Ordered after the units it stops, so activation cannot queue this
     # alongside the system's own restart of the same unit and have systemd
     # cancel one of the two jobs.
-    systemd.services.clanarchy-gaming-hold =
-      lib.mkIf (cfg.gpu.gamingHold.units != [ ]) {
-        description = "Hold GPU compute off while the gaming session is selected";
-        wantedBy = [ "display-manager.service" ];
-        before   = [ "display-manager.service" ];
-        after    = [ "local-fs.target" ] ++ cfg.gpu.gamingHold.units;
+    systemd.services.clanarchy-gaming-hold = lib.mkIf (cfg.gpu.gamingHold.units != []) {
+      description = "Hold GPU compute off while the gaming session is selected";
+      wantedBy = ["display-manager.service"];
+      before = ["display-manager.service"];
+      after = ["local-fs.target"] ++ cfg.gpu.gamingHold.units;
 
-        serviceConfig = {
-          Type = "oneshot";
-          # Re-runnable, same reasoning as the preempt unit: a session restart
-          # must be able to call this again, and a unit left "active (exited)"
-          # would silently do nothing from the second call onwards.
-          RemainAfterExit = false;
-        };
-        path = [ pkgs.systemd pkgs.coreutils ];
-        script = ''
-          mode=$(cat ${stateFile} 2>/dev/null || echo ${lib.escapeShellArg cfg.defaultSession})
-          [ "$mode" = gamescope ] || exit 0
-          ${lib.concatMapStrings (u: ''
+      serviceConfig = {
+        Type = "oneshot";
+        # Re-runnable, same reasoning as the preempt unit: a session restart
+        # must be able to call this again, and a unit left "active (exited)"
+        # would silently do nothing from the second call onwards.
+        RemainAfterExit = false;
+      };
+      path = [pkgs.systemd pkgs.coreutils];
+      script = ''
+        mode=$(cat ${stateFile} 2>/dev/null || echo ${lib.escapeShellArg cfg.defaultSession})
+        [ "$mode" = gamescope ] || exit 0
+        ${lib.concatMapStrings (u: ''
             if systemctl is-active --quiet ${lib.escapeShellArg u}; then
               systemctl stop ${lib.escapeShellArg u} || true
               touch ${heldMarker}
             fi
-          '') cfg.gpu.gamingHold.units}
-        '';
+          '')
+          cfg.gpu.gamingHold.units}
+      '';
+    };
+
+    systemd.services.clanarchy-gpu-preempt = lib.mkIf (cfg.gpu.preempt.units != []) {
+      description = "Reclaim GPU memory before the session starts";
+
+      # Nearly the wiring of clanarchy-steam-shortcuts in
+      # modules/gaming-shortcuts.nix, with ONE deliberate difference:
+      # `multi-user.target` is NOT in the list.
+      #
+      # Its siblings can afford it because they are cheap and idempotent —
+      # rewriting a shortcuts file, repairing a Kodi setting. This one
+      # bounces the inference server, and `switch-to-configuration` starts
+      # every inactive unit wanted by an already-active target, so
+      # `multi-user.target` here meant EVERY DEPLOY evicted whatever model
+      # was resident. MEASURED on ernst 2026-10-12, where it also fired the
+      # gate handover mid-activation and failed the switch (see the note on
+      # llama-swap in service-modules/local-ai.nix).
+      #
+      # `display-manager.service` alone loses nothing: at boot the display
+      # manager starts and pulls this in, and a session restart is exactly
+      # when the card needs clearing. What goes away is the reclaim nobody
+      # asked for, on a deploy that was not touching the session at all.
+      wantedBy = ["display-manager.service"];
+      before = ["display-manager.service"];
+
+      # Ordered after the units it bounces, which matters only inside a
+      # transaction that is already restarting them — i.e. a deploy.
+      # Without it, activation queues both this unit's `try-restart` and
+      # the system's own restart of the same unit, and systemd resolves
+      # that by cancelling one. MEASURED on ernst 2026-10-10, first
+      # activation after deploy:
+      #
+      #   systemctl[1823271]: Job for llama-swap.service canceled.
+      #   clanarchy-gpu-preempt.service: Failed with result 'exit-code'.
+      after = ["local-fs.target"] ++ cfg.gpu.preempt.units;
+
+      serviceConfig = {
+        Type = "oneshot";
+
+        # NO RemainAfterExit, and here it is doing more work than in the
+        # units above. It is what lets `systemctl start` re-run this: the
+        # session wrapper calls it on EVERY entry, including the relogins
+        # that follow a crash, and a unit left "active (exited)" would
+        # silently do nothing from the second call onwards — which is
+        # precisely the run that matters.
+        RemainAfterExit = false;
+
+        # Bounded, because this sits in front of the television starting.
+        # A wedged inference server must not mean a TV that never lights up.
+        TimeoutStartSec = "60s";
+
+        # `try-restart` rather than `restart`, for two separate reasons:
+        #
+        #   * at boot this unit is ordered BEFORE the display manager and so
+        #     runs before llama-swap has started. `restart` would start it
+        #     there, racing its own unit ordering; `try-restart` is a no-op
+        #     on an inactive unit, so boot is unaffected.
+        #   * `stop` would be wrong too. llama-swap carries
+        #     Restart=on-failure, which does not cover a clean stop, so a
+        #     stopped swapper stays stopped and every consumer of the model
+        #     loses it until someone notices. A restart frees the VRAM — the
+        #     backends are children of that cgroup — and leaves the swapper
+        #     up and able to reload on the next request.
+        # THIS UNIT MUST NOT FAIL, and the `-` prefix is how that is said.
+        # It sits in front of the television starting, and a failure here
+        # is not a reason to keep the TV dark — the session wrapper calls
+        # it and carries on regardless, the reserve means a reclaim is an
+        # optimisation rather than a precondition, and the breaker is
+        # behind both. What a hard failure WOULD buy is a permanently
+        # degraded `systemctl --failed` and an ntfy alert every deploy.
+        #
+        # The ordering above removes the known cause; this removes the
+        # consequence of any cause not yet known.
+        ExecStart =
+          map
+          (u: "-${pkgs.systemd}/bin/systemctl try-restart ${u}")
+          cfg.gpu.preempt.units;
       };
-
-    systemd.services.clanarchy-gpu-preempt =
-      lib.mkIf (cfg.gpu.preempt.units != [ ]) {
-        description = "Reclaim GPU memory before the session starts";
-
-        # Nearly the wiring of clanarchy-steam-shortcuts in
-        # modules/gaming-shortcuts.nix, with ONE deliberate difference:
-        # `multi-user.target` is NOT in the list.
-        #
-        # Its siblings can afford it because they are cheap and idempotent —
-        # rewriting a shortcuts file, repairing a Kodi setting. This one
-        # bounces the inference server, and `switch-to-configuration` starts
-        # every inactive unit wanted by an already-active target, so
-        # `multi-user.target` here meant EVERY DEPLOY evicted whatever model
-        # was resident. MEASURED on ernst 2026-10-12, where it also fired the
-        # gate handover mid-activation and failed the switch (see the note on
-        # llama-swap in service-modules/local-ai.nix).
-        #
-        # `display-manager.service` alone loses nothing: at boot the display
-        # manager starts and pulls this in, and a session restart is exactly
-        # when the card needs clearing. What goes away is the reclaim nobody
-        # asked for, on a deploy that was not touching the session at all.
-        wantedBy = [ "display-manager.service" ];
-        before   = [ "display-manager.service" ];
-
-        # Ordered after the units it bounces, which matters only inside a
-        # transaction that is already restarting them — i.e. a deploy.
-        # Without it, activation queues both this unit's `try-restart` and
-        # the system's own restart of the same unit, and systemd resolves
-        # that by cancelling one. MEASURED on ernst 2026-10-10, first
-        # activation after deploy:
-        #
-        #   systemctl[1823271]: Job for llama-swap.service canceled.
-        #   clanarchy-gpu-preempt.service: Failed with result 'exit-code'.
-        after = [ "local-fs.target" ] ++ cfg.gpu.preempt.units;
-
-        serviceConfig = {
-          Type = "oneshot";
-
-          # NO RemainAfterExit, and here it is doing more work than in the
-          # units above. It is what lets `systemctl start` re-run this: the
-          # session wrapper calls it on EVERY entry, including the relogins
-          # that follow a crash, and a unit left "active (exited)" would
-          # silently do nothing from the second call onwards — which is
-          # precisely the run that matters.
-          RemainAfterExit = false;
-
-          # Bounded, because this sits in front of the television starting.
-          # A wedged inference server must not mean a TV that never lights up.
-          TimeoutStartSec = "60s";
-
-          # `try-restart` rather than `restart`, for two separate reasons:
-          #
-          #   * at boot this unit is ordered BEFORE the display manager and so
-          #     runs before llama-swap has started. `restart` would start it
-          #     there, racing its own unit ordering; `try-restart` is a no-op
-          #     on an inactive unit, so boot is unaffected.
-          #   * `stop` would be wrong too. llama-swap carries
-          #     Restart=on-failure, which does not cover a clean stop, so a
-          #     stopped swapper stays stopped and every consumer of the model
-          #     loses it until someone notices. A restart frees the VRAM — the
-          #     backends are children of that cgroup — and leaves the swapper
-          #     up and able to reload on the next request.
-          # THIS UNIT MUST NOT FAIL, and the `-` prefix is how that is said.
-          # It sits in front of the television starting, and a failure here
-          # is not a reason to keep the TV dark — the session wrapper calls
-          # it and carries on regardless, the reserve means a reclaim is an
-          # optimisation rather than a precondition, and the breaker is
-          # behind both. What a hard failure WOULD buy is a permanently
-          # degraded `systemctl --failed` and an ntfy alert every deploy.
-          #
-          # The ordering above removes the known cause; this removes the
-          # consequence of any cause not yet known.
-          ExecStart = map
-            (u: "-${pkgs.systemd}/bin/systemctl try-restart ${u}")
-            cfg.gpu.preempt.units;
-        };
-      };
+    };
 
     systemd.services.clanarchy-kodi-skin-repair = lib.mkIf cfg.mediaClient.enable {
       description = "Reset Kodi's skin when it names one that is not installed";
@@ -2221,13 +2235,13 @@ in
       # session is down, so guisettings.xml is safe to touch, and a redeploy
       # that removed a skin has just landed. Otherwise it would take a full
       # reboot to recover a trapped session.
-      wantedBy = [ "multi-user.target" "display-manager.service" ];
-      before   = [ "display-manager.service" ];
+      wantedBy = ["multi-user.target" "display-manager.service"];
+      before = ["display-manager.service"];
 
       # tmpfiles as well as local-fs: ~/.kodi is restored by impermanence and
       # persistenceDirectories above, so running before those have been set up
       # means editing a guisettings.xml that is about to be replaced.
-      after = [ "local-fs.target" "systemd-tmpfiles-setup.service" ];
+      after = ["local-fs.target" "systemd-tmpfiles-setup.service"];
 
       serviceConfig = {
         Type = "oneshot";
@@ -2235,7 +2249,7 @@ in
         Group = config.users.users.${cfg.user}.group;
         ExecStart = lib.getExe (pkgs.writeShellApplication {
           name = "clanarchy-kodi-skin-repair";
-          runtimeInputs = [ pkgs.coreutils pkgs.gnused pkgs.gnugrep ];
+          runtimeInputs = [pkgs.coreutils pkgs.gnused pkgs.gnugrep];
           text = ''
             settings="$HOME/.kodi/userdata/guisettings.xml"
 
@@ -2298,110 +2312,109 @@ in
     # settings could not be declared. Ordered before display-manager.service,
     # with the same not-RemainAfterExit wiring as the skin unit, a `systemctl
     # restart display-manager` re-runs it at exactly the moment it is safe.
-    systemd.services.clanarchy-kodi-guisettings =
-      lib.mkIf (cfg.mediaClient.enable
-                && cfg.mediaClient.pinGuiSettings
-                && effectiveGuiSettings != { }) {
-        description = "Apply the Kodi settings this role declares, before the session starts";
+    systemd.services.clanarchy-kodi-guisettings = lib.mkIf (cfg.mediaClient.enable
+      && cfg.mediaClient.pinGuiSettings
+      && effectiveGuiSettings != {}) {
+      description = "Apply the Kodi settings this role declares, before the session starts";
 
-        wantedBy = [ "multi-user.target" "display-manager.service" ];
-        before   = [ "display-manager.service" ];
-        after    = [ "local-fs.target" "systemd-tmpfiles-setup.service" ];
+      wantedBy = ["multi-user.target" "display-manager.service"];
+      before = ["display-manager.service"];
+      after = ["local-fs.target" "systemd-tmpfiles-setup.service"];
 
-        serviceConfig = {
-          Type = "oneshot";
-          User = cfg.user;
-          Group = config.users.users.${cfg.user}.group;
-          ExecStart = lib.getExe (pkgs.writeShellApplication {
-            name = "clanarchy-kodi-guisettings";
-            runtimeInputs = [ pkgs.coreutils pkgs.gnused pkgs.gnugrep ];
-            text = ''
-              settings="$HOME/.kodi/userdata/guisettings.xml"
+      serviceConfig = {
+        Type = "oneshot";
+        User = cfg.user;
+        Group = config.users.users.${cfg.user}.group;
+        ExecStart = lib.getExe (pkgs.writeShellApplication {
+          name = "clanarchy-kodi-guisettings";
+          runtimeInputs = [pkgs.coreutils pkgs.gnused pkgs.gnugrep];
+          text = ''
+            settings="$HOME/.kodi/userdata/guisettings.xml"
 
-              # No profile yet. Same reasoning as the skin unit: creating this
-              # file here would hand Kodi a config it did not write. Kodi
-              # authors it on first exit and this runs again next start.
-              [ -f "$settings" ] || exit 0
+            # No profile yet. Same reasoning as the skin unit: creating this
+            # file here would hand Kodi a config it did not write. Kodi
+            # authors it on first exit and this runs again next start.
+            [ -f "$settings" ] || exit 0
 
-              apply() {
-                id="$1"; want="$2"
+            apply() {
+              id="$1"; want="$2"
 
-                # The id goes into a sed ADDRESS and the value into a sed
-                # REPLACEMENT, so each needs its own escaping. Setting ids are
-                # dotted ("general.addonupdates"), and an unescaped dot is
-                # "any character" — harmless here only by luck. Values can
-                # legitimately contain the delimiter and `&`: the audio device
-                # is written as
-                #   PIPEWIRE:alsa_output.pci-...|Navi 31 HDMI/DP Audio...
-                # which carries both `:` and `|`, so no choice of delimiter
-                # escapes this by itself.
-                idre=$(printf '%s' "$id" | sed 's:[].[^$*\\/]:\\&:g')
+              # The id goes into a sed ADDRESS and the value into a sed
+              # REPLACEMENT, so each needs its own escaping. Setting ids are
+              # dotted ("general.addonupdates"), and an unescaped dot is
+              # "any character" — harmless here only by luck. Values can
+              # legitimately contain the delimiter and `&`: the audio device
+              # is written as
+              #   PIPEWIRE:alsa_output.pci-...|Navi 31 HDMI/DP Audio...
+              # which carries both `:` and `|`, so no choice of delimiter
+              # escapes this by itself.
+              idre=$(printf '%s' "$id" | sed 's:[].[^$*\\/]:\\&:g')
 
-                # XML-escape the value BEFORE anything else. This file is XML
-                # and a bare `&` makes it unparseable, which Kodi treats as a
-                # corrupt profile and resets — a worse outcome than the wrong
-                # setting, and one the non-empty guard below cannot catch
-                # because the file is the right size and complete garbage.
-                # Escaping is invisible in the common cases ("2", "false") and
-                # load-bearing the first time a value carries an ampersand.
-                # `&` first: escaping it after `<` would re-escape the `&` in
-                # the `&lt;` just written.
-                xml=$(printf '%s' "$want" | sed -e 's:&:\&amp;:g' -e 's:<:\&lt;:g' -e 's:>:\&gt;:g')
+              # XML-escape the value BEFORE anything else. This file is XML
+              # and a bare `&` makes it unparseable, which Kodi treats as a
+              # corrupt profile and resets — a worse outcome than the wrong
+              # setting, and one the non-empty guard below cannot catch
+              # because the file is the right size and complete garbage.
+              # Escaping is invisible in the common cases ("2", "false") and
+              # load-bearing the first time a value carries an ampersand.
+              # `&` first: escaping it after `<` would re-escape the `&` in
+              # the `&lt;` just written.
+              xml=$(printf '%s' "$want" | sed -e 's:&:\&amp;:g' -e 's:<:\&lt;:g' -e 's:>:\&gt;:g')
 
-                # Then escape for sed's REPLACEMENT side, which is a separate
-                # problem: values legitimately contain the delimiter and `&`.
-                # The audio device is written as
-                #   PIPEWIRE:alsa_output.pci-...|Navi 31 HDMI/DP Audio...
-                # which carries both `:` and `|`, so no choice of delimiter
-                # escapes this by itself.
-                val=$(printf '%s' "$xml" | sed 's:[\\&:]:\\&:g')
+              # Then escape for sed's REPLACEMENT side, which is a separate
+              # problem: values legitimately contain the delimiter and `&`.
+              # The audio device is written as
+              #   PIPEWIRE:alsa_output.pci-...|Navi 31 HDMI/DP Audio...
+              # which carries both `:` and `|`, so no choice of delimiter
+              # escapes this by itself.
+              val=$(printf '%s' "$xml" | sed 's:[\\&:]:\\&:g')
 
-                # Compared against the XML-escaped form, because that is what
-                # is actually on disk — comparing the raw value would rewrite
-                # an already-correct setting on every boot.
-                current=$(sed -n "s:.*<setting id=\"$idre\"[^>]*>\([^<]*\)</setting>.*:\1:p" \
-                            "$settings" | head -1)
-                [ "$current" = "$xml" ] && return 0
+              # Compared against the XML-escaped form, because that is what
+              # is actually on disk — comparing the raw value would rewrite
+              # an already-correct setting on every boot.
+              current=$(sed -n "s:.*<setting id=\"$idre\"[^>]*>\([^<]*\)</setting>.*:\1:p" \
+                          "$settings" | head -1)
+              [ "$current" = "$xml" ] && return 0
 
-                tmp=$(mktemp "$settings.XXXXXX")
-                trap 'rm -f "$tmp"' RETURN
+              tmp=$(mktemp "$settings.XXXXXX")
+              trap 'rm -f "$tmp"' RETURN
 
-                if [ -n "$current" ]; then
-                  echo "kodi $id is '$current' - setting to '$xml'"
-                  # The whole element is replaced, not just the text: Kodi
-                  # writes `default="true"` on a setting still at its default,
-                  # and leaving that attribute on a non-default value makes
-                  # Kodi ignore the value and use the built-in default.
-                  sed "s:<setting id=\"$idre\"[^>]*>[^<]*</setting>:<setting id=\"$id\">$val</setting>:" \
-                    "$settings" > "$tmp"
-                else
-                  echo "kodi $id absent - inserting it as '$xml'"
-                  # Inserted directly after the root open tag rather than
-                  # before the close: guisettings.xml is NOT a flat list —
-                  # nested blocks (<viewstates>, <audio>) follow the <setting>
-                  # elements, and an entry appended after those is harder to
-                  # read and easy to mistake for a child of one of them.
-                  sed "0,\:<settings[^>]*>:s::&\n    <setting id=\"$id\">$val</setting>:" \
-                    "$settings" > "$tmp"
-                fi
+              if [ -n "$current" ]; then
+                echo "kodi $id is '$current' - setting to '$xml'"
+                # The whole element is replaced, not just the text: Kodi
+                # writes `default="true"` on a setting still at its default,
+                # and leaving that attribute on a non-default value makes
+                # Kodi ignore the value and use the built-in default.
+                sed "s:<setting id=\"$idre\"[^>]*>[^<]*</setting>:<setting id=\"$id\">$val</setting>:" \
+                  "$settings" > "$tmp"
+              else
+                echo "kodi $id absent - inserting it as '$xml'"
+                # Inserted directly after the root open tag rather than
+                # before the close: guisettings.xml is NOT a flat list —
+                # nested blocks (<viewstates>, <audio>) follow the <setting>
+                # elements, and an entry appended after those is harder to
+                # read and easy to mistake for a child of one of them.
+                sed "0,\:<settings[^>]*>:s::&\n    <setting id=\"$id\">$val</setting>:" \
+                  "$settings" > "$tmp"
+              fi
 
-                # Non-empty guard before the rename. A sed that matched
-                # nothing still produces a file; one that failed mid-write
-                # produces a truncated one, and a truncated guisettings.xml is
-                # a profile reset — the exact trap the skin unit warns about.
-                [ -s "$tmp" ] || { echo "refusing to install an empty guisettings.xml" >&2; return 1; }
+              # Non-empty guard before the rename. A sed that matched
+              # nothing still produces a file; one that failed mid-write
+              # produces a truncated one, and a truncated guisettings.xml is
+              # a profile reset — the exact trap the skin unit warns about.
+              [ -s "$tmp" ] || { echo "refusing to install an empty guisettings.xml" >&2; return 1; }
 
-                chmod --reference="$settings" "$tmp"
-                mv -f "$tmp" "$settings"
-              }
+              chmod --reference="$settings" "$tmp"
+              mv -f "$tmp" "$settings"
+            }
 
-              ${lib.concatStringsSep "\n" (lib.mapAttrsToList
-                  (id: value: "apply ${lib.escapeShellArg id} ${lib.escapeShellArg value}")
-                  effectiveGuiSettings)}
-            '';
-          });
-        };
+            ${lib.concatStringsSep "\n" (lib.mapAttrsToList
+              (id: value: "apply ${lib.escapeShellArg id} ${lib.escapeShellArg value}")
+              effectiveGuiSettings)}
+          '';
+        });
       };
+    };
 
     # Boot dispatcher.
     #
@@ -2414,13 +2427,13 @@ in
     # left in after a reboot.
     systemd.services.clanarchy-htpc-boot = lib.mkIf cfg.bigscreen.enable {
       description = "Apply the persisted HTPC session choice at boot";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "systemd-user-sessions.service" ];
+      wantedBy = ["multi-user.target"];
+      after = ["systemd-user-sessions.service"];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
       };
-      path = [ pkgs.systemd pkgs.coreutils ];
+      path = [pkgs.systemd pkgs.coreutils];
       # Only has to handle the container half now.  The display manager takes
       # care of itself: its start condition tests the same flag file, so in
       # bigscreen mode it is skipped rather than started-and-stopped, and this
@@ -2447,7 +2460,7 @@ in
     # graphical.target still completes and nothing shows up in
     # `systemctl --failed`.
     systemd.services.display-manager.unitConfig =
-      lib.mkIf cfg.bigscreen.enable { ConditionPathExists = "!${flagFile}"; };
+      lib.mkIf cfg.bigscreen.enable {ConditionPathExists = "!${flagFile}";};
 
     # Host-side listener for session-change requests from inside the container.
     #
@@ -2456,7 +2469,7 @@ in
     # file on a directory both sides already share needs no new plumbing.
     systemd.paths.clanarchy-session-request = lib.mkIf cfg.bigscreen.enable {
       description = "Watch for session-change requests from the Bigscreen container";
-      wantedBy = [ "multi-user.target" ];
+      wantedBy = ["multi-user.target"];
       pathConfig = {
         PathChanged = requestFile;
         # The request file lives in a directory the couch user owns, so it may
@@ -2467,7 +2480,7 @@ in
 
     systemd.services.clanarchy-session-request = lib.mkIf cfg.bigscreen.enable {
       description = "Apply a session-change request from the Bigscreen container";
-      path = [ pkgs.coreutils ];
+      path = [pkgs.coreutils];
       serviceConfig.Type = "oneshot";
       # Runs as root, so no polkit hop — but it only ever passes the request
       # through the same switcher the couch user could have called directly,

@@ -31,10 +31,13 @@
 #
 # See docs/guides/first-time-install.md for the one-time blank-snapshot step,
 # which differs per backend.
-{ config, lib, ... }:
 {
+  config,
+  lib,
+  ...
+}: {
   options.clanarchy.rootfs = lib.mkOption {
-    type = lib.types.enum [ "zfs" "btrfs" ];
+    type = lib.types.enum ["zfs" "btrfs"];
     readOnly = true;
     description = ''
       Which filesystem backs this machine's root, and therefore which
@@ -65,7 +68,10 @@
 
   config = {
     # The derivation itself. One definition, from here — see the header.
-    clanarchy.rootfs = if config.clanarchy.channel == "unstable" then "btrfs" else "zfs";
+    clanarchy.rootfs =
+      if config.clanarchy.channel == "unstable"
+      then "btrfs"
+      else "zfs";
 
     # Impermanence needs /persist and /home mounted in stage 1, and the
     # rollback units in both backends are systemd-initrd services.
@@ -85,7 +91,7 @@
         "/var/log"
         "/var/lib/systemd"
       ];
-      files = [ "/etc/machine-id" ];
+      files = ["/etc/machine-id"];
     };
 
     # ── /var/lib/private MUST BE 0700, AND IMPERMANENCE MAKES IT 0755 ────────
@@ -120,6 +126,6 @@
     # member — the one where the dynamic uid cannot write to a persisted
     # root:root 0700 directory. That one is avoided by not using DynamicUser at
     # all; this one is a property of the path itself and has to be fixed here.
-    systemd.tmpfiles.rules = [ "d /var/lib/private 0700 root root -" ];
+    systemd.tmpfiles.rules = ["d /var/lib/private 0700 root root -"];
   };
 }

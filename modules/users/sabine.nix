@@ -1,38 +1,40 @@
-{ config, lib, pkgs, ... }:
-let
-  cfg = config.clanarchy.users.sabine;
-in
 {
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
+  cfg = config.clanarchy.users.sabine;
+in {
   options.clanarchy.users.sabine.enable =
     lib.mkEnableOption "sabine user profile (GNOME, LibreOffice, Thunderbird, Firefox)";
 
   config = lib.mkIf cfg.enable {
-
     # nushell must be in /etc/shells for accounts-daemon to enumerate sabine.
     # Without this regreet can't pre-select her; she'd have to type the username every login.
-    environment.shells = [ pkgs.nushell ];
+    environment.shells = [pkgs.nushell];
 
     users.users.sabine = {
       isNormalUser = true;
-      extraGroups  = [ "wheel" "networkmanager" "video" "audio" ];
-      shell        = pkgs.nushell;
+      extraGroups = ["wheel" "networkmanager" "video" "audio"];
+      shell = pkgs.nushell;
       hashedPasswordFile = config.clan.core.vars.generators.sabine-password.files."hashed-password".path;
     };
 
     # Clan vars: sabine password generator
     clan.core.vars.generators.sabine-password = {
       files."hashed-password" = {
-        secret    = true;
+        secret = true;
         neededFor = "users";
       };
       prompts."password" = {
         description = "Password for the sabine user (used for sudo and local console login)";
-        type        = "hidden";
+        type = "hidden";
       };
       script = ''
         ${pkgs.mkpasswd}/bin/mkpasswd -m sha-512 "$(cat "$prompts/password")" > "$out/hashed-password"
       '';
-      runtimeInputs = [ pkgs.mkpasswd ];
+      runtimeInputs = [pkgs.mkpasswd];
     };
 
     # Impermanence paths for sabine
@@ -56,19 +58,25 @@ in
     };
 
     # Home Manager configuration
-    home-manager.users.sabine = { pkgs, config, lib, osConfig, ... }: {
-      home.username      = "sabine";
+    home-manager.users.sabine = {
+      pkgs,
+      config,
+      lib,
+      osConfig,
+      ...
+    }: {
+      home.username = "sabine";
       home.homeDirectory = "/home/sabine";
-      home.stateVersion  = "25.11";
+      home.stateVersion = "25.11";
 
       xdg.userDirs = {
-        enable              = true;
-        createDirectories   = true;
+        enable = true;
+        createDirectories = true;
         setSessionVariables = true;
       };
 
       programs.nushell = {
-        enable      = true;
+        enable = true;
         extraConfig = ''
           $env.config.show_banner = false
         '';
@@ -79,10 +87,10 @@ in
       xdg.mimeApps = {
         enable = true;
         defaultApplications = {
-          "text/html"              = [ "librewolf.desktop" ];
-          "x-scheme-handler/http"  = [ "librewolf.desktop" ];
-          "x-scheme-handler/https" = [ "librewolf.desktop" ];
-          "application/xhtml+xml"  = [ "librewolf.desktop" ];
+          "text/html" = ["librewolf.desktop"];
+          "x-scheme-handler/http" = ["librewolf.desktop"];
+          "x-scheme-handler/https" = ["librewolf.desktop"];
+          "application/xhtml+xml" = ["librewolf.desktop"];
         };
       };
 
@@ -120,7 +128,6 @@ in
         $DRY_RUN_CMD cp -f ${./sabine-noctalia/simple_mouse/colors.json}   "$HOME/.config/noctalia/colors.json"
         $DRY_RUN_CMD chmod 644 "$HOME/.config/noctalia/settings.json" "$HOME/.config/noctalia/colors.json"
       '';
-
     };
   };
 }

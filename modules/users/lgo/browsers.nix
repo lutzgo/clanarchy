@@ -39,9 +39,11 @@
 #                       `programs.chromium.extensions` for Chrome on Linux)
 #
 # ============================================================
-{ pkgs, inputs, ... }:
-
-let
+{
+  pkgs,
+  inputs,
+  ...
+}: let
   # ── KeePassXC native messaging manifest helpers ──────────────────────
   #
   # NixOS-specific reason for home.file (not GUI toggle):
@@ -51,15 +53,15 @@ let
   #   that changes on every package update.  home.file pins the manifest
   #   to the correct ${pkgs.keepassxc} store path at build time and
   #   re-links it on activation, so the extension never loses its host.
-
   # Chrome / Chromium: allowed_origins with chrome-extension:// scheme
-  keepassxcChromeManifest = allowed_origins: builtins.toJSON {
-    name             = "org.keepassxc.keepassxc_browser";
-    description      = "KeePassXC integration with native messaging";
-    path             = "${pkgs.keepassxc}/bin/keepassxc-proxy";
-    type             = "stdio";
-    inherit allowed_origins;
-  };
+  keepassxcChromeManifest = allowed_origins:
+    builtins.toJSON {
+      name = "org.keepassxc.keepassxc_browser";
+      description = "KeePassXC integration with native messaging";
+      path = "${pkgs.keepassxc}/bin/keepassxc-proxy";
+      type = "stdio";
+      inherit allowed_origins;
+    };
 
   # Firefox / LibreWolf: allowed_extensions with AMO extension ID.
   # Note: the spec lists "allowed_origins: chrome-extension://..."
@@ -67,28 +69,25 @@ let
   # browsers require "allowed_extensions" with the WebExtension ID
   # (as declared in the extension's manifest.json).
   keepassxcFirefoxManifest = builtins.toJSON {
-    name               = "org.keepassxc.keepassxc_browser";
-    description        = "KeePassXC integration with native messaging";
-    path               = "${pkgs.keepassxc}/bin/keepassxc-proxy";
-    type               = "stdio";
-    allowed_extensions = [ "keepassxc-browser@keepassxc.org" ];
+    name = "org.keepassxc.keepassxc_browser";
+    description = "KeePassXC integration with native messaging";
+    path = "${pkgs.keepassxc}/bin/keepassxc-proxy";
+    type = "stdio";
+    allowed_extensions = ["keepassxc-browser@keepassxc.org"];
   };
-
-in
-{
+in {
   # NOTE: google-chrome (unfree) is installed as a system package in apps.nix.
   # nixpkgs.config.allowUnfreePredicate in a home-manager NixOS module does
   # not affect the pkgs argument used by home.packages — the pkgs argument
   # always comes from the system evaluation in this setup.  The allowUnfree
   # predicate and the google-chrome package entry both live in apps.nix.
 
-
   # ============================================================
   # BROWSER 1 — ungoogled-chromium (daily Chromium driver)
   # ============================================================
 
   programs.chromium = {
-    enable  = true;
+    enable = true;
     # Replace standard pkgs.chromium (remove it from apps.nix).
     # ungoogled-chromium ships with Google API keys removed and a
     # Chromium-Web-Store patch that restores the extension install UI.
@@ -130,24 +129,24 @@ in
     extensions = [
       # chromium-web-store — restores the Web Store UI in ungoogled-chromium
       {
-        id        = "cinhimbnkkaeohfgghhklpknlkffjgod";
+        id = "cinhimbnkkaeohfgghhklpknlkffjgod";
         updateUrl = "https://github.com/NeverDecaf/chromium-web-store/releases/latest/download/update.xml";
       }
       # uBlock Origin — verified CWS: cjpalhdlnbpafiamejdnhcphjbkeiagm
-      { id = "cjpalhdlnbpafiamejdnhcphjbkeiagm"; }
+      {id = "cjpalhdlnbpafiamejdnhcphjbkeiagm";}
       # KeePassXC-Browser — verified CWS: oboonakemofpalcgghocfoadofidjkkk
-      { id = "oboonakemofpalcgghocfoadofidjkkk"; }
+      {id = "oboonakemofpalcgghocfoadofidjkkk";}
       # Vimium — verified CWS: dbepggeogbaibhgnhhndojpepiihcmeb
-      { id = "dbepggeogbaibhgnhhndojpepiihcmeb"; }
+      {id = "dbepggeogbaibhgnhhndojpepiihcmeb";}
       # SideTab Pro (vertical tabs) — ⚠ ID spec-provided, unverified
-      { id = "fehfojhhnbfbclgpffmffigfgngbpnmj"; }
+      {id = "fehfojhhnbfbclgpffmffigfgngbpnmj";}
       # Vertical Tabs (nicedoc.io) — FOSS, ~100K users
       # github.com/samihaddad/vertical-tabs-chrome-extension
       # Toggle: Alt+V (configurable at chrome://extensions/shortcuts)
       # NOTE: rendering bug reported in Chrome 145 (issue #117 on GitHub)
       # — monitor upstream; extension is on Chrome 146 which fixes the
       # Chrome-side bug. If sidebar stops rendering, check issue tracker.
-      { id = "efobhjmgoddhfdhaflheioeagkcknoji"; }
+      {id = "efobhjmgoddhfdhaflheioeagkcknoji";}
 
       # ── M27's reading stack ─────────────────────────────────────────
       #
@@ -163,29 +162,28 @@ in
       #
       # Karakeep — verified CWS: kgcjekpmcjjogibpjebkhaanilehneje
       # Saves the current page to karakeep.goclan.org.
-      { id = "kgcjekpmcjjogibpjebkhaanilehneje"; }
+      {id = "kgcjekpmcjjogibpjebkhaanilehneje";}
       # floccus bookmarks sync — verified CWS: fnaicdffflnofjppbagibeoednhnbjhg
       # Syncs THIS browser's own bookmark tree into the same Karakeep, which
       # is what makes the two halves one stack rather than two tools.
-      { id = "fnaicdffflnofjppbagibeoednhnbjhg"; }
+      {id = "fnaicdffflnofjppbagibeoednhnbjhg";}
     ];
-
   };
 
   # ── Desktop entries ───────────────────────────────────────────────────
   # ungoogled-chromium ships both chromium.desktop and chromium-browser.desktop.
   # Shadow chromium.desktop to ensure a clean single entry; hide chromium-browser.
   xdg.desktopEntries.chromium = {
-    name        = "Chromium";
+    name = "Chromium";
     genericName = "Web Browser";
-    exec        = "chromium %U";
-    icon        = "chromium";
-    categories  = [ "Network" "WebBrowser" ];
-    mimeType    = [ "text/html" "text/xml" "application/xhtml+xml" "x-scheme-handler/http" "x-scheme-handler/https" ];
+    exec = "chromium %U";
+    icon = "chromium";
+    categories = ["Network" "WebBrowser"];
+    mimeType = ["text/html" "text/xml" "application/xhtml+xml" "x-scheme-handler/http" "x-scheme-handler/https"];
   };
   xdg.desktopEntries.chromium-browser = {
-    name      = "Chromium Browser";
-    exec      = "chromium %U";
+    name = "Chromium Browser";
+    exec = "chromium %U";
     noDisplay = true;
   };
 
@@ -195,7 +193,7 @@ in
 
   # ── KeePassXC native messaging host for Chromium ──────────────────────
   home.file.".config/chromium/NativeMessagingHosts/org.keepassxc.keepassxc_browser.json".text =
-    keepassxcChromeManifest [ "chrome-extension://oboonakemofpalcgghocfoadofidjkkk/" ];
+    keepassxcChromeManifest ["chrome-extension://oboonakemofpalcgghocfoadofidjkkk/"];
 
   # ── Vimium: a keyboard shortcut to the bookmark library ───────────────
   #
@@ -207,7 +205,6 @@ in
   #
   # This used to name YOUR_LINKWARDEN_INSTANCE, a placeholder for a server
   # that was never built (M27).
-
 
   # ============================================================
   # BROWSER 2 — LibreWolf (daily Gecko driver)
@@ -261,7 +258,6 @@ in
   #     * * 3p-frame block
   #   Whitelist sites as needed.  Expect ~1 week of settling.
 
-
   # ============================================================
   # BROWSER 3 — Firefox + arkenfox (hardened Mozilla-compatible)
   # ============================================================
@@ -271,7 +267,6 @@ in
     configPath = ".mozilla/firefox"; # silence stateVersion < 26.05 migration warning
 
     profiles.hardened = {
-
       # ── arkenfox-derived settings ──────────────────────────────────
       #
       # Translated from https://github.com/arkenfox/user.js (master).
@@ -284,94 +279,93 @@ in
       #   dFPI), which provides equivalent cross-site isolation and is
       #   compatible with browser extensions.
       settings = {
-
         # ── Startup and new tab ────────────────────────────────────
-        "browser.startup.page"                                        = 0;
-        "browser.startup.homepage"                                    = "about:blank";
-        "browser.newtabpage.enabled"                                  = false;
-        "browser.newtabpage.activity-stream.feeds.telemetry"          = false;
-        "browser.newtabpage.activity-stream.telemetry"                = false;
-        "browser.newtabpage.activity-stream.feeds.snippets"           = false;
+        "browser.startup.page" = 0;
+        "browser.startup.homepage" = "about:blank";
+        "browser.newtabpage.enabled" = false;
+        "browser.newtabpage.activity-stream.feeds.telemetry" = false;
+        "browser.newtabpage.activity-stream.telemetry" = false;
+        "browser.newtabpage.activity-stream.feeds.snippets" = false;
         "browser.newtabpage.activity-stream.feeds.section.topstories" = false;
         "browser.newtabpage.activity-stream.feeds.discoverystreamfeed" = false;
-        "browser.newtabpage.activity-stream.showSponsored"            = false;
-        "browser.newtabpage.activity-stream.showSponsoredTopSites"    = false;
-        "browser.newtabpage.activity-stream.default.sites"            = "";
+        "browser.newtabpage.activity-stream.showSponsored" = false;
+        "browser.newtabpage.activity-stream.showSponsoredTopSites" = false;
+        "browser.newtabpage.activity-stream.default.sites" = "";
 
         # ── Geolocation ────────────────────────────────────────────
-        "geo.enabled"                    = false;
-        "geo.provider.use_corelocation"  = false;
-        "geo.provider.use_gpsd"          = false;
-        "geo.provider.use_geoclue"       = false;
+        "geo.enabled" = false;
+        "geo.provider.use_corelocation" = false;
+        "geo.provider.use_gpsd" = false;
+        "geo.provider.use_geoclue" = false;
 
         # ── WebRTC IP leak prevention ──────────────────────────────
         # media.peerconnection.enabled = false disables WebRTC entirely
         # and breaks video calls.  The three settings below prevent IP
         # leaks while keeping WebRTC functional.
-        "media.peerconnection.ice.default_address_only"       = true;
-        "media.peerconnection.ice.no_host"                    = true;
+        "media.peerconnection.ice.default_address_only" = true;
+        "media.peerconnection.ice.no_host" = true;
         "media.peerconnection.ice.proxy_only_if_behind_proxy" = true;
 
         # ── Fingerprinting resistance ──────────────────────────────
         # resistFingerprinting spoofs timezone to UTC and may break
         # locale-sensitive sites.  Disable per-site via about:config
         # if needed.
-        "privacy.resistFingerprinting"                        = true;
-        "privacy.resistFingerprinting.block_mozAddonManager"  = true;
+        "privacy.resistFingerprinting" = true;
+        "privacy.resistFingerprinting.block_mozAddonManager" = true;
 
         # ── Total Cookie Protection (replaces firstparty.isolate) ──
         # cookieBehavior = 5 = Total Cookie Protection (dFPI).
         # Equivalent to first-party isolation but extension-compatible.
-        "network.cookie.cookieBehavior"                       = 5;
+        "network.cookie.cookieBehavior" = 5;
 
         # ── Telemetry — all disabled ───────────────────────────────
-        "toolkit.telemetry.enabled"                           = false;
-        "toolkit.telemetry.unified"                           = false;
-        "toolkit.telemetry.server"                            = "data:,";
-        "toolkit.telemetry.archive.enabled"                   = false;
-        "toolkit.telemetry.newProfilePing.enabled"            = false;
-        "toolkit.telemetry.shutdownPingSender.enabled"        = false;
-        "toolkit.telemetry.updatePing.enabled"                = false;
-        "toolkit.telemetry.bhrPing.enabled"                   = false;
-        "toolkit.telemetry.firstShutdownPing.enabled"         = false;
-        "toolkit.telemetry.coverage.opt-out"                  = true;
-        "toolkit.coverage.endpoint.base"                      = "";
-        "browser.ping-centre.telemetry"                       = false;
-        "datareporting.healthreport.uploadEnabled"            = false;
-        "datareporting.policy.dataSubmissionEnabled"          = false;
-        "app.shield.optoutstudies.enabled"                    = false;
-        "app.normandy.enabled"                                = false;
-        "app.normandy.api_url"                                = "";
-        "breakpad.reportURL"                                  = "";
-        "browser.tabs.crashReporting.sendReport"              = false;
+        "toolkit.telemetry.enabled" = false;
+        "toolkit.telemetry.unified" = false;
+        "toolkit.telemetry.server" = "data:,";
+        "toolkit.telemetry.archive.enabled" = false;
+        "toolkit.telemetry.newProfilePing.enabled" = false;
+        "toolkit.telemetry.shutdownPingSender.enabled" = false;
+        "toolkit.telemetry.updatePing.enabled" = false;
+        "toolkit.telemetry.bhrPing.enabled" = false;
+        "toolkit.telemetry.firstShutdownPing.enabled" = false;
+        "toolkit.telemetry.coverage.opt-out" = true;
+        "toolkit.coverage.endpoint.base" = "";
+        "browser.ping-centre.telemetry" = false;
+        "datareporting.healthreport.uploadEnabled" = false;
+        "datareporting.policy.dataSubmissionEnabled" = false;
+        "app.shield.optoutstudies.enabled" = false;
+        "app.normandy.enabled" = false;
+        "app.normandy.api_url" = "";
+        "breakpad.reportURL" = "";
+        "browser.tabs.crashReporting.sendReport" = false;
 
         # ── Safe Browsing — disable Google cloud connection ────────
         # These disable the update/hash-check requests to Google.
         # Local blocklists are also disabled; if you want local-only
         # protection, set just the URL prefs to "" and leave
         # malware.enabled / phishing.enabled = true.
-        "browser.safebrowsing.malware.enabled"                        = false;
-        "browser.safebrowsing.phishing.enabled"                       = false;
-        "browser.safebrowsing.blockedURIs.enabled"                    = false;
-        "browser.safebrowsing.provider.google4.gethashURL"            = "";
-        "browser.safebrowsing.provider.google4.updateURL"             = "";
-        "browser.safebrowsing.provider.google.gethashURL"             = "";
-        "browser.safebrowsing.provider.google.updateURL"              = "";
-        "browser.safebrowsing.provider.google4.dataSharingURL"        = "";
-        "browser.safebrowsing.downloads.enabled"                      = false;
-        "browser.safebrowsing.downloads.remote.enabled"               = false;
+        "browser.safebrowsing.malware.enabled" = false;
+        "browser.safebrowsing.phishing.enabled" = false;
+        "browser.safebrowsing.blockedURIs.enabled" = false;
+        "browser.safebrowsing.provider.google4.gethashURL" = "";
+        "browser.safebrowsing.provider.google4.updateURL" = "";
+        "browser.safebrowsing.provider.google.gethashURL" = "";
+        "browser.safebrowsing.provider.google.updateURL" = "";
+        "browser.safebrowsing.provider.google4.dataSharingURL" = "";
+        "browser.safebrowsing.downloads.enabled" = false;
+        "browser.safebrowsing.downloads.remote.enabled" = false;
         "browser.safebrowsing.downloads.remote.block_potentially_unwanted" = false;
-        "browser.safebrowsing.downloads.remote.block_uncommon"        = false;
-        "browser.safebrowsing.allowOverride"                          = false;
+        "browser.safebrowsing.downloads.remote.block_uncommon" = false;
+        "browser.safebrowsing.allowOverride" = false;
 
         # ── OCSP hard-fail ─────────────────────────────────────────
-        "security.OCSP.enabled"  = 1;    # 1 = enabled (0 = disabled)
-        "security.OCSP.require"  = true; # hard-fail: reject cert if OCSP unreachable
+        "security.OCSP.enabled" = 1; # 1 = enabled (0 = disabled)
+        "security.OCSP.require" = true; # hard-fail: reject cert if OCSP unreachable
 
         # ── Referrer trimming ──────────────────────────────────────
         # XOriginPolicy = 2: send no referrer for cross-origin requests
         # XOriginTrimmingPolicy = 2: trim to scheme+host+port cross-origin
-        "network.http.referer.XOriginPolicy"         = 2;
+        "network.http.referer.XOriginPolicy" = 2;
         "network.http.referer.XOriginTrimmingPolicy" = 2;
 
         # ── DOM storage isolation ──────────────────────────────────
@@ -380,12 +374,12 @@ in
         # ── History sanitization on close ──────────────────────────
         # Cookies, cache, and sessions are cleared; browsing history
         # and downloads are preserved across sessions.
-        "privacy.sanitize.sanitizeOnShutdown"  = true;
-        "privacy.clearOnShutdown.cookies"      = true;
-        "privacy.clearOnShutdown.cache"        = true;
-        "privacy.clearOnShutdown.sessions"     = true;
-        "privacy.clearOnShutdown.history"      = false;
-        "privacy.clearOnShutdown.downloads"    = false;
+        "privacy.sanitize.sanitizeOnShutdown" = true;
+        "privacy.clearOnShutdown.cookies" = true;
+        "privacy.clearOnShutdown.cache" = true;
+        "privacy.clearOnShutdown.sessions" = true;
+        "privacy.clearOnShutdown.history" = false;
+        "privacy.clearOnShutdown.downloads" = false;
 
         # ── Built-in password manager — disable ───────────────────
         # KeePassXC-Browser replaces Firefox's password manager.
@@ -426,12 +420,13 @@ in
       # at all, and none can — `home-manager.useGlobalPkgs` makes HM's `pkgs`
       # the overlay-frozen instance clan-core builds, so `nixpkgs.overlays`
       # inside an HM module is a no-op.  The flake input is the working route.
-      extensions.packages =
-        let nurPkgs = inputs.nur.legacyPackages.${pkgs.stdenv.hostPlatform.system};
-        in with nurPkgs.repos.rycee.firefox-addons; [
+      extensions.packages = let
+        nurPkgs = inputs.nur.legacyPackages.${pkgs.stdenv.hostPlatform.system};
+      in
+        with nurPkgs.repos.rycee.firefox-addons; [
           ublock-origin
           keepassxc-browser
-          vimium  # AMO slug is "vimium-ff" but NUR rycee attr is "vimium"
+          vimium # AMO slug is "vimium-ff" but NUR rycee attr is "vimium"
 
           # ── M27's reading stack ───────────────────────────────────────
           #
@@ -450,19 +445,19 @@ in
 
       # ── Search engines ───────────────────────────────────────────────
       search = {
-        default        = "ddg";   # home-manager now uses engine IDs, not display names
+        default = "ddg"; # home-manager now uses engine IDs, not display names
         privateDefault = "ddg";
-        force          = true; # overwrite profile's search.json.sqlite on activation
+        force = true; # overwrite profile's search.json.sqlite on activation
         engines = {
           "Startpage" = {
-            urls           = [{ template = "https://www.startpage.com/search?q={searchTerms}"; }];
-            definedAliases = [ "@sp" ];
+            urls = [{template = "https://www.startpage.com/search?q={searchTerms}";}];
+            definedAliases = ["@sp"];
           };
           # Hide noisy default engines (referenced by ID, not display name)
-          "google".metaData.hidden         = true;
-          "bing".metaData.hidden           = true;
+          "google".metaData.hidden = true;
+          "bing".metaData.hidden = true;
           "amazondotcom-us".metaData.hidden = true;
-          "ebay".metaData.hidden           = true;
+          "ebay".metaData.hidden = true;
         };
       };
     };
@@ -470,12 +465,11 @@ in
 
   # Stylix Firefox target — must know the profile name to write
   # userChrome/userContent overrides into the correct profile directory.
-  stylix.targets.firefox.profileNames = [ "hardened" ];
+  stylix.targets.firefox.profileNames = ["hardened"];
 
   # ── KeePassXC native messaging host for Firefox ───────────────────────
   home.file.".mozilla/native-messaging-hosts/org.keepassxc.keepassxc_browser.json".text =
     keepassxcFirefoxManifest;
-
 
   # ============================================================
   # BROWSER 4 — google-chrome (work / DRM / SSO fallback)

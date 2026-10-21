@@ -1,19 +1,22 @@
-{ config, lib, pkgs, ... }:
 {
+  config,
+  lib,
+  pkgs,
+  ...
+}: {
   options.clanarchy.users.admin.enable =
     lib.mkEnableOption "admin user profile (SSH keys, zsh, minimal tools)";
 
   config = lib.mkIf config.clanarchy.users.admin.enable {
-
     # System-wide HM settings — set here since admin is always the first user enabled
     users.mutableUsers = false;
-    home-manager.useGlobalPkgs   = true;
+    home-manager.useGlobalPkgs = true;
     home-manager.useUserPackages = true;
 
     users.users.admin = {
       isNormalUser = true;
-      extraGroups  = [ "wheel" ];
-      shell        = pkgs.zsh;
+      extraGroups = ["wheel"];
+      shell = pkgs.zsh;
       hashedPasswordFile = config.clan.core.vars.generators.admin-password.files."hashed-password".path;
       openssh.authorizedKeys.keys = [
         (builtins.readFile ../../machines/miralda/clanarchy_admin.pub)
@@ -99,24 +102,24 @@
         mkdir -p "$out"
         ${pkgs.openssh}/bin/ssh-keygen -t ed25519 -N "" -f "$out/id_ed25519"
       '';
-      runtimeInputs = [ pkgs.openssh ];
+      runtimeInputs = [pkgs.openssh];
     };
 
     clan.core.vars.generators.admin-password = {
       files."hashed-password" = {
-        secret    = true;
+        secret = true;
         neededFor = "users";
       };
       prompts."password" = {
         description = "Password for the admin user (used for sudo and local console login)";
-        type        = "hidden";
+        type = "hidden";
       };
       # Pipe password via stdin so getopt doesn't try to parse passwords that
       # start with '-' (e.g. "-8…") as command-line flags.
       script = ''
         ${pkgs.mkpasswd}/bin/mkpasswd -m sha-512 -s < "$prompts/password" > "$out/hashed-password"
       '';
-      runtimeInputs = [ pkgs.mkpasswd ];
+      runtimeInputs = [pkgs.mkpasswd];
     };
 
     # Impermanence paths for admin
@@ -126,22 +129,22 @@
         ".gnupg"
         ".config"
         ".local/share"
-        ".cache/noctalia"  # shell-state.json (version tracking → no wizard/changelog on rollback)
-        ".cache/zellij"    # compiled WASM + plugin permission cache (avoids "Allow?" prompt on boot)
-        "Pictures"         # Noctalia wallpaper manager (Wallpapers subdirectory lives here)
+        ".cache/noctalia" # shell-state.json (version tracking → no wizard/changelog on rollback)
+        ".cache/zellij" # compiled WASM + plugin permission cache (avoids "Allow?" prompt on boot)
+        "Pictures" # Noctalia wallpaper manager (Wallpapers subdirectory lives here)
       ];
     };
 
     # Home Manager configuration
-    home-manager.users.admin = { pkgs, ... }: {
-      home.username      = "admin";
+    home-manager.users.admin = {pkgs, ...}: {
+      home.username = "admin";
       home.homeDirectory = "/home/admin";
-      home.stateVersion  = "25.11";
+      home.stateVersion = "25.11";
 
       programs.git.enable = true;
       programs.zsh.enable = true;
 
-      home.packages = with pkgs; [ htop ripgrep fd ];
+      home.packages = with pkgs; [htop ripgrep fd];
     };
   };
 }

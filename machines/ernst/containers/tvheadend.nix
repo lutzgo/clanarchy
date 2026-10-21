@@ -221,28 +221,32 @@
 #   Tvheadend persists — network/mux/service tree, channel map, access
 #   control, EPG database — lives there.  uid/gid 3026 on both sides (nspawn
 #   maps 1:1; the number is allocated in machines/ernst/allocations.nix).
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   # Built from source; see pkgs/tvheadend.nix for why nixpkgs cannot supply
   # this and what must never be dropped from its configure flags.
-  tvheadend = pkgs.callPackage ./pkgs/tvheadend.nix { };
+  tvheadend = pkgs.callPackage ./pkgs/tvheadend.nix {};
 
   # Channel logos, renamed to the scheme THIS Tvheadend generates.  See
   # pkgs/picons.nix — the rename is not cosmetic, it is worth 27 channels, and
   # the package's header carries the measurement.
-  picons = pkgs.callPackage ./pkgs/picons.nix { };
+  picons = pkgs.callPackage ./pkgs/picons.nix {};
 
-  tvheadendUid = 3026;   # allocated in machines/ernst/allocations.nix
+  tvheadendUid = 3026; # allocated in machines/ernst/allocations.nix
   tvheadendGid = 3026;
 
   # VLAN-90 peers allowed to reach the HTTP port (M3U, XMLTV, stream URLs,
   # web UI).  Same one-hop-on-br0 caveat as everywhere else: their frames
   # never reach the UDM-Pro, so this container's firewall is the only
   # enforcement point that exists for them.
-  traefikAddr  = "10.0.90.12";   # web UI via tvheadend.goclan.org (authelia)
-  jellyfinAddr = "10.0.90.10";   # M3U tuner + XMLTV guide + stream pulls
-  httpPort     = 9981;
-  htspPort     = 9982;           # see the firewall block — opened to exactly one address
+  traefikAddr = "10.0.90.12"; # web UI via tvheadend.goclan.org (authelia)
+  jellyfinAddr = "10.0.90.10"; # M3U tuner + XMLTV guide + stream pulls
+  httpPort = 9981;
+  htspPort = 9982; # see the firewall block — opened to exactly one address
 
   # The ernst HOST, and the only thing permitted to speak HTSP.
   #
@@ -275,10 +279,9 @@ let
   # container takes .2 (outside the FRITZ's default DHCP pool, .20–.200), and
   # deliberately does NOT DHCP from the box — a lease would arrive with the
   # FRITZ as default gateway and resolver, both of which must never be used.
-  fritzAddr     = "192.168.178.1";
+  fritzAddr = "192.168.178.1";
   containerFritzAddr = "192.168.178.2/24";
-in
-{
+in {
   ##############################################################################
   # Host side 1 — the FRITZ segment: enp12s0 ⇄ br-fritz ⇄ container fritz0.
   #
@@ -301,8 +304,8 @@ in
     matchConfig.Name = "br-fritz";
     networkConfig = {
       # No address, no link-local, no RA — the host does not speak here.
-      LinkLocalAddressing     = "no";
-      IPv6AcceptRA            = false;
+      LinkLocalAddressing = "no";
+      IPv6AcceptRA = false;
       ConfigureWithoutCarrier = true;
     };
     linkConfig.RequiredForOnline = "no";
@@ -316,9 +319,9 @@ in
   systemd.network.networks."60-enp12s0" = {
     matchConfig.Name = "enp12s0";
     networkConfig = {
-      Bridge              = "br-fritz";
+      Bridge = "br-fritz";
       LinkLocalAddressing = "no";
-      IPv6AcceptRA        = false;
+      IPv6AcceptRA = false;
     };
     # A bridge port's terminal state is "enslaved"; and this one must also
     # never block boot (the FRITZ end can be powered off or unplugged).
@@ -329,7 +332,7 @@ in
   # nothing to bind, but the exclusion is stated rather than left to that
   # accident — during Phase 0, a manually-addressed enp12s0 had avahi
   # broadcasting ernst's mDNS onto the FRITZ segment within seconds.
-  services.avahi.denyInterfaces = [ "br-fritz" "enp12s0" "fritz0" ];
+  services.avahi.denyInterfaces = ["br-fritz" "enp12s0" "fritz0"];
 
   ##############################################################################
   # Host side 2 — the Services-VLAN veth and the state dir.
@@ -361,7 +364,7 @@ in
   # own end of it is a container concern.
   clanarchy.containers.tvheadend = {
     enable = true;
-    mac    = "02:00:00:90:00:0a";
+    mac = "02:00:00:90:00:0a";
 
     # NO uid/gid PIN: the in-container user block declares it in full.
 
@@ -371,7 +374,11 @@ in
     # path is bound into the container, and a tmpfiles rule for a bound path
     # races the container's own start.
     stateDirs = [
-      { path = "/srv/state/tvheadend"; owner = tvheadendUid; group = tvheadendGid; }
+      {
+        path = "/srv/state/tvheadend";
+        owner = tvheadendUid;
+        group = tvheadendGid;
+      }
     ];
 
     # The FRITZ segment. Static, no gateway, no DNS: the only thing this leg
@@ -380,25 +387,45 @@ in
     # `IPv6AcceptRA = false` is what keeps this container from acquiring a
     # second, wrong path to the internet.
     bridgeLegs = [
-      { veth = "fritz0"; bridge = "br-fritz"; address = containerFritzAddr; }
+      {
+        veth = "fritz0";
+        bridge = "br-fritz";
+        address = containerFritzAddr;
+      }
     ];
 
     allowFrom = [
-      { peer = traefikAddr;  port = httpPort; }  # the web UI via tvheadend.goclan.org
-      { peer = jellyfinAddr; port = httpPort; }  # M3U tuner, XMLTV guide, streams
-      { peer = kodiHostAddr; port = htspPort; }  # Kodi's native protocol
-      { peer = kodiHostAddr; port = httpPort; }  # and its guide/stream fetches
+      {
+        peer = traefikAddr;
+        port = httpPort;
+      } # the web UI via tvheadend.goclan.org
+      {
+        peer = jellyfinAddr;
+        port = httpPort;
+      } # M3U tuner, XMLTV guide, streams
+      {
+        peer = kodiHostAddr;
+        port = htspPort;
+      } # Kodi's native protocol
+      {
+        peer = kodiHostAddr;
+        port = httpPort;
+      } # and its guide/stream fetches
       # SAT>IP: the tuner streams RTP back on ephemeral ports, so this one
       # names no port at all. Scoped to the FRITZ's own address, on a segment
       # nothing else sits on.
-      { peer = fritzAddr;    port = null; proto = "udp"; }
+      {
+        peer = fritzAddr;
+        port = null;
+        proto = "udp";
+      }
     ];
 
     bindMounts = {
       # Tvheadend state, remapped to the upstream default path so the unit
       # below needs no --config gymnastics beyond naming it.
       "/var/lib/tvheadend" = {
-        hostPath   = "/srv/state/tvheadend";
+        hostPath = "/srv/state/tvheadend";
         isReadOnly = false;
       };
 
@@ -422,14 +449,17 @@ in
       #
       # Read-only: Tvheadend reads these and has no business writing them.
       "/picons" = {
-        hostPath   = "${picons}/picons";
+        hostPath = "${picons}/picons";
         isReadOnly = true;
       };
     };
 
-
-    config = { config, pkgs, lib, ... }: {
-
+    config = {
+      config,
+      pkgs,
+      lib,
+      ...
+    }: {
       # The container's firewall — the only enforcement point for br0-local
       # traffic (one L2 hop; the UDM-Pro never sees it).
       #
@@ -538,17 +568,17 @@ in
       ##########################################################################
       users.users.tvheadend = {
         isSystemUser = true;
-        group        = "tvheadend";
-        uid          = tvheadendUid;
-        home         = "/var/lib/tvheadend";
+        group = "tvheadend";
+        uid = tvheadendUid;
+        home = "/var/lib/tvheadend";
       };
-      users.groups.tvheadend = { gid = tvheadendGid; };
+      users.groups.tvheadend = {gid = tvheadendGid;};
 
       systemd.services.tvheadend = {
         description = "Tvheadend (SAT>IP client against the FRITZ!Box 6591)";
-        wantedBy = [ "multi-user.target" ];
-        wants    = [ "network-online.target" ];
-        after    = [ "network-online.target" ];
+        wantedBy = ["multi-user.target"];
+        wants = ["network-online.target"];
+        after = ["network-online.target"];
 
         serviceConfig = {
           # --satip_xml pins discovery to the static description URL.  SSDP
@@ -568,9 +598,9 @@ in
             # measurement that forced it and what guards the port instead.
             "--noacl"
           ];
-          User  = "tvheadend";
+          User = "tvheadend";
           Group = "tvheadend";
-          Restart    = "on-failure";
+          Restart = "on-failure";
           RestartSec = "5s";
 
           # Hardening.  Written for this unit rather than inherited from a
@@ -620,25 +650,25 @@ in
           #   scores this unit BETTER with the crashing filter, because it
           #   rates directives, not whether the process survives them.  Run
           #   the service, not just the analyzer.
-          NoNewPrivileges        = true;
-          ProtectSystem          = "strict";
-          ReadWritePaths         = [ "/var/lib/tvheadend" ];
-          ProtectHome            = true;
-          PrivateTmp             = true;
-          PrivateDevices         = true;
-          ProtectClock           = true;
-          ProtectHostname        = true;
-          ProtectControlGroups   = true;
-          ProtectKernelTunables  = true;
-          ProtectProc            = "invisible";
-          RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" "AF_INET6" "AF_NETLINK" ];
-          RestrictRealtime       = true;
-          RestrictSUIDSGID       = true;
-          RemoveIPC              = true;
-          LockPersonality        = true;
-          CapabilityBoundingSet  = "";
-          SystemCallFilter       = [ "@system-service" "~@privileged" "@chown" ];
-          UMask                  = "0077";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ReadWritePaths = ["/var/lib/tvheadend"];
+          ProtectHome = true;
+          PrivateTmp = true;
+          PrivateDevices = true;
+          ProtectClock = true;
+          ProtectHostname = true;
+          ProtectControlGroups = true;
+          ProtectKernelTunables = true;
+          ProtectProc = "invisible";
+          RestrictAddressFamilies = ["AF_UNIX" "AF_INET" "AF_INET6" "AF_NETLINK"];
+          RestrictRealtime = true;
+          RestrictSUIDSGID = true;
+          RemoveIPC = true;
+          LockPersonality = true;
+          CapabilityBoundingSet = "";
+          SystemCallFilter = ["@system-service" "~@privileged" "@chown"];
+          UMask = "0077";
         };
       };
     };

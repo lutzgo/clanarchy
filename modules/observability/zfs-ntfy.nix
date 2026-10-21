@@ -81,8 +81,12 @@
 #   a token per machine, and only then flip the option.  The full sequence,
 #   including the negative test that proves the reservation actually took, is
 #   in M6's PRs, linked from docs/history.md.
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.clanarchy.zfs.ntfy;
   urlFile = config.clan.core.vars.generators.zfs-ntfy.files."url".path;
 
@@ -136,14 +140,13 @@ let
 
     printf '%s %s\n' "$base" "$topic"
   '';
-in
-{
+in {
   options.clanarchy.zfs.ntfy = {
     enable = lib.mkEnableOption "ZFS pool state-change alerts via ntfy.sh (URL prompted via clan-vars)";
 
     baseUrl = lib.mkOption {
-      type        = lib.types.str;
-      default     = "https://ntfy.sh";
+      type = lib.types.str;
+      default = "https://ntfy.sh";
       description = ''
         ntfy instance to publish to when the clan var holds a BARE TOPIC
         rather than a full URL.  Ignored when the var already carries a
@@ -155,10 +158,10 @@ in
     };
 
     splitScript = lib.mkOption {
-      type        = lib.types.package;
-      internal    = true;
-      readOnly    = true;
-      default     = splitScript;
+      type = lib.types.package;
+      internal = true;
+      readOnly = true;
+      default = splitScript;
       description = ''
         Reads the clan var and prints "<baseurl> <topic>".  Exposed so that
         the M6 Alertmanager bridge normalises the value exactly as the zedlet
@@ -168,8 +171,8 @@ in
     };
 
     auth.enable = lib.mkOption {
-      type        = lib.types.bool;
-      default     = false;
+      type = lib.types.bool;
+      default = false;
       description = ''
         Send `Authorization: Bearer <token>` with every publish, from a clan
         var prompted by the `zfs-ntfy-token` generator.
@@ -191,14 +194,14 @@ in
     };
 
     priority = lib.mkOption {
-      type        = lib.types.enum [ "min" "low" "default" "high" "urgent" ];
-      default     = "high";
+      type = lib.types.enum ["min" "low" "default" "high" "urgent"];
+      default = "high";
       description = "ntfy Priority header — controls phone notification behaviour.";
     };
 
     extraTags = lib.mkOption {
-      type        = lib.types.listOf lib.types.str;
-      default     = [ "warning" "zfs" ];
+      type = lib.types.listOf lib.types.str;
+      default = ["warning" "zfs"];
       description = ''
         Additional ntfy tags (emoji shortcodes or arbitrary labels).
         The machine's hostname is always appended automatically.
@@ -207,18 +210,17 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-
     # ── clan-vars: ntfy.sh topic URL ─────────────────────────────────────
     # sops-install-secrets writes this at /run/secrets/vars/zfs-ntfy/url
     # (or the current clan-vars runtime layout equivalent), 0400 root:root.
     # ZED runs as root, so no extra activation script is needed.
     clan.core.vars.generators.zfs-ntfy = {
-      files."url" = { secret = true; };
+      files."url" = {secret = true;};
       prompts."url" = {
         description = "ntfy.sh topic URL for ZFS pool alerts (e.g. https://ntfy.sh/<hex-topic>)";
-        type        = "hidden";
+        type = "hidden";
       };
-      runtimeInputs = [ pkgs.coreutils ];
+      runtimeInputs = [pkgs.coreutils];
       script = ''${pkgs.coreutils}/bin/cat "$prompts/url" > "$out/url"'';
     };
 
@@ -234,15 +236,15 @@ in
         # Re-stage the Alertmanager bridge's copy when the token is rotated.
         # The monitoring service module adds its own unit to this list on the
         # machine that has one; see service-modules/monitoring.nix.
-        restartUnits = [ ];
+        restartUnits = [];
       };
 
       prompts."token" = {
         description = "ntfy access token with write access to this machine's topic (tk_…)";
-        type        = "hidden";
+        type = "hidden";
       };
 
-      runtimeInputs = [ pkgs.coreutils pkgs.gnugrep ];
+      runtimeInputs = [pkgs.coreutils pkgs.gnugrep];
 
       script = ''
         set -euo pipefail
@@ -333,37 +335,37 @@ in
         }
 
         ${lib.optionalString cfg.auth.enable ''
-        # ── Bearer token, and it never touches argv ────────────────────────
-        #
-        # `-H "Authorization: Bearer $tok"` would be the obvious form and is
-        # wrong on this machine: argv is world-readable through /proc, and
-        # ernst carries an unprivileged couch account (`go`) that could read
-        # the token straight out of `ps` during the request.  Assigning it to
-        # a shell variable first is no better — it lands in the environment of
-        # anything the zedlet forks.
-        #
-        # curl's own config format takes a `header = "..."` line, and `-K -`
-        # reads that config from STDIN.  The token therefore travels file →
-        # pipe → curl and is never an argument, never an env var, and never a
-        # temporary file.  `printf` is a shell builtin so the opening literal
-        # does not fork either.
-        TOKEN_FILE='${tokenFile}'
-        if [ -r "$TOKEN_FILE" ]; then
-          {
-            printf 'header = "Authorization: Bearer '
-            ${pkgs.coreutils}/bin/tr -d '[:space:]' < "$TOKEN_FILE"
-            printf '"\n'
-          } | post -K - \
-            || echo "zfs-ntfy: authenticated POST to $NTFY_BASE failed; the alert was NOT delivered" >&2
-          exit 0
-        fi
+          # ── Bearer token, and it never touches argv ────────────────────────
+          #
+          # `-H "Authorization: Bearer $tok"` would be the obvious form and is
+          # wrong on this machine: argv is world-readable through /proc, and
+          # ernst carries an unprivileged couch account (`go`) that could read
+          # the token straight out of `ps` during the request.  Assigning it to
+          # a shell variable first is no better — it lands in the environment of
+          # anything the zedlet forks.
+          #
+          # curl's own config format takes a `header = "..."` line, and `-K -`
+          # reads that config from STDIN.  The token therefore travels file →
+          # pipe → curl and is never an argument, never an env var, and never a
+          # temporary file.  `printf` is a shell builtin so the opening literal
+          # does not fork either.
+          TOKEN_FILE='${tokenFile}'
+          if [ -r "$TOKEN_FILE" ]; then
+            {
+              printf 'header = "Authorization: Bearer '
+              ${pkgs.coreutils}/bin/tr -d '[:space:]' < "$TOKEN_FILE"
+              printf '"\n'
+            } | post -K - \
+              || echo "zfs-ntfy: authenticated POST to $NTFY_BASE failed; the alert was NOT delivered" >&2
+            exit 0
+          fi
 
-        # Auth is enabled but the token has not been deployed yet.  Say so
-        # rather than falling back to an anonymous publish: against a reserved
-        # topic that gets a 403, and against an unreserved one it would
-        # succeed while quietly proving nothing about the auth path.
-        echo "zfs-ntfy: auth enabled but $TOKEN_FILE is unreadable — run 'clan vars generate' for this machine" >&2
-        exit 0
+          # Auth is enabled but the token has not been deployed yet.  Say so
+          # rather than falling back to an anonymous publish: against a reserved
+          # topic that gets a 403, and against an unreserved one it would
+          # succeed while quietly proving nothing about the auth path.
+          echo "zfs-ntfy: auth enabled but $TOKEN_FILE is unreadable — run 'clan vars generate' for this machine" >&2
+          exit 0
         ''}
 
         post || echo "zfs-ntfy: POST to $NTFY_BASE failed; the alert was NOT delivered" >&2

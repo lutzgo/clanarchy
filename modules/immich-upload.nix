@@ -94,13 +94,15 @@
 #   before it drops to User=, so the clan var stays 0400 root:root and the
 #   user this runs as never needs to be able to read the key — the same
 #   argument containers/traefik.nix makes for its ACME token.
-{ config, lib, pkgs, ... }:
-
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.clanarchy.immich.upload;
   gen = config.clan.core.vars.generators.immich-api-key;
-in
-{
+in {
   options.clanarchy.immich.upload = {
     enable = lib.mkEnableOption "pushing darktable exports to Immich on a timer";
 
@@ -161,7 +163,7 @@ in
 
     extensions = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ "jpg" "jpeg" "png" "tif" "tiff" ];
+      default = ["jpg" "jpeg" "png" "tif" "tiff"];
       description = ''
         Extensions considered for upload, case-insensitively.
 
@@ -231,7 +233,7 @@ in
         type = "hidden";
       };
 
-      runtimeInputs = [ pkgs.coreutils ];
+      runtimeInputs = [pkgs.coreutils];
 
       # Emitted in KEY=value form because systemd's EnvironmentFile= is what
       # consumes it — the same shape containers/traefik.nix uses for its ACME
@@ -254,10 +256,10 @@ in
       # Wants, not Requires: a laptop that is off the network should skip a
       # run, not fail one. The script exits 0 on an empty inbox and the upload
       # itself is what fails if there is genuinely no server.
-      wants = [ "network-online.target" ];
-      after = [ "network-online.target" ];
+      wants = ["network-online.target"];
+      after = ["network-online.target"];
 
-      path = [ pkgs.immich-cli pkgs.coreutils pkgs.findutils ];
+      path = [pkgs.immich-cli pkgs.coreutils pkgs.findutils];
 
       serviceConfig = {
         Type = "oneshot";
@@ -284,76 +286,74 @@ in
         PrivateTmp = true;
         PrivateDevices = true;
         ProtectSystem = "strict";
-        ReadWritePaths = [ cfg.inboxDir cfg.uploadedDir ];
+        ReadWritePaths = [cfg.inboxDir cfg.uploadedDir];
         ProtectKernelTunables = true;
         ProtectControlGroups = true;
-        RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+        RestrictAddressFamilies = ["AF_INET" "AF_INET6" "AF_UNIX"];
         RestrictRealtime = true;
         RestrictSUIDSGID = true;
         LockPersonality = true;
       };
 
-      script =
-        let
-          # -iname '*.jpg' -o -iname '*.jpeg' -o … , as one parenthesised group.
-          extTest = lib.concatStringsSep " -o " (map (e: "-iname '*.${e}'") cfg.extensions);
-        in
-        ''
-          set -euo pipefail
+      script = let
+        # -iname '*.jpg' -o -iname '*.jpeg' -o … , as one parenthesised group.
+        extTest = lib.concatStringsSep " -o " (map (e: "-iname '*.${e}'") cfg.extensions);
+      in ''
+        set -euo pipefail
 
-          inbox=${lib.escapeShellArg cfg.inboxDir}
-          staging="$inbox/.staging"
-          uploaded=${lib.escapeShellArg cfg.uploadedDir}
+        inbox=${lib.escapeShellArg cfg.inboxDir}
+        staging="$inbox/.staging"
+        uploaded=${lib.escapeShellArg cfg.uploadedDir}
 
-          mkdir -p "$inbox" "$staging" "$uploaded"
+        mkdir -p "$inbox" "$staging" "$uploaded"
 
-          # Claim every file that has settled, by MOVING it into staging.
-          #
-          # The move is the claim, and it is what makes this safe to run
-          # concurrently with an export: a file being written is not yet
-          # eligible, and a file already claimed is no longer in the inbox for
-          # the next run to pick up.
-          #
-          # -maxdepth 1: the inbox is flat by design. A subdirectory here would
-          # otherwise be walked, and .staging is inside the inbox.
-          find "$inbox" -maxdepth 1 -type f \
-            -mmin +${toString cfg.settleMinutes} \
-            \( ${extTest} \) \
-            -exec mv -n -t "$staging" {} +
+        # Claim every file that has settled, by MOVING it into staging.
+        #
+        # The move is the claim, and it is what makes this safe to run
+        # concurrently with an export: a file being written is not yet
+        # eligible, and a file already claimed is no longer in the inbox for
+        # the next run to pick up.
+        #
+        # -maxdepth 1: the inbox is flat by design. A subdirectory here would
+        # otherwise be walked, and .staging is inside the inbox.
+        find "$inbox" -maxdepth 1 -type f \
+          -mmin +${toString cfg.settleMinutes} \
+          \( ${extTest} \) \
+          -exec mv -n -t "$staging" {} +
 
-          # Anything left in staging from a previous FAILED run is retried
-          # here, which is the whole reason staging is a directory on disk and
-          # not a variable.
-          if [ -z "$(ls -A "$staging")" ]; then
-            echo "immich-upload: nothing to do"
-            exit 0
-          fi
+        # Anything left in staging from a previous FAILED run is retried
+        # here, which is the whole reason staging is a directory on disk and
+        # not a variable.
+        if [ -z "$(ls -A "$staging")" ]; then
+          echo "immich-upload: nothing to do"
+          exit 0
+        fi
 
-          count=$(find "$staging" -type f | wc -l)
-          echo "immich-upload: $count file(s) -> ${cfg.server}"
+        count=$(find "$staging" -type f | wc -l)
+        echo "immich-upload: $count file(s) -> ${cfg.server}"
 
-          # No --delete and no --album.
-          #
-          #   --delete would remove the local file on success, which is the
-          #   thing the uploadedDir option exists to avoid.
-          #   --album/-a names albums after the containing FOLDER, which here
-          #   is ".staging". Organising the library is done in Immich, by lgo,
-          #   which is also what he asked for.
-          immich upload --recursive "$staging"
+        # No --delete and no --album.
+        #
+        #   --delete would remove the local file on success, which is the
+        #   thing the uploadedDir option exists to avoid.
+        #   --album/-a names albums after the containing FOLDER, which here
+        #   is ".staging". Organising the library is done in Immich, by lgo,
+        #   which is also what he asked for.
+        immich upload --recursive "$staging"
 
-          # Only reached if immich exited 0, because of `set -e`. A partial
-          # upload therefore leaves everything in staging to be retried, rather
-          # than filing half a batch as done.
-          day=$(date +%Y-%m-%d)
-          mkdir -p "$uploaded/$day"
-          find "$staging" -maxdepth 1 -type f -exec mv -t "$uploaded/$day" {} +
-          echo "immich-upload: moved $count file(s) to $uploaded/$day"
-        '';
+        # Only reached if immich exited 0, because of `set -e`. A partial
+        # upload therefore leaves everything in staging to be retried, rather
+        # than filing half a batch as done.
+        day=$(date +%Y-%m-%d)
+        mkdir -p "$uploaded/$day"
+        find "$staging" -maxdepth 1 -type f -exec mv -t "$uploaded/$day" {} +
+        echo "immich-upload: moved $count file(s) to $uploaded/$day"
+      '';
     };
 
     systemd.timers.immich-upload = {
       description = "Periodically upload darktable exports to Immich";
-      wantedBy = [ "timers.target" ];
+      wantedBy = ["timers.target"];
       timerConfig = {
         # A first run shortly after boot, then on the interval. Persistent so a
         # laptop that was asleep over the scheduled time catches up once on

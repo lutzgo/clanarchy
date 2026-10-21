@@ -87,7 +87,6 @@
   pyjwt,
   anysqlite,
 }:
-
 buildPythonPackage rec {
   pname = "pytoyoda";
   version = "5.2.9";
@@ -151,7 +150,7 @@ buildPythonPackage rec {
   # `pythonImportsCheck` is the guard, exactly as in bencoding.nix.
   doCheck = false;
 
-  pythonImportsCheck = [ "pytoyoda" ];
+  pythonImportsCheck = ["pytoyoda"];
 
   meta = {
     description = "Python client for Toyota Connected Services";

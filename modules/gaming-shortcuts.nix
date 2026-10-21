@@ -33,8 +33,12 @@
 # The result is idempotent and survives impermanence rollback for free — it
 # re-runs on every boot, so even a wiped Steam config comes back with the
 # declared entries as soon as the account is logged in again.
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.clanarchy.gaming;
 
   userHome = config.users.users.${cfg.user}.home;
@@ -105,9 +109,9 @@ let
 
       tags = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [ ];
+        default = [];
         description = "Steam library categories to file the entry under.";
-        example = [ "Media" ];
+        example = ["Media"];
       };
     };
   };
@@ -124,14 +128,18 @@ let
       map (s: {
         inherit (s) name arguments tags;
         exe = s.exe;
-        startDir = if s.startDir != null then s.startDir else builtins.dirOf s.exe;
+        startDir =
+          if s.startDir != null
+          then s.startDir
+          else builtins.dirOf s.exe;
         icon = s.icon;
         coverArt = s.coverArt;
-      }) cfg.shortcuts
+      })
+      cfg.shortcuts
     )
   );
 
-  writer = pkgs.writers.writePython3Bin "clanarchy-steam-shortcuts" { flakeIgnore = [ "E501" ]; } ''
+  writer = pkgs.writers.writePython3Bin "clanarchy-steam-shortcuts" {flakeIgnore = ["E501"];} ''
     """Merge declared non-Steam shortcuts into Steam's binary shortcuts.vdf."""
 
     import json
@@ -393,11 +401,10 @@ let
     if __name__ == "__main__":
         sys.exit(main())
   '';
-in
-{
+in {
   options.clanarchy.gaming.shortcuts = lib.mkOption {
     type = lib.types.listOf shortcutType;
-    default = [ ];
+    default = [];
     description = ''
       Non-Steam applications to add to the gaming user's Steam library, so
       they are launchable from Big Picture without a keyboard.
@@ -418,10 +425,10 @@ in
     '';
   };
 
-  config = lib.mkIf (cfg.enable && cfg.shortcuts != [ ]) {
+  config = lib.mkIf (cfg.enable && cfg.shortcuts != []) {
     # Also on PATH: re-running it by hand after signing into Steam for the
     # first time beats rebooting to get the entries.
-    environment.systemPackages = [ writer ];
+    environment.systemPackages = [writer];
 
     systemd.services.clanarchy-steam-shortcuts = {
       description = "Merge declared non-Steam shortcuts into Steam's library";
@@ -441,18 +448,18 @@ in
       # Letting the unit go inactive is what makes it re-runnable, and the
       # merge is idempotent (it rewrites nothing when nothing changed), so
       # running it on every session start costs a few milliseconds.
-      wantedBy = [ "multi-user.target" "display-manager.service" ];
+      wantedBy = ["multi-user.target" "display-manager.service"];
 
       # Before the display manager, because that is what starts the session
       # that starts Steam — see the lost-update note at the top of this file.
-      before = [ "display-manager.service" ];
+      before = ["display-manager.service"];
 
       # tmpfiles, not just local-fs: on ernst the Steam directory is an `L+`
       # rule symlinking ~/.local/share/Steam onto the bulk pool (see
       # machines/ernst/htpc.nix), so starting before that rule has run means
       # looking for userdata in a directory that does not exist yet — which
       # this tool would report as "no Steam account data" and skip.
-      after = [ "local-fs.target" "systemd-tmpfiles-setup.service" ];
+      after = ["local-fs.target" "systemd-tmpfiles-setup.service"];
 
       serviceConfig = {
         Type = "oneshot";

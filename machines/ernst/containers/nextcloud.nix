@@ -79,13 +79,10 @@
   pkgs,
   lib,
   ...
-}:
-
-let
+}: let
   ##############################################################################
   # Identity.
   ##############################################################################
-
   # From machines/ernst/allocations.nix.  OWN group, not
   # `media` — `media` is a SECONDARY membership below, for the external storage
   # mount, and making it primary would put the media gid on every file the
@@ -128,7 +125,7 @@ let
   nextcloudPort = 80;
 
   baseDomain = "goclan.org";
-  hostName   = "cloud.${baseDomain}";
+  hostName = "cloud.${baseDomain}";
 
   # Authelia's portal, as the OIDC issuer.  Restated rather than shared for the
   # same reason baseDomain is restated in traefik.nix and authelia.nix.
@@ -143,7 +140,7 @@ let
   # 32,768 records.  Nextcloud writes user files whole over WebDAV and never
   # does an in-place partial rewrite of a large one, which is the access
   # pattern that would make 1M the wrong answer.
-  dataRoot  = "/srv/nextcloud";
+  dataRoot = "/srv/nextcloud";
   stateRoot = "/srv/state/nextcloud";
 
   # The media library, bound in READ-ONLY as external storage.  Read-only at
@@ -205,8 +202,8 @@ let
   # generation.  A directory we own has a stable identity and is rewritten in
   # place.  containers/traefik.nix carries the long form of this.
   ##############################################################################
-  secretsDir     = "/run/nextcloud-secrets";
-  adminPassFile  = "${secretsDir}/admin-pass";
+  secretsDir = "/run/nextcloud-secrets";
+  adminPassFile = "${secretsDir}/admin-pass";
   oidcSecretFile = "${secretsDir}/oidc-client-secret";
   smtpSecretFile = "${secretsDir}/smtp.json";
 
@@ -229,8 +226,7 @@ let
   # reaches across rather than declaring its own.  Authelia takes the DIGEST;
   # this container takes the PLAINTEXT half of the same pair.
   oidcGen = config.clan.core.vars.generators.authelia-oidc-nextcloud;
-in
-{
+in {
   ##############################################################################
   # Host side — the datasets, the directories, the secrets and the veth.
   ##############################################################################
@@ -261,14 +257,14 @@ in
   #     systemctl restart nextcloud-secrets container@nextcloud
   systemd.services.nextcloud-secrets = {
     description = "Stage Nextcloud's admin password and OIDC secret for container@nextcloud";
-    after       = [ "local-fs.target" ];
-    before      = [ "container@nextcloud.service" ];
-    requiredBy  = [ "container@nextcloud.service" ];
+    after = ["local-fs.target"];
+    before = ["container@nextcloud.service"];
+    requiredBy = ["container@nextcloud.service"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
     };
-    path = [ pkgs.coreutils ];
+    path = [pkgs.coreutils];
     script = ''
       set -euo pipefail
 
@@ -325,7 +321,7 @@ in
       "nextcloud-secrets.service"
       "container@nextcloud.service"
     ];
-    runtimeInputs = [ pkgs.coreutils pkgs.openssl ];
+    runtimeInputs = [pkgs.coreutils pkgs.openssl];
     script = ''
       openssl rand -base64 48 | tr -d '\n=+/' | cut -c1-48 > "$out/admin-pass"
     '';
@@ -345,10 +341,10 @@ in
   # generality bought on speculation.
   clanarchy.containers.nextcloud = {
     enable = true;
-    mac    = "02:00:00:90:00:12";
+    mac = "02:00:00:90:00:12";
 
-    uid  = nextcloudUid;
-    gid  = nextcloudGid;
+    uid = nextcloudUid;
+    gid = nextcloudGid;
     user = "nextcloud";
 
     # PINNED, AND LOAD-BEARING: `services.postgresql.package` derives its
@@ -359,36 +355,75 @@ in
     # TWO DATASETS, TWO GUARDS. This service owns `zdata/nextcloud` as well as
     # living on `zdata/state`, and the data one checks FSTYPE too.
     extraGuardedMounts = [
-      { path = dataRoot; source = "zdata/nextcloud"; fstype = "zfs"; }
+      {
+        path = dataRoot;
+        source = "zdata/nextcloud";
+        fstype = "zfs";
+      }
     ];
 
     stateDirs = [
-      { path = dataRoot;  owner = nextcloudUid; group = nextcloudGid; }
-      { path = stateRoot; owner = nextcloudUid; group = nextcloudGid; }
+      {
+        path = dataRoot;
+        owner = nextcloudUid;
+        group = nextcloudGid;
+      }
+      {
+        path = stateRoot;
+        owner = nextcloudUid;
+        group = nextcloudGid;
+      }
       # PostgreSQL's own upstream-static id, not one from ernst's 3000 block.
       # The PARENT of the version directory is bound, so a major bump lands
       # beside the old one on zdata rather than needing a new mount.
-      { path = "${stateRoot}/postgresql"; owner = postgresUid; group = postgresGid; }
+      {
+        path = "${stateRoot}/postgresql";
+        owner = postgresUid;
+        group = postgresGid;
+      }
     ];
 
     bindMounts = {
-      "/var/lib/nextcloud"  = { hostPath = dataRoot;                  isReadOnly = false; };
-      "/var/lib/postgresql" = { hostPath = "${stateRoot}/postgresql"; isReadOnly = false; };
+      "/var/lib/nextcloud" = {
+        hostPath = dataRoot;
+        isReadOnly = false;
+      };
+      "/var/lib/postgresql" = {
+        hostPath = "${stateRoot}/postgresql";
+        isReadOnly = false;
+      };
       # The media tree, read-only: external storage is a view, not a second
       # master. Nextcloud must never be able to write into Jellyfin's library.
-      "${mediaRoot}"        = { hostPath = mediaRoot;  isReadOnly = true;  };
+      "${mediaRoot}" = {
+        hostPath = mediaRoot;
+        isReadOnly = true;
+      };
       # The shared scan inbox, writable — it IS paperless's consumption
       # directory, which is why it sits on /srv/state and not /srv/docs.
-      "${docsInbox}"        = { hostPath = docsInbox;  isReadOnly = false; };
+      "${docsInbox}" = {
+        hostPath = docsInbox;
+        isReadOnly = false;
+      };
       # Staged by the hand-written secrets unit above.
-      "${secretsDir}"       = { hostPath = secretsDir; isReadOnly = true;  };
+      "${secretsDir}" = {
+        hostPath = secretsDir;
+        isReadOnly = true;
+      };
     };
 
     allowFrom = [
-      { peer = traefikAddr; port = nextcloudPort; }  # every client arrives through the proxy
+      {
+        peer = traefikAddr;
+        port = nextcloudPort;
+      } # every client arrives through the proxy
     ];
 
-    config = { config, pkgs, lib, ... }: {
+    config = {
+      config,
+      pkgs,
+      lib,
+      ...
+    }: {
       ##########################################################################
       # The service.
       ##########################################################################
@@ -464,18 +499,18 @@ in
         secretFile = smtpSecretFile;
 
         settings = {
-          mail_smtpmode     = "smtp";
-          mail_smtphost     = mailHost;
-          mail_smtpport     = 465;
+          mail_smtpmode = "smtp";
+          mail_smtphost = mailHost;
+          mail_smtpport = 465;
           # `ssl`, not `tls`: Nextcloud's `tls` means STARTTLS, and 465 is
           # implicit TLS.  M31 leaves 587 off per RFC 8314, so there is no
           # STARTTLS port to fall back to and getting this wrong is a hang
           # rather than a clear error.
-          mail_smtpsecure   = "ssl";
-          mail_smtpauth     = true;
-          mail_smtpname     = "noreply@${baseDomain}";
+          mail_smtpsecure = "ssl";
+          mail_smtpauth = true;
+          mail_smtpname = "noreply@${baseDomain}";
           mail_from_address = "noreply";
-          mail_domain       = baseDomain;
+          mail_domain = baseDomain;
         };
 
         # Redis for the distributed cache and the file-locking backend, over
@@ -504,7 +539,7 @@ in
           # `appApiHosts` in containers/ingress-policy.nix names the service's
           # own controls as compensation number 5 for having no forward-auth.
           # This is what turns that from a claim into a fact.
-          trusted_proxies = [ traefikAddr ];
+          trusted_proxies = [traefikAddr];
 
           # Traefik forwards the original Host, so `trusted_domains` (which the
           # module sets to hostName) is enough on its own — but the protocol is
@@ -585,14 +620,15 @@ in
         # `files_external` is NOT listed and does not need to be — it ships
         # inside the Nextcloud tarball and is enabled by occ below.
         extraApps = {
-          inherit (pkgs.nextcloud33Packages.apps)
-            calendar      # CalDAV, replacing citizengo.io's
-            contacts      # CardDAV
-            tasks         # the VTODO surface modules/caldav-sync.nix pushes to
+          inherit
+            (pkgs.nextcloud33Packages.apps)
+            calendar # CalDAV, replacing citizengo.io's
+            contacts # CardDAV
+            tasks # the VTODO surface modules/caldav-sync.nix pushes to
             notes
-            user_oidc     # the Authelia login button
-            mail          # webmail against M31's server — see the note below
-            integration_paperless  # "send to Paperless" in the Files menu (M32)
+            user_oidc # the Authelia login button
+            mail # webmail against M31's server — see the note below
+            integration_paperless # "send to Paperless" in the Files menu (M32)
             ;
         };
         extraAppsEnable = true;
@@ -681,7 +717,7 @@ in
       # be written into paperless's consumption directory (M32).  Neither is
       # primary: making either one primary would put a shared gid on every file
       # Nextcloud writes into its own store.
-      users.users.nextcloud.extraGroups = [ "media" "docsin" ];
+      users.users.nextcloud.extraGroups = ["media" "docsin"];
       users.groups.media.gid = mediaGid;
       users.groups.docsin.gid = docsinGid;
 
@@ -700,10 +736,10 @@ in
       ##########################################################################
       systemd.services.nextcloud-provision = {
         description = "Register the Authelia OIDC provider and the external storage mounts";
-        wantedBy = [ "multi-user.target" ];
-        after    = [ "nextcloud-setup.service" "phpfpm-nextcloud.service" "network-online.target" ];
-        wants    = [ "network-online.target" ];
-        requires = [ "nextcloud-setup.service" ];
+        wantedBy = ["multi-user.target"];
+        after = ["nextcloud-setup.service" "phpfpm-nextcloud.service" "network-online.target"];
+        wants = ["network-online.target"];
+        requires = ["nextcloud-setup.service"];
 
         # ── IT RETRIES, AND THE REASON IS NOT GENERAL ROBUSTNESS ─────────────
         #
@@ -726,17 +762,17 @@ in
         startLimitBurst = 10;
 
         serviceConfig = {
-          Type            = "oneshot";
+          Type = "oneshot";
           RemainAfterExit = true;
-          Restart         = "on-failure";
-          RestartSec      = "60s";
+          Restart = "on-failure";
+          RestartSec = "60s";
           # As `nextcloud`, like nextcloud-setup.service.  The occ wrapper does
           # NOT drop privileges, so running this as root would leave root-owned
           # files inside a store the service then cannot write.
-          User  = "nextcloud";
+          User = "nextcloud";
           Group = "nextcloud";
         };
-        path = [ config.services.nextcloud.occ pkgs.coreutils pkgs.gnugrep pkgs.jq ];
+        path = [config.services.nextcloud.occ pkgs.coreutils pkgs.gnugrep pkgs.jq];
         script = ''
           set -euo pipefail
 
@@ -868,8 +904,8 @@ in
 
       # `curl` is the test plan's instrument for proving this backend is
       # reachable from Traefik and from nowhere else.
-      environment.systemPackages = with pkgs; [ curl ];
-      documentation.enable       = false;
+      environment.systemPackages = with pkgs; [curl];
+      documentation.enable = false;
       documentation.nixos.enable = false;
     };
   };

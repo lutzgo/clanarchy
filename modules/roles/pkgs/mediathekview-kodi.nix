@@ -22,12 +22,13 @@
 # first 1000 rows of something longer. Search rather than scroll when that
 # matters — the add-on's own search applies the same cap and, since this
 # patch, says nothing about it either.
-{ mediathekview }:
-
+{mediathekview}:
 mediathekview.overrideAttrs (old: {
-  postPatch = (old.postPatch or "") + ''
-    substituteInPlace resources/lib/notifierKodi.py \
-      --replace-fail "        self.kodiUi.show_notification(30980, self.language(30981).format(maxresults))" \
-                     "        pass  # notification patched out: see modules/roles/pkgs/mediathekview-kodi.nix"
-  '';
+  postPatch =
+    (old.postPatch or "")
+    + ''
+      substituteInPlace resources/lib/notifierKodi.py \
+        --replace-fail "        self.kodiUi.show_notification(30980, self.language(30981).format(maxresults))" \
+                       "        pass  # notification patched out: see modules/roles/pkgs/mediathekview-kodi.nix"
+    '';
 })

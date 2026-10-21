@@ -1,5 +1,10 @@
-{ config, lib, pkgs, ... }:
-let cfg = config.clanarchy.apps.emulation;
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
+  cfg = config.clanarchy.apps.emulation;
 in {
   options.clanarchy.apps.emulation = {
     # Switch emulation is deliberately its own switch rather than part of a
@@ -37,6 +42,6 @@ in {
     # can prevent that — it is a property of that package's desktop entry —
     # so re-adding it by browsing to /run/current-system/sw/bin is the
     # workaround, and docs/guides/birte-emulation.md records it.
-    environment.systemPackages = [ pkgs.eden ];
+    environment.systemPackages = [pkgs.eden];
   };
 }

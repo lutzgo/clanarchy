@@ -1,9 +1,14 @@
-{ lib, config, ... }:
-let
-  cfg = config.clanarchy.locale;
-  localeStr = if cfg.language == "de_DE" then "de_DE.UTF-8" else "en_US.UTF-8";
-in
 {
+  lib,
+  config,
+  ...
+}: let
+  cfg = config.clanarchy.locale;
+  localeStr =
+    if cfg.language == "de_DE"
+    then "de_DE.UTF-8"
+    else "en_US.UTF-8";
+in {
   # ── Locale & keyboard options ────────────────────────────────────────────────
   #
   # language      — sets i18n.defaultLocale and all LC_* vars.
@@ -21,8 +26,8 @@ in
 
   options.clanarchy.locale = {
     language = lib.mkOption {
-      type        = lib.types.enum [ "en_US" "de_DE" ];
-      default     = "en_US";
+      type = lib.types.enum ["en_US" "de_DE"];
+      default = "en_US";
       description = ''
         System locale and application language.
         "en_US" → English US for CLI and GUI.
@@ -32,8 +37,8 @@ in
 
     keyboard = {
       layout = lib.mkOption {
-        type        = lib.types.str;
-        default     = "us";
+        type = lib.types.str;
+        default = "us";
         description = ''
           XKB keyboard layout (e.g. "us", "de").
           Applied to GDM/X11 sessions and exported as XKB_DEFAULT_LAYOUT.
@@ -42,14 +47,14 @@ in
       };
 
       variant = lib.mkOption {
-        type        = lib.types.nullOr lib.types.str;
-        default     = null;
+        type = lib.types.nullOr lib.types.str;
+        default = null;
         description = "XKB keyboard variant. null = use the layout's default variant.";
       };
 
       options = lib.mkOption {
-        type        = lib.types.nullOr lib.types.str;
-        default     = null;
+        type = lib.types.nullOr lib.types.str;
+        default = null;
         description = ''
           XKB options, comma-separated. null = no extra options.
           Example: "compose:ralt" makes Right Alt the Compose key,
@@ -64,30 +69,36 @@ in
     i18n.defaultLocale = localeStr;
 
     i18n.extraLocaleSettings = {
-      LC_ADDRESS        = localeStr;
+      LC_ADDRESS = localeStr;
       LC_IDENTIFICATION = localeStr;
-      LC_MEASUREMENT    = localeStr;
-      LC_MONETARY       = localeStr;
-      LC_NAME           = localeStr;
-      LC_NUMERIC        = localeStr;
-      LC_PAPER          = localeStr;
-      LC_TELEPHONE      = localeStr;
-      LC_TIME           = localeStr;
+      LC_MEASUREMENT = localeStr;
+      LC_MONETARY = localeStr;
+      LC_NAME = localeStr;
+      LC_NUMERIC = localeStr;
+      LC_PAPER = localeStr;
+      LC_TELEPHONE = localeStr;
+      LC_TIME = localeStr;
     };
 
     # ── XKB for X11/GDM (used by GNOME) ─────────────────────────────────────
     services.xserver.xkb = {
-      layout  = cfg.keyboard.layout;
-      variant = if cfg.keyboard.variant != null then cfg.keyboard.variant else "";
-      options = if cfg.keyboard.options != null then cfg.keyboard.options else "";
+      layout = cfg.keyboard.layout;
+      variant =
+        if cfg.keyboard.variant != null
+        then cfg.keyboard.variant
+        else "";
+      options =
+        if cfg.keyboard.options != null
+        then cfg.keyboard.options
+        else "";
     };
 
     # ── XKB env vars for Wayland compositors ─────────────────────────────────
     # Niri reads keyboard config from its own KDL (niri-hm.nix wires it directly),
     # but XKB_DEFAULT_* are exported as a fallback for other compositors / tools.
     environment.variables =
-      { XKB_DEFAULT_LAYOUT = cfg.keyboard.layout; }
-      // lib.optionalAttrs (cfg.keyboard.variant != null) { XKB_DEFAULT_VARIANT = cfg.keyboard.variant; }
-      // lib.optionalAttrs (cfg.keyboard.options != null) { XKB_DEFAULT_OPTIONS = cfg.keyboard.options; };
+      {XKB_DEFAULT_LAYOUT = cfg.keyboard.layout;}
+      // lib.optionalAttrs (cfg.keyboard.variant != null) {XKB_DEFAULT_VARIANT = cfg.keyboard.variant;}
+      // lib.optionalAttrs (cfg.keyboard.options != null) {XKB_DEFAULT_OPTIONS = cfg.keyboard.options;};
   };
 }

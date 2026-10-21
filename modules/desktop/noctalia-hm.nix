@@ -11,18 +11,18 @@
   ...
 }: let
   # Safe checks: niri/labwc options only exist when the respective compositor module is imported.
-  isNiri  = (osConfig.clanarchy.desktop ? niri)  && osConfig.clanarchy.desktop.niri.enable;
+  isNiri = (osConfig.clanarchy.desktop ? niri) && osConfig.clanarchy.desktop.niri.enable;
   isLabwc = (osConfig.clanarchy.desktop ? labwc) && osConfig.clanarchy.desktop.labwc.enable;
   # Per-USER gate, deliberately not folded into isNiri. The two happen to
   # select the same machine today (lgo is the only niri user), and that is
   # exactly why they must stay separate: a plugin scoped to a person is not a
   # plugin scoped to a compositor, and conflating them breaks silently the
   # first time lgo runs labwc or a second person runs niri.
-  isLgo   = config.home.username == "lgo";
+  isLgo = config.home.username == "lgo";
 in {
   imports = [
-    inputs.noctalia.homeModules.default  # provides programs.noctalia-shell option
-    ./foot-hm.nix                        # shared foot terminal config
+    inputs.noctalia.homeModules.default # provides programs.noctalia-shell option
+    ./foot-hm.nix # shared foot terminal config
   ];
 
   # Noctalia shell — configured declaratively via noctalia HM module.
@@ -56,100 +56,103 @@ in {
         autoShowDelay = 150;
         showOnWorkspaceSwitch = true;
         widgets = {
-          left = [
-            {
-              defaultSettings = {
-                ai = {
+          left =
+            [
+              {
+                defaultSettings = {
+                  ai = {
+                    maxHistoryLength = 100;
+                    model = "gemini-2.5-flash";
+                    openaiBaseUrl = "https://api.openai.com/v1/chat/completions";
+                    openaiLocal = false;
+                    provider = "google";
+                    systemPrompt = "You are a helpful assistant integrated into a Linux desktop shell. Be concise and helpful.";
+                    temperature = 0.7;
+                  };
                   maxHistoryLength = 100;
-                  model = "gemini-2.5-flash";
-                  openaiBaseUrl = "https://api.openai.com/v1/chat/completions";
-                  openaiLocal = false;
-                  provider = "google";
-                  systemPrompt = "You are a helpful assistant integrated into a Linux desktop shell. Be concise and helpful.";
-                  temperature = 0.7;
+                  panelDetached = true;
+                  panelHeightRatio = 0.85;
+                  panelPosition = "right";
+                  panelWidth = 520;
+                  scale = 1.0;
+                  translator = {
+                    backend = "google";
+                    deeplApiKey = "";
+                    realTimeTranslation = true;
+                    sourceLanguage = "auto";
+                    targetLanguage = "en";
+                  };
                 };
-                maxHistoryLength = 100;
-                panelDetached = true;
-                panelHeightRatio = 0.85;
-                panelPosition = "right";
-                panelWidth = 520;
-                scale = 1.0;
-                translator = {
-                  backend = "google";
-                  deeplApiKey = "";
-                  realTimeTranslation = true;
-                  sourceLanguage = "auto";
-                  targetLanguage = "en";
+                id = "plugin:assistant-panel";
+              }
+              {
+                characterCount = 2;
+                colorizeIcons = false;
+                emptyColor = "secondary";
+                enableScrollWheel = true;
+                focusedColor = "primary";
+                followFocusedScreen = false;
+                fontWeight = "bold";
+                groupedBorderOpacity = 1.0;
+                hideUnoccupied = false;
+                iconScale = 0.8;
+                id = "Workspace";
+                labelMode = "index";
+                occupiedColor = "secondary";
+                pillSize = 0.6;
+                showApplications = false;
+                showApplicationsHover = false;
+                showBadge = true;
+                showLabelsOnlyWhenOccupied = true;
+                unfocusedIconsOpacity = 1.0;
+              }
+            ]
+            ++ lib.optionals isNiri [
+              {
+                defaultSettings = {
+                  debounceMs = 300;
+                  enabled = true;
+                  language = "auto";
+                  maxEventsPerSecond = 20;
+                  maxVisible = 4;
+                  perWorkspace = false;
+                  workspaceMaxVisible = {};
                 };
-              };
-              id = "plugin:assistant-panel";
-            }
-            {
-              characterCount = 2;
-              colorizeIcons = false;
-              emptyColor = "secondary";
-              enableScrollWheel = true;
-              focusedColor = "primary";
-              followFocusedScreen = false;
-              fontWeight = "bold";
-              groupedBorderOpacity = 1.0;
-              hideUnoccupied = false;
-              iconScale = 0.8;
-              id = "Workspace";
-              labelMode = "index";
-              occupiedColor = "secondary";
-              pillSize = 0.6;
-              showApplications = false;
-              showApplicationsHover = false;
-              showBadge = true;
-              showLabelsOnlyWhenOccupied = true;
-              unfocusedIconsOpacity = 1.0;
-            }
-          ] ++ lib.optionals isNiri [
-            {
-              defaultSettings = {
-                debounceMs = 300;
-                enabled = true;
-                language = "auto";
-                maxEventsPerSecond = 20;
-                maxVisible = 4;
-                perWorkspace = false;
-                workspaceMaxVisible = {};
-              };
-              id = "plugin:niri-auto-tile";
-            }
-          ] ++ [
-            {
-              colorizeIcons = false;
-              hideMode = "hidden";
-              id = "ActiveWindow";
-              maxWidth = 145;
-              scrollingMode = "hover";
-              showIcon = true;
-              textColor = "none";
-              useFixedWidth = false;
-            }
-            {
-              id = "Spacer";
-              width = 5;
-            }
-            {
-              compactMode = false;
-              hideMode = "hidden";
-              hideWhenIdle = false;
-              id = "MediaMini";
-              maxWidth = 145;
-              panelShowAlbumArt = true;
-              scrollingMode = "hover";
-              showAlbumArt = true;
-              showArtistFirst = true;
-              showProgressRing = true;
-              showVisualizer = false;
-              textColor = "none";
-              useFixedWidth = false;
-              visualizerType = "linear";
-            }
-          ];
+                id = "plugin:niri-auto-tile";
+              }
+            ]
+            ++ [
+              {
+                colorizeIcons = false;
+                hideMode = "hidden";
+                id = "ActiveWindow";
+                maxWidth = 145;
+                scrollingMode = "hover";
+                showIcon = true;
+                textColor = "none";
+                useFixedWidth = false;
+              }
+              {
+                id = "Spacer";
+                width = 5;
+              }
+              {
+                compactMode = false;
+                hideMode = "hidden";
+                hideWhenIdle = false;
+                id = "MediaMini";
+                maxWidth = 145;
+                panelShowAlbumArt = true;
+                scrollingMode = "hover";
+                showAlbumArt = true;
+                showArtistFirst = true;
+                showProgressRing = true;
+                showVisualizer = false;
+                textColor = "none";
+                useFixedWidth = false;
+                visualizerType = "linear";
+              }
+            ];
           center = [
             {
               colorizeSystemIcon = "primary";
@@ -215,114 +218,117 @@ in {
               id = "plugin:keybind-cheatsheet";
             }
           ];
-          right = [
-            {
-              defaultSettings = {
-                colorHistory = [];
-                detectedRecorder = "";
-                installedLangs = ["eng"];
-                paletteColors = [];
-                selectedOcrLang = "eng";
-                transAvailable = false;
-              };
-              id = "plugin:screen-toolkit";
-            }
-            {
-              defaultSettings = {};
-              id = "plugin:mirror-mirror";
-            }
-            {
-              defaultSettings = {};
-              id = "plugin:screenshot";
-            }
-            {
-              defaultSettings = {
-                audioCodec = "opus";
-                audioSource = "default_output";
-                colorRange = "limited";
-                copyToClipboard = false;
-                customReplayDuration = "30";
-                directory = "";
-                filenamePattern = "recording_yyyyMMdd_HHmmss";
-                frameRate = "60";
-                hideInactive = false;
+          right =
+            [
+              {
+                defaultSettings = {
+                  colorHistory = [];
+                  detectedRecorder = "";
+                  installedLangs = ["eng"];
+                  paletteColors = [];
+                  selectedOcrLang = "eng";
+                  transAvailable = false;
+                };
+                id = "plugin:screen-toolkit";
+              }
+              {
+                defaultSettings = {};
+                id = "plugin:mirror-mirror";
+              }
+              {
+                defaultSettings = {};
+                id = "plugin:screenshot";
+              }
+              {
+                defaultSettings = {
+                  audioCodec = "opus";
+                  audioSource = "default_output";
+                  colorRange = "limited";
+                  copyToClipboard = false;
+                  customReplayDuration = "30";
+                  directory = "";
+                  filenamePattern = "recording_yyyyMMdd_HHmmss";
+                  frameRate = "60";
+                  hideInactive = false;
+                  iconColor = "none";
+                  quality = "very_high";
+                  replayDuration = "30";
+                  replayEnabled = false;
+                  replayStorage = "ram";
+                  resolution = "original";
+                  restorePortalSession = false;
+                  showCursor = true;
+                  videoCodec = "h264";
+                  videoSource = "portal";
+                };
+                id = "plugin:screen-recorder";
+              }
+              {
+                id = "Spacer";
+                width = 5;
+              }
+              {
+                blacklist = [];
+                chevronColor = "none";
+                colorizeIcons = false;
+                drawerEnabled = true;
+                hidePassive = false;
+                id = "Tray";
+                pinned = [];
+              }
+              {
+                defaultSettings = {};
+                id = "plugin:usb-device-manager";
+              }
+              {
+                hideWhenZero = false;
+                hideWhenZeroUnread = false;
                 iconColor = "none";
-                quality = "very_high";
-                replayDuration = "30";
-                replayEnabled = false;
-                replayStorage = "ram";
-                resolution = "original";
-                restorePortalSession = false;
-                showCursor = true;
-                videoCodec = "h264";
-                videoSource = "portal";
-              };
-              id = "plugin:screen-recorder";
-            }
-            {
-              id = "Spacer";
-              width = 5;
-            }
-            {
-              blacklist = [];
-              chevronColor = "none";
-              colorizeIcons = false;
-              drawerEnabled = true;
-              hidePassive = false;
-              id = "Tray";
-              pinned = [];
-            }
-            {
-              defaultSettings = {};
-              id = "plugin:usb-device-manager";
-            }
-            {
-              hideWhenZero = false;
-              hideWhenZeroUnread = false;
-              iconColor = "none";
-              id = "NotificationHistory";
-              showUnreadBadge = true;
-              unreadBadgeColor = "primary";
-            }
-            {
-              deviceNativePath = "__default__";
-              displayMode = "graphic-clean";
-              hideIfIdle = false;
-              hideIfNotDetected = true;
-              id = "Battery";
-              showNoctaliaPerformance = true;
-              showPowerProfiles = true;
-            }
-            {
-              defaultSettings = {
-                mainDeviceId = "";
-              };
-              id = "plugin:valent-connect";
-            }
-          ] ++ lib.optionals isLabwc [
-            {
-              defaultSettings = {
-                profilesDir      = "";
-                icon             = "wand";
-                iconColor        = "primary";
-                includeWallpapers = true;
-                lastAppliedProfile = "";
-                backupEnabled    = true;
-                backupCount      = 5;
-              };
-              id = "plugin:shell-profiles";
-            }
-          ] ++ [
-            {
-              colorizeDistroLogo = false;
-              colorizeSystemIcon = "secondary";
-              customIconPath = "";
-              enableColorization = true;
-              icon = "noctalia";
-              id = "ControlCenter";
-              useDistroLogo = false;
-            }
-          ];
+                id = "NotificationHistory";
+                showUnreadBadge = true;
+                unreadBadgeColor = "primary";
+              }
+              {
+                deviceNativePath = "__default__";
+                displayMode = "graphic-clean";
+                hideIfIdle = false;
+                hideIfNotDetected = true;
+                id = "Battery";
+                showNoctaliaPerformance = true;
+                showPowerProfiles = true;
+              }
+              {
+                defaultSettings = {
+                  mainDeviceId = "";
+                };
+                id = "plugin:valent-connect";
+              }
+            ]
+            ++ lib.optionals isLabwc [
+              {
+                defaultSettings = {
+                  profilesDir = "";
+                  icon = "wand";
+                  iconColor = "primary";
+                  includeWallpapers = true;
+                  lastAppliedProfile = "";
+                  backupEnabled = true;
+                  backupCount = 5;
+                };
+                id = "plugin:shell-profiles";
+              }
+            ]
+            ++ [
+              {
+                colorizeDistroLogo = false;
+                colorizeSystemIcon = "secondary";
+                customIconPath = "";
+                enableColorization = true;
+                icon = "noctalia";
+                id = "ControlCenter";
+                useDistroLogo = false;
+              }
+            ];
         };
         mouseWheelAction = "none";
         reverseScroll = false;
@@ -421,9 +427,18 @@ in {
 
       calendar = {
         cards = [
-          { enabled = true; id = "calendar-header-card"; }
-          { enabled = true; id = "calendar-month-card"; }
-          { enabled = true; id = "weather-card"; }
+          {
+            enabled = true;
+            id = "calendar-header-card";
+          }
+          {
+            enabled = true;
+            id = "calendar-month-card";
+          }
+          {
+            enabled = true;
+            id = "weather-card";
+          }
         ];
       };
 
@@ -490,7 +505,10 @@ in {
         enableWindowsSearch = true;
         enableSessionSearch = true;
         ignoreMouseInput = false;
-        screenshotAnnotationTool = if isLabwc then "satty" else "";
+        screenshotAnnotationTool =
+          if isLabwc
+          then "satty"
+          else "";
         overviewLayer = false;
         density = "compact";
       };
@@ -521,12 +539,30 @@ in {
           ];
         };
         cards = [
-          { enabled = true; id = "profile-card"; }
-          { enabled = true; id = "shortcuts-card"; }
-          { enabled = true; id = "audio-card"; }
-          { enabled = true; id = "brightness-card"; }
-          { enabled = true; id = "weather-card"; }
-          { enabled = true; id = "media-sysmon-card"; }
+          {
+            enabled = true;
+            id = "profile-card";
+          }
+          {
+            enabled = true;
+            id = "shortcuts-card";
+          }
+          {
+            enabled = true;
+            id = "audio-card";
+          }
+          {
+            enabled = true;
+            id = "brightness-card";
+          }
+          {
+            enabled = true;
+            id = "weather-card";
+          }
+          {
+            enabled = true;
+            id = "media-sysmon-card";
+          }
         ];
       };
 
@@ -624,14 +660,62 @@ in {
         largeButtonsStyle = false;
         largeButtonsLayout = "single-row";
         powerOptions = [
-          { action = "lock";           command = ""; countdownEnabled = true; enabled = true;  keybind = "1"; }
-          { action = "suspend";        command = ""; countdownEnabled = true; enabled = true;  keybind = "2"; }
-          { action = "hibernate";      command = ""; countdownEnabled = true; enabled = true;  keybind = "3"; }
-          { action = "reboot";         command = ""; countdownEnabled = true; enabled = true;  keybind = "4"; }
-          { action = "logout";         command = ""; countdownEnabled = true; enabled = true;  keybind = "5"; }
-          { action = "shutdown";       command = ""; countdownEnabled = true; enabled = true;  keybind = "6"; }
-          { action = "rebootToUefi";   command = ""; countdownEnabled = true; enabled = false; keybind = ""; }
-          { action = "userspaceReboot";command = ""; countdownEnabled = true; enabled = false; keybind = ""; }
+          {
+            action = "lock";
+            command = "";
+            countdownEnabled = true;
+            enabled = true;
+            keybind = "1";
+          }
+          {
+            action = "suspend";
+            command = "";
+            countdownEnabled = true;
+            enabled = true;
+            keybind = "2";
+          }
+          {
+            action = "hibernate";
+            command = "";
+            countdownEnabled = true;
+            enabled = true;
+            keybind = "3";
+          }
+          {
+            action = "reboot";
+            command = "";
+            countdownEnabled = true;
+            enabled = true;
+            keybind = "4";
+          }
+          {
+            action = "logout";
+            command = "";
+            countdownEnabled = true;
+            enabled = true;
+            keybind = "5";
+          }
+          {
+            action = "shutdown";
+            command = "";
+            countdownEnabled = true;
+            enabled = true;
+            keybind = "6";
+          }
+          {
+            action = "rebootToUefi";
+            command = "";
+            countdownEnabled = true;
+            enabled = false;
+            keybind = "";
+          }
+          {
+            action = "userspaceReboot";
+            command = "";
+            countdownEnabled = true;
+            enabled = false;
+            keybind = "";
+          }
         ];
       };
 
@@ -773,104 +857,137 @@ in {
       };
     };
 
-    pluginSettings = {
-      clipper = {
-        enableTodoIntegration = false;
-        pincardsEnabled = true;
-        notecardsEnabled = true;
-        showCloseButton = false;
-        fullscreenMode = false;
-        hidePanelBackground = false;
-        autoPaste = false;
-        autoPasteOnRightClick = false;
-        autoPasteDelay = 300;
-        cardColors = {
-          Text  = { bg = "mOutline";   separator = "mSurface"; fg = "mOnSurface"; };
-          Image = { bg = "mTertiary";  separator = "mSurface"; fg = "mOnTertiary"; };
-          Link  = { bg = "mPrimary";   separator = "mSurface"; fg = "mOnPrimary"; };
-          Code  = { bg = "mSecondary"; separator = "mSurface"; fg = "mOnSecondary"; };
-          Color = { bg = "mSecondary"; separator = "mSurface"; fg = "mOnSecondary"; };
-          Emoji = { bg = "mHover";     separator = "mSurface"; fg = "mOnHover"; };
-          File  = { bg = "mError";     separator = "mSurface"; fg = "mOnError"; };
+    pluginSettings =
+      {
+        clipper = {
+          enableTodoIntegration = false;
+          pincardsEnabled = true;
+          notecardsEnabled = true;
+          showCloseButton = false;
+          fullscreenMode = false;
+          hidePanelBackground = false;
+          autoPaste = false;
+          autoPasteOnRightClick = false;
+          autoPasteDelay = 300;
+          cardColors = {
+            Text = {
+              bg = "mOutline";
+              separator = "mSurface";
+              fg = "mOnSurface";
+            };
+            Image = {
+              bg = "mTertiary";
+              separator = "mSurface";
+              fg = "mOnTertiary";
+            };
+            Link = {
+              bg = "mPrimary";
+              separator = "mSurface";
+              fg = "mOnPrimary";
+            };
+            Code = {
+              bg = "mSecondary";
+              separator = "mSurface";
+              fg = "mOnSecondary";
+            };
+            Color = {
+              bg = "mSecondary";
+              separator = "mSurface";
+              fg = "mOnSecondary";
+            };
+            Emoji = {
+              bg = "mHover";
+              separator = "mSurface";
+              fg = "mOnHover";
+            };
+            File = {
+              bg = "mError";
+              separator = "mSurface";
+              fg = "mOnError";
+            };
+          };
+        };
+
+        screen-recorder = {
+          hideInactive = false;
+          iconColor = "none";
+          directory = "";
+          filenamePattern = "recording_yyyyMMdd_HHmmss";
+          frameRate = "60";
+          customFrameRate = "60";
+          audioCodec = "opus";
+          videoCodec = "h264";
+          quality = "very_high";
+          colorRange = "limited";
+          showCursor = true;
+          copyToClipboard = true;
+          audioSource = "default_output";
+          videoSource = "portal";
+          resolution = "original";
+          restorePortalSession = false;
+          replayEnabled = false;
+          replayDuration = "30";
+          customReplayDuration = "30";
+          replayStorage = "ram";
+        };
+
+        assistant-panel = {
+          ai = {
+            provider = "google";
+            models = {};
+            temperature = 0.7;
+            systemPrompt = "You are a helpful assistant integrated into a Linux desktop shell. Be concise and helpful.";
+            openaiLocal = false;
+            openaiBaseUrl = "https://api.openai.com/v1/chat/completions";
+            model = "";
+          };
+          translator = {
+            backend = "google";
+            deeplApiKey = "";
+            realTimeTranslation = true;
+          };
+          maxHistoryLength = 100;
+          panelDetached = false;
+          panelPosition = "left";
+          panelHeightRatio = 0.85;
+          panelWidth = 520;
+          attachmentStyle = "connected";
+          scale = 1;
+        };
+
+        keybind-cheatsheet = {
+          cheatsheetData = [];
+          detectedCompositor =
+            if isNiri
+            then "niri"
+            else "labwc";
+          niriConfigPath = "~/.config/niri/config.kdl";
+          labwcConfigPath = "~/.config/labwc/rc.xml";
+          hyprlandConfigPath = "~/.config/hypr/hyprland.conf";
+          modKeyVariable = "$mod";
+          windowHeight = 850;
+          windowWidth = 1400;
+        };
+
+        usb-drive-manager = {
+          autoMount = isNiri;
+          fileBrowser = "yazi";
+          terminalCommand = "foot";
+          showNotifications = true;
+          hideWhenEmpty = true;
+          showBadge = true;
+        };
+      }
+      // lib.optionalAttrs isNiri {
+        niri-auto-tile = {
+          enabled = true;
+          perWorkspace = true;
+          onlyAtMax = true;
+          maxVisible = 2;
+          debounceMs = 300;
+          maxEventsPerSecond = 20;
         };
       };
-
-      screen-recorder = {
-        hideInactive = false;
-        iconColor = "none";
-        directory = "";
-        filenamePattern = "recording_yyyyMMdd_HHmmss";
-        frameRate = "60";
-        customFrameRate = "60";
-        audioCodec = "opus";
-        videoCodec = "h264";
-        quality = "very_high";
-        colorRange = "limited";
-        showCursor = true;
-        copyToClipboard = true;
-        audioSource = "default_output";
-        videoSource = "portal";
-        resolution = "original";
-        restorePortalSession = false;
-        replayEnabled = false;
-        replayDuration = "30";
-        customReplayDuration = "30";
-        replayStorage = "ram";
-      };
-
-      assistant-panel = {
-        ai = {
-          provider = "google";
-          models = {};
-          temperature = 0.7;
-          systemPrompt = "You are a helpful assistant integrated into a Linux desktop shell. Be concise and helpful.";
-          openaiLocal = false;
-          openaiBaseUrl = "https://api.openai.com/v1/chat/completions";
-          model = "";
-        };
-        translator = {
-          backend = "google";
-          deeplApiKey = "";
-          realTimeTranslation = true;
-        };
-        maxHistoryLength = 100;
-        panelDetached = false;
-        panelPosition = "left";
-        panelHeightRatio = 0.85;
-        panelWidth = 520;
-        attachmentStyle = "connected";
-        scale = 1;
-      };
-
-      keybind-cheatsheet = {
-        cheatsheetData = [];
-        detectedCompositor = if isNiri then "niri" else "labwc";
-        niriConfigPath = "~/.config/niri/config.kdl";
-        labwcConfigPath = "~/.config/labwc/rc.xml";
-        hyprlandConfigPath = "~/.config/hypr/hyprland.conf";
-        modKeyVariable = "$mod";
-        windowHeight = 850;
-        windowWidth = 1400;
-      };
-
-      usb-drive-manager = {
-        autoMount = isNiri;
-        fileBrowser = "yazi";
-        terminalCommand = "foot";
-        showNotifications = true;
-        hideWhenEmpty = true;
-        showBadge = true;
-      };
-    } // lib.optionalAttrs isNiri {
-      niri-auto-tile = {
-        enabled = true;
-        perWorkspace = true;
-        onlyAtMax = true;
-        maxVisible = 2;
-        debounceMs = 300;
-        maxEventsPerSecond = 20;
-      };
-    };
   };
 
   # Lock Noctalia before the system enters sleep — runs as a systemd user pre-sleep service.
@@ -898,22 +1015,22 @@ in {
     let
       c = config.lib.stylix.colors;
     in {
-      mPrimary          = "#${c.base09}";
-      mOnPrimary        = "#${c.base00}";
-      mSecondary        = "#${c.base0C}";
-      mOnSecondary      = "#${c.base00}";
-      mTertiary         = "#${c.base0B}";
-      mOnTertiary       = "#${c.base00}";
-      mError            = "#${c.base08}";
-      mOnError          = "#${c.base00}";
-      mSurface          = "#${c.base00}";
-      mOnSurface        = "#${c.base05}";
-      mHover            = "#${c.base09}";
-      mOnHover          = "#${c.base00}";
-      mSurfaceVariant   = "#${c.base01}";
+      mPrimary = "#${c.base09}";
+      mOnPrimary = "#${c.base00}";
+      mSecondary = "#${c.base0C}";
+      mOnSecondary = "#${c.base00}";
+      mTertiary = "#${c.base0B}";
+      mOnTertiary = "#${c.base00}";
+      mError = "#${c.base08}";
+      mOnError = "#${c.base00}";
+      mSurface = "#${c.base00}";
+      mOnSurface = "#${c.base05}";
+      mHover = "#${c.base09}";
+      mOnHover = "#${c.base00}";
+      mSurfaceVariant = "#${c.base01}";
       mOnSurfaceVariant = "#${c.base04}";
-      mOutline          = "#${c.base03}";
-      mShadow           = "#${c.base00}";
+      mOutline = "#${c.base03}";
+      mShadow = "#${c.base00}";
     }
   ));
 
@@ -927,28 +1044,37 @@ in {
   xdg.configFile."noctalia/plugins/assistant-panel/settings.json".force = true;
   xdg.configFile."noctalia/plugins/keybind-cheatsheet/settings.json".force = true;
   xdg.configFile."noctalia/plugins/usb-drive-manager/settings.json".force = true;
-  xdg.configFile."noctalia/plugins/niri-auto-tile/settings.json" = lib.mkIf isNiri { force = true; };
+  xdg.configFile."noctalia/plugins/niri-auto-tile/settings.json" = lib.mkIf isNiri {force = true;};
 
   # Seed Noctalia plugins.json with merge semantics — preserves existing download state.
   # If plugins.json is missing or a Nix store symlink: seed with the full declared list.
   # If it's a real file (managed by Noctalia at runtime): merge in any missing entries.
-  home.activation.seedNoctaliaPlugins =
-    let
-      sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins";
-      mkPlugin  = { enabled = true; inherit sourceUrl; };
-      seed = pkgs.writeText "noctalia-plugins-seed.json" (builtins.toJSON {
-        sources = [{ enabled = true; name = "Noctalia Plugins"; url = sourceUrl; }];
-        states = {
-          assistant-panel        = mkPlugin;
-          calibre-provider       = mkPlugin;
-          clipper                = mkPlugin;
-          color-scheme-creator   = mkPlugin;
-          display-settings       = mkPlugin;
-          file-search            = mkPlugin;
-          hassio                 = mkPlugin;
-          khal-agenda-widget     = mkPlugin;
-          keybind-cheatsheet     = mkPlugin;
-          mirror-mirror          = mkPlugin;
+  home.activation.seedNoctaliaPlugins = let
+    sourceUrl = "https://github.com/noctalia-dev/noctalia-plugins";
+    mkPlugin = {
+      enabled = true;
+      inherit sourceUrl;
+    };
+    seed = pkgs.writeText "noctalia-plugins-seed.json" (builtins.toJSON {
+      sources = [
+        {
+          enabled = true;
+          name = "Noctalia Plugins";
+          url = sourceUrl;
+        }
+      ];
+      states =
+        {
+          assistant-panel = mkPlugin;
+          calibre-provider = mkPlugin;
+          clipper = mkPlugin;
+          color-scheme-creator = mkPlugin;
+          display-settings = mkPlugin;
+          file-search = mkPlugin;
+          hassio = mkPlugin;
+          khal-agenda-widget = mkPlugin;
+          keybind-cheatsheet = mkPlugin;
+          mirror-mirror = mkPlugin;
           # NO `mullvad` PLUGIN.  The VPN is IVPN as of 2026-09-07, and the
           # bar indicator for it is `network-manager-vpn` below: IVPN's
           # WireGuard profiles are imported into NetworkManager, so the
@@ -956,22 +1082,24 @@ in {
           # one would not.  Keeping the mullvad plugin alongside would put a
           # permanently-disconnected VPN widget in the bar, which is worse
           # than no widget — it is an indicator that always reads "off".
-          network-manager-vpn    = mkPlugin;
-          nvim-session-provider  = mkPlugin;
-          obs-control            = mkPlugin;
-          polkit-agent           = mkPlugin;
-          screen-recorder        = mkPlugin;
+          network-manager-vpn = mkPlugin;
+          nvim-session-provider = mkPlugin;
+          obs-control = mkPlugin;
+          polkit-agent = mkPlugin;
+          screen-recorder = mkPlugin;
           screen-shot-and-record = mkPlugin;
-          screenshot             = mkPlugin;
-          screen-toolkit         = mkPlugin;
-          shell-profiles         = mkPlugin;
-          todo                   = mkPlugin;
-          usb-drive-manager      = mkPlugin;
-          valent-connect         = mkPlugin;
-          weekly-calendar        = mkPlugin;
-        } // lib.optionalAttrs isNiri {
-          niri-auto-tile         = mkPlugin;
-        } // lib.optionalAttrs isLgo {
+          screenshot = mkPlugin;
+          screen-toolkit = mkPlugin;
+          shell-profiles = mkPlugin;
+          todo = mkPlugin;
+          usb-drive-manager = mkPlugin;
+          valent-connect = mkPlugin;
+          weekly-calendar = mkPlugin;
+        }
+        // lib.optionalAttrs isNiri {
+          niri-auto-tile = mkPlugin;
+        }
+        // lib.optionalAttrs isLgo {
           # Giphy GIF search from the launcher (`>gif <query>`). lgo only.
           #
           # DELIBERATELY NO `pluginSettings.giphy-search` ENTRY, no
@@ -1005,11 +1133,11 @@ in {
           # above has the same wipe-on-rebuild shape. It is inert today
           # because that backend is "google", but it is worth knowing about
           # before anyone switches it to DeepL and wonders where the key went.)
-          giphy-search           = mkPlugin;
+          giphy-search = mkPlugin;
         };
-        version = 2;
-      });
-    in
+      version = 2;
+    });
+  in
     lib.hm.dag.entryAfter ["linkGeneration"] ''
       _json="$HOME/.config/noctalia/plugins.json"
       if [ ! -e "$_json" ] || [ -L "$_json" ]; then
@@ -1083,10 +1211,10 @@ in {
     ''}
   '';
 
-  gtk.gtk4.theme = lib.mkForce null;   # newer stylix sets a non-null theme; mkForce keeps Noctalia's no-GTK4-theme intent
+  gtk.gtk4.theme = lib.mkForce null; # newer stylix sets a non-null theme; mkForce keeps Noctalia's no-GTK4-theme intent
 
   gtk.iconTheme = {
-    name    = osConfig.clanarchy.iconTheme.name;
+    name = osConfig.clanarchy.iconTheme.name;
     package = osConfig.clanarchy.iconTheme.package;
   };
 
@@ -1149,10 +1277,10 @@ in {
       custom = {
         jj = {
           description = "jj bookmark, or change id, when inside a jj repo";
-          when         = "jj root --ignore-working-copy > /dev/null 2>&1";
+          when = "jj root --ignore-working-copy > /dev/null 2>&1";
           # starship pipes `command` to this shell on stdin — do NOT add -c.
-          shell        = [ "bash" "--noprofile" "--norc" ];
-          command      = ''
+          shell = ["bash" "--noprofile" "--norc"];
+          command = ''
             jj log -r @ -n1 --ignore-working-copy --no-graph \
               -T 'coalesce(bookmarks.join(" "), separate("~", parents.map(|p| p.bookmarks().join(" ")).join(""), change_id.shortest(6)))'
           '';
@@ -1169,10 +1297,10 @@ in {
         # where it tells the truth, i.e. outside a jj repo.
         git_branch = {
           description = "builtin git_branch, suppressed inside a jj repo";
-          when         = "! jj root --ignore-working-copy > /dev/null 2>&1";
-          shell        = [ "bash" "--noprofile" "--norc" ];
-          command      = "starship module git_branch";
-          format       = "$output";
+          when = "! jj root --ignore-working-copy > /dev/null 2>&1";
+          shell = ["bash" "--noprofile" "--norc"];
+          command = "starship module git_branch";
+          format = "$output";
           ignore_timeout = true;
         };
       };
@@ -1251,26 +1379,32 @@ in {
         command = "loginctl lock-session";
       }
       ({
-        timeout = 330;
-        command = if isNiri
-          then "niri msg action power-off-monitors"
-          else "${pkgs.wlopm}/bin/wlopm --off '*'";
-      } // lib.optionalAttrs isLabwc {
-        resumeCommand = "${pkgs.wlopm}/bin/wlopm --on '*'";
-      })
+          timeout = 330;
+          command =
+            if isNiri
+            then "niri msg action power-off-monitors"
+            else "${pkgs.wlopm}/bin/wlopm --off '*'";
+        }
+        // lib.optionalAttrs isLabwc {
+          resumeCommand = "${pkgs.wlopm}/bin/wlopm --on '*'";
+        })
     ];
   };
 
-  home.packages = with pkgs; [
-    grim
-    slurp
-    wl-clipboard
-    playerctl
-  ] ++ lib.optionals isNiri [ ghostty ]
-    ++ lib.optionals isLabwc [ wlopm ]
-    ++ (if isNiri
-        then [ pkgs.nextcloud-client ]
-        else lib.optional osConfig.clanarchy.desktop.labwc.nextcloud.enable pkgs.nextcloud-client);
+  home.packages = with pkgs;
+    [
+      grim
+      slurp
+      wl-clipboard
+      playerctl
+    ]
+    ++ lib.optionals isNiri [ghostty]
+    ++ lib.optionals isLabwc [wlopm]
+    ++ (
+      if isNiri
+      then [pkgs.nextcloud-client]
+      else lib.optional osConfig.clanarchy.desktop.labwc.nextcloud.enable pkgs.nextcloud-client
+    );
 
   systemd.user.services.nextcloud-client = lib.mkIf (isNiri || osConfig.clanarchy.desktop.labwc.nextcloud.enable) {
     Unit = {

@@ -5,15 +5,14 @@
 # same 10-item list of shared modules.  Rather than repeating all that
 # boilerplate in each `clan.machines.<name>` block, flake.nix imports
 # this file once and picks the pieces it needs.
-{ inputs }:
-let
+{inputs}: let
   unstablePkgs = import inputs.nixpkgs-unstable {
     system = "x86_64-linux";
     # Same overlays as the stable instance built by `pkgsForSystem` in
     # clan.nix.  A machine on `clanarchy.channel = "unstable"` takes its
     # whole `pkgs` from here, so leaving them off means package overrides
     # silently apply to some machines and not others.
-    overlays = [ (import ./overlays.nix) ];
+    overlays = [(import ./overlays.nix)];
     config = {
       allowUnfree = true;
       # birte pulls pnpm-9.15.9 transitively (Jovian / KDE tooling).  Since
@@ -21,25 +20,26 @@ let
       # `clanarchy.channel = "unstable"` — see modules/channel.nix),
       # `nixpkgs.config` cannot be layered on at the NixOS level --
       # allowed insecure packages must live inside the pkgs instance.
-      permittedInsecurePackages = [ "pnpm-9.15.9" ];
+      permittedInsecurePackages = ["pnpm-9.15.9"];
     };
   };
-in
-rec {
+in rec {
   # Injects pkgs-unstable + inputs as module args on every machine.
   # Modules can then take `{ pkgs-unstable, inputs, ... }` in their signature.
-  mkModuleArgs = { extraArgs ? { } }: {
-    _module.args = {
-      pkgs-unstable = unstablePkgs;
-      inherit inputs;
-    } // extraArgs;
+  mkModuleArgs = {extraArgs ? {}}: {
+    _module.args =
+      {
+        pkgs-unstable = unstablePkgs;
+        inherit inputs;
+      }
+      // extraArgs;
   };
 
   # nixpkgs 26.05 restructured services.kmscon; stylix's kmscon target still
   # writes services.kmscon.config which no longer exists.  Bundled into
   # commonHeadful so machines using stylix don't have to think about it.
   stylixKmsconFix = {
-    disabledModules = [ "${inputs.stylix}/modules/kmscon/nixos.nix" ];
+    disabledModules = ["${inputs.stylix}/modules/kmscon/nixos.nix"];
   };
 
   # Universal modules — imported by every clan machine, headful or headless.
@@ -96,17 +96,19 @@ rec {
   # Headful (workstation) machines: adds stylix + display + apps + NM DNS
   # routing (NM is only enabled on the NM-managed machines — see wifi service).
   # Ernst opts out — headless homelab server, no stylix / no apps / networkd.
-  commonHeadful = commonBase ++ [
-    inputs.stylix.nixosModules.stylix
-    stylixKmsconFix
-    ../modules/hardware/display.nix
-    ../modules/networking/skynet-dns-nm.nix
-    ../modules/apps
-    # M22. The darktable end of the photo pipeline: a watched export folder
-    # pushed to Immich on ernst. Imported here and INERT until enabled, the
-    # same shape as hardware/convertible.nix in commonBase — it declares
-    # `clanarchy.immich.upload` and does nothing at all until a machine turns
-    # it on. Consumers: miralda, jens.
-    ../modules/immich-upload.nix
-  ];
+  commonHeadful =
+    commonBase
+    ++ [
+      inputs.stylix.nixosModules.stylix
+      stylixKmsconFix
+      ../modules/hardware/display.nix
+      ../modules/networking/skynet-dns-nm.nix
+      ../modules/apps
+      # M22. The darktable end of the photo pipeline: a watched export folder
+      # pushed to Immich on ernst. Imported here and INERT until enabled, the
+      # same shape as hardware/convertible.nix in commonBase — it declares
+      # `clanarchy.immich.upload` and does nothing at all until a machine turns
+      # it on. Consumers: miralda, jens.
+      ../modules/immich-upload.nix
+    ];
 }

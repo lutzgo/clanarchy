@@ -15,8 +15,12 @@
 # Machines with a genuinely bespoke Stylix setup (biene, birte — machine-native
 # wallpaper resolutions, no regreet on birte) keep their own
 # machines/<name>/stylix.nix and do not import this.
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   palettes = import ./palettes.nix;
   theme = palettes.${config.clanarchy.theme};
 
@@ -30,48 +34,47 @@ let
   # wallpaper is superseded per-workspace by modules/wallpapers/nix-anarchy.nix.
   nixWallpaper =
     pkgs.runCommand "clanarchy-wallpaper.png"
-      {
-        nativeBuildInputs = [ pkgs.imagemagick ];
-      }
-      ''
-        set -eu
+    {
+      nativeBuildInputs = [pkgs.imagemagick];
+    }
+    ''
+      set -eu
 
-        outpng="$out"
+      outpng="$out"
 
-        # Dimensions (change if you want)
-        W=3840
-        H=2160
+      # Dimensions (change if you want)
+      W=3840
+      H=2160
 
-        # Background + accents from the active Stylix scheme
-        BG="#${c.base00}"
-        FG="#${c.base05}"
-        A1="#${c.base0D}"  # typically "blue"
-        A2="#${c.base0A}"  # typically "yellow"
-        A3="#${c.base08}"  # typically "red"
+      # Background + accents from the active Stylix scheme
+      BG="#${c.base00}"
+      FG="#${c.base05}"
+      A1="#${c.base0D}"  # typically "blue"
+      A2="#${c.base0A}"  # typically "yellow"
+      A3="#${c.base08}"  # typically "red"
 
-        # Create background with grain, snowflake emblem, and label
-        magick -size ''${W}x''${H} xc:"$BG" \
-          \( +clone -noise 2 -blur 0x1 \) -compose overlay -composite \
-          -stroke "$A1" -strokewidth 18 -fill none \
-          -draw "line $((W/2)),$((H/2-320)) $((W/2)),$((H/2+320))" \
-          -draw "line $((W/2-277)),$((H/2-160)) $((W/2+277)),$((H/2+160))" \
-          -draw "line $((W/2-277)),$((H/2+160)) $((W/2+277)),$((H/2-160))" \
-          -stroke "$A2" -strokewidth 18 \
-          -draw "circle $((W/2)),$((H/2-320)) $((W/2+1)),$((H/2-320))" \
-          -draw "circle $((W/2)),$((H/2+320)) $((W/2+1)),$((H/2+320))" \
-          -draw "circle $((W/2-277)),$((H/2-160)) $((W/2-276)),$((H/2-160))" \
-          -draw "circle $((W/2+277)),$((H/2+160)) $((W/2+278)),$((H/2+160))" \
-          -draw "circle $((W/2-277)),$((H/2+160)) $((W/2-276)),$((H/2+160))" \
-          -draw "circle $((W/2+277)),$((H/2-160)) $((W/2+278)),$((H/2-160))" \
-          -fill "$FG" -stroke none \
-          -font "${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans.ttf" \
-          -pointsize 44 \
-          -gravity southeast -annotate +80+70 "clanarchy" \
-          "$outpng"
-      '';
-in
-{
-  imports = [ ../stylix-base.nix ];
+      # Create background with grain, snowflake emblem, and label
+      magick -size ''${W}x''${H} xc:"$BG" \
+        \( +clone -noise 2 -blur 0x1 \) -compose overlay -composite \
+        -stroke "$A1" -strokewidth 18 -fill none \
+        -draw "line $((W/2)),$((H/2-320)) $((W/2)),$((H/2+320))" \
+        -draw "line $((W/2-277)),$((H/2-160)) $((W/2+277)),$((H/2+160))" \
+        -draw "line $((W/2-277)),$((H/2+160)) $((W/2+277)),$((H/2-160))" \
+        -stroke "$A2" -strokewidth 18 \
+        -draw "circle $((W/2)),$((H/2-320)) $((W/2+1)),$((H/2-320))" \
+        -draw "circle $((W/2)),$((H/2+320)) $((W/2+1)),$((H/2+320))" \
+        -draw "circle $((W/2-277)),$((H/2-160)) $((W/2-276)),$((H/2-160))" \
+        -draw "circle $((W/2+277)),$((H/2+160)) $((W/2+278)),$((H/2+160))" \
+        -draw "circle $((W/2-277)),$((H/2+160)) $((W/2-276)),$((H/2+160))" \
+        -draw "circle $((W/2+277)),$((H/2-160)) $((W/2+278)),$((H/2-160))" \
+        -fill "$FG" -stroke none \
+        -font "${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans.ttf" \
+        -pointsize 44 \
+        -gravity southeast -annotate +80+70 "clanarchy" \
+        "$outpng"
+    '';
+in {
+  imports = [../stylix-base.nix];
 
   options.clanarchy.theme = lib.mkOption {
     # enum over the registry keys, so a typo names the valid alternatives
@@ -92,12 +95,14 @@ in
     # Overrides the fleet default (lib.mkDefault "dark") in ../stylix-base.nix.
     polarity = theme.polarity;
 
-    fonts.sizes = {
-      applications = 11;
-      terminal     = 12;
-      desktop      = 11;
-      popups       = 11;
-    } // (theme.fontSizes or { });
+    fonts.sizes =
+      {
+        applications = 11;
+        terminal = 12;
+        desktop = 11;
+        popups = 11;
+      }
+      // (theme.fontSizes or {});
 
     # Both consumers use regreet; mkDefault so a future one can opt out.
     targets.regreet.enable = lib.mkDefault true;

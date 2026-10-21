@@ -190,21 +190,22 @@
       url = "github:Jovian-Experiments/Jovian-NixOS";
       inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
-
   };
 
-  outputs = inputs@{ flake-parts, clan-core, ... }:
-    let
-      # Machine-composition helpers — mkModuleArgs, commonBase,
-      # commonHeadful. See lib/mk-machine.nix for details. Per-machine
-      # nixpkgs channel selection lives in modules/channel.nix (option
-      # `clanarchy.channel`).
-      machineLib = import ./lib/mk-machine.nix { inherit inputs; };
-      inherit (machineLib) mkModuleArgs commonBase commonHeadful;
-    in
-    flake-parts.lib.mkFlake { inherit inputs; } {
-
-      systems = [ "x86_64-linux" ];
+  outputs = inputs @ {
+    flake-parts,
+    clan-core,
+    ...
+  }: let
+    # Machine-composition helpers — mkModuleArgs, commonBase,
+    # commonHeadful. See lib/mk-machine.nix for details. Per-machine
+    # nixpkgs channel selection lives in modules/channel.nix (option
+    # `clanarchy.channel`).
+    machineLib = import ./lib/mk-machine.nix {inherit inputs;};
+    inherit (machineLib) mkModuleArgs commonBase commonHeadful;
+  in
+    flake-parts.lib.mkFlake {inherit inputs;} {
+      systems = ["x86_64-linux"];
 
       # flake-parts modules
       imports = [
@@ -212,7 +213,11 @@
         ./clan.nix
       ];
 
-      perSystem = { pkgs, system, ... }: {
+      perSystem = {
+        pkgs,
+        system,
+        ...
+      }: {
         # ── `nix fmt` ───────────────────────────────────────────────────────
         #
         # alejandra rather than nixfmt: lgo's choice, and it is the one with a
@@ -235,18 +240,17 @@
         # Dropping the context keeps the forced evaluation — which is the whole
         # point — without the build.
         checks = {
-          eval-machines = pkgs.runCommand "eval-machines" { } ''
-            ${pkgs.lib.concatMapStringsSep "\n" (m:
-              "echo ${m}: ${builtins.unsafeDiscardStringContext
-                 inputs.self.nixosConfigurations.${m}.config.system.build.toplevel.drvPath}")
-              [ "miralda" "jens" "biene" "birte" "ernst" ]}
+          eval-machines = pkgs.runCommand "eval-machines" {} ''
+            ${pkgs.lib.concatMapStringsSep "\n" (m: "echo ${m}: ${builtins.unsafeDiscardStringContext
+              inputs.self.nixosConfigurations.${m}.config.system.build.toplevel.drvPath}")
+            ["miralda" "jens" "biene" "birte" "ernst"]}
             touch $out
           '';
 
           # 37 tests covering mneme's Ollama <-> OpenAI translation, which has
           # no observable failure mode at runtime. They run at build time
           # (`doCheck`), so this check is how they run without building ernst.
-          mneme = pkgs.callPackage ./service-modules/pkgs/mneme { };
+          mneme = pkgs.callPackage ./service-modules/pkgs/mneme {};
 
           # ── Every shell script this repo generates, BUILT ────────────────
           #
@@ -268,172 +272,212 @@
           # scheme appears, and `scriptsFound` asserts the filter still
           # matches something on every machine, so a rename cannot silently
           # empty it.
-          scripts =
-            let
-              inherit (pkgs.lib) filter hasPrefix elem concatLists;
-              named = [ "ai-status" "rom-import" "course-import" "photo-import"
-                        "music-stage" "storyteller-stage" ];
-              ours = p:
-                (p.name or null) != null
-                && (hasPrefix "clanarchy-" p.name
-                    || hasPrefix "steamos-" p.name
-                    || elem p.name named);
-              forMachine = m:
-                filter ours inputs.self.nixosConfigurations.${m}.config.environment.systemPackages;
-              all = concatLists (map forMachine [ "miralda" "jens" "biene" "birte" "ernst" ]);
-              scriptsFound =
-                if all == [ ] then
-                  throw "checks.scripts: the filter matched nothing — did a naming scheme change?"
-                else all;
-            in
-            pkgs.runCommand "scripts-build" { buildInputs = scriptsFound; } ''
+          scripts = let
+            inherit (pkgs.lib) filter hasPrefix elem concatLists;
+            named = [
+              "ai-status"
+              "rom-import"
+              "course-import"
+              "photo-import"
+              "music-stage"
+              "storyteller-stage"
+            ];
+            ours = p:
+              (p.name or null)
+              != null
+              && (hasPrefix "clanarchy-" p.name
+                || hasPrefix "steamos-" p.name
+                || elem p.name named);
+            forMachine = m:
+              filter ours inputs.self.nixosConfigurations.${m}.config.environment.systemPackages;
+            all = concatLists (map forMachine ["miralda" "jens" "biene" "birte" "ernst"]);
+            scriptsFound =
+              if all == []
+              then throw "checks.scripts: the filter matched nothing — did a naming scheme change?"
+              else all;
+          in
+            pkgs.runCommand "scripts-build" {buildInputs = scriptsFound;} ''
               touch $out
             '';
 
           # The container modules ship with no consumers, so without this they
           # would be "evaluates clean" and nothing more. ./tests/ declares one
           # container of each tier and this asserts the units that come out.
-          container-modules =
-            let
-              t = import ./tests/container-modules.nix { inherit (pkgs) lib; nixpkgs = inputs.nixpkgs; };
-              svc = n: t.systemd.services.${n};
-              has = hay: needle: pkgs.lib.hasInfix needle hay;
-              must = name: cond:
-                if cond then "" else throw "container-modules: ${name}";
-            in
-            pkgs.runCommand "container-modules-test" { } ''
+          container-modules = let
+            t = import ./tests/container-modules.nix {
+              inherit (pkgs) lib;
+              nixpkgs = inputs.nixpkgs;
+            };
+            svc = n: t.systemd.services.${n};
+            has = hay: needle: pkgs.lib.hasInfix needle hay;
+            must = name: cond:
+              if cond
+              then ""
+              else throw "container-modules: ${name}";
+          in
+            pkgs.runCommand "container-modules-test" {} ''
               ${must "widget-dirs guards the state mount"
-                 (has (svc "widget-dirs").script "findmnt --noheadings --output SOURCE --target /srv/state")}
+                (has (svc "widget-dirs").script "findmnt --noheadings --output SOURCE --target /srv/state")}
               ${must "widget-dirs refuses the wrong source"
-                 (has (svc "widget-dirs").script "!= zdata/state"
+                (has (svc "widget-dirs").script "!= zdata/state"
                   && has (svc "widget-dirs").script "exit 1")}
               ${must "widget-dirs installs with numeric ownership"
-                 (has (svc "widget-dirs").script "install -d -o 3099 -g 3099 -m 0700 /srv/state/widget")}
+                (has (svc "widget-dirs").script "install -d -o 3099 -g 3099 -m 0700 /srv/state/widget")}
               ${must "widget-dirs blocks the container"
-                 (pkgs.lib.elem "container@widget.service" (svc "widget-dirs").requiredBy)}
+                (pkgs.lib.elem "container@widget.service" (svc "widget-dirs").requiredBy)}
               ${must "widget-dirs is ordered after the mount"
-                 (pkgs.lib.elem "srv-state.mount" (svc "widget-dirs").requires)}
+                (pkgs.lib.elem "srv-state.mount" (svc "widget-dirs").requires)}
 
               ${must "gadget guards its second mount too"
-                 (pkgs.lib.elem "srv-photos.mount" (svc "gadget-dirs").requires)}
+                (pkgs.lib.elem "srv-photos.mount" (svc "gadget-dirs").requires)}
               ${must "gadget-secrets writes then renames"
-                 (has (svc "gadget-secrets").script "mv -f /run/gadget-secrets/oidc.env.tmp /run/gadget-secrets/oidc.env")}
+                (has (svc "gadget-secrets").script "mv -f /run/gadget-secrets/oidc.env.tmp /run/gadget-secrets/oidc.env")}
               ${must "gadget-secrets locks the file down"
-                 (has (svc "gadget-secrets").script "chmod 0400")}
+                (has (svc "gadget-secrets").script "chmod 0400")}
               ${must "a missing var does not take the container down"
-                 (has (svc "gadget-secrets").script "readvar() { [ -r \"$1\" ] && cat \"$1\" || true; }")}
+                (has (svc "gadget-secrets").script "readvar() { [ -r \"$1\" ] && cat \"$1\" || true; }")}
               ${must "gadget binds its secrets directory read-only"
-                 (t.containers.gadget.bindMounts."/run/gadget-secrets".isReadOnly)}
+                (t.containers.gadget.bindMounts."/run/gadget-secrets".isReadOnly)}
 
               ${must "widget takes the host MAC and bridge"
-                 (t.containers.widget.localMacAddress == "02:00:00:90:00:63"
+                (t.containers.widget.localMacAddress
+                  == "02:00:00:90:00:63"
                   && t.containers.widget.hostBridge == "br0")}
               ${must "widget pins its uid inside the container"
-                 (t.containers.widget.config.users.users.widget.uid == 3099)}
+                (t.containers.widget.config.users.users.widget.uid == 3099)}
               ${must "the container resolver is pinned, not inherited"
-                 (t.containers.widget.config.systemd.network.networks."10-eth0".networkConfig.DNS == "10.0.5.3")}
+                (t.containers.widget.config.systemd.network.networks."10-eth0".networkConfig.DNS == "10.0.5.3")}
               ${must "IPv6 link-local is off inside the container"
-                 (t.containers.widget.config.systemd.network.networks."10-eth0".networkConfig.LinkLocalAddressing == "no")}
+                (t.containers.widget.config.systemd.network.networks."10-eth0".networkConfig.LinkLocalAddressing == "no")}
               ${must "an interface-confined UDP rule omits -s entirely"
-                 (has t.containers.gadget.config.networking.firewall.extraCommands
-                    "iptables -A nixos-fw -i iot9 -p udp --dport 5353 -j nixos-fw-accept")}
+                (has t.containers.gadget.config.networking.firewall.extraCommands
+                  "iptables -A nixos-fw -i iot9 -p udp --dport 5353 -j nixos-fw-accept")}
               ${must "a port range and a source render in iptables order"
-                 (has t.containers.gadget.config.networking.firewall.extraCommands
-                    "iptables -A nixos-fw -i iot9 -p udp -s 10.0.20.31/32 --dport 32768:60999 -j nixos-fw-accept")}
+                (has t.containers.gadget.config.networking.firewall.extraCommands
+                  "iptables -A nixos-fw -i iot9 -p udp -s 10.0.20.31/32 --dport 32768:60999 -j nixos-fw-accept")}
               ${must "a ULA leg keeps the link-scope route AND its own"
-                 (t.containers.gadget.config.systemd.network.networks."20-ai9".routes
-                    == [ { Destination = "fdca:fe99::1/128"; Scope = "link"; }
-                         { Destination = "fdda::9/128"; Gateway = "fdca:fe99::1"; } ])}
+                (t.containers.gadget.config.systemd.network.networks."20-ai9".routes
+                  == [
+                    {
+                      Destination = "fdca:fe99::1/128";
+                      Scope = "link";
+                    }
+                    {
+                      Destination = "fdda::9/128";
+                      Gateway = "fdca:fe99::1";
+                    }
+                  ])}
               ${must "a required secret fails the staging unit when empty"
-                 (has (svc "gadget-secrets").script "needvar")}
+                (has (svc "gadget-secrets").script "needvar")}
               ${must "a tolerant secret still stages empty"
-                 (has (svc "gadget-secrets").script "readvar")}
+                (has (svc "gadget-secrets").script "readvar")}
               ${must "resolved off means no DNS= on the link"
-                 (t.containers.doodad.config.services.resolved.enable == false
+                (t.containers.doodad.config.services.resolved.enable
+                  == false
                   && !(t.containers.doodad.config.systemd.network.networks."10-eth0".networkConfig ? DNS)
                   && !(t.containers.doodad.config.systemd.network.networks."10-eth0".networkConfig ? Domains))}
               ${must "a rule with no port omits --dport entirely"
-                 (has t.containers.gadget.config.networking.firewall.extraCommands
-                    "iptables -A nixos-fw -p udp -s 192.168.178.1/32 -j nixos-fw-accept")}
+                (has t.containers.gadget.config.networking.firewall.extraCommands
+                  "iptables -A nixos-fw -p udp -s 192.168.178.1/32 -j nixos-fw-accept")}
               ${must "a secondary-bridge leg is enslaved by networkd, not nspawn"
-                 (t.systemd.network.networks."60-frit9".networkConfig.Bridge == "br-test"
+                (t.systemd.network.networks."60-frit9".networkConfig.Bridge
+                  == "br-test"
                   && !(t.systemd.network.networks."60-frit9".networkConfig ? KeepMaster))}
               ${must "a secondary-bridge leg carries no VLAN stanza"
-                 ((t.systemd.network.networks."60-frit9".bridgeVLANs or [ ]) == [ ])}
+                ((t.systemd.network.networks."60-frit9".bridgeVLANs or []) == [])}
               ${must "a static secondary leg takes no DHCP and no gateway"
-                 ((t.containers.gadget.config.systemd.network.networks."20-frit9".networkConfig.Address or null)
-                    == "192.168.178.9/24"
+                ((t.containers.gadget.config.systemd.network.networks."20-frit9".networkConfig.Address or null)
+                  == "192.168.178.9/24"
                   && !(t.containers.gadget.config.systemd.network.networks."20-frit9".networkConfig ? DHCP))}
               ${must "device passthrough reaches the container"
-                 (t.containers.gadget.allowedDevices == [ { node = "char-ttyACM"; modifier = "rw"; } ])}
+                (t.containers.gadget.allowedDevices
+                  == [
+                    {
+                      node = "char-ttyACM";
+                      modifier = "rw";
+                    }
+                  ])}
               ${must "a container that declares no devices gets an empty filter"
-                 (t.containers.widget.allowedDevices == [ ])}
+                (t.containers.widget.allowedDevices == [])}
               ${must "a v6 peer renders as ip6tables with a /128"
-                 (has t.containers.gadget.config.networking.firewall.extraCommands
-                    "ip6tables -A nixos-fw -p tcp -s fdca:fe99::1/128 --dport 3000 -j nixos-fw-accept")}
+                (has t.containers.gadget.config.networking.firewall.extraCommands
+                  "ip6tables -A nixos-fw -p tcp -s fdca:fe99::1/128 --dport 3000 -j nixos-fw-accept")}
               ${must "a v4 peer is never handed to ip6tables"
-                 (!(has t.containers.gadget.config.networking.firewall.extraCommands
-                    "ip6tables -A nixos-fw -p tcp -s 10.0.90.12"))}
+                (!(has t.containers.gadget.config.networking.firewall.extraCommands
+                  "ip6tables -A nixos-fw -p tcp -s 10.0.90.12"))}
               ${must "the short form still renders exactly as before"
-                 (has t.containers.widget.config.networking.firewall.extraCommands
-                    "iptables -A nixos-fw -p tcp -s 10.0.90.12/32 --dport 8080 -j nixos-fw-accept")}
+                (has t.containers.widget.config.networking.firewall.extraCommands
+                  "iptables -A nixos-fw -p tcp -s 10.0.90.12/32 --dport 8080 -j nixos-fw-accept")}
 
               ${must "the firewall admits only the named peer"
-                 (has t.containers.widget.config.networking.firewall.extraCommands
-                    "-s 10.0.90.12/32 --dport 8080 -j nixos-fw-accept")}
+                (has t.containers.widget.config.networking.firewall.extraCommands
+                  "-s 10.0.90.12/32 --dport 8080 -j nixos-fw-accept")}
               ${must "the container opens no ports by default"
-                 (t.containers.widget.config.networking.firewall.allowedTCPPorts == [ ])}
+                (t.containers.widget.config.networking.firewall.allowedTCPPorts == [])}
 
               ${must "the VLAN backstop is idempotent and non-fatal"
-                 (pkgs.lib.any (c: has c "-" && has c "bridge vlan add dev vb-widget vid 90 pvid untagged")
-                    (svc "container@widget").serviceConfig.ExecStartPost)}
+                (pkgs.lib.any (c: has c "-" && has c "bridge vlan add dev vb-widget vid 90 pvid untagged")
+                  (svc "container@widget").serviceConfig.ExecStartPost)}
               ${must "the host veth keeps its master"
-                 (t.systemd.network.networks."60-vb-widget".networkConfig.KeepMaster)}
+                (t.systemd.network.networks."60-vb-widget".networkConfig.KeepMaster)}
 
               ${must "the ULA leg exists on both ends"
-                 (t.containers.gadget.extraVeths.ai9.hostAddress6 == "fdca:fe99::1"
+                (t.containers.gadget.extraVeths.ai9.hostAddress6
+                  == "fdca:fe99::1"
                   && t.containers.gadget.extraVeths.ai9.localAddress6 == "fdca:fe99::2")}
               ${must "the ULA leg does not gate wait-online"
-                 (t.containers.gadget.config.systemd.network.networks."20-ai9".linkConfig.RequiredForOnline == "no")}
+                (t.containers.gadget.config.systemd.network.networks."20-ai9".linkConfig.RequiredForOnline == "no")}
 
               ${must "a VLAN leg gets an addressless extraVeth"
-                 (t.containers.gadget.extraVeths ? iot9
+                (t.containers.gadget.extraVeths ? iot9
                   && t.containers.gadget.extraVeths.iot9.hostAddress6 == null)}
               ${must "a VLAN leg is tagged on the host side under its plain name"
-                 (t.systemd.network.networks."60-iot9".bridgeVLANs
-                    == [ { VLAN = 20; PVID = 20; EgressUntagged = 20; } ])}
+                (t.systemd.network.networks."60-iot9".bridgeVLANs
+                  == [
+                    {
+                      VLAN = 20;
+                      PVID = 20;
+                      EgressUntagged = 20;
+                    }
+                  ])}
               ${must "a VLAN leg gets the same idempotent backstop"
-                 (pkgs.lib.any (x: has x "bridge vlan add dev iot9 vid 20 pvid untagged")
-                    (svc "container@gadget").serviceConfig.ExecStartPost)}
+                (pkgs.lib.any (x: has x "bridge vlan add dev iot9 vid 20 pvid untagged")
+                  (svc "container@gadget").serviceConfig.ExecStartPost)}
               ${must "a VLAN leg takes DHCP but REFUSES its default route"
-                 (let n = t.containers.gadget.config.systemd.network.networks."20-iot9"; in
-                    n.networkConfig.DHCP == "ipv4"
-                    && n.dhcpV4Config.UseGateway == false
-                    && n.dhcpV4Config.UseRoutes == false)}
+                (let
+                  n = t.containers.gadget.config.systemd.network.networks."20-iot9";
+                in
+                  n.networkConfig.DHCP
+                  == "ipv4"
+                  && n.dhcpV4Config.UseGateway == false
+                  && n.dhcpV4Config.UseRoutes == false)}
               ${must "a VLAN leg pins its MAC and does not gate wait-online"
-                 (let n = t.containers.gadget.config.systemd.network.networks."20-iot9"; in
-                    n.linkConfig.MACAddress == "02:00:00:20:00:09"
-                    && n.linkConfig.RequiredForOnline == "no")}
+                (let
+                  n = t.containers.gadget.config.systemd.network.networks."20-iot9";
+                in
+                  n.linkConfig.MACAddress
+                  == "02:00:00:20:00:09"
+                  && n.linkConfig.RequiredForOnline == "no")}
 
               ${must "podman gets a prebuilt netns, not its own network"
-                 (pkgs.lib.elem "--network=ns:/run/netns/doohickey"
-                    t.virtualisation.oci-containers.containers.doohickey.extraOptions)}
+                (pkgs.lib.elem "--network=ns:/run/netns/doohickey"
+                  t.virtualisation.oci-containers.containers.doohickey.extraOptions)}
               ${must "both images share the one namespace"
-                 (pkgs.lib.elem "--network=ns:/run/netns/doohickey"
-                    t.virtualisation.oci-containers.containers.doohickey-db.extraOptions)}
+                (pkgs.lib.elem "--network=ns:/run/netns/doohickey"
+                  t.virtualisation.oci-containers.containers.doohickey-db.extraOptions)}
               ${must "podman runs rootful and unmapped"
-                 (pkgs.lib.elem "--user=3098:3098"
-                    t.virtualisation.oci-containers.containers.doohickey.extraOptions)}
+                (pkgs.lib.elem "--user=3098:3098"
+                  t.virtualisation.oci-containers.containers.doohickey.extraOptions)}
               ${must "dhcpcd does not rewrite the host resolv.conf"
-                 (has (svc "doohickey-dhcp").serviceConfig.ExecStart "--nohook resolv.conf")}
+                (has (svc "doohickey-dhcp").serviceConfig.ExecStart "--nohook resolv.conf")}
               ${must "the netns defaults to DROP"
-                 (has (svc "doohickey-netns").script "iptables -P INPUT DROP")}
+                (has (svc "doohickey-netns").script "iptables -P INPUT DROP")}
               ${must "the netns admits the named peer"
-                 (has (svc "doohickey-netns").script "-s 10.0.90.12/32 --dport 8080 -j ACCEPT")}
+                (has (svc "doohickey-netns").script "-s 10.0.90.12/32 --dport 8080 -j ACCEPT")}
               ${must "the podman host end is bridged, not KeepMaster"
-                 (t.systemd.network.networks."60-vb-doohickey".networkConfig.Bridge == "br0")}
+                (t.systemd.network.networks."60-vb-doohickey".networkConfig.Bridge == "br0")}
               ${must "the healthcheck polls rather than blocking the unit"
-                 (has (svc "doohickey-healthy").script "podman inspect")}
+                (has (svc "doohickey-healthy").script "podman inspect")}
 
               touch $out
             '';
@@ -443,20 +487,20 @@
           packages = with pkgs; [
             # Clan docs recommend exposing the CLI via devShell
             clan-core.packages.${system}.clan-cli
-            alejandra           # the formatter; `fmt` and `fmt-check` wrap it
+            alejandra # the formatter; `fmt` and `fmt-check` wrap it
             git
-            jujutsu             # jj — the VCS front end for this repo, git-colocated.
-                                #      Also in lgo's home.packages, so it is on PATH
-                                #      outside the devShell; listed here too so the
-                                #      shell stays self-contained.  See
-                                #      docs/guides/jj-workflow.md.
+            jujutsu # jj — the VCS front end for this repo, git-colocated.
+            #      Also in lgo's home.packages, so it is on PATH
+            #      outside the devShell; listed here too so the
+            #      shell stays self-contained.  See
+            #      docs/guides/jj-workflow.md.
             openssh
             nixos-rebuild
-            age-plugin-yubikey  # needed for sops re-encryption with YubiKey recipients
-            sops                # needed for manual key rotation / recipient management
+            age-plugin-yubikey # needed for sops re-encryption with YubiKey recipients
+            sops # needed for manual key rotation / recipient management
 
             # Docs
-            python3               # needed for gendocs (gen-options.py)
+            python3 # needed for gendocs (gen-options.py)
             python3Packages.mkdocs-material
           ];
 
@@ -480,15 +524,18 @@
       # lists contain and why.
 
       clan.machines.miralda = {
-        imports = [ (mkModuleArgs { }) ] ++ commonHeadful ++ [
-          ./modules/users/sgo.nix
-          # Palette is selected by name in machines/miralda/configuration.nix
-          # (clanarchy.theme); see modules/themes/palettes.nix for the registry.
-          ./modules/themes
-          ./modules/wallpapers/nix-anarchy.nix
-          ./machines/miralda/configuration.nix
-          ./machines/miralda/disko.nix
-        ];
+        imports =
+          [(mkModuleArgs {})]
+          ++ commonHeadful
+          ++ [
+            ./modules/users/sgo.nix
+            # Palette is selected by name in machines/miralda/configuration.nix
+            # (clanarchy.theme); see modules/themes/palettes.nix for the registry.
+            ./modules/themes
+            ./modules/wallpapers/nix-anarchy.nix
+            ./machines/miralda/configuration.nix
+            ./machines/miralda/disko.nix
+          ];
       };
 
       # jens — Framework Laptop 12 (Intel, convertible).  Deliberately the same
@@ -509,23 +556,29 @@
       # back to its own model and jens has nothing to fall back to.  See
       # roles.opencode in service-modules/local-ai.nix.
       clan.machines.jens = {
-        imports = [ (mkModuleArgs { }) ] ++ commonHeadful ++ [
-          ./modules/themes
-          ./modules/wallpapers/nix-anarchy.nix
-          ./modules/wifi.nix
-          ./machines/jens/configuration.nix
-          ./machines/jens/disko.nix
-        ];
+        imports =
+          [(mkModuleArgs {})]
+          ++ commonHeadful
+          ++ [
+            ./modules/themes
+            ./modules/wallpapers/nix-anarchy.nix
+            ./modules/wifi.nix
+            ./machines/jens/configuration.nix
+            ./machines/jens/disko.nix
+          ];
       };
 
       clan.machines.biene = {
-        imports = [ (mkModuleArgs { }) ] ++ commonHeadful ++ [
-          ./modules/wifi.nix
-          ./machines/biene/configuration.nix
-          ./machines/biene/disko.nix
-          ./machines/biene/stylix.nix
-          ./machines/biene/wallpapers.nix
-        ];
+        imports =
+          [(mkModuleArgs {})]
+          ++ commonHeadful
+          ++ [
+            ./modules/wifi.nix
+            ./machines/biene/configuration.nix
+            ./machines/biene/disko.nix
+            ./machines/biene/stylix.nix
+            ./machines/biene/wallpapers.nix
+          ];
       };
 
       # birte — Steam Deck OLED (Galileo). Boots into Steam Gaming Mode via
@@ -534,273 +587,279 @@
       # unstable); birte opts into it via `clanarchy.channel = "unstable"`
       # in machines/birte/configuration.nix (see modules/channel.nix).
       clan.machines.birte = {
-        imports = [ (mkModuleArgs { }) ] ++ commonHeadful ++ [
-          inputs.jovian-nixos.nixosModules.default
-          ./modules/wifi.nix
-          ./modules/gaming-common.nix
-          ./machines/birte/configuration.nix
-          ./machines/birte/disko.nix
-          ./machines/birte/jovian.nix
-          ./machines/birte/stylix.nix
-          ./machines/birte/deck.nix
-          ./modules/retrodeck/romm-esde-bridge.nix
-        ];
+        imports =
+          [(mkModuleArgs {})]
+          ++ commonHeadful
+          ++ [
+            inputs.jovian-nixos.nixosModules.default
+            ./modules/wifi.nix
+            ./modules/gaming-common.nix
+            ./machines/birte/configuration.nix
+            ./machines/birte/disko.nix
+            ./machines/birte/jovian.nix
+            ./machines/birte/stylix.nix
+            ./machines/birte/deck.nix
+            ./modules/retrodeck/romm-esde-bridge.nix
+          ];
       };
 
       # ernst — AM5/X870E homelab server (NAS + VM host + GPU compute).
       # Headless: uses commonBase (no stylix / display / apps).
       clan.machines.ernst = {
-        imports = [ (mkModuleArgs { }) ] ++ commonBase ++ [
-          ./machines/ernst/configuration.nix
-          ./machines/ernst/disko.nix
-          ./machines/ernst/hardware-configuration.nix
-          ./machines/ernst/networking.nix
-          ./machines/ernst/htpc.nix
-          # The Courses Jellyfin library + `course-import`.  Imported BEFORE
-          # jellyfin.nix only for reading order: it owns /srv/media/library/
-          # courses, which jellyfin.nix bind-mounts into the container.
-          ./machines/ernst/courses.nix
-          ./machines/ernst/containers/jellyfin.nix
-          # The *arr stack, one container across six files. common.nix
-          # declares it; the rest merge into it by media domain. See its
-          # header — the single file was 6,218 lines, which is past what
-          # either a person or a 32k-context model can hold.
-          ./machines/ernst/containers/arr/common.nix
-          ./machines/ernst/containers/arr/storage.nix
-          ./machines/ernst/containers/arr/users.nix
-          ./machines/ernst/containers/arr/video.nix
-          ./machines/ernst/containers/arr/indexers.nix
-          ./machines/ernst/containers/arr/music.nix
-          ./machines/ernst/containers/arr/books.nix
-          ./machines/ernst/containers/arr/lifecycle.nix
-          ./machines/ernst/containers/traefik.nix
-          ./machines/ernst/containers/authelia.nix
-          ./machines/ernst/containers/tvheadend.nix
-          ./machines/ernst/containers/tubesync.nix
-          # M14.  The podman tier's SECOND occupant — podman itself is enabled
-          # by tubesync.nix above, not re-enabled here.
-          ./machines/ernst/containers/storyteller.nix
-          # RomM — the ROM library manager, and the podman tier's THIRD
-          # occupant.  Masters the library that Syncthing replicates to
-          # birte's RetroDECK; see docs/guides/birte-emulation.md.
-          ./machines/ernst/containers/romm.nix
-          # Calibre-Web-Automated — ebooks, OPDS, the Kobo endpoint and the
-          # KOReader progress-sync server.  The podman tier's FOURTH occupant,
-          # and on this tier for a hard reason rather than a preference: CWA is
-          # NOT in nixpkgs.  `pkgs.calibre-web` is the upstream project, a
-          # different codebase without the ingest pipeline, the Kobo endpoint
-          # or the KOReader sync this deployment is for.
-          #
-          # It reuses M16's freed cloudflared MAC/address (…:0d / 10.0.90.21)
-          # rather than allocating a new pair; the DHCP reservation on the
-          # UDM-Pro must be RE-POINTED, not added alongside.
-          ./machines/ernst/containers/cwa.nix
-          # M18.  CrowdSec, INSIDE the traefik container's netns — the only
-          # place that sees the pre-DNAT source of a WAN request.  It
-          # co-defines containers.traefik; read its header before assuming
-          # traefik.nix is the whole of what runs in there.
-          #
-          # It replaces M16's containers/cloudflared.nix, which was the
-          # fleet's WAN ingress until the tunnel was dropped.  The fail-closed
-          # argument that file carried now lives in traefik.nix's header and
-          # in docs/history.md M16 — a deleted rationale is a rationale that
-          # gets re-lost.
-          ./machines/ernst/containers/crowdsec.nix
-          # M22.  Immich — the household photo library, on the NSPAWN tier
-          # because `services.immich` is a first-class NixOS module at this
-          # pin and there is no image to escape to.  Owns zdata/photos, and
-          # declares the `photo-import` command that moves the retired Arch
-          # server's photographs out of /srv/unsorted.
-          #
-          # Public on `photos.goclan.org` with NO forward-auth — two phone
-          # apps, the TV add-on, and shared album links that are answered
-          # anonymously by design.  See containers/ingress-policy.nix.
-          ./machines/ernst/containers/immich.nix
-          # M23.  Nextcloud — the household file-sync / CalDAV / CardDAV
-          # server, on the NSPAWN tier for the same reason Immich is:
-          # `services.nextcloud` is a first-class NixOS module.  Owns
-          # zdata/nextcloud, and is what lets the hosted instance at
-          # citizengo.io be turned off.
-          #
-          # Public on `cloud.goclan.org` with NO forward-auth — the desktop
-          # sync client, DAVx5 and a headless vdirsyncer timer all speak
-          # WebDAV with app passwords and none can follow a 302.  The browser
-          # path takes Authelia's OIDC provider instead, which is CWA's
-          # arrangement.  See containers/ingress-policy.nix.
-          ./machines/ernst/containers/nextcloud.nix
-          # M24.  Home Assistant — the household's home-automation hub, on the
-          # NSPAWN tier because `services.home-assistant` is a first-class
-          # NixOS module.  Replaces an undeclared instance on a Raspberry Pi.
-          #
-          # THE ONLY CONTAINER ON THIS HOST WITH TWO LEGS ON br0: eth0 on
-          # VLAN 90 for Traefik, and iot0 on VLAN 20 because mDNS and SSDP are
-          # link-local and this repo refuses to relay them across a firewall
-          # boundary.  It is also the first to pass a USB device through —
-          # two Nabu Casa ZBT-2 radios, told apart by serial because they
-          # share a vendor and product ID.  The Thread one is bound and idle
-          # until M25.
-          #
-          # Public on `ha.goclan.org` with NO forward-auth — the companion app
-          # holds a bearer token over a WebSocket and has no browser to render
-          # a portal with.  See containers/ingress-policy.nix.
-          #
-          # The machine is `hass`, not `home-assistant`: nspawn names the host
-          # veth `vb-<container>` and an interface name caps at 15 characters.
-          ./machines/ernst/containers/home-assistant.nix
-          # M26.  gethomepage — the fleet's SERVICE INDEX at `home.goclan.org`,
-          # and NOT a second Grafana: it answers "what exists, where is it, is
-          # it up", with no history, no alerting and nothing stored.
-          #
-          # IT CO-DEFINES containers.arr, the way crowdsec.nix co-defines
-          # containers.traefik — so arr/ is NOT the whole of what listens on
-          # 10.0.90.13.  Read its header before assuming otherwise.  It is
-          # there because that is where `arr-api-keys.service` stages the six
-          # *arr keys it renders: those keys are EXTRACTED from each service's
-          # own config at runtime, so a copy in a second namespace would be a
-          # second source of truth that goes stale the moment somebody rotates
-          # one in a web UI.
-          #
-          # Consumes NO MAC, NO ADDRESS and NO UID — the three NEXT FREE
-          # markers in machines/ernst/networking.nix are unchanged, and that
-          # file records the non-consumption so the next milestone does not
-          # assume they moved.
-          #
-          # Public on `home.goclan.org` WITH forward-auth, admins only — the
-          # first name added to `wanExposed` since M19's `chat` that is not an
-          # appApiHosts exemption.  See containers/ingress-policy.nix.
-          ./machines/ernst/containers/homepage.nix
-          # M27, first half.  Miniflux — the feed reader, on the NSPAWN tier
-          # because `services.miniflux` is a first-class NixOS module.  A Go
-          # binary and a PostgreSQL database; no dataset of its own, because a
-          # database is `zdata/state`'s write profile exactly.
-          #
-          # It is the INTAKE half of the reading stack; karakeep.nix below is
-          # the keep half.  Neither NEEDS the other to run and they share no
-          # database — but Miniflux's own Karakeep integration is switched on,
-          # so saved entries do POST to karakeep.goclan.org.  That is an
-          # operator setting in Miniflux's database rather than anything either
-          # file declares; see docs/guides/reading-stack.md.
-          #
-          # `miniflux.goclan.org` WITH forward-auth, and public.  It shipped
-          # as a LAN-only `appApiHosts` exemption argued from Miniflux's Fever
-          # and Google Reader APIs, and moved to `protectedHosts` one day
-          # later when off-LAN access was wanted — the exemption was buying a
-          # capability nobody here uses at the price of a weaker door.
-          # Ledger row L18.
-          #
-          # TAKES NO uid FROM THE 3000 BLOCK — the daemon runs under
-          # DynamicUser and the only id that lands on zdata is PostgreSQL's
-          # well-known 71.  machines/ernst/networking.nix records the
-          # non-consumption rather than leaving a gap.
-          ./machines/ernst/containers/miniflux.nix
-          # M27, second half.  Karakeep — bookmarks, full-page archives and the
-          # search over both, on the NSPAWN tier because `services.karakeep` is
-          # a first-class NixOS module (four units plus Meilisearch).
-          #
-          # IT IS THE FLOCCUS BACKEND, which is what makes this a stack: the
-          # browser add-on is installed declaratively for lgo on miralda and
-          # jens, so the browsers' own bookmark trees and the archived copies
-          # land in ONE database.  It also retires the Linkwarden that browsers.nix
-          # has referred to since it was written and that has never existed here.
-          #
-          # A SECOND LEG, like home-assistant.nix but not on a VLAN: a
-          # point-to-point /128 veth to the host's llama-swap, so auto-tagging
-          # runs against the model the coding agent already has resident.  The
-          # peer is declared in clan.nix's `@clanarchy/local-ai` instance;
-          # without that entry there is a socket nothing listens on.
-          #
-          # Public on `karakeep.goclan.org` with NO forward-auth — the browser
-          # extension and the Floccus adapter both carry bearer tokens and
-          # neither has a UI.  Ledger row L17.
-          ./machines/ernst/containers/karakeep.nix
-          # M30.  Music Assistant — the player controller over the library
-          # Navidrome already indexes, on the NSPAWN tier because
-          # `services.music-assistant` is a first-class NixOS module (upstream
-          # recommends its Docker image and its HAOS add-on; neither applies).
-          #
-          # IT ADDS NOTHING TO THE MUSIC PIPELINE AND REPLACES NONE OF IT.
-          # Lidarr + slskd + Soularr still acquire, Navidrome still indexes and
-          # still serves every mobile client on its own WAN hostname.  This is a
-          # CONSUMER of Navidrome over the Subsonic API — `opensubsonic` rather
-          # than `filesystem_local`, so it holds no handle on /srv/media and
-          # does not put a second index on the same files.
-          #
-          # THE SECOND CONTAINER ON THIS HOST WITH TWO LEGS ON br0, and for
-          # home-assistant.nix's reason one VLAN later: the `musiccast` provider
-          # is DISCOVERY-ONLY (mDNS, no add-by-address flow) and the household's
-          # one speaker is a Yamaha receiver on VLAN 20.  Its leg is `iot1`, not
-          # `iot0` — that name is host-global and the hub has it; the assertion
-          # in machines/ernst/networking.nix is what enforces it.
-          #
-          # `music.goclan.org` WITH forward-auth, admins only, and LAN-ONLY —
-          # not in `wanExposed`, no public record, no ledger row.  Every client
-          # of this name is a browser, so neither Navidrome's Subsonic exemption
-          # nor Home Assistant's companion-app exemption applies.
-          #
-          # The machine is `mass`, not `music-assistant`: nspawn names the host
-          # veth `vb-<container>` and an interface name caps at 15 characters.
-          ./machines/ernst/containers/music-assistant.nix
-          # M32.  Paperless-ngx — the household document archive, on the NSPAWN
-          # tier because `services.paperless` is a first-class NixOS module.
-          # Owns zdata/docs; OCRs in German and English; brings up Tika and
-          # Gotenberg on the container's own loopback so office files get a
-          # text layer too.
-          #
-          # TWO INGEST DOORS, because FairScan has no cloud of its own: the
-          # Paperless Mobile app straight to the API, and a writable Nextcloud
-          # external-storage folder that IS the consumption directory.  That
-          # second door is why containers/nextcloud.nix gains a `docsin` group
-          # membership and a bind mount, and why the shared inbox lives on
-          # /srv/state rather than /srv/docs — a bind whose host path is
-          # missing is a container that will not start, and Nextcloud must not
-          # be stopped by an unrelated service's dataset.
-          #
-          # Public on `docs.goclan.org` with NO forward-auth — the phone app
-          # exchanges credentials at /api/token/ and then sends a token header,
-          # so it can neither render a portal nor follow a 302.  The browser
-          # path takes Authelia's OIDC provider instead: CWA's and Nextcloud's
-          # arrangement.  See containers/ingress-policy.nix.
-          #
-          # It also carries the `doc0` leg (fdca:fe95::1/::2), which points
-          # INWARD like searxng's `web0`: M32b gives mneme a `document_search`
-          # tool and the host has to dial in to reach this API.
-          ./machines/ernst/containers/paperless.nix
-          # M31.  The household's mail server for @goclan.org — Postfix,
-          # Dovecot, Rspamd, Redis and kresd behind
-          # simple-nixos-mailserver, on the NSPAWN tier for the reason every
-          # other first-class NixOS module on this host is.
-          #
-          # THE FIRST SERVICE IN THIS FLEET THAT DOES NOT RIDE TRAEFIK, and it
-          # cannot: traefik.nix declares no TCP routers and no TCP
-          # entrypoints, and SMTP carries no SNI for one to key on.  So mail
-          # gets its own UDM-Pro DNATs (ledger L19 for :25 inbound, L20 for
-          # the :465/:993/:4190 client ports), sits outside
-          # ingress-policy.nix entirely, and is covered by fail2ban INSIDE the
-          # container rather than by CrowdSec, whose single acquisition is
-          # Traefik's journal.
-          #
-          # ITS DELIVERABILITY WAS KNOWN-COMPROMISED, WAS ACCEPTED, AND THEN
-          # GOT FIXED.  ernst's uplink is a Vodafone DE residential line:
-          # outbound :25 was open (measured), but the PTR was a generic pool
-          # name and the address was listed on b.barracudacentral.org, so
-          # Outlook would reject and Gmail/GMX would junk.  The reputation
-          # work in docs/guides/mail.md then landed — Barracuda delisted, and
-          # Vodafone set the PTR to mail.goclan.org, forward-confirmed.
-          #
-          # SO DIRECT SENDING WORKS HERE BECAUSE OF TWO EXTERNAL FACTS, not
-          # because it is generally fine from a residential line.  Either can
-          # be lost to a tariff change or a renumbering, and the symptom is
-          # silent.  The smarthost escape hatch is one option block,
-          # documented there and deliberately left disabled.
-          ./machines/ernst/containers/mail.nix
-          # microvm.nix's host module, and the one guest that uses it (M3).
-          # The import lives here rather than inside wg-qbittorrent.nix
-          # because `inputs` reaches a machine module via _module.args, and
-          # reading _module.args from an `imports` list is an infinite
-          # recursion.
-          inputs.microvm.nixosModules.host
-          ./machines/ernst/microvms/wg-qbittorrent.nix
-        ];
+        imports =
+          [(mkModuleArgs {})]
+          ++ commonBase
+          ++ [
+            ./machines/ernst/configuration.nix
+            ./machines/ernst/disko.nix
+            ./machines/ernst/hardware-configuration.nix
+            ./machines/ernst/networking.nix
+            ./machines/ernst/htpc.nix
+            # The Courses Jellyfin library + `course-import`.  Imported BEFORE
+            # jellyfin.nix only for reading order: it owns /srv/media/library/
+            # courses, which jellyfin.nix bind-mounts into the container.
+            ./machines/ernst/courses.nix
+            ./machines/ernst/containers/jellyfin.nix
+            # The *arr stack, one container across six files. common.nix
+            # declares it; the rest merge into it by media domain. See its
+            # header — the single file was 6,218 lines, which is past what
+            # either a person or a 32k-context model can hold.
+            ./machines/ernst/containers/arr/common.nix
+            ./machines/ernst/containers/arr/storage.nix
+            ./machines/ernst/containers/arr/users.nix
+            ./machines/ernst/containers/arr/video.nix
+            ./machines/ernst/containers/arr/indexers.nix
+            ./machines/ernst/containers/arr/music.nix
+            ./machines/ernst/containers/arr/books.nix
+            ./machines/ernst/containers/arr/lifecycle.nix
+            ./machines/ernst/containers/traefik.nix
+            ./machines/ernst/containers/authelia.nix
+            ./machines/ernst/containers/tvheadend.nix
+            ./machines/ernst/containers/tubesync.nix
+            # M14.  The podman tier's SECOND occupant — podman itself is enabled
+            # by tubesync.nix above, not re-enabled here.
+            ./machines/ernst/containers/storyteller.nix
+            # RomM — the ROM library manager, and the podman tier's THIRD
+            # occupant.  Masters the library that Syncthing replicates to
+            # birte's RetroDECK; see docs/guides/birte-emulation.md.
+            ./machines/ernst/containers/romm.nix
+            # Calibre-Web-Automated — ebooks, OPDS, the Kobo endpoint and the
+            # KOReader progress-sync server.  The podman tier's FOURTH occupant,
+            # and on this tier for a hard reason rather than a preference: CWA is
+            # NOT in nixpkgs.  `pkgs.calibre-web` is the upstream project, a
+            # different codebase without the ingest pipeline, the Kobo endpoint
+            # or the KOReader sync this deployment is for.
+            #
+            # It reuses M16's freed cloudflared MAC/address (…:0d / 10.0.90.21)
+            # rather than allocating a new pair; the DHCP reservation on the
+            # UDM-Pro must be RE-POINTED, not added alongside.
+            ./machines/ernst/containers/cwa.nix
+            # M18.  CrowdSec, INSIDE the traefik container's netns — the only
+            # place that sees the pre-DNAT source of a WAN request.  It
+            # co-defines containers.traefik; read its header before assuming
+            # traefik.nix is the whole of what runs in there.
+            #
+            # It replaces M16's containers/cloudflared.nix, which was the
+            # fleet's WAN ingress until the tunnel was dropped.  The fail-closed
+            # argument that file carried now lives in traefik.nix's header and
+            # in docs/history.md M16 — a deleted rationale is a rationale that
+            # gets re-lost.
+            ./machines/ernst/containers/crowdsec.nix
+            # M22.  Immich — the household photo library, on the NSPAWN tier
+            # because `services.immich` is a first-class NixOS module at this
+            # pin and there is no image to escape to.  Owns zdata/photos, and
+            # declares the `photo-import` command that moves the retired Arch
+            # server's photographs out of /srv/unsorted.
+            #
+            # Public on `photos.goclan.org` with NO forward-auth — two phone
+            # apps, the TV add-on, and shared album links that are answered
+            # anonymously by design.  See containers/ingress-policy.nix.
+            ./machines/ernst/containers/immich.nix
+            # M23.  Nextcloud — the household file-sync / CalDAV / CardDAV
+            # server, on the NSPAWN tier for the same reason Immich is:
+            # `services.nextcloud` is a first-class NixOS module.  Owns
+            # zdata/nextcloud, and is what lets the hosted instance at
+            # citizengo.io be turned off.
+            #
+            # Public on `cloud.goclan.org` with NO forward-auth — the desktop
+            # sync client, DAVx5 and a headless vdirsyncer timer all speak
+            # WebDAV with app passwords and none can follow a 302.  The browser
+            # path takes Authelia's OIDC provider instead, which is CWA's
+            # arrangement.  See containers/ingress-policy.nix.
+            ./machines/ernst/containers/nextcloud.nix
+            # M24.  Home Assistant — the household's home-automation hub, on the
+            # NSPAWN tier because `services.home-assistant` is a first-class
+            # NixOS module.  Replaces an undeclared instance on a Raspberry Pi.
+            #
+            # THE ONLY CONTAINER ON THIS HOST WITH TWO LEGS ON br0: eth0 on
+            # VLAN 90 for Traefik, and iot0 on VLAN 20 because mDNS and SSDP are
+            # link-local and this repo refuses to relay them across a firewall
+            # boundary.  It is also the first to pass a USB device through —
+            # two Nabu Casa ZBT-2 radios, told apart by serial because they
+            # share a vendor and product ID.  The Thread one is bound and idle
+            # until M25.
+            #
+            # Public on `ha.goclan.org` with NO forward-auth — the companion app
+            # holds a bearer token over a WebSocket and has no browser to render
+            # a portal with.  See containers/ingress-policy.nix.
+            #
+            # The machine is `hass`, not `home-assistant`: nspawn names the host
+            # veth `vb-<container>` and an interface name caps at 15 characters.
+            ./machines/ernst/containers/home-assistant.nix
+            # M26.  gethomepage — the fleet's SERVICE INDEX at `home.goclan.org`,
+            # and NOT a second Grafana: it answers "what exists, where is it, is
+            # it up", with no history, no alerting and nothing stored.
+            #
+            # IT CO-DEFINES containers.arr, the way crowdsec.nix co-defines
+            # containers.traefik — so arr/ is NOT the whole of what listens on
+            # 10.0.90.13.  Read its header before assuming otherwise.  It is
+            # there because that is where `arr-api-keys.service` stages the six
+            # *arr keys it renders: those keys are EXTRACTED from each service's
+            # own config at runtime, so a copy in a second namespace would be a
+            # second source of truth that goes stale the moment somebody rotates
+            # one in a web UI.
+            #
+            # Consumes NO MAC, NO ADDRESS and NO UID — the three NEXT FREE
+            # markers in machines/ernst/networking.nix are unchanged, and that
+            # file records the non-consumption so the next milestone does not
+            # assume they moved.
+            #
+            # Public on `home.goclan.org` WITH forward-auth, admins only — the
+            # first name added to `wanExposed` since M19's `chat` that is not an
+            # appApiHosts exemption.  See containers/ingress-policy.nix.
+            ./machines/ernst/containers/homepage.nix
+            # M27, first half.  Miniflux — the feed reader, on the NSPAWN tier
+            # because `services.miniflux` is a first-class NixOS module.  A Go
+            # binary and a PostgreSQL database; no dataset of its own, because a
+            # database is `zdata/state`'s write profile exactly.
+            #
+            # It is the INTAKE half of the reading stack; karakeep.nix below is
+            # the keep half.  Neither NEEDS the other to run and they share no
+            # database — but Miniflux's own Karakeep integration is switched on,
+            # so saved entries do POST to karakeep.goclan.org.  That is an
+            # operator setting in Miniflux's database rather than anything either
+            # file declares; see docs/guides/reading-stack.md.
+            #
+            # `miniflux.goclan.org` WITH forward-auth, and public.  It shipped
+            # as a LAN-only `appApiHosts` exemption argued from Miniflux's Fever
+            # and Google Reader APIs, and moved to `protectedHosts` one day
+            # later when off-LAN access was wanted — the exemption was buying a
+            # capability nobody here uses at the price of a weaker door.
+            # Ledger row L18.
+            #
+            # TAKES NO uid FROM THE 3000 BLOCK — the daemon runs under
+            # DynamicUser and the only id that lands on zdata is PostgreSQL's
+            # well-known 71.  machines/ernst/networking.nix records the
+            # non-consumption rather than leaving a gap.
+            ./machines/ernst/containers/miniflux.nix
+            # M27, second half.  Karakeep — bookmarks, full-page archives and the
+            # search over both, on the NSPAWN tier because `services.karakeep` is
+            # a first-class NixOS module (four units plus Meilisearch).
+            #
+            # IT IS THE FLOCCUS BACKEND, which is what makes this a stack: the
+            # browser add-on is installed declaratively for lgo on miralda and
+            # jens, so the browsers' own bookmark trees and the archived copies
+            # land in ONE database.  It also retires the Linkwarden that browsers.nix
+            # has referred to since it was written and that has never existed here.
+            #
+            # A SECOND LEG, like home-assistant.nix but not on a VLAN: a
+            # point-to-point /128 veth to the host's llama-swap, so auto-tagging
+            # runs against the model the coding agent already has resident.  The
+            # peer is declared in clan.nix's `@clanarchy/local-ai` instance;
+            # without that entry there is a socket nothing listens on.
+            #
+            # Public on `karakeep.goclan.org` with NO forward-auth — the browser
+            # extension and the Floccus adapter both carry bearer tokens and
+            # neither has a UI.  Ledger row L17.
+            ./machines/ernst/containers/karakeep.nix
+            # M30.  Music Assistant — the player controller over the library
+            # Navidrome already indexes, on the NSPAWN tier because
+            # `services.music-assistant` is a first-class NixOS module (upstream
+            # recommends its Docker image and its HAOS add-on; neither applies).
+            #
+            # IT ADDS NOTHING TO THE MUSIC PIPELINE AND REPLACES NONE OF IT.
+            # Lidarr + slskd + Soularr still acquire, Navidrome still indexes and
+            # still serves every mobile client on its own WAN hostname.  This is a
+            # CONSUMER of Navidrome over the Subsonic API — `opensubsonic` rather
+            # than `filesystem_local`, so it holds no handle on /srv/media and
+            # does not put a second index on the same files.
+            #
+            # THE SECOND CONTAINER ON THIS HOST WITH TWO LEGS ON br0, and for
+            # home-assistant.nix's reason one VLAN later: the `musiccast` provider
+            # is DISCOVERY-ONLY (mDNS, no add-by-address flow) and the household's
+            # one speaker is a Yamaha receiver on VLAN 20.  Its leg is `iot1`, not
+            # `iot0` — that name is host-global and the hub has it; the assertion
+            # in machines/ernst/networking.nix is what enforces it.
+            #
+            # `music.goclan.org` WITH forward-auth, admins only, and LAN-ONLY —
+            # not in `wanExposed`, no public record, no ledger row.  Every client
+            # of this name is a browser, so neither Navidrome's Subsonic exemption
+            # nor Home Assistant's companion-app exemption applies.
+            #
+            # The machine is `mass`, not `music-assistant`: nspawn names the host
+            # veth `vb-<container>` and an interface name caps at 15 characters.
+            ./machines/ernst/containers/music-assistant.nix
+            # M32.  Paperless-ngx — the household document archive, on the NSPAWN
+            # tier because `services.paperless` is a first-class NixOS module.
+            # Owns zdata/docs; OCRs in German and English; brings up Tika and
+            # Gotenberg on the container's own loopback so office files get a
+            # text layer too.
+            #
+            # TWO INGEST DOORS, because FairScan has no cloud of its own: the
+            # Paperless Mobile app straight to the API, and a writable Nextcloud
+            # external-storage folder that IS the consumption directory.  That
+            # second door is why containers/nextcloud.nix gains a `docsin` group
+            # membership and a bind mount, and why the shared inbox lives on
+            # /srv/state rather than /srv/docs — a bind whose host path is
+            # missing is a container that will not start, and Nextcloud must not
+            # be stopped by an unrelated service's dataset.
+            #
+            # Public on `docs.goclan.org` with NO forward-auth — the phone app
+            # exchanges credentials at /api/token/ and then sends a token header,
+            # so it can neither render a portal nor follow a 302.  The browser
+            # path takes Authelia's OIDC provider instead: CWA's and Nextcloud's
+            # arrangement.  See containers/ingress-policy.nix.
+            #
+            # It also carries the `doc0` leg (fdca:fe95::1/::2), which points
+            # INWARD like searxng's `web0`: M32b gives mneme a `document_search`
+            # tool and the host has to dial in to reach this API.
+            ./machines/ernst/containers/paperless.nix
+            # M31.  The household's mail server for @goclan.org — Postfix,
+            # Dovecot, Rspamd, Redis and kresd behind
+            # simple-nixos-mailserver, on the NSPAWN tier for the reason every
+            # other first-class NixOS module on this host is.
+            #
+            # THE FIRST SERVICE IN THIS FLEET THAT DOES NOT RIDE TRAEFIK, and it
+            # cannot: traefik.nix declares no TCP routers and no TCP
+            # entrypoints, and SMTP carries no SNI for one to key on.  So mail
+            # gets its own UDM-Pro DNATs (ledger L19 for :25 inbound, L20 for
+            # the :465/:993/:4190 client ports), sits outside
+            # ingress-policy.nix entirely, and is covered by fail2ban INSIDE the
+            # container rather than by CrowdSec, whose single acquisition is
+            # Traefik's journal.
+            #
+            # ITS DELIVERABILITY WAS KNOWN-COMPROMISED, WAS ACCEPTED, AND THEN
+            # GOT FIXED.  ernst's uplink is a Vodafone DE residential line:
+            # outbound :25 was open (measured), but the PTR was a generic pool
+            # name and the address was listed on b.barracudacentral.org, so
+            # Outlook would reject and Gmail/GMX would junk.  The reputation
+            # work in docs/guides/mail.md then landed — Barracuda delisted, and
+            # Vodafone set the PTR to mail.goclan.org, forward-confirmed.
+            #
+            # SO DIRECT SENDING WORKS HERE BECAUSE OF TWO EXTERNAL FACTS, not
+            # because it is generally fine from a residential line.  Either can
+            # be lost to a tariff change or a renumbering, and the symptom is
+            # silent.  The smarthost escape hatch is one option block,
+            # documented there and deliberately left disabled.
+            ./machines/ernst/containers/mail.nix
+            # microvm.nix's host module, and the one guest that uses it (M3).
+            # The import lives here rather than inside wg-qbittorrent.nix
+            # because `inputs` reaches a machine module via _module.args, and
+            # reading _module.args from an `imports` list is an infinite
+            # recursion.
+            inputs.microvm.nixosModules.host
+            ./machines/ernst/microvms/wg-qbittorrent.nix
+          ];
       };
     };
 }

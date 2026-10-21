@@ -1,4 +1,4 @@
-{ lib, ... }:
+{lib, ...}:
 #
 # @clanarchy/local-ai — local AI inference, voice, vision and image generation.
 #
@@ -132,88 +132,97 @@ let
   # `unit` is the unit-name prefix; `targetPort` is the loopback port being
   # published; each bridge is { name, address, allowedSource }.
   ############################################################################
-  mkBridges = { pkgs, unit, what, targetPort, bridges, extraAfter ? [ ] }: {
+  mkBridges = {
+    pkgs,
+    unit,
+    what,
+    targetPort,
+    bridges,
+    extraAfter ? [],
+  }: {
     systemd.sockets = lib.listToAttrs (map (b: {
-      name  = "${unit}-${b.name}";
-      value = {
-        description = "${what} listener for the ${b.name} container";
-        wantedBy    = [ "sockets.target" ];
-        socketConfig = {
-          # A LITERAL ADDRESS, never a wildcard.  This is the whole
-          # containment: the only peer of that /128 is one container.
-          ListenStream = "[${b.address}]:${toString targetPort}";
-          BindIPv6Only = "ipv6-only";
+        name = "${unit}-${b.name}";
+        value = {
+          description = "${what} listener for the ${b.name} container";
+          wantedBy = ["sockets.target"];
+          socketConfig = {
+            # A LITERAL ADDRESS, never a wildcard.  This is the whole
+            # containment: the only peer of that /128 is one container.
+            ListenStream = "[${b.address}]:${toString targetPort}";
+            BindIPv6Only = "ipv6-only";
 
-          # THE BIND SUCCEEDS EVEN WHEN THE ADDRESS DOES NOT EXIST, which is
-          # why this is stated rather than left implicit.  The address lives on
-          # a veth that only exists while the peer container runs, so the
-          # socket has to come up before it and survive it going away — and
-          # measured on ernst 2026-09-24, it does so with or without this line.
-          # It is set anyway because relying on undeclared kernel behaviour for
-          # a boot-ordering property is how the Open WebUI outage stayed
-          # invisible: a listening socket is NOT evidence that the leg exists.
-          FreeBind = true;
+            # THE BIND SUCCEEDS EVEN WHEN THE ADDRESS DOES NOT EXIST, which is
+            # why this is stated rather than left implicit.  The address lives on
+            # a veth that only exists while the peer container runs, so the
+            # socket has to come up before it and survive it going away — and
+            # measured on ernst 2026-09-24, it does so with or without this line.
+            # It is set anyway because relying on undeclared kernel behaviour for
+            # a boot-ordering property is how the Open WebUI outage stayed
+            # invisible: a listening socket is NOT evidence that the leg exists.
+            FreeBind = true;
+          };
         };
-      };
-    }) bridges);
+      })
+      bridges);
 
     systemd.services = lib.listToAttrs (map (b: {
-      name  = "${unit}-${b.name}";
-      value = {
-        description = "Proxy ${what} to the ${b.name} container";
-        after    = [ "${unit}-${b.name}.socket" ] ++ extraAfter;
-        # SOCKET-ACTIVATED: no `wantedBy`.  With one, systemd starts this
-        # directly and systemd-socket-proxyd exits 1 with "Didn't get any
-        # sockets passed in", then restart-loops.
-        requires = [ "${unit}-${b.name}.socket" ];
+        name = "${unit}-${b.name}";
+        value = {
+          description = "Proxy ${what} to the ${b.name} container";
+          after = ["${unit}-${b.name}.socket"] ++ extraAfter;
+          # SOCKET-ACTIVATED: no `wantedBy`.  With one, systemd starts this
+          # directly and systemd-socket-proxyd exits 1 with "Didn't get any
+          # sockets passed in", then restart-loops.
+          requires = ["${unit}-${b.name}.socket"];
 
-        serviceConfig = {
-          ExecStart = lib.concatStringsSep " " [
-            "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd"
-            "127.0.0.1:${toString targetPort}"
-          ];
-          Restart    = "on-failure";
-          RestartSec = "10s";
-          DynamicUser = true;
-          NoNewPrivileges = true;
-          PrivateDevices  = true;
-          ProtectSystem   = "strict";
-          ProtectHome     = true;
-          MemoryDenyWriteExecute = true;
+          serviceConfig = {
+            ExecStart = lib.concatStringsSep " " [
+              "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd"
+              "127.0.0.1:${toString targetPort}"
+            ];
+            Restart = "on-failure";
+            RestartSec = "10s";
+            DynamicUser = true;
+            NoNewPrivileges = true;
+            PrivateDevices = true;
+            ProtectSystem = "strict";
+            ProtectHome = true;
+            MemoryDenyWriteExecute = true;
 
-          # AF_INET IS REQUIRED and its absence is silent.  The LISTENER is
-          # AF_INET6 and is created by systemd in the .socket unit; this
-          # process has to DIAL 127.0.0.1, which is AF_INET.  Without it:
-          # "Failed to get remote socket: Address family not supported by
-          # protocol", and every request times out.
-          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+            # AF_INET IS REQUIRED and its absence is silent.  The LISTENER is
+            # AF_INET6 and is created by systemd in the .socket unit; this
+            # process has to DIAL 127.0.0.1, which is AF_INET.  Without it:
+            # "Failed to get remote socket: Address family not supported by
+            # protocol", and every request times out.
+            RestrictAddressFamilies = ["AF_INET" "AF_INET6" "AF_UNIX"];
 
-          CapabilityBoundingSet = [ "" ];
-          AmbientCapabilities   = [ "" ];
-          SystemCallFilter      = [ "@system-service" "~@resources" "~@privileged" ];
-          SystemCallErrorNumber = "EPERM";
-          SystemCallArchitectures = "native";
-          ProtectProc           = "invisible";
-          ProcSubset            = "pid";
-          ProtectClock          = true;
-          ProtectHostname       = true;
-          ProtectKernelLogs     = true;
-          ProtectKernelTunables = true;
-          ProtectKernelModules  = true;
-          ProtectControlGroups  = true;
-          RestrictNamespaces    = true;
-          RestrictRealtime      = true;
-          RestrictSUIDSGID      = true;
-          LockPersonality       = true;
-          RemoveIPC             = true;
-          UMask                 = "0077";
-          # Both ends are on this host: loopback upstream, the veth /64
-          # downstream.
-          IPAddressDeny  = "any";
-          IPAddressAllow = [ "localhost" "${b.address}/128" "${b.allowedSource}/128" ];
+            CapabilityBoundingSet = [""];
+            AmbientCapabilities = [""];
+            SystemCallFilter = ["@system-service" "~@resources" "~@privileged"];
+            SystemCallErrorNumber = "EPERM";
+            SystemCallArchitectures = "native";
+            ProtectProc = "invisible";
+            ProcSubset = "pid";
+            ProtectClock = true;
+            ProtectHostname = true;
+            ProtectKernelLogs = true;
+            ProtectKernelTunables = true;
+            ProtectKernelModules = true;
+            ProtectControlGroups = true;
+            RestrictNamespaces = true;
+            RestrictRealtime = true;
+            RestrictSUIDSGID = true;
+            LockPersonality = true;
+            RemoveIPC = true;
+            UMask = "0077";
+            # Both ends are on this host: loopback upstream, the veth /64
+            # downstream.
+            IPAddressDeny = "any";
+            IPAddressAllow = ["localhost" "${b.address}/128" "${b.allowedSource}/128"];
+          };
         };
-      };
-    }) bridges);
+      })
+      bridges);
 
     # One accept per bridge, appended to nixos-fw so it lands after
     # allowedTCPPorts and before the catch-all refuse — the placement
@@ -228,15 +237,14 @@ let
       lib.concatMapStrings (b: ''
         ip6tables -A nixos-fw -s ${b.allowedSource}/128 \
           -p tcp -m tcp --dport ${toString targetPort} -j nixos-fw-accept
-      '') bridges;
+      '')
+      bridges;
   };
-
-in
-{
+in {
   _class = "clan.service";
-  manifest.name        = "@clanarchy/local-ai";
+  manifest.name = "@clanarchy/local-ai";
   manifest.description = "Local AI: llama.cpp inference, voice, vision and image generation.";
-  manifest.readme      = builtins.readFile ./local-ai.md;
+  manifest.readme = builtins.readFile ./local-ai.md;
 
   ##############################################################################
   # Shared option type for a declared model.
@@ -256,8 +264,8 @@ in
 
     interface.options = {
       port = lib.mkOption {
-        type        = lib.types.port;
-        default     = 11434;
+        type = lib.types.port;
+        default = 11434;
         description = ''
           Loopback port llama-swap listens on — the OpenAI-compatible surface
           every client talks to.
@@ -279,8 +287,8 @@ in
       # two-layer shape, and this is where it stopped being true.
 
       swapPortRange = lib.mkOption {
-        type        = lib.types.port;
-        default     = 11500;
+        type = lib.types.port;
+        default = 11500;
         description = ''
           First port llama-swap hands to the backends it spawns (its
           `startPort`).  They are loopback, ephemeral, and never contacted
@@ -289,9 +297,9 @@ in
       };
 
       idleTtl = lib.mkOption {
-        type        = lib.types.ints.positive;
-        default     = 900;
-        example     = 300;
+        type = lib.types.ints.positive;
+        default = 900;
+        example = 300;
         description = ''
           Seconds a backend may sit idle before llama-swap unloads it, freeing
           VRAM for another member of the exclusive group.
@@ -329,9 +337,9 @@ in
       # instead of a coredump on the television.
       vram = {
         totalMiB = lib.mkOption {
-          type        = lib.types.nullOr lib.types.ints.positive;
-          default     = null;
-          example     = 24560;
+          type = lib.types.nullOr lib.types.ints.positive;
+          default = null;
+          example = 24560;
           description = ''
             Total VRAM on the inference card, in MiB, as the driver reports
             it — `cat /sys/class/drm/cardN/device/mem_info_vram_total`, which
@@ -344,9 +352,9 @@ in
         };
 
         reserveMiB = lib.mkOption {
-          type        = lib.types.ints.unsigned;
-          default     = 0;
-          example     = 1600;
+          type = lib.types.ints.unsigned;
+          default = 0;
+          example = 1600;
           description = ''
             VRAM that must stay free for claimants OUTSIDE llama-swap's
             exclusive group — in practice the compositor holding the screen.
@@ -357,12 +365,11 @@ in
             `totalMiB - reserveMiB`.
           '';
         };
-
       };
 
       stateDir = lib.mkOption {
-        type        = lib.types.path;
-        default     = "/srv/state/local-ai";
+        type = lib.types.path;
+        default = "/srv/state/local-ai";
         description = ''
           Where models and runtime state live.  On zdata, per architecture
           invariant #7 — and this one is not a formality: the model set is tens
@@ -373,8 +380,8 @@ in
       };
 
       user = lib.mkOption {
-        type        = lib.types.str;
-        default     = "llama";
+        type = lib.types.str;
+        default = "llama";
         description = ''
           Static system user everything in this role runs as.
 
@@ -387,7 +394,7 @@ in
       };
 
       exposeOn = lib.mkOption {
-        default = [ ];
+        default = [];
         description = ''
           Point-to-point ULA addresses to expose llama-swap on, one per
           container that needs it.  Each entry gets a systemd socket, a
@@ -418,13 +425,13 @@ in
         type = lib.types.listOf (lib.types.submodule {
           options = {
             name = lib.mkOption {
-              type        = lib.types.str;
-              example     = "monitoring";
+              type = lib.types.str;
+              example = "monitoring";
               description = "Unit-name suffix. Must be unique and systemd-safe.";
             };
             address = lib.mkOption {
-              type        = lib.types.str;
-              example     = "fdca:fe90::1";
+              type = lib.types.str;
+              example = "fdca:fe90::1";
               description = ''
                 HOST end of the veth to listen on — a literal address, never a
                 wildcard. This is the whole containment: the only peer of that
@@ -432,8 +439,8 @@ in
               '';
             };
             allowedSource = lib.mkOption {
-              type        = lib.types.str;
-              example     = "fdca:fe90::2";
+              type = lib.types.str;
+              example = "fdca:fe90::2";
               description = ''
                 CONTAINER end, and the one address permitted to connect.
                 Its absence is silent — the scrape or request simply times out.
@@ -442,8 +449,6 @@ in
           };
         });
       };
-
-
 
       remoteClients.enable = lib.mkEnableOption ''
         accepting SSH port-forwards from clan machines that have no usable local
@@ -456,78 +461,91 @@ in
       '';
     };
 
-    perInstance = { settings, roles, machine, ... }: {
-      nixosModule = { config, pkgs, lib, ... }:
-        let
-          inherit (settings) stateDir user port;
-          modelsDir = "${stateDir}/models";
+    perInstance = {
+      settings,
+      roles,
+      machine,
+      ...
+    }: {
+      nixosModule = {
+        config,
+        pkgs,
+        lib,
+        ...
+      }: let
+        inherit (settings) stateDir user port;
+        modelsDir = "${stateDir}/models";
 
-          # ROCm llama.cpp, built from the flake's OWN nixpkgs — no new input,
-          # which was a hard constraint on this milestone and turned out to cost
-          # nothing: stable's llama-cpp takes `rocmSupport` and builds clean for
-          # gfx1100.  Measured on the resulting binary (b9190 / b64739e), not on
-          # a promise.
-          #
-          # rocmGpuTargets is a LIST here.  whisper-cpp's argument of the same
-          # name is a STRING in the same nixpkgs.  They disagree, and passing the
-          # wrong one fails inside cmake option handling with a message that
-          # names neither package.
-          llamaCpp = pkgs.llama-cpp.override {
-            rocmSupport    = true;
-            rocmGpuTargets = [ "gfx1100" ];
-          };
+        # ROCm llama.cpp, built from the flake's OWN nixpkgs — no new input,
+        # which was a hard constraint on this milestone and turned out to cost
+        # nothing: stable's llama-cpp takes `rocmSupport` and builds clean for
+        # gfx1100.  Measured on the resulting binary (b9190 / b64739e), not on
+        # a promise.
+        #
+        # rocmGpuTargets is a LIST here.  whisper-cpp's argument of the same
+        # name is a STRING in the same nixpkgs.  They disagree, and passing the
+        # wrong one fails inside cmake option handling with a message that
+        # names neither package.
+        llamaCpp = pkgs.llama-cpp.override {
+          rocmSupport = true;
+          rocmGpuTargets = ["gfx1100"];
+        };
 
-          # THE SINGLE SOURCE OF TRUTH FOR THE MODEL SET.  Read out of the
-          # `models` role's settings for this same machine rather than
-          # duplicated here, so the fetcher and the preset INI cannot disagree.
-          # `or` guards the case where a machine holds `inference` and not
-          # `models` — legal, and means "an inference server with nothing
-          # declared", which the assertion below turns into a build error
-          # rather than an empty /v1/models at runtime.
-          declared =
-            (roles.models.machines.${machine.name}.settings.models or { });
+        # THE SINGLE SOURCE OF TRUTH FOR THE MODEL SET.  Read out of the
+        # `models` role's settings for this same machine rather than
+        # duplicated here, so the fetcher and the preset INI cannot disagree.
+        # `or` guards the case where a machine holds `inference` and not
+        # `models` — legal, and means "an inference server with nothing
+        # declared", which the assertion below turns into a build error
+        # rather than an empty /v1/models at runtime.
+        declared =
+          roles.models.machines.${machine.name}.settings.models or {};
 
-          # Only the entries llama-server actually serves become preset sections
-          # and llama-swap models.  whisper's ggml weights are declared in the
-          # same `models` attrset — one fetcher, one hash-verified store — but
-          # llama-server cannot load them, and a preset section pointing at a
-          # non-GGUF is a router that logs a load error per request.
-          modelNames = lib.filter (n: declared.${n}.servedByLlama)
-                                  (lib.attrNames declared);
+        # Only the entries llama-server actually serves become preset sections
+        # and llama-swap models.  whisper's ggml weights are declared in the
+        # same `models` attrset — one fetcher, one hash-verified store — but
+        # llama-server cannot load them, and a preset section pointing at a
+        # non-GGUF is a router that logs a load error per request.
+        modelNames =
+          lib.filter (n: declared.${n}.servedByLlama)
+          (lib.attrNames declared);
 
-          # Where a declared model's file lands.  Derived, never configured:
-          # two names for one path is how the fetcher and the INI drift.
-          #
-          # `subdir` (M21) is applied HERE as well as in the fetcher, and the
-          # two must stay in step — the fetcher's `relOf` is the same
-          # expression.  A model with a subdirectory whose server path omitted
-          # it would download correctly and then fail to load, per request,
-          # with a file-not-found naming a path nothing ever wrote.
-          relOf = m: file: if m.subdir == "" then file else "${m.subdir}/${file}";
-          fileOf = name:
-            let m = declared.${name}; in "${modelsDir}/${relOf m m.filename}";
+        # Where a declared model's file lands.  Derived, never configured:
+        # two names for one path is how the fetcher and the INI drift.
+        #
+        # `subdir` (M21) is applied HERE as well as in the fetcher, and the
+        # two must stay in step — the fetcher's `relOf` is the same
+        # expression.  A model with a subdirectory whose server path omitted
+        # it would download correctly and then fail to load, per request,
+        # with a file-not-found naming a path nothing ever wrote.
+        relOf = m: file:
+          if m.subdir == ""
+          then file
+          else "${m.subdir}/${file}";
+        fileOf = name: let m = declared.${name}; in "${modelsDir}/${relOf m m.filename}";
 
-          ####################################################################
-          # The router's preset INI.
-          #
-          # Keys are llama-server CLI arguments without their leading dashes
-          # (tools/server/README.md, "Model presets"), so `c`, `cache-type-k`
-          # and `cache-type-v` are per-model — which is the property SN1 needs:
-          # the context window is pinned AT THE PLACE THE MODEL IS DECLARED,
-          # not in one global environment variable that a model-tag edit can
-          # silently invalidate.
-          ####################################################################
-          # One llama-server invocation per declared model.  `${PORT}` is
-          # llama-swap's own macro, escaped here so Nix leaves it alone.
-          #
-          # --jinja is not optional: it is what makes llama.cpp use the GGUF's
-          # embedded chat template, which for qwen3-coder is the template that
-          # renders the <tools> block at all.  -fa on is not cosmetic either —
-          # measured 1667 MiB saved at 32k, unlike on ollama where flash
-          # attention was a measured no-op.
-          llamaCmd = name:
-            let m = declared.${name}; in
-            lib.concatStringsSep " " ([
+        ####################################################################
+        # The router's preset INI.
+        #
+        # Keys are llama-server CLI arguments without their leading dashes
+        # (tools/server/README.md, "Model presets"), so `c`, `cache-type-k`
+        # and `cache-type-v` are per-model — which is the property SN1 needs:
+        # the context window is pinned AT THE PLACE THE MODEL IS DECLARED,
+        # not in one global environment variable that a model-tag edit can
+        # silently invalidate.
+        ####################################################################
+        # One llama-server invocation per declared model.  `${PORT}` is
+        # llama-swap's own macro, escaped here so Nix leaves it alone.
+        #
+        # --jinja is not optional: it is what makes llama.cpp use the GGUF's
+        # embedded chat template, which for qwen3-coder is the template that
+        # renders the <tools> block at all.  -fa on is not cosmetic either —
+        # measured 1667 MiB saved at 32k, unlike on ollama where flash
+        # attention was a measured no-op.
+        llamaCmd = name: let
+          m = declared.${name};
+        in
+          lib.concatStringsSep " " ([
               "${llamaCpp}/bin/llama-server"
               "--host 127.0.0.1 --port \${PORT}"
               "-m ${fileOf name}"
@@ -580,76 +598,80 @@ in
             ++ lib.optional (m.mmproj != null) "--mmproj ${modelsDir}/${relOf m m.mmproj}"
             ++ m.extraArgs);
 
-          ####################################################################
-          # llama-swap's config.
-          #
-          # ONE EXCLUSIVE GROUP holding every GPU consumer.  Membership is what
-          # makes the mutual exclusion structural rather than a comment: a
-          # backend added to `models` joins the group automatically, and a
-          # backend that is NOT in the group would silently be allowed to run
-          # beside the 30B and exhaust the card.
-          ####################################################################
-          # WHISPER IS DELIBERATELY NOT A MEMBER, and this reverses what the
-          # milestone set out to build.  The plan was to register Whisper here
-          # "so Whisper's VRAM is accounted for".  IT HAS NONE.
-          #
-          # Measured on ernst 2026-09-09: nixpkgs' whisper-cpp built with
-          # `rocmSupport = true` LINKS libamdhip64 but ships no loadable
-          # `libggml-hip.so`, so ggml's backend loader finds only CPU and
-          # whisper reports:
-          #
-          #   whisper_backend_init_gpu: device 0: CPU (type: 0)
-          #   whisper_backend_init_gpu: no GPU found
-          #
-          # It runs at ~2.1x realtime on 8 threads (5.2 s for 11 s of audio),
-          # which is fine for dictation and costs zero VRAM.
-          #
-          # So putting it in an `exclusive` group would EVICT THE 18.5 GiB CODER
-          # MODEL to run a workload that never touches the card — a ~15 s reload
-          # bought for nothing, every time somebody dictates a sentence.  It is
-          # still a llama-swap MODEL (below) so it gets a ttl, a health check
-          # and one endpoint for Open WebUI to talk to; it is just not in the
-          # group that arbitrates the GPU.
-          swapMembers = modelNames
-            ++ lib.optional imagegenEnabled "comfyui";
+        ####################################################################
+        # llama-swap's config.
+        #
+        # ONE EXCLUSIVE GROUP holding every GPU consumer.  Membership is what
+        # makes the mutual exclusion structural rather than a comment: a
+        # backend added to `models` joins the group automatically, and a
+        # backend that is NOT in the group would silently be allowed to run
+        # beside the 30B and exhaust the card.
+        ####################################################################
+        # WHISPER IS DELIBERATELY NOT A MEMBER, and this reverses what the
+        # milestone set out to build.  The plan was to register Whisper here
+        # "so Whisper's VRAM is accounted for".  IT HAS NONE.
+        #
+        # Measured on ernst 2026-09-09: nixpkgs' whisper-cpp built with
+        # `rocmSupport = true` LINKS libamdhip64 but ships no loadable
+        # `libggml-hip.so`, so ggml's backend loader finds only CPU and
+        # whisper reports:
+        #
+        #   whisper_backend_init_gpu: device 0: CPU (type: 0)
+        #   whisper_backend_init_gpu: no GPU found
+        #
+        # It runs at ~2.1x realtime on 8 threads (5.2 s for 11 s of audio),
+        # which is fine for dictation and costs zero VRAM.
+        #
+        # So putting it in an `exclusive` group would EVICT THE 18.5 GiB CODER
+        # MODEL to run a workload that never touches the card — a ~15 s reload
+        # bought for nothing, every time somebody dictates a sentence.  It is
+        # still a llama-swap MODEL (below) so it gets a ttl, a health check
+        # and one endpoint for Open WebUI to talk to; it is just not in the
+        # group that arbitrates the GPU.
+        swapMembers =
+          modelNames
+          ++ lib.optional imagegenEnabled "comfyui";
 
-          speechRole   = roles.speech.machines.${machine.name}.settings or null;
-          imagegenRole = roles.imagegen.machines.${machine.name}.settings or null;
-          speechEnabled   = speechRole   != null;
-          imagegenEnabled = imagegenRole != null;
+        speechRole = roles.speech.machines.${machine.name}.settings or null;
+        imagegenRole = roles.imagegen.machines.${machine.name}.settings or null;
+        speechEnabled = speechRole != null;
+        imagegenEnabled = imagegenRole != null;
 
-          ####################################################################
-          # ComfyUI — spawned by llama-swap, not run beside it.
-          #
-          # See the `comfyui` entry in swapConfig.models for why this is a
-          # command rather than a container, and service-modules/pkgs/comfyui
-          # for why it is a derivation rather than a pinned image.
-          ####################################################################
-          comfyuiPkg = pkgs.callPackage ./pkgs/comfyui { };
+        ####################################################################
+        # ComfyUI — spawned by llama-swap, not run beside it.
+        #
+        # See the `comfyui` entry in swapConfig.models for why this is a
+        # command rather than a container, and service-modules/pkgs/comfyui
+        # for why it is a derivation rather than a pinned image.
+        ####################################################################
+        comfyuiPkg = pkgs.callPackage ./pkgs/comfyui {};
 
-          # ── ONE MODEL STORE, TWO NAMING CONVENTIONS, NO SECOND FETCHER ────
-          #
-          # roles.models fetches and hash-verifies everything the GPU tier
-          # loads, including diffusion checkpoints (`servedByLlama = false`,
-          # the same escape hatch whisper's weights use).  ComfyUI, though,
-          # DISCOVERS models by scanning category directories rather than being
-          # handed a path — so it needs to be told that the store exists and
-          # which category each part of it holds.
-          #
-          # The mapping is DERIVED FROM THE DECLARATIONS, not written out
-          # again: a model's `subdir` IS its ComfyUI category, so declaring
-          # `subdir = "checkpoints"` in clan.nix is the whole of adding a
-          # checkpoint, and a category with nothing declared in it never
-          # appears here.  That is the same one-attrset-two-consumers property
-          # the preset INI has, extended to a third consumer.
-          comfyModelCategories = lib.unique
-            (lib.filter (s: s != "")
-              (lib.mapAttrsToList (_: m: m.subdir) declared));
+        # ── ONE MODEL STORE, TWO NAMING CONVENTIONS, NO SECOND FETCHER ────
+        #
+        # roles.models fetches and hash-verifies everything the GPU tier
+        # loads, including diffusion checkpoints (`servedByLlama = false`,
+        # the same escape hatch whisper's weights use).  ComfyUI, though,
+        # DISCOVERS models by scanning category directories rather than being
+        # handed a path — so it needs to be told that the store exists and
+        # which category each part of it holds.
+        #
+        # The mapping is DERIVED FROM THE DECLARATIONS, not written out
+        # again: a model's `subdir` IS its ComfyUI category, so declaring
+        # `subdir = "checkpoints"` in clan.nix is the whole of adding a
+        # checkpoint, and a category with nothing declared in it never
+        # appears here.  That is the same one-attrset-two-consumers property
+        # the preset INI has, extended to a third consumer.
+        comfyModelCategories =
+          lib.unique
+          (lib.filter (s: s != "")
+            (lib.mapAttrsToList (_: m: m.subdir) declared));
 
-          # JSON is valid YAML, exactly as it is for llama-swap's config above.
-          comfyExtraModelPaths = pkgs.writeText "comfyui-extra-model-paths.yaml"
-            (builtins.toJSON {
-              clanarchy = {
+        # JSON is valid YAML, exactly as it is for llama-swap's config above.
+        comfyExtraModelPaths =
+          pkgs.writeText "comfyui-extra-model-paths.yaml"
+          (builtins.toJSON {
+            clanarchy =
+              {
                 base_path = modelsDir;
                 # FALSE deliberately.  `is_default` marks these as the
                 # preferred directories for anything that WRITES a model, and
@@ -657,13 +679,15 @@ in
                 # by the fetcher.  Reads are unaffected — the paths are
                 # searched either way.
                 is_default = false;
-              } // lib.listToAttrs (map (c: {
-                name  = c;
-                value = c;
-              }) comfyModelCategories);
-            });
+              }
+              // lib.listToAttrs (map (c: {
+                  name = c;
+                  value = c;
+                })
+                comfyModelCategories);
+          });
 
-          comfyuiCmd = lib.concatStringsSep " " ([
+        comfyuiCmd = lib.concatStringsSep " " ([
             "${comfyuiPkg}/bin/comfyui"
             "--listen 127.0.0.1 --port \${PORT}"
 
@@ -674,148 +698,150 @@ in
             "--base-directory ${imagegenRole.stateDir}"
 
             "--extra-model-paths-config ${comfyExtraModelPaths}"
-          ] ++ imagegenRole.extraArgs);
+          ]
+          ++ imagegenRole.extraArgs);
 
-          swapConfig = {
-            healthCheckTimeout = 300;
-            logLevel           = "info";
-            startPort          = settings.swapPortRange;
+        swapConfig = {
+          healthCheckTimeout = 300;
+          logLevel = "info";
+          startPort = settings.swapPortRange;
 
-            models =
-              # ── llama-swap SPAWNS each model. THERE IS NO ROUTER. ──────────
-              #
-              # The first cut of this module ran `llama-server` in ROUTER mode
-              # and pointed llama-swap at it with `proxy` + `useModelName`,
-              # reasoning that the router owns LLM<->LLM swapping and llama-swap
-              # owns LLM<->non-LLM.  THAT IS NOT A SHAPE llama-swap SUPPORTS,
-              # and it failed on the first real request:
-              #
-              #   HTTP 500 {"src":"llama-swap",
-              #     "error":"unable to get sanitized command: empty command"}
-              #
-              # `proxy` is not "forward to this external service".  Its own
-              # documentation calls it "the URL where llama-swap routes API
-              # requests" — i.e. where the process it STARTS will listen, and
-              # `cmd` is mandatory (config.go returns "empty command"
-              # otherwise).  There is no externally-managed-backend mode.
-              #
-              # So llama-swap spawns llama-server per model, with that model's
-              # own context and KV type on the command line. This is exactly the
-              # shape Phase 0's exclusivity proof used, so it is measured rather
-              # than hoped: coder resident 21797 MiB -> other member 19118 MiB
-              # -> coder back at 21797 MiB.
-              #
-              # AND IT MAKES THE ROUTER REDUNDANT, which corrects a Phase 0
-              # conclusion rather than working around it. The two arguments for
-              # the router both evaporate: its lack of an idle unload no longer
-              # matters because nothing defers to it, and its phantom `default`
-              # model — which recursed into a child router and hung the request
-              # — simply never exists. llama.cpp's own warning that router mode
-              # is "experimental ... not recommended in untrusted environments"
-              # stops applying too. One layer, not two.
-              lib.listToAttrs (map (name: {
+          models =
+            # ── llama-swap SPAWNS each model. THERE IS NO ROUTER. ──────────
+            #
+            # The first cut of this module ran `llama-server` in ROUTER mode
+            # and pointed llama-swap at it with `proxy` + `useModelName`,
+            # reasoning that the router owns LLM<->LLM swapping and llama-swap
+            # owns LLM<->non-LLM.  THAT IS NOT A SHAPE llama-swap SUPPORTS,
+            # and it failed on the first real request:
+            #
+            #   HTTP 500 {"src":"llama-swap",
+            #     "error":"unable to get sanitized command: empty command"}
+            #
+            # `proxy` is not "forward to this external service".  Its own
+            # documentation calls it "the URL where llama-swap routes API
+            # requests" — i.e. where the process it STARTS will listen, and
+            # `cmd` is mandatory (config.go returns "empty command"
+            # otherwise).  There is no externally-managed-backend mode.
+            #
+            # So llama-swap spawns llama-server per model, with that model's
+            # own context and KV type on the command line. This is exactly the
+            # shape Phase 0's exclusivity proof used, so it is measured rather
+            # than hoped: coder resident 21797 MiB -> other member 19118 MiB
+            # -> coder back at 21797 MiB.
+            #
+            # AND IT MAKES THE ROUTER REDUNDANT, which corrects a Phase 0
+            # conclusion rather than working around it. The two arguments for
+            # the router both evaporate: its lack of an idle unload no longer
+            # matters because nothing defers to it, and its phantom `default`
+            # model — which recursed into a child router and hung the request
+            # — simply never exists. llama.cpp's own warning that router mode
+            # is "experimental ... not recommended in untrusted environments"
+            # stops applying too. One layer, not two.
+            lib.listToAttrs (map (name: {
                 inherit name;
                 value = {
-                  cmd           = llamaCmd name;
-                  ttl           = settings.idleTtl;
+                  cmd = llamaCmd name;
+                  ttl = settings.idleTtl;
                   checkEndpoint = "/health";
-                  name          = declared.${name}.description;
+                  name = declared.${name}.description;
                 };
-              }) modelNames)
+              })
+              modelNames)
+            # The non-LLM backends ARE spawned by llama-swap, because they
+            # are the ones llama-server's router cannot see and therefore
+            # cannot arbitrate against.
+            // lib.optionalAttrs speechEnabled {
+              whisper = {
+                cmd = lib.concatStringsSep " " [
+                  "${speechPackage}/bin/whisper-server"
+                  "--host 127.0.0.1 --port \${PORT}"
+                  "-m ${modelsDir}/${speechRole.model}"
+                  # Makes it OpenAI-shaped with no wrapper in front.  The
+                  # default is /inference, which Open WebUI does not speak.
+                  "--inference-path /v1/audio/transcriptions"
+                  "-t ${toString speechRole.threads}"
+                  "-l ${speechRole.language}"
+                ];
+                ttl = settings.idleTtl;
+                checkEndpoint = "/health";
+                name = "Whisper (speech to text)";
 
-              # The non-LLM backends ARE spawned by llama-swap, because they
-              # are the ones llama-server's router cannot see and therefore
-              # cannot arbitrate against.
-              // lib.optionalAttrs speechEnabled {
-                whisper = {
-                  cmd = lib.concatStringsSep " " [
-                    "${speechPackage}/bin/whisper-server"
-                    "--host 127.0.0.1 --port \${PORT}"
-                    "-m ${modelsDir}/${speechRole.model}"
-                    # Makes it OpenAI-shaped with no wrapper in front.  The
-                    # default is /inference, which Open WebUI does not speak.
-                    "--inference-path /v1/audio/transcriptions"
-                    "-t ${toString speechRole.threads}"
-                    "-l ${speechRole.language}"
-                  ];
-                  ttl           = settings.idleTtl;
-                  checkEndpoint = "/health";
-                  name          = "Whisper (speech to text)";
-
-                  # HIDDEN FROM /v1/models, because it is not a chat model.
-                  #
-                  # Open WebUI builds its model picker from /v1/models, so
-                  # whisper appeared there as something to converse with — and
-                  # picking it fails, since whisper-server answers
-                  # /v1/audio/transcriptions and not /v1/chat/completions. A
-                  # menu entry whose only behaviour is to break is worse than no
-                  # entry.
-                  #
-                  # `unlisted` skips the listing ONLY (internal/server/api.go:52
-                  # `if mc.Unlisted { continue }`); routing by model name is
-                  # untouched, so the STT path keeps working — Open WebUI names
-                  # `whisper` explicitly in AUDIO_STT_MODEL rather than
-                  # discovering it.
-                  unlisted = true;
-                };
-              }
-              // lib.optionalAttrs imagegenEnabled {
-                comfyui = {
-                  # ── M19 WROTE THIS ENTRY IN THE ONE SHAPE llama-swap ───────
-                  #    DOES NOT SUPPORT, AND M21 IS WHERE IT WAS CAUGHT.
-                  #
-                  # It shipped as `proxy` with NO `cmd`, on the reasoning that
-                  # ComfyUI was already running under podman and llama-swap
-                  # only needed to know it existed.  That is EXACTLY the
-                  # externally-managed-backend shape the `models` note above
-                  # records as impossible — and the failure is identical:
-                  #
-                  #   HTTP 500 {"src":"llama-swap",
-                  #     "error":"unable to get sanitized command: empty command"}
-                  #
-                  # doStart() requires BOTH (process_command.go:358-364): a
-                  # non-empty Proxy, then SanitizedCommand(), which returns
-                  # "empty command" for an empty Cmd.  The role was never
-                  # enabled, so nothing exercised it.  The roadmap's "adding
-                  # ComfyUI to swapMembers is one line" was false.
-                  #
-                  # ── AND THE FIX IS WHY M21 LEFT THE PODMAN TIER ───────────
-                  #
-                  # llama-swap MUST own the process, because killing it on ttl
-                  # is the ONLY thing that hands the VRAM back.  This unit runs
-                  # as the unprivileged `${user}` user and ernst's podman tier
-                  # is rootful, so it could never have started or stopped a
-                  # container.  Built instead, ComfyUI is an ordinary child of
-                  # this unit and inherits its ROCm sandbox — the same
-                  # arrangement llama-server's model processes already use.
-                  cmd = comfyuiCmd;
-
-                  # `${PORT}` is llama-swap's macro (escaped so Nix leaves it
-                  # alone): it allocates the port from `startPort` and puts the
-                  # same number in both the command and the proxy target.
-                  proxy         = "http://127.0.0.1:\${PORT}";
-                  ttl           = settings.idleTtl;
-                  checkEndpoint = "/system_stats";
-                  name          = "ComfyUI (image generation)";
-
-                  # HIDDEN FROM /v1/models, for the reason whisper is — read
-                  # that note above; this is the same defect with a different
-                  # backend.  Open WebUI builds its model picker from
-                  # /v1/models, and ComfyUI answers none of the chat API, so an
-                  # entry here would be a menu item whose only behaviour is to
-                  # fail.  Routing by name is untouched, which is what
-                  # /upstream/comfyui below depends on.
-                  unlisted = true;
-                };
+                # HIDDEN FROM /v1/models, because it is not a chat model.
+                #
+                # Open WebUI builds its model picker from /v1/models, so
+                # whisper appeared there as something to converse with — and
+                # picking it fails, since whisper-server answers
+                # /v1/audio/transcriptions and not /v1/chat/completions. A
+                # menu entry whose only behaviour is to break is worse than no
+                # entry.
+                #
+                # `unlisted` skips the listing ONLY (internal/server/api.go:52
+                # `if mc.Unlisted { continue }`); routing by model name is
+                # untouched, so the STT path keeps working — Open WebUI names
+                # `whisper` explicitly in AUDIO_STT_MODEL rather than
+                # discovering it.
+                unlisted = true;
               };
+            }
+            // lib.optionalAttrs imagegenEnabled {
+              comfyui = {
+                # ── M19 WROTE THIS ENTRY IN THE ONE SHAPE llama-swap ───────
+                #    DOES NOT SUPPORT, AND M21 IS WHERE IT WAS CAUGHT.
+                #
+                # It shipped as `proxy` with NO `cmd`, on the reasoning that
+                # ComfyUI was already running under podman and llama-swap
+                # only needed to know it existed.  That is EXACTLY the
+                # externally-managed-backend shape the `models` note above
+                # records as impossible — and the failure is identical:
+                #
+                #   HTTP 500 {"src":"llama-swap",
+                #     "error":"unable to get sanitized command: empty command"}
+                #
+                # doStart() requires BOTH (process_command.go:358-364): a
+                # non-empty Proxy, then SanitizedCommand(), which returns
+                # "empty command" for an empty Cmd.  The role was never
+                # enabled, so nothing exercised it.  The roadmap's "adding
+                # ComfyUI to swapMembers is one line" was false.
+                #
+                # ── AND THE FIX IS WHY M21 LEFT THE PODMAN TIER ───────────
+                #
+                # llama-swap MUST own the process, because killing it on ttl
+                # is the ONLY thing that hands the VRAM back.  This unit runs
+                # as the unprivileged `${user}` user and ernst's podman tier
+                # is rootful, so it could never have started or stopped a
+                # container.  Built instead, ComfyUI is an ordinary child of
+                # this unit and inherits its ROCm sandbox — the same
+                # arrangement llama-server's model processes already use.
+                cmd = comfyuiCmd;
 
-            groups = {
+                # `${PORT}` is llama-swap's macro (escaped so Nix leaves it
+                # alone): it allocates the port from `startPort` and puts the
+                # same number in both the command and the proxy target.
+                proxy = "http://127.0.0.1:\${PORT}";
+                ttl = settings.idleTtl;
+                checkEndpoint = "/system_stats";
+                name = "ComfyUI (image generation)";
+
+                # HIDDEN FROM /v1/models, for the reason whisper is — read
+                # that note above; this is the same defect with a different
+                # backend.  Open WebUI builds its model picker from
+                # /v1/models, and ComfyUI answers none of the chat API, so an
+                # entry here would be a menu item whose only behaviour is to
+                # fail.  Routing by name is untouched, which is what
+                # /upstream/comfyui below depends on.
+                unlisted = true;
+              };
+            };
+
+          groups =
+            {
               # The card. One member resident at a time, and loading one here
               # evicts anything in another group.
               gpu = {
-                swap      = true;
+                swap = true;
                 exclusive = true;
-                members   = swapMembers;
+                members = swapMembers;
               };
             }
             # ── CPU BACKENDS NEED AN EXPLICIT NON-EXCLUSIVE GROUP ────────────
@@ -836,340 +862,345 @@ in
             # CPU backends coexist if more are ever added.
             // lib.optionalAttrs speechEnabled {
               cpu = {
-                swap      = false;
+                swap = false;
                 exclusive = false;
-                members   = [ "whisper" ];
+                members = ["whisper"];
               };
             };
-          };
+        };
 
-          swapConfigFile = pkgs.writeText "llama-swap.yaml"
-            (builtins.toJSON swapConfig);   # llama-swap parses YAML; JSON is valid YAML
+        swapConfigFile =
+          pkgs.writeText "llama-swap.yaml"
+          (builtins.toJSON swapConfig); # llama-swap parses YAML; JSON is valid YAML
 
-          speechPackage = pkgs.whisper-cpp.override {
-            rocmSupport    = true;
-            # A STRING here, not a list — whisper-cpp and llama-cpp disagree on
-            # the type of this argument in nixpkgs 26.05.  Getting it wrong is
-            # an `assert lib.isString value` failure deep in cmake option
-            # handling, which does not name this line.
-            rocmGpuTargets = speechRole.gpuTarget;
-          };
+        speechPackage = pkgs.whisper-cpp.override {
+          rocmSupport = true;
+          # A STRING here, not a list — whisper-cpp and llama-cpp disagree on
+          # the type of this argument in nixpkgs 26.05.  Getting it wrong is
+          # an `assert lib.isString value` failure deep in cmake option
+          # handling, which does not name this line.
+          rocmGpuTargets = speechRole.gpuTarget;
+        };
 
-          tunnelPubKeyPath =
-            config.clan.core.settings.directory
-            + "/vars/shared/ollama-tunnel-ssh/tunnel_ed25519.pub/value";
-          tunnelPubKey =
-            if builtins.pathExists tunnelPubKeyPath then
-              lib.removeSuffix "\n" (builtins.readFile tunnelPubKeyPath)
-            else null;
-        in
-        lib.mkMerge [ {
-          assertions = [
-            {
-              assertion = declared != { };
-              message = ''
-                @clanarchy/local-ai: ${machine.name} holds roles.inference but
-                declares no models.  Add it to roles.models — the two are
-                deliberately separate roles reading ONE attrset, so that the
-                fetcher and llama-server's preset INI cannot disagree, and an
-                inference server with an empty model set is a configuration
-                mistake rather than a valid state.
-              '';
-            }
-          ]
-          # ── THE VRAM BUDGET ────────────────────────────────────────────
-          #
-          # One assertion per served model, rather than one for the largest,
-          # because the group is `exclusive`: any member can be the resident
-          # one, so every member has to fit on its own.  Checking only the
-          # biggest would pass a config whose second model is the problem.
-          #
-          # Skipped entirely when totalMiB is null — a machine whose card
-          # drives no display has nothing to reserve against and should not
-          # be made to declare a number it cannot measure.
-          ++ lib.optionals (settings.vram.totalMiB != null)
-            (map (n:
-              let
-                m       = declared.${n};
-                ceiling = settings.vram.totalMiB - settings.vram.reserveMiB;
-              in {
-                assertion = m.residentVramMiB == null || m.residentVramMiB <= ceiling;
-                message = ''
-                  @clanarchy/local-ai: model "${n}" does not fit on
-                  ${machine.name}'s inference card under the session reserve.
+        tunnelPubKeyPath =
+          config.clan.core.settings.directory
+          + "/vars/shared/ollama-tunnel-ssh/tunnel_ed25519.pub/value";
+        tunnelPubKey =
+          if builtins.pathExists tunnelPubKeyPath
+          then lib.removeSuffix "\n" (builtins.readFile tunnelPubKeyPath)
+          else null;
+      in
+        lib.mkMerge [
+          {
+            assertions =
+              [
+                {
+                  assertion = declared != {};
+                  message = ''
+                    @clanarchy/local-ai: ${machine.name} holds roles.inference but
+                    declares no models.  Add it to roles.models — the two are
+                    deliberately separate roles reading ONE attrset, so that the
+                    fetcher and llama-server's preset INI cannot disagree, and an
+                    inference server with an empty model set is a configuration
+                    mistake rather than a valid state.
+                  '';
+                }
+              ]
+              # ── THE VRAM BUDGET ────────────────────────────────────────────
+              #
+              # One assertion per served model, rather than one for the largest,
+              # because the group is `exclusive`: any member can be the resident
+              # one, so every member has to fit on its own.  Checking only the
+              # biggest would pass a config whose second model is the problem.
+              #
+              # Skipped entirely when totalMiB is null — a machine whose card
+              # drives no display has nothing to reserve against and should not
+              # be made to declare a number it cannot measure.
+              ++ lib.optionals (settings.vram.totalMiB != null)
+              (map (n: let
+                  m = declared.${n};
+                  ceiling = settings.vram.totalMiB - settings.vram.reserveMiB;
+                in {
+                  assertion = m.residentVramMiB == null || m.residentVramMiB <= ceiling;
+                  message = ''
+                    @clanarchy/local-ai: model "${n}" does not fit on
+                    ${machine.name}'s inference card under the session reserve.
 
-                    measured resident   ${toString m.residentVramMiB} MiB
-                    card total          ${toString settings.vram.totalMiB} MiB
-                    session reserve     ${toString settings.vram.reserveMiB} MiB
-                    ceiling             ${toString ceiling} MiB
-                    OVER BY             ${toString (m.residentVramMiB - ceiling)} MiB
+                      measured resident   ${toString m.residentVramMiB} MiB
+                      card total          ${toString settings.vram.totalMiB} MiB
+                      session reserve     ${toString settings.vram.reserveMiB} MiB
+                      ceiling             ${toString ceiling} MiB
+                      OVER BY             ${toString (m.residentVramMiB - ceiling)} MiB
 
-                  The reserve is what the compositor holding the TV needs.
-                  Taking it is not a slow degradation — gamescope answers a
-                  framebuffer pin that returns ENOMEM by calling abort(), and
-                  the display manager relogs it in, so the television
-                  crash-loops until the model's idle ttl expires.
+                    The reserve is what the compositor holding the TV needs.
+                    Taking it is not a slow degradation — gamescope answers a
+                    framebuffer pin that returns ENOMEM by calling abort(), and
+                    the display manager relogs it in, so the television
+                    crash-loops until the model's idle ttl expires.
 
-                  Three levers, cheapest first:
+                    Three levers, cheapest first:
 
-                    * lower `contextLength` — on this architecture only a
-                      quarter of the layers hold KV, so halving the window
-                      buys a few hundred MiB and costs little;
-                    * `extraArgs = [ "--n-cpu-moe N" ]` — moves the expert
-                      tensors of the first N layers to system RAM and leaves
-                      attention and KV on the GPU;
-                    * a smaller quantisation, which is a measurement and not
-                      a swap: check tool-call fidelity before believing it.
+                      * lower `contextLength` — on this architecture only a
+                        quarter of the layers hold KV, so halving the window
+                        buys a few hundred MiB and costs little;
+                      * `extraArgs = [ "--n-cpu-moe N" ]` — moves the expert
+                        tensors of the first N layers to system RAM and leaves
+                        attention and KV on the GPU;
+                      * a smaller quantisation, which is a measurement and not
+                        a swap: check tool-call fidelity before believing it.
 
-                  Lowering `vram.reserveMiB` is the lever that LOOKS cheapest
-                  and is not — it is a measured floor, not a safety margin.
-                '';
-              }) modelNames);
+                    Lowering `vram.reserveMiB` is the lever that LOOKS cheapest
+                    and is not — it is a measured floor, not a safety margin.
+                  '';
+                })
+                modelNames);
 
-          # A warning, not an assertion: an unmeasured model is allowed —
-          # measuring one costs a deploy and a stopped session — but it is
-          # invisible to the check above, so it must not also be silent.
-          warnings = lib.optionals (settings.vram.totalMiB != null)
-            (map (n: ''
-              @clanarchy/local-ai: model "${n}" has no `residentVramMiB`, so
-              ${machine.name}'s VRAM budget cannot check it.  It is exempt
-              from the reserve by omission rather than by measurement, which
-              is the state the budget exists to make visible.  Measure it with
-              the command in the option's description.
-            '') (lib.filter (n: declared.${n}.residentVramMiB == null) modelNames));
+            # A warning, not an assertion: an unmeasured model is allowed —
+            # measuring one costs a deploy and a stopped session — but it is
+            # invisible to the check above, so it must not also be silent.
+            warnings =
+              lib.optionals (settings.vram.totalMiB != null)
+              (map (n: ''
+                @clanarchy/local-ai: model "${n}" has no `residentVramMiB`, so
+                ${machine.name}'s VRAM budget cannot check it.  It is exempt
+                from the reserve by omission rather than by measurement, which
+                is the state the budget exists to make visible.  Measure it with
+                the command in the option's description.
+              '') (lib.filter (n: declared.${n}.residentVramMiB == null) modelNames));
 
-          ##################################################################
-          # User, state, and the model store on zdata.
-          ##################################################################
-          users.users.${user} = {
-            isSystemUser = true;
-            group        = user;
-            home         = stateDir;
-            createHome   = false;
-            description  = "Local AI inference (llama.cpp)";
-          };
-          users.groups.${user} = { };
+            ##################################################################
+            # User, state, and the model store on zdata.
+            ##################################################################
+            users.users.${user} = {
+              isSystemUser = true;
+              group = user;
+              home = stateDir;
+              createHome = false;
+              description = "Local AI inference (llama.cpp)";
+            };
+            users.groups.${user} = {};
 
-          systemd.tmpfiles.rules = [
-            "d ${stateDir} 0750 ${user} ${user} -"
-            "d ${modelsDir} 0750 ${user} ${user} -"
-            # Many ROCm utilities hard-code /opt/rocm/hip.  Inherited from the
-            # ollama era and still required.
-            "L+ /opt/rocm/hip - - - - ${pkgs.rocmPackages.clr}"
-          ]
-          # ComfyUI's writable tree, owned by the SAME user llama-swap runs as
-          # — it is a child of that unit, not a service with an identity of its
-          # own.  Created here rather than in roles.imagegen because that role
-          # produces no units at all (see the note on its perInstance), and
-          # because the ownership is a fact about THIS role's user.
-          #
-          # ── custom_nodes IS NOT OPTIONAL, AND ComfyUI DOES NOT CREATE IT ──
-          #
-          # ComfyUI creates input/, output/, temp/ and user/ under the base
-          # directory itself, but `execute_prestartup_script()` runs BEFORE any
-          # of that and does a bare `os.listdir(custom_node_path)` on a path
-          # nothing has made yet (main.py:201).  With the directory absent it
-          # dies during startup:
-          #
-          #   FileNotFoundError: [Errno 2] No such file or directory:
-          #     '<base>/custom_nodes'
-          #
-          # Found by running the built package, not by reading it — which is
-          # the only reason it is here rather than in a journal on ernst after
-          # the first image request.  It is created EMPTY and stays that way:
-          # see the note in service-modules/pkgs/comfyui/default.nix on why
-          # custom nodes are a derivation here rather than a runtime install.
-          ++ lib.optionals imagegenEnabled [
-            "d ${imagegenRole.stateDir} 0750 ${user} ${user} -"
-            "d ${imagegenRole.stateDir}/custom_nodes 0750 ${user} ${user} -"
-          ];
+            systemd.tmpfiles.rules =
+              [
+                "d ${stateDir} 0750 ${user} ${user} -"
+                "d ${modelsDir} 0750 ${user} ${user} -"
+                # Many ROCm utilities hard-code /opt/rocm/hip.  Inherited from the
+                # ollama era and still required.
+                "L+ /opt/rocm/hip - - - - ${pkgs.rocmPackages.clr}"
+              ]
+              # ComfyUI's writable tree, owned by the SAME user llama-swap runs as
+              # — it is a child of that unit, not a service with an identity of its
+              # own.  Created here rather than in roles.imagegen because that role
+              # produces no units at all (see the note on its perInstance), and
+              # because the ownership is a fact about THIS role's user.
+              #
+              # ── custom_nodes IS NOT OPTIONAL, AND ComfyUI DOES NOT CREATE IT ──
+              #
+              # ComfyUI creates input/, output/, temp/ and user/ under the base
+              # directory itself, but `execute_prestartup_script()` runs BEFORE any
+              # of that and does a bare `os.listdir(custom_node_path)` on a path
+              # nothing has made yet (main.py:201).  With the directory absent it
+              # dies during startup:
+              #
+              #   FileNotFoundError: [Errno 2] No such file or directory:
+              #     '<base>/custom_nodes'
+              #
+              # Found by running the built package, not by reading it — which is
+              # the only reason it is here rather than in a journal on ernst after
+              # the first image request.  It is created EMPTY and stays that way:
+              # see the note in service-modules/pkgs/comfyui/default.nix on why
+              # custom nodes are a derivation here rather than a runtime install.
+              ++ lib.optionals imagegenEnabled [
+                "d ${imagegenRole.stateDir} 0750 ${user} ${user} -"
+                "d ${imagegenRole.stateDir}/custom_nodes 0750 ${user} ${user} -"
+              ];
 
-          ##################################################################
-          # llama-server, router mode.
-          #
-          # NO HSA_OVERRIDE_GFX_VERSION.  The 7900 XTX is gfx1100 and ROCm
-          # supports it natively; forcing an override makes ROCm select the
-          # wrong kernels for a card that already has correct ones.  The
-          # override belongs only on APUs whose target is absent from stock
-          # ROCm — miralda's gfx1103 — and this role does not run there.
-          #
-          # THERE IS NO `llama-router` UNIT ANY MORE.  It ran llama-server in
-          # router mode and llama-swap proxied to it; llama-swap cannot do that
-          # (see the `models` note above) and the router turned out to be
-          # redundant once llama-swap spawns each model itself.  Everything the
-          # router unit carried — the ROCm environment, the device access, the
-          # hardening, and the note about what it cannot carry — now lives on
-          # llama-swap, because llama-swap is the process that forks
-          # llama-server and its children inherit that unit's sandbox.
-          ##################################################################
-          # llama-swap — the front door, and now the only layer.
-          ##################################################################
-          services.llama-swap = {
-            enable = true;
-            # HOST ONLY, and the port is a SEPARATE option.  The module renders
-            # `--listen=${listenAddress}:${port}`, so a host:port pair here
-            # becomes `--listen=127.0.0.1:11434:8080` and llama-swap exits 1
-            # with "too many colons in address" — which then trips the restart
-            # limit and presents as `start-limit-hit`, three failures away from
-            # the actual cause.  Deployed and hit on 2026-09-09.
-            listenAddress = "127.0.0.1";
-            port          = port;
-            # openFirewall stays false.  There is no case in which this port
-            # should be reachable off the host; clients that are not on ernst
-            # arrive through the SSH forward below.
-            openFirewall  = false;
-            settings      = swapConfig;
-          };
-
-          systemd.services.llama-swap = {
-            # No ordering on the fetch, for the reason the fetch unit records:
-            # `After=` also applies to an already-running unit, so it would
-            # queue a deploy behind a 25 GiB download.  llama-swap starts fine
-            # with no models on disk; a request for one that is missing fails
-            # per-request, which is the correct granularity.
-
-            # ── THERE WAS A 503 GATE HERE, AND IT WAS REMOVED ──────────
+            ##################################################################
+            # llama-server, router mode.
             #
-            # It stood a `503` + `Retry-After` responder on karakeep's leg
-            # whenever the card belonged to something outside this unit's
-            # exclusive group, so karakeep would back off instead of retrying
-            # a server that could not answer.  It worked, and it was not
-            # worth it.
+            # NO HSA_OVERRIDE_GFX_VERSION.  The 7900 XTX is gfx1100 and ROCm
+            # supports it natively; forcing an override makes ROCm select the
+            # wrong kernels for a card that already has correct ones.  The
+            # override belongs only on APUs whose target is absent from stock
+            # ROCm — miralda's gfx1103 — and this role does not run there.
             #
-            # WHAT IT ACTUALLY BOUGHT, once measured rather than assumed: a
-            # lower REQUEST RATE on a loopback path.  It did not save the
-            # bookmark — the job still burns karakeep's hard-coded three
-            # retries and `keepFailedJobs: false` drops it either way — so
-            # the whole benefit was fewer journal lines during a gaming
-            # session.  Nothing a person could see.
-            #
-            # WHAT IT COST: five follow-up fixes in three days, each a defect
-            # in the gate itself — a socket that could never bind, a
-            # `Conflicts=` that stops but does not order, a dead sentinel, a
-            # handover racing every activation — and one live outage, where a
-            # deploy left the gate holding the leg in front of a perfectly
-            # healthy llama-swap and karakeep got a permanent 503.
-            #
-            # Its watchdog also stopped this unit whenever an outside
-            # claimant held the card, which is worse than it sounds: a gaming
-            # session took the model away from mneme, Home Assistant's Assist
-            # pipeline and OpenCode, where without it they merely fail a load
-            # and recover the moment the card frees.
-            #
-            # So the card is now arbitrated by the three things that protect
-            # something a person would notice — the VRAM reserve, the htpc
-            # role's `gpu.preempt.units`, and its crash-loop breaker — and a
-            # model that cannot load simply answers 500, as it did before any
-            # of this.  machines/ernst/containers/karakeep.nix records what
-            # that costs and why no knob exists to soften it.
-
-            environment = {
-              ROCR_VISIBLE_DEVICES = "0";
-              HOME                 = stateDir;
+            # THERE IS NO `llama-router` UNIT ANY MORE.  It ran llama-server in
+            # router mode and llama-swap proxied to it; llama-swap cannot do that
+            # (see the `models` note above) and the router turned out to be
+            # redundant once llama-swap spawns each model itself.  Everything the
+            # router unit carried — the ROCm environment, the device access, the
+            # hardening, and the note about what it cannot carry — now lives on
+            # llama-swap, because llama-swap is the process that forks
+            # llama-server and its children inherit that unit's sandbox.
+            ##################################################################
+            # llama-swap — the front door, and now the only layer.
+            ##################################################################
+            services.llama-swap = {
+              enable = true;
+              # HOST ONLY, and the port is a SEPARATE option.  The module renders
+              # `--listen=${listenAddress}:${port}`, so a host:port pair here
+              # becomes `--listen=127.0.0.1:11434:8080` and llama-swap exits 1
+              # with "too many colons in address" — which then trips the restart
+              # limit and presents as `start-limit-hit`, three failures away from
+              # the actual cause.  Deployed and hit on 2026-09-09.
+              listenAddress = "127.0.0.1";
+              port = port;
+              # openFirewall stays false.  There is no case in which this port
+              # should be reachable off the host; clients that are not on ernst
+              # arrive through the SSH forward below.
+              openFirewall = false;
+              settings = swapConfig;
             };
 
-            serviceConfig = {
-              User  = lib.mkForce user;
-              Group = lib.mkForce user;
+            systemd.services.llama-swap = {
+              # No ordering on the fetch, for the reason the fetch unit records:
+              # `After=` also applies to an already-running unit, so it would
+              # queue a deploy behind a 25 GiB download.  llama-swap starts fine
+              # with no models on disk; a request for one that is missing fails
+              # per-request, which is the correct granularity.
 
-
-              # ── llama-swap FORKS llama-server, SO ITS SANDBOX IS THEIRS ────
+              # ── THERE WAS A 503 GATE HERE, AND IT WAS REMOVED ──────────
               #
-              # This is the consequence of dropping the router: the model
-              # processes are now CHILDREN of this unit and inherit everything
-              # set here.  Every ROCm requirement that used to live on
-              # llama-router has to live here instead, and getting that wrong
-              # would not fail at deploy — it would fail on the first GPU
-              # request, which is much later and much less obvious.
-              PrivateDevices = false;
-
-              # ── `char-drm`, NOT `/dev/dri` ────────────────────────────────
+              # It stood a `503` + `Retry-After` responder on karakeep's leg
+              # whenever the card belonged to something outside this unit's
+              # exclusive group, so karakeep would back off instead of retrying
+              # a server that could not answer.  It worked, and it was not
+              # worth it.
               #
-              # /dev/dri is a DIRECTORY, not a device node.  Naming it in
-              # DeviceAllow grants nothing — and because *any* DeviceAllow
-              # entry switches the cgroup to allow-list mode, listing it
-              # DENIED every render node under it.  `char-drm` is the device
-              # group that actually covers /dev/dri/*.
+              # WHAT IT ACTUALLY BOUGHT, once measured rather than assumed: a
+              # lower REQUEST RATE on a loopback path.  It did not save the
+              # bookmark — the job still burns karakeep's hard-coded three
+              # retries and `keepFailedJobs: false` drops it either way — so
+              # the whole benefit was fewer journal lines during a gaming
+              # session.  Nothing a person could see.
               #
-              # HOW THIS PRESENTED, because it is the worst kind: the unit
-              # started clean, systemd logged nothing, systemd-analyze scored it
-              # no worse, and llama-server fell back to CPU **silently**.  The
-              # only symptom was 6.7 tok/s instead of ~100 and VRAM that never
-              # moved off idle.  Bisected on ernst 2026-09-09:
+              # WHAT IT COST: five follow-up fixes in three days, each a defect
+              # in the gate itself — a socket that could never bind, a
+              # `Conflicts=` that stops but does not order, a dead sentinel, a
+              # handover racing every activation — and one live outage, where a
+              # deploy left the gate holding the leg in front of a perfectly
+              # healthy llama-swap and karakeep got a permanent 503.
               #
-              #   DeviceAllow=/dev/kfd + /dev/dri   -> no GPU
-              #   DeviceAllow=/dev/kfd + char-drm   -> ROCm0: RX 7900 XTX
+              # Its watchdog also stopped this unit whenever an outside
+              # claimant held the card, which is worse than it sounds: a gaming
+              # session took the model away from mneme, Home Assistant's Assist
+              # pipeline and OpenCode, where without it they merely fail a load
+              # and recover the moment the card frees.
               #
-              # Same shape as MemoryDenyWriteExecute below: a hardening setting
-              # that looks correct, measures as correct, and quietly removes the
-              # entire point of the machine.
-              DeviceAllow    = [ "/dev/kfd rw" "char-drm rw" ];
+              # So the card is now arbitrated by the three things that protect
+              # something a person would notice — the VRAM reserve, the htpc
+              # role's `gpu.preempt.units`, and its crash-loop breaker — and a
+              # model that cannot load simply answers 500, as it did before any
+              # of this.  machines/ernst/containers/karakeep.nix records what
+              # that costs and why no knob exists to soften it.
 
-              # ComfyUI's base directory is a SECOND writable path, and its
-              # absence would not fail here — it would fail inside a spawned
-              # child, as a Python traceback about a directory it could not
-              # create, at first image request rather than at deploy.
-              ReadWritePaths = [ stateDir ]
-                ++ lib.optional imagegenEnabled imagegenRole.stateDir;
-              NoNewPrivileges = true;
-              ProtectHome     = true;
+              environment = {
+                ROCR_VISIBLE_DEVICES = "0";
+                HOME = stateDir;
+              };
 
-              # THE IMPORTANT ONE.  nixpkgs' llama-swap module sets
-              # MemoryDenyWriteExecute=true — correct for a Go proxy that
-              # spawns nothing, wrong the moment it spawns a ROCm process.
-              # The ROCm runtime JITs GPU kernels through libamd_comgr and
-              # needs W+X mappings; inherited, this kills every model on first
-              # GPU use. It scored a ✓ on systemd-analyze while being actively
-              # harmful, which is exactly the kind of green that means nothing.
-              MemoryDenyWriteExecute = lib.mkForce false;
+              serviceConfig = {
+                User = lib.mkForce user;
+                Group = lib.mkForce user;
 
-              # Same reasoning: the module's syscall filter is sized for the
-              # proxy, and the children need the ROCm ioctl surface.
-              # @system-service covers ioctl; the two subtractions are kept
-              # because nothing in this tree legitimately needs them.
-              SystemCallFilter = lib.mkForce [ "@system-service" "~@privileged" ];
+                # ── llama-swap FORKS llama-server, SO ITS SANDBOX IS THEIRS ────
+                #
+                # This is the consequence of dropping the router: the model
+                # processes are now CHILDREN of this unit and inherit everything
+                # set here.  Every ROCm requirement that used to live on
+                # llama-router has to live here instead, and getting that wrong
+                # would not fail at deploy — it would fail on the first GPU
+                # request, which is much later and much less obvious.
+                PrivateDevices = false;
+
+                # ── `char-drm`, NOT `/dev/dri` ────────────────────────────────
+                #
+                # /dev/dri is a DIRECTORY, not a device node.  Naming it in
+                # DeviceAllow grants nothing — and because *any* DeviceAllow
+                # entry switches the cgroup to allow-list mode, listing it
+                # DENIED every render node under it.  `char-drm` is the device
+                # group that actually covers /dev/dri/*.
+                #
+                # HOW THIS PRESENTED, because it is the worst kind: the unit
+                # started clean, systemd logged nothing, systemd-analyze scored it
+                # no worse, and llama-server fell back to CPU **silently**.  The
+                # only symptom was 6.7 tok/s instead of ~100 and VRAM that never
+                # moved off idle.  Bisected on ernst 2026-09-09:
+                #
+                #   DeviceAllow=/dev/kfd + /dev/dri   -> no GPU
+                #   DeviceAllow=/dev/kfd + char-drm   -> ROCm0: RX 7900 XTX
+                #
+                # Same shape as MemoryDenyWriteExecute below: a hardening setting
+                # that looks correct, measures as correct, and quietly removes the
+                # entire point of the machine.
+                DeviceAllow = ["/dev/kfd rw" "char-drm rw"];
+
+                # ComfyUI's base directory is a SECOND writable path, and its
+                # absence would not fail here — it would fail inside a spawned
+                # child, as a Python traceback about a directory it could not
+                # create, at first image request rather than at deploy.
+                ReadWritePaths =
+                  [stateDir]
+                  ++ lib.optional imagegenEnabled imagegenRole.stateDir;
+                NoNewPrivileges = true;
+                ProtectHome = true;
+
+                # THE IMPORTANT ONE.  nixpkgs' llama-swap module sets
+                # MemoryDenyWriteExecute=true — correct for a Go proxy that
+                # spawns nothing, wrong the moment it spawns a ROCm process.
+                # The ROCm runtime JITs GPU kernels through libamd_comgr and
+                # needs W+X mappings; inherited, this kills every model on first
+                # GPU use. It scored a ✓ on systemd-analyze while being actively
+                # harmful, which is exactly the kind of green that means nothing.
+                MemoryDenyWriteExecute = lib.mkForce false;
+
+                # Same reasoning: the module's syscall filter is sized for the
+                # proxy, and the children need the ROCm ioctl surface.
+                # @system-service covers ioctl; the two subtractions are kept
+                # because nothing in this tree legitimately needs them.
+                SystemCallFilter = lib.mkForce ["@system-service" "~@privileged"];
+              };
             };
-          };
-
-        } (mkBridges {
-          inherit pkgs;
-          # The unit prefix stays `llama-bridge-<consumer>` as it has been since
-          # M19: runbooks, journal greps and docs/history.md's L9 row all name
-          # it, and a rename would buy nothing.
-          unit       = "llama-bridge";
-          what       = "llama-swap";
-          targetPort = port;
-          bridges    = settings.exposeOn;
-          extraAfter = [ "llama-swap.service" ];
-        }) {
-
-          ##################################################################
-          # The SSH forward jens uses.
-          #
-          # `restrict` turns everything off including port forwarding;
-          # `port-forwarding` turns exactly that back on and `permitopen`
-          # narrows it to one destination.  A forward to loopback:11434 and
-          # nothing else — notably not a shell.
-          #
-          # The generator name is still `ollama-tunnel-ssh`.  RENAMING IT WOULD
-          # ROTATE THE KEY on every machine that has one, for cosmetic reasons,
-          # and clan rejects a shared generator whose definitions diverge
-          # between machines — so a half-finished rename breaks every deploy in
-          # the flake, not just this role's.  The name is historical; the thing
-          # it names is correct.
-          ##################################################################
-          users.users.root.openssh.authorizedKeys.keys =
-            lib.optionals (settings.remoteClients.enable && tunnelPubKey != null) [
+          }
+          (mkBridges {
+            inherit pkgs;
+            # The unit prefix stays `llama-bridge-<consumer>` as it has been since
+            # M19: runbooks, journal greps and docs/history.md's L9 row all name
+            # it, and a rename would buy nothing.
+            unit = "llama-bridge";
+            what = "llama-swap";
+            targetPort = port;
+            bridges = settings.exposeOn;
+            extraAfter = ["llama-swap.service"];
+          })
+          {
+            ##################################################################
+            # The SSH forward jens uses.
+            #
+            # `restrict` turns everything off including port forwarding;
+            # `port-forwarding` turns exactly that back on and `permitopen`
+            # narrows it to one destination.  A forward to loopback:11434 and
+            # nothing else — notably not a shell.
+            #
+            # The generator name is still `ollama-tunnel-ssh`.  RENAMING IT WOULD
+            # ROTATE THE KEY on every machine that has one, for cosmetic reasons,
+            # and clan rejects a shared generator whose definitions diverge
+            # between machines — so a half-finished rename breaks every deploy in
+            # the flake, not just this role's.  The name is historical; the thing
+            # it names is correct.
+            ##################################################################
+            users.users.root.openssh.authorizedKeys.keys = lib.optionals (settings.remoteClients.enable && tunnelPubKey != null) [
               ''restrict,port-forwarding,permitopen="127.0.0.1:${toString port}" ${tunnelPubKey}''
             ];
 
-          warnings = lib.optional (settings.remoteClients.enable && tunnelPubKey == null) ''
-            local-ai: remoteClients is enabled on this machine but
-            vars/shared/ollama-tunnel-ssh/tunnel_ed25519.pub does not exist yet,
-            so no key has been authorised and the tunnel will be refused. Run
-            `clan vars generate <the client machine>`, then redeploy this one.
-          '';
-        } ];
+            warnings = lib.optional (settings.remoteClients.enable && tunnelPubKey == null) ''
+              local-ai: remoteClients is enabled on this machine but
+              vars/shared/ollama-tunnel-ssh/tunnel_ed25519.pub does not exist yet,
+              so no key has been authorised and the tunnel will be refused. Run
+              `clan vars generate <the client machine>`, then redeploy this one.
+            '';
+          }
+        ];
     };
   };
 
@@ -1180,7 +1211,7 @@ in
     description = "Models to fetch and declare. Fetched to zdata, hash-verified.";
 
     interface.options.models = lib.mkOption {
-      default = { };
+      default = {};
       description = ''
         The models this machine serves, keyed by the name clients request.
 
@@ -1201,27 +1232,27 @@ in
         rather than a corrupt model — but a wrong URL that happens to resolve
         is not something a hash can catch after the fact.
       '';
-      type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
+      type = lib.types.attrsOf (lib.types.submodule ({name, ...}: {
         options = {
           url = lib.mkOption {
-            type        = lib.types.str;
+            type = lib.types.str;
             description = "Direct download URL for the GGUF. Must be verified before it is committed.";
           };
           hash = lib.mkOption {
-            type        = lib.types.str;
-            example     = "sha256-…";
+            type = lib.types.str;
+            example = "sha256-…";
             description = "SRI hash of the file at `url`, from `nix store prefetch-file`.";
           };
           filename = lib.mkOption {
-            type        = lib.types.str;
-            default     = baseNameOf name;
+            type = lib.types.str;
+            default = baseNameOf name;
             description = "Name the file is stored under in the model directory.";
           };
 
           subdir = lib.mkOption {
-            type        = lib.types.str;
-            default     = "";
-            example     = "checkpoints";
+            type = lib.types.str;
+            default = "";
+            example = "checkpoints";
             description = ''
               Directory BELOW the model directory this file is stored in, or ""
               for the model directory itself.
@@ -1248,13 +1279,13 @@ in
             '';
           };
           description = lib.mkOption {
-            type        = lib.types.str;
-            default     = name;
+            type = lib.types.str;
+            default = name;
             description = "Human-readable label, shown in client model pickers.";
           };
 
           contextLength = lib.mkOption {
-            type    = lib.types.ints.positive;
+            type = lib.types.ints.positive;
             example = 32768;
             description = ''
               `-c` for this model, and NO DEFAULT ON PURPOSE — every model must
@@ -1280,9 +1311,9 @@ in
           };
 
           residentVramMiB = lib.mkOption {
-            type        = lib.types.nullOr lib.types.ints.positive;
-            default     = null;
-            example     = 22800;
+            type = lib.types.nullOr lib.types.ints.positive;
+            default = null;
+            example = 22800;
             description = ''
               MEASURED resident VRAM for this model, in MiB.  Never computed,
               never estimated — read off the card with the model loaded and
@@ -1308,8 +1339,8 @@ in
           };
 
           kvCacheType = lib.mkOption {
-            type        = lib.types.enum [ "f16" "q8_0" "q4_0" ];
-            default     = "f16";
+            type = lib.types.enum ["f16" "q8_0" "q4_0"];
+            default = "f16";
             description = ''
               `--cache-type-k` and `--cache-type-v` for this model. BOTH, always
               — see below.
@@ -1339,8 +1370,8 @@ in
           };
 
           servedByLlama = lib.mkOption {
-            type        = lib.types.bool;
-            default     = true;
+            type = lib.types.bool;
+            default = true;
             description = ''
               Whether this entry becomes a section in llama-server's preset INI.
 
@@ -1354,8 +1385,8 @@ in
           };
 
           mmproj = lib.mkOption {
-            type        = lib.types.nullOr lib.types.str;
-            default     = null;
+            type = lib.types.nullOr lib.types.str;
+            default = null;
             description = ''
               Filename of the multimodal projector, for vision or audio models.
               It is a SECOND file with its own URL and hash — declare it as its
@@ -1366,11 +1397,17 @@ in
           extraFiles = lib.mkOption {
             type = lib.types.attrsOf (lib.types.submodule {
               options = {
-                url  = lib.mkOption { type = lib.types.str; description = "Verified URL."; };
-                hash = lib.mkOption { type = lib.types.str; description = "SRI hash."; };
+                url = lib.mkOption {
+                  type = lib.types.str;
+                  description = "Verified URL.";
+                };
+                hash = lib.mkOption {
+                  type = lib.types.str;
+                  description = "SRI hash.";
+                };
               };
             });
-            default     = { };
+            default = {};
             description = ''
               Additional files fetched alongside the model, keyed by filename.
               Projectors for vision models live here — llama.cpp needs the
@@ -1379,9 +1416,9 @@ in
           };
 
           extraArgs = lib.mkOption {
-            type        = lib.types.listOf lib.types.str;
-            default     = [ ];
-            example     = [ "--n-cpu-moe 4" ];
+            type = lib.types.listOf lib.types.str;
+            default = [];
+            example = ["--n-cpu-moe 4"];
             description = ''
               Extra llama-server arguments for this model, appended verbatim
               to the command line llama-swap spawns.
@@ -1405,31 +1442,60 @@ in
       }));
     };
 
-    perInstance = { settings, roles, machine, ... }: {
-      nixosModule = { config, pkgs, lib, ... }:
-        let
-          inf = roles.inference.machines.${machine.name}.settings or null;
-          stateDir  = if inf != null then inf.stateDir else "/srv/state/local-ai";
-          user      = if inf != null then inf.user else "llama";
-          modelsDir = "${stateDir}/models";
+    perInstance = {
+      settings,
+      roles,
+      machine,
+      ...
+    }: {
+      nixosModule = {
+        config,
+        pkgs,
+        lib,
+        ...
+      }: let
+        inf = roles.inference.machines.${machine.name}.settings or null;
+        stateDir =
+          if inf != null
+          then inf.stateDir
+          else "/srv/state/local-ai";
+        user =
+          if inf != null
+          then inf.user
+          else "llama";
+        modelsDir = "${stateDir}/models";
 
-          # Path of a file RELATIVE to the model directory.  Derived in one
-          # place and used by every consumer, for the reason `fileOf` in the
-          # inference role gives: two names for one path is how the fetcher and
-          # the server drift.  extraFiles deliberately inherit the model's
-          # subdirectory — a projector lives beside its weights.
-          relOf = m: file: if m.subdir == "" then file else "${m.subdir}/${file}";
+        # Path of a file RELATIVE to the model directory.  Derived in one
+        # place and used by every consumer, for the reason `fileOf` in the
+        # inference role gives: two names for one path is how the fetcher and
+        # the server drift.  extraFiles deliberately inherit the model's
+        # subdirectory — a projector lives beside its weights.
+        relOf = m: file:
+          if m.subdir == ""
+          then file
+          else "${m.subdir}/${file}";
 
-          # One fetch job per file: the model itself plus anything in
-          # extraFiles.  Flattened here so the script below is a plain loop
-          # rather than nested shell.
-          jobs = lib.flatten (lib.mapAttrsToList (name: m:
-            [ { file = relOf m m.filename; inherit (m) url hash; } ]
-            ++ lib.mapAttrsToList (fn: f: { file = relOf m fn; inherit (f) url hash; }) m.extraFiles
-          ) settings.models);
-        in
-        {
-          assertions = [ {
+        # One fetch job per file: the model itself plus anything in
+        # extraFiles.  Flattened here so the script below is a plain loop
+        # rather than nested shell.
+        jobs = lib.flatten (lib.mapAttrsToList (
+            name: m:
+              [
+                {
+                  file = relOf m m.filename;
+                  inherit (m) url hash;
+                }
+              ]
+              ++ lib.mapAttrsToList (fn: f: {
+                file = relOf m fn;
+                inherit (f) url hash;
+              })
+              m.extraFiles
+          )
+          settings.models);
+      in {
+        assertions = [
+          {
             assertion = inf != null;
             message = ''
               @clanarchy/local-ai: ${machine.name} holds roles.models but not
@@ -1437,255 +1503,256 @@ in
               is almost certainly a mistake in clan.nix; if it is deliberate,
               say so here rather than removing this assertion.
             '';
-          } ];
+          }
+        ];
 
-          ##################################################################
-          # The fetcher.
-          #
-          # A ONESHOT, NOT A PACKAGE.  These are 18 GiB blobs and architecture
-          # invariant #7 puts them on zdata; a fixed-output derivation would
-          # put them in the store on zroot, which is the pool that rolls back
-          # and the one with no room for them.  That is the same reasoning
-          # M14's hand-rolled derivations record, applied to data rather than
-          # to code.
-          #
-          # Idempotent by hash: a file already present and correct is skipped,
-          # so this is cheap on every boot and self-healing after a partial
-          # download.  A hash MISMATCH is a hard failure that leaves the old
-          # file alone — never a silent overwrite, because the thing on the
-          # other side of a wrong model is an agent that sounds fine.
-          ##################################################################
-          # ── STARTED BY A TIMER, NOT BY multi-user.target ──────────────────
-          #
-          # See the long note in the inference role: as a `wantedBy` unit this put a
-          # 25 GiB download on the activation critical path and made the first
-          # deploy look like a hang for thirteen minutes.  A .timer is pulled in
-          # by timers.target, and starting a timer completes instantly, so
-          # activation returns while the fetch runs behind it.
-          #
-          # restartIfChanged = false is the other half.  Without it, ADDING a
-          # model changes this unit's script, switch-to-configuration restarts
-          # it, and the whole download is back on the critical path — the exact
-          # defect, reintroduced by the exact edit most likely to trigger it.
-          systemd.timers.llama-models-fetch = {
-            description = "Fetch declared local-ai models shortly after boot";
-            wantedBy    = [ "timers.target" ];
-            timerConfig = {
-              OnBootSec   = "30s";
-              AccuracySec = "5s";
-              Unit        = "llama-models-fetch.service";
-            };
-          };
-
-          systemd.services.llama-models-fetch = {
-            description = "Fetch and verify declared local-ai models";
-            after       = [ "network-online.target" ];
-            wants       = [ "network-online.target" ];
-
-            # Deliberately NOT wantedBy multi-user.target — the timer above owns
-            # starting it.  A deploy that ADDS a model therefore does not fetch
-            # it immediately; run `systemctl start llama-models-fetch` (it is
-            # idempotent) or wait for the next boot.  That is the documented
-            # cost of keeping deploys non-blocking, and it is the right trade:
-            # adding a model is rare and deliberate, deploying is neither.
-            restartIfChanged = false;
-            stopIfChanged    = false;
-
-            serviceConfig = {
-              Type            = "oneshot";
-              RemainAfterExit = true;
-              User            = user;
-              Group           = user;
-              # 18 GiB over a domestic line is not a 90-second job.
-              TimeoutStartSec = "6h";
-              StateDirectory  = "local-ai-fetch";
-              NoNewPrivileges = true;
-              PrivateTmp      = true;
-              PrivateDevices  = true;
-              ProtectSystem   = "strict";
-              ProtectHome     = true;
-              ReadWritePaths  = [ stateDir ];
-              MemoryDenyWriteExecute = true;
-              RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
-
-              # Second pass: 7.2 on the first deploy, same two omissions again.
-              # This one downloads over TLS and hashes files, so it keeps the
-              # internet address families and cannot carry IPAddressDeny — but
-              # everything else is free.
-              CapabilityBoundingSet = [ "" ];
-              AmbientCapabilities   = [ "" ];
-              SystemCallFilter      = [ "@system-service" "~@resources" "~@privileged" ];
-              SystemCallErrorNumber = "EPERM";
-              SystemCallArchitectures = "native";
-              ProtectProc           = "invisible";
-              ProcSubset            = "pid";
-              ProtectClock          = true;
-              ProtectHostname       = true;
-              ProtectKernelLogs     = true;
-              ProtectKernelTunables = true;
-              ProtectKernelModules  = true;
-              ProtectControlGroups  = true;
-              RestrictNamespaces    = true;
-              RestrictRealtime      = true;
-              RestrictSUIDSGID      = true;
-              LockPersonality       = true;
-              RemoveIPC             = true;
-              # 0077 is safe here even though llama-swap and its children read these files:
-              # both units run as the same `llama` user, so 0600 is sufficient.
-              UMask                 = "0077";
-              # NO IPAddressDeny — this is the one unit that legitimately talks
-              # to the internet, and the model hosts are a CDN with no stable
-              # address range worth pinning.  The hash check is the control that
-              # matters here, not the address.
-
-              # Pick llama-swap up once the models are actually on disk.
-              #
-              # Needed because it renders each backend's command at startup: a
-              # model whose file did not exist yet is listed but unusable until
-              # it re-reads. `try-restart` and not `restart`, so this is a no-op
-              # when it is deliberately stopped rather than something that
-              # starts it behind an operator's back.
-              #
-              # ── `ExecStartPost`, NOT `postStart`, AND THE `-` IS WHY ───────
-              #
-              # This was `postStart = "-…/systemctl try-restart …"`, and the `-`
-              # was there to make exactly the failure it caused impossible.
-              #
-              # `-` is a SYSTEMD UNIT-FILE PREFIX, honoured at the start of an
-              # `ExecStartPost=` value, where it means "ignore a non-zero exit".
-              # NixOS's `postStart` is not that: it wraps the string in a
-              # GENERATED BASH SCRIPT under `set -e`, so the `-` became the
-              # first character of a command NAME and bash went looking for a
-              # binary called `-/nix/store/…/systemctl`:
-              #
-              #   llama-models-fetch-post-start: line 4:
-              #     -/nix/store/…-systemd-260.2/bin/systemctl: No such file or
-              #     directory
-              #   llama-models-fetch.service: Control process exited,
-              #     code=exited, status=127/n/a
-              #   Failed to start Fetch and verify declared local-ai models.
-              #
-              # So the guard inverted itself: rather than preventing a failed
-              # unit after a completed download, it GUARANTEED one. Every run
-              # since M19 introduced it (fd8ac45) has ended `failed` on ernst
-              # with every model correctly on disk — ExecStart exits 0/SUCCESS
-              # and the journal shows `done`/`ok` for each file immediately
-              # above the 127.
-              #
-              # AND NOTHING SAID SO, which is standing note SN4 exactly: a
-              # failed oneshot on a timer is silent. It surfaced only because
-              # M21 added a model, which made somebody run the unit by hand and
-              # watch it. That is the concrete case for the "alert on failed
-              # timer units" backlog item.
-              #
-              # In list form the prefix lands where systemd parses it, so the
-              # original intent — a completed fetch is a success even if the
-              # restart cannot be delivered — is what now happens.
-              #
-              # ── AND IT IS GONE (M29c), BECAUSE IT COULD NEVER HAVE WORKED ──
-              #
-              # The call is deleted, not fixed, and the premise above is the
-              # part that was wrong rather than the plumbing.
-              #
-              # IT IS NOT PERMITTED. This unit runs `User=llama`, unprivileged,
-              # with no ambient capabilities — measured on ernst 2026-09-25 —
-              # and an unprivileged user cannot restart a system unit:
-              #
-              #   Failed to try-restart llama-swap.service: Access denied as
-              #   the requested operation requires interactive authentication.
-              #
-              # So every version of this line has been a no-op since M19: first
-              # a 127 that failed the unit, then a `-`-prefixed denial that did
-              # not. Two rounds of fixing the SYNTAX of a call that was never
-              # going to be authorised.
-              #
-              # AND IT IS NOT NEEDED, which is the part that settles it. The
-              # claim above — "a model whose file did not exist yet is listed
-              # but unusable until it re-reads" — was refuted by exactly the
-              # case it describes. On 2026-09-25 the fetcher downloaded a
-              # newly-declared 21 GiB model, this restart was DENIED, llama-swap
-              # was never restarted, and the very first request naming that
-              # model loaded and served it:
-              #
-              #   [INFO] <qwen3.6-35b-a3b> Health check passed on :11503/health
-              #   [INFO] "POST /v1/chat/completions" 200 ... 4.641790064s
-              #
-              # Which is what the code does: llama-swap renders each backend's
-              # COMMAND from its config at startup, and the command contains a
-              # PATH. Nothing opens that path until a request arrives and the
-              # child llama-server is spawned, so a file that appears later is
-              # simply found. There is nothing to re-read.
-              #
-              # If a future change makes llama-swap cache something about the
-              # files themselves, the fix is a polkit rule scoped to this one
-              # unit and action — not a restart the fetcher is not allowed to
-              # perform.
-            };
-
-            script = ''
-              set -euo pipefail
-              mkdir -p ${modelsDir}
-
-              fetch() {
-                local file="$1" url="$2" want="$3"
-                local dest="${modelsDir}/$file"
-
-                # `file` may carry a subdirectory (roles.models' `subdir`), so
-                # the parent is created per-file rather than once above.
-                mkdir -p "$(${pkgs.coreutils}/bin/dirname "$dest")"
-
-                if [ -f "$dest" ]; then
-                  local have
-                  have=$(${pkgs.nix}/bin/nix hash file --type sha256 --sri "$dest")
-                  if [ "$have" = "$want" ]; then
-                    echo "ok      $file"
-                    return 0
-                  fi
-                  echo "MISMATCH $file: have $have, want $want" >&2
-                  echo "         refusing to overwrite; move it aside by hand" >&2
-                  return 1
-                fi
-
-                # RESUMABLE, and it has to be.  Measured on the first deploy:
-                # HuggingFace served the first three files at ~29 MB/s and then
-                # throttled the 18 GiB one to 2 MB/s — a 77-minute tail.  A
-                # download that long WILL be interrupted, by a deploy, a reboot
-                # or an operator, and without --continue-at every interruption
-                # discarded everything: `fetch` tests for the FINAL name, so a
-                # rerun re-opened "$dest.part" and started from zero.  8.8 GiB
-                # was nearly thrown away exactly that way.
-                #
-                # `--continue-at -` resumes from the current .part length. If
-                # the server ignores Range, curl fails loudly rather than
-                # silently appending to a truncated file — and the hash check
-                # below is the backstop for anything subtler.
-                if [ -f "$dest.part" ]; then
-                  echo "resume  $file (from $(${pkgs.coreutils}/bin/stat -c %s "$dest.part") bytes)"
-                else
-                  echo "fetch   $file"
-                fi
-                ${pkgs.curl}/bin/curl -fSL --retry 5 --retry-delay 10 \
-                  --continue-at - -o "$dest.part" "$url"
-                local got
-                got=$(${pkgs.nix}/bin/nix hash file --type sha256 --sri "$dest.part")
-                if [ "$got" != "$want" ]; then
-                  rm -f "$dest.part"
-                  echo "HASH MISMATCH after download of $file" >&2
-                  echo "  want $want" >&2
-                  echo "  got  $got" >&2
-                  return 1
-                fi
-                mv -f "$dest.part" "$dest"
-                echo "done    $file"
-              }
-
-              ${lib.concatMapStringsSep "\n" (j:
-                ''fetch ${lib.escapeShellArg j.file} ${lib.escapeShellArg j.url} ${lib.escapeShellArg j.hash}''
-              ) jobs}
-            '';
-
+        ##################################################################
+        # The fetcher.
+        #
+        # A ONESHOT, NOT A PACKAGE.  These are 18 GiB blobs and architecture
+        # invariant #7 puts them on zdata; a fixed-output derivation would
+        # put them in the store on zroot, which is the pool that rolls back
+        # and the one with no room for them.  That is the same reasoning
+        # M14's hand-rolled derivations record, applied to data rather than
+        # to code.
+        #
+        # Idempotent by hash: a file already present and correct is skipped,
+        # so this is cheap on every boot and self-healing after a partial
+        # download.  A hash MISMATCH is a hard failure that leaves the old
+        # file alone — never a silent overwrite, because the thing on the
+        # other side of a wrong model is an agent that sounds fine.
+        ##################################################################
+        # ── STARTED BY A TIMER, NOT BY multi-user.target ──────────────────
+        #
+        # See the long note in the inference role: as a `wantedBy` unit this put a
+        # 25 GiB download on the activation critical path and made the first
+        # deploy look like a hang for thirteen minutes.  A .timer is pulled in
+        # by timers.target, and starting a timer completes instantly, so
+        # activation returns while the fetch runs behind it.
+        #
+        # restartIfChanged = false is the other half.  Without it, ADDING a
+        # model changes this unit's script, switch-to-configuration restarts
+        # it, and the whole download is back on the critical path — the exact
+        # defect, reintroduced by the exact edit most likely to trigger it.
+        systemd.timers.llama-models-fetch = {
+          description = "Fetch declared local-ai models shortly after boot";
+          wantedBy = ["timers.target"];
+          timerConfig = {
+            OnBootSec = "30s";
+            AccuracySec = "5s";
+            Unit = "llama-models-fetch.service";
           };
         };
+
+        systemd.services.llama-models-fetch = {
+          description = "Fetch and verify declared local-ai models";
+          after = ["network-online.target"];
+          wants = ["network-online.target"];
+
+          # Deliberately NOT wantedBy multi-user.target — the timer above owns
+          # starting it.  A deploy that ADDS a model therefore does not fetch
+          # it immediately; run `systemctl start llama-models-fetch` (it is
+          # idempotent) or wait for the next boot.  That is the documented
+          # cost of keeping deploys non-blocking, and it is the right trade:
+          # adding a model is rare and deliberate, deploying is neither.
+          restartIfChanged = false;
+          stopIfChanged = false;
+
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            User = user;
+            Group = user;
+            # 18 GiB over a domestic line is not a 90-second job.
+            TimeoutStartSec = "6h";
+            StateDirectory = "local-ai-fetch";
+            NoNewPrivileges = true;
+            PrivateTmp = true;
+            PrivateDevices = true;
+            ProtectSystem = "strict";
+            ProtectHome = true;
+            ReadWritePaths = [stateDir];
+            MemoryDenyWriteExecute = true;
+            RestrictAddressFamilies = ["AF_INET" "AF_INET6" "AF_UNIX"];
+
+            # Second pass: 7.2 on the first deploy, same two omissions again.
+            # This one downloads over TLS and hashes files, so it keeps the
+            # internet address families and cannot carry IPAddressDeny — but
+            # everything else is free.
+            CapabilityBoundingSet = [""];
+            AmbientCapabilities = [""];
+            SystemCallFilter = ["@system-service" "~@resources" "~@privileged"];
+            SystemCallErrorNumber = "EPERM";
+            SystemCallArchitectures = "native";
+            ProtectProc = "invisible";
+            ProcSubset = "pid";
+            ProtectClock = true;
+            ProtectHostname = true;
+            ProtectKernelLogs = true;
+            ProtectKernelTunables = true;
+            ProtectKernelModules = true;
+            ProtectControlGroups = true;
+            RestrictNamespaces = true;
+            RestrictRealtime = true;
+            RestrictSUIDSGID = true;
+            LockPersonality = true;
+            RemoveIPC = true;
+            # 0077 is safe here even though llama-swap and its children read these files:
+            # both units run as the same `llama` user, so 0600 is sufficient.
+            UMask = "0077";
+            # NO IPAddressDeny — this is the one unit that legitimately talks
+            # to the internet, and the model hosts are a CDN with no stable
+            # address range worth pinning.  The hash check is the control that
+            # matters here, not the address.
+
+            # Pick llama-swap up once the models are actually on disk.
+            #
+            # Needed because it renders each backend's command at startup: a
+            # model whose file did not exist yet is listed but unusable until
+            # it re-reads. `try-restart` and not `restart`, so this is a no-op
+            # when it is deliberately stopped rather than something that
+            # starts it behind an operator's back.
+            #
+            # ── `ExecStartPost`, NOT `postStart`, AND THE `-` IS WHY ───────
+            #
+            # This was `postStart = "-…/systemctl try-restart …"`, and the `-`
+            # was there to make exactly the failure it caused impossible.
+            #
+            # `-` is a SYSTEMD UNIT-FILE PREFIX, honoured at the start of an
+            # `ExecStartPost=` value, where it means "ignore a non-zero exit".
+            # NixOS's `postStart` is not that: it wraps the string in a
+            # GENERATED BASH SCRIPT under `set -e`, so the `-` became the
+            # first character of a command NAME and bash went looking for a
+            # binary called `-/nix/store/…/systemctl`:
+            #
+            #   llama-models-fetch-post-start: line 4:
+            #     -/nix/store/…-systemd-260.2/bin/systemctl: No such file or
+            #     directory
+            #   llama-models-fetch.service: Control process exited,
+            #     code=exited, status=127/n/a
+            #   Failed to start Fetch and verify declared local-ai models.
+            #
+            # So the guard inverted itself: rather than preventing a failed
+            # unit after a completed download, it GUARANTEED one. Every run
+            # since M19 introduced it (fd8ac45) has ended `failed` on ernst
+            # with every model correctly on disk — ExecStart exits 0/SUCCESS
+            # and the journal shows `done`/`ok` for each file immediately
+            # above the 127.
+            #
+            # AND NOTHING SAID SO, which is standing note SN4 exactly: a
+            # failed oneshot on a timer is silent. It surfaced only because
+            # M21 added a model, which made somebody run the unit by hand and
+            # watch it. That is the concrete case for the "alert on failed
+            # timer units" backlog item.
+            #
+            # In list form the prefix lands where systemd parses it, so the
+            # original intent — a completed fetch is a success even if the
+            # restart cannot be delivered — is what now happens.
+            #
+            # ── AND IT IS GONE (M29c), BECAUSE IT COULD NEVER HAVE WORKED ──
+            #
+            # The call is deleted, not fixed, and the premise above is the
+            # part that was wrong rather than the plumbing.
+            #
+            # IT IS NOT PERMITTED. This unit runs `User=llama`, unprivileged,
+            # with no ambient capabilities — measured on ernst 2026-09-25 —
+            # and an unprivileged user cannot restart a system unit:
+            #
+            #   Failed to try-restart llama-swap.service: Access denied as
+            #   the requested operation requires interactive authentication.
+            #
+            # So every version of this line has been a no-op since M19: first
+            # a 127 that failed the unit, then a `-`-prefixed denial that did
+            # not. Two rounds of fixing the SYNTAX of a call that was never
+            # going to be authorised.
+            #
+            # AND IT IS NOT NEEDED, which is the part that settles it. The
+            # claim above — "a model whose file did not exist yet is listed
+            # but unusable until it re-reads" — was refuted by exactly the
+            # case it describes. On 2026-09-25 the fetcher downloaded a
+            # newly-declared 21 GiB model, this restart was DENIED, llama-swap
+            # was never restarted, and the very first request naming that
+            # model loaded and served it:
+            #
+            #   [INFO] <qwen3.6-35b-a3b> Health check passed on :11503/health
+            #   [INFO] "POST /v1/chat/completions" 200 ... 4.641790064s
+            #
+            # Which is what the code does: llama-swap renders each backend's
+            # COMMAND from its config at startup, and the command contains a
+            # PATH. Nothing opens that path until a request arrives and the
+            # child llama-server is spawned, so a file that appears later is
+            # simply found. There is nothing to re-read.
+            #
+            # If a future change makes llama-swap cache something about the
+            # files themselves, the fix is a polkit rule scoped to this one
+            # unit and action — not a restart the fetcher is not allowed to
+            # perform.
+          };
+
+          script = ''
+            set -euo pipefail
+            mkdir -p ${modelsDir}
+
+            fetch() {
+              local file="$1" url="$2" want="$3"
+              local dest="${modelsDir}/$file"
+
+              # `file` may carry a subdirectory (roles.models' `subdir`), so
+              # the parent is created per-file rather than once above.
+              mkdir -p "$(${pkgs.coreutils}/bin/dirname "$dest")"
+
+              if [ -f "$dest" ]; then
+                local have
+                have=$(${pkgs.nix}/bin/nix hash file --type sha256 --sri "$dest")
+                if [ "$have" = "$want" ]; then
+                  echo "ok      $file"
+                  return 0
+                fi
+                echo "MISMATCH $file: have $have, want $want" >&2
+                echo "         refusing to overwrite; move it aside by hand" >&2
+                return 1
+              fi
+
+              # RESUMABLE, and it has to be.  Measured on the first deploy:
+              # HuggingFace served the first three files at ~29 MB/s and then
+              # throttled the 18 GiB one to 2 MB/s — a 77-minute tail.  A
+              # download that long WILL be interrupted, by a deploy, a reboot
+              # or an operator, and without --continue-at every interruption
+              # discarded everything: `fetch` tests for the FINAL name, so a
+              # rerun re-opened "$dest.part" and started from zero.  8.8 GiB
+              # was nearly thrown away exactly that way.
+              #
+              # `--continue-at -` resumes from the current .part length. If
+              # the server ignores Range, curl fails loudly rather than
+              # silently appending to a truncated file — and the hash check
+              # below is the backstop for anything subtler.
+              if [ -f "$dest.part" ]; then
+                echo "resume  $file (from $(${pkgs.coreutils}/bin/stat -c %s "$dest.part") bytes)"
+              else
+                echo "fetch   $file"
+              fi
+              ${pkgs.curl}/bin/curl -fSL --retry 5 --retry-delay 10 \
+                --continue-at - -o "$dest.part" "$url"
+              local got
+              got=$(${pkgs.nix}/bin/nix hash file --type sha256 --sri "$dest.part")
+              if [ "$got" != "$want" ]; then
+                rm -f "$dest.part"
+                echo "HASH MISMATCH after download of $file" >&2
+                echo "  want $want" >&2
+                echo "  got  $got" >&2
+                return 1
+              fi
+              mv -f "$dest.part" "$dest"
+              echo "done    $file"
+            }
+
+            ${lib.concatMapStringsSep "\n" (
+                j: ''fetch ${lib.escapeShellArg j.file} ${lib.escapeShellArg j.url} ${lib.escapeShellArg j.hash}''
+              )
+              jobs}
+          '';
+        };
+      };
     };
   };
 
@@ -1697,8 +1764,8 @@ in
 
     interface.options = {
       model = lib.mkOption {
-        type        = lib.types.str;
-        default     = "ggml-large-v3-turbo-q5_0.bin";
+        type = lib.types.str;
+        default = "ggml-large-v3-turbo-q5_0.bin";
         description = ''
           Filename of the whisper ggml model inside the model directory.  It is
           declared and fetched by `roles.models` like everything else — the
@@ -1706,8 +1773,8 @@ in
         '';
       };
       language = lib.mkOption {
-        type        = lib.types.str;
-        default     = "auto";
+        type = lib.types.str;
+        default = "auto";
         description = ''
           `-l`.  "auto" detects per utterance, which is what a bilingual
           household needs; pinning "de" is faster and wrong the moment somebody
@@ -1715,8 +1782,8 @@ in
         '';
       };
       threads = lib.mkOption {
-        type        = lib.types.ints.positive;
-        default     = 8;
+        type = lib.types.ints.positive;
+        default = 8;
         description = ''
           `-t`.  The 9950X has 16 cores; 8 leaves room for the containers that
           share this machine.  Whisper on this card is GPU-bound anyway — this
@@ -1724,8 +1791,8 @@ in
         '';
       };
       gpuTarget = lib.mkOption {
-        type        = lib.types.str;
-        default     = "gfx1100";
+        type = lib.types.str;
+        default = "gfx1100";
         description = ''
           `rocmGpuTargets` for the whisper-cpp build.  A STRING, unlike
           llama-cpp's list-typed argument of the same name in nixpkgs 26.05 —
@@ -1754,7 +1821,7 @@ in
       };
     };
 
-    perInstance = { ... }: {
+    perInstance = {...}: {
       # Deliberately empty.
       #
       # WHY THIS ROLE PRODUCES NO UNITS OF ITS OWN: whisper-server must be
@@ -1773,7 +1840,7 @@ in
       # own nixpkgs, and its whisper-server takes --inference-path, so
       # `--inference-path /v1/audio/transcriptions` is OpenAI-shaped with no
       # wrapper and no new input.
-      nixosModule = { ... }: { };
+      nixosModule = {...}: {};
     };
   };
 
@@ -1834,8 +1901,8 @@ in
 
     interface.options = {
       port = lib.mkOption {
-        type        = lib.types.port;
-        default     = 11435;
+        type = lib.types.port;
+        default = 11435;
         description = ''
           Loopback port mneme listens on.
 
@@ -1848,8 +1915,8 @@ in
       };
 
       model = lib.mkOption {
-        type        = lib.types.str;
-        example     = "qwen3-coder-30b";
+        type = lib.types.str;
+        example = "qwen3-coder-30b";
         description = ''
           The model mneme serves, and the ONLY entry its /api/tags returns.
 
@@ -1869,8 +1936,8 @@ in
       };
 
       upstream = lib.mkOption {
-        type        = lib.types.str;
-        default     = "";
+        type = lib.types.str;
+        default = "";
         description = ''
           OpenAI-compatible base URL, including `/v1`.  Empty means "llama-swap
           on this machine", derived from roles.inference's own port so the two
@@ -1879,7 +1946,7 @@ in
       };
 
       exposeOn = lib.mkOption {
-        default     = [ ];
+        default = [];
         description = ''
           Containers that may reach mneme, as point-to-point ULA peers.
 
@@ -1913,8 +1980,8 @@ in
       };
 
       logLevel = lib.mkOption {
-        type        = lib.types.enum [ "DEBUG" "INFO" "WARNING" "ERROR" ];
-        default     = "INFO";
+        type = lib.types.enum ["DEBUG" "INFO" "WARNING" "ERROR"];
+        default = "INFO";
         description = ''
           DEBUG logs every translated request, which is how a tool call that
           Home Assistant never executes gets attributed to the right side of
@@ -1927,7 +1994,7 @@ in
       # ── M29b: memory, web search, image generation ────────────────────────
       memory = {
         enable = lib.mkOption {
-          type    = lib.types.bool;
+          type = lib.types.bool;
           default = false;
           description = ''
             Give the agent a git-versioned markdown wiki it can read and write.
@@ -1938,7 +2005,7 @@ in
           '';
         };
         stateDir = lib.mkOption {
-          type    = lib.types.path;
+          type = lib.types.path;
           default = "/srv/state/mneme";
           description = ''
             Parent of the wiki.  `/srv/state` by the test in
@@ -1949,7 +2016,7 @@ in
           '';
         };
         contextBudget = lib.mkOption {
-          type    = lib.types.ints.positive;
+          type = lib.types.ints.positive;
           default = 6000;
           description = ''
             Characters of constitution plus memory injected into every turn.
@@ -1961,7 +2028,7 @@ in
           '';
         };
         staleDays = lib.mkOption {
-          type    = lib.types.ints.positive;
+          type = lib.types.ints.positive;
           default = 180;
           description = ''
             `mneme-lint` reports pages untouched for longer than this.  It
@@ -1972,12 +2039,12 @@ in
 
       webSearch = {
         enable = lib.mkOption {
-          type    = lib.types.bool;
+          type = lib.types.bool;
           default = false;
           description = "Give the agent a `web_search` tool backed by SearXNG.";
         };
         url = lib.mkOption {
-          type    = lib.types.str;
+          type = lib.types.str;
           default = "";
           example = "http://[fdca:fe94::2]:8888";
           description = ''
@@ -2000,7 +2067,7 @@ in
       # `systemctl cat mneme`.
       documents = {
         enable = lib.mkOption {
-          type    = lib.types.bool;
+          type = lib.types.bool;
           default = false;
           description = ''
             Give the agent `document_search` and `document_read` over the
@@ -2013,7 +2080,7 @@ in
           '';
         };
         url = lib.mkOption {
-          type    = lib.types.str;
+          type = lib.types.str;
           default = "";
           example = "http://[fdca:fe95::2]:28981";
           description = ''
@@ -2027,7 +2094,7 @@ in
           '';
         };
         tokenFile = lib.mkOption {
-          type    = lib.types.str;
+          type = lib.types.str;
           default = "";
           example = "/run/secrets/vars/paperless-mneme-token/token";
           description = ''
@@ -2047,7 +2114,7 @@ in
 
       imageGen = {
         enable = lib.mkOption {
-          type    = lib.types.bool;
+          type = lib.types.bool;
           default = false;
           description = ''
             Give the agent a `generate_image` tool backed by ComfyUI.
@@ -2063,7 +2130,7 @@ in
           '';
         };
         url = lib.mkOption {
-          type    = lib.types.str;
+          type = lib.types.str;
           default = "";
           example = "http://127.0.0.1:11434/upstream/comfyui";
           description = ''
@@ -2074,7 +2141,7 @@ in
           '';
         };
         outputDir = lib.mkOption {
-          type    = lib.types.str;
+          type = lib.types.str;
           default = "";
           example = "/srv/state/home-assistant/www/mneme";
           description = ''
@@ -2096,7 +2163,7 @@ in
           '';
         };
         publicBase = lib.mkOption {
-          type    = lib.types.str;
+          type = lib.types.str;
           default = "";
           example = "https://ha.goclan.org/local/mneme";
           description = ''
@@ -2106,7 +2173,7 @@ in
           '';
         };
         checkpoint = lib.mkOption {
-          type    = lib.types.str;
+          type = lib.types.str;
           default = "sd_xl_base_1.0.safetensors";
           description = ''
             Must be the `filename` of a `roles.models` entry with
@@ -2116,26 +2183,26 @@ in
           '';
         };
         steps = lib.mkOption {
-          type    = lib.types.ints.positive;
+          type = lib.types.ints.positive;
           default = 25;
           description = "Sampler steps. 25 is SDXL's usual quality/time knee.";
         };
         width = lib.mkOption {
-          type    = lib.types.ints.positive;
+          type = lib.types.ints.positive;
           default = 1024;
           description = "SDXL is trained at 1024; smaller degrades badly.";
         };
         height = lib.mkOption {
-          type    = lib.types.ints.positive;
+          type = lib.types.ints.positive;
           default = 1024;
         };
         negative = lib.mkOption {
-          type    = lib.types.str;
+          type = lib.types.str;
           default = "";
           description = "Negative prompt applied to every generation.";
         };
         timeoutSec = lib.mkOption {
-          type    = lib.types.ints.positive;
+          type = lib.types.ints.positive;
           default = 600;
           description = ''
             Ceiling on one generation.  Generous because a first picture
@@ -2146,8 +2213,8 @@ in
       };
 
       readTimeout = lib.mkOption {
-        type        = lib.types.ints.positive;
-        default     = 600;
+        type = lib.types.ints.positive;
+        default = 600;
         description = ''
           Seconds to wait on a stalled upstream socket.  Deliberately large and
           deliberately NOT a total request timeout: llama-swap may have to load
@@ -2158,35 +2225,45 @@ in
       };
     };
 
-    perInstance = { settings, roles, machine, ... }: {
-      nixosModule = { config, pkgs, lib, ... }:
-        let
-          mneme = pkgs.callPackage ./pkgs/mneme { };
+    perInstance = {
+      settings,
+      roles,
+      machine,
+      ...
+    }: {
+      nixosModule = {
+        config,
+        pkgs,
+        lib,
+        ...
+      }: let
+        mneme = pkgs.callPackage ./pkgs/mneme {};
 
-          inferencePort =
-            roles.inference.machines.${machine.name}.settings.port or 11434;
-          upstream =
-            if settings.upstream != "" then settings.upstream
-            else "http://127.0.0.1:${toString inferencePort}/v1";
+        inferencePort =
+          roles.inference.machines.${machine.name}.settings.port or 11434;
+        upstream =
+          if settings.upstream != ""
+          then settings.upstream
+          else "http://127.0.0.1:${toString inferencePort}/v1";
 
-          declared =
-            (roles.models.machines.${machine.name}.settings.models or { });
+        declared =
+          roles.models.machines.${machine.name}.settings.models or {};
 
-          mem = settings.memory;
-          wikiDir = "${mem.stateDir}/wiki";
+        mem = settings.memory;
+        wikiDir = "${mem.stateDir}/wiki";
 
-          # ── uid 3039 (M29b), AND IT IS LOAD-BEARING NOW ──────────────────
-          #
-          # M29 ran this daemon under DynamicUser because it owned nothing on
-          # disk.  A git repository under /srv/state changes that: nspawn and
-          # virtiofs pass ids through unmapped, so whatever uid systemd
-          # allocated on a given boot is the uid on zdata — and a per-boot
-          # identity on the pool is exactly what the uid table in
-          # machines/ernst/networking.nix exists to prevent.  M27 made the same
-          # call for Meilisearch and went the other way (leave it off the
-          # pool); here the data must be persistent, so the identity must be.
-          uid = 3039;
-        in
+        # ── uid 3039 (M29b), AND IT IS LOAD-BEARING NOW ──────────────────
+        #
+        # M29 ran this daemon under DynamicUser because it owned nothing on
+        # disk.  A git repository under /srv/state changes that: nspawn and
+        # virtiofs pass ids through unmapped, so whatever uid systemd
+        # allocated on a given boot is the uid on zdata — and a per-boot
+        # identity on the pool is exactly what the uid table in
+        # machines/ernst/networking.nix exists to prevent.  M27 made the same
+        # call for Meilisearch and went the other way (leave it off the
+        # pool); here the data must be persistent, so the identity must be.
+        uid = 3039;
+      in
         lib.mkMerge [
           {
             assertions = [
@@ -2194,7 +2271,7 @@ in
                 # The same shape as roles.inference's assertion, and for the
                 # same reason: a model name that nothing serves fails at
                 # runtime, per request, with a 404 three layers from the typo.
-                assertion = declared == { } || declared ? ${settings.model};
+                assertion = declared == {} || declared ? ${settings.model};
                 message = ''
                   @clanarchy/local-ai: roles.agent on ${machine.name} serves
                   "${settings.model}", which is not a key of roles.models on
@@ -2207,13 +2284,14 @@ in
 
             systemd.services.mneme = {
               description = "mneme — household agent daemon";
-              wantedBy = [ "multi-user.target" ];
+              wantedBy = ["multi-user.target"];
               # Ordering only.  mneme answers /api/tags and /healthz without
               # llama-swap, and Home Assistant's config flow calls exactly
               # those — so a mneme that starts first is useful, and one that
               # REQUIRED llama-swap would take the conversation agent's
               # configuration UI down with it.
-              after = [ "network.target" "llama-swap.service" ]
+              after =
+                ["network.target" "llama-swap.service"]
                 ++ lib.optional mem.enable "mneme-dirs.service";
               # BLOCKING, not advisory: without the wiki the memory tools would
               # fail per call with a path error, and a guard that only warns is
@@ -2226,40 +2304,40 @@ in
 
               serviceConfig = {
                 ExecStart = lib.concatStringsSep " " ([
-                  (lib.getExe mneme)
-                  "--listen 127.0.0.1"
-                  "--port ${toString settings.port}"
-                  "--upstream ${upstream}"
-                  "--model ${settings.model}"
-                  "--soul-dir ${mneme}/${mneme.soulSubdir}"
-                  "--read-timeout ${toString settings.readTimeout}"
-                  "--log-level ${settings.logLevel}"
-                ]
-                ++ lib.optionals mem.enable [
-                  "--wiki ${wikiDir}"
-                  "--context-budget ${toString mem.contextBudget}"
-                ]
-                ++ lib.optionals settings.webSearch.enable [
-                  "--search-url ${settings.webSearch.url}"
-                ]
-                ++ lib.optionals settings.documents.enable [
-                  "--documents-url ${settings.documents.url}"
-                  "--documents-token-file ${settings.documents.tokenFile}"
-                ]
-                ++ lib.optionals settings.imageGen.enable [
-                  "--image-url ${settings.imageGen.url}"
-                  "--image-output-dir ${settings.imageGen.outputDir}"
-                  "--image-public-base ${settings.imageGen.publicBase}"
-                  "--image-checkpoint ${settings.imageGen.checkpoint}"
-                  "--image-steps ${toString settings.imageGen.steps}"
-                  "--image-width ${toString settings.imageGen.width}"
-                  "--image-height ${toString settings.imageGen.height}"
-                  "--image-timeout ${toString settings.imageGen.timeoutSec}"
-                ]
-                ++ lib.optionals
-                     (settings.imageGen.enable && settings.imageGen.negative != "")
-                     [ "--image-negative '${settings.imageGen.negative}'" ]);
-                Restart    = "on-failure";
+                    (lib.getExe mneme)
+                    "--listen 127.0.0.1"
+                    "--port ${toString settings.port}"
+                    "--upstream ${upstream}"
+                    "--model ${settings.model}"
+                    "--soul-dir ${mneme}/${mneme.soulSubdir}"
+                    "--read-timeout ${toString settings.readTimeout}"
+                    "--log-level ${settings.logLevel}"
+                  ]
+                  ++ lib.optionals mem.enable [
+                    "--wiki ${wikiDir}"
+                    "--context-budget ${toString mem.contextBudget}"
+                  ]
+                  ++ lib.optionals settings.webSearch.enable [
+                    "--search-url ${settings.webSearch.url}"
+                  ]
+                  ++ lib.optionals settings.documents.enable [
+                    "--documents-url ${settings.documents.url}"
+                    "--documents-token-file ${settings.documents.tokenFile}"
+                  ]
+                  ++ lib.optionals settings.imageGen.enable [
+                    "--image-url ${settings.imageGen.url}"
+                    "--image-output-dir ${settings.imageGen.outputDir}"
+                    "--image-public-base ${settings.imageGen.publicBase}"
+                    "--image-checkpoint ${settings.imageGen.checkpoint}"
+                    "--image-steps ${toString settings.imageGen.steps}"
+                    "--image-width ${toString settings.imageGen.width}"
+                    "--image-height ${toString settings.imageGen.height}"
+                    "--image-timeout ${toString settings.imageGen.timeoutSec}"
+                  ]
+                  ++ lib.optionals
+                  (settings.imageGen.enable && settings.imageGen.negative != "")
+                  ["--image-negative '${settings.imageGen.negative}'"]);
+                Restart = "on-failure";
                 RestartSec = "5s";
 
                 # ── STATIC uid WHEN IT KEEPS ANYTHING (M29b) ──────────────
@@ -2272,37 +2350,38 @@ in
                 # what the uid table exists to prevent.  With memory off it
                 # keeps nothing and stays dynamic.
                 DynamicUser = !mem.enable;
-                User  = lib.mkIf mem.enable "mneme";
+                User = lib.mkIf mem.enable "mneme";
                 Group = lib.mkIf mem.enable "mneme";
                 # The wiki is the ONE path outside the store it may write.
-                ReadWritePaths = lib.optional mem.enable mem.stateDir
+                ReadWritePaths =
+                  lib.optional mem.enable mem.stateDir
                   ++ lib.optional settings.imageGen.enable settings.imageGen.outputDir;
                 NoNewPrivileges = true;
-                PrivateDevices  = true;
-                PrivateTmp      = true;
-                ProtectSystem   = "strict";
-                ProtectHome     = true;
-                CapabilityBoundingSet = [ "" ];
-                AmbientCapabilities   = [ "" ];
-                RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
-                SystemCallFilter      = [ "@system-service" "~@resources" "~@privileged" ];
+                PrivateDevices = true;
+                PrivateTmp = true;
+                ProtectSystem = "strict";
+                ProtectHome = true;
+                CapabilityBoundingSet = [""];
+                AmbientCapabilities = [""];
+                RestrictAddressFamilies = ["AF_INET" "AF_INET6" "AF_UNIX"];
+                SystemCallFilter = ["@system-service" "~@resources" "~@privileged"];
                 SystemCallErrorNumber = "EPERM";
                 SystemCallArchitectures = "native";
-                ProtectProc           = "invisible";
-                ProcSubset            = "pid";
-                ProtectClock          = true;
-                ProtectHostname       = true;
-                ProtectKernelLogs     = true;
+                ProtectProc = "invisible";
+                ProcSubset = "pid";
+                ProtectClock = true;
+                ProtectHostname = true;
+                ProtectKernelLogs = true;
                 ProtectKernelTunables = true;
-                ProtectKernelModules  = true;
-                ProtectControlGroups  = true;
-                RestrictNamespaces    = true;
-                RestrictRealtime      = true;
-                RestrictSUIDSGID      = true;
-                LockPersonality       = true;
+                ProtectKernelModules = true;
+                ProtectControlGroups = true;
+                RestrictNamespaces = true;
+                RestrictRealtime = true;
+                RestrictSUIDSGID = true;
+                LockPersonality = true;
                 MemoryDenyWriteExecute = true;
-                RemoveIPC             = true;
-                UMask                 = "0077";
+                RemoveIPC = true;
+                UMask = "0077";
 
                 # ── LOOPBACK, PLUS THE PEERS ITS TOOLS ARE POINTED AT ────
                 #
@@ -2338,60 +2417,62 @@ in
                 # map.  A URL whose host is not a bracketed literal contributes
                 # nothing, which is correct: those are reached some other way
                 # and should be argued for separately.
-                IPAddressDeny  = "any";
-                IPAddressAllow =
-                  let
-                    # POSIX BRACKET EXPRESSIONS, NOT \[ — `builtins.match` is
-                    # ERE and rejects a backslash-escaped bracket outright.
-                    # machines/ernst/networking.nix's `addrOf` carries the same
-                    # note for the same reason; this is the second place it
-                    # bites.
-                    # AND IT THROWS RATHER THAN RETURNING null, because a
-                    # peer this cannot parse is a tool that is offered to the
-                    # model and then times out on every call — the exact
-                    # failure this block is being written to fix, reintroduced
-                    # silently.  An eval error naming the option is strictly
-                    # better than a model apologising for a flaky service.
-                    hostOfUrl = what: url:
-                      let m = builtins.match "https?://[[]([^]]+)[]].*" url;
-                      in if m == null then
-                        throw ''
-                          local-ai: roles.agent ${what}.url is ${url}, which has
-                          no bracketed IPv6 literal for a host, so mneme's egress
-                          filter cannot be derived from it.
-
-                          mneme runs under IPAddressDeny=any. A peer that is not
-                          in IPAddressAllow is DROPPED, and the tool times out
-                          rather than failing — which the model reports as the
-                          service being unavailable.
-
-                          Use the container end of a point-to-point leg
-                          (http://[fdca:feNN::2]:PORT), or widen IPAddressAllow
-                          here deliberately and say why.
-                        ''
-                      else "${builtins.head m}/128";
-                    peers = [ ]
-                      ++ lib.optional settings.webSearch.enable
-                           (hostOfUrl "webSearch" settings.webSearch.url)
-                      ++ lib.optional settings.documents.enable
-                           (hostOfUrl "documents" settings.documents.url);
+                IPAddressDeny = "any";
+                IPAddressAllow = let
+                  # POSIX BRACKET EXPRESSIONS, NOT \[ — `builtins.match` is
+                  # ERE and rejects a backslash-escaped bracket outright.
+                  # machines/ernst/networking.nix's `addrOf` carries the same
+                  # note for the same reason; this is the second place it
+                  # bites.
+                  # AND IT THROWS RATHER THAN RETURNING null, because a
+                  # peer this cannot parse is a tool that is offered to the
+                  # model and then times out on every call — the exact
+                  # failure this block is being written to fix, reintroduced
+                  # silently.  An eval error naming the option is strictly
+                  # better than a model apologising for a flaky service.
+                  hostOfUrl = what: url: let
+                    m = builtins.match "https?://[[]([^]]+)[]].*" url;
                   in
-                  [ "localhost" ] ++ peers;
+                    if m == null
+                    then
+                      throw ''
+                        local-ai: roles.agent ${what}.url is ${url}, which has
+                        no bracketed IPv6 literal for a host, so mneme's egress
+                        filter cannot be derived from it.
+
+                        mneme runs under IPAddressDeny=any. A peer that is not
+                        in IPAddressAllow is DROPPED, and the tool times out
+                        rather than failing — which the model reports as the
+                        service being unavailable.
+
+                        Use the container end of a point-to-point leg
+                        (http://[fdca:feNN::2]:PORT), or widen IPAddressAllow
+                        here deliberately and say why.
+                      ''
+                    else "${builtins.head m}/128";
+                  peers =
+                    []
+                    ++ lib.optional settings.webSearch.enable
+                    (hostOfUrl "webSearch" settings.webSearch.url)
+                    ++ lib.optional settings.documents.enable
+                    (hostOfUrl "documents" settings.documents.url);
+                in
+                  ["localhost"] ++ peers;
               };
             };
 
-            environment.systemPackages = [ mneme ];
+            environment.systemPackages = [mneme];
 
             # ── The wiki's identity and its directory ────────────────────────
             users.users.mneme = lib.mkIf mem.enable {
               inherit uid;
               isSystemUser = true;
-              group        = "mneme";
-              home         = mem.stateDir;
-              createHome   = false;
-              description  = "Household agent memory (mneme)";
+              group = "mneme";
+              home = mem.stateDir;
+              createHome = false;
+              description = "Household agent memory (mneme)";
             };
-            users.groups.mneme = lib.mkIf mem.enable { gid = uid; };
+            users.groups.mneme = lib.mkIf mem.enable {gid = uid;};
 
             # A GUARD, NOT A tmpfiles RULE, and for the reason every other
             # service on this host gives: activation does not re-run
@@ -2401,13 +2482,16 @@ in
             # measured that; this is the same shape.
             systemd.services.mneme-dirs = lib.mkIf mem.enable {
               description = "Prepare and verify mneme's memory on zdata";
-              wantedBy   = [ "multi-user.target" ];
-              after      = [ "srv-state.mount" ];
-              requires   = [ "srv-state.mount" ];
-              before     = [ "mneme.service" ];
-              requiredBy = [ "mneme.service" ];
-              path = [ pkgs.git pkgs.util-linux pkgs.coreutils ];
-              serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
+              wantedBy = ["multi-user.target"];
+              after = ["srv-state.mount"];
+              requires = ["srv-state.mount"];
+              before = ["mneme.service"];
+              requiredBy = ["mneme.service"];
+              path = [pkgs.git pkgs.util-linux pkgs.coreutils];
+              serviceConfig = {
+                Type = "oneshot";
+                RemainAfterExit = true;
+              };
               script = ''
                 set -euo pipefail
 
@@ -2434,7 +2518,7 @@ in
                   git -C ${wikiDir} config user.name mneme
                   git -C ${wikiDir} config user.email mneme@goclan.org
                 fi
-                for d in ${lib.concatStringsSep " " [ "00-core" "01-people" "02-devices" "03-routines" "04-facts" ]}; do
+                for d in ${lib.concatStringsSep " " ["00-core" "01-people" "02-devices" "03-routines" "04-facts"]}; do
                   install -d -o ${toString uid} -g ${toString uid} -m 0750 ${wikiDir}/"$d"
                 done
                 chown -R ${toString uid}:${toString uid} ${wikiDir}
@@ -2456,30 +2540,30 @@ in
             # what `exporters.containers` exists for.  This runs on the host.)
             systemd.services.mneme-lint = lib.mkIf mem.enable {
               description = "Rebuild mneme's memory index and report problems";
-              after    = [ "mneme-dirs.service" ];
-              requires = [ "mneme-dirs.service" ];
-              path = [ pkgs.git ];
+              after = ["mneme-dirs.service"];
+              requires = ["mneme-dirs.service"];
+              path = [pkgs.git];
               serviceConfig = {
                 Type = "oneshot";
-                User  = "mneme";
+                User = "mneme";
                 Group = "mneme";
                 ExecStart = lib.concatStringsSep " " [
                   "${mneme}/bin/mneme-lint"
                   "--wiki ${wikiDir}"
                   "--stale-days ${toString mem.staleDays}"
                 ];
-                ReadWritePaths = [ mem.stateDir ];
+                ReadWritePaths = [mem.stateDir];
                 NoNewPrivileges = true;
-                PrivateDevices  = true;
-                ProtectSystem   = "strict";
-                ProtectHome     = true;
-                IPAddressDeny   = "any";   # it reads files; it needs no network
+                PrivateDevices = true;
+                ProtectSystem = "strict";
+                ProtectHome = true;
+                IPAddressDeny = "any"; # it reads files; it needs no network
               };
             };
 
             systemd.timers.mneme-lint = lib.mkIf mem.enable {
               description = "Nightly mneme memory lint";
-              wantedBy = [ "timers.target" ];
+              wantedBy = ["timers.target"];
               timerConfig = {
                 OnCalendar = "daily";
                 # The wiki is small, so this is about not colliding with the
@@ -2492,11 +2576,11 @@ in
 
           (mkBridges {
             inherit pkgs;
-            unit       = "mneme-bridge";
-            what       = "mneme";
+            unit = "mneme-bridge";
+            what = "mneme";
             targetPort = settings.port;
-            bridges    = settings.exposeOn;
-            extraAfter = [ "mneme.service" ];
+            bridges = settings.exposeOn;
+            extraAfter = ["mneme.service"];
           })
         ];
     };
@@ -2567,8 +2651,8 @@ in
           description = "Loopback port. 10300 is Wyoming's conventional STT port.";
         };
         model = lib.mkOption {
-          type        = lib.types.str;
-          default     = "turbo";
+          type = lib.types.str;
+          default = "turbo";
           description = ''
             faster-whisper model name.  "turbo" is large-v3-turbo — the same
             weights roles.speech runs, in the other format — and is the largest
@@ -2576,8 +2660,8 @@ in
           '';
         };
         language = lib.mkOption {
-          type        = lib.types.str;
-          default     = "de";
+          type = lib.types.str;
+          default = "de";
           description = ''
             PINNED, unlike roles.speech's "auto", and the difference is the
             workload rather than an inconsistency.  roles.speech transcribes
@@ -2589,8 +2673,8 @@ in
           '';
         };
         beamSize = lib.mkOption {
-          type        = lib.types.ints.unsigned;
-          default     = 1;
+          type = lib.types.ints.unsigned;
+          default = 1;
           description = ''
             1, not the module's default of 5.  A voice command is short and
             latency is the whole experience; beam search buys accuracy on long
@@ -2611,8 +2695,8 @@ in
           description = "Loopback port. 10200 is Wyoming's conventional TTS port.";
         };
         voice = lib.mkOption {
-          type        = lib.types.str;
-          default     = "de_DE-thorsten-medium";
+          type = lib.types.str;
+          default = "de_DE-thorsten-medium";
           description = ''
             Piper voice.  `-medium` rather than `-high`: on a CPU the high
             variant is several times slower to synthesise and the difference is
@@ -2622,7 +2706,7 @@ in
       };
 
       exposeOn = lib.mkOption {
-        default     = [ ];
+        default = [];
         description = ''
           Containers that may reach the voice servers.  Same shape and same
           three-part hazard as everywhere else in this module; see the header.
@@ -2633,21 +2717,34 @@ in
         '';
         type = lib.types.listOf (lib.types.submodule {
           options = {
-            name          = lib.mkOption { type = lib.types.str; example = "hass"; };
-            address       = lib.mkOption { type = lib.types.str; example = "fdca:fe93::1"; };
-            allowedSource = lib.mkOption { type = lib.types.str; example = "fdca:fe93::2"; };
+            name = lib.mkOption {
+              type = lib.types.str;
+              example = "hass";
+            };
+            address = lib.mkOption {
+              type = lib.types.str;
+              example = "fdca:fe93::1";
+            };
+            allowedSource = lib.mkOption {
+              type = lib.types.str;
+              example = "fdca:fe93::2";
+            };
           };
         });
       };
     };
 
-    perInstance = { settings, ... }: {
-      nixosModule = { pkgs, lib, ... }:
+    perInstance = {settings, ...}: {
+      nixosModule = {
+        pkgs,
+        lib,
+        ...
+      }:
         lib.mkMerge [
           {
             services.wyoming.faster-whisper.servers.assist = lib.mkIf settings.stt.enable {
               enable = true;
-              uri    = "tcp://127.0.0.1:${toString settings.stt.port}";
+              uri = "tcp://127.0.0.1:${toString settings.stt.port}";
               inherit (settings.stt) model language beamSize;
               device = "cpu";
 
@@ -2662,7 +2759,7 @@ in
 
             services.wyoming.piper.servers.assist = lib.mkIf settings.tts.enable {
               enable = true;
-              uri    = "tcp://127.0.0.1:${toString settings.tts.port}";
+              uri = "tcp://127.0.0.1:${toString settings.tts.port}";
               inherit (settings.tts) voice;
               zeroconf.enable = false;
             };
@@ -2697,30 +2794,28 @@ in
             # stable across boots anyway.
             users.users.wyoming-faster-whisper = lib.mkIf settings.stt.enable {
               isSystemUser = true;
-              group        = "wyoming";
-              description  = "Wyoming speech-to-text";
+              group = "wyoming";
+              description = "Wyoming speech-to-text";
             };
             users.users.wyoming-piper = lib.mkIf settings.tts.enable {
               isSystemUser = true;
-              group        = "wyoming";
-              description  = "Wyoming text-to-speech";
+              group = "wyoming";
+              description = "Wyoming text-to-speech";
             };
-            users.groups.wyoming = { };
+            users.groups.wyoming = {};
 
-            systemd.services.wyoming-faster-whisper-assist =
-              lib.mkIf settings.stt.enable {
-                serviceConfig = {
-                  DynamicUser = lib.mkForce false;
-                  Group       = "wyoming";
-                };
+            systemd.services.wyoming-faster-whisper-assist = lib.mkIf settings.stt.enable {
+              serviceConfig = {
+                DynamicUser = lib.mkForce false;
+                Group = "wyoming";
               };
-            systemd.services.wyoming-piper-assist =
-              lib.mkIf settings.tts.enable {
-                serviceConfig = {
-                  DynamicUser = lib.mkForce false;
-                  Group       = "wyoming";
-                };
+            };
+            systemd.services.wyoming-piper-assist = lib.mkIf settings.tts.enable {
+              serviceConfig = {
+                DynamicUser = lib.mkForce false;
+                Group = "wyoming";
               };
+            };
 
             # See the role header: re-acquirable, not hash-verified, and worth
             # persisting only so a reboot is not a 1.6 GiB download.  Now that
@@ -2730,29 +2825,29 @@ in
             environment.persistence."/persist".directories = [
               {
                 directory = "/var/lib/wyoming";
-                user      = "root";
-                group     = "root";
-                mode      = "0755";
+                user = "root";
+                group = "root";
+                mode = "0755";
               }
             ];
           }
 
           (mkBridges {
             inherit pkgs;
-            unit       = "wyoming-stt-bridge";
-            what       = "wyoming-faster-whisper";
+            unit = "wyoming-stt-bridge";
+            what = "wyoming-faster-whisper";
             targetPort = settings.stt.port;
-            bridges    = lib.optionals settings.stt.enable settings.exposeOn;
-            extraAfter = [ "wyoming-faster-whisper-assist.service" ];
+            bridges = lib.optionals settings.stt.enable settings.exposeOn;
+            extraAfter = ["wyoming-faster-whisper-assist.service"];
           })
 
           (mkBridges {
             inherit pkgs;
-            unit       = "wyoming-tts-bridge";
-            what       = "wyoming-piper";
+            unit = "wyoming-tts-bridge";
+            what = "wyoming-piper";
             targetPort = settings.tts.port;
-            bridges    = lib.optionals settings.tts.enable settings.exposeOn;
-            extraAfter = [ "wyoming-piper-assist.service" ];
+            bridges = lib.optionals settings.tts.enable settings.exposeOn;
+            extraAfter = ["wyoming-piper-assist.service"];
           })
         ];
     };
@@ -2794,8 +2889,8 @@ in
 
     interface.options = {
       stateDir = lib.mkOption {
-        type        = lib.types.path;
-        default     = "/srv/state/comfyui";
+        type = lib.types.path;
+        default = "/srv/state/comfyui";
         description = ''
           ComfyUI's `--base-directory`: outputs, inputs, temp, user settings
           and custom_nodes.  On zdata, per architecture invariant #7.
@@ -2812,9 +2907,9 @@ in
       };
 
       extraArgs = lib.mkOption {
-        type        = lib.types.listOf lib.types.str;
-        default     = [ ];
-        example     = [ "--lowvram" ];
+        type = lib.types.listOf lib.types.str;
+        default = [];
+        example = ["--lowvram"];
         description = ''
           Extra arguments appended to ComfyUI's command line, verbatim.
 
@@ -2853,7 +2948,7 @@ in
       };
     };
 
-    perInstance = { ... }: {
+    perInstance = {...}: {
       # Deliberately empty — the SAME arrangement roles.speech uses, for the
       # same reason, and the reason is the whole point of both roles.
       #
@@ -2863,7 +2958,7 @@ in
       # which is precisely the failure the group exists to prevent.  So this
       # role carries settings, and the inference role reads them and builds the
       # backend entry.  A unit here would be a second, competing owner.
-      nixosModule = { ... }: { };
+      nixosModule = {...}: {};
     };
   };
 
@@ -2965,8 +3060,8 @@ in
 
     interface.options = {
       mac = lib.mkOption {
-        type        = lib.types.str;
-        example     = "02:00:00:90:00:10";
+        type = lib.types.str;
+        example = "02:00:00:90:00:10";
         description = ''
           Container eth0 MAC, allocated in the table in
           machines/ernst/networking.nix.  The UDM-Pro DHCP reservation keys on
@@ -2976,7 +3071,7 @@ in
         '';
       };
       uid = lib.mkOption {
-        type        = lib.types.int;
+        type = lib.types.int;
         description = ''
           Static uid/gid, allocated in machines/ernst/allocations.nix.
 
@@ -2991,7 +3086,7 @@ in
         '';
       };
       port = lib.mkOption {
-        type    = lib.types.port;
+        type = lib.types.port;
         default = 8888;
         description = ''
           SearXNG's listener inside the container.  8888 is upstream's own
@@ -3000,8 +3095,8 @@ in
         '';
       };
       allowedSource = lib.mkOption {
-        type        = lib.types.str;
-        example     = "10.0.90.23";
+        type = lib.types.str;
+        example = "10.0.90.23";
         description = ''
           The ONE address permitted to reach `port`.  Open WebUI's VLAN 90
           address, and nothing else on that VLAN — including the qBittorrent
@@ -3018,14 +3113,14 @@ in
 
       # ── ENGINE SET: CONFIGURATION WITH CONSEQUENCES, NOT A DEFAULT ──────────
       engineKeepOnly = lib.mkOption {
-        type    = lib.types.listOf lib.types.str;
+        type = lib.types.listOf lib.types.str;
         default = [
           # MEASURED ON ernst 2026-09-10, not chosen. See the description.
-          "bing"           # 10 results, every attempt. The reliable primary
-          "yandex"         # 15, the best quality measured — nhs.uk et al
-          "encyclosearch"  # 15, encyclopedic (wikipedia, handwiki)
-          "mwmbl"          # 30, independent open crawler
-          "brave"          # INTERMITTENT — see below. Free when it fails
+          "bing" # 10 results, every attempt. The reliable primary
+          "yandex" # 15, the best quality measured — nhs.uk et al
+          "encyclosearch" # 15, encyclopedic (wikipedia, handwiki)
+          "mwmbl" # 30, independent open crawler
+          "brave" # INTERMITTENT — see below. Free when it fails
         ];
         description = ''
           The engines this instance may contact, as SearXNG `name` fields.
@@ -3150,7 +3245,7 @@ in
       };
 
       engineOverrides = lib.mkOption {
-        type    = lib.types.listOf (lib.types.attrsOf lib.types.anything);
+        type = lib.types.listOf (lib.types.attrsOf lib.types.anything);
         default = [
           # FOUR OF THE FIVE ENGINES THIS INSTANCE USES ARE `disabled: true` IN
           # UPSTREAM'S settings.yml, so without these lines `keep_only` would
@@ -3165,10 +3260,22 @@ in
           #   encyclosearch  disabled: true    categories: [general]
           #   mwmbl          disabled: true    categories: null (→ general)
           #   brave          disabled: FALSE   — already on, no entry needed
-          { name = "bing";          disabled = false; }
-          { name = "yandex";        disabled = false; }
-          { name = "encyclosearch"; disabled = false; }
-          { name = "mwmbl";         disabled = false; }
+          {
+            name = "bing";
+            disabled = false;
+          }
+          {
+            name = "yandex";
+            disabled = false;
+          }
+          {
+            name = "encyclosearch";
+            disabled = false;
+          }
+          {
+            name = "mwmbl";
+            disabled = false;
+          }
         ];
         description = ''
           Per-engine overrides, merged BY NAME over whatever `engineKeepOnly`
@@ -3180,7 +3287,7 @@ in
       };
 
       requestTimeout = lib.mkOption {
-        type    = lib.types.float;
+        type = lib.types.float;
         default = 5.0;
         description = ''
           `outgoing.request_timeout`, seconds.
@@ -3195,267 +3302,284 @@ in
       };
     };
 
-    perInstance = { settings, ... }: {
-      nixosModule = { config, pkgs, lib, ... }:
-        let
-          vethName   = "vb-searxng";
-          # Derived from the container name, the way the module derives it —
-          # see the note in the webui role, where restating it by hand moved
-          # the path out from under the service that reads it.
-          secretsDir = "${config.clanarchy.containerDefaults.secretsRoot}/searxng-secrets";
-          secretGen  = config.clan.core.vars.generators.searxng-secret;
+    perInstance = {settings, ...}: {
+      nixosModule = {
+        config,
+        pkgs,
+        lib,
+        ...
+      }: let
+        vethName = "vb-searxng";
+        # Derived from the container name, the way the module derives it —
+        # see the note in the webui role, where restating it by hand moved
+        # the path out from under the service that reads it.
+        secretsDir = "${config.clanarchy.containerDefaults.secretsRoot}/searxng-secrets";
+        secretGen = config.clan.core.vars.generators.searxng-secret;
 
-          # ── The leg to the host (M29b) ──────────────────────────────────
-          #
-          # `web0` rather than `ai4`: the ai-numbered legs all point AT the
-          # inference stack, and this one points the other way — a host
-          # service reaching into a container.  Naming it in that family would
-          # read as a fifth consumer of llama-swap, which it is not.
-          #
-          # The name is host-global (nspawn uses one name for both ends), and
-          # machines/ernst/networking.nix asserts no two containers claim one.
-          # fdca:fe94:: is the next free /64 after M29's fe93.
-          webVeth = "web0";
-          webHost = "fdca:fe94::1";
-          webCont = "fdca:fe94::2";
-        in
-        {
-          ####################################################################
-          # The cookie-signing key.  ITS OWN GENERATOR, per invariant #8 and
-          # per the rule containers/authelia.nix states: a clan vars generator
-          # is ATOMIC, so adding a file to an existing one re-runs the whole
-          # script and rotates every other secret in it as a side effect.
-          #
-          # SearXNG uses `server.secret_key` to sign the preferences cookie.
-          # The only client here is a bot that sends no cookies, so this
-          # protects very little — but upstream ships the literal string
-          # "ultrasecretkey" as its default and a deployment that keeps it is
-          # the kind of thing that is embarrassing to explain later.
-          ####################################################################
-          clan.core.vars.generators.searxng-secret = {
-            files."searxng-secret".secret = true;
-            files."searxng-secret".restartUnits =
-              [ "searxng-secrets.service" "container@searxng.service" ];
+        # ── The leg to the host (M29b) ──────────────────────────────────
+        #
+        # `web0` rather than `ai4`: the ai-numbered legs all point AT the
+        # inference stack, and this one points the other way — a host
+        # service reaching into a container.  Naming it in that family would
+        # read as a fifth consumer of llama-swap, which it is not.
+        #
+        # The name is host-global (nspawn uses one name for both ends), and
+        # machines/ernst/networking.nix asserts no two containers claim one.
+        # fdca:fe94:: is the next free /64 after M29's fe93.
+        webVeth = "web0";
+        webHost = "fdca:fe94::1";
+        webCont = "fdca:fe94::2";
+      in {
+        ####################################################################
+        # The cookie-signing key.  ITS OWN GENERATOR, per invariant #8 and
+        # per the rule containers/authelia.nix states: a clan vars generator
+        # is ATOMIC, so adding a file to an existing one re-runs the whole
+        # script and rotates every other secret in it as a side effect.
+        #
+        # SearXNG uses `server.secret_key` to sign the preferences cookie.
+        # The only client here is a bot that sends no cookies, so this
+        # protects very little — but upstream ships the literal string
+        # "ultrasecretkey" as its default and a deployment that keeps it is
+        # the kind of thing that is embarrassing to explain later.
+        ####################################################################
+        clan.core.vars.generators.searxng-secret = {
+          files."searxng-secret".secret = true;
+          files."searxng-secret".restartUnits = ["searxng-secrets.service" "container@searxng.service"];
 
-            runtimeInputs = [ pkgs.openssl pkgs.coreutils ];
-            script = ''
-              set -euo pipefail
-              # hex, not base64: this value is substituted into a YAML document
-              # by envsubst, and an alphabet with no quoting-significant
-              # characters cannot produce a settings.yml that parses
-              # differently than intended.
-              openssl rand -hex 32 | tr -d '\n' > "$out/searxng-secret"
-            '';
+          runtimeInputs = [pkgs.openssl pkgs.coreutils];
+          script = ''
+            set -euo pipefail
+            # hex, not base64: this value is substituted into a YAML document
+            # by envsubst, and an alphabet with no quoting-significant
+            # characters cannot produce a settings.yml that parses
+            # differently than intended.
+            openssl rand -hex 32 | tr -d '\n' > "$out/searxng-secret"
+          '';
+        };
+
+        ##################################################################
+        # The container.
+        ##################################################################
+        #
+        # Declared through modules/containers/nspawn.nix, which generates
+        # the staging unit, the host-side veth network, the VLAN backstop,
+        # the container preamble, the in-container networking and the
+        # firewall — and takes its bridge, VLAN, resolver and search domain
+        # from the HOST's `clanarchy.containerDefaults` rather than from
+        # this role's settings. That is what makes this role portable: a
+        # second container host answers those four questions itself.
+        clanarchy.containers.searxng = {
+          enable = true;
+          mac = settings.mac;
+
+          # NO uid/gid PIN: the in-container `users.users.searx` block below
+          # declares the user in full, and a second definition of the same
+          # uid is a conflict rather than a pin.
+
+          # ── THE SECRET IS `required`, WHICH INVERTS THE USUAL TOLERANCE ─
+          #
+          # Everywhere else a missing var stages empty, so the application
+          # rejects it in its own terms rather than the container refusing
+          # to start. Here empty is worse: envsubst would substitute the
+          # empty string and SearXNG would run with an empty cookie-signing
+          # key while reporting itself healthy. So the staging unit fails,
+          # and because it is `requiredBy` the container, the container does
+          # not start — the outcome worth having.
+          #
+          # The rendered file is an EnvironmentFile for searx-init, whose
+          # envsubst pass turns `$SEARXNG_SECRET` in the settings into the
+          # value at runtime — which is why this goes through
+          # `environmentFile` and never into `settings.server.secret_key`,
+          # where the nixpkgs module warns it would be world-readable.
+          secrets."searxng.env".SEARXNG_SECRET = {
+            file = secretGen.files."searxng-secret".path;
+            required = true;
           };
 
-          ##################################################################
-          # The container.
-          ##################################################################
-          #
-          # Declared through modules/containers/nspawn.nix, which generates
-          # the staging unit, the host-side veth network, the VLAN backstop,
-          # the container preamble, the in-container networking and the
-          # firewall — and takes its bridge, VLAN, resolver and search domain
-          # from the HOST's `clanarchy.containerDefaults` rather than from
-          # this role's settings. That is what makes this role portable: a
-          # second container host answers those four questions itself.
-          clanarchy.containers.searxng = {
-            enable = true;
-            mac    = settings.mac;
+          # mneme's leg, pointing INWARD: it searches the web through this
+          # container rather than being given an egress path of its own.
+          ula = [
+            {
+              veth = webVeth;
+              hostAddress6 = webHost;
+              localAddress6 = webCont;
+            }
+          ];
 
-            # NO uid/gid PIN: the in-container `users.users.searx` block below
-            # declares the user in full, and a second definition of the same
-            # uid is a conflict rather than a pin.
+          # NOTHING is unconditionally open. Two sources, one port, and they
+          # are different address families on different legs: Open WebUI
+          # over VLAN 90, and mneme over the point-to-point ULA.
+          allowFrom = [
+            {
+              peer = settings.allowedSource;
+              port = settings.port;
+            }
+            {
+              peer = webHost;
+              port = settings.port;
+            }
+          ];
 
-            # ── THE SECRET IS `required`, WHICH INVERTS THE USUAL TOLERANCE ─
+          config = {
+            config,
+            lib,
+            pkgs,
+            ...
+          }: {
+            # Matches the host, for the reason arr/, monitoring.nix and
+            # the webui container all give: every timestamp a human reads is
+            # local time, and a container that defaults to UTC makes each of
+            # them a two-hour question.
+            time.timeZone = "Europe/Berlin";
+
+            users.users.searx = {
+              isSystemUser = true;
+              group = "searx";
+              uid = settings.uid;
+            };
+            users.groups.searx.gid = settings.uid;
+
+            ##############################################################
+            # HARDENING.  nixpkgs' searx module ships essentially none —
+            # measured on ernst 2026-09-10, the units as deployed scored:
             #
-            # Everywhere else a missing var stages empty, so the application
-            # rejects it in its own terms rather than the container refusing
-            # to start. Here empty is worse: envsubst would substitute the
-            # empty string and SearXNG would run with an empty cookie-signing
-            # key while reporting itself healthy. So the staging unit fails,
-            # and because it is `requiredBy` the container, the container does
-            # not start — the outcome worth having.
+            #   searx.service       9.2 UNSAFE
+            #   searx-init.service  9.2 UNSAFE
             #
-            # The rendered file is an EnvironmentFile for searx-init, whose
-            # envsubst pass turns `$SEARXNG_SECRET` in the settings into the
-            # value at runtime — which is why this goes through
-            # `environmentFile` and never into `settings.server.secret_key`,
-            # where the nixpkgs module warns it would be world-readable.
-            secrets."searxng.env".SEARXNG_SECRET = {
-              file     = secretGen.files."searxng-secret".path;
-              required = true;
+            # against M20's stated target of <= 2.0.  With the block below,
+            # both land at 1.1 OK.
+            #
+            # ── EXERCISED, NOT ONLY SCORED ───────────────────────────────
+            #
+            # M19's lesson is that `DeviceAllow=/dev/dri` and
+            # MemoryDenyWriteExecute both SCORED WELL WHILE BREAKING THE
+            # SYSTEM, so this set was applied as a runtime drop-in on the
+            # live container and a real query was run through it before it
+            # was written here: 20 results, sources including mayoclinic.org,
+            # my.clevelandclinic.org and ods.od.nih.gov.  A search that still
+            # works is the evidence; 1.1 is just the number.
+            #
+            # MemoryDenyWriteExecute IS INCLUDED and is the one to suspect
+            # first if a future searxng bump fails to start: CPython itself
+            # is fine with W^X, but a C extension that JITs would not be.
+            # It was verified working here rather than assumed safe.
+            #
+            # ── WHAT IS DELIBERATELY NOT SET ─────────────────────────────
+            #
+            #   PrivateNetwork      — obviously not.  Reaching the internet
+            #                         IS this service's whole function.
+            #   IPAddressDeny/Allow — the one systemd-analyze still flags.
+            #                         An allow-list would have to enumerate
+            #                         every address of five search engines,
+            #                         which are CDN-hosted and change without
+            #                         notice; the rule would fail open in
+            #                         practice (silently dropping engines as
+            #                         IPs rotate) while looking strict.  The
+            #                         containment that actually holds is the
+            #                         INBOUND firewall plus the fact that
+            #                         this container is on no veth to the
+            #                         host — proven by the reachability
+            #                         matrix in M20 (docs/history.md), where
+            #                         every LAN target times out.
+            #   ProtectSystem=strict is safe here BECAUSE searx writes
+            #                         nothing: searx-init regenerates
+            #                         /run/searx/settings.yml, and
+            #                         RuntimeDirectory= already grants that
+            #                         path.  If favicons are ever enabled
+            #                         they need a ReadWritePaths= entry, and
+            #                         the failure will be a clean EROFS.
+            ##############################################################
+            systemd.services.searx.serviceConfig = {
+              NoNewPrivileges = true;
+              ProtectSystem = "strict";
+              ProtectHome = true;
+              PrivateTmp = true;
+              PrivateDevices = true;
+              PrivateUsers = true;
+              ProtectKernelTunables = true;
+              ProtectKernelModules = true;
+              ProtectKernelLogs = true;
+              ProtectControlGroups = true;
+              ProtectClock = true;
+              ProtectHostname = true;
+              ProtectProc = "invisible";
+              ProcSubset = "pid";
+              RestrictNamespaces = true;
+              RestrictRealtime = true;
+              RestrictSUIDSGID = true;
+              LockPersonality = true;
+              MemoryDenyWriteExecute = true;
+              RestrictAddressFamilies = ["AF_INET" "AF_INET6" "AF_UNIX"];
+              SystemCallArchitectures = "native";
+              SystemCallFilter = ["@system-service" "~@privileged" "~@resources"];
+              CapabilityBoundingSet = [""];
+              AmbientCapabilities = [""];
+              UMask = "0077";
             };
 
-            # mneme's leg, pointing INWARD: it searches the web through this
-            # container rather than being given an egress path of its own.
-            ula = [
-              { veth = webVeth; hostAddress6 = webHost; localAddress6 = webCont; }
-            ];
+            # searx-init runs envsubst and writes one file into its own
+            # RuntimeDirectory. It needs even less than searx does, but it
+            # handles the SECRET, so it gets the same treatment rather than
+            # less. ProtectSystem is "full" and not "strict" here: the unit's
+            # whole job is to write /run/searx, and RuntimeDirectory= plus
+            # RuntimeDirectoryPreserve=yes are set by the upstream module —
+            # "strict" would need that path restated as ReadWritePaths and
+            # buys nothing over "full" once /home and /etc are covered.
+            systemd.services.searx-init.serviceConfig = {
+              NoNewPrivileges = true;
+              ProtectSystem = "full";
+              ProtectHome = true;
+              PrivateTmp = true;
+              PrivateDevices = true;
+              ProtectKernelTunables = true;
+              ProtectKernelModules = true;
+              ProtectKernelLogs = true;
+              ProtectControlGroups = true;
+              ProtectClock = true;
+              ProtectHostname = true;
+              ProtectProc = "invisible";
+              ProcSubset = "pid";
+              RestrictNamespaces = true;
+              RestrictRealtime = true;
+              RestrictSUIDSGID = true;
+              LockPersonality = true;
+              RestrictAddressFamilies = ["AF_UNIX"];
+              SystemCallArchitectures = "native";
+              SystemCallFilter = ["@system-service" "~@privileged" "~@resources"];
+              CapabilityBoundingSet = [""];
+              AmbientCapabilities = [""];
+              UMask = "0077";
+            };
 
-            # NOTHING is unconditionally open. Two sources, one port, and they
-            # are different address families on different legs: Open WebUI
-            # over VLAN 90, and mneme over the point-to-point ULA.
-            allowFrom = [
-              { peer = settings.allowedSource; port = settings.port; }
-              { peer = webHost;                port = settings.port; }
-            ];
+            services.searx = {
+              enable = true;
 
-            config = { config, lib, pkgs, ... }: {
+              # searx-init reads this to envsubst `$SEARXNG_SECRET` into the
+              # generated settings.yml.  The nixpkgs module puts it on BOTH
+              # searx-init and searx, which is what makes the substitution
+              # and the runtime agree.
+              environmentFile = "${secretsDir}/searxng.env";
 
-              # Matches the host, for the reason arr/, monitoring.nix and
-              # the webui container all give: every timestamp a human reads is
-              # local time, and a container that defaults to UTC makes each of
-              # them a two-hour question.
-              time.timeZone = "Europe/Berlin";
-
-              users.users.searx = {
-                isSystemUser = true;
-                group = "searx";
-                uid   = settings.uid;
-              };
-              users.groups.searx.gid = settings.uid;
-
-              ##############################################################
-              # HARDENING.  nixpkgs' searx module ships essentially none —
-              # measured on ernst 2026-09-10, the units as deployed scored:
+              # OFF, and this is not laziness — it is the decision the
+              # milestone asked to be made rather than inherited.
               #
-              #   searx.service       9.2 UNSAFE
-              #   searx-init.service  9.2 UNSAFE
+              # SearXNG's limiter exists to protect a PUBLIC instance from
+              # abuse.  This one is reachable from exactly one address,
+              # enforced one layer down by the firewall above, so there is no
+              # abuse population for it to limit.
               #
-              # against M20's stated target of <= 2.0.  With the block below,
-              # both land at 1.1 OK.
-              #
-              # ── EXERCISED, NOT ONLY SCORED ───────────────────────────────
-              #
-              # M19's lesson is that `DeviceAllow=/dev/dri` and
-              # MemoryDenyWriteExecute both SCORED WELL WHILE BREAKING THE
-              # SYSTEM, so this set was applied as a runtime drop-in on the
-              # live container and a real query was run through it before it
-              # was written here: 20 results, sources including mayoclinic.org,
-              # my.clevelandclinic.org and ods.od.nih.gov.  A search that still
-              # works is the evidence; 1.1 is just the number.
-              #
-              # MemoryDenyWriteExecute IS INCLUDED and is the one to suspect
-              # first if a future searxng bump fails to start: CPython itself
-              # is fine with W^X, but a C extension that JITs would not be.
-              # It was verified working here rather than assumed safe.
-              #
-              # ── WHAT IS DELIBERATELY NOT SET ─────────────────────────────
-              #
-              #   PrivateNetwork      — obviously not.  Reaching the internet
-              #                         IS this service's whole function.
-              #   IPAddressDeny/Allow — the one systemd-analyze still flags.
-              #                         An allow-list would have to enumerate
-              #                         every address of five search engines,
-              #                         which are CDN-hosted and change without
-              #                         notice; the rule would fail open in
-              #                         practice (silently dropping engines as
-              #                         IPs rotate) while looking strict.  The
-              #                         containment that actually holds is the
-              #                         INBOUND firewall plus the fact that
-              #                         this container is on no veth to the
-              #                         host — proven by the reachability
-              #                         matrix in M20 (docs/history.md), where
-              #                         every LAN target times out.
-              #   ProtectSystem=strict is safe here BECAUSE searx writes
-              #                         nothing: searx-init regenerates
-              #                         /run/searx/settings.yml, and
-              #                         RuntimeDirectory= already grants that
-              #                         path.  If favicons are ever enabled
-              #                         they need a ReadWritePaths= entry, and
-              #                         the failure will be a clean EROFS.
-              ##############################################################
-              systemd.services.searx.serviceConfig = {
-                NoNewPrivileges       = true;
-                ProtectSystem         = "strict";
-                ProtectHome           = true;
-                PrivateTmp            = true;
-                PrivateDevices        = true;
-                PrivateUsers          = true;
-                ProtectKernelTunables = true;
-                ProtectKernelModules  = true;
-                ProtectKernelLogs     = true;
-                ProtectControlGroups  = true;
-                ProtectClock          = true;
-                ProtectHostname       = true;
-                ProtectProc           = "invisible";
-                ProcSubset            = "pid";
-                RestrictNamespaces    = true;
-                RestrictRealtime      = true;
-                RestrictSUIDSGID      = true;
-                LockPersonality       = true;
-                MemoryDenyWriteExecute = true;
-                RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
-                SystemCallArchitectures = "native";
-                SystemCallFilter = [ "@system-service" "~@privileged" "~@resources" ];
-                CapabilityBoundingSet = [ "" ];
-                AmbientCapabilities   = [ "" ];
-                UMask                 = "0077";
-              };
+              # Turning it on would also require a valkey/redis daemon
+              # (`redisCreateLocally`, which the module makes a precondition)
+              # for no benefit — and, worse, its botdetection would BLOCK THE
+              # ONLY CLIENT: Open WebUI identifies itself with
+              #   User-Agent: Open WebUI (…) RAG Bot
+              # (retrieval/web/searxng.py, `_SEARXNG_HEADERS`).  A bot filter
+              # in front of a service whose sole user is a self-declared bot
+              # is a way to build an outage on purpose.
+              redisCreateLocally = false;
 
-              # searx-init runs envsubst and writes one file into its own
-              # RuntimeDirectory. It needs even less than searx does, but it
-              # handles the SECRET, so it gets the same treatment rather than
-              # less. ProtectSystem is "full" and not "strict" here: the unit's
-              # whole job is to write /run/searx, and RuntimeDirectory= plus
-              # RuntimeDirectoryPreserve=yes are set by the upstream module —
-              # "strict" would need that path restated as ReadWritePaths and
-              # buys nothing over "full" once /home and /etc are covered.
-              systemd.services.searx-init.serviceConfig = {
-                NoNewPrivileges       = true;
-                ProtectSystem         = "full";
-                ProtectHome           = true;
-                PrivateTmp            = true;
-                PrivateDevices        = true;
-                ProtectKernelTunables = true;
-                ProtectKernelModules  = true;
-                ProtectKernelLogs     = true;
-                ProtectControlGroups  = true;
-                ProtectClock          = true;
-                ProtectHostname       = true;
-                ProtectProc           = "invisible";
-                ProcSubset            = "pid";
-                RestrictNamespaces    = true;
-                RestrictRealtime      = true;
-                RestrictSUIDSGID      = true;
-                LockPersonality       = true;
-                RestrictAddressFamilies = [ "AF_UNIX" ];
-                SystemCallArchitectures = "native";
-                SystemCallFilter = [ "@system-service" "~@privileged" "~@resources" ];
-                CapabilityBoundingSet = [ "" ];
-                AmbientCapabilities   = [ "" ];
-                UMask                 = "0077";
-              };
-
-              services.searx = {
-                enable = true;
-
-                # searx-init reads this to envsubst `$SEARXNG_SECRET` into the
-                # generated settings.yml.  The nixpkgs module puts it on BOTH
-                # searx-init and searx, which is what makes the substitution
-                # and the runtime agree.
-                environmentFile = "${secretsDir}/searxng.env";
-
-                # OFF, and this is not laziness — it is the decision the
-                # milestone asked to be made rather than inherited.
-                #
-                # SearXNG's limiter exists to protect a PUBLIC instance from
-                # abuse.  This one is reachable from exactly one address,
-                # enforced one layer down by the firewall above, so there is no
-                # abuse population for it to limit.
-                #
-                # Turning it on would also require a valkey/redis daemon
-                # (`redisCreateLocally`, which the module makes a precondition)
-                # for no benefit — and, worse, its botdetection would BLOCK THE
-                # ONLY CLIENT: Open WebUI identifies itself with
-                #   User-Agent: Open WebUI (…) RAG Bot
-                # (retrieval/web/searxng.py, `_SEARXNG_HEADERS`).  A bot filter
-                # in front of a service whose sole user is a self-declared bot
-                # is a way to build an outage on purpose.
-                redisCreateLocally = false;
-
-                settings = {
+              settings =
+                {
                   # ── THE ONE SETTING WITHOUT WHICH NONE OF THIS WORKS ──────
                   #
                   # Upstream ships `search.formats: [html]` — JSON IS NOT
@@ -3476,7 +3600,7 @@ in
                   # and the response format is not the boundary — the firewall
                   # is.  Dropping `html` would harden nothing and cost the only
                   # way in when something is wrong.
-                  search.formats = [ "html" "json" ];
+                  search.formats = ["html" "json"];
 
                   # Autocomplete off.  This RESTATES upstream's own default
                   # (settings.yml:46 and settings_defaults.py both ship "") and
@@ -3487,7 +3611,7 @@ in
                   search.autocomplete = "";
 
                   server = {
-                    port         = settings.port;
+                    port = settings.port;
                     # `::`, not `0.0.0.0`, and not the container's own address:
                     # the address is a DHCP lease, so binding it specifically
                     # means binding something this module does not know at
@@ -3518,9 +3642,9 @@ in
 
                     # Substituted by searx-init's envsubst from
                     # environmentFile, so the value is never in the store.
-                    secret_key   = "$SEARXNG_SECRET";
+                    secret_key = "$SEARXNG_SECRET";
 
-                    limiter         = false;   # see redisCreateLocally above
+                    limiter = false; # see redisCreateLocally above
                     public_instance = false;
 
                     # OFF.  The image proxy makes SearXNG fetch every result
@@ -3545,13 +3669,13 @@ in
                 # Merged by name over the kept set. Kept as a separate
                 # attribute rather than folded above so the two lists read
                 # together — see engineOverrides.
-                // lib.optionalAttrs (settings.engineOverrides != [ ]) {
+                // lib.optionalAttrs (settings.engineOverrides != []) {
                   engines = settings.engineOverrides;
                 };
-              };
             };
           };
         };
+      };
     };
   };
 
@@ -3563,8 +3687,8 @@ in
 
     interface.options = {
       mac = lib.mkOption {
-        type        = lib.types.str;
-        example     = "02:00:00:90:00:0f";
+        type = lib.types.str;
+        example = "02:00:00:90:00:0f";
         description = ''
           Container eth0 MAC, allocated in the table in
           machines/ernst/networking.nix.  The UDM-Pro DHCP reservation keys on
@@ -3574,21 +3698,21 @@ in
         '';
       };
       uid = lib.mkOption {
-        type        = lib.types.int;
+        type = lib.types.int;
         description = "Static uid/gid, allocated in machines/ernst/allocations.nix.";
       };
       port = lib.mkOption {
-        type    = lib.types.port;
+        type = lib.types.port;
         default = 8080;
         description = "Open WebUI's listener inside the container.";
       };
       stateDir = lib.mkOption {
-        type    = lib.types.path;
+        type = lib.types.path;
         default = "/srv/state/open-webui";
         description = "Bind-mounted to /var/lib/open-webui. On zdata, invariant #7.";
       };
       hostName = lib.mkOption {
-        type    = lib.types.str;
+        type = lib.types.str;
         example = "chat.goclan.org";
         description = ''
           Public hostname.  MUST have a Technitium record BEFORE this is
@@ -3603,7 +3727,7 @@ in
         '';
       };
       proxyAddress = lib.mkOption {
-        type    = lib.types.str;
+        type = lib.types.str;
         default = "10.0.90.12";
         description = ''
           Traefik's address.  The container firewall permits this and only
@@ -3613,7 +3737,7 @@ in
         '';
       };
       inferenceAddress = lib.mkOption {
-        type    = lib.types.str;
+        type = lib.types.str;
         example = "fdca:fe91::1";
         description = ''
           Host end of THIS container's veth to ernst, where llama-swap is
@@ -3628,18 +3752,18 @@ in
       oidc = {
         enable = lib.mkEnableOption "OIDC login against Authelia";
         issuerUrl = lib.mkOption {
-          type    = lib.types.str;
+          type = lib.types.str;
           default = "https://auth.goclan.org";
           description = "Authelia's issuer. `/.well-known/openid-configuration` is derived from it.";
         };
         clientId = lib.mkOption {
-          type    = lib.types.str;
+          type = lib.types.str;
           default = "open-webui";
           description = "Must match the client_id in machines/ernst/containers/authelia.nix.";
         };
       };
       speechUrl = lib.mkOption {
-        type    = lib.types.nullOr lib.types.str;
+        type = lib.types.nullOr lib.types.str;
         default = null;
         description = "OpenAI-shaped STT base URL, normally llama-swap. Null disables voice input.";
       };
@@ -3650,7 +3774,7 @@ in
       # which of these env vars are set.
       ##########################################################################
       searchUrl = lib.mkOption {
-        type    = lib.types.nullOr lib.types.str;
+        type = lib.types.nullOr lib.types.str;
         default = null;
         example = "http://10.0.90.24:8888/search";
         description = ''
@@ -3669,7 +3793,7 @@ in
       };
 
       searchResultCount = lib.mkOption {
-        type    = lib.types.ints.positive;
+        type = lib.types.ints.positive;
         default = 5;
         description = ''
           `WEB_SEARCH_RESULT_COUNT` — how many results are put in front of the
@@ -3685,7 +3809,7 @@ in
       };
 
       searchFetchesPages = lib.mkOption {
-        type    = lib.types.bool;
+        type = lib.types.bool;
         default = false;
         description = ''
           Whether OPEN WEBUI itself fetches the full text of each result page,
@@ -3736,7 +3860,7 @@ in
       };
 
       searchEmbedsResults = lib.mkOption {
-        type    = lib.types.bool;
+        type = lib.types.bool;
         default = false;
         description = ''
           Whether search results go through the embedding/vector-DB path
@@ -3765,7 +3889,7 @@ in
         '';
       };
       imageUrl = lib.mkOption {
-        type    = lib.types.nullOr lib.types.str;
+        type = lib.types.nullOr lib.types.str;
         default = null;
         description = ''
           ComfyUI base URL. Null disables image generation.
@@ -3799,7 +3923,7 @@ in
       # works until the next restart and is then silently reverted.  That is
       # the setting working as intended, and the reason these are options.
       imageModel = lib.mkOption {
-        type    = lib.types.nullOr lib.types.str;
+        type = lib.types.nullOr lib.types.str;
         default = null;
         example = "sd_xl_base_1.0.safetensors";
         description = ''
@@ -3817,7 +3941,7 @@ in
       };
 
       imageSize = lib.mkOption {
-        type    = lib.types.str;
+        type = lib.types.str;
         default = "1024x1024";
         description = ''
           `IMAGE_SIZE`, substituted into the workflow's EmptyLatentImage.
@@ -3834,7 +3958,7 @@ in
       };
 
       imageWorkflowNodes = lib.mkOption {
-        type    = lib.types.listOf (lib.types.attrsOf lib.types.anything);
+        type = lib.types.listOf (lib.types.attrsOf lib.types.anything);
         description = ''
           `COMFYUI_WORKFLOW_NODES` — which node of the ComfyUI workflow each
           generation parameter is written into.
@@ -3876,22 +4000,54 @@ in
           into nodes that do not exist.
         '';
         default = [
-          { type = "model";           key = "ckpt_name";  node_ids = [ "4" ]; }
-          { type = "prompt";          key = "text";       node_ids = [ "6" ]; }
-          { type = "negative_prompt"; key = "text";       node_ids = [ "7" ]; }
-          { type = "width";           key = "width";      node_ids = [ "5" ]; }
-          { type = "height";          key = "height";     node_ids = [ "5" ]; }
-          { type = "n";               key = "batch_size"; node_ids = [ "5" ]; }
-          { type = "steps";           key = "steps";      node_ids = [ "3" ]; }
+          {
+            type = "model";
+            key = "ckpt_name";
+            node_ids = ["4"];
+          }
+          {
+            type = "prompt";
+            key = "text";
+            node_ids = ["6"];
+          }
+          {
+            type = "negative_prompt";
+            key = "text";
+            node_ids = ["7"];
+          }
+          {
+            type = "width";
+            key = "width";
+            node_ids = ["5"];
+          }
+          {
+            type = "height";
+            key = "height";
+            node_ids = ["5"];
+          }
+          {
+            type = "n";
+            key = "batch_size";
+            node_ids = ["5"];
+          }
+          {
+            type = "steps";
+            key = "steps";
+            node_ids = ["3"];
+          }
           # `seed` has no fallback key in _apply_workflow_nodes — unlike the
           # others it is indexed with `node.key` directly, so omitting the key
           # here is a KeyError rather than a default.
-          { type = "seed";            key = "seed";       node_ids = [ "3" ]; }
+          {
+            type = "seed";
+            key = "seed";
+            node_ids = ["3"];
+          }
         ];
       };
 
       imageSteps = lib.mkOption {
-        type    = lib.types.ints.positive;
+        type = lib.types.ints.positive;
         default = 20;
         description = ''
           `IMAGE_STEPS`, substituted into the workflow's KSampler.
@@ -3956,11 +4112,11 @@ in
               scheduler = "karras";
               # See the option description. This is the img2img knob.
               denoise = 0.75;
-              model = [ "4" 0 ];
-              positive = [ "6" 0 ];
-              negative = [ "7" 0 ];
+              model = ["4" 0];
+              positive = ["6" 0];
+              negative = ["7" 0];
               # The one edge that differs from the generation graph.
-              latent_image = [ "11" 0 ];
+              latent_image = ["11" 0];
             };
             class_type = "KSampler";
           };
@@ -3970,19 +4126,31 @@ in
             class_type = "CheckpointLoaderSimple";
           };
           "6" = {
-            inputs = { text = "Prompt"; clip = [ "4" 1 ]; };
+            inputs = {
+              text = "Prompt";
+              clip = ["4" 1];
+            };
             class_type = "CLIPTextEncode";
           };
           "7" = {
-            inputs = { text = ""; clip = [ "4" 1 ]; };
+            inputs = {
+              text = "";
+              clip = ["4" 1];
+            };
             class_type = "CLIPTextEncode";
           };
           "8" = {
-            inputs = { samples = [ "3" 0 ]; vae = [ "4" 2 ]; };
+            inputs = {
+              samples = ["3" 0];
+              vae = ["4" 2];
+            };
             class_type = "VAEDecode";
           };
           "9" = {
-            inputs = { filename_prefix = "ComfyUI"; images = [ "8" 0 ]; };
+            inputs = {
+              filename_prefix = "ComfyUI";
+              images = ["8" 0];
+            };
             class_type = "SaveImage";
           };
           "10" = {
@@ -4020,7 +4188,7 @@ in
           # `status_str: success`, image written.
           "12" = {
             inputs = {
-              image = [ "10" 0 ];
+              image = ["10" 0];
               upscale_method = "lanczos";
               megapixels = 1.0;
               resolution_steps = 64;
@@ -4030,7 +4198,10 @@ in
           "11" = {
             # pixels comes from the RESCALE (12), never straight from
             # LoadImage (10) — that edge is the entire fix.
-            inputs = { pixels = [ "12" 0 ]; vae = [ "4" 2 ]; };
+            inputs = {
+              pixels = ["12" 0];
+              vae = ["4" 2];
+            };
             class_type = "VAEEncode";
           };
         };
@@ -4068,305 +4239,348 @@ in
           entry.
         '';
         default = [
-          { type = "model";  key = "ckpt_name"; node_ids = [ "4" ]; }
-          { type = "prompt"; key = "text";      node_ids = [ "6" ]; }
-          { type = "image";  key = "image";     node_ids = [ "10" ]; }
-          { type = "seed";   key = "seed";      node_ids = [ "3" ]; }
+          {
+            type = "model";
+            key = "ckpt_name";
+            node_ids = ["4"];
+          }
+          {
+            type = "prompt";
+            key = "text";
+            node_ids = ["6"];
+          }
+          {
+            type = "image";
+            key = "image";
+            node_ids = ["10"];
+          }
+          {
+            type = "seed";
+            key = "seed";
+            node_ids = ["3"];
+          }
         ];
       };
     };
 
-    perInstance = { settings, roles, machine, ... }: {
-      nixosModule = { config, pkgs, lib, ... }:
-        let
-          oidcGen = config.clan.core.vars.generators.authelia-oidc-openwebui;
+    perInstance = {
+      settings,
+      roles,
+      machine,
+      ...
+    }: {
+      nixosModule = {
+        config,
+        pkgs,
+        lib,
+        ...
+      }: let
+        oidcGen = config.clan.core.vars.generators.authelia-oidc-openwebui;
 
-          # DERIVED, NOT RESTATED. modules/containers/nspawn.nix builds this
-          # from the CONTAINER name, which is `openwebui` — not the service
-          # name `open-webui`. Writing the path out by hand here meant the
-          # module bound /run/openwebui-secrets while the service below read
-          # /run/open-webui-secrets/oidc.env, which is a missing
-          # EnvironmentFile and a unit that will not start. Nothing persists
-          # under /run, so the rename costs nothing.
-          secretsDir = "${config.clanarchy.containerDefaults.secretsRoot}/openwebui-secrets";
-          vethName = "vb-openwebui";
-          # ── THIS NAME IS HOST-GLOBAL, AND IT WAS `ai0` UNTIL M29 ──────────
-          #
-          # `extraVeths.<name>` renders to nspawn's `--network-veth-extra=<name>`
-          # with a SINGLE name, which nspawn uses for BOTH ends — so the name
-          # appears on the host as well as in the container, and the host has
-          # one flat interface namespace.  monitoring.nix:182-184 already wrote
-          # that down for `mon0`; what nobody drew from it is that the name must
-          # therefore be UNIQUE ACROSS EVERY CONTAINER ON THE MACHINE.
-          #
-          # M27 gave karakeep `extraVeths.ai0` as well, and from its deploy on
-          # 2026-09-19 THIS CONTAINER HAD NO SECOND LEG AT ALL.  Measured on
-          # ernst 2026-09-24, sixteen days into the same boot:
-          #
-          #   openwebui: ip -6 -br addr  ->  lo, eth0.  No ai0.
-          #   karakeep : ai0@if126  fdca:fe92::2/128
-          #   host     : exactly one ai0, peered into karakeep
-          #   openwebui -> [fdca:fe91::1]:11434  ->  curl (7), could not connect
-          #   karakeep  -> [fdca:fe92::1]:11434  ->  200          (the control)
-          #
-          # NOTHING REPORTED IT, and the reason is worth keeping: the host end
-          # binds regardless.  `ss -ltn` shows [fdca:fe91::1]:11434 LISTENing,
-          # llama-bridge-webui.socket and .service are both active/running, and
-          # the only symptom is "No models available" in the chat UI — three
-          # layers from the cause, which is the exact failure the `exposeOn`
-          # note above claims this mechanism was built to prevent.  It was
-          # prevented for the half that lives in this file and not for the half
-          # that lives in nspawn's argv.
-          #
-          # There is a second edge on the same fact: nixos-containers.nix:245
-          # runs `ip link del dev <name>` on container STOP, so stopping this
-          # container would have taken karakeep's leg down with it.
-          #
-          # The names now carry the ULA index they belong to — fe91 -> ai1,
-          # fe92 -> ai2, fe93 -> ai3 — so a collision requires typing the same
-          # number twice, and machines/ernst/networking.nix asserts that no two
-          # containers claim one name.
-          aiVeth   = "ai1";
-          aiHost   = settings.inferenceAddress;
-          aiCont   = "fdca:fe91::2";
-          swapUrl  = "http://[${aiHost}]:11434";
+        # DERIVED, NOT RESTATED. modules/containers/nspawn.nix builds this
+        # from the CONTAINER name, which is `openwebui` — not the service
+        # name `open-webui`. Writing the path out by hand here meant the
+        # module bound /run/openwebui-secrets while the service below read
+        # /run/open-webui-secrets/oidc.env, which is a missing
+        # EnvironmentFile and a unit that will not start. Nothing persists
+        # under /run, so the rename costs nothing.
+        secretsDir = "${config.clanarchy.containerDefaults.secretsRoot}/openwebui-secrets";
+        vethName = "vb-openwebui";
+        # ── THIS NAME IS HOST-GLOBAL, AND IT WAS `ai0` UNTIL M29 ──────────
+        #
+        # `extraVeths.<name>` renders to nspawn's `--network-veth-extra=<name>`
+        # with a SINGLE name, which nspawn uses for BOTH ends — so the name
+        # appears on the host as well as in the container, and the host has
+        # one flat interface namespace.  monitoring.nix:182-184 already wrote
+        # that down for `mon0`; what nobody drew from it is that the name must
+        # therefore be UNIQUE ACROSS EVERY CONTAINER ON THE MACHINE.
+        #
+        # M27 gave karakeep `extraVeths.ai0` as well, and from its deploy on
+        # 2026-09-19 THIS CONTAINER HAD NO SECOND LEG AT ALL.  Measured on
+        # ernst 2026-09-24, sixteen days into the same boot:
+        #
+        #   openwebui: ip -6 -br addr  ->  lo, eth0.  No ai0.
+        #   karakeep : ai0@if126  fdca:fe92::2/128
+        #   host     : exactly one ai0, peered into karakeep
+        #   openwebui -> [fdca:fe91::1]:11434  ->  curl (7), could not connect
+        #   karakeep  -> [fdca:fe92::1]:11434  ->  200          (the control)
+        #
+        # NOTHING REPORTED IT, and the reason is worth keeping: the host end
+        # binds regardless.  `ss -ltn` shows [fdca:fe91::1]:11434 LISTENing,
+        # llama-bridge-webui.socket and .service are both active/running, and
+        # the only symptom is "No models available" in the chat UI — three
+        # layers from the cause, which is the exact failure the `exposeOn`
+        # note above claims this mechanism was built to prevent.  It was
+        # prevented for the half that lives in this file and not for the half
+        # that lives in nspawn's argv.
+        #
+        # There is a second edge on the same fact: nixos-containers.nix:245
+        # runs `ip link del dev <name>` on container STOP, so stopping this
+        # container would have taken karakeep's leg down with it.
+        #
+        # The names now carry the ULA index they belong to — fe91 -> ai1,
+        # fe92 -> ai2, fe93 -> ai3 — so a collision requires typing the same
+        # number twice, and machines/ernst/networking.nix asserts that no two
+        # containers claim one name.
+        aiVeth = "ai1";
+        aiHost = settings.inferenceAddress;
+        aiCont = "fdca:fe91::2";
+        swapUrl = "http://[${aiHost}]:11434";
 
-          # Checkpoints this machine actually declares, read out of the SAME
-          # attrset the fetcher and ComfyUI's extra_model_paths.yaml are built
-          # from — so "is that file on disk" and "does Open WebUI name it"
-          # cannot answer differently.
-          #
-          # `subdir = "checkpoints"` is part of the test, not a detail: ComfyUI
-          # resolves `ckpt_name` inside its `checkpoints` category, so a model
-          # declared with any other subdir is fetched and hash-verified and
-          # still invisible to the loader.
-          declaredCheckpoints = lib.mapAttrsToList (_: m: m.filename)
-            (lib.filterAttrs (_: m: m.subdir == "checkpoints")
-              (roles.models.machines.${machine.name}.settings.models or { }));
-        in
-        {
-          assertions = lib.optionals (settings.imageUrl != null) [
+        # Checkpoints this machine actually declares, read out of the SAME
+        # attrset the fetcher and ComfyUI's extra_model_paths.yaml are built
+        # from — so "is that file on disk" and "does Open WebUI name it"
+        # cannot answer differently.
+        #
+        # `subdir = "checkpoints"` is part of the test, not a detail: ComfyUI
+        # resolves `ckpt_name` inside its `checkpoints` category, so a model
+        # declared with any other subdir is fetched and hash-verified and
+        # still invisible to the loader.
+        declaredCheckpoints =
+          lib.mapAttrsToList (_: m: m.filename)
+          (lib.filterAttrs (_: m: m.subdir == "checkpoints")
+            (roles.models.machines.${machine.name}.settings.models or {}));
+      in {
+        assertions = lib.optionals (settings.imageUrl != null) [
+          {
+            assertion = settings.imageModel != null;
+            message = ''
+              @clanarchy/local-ai: ${machine.name} sets roles.webui…imageUrl
+              but not imageModel.
+
+              Open WebUI's IMAGE_GENERATION_MODEL defaults to the EMPTY
+              STRING, and its bundled ComfyUI workflow substitutes that into
+              a CheckpointLoaderSimple.  So image generation would appear
+              enabled in the UI and fail inside ComfyUI on every request,
+              with nothing on the Open WebUI side saying why.
+
+              Set it to a checkpoint declared in roles.models with
+              `subdir = "checkpoints"`, e.g. "sd_xl_base_1.0.safetensors".
+            '';
+          }
+          {
+            assertion =
+              settings.imageModel
+              == null
+              || lib.elem settings.imageModel declaredCheckpoints;
+            message = ''
+              @clanarchy/local-ai: ${machine.name} sets
+              roles.webui…imageModel = "${toString settings.imageModel}",
+              which is not a checkpoint this machine declares.
+
+              Declared with `subdir = "checkpoints"` in roles.models:
+                ${
+                if declaredCheckpoints == []
+                then "(none — declare one before enabling image generation)"
+                else lib.concatStringsSep "\n  " declaredCheckpoints
+              }
+
+              A model is fetched, hash-verified and offered to ComfyUI from
+              ONE attrset; naming something else here is the same class of
+              mistake as an ollama tag that never existed, which sat in a
+              restart loop for months.  Caught at build time rather than as
+              a failed image request three layers away.
+            '';
+          }
+        ];
+
+        ##################################################################
+        # The OIDC client secret. ITS OWN GENERATOR.
+        #
+        # containers/authelia.nix states the rule and the reason: a clan vars
+        # generator is ATOMIC, so adding a file to an existing one re-runs the
+        # whole script and hands every other relying party a new secret as a
+        # side effect. Grafana and CWA each have their own; so does this.
+        #
+        # The pair WITHIN this generator is still atomic, which is the part
+        # that matters — Authelia stores a PBKDF2 digest and the client sends
+        # the plaintext, so the two must come out of one `rand` call.
+        ##################################################################
+        clan.core.vars.generators.authelia-oidc-openwebui = {
+          files."openwebui-client-secret".secret = true;
+          files."openwebui-client-secret-digest".secret = true;
+          files."openwebui-client-secret-digest".restartUnits = ["authelia-secrets.service" "container@authelia.service"];
+          # `openwebui-secrets`, not `open-webui-secrets`: the module names
+          # the staging unit after the CONTAINER, and a restartUnits entry
+          # naming a unit that does not exist is silent — the secret
+          # rotates, nothing restarts, and the container keeps serving the
+          # old value. The generator-name gate cannot catch this, because
+          # this is a value inside a generator rather than its name.
+          files."openwebui-client-secret".restartUnits = ["openwebui-secrets.service" "container@openwebui.service"];
+
+          runtimeInputs = [pkgs.authelia pkgs.gnused pkgs.coreutils];
+          script = ''
+            set -euo pipefail
+            secret=$(authelia crypto rand --length 72 --charset alphanumeric \
+                       | sed -n 's/^Random Value: //p' | tr -d '\n')
+            [ -n "$secret" ] || { echo "  ✗ no client secret produced" >&2; exit 1; }
+            printf '%s' "$secret" > "$out/openwebui-client-secret"
+
+            digest=$(authelia crypto hash generate pbkdf2 --variant sha512 --password "$secret" \
+                       | sed -n 's/^Digest: //p')
+            [ -n "$digest" ] || { echo "  ✗ no digest produced" >&2; exit 1; }
+            printf '%s' "$digest" > "$out/openwebui-client-secret-digest"
+          '';
+        };
+
+        ##################################################################
+        # The container.
+        ##################################################################
+        #
+        # Declared through modules/containers/nspawn.nix, which generates
+        # the staging unit, the state directory, the host-side veth
+        # network, the VLAN backstop, the container preamble, the
+        # in-container networking and the firewall — taking bridge, VLAN,
+        # resolver and search domain from the HOST's
+        # `clanarchy.containerDefaults` rather than from this role.
+        clanarchy.containers.openwebui = {
+          enable = true;
+          mac = settings.mac;
+
+          # NO uid/gid PIN: the in-container `users.users.open-webui` block
+          # declares the user in full.
+
+          # AN ORDERED UNIT RATHER THAN A tmpfiles RULE. This path is bound
+          # into the container, and a tmpfiles rule for a bound path races
+          # the container's own start — immich measured that. It also gains
+          # the /srv/state mount guard, so state cannot land on a
+          # filesystem that rolls back.
+          stateDirs = [
             {
-              assertion = settings.imageModel != null;
-              message = ''
-                @clanarchy/local-ai: ${machine.name} sets roles.webui…imageUrl
-                but not imageModel.
-
-                Open WebUI's IMAGE_GENERATION_MODEL defaults to the EMPTY
-                STRING, and its bundled ComfyUI workflow substitutes that into
-                a CheckpointLoaderSimple.  So image generation would appear
-                enabled in the UI and fail inside ComfyUI on every request,
-                with nothing on the Open WebUI side saying why.
-
-                Set it to a checkpoint declared in roles.models with
-                `subdir = "checkpoints"`, e.g. "sd_xl_base_1.0.safetensors".
-              '';
-            }
-            {
-              assertion =
-                settings.imageModel == null
-                || lib.elem settings.imageModel declaredCheckpoints;
-              message = ''
-                @clanarchy/local-ai: ${machine.name} sets
-                roles.webui…imageModel = "${toString settings.imageModel}",
-                which is not a checkpoint this machine declares.
-
-                Declared with `subdir = "checkpoints"` in roles.models:
-                  ${if declaredCheckpoints == [ ]
-                    then "(none — declare one before enabling image generation)"
-                    else lib.concatStringsSep "\n  " declaredCheckpoints}
-
-                A model is fetched, hash-verified and offered to ComfyUI from
-                ONE attrset; naming something else here is the same class of
-                mistake as an ollama tag that never existed, which sat in a
-                restart loop for months.  Caught at build time rather than as
-                a failed image request three layers away.
-              '';
+              path = settings.stateDir;
+              owner = settings.uid;
+              group = settings.uid;
+              mode = "0750";
             }
           ];
 
-          ##################################################################
-          # The OIDC client secret. ITS OWN GENERATOR.
-          #
-          # containers/authelia.nix states the rule and the reason: a clan vars
-          # generator is ATOMIC, so adding a file to an existing one re-runs the
-          # whole script and hands every other relying party a new secret as a
-          # side effect. Grafana and CWA each have their own; so does this.
-          #
-          # The pair WITHIN this generator is still atomic, which is the part
-          # that matters — Authelia stores a PBKDF2 digest and the client sends
-          # the plaintext, so the two must come out of one `rand` call.
-          ##################################################################
-          clan.core.vars.generators.authelia-oidc-openwebui = {
-            files."openwebui-client-secret".secret        = true;
-            files."openwebui-client-secret-digest".secret = true;
-            files."openwebui-client-secret-digest".restartUnits =
-              [ "authelia-secrets.service" "container@authelia.service" ];
-            # `openwebui-secrets`, not `open-webui-secrets`: the module names
-            # the staging unit after the CONTAINER, and a restartUnits entry
-            # naming a unit that does not exist is silent — the secret
-            # rotates, nothing restarts, and the container keeps serving the
-            # old value. The generator-name gate cannot catch this, because
-            # this is a value inside a generator rather than its name.
-            files."openwebui-client-secret".restartUnits =
-              [ "openwebui-secrets.service" "container@openwebui.service" ];
-
-            runtimeInputs = [ pkgs.authelia pkgs.gnused pkgs.coreutils ];
-            script = ''
-              set -euo pipefail
-              secret=$(authelia crypto rand --length 72 --charset alphanumeric \
-                         | sed -n 's/^Random Value: //p' | tr -d '\n')
-              [ -n "$secret" ] || { echo "  ✗ no client secret produced" >&2; exit 1; }
-              printf '%s' "$secret" > "$out/openwebui-client-secret"
-
-              digest=$(authelia crypto hash generate pbkdf2 --variant sha512 --password "$secret" \
-                         | sed -n 's/^Digest: //p')
-              [ -n "$digest" ] || { echo "  ✗ no digest produced" >&2; exit 1; }
-              printf '%s' "$digest" > "$out/openwebui-client-secret-digest"
-            '';
+          # `required`, preserving this unit's existing behaviour: it used a
+          # bare `cat` under `set -euo pipefail`, so a missing var already
+          # failed the unit and stopped the container. An empty OIDC client
+          # secret is every login broken, so failing closed is right here —
+          # unlike a password the application can refuse and log.
+          secrets."oidc.env".OAUTH_CLIENT_SECRET = {
+            file = oidcGen.files."openwebui-client-secret".path;
+            required = true;
           };
 
+          # The inference leg, point-to-point and inward.
+          ula = [
+            {
+              veth = aiVeth;
+              hostAddress6 = aiHost;
+              localAddress6 = aiCont;
+            }
+          ];
 
-          ##################################################################
-          # The container.
-          ##################################################################
-          #
-          # Declared through modules/containers/nspawn.nix, which generates
-          # the staging unit, the state directory, the host-side veth
-          # network, the VLAN backstop, the container preamble, the
-          # in-container networking and the firewall — taking bridge, VLAN,
-          # resolver and search domain from the HOST's
-          # `clanarchy.containerDefaults` rather than from this role.
-          clanarchy.containers.openwebui = {
-            enable = true;
-            mac    = settings.mac;
+          bindMounts = {
+            "/var/lib/open-webui" = {
+              hostPath = settings.stateDir;
+              isReadOnly = false;
+            };
+          };
 
-            # NO uid/gid PIN: the in-container `users.users.open-webui` block
-            # declares the user in full.
+          # Only the proxy. Nothing else on the services VLAN reaches it.
+          allowFrom = [
+            {
+              peer = settings.proxyAddress;
+              port = settings.port;
+            }
+          ];
 
-            # AN ORDERED UNIT RATHER THAN A tmpfiles RULE. This path is bound
-            # into the container, and a tmpfiles rule for a bound path races
-            # the container's own start — immich measured that. It also gains
-            # the /srv/state mount guard, so state cannot land on a
-            # filesystem that rolls back.
-            stateDirs = [
-              { path = settings.stateDir; owner = settings.uid; group = settings.uid; mode = "0750"; }
-            ];
+          config = {
+            config,
+            lib,
+            ...
+          }: {
+            # ── OPEN WEBUI IS UNFREE, AND THE ALLOWANCE STAYS IN HERE ─────
+            #
+            # nixpkgs marks open-webui unfree because of the branding clause
+            # in its licence (below), so without an allowance evaluation
+            # fails with:
+            #
+            #   error: Refusing to evaluate package 'open-webui-0.11.0'
+            #          because it has an unfree license
+            #
+            # ernst does NOT set `allowUnfree`.  It carries a narrow
+            # `allowUnfreePredicate` from modules/roles/htpc.nix listing the
+            # Steam packages, and that file says explicitly why: "this role is
+            # expected to land on otherwise-headless boxes (ernst fronts the
+            # NAS array), and 'we needed Steam' shouldn't quietly open the
+            # whole machine to unfree packages."  Adding open-webui to a list
+            # about Steam would be the wrong file, and widening the host to
+            # blanket allowUnfree would be exactly what that comment forbids.
+            #
+            # A container is its own nixosSystem with its own nixpkgs, so the
+            # allowance is scoped to the one evaluation that needs it and the
+            # host's predicate is untouched.  The cost is a second nixpkgs
+            # instantiation and no lib/overlays.nix in here — the overlays are
+            # a niri sandbox fix and chromium privacy flags, neither of which
+            # this container has any use for.
+            #
+            # THE LICENCE, recorded so nobody has to rediscover it: Open WebUI
+            # is BSD-3-clause plus a fourth clause forbidding removal or
+            # alteration of "Open WebUI" branding — EXCEPT where the total
+            # number of end users does not exceed FIFTY in any rolling 30-day
+            # period.  This household is comfortably under that, so the
+            # exemption applies and the branding may be left alone anyway.
+            # If this is ever exposed to more than fifty people, that changes.
+            nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) ["open-webui"];
 
-            # `required`, preserving this unit's existing behaviour: it used a
-            # bare `cat` under `set -euo pipefail`, so a missing var already
-            # failed the unit and stopped the container. An empty OIDC client
-            # secret is every login broken, so failing closed is right here —
-            # unlike a password the application can refuse and log.
-            secrets."oidc.env".OAUTH_CLIENT_SECRET = {
-              file     = oidcGen.files."openwebui-client-secret".path;
-              required = true;
+            # Matches the host, for the reason arr/ and monitoring.nix
+            # both give: every timestamp a human reads is local time, and a
+            # container that defaults to UTC makes each of them a two-hour
+            # question.
+            time.timeZone = "Europe/Berlin";
+            users.users.open-webui = {
+              isSystemUser = true;
+              group = "open-webui";
+              uid = settings.uid;
+            };
+            users.groups.open-webui.gid = settings.uid;
+
+            # ── DynamicUser OFF.  THE SAME TRAP THIS MODULE ALREADY ────────
+            #    DOCUMENTED FOR OLLAMA, IN A SECOND FORM.
+            #
+            # nixpkgs' open-webui module ships `DynamicUser = true` with
+            # `StateDirectory = "open-webui"`.  That combination is
+            # incompatible with a bind-mounted state directory, and it fails
+            # in a way that names neither:
+            #
+            #   Found pre-existing public StateDirectory= directory
+            #     /var/lib/open-webui, migrating to /var/lib/private/open-webui.
+            #   Apparently, service previously had DynamicUser= turned off,
+            #     and has now turned it on.
+            #   Failed to set up special execution directory in /var/lib:
+            #     Device or resource busy
+            #   status=238/STATE_DIRECTORY
+            #
+            # systemd wants to MOVE /var/lib/open-webui under /var/lib/private
+            # so the per-boot dynamic uid can own it.  It is a bind mount, so
+            # the move is EBUSY and the unit never starts — which presents at
+            # the front door as Traefik's "Bad Gateway", three layers away.
+            #
+            # The `ollama` role in this same file carries the other half of
+            # this lesson: DynamicUser + a persisted directory means the
+            # per-boot uid cannot write to a root-owned 0700 path. Same root
+            # cause, different symptom. A STATIC uid is the answer in both
+            # cases — here it also has to match the ownership the host-side
+            # tmpfiles rule sets on ${settings.stateDir}.
+            systemd.services.open-webui.serviceConfig = {
+              DynamicUser = lib.mkForce false;
+              User = "open-webui";
+              Group = "open-webui";
             };
 
-            # The inference leg, point-to-point and inward.
-            ula = [
-              { veth = aiVeth; hostAddress6 = aiHost; localAddress6 = aiCont; }
-            ];
+            services.open-webui = {
+              enable = true;
+              host = "0.0.0.0";
+              port = settings.port;
+              stateDir = "/var/lib/open-webui";
+              environmentFile = "${secretsDir}/oidc.env";
 
-            bindMounts = {
-              "/var/lib/open-webui" = { hostPath = settings.stateDir; isReadOnly = false; };
-            };
-
-            # Only the proxy. Nothing else on the services VLAN reaches it.
-            allowFrom = [
-              { peer = settings.proxyAddress; port = settings.port; }
-            ];
-
-            config = { config, lib, ... }: {
-
-              # ── OPEN WEBUI IS UNFREE, AND THE ALLOWANCE STAYS IN HERE ─────
-              #
-              # nixpkgs marks open-webui unfree because of the branding clause
-              # in its licence (below), so without an allowance evaluation
-              # fails with:
-              #
-              #   error: Refusing to evaluate package 'open-webui-0.11.0'
-              #          because it has an unfree license
-              #
-              # ernst does NOT set `allowUnfree`.  It carries a narrow
-              # `allowUnfreePredicate` from modules/roles/htpc.nix listing the
-              # Steam packages, and that file says explicitly why: "this role is
-              # expected to land on otherwise-headless boxes (ernst fronts the
-              # NAS array), and 'we needed Steam' shouldn't quietly open the
-              # whole machine to unfree packages."  Adding open-webui to a list
-              # about Steam would be the wrong file, and widening the host to
-              # blanket allowUnfree would be exactly what that comment forbids.
-              #
-              # A container is its own nixosSystem with its own nixpkgs, so the
-              # allowance is scoped to the one evaluation that needs it and the
-              # host's predicate is untouched.  The cost is a second nixpkgs
-              # instantiation and no lib/overlays.nix in here — the overlays are
-              # a niri sandbox fix and chromium privacy flags, neither of which
-              # this container has any use for.
-              #
-              # THE LICENCE, recorded so nobody has to rediscover it: Open WebUI
-              # is BSD-3-clause plus a fourth clause forbidding removal or
-              # alteration of "Open WebUI" branding — EXCEPT where the total
-              # number of end users does not exceed FIFTY in any rolling 30-day
-              # period.  This household is comfortably under that, so the
-              # exemption applies and the branding may be left alone anyway.
-              # If this is ever exposed to more than fifty people, that changes.
-              nixpkgs.config.allowUnfreePredicate =
-                pkg: builtins.elem (lib.getName pkg) [ "open-webui" ];
-
-              # Matches the host, for the reason arr/ and monitoring.nix
-              # both give: every timestamp a human reads is local time, and a
-              # container that defaults to UTC makes each of them a two-hour
-              # question.
-              time.timeZone = "Europe/Berlin";
-              users.users.open-webui = {
-                isSystemUser = true;
-                group = "open-webui";
-                uid   = settings.uid;
-              };
-              users.groups.open-webui.gid = settings.uid;
-
-              # ── DynamicUser OFF.  THE SAME TRAP THIS MODULE ALREADY ────────
-              #    DOCUMENTED FOR OLLAMA, IN A SECOND FORM.
-              #
-              # nixpkgs' open-webui module ships `DynamicUser = true` with
-              # `StateDirectory = "open-webui"`.  That combination is
-              # incompatible with a bind-mounted state directory, and it fails
-              # in a way that names neither:
-              #
-              #   Found pre-existing public StateDirectory= directory
-              #     /var/lib/open-webui, migrating to /var/lib/private/open-webui.
-              #   Apparently, service previously had DynamicUser= turned off,
-              #     and has now turned it on.
-              #   Failed to set up special execution directory in /var/lib:
-              #     Device or resource busy
-              #   status=238/STATE_DIRECTORY
-              #
-              # systemd wants to MOVE /var/lib/open-webui under /var/lib/private
-              # so the per-boot dynamic uid can own it.  It is a bind mount, so
-              # the move is EBUSY and the unit never starts — which presents at
-              # the front door as Traefik's "Bad Gateway", three layers away.
-              #
-              # The `ollama` role in this same file carries the other half of
-              # this lesson: DynamicUser + a persisted directory means the
-              # per-boot uid cannot write to a root-owned 0700 path. Same root
-              # cause, different symptom. A STATIC uid is the answer in both
-              # cases — here it also has to match the ownership the host-side
-              # tmpfiles rule sets on ${settings.stateDir}.
-              systemd.services.open-webui.serviceConfig = {
-                DynamicUser = lib.mkForce false;
-                User        = "open-webui";
-                Group       = "open-webui";
-              };
-
-              services.open-webui = {
-                enable   = true;
-                host     = "0.0.0.0";
-                port     = settings.port;
-                stateDir = "/var/lib/open-webui";
-                environmentFile = "${secretsDir}/oidc.env";
-
-                environment = {
+              environment =
+                {
                   # ── The one setting that makes this declarative ──────────
                   #
                   # Open WebUI's "PersistentConfig" writes most of the settings
@@ -4380,29 +4594,30 @@ in
                   ENABLE_PERSISTENT_CONFIG = "False";
 
                   ANONYMIZED_TELEMETRY = "False";
-                  DO_NOT_TRACK         = "True";
-                  SCARF_NO_ANALYTICS   = "True";
+                  DO_NOT_TRACK = "True";
+                  SCARF_NO_ANALYTICS = "True";
 
                   WEBUI_URL = "https://${settings.hostName}";
 
                   # ── The model backend ───────────────────────────────────
                   # llama-swap, over the point-to-point veth. Its /v1 surface
                   # is OpenAI-compatible; there is no ollama API here any more.
-                  ENABLE_OPENAI_API   = "True";
-                  ENABLE_OLLAMA_API   = "False";
+                  ENABLE_OPENAI_API = "True";
+                  ENABLE_OLLAMA_API = "False";
                   OPENAI_API_BASE_URL = "${swapUrl}/v1";
                   # llama-swap requires no key. A placeholder rather than empty
                   # because the OpenAI client library refuses to send a request
                   # with no Authorization header at all.
-                  OPENAI_API_KEY      = "sk-no-key-required";
+                  OPENAI_API_KEY = "sk-no-key-required";
 
                   # ── Auth ────────────────────────────────────────────────
                   WEBUI_AUTH = "True";
-                } // lib.optionalAttrs settings.oidc.enable {
-                  ENABLE_OAUTH_SIGNUP        = "True";
+                }
+                // lib.optionalAttrs settings.oidc.enable {
+                  ENABLE_OAUTH_SIGNUP = "True";
                   OAUTH_MERGE_ACCOUNTS_BY_EMAIL = "True";
-                  OAUTH_CLIENT_ID            = settings.oidc.clientId;
-                  OPENID_PROVIDER_URL        = "${settings.oidc.issuerUrl}/.well-known/openid-configuration";
+                  OAUTH_CLIENT_ID = settings.oidc.clientId;
+                  OPENID_PROVIDER_URL = "${settings.oidc.issuerUrl}/.well-known/openid-configuration";
                   # DERIVED FROM THE 0.11.0 SOURCE, not from a docs page — the
                   # same discipline containers/authelia.nix applied to CWA.
                   # main.py registers TWO routes for this callback:
@@ -4420,9 +4635,9 @@ in
                   # cannot break login. Do not confuse either with
                   # `/oauth/clients/<id>/callback`, which is a different feature
                   # (Open WebUI acting as an OAuth client to MCP servers).
-                  OPENID_REDIRECT_URI        = "https://${settings.hostName}/oauth/oidc/login/callback";
-                  OAUTH_PROVIDER_NAME        = "Authelia";
-                  OAUTH_SCOPES               = "openid email profile groups";
+                  OPENID_REDIRECT_URI = "https://${settings.hostName}/oauth/oidc/login/callback";
+                  OAUTH_PROVIDER_NAME = "Authelia";
+                  OAUTH_SCOPES = "openid email profile groups";
 
                   # ── PKCE, AND IT IS NOT OPTIONAL HERE ──────────────────────
                   #
@@ -4451,18 +4666,20 @@ in
                   # If Authelia is down, every admin UI in the house is down,
                   # and this is the one that can still be reached over an SSH
                   # forward to debug it.
-                  ENABLE_LOGIN_FORM          = "True";
-                } // lib.optionalAttrs (settings.speechUrl != null) {
-                  AUDIO_STT_ENGINE              = "openai";
+                  ENABLE_LOGIN_FORM = "True";
+                }
+                // lib.optionalAttrs (settings.speechUrl != null) {
+                  AUDIO_STT_ENGINE = "openai";
                   AUDIO_STT_OPENAI_API_BASE_URL = "${settings.speechUrl}/v1";
-                  AUDIO_STT_OPENAI_API_KEY      = "sk-no-key-required";
-                  AUDIO_STT_MODEL               = "whisper";
+                  AUDIO_STT_OPENAI_API_KEY = "sk-no-key-required";
+                  AUDIO_STT_MODEL = "whisper";
                   # TTS is the BROWSER's, deliberately — see the role header in
                   # local-ai.md. Nothing in nixpkgs serves an OpenAI-shaped
                   # /v1/audio/speech, and the Web Speech API costs no VRAM on a
                   # card this milestone is already arbitrating.
-                  AUDIO_TTS_ENGINE              = "";
-                } // lib.optionalAttrs (settings.searchUrl != null) {
+                  AUDIO_TTS_ENGINE = "";
+                }
+                // lib.optionalAttrs (settings.searchUrl != null) {
                   # ── M20: web search, via SearXNG and nothing else ─────────
                   #
                   # THE LLM DOES NOT GET A TOOL, AND THAT IS A DECISION.
@@ -4514,9 +4731,13 @@ in
                   # talks to the internet; and no embedding, so nothing
                   # downloads an unpinned model from HuggingFace at runtime.
                   BYPASS_WEB_SEARCH_WEB_LOADER =
-                    if settings.searchFetchesPages then "False" else "True";
+                    if settings.searchFetchesPages
+                    then "False"
+                    else "True";
                   BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL =
-                    if settings.searchEmbedsResults then "False" else "True";
+                    if settings.searchEmbedsResults
+                    then "False"
+                    else "True";
 
                   # Belt and braces on the SSRF guard rather than a load-bearing
                   # control: at `searchFetchesPages = false` nothing in this
@@ -4526,29 +4747,31 @@ in
                   # whether a fetch may reach 10.0.90.0/24, and a default that
                   # important should not be invisible.
                   ENABLE_LOCAL_WEB_FETCH = "False";
-                } // lib.optionalAttrs (settings.imageUrl != null) {
+                }
+                // lib.optionalAttrs (settings.imageUrl != null) {
                   ENABLE_IMAGE_GENERATION = "True";
                   IMAGE_GENERATION_ENGINE = "comfyui";
-                  COMFYUI_BASE_URL        = settings.imageUrl;
+                  COMFYUI_BASE_URL = settings.imageUrl;
 
                   # The three that M21 left at their defaults.  See the options
                   # for why each one is not optional; in short, the model name
                   # defaults to EMPTY and the size defaults to a resolution
                   # SDXL degrades at, and neither can be fixed in the UI while
                   # ENABLE_PERSISTENT_CONFIG is False.
-                  IMAGE_GENERATION_MODEL  = settings.imageModel;
-                  IMAGE_SIZE              = settings.imageSize;
-                  IMAGE_STEPS             = toString settings.imageSteps;
+                  IMAGE_GENERATION_MODEL = settings.imageModel;
+                  IMAGE_SIZE = settings.imageSize;
+                  IMAGE_STEPS = toString settings.imageSteps;
 
                   # The one that makes the other three reach the workflow at
                   # all.  Empty, Open WebUI substitutes NOTHING and posts the
                   # bundled workflow with `ckpt_name: "model.safetensors"`
                   # still in it — a 400 from ComfyUI that Open WebUI reports
                   # only as "An error occurred while generating an image".
-                  COMFYUI_WORKFLOW_NODES  =
+                  COMFYUI_WORKFLOW_NODES =
                     builtins.toJSON settings.imageWorkflowNodes;
-                } // lib.optionalAttrs
-                       (settings.imageUrl != null && settings.imageEditEnable) {
+                }
+                // lib.optionalAttrs
+                (settings.imageUrl != null && settings.imageEditEnable) {
                   # ── img2img: SAME ComfyUI, SAME bridge, separate subsystem ─
                   #
                   # Open WebUI keeps editing entirely apart from generation —
@@ -4567,15 +4790,15 @@ in
                   # which matters because it is a multipart POST to a path
                   # llama-swap only forwards, and it was the one part of this
                   # feature that could not be established by reading.
-                  ENABLE_IMAGE_EDIT             = "True";
-                  IMAGE_EDIT_ENGINE             = "comfyui";
-                  IMAGE_EDIT_MODEL              = settings.imageModel;
-                  IMAGES_EDIT_COMFYUI_BASE_URL  = settings.imageUrl;
+                  ENABLE_IMAGE_EDIT = "True";
+                  IMAGE_EDIT_ENGINE = "comfyui";
+                  IMAGE_EDIT_MODEL = settings.imageModel;
+                  IMAGES_EDIT_COMFYUI_BASE_URL = settings.imageUrl;
 
                   # A JSON STRING, not an object: Open WebUI types this field
                   # as `workflow: str` and calls json.loads on it itself
                   # (ComfyUIWorkflow in utils/images/comfyui.py).
-                  IMAGES_EDIT_COMFYUI_WORKFLOW  =
+                  IMAGES_EDIT_COMFYUI_WORKFLOW =
                     builtins.toJSON settings.imageEditWorkflow;
                   IMAGES_EDIT_COMFYUI_WORKFLOW_NODES =
                     builtins.toJSON settings.imageEditWorkflowNodes;
@@ -4584,10 +4807,10 @@ in
                   # imageEditWorkflow. An img2img graph has no
                   # EmptyLatentImage, so the output size is the input's.
                 };
-              };
             };
           };
         };
+      };
     };
   };
 
@@ -4614,8 +4837,8 @@ in
     description = "Ollama with ROCm acceleration. Legacy path — miralda only; ernst uses roles.inference.";
 
     interface.options.models = lib.mkOption {
-      type        = lib.types.listOf lib.types.str;
-      default     = [ "qwen2.5-coder:7b" ];
+      type = lib.types.listOf lib.types.str;
+      default = ["qwen2.5-coder:7b"];
       description = ''
         Models to pre-pull when the service starts.
 
@@ -4636,9 +4859,9 @@ in
     };
 
     interface.options.contextLength = lib.mkOption {
-      type        = lib.types.nullOr lib.types.ints.positive;
-      default     = null;
-      example     = 4096;
+      type = lib.types.nullOr lib.types.ints.positive;
+      default = null;
+      example = 4096;
       description = ''
         Value for `OLLAMA_CONTEXT_LENGTH`, or null to leave it unset.
 
@@ -4661,9 +4884,9 @@ in
     };
 
     interface.options.kvCacheType = lib.mkOption {
-      type        = lib.types.nullOr (lib.types.enum [ "f16" "q8_0" "q4_0" ]);
-      default     = null;
-      example     = "q8_0";
+      type = lib.types.nullOr (lib.types.enum ["f16" "q8_0" "q4_0"]);
+      default = null;
+      example = "q8_0";
       description = ''
         Value for `OLLAMA_KV_CACHE_TYPE`, or null for ollama's default (f16).
         Setting anything other than null also sets `OLLAMA_FLASH_ATTENTION=1`,
@@ -4682,9 +4905,9 @@ in
     };
 
     interface.options.hsaOverrideGfxVersion = lib.mkOption {
-      type        = lib.types.nullOr lib.types.str;
-      default     = null;
-      example     = "11.0.3";
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "11.0.3";
       description = ''
         Value for `HSA_OVERRIDE_GFX_VERSION`, or null to leave it unset.
 
@@ -4696,48 +4919,56 @@ in
       '';
     };
 
-    perInstance = { settings, ... }: {
-      nixosModule = { config, pkgs, lib, ... }: {
-
+    perInstance = {settings, ...}: {
+      nixosModule = {
+        config,
+        pkgs,
+        lib,
+        ...
+      }: {
         services.ollama = {
-          enable     = true;
-          package    = pkgs.ollama-rocm;
+          enable = true;
+          package = pkgs.ollama-rocm;
           loadModels = settings.models;
-          environmentVariables = {
-            ROCR_VISIBLE_DEVICES = "0";
-          } // lib.optionalAttrs (settings.hsaOverrideGfxVersion != null) {
-            HSA_OVERRIDE_GFX_VERSION = settings.hsaOverrideGfxVersion;
-          } // lib.optionalAttrs (settings.contextLength != null) {
-            OLLAMA_CONTEXT_LENGTH = toString settings.contextLength;
-          } // lib.optionalAttrs (settings.kvCacheType != null) {
-            OLLAMA_FLASH_ATTENTION = "1";
-            OLLAMA_KV_CACHE_TYPE   = settings.kvCacheType;
-          };
+          environmentVariables =
+            {
+              ROCR_VISIBLE_DEVICES = "0";
+            }
+            // lib.optionalAttrs (settings.hsaOverrideGfxVersion != null) {
+              HSA_OVERRIDE_GFX_VERSION = settings.hsaOverrideGfxVersion;
+            }
+            // lib.optionalAttrs (settings.contextLength != null) {
+              OLLAMA_CONTEXT_LENGTH = toString settings.contextLength;
+            }
+            // lib.optionalAttrs (settings.kvCacheType != null) {
+              OLLAMA_FLASH_ATTENTION = "1";
+              OLLAMA_KV_CACHE_TYPE = settings.kvCacheType;
+            };
 
           # Static system user rather than nixpkgs' DynamicUser default.
           # DynamicUser + impermanence is a permissions trap: impermanence
           # creates /persist/var/lib/private/ollama as root:root 0700 and the
           # per-boot dynamic uid cannot write there, so every pull returns
           # `mkdir /var/lib/ollama/models: permission denied`.
-          user  = "ollama";
+          user = "ollama";
           group = "ollama";
         };
 
         users.users.ollama = {
           isSystemUser = true;
-          group        = "ollama";
-          home         = "/var/lib/ollama";
-          createHome   = false;
-          description  = "Ollama inference daemon";
+          group = "ollama";
+          home = "/var/lib/ollama";
+          createHome = false;
+          description = "Ollama inference daemon";
         };
-        users.groups.ollama = { };
+        users.groups.ollama = {};
 
         systemd.services.ollama.serviceConfig.DynamicUser = lib.mkForce false;
 
         # Upstream ships Restart=on-failure with a 1s→exponential ladder; a 1s
         # retry buys nothing if the underlying failure is network or storage.
         systemd.services.ollama-model-loader.serviceConfig = {
-          Restart    = lib.mkForce "on-failure";
+          Restart = lib.mkForce "on-failure";
           RestartSec = lib.mkForce "30s";
         };
 
@@ -4753,9 +4984,9 @@ in
         environment.persistence."/persist".directories = [
           {
             directory = "/var/lib/ollama";
-            user      = "ollama";
-            group     = "ollama";
-            mode      = "0700";
+            user = "ollama";
+            group = "ollama";
+            mode = "0700";
           }
         ];
 
@@ -4779,23 +5010,23 @@ in
 
     interface.options = {
       user = lib.mkOption {
-        type        = lib.types.str;
-        default     = "lgo";
+        type = lib.types.str;
+        default = "lgo";
         description = "Home Manager user to install OpenCode for.";
       };
       providers = lib.mkOption {
         type = lib.types.listOf (lib.types.submodule {
           options = {
             id = lib.mkOption {
-              type        = lib.types.str;
+              type = lib.types.str;
               description = "Provider id, as written into OpenCode's `provider` attrset.";
             };
             label = lib.mkOption {
-              type        = lib.types.str;
+              type = lib.types.str;
               description = "Name OpenCode shows for this endpoint in its model picker.";
             };
             port = lib.mkOption {
-              type        = lib.types.port;
+              type = lib.types.port;
               description = ''
                 Loopback port this endpoint's OpenAI-compatible surface answers
                 on — `tunnel.localPort` for the remote one, the backend's own
@@ -4806,7 +5037,7 @@ in
               '';
             };
             models = lib.mkOption {
-              type        = lib.types.listOf lib.types.str;
+              type = lib.types.listOf lib.types.str;
               description = ''
                 Models this endpoint serves, under the names it serves them by.
 
@@ -4823,7 +5054,7 @@ in
             };
           };
         });
-        default     = [ ];
+        default = [];
         description = ''
           Endpoints OpenCode can reach, in preference order.
 
@@ -4835,8 +5066,8 @@ in
       };
 
       defaultModel = lib.mkOption {
-        type        = lib.types.str;
-        example     = "ernst/qwen3.6-35b-a3b";
+        type = lib.types.str;
+        example = "ernst/qwen3.6-35b-a3b";
         description = ''
           Model OpenCode starts on, as `<provider id>/<model>`.  Must name a
           `providers` entry and one of its `models`; asserted, because the
@@ -4845,8 +5076,8 @@ in
       };
 
       contextBudgetTokens = lib.mkOption {
-        type        = lib.types.ints.positive;
-        default     = 1000;
+        type = lib.types.ints.positive;
+        default = 1000;
         description = ''
           Ceiling, in tokens, on the context govim's opencode.nvim integration
           will inject into a prompt (`vim.g.opencode_context_budget_tokens`).
@@ -4881,14 +5112,14 @@ in
         '';
 
         remoteHost = lib.mkOption {
-          type        = lib.types.str;
-          default     = "ernst.skynet.lan";
+          type = lib.types.str;
+          default = "ernst.skynet.lan";
           description = "Host running the inference server this machine should talk to.";
         };
 
         remoteUser = lib.mkOption {
-          type        = lib.types.str;
-          default     = "root";
+          type = lib.types.str;
+          default = "root";
           description = ''
             User to authenticate as on the far end. root, because that is whose
             `authorized_keys` the inference role writes the tunnel key into —
@@ -4897,8 +5128,8 @@ in
         };
 
         localPort = lib.mkOption {
-          type        = lib.types.port;
-          default     = 11435;
+          type = lib.types.port;
+          default = 11435;
           description = ''
             Local port the forward listens on, loopback only.
 
@@ -4914,8 +5145,8 @@ in
         };
 
         remotePort = lib.mkOption {
-          type        = lib.types.port;
-          default     = 11434;
+          type = lib.types.port;
+          default = 11434;
           description = ''
             Port the inference server listens on (loopback) at the far end.
             Must match the inference role's `port`, which is also what its
@@ -4924,14 +5155,14 @@ in
         };
 
         hostNames = lib.mkOption {
-          type        = lib.types.listOf lib.types.str;
-          default     = [ "ernst" "ernst.skynet.lan" "10.0.50.10" ];
+          type = lib.types.listOf lib.types.str;
+          default = ["ernst" "ernst.skynet.lan" "10.0.50.10"];
           description = "Names/addresses the pinned host key below is valid for.";
         };
 
         hostPublicKey = lib.mkOption {
-          type        = lib.types.str;
-          default     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILd954KHVjUAOX06pHP/+ou78tpo6OYKMQL2ew3eUqEt";
+          type = lib.types.str;
+          default = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILd954KHVjUAOX06pHP/+ou78tpo6OYKMQL2ew3eUqEt";
           description = ''
             The far end's SSH host public key, pinned so the tunnel never has to
             TOFU. Mirrors `vars/per-machine/ernst/openssh/ssh.id_ed25519.pub/value`
@@ -4942,92 +5173,99 @@ in
       };
     };
 
-    perInstance = { settings, ... }: {
-      nixosModule = { config, pkgs, pkgs-unstable, lib, ... }:
-        let
-          gen = config.clan.core.vars.generators.ollama-tunnel-ssh;
+    perInstance = {settings, ...}: {
+      nixosModule = {
+        config,
+        pkgs,
+        pkgs-unstable,
+        lib,
+        ...
+      }: let
+        gen = config.clan.core.vars.generators.ollama-tunnel-ssh;
 
-          # Is govim actually in this user's HM generation?
-          #
-          # modules/users/lgo.nix imports the nvf module only when
-          # `clanarchy.users.<user>.editor = "govim"`, and setting an
-          # UNDECLARED option is an eval error — so flipping that one line to
-          # "helix" would otherwise break every deploy of this machine, a trap
-          # laid by a role with no business knowing which editor is selected.
-          #
-          # The `or null` also covers a user who has no editor option at all
-          # (nobody today, but this role's `user` is a free-form string).
-          #
-          # Checked here on NixOS config and NOT with `options ? programs.nvf`
-          # inside the HM module: using `options` to decide a module's own
-          # attribute structure is infinite recursion, because the structure
-          # is an input to collecting the options being queried.
-          govimActive =
-            (config.clanarchy.users.${settings.user}.editor or null) == "govim";
+        # Is govim actually in this user's HM generation?
+        #
+        # modules/users/lgo.nix imports the nvf module only when
+        # `clanarchy.users.<user>.editor = "govim"`, and setting an
+        # UNDECLARED option is an eval error — so flipping that one line to
+        # "helix" would otherwise break every deploy of this machine, a trap
+        # laid by a role with no business knowing which editor is selected.
+        #
+        # The `or null` also covers a user who has no editor option at all
+        # (nobody today, but this role's `user` is a free-form string).
+        #
+        # Checked here on NixOS config and NOT with `options ? programs.nvf`
+        # inside the HM module: using `options` to decide a module's own
+        # attribute structure is infinite recursion, because the structure
+        # is an input to collecting the options being queried.
+        govimActive =
+          (config.clanarchy.users.${settings.user}.editor or null) == "govim";
 
-          # One `provider.<id>` entry per endpoint.  llama-swap's and ollama's
-          # /v1 surfaces are both OpenAI-compatible, so the generic driver is
-          # the right one for either.
-          providerAttrs = lib.listToAttrs (map (p:
-            lib.nameValuePair p.id {
-              npm             = "@ai-sdk/openai-compatible";
-              name            = p.label;
-              options.baseURL = "http://127.0.0.1:${toString p.port}/v1";
-              models          = lib.genAttrs p.models (_: { });
-            }) settings.providers);
+        # One `provider.<id>` entry per endpoint.  llama-swap's and ollama's
+        # /v1 surfaces are both OpenAI-compatible, so the generic driver is
+        # the right one for either.
+        providerAttrs = lib.listToAttrs (map (p:
+          lib.nameValuePair p.id {
+            npm = "@ai-sdk/openai-compatible";
+            name = p.label;
+            options.baseURL = "http://127.0.0.1:${toString p.port}/v1";
+            models = lib.genAttrs p.models (_: {});
+          })
+        settings.providers);
 
-          declaredModels =
-            lib.concatMap (p: map (m: "${p.id}/${m}") p.models) settings.providers;
+        declaredModels =
+          lib.concatMap (p: map (m: "${p.id}/${m}") p.models) settings.providers;
 
-          # Which endpoints are up, as one command.  Falling back is `/models`
-          # in the TUI; this is how you know you need to.
-          aiStatus = pkgs.writeShellApplication {
-            name          = "ai-status";
-            runtimeInputs = [ pkgs.curl pkgs.jq ];
-            text = lib.concatMapStrings (p: ''
+        # Which endpoints are up, as one command.  Falling back is `/models`
+        # in the TUI; this is how you know you need to.
+        aiStatus = pkgs.writeShellApplication {
+          name = "ai-status";
+          runtimeInputs = [pkgs.curl pkgs.jq];
+          text =
+            lib.concatMapStrings (p: ''
               printf '%-8s 127.0.0.1:%-6s ' ${lib.escapeShellArg p.id} ${toString p.port}
               if out=$(curl -fs --max-time 3 "http://127.0.0.1:${toString p.port}/v1/models" 2>/dev/null); then
                 printf 'up    %s\n' "$(printf '%s' "$out" | jq -r '[.data[].id] | join(", ")')"
               else
                 printf 'DOWN\n'
               fi
-            '') settings.providers;
-          };
+            '')
+            settings.providers;
+        };
 
-          # ── THE ONE INSTRUCTION THAT DECIDES WHETHER TOOL CALLING WORKS ──
-          #
-          # M19 asked whether this survives the move off ollama, since the
-          # original diagnosis was about ollama's compiled Go parser. IT DOES,
-          # and the measurement is the strongest evidence in the milestone that
-          # the defect is the MODEL's:
-          #
-          #   condition                    llama.cpp        ollama
-          #   baseline, "go find X"        4/30   (13%)     4/30   (13%)
-          #   + this rule                  30/30 (100%)     30/30 (100%)
-          #   baseline, "read this file"  21/30   (70%)     4/30   (13%)
-          #   + this rule                  30/30 (100%)     30/30 (100%)
-          #
-          # ZERO "tag present but unparsed" in all eight cells. Two unrelated
-          # parsers — ollama's Go one and llama.cpp's GGUF Jinja template —
-          # reject exactly the same malformed output at the same rate. The model
-          # drops the OPENING <tool_call> tag while still emitting the closing
-          # one, and restating that one tag fixes it completely on both.
-          #
-          # So this file is NOT deleted by the llama.cpp migration. Deleting it
-          # takes tool calling from 100% to 13% on the worst condition.
-          toolCallRule = pkgs.writeText "opencode-tool-call-rule.md" ''
-            CRITICAL OUTPUT RULE: every function call MUST begin with a literal
-            <tool_call> line and end with a literal </tool_call> line. The opening
-            <tool_call> tag is mandatory and is the most commonly omitted part. Never
-            emit <function=...> unless the immediately preceding line is <tool_call>.
-          '';
-        in
+        # ── THE ONE INSTRUCTION THAT DECIDES WHETHER TOOL CALLING WORKS ──
+        #
+        # M19 asked whether this survives the move off ollama, since the
+        # original diagnosis was about ollama's compiled Go parser. IT DOES,
+        # and the measurement is the strongest evidence in the milestone that
+        # the defect is the MODEL's:
+        #
+        #   condition                    llama.cpp        ollama
+        #   baseline, "go find X"        4/30   (13%)     4/30   (13%)
+        #   + this rule                  30/30 (100%)     30/30 (100%)
+        #   baseline, "read this file"  21/30   (70%)     4/30   (13%)
+        #   + this rule                  30/30 (100%)     30/30 (100%)
+        #
+        # ZERO "tag present but unparsed" in all eight cells. Two unrelated
+        # parsers — ollama's Go one and llama.cpp's GGUF Jinja template —
+        # reject exactly the same malformed output at the same rate. The model
+        # drops the OPENING <tool_call> tag while still emitting the closing
+        # one, and restating that one tag fixes it completely on both.
+        #
+        # So this file is NOT deleted by the llama.cpp migration. Deleting it
+        # takes tool calling from 100% to 13% on the worst condition.
+        toolCallRule = pkgs.writeText "opencode-tool-call-rule.md" ''
+          CRITICAL OUTPUT RULE: every function call MUST begin with a literal
+          <tool_call> line and end with a literal </tool_call> line. The opening
+          <tool_call> tag is mandatory and is the most commonly omitted part. Never
+          emit <function=...> unless the immediately preceding line is <tool_call>.
+        '';
+      in
         lib.mkMerge [
-
           {
             assertions = [
               {
-                assertion = settings.providers != [ ];
+                assertion = settings.providers != [];
                 message = ''
                   roles.opencode on this machine declares no providers, so
                   OpenCode would be installed pointing at nothing.
@@ -5048,44 +5286,43 @@ in
             # clan-core's 26.05 pin carries 1.15.10 against opencode.nvim
             # 0.14.0's tested 1.17.4, so this line is the only place the
             # version can be chosen.
-            environment.systemPackages = [ pkgs-unstable.opencode aiStatus ];
+            environment.systemPackages = [pkgs-unstable.opencode aiStatus];
 
-            home-manager.users.${settings.user} = { lib, ... }: {
-              # ~/.config is persisted for lgo (modules/users/lgo.nix), so this
-              # config survives ZFS rollback without an explicit persist entry.
-              #
-              # SCHEMA NOTE, because this file was wrong for a long time and
-              # failed silently: opencode 1.x wants `provider.<id>` with an
-              # `npm` driver and `options.baseURL`. The previous
-              # `providers.ollama.baseUrl` (plural key, camelCase `baseUrl`, no
-              # driver) matches no version of the schema — opencode ignored the
-              # whole block and fell through to its own defaults.
-              xdg.configFile."opencode/config.json".text = builtins.toJSON {
-                "$schema"    = "https://opencode.ai/config.json";
-                model        = settings.defaultModel;
-                provider     = providerAttrs;
-                instructions = [ "${toolCallRule}" ];
+            home-manager.users.${settings.user} = {lib, ...}:
+              {
+                # ~/.config is persisted for lgo (modules/users/lgo.nix), so this
+                # config survives ZFS rollback without an explicit persist entry.
+                #
+                # SCHEMA NOTE, because this file was wrong for a long time and
+                # failed silently: opencode 1.x wants `provider.<id>` with an
+                # `npm` driver and `options.baseURL`. The previous
+                # `providers.ollama.baseUrl` (plural key, camelCase `baseUrl`, no
+                # driver) matches no version of the schema — opencode ignored the
+                # whole block and fell through to its own defaults.
+                xdg.configFile."opencode/config.json".text = builtins.toJSON {
+                  "$schema" = "https://opencode.ai/config.json";
+                  model = settings.defaultModel;
+                  provider = providerAttrs;
+                  instructions = ["${toolCallRule}"];
+                };
+              }
+              # ── Context budget for govim's opencode.nvim integration ────────
+              # See `govimActive` above for why this is conditional.
+              // lib.optionalAttrs govimActive {
+                # mkForce, and it is not optional: govim sets this global to a
+                # bare `1000`, NOT `mkDefault`, so any value from here is a
+                # merge CONFLICT rather than an override. Without mkForce the
+                # deploy fails outright on jens — and would keep "working" on
+                # miralda only because 1000 happens to equal 1000, which is the
+                # kind of coincidence that hides the breakage until the day
+                # someone raises the budget.
+                programs.nvf.settings.vim.globals.opencode_context_budget_tokens =
+                  lib.mkForce settings.contextBudgetTokens;
               };
-            }
-            # ── Context budget for govim's opencode.nvim integration ────────
-            # See `govimActive` above for why this is conditional.
-            //
-            lib.optionalAttrs govimActive {
-              # mkForce, and it is not optional: govim sets this global to a
-              # bare `1000`, NOT `mkDefault`, so any value from here is a
-              # merge CONFLICT rather than an override. Without mkForce the
-              # deploy fails outright on jens — and would keep "working" on
-              # miralda only because 1000 happens to equal 1000, which is the
-              # kind of coincidence that hides the breakage until the day
-              # someone raises the budget.
-              programs.nvf.settings.vim.globals.opencode_context_budget_tokens =
-                lib.mkForce settings.contextBudgetTokens;
-            };
           }
 
           # ── SSH forward to the remote inference server ───────────────────
           (lib.mkIf settings.tunnel.enable {
-
             # Dedicated keypair, generated as a SHARED var so the far end can
             # read the public half straight out of the repo. Declared by the
             # CLIENT only — declaring it on both ends makes the two `files` sets
@@ -5102,13 +5339,13 @@ in
 
               files."tunnel_ed25519" = {
                 secret = true;
-                owner  = "root";
-                group  = "root";
-                mode   = "0400";
+                owner = "root";
+                group = "root";
+                mode = "0400";
               };
               files."tunnel_ed25519.pub".secret = false;
 
-              runtimeInputs = [ pkgs.openssh ];
+              runtimeInputs = [pkgs.openssh];
               script = ''
                 ssh-keygen -t ed25519 -N "" -C "clanarchy-ollama-tunnel" \
                   -f "$out/tunnel_ed25519"
@@ -5126,9 +5363,9 @@ in
             # session and so cannot carry a background tunnel.
             systemd.services.ollama-tunnel = {
               description = "SSH port-forward to ${settings.tunnel.remoteHost}'s inference server";
-              after    = [ "network-online.target" ];
-              wants    = [ "network-online.target" ];
-              wantedBy = [ "multi-user.target" ];
+              after = ["network-online.target"];
+              wants = ["network-online.target"];
+              wantedBy = ["multi-user.target"];
 
               serviceConfig = {
                 ExecStart = lib.concatStringsSep " " [
@@ -5148,7 +5385,7 @@ in
                 ];
                 # A laptop loses this link every time it sleeps or roams.
                 # Restarting always (not just on-failure) is the point.
-                Restart    = "always";
+                Restart = "always";
                 RestartSec = "10s";
                 DynamicUser = false;
                 User = "root";

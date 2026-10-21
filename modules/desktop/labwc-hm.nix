@@ -223,11 +223,13 @@
   # Use `uwsm app --` so each process is tracked as a systemd user unit.
   xdg.configFile."labwc/autostart" = {
     force = true;
-    text = ''
-      uwsm app -- noctalia-shell &
-    '' + lib.optionalString osConfig.clanarchy.desktop.labwc.keepassxc.enable ''
-      uwsm app -- keepassxc -- keepassxc --minimized &
-    '';
+    text =
+      ''
+        uwsm app -- noctalia-shell &
+      ''
+      + lib.optionalString osConfig.clanarchy.desktop.labwc.keepassxc.enable ''
+        uwsm app -- keepassxc -- keepassxc --minimized &
+      '';
     executable = true;
   };
 

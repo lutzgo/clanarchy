@@ -1,5 +1,8 @@
-{ pkgs, lib, ... }:
-let
+{
+  pkgs,
+  lib,
+  ...
+}: let
   # gpg-agent only forwards DISPLAY (X11) to pinentry, not WAYLAND_DISPLAY.
   # This wrapper injects the Wayland/Qt env so pinentry-qt can open a dialog
   # even when called indirectly via the SSH auth flow.
@@ -23,13 +26,12 @@ let
     export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus"
     exec ${pkgs.pinentry-qt}/bin/pinentry-qt "$@"
   '';
-in
-{
+in {
   # PC/SC daemon — required for YubiKey OpenPGP and PIV apps
   # Start eagerly at boot (not socket-activated) so the card is enumerated
   # before scdaemon first connects; avoids "No such device" race on login.
   services.pcscd.enable = true;
-  systemd.services.pcscd.wantedBy = [ "multi-user.target" ];
+  systemd.services.pcscd.wantedBy = ["multi-user.target"];
 
   # GnuPG agent with SSH support so the YubiKey auth subkey doubles as SSH key
   programs.gnupg.agent = {
@@ -43,7 +45,7 @@ in
     lib.mkForce "pinentry-program ${pinentryWrapper}\n";
 
   # YubiKey udev rules (needed for non-root access)
-  services.udev.packages = [ pkgs.yubikey-personalization ];
+  services.udev.packages = [pkgs.yubikey-personalization];
 
   # Clan host keys used to be pinned here, by hand, for the two machines that
   # existed at the time.  They are now generated for the whole fleet — including

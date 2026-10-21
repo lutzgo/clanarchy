@@ -150,9 +150,12 @@
 #   known-good pair to be bound and its sync checked by hand BEFORE any batch,
 #   and that is in the PR test plan rather than here because nothing in Nix can
 #   enforce it.
-{ config, pkgs, lib, ... }:
-
-let
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}: let
   # uid 3022, reserved for this service in machines/ernst/allocations.nix.
   #
   # LITERAL ON zdata, because this container is ROOTFUL AND UNMAPPED — the same
@@ -161,7 +164,7 @@ let
   # would NOT be that number on the pool, and the shared `media` group would
   # stop meaning anything across the boundary.
   storytellerUid = 3022;
-  mediaGid       = 3000;
+  mediaGid = 3000;
 
   # ── L2 / L3 ───────────────────────────────────────────────────────────────
   #
@@ -169,7 +172,7 @@ let
   # 08 and 09 are RESERVED (M15 tdarr, M16 jellyseerr), 0a went to M8's
   # tvheadend and 0b to M9's tubesync.  So 0c, and the last octet follows that
   # table's 8 + <seq> convention: 10.0.90.20.
-  netns    = "storyteller";
+  netns = "storyteller";
   vethHost = "vb-storyteller";
 
   # `st0`, NOT `eth0` — AND THIS IS NOT COSMETIC.
@@ -211,9 +214,9 @@ let
   # Nothing else depends on the name: podman joins the namespace rather than
   # building it, the DHCP reservation keys on the MAC, and the namespace
   # firewall below matches on `lo` and addresses, never on this interface.
-  vethNs   = "st0";
-  mac      = "02:00:00:90:00:0c";
-  vlanId   = 90;
+  vethNs = "st0";
+  mac = "02:00:00:90:00:0c";
+  vlanId = 90;
 
   # Upstream's own port, from its compose file.  Not configurable in the image
   # without more effort than it is worth.
@@ -234,7 +237,7 @@ let
   # putting them on the same dataset as Audiobookshelf's library is what lets
   # ABS be pointed at them without a copy.  See the tmpfiles block in
   # containers/arr/, which owns that tree.
-  dataDir    = "/srv/audiobooks/storyteller";
+  dataDir = "/srv/audiobooks/storyteller";
   secretsDir = "/run/storyteller-secrets";
 
   # ── THE AUTO-IMPORT STAGING DIRECTORY ──────────────────────────────────────
@@ -275,17 +278,17 @@ let
   #   every pair costs a full copy of the audio twice over.  The ebook half
   #   does cost a real copy because it comes from zdata/media, and at
   #   kilobytes that is not worth solving.
-  importDir  = "/srv/audiobooks/storyteller-import";
+  importDir = "/srv/audiobooks/storyteller-import";
 
   # $HOME for the container, and the ONLY path in this file that is not on
   # zdata/audiobooks.  It has to be on zdata/state because that is the one
   # dataset here with `exec=on` — whisper.cpp is a downloaded binary and the
   # media datasets refuse to execute.  See the /home/storyteller volume.
-  homeDir    = "/srv/state/storyteller/home";
+  homeDir = "/srv/state/storyteller/home";
 
   # See the header.  web-v2.9.3, the newest STABLE tag — NOT `latest`, which is
   # currently a 3.0.0 beta.
-  imageTag    = "web-v2.9.3";
+  imageTag = "web-v2.9.3";
   imageDigest = "sha256:9f7fac6ba3217e131cf3eaefe0b5107b8b6c431ace91e73c06cb530cd43ff4b8";
 
   # `storyteller-stage` — bound here rather than inline in systemPackages so
@@ -296,7 +299,11 @@ let
     name = "storyteller-stage";
 
     runtimeInputs = with pkgs; [
-      coreutils findutils gnused gnugrep sqlite
+      coreutils
+      findutils
+      gnused
+      gnugrep
+      sqlite
     ];
 
     text = ''
@@ -313,8 +320,7 @@ let
       ${builtins.readFile ../storyteller-stage.sh}
     '';
   };
-in
-{
+in {
   ##############################################################################
   # Podman is already enabled by containers/tubesync.nix (M9), which is the
   # tier's first occupant.  It is NOT re-enabled here.
@@ -342,7 +348,7 @@ in
   # It signs sessions.  Losing it logs everyone out; leaking it is worse.
   clan.core.vars.generators.storyteller-secret = {
     files."secret-key".secret = true;
-    runtimeInputs = [ pkgs.coreutils pkgs.openssl ];
+    runtimeInputs = [pkgs.coreutils pkgs.openssl];
     script = ''
       openssl rand -base64 32 | tr -d '\n' > "$out/secret-key"
     '';
@@ -366,11 +372,11 @@ in
   # unit's journal.
   systemd.services.storyteller-secrets = {
     description = "Stage Storyteller's secret key for the container";
-    requiredBy = [ "podman-storyteller.service" ];
-    before     = [ "podman-storyteller.service" ];
-    after      = [ "local-fs.target" ];
+    requiredBy = ["podman-storyteller.service"];
+    before = ["podman-storyteller.service"];
+    after = ["local-fs.target"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
     };
     script = ''
@@ -403,7 +409,7 @@ in
   # `secrets` option, which composes `KEY=value` lines, is the wrong shape.
   clanarchy.podmanContainers.storyteller = {
     enable = true;
-    mac    = "02:00:00:90:00:0c";
+    mac = "02:00:00:90:00:0c";
     interface = "st0";
 
     # Rootful and unmapped: these ids land on zdata, where a rootless subuid
@@ -414,19 +420,45 @@ in
     # subdirectory under it, because the dirs unit derives a mount unit from
     # this path. /srv/state is the host default and is already guarded.
     extraGuardedMounts = [
-      { path = "/srv/audiobooks"; source = "zdata/audiobooks"; fstype = "zfs"; }
-      { path = "/srv/media";      source = "zdata/media";      fstype = "zfs"; }
+      {
+        path = "/srv/audiobooks";
+        source = "zdata/audiobooks";
+        fstype = "zfs";
+      }
+      {
+        path = "/srv/media";
+        source = "zdata/media";
+        fstype = "zfs";
+      }
     ];
 
     stateDirs = [
-      { path = dataDir;   owner = storytellerUid; group = mediaGid; mode = "0750"; }
+      {
+        path = dataDir;
+        owner = storytellerUid;
+        group = mediaGid;
+        mode = "0750";
+      }
       # 2770 so a human can drop an epub+audiobook pair in for staging.
-      { path = importDir; owner = storytellerUid; group = mediaGid; mode = "2770"; }
-      { path = homeDir;   owner = storytellerUid; group = mediaGid; mode = "0750"; }
+      {
+        path = importDir;
+        owner = storytellerUid;
+        group = mediaGid;
+        mode = "2770";
+      }
+      {
+        path = homeDir;
+        owner = storytellerUid;
+        group = mediaGid;
+        mode = "0750";
+      }
     ];
 
     allowFrom = [
-      { peer = traefikAddr; port = webPort; }
+      {
+        peer = traefikAddr;
+        port = webPort;
+      }
     ];
 
     images.storyteller = {
@@ -445,7 +477,7 @@ in
         "${importDir}:/import"
         "${homeDir}:/home/storyteller"
       ];
-      ports = [ ];
+      ports = [];
     };
   };
 
@@ -453,8 +485,8 @@ in
   # the generated dirs unit knows only about MOUNTS — so the dependency on
   # that unit is merged on here rather than forked into a second dirs unit.
   systemd.services.storyteller-dirs = {
-    after    = [ "audiobooks-tree.service" ];
-    requires = [ "audiobooks-tree.service" ];
+    after = ["audiobooks-tree.service"];
+    requires = ["audiobooks-tree.service"];
   };
 
   ##############################################################################
@@ -489,7 +521,7 @@ in
   # "Iain M. Banks" and Bindery under "Iain Banks". An author-level join misses
   # real pairs; that trap cost a wrong answer during M17's follow-up.
   ##############################################################################
-  environment.systemPackages = [ storytellerStage ];
+  environment.systemPackages = [storytellerStage];
 
   ############################################################################
   # The weekly pair watcher.
@@ -541,73 +573,73 @@ in
       Type = "oneshot";
       # Read-only work: a library scan and a read-only sqlite open.
       ProtectSystem = "strict";
-      ReadOnlyPaths = [ "/srv/media/library/books" "/srv/audiobooks" ];
-      PrivateTmp    = true;
+      ReadOnlyPaths = ["/srv/media/library/books" "/srv/audiobooks"];
+      PrivateTmp = true;
     };
-    path = [ pkgs.curl pkgs.coreutils ];
+    path = [pkgs.curl pkgs.coreutils];
     script = ''
-      set -eu
+            set -eu
 
-      # The SAME derivation that is on the operator's PATH — not a second copy
-      # of the script. `new` announcing pairs that `storyteller-stage` would
-      # then refuse to stage is exactly the drift this file's header forbids.
-      new=$(${lib.getExe storytellerStage} new) || true
+            # The SAME derivation that is on the operator's PATH — not a second copy
+            # of the script. `new` announcing pairs that `storyteller-stage` would
+            # then refuse to stage is exactly the drift this file's header forbids.
+            new=$(${lib.getExe storytellerStage} new) || true
 
-      # Empty stdout is the "no news" signal. Exit before touching the network
-      # so a quiet week costs nothing and pages nobody.
-      [ -n "$new" ] || exit 0
+            # Empty stdout is the "no news" signal. Exit before touching the network
+            # so a quiet week costs nothing and pages nobody.
+            [ -n "$new" ] || exit 0
 
-      count=$(printf '%s\n' "$new" | wc -l)
-      body=$(printf '%s\n' "$new" | cut -f1 | sed 's/^/• /')
+            count=$(printf '%s\n' "$new" | wc -l)
+            body=$(printf '%s\n' "$new" | cut -f1 | sed 's/^/• /')
 
-      if ! SPLIT=$(${config.clanarchy.zfs.ntfy.splitScript} \
-            ${config.clan.core.vars.generators.zfs-ntfy.files."url".path}); then
-        echo "storyteller-pair-watch: cannot read a topic out of the zfs-ntfy var" >&2
+            if ! SPLIT=$(${config.clanarchy.zfs.ntfy.splitScript} \
+                  ${config.clan.core.vars.generators.zfs-ntfy.files."url".path}); then
+              echo "storyteller-pair-watch: cannot read a topic out of the zfs-ntfy var" >&2
+              exit 1
+            fi
+            NTFY_URL="''${SPLIT%% *}/''${SPLIT##* }"
+
+            post() {
+              curl -sSf --max-time 10 "$@" \
+                -H "Title: $count new Storyteller pair(s)" \
+                -H "Tags: books" \
+                -d "$body
+
+      Stage with: storyteller-stage <slug> <ebook> <audiobook-dir>
+      List them:  storyteller-stage new
+      Then press Create readaloud in the web UI — the watcher imports but
+      never aligns. Stage one at a time (the scanner duplicates), and verify
+      the ebook path first (the matcher over-matches)." \
+                "$NTFY_URL" >/dev/null
+            }
+
+            ${lib.optionalString config.clanarchy.zfs.ntfy.auth.enable ''
+        # Same argv-avoiding form as the zedlet: the token goes file → pipe →
+        # curl via `-K -`, never an argument, never an env var. ernst carries an
+        # unprivileged couch account that can read /proc.
+        TOKEN_FILE='${config.clan.core.vars.generators.zfs-ntfy-token.files."token".path}'
+        if [ -r "$TOKEN_FILE" ]; then
+          {
+            printf 'header = "Authorization: Bearer '
+            tr -d '[:space:]' < "$TOKEN_FILE"
+            printf '"\n'
+          } | post -K -
+          exit 0
+        fi
+        echo "storyteller-pair-watch: auth enabled but $TOKEN_FILE is unreadable" >&2
         exit 1
-      fi
-      NTFY_URL="''${SPLIT%% *}/''${SPLIT##* }"
-
-      post() {
-        curl -sSf --max-time 10 "$@" \
-          -H "Title: $count new Storyteller pair(s)" \
-          -H "Tags: books" \
-          -d "$body
-
-Stage with: storyteller-stage <slug> <ebook> <audiobook-dir>
-List them:  storyteller-stage new
-Then press Create readaloud in the web UI — the watcher imports but
-never aligns. Stage one at a time (the scanner duplicates), and verify
-the ebook path first (the matcher over-matches)." \
-          "$NTFY_URL" >/dev/null
-      }
-
-      ${lib.optionalString config.clanarchy.zfs.ntfy.auth.enable ''
-      # Same argv-avoiding form as the zedlet: the token goes file → pipe →
-      # curl via `-K -`, never an argument, never an env var. ernst carries an
-      # unprivileged couch account that can read /proc.
-      TOKEN_FILE='${config.clan.core.vars.generators.zfs-ntfy-token.files."token".path}'
-      if [ -r "$TOKEN_FILE" ]; then
-        {
-          printf 'header = "Authorization: Bearer '
-          tr -d '[:space:]' < "$TOKEN_FILE"
-          printf '"\n'
-        } | post -K -
-        exit 0
-      fi
-      echo "storyteller-pair-watch: auth enabled but $TOKEN_FILE is unreadable" >&2
-      exit 1
       ''}
 
-      post
+            post
     '';
   };
 
   systemd.timers.storyteller-pair-watch = lib.mkIf config.clanarchy.zfs.ntfy.enable {
     description = "Weekly check for Storyteller-pairable titles";
-    wantedBy    = [ "timers.target" ];
+    wantedBy = ["timers.target"];
     timerConfig = {
-      OnCalendar   = "Mon 09:00";
-      Persistent   = true;   # a week the machine was down still gets its check
+      OnCalendar = "Mon 09:00";
+      Persistent = true; # a week the machine was down still gets its check
       RandomizedDelaySec = "30m";
     };
   };
@@ -634,7 +666,7 @@ the ebook path first (the matcher over-matches)." \
   # NOT CPUQuota: a hard cap would make alignment slower even on an idle box,
   # trading away the only thing this workload has going for it.
   systemd.services.podman-storyteller.serviceConfig = {
-    Nice      = 15;
+    Nice = 15;
     CPUWeight = 20;
   };
 }

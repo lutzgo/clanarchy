@@ -55,6 +55,28 @@ for machine in "${machines[@]}"; do
   rm -f "/tmp/check-$machine.err"
 done
 
+# ── Formatting ───────────────────────────────────────────────────────────────
+#
+# Added in the same commit as the repo-wide pass, deliberately: before that,
+# this check could only ever have failed on a tree nobody had formatted.
+#
+# It runs LAST and does not short-circuit the machine evals above — a
+# misformatted file is the cheapest possible finding, and it must not hide a
+# machine that does not evaluate.
+printf '%-8s ' fmt
+if command -v alejandra >/dev/null 2>&1; then
+  if out=$(alejandra --check . 2>&1); then
+    printf 'OK\n'
+  else
+    printf 'FAILED\n'
+    printf '%s\n' "$out" | tail -5 | sed 's/^/           /' >&2
+    echo "           run: fmt <path>   (or: alejandra .)" >&2
+    rc=1
+  fi
+else
+  printf 'SKIPPED (alejandra not on PATH — use the devShell)\n'
+fi
+
 # Every machine is evaluated before failing, so one broken machine does not
 # hide breakage in the other four.
 exit "$rc"

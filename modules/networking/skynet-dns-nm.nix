@@ -159,16 +159,19 @@
 #   server on the client networks, or point it at Technitium — and it is
 #   lgo's, not this file's. This module is defence in depth for the machines it
 #   can reach, not the cure.
-{ lib, config, ... }:
 {
+  lib,
+  config,
+  ...
+}: {
   config = lib.mkIf config.networking.networkmanager.enable {
     networking.networkmanager.ensureProfiles.profiles.home = {
       ipv4 = {
         # NOT optional, and not a default. See THE BUG above: an [ipv4] section
         # without `method` makes NM reject the entire connection, and the only
         # visible symptom is a machine with no declarative wifi profile.
-        method       = "auto";
-        dns-search   = "~. skynet.lan";
+        method = "auto";
+        dns-search = "~. skynet.lan";
         dns-priority = -100;
       };
 

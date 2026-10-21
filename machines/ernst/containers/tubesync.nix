@@ -152,8 +152,12 @@
 #   vs oneshot fight documented in containers/jellyfin.nix, which silently
 #   reset the media modes on every deploy for a milestone.  Ownership here is
 #   set once, by us, below.
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   # ── Identity ──────────────────────────────────────────────────────────────
   # NO uid WAS EVER RESERVED FOR THIS SERVICE.  The reservation block in
   # machines/ernst/networking.nix jumps from M8's 3026 straight to M14's 3017
@@ -161,14 +165,14 @@ let
   # commit.  PGID is the shared media group, fixed at 3000 in
   # containers/jellyfin.nix and deliberately above NixOS's dynamic gid range.
   tubesyncUid = 3027;
-  mediaGid    = 3000;
+  mediaGid = 3000;
 
   # ── L2 / L3 ───────────────────────────────────────────────────────────────
   # Next free sequence in the allocation table: 08 and 09 are RESERVED for
   # M15's tdarr and M16's jellyseerr, 0a went to M8's tvheadend.  The last
   # octet follows the table's 8 + <seq> convention.
-  netns     = "tubesync";
-  vethHost  = "vb-tubesync";
+  netns = "tubesync";
+  vethHost = "vb-tubesync";
 
   # `eth0` here is FINE ONLY BECAUSE THIS ONE IS FIRST.  Do not copy it.
   #
@@ -182,10 +186,10 @@ let
   # Measured on 2026-08-28 when M14's Storyteller did exactly that.  Every
   # podman-tier namespace after this one uses a unique name — see
   # containers/storyteller.nix, which uses `st0` and carries the full account.
-  vethNs    = "eth0";
-  mac       = "02:00:00:90:00:0b";
-  vlanId    = 90;
-  webPort   = 4848;
+  vethNs = "eth0";
+  mac = "02:00:00:90:00:0b";
+  vlanId = 90;
+  webPort = 4848;
 
   # Traefik's veth address — the ONLY source permitted to reach the web UI.
   # Same one-hop-on-br0 caveat as every sibling: these frames never reach the
@@ -194,9 +198,9 @@ let
   # qBittorrent microvm, one layer-2 hop away.
   traefikAddr = "10.0.90.12";
 
-  stateDir     = "/srv/state/tubesync";
+  stateDir = "/srv/state/tubesync";
   downloadsDir = "/srv/media/youtube";
-  secretsDir   = "/run/tubesync-secrets";
+  secretsDir = "/run/tubesync-secrets";
 
   # Pinned by DIGEST, not by tag.  A tag is mutable and image drift is the
   # entire cost of this tier, so the digest is what converts "whatever the
@@ -211,11 +215,9 @@ let
   # TO BUMP: pick the new tag, then
   #   skopeo inspect --format '{{.Digest}}' docker://ghcr.io/meeb/tubesync:<tag>
   # and update BOTH lines here.  Never point this at a tag.
-  imageTag    = "v0.18.3";
+  imageTag = "v0.18.3";
   imageDigest = "sha256:f41658ebc890fa7aba037e3e1f113b5a2af81581799e23c59534b9faff258092";
-in
-{
-
+in {
   ##############################################################################
   # Secrets.
   ##############################################################################
@@ -226,7 +228,7 @@ in
   # everyone out, leaking it is worse.
   clan.core.vars.generators.tubesync-django = {
     files."secret-key".secret = true;
-    runtimeInputs = [ pkgs.coreutils pkgs.openssl ];
+    runtimeInputs = [pkgs.coreutils pkgs.openssl];
     script = ''
       openssl rand -base64 48 | tr -d '\n/+=' | head -c 50 > "$out/secret-key"
     '';
@@ -244,7 +246,7 @@ in
       description = "Jellyfin API key for TubeSync's library-rescan trigger (Dashboard → API Keys → +)";
       type = "hidden";
     };
-    runtimeInputs = [ pkgs.coreutils ];
+    runtimeInputs = [pkgs.coreutils];
     # Values are NOT quoted: systemd's EnvironmentFile parser treats quotes as
     # part of the value unless the whole value is quoted, and a key that
     # silently gains a pair of quotes fails with a message that says nothing
@@ -266,11 +268,11 @@ in
   # graceful-degradation call M13 made for Janitorr's Jellyfin credentials.
   systemd.services.tubesync-secrets = {
     description = "Stage TubeSync's secrets for the container";
-    wantedBy = [ "podman-tubesync.service" ];
-    before   = [ "podman-tubesync.service" ];
-    after    = [ "local-fs.target" ];
+    wantedBy = ["podman-tubesync.service"];
+    before = ["podman-tubesync.service"];
+    after = ["local-fs.target"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
     };
     script = ''
@@ -301,7 +303,7 @@ in
   # caller would be generality bought on spec.
   clanarchy.podmanContainers.tubesync = {
     enable = true;
-    mac    = "02:00:00:90:00:0b";
+    mac = "02:00:00:90:00:0b";
 
     # The namespace end of the veth pair. Host-global — see the module's note
     # on why a duplicate here succeeds wrongly rather than failing.
@@ -322,18 +324,35 @@ in
     # its own setup. The numbers are passed as environment below, which is
     # what the image reads.
     extraGuardedMounts = [
-      { path = "/srv/media"; source = "zdata/media"; fstype = "zfs"; }
+      {
+        path = "/srv/media";
+        source = "zdata/media";
+        fstype = "zfs";
+      }
     ];
 
     stateDirs = [
-      { path = stateDir;     owner = tubesyncUid; group = mediaGid; mode = "0700"; }
+      {
+        path = stateDir;
+        owner = tubesyncUid;
+        group = mediaGid;
+        mode = "0700";
+      }
       # root:media 2770 — written by the container as uid 3027, read by
       # Jellyfin through the media group, and setgid so new files keep it.
-      { path = downloadsDir; owner = "root";      group = mediaGid; mode = "2770"; }
+      {
+        path = downloadsDir;
+        owner = "root";
+        group = mediaGid;
+        mode = "2770";
+      }
     ];
 
     allowFrom = [
-      { peer = traefikAddr; port = webPort; }
+      {
+        peer = traefikAddr;
+        port = webPort;
+      }
     ];
 
     images.tubesync = {
@@ -345,12 +364,12 @@ in
         TUBESYNC_HOSTS = "tubesync.goclan.org";
         TUBESYNC_RESET_DOWNLOAD_DIR = "False";
       };
-      environmentFiles = [ "${secretsDir}/env" ];
+      environmentFiles = ["${secretsDir}/env"];
       volumes = [
         "${stateDir}:/config"
         "${downloadsDir}:/downloads"
       ];
-      ports = [ ];
+      ports = [];
     };
   };
 }

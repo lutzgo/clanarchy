@@ -32,7 +32,6 @@
   lib,
   python3Packages,
 }:
-
 python3Packages.buildPythonPackage rec {
   pname = "bencoding";
   version = "0.2.6";
@@ -46,7 +45,7 @@ python3Packages.buildPythonPackage rec {
   # The sdist ships no tests directory.  pythonImportsCheck is the guard.
   doCheck = false;
 
-  pythonImportsCheck = [ "bencoding" ];
+  pythonImportsCheck = ["bencoding"];
 
   meta = {
     description = "Bencode encoder and decoder";

@@ -65,7 +65,6 @@
   buildGoModule,
   fetchFromGitHub,
 }:
-
 buildGoModule {
   pname = "miniflux-karakeep-bridge";
 
@@ -76,9 +75,9 @@ buildGoModule {
 
   src = fetchFromGitHub {
     owner = "mathpn";
-    repo  = "karakeep-miniflux-webhook";
-    rev   = "7c81f23f45409de80de84e5a2b2afa6fbaf0bec0";
-    hash  = "sha256-RpifUa8EN+AOMp6kRl2KRdYplRo5DVgKLGvSqUg1JpM=";
+    repo = "karakeep-miniflux-webhook";
+    rev = "7c81f23f45409de80de84e5a2b2afa6fbaf0bec0";
+    hash = "sha256-RpifUa8EN+AOMp6kRl2KRdYplRo5DVgKLGvSqUg1JpM=";
   };
 
   vendorHash = "sha256-NHTKwUSIbNCUco88JbHOo3gt6S37ggee+LWNbHaRGEs=";
@@ -93,9 +92,9 @@ buildGoModule {
 
   meta = with lib; {
     description = "Webhook bridge that saves Miniflux entries to Karakeep";
-    homepage    = "https://github.com/mathpn/karakeep-miniflux-webhook";
-    license     = licenses.agpl3Only;
+    homepage = "https://github.com/mathpn/karakeep-miniflux-webhook";
+    license = licenses.agpl3Only;
     mainProgram = "miniflux-karakeep-bridge";
-    platforms   = platforms.linux;
+    platforms = platforms.linux;
   };
 }

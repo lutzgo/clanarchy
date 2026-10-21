@@ -47,7 +47,6 @@
   stdenvNoCC,
   fetchurl,
 }:
-
 stdenvNoCC.mkDerivation rec {
   pname = "bindery";
   version = "1.33.2";
@@ -77,6 +76,6 @@ stdenvNoCC.mkDerivation rec {
     changelog = "https://github.com/vavallee/bindery/releases/tag/v${version}";
     license = lib.licenses.mit;
     mainProgram = "bindery";
-    platforms = [ "x86_64-linux" ];
+    platforms = ["x86_64-linux"];
   };
 }

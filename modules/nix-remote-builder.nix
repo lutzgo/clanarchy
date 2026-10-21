@@ -22,9 +22,12 @@
 #
 # ORDERING: `.value` on a public var throws until the generator has run.  Run
 # `clan vars generate miralda` once before deploying either side.
-{ config, lib, pkgs, ... }:
-
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.clanarchy.remoteBuilder;
   gen = config.clan.core.vars.generators.remote-builder-ssh;
 
@@ -44,14 +47,13 @@ let
   # throwing: a builder that cannot evaluate would wedge unrelated clan
   # operations on every machine in the flake.
   builderPubKey =
-    if builtins.pathExists pubKeyPath then
+    if builtins.pathExists pubKeyPath
+    then
       # readFile keeps ssh-keygen's trailing newline; it must not survive into
       # an authorized_keys line carrying a command= prefix.
       lib.removeSuffix "\n" (builtins.readFile pubKeyPath)
-    else
-      null;
-in
-{
+    else null;
+in {
   options.clanarchy.remoteBuilder = {
     client.enable = lib.mkEnableOption "dispatching Nix builds to a remote clan builder";
     server.enable = lib.mkEnableOption "accepting Nix builds dispatched by clan clients";
@@ -72,7 +74,7 @@ in
 
     hostNames = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ "ernst" "ernst.skynet.lan" "10.0.50.10" ];
+      default = ["ernst" "ernst.skynet.lan" "10.0.50.10"];
       description = "Names/addresses the pinned builder host key is valid for.";
     };
 
@@ -105,7 +107,6 @@ in
   };
 
   config = lib.mkMerge [
-
     # ── Shared keypair ────────────────────────────────────────────────────
     # Declared by the client only — see pubKeyPath above for why the builder
     # must not declare it too.  `share = true` still places it under
@@ -122,7 +123,7 @@ in
         };
         files."builder_ed25519.pub".secret = false;
 
-        runtimeInputs = [ pkgs.openssh ];
+        runtimeInputs = [pkgs.openssh];
         script = ''
           ssh-keygen -t ed25519 -N "" -C "clanarchy-remote-builder" \
             -f "$out/builder_ed25519"
@@ -138,17 +139,19 @@ in
       # every dependency proxied over SSH from here.
       nix.settings.builders-use-substitutes = true;
 
-      nix.buildMachines = [{
-        inherit (cfg) hostName maxJobs speedFactor;
-        sshUser = "root";
-        sshKey = gen.files."builder_ed25519".path;
-        protocol = "ssh-ng";
-        systems = [ "x86_64-linux" ];
-        # Subset of ernst's advertised system-features
-        # (nixos-test benchmark big-parallel kvm) — `big-parallel` is the one
-        # that makes kernel builds eligible at all.
-        supportedFeatures = [ "big-parallel" "kvm" "nixos-test" "benchmark" ];
-      }];
+      nix.buildMachines = [
+        {
+          inherit (cfg) hostName maxJobs speedFactor;
+          sshUser = "root";
+          sshKey = gen.files."builder_ed25519".path;
+          protocol = "ssh-ng";
+          systems = ["x86_64-linux"];
+          # Subset of ernst's advertised system-features
+          # (nixos-test benchmark big-parallel kvm) — `big-parallel` is the one
+          # that makes kernel builds eligible at all.
+          supportedFeatures = ["big-parallel" "kvm" "nixos-test" "benchmark"];
+        }
+      ];
 
       programs.ssh.knownHosts."clanarchy-remote-builder" = {
         hostNames = cfg.hostNames;
@@ -163,7 +166,7 @@ in
       # all forwarding.
       users.users.root.openssh.authorizedKeys.keys =
         lib.optional (builderPubKey != null)
-          ''command="${config.nix.package}/bin/nix-daemon --stdio",restrict ${builderPubKey}'';
+        ''command="${config.nix.package}/bin/nix-daemon --stdio",restrict ${builderPubKey}'';
 
       warnings = lib.optional (builderPubKey == null) ''
         clanarchy.remoteBuilder.server is enabled but the builder key does not

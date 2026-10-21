@@ -19,8 +19,12 @@
 #
 # Tablet-mode itself needs nothing here: the EC reports SW_TABLET_MODE and
 # libinput already disables the internal keyboard and touchpad when it is set.
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.clanarchy.hardware.convertible;
 
   # monitor-sensor prints a line per orientation change, e.g.
@@ -31,7 +35,7 @@ let
   autorotate = pkgs.writeShellApplication {
     name = "clanarchy-autorotate";
     # niri for `niri msg`; iio-sensor-proxy for `monitor-sensor`.
-    runtimeInputs = [ pkgs.iio-sensor-proxy pkgs.niri ];
+    runtimeInputs = [pkgs.iio-sensor-proxy pkgs.niri];
     text = ''
       output=''${CLANARCHY_AUTOROTATE_OUTPUT:-eDP-1}
 
@@ -49,8 +53,7 @@ let
       done
     '';
   };
-in
-{
+in {
   options.clanarchy.hardware.convertible = {
     enable = lib.mkEnableOption "convertible / 2-in-1 support (accelerometer, auto-rotation, on-screen keyboard)";
 
@@ -83,7 +86,7 @@ in
     # On-screen keyboard. wvkbd-mobintl is the international layout build;
     # the Niri bind that toggles it lives in modules/desktop/niri-hm.nix,
     # guarded on this same option.
-    environment.systemPackages = [ pkgs.wvkbd ];
+    environment.systemPackages = [pkgs.wvkbd];
 
     # Auto-rotation. A NixOS-level user service rather than a Home Manager one
     # so it applies to whichever user logs in, and because UWSM imports the
@@ -91,9 +94,9 @@ in
     # before graphical-session.target is reached.
     systemd.user.services.clanarchy-autorotate = lib.mkIf cfg.autoRotate.enable {
       description = "Rotate the display to follow the accelerometer";
-      partOf = [ "graphical-session.target" ];
-      after = [ "graphical-session.target" ];
-      wantedBy = [ "graphical-session.target" ];
+      partOf = ["graphical-session.target"];
+      after = ["graphical-session.target"];
+      wantedBy = ["graphical-session.target"];
       environment.CLANARCHY_AUTOROTATE_OUTPUT = cfg.autoRotate.output;
       serviceConfig = {
         ExecStart = lib.getExe autorotate;

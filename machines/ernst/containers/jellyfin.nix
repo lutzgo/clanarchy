@@ -67,8 +67,12 @@
 #   /srv/media   zdata/media   RO into container at /srv/media/library
 #   /srv/state   zdata/state   RW into container at /var/lib/jellyfin
 #   Transcode temp is a tmpfs INSIDE the container — never on zdata.
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   # AMD iGPU render node on ernst (Granite Ridge, 9950X), addressed via a
   # colon-free udev-managed symlink pinned to the PCI address so kernel
   # enumeration order cannot repoint it at the 7900 XTX.  See the file
@@ -122,10 +126,9 @@ let
   #
   #   .13  arr container      Janitorr, as a real Jellyfin user
   #   .14  monitoring         Prometheus, scraping the NATIVE /metrics endpoint
-  arrAddr        = "10.0.90.13";
+  arrAddr = "10.0.90.13";
   monitoringAddr = "10.0.90.14";
-in
-{
+in {
   ##############################################################################
   # Host-side wiring: bind-source dirs, firewall, user shell for the state bind.
   ##############################################################################
@@ -160,11 +163,11 @@ in
   # symlink already exists) and the whole service completes in <100 ms.
   systemd.services.jellyfin-igpu-render-symlink = {
     description = "Ensure /dev/jellyfin-igpu-render exists for container@jellyfin";
-    wantedBy    = [ "container@jellyfin.service" ];
-    before      = [ "container@jellyfin.service" ];
-    after       = [ "systemd-udevd.service" ];
+    wantedBy = ["container@jellyfin.service"];
+    before = ["container@jellyfin.service"];
+    after = ["systemd-udevd.service"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = false;
       ExecStart = [
         "${pkgs.systemd}/bin/udevadm trigger --subsystem-match=drm --action=add"
@@ -175,7 +178,7 @@ in
 
   # Host-side group.  Fleet media consumers (jellyfin now; Nextcloud
   # external storage, *arr suite later) get access via group membership.
-  users.groups.media = { gid = mediaGid; };
+  users.groups.media = {gid = mediaGid;};
 
   # Parent dirs for the bind sources.
   #
@@ -233,12 +236,12 @@ in
   # owns.  Idempotent: chown/chmod on an already-correct dir is a no-op.
   systemd.services.jellyfin-library-perms = {
     description = "Set root:media 2770 on Jellyfin media subdirectories";
-    wantedBy    = [ "multi-user.target" ];
-    before      = [ "container@jellyfin.service" ];
-    after       = [ "srv-media.mount" ];
-    requires    = [ "srv-media.mount" ];
+    wantedBy = ["multi-user.target"];
+    before = ["container@jellyfin.service"];
+    after = ["srv-media.mount"];
+    requires = ["srv-media.mount"];
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
       ExecStart = [
         "${pkgs.coreutils}/bin/chown root:media /srv/media/library/movies /srv/media/library/tvshows /srv/media/library/recordings /srv/media/torrents/movies /srv/media/torrents/tv"
@@ -284,7 +287,11 @@ in
     # the directory already existed. Now it is created before the container
     # starts, with /srv/state checked first.
     stateDirs = [
-      { path = "/srv/state/jellyfin"; owner = jellyfinUid; group = jellyfinGid; }
+      {
+        path = "/srv/state/jellyfin";
+        owner = jellyfinUid;
+        group = jellyfinGid;
+      }
     ];
 
     # Only the iGPU RENDER node. card0 is deliberately absent: VAAPI on
@@ -292,7 +299,10 @@ in
     # means the container cannot touch KMS, DPMS, or anything else needing the
     # primary DRM device.
     allowedDevices = [
-      { node = iGpuRenderNode; modifier = "rw"; }
+      {
+        node = iGpuRenderNode;
+        modifier = "rw";
+      }
     ];
 
     # 8096/tcp AND NOTHING ELSE. Each exclusion is deliberate:
@@ -305,9 +315,18 @@ in
     # The monitoring accept is strictly weaker than Authelia: Jellyfin's
     # metrics sit behind no auth of their own. Stated rather than glossed.
     allowFrom = [
-      { peer = traefikAddr;    port = 8096; }  # every human client
-      { peer = arrAddr;        port = 8096; }  # the *arr stack's library refresh
-      { peer = monitoringAddr; port = 8096; }  # Prometheus
+      {
+        peer = traefikAddr;
+        port = 8096;
+      } # every human client
+      {
+        peer = arrAddr;
+        port = 8096;
+      } # the *arr stack's library refresh
+      {
+        peer = monitoringAddr;
+        port = 8096;
+      } # Prometheus
     ];
 
     bindMounts = {
@@ -323,11 +342,11 @@ in
       # /srv/media/library/{movies,tvshows} layout.  RO on both — Jellyfin
       # never writes to library data.
       "/media/Server001/Movies" = {
-        hostPath   = "/srv/media/library/movies";
+        hostPath = "/srv/media/library/movies";
         isReadOnly = true;
       };
       "/media/Server001/TV-Shows" = {
-        hostPath   = "/srv/media/library/tvshows";
+        hostPath = "/srv/media/library/tvshows";
         isReadOnly = true;
       };
 
@@ -341,7 +360,7 @@ in
       # The host path, its mode and its ownership are owned by
       # machines/ernst/courses.nix; this is the only line here that names it.
       "/media/Server001/Courses" = {
-        hostPath   = "/srv/media/library/courses";
+        hostPath = "/srv/media/library/courses";
         isReadOnly = true;
       };
 
@@ -356,7 +375,7 @@ in
       # group.  Configured in the UI as the DVR recording path plus a
       # Recordings library — see the M8 PR checklist.
       "/media/Server001/Recordings" = {
-        hostPath   = "/srv/media/library/recordings";
+        hostPath = "/srv/media/library/recordings";
         isReadOnly = false;
       };
 
@@ -364,14 +383,14 @@ in
       # (/var/lib/jellyfin) inside the container so the packaged systemd unit
       # needs no path overrides.
       "/var/lib/jellyfin" = {
-        hostPath   = "/srv/state/jellyfin";
+        hostPath = "/srv/state/jellyfin";
         isReadOnly = false;
       };
 
       # iGPU render node — same path host/container, for symmetry with the
       # encoding.xml VaapiDevice value services.jellyfin writes below.
       "${iGpuRenderNode}" = {
-        hostPath   = iGpuRenderNode;
+        hostPath = iGpuRenderNode;
         isReadOnly = false;
       };
 
@@ -397,19 +416,23 @@ in
       # so the "do not hand the XTX to Jellyfin" property in the file header
       # is preserved by the cgroup rather than by absence of the node.
       "/dev/dri" = {
-        hostPath   = "/dev/dri";
+        hostPath = "/dev/dri";
         isReadOnly = false;
       };
     };
 
-    config = { config, pkgs, lib, ... }: {
-
+    config = {
+      config,
+      pkgs,
+      lib,
+      ...
+    }: {
       # Pin jellyfin's numeric UID/GID to match the host-side chown above so
       # the /var/lib/jellyfin bind is owned correctly from first boot.
       users.users.jellyfin = {
         isSystemUser = true;
-        group        = "jellyfin";
-        uid          = jellyfinUid;
+        group = "jellyfin";
+        uid = jellyfinUid;
         # `render` grants access to the iGPU render node (mode 0666 makes this
         # nominally unnecessary, but if a future udev rule tightens the node
         # to 0660, membership keeps VAAPI working without a redeploy).
@@ -417,9 +440,9 @@ in
         # root:media 0640 by the copy job, so this membership is what makes
         # `jellyfin` (uid 964) able to read them at all.  Without it every
         # library scan finds zero items even though the mounts show up.
-        extraGroups  = [ "render" "video" "media" ];
+        extraGroups = ["render" "video" "media"];
       };
-      users.groups.jellyfin = { gid = jellyfinGid; };
+      users.groups.jellyfin = {gid = jellyfinGid;};
 
       # Match host GIDs so `render`/`video`/`media` membership is meaningful
       # when host paths (dri render node, library binds) show up inside the
@@ -427,19 +450,19 @@ in
       # host numeric ids exactly — video/render are the NixOS 26.05 defaults
       # (`getent group video render` on ernst); media is the fixed 3000 set
       # by the host-side `users.groups.media` above.
-      users.groups.video  = { gid = 26;  };
-      users.groups.render = { gid = 303; };
-      users.groups.media  = { gid = mediaGid; };
+      users.groups.video = {gid = 26;};
+      users.groups.render = {gid = 303;};
+      users.groups.media = {gid = mediaGid;};
 
       # VAAPI driver stack.  mesa ships the AMD radeonsi VAAPI driver
       # (radeonsi_drv_video.so) that Jellyfin's bundled ffmpeg dlopens when
       # HardwareAccelerationType=vaapi.  libva-utils gives us `vainfo` for
       # the PR test plan.
       hardware.graphics = {
-        enable        = true;
-        extraPackages = with pkgs; [ mesa libva ];
+        enable = true;
+        extraPackages = with pkgs; [mesa libva];
       };
-      environment.systemPackages = with pkgs; [ libva-utils ];
+      environment.systemPackages = with pkgs; [libva-utils];
 
       # Jellyfin itself.
       #
@@ -476,8 +499,8 @@ in
         # ended up owning one XML element.
         hardwareAcceleration = {
           enable = true;
-          type   = "vaapi";
-          device = iGpuRenderNode;    # written into encoding.xml as VaapiDevice
+          type = "vaapi";
+          device = iGpuRenderNode; # written into encoding.xml as VaapiDevice
         };
 
         # NixOS owns encoding.xml from here on.
@@ -518,7 +541,7 @@ in
           hardwareDecodingCodecs = {
             h264 = true;
             hevc = true;
-            vp9  = true;
+            vp9 = true;
           };
         };
       };
@@ -531,10 +554,17 @@ in
       # for a handful of concurrent 4K→1080p transcodes; bump if streams
       # start failing with "no space left on device" in transcode logs.
       fileSystems."/var/cache/jellyfin" = {
-        device  = "tmpfs";
-        fsType  = "tmpfs";
-        options = [ "size=8G" "mode=0700" "nosuid" "nodev" "noexec"
-                    "uid=${toString jellyfinUid}" "gid=${toString jellyfinGid}" ];
+        device = "tmpfs";
+        fsType = "tmpfs";
+        options = [
+          "size=8G"
+          "mode=0700"
+          "nosuid"
+          "nodev"
+          "noexec"
+          "uid=${toString jellyfinUid}"
+          "gid=${toString jellyfinGid}"
+        ];
       };
 
       # Additional hardening on top of the upstream module.
@@ -550,7 +580,7 @@ in
       #     start but transcodes and some UI actions crash.
       #   IPAddressAllow=<LAN>/16 + IPAddressDeny=any
       #     We deliberately want cross-VLAN clients (see PR manual-steps
-     #      checklist for the UDM-Pro ZBF rule); pinning IPAddressAllow to
+      #      checklist for the UDM-Pro ZBF rule); pinning IPAddressAllow to
       #     one subnet would silently break clients on other VLANs.  The
       #     UDM-Pro is the right place to enforce this, not the unit.
       #   RestrictNamespaces=true
@@ -626,7 +656,7 @@ in
 
       systemd.services.jellyfin.serviceConfig = {
         ProtectHome = true;
-        UMask       = "0077";
+        UMask = "0077";
       };
     };
   };

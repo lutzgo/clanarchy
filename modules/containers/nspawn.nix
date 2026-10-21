@@ -24,11 +24,15 @@
 # docs/guides/adding-a-module.md says to reach for `service-modules/` only when
 # a feature genuinely has roles, and that "which role? the only one" is the
 # signal not to. A container host has no roles; it has named instances.
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.clanarchy.containers;
   defaults = config.clanarchy.containerDefaults;
-  clib = import ./lib.nix { inherit lib pkgs; };
+  clib = import ./lib.nix {inherit lib pkgs;};
 
   enabled = lib.filterAttrs (_: c: c.enable) cfg;
   perContainer = lib.mapAttrsToList mkOne enabled;
@@ -72,8 +76,14 @@ let
   # may own a dataset of its own.
   guardedMountType = lib.types.submodule {
     options = {
-      path   = lib.mkOption { type = lib.types.str; description = "Mount point to verify."; };
-      source = lib.mkOption { type = lib.types.str; description = "What `findmnt --output SOURCE` must report."; };
+      path = lib.mkOption {
+        type = lib.types.str;
+        description = "Mount point to verify.";
+      };
+      source = lib.mkOption {
+        type = lib.types.str;
+        description = "What `findmnt --output SOURCE` must report.";
+      };
       fstype = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
@@ -84,10 +94,23 @@ let
 
   stateDirType = lib.types.submodule {
     options = {
-      path  = lib.mkOption { type = lib.types.str; description = "Absolute path to create."; };
-      owner = lib.mkOption { type = lib.types.either lib.types.int lib.types.str; description = "Numeric uid (a container user the host cannot name)."; };
-      group = lib.mkOption { type = lib.types.either lib.types.int lib.types.str; description = "Numeric gid."; };
-      mode  = lib.mkOption { type = lib.types.str; default = "0700"; description = "Mode, as install(1) takes it."; };
+      path = lib.mkOption {
+        type = lib.types.str;
+        description = "Absolute path to create.";
+      };
+      owner = lib.mkOption {
+        type = lib.types.either lib.types.int lib.types.str;
+        description = "Numeric uid (a container user the host cannot name).";
+      };
+      group = lib.mkOption {
+        type = lib.types.either lib.types.int lib.types.str;
+        description = "Numeric gid.";
+      };
+      mode = lib.mkOption {
+        type = lib.types.str;
+        default = "0700";
+        description = "Mode, as install(1) takes it.";
+      };
     };
   };
 
@@ -206,11 +229,17 @@ let
           modules/containers/assertions.nix.
         '';
       };
-      hostAddress6  = lib.mkOption { type = lib.types.str; description = "Host end, a /128."; };
-      localAddress6 = lib.mkOption { type = lib.types.str; description = "Container end, a /128."; };
+      hostAddress6 = lib.mkOption {
+        type = lib.types.str;
+        description = "Host end, a /128.";
+      };
+      localAddress6 = lib.mkOption {
+        type = lib.types.str;
+        description = "Container end, a /128.";
+      };
       routes = lib.mkOption {
         type = lib.types.listOf (lib.types.attrsOf lib.types.anything);
-        default = [ ];
+        default = [];
         example = lib.literalExpression ''[ { Destination = "fdda::1/128"; Gateway = "fdca:fe90::1"; } ]'';
         description = ''
           Further routes on this leg, appended after the link-scope route to
@@ -226,8 +255,7 @@ let
     };
   };
 
-
-  containerType = lib.types.submodule ({ name, ... }: {
+  containerType = lib.types.submodule ({name, ...}: {
     options = {
       enable = lib.mkEnableOption "this container";
 
@@ -257,13 +285,13 @@ let
 
       stateDirs = lib.mkOption {
         type = lib.types.listOf stateDirType;
-        default = [ ];
+        default = [];
         description = "Directories to create before the container starts, with numeric ownership.";
       };
 
       extraGuardedMounts = lib.mkOption {
         type = lib.types.listOf guardedMountType;
-        default = [ ];
+        default = [];
         example = lib.literalExpression ''[ { path = "/srv/photos"; source = "zdata/photos"; fstype = "zfs"; } ]'';
         description = ''
           Further mounts the dirs unit must verify and order after, beyond the
@@ -274,11 +302,11 @@ let
 
       secrets = lib.mkOption {
         type = lib.types.attrsOf (lib.types.attrsOf secretValueType);
-        default = { };
-        example = lib.literalExpression ''{ "oidc.env" = {
-            OAUTH_CLIENT_ID     = { value = "karakeep"; };
-            OAUTH_CLIENT_SECRET = { file = gen.files."secret".path; };
-          }; }'';
+        default = {};
+        example = lib.literalExpression ''          { "oidc.env" = {
+                      OAUTH_CLIENT_ID     = { value = "karakeep"; };
+                      OAUTH_CLIENT_SECRET = { file = gen.files."secret".path; };
+                    }; }'';
         description = ''
           Env files to stage, as `<file>.<KEY> = { file = …; }` for a value
           read out of a clan var, or `{ value = "…"; }` for a constant.
@@ -291,13 +319,13 @@ let
 
       bindMounts = lib.mkOption {
         type = lib.types.attrsOf (lib.types.attrsOf lib.types.anything);
-        default = { };
+        default = {};
         description = "Passed through to `containers.<name>.bindMounts`. The secrets directory is added automatically.";
       };
 
       ula = lib.mkOption {
         type = lib.types.listOf ulaType;
-        default = [ ];
+        default = [];
         description = ''
           Point-to-point ULA legs. Each gets an `extraVeths` entry and an
           in-container network with a link-scope route to the host end — the
@@ -308,7 +336,7 @@ let
 
       vlanLegs = lib.mkOption {
         type = lib.types.listOf vlanLegType;
-        default = [ ];
+        default = [];
         description = ''
           Additional legs on other VLANs, for link-local discovery that cannot
           be relayed. Each gets an `extraVeths` entry, a VLAN-tagged host-side
@@ -319,7 +347,7 @@ let
 
       bridgeLegs = lib.mkOption {
         type = lib.types.listOf bridgeLegType;
-        default = [ ];
+        default = [];
         description = ''
           Legs on a bridge other than the primary one. Each gets an
           `extraVeths` entry, a host-side network that enslaves it, and a
@@ -349,7 +377,7 @@ let
 
       allowedDevices = lib.mkOption {
         type = lib.types.listOf (lib.types.attrsOf lib.types.anything);
-        default = [ ];
+        default = [];
         example = lib.literalExpression ''[ { node = "char-ttyACM"; modifier = "rw"; } ]'';
         description = ''
           Passed through to `containers.<name>.allowedDevices`.
@@ -363,7 +391,7 @@ let
 
       allowFrom = lib.mkOption {
         type = lib.types.listOf clib.allowType;
-        default = [ ];
+        default = [];
         description = "Peers allowed in, one accept each. Everything else is refused.";
       };
 
@@ -427,7 +455,7 @@ let
 
       config = lib.mkOption {
         type = lib.types.deferredModule;
-        default = { };
+        default = {};
         description = ''
           The service itself — the irreducible half. Merged with the generated
           networking, firewall and id pins into `containers.<name>.config`.
@@ -436,32 +464,47 @@ let
     };
   });
 
-  mkOne = name: c:
-    let
-      vethHost   = "vb-${name}";
-      secretsDir = "${defaults.secretsRoot}/${name}-secrets";
-      unitsFor   = [ "container@${name}.service" ];
+  mkOne = name: c: let
+    vethHost = "vb-${name}";
+    secretsDir = "${defaults.secretsRoot}/${name}-secrets";
+    unitsFor = ["container@${name}.service"];
 
-      # Fallbacks are resolved HERE, in the config phase, and not as option
-      # defaults. An option default that reads `config` is evaluated while the
-      # option set is still being built — which is infinite recursion, and is
-      # exactly what the first version of this module did.
-      vlan         = if c.vlan         != null then c.vlan         else defaults.vlan;
-      bridge       = if c.bridge       != null then c.bridge       else defaults.bridge;
-      resolver     = if c.resolver     != null then c.resolver     else defaults.resolver;
-      searchDomain = if c.searchDomain != null then c.searchDomain else defaults.searchDomain;
-      stateVersion = if c.stateVersion != null then c.stateVersion else config.system.stateVersion;
+    # Fallbacks are resolved HERE, in the config phase, and not as option
+    # defaults. An option default that reads `config` is evaluated while the
+    # option set is still being built — which is infinite recursion, and is
+    # exactly what the first version of this module did.
+    vlan =
+      if c.vlan != null
+      then c.vlan
+      else defaults.vlan;
+    bridge =
+      if c.bridge != null
+      then c.bridge
+      else defaults.bridge;
+    resolver =
+      if c.resolver != null
+      then c.resolver
+      else defaults.resolver;
+    searchDomain =
+      if c.searchDomain != null
+      then c.searchDomain
+      else defaults.searchDomain;
+    stateVersion =
+      if c.stateVersion != null
+      then c.stateVersion
+      else config.system.stateVersion;
 
-      support = clib.mkSupportUnits {
-        inherit name unitsFor secretsDir;
-        inherit (defaults) stateMount stateSource;
-        inherit (c) stateDirs secrets;
-        extraMounts = c.extraGuardedMounts;
-      };
-    in
-    {
-      # ── Host side ─────────────────────────────────────────────────────────
-      systemd.services = support // {
+    support = clib.mkSupportUnits {
+      inherit name unitsFor secretsDir;
+      inherit (defaults) stateMount stateSource;
+      inherit (c) stateDirs secrets;
+      extraMounts = c.extraGuardedMounts;
+    };
+  in {
+    # ── Host side ─────────────────────────────────────────────────────────
+    systemd.services =
+      support
+      // {
         # The VLAN race, and the idempotent backstop for it. networkd applies
         # [BridgeVLAN] only once it observes the link's master, and nspawn sets
         # that master out of band. With `DefaultPVID = "none"` on the bridge a
@@ -476,33 +519,41 @@ let
         "container@${name}" = {
           serviceConfig.ExecStartPost =
             lib.optional (vlan != null)
-              "-${pkgs.iproute2}/bin/bridge vlan add dev ${vethHost} vid ${toString vlan} pvid untagged"
+            "-${pkgs.iproute2}/bin/bridge vlan add dev ${vethHost} vid ${toString vlan} pvid untagged"
             # Every secondary leg needs the same backstop, against its own
             # interface name — which for an extraVeth is the plain name, not
             # `vb-<name>`.
-            ++ map (v:
-              "-${pkgs.iproute2}/bin/bridge vlan add dev ${v.veth} vid ${toString v.vlan} pvid untagged"
-            ) c.vlanLegs;
+            ++ map (
+              v: "-${pkgs.iproute2}/bin/bridge vlan add dev ${v.veth} vid ${toString v.vlan} pvid untagged"
+            )
+            c.vlanLegs;
         };
       };
 
-      # Host side of each secondary leg: a bridge port on its own VLAN. The
-      # name matches the plain interface, not `vb-<name>`, because
-      # --network-veth-extra names both ends identically.
-      systemd.network.networks = lib.listToAttrs (map (v:
+    # Host side of each secondary leg: a bridge port on its own VLAN. The
+    # name matches the plain interface, not `vb-<name>`, because
+    # --network-veth-extra names both ends identically.
+    systemd.network.networks =
+      lib.listToAttrs (map (v:
         lib.nameValuePair "60-${v.veth}" {
           matchConfig.Name = v.veth;
           networkConfig = {
-            Bridge              = bridge;
+            Bridge = bridge;
             LinkLocalAddressing = "no";
-            IPv6AcceptRA        = false;
+            IPv6AcceptRA = false;
           };
-          bridgeVLANs = [ { VLAN = v.vlan; PVID = v.vlan; EgressUntagged = v.vlan; } ];
+          bridgeVLANs = [
+            {
+              VLAN = v.vlan;
+              PVID = v.vlan;
+              EgressUntagged = v.vlan;
+            }
+          ];
           # A bridge port's terminal state is "enslaved"; it never becomes
           # routable.
           linkConfig.RequiredForOnline = "enslaved";
-        }) c.vlanLegs)
-
+        })
+      c.vlanLegs)
       # Host side of each leg on another bridge. `Bridge =`, not `KeepMaster`:
       # nspawn only enslaves the primary veth, so for this one networkd is the
       # only thing that will. No [BridgeVLAN] either — a dedicated segment has
@@ -511,103 +562,121 @@ let
         lib.nameValuePair "60-${b.veth}" {
           matchConfig.Name = b.veth;
           networkConfig = {
-            Bridge              = b.bridge;
+            Bridge = b.bridge;
             LinkLocalAddressing = "no";
-            IPv6AcceptRA        = false;
+            IPv6AcceptRA = false;
           };
           linkConfig.RequiredForOnline = b.requiredForOnline;
-        }) c.bridgeLegs)
+        })
+      c.bridgeLegs)
       // {
-      "60-${vethHost}" = {
-        matchConfig.Name = vethHost;
-        networkConfig = {
-          # KeepMaster AND NOT Bridge=. nspawn creates this link and enslaves
-          # it itself (`--network-bridge=`), so `Bridge =` here would have
-          # networkd fight nspawn for the master. KeepMaster leaves the
-          # enslavement alone while still applying [BridgeVLAN], which is the
-          # only thing we want networkd for on this link.
-          #
-          # No L3 either: a bridge port carries no address, and accepting an
-          # RA on one would have it answer advertisements meant for the hosts
-          # behind it.
-          KeepMaster          = true;
-          LinkLocalAddressing = "no";
-          IPv6AcceptRA        = false;
+        "60-${vethHost}" = {
+          matchConfig.Name = vethHost;
+          networkConfig = {
+            # KeepMaster AND NOT Bridge=. nspawn creates this link and enslaves
+            # it itself (`--network-bridge=`), so `Bridge =` here would have
+            # networkd fight nspawn for the master. KeepMaster leaves the
+            # enslavement alone while still applying [BridgeVLAN], which is the
+            # only thing we want networkd for on this link.
+            #
+            # No L3 either: a bridge port carries no address, and accepting an
+            # RA on one would have it answer advertisements meant for the hosts
+            # behind it.
+            KeepMaster = true;
+            LinkLocalAddressing = "no";
+            IPv6AcceptRA = false;
+          };
+          bridgeVLANs =
+            lib.optionals (vlan != null)
+            [
+              {
+                VLAN = vlan;
+                PVID = vlan;
+                EgressUntagged = vlan;
+              }
+            ];
+          linkConfig.RequiredForOnline = "enslaved";
         };
-        bridgeVLANs = lib.optionals (vlan != null)
-          [ { VLAN = vlan; PVID = vlan; EgressUntagged = vlan; } ];
-        linkConfig.RequiredForOnline = "enslaved";
-      };
       };
 
-      containers.${name} = {
-        autoStart = true;
-        ephemeral = false;
+    containers.${name} = {
+      autoStart = true;
+      ephemeral = false;
 
-        privateNetwork  = true;
-        hostBridge      = bridge;
-        localMacAddress = c.mac;
+      privateNetwork = true;
+      hostBridge = bridge;
+      localMacAddress = c.mac;
 
-        # A ULA LEG GETS NO HOST-SIDE `60-*` NETWORK, AND THAT IS MEASURED:
-        # `hostAddress6` here is what nixos-containers configures the host end
-        # from directly, so declaring it in networkd as well is two things
-        # racing for one address — and the loser is the container, which dies
-        # with `ipv6: address already assigned` and `status=2/INVALIDARGUMENT`
-        # in a restart loop naming neither the veth nor the file (paperless,
-        # 2026-10-05, four restarts). Only VLAN legs take a `60-*` network.
-        extraVeths =
-          lib.listToAttrs (map (u:
-            lib.nameValuePair u.veth {
-              inherit (u) hostAddress6 localAddress6;
-            }) c.ula)
-          # A VLAN leg takes no addresses here: nspawn creates the pair and
-          # the container end gets its address from DHCP.
-          // lib.listToAttrs (map (v: lib.nameValuePair v.veth { }) c.vlanLegs)
-          # Same for a secondary-bridge leg: the pair is all nspawn provides,
-          # and the container end is addressed by its own networkd below.
-          // lib.listToAttrs (map (b: lib.nameValuePair b.veth { }) c.bridgeLegs);
+      # A ULA LEG GETS NO HOST-SIDE `60-*` NETWORK, AND THAT IS MEASURED:
+      # `hostAddress6` here is what nixos-containers configures the host end
+      # from directly, so declaring it in networkd as well is two things
+      # racing for one address — and the loser is the container, which dies
+      # with `ipv6: address already assigned` and `status=2/INVALIDARGUMENT`
+      # in a restart loop naming neither the veth nor the file (paperless,
+      # 2026-10-05, four restarts). Only VLAN legs take a `60-*` network.
+      extraVeths =
+        lib.listToAttrs (map (u:
+          lib.nameValuePair u.veth {
+            inherit (u) hostAddress6 localAddress6;
+          })
+        c.ula)
+        # A VLAN leg takes no addresses here: nspawn creates the pair and
+        # the container end gets its address from DHCP.
+        // lib.listToAttrs (map (v: lib.nameValuePair v.veth {}) c.vlanLegs)
+        # Same for a secondary-bridge leg: the pair is all nspawn provides,
+        # and the container end is addressed by its own networkd below.
+        // lib.listToAttrs (map (b: lib.nameValuePair b.veth {}) c.bridgeLegs);
 
-        allowedDevices = c.allowedDevices;
+      allowedDevices = c.allowedDevices;
 
-        bindMounts = c.bindMounts // lib.optionalAttrs (c.secrets != { }) {
-          ${secretsDir} = { hostPath = secretsDir; isReadOnly = true; };
+      bindMounts =
+        c.bindMounts
+        // lib.optionalAttrs (c.secrets != {}) {
+          ${secretsDir} = {
+            hostPath = secretsDir;
+            isReadOnly = true;
+          };
         };
 
-        config = { ... }: {
-          imports = [ c.config ];
+      config = {...}: {
+        imports = [c.config];
 
-          system.stateVersion = stateVersion;
+        system.stateVersion = stateVersion;
 
-          # ── Networking, the ordinary shape ────────────────────────────────
-          networking.useHostResolvConf = false;
-          networking.useNetworkd = true;
-          services.resolved.enable = c.useResolved;
+        # ── Networking, the ordinary shape ────────────────────────────────
+        networking.useHostResolvConf = false;
+        networking.useNetworkd = true;
+        services.resolved.enable = c.useResolved;
 
-          systemd.network.networks = {
+        systemd.network.networks =
+          {
             "10-eth0" = {
-            matchConfig.Name = "eth0";
-            networkConfig = {
-              DHCP         = "ipv4";
-              IPv6AcceptRA = false;
-              # SN2: v4 only. IPv6AcceptRA alone blocks an RA but NOT
-              # link-local assignment; this is the line that actually makes
-              # `ip -6 addr show dev eth0` empty.
-              LinkLocalAddressing = "no";
-            }
-            # THE RESOLVER IS NAMED ONLY IF THE CONTAINER RUNS ONE. `DNS=` in
-            # a .network is consumed by resolved, so with resolved off it is
-            # at best inert — and the one container in that position (mail)
-            # must not be pointed at the house resolver at all, because its
-            # own kresd is the whole reason it opted out.
-            // lib.optionalAttrs c.useResolved {
-              DNS     = resolver;
-              Domains = "~. ${searchDomain}";
-            };
-              dhcpV4Config = { UseDNS = false; UseDomains = false; };
+              matchConfig.Name = "eth0";
+              networkConfig =
+                {
+                  DHCP = "ipv4";
+                  IPv6AcceptRA = false;
+                  # SN2: v4 only. IPv6AcceptRA alone blocks an RA but NOT
+                  # link-local assignment; this is the line that actually makes
+                  # `ip -6 addr show dev eth0` empty.
+                  LinkLocalAddressing = "no";
+                }
+                # THE RESOLVER IS NAMED ONLY IF THE CONTAINER RUNS ONE. `DNS=` in
+                # a .network is consumed by resolved, so with resolved off it is
+                # at best inert — and the one container in that position (mail)
+                # must not be pointed at the house resolver at all, because its
+                # own kresd is the whole reason it opted out.
+                // lib.optionalAttrs c.useResolved {
+                  DNS = resolver;
+                  Domains = "~. ${searchDomain}";
+                };
+              dhcpV4Config = {
+                UseDNS = false;
+                UseDomains = false;
+              };
               linkConfig.RequiredForOnline = "routable";
             };
           }
-
           # Each ULA leg: its own /128 and a link-scope route to the host end.
           # RequiredForOnline = "no" because a veth has no carrier until BOTH
           # ends are up, and the host end is brought up after the container's
@@ -616,12 +685,19 @@ let
           // lib.listToAttrs (map (u:
             lib.nameValuePair "20-${u.veth}" {
               matchConfig.Name = u.veth;
-              address = [ "${u.localAddress6}/128" ];
-              routes  = [ { Destination = "${u.hostAddress6}/128"; Scope = "link"; } ] ++ u.routes;
+              address = ["${u.localAddress6}/128"];
+              routes =
+                [
+                  {
+                    Destination = "${u.hostAddress6}/128";
+                    Scope = "link";
+                  }
+                ]
+                ++ u.routes;
               networkConfig.IPv6AcceptRA = false;
               linkConfig.RequiredForOnline = "no";
-            }) c.ula)
-
+            })
+          c.ula)
           # A VLAN leg takes DHCP like the primary one, with two differences
           # that both matter. `UseGateway`/`UseRoutes` are off by default
           # because two leases each offering a default route leaves the
@@ -632,22 +708,22 @@ let
             lib.nameValuePair "20-${v.veth}" {
               matchConfig.Name = v.veth;
               networkConfig = {
-                DHCP                = "ipv4";
-                IPv6AcceptRA        = false;
+                DHCP = "ipv4";
+                IPv6AcceptRA = false;
                 LinkLocalAddressing = "no";
               };
               dhcpV4Config = {
-                UseDNS     = false;
+                UseDNS = false;
                 UseDomains = false;
                 UseGateway = v.useGateway;
-                UseRoutes  = v.useGateway;
+                UseRoutes = v.useGateway;
               };
               linkConfig = {
                 MACAddress = v.mac;
                 RequiredForOnline = v.requiredForOnline;
               };
-            }) c.vlanLegs)
-
+            })
+          c.vlanLegs)
           # A secondary-bridge leg: static by default, no gateway and no DNS.
           # The leg exists to reach something on-link, and taking a default
           # route from a segment we do not administer is how a container
@@ -657,55 +733,89 @@ let
           // lib.listToAttrs (map (b:
             lib.nameValuePair "20-${b.veth}" {
               matchConfig.Name = b.veth;
-              networkConfig = {
-                IPv6AcceptRA        = false;
-                LinkLocalAddressing = "no";
-              } // (if b.address != null
-                    then { Address = b.address; }
-                    else { DHCP = "ipv4"; })
-              ;
+              networkConfig =
+                {
+                  IPv6AcceptRA = false;
+                  LinkLocalAddressing = "no";
+                }
+                // (
+                  if b.address != null
+                  then {Address = b.address;}
+                  else {DHCP = "ipv4";}
+                );
               dhcpV4Config = lib.optionalAttrs (b.address == null) {
-                UseDNS     = false;
+                UseDNS = false;
                 UseDomains = false;
                 UseGateway = false;
-                UseRoutes  = false;
+                UseRoutes = false;
               };
-              linkConfig = lib.optionalAttrs (b.mac != null) { MACAddress = b.mac; }
-                // { RequiredForOnline = b.requiredForOnline; };
-            }) c.bridgeLegs);
+              linkConfig =
+                lib.optionalAttrs (b.mac != null) {MACAddress = b.mac;}
+                // {RequiredForOnline = b.requiredForOnline;};
+            })
+          c.bridgeLegs);
 
-          # A DHCP failure must leave a RUNNING container with one failed unit,
-          # not a host-side restart loop.
-          systemd.network.wait-online.timeout = 20;
+        # A DHCP failure must leave a RUNNING container with one failed unit,
+        # not a host-side restart loop.
+        systemd.network.wait-online.timeout = 20;
 
-          # The container firewall is the ONLY enforcement point for
-          # bridge-local traffic: those frames are one L2 hop and the router
-          # never sees them.
-          networking.firewall = lib.mkIf c.manageFirewall (clib.mkFirewall c.allowFrom);
+        # The container firewall is the ONLY enforcement point for
+        # bridge-local traffic: those frames are one L2 hop and the router
+        # never sees them.
+        networking.firewall = lib.mkIf c.manageFirewall (clib.mkFirewall c.allowFrom);
 
-          users = lib.optionalAttrs (c.user != null && c.uid != null) {
+        users =
+          lib.optionalAttrs (c.user != null && c.uid != null) {
             users.${c.user}.uid = c.uid;
-          } // lib.optionalAttrs (c.user != null && c.gid != null) {
+          }
+          // lib.optionalAttrs (c.user != null && c.gid != null) {
             groups.${c.user}.gid = c.gid;
           };
-        };
       };
     };
-in
-{
+  };
+in {
   options.clanarchy.containerDefaults = {
-    bridge        = lib.mkOption { type = lib.types.str; default = "br0"; description = "Default host bridge."; };
-    vlan          = lib.mkOption { type = lib.types.nullOr lib.types.int; default = null; description = "Default VLAN; null means untagged."; };
-    resolver      = lib.mkOption { type = lib.types.str; default = "127.0.0.53"; description = "Default DNS server for containers."; };
-    searchDomain  = lib.mkOption { type = lib.types.str; default = "local"; description = "Default search domain."; };
-    stateMount    = lib.mkOption { type = lib.types.str; default = "/srv/state"; description = "Where per-service state lives."; };
-    stateSource   = lib.mkOption { type = lib.types.str; default = ""; description = "What `stateMount` must be backed by; the dirs units refuse to run otherwise."; };
-    secretsRoot   = lib.mkOption { type = lib.types.str; default = "/run"; description = "Parent of each `<name>-secrets` staging directory."; };
+    bridge = lib.mkOption {
+      type = lib.types.str;
+      default = "br0";
+      description = "Default host bridge.";
+    };
+    vlan = lib.mkOption {
+      type = lib.types.nullOr lib.types.int;
+      default = null;
+      description = "Default VLAN; null means untagged.";
+    };
+    resolver = lib.mkOption {
+      type = lib.types.str;
+      default = "127.0.0.53";
+      description = "Default DNS server for containers.";
+    };
+    searchDomain = lib.mkOption {
+      type = lib.types.str;
+      default = "local";
+      description = "Default search domain.";
+    };
+    stateMount = lib.mkOption {
+      type = lib.types.str;
+      default = "/srv/state";
+      description = "Where per-service state lives.";
+    };
+    stateSource = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = "What `stateMount` must be backed by; the dirs units refuse to run otherwise.";
+    };
+    secretsRoot = lib.mkOption {
+      type = lib.types.str;
+      default = "/run";
+      description = "Parent of each `<name>-secrets` staging directory.";
+    };
   };
 
   options.clanarchy.containers = lib.mkOption {
     type = lib.types.attrsOf containerType;
-    default = { };
+    default = {};
     description = ''
       Declarative nspawn containers. A name here must be at most 12
       characters: nspawn derives the host veth as `vb-<name>` and 15 is
@@ -730,8 +840,8 @@ in
   # values are computed from the declarations. Per-container fallbacks are
   # resolved in `mkOne`, which is inside a value and therefore safe.
   config = {
-    systemd.services         = lib.mkMerge (map (x: x.systemd.services) perContainer);
+    systemd.services = lib.mkMerge (map (x: x.systemd.services) perContainer);
     systemd.network.networks = lib.mkMerge (map (x: x.systemd.network.networks) perContainer);
-    containers               = lib.mkMerge (map (x: x.containers) perContainer);
+    containers = lib.mkMerge (map (x: x.containers) perContainer);
   };
 }

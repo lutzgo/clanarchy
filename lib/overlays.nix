@@ -15,8 +15,7 @@
 # is precisely how birte ended up with a stock ungoogled-chromium while
 # every other machine got the hardened one.  Defining them once here keeps
 # the two lists from drifting.
-_final: prev:
-let
+_final: prev: let
   # ── steamSafe: strip the Steam Runtime's library paths ──────────────────
   #
   # Steam exports its own LD_LIBRARY_PATH — the bundled Ubuntu-12 Steam
@@ -48,29 +47,29 @@ let
   # inherit it, and dropping it would lose `mainProgram` (breaking
   # `lib.getExe`) and, for google-chrome, the unfree licence that
   # allowUnfreePredicate checks against.
-  steamSafe =
-    pkg: binaries:
+  steamSafe = pkg: binaries:
     (prev.symlinkJoin {
       name = "${pkg.pname or pkg.name}-steam-safe";
-      paths = [ pkg ];
-      nativeBuildInputs = [ prev.makeWrapper ];
-      postBuild = prev.lib.concatMapStrings (b: ''
-        if [ -e "$out/bin/${b}" ]; then
-          wrapProgram "$out/bin/${b}" --unset LD_LIBRARY_PATH --unset LD_PRELOAD
-        fi
-      '') binaries;
+      paths = [pkg];
+      nativeBuildInputs = [prev.makeWrapper];
+      postBuild =
+        prev.lib.concatMapStrings (b: ''
+          if [ -e "$out/bin/${b}" ]; then
+            wrapProgram "$out/bin/${b}" --unset LD_LIBRARY_PATH --unset LD_PRELOAD
+          fi
+        '')
+        binaries;
     })
     // {
       inherit (pkg) meta;
       inherit (pkg) version;
     };
-in
-{
+in {
   # ── niri ────────────────────────────────────────────────────────────────
   # niri 25.08's test suite hits EMFILE (too many open files) in the Nix
   # sandbox.  Only the Niri machines (miralda, jens) build this, but the
   # override is cheap and channel-independent.
-  niri = prev.niri.overrideAttrs (_: { checkPhase = ":"; });
+  niri = prev.niri.overrideAttrs (_: {checkPhase = ":";});
 
   # ── ungoogled-chromium ──────────────────────────────────────────────────
   # Bake the privacy flags into the binary.  This cannot be done from a
@@ -86,7 +85,7 @@ in
       "--disable-search-engine-collection"
       "--extension-mime-request-handling=always-prompt-for-install"
     ];
-  }) [ "chromium" "chromium-browser" ];
+  }) ["chromium" "chromium-browser"];
 
   # ── google-chrome ───────────────────────────────────────────────────────
   # Same shim.  NOTE: unlike chromium's, Chrome's upstream desktop entry
@@ -95,10 +94,10 @@ in
   # is necessary but not sufficient there — that shortcut has to be re-pointed
   # at /run/current-system/sw/bin/google-chrome-stable.  See
   # docs/guides/birte-emulation.md.
-  google-chrome = steamSafe prev.google-chrome [ "google-chrome-stable" "google-chrome" ];
+  google-chrome = steamSafe prev.google-chrome ["google-chrome-stable" "google-chrome"];
 
   # ── eden ────────────────────────────────────────────────────────────────
   # The Switch emulator is launched from Steam by design (that is the whole
   # point of the shortcut), so it is the package most exposed to this.
-  eden = steamSafe prev.eden [ "eden" "eden-cli" "eden-room" ];
+  eden = steamSafe prev.eden ["eden" "eden-cli" "eden-room"];
 }

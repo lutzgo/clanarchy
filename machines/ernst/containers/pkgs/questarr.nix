@@ -99,7 +99,6 @@
   makeWrapper,
   p7zip,
 }:
-
 buildNpmPackage rec {
   pname = "questarr";
   version = "1.4.2";
@@ -161,7 +160,7 @@ buildNpmPackage rec {
     makeWrapper ${lib.getExe nodejs} $out/bin/questarr \
       --add-flags "$out/lib/questarr/dist/server/index.js" \
       --set NODE_ENV production \
-      --prefix PATH : ${lib.makeBinPath [ p7zip ]}
+      --prefix PATH : ${lib.makeBinPath [p7zip]}
 
     runHook postInstall
   '';

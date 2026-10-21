@@ -60,9 +60,7 @@
   swapSize ? "8G",
   encryptSwap ? true,
   enableEncryption ? true,
-}:
-{ lib, ... }:
-{
+}: {lib, ...}: {
   disko.devices = {
     disk.${diskName} = {
       type = "disk";
@@ -78,8 +76,8 @@
                 type = "filesystem";
                 format = "vfat";
                 mountpoint = "/boot";
-                extraArgs = [ "-n" "ESP" ];
-                mountOptions = [ "umask=0077" ];
+                extraArgs = ["-n" "ESP"];
+                mountOptions = ["umask=0077"];
               };
             };
           }
@@ -87,8 +85,8 @@
             swap = {
               size = swapSize;
               content =
-                { type = "swap"; }
-                // lib.optionalAttrs encryptSwap { randomEncryption = true; };
+                {type = "swap";}
+                // lib.optionalAttrs encryptSwap {randomEncryption = true;};
             };
           }
           // {
@@ -137,9 +135,15 @@
       # installed machines, apply it once by hand:
       #   zfs set com.sun:auto-snapshot=true zroot/home zroot/persist
       datasets = {
-        root    = { type = "zfs_fs"; mountpoint = "/"; };
-        nix     = { type = "zfs_fs"; mountpoint = "/nix"; };
-        home    = {
+        root = {
+          type = "zfs_fs";
+          mountpoint = "/";
+        };
+        nix = {
+          type = "zfs_fs";
+          mountpoint = "/nix";
+        };
+        home = {
           type = "zfs_fs";
           mountpoint = "/home";
           options = {
@@ -155,7 +159,10 @@
             "com.sun:auto-snapshot" = "true";
           };
         };
-        tmp     = { type = "zfs_fs"; mountpoint = "/tmp"; };
+        tmp = {
+          type = "zfs_fs";
+          mountpoint = "/tmp";
+        };
       };
     };
   };
