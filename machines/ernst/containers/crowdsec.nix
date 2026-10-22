@@ -6,58 +6,48 @@
 #
 # ── THIS FILE CO-DEFINES containers.traefik.  THAT IS THE WHOLE DESIGN ───────
 #
-#   It does not create a container.  It merges units into the one
-#   machines/ernst/containers/traefik.nix declares, and adds the host-side
-#   state directory.  `containers.<name>.config` merges multiple definitions
-#   like any other NixOS option, so the two files compose; traefik.nix's header
-#   says so in its storage section, because a file that adds a daemon to
-#   somebody else's container must not be discoverable only by accident.
+#   It does not create a container.  It merges units into the one traefik.nix
+#   declares, plus the host-side state directory; `containers.<name>.config`
+#   merges multiple definitions like any other NixOS option.
 #
-#   WHY NOT ITS OWN CONTAINER, WHICH IS THIS REPO'S DEFAULT ANSWER.  Because a
-#   bouncer in another netns cannot enforce anything here, and that was
-#   MEASURED rather than assumed.  The path a WAN request takes is:
+#   WHY NOT ITS OWN CONTAINER, WHICH IS THIS REPO'S DEFAULT ANSWER: a bouncer
+#   in another netns cannot enforce anything here, and that was MEASURED.  A
+#   WAN request takes
 #
 #       internet → UDM-Pro (DNAT to 10.0.90.12:8443) → trunk → br0 → veth
 #                → the traefik container's netns
 #
-#   br0 forwards those frames at layer 2.  On ernst, 2026-09-03:
+#   and br0 forwards those frames at layer 2.  On ernst, 2026-09-03:
 #
 #       lsmod | grep br_netfilter                 → not loaded
 #       sysctl net.bridge.bridge-nf-call-iptables → no such file
 #
-#   So the HOST'S netfilter never sees the packet at all.  A bouncer on ernst
-#   could write every rule it liked and drop nothing.  The only place with both
-#   the pre-DNAT source address and a hook the packet actually traverses is
-#   this netns — which is also where the access log is.  Agent, local API and
-#   bouncer therefore all live here, and the question "which machine's firewall
-#   sees the pre-DNAT source" has exactly one answer: the traefik container's.
+#   So the HOST'S netfilter never sees the packet; a bouncer on ernst could
+#   write every rule it liked and drop nothing.  The only place with both the
+#   pre-DNAT source address and a hook the packet traverses is this netns —
+#   which is also where the access log is.
 #
-#   THE TIER QUESTION (invariant #1) resolves the same way it did for Traefik
-#   itself: this is a log parser and a netlink client. It fetches from
-#   hub.crowdsec.net and nothing else, it renders no attacker-supplied content,
-#   and it is in the same trust position as the proxy whose log it reads.  It
-#   does not get a kernel; it gets the proxy's namespace, deliberately, because
-#   separating them would break the only capability it has.
+#   THE TIER QUESTION (invariant #1) resolves as it did for Traefik: this is a
+#   log parser and a netlink client, it fetches from hub.crowdsec.net and
+#   nothing else, and it renders no attacker-supplied content.  It does not get
+#   a kernel; it gets the proxy's namespace, because separating them would
+#   break the only capability it has.
 #
-#   PLACEMENT IN machines/ernst/ AND NOT service-modules/: service-modules/ is
-#   for clan-service modules with roles a fleet subscribes to (monitoring,
-#   local-ai).  This is one machine's container, wired to one other file in the
-#   same directory, and it could not be given a role without reaching into
-#   traefik.nix from outside.  It follows the convention M2b set — the units
-#   live with the service.
+#   IN machines/ernst/ AND NOT service-modules/: that directory is for
+#   clan-service modules with roles a fleet subscribes to.  This is one
+#   machine's container wired to one other file beside it, and it could not be
+#   given a role without reaching into traefik.nix from outside.
 #
 # ── FOUR UPSTREAM DEFECTS, MEASURED IN A THROWAWAY VM BEFORE DEPLOYING ───────
 #
 #   nixpkgs' services.crowdsec and services.crowdsec-firewall-bouncer were
-#   booted in a QEMU VM built from THIS flake's nixpkgs on 2026-09-03, in the
-#   shape below, six times.  M14's four deploy-day defects are why: a milestone
-#   that cannot be tested before deploying should be tested somewhere else.
-#   Every override in this file names the thing it fixes.
+#   booted in a QEMU VM built from THIS flake's nixpkgs on 2026-09-03, six
+#   times.  Every override in this file names the thing it fixes.
 #
-#   (1) THE AGENT CRASH-LOOPS FOREVER ON A FIRST BOOT.  This is the big one,
-#       and it is silent in the sense that matters — the unit is `activating`,
-#       not `failed`, so `systemctl list-units --failed` is EMPTY while
-#       CrowdSec has never once run.  Measured, restart counter 28:
+#   (1) THE AGENT CRASH-LOOPS FOREVER ON A FIRST BOOT, and silently in the way
+#       that matters — the unit is `activating`, not `failed`, so
+#       `systemctl list-units --failed` is EMPTY while CrowdSec has never run.
+#       Measured, restart counter 28:
 #
 #         Error: cscli machines add: write api credentials in
 #           '/var/lib/crowdsec/local_api_credentials.yaml' failed:
@@ -68,16 +58,16 @@
 #
 #       The module's tmpfiles list creates /var/lib/crowdsec/state but NOT
 #       /var/lib/crowdsec, so the parent is created implicitly root:root 0755.
-#       The unprivileged agent's ExecStartPre then registers the machine in the
-#       database and CANNOT write the credentials file beside it.  The setup
-#       script's guard is `if the credentials file is absent, add the machine`
-#       — so from then on it retries an add that can only fail, forever.
+#       The unprivileged agent's ExecStartPre registers the machine in the
+#       database and then cannot write the credentials file beside it; the
+#       setup script's guard is "if the credentials file is absent, add the
+#       machine", so it retries an add that can only fail, forever.
 #
 #       TWO FIXES, because one of them is luck.  The bind mount below already
 #       gives /var/lib/crowdsec the right owner, so as deployed this cannot
-#       fire; that is an accident of the state layout, not a defence, so the
+#       fire — an accident of the state layout, not a defence.  So the
 #       in-container tmpfiles rule states it, and `crowdsec-unstick` clears the
-#       stale row if it ever happens anyway.
+#       stale row if it happens anyway.
 #
 #   (2) THE BOUNCER REGISTRATION CAN NEVER SUCCEED.  Measured:
 #
@@ -85,55 +75,47 @@
 #           Error: while reading yaml file: open /etc/crowdsec/config.yaml:
 #           no such file or directory
 #
-#       The NixOS module renders the config into the STORE and passes it with
-#       `-c`, and it never creates /etc/crowdsec/config.yaml — but the register
-#       unit shells out to the RAW cscli with no `-c`, so it looks for the
-#       default path.  Without it the API key is never minted, the bouncer dies
-#       at LoadCredential, and there is no remediation at all.  Fixed by
+#       The module renders the config into the STORE and passes it with `-c`,
+#       and never creates /etc/crowdsec/config.yaml — but the register unit
+#       shells out to the RAW cscli with no `-c`, so it looks for the default
+#       path.  Without it the API key is never minted, the bouncer dies at
+#       LoadCredential, and there is no remediation at all.  Fixed by
 #       `environment.etc` below, generated from the SAME option the module
-#       renders, so the two cannot drift.
+#       renders so the two cannot drift.
 #
 #   (3) BOTH REMEDIATION UNITS SHIP `Restart=no`.  Measured on a first boot:
 #       the bouncer starts before the local API is listening, dies with
 #       "dial tcp 127.0.0.1:8080: connect: connection refused", and STAYS dead.
-#       This is the hazard M18's brief predicted in a different place — it
-#       expected a missing `After=`/`PartOf=`, and those are present and
-#       correct in this channel (measured: `PartOf=nftables.service`,
-#       `After=… nftables.service crowdsec.service`).  The bug is one step
-#       further on: the ordering is right and the retry is missing, so a
-#       transient LAPI-not-ready leaves the WAN entrypoint open and unwatched
-#       until a human notices.  SN4's shape exactly.  Both get Restart.
+#       The ordering is right (`PartOf=nftables.service`,
+#       `After=… nftables.service crowdsec.service`) and the retry is missing,
+#       so a transient LAPI-not-ready leaves the WAN entrypoint open and
+#       unwatched until a human notices.  SN4's shape.  Both get Restart.
 #
 #   (4) DynamicUser + StateDirectory MIGRATES THE STATE DIRECTORY.  Measured:
 #
 #         Found pre-existing public StateDirectory= directory /var/lib/crowdsec,
 #         migrating to /var/lib/private/crowdsec.
 #
-#       /var/lib/crowdsec is a BIND MOUNT here.  systemd renaming a mount point
-#       is not a thing that ends well, and this is the same trap
-#       service-modules/local-ai.nix hit with ollama and turned DynamicUser off
-#       for.  Same call, same reason.
+#       /var/lib/crowdsec is a BIND MOUNT here, and systemd renaming a mount
+#       point does not end well.  Same trap service-modules/local-ai.nix hit
+#       with ollama; same call, same reason.
 #
 # ── WHAT IS NOT DONE, AND WHY ────────────────────────────────────────────────
 #
 #   NO TRAEFIK PLUGIN.  CrowdSec's usual Traefik integration is a Yaegi plugin
-#   that Traefik FETCHES FROM plugins.traefik.io AT STARTUP — unpinned network
-#   access during service start, in a repo whose whole premise is hashed
-#   inputs, on the one service every other service is behind.  The remediation
-#   here is the nftables bouncer instead, which is strictly better anyway: it
-#   drops the packet before Traefik parses it, so a banned scanner costs no TLS
-#   handshake.  If a plugin is ever genuinely needed it must be vendored via
-#   localPlugins with a fixed-output derivation, and the argument goes here.
+#   Traefik FETCHES FROM plugins.traefik.io AT STARTUP — unpinned network
+#   access during service start, on the one service every other service is
+#   behind.  The nftables bouncer is strictly better anyway: it drops the
+#   packet before Traefik parses it, so a banned scanner costs no TLS
+#   handshake.  A plugin, if ever needed, must be vendored via localPlugins
+#   with a fixed-output derivation.
 #
 #   NO CENTRAL API, NO CONSOLE.  `settings.capi.credentialsFile` and
-#   `console.tokenFile` are left null, so this instance neither pulls the
-#   community blocklist nor pushes its alerts anywhere.  That is the same
-#   decision M18 made about Cloudflare, applied consistently: the milestone
-#   exists to take a third party OUT of the data path, and enrolling in CAPI
-#   would put a different one into the signal path a week later.  The cost is
-#   real and is stated — no community blocklist, so this detects only what it
-#   sees itself.  The trigger to revisit is wanting the blocklist badly enough
-#   to argue for the telemetry, not tidiness.
+#   `console.tokenFile` stay null, so this instance neither pulls the community
+#   blocklist nor pushes its alerts anywhere — the same decision M18 made about
+#   Cloudflare, applied consistently.  The cost is real: it detects only what
+#   it sees itself.  The trigger to revisit is wanting the blocklist badly
+#   enough to argue for the telemetry.
 #
 #   NO AUTO-UPDATE TIMER.  `autoUpdateService` stays off: the agent's own
 #   ExecStartPre already runs `cscli hub update` on every start, so the timer
@@ -141,9 +123,9 @@
 #
 # ── `cscli explain` IS THE WRONG INSTRUMENT HERE.  MEASURED ──────────────────
 #
-#   The obvious way to check "is my line being parsed" is to copy a line out of
-#   the journal into a file and run `cscli explain -f line.txt --type syslog`.
-#   In the probe VM that reported, on a line the LIVE pipeline parsed perfectly:
+#   Copying a journal line into a file and running
+#   `cscli explain -f line.txt --type syslog` reported, on a line the LIVE
+#   pipeline parsed perfectly:
 #
 #       ├ s00-raw
 #       |  ├ 🔴 crowdsecurity/syslog-logs
@@ -151,48 +133,41 @@
 #       └-------- parser failure 🔴
 #
 #   It is not a parser failure.  `explain` feeds the file's raw bytes — bare
-#   JSON — while the journalctl datasource supplies the syslog envelope that
-#   s00-raw needs, so the two are not reading the same thing.  Believing that
-#   red would mean rebuilding a pipeline that works, which is SN3 pointing the
-#   other way: a broken instrument producing a damning result.
+#   JSON — while the journalctl datasource supplies the syslog envelope s00-raw
+#   needs.  Believing that red would mean rebuilding a pipeline that works:
+#   SN3 pointing the other way, a broken instrument producing a damning result.
 #
 #   THE INSTRUMENT IS `cscli metrics show acquisition`.  Lines read must equal
-#   lines parsed.  In the probe VM, on the same line: read 1, parsed 1, poured
-#   to bucket 2, and `crowdsecurity/{syslog-logs,traefik-logs,http-logs}` each
-#   1/1.  That is what "the detector can see" looks like.
+#   lines parsed.  In the probe VM: read 1, parsed 1, poured to bucket 2, and
+#   `crowdsecurity/{syslog-logs,traefik-logs,http-logs}` each 1/1.
 #
 # ── THE ONE UNPINNED FETCH, STATED PLAINLY ───────────────────────────────────
 #
 #   `cscli hub update` runs at EVERY agent start, from ExecStartPre, under
 #   `set -euo pipefail`, and the nixpkgs module offers no way to turn it off.
-#   So this is network access during service start, against content nothing in
-#   this repo hashes — the exact objection that rules out the Traefik plugin
-#   above, and it is only fair to say that it applies here too.
+#   That is the exact objection that rules out the Traefik plugin above.
 #
-#   It is accepted, for two reasons.  The hub IS the product: CrowdSec's value
-#   is a community-maintained scenario set, and pinning it to a commit would
-#   leave the detector reading last year's attack patterns.  And the failure
-#   mode is bounded and visible: a hub that is unreachable fails the
-#   ExecStartPre, which fails the unit, which Restart retries — and M18 adds a
-#   monitoring alert for exactly "the wan entrypoint is up and CrowdSec is
-#   not".  A ledger row carries this with a trigger.
+#   It is accepted for two reasons.  The hub IS the product — pinning it to a
+#   commit would leave the detector reading last year's attack patterns.  And
+#   the failure mode is bounded and visible: an unreachable hub fails the
+#   ExecStartPre, which fails the unit, which Restart retries, and M18 alerts
+#   on "the wan entrypoint is up and CrowdSec is not".
 #
 # ── ENFORCEMENT IS ARMED.  Q2 WAS CONFIRMED 2026-09-07 ──────────────────────
 #
 #   `enforce = false` used to sit below, putting CrowdSec in SIMULATION: it
-#   parsed, it fired scenarios, it recorded decisions — and marked them
-#   simulated, so the bouncer never received them and nothing was dropped.
+#   parsed, fired scenarios and recorded decisions, marked them simulated, and
+#   the bouncer never received them.
 #
-#   THE REASON WAS Q2, AND IT WAS NOT A FORMALITY.  Everything downstream of
-#   the access log keys on the source address the log records.  If the UDM-Pro
-#   SNATed the port forward instead of preserving the source, every external
-#   request would appear to come from 10.0.90.1, and the first scanner would
-#   get the DEFAULT GATEWAY banned — taking the whole house off Jellyseerr, and
-#   possibly off more than that.  A remediation that can do that must not be
-#   armed on a guess.
+#   THE REASON WAS Q2.  Everything downstream of the access log keys on the
+#   source address the log records.  If the UDM-Pro SNATed the port forward
+#   instead of preserving the source, every external request would appear to
+#   come from 10.0.90.1 and the first scanner would get the DEFAULT GATEWAY
+#   banned — taking the whole house off Jellyseerr.  A remediation that can do
+#   that must not be armed on a guess.
 #
-#   IT WAS NOT ARMED ON A GUESS.  One request from a phone on mobile 5G,
-#   against the bare public IP, minutes after the UDM-Pro forward went up:
+#   IT WAS NOT.  One request from a phone on mobile 5G against the bare public
+#   IP, minutes after the forward went up:
 #
 #       curl, client side:  Established connection to 78.94.91.74
 #                           from 10.136.183.244 port 46204
@@ -202,53 +177,49 @@
 #
 #   THE SOURCE PORT MATCHES EXACTLY (46204).  10.136.183.244 is the carrier's
 #   CGNAT address on the handset; 47.65.179.48 is that carrier's public egress.
-#   Traefik saw the real public source, and the port surviving end to end is
-#   what makes this a measurement rather than an inference: UniFi is doing DNAT
-#   and NOT SNAT.  Q2 CONFIRMED, and Q3 with it.
+#   The port surviving end to end is what makes this a measurement rather than
+#   an inference: UniFi is doing DNAT and NOT SNAT.  Q2 confirmed, Q3 with it.
 #
-#   IF THIS EVER STOPS BEING TRUE — a UDM-Pro firmware change, a different
-#   forward mode, a proxy inserted in front — the symptom is bans landing on
-#   one internal address.  Re-run the check:
+#   IF THIS EVER STOPS BEING TRUE — firmware change, different forward mode, a
+#   proxy inserted in front — the symptom is bans landing on one internal
+#   address.  Re-run:
 #
 #       nixos-container run traefik -- journalctl -u traefik -n 5 -o cat \
 #         | jq -r .ClientHost
 #
-#   If it prints 10.0.90.1, or the bridge, or the gateway, set `enforce = false`
-#   and deploy BEFORE investigating: the milestone would then need proxyProtocol
-#   on the wan entryPoint or a different forward mode on the UDM-Pro.
+#   If it prints 10.0.90.1, or the bridge, or the gateway, set
+#   `enforce = false` and deploy BEFORE investigating: the milestone would then
+#   need proxyProtocol on the wan entryPoint or a different forward mode.
 #
 # ── THIS IP RECEIVES TRAFFIC FOR A DOMAIN THE HOUSE DOES NOT OWN ────────────
 #
 #   Measured within thirty minutes of the forward opening, 2026-09-07.  Four
-#   unsolicited external sources, all on the `wan` entryPoint, all 404:
+#   unsolicited external sources, all on `wan`, all 404:
 #
 #       47.65.179.48    78.94.91.74           /              (the test above)
 #       54.204.56.173   qbt.casago.xyz        /
 #       75.119.147.4    bazarr.casago.xyz     /
 #       34.66.214.40    casago.xyz            /.git/config
 #
-#   `casago.xyz`, `qbt.casago.xyz` and `bazarr.casago.xyz` all resolve to
-#   78.94.91.74 — this house's public address — on Cloudflare nameservers.
-#   The house does not own that domain.  The subdomain names are not a
-#   coincidence: qbt and bazarr are a self-hosted media stack, so the previous
+#   `casago.xyz` and those subdomains all resolve to 78.94.91.74 — this house's
+#   public address — on Cloudflare nameservers, and the house does not own the
+#   domain.  qbt and bazarr are a self-hosted media stack, so the previous
 #   holder of this IPv4 address ran one and their DNS was never cleaned up.
 #
-#   WHY IT IS WRITTEN DOWN HERE RATHER THAN SHRUGGED AT: it makes a busy ban
-#   list the NORMAL state on this box, not an incident.  Somebody else's users,
-#   bots and monitoring will keep arriving indefinitely, every one of them will
-#   404, and `crowdsecurity/http-probing` counts distinct 404 paths.  A future
-#   reader finding fifty decisions in `cscli decisions list` should not go
-#   looking for an attack.
+#   WHY IT IS WRITTEN DOWN: it makes a busy ban list the NORMAL state on this
+#   box, not an incident.  Somebody else's users, bots and monitoring will keep
+#   arriving indefinitely, every one will 404, and `crowdsecurity/http-probing`
+#   counts distinct 404 paths.  Fifty decisions in `cscli decisions list` is
+#   not evidence of an attack.
 #
 #   It is also why M18's one alert is `ExposedAndUnprotected` and NOT a
-#   threshold on ban volume.  Ban volume here is a property of the address's
-#   history.  The silent failure is the opposite: bans not being enforced at
-#   all while the `wan` entryPoint is up.
+#   threshold on ban volume: ban volume here is a property of the address's
+#   history.  The silent failure is the opposite — bans not enforced at all
+#   while the `wan` entryPoint is up.
 #
-#   NOTHING IS DONE ABOUT THE DOMAIN, deliberately.  Those requests reach the
-#   `wan` entryPoint, match no router, and get 404 — which is the same answer
-#   they would get if the domain did not exist.  There is nothing to fix on
-#   this side, and the records are not the house's to delete.
+#   NOTHING IS DONE ABOUT THE DOMAIN, deliberately.  Those requests match no
+#   router and get 404, the same answer they would get if the domain did not
+#   exist, and the records are not the house's to delete.
 #
 # ── Storage layout on this host (see machines/ernst/disko.nix) ───────────────
 #
@@ -258,10 +229,9 @@
 #                                       credentials, the acquisition cursor
 #     local_api_credentials.yaml        the agent's own LAPI login
 #
-#   INVARIANT #7, and it is not a formality here either.  zroot rolls back, so
-#   on zroot every ban would evaporate at the next boot — and worse, so would
-#   the machine and bouncer credentials, putting defect (1) above in the path
-#   of every single reboot.  It is on zdata.
+#   INVARIANT #7, not a formality here: zroot rolls back, so on zroot every ban
+#   would evaporate at the next boot — and so would the machine and bouncer
+#   credentials, putting defect (1) in the path of every reboot.
 {
   config,
   lib,

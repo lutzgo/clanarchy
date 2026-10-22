@@ -462,24 +462,17 @@
   adminGroup = "admins";
   householdGroup = "household";
 
-  # ── THE HOSTNAME LISTS NOW LIVE IN ./ingress-policy.nix ───────────────────
+  # ── THE HOSTNAME LISTS LIVE IN ./ingress-policy.nix ───────────────────────
   #
-  # They used to be declared here, in full, with a comment admitting the
-  # problem:
-  #
-  #   "The two files have to agree, and there is no mechanism that makes them"
-  #
-  # There is one now.  Both lists are defined once in ./ingress-policy.nix and
-  # imported by this file AND by containers/traefik.nix, and traefik.nix throws
-  # at evaluation if any router's middlewares disagree with the classification
-  # there — including the fail-open direction, a protected name whose router
-  # forgot the middleware, which `default_policy = "deny"` does NOT catch
-  # (the middleware is what consults Authelia at all).
-  #
-  # The RomM 403 that comment predicted, and that happened anyway, is now a
-  # build error naming the file to edit.  The per-service reasoning that used
-  # to sit inline here moved with the lists; read ingress-policy.nix before
-  # adding a name to either.
+  # Both lists are defined once there and imported by this file AND by
+  # containers/traefik.nix, which throws at evaluation if any router's
+  # middlewares disagree with the classification — including the fail-open
+  # direction, a protected name whose router forgot the middleware, which
+  # `default_policy = "deny"` does NOT catch (the middleware is what consults
+  # Authelia at all).  Before that there was no mechanism making the two files
+  # agree, and the RomM 403 it cost is now a build error naming the file to
+  # edit.  Read ingress-policy.nix before adding a name to either list; the
+  # per-service reasoning moved there with them.
   #
   # WHY AN `import` AND NOT A MODULE OPTION: both containers are configured
   # from the same machines/ernst evaluation, but each `containers.<n>.config`

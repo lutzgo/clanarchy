@@ -1,353 +1,218 @@
 # machines/ernst/containers/traefik.nix
 #
-# Traefik v3, in a declarative systemd-nspawn NixOS container.  One reverse
-# proxy on its own L2 identity, so every consumer VLAN collapses to a single
-# permanent firewall rule pointing at THIS address instead of one rule per
-# backend.  That reduction is the milestone; TLS is how it is made usable.
+# Traefik v3 in an nspawn container: one reverse proxy on its own L2 identity,
+# so every consumer VLAN collapses to a single permanent firewall rule pointing
+# at THIS address instead of one rule per backend.
 #
-# Why nspawn: architecture invariant #1.  Traefik terminates TLS for trusted
-# in-house services and never fetches attacker-supplied URLs on anyone's
-# behalf, so it is a trusted-tier workload sharing the host kernel.  (The
-# thing that DOES render hostile pages is FlareSolverr, and the argument for
-# where it lives is in containers/arr/.)
+# nspawn per invariant #1: Traefik terminates TLS for in-house services and
+# never fetches attacker-supplied URLs, so it is trusted tier.  (The workload
+# that DOES render hostile pages is FlareSolverr — see containers/arr/.)
+#
+# History: docs/history.md M2b (the veth), M16 (the Cloudflare Tunnel, now
+# deleted), M18 (the WAN forward that replaced it), M7 (Authelia).
 #
 # ── Networking: veth on br0, Services VLAN 90 ────────────────────────────────
 #
-#   Copied from containers/jellyfin.nix ("Networking — v2"), which is the
-#   WORKING version of this pattern, and followed again by containers/arr/:
-#   KeepMaster rather than Bridge=, the ExecStartPost that settles the VLAN
-#   race, and the 20 s wait-online cap that stops a DHCP failure from
-#   restart-looping the container.  Read jellyfin.nix's header for the full
-#   rationale — including why this is a veth and not a macvlan or a tap — it is
-#   not repeated here.
+#   The skeleton is modules/containers/nspawn.nix; its header owns the
+#   rationale (KeepMaster over Bridge=, the VLAN-race backstop, the 20 s
+#   wait-online cap).
 #
-#   MAC 02:00:00:90:00:04 was RESERVED for this container by M2b, in the
-#   allocation table in machines/ernst/allocations.nix, against DHCP reservation
-#   10.0.90.12.  M4 deliberately skipped to .13 so that .12 stayed free for it.
+#   MAC 02:00:00:90:00:04 ↔ DHCP reservation 10.0.90.12, in
+#   machines/ernst/allocations.nix.  The reservation lives on the UDM-Pro, not
+#   here, because the UDM-Pro owns the pool and a second copy diverges
+#   silently.  It must be INSIDE the pool (10.0.90.6–.254): UniFi accepts an
+#   address from the reserved .2–.5 range and then hands out a pool lease
+#   anyway.
 #
-#   10.0.90.12 IS THE POINT OF THE MILESTONE.  It is the single address every
-#   consumer-zone ZBF rule now targets, and the only address on VLAN 90 that
-#   any client VLAN is permitted to reach.  Jellyfin's .10 and the arr's .13
-#   stop being reachable from anywhere but here — see BACKEND BYPASS below.
+#   10.0.90.12 is the point of the milestone — the single address any client
+#   VLAN may reach.  Jellyfin's .10 and arr's .13 are reachable from nowhere
+#   else; see BACKEND BYPASS.
 #
-#   Addressing is DHCP with a reservation on the UDM-Pro keyed on the pinned
-#   MAC, NOT a static address in this file: the UDM-Pro owns the subnet and the
-#   pool, and a second copy here diverges silently.  The reservation must be
-#   INSIDE the DHCP pool (10.0.90.6–.254) — UniFi accepts an address from the
-#   .2–.5 range the cutover runbook set aside and then hands out an ordinary
-#   pool lease instead.  M2b lost a round to exactly that.
-#
-#   The RESOLVER is the opposite call and IS declared here (Technitium,
-#   10.0.5.3), because a DHCP-supplied resolver that quietly changes does not
-#   fail loudly.  Note the ACME resolvers below are deliberately NOT Technitium
-#   — see SPLIT HORIZON.
+#   The RESOLVER is declared here (Technitium 10.0.5.3) because a
+#   DHCP-supplied resolver that quietly changes does not fail loudly.  The ACME
+#   resolvers are deliberately NOT Technitium — see SPLIT HORIZON.
 #
 # ── TWO ENTRYPOINTS, AND WHY THAT IS THE WHOLE SECURITY ARGUMENT ─────────────
 #
-#   M18 replaced the Cloudflare Tunnel with a UDM-Pro port forward.  The tunnel
-#   is gone and machines/ernst/containers/cloudflared.nix is deleted, so THIS
-#   COMMENT IS NOW THE ONLY PLACE THE ARGUMENT LIVES.  Read it before adding a
-#   router, and read docs/history.md M16 for the tunnel-versus-forward history.
+#     websecure  :443 on 10.0.90.12   LAN only.  Every pre-M18 router names
+#                                     this and only this.
+#     wan        :8443 on 10.0.90.12  the UDM-Pro's DNAT target, and nothing
+#                                     else.
 #
-#   WHAT M16 BOUGHT, PRECISELY.  Not "hides the home IP" — the address was
-#   already public and M3 recorded it.  Not DDoS absorption.  What it bought is
-#   FAIL-CLOSED-BY-CONSTRUCTION: the tunnel's ingress list named two hostnames,
-#   so every OTHER router in this file was not refused from outside, it WAS NOT
-#   THERE.  M16 rejected the plain port forward on exactly that ground — with
-#   WAN :443 landing on `websecure`, every router here becomes
-#   internet-reachable, gated on nothing but middleware correctness, and a
-#   middleware one edit from wrong FAILS OPEN.
+#   A router is internet-reachable if and only if it names `wan`.  So creating
+#   a route does NOT expose it: exposure is one greppable entry in `wanExposed`
+#   below.  This reproduces the tunnel's fail-closed-by-construction property,
+#   which a plain WAN :443 → `websecure` forward would have destroyed — every
+#   router would become reachable, gated on middleware correctness alone, and a
+#   middleware one edit from wrong fails OPEN.
 #
-#   HOW THAT PROPERTY IS REPRODUCED HERE.  A SECOND ENTRYPOINT.
+#   MEASURED, scratch Traefik 3.7.10, 2026-09-03 — the milestone rests on this
+#   entirely, so it was tested before the config was written:
 #
-#     websecure  :443 on 10.0.90.12   LAN only.  Every router that existed
-#                                     before M18 names this and only this, and
-#                                     none of them was touched.
-#     wan        :8443 on 10.0.90.12  the UDM-Pro's DNAT target, and NOTHING
-#                                     else.  A router is internet-reachable if
-#                                     and only if it names `wan`.
-#
-#   Creating a Traefik route therefore does NOT expose it.  The default is
-#   invisible from outside, and exposure is an explicit, greppable act — one
-#   entry in `wanExposed` below — exactly as adding a hostname to the tunnel's
-#   ingress list was.
-#
-#   MEASURED, NOT ASSUMED (scratch Traefik 3.7.10, 2026-09-03).  The premise
-#   was tested before this config was written, because the milestone rests on
-#   it entirely:
-#
-#     - a `websecure`-only router requested on the `wan` entrypoint is
-#       UNMATCHED: 404, no backend contact.  The control — the same request for
-#       a router that DOES name `wan` — returned 502 from the (absent) backend,
-#       which is what proves routing happens at all and the 404 is a real miss;
+#     - a `websecure`-only router requested on `wan` is UNMATCHED: 404, no
+#       backend contact.  Control: the same request for a router that DOES name
+#       `wan` returned 502 from the absent backend, which proves routing
+#       happens at all and the 404 is a real miss;
 #     - unknown SNI and no-SNI on `wan` also 404;
 #     - the TLS handshake COMPLETES first, with `CN=TRAEFIK DEFAULT CERT`.  So
-#       this is 404-from-Traefik-with-a-cert, NOT "unrouted".  Stated plainly
-#       because it is the one place this is weaker than the tunnel: anyone
-#       scanning the public IP learns a Traefik is here.  That is an existence
-#       disclosure, not an exposure — no router, no backend, no name;
-#     - the certificate store is GLOBAL and entrypoint-independent: a
-#       certificate attached to no entrypoint was served on both, selected by
-#       SNI alone.  That is why the `wan` entrypoint below carries NO
-#       certResolver — it serves the wildcard `websecure`'s resolver already
-#       put in acme.json.  Declaring a second resolver request for the same
-#       main+sans would risk a duplicate issuance against Let's Encrypt's
-#       5-per-week limit, and the failure mode of NOT declaring it is loud and
-#       free (a browser warning naming TRAEFIK DEFAULT CERT).
+#       a scanner of the public IP learns a Traefik is here: an existence
+#       disclosure, not an exposure.  This is the one place this is weaker than
+#       the tunnel;
+#     - the certificate store is GLOBAL and entrypoint-independent — a cert
+#       attached to no entrypoint was served on both, selected by SNI alone.
+#       That is why `wan` below carries NO certResolver: a second resolver
+#       request for the same main+sans risks duplicate issuance against Let's
+#       Encrypt's 5-per-week limit, and the failure mode of omitting it is loud
+#       and free (a browser warning naming TRAEFIK DEFAULT CERT).
 #
-#   THE FAIL-OPEN PATH, WHICH IS REAL AND IS DEFENDED IN CODE.  A router that
-#   OMITS `entryPoints` is instantiated by Traefik on EVERY entrypoint.
-#   Measured on the same scratch instance: a router with no `entryPoints` line
-#   appeared as BOTH `websecure-forgot-entrypoints@file` AND
-#   `wan-forgot-entrypoints@file`, and proxied on `wan`.  That is M16's
-#   objection reborn inside the entrypoint design, so the entrypoint split
-#   ALONE is not fail-closed — it is fail-closed plus `withWan`
-#   below, which THROWS AT EVALUATION if any router omits `entryPoints`, or if
-#   the set of routers naming `wan` is anything but the ones `wanExposed`
-#   generates.  Forgetting is a build error, not a silent exposure.  That is
-#   the mechanism; the comment is only the reason.
+#   THE FAIL-OPEN PATH, DEFENDED IN CODE.  A router omitting `entryPoints` is
+#   instantiated on EVERY entrypoint — measured on the same instance, one
+#   appeared as both `websecure-forgot-entrypoints@file` and
+#   `wan-forgot-entrypoints@file` and proxied on `wan`.  The split alone is
+#   therefore not fail-closed; `withWan` below THROWS AT EVALUATION if a router
+#   omits `entryPoints`, or if the set naming `wan` is anything but what
+#   `wanExposed` generates.  Forgetting is a build error.
 #
-#   DNS IS THE SECOND, INDEPENDENT GATE.  Every other name exists solely
-#   inside Technitium, so from outside they NXDOMAIN.  Two gates, both
-#   explicit, neither sufficient alone — DNS does not gate a request to the
-#   bare public IP, which is what the entrypoint is for.
+#   DNS IS THE SECOND, INDEPENDENT GATE.  Every other name exists only inside
+#   Technitium, so from outside they NXDOMAIN.  Neither gate is sufficient
+#   alone: DNS does not gate a request to the bare public IP.
 #
-#   THE PUBLIC SET IS NO LONGER TWO NAMES.  It was `jellyseerr` + `auth`
-#   through M18; `audiobookshelf` was added 2026-09-08 and `jellyfin`, `komga`,
-#   `navidrome` and `cwa` the same day; `chat` on 2026-09-10.  EIGHT A records,
-#   all v4, all DNS-only.  `wanExposed` below is the authoritative list and the
-#   registrar must agree with it — the two are independent gates precisely
-#   because nothing makes them agree automatically.
+#   `wanExposed` is authoritative and the registrar must agree with it by hand
+#   — nothing makes them agree automatically, which is the point of two
+#   independent gates.  A NAME IN `wanExposed` WITH NO PUBLIC A RECORD IS
+#   INERT: that is how audiobookshelf stayed unreachable for a day after a
+#   correct deploy.  If an exposed service is unreachable from outside,
+#   `dig +short <name>.goclan.org @1.1.1.1` is the FIRST command.
 #
-#   "DNS-only" IS LOAD-BEARING AND NOT A PREFERENCE.  These records must not be
-#   proxied (Cloudflare's orange cloud off).  A proxied record would make every
-#   request arrive from a Cloudflare address, and CrowdSec — which reads
-#   Traefik's access log and bans at the packet layer — would then see one
-#   source for the whole internet.  Its bans would be useless at best and
-#   self-inflicted outages at worst.  See containers/crowdsec.nix.
+#   "DNS-only" IS LOAD-BEARING: these records must not be Cloudflare-proxied.
+#   A proxied record makes every request arrive from a Cloudflare address, and
+#   CrowdSec — which reads Traefik's access log and bans at the packet layer —
+#   would see one source for the whole internet.  Its bans would be useless at
+#   best and self-inflicted outages at worst.
 #
-#   A NAME IN `wanExposed` WITH NO PUBLIC RECORD IS INERT, AND THAT IS EXACTLY
-#   HOW audiobookshelf FAILED.  It was added to `wanExposed`, deployed
-#   correctly, and stayed unreachable from mobile data for the rest of the day
-#   because the A record was a separate manual step nobody had run.  The
-#   symptom was identical from an Android phone and a Linux laptop, which is
-#   what pointed at DNS rather than at either client.  If an exposed service
-#   is unreachable from outside, `dig +short <name>.goclan.org @1.1.1.1` is
-#   the first command, not the last.
-#
-#   NO AAAA RECORDS, EVER, while SN2 holds.  See IPv4-ONLY BY CONSTRUCTION
-#   above: there is no global v6 address anywhere on this path, so an AAAA
-#   would publish an address that cannot answer — and if one ever could, it
-#   would bypass the UDM-Pro DNAT and therefore the `wan` entrypoint, on a
-#   stack where the CrowdSec bouncer has no table.
-#
-#   THE COSTS OF DROPPING THE TUNNEL, stated plainly, since cloudflared.nix's
-#   header used to carry the mirror image of this list:
-#
-#     - THE HOME IP APPEARS IN PUBLIC DNS.  Two A records now point at it.
-#     - NO VOLUMETRIC DDoS ABSORPTION.  The line is the line.  `rateLimit` and
-#       `inFlightReq` on the wan routers are application-layer limits and do
-#       not pretend otherwise; CrowdSec drops at the packet layer, which helps
-#       against a scanner and not against a flood.
-#     - SN2 CAN NO LONGER BE DEFERRED.  The tunnel was outbound-only, which is
-#       why SN2 could record IPv6 as un-audited and un-relied-upon.  Opening
-#       WAN ingress ends that exemption — see IPv4-ONLY BY CONSTRUCTION below.
-#
-#   AND WHAT IS RECOVERED, which is why the trade was taken: TLS no longer
-#   terminates at a third party that could read every Jellyfin credential
-#   typed into the Jellyseerr login form, and there is one fewer availability
-#   dependency between the household and its own house.
+#   NO AAAA RECORDS, EVER, while SN2 holds.
 #
 # ── IPv4-ONLY BY CONSTRUCTION (standing note SN2) ────────────────────────────
 #
-#   SN2's hazard: if the UDM-Pro's v6 ruleset ever permits inbound and this
-#   container ever acquires a global address, a v6 listener is a second path to
-#   every router that bypasses the UDM-Pro DNAT — and therefore bypasses the
-#   `wan` entrypoint entirely.  It is worse than it sounds, because the
-#   firewall bouncer declares `nftables.ipv6.enabled = false` and so there is
-#   no `ip6 crowdsec` table: over v6 the routers would be reachable AND
-#   unbannable at the same time.
+#   The hazard: if the UDM-Pro ever permits inbound v6 and this container ever
+#   acquires a global address, a v6 listener bypasses the DNAT and therefore
+#   the `wan` entrypoint — and the firewall bouncer sets
+#   `nftables.ipv6.enabled = false`, so there is no `ip6 crowdsec` table.  Over
+#   v6 the routers would be reachable AND unbannable at once.
 #
-#   THIS FILE USED TO CLAIM THE BIND WAS THE DEFENCE.  IT IS NOT, AND SAYING SO
-#   WAS WRONG.  Every entryPoint below is written `0.0.0.0:` rather than `:`,
-#   and it makes no difference whatsoever: Go treats `0.0.0.0` as *unspecified*
-#   and opens an AF_INET6 socket with IPV6_V6ONLY=0 for any wildcard listen.
-#   Measured on the deployed config 2026-09-07 — all four entryPoints, plus
-#   CrowdSec's metrics port, were accepting v6 on link-local.  A claim of this
-#   shape is worse than no claim: it reads like a control in review.
-#
-#   THE FIRST ATTEMPT AT A REPLACEMENT WAS ALSO WRONG, which is worth leaving
-#   on the record.  It said `disable_ipv6` would make Go fall back to AF_INET
-#   so that `ss -f inet6` came back empty.  It does not: the socket family is
-#   available whenever the ipv6 module is loaded, regardless of addressing.
-#   The listeners are dual-stack and stay dual-stack.  Two wrong mechanisms in
-#   a row, both from reasoning about Go and kernel semantics instead of running
-#   the command, is the actual lesson here.
+#   THE BIND IS NOT THE DEFENCE.  Every entryPoint is written `0.0.0.0:`
+#   rather than `:` and it makes no difference: Go treats `0.0.0.0` as
+#   unspecified and opens AF_INET6 with IPV6_V6ONLY=0 for any wildcard listen.
+#   Measured on the deployed config 2026-09-07 — all four entryPoints plus
+#   CrowdSec's metrics port were accepting v6 on link-local.  `disable_ipv6`
+#   does not help either: the socket family is available whenever the module is
+#   loaded, regardless of addressing.
 #
 #   What actually holds the line, in the order it is relied on:
 #
-#     1. NO IPv6 ADDRESS EXISTS IN THIS NETNS — `LinkLocalAddressing = "no"`
-#        on the 10-eth0 network unit, which is the repo's existing idiom and
-#        was simply missing here.  The sockets are still dual-stack; they have
-#        nothing to be reached on, and no prefix can ever be accepted.
-#        THE PROOF IS `ip -6 addr show dev eth0` RETURNING NOTHING, not
-#        `ss -f inet6` and not a bare `ip -6 addr show` — `lo` keeps
-#        `::1/128 scope host`, which is loopback and is supposed to be there.
-#        Two `boot.kernel.sysctl` attempts at this failed before it; the
-#        gravestone is where they used to be.
-#     2. No v6 forward on the UDM-Pro.  Outside Nix, and an explicit "do not"
-#        in M18's manual steps.  NOT audited — Claude does not touch it.
-#     3. No GUA anywhere on VLAN 90.  Measured 2026-08-25 and again
-#        2026-09-03: link-local only on br0 and in every container, no v6
-#        default route, `accept_ra = 0` on br0.
+#     1. NO IPv6 ADDRESS EXISTS IN THIS NETNS — `LinkLocalAddressing = "no"`.
+#        The sockets stay dual-stack; they have nothing to be reached on.
+#        THE PROOF IS `ip -6 addr show dev eth0` RETURNING NOTHING — not
+#        `ss -f inet6`, and not a bare `ip -6 addr show`, because `lo` keeps
+#        `::1/128 scope host` and is supposed to.
+#     2. No v6 forward on the UDM-Pro.  Outside Nix, an explicit "do not" in
+#        M18's manual steps, NOT audited.
+#     3. No GUA anywhere on VLAN 90.  Measured 2026-08-25 and 2026-09-03:
+#        link-local only, no v6 default route, `accept_ra = 0` on br0.
 #
-#   (3) is a state and not a defence, which is why M6 now alerts on it
-#   (`UnexpectedIPv6GlobalAddress`) instead of leaving it to be re-measured by
-#   hand — that alert is the tripwire for (1) and (2) being all that is left.
+#   (3) is a state, not a defence, which is why M6 alerts on it
+#   (`UnexpectedIPv6GlobalAddress`) — that alert is the tripwire for (1) and
+#   (2) being all that is left.
 #
 # ── TLS: ACME DNS-01, wildcard, split horizon ────────────────────────────────
 #
-#   ONE wildcard certificate for *.goclan.org, issued over the DNS-01
-#   challenge.  DNS-01 specifically so that no inbound port is needed to PROVE
-#   DOMAIN CONTROL: the challenge is a TXT record lego writes and deletes at
-#   Cloudflare, and HTTP-01 never runs.
+#   One wildcard for *.goclan.org over DNS-01, specifically so that no inbound
+#   port is needed to prove domain control.  HTTP-01 never runs.
 #
-#   THAT IS WHY :80 IS NOT FORWARDED FROM THE WAN, and it is worth being
-#   explicit because "open 80 for Let's Encrypt" is the single most likely
-#   wrong edit to the UDM-Pro after this milestone.  Nothing external depends
-#   on :80: the `web` entryPoint below exists only to 308 a bare hostname typed
-#   on the LAN over to :443, and no external name is ever handed out as
-#   `http://`.  The ledger carries a row saying so.
+#   THEREFORE :80 IS NOT FORWARDED FROM THE WAN, and "open 80 for Let's
+#   Encrypt" is the single most likely wrong edit to the UDM-Pro.  The `web`
+#   entryPoint exists only to 308 a bare hostname typed on the LAN.
 #
-#   SPLIT HORIZON — READ THIS BEFORE ASSUMING ANYTHING IS PUBLIC.
-#
-#     The CERTIFICATE is public.  Every name in it is published to the
-#     Certificate Transparency logs the moment it is issued, so
-#     "*.goclan.org" is world-readable and always will be.
-#
-#     The SERVICES are not.  jellyfin.goclan.org and the arr names exist ONLY
-#     as records inside Technitium (10.0.5.3).  There are no public A or AAAA
-#     records for them, and Cloudflare's zone holds nothing for these names but
-#     the transient _acme-challenge TXT that lego adds and removes.
-#
-#     A public certificate is what makes people assume the service behind it is
-#     reachable.  It is not.  The only thing CT discloses is that a wildcard
-#     exists — not a single service name, and not an address.
+#   SPLIT HORIZON.  The CERTIFICATE is public — every name in it hits the
+#   Certificate Transparency logs at issuance, so `*.goclan.org` is
+#   world-readable forever.  The SERVICES are not: jellyfin.goclan.org and the
+#   arr names exist only in Technitium, and Cloudflare's zone holds nothing for
+#   them but the transient _acme-challenge TXT.  CT discloses that a wildcard
+#   exists — not one service name, and not an address.
 #
 #   THE ACME RESOLVERS ARE PUBLIC ONES, AND THAT IS LOAD-BEARING.  lego
-#   verifies its own TXT record has propagated before telling Let's Encrypt to
-#   validate.  If that check went through this container's normal resolver it
-#   would ask Technitium — which is authoritative for the goclan.org names
-#   inside the LAN and knows nothing about _acme-challenge — and the answer
-#   would be an authoritative NXDOMAIN, forever.  The failure is a renewal that
-#   hangs at "waiting for DNS record propagation" and then times out, i.e. a
-#   certificate that expires with the proxy still running.  Pinning 1.1.1.1 and
-#   9.9.9.9 makes the check ask the PUBLIC view, which is the view Let's
-#   Encrypt will use.
+#   verifies its own TXT propagated before asking Let's Encrypt to validate.
+#   Through this container's normal resolver that check asks Technitium, which
+#   is authoritative for goclan.org inside the LAN and knows nothing about
+#   _acme-challenge — an authoritative NXDOMAIN, forever.  The failure is a
+#   renewal that hangs at "waiting for DNS record propagation", i.e. a
+#   certificate that expires with the proxy still running.  1.1.1.1 and 9.9.9.9
+#   ask the PUBLIC view, which is the view Let's Encrypt uses.
 #
-#   THE STORE IS ON zdata.  /srv/state/traefik, bound to the module's default
-#   dataDir, because zroot rolls back (invariant #7) and acme.json is the one
-#   piece of state here that cannot be regenerated cheaply — Let's Encrypt
-#   rate-limits duplicate certificates to 5 per week.  Traefik creates
-#   acme.json 0600 itself; the directory is 0700 and owned by uid 3005.
-#
-#   THE CLOUDFLARE TOKEN is a clan var, prompted, never in the store and never
-#   in this file.  See the generator at the bottom, and the staging oneshot
-#   that is the only reason the container can see it at all.
+#   THE STORE IS ON zdata — /srv/state/traefik, because zroot rolls back
+#   (invariant #7) and acme.json cannot be regenerated cheaply against a
+#   5-per-week duplicate limit.  Traefik creates it 0600; the directory is 0700
+#   uid 3005.  The Cloudflare token is a prompted clan var — see the generator
+#   at the bottom and the staging oneshot.
 #
 # ── BACKEND BYPASS HARDENING: backend-side source restriction ────────────────
 #
-#   ONE mechanism, as the milestone requires, and it is (a): each backend's own
-#   firewall, in its own netns, accepts its web port ONLY from 10.0.90.12.  The
-#   rules live in containers/jellyfin.nix and containers/arr/ beside the
-#   ports they restrict.  The rejected alternative was (b), a UDM-Pro intra-zone
-#   ZBF rule.
+#   ONE mechanism, (a): each backend's own firewall, in its own netns, accepts
+#   its web port ONLY from 10.0.90.12.  Those rules live beside the ports they
+#   restrict, in containers/jellyfin.nix and containers/arr/.
 #
-#   WHY (a) AND NOT (b) — this is not a preference, (b) cannot do the job:
+#   WHY NOT (b), a UDM-Pro intra-zone ZBF rule — not a preference, (b) CANNOT
+#   do the job: .10, .11, .12 and .13 are ports on the same VLAN on the same
+#   bridge, so traffic between them is switched at layer 2 and the frames never
+#   reach the UDM-Pro.  containers/arr/ relies on that property in the other
+#   direction.  A gateway cannot filter traffic it never sees.
+#   DO NOT ADD (b) AS WELL: two sources of truth for one property is how you
+#   get a rule nobody dares delete because nobody can prove what it does.
 #
-#     Jellyfin (.10), the arr (.13), qBittorrent's guest (.11) and this
-#     container (.12) are all ports on the SAME VLAN on the SAME bridge.
-#     Traffic between them is switched at layer 2 by br0 and the frames never
-#     reach the UDM-Pro at all.  containers/arr/ relies on exactly this
-#     property in the other direction — it is why the arr needs no ZBF rule to
-#     talk to the download client.  A gateway cannot filter traffic it never
-#     sees, so an intra-zone rule would be a rule that looks like enforcement
-#     and enforces nothing.
+#   The adjacency is real, not theoretical.  10.0.90.11 is the qBittorrent
+#   microvm — the one workload on ernst that talks to the open internet on its
+#   own behalf — one L2 hop from Sonarr's, Radarr's and Prowlarr's web UIs.
+#   Source-restricting those ports is the largest thing this buys beyond TLS.
 #
-#     And the adjacency that matters is real, not theoretical.  10.0.90.11 is
-#     the qBittorrent microvm: the one workload on ernst that talks to the open
-#     internet on its own behalf, which is why invariant #1 gives it its own
-#     kernel.  It sits one layer-2 hop from Sonarr's, Radarr's and Prowlarr's
-#     web UIs.  Source-restricting those ports to this container is what stops
-#     a compromised download client from driving the *arr APIs directly, and it
-#     is the single largest thing this milestone buys beyond TLS.
+#   WHAT (a) DOES NOT COVER:
 #
-#   WHAT (a) DOES NOT COVER, stated plainly:
+#     - code execution IN THIS CONTAINER.  Traefik is inside the allow-list by
+#       construction.  This is the cost of collapsing every rule to one address;
+#     - the backends' OUTBOUND reach — that is invariant #1's tiering;
+#     - spoofed sources.  br0 does no source validation, so a VLAN 90 host can
+#       forge .12.  It gets no replies, so this blocks exploitation-by-response
+#       but not a blind one-shot write to an unauthenticated API;
+#     - the host itself, which is on VLAN 50 and reaches VLAN 90 through the
+#       UDM-Pro — the one path (b) would have covered.
 #
-#     - Anything that already has code execution IN THIS CONTAINER.  Traefik is
-#       inside the allow-list by construction; source filtering cannot help.
-#       This is the cost of collapsing every consumer rule to one address.
-#     - The backends' OUTBOUND reach.  Nothing here constrains what Jellyfin or
-#       the arr connect out to; that is invariant #1's tiering, not a firewall.
-#     - Spoofed sources.  A host on VLAN 90 can forge 10.0.90.12 as its source
-#       address; br0 does no source validation.  It would not get replies (they
-#       route to the real .12), so this blocks exploitation-by-response but not
-#       blind one-shot writes to an unauthenticated API.
-#     - Anything on the host itself, which is on VLAN 50 and reaches VLAN 90
-#       through the UDM-Pro — a path (b) WOULD have covered.
-#
-#   WHERE (b) WOULD HAVE BEEN BETTER: it is enforced by a device the containers
-#   cannot reconfigure, so a regression in this repo could not silently undo it,
-#   and it would cover the host-to-backend path above.  (a) was chosen anyway
-#   because covering the intra-VLAN path is worth more than either, and because
-#   a rule that lives in the repo deploys atomically with the routes it
-#   protects.  DO NOT ADD (b) AS WELL — two sources of truth for one property
-#   is how you get a rule nobody dares delete because nobody can prove what it
-#   does.
-#
-#   DEBUGGING CONSEQUENCE, because it will surprise someone: after this
-#   deploys, `curl http://10.0.90.10:8096` from your laptop or from ernst FAILS
-#   and that is correct.  Reach a backend directly with
-#   `nixos-container run jellyfin -- curl -sS localhost:8096/health` instead;
-#   `lo` is always trusted by the NixOS firewall.
+#   DEBUGGING CONSEQUENCE: `curl http://10.0.90.10:8096` from a laptop or from
+#   ernst FAILS, and that is correct.  Reach a backend with
+#   `nixos-container run jellyfin -- curl -sS localhost:8096/health` instead —
+#   `lo` is always trusted.
 #
 # ── JELLYFIN KEEPS NATIVE AUTH, FOREVER ──────────────────────────────────────
 #
-#   NEVER put Authelia — or any forward-auth middleware — in front of the
-#   Jellyfin route.  This was written here so M7 would not undo it; M7 has
-#   landed, the `authelia` middleware below exists, and the jellyfin router
-#   still does not carry it.  Keep it that way.
+#   NEVER put Authelia, or any forward-auth middleware, in front of the
+#   Jellyfin route.  TV apps, the mobile clients, Chromecast senders and every
+#   DLNA-ish device authenticate with Jellyfin's own token API and cannot
+#   perform an interactive OIDC redirect; forward-auth turns the first request
+#   into a 302 to a page the client has no browser to render, so the app fails
+#   with an opaque network error.
 #
-#   TV apps, the Android/iOS clients, Chromecast senders and every DLNA-ish
-#   device authenticate with Jellyfin's own token API and cannot perform an
-#   interactive OIDC redirect.  A forward-auth middleware turns the first
-#   request into a 302 to a login page the client has no browser to render, so
-#   the app fails with an opaque network error rather than a login prompt.
-#   Jellyfin's own user database IS the auth boundary for this route, and it is
-#   the right one: it is the only one the clients can speak.
+#   The arr routes are the opposite case and are what forward-auth exists for.
+#   The distinction is NOT "admin versus household" — it is "can the client
+#   render a login page and follow a 302".
 #
-#   The arr routes are the opposite case — browser-only, admin-facing — and
-#   they are what the forward-auth middleware exists for.  The distinction is
-#   not "admin versus household", it is "can the client render a login page and
-#   follow a 302".  Anything that cannot must authenticate natively or not be
-#   proxied at all.
+# ── Storage, and the second occupant ─────────────────────────────────────────
 #
-# ── Storage layout on this host (see machines/ernst/disko.nix) ───────────────
+#   /srv/state/traefik (zdata/state) → /var/lib/traefik.  Nothing else
+#   persists; both configs are generated into the store on every deploy.
 #
-#   /srv/state/traefik    zdata/state   RW into the container at /var/lib/traefik
-#     acme.json                         the certificate store, 0600, uid 3005
-#
-#   Nothing else persists.  Both configs are generated from this file into the
-#   Nix store on every deploy, so the container's own root holds no state worth
-#   keeping.
-#
-#   M18 ADDS A SECOND OCCUPANT OF THIS CONTAINER, and its state is its own:
-#   machines/ernst/containers/crowdsec.nix puts the CrowdSec agent, its local
-#   API and the firewall bouncer in THIS netns — because this netns is the only
-#   place that sees the pre-DNAT source address of a WAN request.  Its
-#   decisions database lives at /srv/state/crowdsec on zdata, bound separately.
-#   That file co-defines `containers.traefik.config`; read its header before
-#   assuming this file is the whole of what runs in here.
+#   containers/crowdsec.nix puts the CrowdSec agent, its local API and the
+#   firewall bouncer in THIS netns — the only place that sees the pre-DNAT
+#   source of a WAN request — with its decisions database bound separately from
+#   /srv/state/crowdsec.  That file CO-DEFINES `containers.traefik.config`:
+#   read its header before assuming this file is the whole of what runs here.
 {
   config,
   lib,
@@ -731,159 +596,78 @@
   # Each entry names a router defined below.  `withWan` copies it onto the
   # `wan` entrypoint as `<name>-wan`, INHERITING its rule, its service and its
   # middlewares — see there for why inheritance rather than a second
-  # declaration.  `jellyseerr` and `authelia` are M16's two hostnames, and the
-  # set has not grown.
+  # declaration.
   #
   # ADDING A NAME HERE IS GROWING THE INTERNET-FACING SURFACE OF THE HOUSE.
-  # It needs: a public A record at the registrar, a row in docs/history.md's
-  # ledger, and — for anything that is not Jellyseerr or the portal — an answer
-  # to why the unauthenticated attack surface should stop being Authelia.
+  # It needs: a public A record at the registrar, a ledger row, and — for
+  # anything that is not Jellyseerr or the portal — an answer to why the
+  # unauthenticated attack surface should stop being Authelia.
   #
-  # `authelia` IS LOAD-BEARING and is not padding.  Forward-auth is a REDIRECT
+  # `authelia` IS LOAD-BEARING, not padding.  Forward-auth is a REDIRECT
   # protocol: an unauthenticated request to jellyseerr answers 302 to
   # https://auth.goclan.org/?rd=…, so if the portal does not resolve and route
-  # externally, no external login can ever complete.  M16 recorded this as a
-  # corrected premise after its own test plan listed `auth` among the names
-  # that must be unreachable; do not re-derive it the hard way.
+  # externally, no external login can ever complete.
   #
-  # ── audiobookshelf, ADDED 2026-09-08.  READ THIS BEFORE ADDING A FOURTH ────
+  # TWO SHAPES OF NAME ON THIS LIST, and the distinction is the whole posture:
   #
-  #   It is the FIRST internet-facing name here that is NOT behind Authelia.
-  #   `jellyseerr` and `authelia` both are — an unauthenticated external
-  #   request to jellyseerr answers 302 to the portal, which is why the portal
-  #   had to be exposed alongside it.  This one answers the application.
+  #   protectedHosts  (jellyseerr, authelia, openwebui) — the wan twin inherits
+  #     the `authelia` middleware, so the chain is
+  #     wan-ratelimit → wan-inflight → authelia → app, i.e. admins-only
+  #     forward-auth with mandatory 2FA.  No `wanLoginPaths` entry for these:
+  #     that list is appApiHosts-only, because a forward-auth name already has
+  #     Authelia's PER-IDENTITY regulation in front of its login, which beats a
+  #     per-source rate limit — an entry here would rate-limit the portal.
   #
-  #   THE ANSWER TO "WHY SHOULD THE UNAUTHENTICATED SURFACE STOP BEING
-  #   AUTHELIA", which the paragraph above demands: it already had.  The LAN
-  #   router has carried a permanent forward-auth bypass since M14, on the
-  #   client-compatibility clause — Audiobookshelf's mobile apps cannot
-  #   complete a forward-auth redirect, so putting Authelia in front makes the
-  #   apps the thing that breaks.  This milestone does not create that
-  #   exemption; it moves an existing one from the LAN to the WAN.
+  #   appApiHosts  (audiobookshelf, jellyfin, komga, navidrome, cwa, immich) —
+  #     answered by the APPLICATION, with Authelia never consulted, because
+  #     their native clients cannot follow a forward-auth redirect.  The
+  #     argument is in ingress-policy.nix, once, rather than restated per name.
+  #     The app's own accounts are then the entire boundary against the
+  #     internet and THERE IS NO SECOND FACTOR; `wan-ratelimit`/`wan-inflight`
+  #     are the only limits in front of the login form, and CrowdSec banning on
+  #     401s in the access log is the main thing standing between these and
+  #     credential stuffing.
   #
-  #   WHAT THAT COSTS, PLAINLY.  Audiobookshelf's own accounts become the
-  #   entire boundary against the internet, and there is NO SECOND FACTOR on
-  #   this name: Authelia's per-user regulation and 2FA do not apply.  The
-  #   `wan-ratelimit` and `wan-inflight` middlewares are inherited and are the
-  #   only rate limiting in front of the login form; CrowdSec sees its 401s in
-  #   the access log and can ban on them, which is now the main thing standing
-  #   between this and credential stuffing.
+  # THE PRECONDITION THIS FILE CANNOT ENFORCE, for any appApiHosts name: THE
+  # ADMIN ACCOUNT MUST ALREADY EXIST AND ITS PASSWORD MUST BE STRONG.  A
+  # first-run wizard is unauthenticated by construction and hands the root
+  # account to whoever loads it first; on the LAN that window was survivable,
+  # on the WAN it is not.  immich is the one that closes it BY MECHANISM rather
+  # than by being quick — `IMMICH_ALLOW_SETUP` is false in containers/immich.nix
+  # and M22 creates the A record last, deliberately.
   #
-  #   TWO PRECONDITIONS, NEITHER OF WHICH THIS FILE CAN ENFORCE:
-  #     1. THE ADMIN ACCOUNT MUST ALREADY EXIST.  Audiobookshelf's first-run
-  #        wizard is unauthenticated by construction and hands the root account
-  #        to whoever loads it first.  On the LAN that window was survivable;
-  #        on the WAN it is not.  The router block below carries this warning
-  #        for the LAN case and it is strictly more urgent here.
-  #     2. THE ADMIN PASSWORD MUST BE STRONG.  It is now an
-  #        internet-reachable, single-factor login.
+  # IMMICH HAS ONE PROPERTY NONE OF THE OTHERS HAS: part of its vhost is
+  # UNAUTHENTICATED ON PURPOSE.  A shared album link is answered to an
+  # anonymous caller from anywhere until revoked — that is the feature, and the
+  # reason an album can be sent to someone with no account here.  Expiry and a
+  # per-link password are the controls; both are runtime state this repo cannot
+  # set.  So "the application's own accounts are the boundary" is weaker here
+  # than for the other five.
   #
-  # ── jellyfin, komga, navidrome, cwa, ADDED 2026-09-08 ─────────────────────
+  # THE FAIL-CLOSED NEGATIVE CONTROL IS `sonarr`, NOT `jellyfin`.  jellyfin was
+  # M18's control until it was exposed deliberately; any router not in this
+  # list works, and sonarr is strictly better because it carries the `authelia`
+  # middleware, so a leak there would be caught twice.  The checklist in
+  # docs/guides/ernst-app-api-ingress.md uses it.
   #
-  #   Four more, and they are all the SAME KIND of name as audiobookshelf
-  #   rather than four separate arguments: every one of them is in
-  #   `ingressPolicy.appApiHosts`, i.e. answered by the application because its
-  #   native clients cannot follow a forward-auth redirect.  The reasoning is
-  #   in ingress-policy.nix, once, instead of being restated four times here
-  #   and drifting.
+  # THE OLD "NEVER EXPOSE JELLYFIN" NOTE WAS CLOUDFLARE'S TERMS OF SERVICE,
+  # NOT A SECURITY RULE.  It forbade proxying video through the tunnel; M18
+  # deleted the tunnel and the constraint went with it.  Said here because the
+  # prohibition outlived its reason in two files.
   #
-  #   `jellyfin` IS A REVERSAL AND SHOULD BE READ AS ONE.  It was deliberately
-  #   NOT exposed by M18, and it was M18's NEGATIVE CONTROL: the proof that the
-  #   `wan` entrypoint is fail-closed was "jellyfin.goclan.org returns 404 with
-  #   RouterName null on wan while matching jellyfin@file on websecure three
-  #   minutes earlier".  That control is spent now — deliberately, on lgo's
-  #   decision that the household needs Jellyfin from outside.
+  # `openwebui` WIDENS TWO SETTINGS in service-modules/local-ai.nix, both
+  # bounded by the forward-auth above rather than by themselves:
+  # `ENABLE_OAUTH_SIGNUP` creates an account for anyone who clears Authelia —
+  # the set who could already log in; `ENABLE_LOGIN_FORM` is the break-glass
+  # password form, which on the wan path sits BEHIND forward-auth, so it is a
+  # second door only for someone already through the first.  monitoring.nix
+  # makes the same call for Grafana: if Authelia is down, every admin UI in the
+  # house is down.  What no middleware changes is the impact — this vhost holds
+  # the household's conversation history and can drive the GPU and outbound
+  # search, so exposing it raises what an Authelia compromise is worth.
   #
-  #   THE REPLACEMENT CONTROL, so the property does not stop being testable:
-  #   use any router NOT in `wanExposed` — `sonarr` is the obvious one, and it
-  #   is strictly a better control than jellyfin ever was, because it carries
-  #   the `authelia` middleware and so a leak there would be caught twice.  The
-  #   verification checklist in docs/guides/ernst-app-api-ingress.md uses it.
-  #
-  #   THE OLD "NEVER EXPOSE JELLYFIN" NOTE WAS CLOUDFLARE'S, NOT OURS.  M16's
-  #   cloudflared.nix header forbade a jellyfin hostname on the TUNNEL because
-  #   proxying video through Cloudflare violates their terms of service.  M18
-  #   deleted the tunnel; the constraint went with it.  Written down because
-  #   the prohibition outlived its reason in two files and would otherwise read
-  #   as a security rule being overridden.
-  # ── openwebui, ADDED 2026-09-10 — AND IT IS A REVERSAL, LIKE jellyfin ─────
-  #
-  #   M19 shipped `chat` deliberately NOT exposed, and the router comment and
-  #   ledger row L10 both said "must not be".  This is lgo's decision to
-  #   reverse that, and it is recorded as a reversal rather than edited in
-  #   quietly — the same treatment `jellyfin` got above.
-  #
-  #   THE OBJECTION M19 RECORDED, AND WHY IT DOES NOT SURVIVE CONTACT WITH THE
-  #   MECHANISM.  L10 called this "an unauthenticated-by-design conversation
-  #   surface onto a model with tool access".  The first half is not true of
-  #   this deployment: `chat` is in `ingressPolicy.protectedHosts`, so its LAN
-  #   router carries the `authelia` middleware, and `mkWan` COPIES THE LAN
-  #   ROUTER'S MIDDLEWARES onto the wan twin.  Exposing it therefore yields
-  #
-  #       internet → wan-ratelimit → wan-inflight → authelia → Open WebUI
-  #
-  #   i.e. admins-only forward-auth with Authelia's mandatory 2FA in front,
-  #   which is a STRICTLY STRONGER posture than the five `appApiHosts` names
-  #   already on this list — those are answered by the application with
-  #   Authelia never consulted at all.  This is the `jellyseerr`/`auth` shape,
-  #   not the `jellyfin` shape.
-  #
-  #   NO `wanLoginPaths` ENTRY, deliberately.  That list is for `appApiHosts`
-  #   names only, and the reason is in its own header: a forward-auth name
-  #   already has Authelia's PER-IDENTITY regulation in front of its login,
-  #   which beats a per-source-address rate limit.  Adding one here would
-  #   rate-limit Authelia's portal rather than Open WebUI's form and would
-  #   contradict that reasoning.
-  #
-  #   WHAT IS GENUINELY WIDENED, stated rather than implied.  Two settings in
-  #   service-modules/local-ai.nix become internet-relevant, both bounded by
-  #   the forward-auth above rather than by themselves:
-  #
-  #     ENABLE_OAUTH_SIGNUP = "True"  — anyone who clears Authelia gets an
-  #        Open WebUI account created for them automatically.  Bounded because
-  #        `protectedHosts` maps to Authelia's ADMINS-ONLY rule, so the set of
-  #        people who can trigger it is the set who could already log in.
-  #     ENABLE_LOGIN_FORM = "True"    — the break-glass local password form.
-  #        It is deliberate (monitoring.nix makes the same call for Grafana:
-  #        if Authelia is down, every admin UI in the house is down).  On the
-  #        wan path it sits BEHIND forward-auth, so it is not a second door
-  #        from the internet — it is a second door for anyone who is already
-  #        through the first.  Keep it; know it is there.
-  #
-  #   And the impact side, which no middleware changes: this vhost holds the
-  #   household's conversation history and can drive the GPU (image generation)
-  #   and outbound search.  Exposing it raises what an Authelia compromise is
-  #   worth.  That is the trade being made, not a risk being dismissed.
-  # ── immich, ADDED 2026-09-11 (M22).  THE SAME KIND OF NAME AS audiobookshelf,
-  #    WITH ONE PROPERTY NONE OF THE OTHERS HAS ────────────────────────────────
-  #
-  #   It is in `ingressPolicy.appApiHosts`, so the reasoning is the one in that
-  #   file rather than a new argument: the Immich mobile app on two phones and
-  #   the Kodi add-on on the TV are native clients that cannot complete a
-  #   forward-auth redirect, and lgo's requirement is explicitly that the phones
-  #   back up FROM OUTSIDE THE HOUSE, which is what puts the name here rather
-  #   than leaving it LAN-only.
-  #
-  #   WHAT IS GENUINELY NEW, AND IT IS NOT A MOBILE-CLIENT ARGUMENT: part of
-  #   this vhost is UNAUTHENTICATED ON PURPOSE.  An Immich shared album link is
-  #   a URL that the server answers to an anonymous caller — that is the
-  #   feature, and it is the whole reason lgo can send his mother an album
-  #   without her having an account here.  Every other appApiHosts name answers
-  #   only to a credential of some kind; this one answers a link to anybody who
-  #   holds it, from anywhere on the internet, until it is revoked.
-  #
-  #   That is not an objection to exposing it — a shared link that only works
-  #   on the house LAN is not a shared link — but it changes what "the
-  #   application's own accounts are the boundary" means, so it is stated here
-  #   rather than inherited from the audiobookshelf paragraph above.  Immich
-  #   supports an expiry and a password per link; those are the controls, they
-  #   are runtime state, and nothing in this repo can set them.
-  #
-  #   THE FIRST-RUN WINDOW IS CLOSED BY MECHANISM HERE, unlike Audiobookshelf's
-  #   which was closed by being quick.  `IMMICH_ALLOW_SETUP` is FALSE in
-  #   containers/immich.nix, and the public A record is created only after both
-  #   accounts exist — see that file's "THE FIRST-RUN WINDOW" and M22's manual
-  #   steps, which put the record last deliberately.
+  # Reversals and dates: docs/history.md (M16 the original two names, M18, M19
+  # `chat`, M22 immich).
   wanExposed = [
     "jellyseerr"
     "authelia"
@@ -1849,31 +1633,18 @@ in {
       # the 10-eth0 network unit below — see the comment there.
       #
       # THERE WAS A `boot.kernel.sysctl` disable_ipv6 BLOCK IN THIS SPOT AND IT
-      # IS DELIBERATELY GONE, because it never worked and a setting that looks
-      # like a control but is not one is worse than nothing.  Two attempts,
-      # both deployed, both measured, both dead:
+      # IS DELIBERATELY GONE: two attempts, both deployed, both measured, both
+      # dead (`all` alone, then `all`+`default`+`eth0` — eth0 kept
+      # fe80::ff:fe90:4/64 either way).  Two independent reasons, each fatal
+      # alone: systemd-sysctl runs before eth0 exists in this netns, so the
+      # per-interface key is silently skipped; and networkd writes
+      # `disable_ipv6 = 0` on every link it configures.  networkd owns the link.
       #
-      #   `all` alone            -> eth0 kept fe80::ff:fe90:4/64
-      #   `all`+`default`+`eth0` -> eth0 STILL kept it, and the key read back 0
-      #
-      # Two independent reasons, either of which is fatal on its own.
-      # systemd-sysctl runs before eth0 exists in this netns, so the
-      # per-interface key is silently skipped; and systemd-networkd writes
-      # `disable_ipv6 = 0` on every link it configures, so it would overwrite
-      # the key even if the write had landed.  networkd owns the link.
-      #
-      # THE SOCKETS ARE DUAL-STACK AND THEY STAY DUAL-STACK, whatever is done
-      # here.  Go treats `0.0.0.0` as *unspecified* and `favoriteAddrFamily`
-      # returns AF_INET6 with IPV6_V6ONLY=0 for any wildcard listen, so the
-      # address written in an entryPoint makes no difference either.  Measured
-      # on the deployed container with every v6 address gone:
-      #
-      #   ip -6 addr show    ->  (nothing)
-      #   ss -ltnH -f inet6  ->  *:80  *:443  *:8443  *:8082  *:6060
-      #
-      # So the mechanism is not "v4-only sockets" and never could be.  It is
-      # that NO IPv6 ADDRESS EXISTS IN THIS NETNS: the dual-stack sockets have
-      # nothing to be reached on, and no delegated prefix can be accepted.
+      # THE SOCKETS ARE DUAL-STACK AND STAY DUAL-STACK whatever is done here —
+      # Go returns AF_INET6 with IPV6_V6ONLY=0 for any wildcard listen, so the
+      # address written in an entryPoint makes no difference.  The mechanism is
+      # that NO IPv6 ADDRESS EXISTS IN THIS NETNS: the sockets have nothing to
+      # be reached on, and no delegated prefix can be accepted.
       #
       # THE PROOF, EXACTLY, because two different wrong commands have already
       # been written down as one:
@@ -1884,11 +1655,9 @@ in {
       #   ss -ltnH -f inet6          ->  five listeners <- EXPECTED, not a failure
       #
       # The bare `ip -6 addr show` form was accurate only while the deleted
-      # sysctl block existed, because `all = 1` covered `lo` too and took `::1`
-      # away with it.  Removing the sysctls brought `::1` back, which is
-      # correct and harmless: loopback is unreachable from outside this netns.
-      # A future reader running either of the last two commands and reporting a
-      # regression would be the fourth instance of this same mistake.
+      # sysctls existed, because `all = 1` covered `lo` and took `::1` with it.
+      # Loopback is unreachable from outside this netns; `::1` coming back is
+      # correct.
 
       ##########################################################################
       # Users.  Numeric ids are the interface across the nspawn boundary.
@@ -2062,48 +1831,39 @@ in {
               # ── THE 60-SECOND CEILING ON EVERY UPLOAD, AND IT WAS INVISIBLE ─
               #
               # Traefik v3 defaults `respondingTimeouts.readTimeout` to 60s,
-              # and readTimeout bounds "the maximum duration for reading the
-              # ENTIRE REQUEST, INCLUDING THE BODY".  Not the headers, not the
-              # idle time — the whole upload.  So any POST that takes longer
-              # than a minute to transfer is killed mid-body no matter how
-              # healthy both ends are, and Traefik logs it as 499 (client
-              # closed) because the client is what gets cut off.
+              # and it bounds "the maximum duration for reading the ENTIRE
+              # REQUEST, INCLUDING THE BODY" — not the headers, not idle time.
+              # Any POST taking longer than a minute to transfer is killed
+              # mid-body however healthy both ends are, logged as 499 because
+              # the client is what gets cut off.
               #
               # NOT CONFIGURING IT IS NOT THE SAME AS NOT HAVING ONE, which is
-              # the trap this file fell into.  `respondingTimeouts` appeared
-              # nowhere here, and machines/ernst/photo-import.sh recorded on
-              # 2026-09-11 that a mid-import collapse was "not a timeout
-              # (Traefik has no respondingTimeouts set)".  That inference was
-              # backwards: unset means the default, and in v3 the default is
-              # 60s.  The 2026-09-11 failure at --concurrent-tasks 32 is most
-              # likely this same ceiling, since more concurrency means less
-              # throughput per stream and therefore MORE files crossing 60s.
+              # the trap this file fell into: `respondingTimeouts` appeared
+              # nowhere, and that was once read as "no timeout is set" when
+              # unset means the default.
               #
-              # MEASURED 2026-09-14, which is what turned it from a theory into
-              # a number.  A 1.1 GB video died with:
+              # MEASURED 2026-09-14, which turned it from a theory into a
+              # number.  A 1.1 GB video died with
               #
               #   DownstreamStatus 499   Duration 59999986474 ns   (= 60.000 s)
               #   RequestContentSize 897340887                     (856 MB sent)
               #
-              # Exactly 60.000 seconds, 856 MB of 1.1 GB transferred.  The
-              # eight other errors in that run share the same END instant but
-              # have durations of 39 s, 3.4 s and 125 ms — they are immich-go's
-              # --on-errors=stop cancelling what was in flight, not nine
-              # independent failures.  One root cause wearing nine hats.
+              # The eight other errors in that run share the same END instant
+              # but have durations of 39 s, 3.4 s and 125 ms — immich-go's
+              # --on-errors=stop cancelling what was in flight.  One root cause
+              # wearing nine hats.
               #
-              # AN HOUR, AND WHY IT IS NOT UNBOUNDED.  The staged Nextcloud
-              # corpus holds 14 files over 2 GB and a 5 GB maximum; at the
-              # ~14 MB/s a single stream gets alongside seven others, 5 GB
-              # needs ~6 minutes, and a slower link needs more.  3600s covers
-              # that with room.  `0` would disable the timeout entirely and is
-              # the wrong shape of fix — a wedged connection should eventually
-              # die, and "no limit" is how the next person inherits a hang with
-              # no number to reason about.
+              # AN HOUR, AND WHY IT IS NOT UNBOUNDED.  The staged corpus holds
+              # 14 files over 2 GB and a 5 GB maximum; at the ~14 MB/s a single
+              # stream gets alongside seven others, 5 GB needs ~6 minutes.
+              # `0` would disable the timeout entirely and is the wrong shape
+              # of fix — a wedged connection should eventually die, and "no
+              # limit" is how the next person inherits a hang with no number to
+              # reason about.
               #
               # THIS IS NOT AN IMPORT SETTING.  It is in front of every upload
-              # this proxy carries — Immich from both phones, CWA, Jellyfin —
-              # and the import is merely what made a pre-existing ceiling
-              # visible.
+              # this proxy carries — Immich from both phones, CWA, Jellyfin.
+              # The import merely made a pre-existing ceiling visible.
               transport.respondingTimeouts.readTimeout = "3600s";
 
               # THE WILDCARD IS REQUESTED HERE, ONCE, at the entryPoint — not
@@ -2565,46 +2325,30 @@ in {
             };
             # ── Audiobookshelf (M14): NO MIDDLEWARE.  A permanent bypass ────
             #
-            # NO `middlewares`, and — like Jellyfin's router — that is the
-            # whole point of this one rather than an omission.
+            # In `appApiHosts` (./ingress-policy.nix), which owns the
+            # client-compatibility argument: the apps speak the REST API with
+            # a bearer token and have no browser to follow a 302.
             #
-            # THE REASON IS INVARIANT #4's JELLYFIN CLAUSE, NOT CONVENIENCE.
-            # Audiobookshelf has native mobile and TV clients, and a
-            # forward-auth redirect is exactly what those cannot survive: the
-            # app speaks to the REST API with a bearer token and has no browser
-            # to follow a 302 to auth.goclan.org, so every request would fail
-            # in a way that looks like a broken server rather than a login
-            # prompt.  App support is a stated requirement for this library.
+            # THE THIRD PERMANENT BYPASS IN THE FLEET, alongside Jellyfin's
+            # native auth and the qBittorrent WebUI — a `—` row in
+            # docs/ledger.md, so it is not mistaken for something to "fix"
+            # later by adding the middleware back.
             #
-            # This is the THIRD permanent bypass in the fleet, alongside
-            # Jellyfin's native auth and the qBittorrent WebUI, and it is
-            # listed as such in docs/ledger.md — as a
-            # `—` row, because it is permanent and must not be mistaken for
-            # something to "fix" later by adding the middleware back.
-            #
-            # WHAT CARRIES THE AUTHENTICATION INSTEAD.  Audiobookshelf's own
-            # accounts, and they are now the ENTIRE boundary — the same posture
-            # Jellyfin has had since M5 and Jellyseerr since M13.  Two
-            # consequences that are NOT theoretical:
+            # Audiobookshelf's own accounts are then the ENTIRE boundary, with
+            # two non-theoretical consequences:
             #
             #   1. ITS FIRST-RUN WIZARD IS UNAUTHENTICATED BY CONSTRUCTION.
-            #      With no root account yet, the initial-setup page will create
-            #      one for whoever loads it first.  With `authelia` in front
-            #      that page was protected; without it, it is reachable from
-            #      every consumer VLAN the moment the Technitium record
-            #      resolves.  THE ADMIN ACCOUNT MUST BE CREATED IMMEDIATELY
-            #      after the first deploy — the PR body carries this as an
-            #      ordering constraint, not a to-do.
-            #   2. THERE IS NO SECOND FACTOR ON THIS NAME.  Authelia's per-user
-            #      regulation and 2FA do not apply here.  That is the trade
-            #      being made for app support, made deliberately, and it is why
-            #      this comment is long.
+            #      With no root account yet, the setup page creates one for
+            #      whoever loads it first, reachable from every consumer VLAN
+            #      the moment the Technitium record resolves.  THE ADMIN
+            #      ACCOUNT MUST BE CREATED IMMEDIATELY after the first deploy.
+            #   2. THERE IS NO SECOND FACTOR ON THIS NAME.  Authelia's
+            #      per-user regulation and 2FA do not apply.
             #
-            # NOT COMPARABLE TO JELLYSEERR'S EXEMPTION, which rests on a
-            # different argument (its posture is a Jellyfin-account login, so
-            # dropping forward-auth swaps one login for another).  This one
-            # rests on the client-compatibility clause.  Both end at the same
-            # place; do not merge the reasoning.
+            # DO NOT MERGE THIS REASONING WITH JELLYSEERR'S EXEMPTION, which
+            # rests on its posture being a Jellyfin-account login — dropping
+            # forward-auth there swaps one login for another.  This one is the
+            # client-compatibility clause.
             audiobookshelf = {
               rule = "Host(`audiobookshelf.${baseDomain}`)";
               entryPoints = ["websecure"];
@@ -2613,37 +2357,28 @@ in {
 
             # ── Komga: app-API tier, no forward-auth ──────────────────────
             #
-            # In `appApiHosts` (./ingress-policy.nix), so the guard above
-            # REFUSES TO BUILD if anyone adds `middlewares = [ "authelia" ]`
-            # here.  That is deliberate and the argument is worth having in
-            # front of the router as well as in the policy file:
-            #
-            #   Komelia (Android), Mihon's Komga source extension and every
-            #   OPDS reader authenticate with HTTP Basic or an API key against
-            #   /api/** and /opds/**.  None of them has a browser.  A 302 to
-            #   the portal is not a login prompt to any of them, it is a
-            #   malformed response.
+            # In `appApiHosts`: Komelia, Mihon's Komga source and every OPDS
+            # reader authenticate with HTTP Basic or an API key against
+            # /api/** and /opds/**, with no browser.
             #
             # THE KIDS' LIBRARIES ARE NOT BYPASSED BY THIS, which is the one
-            # question exposing Komga actually raises.  Komga enforces
-            # per-user library grants, age restrictions and label filtering
-            # INSIDE the application, on every API and OPDS path, keyed on the
-            # authenticated principal — not on which vhost the request arrived
-            # through.  There is no "internal" code path that skips them.  So
-            # a public vhost changes WHO CAN REACH THE LOGIN, not what a given
-            # account may see once past it.  Verify after deploy by logging in
-            # as a restricted account through the external name and confirming
-            # the library list is short; that check is in the PR test plan
-            # because it is the one that must not be assumed.
+            # question exposing Komga raises.  Komga enforces per-user library
+            # grants, age restrictions and label filtering INSIDE the
+            # application on every API and OPDS path, keyed on the
+            # authenticated principal rather than on which vhost the request
+            # arrived through; there is no "internal" path that skips them.  A
+            # public vhost changes WHO CAN REACH THE LOGIN, not what an account
+            # may see past it.  Verify by logging in as a restricted account
+            # through the external name and confirming the library list is
+            # short — it is in the PR test plan because it must not be assumed.
             #
-            # NO SEPARATE ADMIN SURFACE TO KEEP OFF THIS VHOST.  Komga's
-            # administration is a role on an ordinary account reached through
-            # the same origin, with no distinct port or path prefix to split.
-            # Stated because "keep admin surfaces off the public vhost" is the
-            # policy elsewhere in this file and cannot be honoured here; the
-            # compensation is that the admin account is a strong credential
-            # and Komga has no first-run window (it creates no account until
-            # one is posted).
+            # NO SEPARATE ADMIN SURFACE TO KEEP OFF THIS VHOST: Komga's
+            # administration is a role on an ordinary account on the same
+            # origin, with no port or path prefix to split.  "Keep admin
+            # surfaces off the public vhost" is the policy elsewhere here and
+            # cannot be honoured; the compensation is a strong admin credential
+            # and no first-run window (Komga creates no account until one is
+            # posted).
             komga = {
               rule = "Host(`komga.${baseDomain}`)";
               entryPoints = ["websecure"];
@@ -2654,18 +2389,15 @@ in {
             #
             # The Subsonic API at /rest/** puts the credential in the query
             # string of every request — that is the protocol, not a Navidrome
-            # choice — and Tempo, Symfonium, play:Sub and the rest speak only
-            # that.  Forward-auth cannot be expressed in it at all.
+            # choice — and Tempo, Symfonium and play:Sub speak only that.
+            # Forward-auth cannot be expressed in it at all.
             #
-            # SERVER-SENT EVENTS: Navidrome pushes scan progress and now-
-            # playing over SSE on /api/events.  Traefik does NOT buffer
-            # responses unless a `buffering` middleware is attached, and none
-            # is attached here or inherited by the wan routers — so SSE works
-            # through this proxy with no special configuration.  Recorded as a
-            # PROPERTY TO PRESERVE rather than a setting: adding a `buffering`
-            # middleware to this router later, or to the wan chain, would
-            # break the event stream and present as "the UI stops updating"
-            # rather than as an error.
+            # SERVER-SENT EVENTS, A PROPERTY TO PRESERVE: Navidrome pushes scan
+            # progress and now-playing over SSE on /api/events.  Traefik does
+            # not buffer responses unless a `buffering` middleware is attached,
+            # and none is attached here or inherited by the wan routers.
+            # Adding one later — here or to the wan chain — breaks the stream
+            # and presents as "the UI stops updating", not as an error.
             navidrome = {
               rule = "Host(`navidrome.${baseDomain}`)";
               entryPoints = ["websecure"];
@@ -2674,38 +2406,36 @@ in {
 
             # ── CWA: app-API tier, no forward-auth on this router ─────────
             #
-            # THREE app protocols, none of which can follow a redirect: OPDS
-            # (basic auth), the Kobo sync endpoint (a device token embedded in
-            # the URL path — a Kobo e-reader has no browser at all), and
-            # /kosync (KOReader's progress protocol, custom header auth).
+            # THREE app protocols, none able to follow a redirect: OPDS (basic
+            # auth), the Kobo sync endpoint (a device token in the URL path; a
+            # Kobo has no browser at all), and /kosync (KOReader, custom
+            # header auth).
             #
-            # THE WEB UI IS A DIFFERENT QUESTION AND GETS A DIFFERENT ANSWER.
-            # CWA speaks OIDC natively, so the browser surface is wired to
-            # Authelia's OIDC provider INSIDE the application rather than to
-            # forward-auth at the proxy — see containers/cwa.nix.  That gets
-            # the web UI real 2FA-backed authentication without a middleware
-            # the e-reader would choke on, which is the outcome a
-            # proxy-level bypass alone cannot reach.
+            # THE WEB UI GETS A DIFFERENT ANSWER.  CWA speaks OIDC natively, so
+            # the browser surface is wired to Authelia's OIDC provider INSIDE
+            # the application rather than to forward-auth at the proxy — see
+            # containers/cwa.nix.  Real 2FA-backed auth for the web UI without
+            # a middleware the e-reader would choke on, which a proxy-level
+            # bypass alone cannot reach.
             cwa = {
               rule = "Host(`cwa.${baseDomain}`)";
               entryPoints = ["websecure"];
               service = "cwa";
             };
+
             # ── Storyteller: NO forward-auth, and NOT on `wan` ────────────
             #
-            # The middleware came off on 2026-09-27: the Storyteller Reader
-            # app (Android/iOS) authenticates by POSTing to /api/v2/token and
-            # carrying a token, and forward-auth answered that very call with
-            # a 303 to auth.goclan.org — measured, not assumed. A client with
-            # no browser cannot follow it, so the app could never obtain a
-            # credential at all.  Same client-compatibility clause as
-            # audiobookshelf, komga, navidrome and cwa; the reasoning lives in
-            # containers/ingress-policy.nix beside the appApiHosts entry.
+            # The middleware came off 2026-09-27: the Reader app POSTs to
+            # /api/v2/token to get a credential, and forward-auth answered that
+            # very call with a 303 to auth.goclan.org — measured.  A client
+            # with no browser cannot follow it, so the app could never obtain a
+            # credential at all.  Same clause as audiobookshelf, komga,
+            # navidrome and cwa; the reasoning is in ingress-policy.nix.
             #
-            # `entryPoints = [ "websecure" ]` ONLY — deliberately still absent
-            # from `wanExposed`.  This name answers the LAN and the VPN, never
-            # the public internet, which is what makes dropping forward-auth a
-            # smaller decision here than it was for the five WAN names.
+            # `websecure` ONLY, and deliberately absent from `wanExposed`.
+            # This name answers the LAN and the VPN, never the public
+            # internet, which is what makes dropping forward-auth a smaller
+            # decision here than for the WAN names.
             storyteller = {
               rule = "Host(`storyteller.${baseDomain}`)";
               entryPoints = ["websecure"];
@@ -2714,16 +2444,13 @@ in {
 
             # ── RomM: admin route, behind Authelia ────────────────────────
             #
-            # The usual admin-surface shape, and NOT one of the client-
-            # compatibility carve-outs.  RomM has its own login and an
-            # EmulatorJS in-browser player, but every consumer here is a
-            # browser on a name the M5 wildcard already covers — the Deck
-            # reads its games from a Syncthing replica on local disk, not
-            # through this route, so there is no native client whose token
-            # handling a forward-auth redirect could break.
-            #
-            # That distinction matters because it is exactly the argument
-            # Jellyfin and Audiobookshelf won and this one does not get to.
+            # NOT one of the client-compatibility carve-outs.  RomM has its own
+            # login and an in-browser EmulatorJS player, but every consumer is
+            # a browser — the Deck reads its games from a Syncthing replica on
+            # local disk, not through this route — so there is no native client
+            # whose token handling a forward-auth redirect could break.  That
+            # is exactly the argument Jellyfin and Audiobookshelf won and this
+            # one does not get to.
             romm = {
               rule = "Host(`romm.${baseDomain}`)";
               entryPoints = ["websecure"];
@@ -2733,26 +2460,16 @@ in {
 
             # Open WebUI (M19) — the local-AI chat client.
             #
-            # THIS ROUTER STILL NAMES `websecure` ONLY, AND IT IS NOW EXPOSED
-            # ANYWAY.  Those are not in conflict and the distinction is the
-            # whole design: exposure is never an entryPoints edit here — it is
-            # an entry in `wanExposed`, which makes `mkWan` generate a SECOND
-            # router (`openwebui-wan`) on the `wan` entrypoint.  Adding "wan"
-            # to this list by hand would throw at evaluation.
+            # THIS ROUTER NAMES `websecure` ONLY AND IS EXPOSED ANYWAY.  Not a
+            # conflict — exposure is never an entryPoints edit here, it is an
+            # entry in `wanExposed`, which makes `mkWan` generate a SECOND
+            # router (`openwebui-wan`).  Adding "wan" here by hand throws at
+            # evaluation.  The posture argument is on `wanExposed` above.
             #
-            # M19 shipped this deliberately unexposed and said "must not be";
-            # lgo reversed that 2026-09-10.  The full argument is on the
-            # `wanExposed` list above — in short, the objection recorded in
-            # L10 ("unauthenticated-by-design") is not true of this deployment:
-            # `chat` is in `protectedHosts`, so the middleware below is
-            # inherited by the wan twin and the public path is admins-only
-            # forward-auth with 2FA.
-            #
-            # `authelia` like every other admin surface. It ALSO speaks OIDC to
-            # the same provider (see containers/authelia.nix); the middleware
+            # `authelia` like every other admin surface.  It ALSO speaks OIDC
+            # to the same provider (containers/authelia.nix): the middleware
             # decides whether the request arrives, OIDC decides whose it is.
-            # BOTH now matter on an internet-facing path, which is the reason
-            # the pairing was worth having before it was needed.
+            # Both matter on an internet-facing path.
             openwebui = {
               rule = "Host(`chat.${baseDomain}`)";
               entryPoints = ["websecure"];
@@ -2762,31 +2479,23 @@ in {
 
             # ── Immich (M22): app-API tier, no forward-auth ────────────────
             #
-            # In `ingressPolicy.appApiHosts`, so the guard above REFUSES TO
-            # BUILD if anyone attaches `authelia` here.  Three client classes
-            # make that the only workable answer, and the third is the one
-            # worth reading twice:
+            # In `appApiHosts`, and the third client class is the one worth
+            # reading twice:
             #
             #   the mobile app on two phones — bearer tokens, no browser;
             #   the Kodi add-on on the TV — `x-api-key` over http.client;
             #   A SHARED ALBUM LINK — answered to an ANONYMOUS caller, by
-            #   design, which is how a family member with no account here
-            #   sees an album at all.
+            #   design, which is how someone with no account here sees an
+            #   album at all.
             #
-            # UPLOADS COME THROUGH THIS ROUTER, WHICH IS THE ONE OPERATIONAL
-            # THING TO KNOW ABOUT IT.  Phone auto-backup and the darktable
-            # push from the laptops both POST whole files, and a 4K video off
-            # a phone is not a small request.  Traefik does not buffer request
-            # bodies unless a `buffering` middleware is attached and none is
-            # attached here or inherited by the wan router — so large uploads
-            # stream through with no special configuration.
-            #
-            # RECORDED AS A PROPERTY TO PRESERVE, the way the Navidrome router
-            # records its SSE dependency: adding a `buffering` middleware to
-            # this router later, or to the wan chain every wan router
-            # inherits, would make big uploads fail in a way that presents as
-            # "the phone stopped backing up" rather than as an error anyone
-            # sees.
+            # UPLOADS COME THROUGH THIS ROUTER, which is the operational thing
+            # to know: phone auto-backup and the darktable push both POST whole
+            # files, and a 4K video off a phone is not a small request.
+            # A PROPERTY TO PRESERVE — Traefik does not buffer request bodies
+            # unless a `buffering` middleware is attached, and none is attached
+            # here or inherited by the wan router.  Adding one later would make
+            # big uploads fail as "the phone stopped backing up" rather than as
+            # an error anyone sees.
             immich = {
               rule = "Host(`photos.${baseDomain}`)";
               entryPoints = ["websecure"];
@@ -3011,54 +2720,42 @@ in {
 
             # ── Jellyseerr: the HOUSEHOLD route — posture set by M16 ───────
             #
-            # M13 shipped this router with NO middleware, deliberately, and
-            # its comment said M16 would be where the posture changes,
-            # reviewed as an ingress change.  M16 made that change, and M18
-            # kept it while replacing the mechanism underneath: the name is
-            # still reachable FROM THE INTERNET, now through the `wan`
-            # entrypoint rather than the Cloudflare Tunnel, and the
-            # requirement is unchanged — the unauthenticated attack surface on
-            # the external path is AUTHELIA, not Jellyseerr's Node
-            # application.
+            # Reachable FROM THE INTERNET, and the requirement is that the
+            # unauthenticated attack surface on the external path is AUTHELIA,
+            # not Jellyseerr's Node application.
             #
-            # M18 SPLIT THE ROUTER, and the reason is narrower than it looks.
-            # `jellyseerr-wan` (copied by `withWan`) carries the same
-            # `authelia` middleware PLUS the two external limits; this router
-            # keeps forward-auth and no limits.  So the auth posture is
-            # identical on both paths — which was M16's decision and stands —
-            # and what differs is only that the household is not rate-limited
-            # in its own house.
+            # `jellyseerr-wan` (copied by `withWan`) carries this same
+            # `authelia` middleware plus the two external limits, so the AUTH
+            # POSTURE IS IDENTICAL on both paths and all that differs is that
+            # the household is not rate-limited in its own house.
             #
-            # THE AUTH POSTURE IS STILL UNIFORM, and the alternatives M16
-            # rejected are still rejected.  Splitting on ENTRYPOINT is not the
-            # thing M16 refused; splitting on CLIENT IDENTITY is:
+            # TWO ALTERNATIVES REJECTED, AND STILL REJECTED.  Splitting on
+            # ENTRYPOINT is fine — that is which socket the packet arrived on
+            # and cannot be mis-classified.  Splitting on CLIENT IDENTITY is
+            # what must not happen:
             #
-            #   - a second, internal-only router keyed on ClientIP with no
-            #     middleware FAILS OPEN: any request the internal matcher
-            #     mis-classifies is served unauthenticated.  This shape fails
-            #     CLOSED — a mis-classified internal request meets a login
-            #     form, which is an inconvenience, not an exposure.  An
-            #     entrypoint cannot be mis-classified: it is which socket the
-            #     packet arrived on;
-            #   - an Authelia `networks`-based bypass rule for RFC1918
-            #     sources trusts X-Forwarded-For arithmetic on the exact
-            #     boundary this milestone exists to harden.
+            #   - a second internal-only router keyed on ClientIP with no
+            #     middleware FAILS OPEN: anything the matcher mis-classifies is
+            #     served unauthenticated.  This shape fails CLOSED — a
+            #     mis-classified internal request meets a login form, which is
+            #     an inconvenience, not an exposure;
+            #   - an Authelia `networks` bypass for RFC1918 sources trusts
+            #     X-Forwarded-For arithmetic on the exact boundary this exists
+            #     to harden.
             #
             # The cost is that household members hold an Authelia account
-            # (group `household` in authelia.nix) alongside their Jellyfin
-            # one.  Authelia's remember-me runs a month, so the friction is
-            # periodic, not per-visit.
+            # (group `household` in authelia.nix) alongside their Jellyfin one.
+            # Remember-me runs a month, so the friction is periodic.
             #
-            # "WHO REQUESTED THIS" IS NOT FLATTENED — M13's comment worried
-            # it would be.  Forward-auth sits IN FRONT of Jellyseerr; its own
-            # Jellyfin-account login (and per-user request attribution)
-            # continues underneath, exactly as Grafana keeps its local admin
-            # under the same middleware.
+            # "WHO REQUESTED THIS" IS NOT FLATTENED: forward-auth sits IN FRONT
+            # of Jellyseerr, and its own Jellyfin-account login and per-user
+            # request attribution continue underneath — exactly as Grafana
+            # keeps its local admin under the same middleware.
             #
             # The name is in authelia.nix's access_control via its OWN rule
-            # (household + admins), NOT via `protectedHosts` — that list
-            # feeds the admins-only rule, and this is the one protected name
-            # in the fleet a non-admin must be able to reach.
+            # (household + admins), NOT via `protectedHosts`: that list feeds
+            # the admins-only rule, and this is the one protected name in the
+            # fleet a non-admin must be able to reach.
             jellyseerr = {
               rule = "Host(`jellyseerr.${baseDomain}`)";
               entryPoints = ["websecure"];
@@ -3124,50 +2821,31 @@ in {
           # generate correct absolute URLs.
           # ── A shorter idle timeout on the pool to Authelia (M7) ───────────
           #
-          # LOG HYGIENE, not behaviour.  Shipped as a HYPOTHESIS and since
-          # CONFIRMED — see the measurement at the bottom of this comment.
+          # LOG HYGIENE, not behaviour.  After M7, authelia-main's journal
+          # filled with `status_code=408` "Request timeout occurred" errors
+          # from this container's address — one per idle connection, every one
+          # of those requests having been served.
           #
-          # After M7 deployed, authelia-main's journal filled with:
+          # Authelia's `server.timeouts.read` defaults to 6 s and Traefik holds
+          # an idle keep-alive connection for `idleConnTimeout`, default 90 s.
+          # Whoever's timer is shorter closes it, and fasthttp logs the close
+          # against the LAST request it saw on that connection — which is why
+          # the line names a path that completed normally minutes earlier.
+          # Making Traefik hang up first (5 s < 6 s) means the connection is
+          # always closed by its owner.  The cost is one TCP handshake per
+          # burst on a layer-2 hop that never leaves this host.
           #
-          #   level=error msg="Request timeout occurred while handling request
-          #   from client." error="read tcp 10.0.90.15:9091->10.0.90.12:37010:
-          #   i/o timeout" method=GET path=/ status_code=408
-          #
-          # — one per idle connection, at level=error, from this container's
-          # address.  Nothing is broken: every one of those requests was served.
-          #
-          # The mechanism, as far as it can be reasoned about from here:
-          # Authelia's `server.timeouts.read` defaults to 6 s, and Traefik's
-          # backend connection pool holds an idle keep-alive connection for
-          # `idleConnTimeout`, default 90 s.  Whoever's timer is shorter closes
-          # the connection — today that is always Authelia, and fasthttp logs
-          # the close against the LAST request it saw on that connection, which
-          # is why the line names a path that completed normally minutes ago.
-          #
-          # Making Traefik hang up first (5 s < 6 s) should mean the connection
-          # is always closed by its owner and never by a timeout.  The cost is
-          # one TCP handshake per burst on a layer-2 hop that never leaves this
-          # host — microseconds, and only when the proxy has been idle.
-          #
-          # WHY NOT raise Authelia's read timeout instead: that weakens a real
+          # WHY NOT raise Authelia's read timeout: that weakens a real
           # server-side protection (a slow-header client holding a connection)
           # to silence a log line, and it would have to exceed Traefik's 90 s
-          # to actually work.  The pool is the thing misbehaving; fix the pool.
+          # to work at all.  The pool is the thing misbehaving; fix the pool.
           #
-          # ── CONFIRMED ON ernst, 2026-08-24 ────────────────────────────────
+          # CONFIRMED ON ernst 2026-08-24: zero 408s after the restart, and not
+          # for want of traffic — both accounts registered WebAuthn credentials
+          # through this proxy within the half hour, which is exactly the
+          # browse-then-idle pattern that produced them.
           #
-          #   last 408 logged                       17:42:35
-          #   container@traefik picked this up      17:52:47
-          #   408s after that                       ZERO
-          #
-          # And not for want of traffic: both accounts registered WebAuthn
-          # credentials through this proxy at 18:16 and 18:18, which is exactly
-          # the browse-then-idle pattern that used to produce them.  The
-          # reasoning above holds — Authelia's 6 s read timeout was closing
-          # Traefik's idle pooled connections, and having Traefik hang up at
-          # 5 s means the connection is always closed by its owner.
-          #
-          # Re-check with, if a future nixpkgs bump moves either default:
+          # Re-check if a nixpkgs bump moves either default:
           #   nixos-container run authelia -- \
           #     journalctl -u authelia-main --since "30 min ago" | grep -c 408
           # Expect 0.  If it is ever not 0, say so HERE rather than leaving a

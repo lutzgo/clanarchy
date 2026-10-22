@@ -620,20 +620,14 @@
       '';
   };
 
-  # `osmcSkinFor` USED TO BE HERE — a repair of nixpkgs' dead source pin for
-  # the OSMC skin (upstream renamed the tag, so the fetch 404'd). Both it and
-  # the skin were removed on 2026-09-07; see mediaClient.addons for why. The
-  # tag repair is not worth keeping for a package this role no longer builds,
-  # and the finding that mattered has a home of its own below:
-  #
-  #   `withPackages` SILENTLY DROPS ADD-ONS BUILT AGAINST A DIFFERENT KODI.
-  #   Its filter is `drv ? kodiAddonFor && drv.kodiAddonFor == kodi`, so an
-  #   add-on taken from `pkgs.kodiPackages` (which targets plain `kodi`) while
-  #   wrapping `kodi-gbm` is discarded with no error and no warning — it
-  #   produced an environment byte-identical to one with no add-on at all.
-  #   Anything added to mediaClient.addons must come from the selector's own
-  #   argument `p`, never from `pkgs.kodiPackages`. Keep that in mind before
-  #   "just adding" a skin or PVR client here.
+  # `withPackages` SILENTLY DROPS ADD-ONS BUILT AGAINST A DIFFERENT KODI.
+  # Its filter is `drv ? kodiAddonFor && drv.kodiAddonFor == kodi`, so an
+  # add-on taken from `pkgs.kodiPackages` (which targets plain `kodi`) while
+  # wrapping `kodi-gbm` is discarded with no error and no warning — it
+  # produces an environment byte-identical to one with no add-on at all.
+  # Anything added to mediaClient.addons must come from the selector's own
+  # argument `p`, never from `pkgs.kodiPackages`.  Keep that in mind before
+  # "just adding" a skin or PVR client here.
 
   # The client as Big Picture launches it: scaled for the couch.
   #
