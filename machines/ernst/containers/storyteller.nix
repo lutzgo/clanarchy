@@ -87,17 +87,9 @@
 #   where the line falls.
 #
 #   So this takes the podman tier, and it is that tier's SECOND occupant after
-#   M9's TubeSync.  `virtualisation.oci-containers` INSIDE AN NSPAWN CONTAINER
-#   IS REJECTED, as every milestone adding a service is required to restate:
-#   the entire value of containers/arr/ is that upstream units, upstream
-#   hardening and `systemd-analyze` scores are legible, and an opaque image
-#   inside it is opaque to all three.  The escape hatch is this tier, not that
-#   hybrid.
-#
-#   THE COST, accepted explicitly and identically to M9's: an opaque image, a
-#   package tree we do not build, and a `systemd-analyze security` score for
-#   `podman-storyteller.service` that measures podman rather than the
-#   application.
+#   M9's TubeSync.  modules/containers/podman-netns.nix owns the tier argument
+#   — why this and not `virtualisation.oci-containers` inside an nspawn
+#   container — and what the tier costs.  One image here.
 #
 # ── THE IMAGE IS PINNED BY DIGEST, AND `latest` IS A TRAP HERE ─────────────
 #

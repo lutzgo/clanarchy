@@ -12,8 +12,9 @@
   stylix = {
     enable = true;
 
-    # mkDefault, not a plain value: modules/themes/gruvbox-light.nix (miralda)
-    # overrides this to "light". Every other headful machine takes the default.
+    # mkDefault, not a plain value: modules/themes/default.nix sets polarity
+    # from the machine's chosen palette (modules/themes/palettes.nix), and a
+    # light palette overrides this. Machines with no palette take the default.
     polarity = lib.mkDefault "dark";
 
     # Stylix's release version follows a different cadence than NixOS 26.05;

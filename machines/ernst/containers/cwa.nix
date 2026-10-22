@@ -1,25 +1,13 @@
 # machines/ernst/containers/cwa.nix
 #
 # Calibre-Web-Automated — the ebook library, its OPDS catalogue, its Kobo sync
-# endpoint and its KOReader progress-sync server.
+# endpoint and its KOReader progress-sync server.  Built greenfield at 4.0.6
+# with an empty library; holds the old Arch server's library since 2026-09-17.
 #
-# ── IT DID NOT EXIST BEFORE THIS FILE, WHATEVER THE OTHER COMMENTS SAY ──────
-#
-#   containers/arr/ says "Komga and CWA already serve the READING side in
-#   this household" and docs/history.md repeats it in four places.  It was not
-#   true: there was no CWA in this repo, no container on ernst, no podman
-#   workload, and no Technitium record.  The sentence described an intention
-#   that was never built, and it was load-bearing in the wrong direction —
-#   Kapowarr's placement argument leans on it.
-#
-#   So this is GREENFIELD.  There is no deployed version to report, no pin to
-#   bump, and no 3.x→4.x migration to perform, because there is no 3.x here to
-#   migrate from.  It starts at 4.0.6 with an empty library.
-#
-#   THAT LAST SENTENCE STOPPED BEING TRUE ON 2026-09-17 — see "THE LIBRARY IS
-#   NO LONGER EMPTY" below.  The greenfield paragraph above is kept as written
-#   because it is the record of how this was BUILT, and every argument in it
-#   still holds; what changed is the contents, not the deployment.
+# (Several places in this repo said CWA "already" served the reading side
+# before this file existed.  It did not — no container, no podman workload, no
+# Technitium record.  Kapowarr's placement argument leaned on that sentence, so
+# it is worth knowing it was an intention rather than a deployment.)
 #
 # ── TIER: PODMAN, and the reason is not a preference ────────────────────────
 #
@@ -27,50 +15,41 @@
 #   UPSTREAM project, a different codebase.  Calibre-Web-Automated is
 #   crocodilestick's fork, and everything this deployment is for lives only in
 #   the fork: the ingest pipeline, the Kobo endpoint, the KOReader sync server,
-#   the OIDC support.  Checked before assuming: `pkgs.calibre-web.version`
+#   the OIDC support.  Checked rather than assumed: `pkgs.calibre-web.version`
 #   evaluates to "0.6.26-unstable-2026-03-01" at ernst's pin.
 #
-#   Upstream ships a container image and a compose file and nothing else, which
-#   is the same test M9's TubeSync, M14's Storyteller and RomM applied, with
-#   the same answer.  So it takes the podman tier as its FOURTH occupant.
+#   Upstream ships a container image and a compose file and nothing else — the
+#   same test TubeSync, Storyteller and RomM applied, with the same answer — so
+#   it takes the podman tier as its FOURTH occupant.
 #
-#   `virtualisation.oci-containers` INSIDE AN NSPAWN CONTAINER IS REJECTED, as
-#   every service on this tier is required to restate: the value of
-#   containers/arr/ is that upstream units and their `systemd-analyze`
-#   scores stay legible, and an opaque image inside it is opaque to all three.
-#
-#   THE COST, accepted explicitly: an image we do not build, and a
-#   `systemd-analyze security` score for `podman-cwa.service` that measures
-#   podman rather than CWA.
+#   modules/containers/podman-netns.nix owns the tier argument — why this and
+#   not `virtualisation.oci-containers` inside an nspawn container, and what
+#   the tier costs.  One image here.
 #
 # ── NETWORKING: THE cloudflared PAIR, REUSED ────────────────────────────────
 #
-#   02:00:00:90:00:0d / 10.0.90.21 was M16's cloudflared container and was
-#   marked FREE AGAIN by M18 when the tunnel was deleted.  This takes it back
-#   rather than allocating .23, because an address marked free and then never
-#   reused is how the allocation table stops being trusted.
+#   02:00:00:90:00:0d / 10.0.90.21 was M16's cloudflared container, marked FREE
+#   AGAIN by M18 when the tunnel was deleted.  This takes it back rather than
+#   allocating .23, because an address marked free and never reused is how the
+#   allocation table stops being trusted.
 #
 #   THE DHCP RESERVATION ON THE UDM-Pro MUST BE RE-POINTED, NOT ADDED
-#   ALONGSIDE.  allocations.nix already warns that a reservation for a
-#   MAC nothing uses is how an address gets handed out twice; the MAC here is
-#   the same one cloudflared had, so if the old reservation still exists it is
-#   already correct and nothing needs doing.  Verify before deploying — this is
-#   in the manual checklist.
+#   ALONGSIDE — a reservation for a MAC nothing uses is how an address gets
+#   handed out twice.  The MAC here is the one cloudflared had, so if the old
+#   reservation still exists it is already correct and nothing needs doing.
 #
 # ── INGRESS: app-API tier, and the web UI is handled DIFFERENTLY ────────────
 #
 #   `cwa.goclan.org` is in `appApiHosts` (containers/ingress-policy.nix), so
-#   its Traefik router carries NO forward-auth and the guard in traefik.nix
-#   refuses to build if anyone adds it.  Three separate app protocols make that
-#   necessary, and each is a distinct path — verified by reading the routes in
-#   the v4.0.6 source rather than from documentation:
+#   its router carries NO forward-auth and the guard in traefik.nix refuses to
+#   build if anyone adds it.  Three separate app protocols make that necessary,
+#   each a distinct path — read out of the v4.0.6 source, not the docs:
 #
 #     /opds/**                    OPDS, HTTP Basic.
 #     /kobo/<auth_token>/v1/...   the Kobo device sync.  THE TOKEN IS IN THE
 #                                 URL PATH (`Blueprint("kobo", url_prefix=
 #                                 "/kobo/<auth_token>")`), and a Kobo e-reader
-#                                 has no browser at all — there is nothing on
-#                                 the device that could render a login page.
+#                                 has no browser at all.
 #     /kosync/**                  KOReader's progress protocol, RFC 7617
 #                                 header auth.
 #
@@ -78,16 +57,16 @@
 #   bypass alone cannot reach.  CWA speaks OIDC natively, so the browser
 #   surface goes to Authelia's OIDC provider INSIDE the application: real
 #   two-factor, Authelia's per-user regulation, the same identity as every
-#   other service here.  The client is registered declaratively in
+#   other service.  The client is registered declaratively in
 #   containers/authelia.nix.
 #
-#   BUT THE CWA SIDE OF THAT IS A MANUAL STEP, AND IT CANNOT BE OTHERWISE.
+#   BUT THE CWA SIDE OF THAT IS A MANUAL STEP AND CANNOT BE OTHERWISE.
 #   Verified by grepping every `os.environ` read in the v4.0.6 source: the only
 #   OAuth-related environment variable that exists is `OAUTH_SSL_STRICT`.  The
 #   provider, client id, client secret and metadata URL are rows in CWA's
 #   app.db, written through Admin → Edit Basic Configuration.  There is no
-#   config file to template and no env var to set.  Do not add one to this file
-#   on the strength of a documentation page; it will be silently ignored.
+#   config file to template and no env var to set.  Do not add one on the
+#   strength of a documentation page; it will be silently ignored.
 #
 # ── KOREADER SYNC: DEFAULT OFF AT 4.0.6, AND ENABLING IT IS ALSO MANUAL ─────
 #
@@ -98,147 +77,121 @@
 #       koreader_sync_enabled SMALLINT DEFAULT 0 NOT NULL
 #
 #   and `cps/progress_syncing/settings.py` reads that column and nothing else,
-#   with an except-branch that returns False "to avoid unexpected DB writes
-#   when setting is missing".  It fails closed.  The v4.0.6 release notes say
-#   why the default moved: disabling it "prevents background checksum
-#   calculations and database table creation".
+#   with an except-branch returning False "to avoid unexpected DB writes when
+#   setting is missing".  It fails closed.  The release notes say the default
+#   moved because disabling it "prevents background checksum calculations and
+#   database table creation".
 #
-#   THE STARTUP COST, in upstream's own words, logged when you turn it on
-#   (cps/cwa_functions.py):
+#   THE STARTUP COST, in upstream's own words (cps/cwa_functions.py):
 #
 #     "KOReader sync enabled: checksum backfill runs at startup and may
 #      temporarily lock metadata.db.  Disable and restart the container to
 #      stop a running backfill."
 #
-#   So on a library of any size the first start after enabling is slow and the
-#   web UI may block on metadata.db while it runs.  On an EMPTY library the
-#   backfill is trivial, which was the reason to turn it on before the library
-#   filled rather than after.
-#
-#   THAT ADVICE WAS TAKEN AND THE BILL HAS NOW BEEN PAID, which is worth a
-#   measurement rather than a worry: the 2026-09-17 import (below) triggered a
+#   MEASURED RATHER THAN WORRIED ABOUT: the 2026-09-17 import triggered a
 #   backfill over all 5268 format rows and it completed in UNDER A MINUTE —
 #   5195 queued, 0 failed, 73 skipped.  "Slow first start" is real but the
 #   scale here was seconds, not the outage the warning implies.
 #
 #   IT IS A UI TOGGLE (`cwa_settings.html`, "Enable KOReader Sync (CWA
-#   Plugin)"), stored in app.db, with no environment override.  A web search
-#   suggested an env var exists; the source says it does not, and the source
-#   wins.  The step is in docs/guides/ernst-app-api-ingress.md.  Its tooltip
-#   notes it does NOT require a restart to take effect.
+#   Plugin)"), stored in app.db, with no environment override — a web search
+#   suggested otherwise; the source wins.  Its tooltip notes it does NOT
+#   require a restart.
 #
 # ── THE LIBRARY: ITS OWN, AND KOMGA'S IS NOT TOUCHED ────────────────────────
 #
 #   CWA needs a CALIBRE LIBRARY — a directory with a metadata.db and an
-#   Author/Title/ tree it restructures files into.  That is not what
-#   /srv/media/library/books is: that is Bindery's plain output directory, and
-#   it is also one of the two trees Komga reads.
+#   Author/Title/ tree it restructures files into.  /srv/media/library/books is
+#   not that: it is Bindery's plain output directory.
 #
-#   POINTING CWA AT IT WAS REJECTED.  CWA would convert the tree in place,
-#   which is exactly the "do not restructure the library" constraint, and it
-#   would do it to a directory another service is serving.  Komga's library
-#   configuration is deliberately untouched by this file.
+#   POINTING CWA AT IT WAS REJECTED.  CWA would convert the tree IN PLACE,
+#   which is exactly the "do not restructure the library" constraint.  So CWA
+#   gets its own root, and the trees are complementary rather than overlapping:
 #
-#   So CWA gets ITS OWN library root, and the two are complementary rather than
-#   overlapping — the same call M14 made for Audiobookshelf and Storyteller:
-#
-#     /srv/media/library/books    Bindery writes, Komga reads.  UNCHANGED.
+#     /srv/media/library/books    Bindery writes.  UNCHANGED.
 #     /srv/media/library/comics   Kapowarr writes, Komga reads.  UNCHANGED.
-#     /srv/media/library/calibre  CWA owns entirely.  Started empty; holds the
-#                                 old Arch server's library since 2026-09-17.
+#     /srv/media/library/calibre  CWA owns entirely.
 #     /srv/media/ingest/cwa       CWA's watch folder.  Files are DELETED after
-#                                 processing — that is upstream's documented
-#                                 behaviour, so nothing that matters may be the
-#                                 only copy in here.
+#                                 processing — upstream's documented behaviour,
+#                                 so nothing that matters may be the only copy
+#                                 in here.
 #
-#   ── THE LIBRARY IS NO LONGER EMPTY (2026-09-17) ──────────────────────────
+# ── THE 2026-09-17 IMPORT ──────────────────────────────────────────────────
 #
-#   /srv/media/library/calibre now holds 4472 BOOKS, 12.4 GB, 1759 author
-#   directories.  They came from the old Arch server.
+#   /srv/media/library/calibre holds 4472 BOOKS, 12.4 GB, 1759 author
+#   directories, from the old Arch server.
 #
 #   WHERE THEY WERE, AND WHY NOBODY FOUND THEM: the whole Calibre library —
 #   metadata.db, the Author/Title (id) tree, metadata_db_prefs_backup.json —
-#   had been restored into /srv/audiobooks/ebooks, which containers/arr/
-#   declares as "the DRM-free ebook halves, staged by hand" for Storyteller.
-#   NOTHING SCANS THAT DIRECTORY — Storyteller takes its input through its own
-#   web UI — so a complete library sat inert in it for weeks while this file
-#   described itself as empty.  arr/'s comment is corrected alongside.
+#   had been restored into /srv/audiobooks/ebooks, which is Storyteller's
+#   hand-staged pool.  NOTHING SCANS THAT DIRECTORY (Storyteller takes input
+#   through its own web UI), so a complete library sat inert for weeks.
 #
-#   HOW IT WAS MOVED, and the two options that were rejected:
+#   HOW IT WAS MOVED, and the two options rejected:
 #
 #     REJECTED — pour the files through /cwa-book-ingest.  5268 files, one
-#       ebook-convert each, and the curated metadata re-fetched from scratch
-#       rather than kept.  Days of CPU for a WORSE library, and ingest deletes
-#       what it processes.
-#     REJECTED — repoint this file's libraryDir at /srv/audiobooks/ebooks.  One
-#       line and no copy, but CWA restructures a tree in place and that tree is
-#       on another service's dataset — the same argument the section above
-#       makes against /srv/media/library/books, for the same reason.
+#       ebook-convert each, curated metadata re-fetched from scratch rather
+#       than kept.  Days of CPU for a WORSE library, and ingest deletes what it
+#       processes.
+#     REJECTED — repoint libraryDir at /srv/audiobooks/ebooks.  One line and no
+#       copy, but CWA restructures in place and that tree is on another
+#       service's dataset.
 #     DONE — rsync the library wholesale into the root CWA already owns, chown
 #       to cwa:cwa.  A Calibre library is self-contained, so CWA adopted it
 #       with no import step at all: metadata, series, tags and covers intact.
 #
-#   THE SCHEMA MIGRATION THIS FILE SAID WOULD NEVER HAPPEN, DID.  The header's
-#   4.0.x paragraph argues that starting empty means "none of those migration
-#   paths is ever exercised here".  The imported database is Calibre schema
-#   user_version 25, so 4.0.6 was handed exactly the case that paragraph
-#   expected to avoid.  IT WENT THROUGH CLEANLY — no migration error, no
-#   sqlite3.OperationalError, 4472 books readable afterwards.  Recorded as a
-#   measurement, not as a reason to relax the pin.
+#   THE SCHEMA MIGRATION WENT THROUGH CLEANLY.  The imported database is
+#   Calibre schema user_version 25, so 4.0.6 was handed exactly the migration
+#   case a greenfield start was supposed to avoid: no migration error, no
+#   sqlite3.OperationalError, 4472 books readable afterwards.  A measurement,
+#   not a reason to relax the pin.
 #
-#   73 DANGLING FORMAT ROWS CAME WITH IT, and they are NOT import damage.  The
-#   backfill logged 73 "SKIP: File not found"; each one was checked against the
-#   SOURCE tree and is missing there too — rows in the old metadata.db whose
-#   files were lost on the Arch server long before this copy.  Do not go
-#   looking for them in a snapshot of /srv/media; the copy is byte-complete and
-#   was verified file-by-file against the source before the source was emptied.
+#   73 DANGLING FORMAT ROWS CAME WITH IT, AND THEY ARE NOT IMPORT DAMAGE.  The
+#   backfill logged 73 "SKIP: File not found"; each was checked against the
+#   SOURCE tree and is missing there too — rows whose files were lost on the
+#   Arch server long before this copy.  Do not go looking for them in a
+#   snapshot of /srv/media; the copy is byte-complete and was verified
+#   file-by-file against the source before the source was emptied.
 #
 #   /srv/audiobooks/ebooks IS NOW EMPTY and remains Storyteller's staging pool,
 #   still created by arr/'s audiobooks-tree.service as 2770 root:media.  The
-#   12 GB it gave up does not return to the pool immediately: zdata/audiobooks
-#   carries com.sun:auto-snapshot=true, so the data is pinned in the auto-snaps
-#   until retention rolls over.
+#   12 GB does not return to the pool immediately: zdata/audiobooks carries
+#   com.sun:auto-snapshot=true, so the data is pinned until retention rolls.
 #
 #   THE PRE-IMPORT STATE IS KEPT at /srv/state/cwa/pre-import-backup-20260917/
 #   — the one-book metadata.db this deployment had accumulated, plus its Dune
-#   test import.  DELETABLE once nobody is nervous; it is not referenced by
-#   anything and CWA does not read it.
+#   test import.  DELETABLE once nobody is nervous; nothing references it.
 #
-#   WIRING BINDERY'S OUTPUT INTO CWA'S INGEST IS NOW DONE — lgo's decision,
-#   2026-09-27.  This paragraph used to leave it as "an explicit non-decision",
-#   on the grounds that it would move ebook acquisition from "Komga reads a
-#   plain tree" to "CWA owns the tree and Komga reads CWA's output".
+# ── BINDERY'S OUTPUT IS WIRED INTO CWA'S INGEST (lgo, 2026-09-27) ──────────
 #
-#   BOTH HALVES OF THAT OBJECTION ARE GONE, and for different reasons:
+#   Two facts make it safe, and both were checked:
 #
 #     1. KOMGA NO LONGER READS EBOOKS AT ALL.  It serves comics, and its
-#        /srv/media/library/books library was removed by lgo on 2026-09-27.
-#        So there is no second reader whose topology could change.
-#     2. IT IS NOT A REDIRECT, IT IS A COPY.  Bindery's own CWA integration
+#        /srv/media/library/books library was removed on 2026-09-27, so there
+#        is no second reader whose topology could change.
+#     2. IT IS NOT A REDIRECT, IT IS A COPY.  Bindery's CWA integration
 #        (`cwa.ingest_path`, set in its UI) copies the finished file into the
 #        ingest folder and KEEPS ITS OWN — upstream's wording, and measured:
-#        BINDERY_LIBRARY_DIR is untouched by it.  So the thing the paragraph
-#        feared — CWA taking ownership of Bindery's tree — does not happen in
-#        either direction.  /srv/media/library/books stays exactly as it is.
+#        BINDERY_LIBRARY_DIR is untouched.  CWA never takes ownership of
+#        Bindery's tree, and /srv/media/library/books stays as it is.
 #
 #   THE COST, stated rather than buried: every acquired ebook exists twice, in
 #   Bindery's plain tree and again inside CWA's Calibre library, and the second
-#   copy is a COPY rather than a hardlink because CWA converts and restructures
-#   what it ingests.  This is the one path into /srv/media that deliberately
-#   breaks invariant #2's hardlink property, and it is affordable only because
-#   ebooks are kilobytes to a few megabytes.  Do not reach for this shape for
-#   anything measured in gigabytes.
+#   is a COPY rather than a hardlink because CWA converts and restructures what
+#   it ingests.  THIS IS THE ONE PATH INTO /srv/media THAT DELIBERATELY BREAKS
+#   INVARIANT #2's HARDLINK PROPERTY, affordable only because ebooks are
+#   kilobytes to a few megabytes.  Do not reach for this shape for anything
+#   measured in gigabytes.
 #
-#   AND THE INGEST FOLDER STILL DELETES WHAT IT PROCESSES, which is now a
+#   AND THE INGEST FOLDER STILL DELETES WHAT IT PROCESSES, which here is a
 #   SAFETY property rather than a hazard: the copy is the disposable one and
 #   Bindery holds the original.
 #
 # ── SHELFMARK ─────────────────────────────────────────────────────────────
 #
 #   Not configured anywhere in this fleet — no Nix, no container, no DNS
-#   record, no reference in any file.  There is nothing pointed at BookLore to
-#   flag, because there is no Shelfmark and no BookLore either.  Recorded
-#   because the absence was checked rather than assumed.
+#   record, no reference in any file.  There is no Shelfmark and no BookLore
+#   either.  Recorded because the absence was checked rather than assumed.
 #
 # ── Storage layout on this host (see machines/ernst/disko.nix) ──────────────
 #

@@ -1,289 +1,169 @@
 # machines/ernst/containers/music-assistant.nix
 #
 # Music Assistant — the household's music player, over the library Navidrome
-# already indexes (M30 — see docs/history.md).  An nspawn container with TWO legs
-# on br0, serving `music.goclan.org` through Traefik behind forward-auth.
+# already indexes (M30 — see docs/history.md).  An nspawn container with TWO
+# legs on br0, serving `music.goclan.org` through Traefik.
 #
 # ── WHAT THIS IS, AND WHAT IT IS NOT ────────────────────────────────────────
 #
-#   Navidrome is a LIBRARY SERVER.  It indexes Lidarr's tree, serves the
-#   Subsonic API, and every client — Tempo, Symfonium, play:Sub — does the
-#   playing itself, on the phone, to whatever that phone is plugged into.
-#   Nothing in this house can say "play this album in the living room".
+#   Navidrome is a LIBRARY SERVER: it indexes Lidarr's tree, serves the
+#   Subsonic API, and every client does the playing itself, on the phone.
+#   Nothing in this house could say "play this album in the living room".
 #
-#   Music Assistant is the missing half: a player controller.  It holds the
+#   Music Assistant is the missing half — a player controller.  It holds the
 #   queue, resolves a track to a stream, transcodes if the target needs it, and
-#   drives the speakers directly.  It does NOT index music — it reads
-#   Navidrome over the Subsonic API and treats it as its library.
+#   drives the speakers.  It does NOT index music: it reads Navidrome over the
+#   Subsonic API and treats it as its library.
 #
-#   SO THIS ADDS NOTHING TO THE MUSIC PIPELINE AND DOES NOT REPLACE ANY OF IT.
-#   Lidarr + slskd + Soularr still acquire (M14), Navidrome still indexes and
-#   still serves every mobile client on its own hostname (`appApiHosts`, on the
-#   WAN).  This container is a consumer of Navidrome, in exactly the sense that
-#   containers/karakeep.nix is a consumer of llama-swap.
+#   SO IT ADDS NOTHING TO THE MUSIC PIPELINE AND REPLACES NONE OF IT.  Lidarr +
+#   slskd + Soularr still acquire, Navidrome still indexes and still serves
+#   every mobile client on its own hostname.  This is a consumer of Navidrome
+#   in exactly the sense containers/karakeep.nix is a consumer of llama-swap.
 #
-# ── WHY THE nspawn TIER ─────────────────────────────────────────────────────
-#
-#   `services.music-assistant` is a first-class NixOS module, so architecture
-#   invariant #1 puts it here.  The podman tier exists for upstreams that ship
-#   only an OCI image (storyteller, cwa, romm, tubesync), and this is not one —
-#   despite Music Assistant's own documentation recommending its Docker image
-#   and its HAOS add-on.  containers/miniflux.nix and containers/karakeep.nix
-#   both made this call at M27 and this file takes the same side.
+#   nspawn tier because `services.music-assistant` is a first-class NixOS
+#   module (invariant #1), despite upstream recommending its Docker image.
 #
 # ── THE LIBRARY: `opensubsonic`, NOT `filesystem_local` ─────────────────────
 #
-#   Music Assistant would happily read /srv/media/music directly — the
-#   `filesystem_local` provider needs no dependencies at all, and it is the
-#   obvious-looking answer since the files are on this very host.  It is
-#   deliberately NOT done, for two reasons that both matter:
+#   Music Assistant would happily read /srv/media/music directly, and
+#   `filesystem_local` needs no dependencies at all.  Deliberately not done:
 #
 #     1. IT WOULD PUT A SECOND INDEX ON THE SAME FILES.  Navidrome's database
-#        is not a cache of the library — containers/arr/ says so at length:
-#        it holds play counts, ratings, starred tracks and playlists that exist
-#        nowhere else.  A second scanner means two libraries that disagree
-#        about what is in them, and the one the phones use is the one that
-#        would drift.
-#     2. IT WOULD NEED THE MEDIA MOUNT.  `filesystem_local` means binding
-#        /srv/media/music into this container and joining gid 3000, which is a
-#        handle on 47 TB for a service whose entire job is to fetch bytes over
-#        HTTP.  Reading through Navidrome keeps this container with NO bind
-#        mount onto the media tree at all — the same trade
-#        containers/immich.nix and containers/nextcloud.nix make.
+#        is not a cache — it holds play counts, ratings, starred tracks and
+#        playlists that exist nowhere else.  Two scanners means two libraries
+#        that disagree, and the one the phones use is the one that would drift.
+#     2. IT WOULD NEED THE MEDIA MOUNT — binding /srv/media/music in and
+#        joining gid 3000, a handle on 47 TB for a service whose entire job is
+#        to fetch bytes over HTTP.  Reading through Navidrome keeps this
+#        container with NO bind mount onto the media tree at all.
 #
-#   `subsonic_scrobble` is the return path and is why this arrangement is
-#   better than a second index rather than merely cheaper: a play started in
-#   Music Assistant is scrobbled back to Navidrome, so the history and the star
-#   ratings stay in the one database the mobile clients read.  It declares
-#   `depends_on: opensubsonic` and takes no extra dependency.
+#   `subsonic_scrobble` is the return path, and it is why this is better than a
+#   second index rather than merely cheaper: a play started here is scrobbled
+#   back to Navidrome, so history and star ratings stay in the one database the
+#   mobile clients read.  It declares `depends_on: opensubsonic`.
 #
-#   THE PROVIDER IS CONFIGURED OUTSIDE THIS FILE.  Music Assistant keeps
-#   provider configuration in its own database under ${stateRoot}; there is no
-#   declarative option for a URL and a password, and there will not be one.
-#   The Navidrome account it authenticates with is a manual step — see
-#   docs/history.md M30.
+#   THE PROVIDER IS CONFIGURED OUTSIDE THIS FILE.  Provider configuration lives
+#   in Music Assistant's own database under ${stateRoot}; there is no
+#   declarative option for a URL and a password and there will not be one.
 #
 #   "OUTSIDE THIS FILE" IS NOT THE SAME AS "IN THE BROWSER", and the difference
 #   bit twice: `musiccast` and `subsonic_scrobble` declare no config entries, so
-#   their setup dialogs have no fields and the SAVE button can never enable.
-#   They have to be written into the settings database directly.  See the note
-#   at `providers` below for the exact shape and the procedure.
+#   their setup dialogs have no fields and SAVE can never enable.  They must be
+#   written into the settings database directly — see the note at `providers`
+#   for the shape and the procedure.
 #
 # ── TWO LEGS, AND THE SECOND ONE IS THE WHOLE POINT ─────────────────────────
 #
-#   eth0  VLAN 90 (Services)  — Traefik reaches the web UI here, Home
-#                               Assistant reaches the WebSocket API here, and
-#                               Navidrome is one L2 hop away on .13.
-#   iot1  VLAN 20 (IoT)       — the segment the household's speakers are on.
-#                               This leg exists for DISCOVERY, and it is not
-#                               optional.
+#   eth0  VLAN 90 (Services)  — Traefik reaches the web UI, Home Assistant
+#                               reaches the WebSocket API, Navidrome is one L2
+#                               hop away on .13.
+#   iot1  VLAN 20 (IoT)       — the segment the speakers are on.  This leg
+#                               exists for DISCOVERY and is not optional.
 #
-#   THE PLAYERS IN THIS HOUSE ARE TWO YAMAHA MusicCast SPEAKERS ON VLAN 20 —
-#   `Küche` at 10.0.20.31 and `Renate` at 10.0.20.32.  No Chromecast, no Sonos,
-#   no DLNA renderer, no Snapcast.
+#   THE PLAYERS ARE TWO YAMAHA MusicCast SPEAKERS ON VLAN 20 — `Küche` at
+#   10.0.20.31 and `Renate` at 10.0.20.32.  No Chromecast, no Sonos, no DLNA
+#   renderer, no Snapcast.  M30 shipped saying there was ONE, having read Home
+#   Assistant's `core.config_entries` as an inventory of the segment when it is
+#   an inventory of what the HUB has been configured with.  Browsing
+#   `_http._tcp.local.` from the leg itself found both in seconds.
 #
-#   THIS FILE SHIPPED SAYING THERE WAS ONE, and the correction is worth keeping
-#   because of where the wrong number came from.  M30 read Home Assistant's
-#   `core.config_entries`, found one `yamaha_musiccast` entry, and treated it as
-#   an inventory of the segment.  It is an inventory of what the HUB has been
-#   configured with.  Browsing `_http._tcp.local.` from the leg itself found
-#   both in seconds — see the note at `musiccastAddrs`.
+#   mDNS is link-local by definition, and this repo has twice refused in
+#   writing to relay it across a firewall boundary.  containers/home-assistant.nix
+#   answered that with a second veth onto the segment its devices are on; this
+#   file does the same, one VLAN later.  Unicast to VLAN 20 needs no leg — the
+#   UDM-Pro has one `Internal` zone with Allow All.  What is not routable is
+#   the discovery, and that is all this leg is for.
+#
+#   `iot0` is taken by containers/home-assistant.nix, hence `iot1`.  nspawn's
+#   `--network-veth-extra` names BOTH ends, so the name lands in the host's one
+#   flat interface namespace; the assertion in modules/containers/assertions.nix
+#   is what catches a collision, not this comment.
 #
 # ── AND THE SECOND LEG DOES NOTHING UNTIL ONE SETTING IS CHANGED ────────────
 #
-#   READ THIS BEFORE DEBUGGING ANY "no players found" REPORT.  Music Assistant's
-#   zeroconf binds to the DEFAULT INTERFACE ONLY unless told otherwise, and the
-#   option's own description says so:
+#   READ THIS BEFORE DEBUGGING ANY "no players found" REPORT.  Music
+#   Assistant's zeroconf binds to the DEFAULT INTERFACE ONLY unless told
+#   otherwise (CONF_ENTRY_ZEROCONF_INTERFACES, constants.py:669).  The default
+#   here is eth0, on VLAN 90, where there are no speakers.  So `iot1` is
+#   carried, addressed, firewalled and DECORATIVE until Settings -> Core ->
+#   Discovery -> "Mdns/Zeroconf discovery interface(s)" is set to **All
+#   interfaces** (`core.discovery.values.zeroconf_interfaces = "all"`,
+#   advanced-only, `requires_reload`).
 #
-#     "By default, Music Assistant will only listen on the default interface.
-#      If you have multiple network interfaces and you want to discover players
-#      on all interfaces, you can change this setting to 'All interfaces'."
-#         — CONF_ENTRY_ZEROCONF_INTERFACES, constants.py:669
-#
-#   The default interface here is eth0, on VLAN 90, where there are no speakers.
-#   So `iot1` is CARRIED, ADDRESSED, FIREWALLED AND DECORATIVE until
-#   Settings -> Core -> Discovery -> "Mdns/Zeroconf discovery interface(s)" is
-#   set to **All interfaces** (`core.discovery.values.zeroconf_interfaces =
-#   "all"`, advanced-only, `requires_reload`).
-#
-#   MEASURED BOTH WAYS on 2026-09-27: with the default, the provider loaded and
+#   MEASURED BOTH WAYS 2026-09-27: with the default, the provider loaded and
 #   discovered nothing for twenty minutes while both speakers were announcing —
 #   confirmed by browsing `_http._tcp.local.` from the hass container's own
-#   VLAN-20 leg, which saw both immediately.  With "all", both appeared within a
-#   minute of the reload.
+#   VLAN-20 leg, which saw both immediately.  With "all", both appeared within
+#   a minute of the reload.
 #
-#   THIS IS THE SILENT FAILURE THIS FILE ALREADY WARNED ABOUT, arriving from a
-#   direction the warning did not anticipate.  The note on the firewall rules
-#   says an absent accept leaves the leg "decorative while looking correct", and
-#   that discovery finding nothing is "indistinguishable from a household with
-#   no discoverable devices".  Both were true here with every rule correct: the
-#   application simply was not listening on the interface.  It is NOT declarable
-#   — it lives in Music Assistant's own settings database like every provider —
-#   so it is a deploy step, and it is the FIRST one to check.
+#   It is NOT declarable — it lives in the settings database like every
+#   provider — so it is a deploy step, and the FIRST one to check.  The failure
+#   is indistinguishable from a household with no discoverable devices, with
+#   every firewall rule correct.
 #
-#   And Music Assistant's `musiccast` provider is DISCOVERY-ONLY.  Its manifest
-#   declares `"mdns_discovery": ["_http._tcp.local."]` and provider.py has
-#   exactly one entry point, `on_mdns_service_state_change`; there is no
-#   add-by-address config flow to fall back on.  (`check_yamaha_ssdp` runs
-#   afterwards and is a UNICAST HTTP GET of the device description, not
-#   multicast — which is why this file opens 5353/udp and, unlike
-#   containers/home-assistant.nix, does NOT open 1900/udp.)
-#
-#   mDNS is link-local by definition, and this repo has refused to relay it
-#   across a firewall boundary twice in writing — M8's session prompt and note
-#   3 of machines/ernst/networking.nix.  containers/home-assistant.nix answered
-#   that with a second veth onto the segment its devices are on; this file
-#   answers it the same way, for the same reason, one VLAN later.
-#
-#   Unicast to VLAN 20 needs no leg at all: the UDM-Pro has LAN, IoT, HA, DNS,
-#   Servers and Matter in one `Internal` zone with `Internal -> Internal: Allow
-#   All`.  What is not routable is the discovery, and that is all this leg is
-#   for.
-#
-# ── THE VETH IS `iot1`, AND THAT IS THE M29 OUTAGE NOT REPEATED ─────────────
-#
-#   `extraVeths.<name>` becomes nspawn's `--network-veth-extra=<name>`, which
-#   names BOTH ends, so the name lands in the HOST's one flat interface
-#   namespace.  M19 named Open WebUI's leg `ai0`, M27 gave karakeep the same
-#   name, and Open WebUI silently had no second interface for five days.
-#
-#   `iot0` is taken, by containers/home-assistant.nix.  Hence `iot1`.  The
-#   assertion at the top of machines/ernst/networking.nix is what checks this
-#   rather than the comment — it groups every container's `extraVeths` and
-#   fails evaluation on a collision.
+#   And the `musiccast` provider is DISCOVERY-ONLY: its manifest declares
+#   `"mdns_discovery": ["_http._tcp.local."]` and provider.py has exactly one
+#   entry point, `on_mdns_service_state_change`.  There is no add-by-address
+#   flow to fall back on.  (`check_yamaha_ssdp` runs afterwards and is a
+#   UNICAST HTTP GET of the device description, not multicast — which is why
+#   this file opens 5353/udp and, unlike containers/home-assistant.nix, does
+#   NOT open 1900/udp.)
 #
 # ── THE STREAM SERVER IS A SECOND LISTENER, ON A SECOND PORT ────────────────
-#
-#   Music Assistant runs TWO HTTP servers, and conflating them is how the
-#   firewall ends up wrong:
 #
 #     8095  the API and the web UI.  A WebSocket-driven SPA; the Home
 #           Assistant integration speaks the same WebSocket.
 #     8097  the STREAM server, deliberately separate from the API
-#           (controllers/streams/README.md).  This is the URL a PLAYER fetches
-#           — so its client is a Yamaha speaker, not a browser and not
-#           Traefik.
+#           (controllers/streams/README.md).  Its client is a Yamaha speaker,
+#           not a browser and not Traefik.
 #
-#   Both are Python constants (`DEFAULT_PORT`), settable only in Music
-#   Assistant's own settings database.  Change either in the UI and the rules
-#   below stop matching, silently.
+#   Both are Python constants (`DEFAULT_PORT`), settable only in the settings
+#   database.  Change either in the UI and the rules below stop matching,
+#   silently.
 #
 # ── AND THE RECEIVER TALKS BACK ON AN EPHEMERAL UDP PORT ────────────────────
 #
 #   aiomusiccast does not poll.  It opens a UDP socket on ("0.0.0.0", 0) — an
-#   EPHEMERAL port, chosen by the kernel — and hands the number to the receiver
-#   in an `X-AppPort` header; the receiver then pushes status events there,
-#   roughly every second while playing (pyamaha.py:186-199).
+#   EPHEMERAL port chosen by the kernel — and hands the number to the receiver
+#   in an `X-AppPort` header; the receiver pushes status events there roughly
+#   every second while playing (pyamaha.py:186-199).
 #
 #   There is no fixed port to open, and conntrack does not help: the events are
-#   unsolicited from the kernel's point of view, since the HTTP request that
+#   unsolicited from the kernel's point of view, because the HTTP request that
 #   registered the port was a different socket on a different protocol.  So the
 #   rule below is narrow in SOURCE (the one receiver) and wide in PORT (the
 #   local ephemeral range).  That asymmetry is stated rather than hidden.
 #
 #   WITHOUT IT the failure is not "no player": the receiver is discovered, it
-#   plays, and the UI simply never updates — volume, position and track
-#   changes made at the receiver are invisible.  Which reads as a Music
-#   Assistant bug.
+#   plays, and the UI simply never updates — volume, position and track changes
+#   made at the receiver are invisible.  Which reads as a Music Assistant bug.
 #
-# ── NO forward-auth, AND IT SHIPPED WITH IT ────────────────────────────────
+# ── NO forward-auth, AND NO SECOND FACTOR ──────────────────────────────────
 #
-#   `music.goclan.org` is in `appApiHosts` (containers/ingress-policy.nix).  It
-#   was in `protectedHosts` for one day, and the move is the direction that
-#   file's header warns about — so the reason is recorded here too rather than
-#   only there.
+#   `music.goclan.org` is in `appApiHosts`; containers/ingress-policy.nix owns
+#   the argument (Home Assistant's integration uses ONE url for both the
+#   browser redirect and its own server-side `/ws`, so there is no single URL
+#   that satisfies both halves with the middleware attached) and the
+#   compensation list.  Do not re-derive it here.
 #
-#   THE ARGUMENT FOR THE STRICT DOOR RESTED ON A FALSE PREMISE, and it was this
-#   file's premise: that the only client of the hostname is a browser, because
-#   Home Assistant reached the container DIRECTLY on 10.0.90.30:8095 and never
-#   came through the proxy at all.  The integration does not work that way.
-#   From the deployed code, `config_flow.py`:
-#
-#       login_url = f"{self.url}/login?{params}"
-#       return self.async_external_step(step_id="auth", url=login_url)
-#
-#   `self.url` is the ONE url typed into the config flow, and both halves use
-#   it: the browser is redirected to `{url}/login`, and the hub's own
-#   server-side calls — `GET {url}/info`, `POST {url}/auth/login` for the
-#   long-lived token, and the persistent `{url}/ws` — go to the same address.
-#   There is no separate field for an internal one.
-#
-#   So this hostname has a non-browser client, and `/ws` is an HTTP UPGRADE
-#   with no cookie jar: the exact thing that exempts `ha` itself.
-#
-#   MEASURED, NOT REASONED BACKWARDS.  Pointed at the direct address, the
-#   BROWSER half broke instead — it was sent to
-#   `http://10.0.90.30:8095/login?…`, which no human's machine may reach, and
-#   the external step hung on a blank page.  With the middleware attached there
-#   is no single URL that satisfies both halves.
-#
-#   LAN-ONLY, and that is what keeps the exemption proportionate: this is the
-#   ONLY name in `appApiHosts` that is NOT also in `wanExposed`.  Every other
-#   entry in that list is a deliberate unauthenticated surface facing the
-#   internet; this one faces the living room, has no public A record and takes
-#   no ledger row.  The compensations below are defending the house against the
-#   house.
-#
-# ── IT HAS ITS OWN ACCOUNTS, AND THAT WAS CHECKED RATHER THAN ASSUMED ───────
-#
-#   The reflex assumption about a self-hosted media controller is that it has no
-#   authentication at all and the reverse proxy is the entire boundary.  That is
-#   FALSE at 2.8.7 and the difference matters for what this file has to do, so it
-#   was read out of the source rather than guessed:
-#
-#     * a users table with roles (`UserRole.ADMIN`) and a per-user
-#       `player_filter`, so a household account can be scoped to some speakers;
-#     * `auth_middleware` on every route, with a short bypass list —
-#       /info, /login, /setup, /auth/, /assets/, /favicon.ico, /manifest.json,
-#       /index.html and / — and `require_authentication()` in the handlers;
-#     * the WebSocket at /ws tracks an authenticated user per connection and
-#       refuses admin commands to a non-ADMIN role;
-#     * `LoginRateLimiter`, an ESCALATING PER-USERNAME backoff over a 30-minute
-#       window: 3-5 failures 30 s, 6-9 60 s, 10-14 120 s, 15+ 300 s.
-#
-#   So the posture here is belt-and-braces rather than proxy-only, and the
-#   backoff is Nextcloud's per-ACCOUNT shape, not Home Assistant's per-SOURCE
-#   `ip_ban`.  Do not read either as describing this one.
+#   LAN-ONLY, which is what keeps the exemption proportionate: this is the ONLY
+#   name in `appApiHosts` that is NOT also in `wanExposed` — no public A
+#   record, no ledger row.  The compensations are defending the house against
+#   the house.
 #
 #   THE FIRST-RUN WINDOW CLOSES ITSELF, which is the one real difference from
-#   Komga, Navidrome and CWA.  `/setup` creates the first admin and is
-#   unauthenticated by construction — but `_handle_setup` returns 400 "Setup
-#   already completed" once `auth.has_users`, so the window is not open
-#   indefinitely waiting for somebody to notice.  It is still a deploy step and
-#   not a matter of taste: until that account exists, anybody who can reach this
-#   vhost can create it.  On the LAN, behind forward-auth, that is a much
-#   narrower window than the one docs/history.md warns about for the WAN names —
-#   which is exactly why this service is not one of them.
-#
-# ── THE HOME ASSISTANT INTEGRATION IS ALREADY OFFERABLE ─────────────────────
-#
-#   Nothing is added to containers/home-assistant.nix for this.
-#   `music_assistant` is a packaged component in this channel
-#   (component-packages.nix -> music-assistant-client), and since PR #229 that
-#   file's `extraComponents` ends with `++ buildableComponents` — every
-#   packaged integration, not a curated dozen.  So the hub can already offer
-#   it.
-#
-#   IT WILL NOT AUTO-DISCOVER, and that is correct rather than broken.  Music
-#   Assistant advertises `_mass._tcp.local.`, but the hub's own firewall
-#   accepts 5353/udp on `iot0` ONLY — VLAN 20, where the devices are — so
-#   nothing on VLAN 90 is heard in either direction.  Opening mDNS between the
-#   two containers to save one text field would put both services' multicast on
-#   the Services VLAN for no capability.  The config flow takes the URL by
-#   hand; see docs/history.md M30.
+#   Komga, Navidrome and CWA: `/setup` creates the first admin and is
+#   unauthenticated by construction, but `_handle_setup` returns 400 "Setup
+#   already completed" once `auth.has_users`.  It is still a deploy step —
+#   until that account exists, anybody who can reach this vhost can create it.
 #
 # ── THE CONTAINER IS CALLED `mass`, NOT `music-assistant` ───────────────────
 #
-#   The same constraint containers/home-assistant.nix hit: nspawn's
-#   --network-bridge names the host side of the veth `vb-<container>`, and a
-#   Linux interface name caps at 15 characters (IFNAMSIZ - 1).
-#   `vb-music-assistant` is 18 and the link cannot be created at all — a
-#   failure at container START, not at evaluation, so a clean `nix build`
-#   proves nothing.
-#
-#   `mass` is upstream's own abbreviation (the service advertises `_mass._tcp`
-#   and its config lives under a `mass` namespace), so this is not an invented
-#   nickname.  `vb-mass` is 7.
+#   `vb-music-assistant` is 18 characters and IFNAMSIZ caps at 15, so the link
+#   cannot be created at all — a failure at container START, not at evaluation,
+#   so a clean `nix build` proves nothing.  `mass` is upstream's own
+#   abbreviation (it advertises `_mass._tcp` and its config lives under a
+#   `mass` namespace), not an invented nickname.
 #
 #   So: the FILE is music-assistant.nix, the SERVICE is
 #   music-assistant.service inside, and the MACHINE is `mass` —
@@ -291,101 +171,82 @@
 #
 # ── DynamicUser IS TURNED OFF, AND THE STATE DIRECTORY IS WHY ───────────────
 #
-#   Upstream runs this under `DynamicUser = true` with
-#   `StateDirectory = "music-assistant"`.  That combination MIGRATES the state
-#   directory — systemd renames /var/lib/music-assistant to
-#   /var/lib/private/music-assistant on first start — and here that path is a
-#   BIND MOUNT.  containers/crowdsec.nix measured exactly this, quoting
-#   systemd's own log line, and service-modules/local-ai.nix hit it with
-#   ollama before that.  Same call, same reason, third time.
+#   Upstream's `DynamicUser = true` + `StateDirectory = "music-assistant"`
+#   MIGRATES the state directory to /var/lib/private/, and here that path is a
+#   BIND MOUNT.  containers/crowdsec.nix measured exactly this and
+#   service-modules/local-ai.nix hit it with ollama before that.
 #
-#   The deeper version of the same argument is in machines/ernst/networking.nix
-#   under the uid table: ids pass through the nspawn boundary UNMAPPED onto
-#   zdata, so a systemd-ALLOCATED uid owning files on the pool is precisely
-#   what that table exists to prevent.  Keeping state and keeping a per-boot
-#   identity are mutually exclusive, and M29b already wrote that down for
-#   mneme.
-#
-#   So: uid/gid 3040, and the six protections `DynamicUser` had been implying
-#   are restated below — arr/'s prowlarr and jellyseerr blocks are the
-#   working examples.
+#   The deeper reason is that ids pass through the nspawn boundary UNMAPPED
+#   onto zdata, so a systemd-ALLOCATED uid owning files on the pool is
+#   precisely what the allocation registry exists to prevent.  Keeping state
+#   and keeping a per-boot identity are mutually exclusive.  So: uid/gid 3040,
+#   with the six protections `DynamicUser` had been implying restated below.
 #
 # ── WHAT IS DELIBERATELY NOT DONE ───────────────────────────────────────────
 #
 #   NO PROMETHEUS JOB.  Music Assistant exposes no metrics endpoint of any
-#   kind — SN3, stated rather than omitted.  What DOES cover it is the
+#   kind — SN3, stated rather than omitted.  What covers it is the
 #   container-unit collector: `exporters.containers` walks `machinectl list` on
-#   a one-minute timer, so `music-assistant.service` failing inside here raises
-#   `ContainerSystemdUnitFailed` with no per-container configuration at all.
-#   That mechanism exists because soularr.service failed 1,412 times in the arr
-#   container without alerting (PR #139).
+#   a one-minute timer, so `music-assistant.service` failing in here raises
+#   `ContainerSystemdUnitFailed` with no per-container configuration.
 #
-#   NO SPOTIFY, NO TIDAL, NO QOBUZ, NO YouTube MUSIC.  `providers` below is the
-#   list of optional dependency sets to install, and each one is a package
-#   closure for a service this household does not subscribe to.  ytmusic would
-#   additionally pull in `deno` and require `@pkey` in the syscall filter.
-#   Adding one is one word here plus a UI setup; adding all of them is a
-#   rebuild for nothing.
+#   NO SPOTIFY, TIDAL, QOBUZ OR YouTube MUSIC.  `providers` below installs
+#   dependency CLOSURES, and each would be one for a service this household
+#   does not subscribe to; ytmusic would additionally pull in `deno` and need
+#   `@pkey` in the syscall filter.
 #
-#   NO SNAPCAST, NO AIRPLAY, NO CHROMECAST — same reasoning, measured rather
-#   than assumed: there is no such device in Home Assistant's registry.  Note
-#   that `airplay` in particular would want an inbound UDP range of
-#   32768-65535 (upstream's own `openFirewall`), which is not a thing to carry
-#   speculatively.
+#   NO SNAPCAST, AIRPLAY OR CHROMECAST — measured, not assumed: there is no
+#   such device in Home Assistant's registry.  `airplay` would additionally
+#   want inbound UDP 32768-65535 (upstream's own `openFirewall`).
 #
-#   ── AND THE REST OF A CATALOGUE SWEEP, 2026-09-27 ──────────────────────
+#   DECLINED IN THE 2026-09-27 CATALOGUE SWEEP, so the next person gets the
+#   answers rather than the search:
 #
-#   lgo asked for "useful providers and plugins", which meant reading the whole
-#   stable catalogue rather than picking favourites.  What was ADDED is in
-#   `providers` below with its own reason each.  What was DECLINED is here,
-#   because the next person to ask the same question deserves the answers
-#   rather than the search:
+#     genius_lyrics      `lyricsgenius` is NOT in nixpkgs — a derivation plus
+#                        an API token for a SUPPLEMENTARY source, when `lrclib`
+#                        is already enabled and carries synced lyrics.
+#     airplay_receiver   NOT FREE, and invisibly so: the nixpkgs module reacts
+#                        to this name by enabling AVAHI WITH PUBLISHING inside
+#                        this container, on BOTH legs, where publishing is off
+#                        and the host denies avahi on iot1.  Would also need
+#                        inbound rules for shairport-sync or be decorative.
+#                        ALPHA; its own PR if ever wanted.
+#     lastfm_scrobble    Packaged, declined on merit: a SECOND scrobble
+#                        destination behind a commercial account, when
+#                        `listenbrainz_scrobble` does the same job for
+#                        MetaBrainz with openly licensed data.
+#     tunein             Wants an account for streams `radiobrowser` reaches
+#                        without one.
+#     spotify_connect    ALPHA, needs Premium.  No Spotify in this fleet.
+#     plex_connect, vban_receiver, ariacast_receiver
+#                        ALPHA; declined by lgo by name.
 #
-#     genius_lyrics      `lyricsgenius` IS NOT IN nixpkgs.  It would need a
-#                        derivation under ./pkgs plus an API token — real work
-#                        for a SUPPLEMENTARY lyrics source, when `lrclib` is
-#                        already enabled, needs neither, and carries synced
-#                        lyrics.  Revisit only if a gap actually bites.
-#
-#     airplay_receiver   NOT FREE, and the cost is invisible from the option.
-#                        The nixpkgs module reacts to this name by enabling
-#                        AVAHI WITH PUBLISHING inside this container
-#                        (music-assistant.nix:99-106) — a new mDNS publisher on
-#                        BOTH legs, in a container that keeps publishing off and
-#                        whose host denies avahi on iot1 entirely.  It would
-#                        also need inbound rules for shairport-sync or it is
-#                        decorative, which is the failure shape this milestone
-#                        already shipped three times.  ALPHA.  If it is ever
-#                        wanted it gets its own PR and its own argument.
-#
-#     lastfm_scrobble    Packaged (`pylast 7.0.2`) and declined on merit: a
-#                        SECOND scrobble destination behind a commercial
-#                        account.  `listenbrainz_scrobble` does the same job for
-#                        MetaBrainz, whose `musicbrainz` provider this container
-#                        already uses, with openly licensed data.
-#
-#     spotify_connect    ALPHA, and needs Premium.  No Spotify in this fleet.
-#     plex_connect       ALPHA.  Declined by lgo by name.
-#     vban_receiver      ALPHA.  Declined by lgo by name.
-#     ariacast_receiver  ALPHA, and nothing here speaks AriaCast.
-#
-#     tunein             Wants an account for streams `radiobrowser` already
-#                        reaches without one.
-#
-#   PROVIDERS WITH NO REQUIREMENTS NEED NO ENTRY IN `providers` AT ALL, which
-#   is worth knowing before anyone edits this list to get one: the option
-#   installs dependency CLOSURES, so a provider whose manifest lists no
-#   requirements — `somafm`, `radioparadise`, `podcastfeed`, `itunes_podcasts`,
-#   `internet_archive`, `orf_radiothek` among them — already imports and can be
-#   enabled in the settings database alone.  None is enabled today; any of them
-#   is a UI step and no deploy.
+#   PROVIDERS WITH NO REQUIREMENTS NEED NO ENTRY IN `providers` AT ALL: the
+#   option installs dependency closures, so a provider whose manifest lists no
+#   requirements — `somafm`, `radioparadise`, `podcastfeed`,
+#   `itunes_podcasts`, `internet_archive`, `orf_radiothek` — already imports
+#   and can be enabled in the settings database alone.  None is today; any of
+#   them is a UI step and no deploy.
 #
 #   NO SECOND DATASET.  A SQLite database and a tree of small JSON blobs is
-#   `zdata/state`'s write profile exactly — 128K recordsize, the default —
-#   which is the call containers/home-assistant.nix, containers/miniflux.nix
-#   and containers/karakeep.nix all made before this one.
-#   docs/guides/ernst-zdata-datasets.md splits by write profile, not by
-#   service.
+#   `zdata/state`'s write profile exactly (128K recordsize, the default) — the
+#   call home-assistant.nix, miniflux.nix and karakeep.nix all made before
+#   this one.  docs/guides/ernst-zdata-datasets.md splits by write profile,
+#   not by service.
+#
+# ── THE HOME ASSISTANT INTEGRATION IS ALREADY OFFERABLE ─────────────────────
+#
+#   Nothing is added to containers/home-assistant.nix for this.
+#   `music_assistant` is packaged in this channel and that file's
+#   `extraComponents` ends with `++ buildableComponents` since PR #229, so the
+#   hub can already offer it.
+#
+#   IT WILL NOT AUTO-DISCOVER, and that is correct rather than broken.  Music
+#   Assistant advertises `_mass._tcp.local.`, but the hub's firewall accepts
+#   5353/udp on `iot0` ONLY — VLAN 20, where the devices are — so nothing on
+#   VLAN 90 is heard either way.  Opening mDNS between the two containers to
+#   save one text field would put both services' multicast on the Services VLAN
+#   for no capability.  The config flow takes the URL by hand.
 {
   config,
   pkgs,

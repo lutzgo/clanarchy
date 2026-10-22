@@ -12,6 +12,22 @@
 # Storage and secrets are NOT duplicated here — ./lib.nix generates those, the
 # same ones the nspawn tier gets, which is what stops the two drifting in the
 # parts that are genuinely the same.
+#
+# ── `virtualisation.oci-containers` INSIDE AN NSPAWN CONTAINER IS REJECTED ──
+#
+# This is the argument each of the four occupants used to restate, and it lives
+# here once instead. The hybrid — an OCI image running inside one of the nspawn
+# containers — looks like it would avoid a second skeleton. It does not, and it
+# gives up the thing the nspawn tier is for: the value of containers/arr/ is
+# that upstream units, upstream hardening and `systemd-analyze` scores are all
+# legible, and an opaque image inside it is opaque to all three. The escape
+# hatch is THIS TIER, not that hybrid.
+#
+# THE COST OF THIS TIER, accepted explicitly wherever it is used: an image we
+# do not build, a package tree we do not build, and a `systemd-analyze
+# security` score for `podman-<name>.service` that measures podman rather than
+# the application. A service file notes only what is specific to it — how many
+# images, and anything it had to do that the others did not.
 {
   config,
   lib,
@@ -145,10 +161,20 @@
         example = "3029:3029";
         description = ''
           `--user` for the images. ROOTFUL AND UNMAPPED on purpose: rootless
-          podman always remaps through a subuid range, and these numbers land
-          on shared storage, so a remap would write files the rest of the host
-          cannot name. Rootful with no remapping makes podman behave like
-          nspawn here.
+          podman always has a user namespace, so the in-container PUID/PGID are
+          NOT what lands on disk — files appear as some sub-uid, or as
+          nobody:nobody. Recovering from that means `--userns=keep-id` or an
+          idmap, i.e. bolting a second id model onto a pool whose whole
+          convention is that ids are literal, and `/srv/media` is a shared
+          hardlink domain with the *arr. Rootful with no remapping makes podman
+          behave like nspawn here: the numbers set here are exactly what
+          appears on zdata.
+
+          THE SECURITY COST, stated rather than buried: the container runtime
+          runs as root on the host. What would move a service to rootless is an
+          idmapped-mount story for its storage that keeps on-disk ids literal —
+          `--userns=keep-id:uid=<n>,gid=<n>` is the shape — and that is a
+          per-service argument, not a flag to flip.
         '';
       };
 

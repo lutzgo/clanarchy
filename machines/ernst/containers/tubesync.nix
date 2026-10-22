@@ -36,30 +36,16 @@
 #
 # ── ROOTFUL, AND THE REASON IS THE STORAGE MODEL, NOT CONVENIENCE ───────────
 #
-#   The brief leaned rootless.  This runs ROOTFUL, deliberately, and the
-#   deciding argument is the one the brief itself flagged as "the trap":
+#   The brief leaned rootless.  modules/containers/podman-netns.nix owns the
+#   argument on the `uidgid` option — rootless podman always has a user
+#   namespace, so the in-container PUID/PGID are not what lands on disk, and
+#   /srv/media is a shared hardlink domain with the *arr.  PUID 3027 and PGID
+#   3000 are exactly what appears on zdata.
 #
-#     nspawn and virtiofs both pass uids/gids through UNMAPPED, which is why
-#     machines/ernst/allocations.nix can say a number
-#     chosen inside a guest IS a number on zdata.  **Rootless podman always
-#     has a user namespace**, so the in-container PUID/PGID are NOT what lands
-#     on disk — files appear as some sub-uid, or as nobody:nobody.  Recovering
-#     from that means `--userns=keep-id` or an idmap, i.e. bolting a second,
-#     different id model onto a pool whose entire convention is that ids are
-#     literal.  `/srv/media` is a shared hardlink domain with the *arr; it is
-#     the last place to introduce a second id model.
-#
-#   Rootful with no remapping makes podman behave like nspawn here: PUID 3027
-#   and PGID 3000 are exactly what appears on zdata.
-#
-#   THE SECURITY COST, stated rather than buried: the container runtime runs
-#   as root on the host.  What limits the blast radius is that TubeSync holds
-#   no inbound trust (see AUTHENTICATION), reaches the internet only outbound
-#   to YouTube, and its netns can talk to exactly one address.  What would
-#   move this to rootless: an idmapped mount story for `/srv/media` that keeps
-#   on-disk ids literal — `--userns=keep-id:uid=3027,gid=3000` is the shape to
-#   evaluate, and it should be evaluated before the SECOND podman service, not
-#   after five of them.
+#   WHAT LIMITS THE BLAST RADIUS HERE, since the runtime runs as root on the
+#   host: TubeSync holds no inbound trust (see AUTHENTICATION), reaches the
+#   internet only outbound to YouTube, and its netns can talk to exactly one
+#   address.
 #
 # ── NETWORKING: THE OPEN PROBLEM, SOLVED — AND MEASURED FIRST ───────────────
 #

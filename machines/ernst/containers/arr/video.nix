@@ -213,10 +213,8 @@ in {
     # invariant #8 is satisfied without a generator — there is no secret here
     # that this machine did not already hold.
     #
-    # CORRECTION, measured on ernst 2026-08-26.  An earlier version of this
-    # paragraph also claimed the key is "never in config.yml on disk".  THAT
-    # IS FALSE, and the correction matters more than the original claim did.
-    # The recyclarr module's ExecStartPre (recyclarr-pre-start) reads each
+    # THE KEY IS NOT "never on disk", measured on ernst 2026-08-26.  The
+    # recyclarr module's ExecStartPre (recyclarr-pre-start) reads each
     # credential and SUBSTITUTES IT INTO /var/lib/recyclarr/config.yml before
     # the sync runs.  On this machine that file is:
     #
@@ -265,43 +263,37 @@ in {
       # name".  Those templates are STARTER CONFIGS, meant to be copied once
       # via `recyclarr config create` and then edited; the repo ships no
       # include-able fragments at all (its `includes/` directory is for
-      # user-authored ones and is empty).  So the template body is
-      # transcribed here instead — which is the better shape for this repo
-      # anyway: the profile and every custom-format group is an explicit,
-      # reviewable value rather than a remote id whose contents can change
-      # under a `git fetch`.
+      # user-authored ones and is empty).  So the template body is transcribed
+      # here — the better shape for this repo anyway, since the profile and
+      # every custom-format group becomes an explicit reviewable value rather
+      # than a remote id whose contents can change under a `git fetch`.
       #
-      # Transcribed from config-templates @ 9faf65f:
-      #   radarr/templates/remux-web-2160p.yml
-      #   sonarr/templates/remux-web-2160p.yml
-      # and validated with `recyclarr sync --preview` against the live
-      # instances before being committed.
+      # Transcribed from config-templates @ 9faf65f
+      # ({radarr,sonarr}/templates/remux-web-2160p.yml) and validated with
+      # `recyclarr sync --preview` against the live instances before commit.
       #
-      # ── INSTANCE NAMES MUST BE UNIQUE ACROSS SERVICES ────────────────────
-      #
-      # AND SO MUST base_url — M12 found the second half the hard way, and it
-      # is written out where the block itself lives, below.  Unique names are
-      # necessary and NOT sufficient: recyclarr groups instances by base_url
-      # and treats two names on one server as duplicates, with the identical
-      # silent outcome described here.  ONE INSTANCE PER SERVER, ALWAYS;
-      # extra profiles go in `quality_profiles`.
+      # ── INSTANCE NAMES *AND* base_url MUST BE UNIQUE ─────────────────────
       #
       # `movies` and `series`, not `main` and `main`.  Recyclarr treats the
-      # instance-name namespace as global, not per-service, and it enforces
-      # that in the worst possible way: with both named `main` it logs
-      # "Duplicate instances: [main]" at DEBUG, syncs NOTHING, prints nothing
-      # to the console and EXITS 0.  A green timer, forever, doing nothing.
-      # Measured 2026-08-21; the first version of this file had exactly that
-      # bug and only a --preview run caught it.
+      # instance-name namespace as GLOBAL, not per-service, and enforces it in
+      # the worst possible way: with both named `main` it logs "Duplicate
+      # instances: [main]" at DEBUG, syncs NOTHING, prints nothing to the
+      # console and EXITS 0.  A green timer, forever, doing nothing.  Measured
+      # 2026-08-21 — the first version of this file had exactly that bug and
+      # only a --preview run caught it.
+      #
+      # Unique names are necessary and NOT sufficient: recyclarr also groups
+      # instances by base_url and treats two names on one server as
+      # duplicates, with the identical silent outcome.  ONE INSTANCE PER
+      # SERVER, ALWAYS; extra profiles go in `quality_profiles`.
       #
       # ── WHAT THIS CHANGES on the live instances ──────────────────────────
       #
-      # More than the first draft of this block claimed, so it is spelled out.
-      # This applies quality definitions (per-quality file size limits) AND a
-      # quality profile AND custom-format scoring.  `[Audio] Audio Formats`
-      # syncs by default (it is listed under the templates' `skip:` blocks,
-      # commented out), and that group is what scores TrueHD Atmos and DTS-X
-      # above everything else.
+      # Quality definitions (per-quality file size limits) AND a quality
+      # profile AND custom-format scoring.  `[Audio] Audio Formats` syncs by
+      # default (it is listed under the templates' `skip:` blocks, commented
+      # out), and that group is what scores TrueHD Atmos and DTS-X above
+      # everything else.
       #
       # THE TWO SERVICES ARE DELIBERATELY ASYMMETRIC:
       #
@@ -320,14 +312,7 @@ in {
       # anything it is *less* compatible: full TrueHD Atmos and dual-layer
       # Dolby Vision are exactly what weak clients cannot direct-play.
       #
-      # MEASURED CONTEXT — RE-MEASURED 2026-08-26, AND THE OLD NUMBERS WERE
-      # WRONG IN A WAY THAT MATTERED.
-      #
-      # This paragraph used to read: "Sonarr held 133 series, all on a
-      # hand-made profile 'Ultra-HD' with upgradeAllowed = FALSE."  Both
-      # halves are false today, and the second was probably always a
-      # conflation of the two services.  Actual census, via each app's
-      # /api/v3 endpoints:
+      # ── CENSUS, MEASURED 2026-08-26 via each app's /api/v3 ───────────────
       #
       #   SONARR   139 series
       #     id 4  HD-1080p               upgradeAllowed=false    67
@@ -340,36 +325,30 @@ in {
       #     id 7  Remux + WEB 2160p      upgradeAllowed=TRUE     27
       #     id 6  HD - 720p/1080p        upgradeAllowed=false    16
       #
-      # So "the big pile sitting on a non-upgrading Ultra-HD profile" is a
-      # RADARR fact — 2389 films — and Sonarr's Ultra-HD holds nothing at
-      # all.  The bulk-edit hazard is real and is mostly on the film side;
-      # the film library is the 13 TB one and the pool has ~47.6 TB free, so
-      # a mass promotion there is still capable of consuming most of it
-      # through the VPN.
+      # So "the big pile on a non-upgrading Ultra-HD profile" is a RADARR fact
+      # — 2389 films — and Sonarr's Ultra-HD holds nothing at all.  The
+      # bulk-edit hazard is real and mostly on the film side; that library is
+      # the 13 TB one and the pool has ~47.6 TB free, so a mass promotion
+      # there is still capable of consuming most of it through the VPN.
       #
-      # The operating rule is unchanged and now rests on correct numbers:
-      # promote titles to a new profile INDIVIDUALLY.  The one part that
-      # applies fleet-wide regardless is `quality_definition`, which rewrites
-      # size limits for every profile including "Ultra-HD".
+      # THE OPERATING RULE: promote titles to a new profile INDIVIDUALLY.  The
+      # one part that applies fleet-wide regardless is `quality_definition`,
+      # which rewrites size limits for every profile including "Ultra-HD".
       #
-      # reset_unmatched_scores means custom formats NOT named by these groups
-      # are set to 0 on the synced profile.  That is what makes the profile
-      # reproducible from this file rather than accumulating whatever the UI
-      # has been poked into.
+      # `reset_unmatched_scores` means custom formats NOT named by these
+      # groups are set to 0 on the synced profile.  That is what makes the
+      # profile reproducible from this file rather than accumulating whatever
+      # the UI has been poked into.
       #
-      # To preview before letting the timer run.
+      # ── TO PREVIEW BEFORE LETTING THE TIMER RUN ──────────────────────────
       #
-      # CORRECTED 2026-08-26 — the previous form in this comment did not work
-      # and failed in a way that reads like a permissions problem:
-      #
-      #   runuser: failed to execute recyclarr: Permission denied
-      #
-      # `recyclarr` IS NOT ON $PATH inside this container.  The container's
-      # environment.systemPackages is deliberately just `curl`; the binary
-      # only ever exists as an absolute store path in the unit's ExecStart.
-      # So the command has to ask systemd where it is rather than assume a
-      # PATH lookup, and the store path changes with every rebuild, so it
-      # must not be pasted literally either:
+      # `recyclarr` IS NOT ON $PATH inside this container — environment.
+      # systemPackages is deliberately just `curl`, and the binary only ever
+      # exists as an absolute store path in the unit's ExecStart.  A naive
+      # invocation fails in a way that reads like a permissions problem
+      # (`runuser: failed to execute recyclarr: Permission denied`).  The
+      # store path changes with every rebuild, so it must not be pasted
+      # literally either — ask systemd where it is:
       #
       #   nixos-container run arr -- systemctl start arr-api-keys
       #   BIN=$(nixos-container run arr -- \
@@ -378,13 +357,12 @@ in {
       #   nixos-container run arr -- runuser -u recyclarr -- \
       #     "$BIN" sync --preview --config /var/lib/recyclarr/config.yml
       #
-      # ONE TRAP IN READING THE OUTPUT, and it cost a confused minute on the
-      # deploy that found this: /var/lib/recyclarr/config.yml IS REGENERATED
-      # BY ExecStartPre, not by the deploy.  Straight after a rebuild it is
-      # still the PREVIOUS generation's file, so a preview run will faithfully
-      # process the OLD instance list and show nothing new.  That is not a
-      # config that failed to apply.  The check that the new instances really
-      # are deployed is the unit itself —
+      # ONE TRAP IN READING THE OUTPUT: /var/lib/recyclarr/config.yml IS
+      # REGENERATED BY ExecStartPre, not by the deploy.  Straight after a
+      # rebuild it is still the PREVIOUS generation's file, so a preview run
+      # faithfully processes the OLD instance list and shows nothing new.
+      # That is not a config that failed to apply.  The check that the new
+      # instances really are deployed is the unit itself —
       #
       #   nixos-container run arr -- systemctl show recyclarr -p ExecStartPre \
       #     --value | xargs cat | grep -o 'quality_profiles.*' | head -c 400

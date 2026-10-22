@@ -3,38 +3,31 @@
 # qBittorrent behind a commercial WireGuard VPN, in a microvm with a real
 # killswitch.  M3 in docs/history.md.
 #
-# Why a microvm and not an nspawn container:
-#   Architecture invariant #1 puts a workload in a VM — its own kernel — when it
-#   talks to the open internet on its own behalf.  This is the only such
-#   workload on ernst: it accepts connections from arbitrary BitTorrent peers
-#   and runs a protocol stack against them.  Jellyfin and the arr suite are
-#   trusted and storage-heavy, so they stay in nspawn on the shared kernel; a
-#   kernel-level escape from libtorrent must not land on the host that owns
-#   zdata.
+# A MICROVM AND NOT AN nspawn CONTAINER because invariant #1 puts a workload in
+# its own kernel when it talks to the open internet on its own behalf, and this
+# is the only such workload on ernst: it accepts connections from arbitrary
+# BitTorrent peers and runs a protocol stack against them.  A kernel-level
+# escape from libtorrent must not land on the host that owns zdata.
 #
 # ── The killswitch is nftables, not the routing table ─────────────────────────
 #
-#   Both halves exist and they do different jobs:
+#   Both halves exist and do different jobs.  ROUTING (wg-quick's policy
+#   routing) decides where packets try to go; it is a correctness mechanism and
+#   it FAILS OPEN — delete wg0 and the default route reverts to the LAN.
+#   NFTABLES decides what is allowed to leave: output policy is `drop` on the
+#   LAN interface with exactly three exceptions — the encrypted tunnel to the
+#   provider's endpoint, DHCPv4, and replies to management-network connections.
+#   Everything else (trackers, peers, DNS) is reachable only via
+#   `oifname "wg0"`, so when wg0 disappears so does the only path out.
 #
-#     ROUTING (wg-quick's automatic policy routing) decides where packets try
-#     to go.  It is a correctness mechanism and it fails open — delete wg0 and
-#     the default route reverts to the LAN.
-#
-#     NFTABLES decides what is allowed to leave.  Output policy is `drop` on
-#     the LAN interface with exactly three exceptions: the encrypted tunnel to
-#     the provider's endpoint, DHCPv4, and replies to management-network
-#     connections.  Everything else — trackers, peers, DNS — is only reachable
-#     via `oifname "wg0"`.  When wg0 disappears, so does the only path out.
-#
-#   That ordering matters: the firewall is loaded by nftables.service, which is
+#   The ordering matters: the firewall is loaded by nftables.service, which is
 #   `before network-pre.target`, so the guest is fail-closed from before it has
-#   an address, not from whenever the tunnel first comes up.
+#   an address rather than from whenever the tunnel first comes up.
 #
-#   DNS RESOLVES IN-TUNNEL ONLY.  The guest runs no resolver of its own,
-#   networkd is told `UseDNS=false`, and /etc/resolv.conf is written by
-#   wg-quick from the DNS= line in the (secret) tunnel config.  A killswitch
-#   that blocks packets but leaks names to the LAN resolver is not a
-#   killswitch.
+#   DNS RESOLVES IN-TUNNEL ONLY.  The guest runs no resolver, networkd is told
+#   `UseDNS=false`, and /etc/resolv.conf is written by wg-quick from the DNS=
+#   line in the (secret) tunnel config.  A killswitch that blocks packets but
+#   leaks names to the LAN resolver is not a killswitch.
 #
 #   THE ENDPOINT MUST BE AN IP LITERAL, and the vars generator enforces it.
 #   wg-quick resolves a hostname endpoint using the guest's resolver — which is
@@ -44,22 +37,21 @@
 #
 # ── Exposure: the WebUI is a deliberate, permanent Traefik bypass ─────────────
 #
-#   Architecture invariant #4 names this one explicitly.  The WebUI is reachable
-#   from the management networks only (LAN 10.0.10.0/24 and Servers
-#   10.0.50.0/24), enforced twice: guest-side nftables here, and a ZBF rule on
-#   the UDM-Pro.  It gets NO Traefik route, ever — not in M5, not in M7.  A
-#   torrent client's admin surface does not belong on a name that resolves for
-#   the household, and forward-auth in front of its API would break the arr
-#   integration M4 builds.  Do not "fix" this.
+#   Invariant #4 names this one explicitly.  The WebUI is reachable from the
+#   management networks only (LAN 10.0.10.0/24 and Servers 10.0.50.0/24),
+#   enforced twice: guest-side nftables here and a ZBF rule on the UDM-Pro.  It
+#   gets NO Traefik route, ever.  A torrent client's admin surface does not
+#   belong on a name that resolves for the household, and forward-auth in front
+#   of its API would break the arr integration.  Do not "fix" this.
 #
-#   M4 ADDED A THIRD SOURCE, and it is enforced in exactly one place.  The arr
-#   container (10.0.90.13, machines/ernst/containers/arr/) drives this
-#   client's API, and it sits on VLAN 90 — the same VLAN, on the same bridge, as
-#   this guest's own tap.  Those frames are switched by br0 and never reach the
-#   UDM-Pro, so the "enforced twice" above is NOT true of that source: the
-#   nftables `api_clients` set below is the only thing standing between the arr
-#   and the WebUI.  It gets the API port and nothing else — no SSH, no ping —
-#   which is why the sets are a pair rather than one widened list.
+#   M4 ADDED A THIRD SOURCE, AND IT IS ENFORCED IN EXACTLY ONE PLACE.  The arr
+#   container (10.0.90.13) drives this client's API and sits on the same VLAN,
+#   on the same bridge, as this guest's tap.  Those frames are switched by br0
+#   and never reach the UDM-Pro, so "enforced twice" is NOT true of that
+#   source: the nftables `api_clients` set below is the only thing standing
+#   between the arr and the WebUI.  It gets the API port and nothing else — no
+#   SSH, no ping — which is why the sets are a pair rather than one widened
+#   list.
 #
 # ── uid/gid: the decision the whole media stack rests on ──────────────────────
 #
@@ -67,11 +59,8 @@
 #   so numeric ids pass through the share unchanged in both directions: guest
 #   uid 3001 IS host uid 3001.  Everything below follows from that.
 #
-#     uid 3001  qbittorrent     allocated here (see the id table in
-#                               machines/ernst/allocations.nix for
-#                               the sibling convention)
-#     uid 3024  slskd           M14.  Same rule, same reason — see the M14
-#                               section below
+#     uid 3001  qbittorrent     allocated in machines/ernst/allocations.nix
+#     uid 3024  slskd           M14.  Same rule, same reason
 #     gid 3000  media           fixed on the host in containers/jellyfin.nix;
 #                               restated in the guest, and it MUST match
 #                               numerically or every file the guest writes
@@ -82,146 +71,132 @@
 #   service's user namespace; a supplementary membership would be squashed to
 #   nogroup inside it and every write would land root-less.
 #
-#   UMask=0002 is load-bearing, and this is the failure M4 exists to catch.
+#   UMask=0002 IS LOAD-BEARING, and this is the failure M4 exists to catch.
 #   The download directories are setgid (2770 root:media) so new files inherit
-#   gid media whatever the process's umask — but the systemd default umask 0022
-#   would still make them mode 0644, i.e. group-READ only.  fs.protected_hardlinks
+#   gid media whatever the process's umask — but systemd's default 0022 would
+#   still make them mode 0644, i.e. group-READ only.  `fs.protected_hardlinks`
 #   is 1 (kernel default) and refuses `link()` on a file you do not own unless
-#   you have read AND WRITE on it.  The M4 arr stack runs host-side as a
-#   different uid in group media, so with 0644 every import would fail to
-#   hardlink and silently fall back to copying — which is exactly the failure
-#   that fills a 6-wide raidz1 twice over.  0002 gives 0664 and the link
-#   succeeds.  The PR test plan proves this with `stat` rather than assuming it.
+#   you have read AND WRITE on it.  The arr stack runs host-side as a different
+#   uid in group media, so at 0644 every import would fail to hardlink and
+#   silently fall back to copying — the failure that fills a 6-wide raidz1
+#   twice over.  0002 gives 0664 and the link succeeds.
 #
-# ── M14: slskd, AND WHY IT IS THE SECOND OCCUPANT OF THIS GUEST ─────────────
+# ── M14: slskd, THE SECOND OCCUPANT OF THIS GUEST ──────────────────────────
 #
 #   Soulseek is peer-to-peer on the open internet on ernst's behalf, which is
-#   the exact test invariant #1 applies: a workload that talks to the internet
-#   on its own behalf goes one tier up, into the microvm that already carries
-#   the killswitch and the exit.  So slskd lands HERE and not in the arr
-#   container, while Soularr — which only drives slskd's REST API and never
-#   speaks Soulseek — stays in the container.
+#   exactly the test invariant #1 applies — so slskd lands HERE, in the microvm
+#   that already carries the killswitch and the exit, rather than in the arr
+#   container.  Soularr only drives slskd's REST API and never speaks Soulseek,
+#   so it stays in the container.
 #
-#   THE PLACEMENT WAS MEASURED BEFORE IT WAS COMMITTED, as M14 requires.  The
-#   recorded counter-argument is that Soulseek connectivity through a shared
-#   commercial VPN exit can be poor, and that this exit is Leaseweb NL — which
-#   M4 measured as legally blocked by at least one indexer (HTTP 451).  From
-#   inside this guest on 2026-08-28:
+#   THE PLACEMENT WAS MEASURED BEFORE IT WAS COMMITTED.  The recorded
+#   counter-argument is that Soulseek connectivity through a shared commercial
+#   exit can be poor, and that this exit is Leaseweb NL — which M4 measured as
+#   legally blocked by at least one indexer (HTTP 451).  From inside this guest
+#   on 2026-08-28:
 #
 #     curl https://api.ipify.org        →  95.211.172.88   (Leaseweb NL)
 #     TCP connect vps.slsknet.org:2271  →  OPEN
 #
-#   So the transport is not blocked and the placement stands.  What that does
-#   NOT prove is PEER connectivity — whether enough peers accept connections
-#   from this exit to make searches useful — and that cannot be measured
-#   without the service running.  It is the go/no-go in the PR test plan, and
-#   the documented fallback if it fails is the arr container WITH THE TRADEOFF
-#   WRITTEN DOWN: a deliberate tier violation with a stated reason, never a
-#   silent move.
+#   So the transport is not blocked.  What that does NOT prove is PEER
+#   connectivity — whether enough peers accept connections from this exit to
+#   make searches useful — which cannot be measured without the service
+#   running.  The documented fallback if it ever fails is the arr container
+#   WITH THE TRADEOFF WRITTEN DOWN: a deliberate tier violation with a stated
+#   reason, never a silent move.
 #
-#   UMask=0002 APPLIES TO slskd TOO, AND UPSTREAM DOES NOT SET IT.  This is the
-#   single most important line in M14 and it is worth being blunt: the nixpkgs
+#   UMask=0002 APPLIES TO slskd TOO, AND UPSTREAM DOES NOT SET IT.  The nixpkgs
 #   slskd module's unit sets LockPersonality, NoNewPrivileges, PrivateUsers,
-#   ProtectSystem=strict and a dozen more — and NO UMask at all.  It therefore
-#   inherits systemd's 0022, writes 0644 files, and every Lidarr import would
-#   fail to hardlink and silently fall back to copying.
+#   ProtectSystem=strict and a dozen more — and NO UMask at all, so it inherits
+#   0022, writes 0644, and every Lidarr import would fail to hardlink and fall
+#   back to copying.
 #
-#   That is not a prediction.  Measured on ernst 2026-08-28, in a 2770
-#   root:media directory on zdata/media, with fs.protected_hardlinks = 1:
+#   Measured on ernst 2026-08-28, in a 2770 root:media directory on zdata/media
+#   with fs.protected_hardlinks = 1:
 #
-#     file written as uid 3024 with umask 0002  →  0664, links=1
+#     file written as uid 3024 with umask 0002   →  0664, links=1
 #     linked as uid 3017 (lidarr) in group media →  LINK OK, one inode, links=2
-#     same file chmod 0644, linked again        →  EPERM
+#     same file chmod 0644, linked again         →  EPERM
 #
-#   The third step is the negative control and it is what makes the first two
+#   THE THIRD STEP IS THE NEGATIVE CONTROL and it is what makes the first two
 #   mean anything: without it the test cannot tell a working chain from root
-#   bypassing the check.  M3's own first draft made exactly that mistake, and
-#   it is the same failure class as M11's grader bug (roadmap standing note
-#   SN3) — a broken instrument is indistinguishable from a good result.
-#
-#   The override is applied in the slskd block below, and M14 owes its own
-#   proof rather than inheriting M3's because this is a SECOND WRITE PATH into
-#   /srv/media by a different service with a different umask.
+#   bypassing the check.  Same failure class as SN3 — a broken instrument is
+#   indistinguishable from a good result.  M14 owes its own proof rather than
+#   inheriting M3's because this is a SECOND WRITE PATH into /srv/media by a
+#   different service with a different umask.
 #
 # ── virtiofs, not 9p ─────────────────────────────────────────────────────────
 #
-#   Decided on hardlink and ownership fidelity, as M3 instructed — not on
-#   throughput, though virtiofs wins there too.
+#   Decided on hardlink and ownership fidelity, not on throughput (though
+#   virtiofs wins there too).
 #
-#     9p's security models are disqualifying, not merely slow.  `mapped` and
+#     9p's security models are DISQUALIFYING, not merely slow.  `mapped` and
 #     `mapped-file` store ownership in xattrs or a side file, so a file the
-#     guest writes appears on the host as the virtfs process's uid.  That
+#     guest writes appears on the host as the virtfs process's uid — which
 #     breaks the identity mapping above at the root, and with it every
 #     host-side hardlink.  `passthrough` preserves ids but is documented as
 #     unreliable for exactly the metadata operations that matter here.
 #
 #     virtiofsd passes uid/gid through unmodified and implements link(),
-#     rename() and the rest with full POSIX semantics, which is what qBittorrent
-#     needs for its own incomplete → complete moves and what M4 needs for the
-#     import.
+#     rename() and the rest with full POSIX semantics — what qBittorrent needs
+#     for its own incomplete → complete moves and what the import needs.
 #
-#   ZFS CAVEAT — posixAcl = false on every share.  microvm.nix passes
+#   ZFS CAVEAT — `posixAcl = false` on every share.  microvm.nix passes
 #   `--posix-acl --xattr` by default, and its own documentation notes that a
 #   ZFS-backed share then requires `xattr=sa` + `acltype=posixacl` on the
-#   dataset.  Neither zroot nor zdata/{media,state} sets either (see
-#   machines/ernst/disko.nix — only zdata/{unsorted,gardens} carry acltype).
-#   Nothing here wants POSIX ACLs, so the flag is switched off rather than the
-#   pool properties changed.
+#   dataset.  Neither zroot nor zdata/{media,state} sets either (only
+#   zdata/{unsorted,gardens} carry acltype).  Nothing here wants POSIX ACLs, so
+#   the flag is switched off rather than the pool properties changed.
 #
 # ── Where the download tree lives ────────────────────────────────────────────
 #
-#   M3's prompt said /srv/media/downloads.  The deployed tree says
-#   /srv/media/torrents: containers/jellyfin.nix already creates
-#   torrents/{movies,tv} root:media 2770 beside library/{movies,tvshows}.
-#   Inventing a fourth top-level directory would have split the download area
-#   in two.  This file adds only the two directories the client itself needs:
+#   /srv/media/torrents, not a fourth top-level directory: jellyfin.nix already
+#   creates torrents/{movies,tv} root:media 2770 beside library/{movies,tvshows}.
+#   This file adds only the two directories the client itself needs:
 #
 #     /srv/media/torrents/incomplete   in-progress writes (Session\TempPath)
 #     /srv/media/torrents/complete     default save path for uncategorised
 #
-#   CORRECTION, measured 2026-08-21 during M4: the sentence that used to sit
-#   here — "torrents/{movies,tv} … are the directories M4's arr will import
-#   FROM" — is WRONG, and it was an inference, not an observation.  qBittorrent
-#   derives a per-category save path automatically, `<DefaultSavePath>/<category>`,
-#   whenever a category's own save path is left blank.  Sonarr and Radarr create
-#   their categories over the API without one, so the real tree is:
+#   THE REAL TREE IS NOT torrents/{movies,tv}, measured 2026-08-21 during M4.
+#   qBittorrent derives a per-category save path automatically —
+#   `<DefaultSavePath>/<category>` — whenever a category's own save path is
+#   left blank, and Sonarr and Radarr create their categories over the API
+#   without one:
 #
 #     /srv/media/torrents/complete/tv        Sonarr's category
 #     /srv/media/torrents/complete/radarr    Radarr's category
 #     /srv/media/torrents/incomplete/<cat>   in-progress
 #
-#   torrents/{movies,tv} are empty and vestigial.  They are left declared
-#   because deleting a tmpfiles rule does not delete the directory and the
-#   churn buys nothing — but do not write anything expecting to find files
-#   there.  Setting explicit category save paths to "fix" this is a trap while
-#   torrents are in flight: qBittorrent's default reaction to a changed
-#   category save path is to switch affected torrents to Manual Mode, pinning
-#   the existing ones where they are and sending only new ones to the new path,
-#   i.e. splitting the tree the change was meant to tidy.
+#   torrents/{movies,tv} are empty and vestigial, left declared because
+#   deleting a tmpfiles rule does not delete the directory — but do not write
+#   anything expecting to find files there.  SETTING EXPLICIT CATEGORY SAVE
+#   PATHS TO "FIX" THIS IS A TRAP while torrents are in flight: qBittorrent's
+#   default reaction to a changed category save path is to switch affected
+#   torrents to Manual Mode, pinning the existing ones where they are and
+#   sending only new ones to the new path — splitting the tree the change was
+#   meant to tidy.
 #
 #   None of it matters for hardlinks, which is the point worth keeping: the
-#   domain is the DATASET (invariant #2), not the directory layout, so the
-#   M4 import linked across complete/tv → library/tvshows with links=2 exactly
-#   as designed.
-#
-#   Both inside /srv/media, which is ONE hardlink domain — plain subdirectories,
-#   never sub-datasets (invariant #2).
+#   domain is the DATASET (invariant #2), not the directory layout, so the M4
+#   import linked across complete/tv → library/tvshows with links=2 exactly as
+#   designed.  Both paths are inside /srv/media, ONE hardlink domain — plain
+#   subdirectories, never sub-datasets.
 #
 # ── State, and what survives a rollback ──────────────────────────────────────
 #
-#   The guest is STATELESS.  Root is a tmpfs, /nix/store is a read-only share of
-#   the host's, and there is no volume: everything that must survive is a share
-#   of a zdata path.
+#   The guest is STATELESS.  Root is a tmpfs, /nix/store is a read-only share
+#   of the host's, and there is no volume: everything that must survive is a
+#   share of a zdata path.
 #
 #     /srv/state/qbittorrent  → /var/lib/qBittorrent   (profile, torrent state)
 #     /srv/media/torrents     → same path in the guest  (the data)
 #
-#   /var/lib/microvms is deliberately NOT persisted, and that is not an
-#   oversight.  For a fully-declarative VM, install-microvm-wg-qbittorrent.service
-#   is wantedBy microvms.target (→ multi-user.target) and rewrites the state
-#   directory's symlinks from the store on every boot, so the zroot rollback
-#   has nothing to lose.  Persisting it would freeze a stale `current` symlink
-#   across a redeploy — the opposite of what it looks like it does.
+#   /var/lib/microvms IS DELIBERATELY NOT PERSISTED.  For a fully-declarative
+#   VM, install-microvm-wg-qbittorrent.service is wantedBy microvms.target and
+#   rewrites the state directory's symlinks from the store on every boot, so
+#   the zroot rollback has nothing to lose.  Persisting it would freeze a stale
+#   `current` symlink across a redeploy — the opposite of what it looks like it
+#   does.
 #
 # ── Side effects of importing microvm.nixosModules.host, checked ─────────────
 #
@@ -230,8 +205,8 @@
 #      guest there is nothing for ksmd to merge against on a 256 GB host.
 #   3. environment.etc."qemu/bridge.conf" is set to `allow all` — with
 #      lib.mkDefault, and modules/virtualisation.nix already enables libvirtd,
-#      whose own module sets that file from allowedBridges (default virbr0) as a
-#      plain definition.  libvirtd wins; the setuid qemu-bridge-helper is NOT
+#      whose own module sets that file from allowedBridges (default virbr0) as
+#      a plain definition.  libvirtd wins; the setuid qemu-bridge-helper is NOT
 #      widened to br0.  Checked, because "allow all" in front of a
 #      VLAN-filtering bridge would have been a real hole.
 #   4. A `microvm` system user (group kvm) with memlock unlimited.  Required —
@@ -255,8 +230,8 @@
   # networkd unit below matches it.
   tapName = "tap-vpn";
 
-  # Guest-side MAC — 02:00:00:<vlan>:00:<seq>, allocated in the table in
-  # machines/ernst/networking.nix.  This is the address the UDM-Pro sees and
+  # Guest-side MAC — 02:00:00:<vlan>:00:<seq>, allocated in
+  # machines/ernst/allocations.nix.  This is the address the UDM-Pro sees and
   # the one the DHCP reservation keys on; never the host-side tap.
   guestMac = "02:00:00:90:00:03";
   vlanId = 90;

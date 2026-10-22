@@ -524,10 +524,6 @@ in {
     # the download tree stays with the download client's other trees, and
     # /srv/audiobooks keeps the read-only posture the unit below argues for.
     #
-    # The comment that used to sit here said "Bindery's audiobook capability
-    # is deliberately left unrouted".  That was falsified on 2026-09-27 and
-    # the unit below has said so since; this removes the last copy of the
-    # claim rather than leaving the two statements to contradict each other.
     {
       path = "/srv/media/torrents/audiobooks";
       owner = "root";

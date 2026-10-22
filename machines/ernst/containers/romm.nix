@@ -44,15 +44,9 @@
 #   TubeSync and M14's Storyteller applied, with the same answer, so this takes
 #   the podman tier beside them.
 #
-#   `virtualisation.oci-containers` INSIDE AN NSPAWN CONTAINER IS REJECTED,
-#   restated here as every service on this tier is required to restate it: the
-#   value of containers/arr/ is that upstream units and their
-#   `systemd-analyze` scores stay legible, and an opaque image inside it is
-#   opaque to all three.  The escape hatch is this tier, not that hybrid.
-#
-#   THE COST, accepted explicitly: two opaque images, a package tree we do not
-#   build, and a `systemd-analyze security` score for `podman-romm.service`
-#   that measures podman rather than RomM.
+#   modules/containers/podman-netns.nix owns the tier argument and what the
+#   tier costs.  TWO images here — RomM and its MariaDB — which is the one
+#   thing specific to this file; see the netns note below.
 #
 # ── TWO CONTAINERS, ONE NAMESPACE, AND THE DATABASE IS NOT ON THE VLAN ─────
 #
