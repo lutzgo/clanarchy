@@ -98,10 +98,24 @@
   config,
   lib,
   pkgs,
+  pkgs-unstable,
   ...
 }: let
   cfg = config.clanarchy.immich.upload;
   gen = config.clan.core.vars.generators.immich-api-key;
+
+  # immich-cli FROM nixpkgs-unstable, MATCHING THE SERVER.
+  #
+  # The CLI is versioned in lockstep with the server it talks to — it fetches
+  # `.well-known/immich` and expects its own major.  26.05 carries 2.7.5; ernst
+  # moved to 3.1.0 because 26.05 marks 2.x insecure and EOL (the argument is in
+  # machines/ernst/containers/immich.nix).  Leaving the client at 2.7.5 against
+  # a 3.x server breaks this timer at the API, and it breaks it QUIETLY: the
+  # unit is a oneshot on a timer, which is SN4 — a failed upload looks exactly
+  # like no photos having been exported.
+  #
+  # Drop this pin together with the server-side one, in the same change.
+  immichCli = pkgs-unstable.immich-cli;
 in {
   options.clanarchy.immich.upload = {
     enable = lib.mkEnableOption "pushing darktable exports to Immich on a timer";
@@ -259,7 +273,7 @@ in {
       wants = ["network-online.target"];
       after = ["network-online.target"];
 
-      path = [pkgs.immich-cli pkgs.coreutils pkgs.findutils];
+      path = [immichCli pkgs.coreutils pkgs.findutils];
 
       serviceConfig = {
         Type = "oneshot";
