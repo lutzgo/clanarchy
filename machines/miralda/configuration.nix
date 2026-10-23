@@ -108,18 +108,25 @@
   # at a TTY, never answered blank.
   clanarchy.immich.upload.enable = true;
 
-  # Mount the ESP by PARTUUID, not by the partlabel disko assigns: every
-  # machine here uses disko's disk name `main`, so every ESP in the fleet —
-  # including the ones on Clan installer USB sticks — is labelled
-  # `disk-main-ESP`.  modules/disko/base.nix owns that ambiguity and what it
-  # costs (a bootloader update writing to the stick).
+  # Mount the ESP by DISK-ID — not by the partlabel disko assigns, and not by
+  # PARTUUID.  modules/disko/base.nix owns the partlabel ambiguity
+  # (`disk-main-ESP` on every machine in the fleet and on every installer
+  # stick) and what it costs.
   #
-  # PARTUUID is regenerated if this disk is ever repartitioned, so a reinstall
-  # of miralda means updating the value below —
-  # `lsblk -o NAME,PARTUUID /dev/nvme0n1`.  jens moved to a by-id path for
-  # exactly that reason; this machine has not.
+  # THIS WAS A PARTUUID UNTIL TODAY, AND THAT IS A TRAP ON REINSTALL — the one
+  # jens hit on 2026-09-22 and moved off.  PARTUUID is minted afresh by each
+  # `mkfs`, so the value goes stale the moment `clan machines install` re-runs
+  # disko, and the machine comes up with a /boot device that does not exist.
+  # Worse, it is circular: the new PARTUUID can only be read off the installed
+  # machine, and updating it needs a deploy the machine must boot to accept.
+  #
+  # The disk-id path has neither problem: it names model+serial, so it can
+  # never resolve to a USB stick, and the partition number is fixed by
+  # modules/disko/base.nix (ESP is always partition 1).  Survives reinstalls
+  # untouched.  Same device string as machines/miralda/disko.nix, plus `-part1`
+  # — verified to resolve to the same /dev/nvme0n1p1 the PARTUUID did.
   fileSystems."/boot".device =
-    lib.mkForce "/dev/disk/by-partuuid/7f729396-f5cf-4125-a095-84e666aa8b09";
+    lib.mkForce "/dev/disk/by-id/nvme-WD_BLACK_SN850X_1000GB_23141B801914-part1";
 
   # ZFS pool alerts via ntfy.sh — URL prompted at `clan vars generate miralda` time.
   clanarchy.zfs.ntfy.enable = true;
