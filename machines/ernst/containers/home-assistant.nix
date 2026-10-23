@@ -878,6 +878,17 @@ in {
       # system closure are always in that list and are not a signal.
       unbuildableComponents = [
         "kef" # aiokef 0.2.17: get_event_loop() at init, broken on python3.14
+
+        # aioimaplib 2.0.1: its own test suite fails on python3.14 — two tests
+        # in test_imapserver_imaplib.py raise "ValueError: not enough values to
+        # unpack (expected 3, got 2)" (2 failed, 150 passed), which is the
+        # stdlib imaplib client the tests use rather than the library under
+        # test.  Uncached, so it is built, so it fails the whole closure.
+        # `imap` is the ONLY component that requires it, and nothing here uses
+        # it: no `imap` in this file and no imap entry in the live
+        # core.config_entries.  Found by the procedure above after the
+        # 20261021 bump.
+        "imap"
       ];
 
       buildableComponents = let
