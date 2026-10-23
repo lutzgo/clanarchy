@@ -1728,7 +1728,13 @@ in {
         wants = ["wg-quick-wg0.service"];
         after = ["wg-quick-wg0.service"];
         wantedBy = ["multi-user.target"];
-        path = [pkgs.wireguard-tools];
+        # gawk AND coreutils EXPLICITLY, not just wireguard-tools.  A unit.s
+        # PATH is not a login PATH: the first revision of this gate listed
+        # only wireguard-tools and died with `awk: command not found` on every
+        # poll, so it ran the full 120 s and exited 1.  `wants` meant
+        # qBittorrent still started — two minutes late — which is exactly the
+        # kind of near-miss a gate is supposed to remove rather than add.
+        path = [pkgs.wireguard-tools pkgs.gawk pkgs.coreutils];
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
