@@ -1698,6 +1698,60 @@ in {
         };
       };
 
+      # ── THE wg0 READINESS GATE ────────────────────────────────────────────
+      #
+      # qBittorrent is bound to the tunnel at the APPLICATION level —
+      # `Session\Interface=wg0` and `Session\InterfaceName=wg0` in its profile
+      # — so "wg0 exists" is not the condition it needs. `wg-quick-wg0.service`
+      # returning says the link was created, the key loaded and the address
+      # assigned; it says nothing about the tunnel carrying traffic, because
+      # wg-quick does not wait for a handshake and a WireGuard interface never
+      # reports `operstate up` at all (it sits at UNKNOWN forever, which is why
+      # this cannot be a `systemd-networkd-wait-online` gate).
+      #
+      # MEASURED ON THE 2026-10-23 RECURRENCE: wg-quick assigned
+      # 172.24.67.141/32 at 14:52:10 and qbittorrent.service started at
+      # 14:52:11 — the next second. Ordering `after` wg-quick was already in
+      # place and did not help, because wg-quick had genuinely finished.
+      #
+      # So this gate waits for a HANDSHAKE, which is the first moment the
+      # interface can actually carry a packet.
+      #
+      # `wants`, NOT `requires`, on the qbittorrent side — the same call the
+      # tunnel ordering already makes, and for the same stated reason: if the
+      # tunnel never comes up, qBittorrent should still start so the WebUI can
+      # say so. With `after` + `wants`, systemd waits for this unit to reach a
+      # terminal state and then starts qBittorrent either way, so a dead
+      # tunnel costs the timeout below and not the service.
+      systemd.services.wg0-online = {
+        description = "Wait for the wg0 tunnel to complete a handshake";
+        wants = ["wg-quick-wg0.service"];
+        after = ["wg-quick-wg0.service"];
+        wantedBy = ["multi-user.target"];
+        path = [pkgs.wireguard-tools];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          # Longer than the gate's own loop so systemd never kills it
+          # mid-poll; the loop is what decides, and it reports its own verdict.
+          TimeoutStartSec = "150s";
+        };
+        script = ''
+          # `latest-handshakes` prints "<pubkey>\t<unix-seconds>" per peer, and
+          # 0 means "never". Any non-zero value means the peer answered, which
+          # is the readiness condition qBittorrent's interface binding needs.
+          for _ in $(seq 1 60); do
+            if wg show wg0 latest-handshakes 2>/dev/null \
+                 | awk '{ if ($2 + 0 > 0) found = 1 } END { exit !found }'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "wg0 did not complete a handshake in 120s — starting anyway" >&2
+          exit 1
+        '';
+      };
+
       systemd.services.qbittorrent = {
         # The start limit the `Restart=always` below leans on.  Five starts in
         # five minutes; exceed it and the unit lands in `failed`, which is the
@@ -1710,8 +1764,12 @@ in {
         # `requires`.  If wg0 fails, qBittorrent should still come up so the
         # WebUI can say so — it is bound to wg0 at the application level and
         # will not move a byte regardless.
-        wants = ["wg-quick-wg0.service"];
-        after = ["wg-quick-wg0.service"];
+
+        # ./wg0-online above waits for a HANDSHAKE, which is what the
+        # application-level binding actually needs. Still `wants`, so a dead
+        # tunnel delays this service rather than cancelling it.
+        wants = ["wg-quick-wg0.service" "wg0-online.service"];
+        after = ["wg-quick-wg0.service" "wg0-online.service"];
 
         # ── ORDER AFTER THE VIRTIOFS SHARES.  THIS WAS MISSING ──────────────
         #
@@ -1805,7 +1863,23 @@ in {
           # Five attempts in five minutes: comfortably more than a race needs,
           # and far too few to hammer a genuinely broken configuration.
           Restart = "always";
-          RestartSec = "10s";
+
+          # 60s, NOT 10s, AND THE COMMENT ABOVE IS WHY.  It claims "five
+          # attempts in five minutes"; at RestartSec=10s the burst of five is
+          # spent in FIFTY SECONDS, and `startLimitIntervalSec = 300` then
+          # refuses any further attempt for the rest of the window.
+          #
+          # That is what happened on 2026-10-23: five starts between 14:52:11
+          # and 14:53:07, start-limit-hit, and the unit sat `failed` until a
+          # human ran `systemctl start` — which succeeded FIRST TIME, the race
+          # signature this block describes.  The design classifies "burst
+          # exhausted" as "not a race, page someone"; a race lasting over a
+          # minute was therefore mis-filed as a broken configuration.
+          #
+          # At 60s the five attempts actually span the five minutes the
+          # comment promises, so a slow race self-heals while a genuinely
+          # broken configuration still exhausts the burst and still pages.
+          RestartSec = "60s";
 
           # THE line that makes M4's hardlinks possible.  0002 → files 0664,
           # so a host-side arr in group media has the write bit
