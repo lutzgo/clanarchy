@@ -766,6 +766,36 @@ in {
       # value, at rev a6ccd5a657a997cd0551e4aa616ae867c3c46a43.
       hassPackage = pkgs.home-assistant.override {
         packageOverrides = _final: prev: {
+          # ── aioimaplib: TWO TESTS DISABLED, NOT THE SUITE ────────────────
+          #
+          # Its own test suite fails on python3.14 — two cases in
+          # test_imapserver_imaplib.py raise
+          #   ValueError: not enough values to unpack (expected 3, got 2)
+          # (2 failed, 150 passed, 1 skipped, 1 deselected).  The failures are
+          # in the TEST's client, which is the python stdlib `imaplib`, changed
+          # in 3.14 — not in the library under test.  So the two cases are
+          # disabled and the other 150 still gate the build.
+          #
+          # WHY THIS PACKAGE IS HERE AT ALL: the HACS integration
+          # `mail_and_packages` requires it.  It used to arrive transitively
+          # because the built-in `imap` component pulls it in, which is why
+          # denying that component (#350, to get the 20261021 nixpkgs to
+          # evaluate) silently removed the dependency and left
+          # hass-hacs-deps.service failing with
+          #   MISSING  mail_and_packages  aioimaplib -> aioimaplib is not installed
+          #
+          # It is now listed explicitly in `hassExtraPackages` as well, so the
+          # requirement belongs to its actual consumer instead of depending on
+          # an unrelated and unused component dragging it in.
+          aioimaplib = prev.aioimaplib.overridePythonAttrs (old: {
+            disabledTests =
+              (old.disabledTests or [])
+              ++ [
+                "test_store"
+                "test_store_and_search_by_keyword"
+              ];
+          });
+
           bleak-esphome = prev.bleak-esphome.overridePythonAttrs (old: rec {
             version = "3.7.3";
             src = pkgs.fetchFromGitHub {
@@ -879,16 +909,15 @@ in {
       unbuildableComponents = [
         "kef" # aiokef 0.2.17: get_event_loop() at init, broken on python3.14
 
-        # aioimaplib 2.0.1: its own test suite fails on python3.14 — two tests
-        # in test_imapserver_imaplib.py raise "ValueError: not enough values to
-        # unpack (expected 3, got 2)" (2 failed, 150 passed), which is the
-        # stdlib imaplib client the tests use rather than the library under
-        # test.  Uncached, so it is built, so it fails the whole closure.
-        # `imap` is the ONLY component that requires it, and nothing here uses
-        # it: no `imap` in this file and no imap entry in the live
-        # core.config_entries.  Found by the procedure above after the
-        # 20261021 bump.
-        "imap"
+        # `imap` WAS DENIED HERE AND IS NOT ANY MORE.  It was added when
+        # aioimaplib would not build on python3.14 and took the whole host
+        # closure down with it; that package now builds, with its two
+        # stdlib-dependent tests disabled in `packageOverrides` below, so the
+        # component is buildable and has no business in a list named for the
+        # opposite.  Denying it also removed aioimaplib from the environment
+        # and broke the HACS `mail_and_packages` integration, which is why
+        # that dependency is now stated explicitly in `hassExtraPackages`
+        # instead of arriving as a side effect of this component.
       ];
 
       buildableComponents = let
@@ -908,6 +937,11 @@ in {
       hassExtraPackages = ps: [
         # philips_airplus (HACS) — manifest wants paho-mqtt>=2.1,<3.
         ps.paho-mqtt
+
+        # mail_and_packages (HACS) — manifest wants aioimaplib.  Listed here
+        # rather than left to the built-in `imap` component to supply, which
+        # is how #350 broke it.  The build override is in `packageOverrides`.
+        ps.aioimaplib
 
         # mass_queue (HACS, droans/mass_queue) — surfaces Music Assistant's
         # play queue in Home Assistant, which M30 gave this household something
