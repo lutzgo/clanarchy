@@ -16,7 +16,7 @@
 #     DHCP.  See THE BUG below — this line is not decoration, it is the
 #     difference between a profile NetworkManager loads and one it silently
 #     throws away.
-#   ipv4.dns-search  = "~. skynet.lan"
+#   ipv4.dns-search  = "~.;skynet.lan"
 #     ~.          — routing catch-all: while this profile is active, ALL
 #                   DNS queries route through this link's DHCP-supplied
 #                   resolver (Technitium at 10.0.5.3), so its blocklists
@@ -171,7 +171,27 @@
         # without `method` makes NM reject the entire connection, and the only
         # visible symptom is a machine with no declarative wifi profile.
         method = "auto";
-        dns-search = "~. skynet.lan";
+
+        # SEMICOLON, NOT A SPACE, AND THAT IS A DEPRECATION NOT A PREFERENCE.
+        # NetworkManager logs this on every profile write, on both laptops:
+        #
+        #   keyfile: ipv4.dns-search: normalizing invalid separator ',' or ' '
+        #   in DNS search value '~. skynet.lan', only ';' will be valid
+        #   separators in keyfiles in the future
+        #
+        # `;` is the keyfile list separator and is valid today — NM normalises
+        # the space form to it and warns — so this is the forward-compatible
+        # spelling of the same two entries. `nmcli` still DISPLAYS the value
+        # comma-separated (`~.,skynet.lan`); that is nmcli's rendering of a
+        # list, not the stored separator, so do not "fix" it back.
+        #
+        # VERIFY AFTER DEPLOYING, because THE BUG above applies to this field
+        # too — a profile NM rejects is a machine with no declarative wifi:
+        #
+        #   nmcli -t -f ipv4.dns-search con show home   -> ~.,skynet.lan
+        #   nmcli con show --active                     -> the wifi still there
+        #   ls /run/NetworkManager/system-connections/   -> home.nmconnection
+        dns-search = "~.;skynet.lan";
         dns-priority = -100;
       };
 
