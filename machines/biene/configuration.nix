@@ -30,6 +30,12 @@
   # Fritz!Box is biene-specific — managed via the bespoke modules/wifi.nix.
   clanarchy.hardware.cpu = "intel";
   clanarchy.users.admin.enable = true;
+
+  # Hand big compiles to ernst.  biene had no builder at all until now, and
+  # the cost showed: deploying it from a 2026-06 nixpkgs meant compiling
+  # inkscape, quickshell and the icon themes locally, for hours, while a
+  # 32-core machine sat idle one overlay away.
+  clanarchy.remoteBuilder.client.enable = true;
   clanarchy.desktop.labwc.valent.enable = true;
 
   # Fritz!Box 7590 MX — biene-specific second wifi network.

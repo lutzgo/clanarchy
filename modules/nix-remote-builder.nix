@@ -74,8 +74,53 @@ in {
 
     hostNames = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = ["ernst" "ernst.skynet.lan" "10.0.50.10"];
+      default = [
+        "ernst"
+        "ernst.skynet.lan"
+        "10.0.50.10"
+
+        # ernst's ZeroTier address, so offloading survives leaving the house.
+        #
+        # The LAN names resolve to nothing from a visiting network, so a
+        # roaming client silently fell back to building locally — which is how
+        # biene spent hours compiling inkscape and quickshell on a laptop while
+        # a 32-core machine sat idle one overlay away.
+        #
+        # SAME KEY, NOT A SECOND TRUST ANCHOR, and that was checked rather than
+        # assumed before this address was added.  ernst serves one
+        # `HostKey /run/secrets/vars/openssh/ssh.id_ed25519` on every
+        # interface, and all three agreed:
+        #
+        #   vars/per-machine/ernst/openssh/ssh.id_ed25519.pub
+        #   ssh-keyscan -t ed25519 over the ZeroTier address
+        #   `hostPublicKey` below
+        #
+        # all -> ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILd954KHVjUAOX06pHP/+ou78tpo6OYKMQL2ew3eUqEt
+        "fdda:106a:123a:d561:1099:933e:4c60:711f"
+      ];
       description = "Names/addresses the pinned builder host key is valid for.";
+    };
+
+    fallbackHostName = lib.mkOption {
+      type = lib.types.str;
+      default = "ernst-zt";
+      description = ''
+        Second builder entry, tried when {option}`hostName` is unreachable.
+
+        A NAME and not the raw address, because `nix.buildMachines.hostName`
+        is interpolated into an `ssh-ng://` URI and a bare IPv6 literal would
+        have to be bracketed there.  The name is mapped to
+        {option}`fallbackAddress` through `networking.hosts` on the client, so
+        no DNS is involved and it resolves on a visiting network.
+      '';
+    };
+
+    fallbackAddress = lib.mkOption {
+      type = lib.types.str;
+      default = "fdda:106a:123a:d561:1099:933e:4c60:711f";
+      description = ''
+        ernst's ZeroTier address, which is reachable wherever the overlay is.
+      '';
     };
 
     hostPublicKey = lib.mkOption {
@@ -139,22 +184,35 @@ in {
       # every dependency proxied over SSH from here.
       nix.settings.builders-use-substitutes = true;
 
-      nix.buildMachines = [
-        {
-          inherit (cfg) hostName maxJobs speedFactor;
-          sshUser = "root";
-          sshKey = gen.files."builder_ed25519".path;
-          protocol = "ssh-ng";
-          systems = ["x86_64-linux"];
-          # Subset of ernst's advertised system-features
-          # (nixos-test benchmark big-parallel kvm) — `big-parallel` is the one
-          # that makes kernel builds eligible at all.
-          supportedFeatures = ["big-parallel" "kvm" "nixos-test" "benchmark"];
-        }
-      ];
+      # TWO ENTRIES, TRIED IN ORDER: the LAN name first for speed, the
+      # ZeroTier name second so a roaming client still offloads.
+      #
+      # nix walks `buildMachines` and skips one it cannot reach, logging
+      # `cannot build on 'ssh-ng://…'` and moving on — which is exactly what
+      # jens did while ernst was rebooting. That behaviour is what makes a
+      # second entry a fallback rather than a hard dependency: at home the
+      # LAN wins on copy throughput, away from home it fails fast and the
+      # overlay takes over, and with ernst down both miss and the client
+      # builds locally as before.
+      nix.buildMachines = map (h: {
+        hostName = h;
+        inherit (cfg) maxJobs speedFactor;
+        sshUser = "root";
+        sshKey = gen.files."builder_ed25519".path;
+        protocol = "ssh-ng";
+        systems = ["x86_64-linux"];
+        # Subset of ernst's advertised system-features
+        # (nixos-test benchmark big-parallel kvm) — `big-parallel` is the one
+        # that makes kernel builds eligible at all.
+        supportedFeatures = ["big-parallel" "kvm" "nixos-test" "benchmark"];
+      }) [cfg.hostName cfg.fallbackHostName];
+
+      # The fallback name resolves through /etc/hosts, not DNS: skynet names
+      # do not resolve on a visiting network, which is the whole point.
+      networking.hosts.${cfg.fallbackAddress} = [cfg.fallbackHostName];
 
       programs.ssh.knownHosts."clanarchy-remote-builder" = {
-        hostNames = cfg.hostNames;
+        hostNames = cfg.hostNames ++ [cfg.fallbackHostName];
         publicKey = cfg.hostPublicKey;
       };
     })
