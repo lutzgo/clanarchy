@@ -239,6 +239,23 @@
   ...
 }: let
   ############################################################################
+  # The household's OWN vhosts, derived rather than typed.
+  #
+  # ./ingress-policy.nix already is the list of every hostname this fleet
+  # serves — that file exists precisely so the answer lives in one place and
+  # cannot drift — so the whitelist below reads it instead of restating a
+  # dozen names that would go stale the next time a service is added.
+  ############################################################################
+  ownVhosts = let
+    peers = import ./traefik/peers.nix;
+    policy = import ./ingress-policy.nix {inherit (peers) baseDomain;};
+  in
+    policy.appApiHosts
+    ++ policy.protectedHosts
+    ++ policy.householdHosts
+    ++ [policy.portalHost];
+
+  ############################################################################
   # THE ENFORCEMENT SWITCH.  See the block above — this was Q2's gate, and Q2
   # was CONFIRMED by measurement on 2026-09-07 with the source port matching
   # end to end.  Setting this back to false is the correct first move if bans
@@ -479,6 +496,55 @@ in {
                 "172.16.0.0/12"
                 "192.168.0.0/16"
                 "127.0.0.0/8"
+              ];
+            };
+          }
+          # ── THE HOUSEHOLD BANS ITSELF WITHOUT THIS ───────────────────────
+          #
+          # MEASURED, alert 4091 on 2026-10-24: lgo's laptop on a visiting
+          # network was banned for 4 h by `crowdsecurity/http-crawl-non_statics`
+          # — 185 events in 99 seconds — while scrolling an Immich album.
+          #
+          #   status      200
+          #   target_uri  /api/assets/ebf3da6b-e642-477c-b0c8-9e67e25e9fde
+          #   target_uri  /api/assets/916b9903-79c6-4f38-9e4b-0996feaef0b5
+          #   target_uri  /dashboard/tags/irq62chs8hbnyaybjdsk6msi?_rsc=...
+          #   user_agent  Mozilla/5.0 (X11; Linux x86_64) ... Chrome/155
+          #
+          # Those are SUCCESSES, not probes. Immich fetches one
+          # /api/assets/<uuid> per thumbnail, so one album is a hundred
+          # distinct non-static URIs in a minute, which is exactly the shape
+          # that scenario is built to catch on a content website. It is the
+          # wrong instrument for a single-page app used by its owner.
+          #
+          # And the blast radius is the whole house, not one service: the
+          # bouncer drops at the packet layer, so a banned household address
+          # loses Jellyfin, mail and the portal at the same time — including
+          # the surfaces someone would use to diagnose it. It had happened
+          # more than once before anyone connected the two.
+          #
+          # WHY STATUS 200 IS THE RIGHT KEY, and why this is narrower than it
+          # looks. A scanner walking these vhosts gets 404s and 401s, not
+          # 200s, so everything that matters still fires:
+          #
+          #   crowdsecurity/http-probing        404s      unaffected
+          #   crowdsecurity/http-generic-bf     401/403   unaffected
+          #   clanarchy/app-api-auth-bf         401/403   unaffected
+          #
+          # What is given up is crawl detection against an attacker who
+          # already holds valid credentials for one of these apps — at which
+          # point crawl rate is not the control that matters.
+          #
+          # The RFC1918 whitelist above does NOT cover this case and cannot:
+          # these services are reached from OUTSIDE on purpose, so the
+          # household is a public address whenever it is away from home.
+          {
+            name = "clanarchy/own-app-success-whitelist";
+            description = "A person using the household's own apps is not a crawler";
+            whitelist = {
+              reason = "HTTP 200 on a vhost this fleet serves is use, not reconnaissance";
+              expression = [
+                "evt.Meta.log_type == 'http_access-log' && evt.Meta.http_status == '200' && evt.Meta.target_fqdn in [${lib.concatMapStringsSep ", " (h: "'${h}'") ownVhosts}]"
               ];
             };
           }
