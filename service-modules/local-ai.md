@@ -317,14 +317,13 @@ pin returns `ENOMEM` and gamescope calls `abort()`.
 roles.inference.machines.ernst.settings.vram = {
   totalMiB       = 24560;        # mem_info_vram_total, NOT the nominal 24576
   reserveMiB     = 1600;         # measured session baseline + 250
-  cardPciAddress = "0000:03:00.0";
 };
 ```
 
 and, per model:
 
 ```nix
-residentVramMiB = 22672;         # MEASURED, never computed
+residentVramMiB = 22879;         # MEASURED under load, never computed
 ```
 
 An assertion refuses any served model where
@@ -334,18 +333,29 @@ group is exclusive, so any member can be the resident one and each has to fit on
 its own. A model left without `residentVramMiB` warns instead: it is exempt by
 omission rather than by measurement, and that is worth seeing.
 
-Measure it with the session stopped:
+Measure it with the session stopped, and **under load, not just after load**:
 
 ```bash
 systemctl stop display-manager.service
+# warm it
 curl -s -X POST http://127.0.0.1:11434/v1/chat/completions \
   -H 'content-type: application/json' \
   -d '{"model":"<name>","messages":[{"role":"user","content":"hi"}],"max_tokens":1}'
+# then drive real prompts through it and keep reading
 cat /sys/class/drm/card1/device/mem_info_vram_used
 ```
 
-Measuring with the session up measures the *sum*, which is the quantity the
-check is against — not its input.
+Two ways to get this wrong, both found the hard way:
+
+- **Measuring with the session up measures the sum**, which is the quantity the
+  check is against — not its input.
+- **Measuring seconds after a cold load gives a floor.** The KV cache fills as
+  the model is used and the footprint grows with it. On ernst the same arm read
+  22672 MiB just after load, 22811 settled after three long prompts, and 22879
+  under a live karakeep tagging run — so a load-time figure understated the real
+  number by ~200 MiB and made the assertion optimistic in the one direction a
+  safety check must never be optimistic in. **Declare the highest figure you
+  observe.**
 
 `reserveMiB` is a floor, not a margin. It is the lever that will look cheapest
 the next time a model does not fit, and it is where the television lives. Use

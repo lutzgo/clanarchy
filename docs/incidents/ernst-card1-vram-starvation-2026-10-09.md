@@ -163,6 +163,13 @@ the live card with the Kodi session resident (330 MiB) and subtracted out.
 
 **Taken: `-c 32768 --n-cpu-moe 2`**, at −13.8% decode.
 
+**Every figure in that table is a load-time reading, and therefore a floor.**
+Re-measured on 2026-10-12, the same arm sits at 22811 MiB settled and 22879
+under a live karakeep run — the KV cache fills as the model is used. The table
+is still the right basis for *choosing* between arms, since the error runs the
+same way for all of them, and the wrong basis for the budget: `residentVramMiB`
+now declares 22879, which leaves 81 MiB under the ceiling rather than 288.
+
 Not the faster arm. `-c 16384 --n-cpu-moe 1` holds 87.0 tok/s but halves the
 context window — a semantic change for every consumer, and mneme injects a
 constitution plus wiki recall on every turn — and clears the ceiling by 44 MiB,
