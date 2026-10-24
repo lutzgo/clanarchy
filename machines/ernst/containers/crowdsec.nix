@@ -523,13 +523,22 @@ in {
           # the surfaces someone would use to diagnose it. It had happened
           # more than once before anyone connected the two.
           #
-          # WHY STATUS 200 IS THE RIGHT KEY, and why this is narrower than it
-          # looks. A scanner walking these vhosts gets 404s and 401s, not
-          # 200s, so everything that matters still fires:
+          # WHY SUCCESS AND REDIRECT ARE THE RIGHT KEY, and why this is
+          # narrower than it looks. A scanner walking these vhosts collects
+          # 404s, 401s and 403s, so everything that matters still fires:
           #
           #   crowdsecurity/http-probing        404s      unaffected
           #   crowdsecurity/http-generic-bf     401/403   unaffected
           #   clanarchy/app-api-auth-bf         401/403   unaffected
+          #
+          # 200 ALONE WAS TOO NARROW, and the first revision of this shipped
+          # that way. `home.goclan.org` answers 302 to Authelia whenever the
+          # browser has no session, so a signed-out person opening the
+          # dashboard generates a burst of redirects that the whitelist did
+          # not cover — the same ban, from the other side of the login. 301
+          # and 304 are here for the same reason and cost nothing: a
+          # not-modified is a client that already had the resource, which is
+          # the opposite of reconnaissance.
           #
           # What is given up is crawl detection against an attacker who
           # already holds valid credentials for one of these apps — at which
@@ -544,7 +553,7 @@ in {
             whitelist = {
               reason = "HTTP 200 on a vhost this fleet serves is use, not reconnaissance";
               expression = [
-                "evt.Meta.log_type == 'http_access-log' && evt.Meta.http_status == '200' && evt.Meta.target_fqdn in [${lib.concatMapStringsSep ", " (h: "'${h}'") ownVhosts}]"
+                "evt.Meta.log_type == 'http_access-log' && evt.Meta.http_status in ['200', '301', '302', '304'] && evt.Meta.target_fqdn in [${lib.concatMapStringsSep ", " (h: "'${h}'") ownVhosts}]"
               ];
             };
           }
