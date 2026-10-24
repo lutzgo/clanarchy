@@ -771,6 +771,37 @@ in {
           # files inside a store the service then cannot write.
           User = "nextcloud";
           Group = "nextcloud";
+
+          # ── AND THE CREDENTIALS, WHICH IS THE OTHER HALF OF "LIKE
+          #    nextcloud-setup.service" ─────────────────────────────────────
+          #
+          # Copying that unit's User and Group without its LoadCredential is
+          # what broke this service for seventeen days — 2026-10-07 to
+          # 2026-10-24, restart counter 1248 — with:
+          #
+          #   systemd-run[368]: Failed to start transient service unit:
+          #                     Access denied
+          #
+          # `nextcloud-occ` is a wrapper, and when SMTP credentials are
+          # configured it takes a branch that runs, in effect:
+          #
+          #   if requiresRuntimeSystemdCredentials and CREDENTIALS_DIRECTORY
+          #      is empty:
+          #     exec systemd-run --property=LoadCredential=secret_file:...
+          #       --uid=nextcloud ...
+          #
+          # It EXECs, so the sudo and runuser fallbacks further down that
+          # wrapper are never reached — and an unprivileged user cannot create
+          # a transient unit, so every occ call died right there.  Loading the
+          # credential here sets CREDENTIALS_DIRECTORY, the branch is skipped,
+          # and occ runs in process exactly as it does inside nextcloud-setup.
+          #
+          # The same two entries that unit declares, read with `systemctl cat`
+          # against the running container rather than copied out of nixpkgs.
+          LoadCredential = [
+            "adminpass:${adminPassFile}"
+            "secret_file:${smtpSecretFile}"
+          ];
         };
         path = [config.services.nextcloud.occ pkgs.coreutils pkgs.gnugrep pkgs.jq];
         script = ''
