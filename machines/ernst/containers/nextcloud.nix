@@ -869,17 +869,34 @@ in {
           # configuration such as `datadir`.  Three positional arguments, no
           # `set` verb.
           #
-          # THE JSON KEYS ARE `id` AND `backendOptions`, also read out of
-          # Lib/StorageConfig.php::jsonSerialize rather than guessed — not
-          # `mount_id` and not `configuration`, which is what they look like
-          # they should be.  And there is no `tr -d '\\'` on this pipeline,
-          # unlike the Media check above: PHP escapes forward slashes as `\/`,
-          # which `grep` has to have stripped but which is a VALID JSON escape
-          # that jq decodes correctly on its own.  Stripping backslashes before
-          # jq would corrupt any other escape in the document.
+          # THE JSON KEYS ARE `mount_id` AND `configuration`, and the comment
+          # that used to sit here asserted the opposite — `id` and
+          # `backendOptions`, "read out of Lib/StorageConfig.php::jsonSerialize
+          # rather than guessed".  Whatever that reading was, the running
+          # server disagrees.  Measured against this deployment:
+          #
+          #   files_external:list --output=json
+          #   [{"mount_id":1,"mount_point":"\/Media",...,
+          #     "configuration":{"datadir":"\/srv\/media"},...}, ...]
+          #
+          #   select(.backendOptions.datadir == $d) | .id        -> (empty)
+          #   select(.configuration.datadir == $d) | .mount_id    -> 2
+          #
+          # The empty result is why this guard never matched and why
+          # `files_external:create` ran on EVERY provisioning pass: mount ids
+          # 2, 3, 4 and 5 were four identical registrations of the same inbox,
+          # one per deploy.  A guard that silently never matches is worse than
+          # no guard, because the failure accumulates instead of announcing
+          # itself.
+          #
+          # There is no `tr -d '\\'` on this pipeline, unlike the Media check
+          # above: PHP escapes forward slashes as `\/`, which `grep` has to
+          # have stripped but which is a VALID JSON escape that jq decodes
+          # correctly on its own.  Stripping backslashes before jq would
+          # corrupt any other escape in the document.
           inbox_id=$(nextcloud-occ files_external:list --output=json \
             | jq -r --arg d '${docsInbox}' \
-                'first(.[] | select(.backendOptions.datadir == $d) | .id) // empty')
+                'first(.[] | select(.configuration.datadir == $d) | .mount_id) // empty')
 
           if [ -z "$inbox_id" ]; then
             # With --output=json, files_external:create writes the bare new
