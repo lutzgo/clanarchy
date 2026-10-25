@@ -91,9 +91,16 @@
   # the plain desktop.
   services.displayManager.sessionPackages = [pkgs.kdePackages.plasma-bigscreen];
 
+  # Every Jovian package below is reached through `pkgs.jovianPackages.*`, not
+  # `pkgs.*`.  Jovian moved its whole package set into a `makeScope` namespace
+  # (overlay.nix: `jovianPackages = lib.makeScope newScope`) and re-exports
+  # nothing at top level, so the short names fail at EVAL with
+  # `attribute 'holo-session-selection' missing` — loudly, which is the one
+  # mercy here.  Do not "simplify" these back.
+  #
   # Steam's in-UI "Switch to Desktop" button shells out to
   # `steamos-session-select`. Jovian no longer ships that name: the script was
-  # renamed upstream to `holo-session-select` (pkgs.holo-session-selection),
+  # renamed upstream to `holo-session-select` (pkgs.jovianPackages.holo-session-selection),
   # and switching is now supposed to go through steamos-manager over D-Bus.
   # This Steam client does not use the D-Bus path — it runs the binary
   # unconditionally — so with nothing under the old name the button silently
@@ -109,62 +116,24 @@
   # which is not a Deck and has no Jovian. Here the real thing exists and only
   # needs exposing — do not import the htpc version.
 
-  # Decky shells out by bare name, and NOTHING on the unit's PATH can fix most
-  # of it.  MEASURED 2026-10-25, from the one bug it actually causes: birte woke
-  # from 39 hours of deep suspend, Decky vanished from the Quick Access Menu,
-  # and the loader kept running and listening on 1337 — so every health check
-  # looked fine while the thing was gone.
+  # Decky shells out to `systemctl`, `killall` and `python3` by bare name, and
+  # Jovian's unit sets no PATH of its own, so without this they fail.  `path`
+  # is sufficient as of Decky 3.3.0 and was NOT sufficient before it, which is
+  # worth recording because the difference cost a day:
   #
-  # `decky_loader/localplatform/localplatformlinux.py` defines
+  # Up to 3.2.x, `localplatformlinux.run()` defaulted to
+  # `env = {"LD_LIBRARY_PATH": ""}` and handed that to
+  # `create_subprocess_exec`, REPLACING the environment.  No PATH reached any
+  # subprocess, the lookup fell back to `os.defpath` (`:/bin:/usr/bin`), and on
+  # NixOS that holds `sh` and `env` and nothing else.  3.3.0 changed the
+  # default to `{"PATH": os.getenv("PATH", ""), …}`, so the unit's PATH is
+  # finally inherited and this line does what it has always claimed to.
   #
-  #   async def run(args, …, env = {"LD_LIBRARY_PATH": ""})
-  #
-  # and hands that dict straight to `create_subprocess_exec`, which REPLACES
-  # the environment.  There is then no PATH at all, so the lookup falls back to
-  # Python's `os.defpath` (`:/bin:/usr/bin`) — which on NixOS holds `sh` and
-  # `env` and nothing else.  Jovian hits this too, and its own attempt misses
-  # for the same reason: `makeWrapperArgs = ["--prefix PATH : …coreutils
-  # psmisc"]` sets PATH for the main process, which `run` discards.
-  #
-  # The failure is not graceful.  `loader_reinjector` is the loop that keeps
-  # Decky's JavaScript in Steam's GamepadUI tab; it reaches `systemctl` via
-  # `service_active`, and `inject_javascript` calls `restart_webhelper()`
-  # (`killall`) whenever `deckyHasLoaded` is already set.  The error escapes the
-  # loop and KILLS THE TASK:
-  #
-  #   future: <Task finished coro=<PluginManager.loader_reinjector() done, …>
-  #   FileNotFoundError: [Errno 2] No such file or directory: 'systemctl'
-  #
-  # After that Decky never re-injects, and only `systemctl restart
-  # decky-loader` brings the menu entry back — which is why this read as a
-  # recurring mystery rather than a bug.
-  #
-  # So patch the default env, which is the only place that reaches every
-  # caller.  `--replace-fail` is the point of doing it this way: if upstream
-  # reshapes that literal, the build stops here rather than silently restoring
-  # a Decky that cannot heal itself.
-  #
-  # `lsof` and `gdb` are deliberately NOT here.  They are reached only from
-  # `close_cef_socket`, behind the opt-in `use_cef_close_workaround` setting;
-  # a debugger does not belong in a handheld's closure for a path nothing on
-  # this machine takes.  Turning that setting on means adding them.
-  jovian.decky-loader.package = pkgs.decky-loader.overridePythonAttrs (old: {
-    postPatch =
-      (old.postPatch or "")
-      + ''
-        substituteInPlace backend/decky_loader/localplatform/localplatformlinux.py \
-          --replace-fail '{"LD_LIBRARY_PATH": ""}' \
-            '{"LD_LIBRARY_PATH": "", "PATH": "${lib.makeBinPath [pkgs.systemd pkgs.psmisc]}"}'
-      '';
-  });
-
-  # `python3` is the one bare name the unit PATH does fix, so this stays:
-  # `get_system_pythonpaths()` uses `subprocess.run` directly rather than the
-  # `run()` helper above, so it inherits the environment.  Without it:
-  #
-  #   [helpers][WARNING]: Failed to execute get_system_pythonpaths():
-  #     [Errno 2] No such file or directory: 'python3'
-  systemd.services.decky-loader.path = [pkgs.python3];
+  # Keep `systemd` here.  Jovian's own package only prefixes coreutils and
+  # psmisc onto the wrapper, so `killall` arrives from upstream but `systemctl`
+  # does not, and `service_active`/`service_restart` are on the path Decky
+  # takes whenever it has to recover its injection.
+  systemd.services.decky-loader.path = [pkgs.systemd pkgs.python3];
 
   # A way back to Gaming Mode that does not require a terminal.
   #
@@ -231,16 +200,16 @@
       arg="''${1:-gamescope}"
       case "$arg" in
         gamescope|steamos|gaming)
-          exec ${pkgs.holo-session-selection}/bin/holo-session-select gamescope
+          exec ${pkgs.jovianPackages.holo-session-selection}/bin/holo-session-select gamescope
           ;;
         desktop|plasma|plasma-wayland|plasma-x11|bigscreen)
           # plasma.desktop *is* Bigscreen (see sessionPackages above), so the
           # ordinary switch lands in the right place and needs no special
           # casing here.
-          exec ${pkgs.steamos-manager}/bin/steamosctl switch-to-desktop-mode
+          exec ${pkgs.jovianPackages.steamos-manager}/bin/steamosctl switch-to-desktop-mode
           ;;
         *)
-          exec ${pkgs.holo-session-selection}/bin/holo-session-select "$arg"
+          exec ${pkgs.jovianPackages.holo-session-selection}/bin/holo-session-select "$arg"
           ;;
       esac
     '')
