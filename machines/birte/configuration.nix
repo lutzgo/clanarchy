@@ -19,6 +19,13 @@
   clanarchy.hardware.cpu = "amd"; # Van Gogh APU (Zen 2 + RDNA 2 iGPU)
   clanarchy.users.admin.enable = true;
 
+  # Hand big compiles to ernst.  birte is the machine the remote-builder
+  # module's own header was written about — its Valve kernel is rebuilt from
+  # source on every bump because this clan configures no substituters for it
+  # — and yet it was never made a client.  A Steam Deck APU is the worst
+  # place in the fleet to compile a kernel.
+  clanarchy.remoteBuilder.client.enable = true;
+
   # Build against nixpkgs-unstable — Jovian-NixOS only supports unstable,
   # and Noctalia/Quickshell need unstable-flavoured pkgs too.  See
   # modules/channel.nix for how this swaps the pkgs instance.
