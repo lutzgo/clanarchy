@@ -108,16 +108,63 @@
   # modules/roles/htpc.nix reimplements this script from scratch for ernst,
   # which is not a Deck and has no Jovian. Here the real thing exists and only
   # needs exposing — do not import the htpc version.
-  # Decky shells out to `systemctl` and `python3` by bare name, but Jovian's
-  # unit sets no PATH, so both fail at startup:
+
+  # Decky shells out by bare name, and NOTHING on the unit's PATH can fix most
+  # of it.  MEASURED 2026-10-25, from the one bug it actually causes: birte woke
+  # from 39 hours of deep suspend, Decky vanished from the Quick Access Menu,
+  # and the loader kept running and listening on 1337 — so every health check
+  # looked fine while the thing was gone.
+  #
+  # `decky_loader/localplatform/localplatformlinux.py` defines
+  #
+  #   async def run(args, …, env = {"LD_LIBRARY_PATH": ""})
+  #
+  # and hands that dict straight to `create_subprocess_exec`, which REPLACES
+  # the environment.  There is then no PATH at all, so the lookup falls back to
+  # Python's `os.defpath` (`:/bin:/usr/bin`) — which on NixOS holds `sh` and
+  # `env` and nothing else.  Jovian hits this too, and its own attempt misses
+  # for the same reason: `makeWrapperArgs = ["--prefix PATH : …coreutils
+  # psmisc"]` sets PATH for the main process, which `run` discards.
+  #
+  # The failure is not graceful.  `loader_reinjector` is the loop that keeps
+  # Decky's JavaScript in Steam's GamepadUI tab; it reaches `systemctl` via
+  # `service_active`, and `inject_javascript` calls `restart_webhelper()`
+  # (`killall`) whenever `deckyHasLoaded` is already set.  The error escapes the
+  # loop and KILLS THE TASK:
+  #
+  #   future: <Task finished coro=<PluginManager.loader_reinjector() done, …>
+  #   FileNotFoundError: [Errno 2] No such file or directory: 'systemctl'
+  #
+  # After that Decky never re-injects, and only `systemctl restart
+  # decky-loader` brings the menu entry back — which is why this read as a
+  # recurring mystery rather than a bug.
+  #
+  # So patch the default env, which is the only place that reaches every
+  # caller.  `--replace-fail` is the point of doing it this way: if upstream
+  # reshapes that literal, the build stops here rather than silently restoring
+  # a Decky that cannot heal itself.
+  #
+  # `lsof` and `gdb` are deliberately NOT here.  They are reached only from
+  # `close_cef_socket`, behind the opt-in `use_cef_close_workaround` setting;
+  # a debugger does not belong in a handheld's closure for a path nothing on
+  # this machine takes.  Turning that setting on means adding them.
+  jovian.decky-loader.package = pkgs.decky-loader.overridePythonAttrs (old: {
+    postPatch =
+      (old.postPatch or "")
+      + ''
+        substituteInPlace backend/decky_loader/localplatform/localplatformlinux.py \
+          --replace-fail '{"LD_LIBRARY_PATH": ""}' \
+            '{"LD_LIBRARY_PATH": "", "PATH": "${lib.makeBinPath [pkgs.systemd pkgs.psmisc]}"}'
+      '';
+  });
+
+  # `python3` is the one bare name the unit PATH does fix, so this stays:
+  # `get_system_pythonpaths()` uses `subprocess.run` directly rather than the
+  # `run()` helper above, so it inherits the environment.  Without it:
   #
   #   [helpers][WARNING]: Failed to execute get_system_pythonpaths():
   #     [Errno 2] No such file or directory: 'python3'
-  #   FileNotFoundError: [Errno 2] No such file or directory: 'systemctl'
-  #
-  # The loader survives and serves plugins, but its service_stop/service_active
-  # helpers are dead, so anything Decky wants to restart silently does nothing.
-  systemd.services.decky-loader.path = [pkgs.systemd pkgs.python3];
+  systemd.services.decky-loader.path = [pkgs.python3];
 
   # A way back to Gaming Mode that does not require a terminal.
   #
