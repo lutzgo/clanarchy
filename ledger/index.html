@@ -1,0 +1,2950 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="NixOS declarative configuration — guides and option reference">
+      
+      
+      
+        <link rel="canonical" href="https://lutzgo.github.io/clanarchy/ledger/">
+      
+      
+        <link rel="prev" href="../standing-notes/">
+      
+      
+        <link rel="next" href="../history/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Interim-rule ledger - Clanarchy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#interim-rule-ledger" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Clanarchy" class="md-header__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Clanarchy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Interim-rule ledger
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../invariants/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Invariants
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../standing-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Standing notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Interim-rule ledger
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../history/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  History
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/machines/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/deploy/" class="md-tabs__link">
+          
+  
+  
+  Operate
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/jj-workflow/" class="md-tabs__link">
+          
+  
+  
+  Build
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/ernst-app-api-ingress/" class="md-tabs__link">
+          
+  
+  
+  Services
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/htpc-bigscreen/" class="md-tabs__link">
+          
+  
+  
+  Machines
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../runbooks/zfs-auto-snapshot-optin/" class="md-tabs__link">
+          
+  
+  
+  Runbooks
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../incidents/ernst-slot12-drop-2026-08-11/" class="md-tabs__link">
+          
+  
+  
+  Incidents
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Clanarchy" class="md-nav__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Clanarchy
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../invariants/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Invariants
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../standing-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Standing notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interim-rule ledger
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/machines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Machines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules and clan services
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decisions that bite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operate
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operate
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploying
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/accepting-pull-requests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Accepting pull requests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/networking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Networking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/remote-unlock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote unlock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/firmware-updates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware updates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/yubikey/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/authelia-2fa/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authelia second factors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Build
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/jj-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The jj workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/formatting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Formatting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/coding-agent-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coding-agent workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/adding-a-module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a module or option
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/adding-a-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/first-time-install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    First-time install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Services
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Services
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ernst-app-api-ingress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst app-API ingress
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ernst-zdata-datasets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zdata datasets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/mail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/reading-stack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The reading stack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/music-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The music pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/navidrome-clients/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Navidrome clients
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/document-store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The document store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/courses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video courses in Jellyfin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/agent-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The agent's memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/hacs-dependencies/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HACS dependencies
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Machines
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Machines
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/htpc-bigscreen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / Plasma Bigscreen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/htpc-controllers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / game controllers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/birte-emulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emulation on birte
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/noctalia-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/noctalia-v5-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia v5 migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/obs-sony-webcam/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OBS / Sony webcam
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runbooks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Runbooks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbooks/zfs-auto-snapshot-optin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZFS auto-snapshot opt-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbooks/ernst-zroot-drive-replacement/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zroot drive replacement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbooks/ernst-enable-impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst enabling impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbooks/ernst-vlan-bridge-cutover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VLAN bridge cutover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbooks/ernst-vpn-microvm-deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VPN microvm deploy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbooks/bindery-dead-torrent-sweep/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bindery dead-torrent sweep
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Incidents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Incidents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../incidents/ernst-slot12-drop-2026-08-11/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst slot-12 drive drop (2026-08-11)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../incidents/ernst-jellyfin-vaapi-drm-display-failure-2026-08-18/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst Jellyfin VAAPI DRM display failure (2026-08-18)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../incidents/ernst-card1-vram-starvation-2026-10-09/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst card1 VRAM starvation (2026-10-09)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/hardware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Desktop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/apps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/users/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/wifi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/lutzgo/clanarchy/edit/main/docs/ledger.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="interim-rule-ledger">Interim-rule ledger<a class="headerlink" href="#interim-rule-ledger" title="Permanent link">&para;</a></h1>
+<p>Temporary firewall / DNS / routing shims. Every row needs a removal trigger.
+Rows are retired only by the PR that actually removes the rule.</p>
+<p>The complete, ENFORCED list of hostnames exempt from forward-auth is
+<code>machines/ernst/containers/ingress-policy.nix</code>, not this file — that one is
+consumed by both <code>traefik.nix</code> and <code>authelia.nix</code>, and <code>withWan</code> throws at
+evaluation if a router disagrees with it.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Shim</th>
+<th>Where it lives</th>
+<th>Why it exists</th>
+<th>Removal trigger</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L1</td>
+<td><code>LAN (1)</code> → Jellyfin <code>10.0.90.10:8096/tcp</code></td>
+<td>UDM-Pro ZBF policy <code>Allow Jellyfin to Services</code>, ID <code>10001</code></td>
+<td>Jellyfin is reached directly; there is no reverse proxy yet</td>
+<td><strong>M5</strong> — repoint clients at <code>jellyfin.&lt;domain&gt;</code> and replace with the permanent <code>LAN → traefik:443</code> rule</td>
+<td><strong>RETIRED 2026-08-23</strong> — policy deleted from the UDM-Pro by lgo with <a href="https://github.com/lutzgo/clanarchy/pull/86">#86</a>. It was already inert by then: the container refuses <code>8096</code> from anything but <code>10.0.90.12</code>, so the policy was permitting traffic the backend drops. Deleted anyway, because a permit rule that does nothing is the kind of thing someone later "fixes" by removing the restriction instead</td>
+</tr>
+<tr>
+<td>L2</td>
+<td><code>IoT (20)</code> → Jellyfin <code>10.0.90.10:8096/tcp</code></td>
+<td>UDM-Pro ZBF policy <code>Allow Jellyfin to Services</code>, ID <code>10000</code></td>
+<td>TVs / streaming devices live on the IoT VLAN</td>
+<td><strong>M5</strong> — same as L1</td>
+<td><strong>RETIRED 2026-08-23</strong> — policy deleted from the UDM-Pro by lgo with <a href="https://github.com/lutzgo/clanarchy/pull/86">#86</a>. This was the row with a household cost attached: the TV on VLAN 20 lost Jellyfin from the moment M5 deployed until it was pointed at <code>jellyfin.goclan.org</code>. Deploy and repoint in one window, and note the same will apply to every future backend that moves behind the proxy. <strong>Careful deleting by ID</strong>: <code>Allow Jellyfin to DNS</code> also carried ID <code>10000</code> and is PERMANENT — match on the destination (<code>10.0.90.10:8096</code>), not the number</td>
+</tr>
+<tr>
+<td>L2a</td>
+<td>IoT name resolution for L2</td>
+<td>—</td>
+<td>IoT clients could not resolve <code>jellyfin.skynet.lan</code></td>
+<td><strong>M5</strong> — repoint at Traefik</td>
+<td><strong>PROMOTED OUT OF THE LEDGER by M5 — permanent, and nothing was ever built for it.</strong> Re-checked as the milestone required. The substance changes (the name IoT must resolve is now <code>jellyfin.goclan.org</code>, not <code>jellyfin.skynet.lan</code>) but the plumbing does not: M2b measured <code>dig @10.0.5.3</code> succeeding from VLAN 20, so IoT's path to Technitium works and is what serves the new name too. There is no shim here to retire and never was — the row existed to track a constraint that turned out not to exist. It stays listed only so a future milestone does not re-derive it from scratch</td>
+</tr>
+<tr>
+<td>—</td>
+<td><code>Services → DNS-Container</code> <code>:53</code></td>
+<td>UDM-Pro ZBF policy <code>Allow Jellyfin to DNS</code>, ID <code>10000</code></td>
+<td>The <code>services</code> zone is isolated by default, so the container could not resolve at all</td>
+<td><strong>permanent</strong> — not interim, listed here only so it is not mistaken for one</td>
+<td>created by M2b. <code>Services → External</code> was predicted to be needed too and <strong>was not</strong> — it already passed. M5 leans on both: Traefik resolves through Technitium, and reaches Let's Encrypt and Cloudflare's API through External</td>
+</tr>
+<tr>
+<td>—</td>
+<td><code>LAN (1)</code> + <code>IoT (20)</code> + <code>Servers (50)</code> → traefik <code>10.0.90.12:80,443/tcp</code></td>
+<td>UDM-Pro ZBF policy <code>Allow Traefik</code>, ID <code>10006</code></td>
+<td><strong>This is the rule M5 exists to make possible</strong> — one permanent rule per consumer zone, pointing at one address, replacing L1/L2 and pre-empting L4/L8</td>
+<td><strong>permanent</strong> — every future web service is a Traefik route plus a Technitium record, and touches the UDM-Pro not at all</td>
+<td><strong>created 2026-08-23</strong> with <a href="https://github.com/lutzgo/clanarchy/pull/86">#86</a>. Same shape as the qBittorrent and arr rows: source zone <code>Internal</code> narrowed to the listed networks, <strong>ports in the Destination card</strong> (the source card has a Port section too and it is the one you see first), <code>Auto Allow Return Traffic</code> ticked. <strong><code>80</code> is in the list on purpose</strong>: Traefik's <code>:80</code> entryPoint serves nothing but a 308 to <code>:443</code>, and permitting only 443 would leave that listener unreachable. Two things cost a round each — see the note below. <strong>CORRECTION, measured 2026-08-24 during M6's deploy: the live policy's source list is <code>LAN + IoT</code> only — <code>Servers</code> is NOT in it</strong>, and <code>curl -k https://10.0.90.12/</code> from ernst times out, which is the same symptom M5 lost a round to. Either the row was written from intent rather than from the device, or the network was removed afterwards. Re-add <code>Servers</code> unless there is a reason not to; M5's argument for it (the firewall and the <code>mgmt-only</code> ipAllowList should agree about what management access means, and the ipAllowList already trusts <code>10.0.50.0/24</code>) still holds. Nothing in M6 depends on it</td>
+</tr>
+<tr>
+<td>L3</td>
+<td><code>networking.firewall.allowedTCPPorts = [ 8096 ]</code> on the host</td>
+<td><code>machines/ernst/containers/jellyfin.nix</code></td>
+<td>Jellyfin shares the host network namespace (<code>privateNetwork = false</code>), so its port is a host port</td>
+<td><strong>M2b</strong> — the veth on VLAN 90 gives the container its own L2 identity; the host port opening goes away and the ACL moves to the UDM-Pro</td>
+<td><strong>retired in <a href="https://github.com/lutzgo/clanarchy/pull/82">#82</a></strong> — the line is deleted from the repo; 8096 is now opened only inside the container's own netns. Effective on the next <code>clan machines update ernst</code></td>
+</tr>
+<tr>
+<td>—</td>
+<td><code>LAN (1) → qBittorrent 10.0.90.11:8080,22/tcp</code></td>
+<td>UDM-Pro ZBF, M3</td>
+<td>The qBittorrent WebUI (and the guest's SSH) are reachable from the management networks and nowhere else</td>
+<td><strong>permanent</strong> — architecture invariant #4 names this bypass explicitly. It is listed here only so a future milestone does not mistake it for an interim row and "fix" it by adding a Traefik route</td>
+<td><strong>created and verified 2026-08-20.</strong> Source zone <code>Internal</code>, narrowed to the <code>LAN</code> + <code>Servers</code> networks; destination <code>10.0.90.11</code> tcp <code>8080,22</code>; <code>Auto Allow Return Traffic</code> ticked. Servers (50) does need to be listed — with it, <code>ssh</code> from ernst itself works. <strong>The port belongs in the Destination card</strong>: the editor has a Port section in <em>both</em> zone cards and the source one is the one you see first, which matches only traffic <em>from</em> 8080/22, i.e. never</td>
+</tr>
+<tr>
+<td>L4</td>
+<td><code>LAN (1)</code> + <code>Servers (50)</code> → arr <code>10.0.90.13:9696,8989,7878/tcp</code></td>
+<td>UDM-Pro ZBF, M4</td>
+<td>The three arr WebUIs are reached directly; there is no reverse proxy yet</td>
+<td><strong>M5</strong> — replace with the permanent <code>LAN → traefik:443</code> rule and Traefik routes</td>
+<td><strong>never created — superseded by M5, <a href="https://github.com/lutzgo/clanarchy/pull/86">#86</a>.</strong> M4 shipped without it and M5 landed before anyone needed it badly enough to add it, so the interim rule this row describes has no lifetime at all: the arr UIs go straight from "reachable only from inside <code>br0</code>" to "reachable through Traefik". <strong>Do not create it now.</strong> The three ports are source-restricted to <code>10.0.90.12</code> in <code>containers/arr/</code>, so a ZBF permit for them would be a rule the backend ignores. Earlier revisions of this table also predicted a host-firewall row plus a veth migration; M4 skipped v1 and went straight to the veth, so neither ever existed either</td>
+</tr>
+<tr>
+<td>L5</td>
+<td>Traefik <code>ipAllowList</code> on the arr + Grafana routes (mgmt + wg-travel)</td>
+<td>M5 (<code>traefik</code> container)</td>
+<td>There is no identity provider yet</td>
+<td><strong>M7</strong> — replaced by the Authelia forward-auth middleware</td>
+<td><strong>RETIRED 2026-08-24 by M7 (<a href="https://github.com/lutzgo/clanarchy/pull/90">#90</a>) — in code AND on the device. Re-verified 2026-08-25</strong>, because this row's own trigger had fired and a row left in the future tense is a row nobody can tell the state of: <code>grep -n ipAllowList machines/ernst/containers/traefik.nix</code> returns <strong>four comments and no definition</strong>, and the four routers that carried it (<code>prowlarr</code>, <code>sonarr</code>, <code>radarr</code>, <code>grafana</code>) each carry <code>middlewares = [ "authelia" ]</code> instead. The deploy that made it effective happened the same day — <code>https://sonarr.goclan.org/</code> answered <code>302 → auth.goclan.org/?rd=…</code>, which is the middleware and not the ACL. <strong>Nothing is left to remove</strong>; the resolution owed by <a href="#interim-rule-ledger">L4's reasoning</a> (a permit rule doing nothing is what someone later "fixes" by removing the restriction) is that the shim is gone rather than inert. Created in <a href="https://github.com/lutzgo/clanarchy/pull/86">#86</a> as middleware <code>mgmt-only</code>, <code>sourceRange = 10.0.10.0/24, 10.0.50.0/24, 10.0.70.0/24</code>; extended to a fourth router (Grafana) by <a href="https://github.com/lutzgo/clanarchy/pull/87">#87</a>. <strong>Deleted, not stacked underneath forward-auth</strong> — the option this row's own notes raised. The argument, in full in <code>containers/authelia.nix</code>: an IP allow-list under an identity provider means valid credentials plus a correct TOTP code still fail from anywhere nobody pre-declared, which is most of what the identity provider was added for; and two mechanisms for one property is what <code>containers/traefik.nix</code> argues against in its own words. Both warnings this row carried were honoured — <code>trustForwardHeader = false</code> on the new middleware keeps the peer-address semantics and still ignores client-supplied <code>X-Forwarded-*</code> (Traefik writes those itself from the real request either way), and the VLAN 70 lockout it warned about is moot because the replacement does not filter by source at all. <strong>What is lost with it</strong>: the arr and Grafana login surfaces are now visible from the IoT VLAN. That is the trade, and the compensating control is Authelia's per-user regulation, not a network ACL</td>
+</tr>
+<tr>
+<td>L6</td>
+<td>Tvheadend ports <code>9981</code> / <code>9982</code> on the host, mgmt-VLAN scoped</td>
+<td>M8 (host firewall, v1)</td>
+<td>Only if M8 lands before M2b — Tvheadend v1 would then run on host networking like Jellyfin's and arr's did</td>
+<td><strong>M5</strong> for the web route, plus a veth migration mirroring M2b. Never created at all if M2b lands first</td>
+<td><strong>RETIRED as never-created (M8 built 2026-08-27).</strong> M2b landed first, so Tvheadend never ran on host networking; it went straight to a veth on VLAN 90 plus a Traefik route, exactly as this row predicted. 9982 (HTSP) ended up opened to nobody at all — no client for it exists in this fleet</td>
+</tr>
+<tr>
+<td>L7</td>
+<td>FRITZ!Box → Tvheadend on the ephemeral <strong>UDP</strong> range</td>
+<td>UDM-Pro ZBF (off-repo), M8</td>
+<td>SAT&gt;IP media is unicast RTP on a return flow the RTSP rule does not cover</td>
+<td>Proving RTP <strong>interleaved over the RTSP TCP connection</strong>, which reduces the whole ACL to TCP 49000 + 554</td>
+<td><strong>RETIRED as never-created (M8 built 2026-08-27), by a route this row did not predict.</strong> Phase 0 measured interleaved-TCP as UNAVAILABLE — the 6591 answers <code>461 Unsupported Transport</code> to a TCP SETUP — so the "avoid" path was closed. But the FRITZ!Box ended up <strong>directly cabled to ernst's spare NIC</strong> (<code>enp12s0</code> → <code>br-fritz</code>), so the RTP return flow never crosses the UDM-Pro at all: the "broad, ugly" ephemeral-UDP ACL became one source-scoped iptables line inside the tvheadend container (<code>-s 192.168.178.1 -p udp</code>). No UDM-Pro rule of any kind exists for M8</td>
+</tr>
+<tr>
+<td>—</td>
+<td><strong>M11 creates no row, and that is a property worth stating</strong></td>
+<td>—</td>
+<td>Ollama on ernst stays bound to localhost and is reached over an SSH tunnel on local port <strong>11435</strong>; the working tree was left at <code>133a39d</code>. So the milestone that added a coding agent to the fleet changed ernst's attack surface <strong>not at all</strong>, and if it stops after Phase 1 it stays that way</td>
+<td><strong>permanent, unless M11 Phase 2 is taken</strong> — and Phase 2 is optional and separately justified. Its trigger is a <em>second client actually needing it</em>, not tidiness</td>
+<td>not created. Listed so a later session does not read the absence as an oversight. <strong>If Phase 2 is ever taken, read <a href="#the-prompt-for-the-m11-remainder">M11's session prompt</a> first</strong> — its Phase 2 block is the constraint: Ollama has no authentication and its API includes model <em>pull</em> and <em>delete</em>, so it is an unauthenticated admin endpoint and the recommendation is ZeroTier-only, never a LAN listener</td>
+</tr>
+<tr>
+<td>—</td>
+<td><code>audiobookshelf.goclan.org</code> — <strong>no forward-auth</strong></td>
+<td>Traefik (<code>containers/traefik.nix</code>), M14</td>
+<td><strong>A permanent bypass under invariant #4's client-compatibility clause, taken by operator decision 2026-08-28.</strong> Audiobookshelf has native mobile and TV clients and app support is a stated requirement for the library; an app that talks to the REST API with a bearer token has no browser to follow a 302 to <code>auth.goclan.org</code>, so with the middleware every request fails looking like a broken server. Written as a <code>—</code> row, in the same shape as the qBittorrent WebUI row, so a future milestone does not mistake it for a shim and "fix" it by adding <code>authelia</code> back — which would break the app months later with nothing to point at</td>
+<td><strong>permanent</strong> — the trigger to revisit is Audiobookshelf gaining forward-auth-compatible clients, not tidiness</td>
+<td><strong>created 2026-08-28.</strong> The router carries no <code>middlewares</code>, and the name is deliberately ABSENT from <code>protectedHosts</code> in <code>containers/authelia.nix</code>; both files carry the reason, because an inert entry in one of them is what invites the change back. <strong>What carries the authentication instead is Audiobookshelf's own accounts, and they are now the entire boundary</strong> — no second factor and no per-user regulation on this name. <strong>THE FIRST-RUN HAZARD IS THE PART TO ACT ON, and it is a specific endpoint rather than a general worry</strong>: <code>server/Server.js</code> mounts <code>router.post('/init', …)</code> OUTSIDE the authenticated <code>/api</code> router — that is the call that creates the root account, and it is unauthenticated by construction because there is no account yet to authenticate against. With the middleware that endpoint was protected; without it, it is reachable from every consumer VLAN the moment the Technitium record resolves. <strong>Create the admin account immediately after the first deploy</strong> — an ordering constraint, not a to-do. The narrower alternative considered and NOT taken: keeping <code>authelia</code> and bypassing only <code>/api</code>. Rejected on evidence — reading <code>server/Server.js</code> (master, checked 2026-08-28), the app's traffic is spread across <strong><code>/api</code>, <code>/hls</code> (mounted separately), <code>/public</code>, <code>/feed/:slug/…</code> for podcast RSS, and <code>/init</code>, <code>/status</code>, <code>/ping</code>, <code>/healthcheck</code> at the root</strong>. The carve-out would have had to grow until it was the whole host, at which point it is this row with extra steps and more ways to get it wrong</td>
+</tr>
+<tr>
+<td>—</td>
+<td><strong>M14 created no row either — confirmed 2026-08-28</strong></td>
+<td>—</td>
+<td>Five of its six services landed in the <strong>existing</strong> arr container and opened no port reachable outside it beyond four ordinary Traefik routers (lidarr, kapowarr, questarr, audiobookshelf), which are invariant #3 working as designed. <strong>Audiobookshelf's forward-auth bypass is the row directly above and is a separate matter</strong> — it is about what sits in FRONT of that route, not about the route itself, which needs no shim like the other three. The sixth, <strong>Storyteller</strong>, took the podman tier and therefore a new address on VLAN 90 (<code>10.0.90.20</code>, MAC <code>02:00:00:90:00:0c</code>) — but it needs <strong>no UDM-Pro rule of any kind</strong>: it is reached only through Traefik, riding the permanent <code>Allow Traefik</code> policy, and its own netns firewall accepts <code>8001</code> from <code>10.0.90.12</code> alone. <strong>slskd needed nothing either</strong>: it went into the EXISTING microvm guest, and the guest's <code>api_clients</code> nftables set gained a <strong>PORT</strong> (5030), not a client — the arr container was already in it for qBittorrent. Its Soulseek listen port (50300) is admitted on <strong><code>wg0</code> only</strong>, never <code>eth0</code>. <strong>THE ONE THING WORTH RE-READING LATER</strong>: Questarr binds <code>0.0.0.0</code> (measured by running it), as do Kapowarr and Audiobookshelf by explicit configuration, so the container firewall is the ONLY thing keeping those three off VLAN 90 generally — load-bearing, not belt-and-braces, exactly as M12 recorded for UmlautAdaptarr's ports</td>
+<td><strong>permanent</strong> — nothing interim here</td>
+<td>not created</td>
+</tr>
+<tr>
+<td>—</td>
+<td><strong>M12 created no row, as predicted — confirmed 2026-08-26</strong></td>
+<td>—</td>
+<td>Everything in M12 landed inside the <strong>existing</strong> arr container and opened no port reachable outside it. The one thing it <em>did</em> touch is the explicit port list <code>containers/arr/</code> feeds to its <code>concatMapStrings</code> Traefik source-restriction, which gained <code>bazarr</code> 6767, <code>cleanuparr</code> 11011 and <code>mediathekarr</code> 5007 — plus three ordinary Traefik routers behind <code>authelia</code> and three names in <code>protectedHosts</code>, which are invariant #3 working as designed and not shims. <strong>Four ports were deliberately kept OFF the list</strong>: <code>flaresolverr</code> 8191 as before, MediathekArr's indexer 5008, and UmlautAdaptarr's 5005 and <strong>5006</strong>. All four bind <code>0.0.0.0</code>/<code>[::]</code>, so the container firewall is the only thing keeping them off VLAN 90 — and 5006 is an HTTP proxy, the same class of gift as 8191. Byparr, when <a href="#m12b-featernst-byparr">M12b</a> lands, inherits FlareSolverr's exact posture</td>
+<td><strong>permanent</strong> — there is nothing interim here</td>
+<td>not created</td>
+</tr>
+<tr>
+<td>L8</td>
+<td>TubeSync web UI port, mgmt-VLAN scoped</td>
+<td>M9 (host/container firewall, v1)</td>
+<td>Only if M9 lands before M5 — an admin UI with no proxy in front of it yet. Mgmt-scoped, so invariant #3 does not cover it</td>
+<td><strong>M5</strong> — replace with the Traefik route. Never created at all if M5 lands first</td>
+<td><strong>RETIRED as never-created (M9 built 2026-08-27).</strong> M5 landed long before M9, so TubeSync got an ordinary Traefik router behind <code>authelia</code> and opened no port at all. The row's own note already predicted this. What it did NOT predict is that the web UI needed a firewall anyway, in a place the ledger has no concept of: a bare network namespace handed to podman has no rules, and podman adds none, so <code>containers/tubesync.nix</code> installs them inside the namespace — 4848 from Traefik only. That is not an interim rule and gets no row; it is the same backend-side source restriction <code>containers/traefik.nix</code> applies everywhere else</td>
+</tr>
+<tr>
+<td>L9</td>
+<td><code>llama-metrics-proxy</code> listening on the <strong>mon0 ULA</strong> <code>[fdca:fe90::1]:11436</code></td>
+<td>M19 (<code>service-modules/local-ai.nix</code>, <code>metricsProxy</code>)</td>
+<td><code>llama-server</code> binds <code>127.0.0.1</code> and a container cannot reach the host's loopback, but M6's Prometheus has to scrape it — this is the target <a href="#m13-featernst-media-lifecycle">M13</a> wanted and could not have, because ollama served no <code>/metrics</code> at all</td>
+<td><strong>PERMANENT while metrics are wanted</strong>, and it is here for visibility rather than for removal. It is scoped by construction: a <code>systemd-socket-proxyd</code> bound to one /128 whose only peer is the monitoring container, <code>BindIPv6Only=ipv6-only</code>, on no VLAN. Retire it only if llama-server grows a separate metrics listener that can be bound independently of the API</td>
+<td><strong>ACTIVE — created by M19.</strong> Recorded because <strong><a href="#m11-featfleet-local-coding-agent">M11</a>'s claim that the coding agent "changes ernst's attack surface not at all" is no longer true</strong>, and a claim that quietly stops holding is worse than one that was never made. This is a second listener where there was one</td>
+</tr>
+<tr>
+<td>—</td>
+<td><strong>The card1 VRAM arbitration creates no row — confirmed 2026-10-09, and the gate it mentioned is gone — 2026-10-12</strong></td>
+<td>—</td>
+<td>The fix for <a href="../incidents/ernst-card1-vram-starvation-2026-10-09/">the card1 VRAM starvation incident</a> briefly added a <strong>503 gate</strong> on karakeep's leg, and this row existed partly to say it needed no ledger entry: it bound <code>[fdca:fe92::1]:11434</code>, the address L17 already covers, and was mutually exclusive with the bridge that normally holds it, so the number of reachable ports never changed. <strong>The gate was removed on 2026-10-12</strong> and the conclusion is unchanged and now simpler — the VRAM arbitration opens no address, adds no firewall rule and changes no UDM-Pro policy at all. The reserve, the htpc role's <code>gpu.preempt.units</code> and its crash-loop breaker are all host-local</td>
+<td><strong>permanent — there is nothing interim here</strong></td>
+<td>not created. Kept because the removal is the more useful record: a mechanism whose only benefit was invisible to people, and whose failure modes were visible to them, cost five defect fixes and one outage before it was taken out. <code>service-modules/local-ai.nix</code> carries the full post-mortem next to the unit it used to hang off</td>
+</tr>
+<tr>
+<td>—</td>
+<td><strong>Home Assistant -&gt; Kodi creates no row — confirmed 2026-10-12</strong></td>
+<td>—</td>
+<td>HA's Kodi integration has to reach Kodi on the HOST, and the obvious answer is the <a href="#interim-rule-ledger">L12</a> shape in reverse: a <code>Services -&gt; Internal</code> permit for <code>10.0.90.27 -&gt; 10.0.50.10:{8080,9090}</code>. <strong>That rule was specified and then not created.</strong> Measured 2026-10-12: the container's route is <code>10.0.50.10 via 10.0.90.1 dev eth0</code>, so the flow leaves ernst, crosses the UDM-Pro and comes back — the same hairpin <code>mon0</code> exists to avoid — and lands on <code>Services -&gt; Internal</code>, which is Block All, presenting as a TIMEOUT with nothing on either machine to explain it (from the LAN zone the identical request answers 401 in under 2 ms). <strong>What shipped instead is a seventh ULA leg</strong>, <code>kodi0</code> / <code>fdca:fe96::</code>, following L13/L14/L15 and not L12: no gateway hop, no off-repo permit, and the whole thing is a line in <code>containers/home-assistant.nix</code>. <strong>It needs no host-side accept and no <code>mkBridges</code> call either</strong> — unlike llama-swap, which binds <code>127.0.0.1</code> and stays there, Kodi binds the wildcard (<code>LISTEN [::]:8080</code>), so it answers on the host end of the leg the moment the leg exists</td>
+<td><strong>permanent — there is nothing interim here</strong></td>
+<td>not created. Listed because a reader who finds HA talking to a host service will look for the permit that makes it possible, and the answer is that there isn't one. <strong>The trap if someone revisits this</strong>: Kodi's 8080/9090 are in ernst's <code>allowedTCPPorts</code> (opened by the htpc role's <code>mediaClient.remoteControl.enable</code>), so they are open on EVERY interface, not just this leg. The leg adds a path; it does not narrow the port</td>
+</tr>
+<tr>
+<td>L10</td>
+<td><code>chat.goclan.org</code> — Open WebUI on <code>10.0.90.23</code>, VLAN 90</td>
+<td>M19 (<code>service-modules/local-ai.nix</code>, <code>roles.webui</code>)</td>
+<td>The milestone's web client. An ordinary Traefik backend, not a shim</td>
+<td><strong>None — this is the permanent shape</strong>, not an interim rule. It has a row only because it is the second half of the attack-surface change L9 begins, and the two should be read together. Invariant #3 is satisfied without exception: consumer VLANs reach it through <code>traefik:443</code> and nothing else, and the container's own firewall accepts <code>10.0.90.12</code> only</td>
+<td><strong>ACTIVE — created by M19; WAN-EXPOSED 2026-09-10 on lgo's decision.</strong> M19 deliberately kept it out of <code>wanExposed</code>, calling it "an unauthenticated-by-design conversation surface onto a model with tool access". <strong>That objection did not survive contact with the mechanism</strong>: <code>chat</code> is in <code>protectedHosts</code>, so its router carries <code>authelia</code>, and <code>mkWan</code> <em>copies the LAN router's middlewares</em> onto the wan twin. Verified on the evaluated config — <code>openwebui-wan</code> is <code>["wan-ratelimit","wan-inflight","authelia"]</code>, and Authelia's <code>access_control</code> puts <code>chat.goclan.org</code> under the <strong>admins-only <code>two_factor</code></strong> rule. So the public path is rate-limited → forward-auth → 2FA → OIDC, which is <strong>stronger than the five <code>appApiHosts</code> names already exposed</strong>, where Authelia is never consulted at all. M19's own advice was followed to the letter: it stays in <code>protectedHosts</code> and did <strong>not</strong> move to <code>appApiHosts</code>. What genuinely widens: <code>ENABLE_OAUTH_SIGNUP</code> auto-creates an account for anyone clearing Authelia (bounded to admins by that rule), the break-glass <code>ENABLE_LOGIN_FORM</code> becomes a second door for anyone already through the first, and an Authelia compromise is now worth more — it reaches the household's conversation history, the GPU and outbound search. Eighth A record; <strong>DNS-only, no proxy</strong>, or CrowdSec sees one source for the whole internet</td>
+</tr>
+<tr>
+<td>L11</td>
+<td>SearXNG on <code>10.0.90.24:8888</code>, VLAN 90, <strong>no hostname</strong> — plus the outbound path that is the actual change</td>
+<td>M20 (<code>service-modules/local-ai.nix</code>, <code>roles.search</code>)</td>
+<td>The stack's only door to the open internet. <strong>The inbound half is the smaller half</strong>: one listener, reachable from <code>10.0.90.23</code> and nothing else, enforced by the container's own firewall. <strong>The outbound half is why this row exists</strong> — a container that initiates connections to third parties on a household user's typed query, which nothing in the M19 stack did</td>
+<td><strong>None — this is the permanent shape</strong>, like L10 and for the same reason: it is recorded because it changes ernst's attack surface, not because it is a shim. Invariant #3 is untouched — <strong>no consumer VLAN rule was added at all</strong>, and no UDM-Pro policy changed. Revisit if it ever acquires a hostname, which would make it <code>protectedHosts</code> (browser-only UI) and a Traefik route</td>
+<td><strong>ACTIVE on deploy — created by M20, NOT YET DEPLOYED.</strong> Two things worth reading next to L9/L10. First, the <strong>egress is deliberately the ordinary path</strong> — DHCP default route to the UDM-Pro, so it is subject to the same zone policy as every other container and is <em>visible</em> at the gateway; host SNAT would have hidden it behind ernst's own address, and <code>networking.nat.externalInterface</code> is a single string already claimed for <code>"zt+"</code>. Second, <strong>the reachable set is declared</strong>: a <code>keep_only</code> engine list, so this contacts seven named engines and no others — a smaller surface than tubesync's or FlareSolverr's, both already at or below this tier. It is <strong>not</strong> on the <code>ai0</code> veth, so a compromised SearXNG has no route to llama-swap; that absence is structural, not a rule that could be edited away</td>
+</tr>
+<tr>
+<td>L12</td>
+<td><code>Servers (50)</code> → Tvheadend HTSP <code>10.0.90.18:9982/tcp</code></td>
+<td>UDM-Pro ZBF policy <code>Allow Kodi to Tvheadend HTSP</code> (added 2026-09-10) <strong>plus</strong> a <code>-s 10.0.50.10/32 --dport 9982</code> accept in <code>machines/ernst/containers/tvheadend.nix</code></td>
+<td>The htpc role's Kodi gained the <code>pvr-hts</code> add-on, and <strong>HTSP is not HTTP</strong> — no Traefik route can front it, so the client must reach the container directly. Kodi runs on the <strong>host</strong>, whose <code>br0</code> is a member of VLAN 50 only, so the flow is routed by the UDM-Pro and lands on the <code>Internal → Services</code> zone pair</td>
+<td><strong>None — this is the permanent shape</strong>, like L10 and L11 and for the same reason: it is recorded because it changes ernst's attack surface, not because it is a shim. A reverse proxy cannot retire it; only dropping live TV would</td>
+<td><strong>ACTIVE — created 2026-09-10</strong> with <a href="https://github.com/lutzgo/clanarchy/pull/175">#175</a> (container half) and by lgo on the UDM-Pro (policy half). <strong>Both halves are load-bearing, in opposite directions</strong>: without the policy nothing arrives — the <code>Internal → Services: Block All</code> default dropped it silently, six SYN retransmits with no RST while the container's accept rule stayed at zero packets, which is the M5 shape all over again; without the container rule the container refuses what does arrive. <strong>THE PART TO READ BEFORE TOUCHING THIS</strong>: the policy as entered is BROADER than this row's title — source is the whole <code>Servers</code> network and destination is <code>Any</code> in the Services zone, so the <code>/32</code> in <code>tvheadend.nix</code> is the only thing restricting HTSP to Kodi. That matters more than it looks, because <strong>this Tvheadend has no access control at all</strong> — measured 2026-09-10, <code>/srv/state/tvheadend</code> has no <code>accesscontrol</code> and no <code>passwd</code> directory (zero access entries means full rights for everyone), and <code>/api/serverinfo</code> answers with no credentials. So HTSP here is anonymous and full-rights, exactly like the 9981 admin UI the container file refuses to widen. An earlier revision of that file claimed HTSP "authenticates on its own" and used that to argue the widening was safe; it was written before anyone checked, and is corrected in the same PR as this row. <strong>If a second HTSP client ever appears, give Tvheadend a real access entry FIRST</strong> — adding a second address without one hands full rights to another machine</td>
+</tr>
+<tr>
+<td>L13</td>
+<td><code>photos.goclan.org</code> — Immich on <code>10.0.90.25</code>, VLAN 90, <strong>on the <code>wan</code> entrypoint</strong></td>
+<td>M22 (<code>machines/ernst/containers/immich.nix</code> + the router in <code>containers/traefik.nix</code>)</td>
+<td>The household photo library, reachable by two phone apps from outside the house — which is the requirement, not a side effect. An ordinary Traefik backend, not a shim</td>
+<td><strong>None — this is the permanent shape.</strong> Recorded because the <code>wanExposed</code> header requires a ledger row for every name added to the internet-facing set, not because anything here is temporary. <strong>Two things make this row worth reading rather than counting.</strong> First, the exposure is real and is argued in <code>ingress-policy.nix</code>: no forward-auth, Immich's own accounts, and — uniquely in this fleet — an <strong>anonymous-by-design shared-link surface</strong>, which is the feature that lets Sabine see an album without an account and is also the one thing no middleware in front of it can bound. Second, <strong>M22 ADDS NO UDM-Pro RULE AT ALL</strong>, which is the opposite of what the nearest precedent would predict: L12 gave Kodi a bespoke ZBF policy to reach Tvheadend over HTSP, because that protocol cannot traverse a reverse proxy. The Immich add-on speaks ordinary HTTPS, so the TV reaches it through <code>photos.goclan.org</code> under M5's existing <code>Allow Traefik</code> policy. The container firewall admits exactly two addresses — Traefik on 2283 and the monitoring container on 8081 — and the television is not one of them</td>
+<td></td>
+</tr>
+<tr>
+<td>L14</td>
+<td><code>cloud.goclan.org</code> — Nextcloud on <code>10.0.90.26</code>, VLAN 90, <strong>on the <code>wan</code> entrypoint</strong></td>
+<td>M23 (<code>machines/ernst/containers/nextcloud.nix</code> + the router in <code>containers/traefik.nix</code>)</td>
+<td>The household file-sync / CalDAV / CardDAV server, reachable from outside the house — which is the requirement and not a side effect: a phone that only syncs on the home wifi syncs when the files are already safe</td>
+<td><strong>None — this is the permanent shape.</strong> Recorded because the <code>wanExposed</code> header requires a ledger row for every name added to the internet-facing set, not because anything here is temporary. <strong>Three things make this row worth reading rather than counting.</strong> First, the exposure is argued in <code>ingress-policy.nix</code> and it is the <em>ordinary</em> <code>appApiHosts</code> argument rather than L13's unusual one: no forward-auth because the desktop sync client, DAVx5 and a headless vdirsyncer timer cannot follow a 302 — <strong>nothing here is anonymous by design</strong>, which is the whole difference from Immich's row. Second, <strong>the browser path is not left open by that</strong>: <code>cloud.goclan.org</code> carries an Authelia <strong>OIDC</strong> client with <code>two_factor</code>, which is CWA's arrangement (OIDC <em>instead of</em> the middleware) and not Grafana's (OIDC <em>as well as</em> it). Third, <strong>the compensating control that actually matters is Nextcloud's own brute-force throttle, and it has a prerequisite</strong>: it keys on the client address, so it is worth nothing unless <code>settings.trusted_proxies</code> in <code>containers/nextcloud.nix</code> names Traefik. <code>wanLoginPaths</code> is deliberately EMPTY for this name — both candidate matchers (<code>/remote.php/dav/**</code>, <code>/login/v2/**</code>) would break sync or enrolment rather than an attacker. <strong>NO UDM-Pro RULE</strong>, following L13 and not L12: every client arrives through <code>10.0.90.12</code>, and the container firewall admits that one address on port 80 and nothing else</td>
+<td></td>
+</tr>
+<tr>
+<td>L15</td>
+<td><code>ha.goclan.org</code> — Home Assistant on <code>10.0.90.27</code>, VLAN 90, <strong>on the <code>wan</code> entrypoint</strong></td>
+<td>M24 (<code>machines/ernst/containers/home-assistant.nix</code> + the router in <code>containers/traefik.nix</code>)</td>
+<td>The household's home-automation hub, reachable from outside the house — <strong>which is the requirement and not a side effect, in a sharper form than L14's</strong>: the companion app is not only a client, it is a SENSOR. Presence detection and zone triggers work by the phone POSTing location to this hostname <em>while it is away from the house</em>, which is precisely when it is off the LAN. A hub reachable only on the home wifi cannot know anyone has left it</td>
+<td><strong>None — this is the permanent shape.</strong> Recorded because the <code>wanExposed</code> header requires a ledger row for every name added to the internet-facing set, not because anything here is temporary. <strong>Three things make this row worth reading rather than counting.</strong> First, the exemption is argued in <code>ingress-policy.nix</code> and it is the <em>sharpest</em> <code>appApiHosts</code> case rather than the ordinary one: every other name in that list speaks request/response, so forward-auth would break each call the same way — here the app holds a <strong>WebSocket</strong>, and a 302 on an HTTP <code>Upgrade</code> is not a login prompt an app can act on but a handshake that never completes, presenting as a hub permanently stuck on "connecting". Second, <strong>the browser path is NOT covered by an OIDC client, and that is where this differs from both L14 and CWA</strong>: core Home Assistant does not ship OIDC at this version, and the local account is the recovery path for a house whose lights are on this server. So HA's own accounts are the <em>entire</em> boundary including the browser, which is why TOTP enrolment is a deploy STEP in <code>docs/guides/ernst-app-api-ingress.md</code> and not an option. Third, <strong>the compensating control that actually matters is HA's own <code>ip_ban_enabled</code>, and it has L14's prerequisite with the sign flipped</strong>: it keys on the client address, so it is worth nothing unless <code>http.trusted_proxies</code> names Traefik — but where Nextcloud's throttle is per-ACCOUNT (a misconfigured proxy locks out the household), HA's ban is per-SOURCE, so a misconfigured proxy <strong>bans the proxy</strong> and takes the whole house offline in one stroke. <code>wanLoginPaths</code> <strong>is</strong> populated for this name, unlike L14's, because <code>/auth/login_flow</code> and <code>/auth/token</code> are genuinely distinct from the data path — everything else rides the one WebSocket. <code>/api/websocket</code> must never be added to it. <strong>NO UDM-Pro RULE</strong>, following L13 and L14 and not L12: every client arrives through <code>10.0.90.12</code>, and the container firewall admits that one address on 8123 and nothing else. <strong>THE SECOND LEG IS NOT PART OF THIS ROW AND NEEDS NO RULE EITHER</strong> — <code>iot0</code> on VLAN 20 is a bridge port, so its traffic is one L2 hop that the UDM-Pro never sees; its firewall admits inbound mDNS (5353/udp) and SSDP (1900/udp) on that interface only</td>
+<td></td>
+</tr>
+<tr>
+<td>L16</td>
+<td><code>home.goclan.org</code> — the service index, on <code>10.0.90.13:8082</code> <strong>inside the arr container</strong>, on the <code>wan</code> entrypoint</td>
+<td>M26 (<code>machines/ernst/containers/homepage.nix</code> + the router in <code>containers/traefik.nix</code>)</td>
+<td>An index of the house's services, reachable from outside it — which is where it is most useful, since the moment you need to know what the ebook server is called is the moment you are not at home. <strong>The weakest case for WAN exposure in this table, and it is written as such</strong>: unlike L13/L14/L15 nothing here breaks without it, and it is on the list because lgo asked for it rather than because a client requires it</td>
+<td><strong>None — this is the permanent shape.</strong> Recorded because the <code>wanExposed</code> header requires a ledger row for every name added to the internet-facing set, not because anything here is temporary. <strong>Three things make this row worth reading rather than counting.</strong> First, <strong>it is the first name added to <code>wanExposed</code> since M19's <code>chat</code> that is NOT an exemption</strong>, and that inverts the recent trend the <code>—</code> row below worries about: L13, L14 and L15 each put an <code>appApiHosts</code> name on the internet with Authelia never consulted, because each had a native client that cannot follow a 302. This name is in <code>protectedHosts</code>, so <code>mkWan</code> copies the <code>authelia</code> middleware onto the wan twin — verified on the evaluated config, <code>homepage-wan</code> is <code>["wan-ratelimit","wan-inflight","authelia"]</code> — and <code>access_control</code> puts <code>home.goclan.org</code> under the <strong>admins-only <code>two_factor</code></strong> rule. The public path is rate-limit → forward-auth → 2FA before the application sees a byte. It is L10's posture exactly. <code>wanLoginPaths</code> is deliberately EMPTY, and correctly so: that mechanism substitutes a credential-endpoint limit for the per-identity regulation <code>appApiHosts</code> names never get, and this name goes through Authelia, which already has it (3 in 5 min → 15 min ban, per user). There is also no login endpoint on this backend to point a matcher at. Second, <strong>what is behind the door is a MAP, not a KEY</strong>: homepage proxies every widget call server-side and sends the browser rendered numbers, so the ten credentials it holds never cross the boundary in either direction. An Authelia compromise here reaches an inventory of service names, most of which are already in public DNS, and not a session on any of them. That is why one door is enough, and it would not be for a service that handed the browser a session on something else. Third, <strong>the concentration is real and is the thing to watch</strong>: six *arr keys reached through <code>LoadCredential</code> plus four clan-var tokens (Jellyfin, Immich, Home Assistant serverinfo/long-lived, Nextcloud NC-Token) is the densest set of read credentials on this host. They are scoped read-only where the service offers it — Immich's is <code>server.statistics</code> only, Nextcloud's NC-Token authorises the serverinfo app and cannot log in — and that scoping is an operator step, not something any file here can enforce. <strong>NO UDM-Pro RULE</strong>, following L13/L14/L15 and not L12: every client arrives through <code>10.0.90.12</code>, and the arr container's firewall admits that one address on 8082. <strong>The internal widening is THREE accept rules and no more</strong> — Immich, Home Assistant and RomM each admit <code>10.0.90.13</code> on their existing web port, all three tagged <code>dashboardAddr</code> so one grep finds the set. <strong>Two backends needed nothing</strong>: Jellyfin has admitted that address since M13, and Nextcloud is reached through Traefik by NAME rather than by address, because it refuses a Host header outside <code>trusted_domains</code> — see "Found by deploying". <strong>NO AAAA RECORD</strong>, SN2 unchanged</td>
+<td></td>
+</tr>
+<tr>
+<td>L17</td>
+<td><code>karakeep.goclan.org</code> — Karakeep on <code>10.0.90.29</code>, VLAN 90, <strong>on the <code>wan</code> entrypoint</strong></td>
+<td>M27 (<code>machines/ernst/containers/karakeep.nix</code> + the router in <code>containers/traefik.nix</code>)</td>
+<td>Bookmarks and page archives, reachable from outside the house — and the requirement is a SYNC one rather than a reading one. Floccus keeps miralda's and jens's own bookmark trees in step through this hostname; both machines are laptops, so a backend that answers only on the home LAN means the two diverge the moment either one leaves, and the divergence is discovered later, as a merge</td>
+<td><strong>None — this is the permanent shape.</strong> Recorded because the <code>wanExposed</code> header requires a ledger row for every name added to the internet-facing set, not because anything here is temporary. <strong>Four things make this row worth reading rather than counting.</strong> First, <strong>its own milestone's other service is deliberately NOT here</strong>: Miniflux (<code>miniflux.goclan.org</code>, <code>10.0.90.28</code>) is an <code>appApiHosts</code> name with no <code>wanExposed</code> entry, no Cloudflare record and no row in this table — the only such name on this host. Two services shipped in one PR, one exposed and one not, is exactly the asymmetry that reads as an oversight later, so it is argued in three places (that <code>wanExposed</code> entry's comment, the MAC row in <code>machines/ernst/networking.nix</code>, and here): bookmark sync has to work away from the house, feed reading can wait for the LAN, and a name that is not in public DNS is the cheapest control there is. Second, <strong>it is an <code>appApiHosts</code> exemption — L13/L14/L15's posture, not L16's</strong> — so Authelia is never consulted on the public path, and the clients that make that necessary are unusual for this table in that <strong>this repository installs them</strong>: the Karakeep browser extension and the Floccus adapter are declared for lgo in <code>clan.nix</code>, <code>service-modules/software.nix</code> and <code>modules/users/lgo/browsers.nix</code>. Every previous exemption was argued from a client somebody might install. Moving this name to <code>protectedHosts</code> would break an unattended sync between two laptops, and the symptom would be bookmarks quietly failing to propagate rather than an error anyone sees. Third, <strong>the application has no password at all</strong>: <code>DISABLE_PASSWORD_AUTH</code> plus <code>DISABLE_SIGNUPS</code> leave Authelia's OIDC as the only way to obtain a session, and an API token can only be minted from inside one — so unlike L14, where Nextcloud's own accounts are a second credential store on the internet, there is nothing here to brute-force. <code>wanLoginPaths</code> still carries an entry (<code>/api/auth/callback/credentials</code>, <code>/api/auth/signin</code>) and it is <strong>belt and braces rather than the control</strong>, because "DISABLE_PASSWORD_AUTH removes the NextAuth credentials provider" is an unverified claim about an upstream flag and the endpoint costs nothing to limit. Nothing limits API-key guessing against <code>/api/v1/**</code>, and nothing may: that is every request the extensions make. CrowdSec's status-based 401 scenario is what covers it. Fourth, <strong>it reaches the inference server</strong>, which no other name in this table does: a point-to-point <code>fdca:fe92::/128</code> veth to llama-swap for auto-tagging, declared as a peer in <code>clan.nix</code>'s <code>roles.ollama…exposeOn</code>. That is a THIRD host-side listener, after M6's and M19's, on a /128 whose only peer is this container — worth naming here because an internet-facing service now has a path, however narrow, toward the GPU. It is outbound-only and the container's firewall opens nothing on that leg. <strong>NO UDM-Pro RULE</strong>, following L13/L14/L15: every client arrives through <code>10.0.90.12</code>. <strong>NO AAAA RECORD</strong>, SN2 unchanged</td>
+<td></td>
+</tr>
+<tr>
+<td>L18</td>
+<td><code>miniflux.goclan.org</code> — Miniflux on <code>10.0.90.28</code>, VLAN 90, <strong>on the <code>wan</code> entrypoint, behind forward-auth</strong></td>
+<td>M27 (<code>machines/ernst/containers/miniflux.nix</code> + the router in <code>containers/traefik.nix</code>)</td>
+<td>Off-LAN feed reading. M27 argued at length that this could wait for the LAN while Karakeep could not — and the argument lasted one day, until lgo was on another LAN and wanted his feeds</td>
+<td><strong>None — this is the permanent shape.</strong> Recorded because the <code>wanExposed</code> header requires a ledger row for every name added to the internet-facing set. <strong>Three things make this row worth reading rather than counting.</strong> First, <strong>it is the only name in this table that LEFT <code>appApiHosts</code> to get here</strong>, and the direction matters: <code>containers/ingress-policy.nix</code> forbids moving a name out of that list to <em>fix a broken client</em>, because that weakens a door to make something work. This is the opposite — the door got STRONGER, and the clients that justified the exemption (Fever at <code>/fever/</code>, Google Reader at <code>/reader/api/0/**</code>) are protocols nobody in this house uses. The cheap alternative was to add the name to <code>wanExposed</code> as it stood, which would have put an <strong>unauthenticated vhost on the internet</strong> to save one edit. Second, <strong>the posture is L16's, not L13/L14/L15/L17's</strong>: the name is in <code>protectedHosts</code>, so <code>mkWan</code> copies the <code>authelia</code> middleware onto the wan twin and the public path is rate-limit → forward-auth → 2FA before Miniflux sees a byte — and <code>access_control</code> puts it under the <strong>admins-only <code>two_factor</code></strong> rule with no edit, because that rule is derived from the list. It keeps its OIDC client as well, which makes this <strong>Grafana's</strong> arrangement (forward-auth AND OIDC) rather than the CWA/Nextcloud one (OIDC INSTEAD OF it) that M27 originally gave it. <strong><code>wanLoginPaths</code> is deliberately EMPTY</strong>, and the note that used to tell a future exposer to add a matcher has been replaced rather than followed: that mechanism substitutes a per-source path limit for the per-identity regulation <code>appApiHosts</code> names never get, and this name now has the real thing. Third, <strong>the cost is permanent and one-directional</strong>: forward-auth applies to BOTH entrypoints, so no native RSS reader can reach this hostname again, on the LAN or off it. Restoring that is an ingress change with its own row, not a setting. <strong>What is unaffected, because neither goes through Traefik</strong>: the service index's widget and Prometheus both reach <code>10.0.90.28:8080</code> directly across VLAN 90, and Miniflux's own outbound call to Karakeep is a client of <em>that</em> vhost. <strong>NO UDM-Pro RULE</strong>, following L13–L17. <strong>NO AAAA RECORD</strong>, SN2 unchanged</td>
+<td></td>
+</tr>
+<tr>
+<td>L19</td>
+<td><code>WAN :25 → 10.0.90.31:25</code> — inbound SMTP to the mail container, VLAN 90</td>
+<td>M31 (<code>machines/ernst/containers/mail.nix</code> + a UDM-Pro DNAT). <strong>Not in <code>containers/traefik.nix</code> and not in <code>containers/ingress-policy.nix</code></strong></td>
+<td>The MX for <code>goclan.org</code> has to be reachable by every MTA on the internet, and SMTP is not HTTP. <code>traefik.nix</code> declares no TCP routers and no TCP entrypoints, and adding them would still not cover this port: <strong><code>:25</code> carries no SNI</strong>, so there is nothing for a TCP router to key a hostname on. There is no arrangement in which this arrives through <code>10.0.90.12</code></td>
+<td><strong>None — this is the permanent shape.</strong> Recorded because it is a new WAN ingress path, which is what this table is for. <strong>Four things make this row worth reading rather than counting.</strong> First, <strong>it is the first port forward on this network that does not terminate at Traefik</strong>, and that retires a premise several rows above lean on. L13–L18 each say "NO UDM-Pro RULE, every client arrives through <code>10.0.90.12</code>" — true of every HTTP service and now false of the host as a whole. A reader checking "is anything exposed?" by reading <code>wanExposed</code> will get the wrong answer from M31 onward; the complete set is <code>wanExposed</code> <strong>plus these two rows</strong>. Second, <strong>CrowdSec does not see it</strong>, and that follows from the first: <code>containers/crowdsec.nix</code> has exactly one acquisition, <code>_SYSTEMD_UNIT=traefik.service</code>, and lives in Traefik's netns because that is the only place holding both the pre-DNAT source and a hook the packet traverses. None of this traffic goes near either. The compensating control is fail2ban <strong>inside</strong> the mail container, reading Postfix's and Dovecot's own journal — so <code>cscli decisions list</code> will always look empty for mail, which is a thing to know before debugging with it. Third, <strong><code>:25</code> takes no authentication and cannot</strong>, which makes it unlike every other row here: the control is Rspamd's scoring, not a credential. Fourth, <strong>DNAT and not SNAT</strong>, for <code>crowdsec.nix</code>'s measured reason one layer down: fail2ban bans by client address, so a rewritten source would ban the gateway or nothing. <strong>NO AAAA RECORD</strong>, SN2 unchanged — and it is load-bearing here rather than conventional, because a v6 listener on <code>:25</code> would be reachable <em>without</em> traversing this DNAT, so there would be no forward to remove, and the jails are v4 chains. Reachable and unbannable at once is what SN2 exists to prevent</td>
+<td></td>
+</tr>
+<tr>
+<td>L20</td>
+<td><code>WAN :465 + :993 + :4190 → 10.0.90.31</code> — submission, IMAPS and ManageSieve</td>
+<td>M31 (<code>machines/ernst/containers/mail.nix</code> + three UDM-Pro DNATs)</td>
+<td>Sarinah reads mail on K-9 over mobile data and lgo reads it in aerc from other networks. A mailbox reachable only on the home LAN is not a mailbox — and the alternative, requiring the VPN, means a phone that silently stops syncing whenever the tunnel drops, which is the failure nobody notices until they have missed something</td>
+<td><strong>None — this is the permanent shape.</strong> Separate from L19 because the exposures are separable: <code>:25</code> is what makes the domain receive mail at all, and these three are a convenience that a VPN-only posture could have replaced. They were exposed deliberately, and the trade is written down rather than assumed. <strong>Three things make this row worth reading rather than counting.</strong> First, <strong>this is the only credential-accepting surface in this table that Authelia never sees, and it is not an <code>appApiHosts</code> exemption</strong> — those names at least pass through Traefik, CrowdSec's log parsing and the WAN rate limiters. IMAP and SMTP AUTH reach Dovecot directly. The entire boundary is a password from <code>modules/mail-accounts.nix</code> (12-character floor, enforced in the generator, not documented) plus fail2ban at five tries an hour. Second, <strong>STARTTLS is deliberately absent</strong>: <code>143</code> and <code>587</code> are switched off per RFC 8314, so there is no downgradeable port here and every listener is implicit TLS. Adding <code>587</code> "for compatibility" would widen this row for no client this household owns — aerc, K-9 and Thunderbird all speak <code>465</code>. Third, <strong><code>:4190</code> is here for a reason worth stating</strong>, since ManageSieve is the least obvious of the three: Sieve filters are enforced server-side, which is the only place they can also apply to mail K-9 fetches. Without it, filtering would have to be duplicated in each client and would disagree. <strong>NO AAAA RECORD</strong>, SN2 unchanged, for L19's reason</td>
+<td></td>
+</tr>
+<tr>
+<td>L21</td>
+<td><code>docs.goclan.org</code> — Paperless-ngx on <code>10.0.90.32</code>, VLAN 90, <strong>on the <code>wan</code> entrypoint</strong></td>
+<td>M32 (<code>machines/ernst/containers/paperless.nix</code> + the router in <code>containers/traefik.nix</code>)</td>
+<td>Off-LAN document reading, and for this service that is the requirement rather than a convenience: a scan is most useful at the moment somebody is standing at a counter being asked for a document they left at home. An archive reachable only on the home wifi is the filing cabinet it replaces</td>
+<td><strong>None — this is the permanent shape.</strong> Recorded because the <code>wanExposed</code> header requires a ledger row for every name added to the internet-facing set. <strong>Three things make this row worth reading rather than counting.</strong> First, <strong>the posture is L13/L14/L17's and not L16/L18's</strong>: the name is in <code>appApiHosts</code>, so the router carries no <code>authelia</code> middleware and the vhost is a deliberate unauthenticated surface — because the Paperless Mobile app on both phones POSTs to <code>/api/token/</code> once, takes a DRF token, and sends it as a header afterwards, with no browser anywhere in the process. The BROWSER path still gets Authelia and 2FA through an OIDC client, which makes this <strong>CWA's and Nextcloud's</strong> arrangement (OIDC INSTEAD OF the middleware) rather than Grafana's (OIDC AS WELL AS it). Second, <strong>it DOES get a <code>wanLoginPaths</code> entry where <code>cloud</code> deliberately does not</strong>, and the contrast is the useful part: the test is not "does it have an app", it is <em>is the credential endpoint a distinct path or is it every request?</em> <code>/api/token/</code> is hit once per device per enrolment and <code>/accounts/login</code> is a human filling in a form — where Nextcloud's equivalents are <code>/remote.php/dav/**</code>, which is every sync request, and <code>/login/v2/**</code>, which is a poll loop. A limiter on either of those throttles a client rather than an attacker. Do not "fix" the asymmetry in either direction. Third, <strong>this name raises the stakes on a gap the fleet already has rather than introducing one</strong>: there is still no off-box backup anywhere here, <code>zdata/backup</code> is reserved and uncreated, and both protections for this dataset — ZFS snapshots and the nightly <code>document_exporter</code> — live on the same pool as the data. That matters more for this library than for any other on the machine, because the point of scanning a document is to throw the paper away, so unlike photographs on a phone or files on a laptop there is no second copy to re-acquire from. <strong>The compensations that are real</strong>: <code>PAPERLESS_ACCOUNT_ALLOW_SIGNUPS = false</code>, pinned rather than left at its default so nobody can register against a public hostname; django-allauth's own throttling; <code>wan-ratelimit</code> + <code>wan-inflight</code>; CrowdSec's status-based 401 scenario; and paperless's own TOTP, which is runtime state and therefore an operator step on the local admin — the recovery account the portal cannot protect. <strong>NO UDM-Pro RULE</strong>, following L13–L18. <strong>NO AAAA RECORD</strong>, SN2 unchanged. <strong>L19 and L20 are M31's</strong>, from a branch developed concurrently with this one</td>
+<td></td>
+</tr>
+<tr>
+<td>L22</td>
+<td><code>LAN (1)</code> → mail <code>10.0.90.31:465,993,4190/tcp</code></td>
+<td>UDM-Pro ZBF policy <code>Allow Mail Clients</code> (Internal/LAN → Services, IP <code>10.0.90.31</code>), created 2026-10-07</td>
+<td>aerc on miralda and jens is the one mail client class that lives on VLAN 1, and VLAN 1 could not reach <code>10.0.90.31</code> at all. The permanent <code>Allow Traefik</code> rule names <strong>one</strong> destination — <code>10.0.90.12</code> — because until M31 every user-facing service arrived through the proxy. Mail does not and cannot (<code>:25</code> has no SNI; see L19), so it needed the second such rule this network has ever had</td>
+<td><strong>None — this is the permanent shape.</strong> It is the LAN-side mirror of L19/L20 and is recorded for the same reason: the rule lives on the UDM-Pro and nothing in this repo can see it. <strong>Three things make this row worth reading rather than counting.</strong> First, <strong>it is the gap M31 shipped with, and the test plan is why it survived</strong>. Every successful check came from somewhere that could already reach <code>.31</code>: ernst and its containers are VLAN 50/90, Nextcloud Mail is a VLAN-90 peer, and both phones were tested on <strong>mobile data</strong> — deliberately, because <code>docs/guides/mail.md</code> said wifi "would prove nothing about the DNATs". That was true and it was half the sentence; the DNATs prove nothing about wifi either, and the two paths share no hop. A client class with its own path needs its own test, and VLAN 1 was the only one without one. Second, <strong>it is scoped to an IP and not to the <code>Services</code> network</strong>, so it opens this one container and not the other fourteen on VLAN 90 — <code>10.0.90.26:80</code> is still refused from the LAN, which was verified alongside it and is the control proving the rule is narrow. Third, <strong>the ports are the client ports</strong>: <code>:25</code> needs no LAN rule because nothing inside the house submits mail unauthenticated, and leaving it out keeps the rule's purpose legible. <strong>NO AAAA</strong>, SN2 unchanged</td>
+<td></td>
+</tr>
+<tr>
+<td>L23</td>
+<td><code>mta-sts.goclan.org</code> — the MTA-STS policy file, served by nginx <strong>inside the mail container</strong> on <code>10.0.90.31:8080</code>, <strong>on the <code>wan</code> entrypoint</strong></td>
+<td>M31 (<code>machines/ernst/containers/mail.nix</code> + the router in <code>containers/traefik.nix</code>)</td>
+<td>RFC 8461 puts the policy at a fixed HTTPS URL, so remote MTAs can only find it on the public internet. A LAN-only MTA-STS policy is a file nobody fetches — exposure is not a side effect here, it is the entire mechanism</td>
+<td><strong>None — this is the permanent shape.</strong> Recorded because the <code>wanExposed</code> header requires a row for every name added to the internet-facing set. <strong>Three things make this row worth reading rather than counting.</strong> First, <strong>it is the one piece of mail that rides Traefik, and the mail container is otherwise absent from <code>ingress-policy.nix</code> entirely</strong> — L19/L20 exist precisely because SMTP/IMAP/ManageSieve cannot. The policy is served from the mail container rather than a web one so that the file and the MX it names cannot drift; the cost is one accept rule for <code>10.0.90.12</code> in a firewall whose other ports deliberately answer everyone. Second, <strong>it is the least sensitive <code>appApiHosts</code> exemption this fleet has</strong>. Every other entry trades a login page against a client that cannot follow a 302, and the thing behind the door is somebody's data; here the client is Gmail's MTA, which has no browser and no session, and the response body is four lines whose only payload is the MX hostname — already a public DNS record. There is nothing behind this door. Third, <strong><code>mode: testing</code>, not <code>enforce</code>, and that is DMARC's <code>p=none</code> again</strong>: testing makes senders check the policy and report failures while still delivering, so a certificate renewal that goes wrong degrades nothing. Under <code>enforce</code> the same mistake STOPS mail, and the first symptom is a bounce in someone else's postmaster log. Move to <code>enforce</code> after the TLS-RPT reports — enabled in the same milestone, and the thing that makes them meaningful — have been clean for a few weeks, raising <code>max_age</code> with it. <strong>The <code>id=</code> in the <code>_mta-sts</code> TXT record is the version stamp</strong>: change it whenever the file changes or senders keep the cached copy. <strong>NO AAAA</strong>, SN2 unchanged</td>
+<td></td>
+</tr>
+<tr>
+<td>—</td>
+<td><strong>M13's Jellyseerr and M15's Tdarr routes</strong></td>
+<td>Traefik (<code>containers/traefik.nix</code>), M13 and M15</td>
+<td>Both are ordinary Traefik routers on names the M5 wildcard already covers, riding the permanent <code>Allow Traefik</code> rule. <strong>Neither is a shim</strong> — listed so nobody creates a ledger row for a route</td>
+<td><strong>permanent</strong> — this is invariant #3 working as designed, not an exception to it</td>
+<td>not created. <strong>M15's half is now moot</strong>: the milestone closed 2026-08-29 without shipping, so the Tdarr router was never created (the guidance stands for any future service: <code>authelia</code> middleware, not <code>mgmt-only</code>, which M7 deleted per L5). M13's Jellyseerr router exists and deliberately carries <strong>no</strong> middleware (household service; its posture is Jellyseerr's own Jellyfin-account login — see M13). Copy the *arr routers for anything new. Adding a hostname to the middleware also means adding it to <code>access_control</code> in <code>containers/authelia.nix</code>, which is deny-by-default: a route with the middleware and no matching rule fails <strong>closed</strong></td>
+</tr>
+<tr>
+<td>—</td>
+<td><code>WAN → jellyfin</code> <strong>+ <code>komga</code> + <code>navidrome</code> + <code>cwa</code></strong>, via the <code>wan</code> Traefik entryPoint, <strong>none of them behind Authelia</strong></td>
+<td>2026-09-08 — <code>containers/ingress-policy.nix</code> (<code>appApiHosts</code>) + <code>containers/traefik.nix</code> (<code>wanExposed</code>) + four public A records</td>
+<td><strong>THE LARGEST SINGLE GROWTH OF THE INTERNET-FACING SURFACE SINCE M18, and the first time the unauthenticated surface is the rule rather than the exception.</strong> Before this the external set was <code>jellyseerr</code> + <code>auth</code> (both behind Authelia) + <code>audiobookshelf</code> (the one bypass). It is now seven names, <strong>five of which answer the application rather than the portal</strong>. <strong>Why each is exempt</strong>: forward-auth is a redirect protocol and none of these has a client that can follow a 302 — TV/Chromecast/DLNA (jellyfin), bearer-token mobile apps (audiobookshelf), Komelia + Mihon + OPDS (komga), the Subsonic protocol which carries the credential as a <strong>query parameter</strong> (navidrome), and OPDS + a Kobo device token <strong>in the URL path</strong> + KOReader <code>/kosync</code> (cwa — a Kobo e-reader has no browser at all). <strong><code>jellyfin</code> IS A REVERSAL</strong>: M18 deliberately kept it off <code>wan</code> AND used it as the negative control proving the entrypoint is fail-closed. That control is spent, by lgo's decision; the replacement control is <code>sonarr</code>, which is strictly better because it carries forward-auth so a leak would be caught twice. The old "never expose jellyfin" note was <strong>Cloudflare's terms of service</strong>, not a security rule, and died with the tunnel in M18. <strong>What is NEW here and did not exist for audiobookshelf's row above</strong>: the exemption is now a <strong>MECHANISM, not a comment</strong>. <code>ingress-policy.nix</code> is the single source both traefik.nix and authelia.nix read, and <code>withWan</code> gained four evaluation-time throws — an appApi host given forward-auth, a protected host <strong>missing</strong> it (the fail-OPEN direction, which <code>default_policy = "deny"</code> does NOT catch), a routed hostname classified nowhere, and an unparsable rule. All three new branches were verified to fire. The RomM 403 that <code>authelia.nix</code> predicted in prose and then suffered anyway is now a build error. <strong>Compensation, since Authelia's 2FA and per-user regulation protect none of these</strong>: <code>wan-login-ratelimit</code> (1/10s, burst 5) on higher-priority <code>&lt;name&gt;-wan-login</code> routers — because <code>wan-ratelimit</code> at 50/s is sized for browsing and is 4.3M password guesses a day — plus the local CrowdSec scenario <code>clanarchy/app-api-auth-bf</code> (10× 401/403 in 5 min → ban), which is the ONLY control covering Subsonic and Komga's HTTP Basic, where the credential is on every request and there is no distinct login path to limit. <strong>Residual exposure, stated rather than buried</strong>: no second factor on any of the five; Komga has no separate admin surface to keep off the public vhost and no brute-force limiter of its own; <strong>no geo-restriction</strong> — asked for and deliberately not built, because the only route is a Yaegi plugin fetched unpinned from plugins.traefik.io at Traefik's startup, which traefik.nix rejects on stronger grounds than the thing it would defend against. <strong>Preconditions no file can enforce</strong>: strong accounts on all five, and admin accounts created IMMEDIATELY on komga/navidrome/cwa — their first-run flows are unauthenticated by construction, which on the WAN is not a survivable window. <strong>NO AAAA RECORDS, and this is load-bearing</strong>: there is no GUA anywhere on this path, the CrowdSec bouncer has <code>nftables.ipv6.enabled = false</code>, and a v6 path would bypass the DNAT and therefore the <code>wan</code> entrypoint while being unbannable — SN2 unchanged</td>
+<td><strong>permanent</strong> — a <code>—</code> row, in the same shape as the audiobookshelf and qBittorrent WebUI rows, so a future milestone does not mistake it for something to retire and "fix" by adding the middleware back. <code>withWan</code> check (e) now makes that attempt a build failure rather than an outage</td>
+<td><strong>created 2026-09-08</strong> (built and evaluated; live once lgo deploys, the four A records resolve — <code>jellyfin</code> and <code>navidrome</code> already do — and the off-net checks in docs/guides/ernst-app-api-ingress.md pass)</td>
+</tr>
+<tr>
+<td>—</td>
+<td><code>WAN → jellyseerr.goclan.org</code> <strong>+ <code>auth.goclan.org</code></strong>, via the <code>wan</code> Traefik entryPoint</td>
+<td>M18 — <code>containers/traefik.nix</code> (<code>wanExposed</code>) + a UDM-Pro DNAT</td>
+<td><strong>THE SAME BYPASS AS M16'S ROW BELOW, THROUGH A DIFFERENT MECHANISM — it is not a new exposure and the hostname set has not grown.</strong> Architecture invariant #4 requires bypasses to be listed; this is the live one. <strong>Mechanism</strong>: the UDM-Pro DNATs WAN <code>:443</code> → <code>10.0.90.12:8443</code>, which is Traefik's <code>wan</code> entryPoint; a router reaches it if and only if it names <code>wan</code>, and only <code>jellyseerr-wan</code> and <code>authelia-wan</code> do — copied by <code>withWan</code> from their LAN twins so rule, service and forward-auth cannot disagree between the two paths. <strong>Two independent gates</strong>: the entrypoint, and public DNS (only these two names have A records; everything else NXDOMAINs from outside). <strong>Fail-closed by construction, with a mechanism and not a comment</strong>: <code>withWan</code> THROWS at evaluation if any router omits <code>entryPoints</code> (Traefik binds such a router to every entrypoint — measured), if <code>wanExposed</code> names a router that does not exist, or if any router adds <code>wan</code> by hand. <strong>Where this is weaker than the tunnel, stated</strong>: a request to the bare public IP with any SNI completes a TLS handshake and gets <code>404</code> + <code>CN=TRAEFIK DEFAULT CERT</code> — an existence disclosure, not an exposure, and the case DNS cannot gate. <strong>Auth posture unchanged from M16</strong>: <code>two_factor</code> for <code>admins</code> OR <code>household</code> on jellyseerr, Jellyseerr's own Jellyfin login underneath, and <code>auth.goclan.org</code> external because forward-auth is a redirect protocol. <strong>Plus what the tunnel never had</strong>: <code>rateLimit</code> + <code>inFlightReq</code> on the wan routers only, and CrowdSec dropping at the packet layer. <strong>:80 IS NOT FORWARDED</strong> — ACME is DNS-01, HTTP-01 never runs, and this row is where that is written down so nobody opens it "for Let's Encrypt"</td>
+<td><strong>permanent</strong> — a <code>—</code> row, in the same shape as the qBittorrent WebUI row, so a future milestone does not mistake it for something to retire and "fix" by removing the restriction</td>
+<td><strong>created 2026-09-03</strong> (M18 built; live once lgo runs the UDM-Pro forward, the two public A records and the deploy, and the off-net negative controls pass)</td>
+</tr>
+<tr>
+<td>—</td>
+<td><strong>RETIRED 2026-09-07 — CrowdSec was armed the day it deployed</strong></td>
+<td>M18 — <code>containers/crowdsec.nix</code>, now <code>enforce = true</code></td>
+<td><strong>Detection is on; enforcement is off.</strong> CrowdSec parses, fires scenarios and records decisions, but marks them simulated so the bouncer drops nothing. <strong>Why</strong>: every remediation here keys on the source address in Traefik's access log, and <strong>Q2 — does the UDM-Pro's DNAT preserve the source, or SNAT it — is UNRESOLVED until measured from off-net.</strong> If it SNATs, the first scanner gets <code>10.0.90.1</code> banned, which takes the whole house off Jellyseerr. A control that can do that must not be armed on a guess</td>
+<td><strong>Trigger fired 2026-09-07, same day.</strong> One request from a phone on mobile 5G returned <code>ClientHost 47.65.179.48</code> with the source port <code>46204</code> matching the handset's own — real public source, no SNAT. Q2 and Q3 both CONFIRMED, <code>enforce = true</code> deployed, <code>proxyProtocol</code> not needed. <strong>The row that replaces it is not a row</strong>: it is the note in <code>containers/crowdsec.nix</code> saying that if bans ever start landing on ONE INTERNAL ADDRESS, set <code>enforce = false</code> and deploy BEFORE investigating</td>
+<td><strong>created 2026-09-03, retired 2026-09-07</strong></td>
+</tr>
+<tr>
+<td>—</td>
+<td><strong>CrowdSec fetches its hub over the network at every service start</strong></td>
+<td>M18 — nixpkgs' <code>services.crowdsec</code>, <code>ExecStartPre</code></td>
+<td><strong>A real departure from this repo's hashed-inputs posture, recorded rather than glossed.</strong> The module's setup script runs <code>cscli hub update</code> on every start, under <code>set -euo pipefail</code>, with no option to disable it — so parser and scenario content arrives unpinned, at service start, on the machine's ingress boundary. <strong>Accepted because the hub IS the product</strong> (a pinned scenario set is last year's attack patterns) <strong>and because the failure is bounded and visible</strong>: an unreachable hub fails the ExecStartPre, which fails the unit, which now retries — and the <code>ExposedAndUnprotected</code> alert fires on exactly that state. <strong>It is also why no Traefik plugin is used</strong>: the CrowdSec Traefik middleware is a Yaegi plugin fetched from <code>plugins.traefik.io</code> at <em>Traefik's</em> startup, and putting an unpinned fetch in the start path of the service every other service is behind is a strictly worse trade than putting one in CrowdSec's</td>
+<td><strong>revisit if</strong> a hub outage is ever observed holding the agent down after a WAN interruption, or if CrowdSec gains an offline/vendored hub mode. The fix then is <code>localConfig.parsers</code>/<code>scenarios</code> written in Nix, which the module already supports and which this file already uses for the RFC1918 whitelist</td>
+<td><strong>created 2026-09-03</strong>, permanent-unless-triggered</td>
+</tr>
+<tr>
+<td>—</td>
+<td><code>WAN → jellyseerr.goclan.org</code> <strong>+ <code>auth.goclan.org</code></strong>, via Cloudflare Tunnel</td>
+<td>M16 — <code>containers/cloudflared.nix</code></td>
+<td><strong>This is a deliberate bypass of the "hosts on VLANs the UDM-Pro controls" threat model that every milestone before M16 assumed.</strong> Architecture invariant #4 requires bypasses to be listed; this is it — the first thing in the fleet accepting connections from outside the home network. <strong>Mechanism</strong>: cloudflared (own nspawn container, <code>10.0.90.21</code>, outbound-only) declares exactly these two hostnames; two proxied CNAMEs at Cloudflare point them at <code>&lt;tunnel-id&gt;.cfargotunnel.com</code>; <strong>no UDM-Pro inbound rule exists</strong>, and the WAN ruleset showing none is part of the test plan. <strong>Auth posture, in the same row as required</strong>: the unauthenticated attack surface is <strong>Authelia</strong> — the jellyseerr router carries <code>forwardAuth</code>, policy <code>two_factor</code> for <code>admins</code> OR <code>household</code>, with Jellyseerr's own Jellyfin-account login kept underneath for the reason M6 kept Grafana's local admin. <code>auth.goclan.org</code> is on the tunnel <strong>because forward-auth is a redirect protocol</strong> — the portal IS the external attack surface, by design; what the internet meets there is Authelia's login form, per-user regulation (3/5min→15min ban) and mandatory 2FA. <strong>Split horizon survives</strong>: Technitium keeps resolving both names to <code>10.0.90.12</code> internally, so household traffic never transits Cloudflare. <strong>The tunnel must NEVER grow a <code>jellyfin.goclan.org</code> hostname</strong> — Cloudflare's terms and the header of <code>cloudflared.nix</code> both say why. <strong>Invariant #4's Jellyfin exemption does not transfer</strong>: it exists because TV and mobile clients cannot survive a forward-auth redirect, and Jellyseerr's only client is a browser</td>
+<td><strong>RETIRED 2026-09-03 by <a href="#m18-featernst-wan-ingress-direct">M18</a></strong> — the trigger was not "tidiness" but lgo's decision to take the third party out of the TLS path</td>
+<td><strong>RETIRED 2026-09-03.</strong> <code>containers/cloudflared.nix</code> is DELETED, its clan var <code>cloudflared-jellyseerr</code> is deleted, and its MAC/address (<code>02:00:00:90:00:0d</code> / <code>10.0.90.21</code>) are marked free again in <code>machines/ernst/networking.nix</code>. <strong>The bypass itself is NOT retired</strong> — the same two hostnames are still internet-reachable, now through the <code>wan</code> entryPoint row above; only the mechanism changed. <strong>What was gained</strong>: Cloudflare no longer terminates TLS and can no longer read the Jellyfin credentials the Jellyseerr login form carries, and there is one fewer availability dependency. <strong>What was paid</strong>: the home IP is in public DNS, there is no volumetric DDoS absorption, and SN2 could no longer be deferred. <strong>The tunnel-versus-forward argument that lived in that file's header is preserved in <a href="#m16-featernst-external-ingress">M16</a> and in <code>containers/traefik.nix</code>'s TWO ENTRYPOINTS block</strong> — a deleted rationale is a rationale that gets re-lost. <strong>lgo revokes the Cloudflare tunnel token and deletes the tunnel AFTER the direct path is proven, not before; the ZONE STAYS</strong> — ACME DNS-01 still uses it</td>
+</tr>
+</tbody>
+</table>
+<hr />
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

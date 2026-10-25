@@ -1,0 +1,3211 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="NixOS declarative configuration — guides and option reference">
+      
+      
+      
+        <link rel="canonical" href="https://lutzgo.github.io/clanarchy/standing-notes/">
+      
+      
+        <link rel="prev" href="../invariants/">
+      
+      
+        <link rel="next" href="../ledger/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Standing notes - Clanarchy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#standing-notes" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Clanarchy" class="md-header__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Clanarchy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Standing notes
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../invariants/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Invariants
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Standing notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../ledger/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Interim-rule ledger
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../history/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  History
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/machines/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/deploy/" class="md-tabs__link">
+          
+  
+  
+  Operate
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/jj-workflow/" class="md-tabs__link">
+          
+  
+  
+  Build
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/ernst-app-api-ingress/" class="md-tabs__link">
+          
+  
+  
+  Services
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/htpc-bigscreen/" class="md-tabs__link">
+          
+  
+  
+  Machines
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../runbooks/zfs-auto-snapshot-optin/" class="md-tabs__link">
+          
+  
+  
+  Runbooks
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../incidents/ernst-slot12-drop-2026-08-11/" class="md-tabs__link">
+          
+  
+  
+  Incidents
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Clanarchy" class="md-nav__button md-logo" aria-label="Clanarchy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Clanarchy
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/lutzgo/clanarchy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lutzgo/clanarchy
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../invariants/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Invariants
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Standing notes
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Standing notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#sn1-the-model-tag-silently-sets-the-context-window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SN1 — The model tag silently sets the context window
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sn2-ipv6-is-off-and-that-is-now-a-decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SN2 — IPv6 is off, and that is now a decision
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SN2 — IPv6 is off, and that is now a decision">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#decided-2026-09-03-by-m18-a-and-now-with-a-mechanism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DECIDED 2026-09-03 by M18: (a), and now with a mechanism
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sn3-a-broken-instrument-is-indistinguishable-from-a-bad-result" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SN3 — A broken instrument is indistinguishable from a bad result
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sn4-a-failed-oneshot-on-a-timer-is-silent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SN4 — A failed oneshot on a timer is silent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sn5-a-prompted-clan-var-blocks-every-deploy-in-the-fleet-not-just-its-own-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SN5 — A prompted clan var blocks EVERY deploy in the fleet, not just its own machine
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ledger/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interim-rule ledger
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/machines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Machines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules and clan services
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decisions that bite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operate
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operate
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploying
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/accepting-pull-requests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Accepting pull requests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/networking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Networking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/remote-unlock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote unlock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/firmware-updates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware updates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/yubikey/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YubiKey
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/authelia-2fa/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authelia second factors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Build
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/jj-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The jj workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/formatting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Formatting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/coding-agent-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coding-agent workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/adding-a-module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a module or option
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/adding-a-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/first-time-install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    First-time install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Services
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Services
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ernst-app-api-ingress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst app-API ingress
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ernst-zdata-datasets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zdata datasets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/mail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/reading-stack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The reading stack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/music-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The music pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/navidrome-clients/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Navidrome clients
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/document-store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The document store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/courses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video courses in Jellyfin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/agent-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The agent's memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/hacs-dependencies/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HACS dependencies
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Machines
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Machines
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/htpc-bigscreen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / Plasma Bigscreen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/htpc-controllers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTPC / game controllers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/birte-emulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emulation on birte
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/noctalia-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/noctalia-v5-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noctalia v5 migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/obs-sony-webcam/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OBS / Sony webcam
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runbooks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Runbooks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbooks/zfs-auto-snapshot-optin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ZFS auto-snapshot opt-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbooks/ernst-zroot-drive-replacement/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst zroot drive replacement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbooks/ernst-enable-impermanence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst enabling impermanence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbooks/ernst-vlan-bridge-cutover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VLAN bridge cutover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbooks/ernst-vpn-microvm-deploy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst VPN microvm deploy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbooks/bindery-dead-torrent-sweep/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bindery dead-torrent sweep
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Incidents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Incidents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../incidents/ernst-slot12-drop-2026-08-11/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst slot-12 drive drop (2026-08-11)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../incidents/ernst-jellyfin-vaapi-drm-display-failure-2026-08-18/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst Jellyfin VAAPI DRM display failure (2026-08-18)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../incidents/ernst-card1-vram-starvation-2026-10-09/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ernst card1 VRAM starvation (2026-10-09)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/hardware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Desktop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/apps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/users/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/wifi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#sn1-the-model-tag-silently-sets-the-context-window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SN1 — The model tag silently sets the context window
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sn2-ipv6-is-off-and-that-is-now-a-decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SN2 — IPv6 is off, and that is now a decision
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SN2 — IPv6 is off, and that is now a decision">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#decided-2026-09-03-by-m18-a-and-now-with-a-mechanism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DECIDED 2026-09-03 by M18: (a), and now with a mechanism
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sn3-a-broken-instrument-is-indistinguishable-from-a-bad-result" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SN3 — A broken instrument is indistinguishable from a bad result
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sn4-a-failed-oneshot-on-a-timer-is-silent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SN4 — A failed oneshot on a timer is silent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sn5-a-prompted-clan-var-blocks-every-deploy-in-the-fleet-not-just-its-own-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SN5 — A prompted clan var blocks EVERY deploy in the fleet, not just its own machine
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/lutzgo/clanarchy/edit/main/docs/standing-notes.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="standing-notes">Standing notes<a class="headerlink" href="#standing-notes" title="Permanent link">&para;</a></h1>
+<p>Not invariants — an invariant is a property of the <strong>system</strong> that a milestone
+must design around. These are properties of the <strong>ground</strong> a milestone stands
+on: hazards that live in a file somebody will edit for an unrelated reason, and
+decisions the fleet owes itself but has not made. They are here rather than
+inside the change that discovered them precisely because the person who trips
+over them will not be reading that change.</p>
+<h2 id="sn1-the-model-tag-silently-sets-the-context-window">SN1 — The model tag silently sets the context window<a class="headerlink" href="#sn1-the-model-tag-silently-sets-the-context-window" title="Permanent link">&para;</a></h2>
+<p><strong>Ollama derives <code>num_ctx</code> from the model when it is not set explicitly.</strong>
+Measured on 2026-08-25: <code>qwen3-coder:30b</code> on ernst → <strong>32768</strong>;
+<code>qwen2.5-coder:7b</code> on miralda → <strong>4096</strong>. So editing the <code>models</code> list in
+<code>clan.nix</code> — which is what <code>service-modules/local-ai.nix</code>'s <code>models</code> option
+invites — <strong>changes the context window fleet-wide, with no diff that shows it.</strong>
+A one-word edit that reads as "use the smaller model" is actually "quarter the
+context and break tool calling", and nothing in the review says so.</p>
+<p>The consequence is not degraded output, which is what makes it dangerous.
+Measured at <code>num_ctx = 8192</code>: a <strong>17,083-token</strong> file (<code>containers/arr/</code>) was
+silently truncated to <strong>4,098</strong> tokens. HTTP 200, no flag, no warning anywhere in
+the response. Truncation <strong>keeps the tail and drops the head</strong> at roughly
+<code>num_ctx/2</code> — and the system message and tool definitions live at the front, so
+<strong>tool calling went to 0/6</strong>. Asked for a fact from the dropped head, the model
+did not decline: it <strong>invented a plausible, placeholder-shaped MAC address</strong>
+(<code>00:11:22:33:44:55</code> in place of <code>02:00:00:90:00:05</code>) — precisely the kind of
+value that survives a skim of a diff.</p>
+<p><strong>So <code>num_ctx</code> must be set explicitly wherever the model is declared, and the
+two must be reviewed together.</strong> A model-tag change is a context change until
+proven otherwise.</p>
+<p><strong>CLOSED 2026-08-26 at the place the hazard lives.</strong> <code>roles.ollama</code> now carries
+a <code>contextLength</code> setting and both machines set it explicitly — ernst 32768,
+miralda 4096. The window no longer moves when <code>models</code> is edited, and the two
+now sit adjacent in <code>clan.nix</code> so a review sees both. The hazard is recorded
+rather than deleted because it returns the moment a <strong>new</strong> machine joins
+<code>roles.ollama</code> without setting it: the option defaults to <code>null</code>, which restores
+exactly the model-derived behaviour above. <strong>Adding a machine to that role means
+setting its context.</strong></p>
+<p>A second hazard of the same shape was found while closing this one and is worth
+reading together with it: <code>kvCacheType = "q8_0"</code> roughly <strong>halves tool-call
+reliability</strong> (83% → 38%) unless the client's system prompt explicitly demands
+the <code>&lt;tool_call&gt;</code> wrapper — a server-side VRAM optimisation whose cost lands in
+a different component and appears in no readback. Measured, interleaved, n=30
+per arm. Both are documented in <code>service-modules/local-ai.md</code>.</p>
+<p>Cross-referenced from M11 (which measured
+it) and M15 (whose entire VRAM budget depends on it).</p>
+<p><strong>WHERE THE CONTEXT LIVES NOW — updated 2026-09-09 by
+M19, and the hazard is now SPLIT.</strong></p>
+<p>On <strong>ernst</strong>, both halves of this note are closed, at the mechanism rather than
+by documentation:</p>
+<ul>
+<li><strong>The window lives on the model.</strong> <code>roles.models</code> declares each model as
+  <code>{ url, hash, contextLength, kvCacheType }</code>, and <strong><code>contextLength</code> has no
+  default</strong> — a model cannot be declared without someone stating its window. The
+  same attrset renders both the fetcher and llama-server's preset INI, so there
+  is no second place for it to disagree with itself. Editing which model is
+  served can no longer move the context of another one, because there is no
+  longer a global <code>OLLAMA_CONTEXT_LENGTH</code> for them to share.</li>
+<li><strong>Exceeding it is now LOUD.</strong> llama-server answers an over-long prompt with
+  <strong>HTTP 400 <code>request (16694 tokens) exceeds the available context size (8192
+  tokens)</code></strong>. The silent-truncation behaviour this note exists to warn about is
+  an ollama property, not a general one.</li>
+</ul>
+<p>On <strong>miralda</strong> the note stands <strong>completely unchanged</strong>, and that is the reason
+it is not being deleted. miralda still runs <code>roles.ollama</code> — deliberately; M19
+scoped itself to the discrete-card case and an iGPU running out of shared system
+RAM is a different question. So the HTTP 200, the tail-kept/head-dropped
+truncation and the fabricated answer are all still live there. Re-measured
+2026-09-08 on ollama 0.32.3: a 16,694-token prompt became <strong>4,098</strong> tokens and
+the model invented <code>00:00:00:00:00:00</code> for a fact from the discarded head — a
+<em>different</em> fabrication from M11's <code>00:11:22:33:44:55</code>, which is itself the
+point. It is not a memorised wrong answer; it is a fresh invention each time.</p>
+<p><strong>So: adding a machine to <code>roles.ollama</code> still means setting its context.
+Adding one to <code>roles.models</code> cannot fail to.</strong></p>
+<p>The <code>q8_0</code> half of this note is also superseded on ernst and only there. It cost
+tool-call reliability under ollama at a baseline system prompt; with the
+<code>&lt;tool_call&gt;</code> reinforcement in place it costs nothing on either server, so the
+KV choice is now purely speed-for-context — and at ernst's declared 32768 window
+<code>f16</code> fits with 2761 MiB to spare, so <strong>the fleet default reverted to <code>f16</code></strong>.</p>
+<h2 id="sn2-ipv6-is-off-and-that-is-now-a-decision">SN2 — IPv6 is off, and that is now a decision<a class="headerlink" href="#sn2-ipv6-is-off-and-that-is-now-a-decision" title="Permanent link">&para;</a></h2>
+<p><strong>ernst's connection is a static full IP stack</strong> — static public IPv4 <em>and</em>
+native IPv6, no CGNAT, no DS-Lite. Confirmed by lgo, 2026-08. Every milestone to
+date was written as if the fleet were v4-only, and until now nothing forced the
+question.</p>
+<p><strong>What the repo does today.</strong> Every container sets <code>IPv6AcceptRA = false</code> and
+takes DHCPv4 only — <code>containers/jellyfin.nix</code>, <code>arr/</code>, <code>traefik.nix</code>,
+<code>authelia.nix</code>, the monitoring container, and the microvm guest, which disables
+v6 outright (M3 records that wg-quick aborts under <code>set -e</code> on a dual-stack
+<code>Address</code> line). VLAN 90 carries no GUA. The one v6 in the fleet is M6's <code>mon0</code>,
+a point-to-point ULA veth to the host — deliberate, scoped, and not what this
+note is about.</p>
+<p><strong>That uniformity is an accident, not a decision.</strong> It propagated by copying
+M2b's working pattern into every subsequent container. No milestone argued for
+it, and no milestone has ever tested it.</p>
+<p><strong>The hazard, precisely.</strong> The v4 security model rests on UDM-Pro ZBF policies
+and — implicitly, unexamined — on RFC1918 plus NAT as a backstop. That backstop
+is why a ZBF mistake has so far cost reachability <em>from another VLAN</em> rather than
+<em>from the internet</em>: M5 lost a round to <code>Servers</code> missing from a source list and
+the failure was a timeout, not an exposure. <strong>IPv6 has no NAT and no equivalent
+backstop.</strong> If RAs ever reach VLAN 90, every container becomes globally
+addressable the moment it accepts one, and the only thing between the internet
+and the arr container's <code>8989</code> is the UDM-Pro's <strong>IPv6</strong> firewall — a <em>different</em>
+rule set from the v4 policies this repo has maintained and corrected since M2,
+and one <strong>no milestone has ever audited</strong>. The failure would be silent: nothing
+in the fleet monitors for an unexpected GUA.</p>
+<p><strong>Measured 2026-08-25, on ernst and in every container</strong> — the baseline this note
+exists to be checked against:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>ip -6 addr show                                  # on ernst
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  br0            fe80::b08b:e1ff:fef2:1e7c/64          link-local only
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  mon0           fdca:fe90::1/128                      M6's ULA, host end
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  ztzavl64zk     fdda:106a:123a:d561:…:711f/88         ZeroTier rfc4193
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  enp13s0        (no inet6 at all — bridge port)
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>nixos-container run &lt;c&gt; -- ip -6 addr show eth0
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  jellyfin       fe80::ff:fe90:2/64                    link-local only
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>  traefik        fe80::ff:fe90:4/64                    link-local only
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>  arr            fe80::ff:fe90:5/64                    link-local only
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  monitoring     fe80::ff:fe90:6/64                    link-local only
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  authelia       fe80::ff:fe90:7/64                    link-local only
+</code></pre></div>
+<p><strong>Link-local only, everywhere. No GUA anywhere on VLAN 90, and none on the host
+either</strong> — ernst holds no ISP-delegated v6 address at all today. So the native-v6
+half of the connection is, at the fleet's edge, entirely unused. That is the safe
+state and it is the <em>current</em> state; it is not a state anything defends.</p>
+<p><strong>A GUA anywhere on VLAN 90 makes this an incident, not a note.</strong> Re-run the
+block above before believing otherwise.</p>
+<p><strong>The decision owed, either answer acceptable:</strong></p>
+<ul>
+<li><strong>(a) VLAN 90 is v4-only, deliberately and permanently.</strong> <code>IPv6AcceptRA = false</code>
+  is promoted from a copied line to an invariant with a stated reason, and the
+  next container that omits it is a review comment rather than an accident.</li>
+<li><strong>(b) IPv6 is supported</strong>, in which case the UDM-Pro's v6 ruleset is audited,
+  proven default-deny inbound, and maintained in parallel from then on — a
+  standing cost, not a one-time one.</li>
+</ul>
+<h3 id="decided-2026-09-03-by-m18-a-and-now-with-a-mechanism">DECIDED 2026-09-03 by M18: (a), and now with a mechanism<a class="headerlink" href="#decided-2026-09-03-by-m18-a-and-now-with-a-mechanism" title="Permanent link">&para;</a></h3>
+<p><strong>The trigger this note named fired.</strong> It said the decision was forced by "M16
+choosing the port forward"; M16 chose the tunnel and deferred it, and <strong>M18
+un-deferred it</strong> by dropping the tunnel and opening a real WAN port. That ends
+the exemption the tunnel bought: with inbound ingress on the box, an unaudited
+v6 path is a <em>second</em> way in that bypasses the <code>wan</code> entrypoint — and therefore
+bypasses the entire fail-closed argument M18 is built on.</p>
+<p><strong>The answer is (a): the WAN-facing path is IPv4-only BY CONSTRUCTION.</strong></p>
+<p><strong>What was measured, on ernst and in every container, 2026-09-03</strong> — the
+baseline above, re-run as this note requires:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>ip -6 addr show                       # on ernst
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  br0         fe80::b08b:e1ff:fef2:1e7c/64     link-local only
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  mon0        fdca:fe90::1/128                 M6's ULA, host end
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  ztzavl64zk  fdda:106a:…:711f/88              ZeroTier rfc4193
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>  (no ISP-delegated address anywhere)
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>ip -6 route show default              → nothing.  No RA has ever been accepted.
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>cat /proc/sys/net/ipv6/conf/br0/accept_ra → 0
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>nixos-container run &lt;c&gt; -- ip -6 addr show eth0
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>  jellyfin fe80::ff:fe90:2   traefik fe80::ff:fe90:4   arr        fe80::ff:fe90:5
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>  monitoring fe80::ff:fe90:6 authelia fe80::ff:fe90:7  tvheadend  fe80::ff:fe90:a
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>ip netns exec &lt;ns&gt; ip -6 addr show    # the podman tier
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>  tubesync fe80::ff:fe90:b  storyteller fe80::ff:fe90:c  romm fe80::ff:fe90:e
+</code></pre></div>
+<p><strong>Link-local only, everywhere. Still no GUA anywhere on VLAN 90, and ernst still
+holds no ISP-delegated v6 address at all.</strong> The 2026-08-25 baseline reproduced
+exactly, eight days and four milestones later.</p>
+<p><strong>What CHANGED is that this is now enforced rather than observed.</strong> The note's
+own complaint was that <code>IPv6AcceptRA = false</code> "propagated by copying" and that
+nothing defends the safe state. M18 adds three mechanisms, all greppable:</p>
+<blockquote>
+<p><strong>CORRECTION 2026-09-07, ON DEPLOY DAY.</strong> The first of the three mechanisms
+below was <strong>wrong</strong>, and it was wrong in the direction that matters: it
+claimed a control that did not exist. It read <em>"every Traefik entryPoint binds
+<code>0.0.0.0:</code> and not <code>:</code> … the bind is the defence rather than the absence of a
+GUA."</em> Measured against the deployed config on 2026-09-07, with every
+entryPoint already written <code>0.0.0.0:</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>ss -ltnH -f inet   -&gt;  127.0.0.1:8080  127.0.0.54:53  0.0.0.0:5355
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>ss -ltnH -f inet6  -&gt;  *:80  *:443  *:8443  *:8082  *:6060
+</code></pre></div>
+<p><strong>All four entryPoints, plus CrowdSec's metrics port, were accepting IPv6.</strong>
+Go treats <code>0.0.0.0</code> as <em>unspecified</em> and opens an AF_INET6 socket with
+<code>IPV6_V6ONLY=0</code> for any wildcard listen, so the bind convention did nothing
+whatsoever. Not an exposure — link-local only, no GUA, no v6 route, no v6
+forward — but a claim of this shape is worse than no claim, because it reads
+like a control in review. <strong>The lesson is the milestone's own: a mechanism
+that was reasoned about rather than measured is a description.</strong> The list
+below is the corrected one.</p>
+</blockquote>
+<ul>
+<li><strong>No IPv6 address exists in the Traefik netns</strong> — <code>LinkLocalAddressing = "no"</code>
+  on its <code>10-eth0</code> network unit. Nothing there needs v6: ACME reaches Let's Encrypt
+  over v4 and Technitium is v4-only. <strong>The proof is <code>ip -6 addr show dev eth0</code>
+  returning nothing, plus an empty <code>ip -6 route show</code>.</strong> Not a bare
+  <code>ip -6 addr show</code>: <code>lo</code> keeps <code>::1/128 scope host</code>, which is loopback, is
+  unreachable from outside the netns, and is supposed to be there. That bare
+  form was accurate only while the deleted sysctl block existed, since <code>all = 1</code>
+  covered <code>lo</code> as well.</li>
+</ul>
+<blockquote>
+<p><strong>THIRD CORRECTION, 2026-09-07.</strong> This mechanism was stated wrong three
+times in one day. All three are left on the record rather than quietly
+fixed, because the pattern is the point.</p>
+<ol>
+<li><em>"Every entryPoint binds <code>0.0.0.0:</code>, so nothing listens on v6."</em> False —
+   Go treats <code>0.0.0.0</code> as unspecified and opens AF_INET6 with
+   <code>IPV6_V6ONLY=0</code> for any wildcard listen.</li>
+<li><em>"<code>disable_ipv6</code> makes Go fall back to <code>AF_INET</code>, so <code>ss -f inet6</code> comes
+   back empty."</em> False — the socket family is available whenever the module
+   is loaded, independent of addressing.</li>
+<li><em>"<code>all</code> + <code>default</code> + <code>eth0</code> disable_ipv6 removes the address."</em> False,
+   and deployed twice before being caught: systemd-sysctl runs <strong>before</strong>
+   <code>eth0</code> exists in the netns so the per-interface key is silently skipped,
+   <strong>and</strong> systemd-networkd writes <code>disable_ipv6 = 0</code> on every link it
+   configures. Either reason is fatal alone.</li>
+</ol>
+<p><strong>What works is <code>LinkLocalAddressing = "no"</code>, and the repo already had the
+idiom</strong> — <code>machines/ernst/networking.nix</code> and the <code>br0</code> port in
+<code>containers/traefik.nix</code> both carry <code>LinkLocalAddressing</code> + <code>IPv6AcceptRA</code>
+together. The container's <code>10-eth0</code> had only the second, which is why it
+alone on VLAN 90 kept a link-local address. <strong>It was an omission, not a
+decision, and three novel mechanisms were invented before anyone looked at
+what the neighbouring units already did.</strong></p>
+<p>Verified live: with <code>LinkLocalAddressing=no</code>, <code>ip -6 addr show</code> returns
+nothing while <code>net.ipv6.conf.eth0.disable_ipv6</code> still reads <strong>0</strong> — proof
+the sysctl was never the mechanism. <code>10.0.90.12</code> intact, Traefik serving.</p>
+<hr />
+<p><em>Superseded detail from the second correction, kept for the record:</em>
+It said <code>disable_ipv6</code> would make Go fall back to <code>AF_INET</code> so that
+<code>ss -ltnH -f inet6</code> came back empty. <strong>It does not.</strong> Measured on the
+deployed container with every v6 address gone:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>ip -6 addr show    -&gt;  (nothing)
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>ss -ltnH -f inet6  -&gt;  *:80  *:443  *:8443  *:8082  *:6060
+</code></pre></div>
+<p>The AF_INET6 socket family is available whenever the ipv6 module is loaded,
+independent of addressing. <strong>The listeners are dual-stack and stay
+dual-stack</strong>; what changed is that they have nothing to be reached on, and
+no delegated prefix can ever be accepted on <code>eth0</code> — which is the thing SN2
+actually cares about.</p>
+<p><strong><code>all</code> alone was deployed and was not enough</strong>: eth0 kept
+<code>fe80::ff:fe90:4/64</code>. nspawn creates the veth and moves it into the netns
+<em>before</em> the container's init runs, so the interface already exists when
+systemd-sysctl fires; <code>default</code> governs interfaces created later and does
+not apply retroactively. <strong><code>eth0</code> is the key that does the work.</strong> That was
+established by setting the keys live and watching the address disappear,
+not by reading kernel documentation.</p>
+<p><strong>Two wrong mechanisms in a row, both from reasoning instead of running the
+command, is the durable lesson</strong> — and a future reader running
+<code>ss -f inet6</code>, finding listeners, and reporting a regression would be the
+third instance of it;
+- <strong>the WAN forward on the UDM-Pro is IPv4 only, and no v6 forward is created</strong> —
+  it is in M18's manual steps as an explicit "do not";
+- <strong>CrowdSec's remediation declares <code>nftables.ipv6.enabled = false</code></strong>, so there
+  is no <code>crowdsec6</code> table (<code>nft list table ip6 crowdsec</code> → <code>No such file or
+  directory</code>, confirmed on the deployed system). A v6 ban chain that nothing can
+  ever match is the kind of rule that later reads as enforcement. <strong>Note the
+  sharper reading this correction forces</strong>: while those sockets <em>were</em> dual
+  stack, "reachable over v6" and "unbannable over v6" were true at the same
+  time. Mechanism one is what makes the pair impossible, not merely unlikely.</p>
+</blockquote>
+<p><strong>WHAT IS STILL NOT AUDITED, AND MUST NOT BE READ AS AUDITED.</strong> The UDM-Pro's
+<strong>IPv6 ruleset</strong> was <em>not</em> inspected — Claude does not touch the UDM-Pro, and
+lgo's manual steps for M18 do not include it because the design was made not to
+need it. That is the honest scope of this decision: <strong>(a) does not require the
+v6 ruleset to be correct; it requires there to be nothing listening on v6.</strong> The
+two are different claims and only the second is made here.</p>
+<p><strong>The residual risk, stated plainly — and re-stated after the correction above.</strong>
+The bind convention narrowed nothing, so the honest version is simpler than the
+one it replaces: <strong>everything rests on mechanism one holding, per netns.</strong> The
+Traefik netns has it. Any <em>future</em> service in another netns that must be reached
+from outside would need it too, and would not get it by copying a <code>0.0.0.0:</code>
+address into its config.</p>
+<p>The line about "nothing in the fleet monitors for an unexpected GUA" was the
+weakest part of this, and <strong>it is now false</strong>: <code>exporters.ipv6Guard</code> on ernst
+emits <code>clanarchy_ipv6_global_addresses</code> every five minutes and
+<strong><code>UnexpectedIPv6GlobalAddress</code></strong> fires on any non-ULA global address — or on
+the collector going silent, so it cannot fail closed-mouthed. The filter is
+proven in both directions: ernst's two real global-scope addresses (ZeroTier
+<code>fdda:</code>, M6's <code>mon0</code> <code>fdca:</code>) are ULA and yield <strong>0</strong>, while the same filter
+over a synthetic <code>2001:db8::</code> yields <strong>1</strong>.</p>
+<p><strong>ernst only, deliberately.</strong> The four laptops roam, and a café network handing
+out a v6 prefix is routine there; the alert would fire constantly and correctly
+on those machines and be ignored within a week — which would teach everyone to
+ignore it on ernst too. ernst never leaves VLAN 90, so on ernst a global address
+means the <strong>line</strong> changed, which is exactly the event this watches for.</p>
+<p><strong>Triggers that re-open it</strong>, now that it is decided: <code>UnexpectedIPv6GlobalAddress</code>
+firing (a GUA on VLAN 90 is an incident, not a note — this trigger used to say
+"re-run the block above", which is precisely the hand-measurement the alert
+replaces); <code>ss -ltnH -f inet6</code> in the Traefik netns returning anything at all;
+any milestone setting <code>IPv6AcceptRA = true</code> on VLAN 90;
+any UDM-Pro change enabling RAs or DHCPv6 on the Services network; any service
+that must be reachable over v6 from outside, which would force the (b) branch
+and the standing cost that comes with it.</p>
+<p>Cross-referenced from M16,
+M18 and
+the backlog.</p>
+<h2 id="sn3-a-broken-instrument-is-indistinguishable-from-a-bad-result">SN3 — A broken instrument is indistinguishable from a bad result<a class="headerlink" href="#sn3-a-broken-instrument-is-indistinguishable-from-a-bad-result" title="Permanent link">&para;</a></h2>
+<p>M11's session very nearly recorded a tool-calling score of <strong>0/10</strong> for
+<code>qwen3-coder:30b</code> and wrote the conclusion that follows from it. The true score
+was <strong>28/40</strong>. The difference was a <code>jq</code> scoping bug in the session's <em>own</em>
+grader (<code>$a|has(.)</code> rebinds <code>.</code> to <code>$a</code>) — a defect in the measuring apparatus,
+producing a damning number about the thing being measured.</p>
+<p>That is the same epistemics as SN1's truncation finding, seen from the other
+side. There, a silently truncated context is indistinguishable from a stupid
+model. Here, a silently broken grader is indistinguishable from a stupid model.
+In both cases the observation is confident, internally consistent, and about the
+wrong subject.</p>
+<p><strong>This repo already knows the answer and has paid for it twice.</strong> M3's synthetic
+hardlink proof carries a <strong>negative control</strong> — the same file at <code>0644</code>, which
+<em>must</em> fail with <code>EPERM</code> — for exactly this reason: without it, the test cannot
+distinguish a working chain from root bypassing the check, which is what an
+earlier revision of M3's own plan did. M6 found a zedlet that had never once
+delivered a notification, because it discarded curl's stderr and therefore could
+not report its own failure.</p>
+<p><strong>The rule: check the instrument before believing a number, and especially
+before believing a number that confirms what you expected.</strong> A measurement that
+agrees with the prediction gets less scrutiny than one that contradicts it, which
+is precisely backwards — the confirming result is the one whose harness nobody
+re-reads. In practice this means: a negative control wherever one is possible
+(M14 owes one and its prompt says so), and a sanity path wherever one is not.</p>
+<p><strong>Why this is a standing note and not a tenth invariant.</strong> The nine invariants
+are each a property of the <em>system</em> with a <em>mechanism</em> behind it — a dataset
+boundary, a firewall rule, a tier, a directory. A milestone respects them in its
+<strong>design</strong>. This is a rule about <strong>method</strong>, it binds every milestone's test plan
+rather than any milestone's architecture, and it has no mechanism to point at.
+Filing it as invariant #10 would dilute a list whose value is that every entry
+names something concrete you can go and check.</p>
+<h2 id="sn4-a-failed-oneshot-on-a-timer-is-silent">SN4 — A failed oneshot on a timer is silent<a class="headerlink" href="#sn4-a-failed-oneshot-on-a-timer-is-silent" title="Permanent link">&para;</a></h2>
+<p><strong>Found by M14, the expensive way.</strong> Soularr ran every 15 minutes for a day and
+failed every single time:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>cat: /run/arr-api-keys/lidarr-api-key: Permission denied
+</code></pre></div>
+<p>Roughly ninety consecutive failures, and <strong>nothing anywhere said so</strong>. The
+service was <code>active (waiting)</code> because that is the <em>timer's</em> state; the unit
+itself was <code>inactive (dead)</code> with a stale <code>Result=exit-code</code> that no dashboard
+looks at. <code>systemctl list-units --failed</code> was <strong>empty</strong> — a oneshot that failed
+and was then re-triggered does not stay in the failed set. The symptom reached
+a human only as "nothing has downloaded", days later, with no obvious place to
+look.</p>
+<p><strong>The rule: a timer-driven unit needs an alert, or it does not need to exist.</strong>
+A long-running service that dies is loud — the port stops answering, the
+container restart-loops, someone notices within minutes. A oneshot has none of
+that: its whole lifecycle is "start, exit, disappear", and a failing exit looks
+identical to a successful one from every angle except its journal.</p>
+<p><strong>Concretely, for this fleet:</strong> anything on a timer needs either a Prometheus
+alert on <code>node_systemd_unit_state{state="failed"}</code> for that unit, or an
+<code>OnFailure=</code> handler that reaches ntfy. M6 already scrapes systemd unit state on
+every machine, so the exporter half exists and only the alert rule is missing.
+This is owed by <code>soularr</code>, <code>recyclarr</code> and every future timer.</p>
+<p><strong>Why this is a standing note and not an invariant</strong>, on SN3's own test: it is a
+rule about <em>method</em> — how a milestone must make its work observable — not a
+property of the system with a mechanism to point at. It binds every milestone
+that adds a timer, and no milestone's architecture.</p>
+<hr />
+<h2 id="sn5-a-prompted-clan-var-blocks-every-deploy-in-the-fleet-not-just-its-own-machine">SN5 — A prompted clan var blocks EVERY deploy in the fleet, not just its own machine<a class="headerlink" href="#sn5-a-prompted-clan-var-blocks-every-deploy-in-the-fleet-not-just-its-own-machine" title="Permanent link">&para;</a></h2>
+<p><strong>Measured 2026-09-11</strong>, on the first <code>clan machines update ernst</code> of M22. The
+command stopped before it built anything, prompting for a var belonging to
+<strong>jens</strong>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>Prompting value for immich-api-key/api-key for machines: jens
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>Immich API key for lgo on https://photos.goclan.org … (hidden):
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>termios.error: (25, 'Inappropriate ioctl for device')
+</code></pre></div>
+<p>It is not a quirk of that var. It is what the command does:</p>
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">all_machines</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">flake</span><span class="o">.</span><span class="n">list_machines_full</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="err">…</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">run_generators</span><span class="p">(</span><span class="n">all_machines</span><span class="p">,</span> <span class="n">full_closure</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+— <code>clan_cli/machines/update.py</code></p>
+<p><strong><code>clan machines update &lt;machine&gt;</code> runs the generators for every machine in the
+flake</strong>, then updates the one named. So an unanswered prompt anywhere — on a
+laptop that is switched off, on a machine nobody has deployed in a month —
+stops a deploy of an unrelated machine, before it evaluates anything.</p>
+<p><strong>Two consequences, and the second is the one that bites.</strong></p>
+<p><em>It needs a TTY.</em> Any deploy driven by a script, a CI job or an agent dies at
+<code>termios.tcgetattr</code> rather than failing cleanly, and the error names neither the
+machine nor the var in its message.</p>
+<p><em>A prompted var whose value cannot exist yet is a DEADLOCK, not an ordering
+hazard.</em> This is the real trap and it is easy to build by accident. The rule
+this repo had was <code>traefik-acme</code>'s — <strong>GENERATE BEFORE YOU DEPLOY</strong> — and it is
+correct <em>there</em>, because a Cloudflare API token exists independently of this
+fleet and can be minted at any time. It does not generalise. A credential
+<strong>issued by a service this clan hosts</strong> cannot be generated before that service
+is deployed, and declaring a prompt for it blocks the very deploy that would
+make it obtainable — plus every other deploy until someone breaks the cycle.</p>
+<p>M22 built exactly that and had to be changed on deploy day: the laptop uploader
+now ships <code>clanarchy.immich.upload.enable = false</code>, so the generator is not
+declared at all, and enabling it is a deliberate second step after the accounts
+exist. See <code>modules/immich-upload.nix</code>.</p>
+<p><strong>The test to apply before adding a prompted generator.</strong> Ask: <em>can this value
+be obtained right now, with the fleet in whatever state it is in?</em></p>
+<ul>
+<li><strong>Yes</strong> — an external credential (Cloudflare, IVPN, an indexer API key, a
+  password the operator chooses). Prompt away; <code>traefik-acme</code>'s rule applies.</li>
+<li><strong>No</strong> — it is issued by something this clan runs. Then <strong>the consumer must
+  ship disabled</strong>, so the generator is not declared until the value exists.
+  Gating on an option is the mechanism; <code>lib.mkIf cfg.enable</code> around the
+  generator is all it takes.</li>
+</ul>
+<p><strong>What must NOT be done instead</strong>, because both are worse and both look
+tempting at the prompt: answering blank (it stores nothing, <code>.path</code> becomes
+<code>/no-such-path</code>, and every later deploy re-prompts — this took RomM down on
+2026-09-07), and answering with a placeholder (the service authenticates with
+garbage and fails at runtime instead of at deploy time, which is the direction
+this repo spends its effort avoiding).</p>
+<p><strong>Why this is a standing note and not an invariant</strong>, on SN3's own test: it is a
+property of the <em>ground</em> — a hazard living in <code>clan_cli</code>, which nobody edits and
+everybody stands on — rather than a property of this system's architecture. It
+binds every future milestone that adds a secret, and no milestone's design.</p>
+<p><strong>Worth reporting upstream</strong>, alongside the <code>Domains=skynet.lan</code> item in the
+backlog: running every machine's generators for a single-machine update is at
+best surprising, and the TTY failure mode has no non-interactive escape hatch
+(<code>--no-check</code> is unrelated; there is no <code>--no-vars</code>).</p>
+<hr />
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
