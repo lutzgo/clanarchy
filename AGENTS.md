@@ -55,6 +55,53 @@ run for *every* machine, so an unrelated pending prompt blocks any target.
 With `nixos-rebuild` (local recovery only) always use `--no-reexec`, never
 `--fast`, and never `--build-host localhost`.
 
+### It builds on the TARGET, which matters for the two handhelds
+
+`clan machines update birte` compiles **on birte**, not here and not on a remote
+builder. MEASURED 2026-10-25: a jovian-nixos bump had the Steam Deck at 36
+compilers and load 43 building vendor Mesa while ernst sat at load 1.7. The
+`[<machine>]` log prefix is just clan's label, so the log looks the same either
+way — compare `ps -eo comm= | grep -cE '^(cc1plus|cc1)$'` on both hosts.
+
+`clanarchy.remoteBuilder.client` does **not** help here: it only affects builds
+the machine *initiates*, and during a deploy that config is not active yet.
+
+`--build-host root@ernst-zt` moves the build but then fails at the last step,
+because clan copies the closure **build-host → target-host** directly and ernst
+has no key on the laptops:
+
+```
+Failed to copy closure to root@fdda:…
+```
+
+Build on ernst, relay the closure through this laptop (which trusts both), then
+re-run plain `clan machines update` — every path is already in the target's
+store, so it only activates:
+
+```bash
+P=$(nix eval --no-update-lock-file --raw '.#nixosConfigurations.birte.config.system.build.toplevel')
+clan machines update birte --build-host root@ernst-zt     # builds; copy step WILL fail
+nix copy --no-check-sigs --from ssh://root@ernst-zt \
+  --to 'ssh://root@[fdda:106a:123a:d561:1099:931a:a82e:da69]' "$P"
+clan machines update birte                                 # activates only
+```
+
+An IPv6 literal needs brackets in a nix store URI, and birte's `Host` block
+carries no `HostName`, so `ssh://root@birte` does not resolve off-LAN — use the
+address.
+
+Stopping a deploy does **not** stop the target: its own `nix-daemon` keeps
+building, and restarting that daemon does not take the in-flight workers with it
+(they escape the cgroup). Kill them, and verify with `ps -eo comm=` rather than
+`pgrep -f`, which matches your own command line:
+
+```bash
+for u in $(getent passwd | awk -F: '/^nixbld/ {print $1}'); do pkill -9 -u "$u"; done
+```
+
+Nothing is lost by stopping — activation only happens after the full build, so
+the generation and profile count stay put and completed paths are kept.
+
 ## 3. Version control is jj, not git
 
 `.jj/` and `.git/` sit side by side; `.git` stays authoritative, so `gh`, CI and
