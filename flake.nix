@@ -488,6 +488,8 @@
             # Clan docs recommend exposing the CLI via devShell
             clan-core.packages.${system}.clan-cli
             alejandra # the formatter; `fmt` and `fmt-check` wrap it
+            nix-diff # name what moved in a drv, rather than guessing —
+            #        docs/guides/updating-the-fleet.md leans on it
             git
             jujutsu # jj — the VCS front end for this repo, git-colocated.
             #      Also in lgo's home.packages, so it is on PATH
