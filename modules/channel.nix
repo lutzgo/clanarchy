@@ -63,5 +63,35 @@
     #
     # Drop this once clan-core moves off 26.05.
     system.boot.loader.kernelFile = "bzImage";
+
+    # ── the same seam, from the other side: `lib.importService` ─────────
+    # unstable grew a service-manager layer whose `lib/services/lib.nix`
+    # opens with
+    #
+    #   baseModules ? [ (lib.importService { pkgs = serviceManagerPkgs; }) ],
+    #
+    # and the `lib` in scope here is 26.05's, which has no `importService`.
+    # Same mismatch as `linux-kernel` above, pointing the other way: there a
+    # 26.05 module read an attribute unstable had dropped, here an unstable
+    # file reads one 26.05 has not grown yet.
+    #
+    # NOTHING ON THIS MACHINE USES THE OPTION.  `home.services` appears
+    # nowhere in this repo (grepped).  The only thing that forces its type is
+    # home-manager's own documentation build, which walks every option to
+    # render its description:
+    #
+    #   home-configuration-reference-manpage -> options.json
+    #     -> attribute "home.services" -> type.description -> … -> importService
+    #
+    # So turn that one derivation off rather than trying to graft a function
+    # into another channel's `lib`.  `manual.html.enable` and
+    # `manual.json.enable` are already false here; this makes the set
+    # consistent.  The cost is `man home-configuration.nix` on unstable-channel
+    # machines — birte is a Steam Deck, and the same manual is one `man` away
+    # on every stable machine in the fleet.
+    #
+    # Drop this together with the shim above, once clan-core moves off 26.05
+    # and `lib` and `pkgs` come from the same channel again.
+    home-manager.sharedModules = [{manual.manpages.enable = lib.mkForce false;}];
   };
 }
