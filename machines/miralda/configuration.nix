@@ -7,6 +7,14 @@
 }: {
   networking.hostName = "miralda";
   networking.hostId = "ebeed95c";
+
+  # ZFS root, with the impermanence rollback that goes with it.  Stated rather
+  # than derived: modules/rootfs.nix used to compute this from
+  # `clanarchy.channel`, which meant a machine could not be moved to unstable
+  # without silently changing filesystem.  The kernel problem that justified
+  # the coupling is now solved directly there, by pinning
+  # `zfs.latestCompatibleLinuxPackages`.
+  clanarchy.rootfs = "zfs";
   # DNS: no global `networking.search` — see modules/networking/resolved.nix
   # for the rationale.  The skynet.lan search suffix + Technitium routing
   # attach to the "home" wifi NM profile in modules/networking/skynet-dns-nm.nix.

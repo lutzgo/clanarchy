@@ -12,22 +12,29 @@
 # and each guards its own body on this option, the same way modules/channel.nix
 # guards the pkgs swap.  This file holds only what they share.
 #
-# ── THE CHOICE IS NOT A SEPARATE ONE.  IT IS DERIVED FROM THE CHANNEL ───────
+# ── THE CHOICE IS THE MACHINE'S, AND THE KERNEL PIN IS WHY IT CAN BE ───────
 #
-# OpenZFS is out-of-tree, so it gates the kernel.  That is the whole reason a
-# second backend exists, and it is exactly the thing a machine on
-# `clanarchy.channel = "unstable"` cannot afford: unstable is chosen *because*
-# the machine must track a fast-moving kernel (birte: Steam Deck, Valve
-# kernel).  So the two decisions were never independent, and this option is now
-# computed rather than set:
+# OpenZFS is out-of-tree, so it gates the kernel.  That used to make this
+# option a derivation of `clanarchy.channel`: stable -> zfs, unstable -> btrfs,
+# `readOnly`, on the reasoning that a machine tracking unstable could not also
+# carry an out-of-tree filesystem module.
 #
-#   channel = "stable"    ->  rootfs = "zfs"
-#   channel = "unstable"  ->  rootfs = "btrfs"
+# That coupling is retired, because it answered the kernel problem by
+# forbidding the combination instead of solving it.  The combination is now
+# solved directly, below: a machine with `rootfs = "zfs"` takes
+# `zfs.latestCompatibleLinuxPackages` as its kernel, so the kernel cannot
+# outrun the module no matter which channel the tree is on.
 #
-# It is `readOnly` with a definition here, so a machine that tries to set it
-# gets "is read-only, but it's set multiple times" rather than silently
-# pairing an unstable kernel with an out-of-tree filesystem module.  To change
-# a machine's filesystem, change its channel.
+# This had to go before the fleet could move to one channel.  With the
+# derivation in place, putting every machine on unstable would have silently
+# switched ernst, miralda, jens and biene — all ZFS — onto the *btrfs*
+# rollback path, which looks for `@root` on a partlabel that does not exist,
+# in stage 1, where there is no shell and no journal.
+#
+# So each machine now states its filesystem, and there is no default: a new
+# machine that forgets fails the assertion below rather than inheriting a
+# guess.  Changing it is still a reinstall — this option describes the disk,
+# it does not reshape it.
 #
 # See docs/guides/first-time-install.md for the one-time blank-snapshot step,
 # which differs per backend.
@@ -38,14 +45,15 @@
 }: {
   options.clanarchy.rootfs = lib.mkOption {
     type = lib.types.enum ["zfs" "btrfs"];
-    readOnly = true;
+    example = "btrfs";
     description = ''
       Which filesystem backs this machine's root, and therefore which
       impermanence rollback implementation is active.
 
-      **Derived from `clanarchy.channel`, not set per machine** — `stable`
-      gives `zfs` (miralda, jens, biene, ernst), `unstable` gives `btrfs`
-      (birte). See the header for why the two are one decision.
+      **Set this per machine; there is no default.** It describes the disk as
+      installed, so changing it is a reinstall, not a deploy. A machine with
+      `"zfs"` also gets `zfs.latestCompatibleLinuxPackages` as its kernel (see
+      the header) — that pin is what lets a ZFS machine sit on any channel.
     '';
   };
   options.clanarchy.impermanence.rollback.enable = lib.mkOption {
@@ -67,11 +75,23 @@
   };
 
   config = {
-    # The derivation itself. One definition, from here — see the header.
-    clanarchy.rootfs =
-      if config.clanarchy.channel == "unstable"
-      then "btrfs"
-      else "zfs";
+    # ── THE PIN THAT MAKES ZFS CHANNEL-AGNOSTIC ─────────────────────────────
+    #
+    # OpenZFS is out-of-tree, so a kernel bump can land before the module
+    # builds against it.  nixpkgs already knows the answer — it computes the
+    # newest kernel the selected `zfs` package supports — so take it rather
+    # than tracking the channel's default and hoping.
+    #
+    # `mkDefault` so a machine that needs a specific kernel for its hardware
+    # can still say so and win.
+    #
+    # This replaces the old `rootfs`-from-`channel` derivation.  The old rule
+    # kept ZFS and a fast-moving kernel apart by forbidding the pair; this
+    # keeps them together safely, which is what lets every machine share one
+    # channel.
+    boot.kernelPackages = lib.mkIf (config.clanarchy.rootfs == "zfs") (
+      lib.mkDefault config.boot.zfs.package.latestCompatibleLinuxPackages
+    );
 
     # Impermanence needs /persist and /home mounted in stage 1, and the
     # rollback units in both backends are systemd-initrd services.

@@ -31,12 +31,22 @@
   # modules/channel.nix for how this swaps the pkgs instance.
   clanarchy.channel = "unstable";
 
-  # btrfs rather than ZFS, and NOT set here: modules/rootfs.nix derives it from
-  # `clanarchy.channel` above, because out-of-tree OpenZFS gates the kernel and
-  # tracking a Valve kernel is the whole reason this machine is on unstable.
-  # The backend rolls back @root on boot but, unlike the ZFS one, leaves home
-  # persistent: deck's home holds Steam/gamescope state Gaming Mode expects to
-  # survive.  The game library lives on its own @games subvol.
+  # btrfs rather than ZFS.  Stated here, not derived: modules/rootfs.nix used
+  # to compute this from `clanarchy.channel`, and that coupling is gone — a
+  # ZFS machine now pins `zfs.latestCompatibleLinuxPackages` instead, so the
+  # filesystem no longer has to be inferred from the channel.
+  #
+  # btrfs is still the right answer for this machine for the original reason:
+  # it tracks a Valve kernel, and out-of-tree OpenZFS would gate it.
+  #
+  # The backend rolls back @root AND @home on boot — the same as the ZFS one.
+  # (Earlier revisions of this comment claimed home was left persistent here;
+  # that was never true of the code. See modules/btrfs-impermanence.nix:98.)
+  # deck's Steam and gamescope state survives because it is persisted
+  # explicitly in deck.nix, not because home escapes the rollback.  The game
+  # library lives on its own @games subvol, outside the rollback path.
+  clanarchy.rootfs = "btrfs";
+
   # Bluetooth pairings. A handheld pairs controllers and headphones and must
   # not forget them on every boot; nothing else in the fleet persists this
   # because no other machine depends on pairing as a matter of course.
