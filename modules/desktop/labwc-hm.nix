@@ -85,11 +85,11 @@
           </keybind>
           <!-- App launcher (Noctalia) -->
           <keybind key="W-space">
-            <action name="Execute"><command>noctalia-shell ipc call launcher toggle</command></action>
+            <action name="Execute"><command>noctalia msg panel-toggle launcher</command></action>
           </keybind>
           <!-- Clipboard (Noctalia clipper) -->
           <keybind key="W-c">
-            <action name="Execute"><command>noctalia-shell ipc call plugin:clipper toggle</command></action>
+            <action name="Execute"><command>noctalia msg panel-toggle clipboard</command></action>
           </keybind>
           <!-- File manager (yazi in foot) -->
           <keybind key="W-e">
@@ -114,7 +114,7 @@
           <!-- Focus floating / tiling toggle (labwc is stacking; float is implicit) -->
           <!-- Session menu via Noctalia -->
           <keybind key="W-S-e">
-            <action name="Execute"><command>noctalia-shell ipc call sessionMenu toggle</command></action>
+            <action name="Execute"><command>noctalia msg panel-toggle session</command></action>
           </keybind>
           <!-- Focus next/prev window -->
           <keybind key="A-Tab">
@@ -164,36 +164,36 @@
           </keybind>
           <!-- Media keys → Noctalia IPC -->
           <keybind key="XF86AudioRaiseVolume">
-            <action name="Execute"><command>noctalia-shell ipc call volume increase</command></action>
+            <action name="Execute"><command>noctalia msg volume-up</command></action>
           </keybind>
           <keybind key="XF86AudioLowerVolume">
-            <action name="Execute"><command>noctalia-shell ipc call volume decrease</command></action>
+            <action name="Execute"><command>noctalia msg volume-down</command></action>
           </keybind>
           <keybind key="XF86AudioMute">
-            <action name="Execute"><command>noctalia-shell ipc call volume muteOutput</command></action>
+            <action name="Execute"><command>noctalia msg volume-mute</command></action>
           </keybind>
           <keybind key="XF86AudioPlay">
-            <action name="Execute"><command>noctalia-shell ipc call media playPause</command></action>
+            <action name="Execute"><command>noctalia msg media toggle</command></action>
           </keybind>
           <keybind key="XF86AudioNext">
-            <action name="Execute"><command>noctalia-shell ipc call media next</command></action>
+            <action name="Execute"><command>noctalia msg media next</command></action>
           </keybind>
           <keybind key="XF86AudioPrev">
-            <action name="Execute"><command>noctalia-shell ipc call media previous</command></action>
+            <action name="Execute"><command>noctalia msg media previous</command></action>
           </keybind>
           <!-- Brightness → Noctalia IPC -->
           <keybind key="XF86MonBrightnessUp">
-            <action name="Execute"><command>noctalia-shell ipc call brightness increase</command></action>
+            <action name="Execute"><command>noctalia msg brightness-up</command></action>
           </keybind>
           <keybind key="XF86MonBrightnessDown">
-            <action name="Execute"><command>noctalia-shell ipc call brightness decrease</command></action>
+            <action name="Execute"><command>noctalia msg brightness-down</command></action>
           </keybind>
           <!-- Screenshots → Noctalia plugin -->
           <keybind key="Print">
-            <action name="Execute"><command>noctalia-shell ipc call plugin:screenshot takeScreenshot region</command></action>
+            <action name="Execute"><command>noctalia msg screenshot-region</command></action>
           </keybind>
           <keybind key="W-Print">
-            <action name="Execute"><command>noctalia-shell ipc call plugin:screenshot takeScreenshot screen</command></action>
+            <action name="Execute"><command>noctalia msg screenshot-fullscreen</command></action>
           </keybind>
         </keyboard>
 

@@ -1,7 +1,7 @@
 # Stage-1 SSH server for remote pool/passphrase unlock.
 #
 # Enable with `clanarchy.initrdSsh.enable = true;` on any machine that also
-# has `boot.initrd.systemd.enable = true` (the fleet default — set in
+# runs a systemd stage 1 (now the only kind nixpkgs ships; formerly set in
 # modules/zfs-impermanence.nix).  On boot the machine pauses at the
 # `systemd-ask-password` prompt for the encrypted root pool.  Connect from
 # another machine on the LAN and run:
@@ -125,11 +125,12 @@ in {
   };
 
   config = lib.mkIf cfg.enable {
+    # No systemd-initrd assertion any more.  It read
+    # `config.boot.initrd.systemd.enable`, and nixpkgs has REMOVED that
+    # option outright ("Scripted initrd has been removed") — so reading it
+    # throws rather than returning false.  The condition it guarded is now
+    # true by construction: systemd in stage 1 is the only initrd there is.
     assertions = [
-      {
-        assertion = config.boot.initrd.systemd.enable;
-        message = "clanarchy.initrdSsh requires boot.initrd.systemd.enable = true.";
-      }
       {
         assertion = cfg.authorizedKeyFiles != [];
         message = "clanarchy.initrdSsh.authorizedKeyFiles must not be empty.";

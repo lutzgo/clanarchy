@@ -2,14 +2,39 @@
   description = "Clanarchy Standard v1";
 
   inputs = {
-    # Clan core (26.05)
-    clan-core.url = "https://git.clan.lol/clan/clan-core/archive/main.tar.gz";
-    nixpkgs.follows = "clan-core/nixpkgs";
+    # nixpkgs is OURS, and clan-core follows it.
+    #
+    # The obvious shape is the other way round — clan-core ships a nixpkgs and
+    # `nixpkgs.follows = "clan-core/nixpkgs"` inherits it.  That was the shape
+    # here, and it has one fatal property for this repo's goal: the fleet's
+    # nixpkgs is then whatever clan-core last locked, and `nix flake update`
+    # cannot move it.  On 2026-11-01 that meant a 12-day-old tree carrying
+    # `python3Packages.diff-cover` 10.5.1, which FAILS ITS OWN TEST SUITE and
+    # took the whole deploy down — while the then-current channel had 10.6.0,
+    # building straight from cache.
+    #
+    # Declaring it here inverts that: `nix flake update` moves nixpkgs, and
+    # clan-core gets built against the same tree as everything else.  Which is
+    # the point of the whole one-channel exercise — a lock we control.
+    # The CHANNEL tarball, not `github:NixOS/nixpkgs/nixos-unstable`.
+    #
+    # They are not the same thing: the branch is the raw tip, the channel is
+    # the snapshot that passed nixpkgs own Hydra gate. Measured 2026-11-01 —
+    # the branch at 1c89083 (10-30) could not build `python3Packages.posthog`
+    # at all, which took open-webui and therefore ernst down; the channel of
+    # the same day built it from cache. For a fleet, the gated snapshot is
+    # the right input. It is also what clan-core itself uses.
+    nixpkgs.url = "https://nixos.org/channels/nixpkgs-unstable/nixexprs.tar.xz";
+
+    clan-core = {
+      url = "https://git.clan.lol/clan/clan-core/archive/main.tar.gz";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
 
     # flake-parts
     flake-parts = {
       url = "github:hercules-ci/flake-parts";
-      inputs.nixpkgs-lib.follows = "clan-core/nixpkgs";
+      inputs.nixpkgs-lib.follows = "nixpkgs";
     };
 
     # Extras
@@ -63,14 +88,20 @@
     };
 
     noctalia = {
-      # Pin to pre-v5 revision (2026-05-26). Noctalia v5 rewrote the HM module
-      # from typed options to freeform TOML; migrating our 1150-line
-      # noctalia-hm.nix is a multi-day project, and v5 is still beta upstream
-      # (latest stable tag is v4.7.7).
+      # v5.4.1 (2026-10-29), tag-pinned so a desktop shell does not move
+      # under three machines on an ordinary `nix flake update`.
       #
-      # Scope, risks and the unpin condition:
-      #   docs/guides/noctalia-v5-migration.md
-      url = "github:noctalia-dev/noctalia-shell/272cd91408b5ff6e329e6397eed042fe422069e7";
+      # v5 is a different program from the v4 this tracked until 2026-11-01:
+      # a native meson/C++ shell, not a Quickshell QML one. That is why the
+      # migration happened when it did — v4's bundled `noctalia-qs` fork is
+      # from 2026-05-24 and does not compile against Qt 6.12, which blocked
+      # the move to one channel. v5 needs no quickshell at all, so the input
+      # and its three transitive nodes left the lock with it.
+      #
+      # The cost, recorded because it is not recoverable by bumping: v5
+      # replaced the QML plugin API with Luau, and ten of the eleven plugins
+      # this fleet used have no port. See docs/guides/noctalia-profiles.md.
+      url = "github:noctalia-dev/noctalia-shell/v5.4.1";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -108,7 +139,6 @@
       # nvf expects an unstable tree, which `nixpkgs` now is — so point it
       # at ours rather than
       # letting it fetch a second, independently-drifting unstable.
-      # (Still must not follow clan-core/nixpkgs: nvf needs unstable.)
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -124,8 +154,7 @@
     #
     # Follows `nixpkgs` for the same reason govim does — its own flake
     # pins nixos-unstable, and pointing it at *ours* avoids a third,
-    # independently-drifting nixpkgs in the lock.  Not clan-core/nixpkgs: that
-    # is 26.05, and nothing guarantees its rustc satisfies the crate's edition.
+    # independently-drifting nixpkgs in the lock.
     sonic-tui = {
       url = "git+https://codeberg.org/thelinuxcast/sonic-tui";
       inputs.nixpkgs.follows = "nixpkgs";

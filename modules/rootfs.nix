@@ -20,10 +20,11 @@
 # carry an out-of-tree filesystem module.
 #
 # That coupling is retired, because it answered the kernel problem by
-# forbidding the combination instead of solving it.  The combination is now
-# solved directly, below: a machine with `rootfs = "zfs"` takes
-# `zfs.latestCompatibleLinuxPackages` as its kernel, so the kernel cannot
-# outrun the module no matter which channel the tree is on.
+# forbidding the combination instead of solving it.  #367 solved it directly
+# with an explicit `zfs.latestCompatibleLinuxPackages` pin; nixpkgs has since
+# deprecated that attribute and made the DEFAULT kernel the ZFS-compatible
+# one, so the guarantee is upstream now and the pin is gone again.  See the
+# note next to `fileSystems` below.
 #
 # This had to go before the fleet could move to one channel.  With the
 # derivation in place, putting every machine on unstable would have silently
@@ -75,27 +76,30 @@
   };
 
   config = {
-    # ── THE PIN THAT MAKES ZFS CHANNEL-AGNOSTIC ─────────────────────────────
+    # NO EXPLICIT KERNEL PIN, and that is a deliberate reversal.
     #
-    # OpenZFS is out-of-tree, so a kernel bump can land before the module
-    # builds against it.  nixpkgs already knows the answer — it computes the
-    # newest kernel the selected `zfs` package supports — so take it rather
-    # than tracking the channel's default and hoping.
+    # #367 set `boot.kernelPackages = zfs.latestCompatibleLinuxPackages` here,
+    # so a ZFS machine could not be handed a kernel its module would not build
+    # against — the thing that made it safe to put ZFS machines on a
+    # fast-moving channel at all.
     #
-    # `mkDefault` so a machine that needs a specific kernel for its hardware
-    # can still say so and win.
+    # nixpkgs has since deprecated that attribute: it now aliases the default
+    # kernel and warns on use.  Measured 2026-11-01 — `linuxPackages` 6.18.59,
+    # `zfs.latestCompatibleLinuxPackages` 6.18.59, the same derivation.  The
+    # guarantee moved upstream rather than disappearing: the default kernel is
+    # the ZFS-compatible one, and `boot.zfs` fails loudly if that ever stops
+    # being true.
     #
-    # This replaces the old `rootfs`-from-`channel` derivation.  The old rule
-    # kept ZFS and a fast-moving kernel apart by forbidding the pair; this
-    # keeps them together safely, which is what lets every machine share one
-    # channel.
-    boot.kernelPackages = lib.mkIf (config.clanarchy.rootfs == "zfs") (
-      lib.mkDefault config.boot.zfs.package.latestCompatibleLinuxPackages
-    );
+    # So this is now one fewer thing for this repo to own.  If a machine ever
+    # does need a specific kernel, say so in that machine's configuration.nix
+    # — the deprecation message's own advice (`boot.kernelPackages =
+    # pkgs.linuxPackages_6_6`).
 
-    # Impermanence needs /persist and /home mounted in stage 1, and the
-    # rollback units in both backends are systemd-initrd services.
-    boot.initrd.systemd.enable = true;
+    # No `boot.initrd.systemd.enable` here any more: nixpkgs removed the
+    # scripted initrd, so systemd in stage 1 is the only option and setting
+    # it asserts ("Scripted initrd has been removed").  Both impermanence
+    # backends still need it — their rollback units are systemd-initrd
+    # services — they just get it unconditionally now.
     fileSystems."/persist".neededForBoot = true;
     fileSystems."/home".neededForBoot = true;
 
