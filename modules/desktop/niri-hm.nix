@@ -40,7 +40,7 @@
       gestures.hot-corners.enable = false;
 
       spawn-at-startup = [
-        {command = ["uwsm" "app" "--" "noctalia-shell"];}
+        {command = ["uwsm" "app" "--" "noctalia"];} # v5 binary is `noctalia`; v4 was `noctalia-shell`
         {command = ["keepassxc" "--minimized"];}
       ];
 
@@ -289,8 +289,8 @@
           "Mod+Return".action.spawn = ["uwsm" "app" "--" "foot"];
           # foot -T scratch → matched by window rule → opens floating
           "Mod+Shift+Return".action.spawn = ["uwsm" "app" "--" "foot" "-T" "scratch"];
-          "Mod+Space".action.spawn = ["noctalia-shell" "ipc" "call" "launcher" "toggle"];
-          "Mod+c".action.spawn = ["noctalia-shell" "ipc" "call" "plugin:clipper" "toggle"];
+          "Mod+Space".action.spawn = ["noctalia" "msg" "panel-toggle" "launcher"];
+          "Mod+c".action.spawn = ["noctalia" "msg" "panel-toggle" "clipboard"];
           "Mod+E".action.spawn = [
             "uwsm"
             "app"
@@ -333,18 +333,18 @@
           "Mod+Shift+R".action.spawn = ["niri" "msg" "action" "load-config-file"];
 
           # --- Screenshots (Noctalia plugin:screenshot) ---
-          "Print".action.spawn = ["noctalia-shell" "ipc" "call" "plugin:screenshot" "takeScreenshot" "region"];
-          "Mod+Print".action.spawn = ["noctalia-shell" "ipc" "call" "plugin:screenshot" "takeScreenshot" "screen"];
+          "Print".action.spawn = ["noctalia" "msg" "screenshot-region"];
+          "Mod+Print".action.spawn = ["noctalia" "msg" "screenshot-fullscreen"];
 
           # --- Media / Brightness (Noctalia IPC for OSD) ---
-          "XF86AudioRaiseVolume".action.spawn = ["noctalia-shell" "ipc" "call" "volume" "increase"];
-          "XF86AudioLowerVolume".action.spawn = ["noctalia-shell" "ipc" "call" "volume" "decrease"];
-          "XF86AudioMute".action.spawn = ["noctalia-shell" "ipc" "call" "volume" "muteOutput"];
-          "XF86AudioPlay".action.spawn = ["noctalia-shell" "ipc" "call" "media" "playPause"];
-          "XF86AudioNext".action.spawn = ["noctalia-shell" "ipc" "call" "media" "next"];
-          "XF86AudioPrev".action.spawn = ["noctalia-shell" "ipc" "call" "media" "previous"];
-          "XF86MonBrightnessUp".action.spawn = ["noctalia-shell" "ipc" "call" "brightness" "increase"];
-          "XF86MonBrightnessDown".action.spawn = ["noctalia-shell" "ipc" "call" "brightness" "decrease"];
+          "XF86AudioRaiseVolume".action.spawn = ["noctalia" "msg" "volume-up"];
+          "XF86AudioLowerVolume".action.spawn = ["noctalia" "msg" "volume-down"];
+          "XF86AudioMute".action.spawn = ["noctalia" "msg" "volume-mute"];
+          "XF86AudioPlay".action.spawn = ["noctalia" "msg" "media" "toggle"];
+          "XF86AudioNext".action.spawn = ["noctalia" "msg" "media" "next"];
+          "XF86AudioPrev".action.spawn = ["noctalia" "msg" "media" "previous"];
+          "XF86MonBrightnessUp".action.spawn = ["noctalia" "msg" "brightness-up"];
+          "XF86MonBrightnessDown".action.spawn = ["noctalia" "msg" "brightness-down"];
 
           # --- Workspaces 1-9 ---
           "Mod+1".action.focus-workspace = 1;

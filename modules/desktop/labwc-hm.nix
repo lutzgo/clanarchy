@@ -224,7 +224,8 @@
     force = true;
     text =
       ''
-        uwsm app -- noctalia-shell &
+        # v5 binary is `noctalia`; v4 shipped it as `noctalia-shell`.
+        uwsm app -- noctalia &
       ''
       + lib.optionalString osConfig.clanarchy.desktop.labwc.keepassxc.enable ''
         uwsm app -- keepassxc -- keepassxc --minimized &
