@@ -95,7 +95,7 @@ in {
           # right, nothing on the left. See docs/guides/noctalia-profiles.md.
           start =
             if isLgo
-            then ["workspaces" "active_window" "spacer" "media"]
+            then ["workspaces" "active_window" "spacer"]
             else [];
           center =
             if isLgo
@@ -103,7 +103,7 @@ in {
             else ["clock" "battery"];
           end =
             if isLgo
-            then ["tray" "notifications" "battery" "control-center" "session"]
+            then ["tray" "battery" "session"]
             else ["tray" "notifications" "control-center"];
         };
       };
@@ -133,6 +133,22 @@ in {
         enabled = true;
         directory = "${config.home.homeDirectory}/Pictures/Wallpapers";
       };
+
+      # Plugins, declared rather than installed by hand in the UI.
+      #
+      # `enabled` takes catalogue IDs. The two default sources — noctalia's
+      # `official` and `community` repos — are already on, so an ID from
+      # either resolves without naming a source here.
+      #
+      # ONE entry, because v5's plugin API is Luau and the 25 QML plugins
+      # left over from v4 under ~/.config/noctalia/plugins/ cannot load.
+      # Those directories are inert, not active; deleting them is safe.
+      # screen_recorder is the only one of them with a same-name port.
+      #
+      # It shells out to gpu-screen-recorder, which is NOT pulled in by the
+      # plugin — added to home.packages below, or the widget appears and
+      # every recording fails.
+      plugins.enabled = ["noctalia/screen_recorder"];
 
       location.address = "Duesseldorf";
       weather.enabled = true;
@@ -396,6 +412,9 @@ in {
       slurp
       wl-clipboard
       playerctl
+      # Driven by the screen_recorder plugin, which declares no dependency
+      # on it — without this the widget loads and every recording fails.
+      gpu-screen-recorder
     ]
     ++ lib.optionals isNiri [ghostty]
     ++ lib.optionals isLabwc [wlopm]
