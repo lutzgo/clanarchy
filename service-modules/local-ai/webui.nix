@@ -846,6 +846,31 @@
           # If this is ever exposed to more than fifty people, that changes.
           nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) ["open-webui"];
 
+          # posthog needs BOTH halves, in two different places.
+          #
+          # The test disable lives in lib/overlays.nix, on the host pkgs
+          # instance this container inherits.  The `broken` MARKER, though,
+          # is re-checked when the container evaluates its own
+          # `system.build.toplevel`, so lifting it on the host is not enough
+          # — it has to be lifted here as well or ernst fails with "Refusing
+          # to evaluate package 'python3.14-posthog'" pointing at
+          # `containers.openwebui.path`.
+          # Both halves have to be repeated in here, because this container
+          # builds its OWN pkgs instance — it does not inherit the host's.
+          # Verified the hard way: with only the host-side fix, eval still
+          # refused the marker AND the build still ran posthog's failing
+          # test, because neither the flag nor the overlay crossed the
+          # container boundary.
+          nixpkgs.config.problems.handlers.posthog.broken = "warn";
+          nixpkgs.overlays = [(import ../../lib/overlays.nix)];
+          #
+          #
+          # It cannot be: this container takes the HOST's pkgs instance, so a
+          # `nixpkgs.config` set in here is inert.  (Which also means the
+          # `allowUnfreePredicate` above does nothing — open-webui evaluates
+          # because clan.nix's `pkgsForSystem` sets `allowUnfree = true`.  It
+          # is left as documentation of intent, not as a working switch.)
+
           # Matches the host, for the reason arr/ and monitoring.nix
           # both give: every timestamp a human reads is local time, and a
           # container that defaults to UTC makes each of them a two-hour

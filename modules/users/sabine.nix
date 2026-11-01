@@ -109,25 +109,23 @@ in {
         lutris
       ];
 
-      # Apply the "simple_mouse" native Noctalia profile on every rebuild.
-      # Runs after deSymlinkNoctalia (which converts noctalia-hm.nix symlinks to
-      # regular files) so the cp -f overwrites the HM-generated settings with the
-      # profile's settings, making simple_mouse the persistently active profile.
-      # The profile files are archived in modules/users/sabine-noctalia/simple_mouse/.
-      home.activation.applyNoctaliaProfile = lib.hm.dag.entryAfter ["deSymlinkNoctalia"] ''
-        _profile_dir="$HOME/.config/noctalia/profiles/simple_mouse"
-        $DRY_RUN_CMD mkdir -p "$_profile_dir"
-        $DRY_RUN_CMD cp -f ${./sabine-noctalia/simple_mouse/settings.json}   "$_profile_dir/settings.json"
-        $DRY_RUN_CMD cp -f ${./sabine-noctalia/simple_mouse/colors.json}     "$_profile_dir/colors.json"
-        $DRY_RUN_CMD cp -f ${./sabine-noctalia/simple_mouse/plugins.json}    "$_profile_dir/plugins.json"
-        $DRY_RUN_CMD cp -f ${./sabine-noctalia/simple_mouse/wallpapers.json} "$_profile_dir/wallpapers.json"
-        $DRY_RUN_CMD cp -f ${./sabine-noctalia/simple_mouse/meta.json}       "$_profile_dir/meta.json"
-        $DRY_RUN_CMD chmod 644 "$_profile_dir"/*
-        # Apply as the active config (deSymlinkNoctalia already converted these to regular files)
-        $DRY_RUN_CMD cp -f ${./sabine-noctalia/simple_mouse/settings.json} "$HOME/.config/noctalia/settings.json"
-        $DRY_RUN_CMD cp -f ${./sabine-noctalia/simple_mouse/colors.json}   "$HOME/.config/noctalia/colors.json"
-        $DRY_RUN_CMD chmod 644 "$HOME/.config/noctalia/settings.json" "$HOME/.config/noctalia/colors.json"
-      '';
+      # NO profile activation any more.
+      #
+      # This used to copy modules/users/sabine-noctalia/simple_mouse/*.json
+      # into ~/.config/noctalia/profiles/ and then over the live config, so
+      # the "simple_mouse" profile was reapplied on every rebuild. Every part
+      # of that is v4: profiles were a feature of the `shell-profiles` plugin,
+      # and the files were settings.json + colors.json + plugins.json. v5 has
+      # no such plugin, reads config.toml, and takes its palette from
+      # palettes/<name>.json, which the stylix target writes.
+      #
+      # Copying those files onto a v5 install would be inert at best. The
+      # layout they encoded is preserved instead as declarative settings in
+      # modules/desktop/noctalia-hm.nix, branched on the username. The JSON is
+      # kept in-tree as the record of what Sabine actually chose, which is
+      # worth more than the dead activation was.
+      #
+      # See docs/guides/noctalia-profiles.md.
     };
   };
 }

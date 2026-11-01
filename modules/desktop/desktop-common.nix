@@ -11,7 +11,7 @@
   # ReGreet — GTK4 greeter via cage; Stylix-themed in stylix.nix.
   # Must pass --sessions /run/current-system/sw/share/wayland-sessions;
   # never use --remember-session (panics after ZFS rollback wipes cache).
-  programs.regreet.enable = true;
+  services.displayManager.regreet.enable = true;
 
   # Persist regreet state so it remembers the last user/session across reboots.
   # state.toml records last_user and user_to_last_sess — without this the user

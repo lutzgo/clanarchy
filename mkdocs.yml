@@ -83,8 +83,7 @@ nav:
     - HTPC / Plasma Bigscreen: guides/htpc-bigscreen.md
     - HTPC / game controllers: guides/htpc-controllers.md
     - Emulation on birte: guides/birte-emulation.md
-    - Noctalia profiles: guides/noctalia-profiles.md
-    - Noctalia v5 migration: guides/noctalia-v5-migration.md
+    - Noctalia configuration: guides/noctalia-profiles.md
     - OBS / Sony webcam: guides/obs-sony-webcam.md
   - Runbooks:
     - ZFS auto-snapshot opt-in: runbooks/zfs-auto-snapshot-optin.md

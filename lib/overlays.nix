@@ -95,4 +95,41 @@ in {
   # The Switch emulator is launched from Steam by design (that is the whole
   # point of the shortcut), so it is the package most exposed to this.
   eden = steamSafe prev.eden ["eden" "eden-cli" "eden-room"];
+
+  # ── posthog: marked broken, and genuinely broken — by ONE test ──────────
+  #
+  # open-webui (ernst) pulls chromadb, which pulls python3Packages.posthog,
+  # which nixpkgs marks `broken`.  The marker is accurate — measured on ernst
+  # 2026-11-01 the build ends:
+  #
+  #   FAILED posthog/test/mcp/test_posthog_mcp.py::
+  #     test_prepare_tool_result_delivers_into_call_tool_result_models[bare]
+  #   1 failed, 4199 passed, 170 skipped, 116 deselected
+  #
+  # One failure in 4199, in posthog's own MCP test helpers, which open-webui
+  # does not touch.  Disable that single test.
+  #
+  # IT HAS TO BE HERE, not in the container that needs it.  The openwebui
+  # container takes the HOST's pkgs instance, so a `nixpkgs.config` or
+  # overlay set inside `containers.openwebui.config` is silently inert — the
+  # same trap recorded for `nixpkgs.overlays` at the top of this file.
+  #
+  # The `broken` flag is lifted alongside, in clan.nix's `pkgsForSystem`
+  # config, because an overlay cannot clear a `meta` marker.  Drop both when
+  # nixpkgs clears it.
+  # `pythonPackagesExtensions`, not `python3.override` — overriding python3
+  # alone does NOT reach `python3Packages`, which is what consumers resolve
+  # through.  Measured: with the override form the package still carried only
+  # upstream's three disabledTests.
+  pythonPackagesExtensions =
+    prev.pythonPackagesExtensions
+    ++ [
+      (_pyFinal: pyPrev: {
+        posthog = pyPrev.posthog.overridePythonAttrs (old: {
+          disabledTests =
+            (old.disabledTests or [])
+            ++ ["test_prepare_tool_result_delivers_into_call_tool_result_models"];
+        });
+      })
+    ];
 }

@@ -9,7 +9,16 @@
     pkgsForSystem = system:
       import inputs.nixpkgs {
         inherit system;
-        config.allowUnfree = true;
+        config = {
+          allowUnfree = true;
+          # posthog is marked `broken` upstream and the marker is accurate —
+          # one test of 4199 fails.  lib/overlays.nix disables that test; an
+          # overlay cannot clear a `meta` marker, so the flag is lifted here.
+          # Scoped to the one package, never `allowBroken`: a blanket flag
+          # would silently admit the next broken dependency, and open-webui
+          # (the consumer) is WAN-exposed.  Drop both when nixpkgs clears it.
+          problems.handlers.posthog.broken = "warn";
+        };
         overlays = [(import ./lib/overlays.nix)];
       };
 
