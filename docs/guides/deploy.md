@@ -156,5 +156,6 @@ alias.
 ## Related
 
 - [Accepting pull requests](accepting-pull-requests.md) — review and merge flow
+- [Updating the fleet](updating-the-fleet.md) — flake-input bumps across all five machines
 - [First-time install](first-time-install.md) — `clan flash` / `clan machines install`
 - [YubiKey](yubikey.md) — the card that authenticates the deploy

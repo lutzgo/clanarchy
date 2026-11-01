@@ -53,6 +53,7 @@ nav:
     - Decisions that bite: architecture/decisions.md
   - Operate:
     - Deploying: guides/deploy.md
+    - Updating the fleet: guides/updating-the-fleet.md
     - Accepting pull requests: guides/accepting-pull-requests.md
     - Networking: guides/networking.md
     - Impermanence: guides/impermanence.md
