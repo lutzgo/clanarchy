@@ -26,11 +26,6 @@
   # place in the fleet to compile a kernel.
   clanarchy.remoteBuilder.client.enable = true;
 
-  # Build against nixpkgs-unstable — Jovian-NixOS only supports unstable,
-  # and Noctalia/Quickshell need unstable-flavoured pkgs too.  See
-  # modules/channel.nix for how this swaps the pkgs instance.
-  clanarchy.channel = "unstable";
-
   # btrfs rather than ZFS.  Stated here, not derived: modules/rootfs.nix used
   # to compute this from `clanarchy.channel`, and that coupling is gone — a
   # ZFS machine now pins `zfs.latestCompatibleLinuxPackages` instead, so the
@@ -86,11 +81,18 @@
     builtins.head (builtins.attrNames config.disko.devices.disk)
   }-swap";
 
-  # (Steam / Proton are unfree — `allowUnfree = true` is already baked into
-  # the pkgs instance built in lib/mk-machine.nix, so we intentionally do
-  # NOT set `nixpkgs.config.allowUnfree` here.  Doing both trips a NixOS
-  # assertion because `nixpkgs.config` cannot be set when `nixpkgs.pkgs`
-  # is an externally created instance.)
+  # Steam, Proton and the Deck's own hardware theme are unfree.  This line
+  # could not exist while birte took `nixpkgs.pkgs` from a separate instance —
+  # setting `nixpkgs.config` alongside an externally supplied `pkgs` trips a
+  # NixOS assertion, so the flag lived inside that instance instead.  With the
+  # fleet on one channel birte takes the ordinary path, and needs the same
+  # line as its siblings for the same reason they do: pkgsForSystem's config
+  # reaches clanInternals, not `nixosConfigurations.<name>`, which is what
+  # `clan machines update` evaluates.
+  #
+  # Without it: `Refusing to evaluate package 'steamdeck-hw-theme-…' because
+  # it has an unfree license (unfreeRedistributable)`.
+  nixpkgs.config.allowUnfree = true;
 
   # App categories — keep minimal on the Deck. Flatpak is useful in Desktop Mode
   # for GUI apps that don't ship on Steam.
@@ -118,18 +120,6 @@
     # bootstrap genuinely needs declaring.  The remaining per-user paths are
     # listed in deck.nix.
   };
-
-  # birte uses `nixpkgs.pkgs = unstablePkgs` (via clanarchy.channel = "unstable"
-  # above) while the module list comes from clan-core/nixpkgs 26.05.  The
-  # NixOS option-docs generator (lazy-options.json) walks the module list
-  # from 26.05 but sandboxes files from `pkgs.path` — which is
-  # nixpkgs-unstable's May 30 pin (see nixpkgs-unstable comment in flake.nix).
-  # Newer 26.05 module-list entries such as `programs/tack.nix` don't exist
-  # in the older unstable source, causing the docs build to fail.
-  #
-  # Nobody browses `nixos-help` on a Steam Deck — skip the docs build.  Lift
-  # once nixpkgs-unstable can be bumped forward and the two sources agree.
-  documentation.nixos.enable = false;
 
   system.stateVersion = "25.11";
 }

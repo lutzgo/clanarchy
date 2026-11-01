@@ -1,20 +1,15 @@
-# nixpkgs overlays shared between this flake's two pkgs instances.
+# nixpkgs overlays for this flake's pkgs instance.
 #
-# There are two of them, and they are built in different places:
+# Applied by `pkgsForSystem` in clan.nix.  This file used to exist because
+# there were TWO instances — a stable one from clan-core's nixpkgs and an
+# unstable one built in lib/mk-machine.nix — and an overlay had to be applied
+# to both or the same package name meant two different things depending on the
+# machine.  That is how birte once ended up with a stock ungoogled-chromium
+# while every other machine got the hardened one.
 #
-#   - the stable instance, built by `pkgsForSystem` in clan.nix, which
-#     every machine on `clanarchy.channel = "stable"` uses;
-#   - the unstable instance (`unstablePkgs` in lib/mk-machine.nix), which
-#     is injected as the `pkgs-unstable` module arg everywhere and becomes
-#     `pkgs` outright on machines set to `clanarchy.channel = "unstable"`
-#     (birte).
-#
-# An overlay that must hold for a package regardless of which channel the
-# machine tracks therefore has to be applied to both — otherwise the same
-# package name means two different things depending on the machine, which
-# is precisely how birte ended up with a stock ungoogled-chromium while
-# every other machine got the hardened one.  Defining them once here keeps
-# the two lists from drifting.
+# There is one instance now, so that hazard is gone and this is simply where
+# the overlay list lives.  It still cannot move into a NixOS module:
+# `nixpkgs.overlays` is ignored once `pkgsForSystem` supplies `pkgs`.
 _final: prev: let
   # ── steamSafe: strip the Steam Runtime's library paths ──────────────────
   #

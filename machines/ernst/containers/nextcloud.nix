@@ -467,13 +467,18 @@ in {
         database.createLocally = true;
         config.dbtype = "pgsql";
 
-        # The local account, and the RECOVERY PATH.  It remains a Nextcloud
-        # password login after OIDC is registered below, which is the point:
-        # when the portal, the client registration or Traefik is what is
-        # broken, this is the way back in.  `root` is the module's default and
-        # is a confusing name for a Nextcloud user.
-        config.adminuser = "ncadmin";
-        config.adminpassFile = adminPassFile;
+        # NO adminuser / adminpassFile.  nixpkgs 26.11 removed both
+        # (`mkRemovedOptionModule`): they only ever applied at first install,
+        # and the replacement is `nextcloud-occ user:add` afterwards.  This
+        # instance was installed long ago, so dropping them changes nothing
+        # about the running site — the `ncadmin` account already exists.
+        #
+        # That account is still the RECOVERY PATH, and still a Nextcloud
+        # password login after OIDC is registered below: when the portal, the
+        # client registration or Traefik is what is broken, it is the way back
+        # in.  Its password still comes from the clan var below; it is simply
+        # no longer handed to the module.  To rotate it:
+        #   nextcloud-occ user:resetpassword ncadmin
 
         # ── Outbound mail, via M31's server as noreply@ ────────────────────
         #

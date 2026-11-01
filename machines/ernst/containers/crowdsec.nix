@@ -110,8 +110,8 @@
 #   handshake.  A plugin, if ever needed, must be vendored via localPlugins
 #   with a fixed-output derivation.
 #
-#   NO CENTRAL API, NO CONSOLE.  `settings.capi.credentialsFile` and
-#   `console.tokenFile` stay null, so this instance neither pulls the community
+#   NO CENTRAL API, NO CONSOLE.  Neither the online-client credentials path
+#   nor `console.enrollKeyFile` is set, so this instance neither pulls the community
 #   blocklist nor pushes its alerts anywhere — the same decision M18 made about
 #   Cloudflare, applied consistently.  The cost is real: it detects only what
 #   it sees itself.  The trigger to revisit is wanting the blocklist badly
@@ -346,7 +346,7 @@ in {
       # Regenerated from the module's own option — the fix for defect (2).
       etcConfig =
         (pkgs.formats.yaml {}).generate "crowdsec.yaml"
-        config.services.crowdsec.settings.general;
+        config.services.crowdsec.settings.config;
     in {
       ########################################################################
       # The user.  Numeric ids are the interface across the nspawn boundary.
@@ -412,18 +412,30 @@ in {
         # written at first start and read on every start, and on zroot it
         # would be regenerated after each reboot — putting defect (1) in the
         # path of every boot rather than only the first.
-        settings.general.api.server.enable = true;
-        settings.general.api.server.listen_uri = lapiAddr;
-        settings.lapi.credentialsFile = credFile;
+        settings.config.api.server.enable = true;
+        settings.config.api.server.listen_uri = lapiAddr;
+        # 26.11 moved this: `settings.lapi.credentialsFile` is now
+        # `settings.config.api.client.credentials_path`.  Upstream ships a
+        # `mkChangedOptionModule` for it, but that shim reads the old option
+        # through `config:` and that lookup fails inside a container, so use
+        # the new path directly.
+        settings.config.api.client.credentials_path = credFile;
 
-        # NO CENTRAL API and NO CONSOLE — see the header.  Left null, which
-        # is what disables the online client.
-        settings.capi.credentialsFile = null;
-        settings.console.tokenFile = null;
+        # NO CENTRAL API and NO CONSOLE — see the header.  Both are simply
+        # left unset now: 26.11 moved `settings.capi.credentialsFile` to
+        # `settings.config.api.server.online_client.credentials_path`, and the
+        # online client is disabled by the absence of that path rather than by
+        # an explicit null.  Setting it to null through the old name aborts
+        # evaluation, because the compat shim's `config:` lookup does not
+        # resolve inside a container.
+        #
+        # `settings.console.tokenFile` is gone the same way — it is
+        # `settings.console.enrollKeyFile` now — and is likewise left unset
+        # rather than nulled.
 
         # M6.  Bound to the container's address, restricted to the monitoring
         # container by the firewall rule below.
-        settings.general.prometheus = {
+        settings.config.prometheus = {
           enabled = true;
           level = "full";
           listen_addr = "0.0.0.0";
@@ -456,7 +468,7 @@ in {
         # field crowdsecurity/traefik-logs filters on.  The three pieces
         # only work together; see the hub comment above.
         ##################################################################
-        localConfig.acquisitions = [
+        settings.acquisitions = [
           {
             source = "journalctl";
             journalctl_filter = ["_SYSTEMD_UNIT=traefik.service"];
@@ -485,7 +497,7 @@ in {
         # path — see IPv4-ONLY BY CONSTRUCTION in traefik.nix's header.  If
         # that ever changes, this list changes with it.
         ##################################################################
-        localConfig.parsers.s02Enrich = [
+        settings.parsers.s02Enrich = [
           {
             name = "clanarchy/inside-whitelist";
             description = "Never ban an address inside the house";
@@ -618,7 +630,7 @@ in {
         # matching — the same SN3 shape the syslog-logs note above warns
         # about, and `cscli metrics show scenarios` is the instrument.
         ##################################################################
-        localConfig.scenarios = [
+        settings.scenarios = [
           {
             type = "leaky";
             name = "clanarchy/app-api-auth-bf";
@@ -640,7 +652,7 @@ in {
               # `Alert.Remediation == true && Alert.GetScope() == "Ip"` for
               # a 4h ban.  That is the same path every hub scenario takes,
               # which is why arming this needs no profile work.  If a
-              # profile is ever added to localConfig.profiles it REPLACES
+              # profile is ever added to settings.profiles it REPLACES
               # the default rather than adding to it, and this scenario
               # stops banning unless the new profile matches it too.
               remediation = true;

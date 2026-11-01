@@ -3,7 +3,7 @@
 
   inputs = {
     # Clan core (26.05)
-    clan-core.url = "https://git.clan.lol/clan/clan-core/archive/26.05.tar.gz";
+    clan-core.url = "https://git.clan.lol/clan/clan-core/archive/main.tar.gz";
     nixpkgs.follows = "clan-core/nixpkgs";
 
     # flake-parts
@@ -27,15 +27,12 @@
     };
 
     stylix = {
-      # Pin: stylix 9aa6edac (2026-07-29) renamed programs.regreet →
-      # services.displayManager.regreet to match a nixpkgs-unstable rename that
-      # has NOT been backported to 26.05 (nixpkgs 26.05 still defines
-      # programs.regreet at nixos/modules/programs/regreet.nix). Our regreet is
-      # wired in modules/desktop/desktop-common.nix.
-      #
-      # Lift this pin once nixpkgs 26.05 gains services.displayManager.regreet,
-      # or once we move off 26.05.
-      url = "github:nix-community/stylix/4fa830ff900efc842425aaa88c6e41da99f2823d";
+      # Unpinned 2026-11-01.  It was held at 4fa830ff because stylix 9aa6edac
+      # renamed programs.regreet -> services.displayManager.regreet to match a
+      # nixpkgs rename not backported to 26.05.  The pin named its own release
+      # condition — "or once we move off 26.05" — and this flake just did;
+      # unstable has nixos/modules/services/display-managers/regreet.nix.
+      url = "github:nix-community/stylix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -44,19 +41,6 @@
       url = "github:sodiboo/niri-flake";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-
-    # Unstable — required for Noctalia/Quickshell + Jovian-NixOS (intentionally NOT following clan-core/nixpkgs).
-    #
-    # Floating again as of 2026-08-15.  This was previously pinned to
-    # 2026-05-30 (rev 1bc189f) because unstable removed
-    # `stdenv.hostPlatform.linux-kernel` in June 2026, which broke birte:
-    # birte runs 26.05's NixOS modules against unstable `pkgs` (see
-    # `clanarchy.channel` in modules/channel.nix), and 26.05's top-level.nix
-    # read that attribute for the `system.boot.loader.kernelFile` default.
-    # modules/channel.nix now defines that option directly, so the removed
-    # attribute is never forced — see the shim comment there for why the
-    # remaining 26.05 readers are inert.
-    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     # microvm.nix — the microvm isolation tier (docs/invariants.md, invariant #1).
     #
@@ -87,12 +71,7 @@
       # Scope, risks and the unpin condition:
       #   docs/guides/noctalia-v5-migration.md
       url = "github:noctalia-dev/noctalia-shell/272cd91408b5ff6e329e6397eed042fe422069e7";
-      inputs.nixpkgs.follows = "nixpkgs-unstable";
-    };
-
-    quickshell = {
-      url = "git+https://git.outfoxxed.me/quickshell/quickshell";
-      inputs.nixpkgs.follows = "nixpkgs-unstable";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
 
     zjstatus = {
@@ -126,10 +105,11 @@
 
     govim = {
       url = "github:lutzgo/govim";
-      # nvf expects nixpkgs-unstable — so point it at *ours* rather than
+      # nvf expects an unstable tree, which `nixpkgs` now is — so point it
+      # at ours rather than
       # letting it fetch a second, independently-drifting unstable.
       # (Still must not follow clan-core/nixpkgs: nvf needs unstable.)
-      inputs.nixpkgs.follows = "nixpkgs-unstable";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
 
     # nvf — pin to the same revision govim uses so the DAG lib is consistent
@@ -142,13 +122,13 @@
     # and, usefully, is developed ON NixOS: it ships packages.default as a plain
     # rustPlatform.buildRustPackage, so there is no derivation here to maintain.
     #
-    # Follows nixpkgs-unstable for the same reason govim does — its own flake
+    # Follows `nixpkgs` for the same reason govim does — its own flake
     # pins nixos-unstable, and pointing it at *ours* avoids a third,
     # independently-drifting nixpkgs in the lock.  Not clan-core/nixpkgs: that
     # is 26.05, and nothing guarantees its rustc satisfies the crate's edition.
     sonic-tui = {
       url = "git+https://codeberg.org/thelinuxcast/sonic-tui";
-      inputs.nixpkgs.follows = "nixpkgs-unstable";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
 
     # simple-nixos-mailserver — the M31 mail stack on ernst (Postfix +
@@ -182,27 +162,27 @@
     # database seeded by hand.  JMAP, Stalwart's real advantage, buys nothing
     # here: aerc and K-9 are both IMAP.
     simple-nixos-mailserver = {
-      url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-26.05";
+      url = "gitlab:simple-nixos-mailserver/nixos-mailserver/main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     # Jovian-NixOS — Steam Deck (birte) support.
-    # Jovian officially supports only nixos-unstable, so it follows
-    # nixpkgs-unstable (which this flake already pulls in for Noctalia).
-    # birte is built entirely against nixpkgs-unstable (see clan.machines.birte
-    # below) — miralda / biene / ernst remain on clan-core's 26.05 pin.
+    # Jovian officially supports only nixos-unstable.  That used to make it
+    # the reason a whole second nixpkgs existed; now `nixpkgs` IS unstable,
+    # so it follows the same tree as everything else and birte stopped being
+    # the odd machine out.
     #
-    # Floating again as of 2026-08-15.  This was previously pinned to
-    # db4a6e755 (2026-07-04): Jovian 57773e5c9 (2026-08-08) landed a
-    # "horrible hack" (upstream's words) in mesa-radeonsi-jupiter to build
-    # against then-current nixpkgs-unstable, which conflicted with our
-    # pinned-back 2026-05-30 unstable — two mesa builds (26.1.1 vs
-    # radeonsi-jupiter-26.1.2) both claiming /lib/libEGL_mesa.so.0.0.0 in
-    # the graphics-drivers buildEnv.  Now that nixpkgs-unstable floats
-    # again, Jovian and its mesa are back in step.
+    # Keep it floating.  It was once pinned to db4a6e755 (2026-07-04) because
+    # Jovian 57773e5c9 landed a "horrible hack" (upstream's words) in
+    # mesa-radeonsi-jupiter built against then-current unstable, which
+    # collided with a pinned-back 2026-05-30 unstable — two mesa builds
+    # (26.1.1 vs radeonsi-jupiter-26.1.2) both claiming
+    # /lib/libEGL_mesa.so.0.0.0 in the graphics-drivers buildEnv.  Jovian and
+    # its mesa are only in step when both track the same moving tree, so
+    # pinning one side back is what causes that class of collision.
     jovian-nixos = {
       url = "github:Jovian-Experiments/Jovian-NixOS";
-      inputs.nixpkgs.follows = "nixpkgs-unstable";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
@@ -599,9 +579,9 @@
 
       # birte — Steam Deck OLED (Galileo). Boots into Steam Gaming Mode via
       # Jovian-NixOS; "Switch to Desktop" drops into KDE Plasma 6 (SDDM).
-      # Built entirely against nixpkgs-unstable (Jovian only supports
-      # unstable); birte opts into it via `clanarchy.channel = "unstable"`
-      # in machines/birte/configuration.nix (see modules/channel.nix).
+      # Built against the same nixpkgs as every other machine, which is
+      # unstable — Jovian supports nothing else, and that used to require
+      # a per-machine channel opt-in.  It no longer does.
       clan.machines.birte = {
         imports =
           [(mkModuleArgs {})]

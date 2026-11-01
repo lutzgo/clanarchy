@@ -173,7 +173,6 @@
     nixosModule = {
       config,
       pkgs,
-      pkgs-unstable,
       lib,
       ...
     }: let
@@ -282,7 +281,7 @@
           # clan-core's 26.05 pin carries 1.15.10 against opencode.nvim
           # 0.14.0's tested 1.17.4, so this line is the only place the
           # version can be chosen.
-          environment.systemPackages = [pkgs-unstable.opencode aiStatus];
+          environment.systemPackages = [pkgs.opencode aiStatus];
 
           home-manager.users.${settings.user} = {lib, ...}:
             {

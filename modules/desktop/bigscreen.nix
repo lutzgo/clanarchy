@@ -112,7 +112,6 @@
   config,
   lib,
   pkgs,
-  pkgs-unstable,
   utils,
   ...
 }: let
@@ -229,11 +228,11 @@ in {
         These must be drawn from the same package set the container runs on
         (nixpkgs-unstable), not from the host's stable `pkgs`. Machine
         modules receive it as the `pkgs-unstable` module argument, so write
-        `[ pkgs-unstable.jellyfin-media-player ]`. Passing a stable package
+        `[ pkgs.jellyfin-media-player ]`. Passing a stable package
         here would drag a second, conflicting Qt/KDE closure into the
         session.
       '';
-      example = lib.literalExpression "[ pkgs-unstable.jellyfin-media-player ]";
+      example = lib.literalExpression "[ pkgs.jellyfin-media-player ]";
     };
 
     audio.enable =
@@ -436,12 +435,11 @@ in {
         # The whole point of the container: its own channel, so Plasma
         # 6.7.4 and its systemd user units are internally consistent and
         # never meet the host's 6.6.6.
-        #
-        # Note `nixpkgs.config` must NOT be set anywhere in this container
-        # config — supplying `pkgs` externally trips a NixOS assertion if
-        # both are present. Unfree permissions, if ever needed, belong in
-        # the pkgs instance built in lib/mk-machine.nix.
-        nixpkgs.pkgs = pkgs-unstable;
+        # The container used to take `nixpkgs.pkgs = pkgs-unstable` so it could
+        # run a Plasma generation newer than the host's 26.05.  With the fleet
+        # on one channel that is unnecessary: the host's own `pkgs` is the
+        # tree this wanted.  Removed rather than repointed, because an
+        # externally-supplied `pkgs` also forbids `nixpkgs.config` in here.
 
         networking.useHostResolvConf = lib.mkForce true;
 

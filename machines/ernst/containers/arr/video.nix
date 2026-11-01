@@ -727,17 +727,20 @@ in {
     # adding it would buy nothing and would make the primary-group choice
     # load-bearing in a second place.
     #
-    # NOT MemoryDenyWriteExecute — Bazarr is Python and its native
-    # extensions map writable-then-executable pages, the same rejection this
-    # file already records for the three .NET services.
+    # As of nixpkgs 26.11 the bazarr module hardens itself comprehensively —
+    # CapabilityBoundingSet, PrivateDevices, PrivateIPC, PrivateUsers,
+    # ProcSubset, the whole Protect*/Restrict* set, SystemCallArchitectures.
+    # This block used to spell all of that out and now duplicates it at
+    # identical values, so only the three genuine deltas remain.  Re-adding
+    # any of the rest is not harmless: `PrivateTmp` and `ProtectControlGroups`
+    # are where upstream picked a STRONGER value than this file had
+    # ("disconnected" and "strict"), and defining both is a conflict, not a
+    # merge.
     systemd.services.bazarr.serviceConfig = {
-      NoNewPrivileges = true;
-      PrivateTmp = true;
-      ProtectSystem = "strict";
-      ProtectHome = true;
-      RemoveIPC = true;
-      RestrictSUIDSGID = true;
-
+      # Stronger than upstream's `ProtectSystem = "full"`: strict makes the
+      # entire filesystem read-only except what ReadWritePaths names, which is
+      # the point — bazarr may write exactly two trees and nothing else.
+      ProtectSystem = lib.mkForce "strict";
       ReadWritePaths = ["/srv/media" "/var/lib/bazarr"];
 
       # Group-writable sidecars.  A .srt that only bazarr can replace is a
@@ -746,21 +749,12 @@ in {
       # applies to the PRIMARY artefact rather than to incidental metadata.
       UMask = "0002";
 
-      CapabilityBoundingSet = "";
-      PrivateDevices = true;
-      ProtectClock = true;
-      ProtectControlGroups = true;
-      ProtectHostname = true;
-      ProtectKernelLogs = true;
-      ProtectKernelModules = true;
-      ProtectKernelTunables = true;
-      ProtectProc = "invisible";
-      RestrictAddressFamilies = ["AF_INET" "AF_INET6" "AF_UNIX"];
-      RestrictNamespaces = true;
-      RestrictRealtime = true;
-      LockPersonality = true;
-      SystemCallArchitectures = "native";
-      SystemCallFilter = arrSyscallFilter;
+      # The container-wide filter, which differs from upstream's in both
+      # directions: it allows @chown (the sidecar UMask above is pointless
+      # without it) and denies @debug and @mount.  Every service in this
+      # container shares it; upstream's per-service list would make bazarr
+      # the one exception.
+      SystemCallFilter = lib.mkForce arrSyscallFilter;
     };
 
     # `curl` is the test plan's instrument: it is what proves this container

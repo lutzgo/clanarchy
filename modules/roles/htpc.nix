@@ -950,7 +950,7 @@ in {
           `pkgs-unstable`, not the host's `pkgs` — see the corresponding
           option in modules/desktop/bigscreen.nix.
         '';
-        example = lib.literalExpression "[ pkgs-unstable.jellyfin-media-player ]";
+        example = lib.literalExpression "[ pkgs.jellyfin-media-player ]";
       };
     };
 
