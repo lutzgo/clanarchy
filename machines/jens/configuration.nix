@@ -150,7 +150,8 @@
   systemd.user.services.opentabletdriver = {
     serviceConfig = {
       Restart = lib.mkForce "always";
-      RestartSec = "5s";
+      # mkForce since 26.11: upstream now sets RestartSec = 3 itself.
+      RestartSec = lib.mkForce "5s";
     };
     unitConfig = {
       StartLimitBurst = 10;

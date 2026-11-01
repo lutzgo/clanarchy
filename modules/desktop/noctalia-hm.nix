@@ -3,7 +3,6 @@
 # use isNiri / isLabwc derived from osConfig.
 {
   pkgs,
-  pkgs-unstable,
   config,
   lib,
   osConfig,

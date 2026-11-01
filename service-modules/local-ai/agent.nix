@@ -31,7 +31,7 @@
 #
 # ── THREE PATHS NOT TAKEN, SO THEY ARE NOT RE-PROPOSED ────────────────────
 #
-#   * `pkgs-unstable.home-assistant`.  A three-release jump with a one-way
+#   * `pkgs.home-assistant`.  A three-release jump with a one-way
 #     recorder migration, on the machine that runs the house, to avoid a
 #     contained protocol shim with build-time tests.  Bad trade.
 #   * A HACS-downloaded conversation integration.  M24b states the cost out

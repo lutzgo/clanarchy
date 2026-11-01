@@ -1,45 +1,23 @@
 # Reusable machine-composition helpers.
 #
-# Every clan machine in this repo needs the same _module.args injection
-# (pkgs-unstable + inputs), the same stylix kmscon workaround, and the
-# same 10-item list of shared modules.  Rather than repeating all that
-# boilerplate in each `clan.machines.<name>` block, flake.nix imports
-# this file once and picks the pieces it needs.
-{inputs}: let
-  unstablePkgs = import inputs.nixpkgs-unstable {
-    system = "x86_64-linux";
-    # Same overlays as the stable instance built by `pkgsForSystem` in
-    # clan.nix.  A machine on `clanarchy.channel = "unstable"` takes its
-    # whole `pkgs` from here, so leaving them off means package overrides
-    # silently apply to some machines and not others.
-    overlays = [(import ./overlays.nix)];
-    config = {
-      allowUnfree = true;
-      # birte pulls pnpm-9.15.9 transitively (Jovian / KDE tooling).  Since
-      # birte uses `nixpkgs.pkgs = unstablePkgs` (via
-      # `clanarchy.channel = "unstable"` — see modules/channel.nix),
-      # `nixpkgs.config` cannot be layered on at the NixOS level --
-      # allowed insecure packages must live inside the pkgs instance.
-      permittedInsecurePackages = ["pnpm-9.15.9"];
-    };
-  };
-in rec {
-  # Injects pkgs-unstable + inputs as module args on every machine.
-  # Modules can then take `{ pkgs-unstable, inputs, ... }` in their signature.
+# Every clan machine in this repo needs the same `inputs` module arg and the
+# same list of shared modules.  Rather than repeating that boilerplate in each
+# `clan.machines.<name>` block, flake.nix imports this file once and picks the
+# pieces it needs.
+#
+# This file used to build a SECOND pkgs instance from `nixpkgs-unstable` and
+# inject it as `pkgs-unstable`, because birte ran unstable packages under
+# 26.05 modules.  That whole arrangement is gone: clan-core tracks `main`, so
+# `inputs.nixpkgs` IS unstable and every machine gets one coherent tree.  With
+# it went the `stylixKmsconFix` disabledModules entry and the
+# `permittedInsecurePackages` that had to live inside the pkgs instance
+# because `nixpkgs.config` cannot be set once `nixpkgs.pkgs` is supplied
+# externally.
+{inputs}: rec {
+  # Injects `inputs` as a module arg on every machine, so modules can take
+  # `{ inputs, ... }` in their signature.
   mkModuleArgs = {extraArgs ? {}}: {
-    _module.args =
-      {
-        pkgs-unstable = unstablePkgs;
-        inherit inputs;
-      }
-      // extraArgs;
-  };
-
-  # nixpkgs 26.05 restructured services.kmscon; stylix's kmscon target still
-  # writes services.kmscon.config which no longer exists.  Bundled into
-  # commonHeadful so machines using stylix don't have to think about it.
-  stylixKmsconFix = {
-    disabledModules = ["${inputs.stylix}/modules/kmscon/nixos.nix"];
+    _module.args = {inherit inputs;} // extraArgs;
   };
 
   # Universal modules — imported by every clan machine, headful or headless.
@@ -47,7 +25,6 @@ in rec {
     inputs.impermanence.nixosModules.impermanence
     inputs.home-manager.nixosModules.home-manager
     ../modules/base.nix
-    ../modules/channel.nix
     # Root filesystem strategy: rootfs.nix declares `clanarchy.rootfs` and
     # holds the shared persist bits; the two backends below each guard
     # their own body on it, so importing both is inert for the one not
@@ -100,7 +77,6 @@ in rec {
     commonBase
     ++ [
       inputs.stylix.nixosModules.stylix
-      stylixKmsconFix
       ../modules/hardware/display.nix
       ../modules/networking/skynet-dns-nm.nix
       ../modules/apps

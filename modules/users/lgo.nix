@@ -3,7 +3,6 @@
   lib,
   pkgs,
   inputs,
-  pkgs-unstable,
   ...
 }: let
   cfg = config.clanarchy.users.lgo;
@@ -245,7 +244,7 @@ in {
     };
 
     # Home Manager configuration
-    home-manager.extraSpecialArgs = {inherit inputs pkgs-unstable;};
+    home-manager.extraSpecialArgs = {inherit inputs;};
     home-manager.users.lgo = {
       pkgs,
       inputs,

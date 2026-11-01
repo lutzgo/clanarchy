@@ -2,7 +2,6 @@
 # via home-manager.sharedModules. `osConfig` exposes clanarchy.desktop.labwc options.
 {
   pkgs,
-  pkgs-unstable,
   inputs,
   config,
   lib,

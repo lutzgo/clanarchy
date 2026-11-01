@@ -202,57 +202,26 @@
   config,
   lib,
   pkgs,
-  pkgs-unstable,
   ...
 }: let
   ############################################################################
-  # IMMICH AND immich-go COME FROM nixpkgs-unstable, NOT FROM 26.05.
+  # Immich, immich-cli and immich-go come from the one channel like everything
+  # else.  They used to be the fleet's loudest exception: 26.05 shipped immich
+  # 2.7.5, nixpkgs marked it insecure (CVE-2026-59258, CVE-2026-82272) with
+  # "Immich 3.x.x is available in NixOS 26.11", and a 26.05 bump refused to
+  # EVALUATE this host — so these three were pulled from a separate
+  # `pkgs-unstable` instance while the rest of the container stayed stable.
   #
-  # 26.05 CANNOT SHIP THIS SERVICE ANY MORE.  Its immich is 2.7.5, and nixpkgs
-  # marks that package insecure — CVE-2026-59258, CVE-2026-82272 — with the
-  # note "Immich 2.x.x will not receive further updates. Immich 3.x.x is
-  # available in NixOS 26.11".  So there is no backport coming and the pin
-  # cannot simply be held: a 26.05 bump refuses to EVALUATE this host.
-  # `permittedInsecurePackages` is not an option either — `photos` is in
-  # `wanExposed`, answered by the application, with no second factor.
+  # That block named its own end condition — "drop this pin when clan-core's
+  # nixpkgs carries immich 3.x (26.11)" — and this is it.  The version is now
+  # whatever the lock says, which is the point of having one lock.
   #
-  # EVERY VERSION CONSTRAINT 3.1.0 ENFORCES WAS CHECKED AGAINST THE RUNNING
-  # DATABASE BEFORE THIS LANDED, not after (server/src/constants.ts):
-  #
-  #   POSTGRES_VERSION_RANGE     '>=14.0.0'      ernst runs 17.10   ok
-  #   VECTORCHORD_VERSION_RANGE  '>=0.3 <2'      vchord 1.1.1       ok
-  #   VECTOR_VERSION_RANGE       '>=0.5 <1'      pgvector 0.8.2     ok
-  #
-  # and the one that would have made this a multi-step upgrade: 3.x throws
-  # `Invalid upgrade path` if the legacy TypeORM `migrations` table exists and
-  # is not at AddMissingIndex1744910873956.  On ernst that table is ABSENT and
-  # `kysely_migrations` is in use, so 2.7.5 -> 3.1.0 is a valid direct path.
-  # pgvecto.rs is likewise absent — the VectorChord migration happened long ago.
-  #
-  # immich-go MOVES WITH THE SERVER AND IS NOT OPTIONAL.  0.32.0 is the FIRST
-  # release compatible with Immich 3.0 — it drops the `deviceId`/`deviceAssetId`
-  # upload fields v3 removed and switches album listing to the paginated search
-  # endpoint. 26.05 has 0.31.0, which predates that work. Upgrading the server
-  # without it breaks `photo-import` silently, at the API.
-  #
-  # The matching client-side pin is in modules/immich-upload.nix, which runs
-  # immich-cli — versioned in lockstep with the server, 2.7.5 in 26.05.
-  #
-  # NOT the whole channel: `clanarchy.channel` stays "stable" here. Only these
-  # two packages cross over, and they are self-contained — the container's own
-  # systemd, postgres and redis stay 26.05's.
-  #
-  # 3.1.0 AND NOT 3.3.3, WHICH IS WHAT THE LOCK DECIDES.  `pkgs-unstable` is
-  # built from `inputs.nixpkgs-unstable`, pinned 2026-08-13; its newer revision
-  # carries 3.3.3 but bumping it breaks birte (an unstable `lib.importService`
-  # against 26.05's lib) and is held for its own change.  3.1.0 carries no
-  # known vulnerabilities, which is what this pin is for.
-  #
-  # DROP THIS PIN when clan-core's nixpkgs carries immich 3.x (26.11), and move
-  # immich-cli and immich-go back in the same change. Holding it longer means a
-  # photo library on an unstable-tracked package for no reason.
-  immichPkg = pkgs-unstable.immich;
-  immichGoPkg = pkgs-unstable.immich-go;
+  # immich-cli is still versioned in lockstep with the server, and still
+  # matters: a client a major behind the server breaks the upload timer in
+  # modules/immich-upload.nix QUIETLY.  One channel is what keeps them
+  # together now, rather than two hand-matched pins.
+  immichPkg = pkgs.immich;
+  immichGoPkg = pkgs.immich-go;
 
   # Allocated in machines/ernst/allocations.nix.  nspawn passes uids through
   # unmapped, so 3036 inside this container IS 3036 on zdata.

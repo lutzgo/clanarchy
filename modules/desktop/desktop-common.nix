@@ -3,7 +3,6 @@
 # module so this file is never double-imported within a single configuration.
 {
   pkgs,
-  pkgs-unstable,
   inputs,
   ...
 }: {
@@ -178,6 +177,6 @@
   };
 
   home-manager.extraSpecialArgs = {
-    inherit inputs pkgs-unstable;
+    inherit inputs;
   };
 }

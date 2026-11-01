@@ -946,12 +946,15 @@ in {
         #   The cert itself is requested by the security.acme block below.
         x509.useACMEHost = fqdn;
 
-        # monit.  Off: this fleet has one alerting path (the ntfy topic) and
-        # monit's notifier is SMTP, so it would be a mail server emailing about
-        # itself. Unit state reaches Alertmanager through the ordinary
-        # `clanarchy-container-units` collector; queue depth reaches Prometheus
-        # through the exporter below.
-        monitoring.enable = false;
+        # No monit.  simple-nixos-mailserver retired `mailserver.monitoring`
+        # (the assertion names `services.monit` as the replacement), so there
+        # is nothing to switch off here any more — but the reason not to
+        # reach for the nixpkgs module instead still holds: this fleet has one
+        # alerting path (the ntfy topic) and monit's notifier is SMTP, so it
+        # would be a mail server emailing about itself.  Unit state reaches
+        # Alertmanager through the ordinary `clanarchy-container-units`
+        # collector; queue depth reaches Prometheus through the exporter
+        # below.
       };
 
       # ── A SECOND ACME CLIENT, NOT A SHARE OF TRAEFIK'S acme.json ──────────

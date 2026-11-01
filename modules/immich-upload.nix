@@ -98,7 +98,6 @@
   config,
   lib,
   pkgs,
-  pkgs-unstable,
   ...
 }: let
   cfg = config.clanarchy.immich.upload;
@@ -115,7 +114,7 @@
   # like no photos having been exported.
   #
   # Drop this pin together with the server-side one, in the same change.
-  immichCli = pkgs-unstable.immich-cli;
+  immichCli = pkgs.immich-cli;
 in {
   options.clanarchy.immich.upload = {
     enable = lib.mkEnableOption "pushing darktable exports to Immich on a timer";

@@ -618,13 +618,29 @@
         pkgs.writeText "llama-swap.yaml"
         (builtins.toJSON swapConfig); # llama-swap parses YAML; JSON is valid YAML
 
+      # whisper-cpp no longer takes a GPU target of its own.  As of nixpkgs
+      # 26.11 it builds against ONE llama-cpp and forwards only
+      # `rocmSupport`/`rocmPackages` to it, so the target has to be set on the
+      # llama-cpp it is handed:
+      #
+      #   llama-cpp' = llama-cpp.override {
+      #     inherit cudaSupport cudaPackages rocmSupport rocmPackages …;
+      #   };
+      #
+      # Passing `rocmGpuTargets` here now fails with "function 'anonymous
+      # lambda' called with unexpected argument 'rocmGpuTargets'", naming
+      # neither this line nor whisper-cpp.
+      #
+      # `.override` merges, so our `rocmGpuTargets` survives whisper-cpp's own
+      # re-override of the same package.  And the old string-vs-list trap is
+      # gone with it: there is one argument now, on llama-cpp, and it is a
+      # LIST.
       speechPackage = pkgs.whisper-cpp.override {
         rocmSupport = true;
-        # A STRING here, not a list — whisper-cpp and llama-cpp disagree on
-        # the type of this argument in nixpkgs 26.05.  Getting it wrong is
-        # an `assert lib.isString value` failure deep in cmake option
-        # handling, which does not name this line.
-        rocmGpuTargets = speechRole.gpuTarget;
+        llama-cpp = pkgs.llama-cpp.override {
+          rocmSupport = true;
+          rocmGpuTargets = [speechRole.gpuTarget];
+        };
       };
 
       tunnelPubKeyPath =
