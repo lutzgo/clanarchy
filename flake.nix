@@ -96,12 +96,26 @@
     };
 
     zjstatus = {
-      # v0.24.0 busy-loops the zellij server against zellij 0.44.3 (nixpkgs
-      # 26.05 and unstable both ship 0.44.3): arrhythmic re-layout, ~125% CPU,
-      # input never processed. v0.25.0 is worse — it requires zellij >= 0.45.
-      # v0.23.0 is the release built against zellij-tile 0.44.1. Unpin only
-      # together with a zellij >= 0.45 bump.
-      url = "github:dj95/zjstatus/v0.23.0";
+      # v0.25.0, matched to zellij 0.45.1.  The condition the old pin named has
+      # been MET, so the pin is gone rather than merely re-dated:
+      #
+      #   "v0.25.0 … requires zellij >= 0.45. … Unpin only together with a
+      #    zellij >= 0.45 bump."
+      #
+      # That bump arrived in nixpkgs, not from us — 26.05 now ships zellij
+      # 0.45.1 (MEASURED 2026-11-01 on miralda and jens, which is the version
+      # the HM module actually installs).  The old note'"'"'s premise, "26.05 and
+      # unstable both ship 0.44.3", is simply out of date.
+      #
+      # So staying on v0.23.0 was the mismatch, not the safe choice: it is the
+      # build against zellij-tile 0.44.1 and we are three minor versions past
+      # that.  v0.24.0 remains skipped — it busy-loops the zellij server
+      # (arrhythmic re-layout, ~125% CPU, input never processed).
+      #
+      # If the bar comes back blank after this, the cause is almost certainly
+      # NOT the version: zjstatus needs three permissions including
+      # RunCommands, and a layout-only plugin never gets an answerable prompt.
+      url = "github:dj95/zjstatus/v0.25.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
