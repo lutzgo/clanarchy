@@ -2,6 +2,14 @@
   networking.hostName = "ernst";
   # Regenerate if cloning: head -c4 /dev/urandom | od -A none -t x4 | tr -d ' '
   networking.hostId = "e7c97a1f";
+
+  # ZFS root, with the impermanence rollback that goes with it.  Stated rather
+  # than derived: modules/rootfs.nix used to compute this from
+  # `clanarchy.channel`, which meant a machine could not be moved to unstable
+  # without silently changing filesystem.  The kernel problem that justified
+  # the coupling is now solved directly there, by pinning
+  # `zfs.latestCompatibleLinuxPackages`.
+  clanarchy.rootfs = "zfs";
   # DNS: no global `networking.search` — see modules/networking/resolved.nix.
   # The skynet.lan search suffix + Technitium pin will be attached to the
   # static enp13s0 networkd unit in Phase 2 (still DHCP as of now).
