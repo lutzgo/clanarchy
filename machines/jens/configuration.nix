@@ -54,7 +54,7 @@
   # Stylix palette + polarity — see modules/themes/palettes.nix for the
   # registry. Stated explicitly rather than left to the option default so the
   # two Niri workstations declare their palettes the same way.
-  clanarchy.theme = "selenized-black";
+  clanarchy.theme = "rose-pine";
 
   # Drop shadows, same values as miralda — see the comment there for why these
   # differ from niri's stock shadow. Stated per machine rather than defaulted
