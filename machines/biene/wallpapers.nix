@@ -69,7 +69,7 @@ in {
   # Use the Nix-Anarchy SVG as the stylix image (regreet greeter + plymouth).
   stylix.image = lib.mkForce wallpaper;
 
-  # Install for sabine: seed the wallpaper and pin it in Noctalia's wallpapers.json.
+  # Install for sabine: seed the wallpaper and pin it as Noctalia's selection.
   home-manager.users.sabine = {lib, ...}: {
     home.activation.seedWallpaper = lib.hm.dag.entryAfter ["linkGeneration"] ''
       mkdir -p "$HOME/Pictures/Wallpapers"
@@ -79,13 +79,15 @@ in {
       mv "$_wp_tmp" "$HOME/Pictures/Wallpapers/clanarchy.png"
     '';
 
-    home.file.".cache/noctalia/wallpapers.json" = lib.mkForce {
-      force = true;
-      text = builtins.toJSON {
-        wallpapers = {"eDP-1" = "/home/sabine/Pictures/Wallpapers/clanarchy.png";};
-        defaultWallpaper = "/home/sabine/Pictures/Wallpapers/clanarchy.png";
-        usedRandomWallpapers = {};
-      };
-    };
+    # v5 setting, not a cache file.  This used to write
+    # ~/.cache/noctalia/wallpapers.json; v5 does not read that, and keeps the
+    # selection in config.toml under `wallpaper.default` instead — declared in
+    # its schema as app-managed state, which is why it is absent from
+    # `noctalia config export full`.  Leaving the old file in place is what
+    # made jens come up with stylix.image rather than the Nix-Anarchy logo.
+    #
+    # mkForce because the Stylix noctalia target writes the same key.
+    programs.noctalia.settings.wallpaper.default.path =
+      lib.mkForce "/home/sabine/Pictures/Wallpapers/clanarchy.png";
   };
 }

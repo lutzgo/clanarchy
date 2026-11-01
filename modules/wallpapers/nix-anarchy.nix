@@ -18,7 +18,7 @@
 #   ws5 logo-shirt-v1.svg  → base09 orange
 #
 # PNGs are symlinked into ~/Pictures/Wallpapers/ so the Noctalia picker finds them.
-# wallpapers.json is overridden (lib.mkForce + force=true) to pin ws1 as the
+# The selection is pinned via `wallpaper.default.path` (a v5 setting) to ws1,
 # default, superseding the Stylix noctalia target's static image.
 {
   pkgs,
@@ -141,10 +141,24 @@ in {
   # ---------------------------------------------------------------------------
   # Install wallpapers into ~/Pictures/Wallpapers/ for both desktop users.
   # Noctalia's picker scans that directory.
-  # wallpapers.json is overridden with lib.mkForce to supersede the Stylix
-  # noctalia target, which writes a plain { defaultWallpaper: <stylix-image> }.
-  # force=true lets HM overwrite the file even if Noctalia replaced the symlink
-  # at runtime.
+  #
+  # PINNING THE SELECTION IS A v5 SETTING NOW, not a cache file.
+  #
+  # v4 pinned it by writing ~/.cache/noctalia/wallpapers.json with
+  # `{ wallpapers: {eDP-1: ws1.png}, defaultWallpaper: ws1.png }`.  v5 does not
+  # read that file at all, so after the migration the shell fell back to
+  # whatever the Stylix target had written and jens came up showing
+  # stylix.image instead of the tinted Nix-Anarchy logo.
+  #
+  # v5 keeps the selection in config.toml instead — `wallpaper.default`,
+  # `wallpaper.monitors`, `wallpaper.last` and `wallpaper.favorite` are
+  # declared in the schema as app-managed state (src/config/schema/
+  # config_sections.cpp: "also carries app-managed state … those keys are not
+  # settings"), which is why they do not appear in `noctalia config export
+  # full`.
+  #
+  # mkForce because the Stylix noctalia target writes the same key
+  # (`settings.wallpaper.default.path = image`) and would otherwise win.
   # ---------------------------------------------------------------------------
   home-manager.users.lgo = {lib, ...}: {
     home.file = {
@@ -153,15 +167,9 @@ in {
       "Pictures/Wallpapers/ws3.png".source = wallpapers.ws3;
       "Pictures/Wallpapers/ws4.png".source = wallpapers.ws4;
       "Pictures/Wallpapers/ws5.png".source = wallpapers.ws5;
-
-      ".cache/noctalia/wallpapers.json" = lib.mkForce {
-        force = true;
-        text = builtins.toJSON {
-          wallpapers = {"eDP-1" = "/home/lgo/Pictures/Wallpapers/ws1.png";};
-          defaultWallpaper = "/home/lgo/Pictures/Wallpapers/ws1.png";
-          usedRandomWallpapers = {};
-        };
-      };
     };
+
+    programs.noctalia.settings.wallpaper.default.path =
+      lib.mkForce "/home/lgo/Pictures/Wallpapers/ws1.png";
   };
 }
