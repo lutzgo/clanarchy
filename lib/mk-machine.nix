@@ -78,12 +78,6 @@
     ++ [
       inputs.stylix.nixosModules.stylix
       ../modules/hardware/display.nix
-      # One-passphrase boot (ZFS key -> kernel keyring -> autologin ->
-      # gnome-keyring). Declares `clanarchy.singlePasswordBoot` and guards
-      # its body on it, so importing it headful-wide is inert until a
-      # machine opts in. Consumers: miralda, jens — the two encrypted
-      # laptops; biene and birte have no disk passphrase to carry.
-      ../modules/desktop/single-password-boot.nix
       ../modules/networking/skynet-dns-nm.nix
       ../modules/apps
       # M22. The darktable end of the photo pipeline: a watched export folder

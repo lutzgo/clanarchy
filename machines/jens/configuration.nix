@@ -10,35 +10,6 @@
   # `zfs.latestCompatibleLinuxPackages`.
   clanarchy.rootfs = "zfs";
 
-  # One passphrase at boot: the zroot key is cached to the kernel keyring in
-  # stage 1, greetd autologins, and gnome-keyring opens with the same secret.
-  #
-  # This DROPS A FACTOR — see the header of
-  # modules/desktop/single-password-boot.nix. It is on because the two
-  # prompts were asking for the same string anyway, which is security
-  # theatre rather than security; the bargain is explicit rather than
-  # accidental now.
-  #
-  # The user's password MUST equal the zroot passphrase. Nothing checks
-  # that; if they diverge, login still succeeds and the keyring quietly
-  # stays locked.
-  clanarchy.singlePasswordBoot = {
-    # DISABLED 2026-11-02: it put jens in emergency mode on first reboot.
-    # The stage-1 unit called `${config.boot.zfs.package}/sbin/zfs`, and
-    # that store path is NOT in `boot.initrd.systemd.storePaths` — so the
-    # unit failed, the zroot key never loaded, and /home and /persist
-    # (both neededForBoot) could not mount. Root is locked on these
-    # machines, so the emergency shell is not even a way in; recovery was
-    # the previous boot generation.
-    #
-    # Re-enable only after the initrd actually contains the binaries the
-    # unit invokes, verified against boot.initrd.systemd.storePaths rather
-    # than assumed.
-    enable = false;
-    user = "lgo";
-    session = "niri-uwsm";
-    zfsDataset = "zroot";
-  };
   # DNS: no global `networking.search` — see modules/networking/resolved.nix
   # for the rationale.  The skynet.lan search suffix + Technitium routing
   # attach to the "home" wifi NM profile in modules/networking/skynet-dns-nm.nix.
