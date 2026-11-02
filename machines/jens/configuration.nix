@@ -29,7 +29,8 @@
   clanarchy.singlePasswordBoot = {
     enable = true;
     user = "lgo";
-    session = "niri-uwsm";
+    # The .desktop Exec line, not the session name — see the option docs.
+    command = "uwsm start -F -- /run/current-system/sw/bin/niri-session";
   };
 
   # DNS: no global `networking.search` — see modules/networking/resolved.nix

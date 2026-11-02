@@ -73,12 +73,20 @@ in {
       '';
     };
 
-    session = lib.mkOption {
+    command = lib.mkOption {
       type = lib.types.str;
-      example = "niri-uwsm";
+      example = "uwsm start -F -- niri-session";
       description = ''
-        Session command for greetd's `initial_session`. Must name a session
-        the greeter would otherwise offer.
+        A COMMAND LINE for greetd's `initial_session`, not a session name.
+
+        This is the distinction that broke the first attempt: `niri-uwsm` is
+        a name in `services.displayManager.sessionData.sessionNames`, and
+        greetd tried to execute it, failed, and fell back to the greeter — so
+        the password prompt reappeared. Compare `default_session.command`,
+        which is a full `dbus-run-session … cage … regreet` invocation.
+
+        Take the value from the session's own .desktop `Exec=` line:
+        `/run/current-system/sw/share/wayland-sessions/<name>.desktop`.
       '';
     };
   };
@@ -99,7 +107,7 @@ in {
     # Autologin. greetd skips PAM auth for initial_session, so the key has to
     # be re-read in the session phase below.
     services.greetd.settings.initial_session = {
-      command = cfg.session;
+      command = cfg.command;
       user = cfg.user;
     };
 
@@ -108,20 +116,32 @@ in {
     # see what stage 1 cached, which is the whole mechanism.
     systemd.services.greetd.serviceConfig.KeyringMode = lib.mkForce "inherit";
 
-    # Order matters: loadkey must run BEFORE pam_gnome_keyring, because it is
-    # what puts the token where gnome-keyring looks for it.
-    security.pam.services.greetd.rules.session = {
-      systemd_loadkey = {
-        order = 11000;
-        control = "optional";
-        modulePath = "${config.systemd.package}/lib/security/pam_systemd_loadkey.so";
-      };
-      gnome_keyring = {
-        order = 12000;
-        control = "optional";
-        modulePath = "${pkgs.gnome-keyring}/lib/security/pam_gnome_keyring.so";
-        args = ["auto_start"];
-      };
+    # keyutils, so the verification step in the header is actually runnable:
+    # `keyctl show @u` is how you confirm the cryptsetup key was cached, and
+    # it is not installed by default. Asking someone to run a command that
+    # does not exist is worse than not documenting it.
+    environment.systemPackages = [pkgs.keyutils];
+
+    # ORDER 10000 — BEFORE `session include login`, which is at 10100.
+    #
+    # This was 11000 and did not work. /etc/pam.d/login's SESSION stack
+    # already contains pam_gnome_keyring.so, and greetd includes that whole
+    # stack at 10100, so a loadkey at 11000 ran AFTER the keyring module it
+    # was supposed to feed. The journal showed it plainly:
+    #
+    #   session opened for user lgo(uid=1001) by (uid=0)
+    #   gkr-pam: couldn't unlock the login keyring.
+    #
+    # loadkey must set PAM_AUTHTOK before anything reads it.
+    #
+    # Note greetd's AUTH stack is empty — that is why this is needed at all.
+    # Normally pam_gnome_keyring's auth half stashes the password; with
+    # initial_session there is no auth phase to stash from, and loadkey
+    # supplies the token from the kernel keyring instead.
+    security.pam.services.greetd.rules.session.systemd_loadkey = {
+      order = 10000;
+      control = "optional";
+      modulePath = "${config.systemd.package}/lib/security/pam_systemd_loadkey.so";
     };
   };
 }
