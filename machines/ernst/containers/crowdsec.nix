@@ -734,6 +734,34 @@ in {
       # leading "" is what RESETS an additive directive rather than
       # appending to it — the trap this repo has written down before.
       ######################################################################
+      # ── crowdsec-unstick: NOW ALSO REGISTERS, because 26.11 stopped ──────
+      #
+      # At 26.05 the nixpkgs module's own ExecStartPre registered the machine
+      # in the LAPI database and wrote the credentials file; defect (1) above
+      # is written against that behaviour. crowdsec 1.8.1 in 26.11 DOES NOT —
+      # the live unit's only ExecStartPre entries are this script and
+      # `crowdsec -t -error`. Nothing creates the credentials.
+      #
+      # That took ernst's WAN ingress unprotected on 2026-11-02, and did it
+      # in the quiet way defect (1) warns about: the unit sits `activating`,
+      # not `failed`, so the host's `systemctl --failed` was EMPTY while
+      # CrowdSec had never started. Only the ExposedAndUnprotected alert
+      # caught it. Restart counter was at 127.
+      #
+      #   level=fatal msg="loading api client: while reading yaml file:
+      #     open /var/lib/crowdsec/local_api_credentials.yaml"
+      #
+      # So the script now does BOTH halves, and only when the credentials are
+      # missing — which keeps it idempotent on every normal start:
+      #
+      #   delete  clears a row left behind by a half-finished registration,
+      #           which is what the original script did alone. Without it the
+      #           add fails with "user already exist" and loops forever.
+      #   add     recreates the row AND writes the credentials file.
+      #
+      # It can write because the bind mount gives /var/lib/crowdsec to the
+      # crowdsec user; see defect (1) for why that is load-bearing rather
+      # than incidental.
       systemd.services.crowdsec.serviceConfig.ExecStartPre = lib.mkBefore [
         (pkgs.writeShellScript "crowdsec-unstick" ''
           set -eu
@@ -741,6 +769,9 @@ in {
             ${lib.getExe' config.services.crowdsec.package "cscli"} -c ${etcConfig} \
               machines delete ${lib.escapeShellArg config.services.crowdsec.name} \
               >/dev/null 2>&1 || true
+            ${lib.getExe' config.services.crowdsec.package "cscli"} -c ${etcConfig} \
+              machines add ${lib.escapeShellArg config.services.crowdsec.name} \
+              --auto --file ${credFile}
           fi
         '')
       ];
