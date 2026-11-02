@@ -29,7 +29,30 @@
   # machine picked its own name, and this unit runs in stage 1 where that is
   # expensive to debug.
   diskName = builtins.head (builtins.attrNames config.disko.devices.disk);
-  rootPart = "/dev/disk/by-partlabel/disk-${diskName}-btrfs";
+
+  # THE BTRFS MAY BE INSIDE A LUKS CONTAINER, and then the partlabel is NOT
+  # the filesystem.
+  #
+  # With `enableEncryption`, `disk-<name>-btrfs` is the encrypted volume and
+  # the filesystem lives at /dev/mapper/<luksName>. Mounting the partlabel
+  # gets you:
+  #
+  #   mount: /btrfs_tmp: wrong fs type, bad option, bad superblock
+  #   rollback.service: Main process exited, code=exited, status=32
+  #
+  # which is stage 1, so the machine still boots — with NO rollback, root and
+  # home quietly persistent, and only `clanarchy-impermanence-check` to say
+  # so afterwards. That is exactly how jens came up from its first LUKS
+  # install on 2026-11-02. birte never hit it because birte is unencrypted.
+  #
+  # Read the luks name out of the disko config rather than taking it as an
+  # option: disko already knows it, and a second source would drift.
+  btrfsPartition = config.disko.devices.disk.${diskName}.content.partitions.btrfs.content;
+  isLuks = (btrfsPartition.type or "") == "luks";
+  rootPart =
+    if isLuks
+    then "/dev/mapper/${btrfsPartition.name}"
+    else "/dev/disk/by-partlabel/disk-${diskName}-btrfs";
 
   # systemd's unit name for that device, e.g.
   # dev-disk-by\x2dpartlabel-disk\x2dbirte\x2dbtrfs.device
