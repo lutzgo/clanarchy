@@ -252,9 +252,10 @@
         # `instances.*.roles.*.tags.*.settings` is not on it. Assigning
         # `tags.all = {}` materialises this role's `settings` defaults under
         # the tag, the sanitiser reaches a path it will not unwrap, and the
-        # command dies. Only sshd is affected: it is the one tag-assigned role
-        # in this inventory that has settings at all (zerotier's `peer` has
-        # none).
+        # command dies.  EVERY tag-assigned role hits this, not only ones this
+        # file writes settings for — the merged inventory materialises the
+        # role submodule's defaults regardless.  zerotier's `peer` was
+        # converted for the same reason, one install attempt later.
         #
         # So this is upstream's gap, not a modelling mistake here — tags are a
         # feature, and a role with settings is ordinary. Restore `tags.all`
@@ -277,7 +278,21 @@
       # miralda is the controller; all machines are peers.
       zerotier = {
         roles.controller.machines."miralda" = {};
-        roles.peer.tags.all = {};
+        # Explicit machines, not `tags.all` — same upstream allowlist gap as
+        # sshd above. EVERY tag-assigned role hits it, not only ones this file
+        # gives settings to: the merged inventory materialises the role
+        # submodule's `settings` defaults regardless, so the sanitiser finds
+        # `instances.zerotier.roles.peer.tags.all.settings` and refuses it.
+        #
+        # miralda appears in both roles, which is deliberate and is what
+        # `tags.all` did before: it is the controller AND a peer.
+        roles.peer.machines = {
+          ernst = {};
+          miralda = {};
+          jens = {};
+          biene = {};
+          birte = {};
+        };
       };
 
       # ── YubiKey ────────────────────────────────────────────────────────────
