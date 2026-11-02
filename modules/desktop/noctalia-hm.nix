@@ -58,101 +58,239 @@ in {
   # collide rather than override.
   programs.noctalia = {
     enable = true;
-    settings = {
-      shell = {
-        avatar_path = "${config.home.homeDirectory}/.face";
-        settings_show_advanced = true;
-      };
-
-      bar = {
-        order = ["default"];
-        default = {
-          enabled = true;
-          position = "top";
-          # The panel, not every monitor: this is a laptop and the bar
-          # belongs on its built-in screen.
-          capsule = true;
-          capsule_opacity = lib.mkForce 1.0;
-          background_opacity = lib.mkForce 1.0;
-          font_scale = 1.0;
-          widget_spacing = 6;
-          margin_edge = 4;
-          margin_ends = 4;
-          show_on_workspace_switch = true;
-
-          # Widget NAMES, in order.  v4 listed inline objects with their own
-          # settings; v5 takes names here and per-widget options in their own
-          # `widget.<name>` tables.
-          #
-          # Eleven `plugin:` entries are gone from both layouts — v5 replaced
-          # the QML plugin API with Luau and only screen-recorder has a port.
-          # Two were not really losses: screenshot and clipboard are built in
-          # now (`noctalia msg screenshot-*`, `shell.clipboard_*`).
-          #
-          # Sabine's layout is the shape her "simple_mouse" profile had, kept
-          # by hand because the shell-profiles plugin that used to apply it
-          # does not exist for v5: clock and battery centre, status on the
-          # right, nothing on the left. See docs/guides/noctalia-profiles.md.
-          start =
-            if isLgo
-            then ["workspaces" "active_window" "spacer"]
-            else [];
-          center =
-            if isLgo
-            then ["launcher" "spacer" "clock" "spacer"]
-            else ["clock" "battery"];
-          end =
-            if isLgo
-            then ["tray" "battery" "session"]
-            else ["tray" "notifications" "control-center"];
+    settings =
+      lib.recursiveUpdate {
+        shell = {
+          avatar_path = "${config.home.homeDirectory}/.face";
+          settings_show_advanced = true;
         };
-      };
 
-      dock = {
-        # Sabine gets the dock; lgo drives everything from the bar and the
-        # launcher, and a second always-present strip is just lost rows.
-        enabled = !isLgo;
-        position = "bottom";
-        auto_hide = true;
-        background_opacity = lib.mkForce 0.9;
-        active_monitor_only = true;
-      };
+        bar = {
+          order = ["default"];
+          default = {
+            enabled = true;
+            position = "top";
+            # The panel, not every monitor: this is a laptop and the bar
+            # belongs on its built-in screen.
+            capsule = true;
+            capsule_opacity = lib.mkForce 1.0;
+            background_opacity = lib.mkForce 1.0;
+            font_scale = 1.0;
+            widget_spacing = 6;
+            margin_edge = 4;
+            margin_ends = 4;
+            show_on_workspace_switch = true;
 
-      notification = {
-        position = "top_right";
-        background_opacity = lib.mkForce 0.8;
-      };
+            # Widget NAMES, in order.  v4 listed inline objects with their own
+            # settings; v5 takes names here and per-widget options in their own
+            # `widget.<name>` tables.
+            #
+            # Eleven `plugin:` entries are gone from both layouts — v5 replaced
+            # the QML plugin API with Luau and only screen-recorder has a port.
+            # Two were not really losses: screenshot and clipboard are built in
+            # now (`noctalia msg screenshot-*`, `shell.clipboard_*`).
+            #
+            # Sabine's layout is the shape her "simple_mouse" profile had, kept
+            # by hand because the shell-profiles plugin that used to apply it
+            # does not exist for v5: clock and battery centre, status on the
+            # right, nothing on the left. See docs/guides/noctalia-profiles.md.
+            start =
+              if isLgo
+              then ["workspaces" "active_window" "spacer"]
+              else [];
+            center =
+              if isLgo
+              then ["launcher" "spacer" "clock" "spacer"]
+              else ["clock" "battery"];
+            end =
+              if isLgo
+              then ["tray" "battery" "session"]
+              else ["tray" "notifications" "control-center"];
+          };
+        };
 
-      osd = {
-        position = "top_right";
-        hide_delay_ms = 2000;
-        background_opacity = lib.mkForce 0.9;
-      };
+        dock = {
+          # Sabine gets the dock; lgo drives everything from the bar and the
+          # launcher, and a second always-present strip is just lost rows.
+          enabled = !isLgo;
+          position = "bottom";
+          auto_hide = true;
+          background_opacity = lib.mkForce 0.9;
+          active_monitor_only = true;
+        };
 
-      wallpaper = {
-        enabled = true;
-        directory = "${config.home.homeDirectory}/Pictures/Wallpapers";
-      };
+        notification = {
+          position = "top_right";
+          background_opacity = lib.mkForce 0.8;
+        };
 
-      # Plugins, declared rather than installed by hand in the UI.
-      #
-      # `enabled` takes catalogue IDs. The two default sources — noctalia's
-      # `official` and `community` repos — are already on, so an ID from
-      # either resolves without naming a source here.
-      #
-      # ONE entry, because v5's plugin API is Luau and the 25 QML plugins
-      # left over from v4 under ~/.config/noctalia/plugins/ cannot load.
-      # Those directories are inert, not active; deleting them is safe.
-      # screen_recorder is the only one of them with a same-name port.
-      #
-      # It shells out to gpu-screen-recorder, which is NOT pulled in by the
-      # plugin — added to home.packages below, or the widget appears and
-      # every recording fails.
-      plugins.enabled = ["noctalia/screen_recorder"];
+        osd = {
+          position = "top_right";
+          hide_delay_ms = 2000;
+          background_opacity = lib.mkForce 0.9;
+        };
 
-      location.address = "Duesseldorf";
-      weather.enabled = true;
-    };
+        wallpaper = {
+          enabled = true;
+          directory = "${config.home.homeDirectory}/Pictures/Wallpapers";
+        };
+
+        location.address = "Duesseldorf";
+        weather.enabled = true;
+      } (
+        lib.optionalAttrs isLgo {
+          # ── lgo's layout, captured from the running shell ────────────────────
+          #
+          # Taken from ~/.local/state/noctalia/settings.toml on jens (saved there
+          # as the "lgoPower" config-swap profile), 2026-11-02. That is where v5
+          # writes runtime changes; config.toml — this file's output — is the
+          # declarative base it layers on top of. So these two coexist: tweak in
+          # the UI and the state file wins until you fold the change back here.
+          #
+          # Runtime-only keys were deliberately NOT captured: `config_version`,
+          # `wallpaper.last`, and the lockscreen widget geometry (pixel
+          # positions per output). They describe where things currently are, not
+          # what was chosen.
+          # The bar as you arranged it. Widget names ending in a number are
+          # instances declared in `widget.*` below — `widget_4` is the qrcode
+          # plugin, `status_2` is obs-control, and so on.
+          bar.default = {
+            background_opacity = lib.mkForce 0.49;
+            contact_shadow = true;
+            font_family = "MonaspiceNe Nerd Font Propo";
+            margin_edge = 5;
+            margin_ends = 9;
+            start = ["workspaces" "ocr" "widget_4" "widget_5" "status_2" "status" "spacer" "active_window"];
+            center = ["launcher" "date" "keybinds_2" "file-search" "widget"];
+            end = ["tray" "widget_2" "battery" "session"];
+          };
+
+          location.auto_locate = true;
+
+          plugins.enabled = [
+            "noctalia/kaomoji"
+            "noctalia/screen_recorder"
+            "tadomika_ari/config-swap"
+            "nightwatch75/file-search"
+            "h-jangra/keyviz"
+            "kenn/keybind-cheatsheet"
+            "ayagmar/obs-control"
+            "fel/ocr"
+            "yocraft/qrcode"
+            "abuamar142/qr-share"
+            "alexander/screen-toolkit"
+            "aristides/udiskie"
+            "liamwh/emoji-picker"
+          ];
+
+          # Per-plugin panel placement, as set in the UI.
+          plugin_settings = {
+            "abuamar142/qr-share".panel_placement = "attached";
+            "ayagmar/obs-control".controls_placement = "attached";
+            "kenn/keybind-cheatsheet".cheatsheet_placement = "attached";
+            "liamwh/emoji-picker" = {
+              compact_placement = "attached";
+              desktop_placement = "attached";
+              wide_placement = "attached";
+            };
+            "tadomika_ari/config-swap".panel_placement = "attached";
+            "yocraft/qrcode".panel_placement = "attached";
+          };
+
+          # Widget instances. A plugin widget is named by `<plugin-id>:<widget>`,
+          # and the table name is what the bar lists — so `widget_4` in `start`
+          # resolves to the qrcode plugin through this mapping.
+          widget = {
+            date = {
+              anchor = true;
+              format = "{:%a %d %b - %H:%M}";
+              timezone = "Europe/Berlin";
+              actions.left = "panel-toggle control-center home";
+            };
+            launcher.glyph = "rocket";
+            file-search.type = "nightwatch75/file-search:file-search";
+            keybinds_2.type = "kenn/keybind-cheatsheet:keybinds";
+            ocr.type = "fel/ocr:ocr";
+            status.type = "aristides/udiskie:status";
+            status_2.type = "ayagmar/obs-control:status";
+            widget.type = "liamwh/emoji-picker:widget";
+            widget_2.type = "tadomika_ari/config-swap:widget";
+            widget_4.type = "yocraft/qrcode:widget";
+            widget_5.type = "alexander/screen-toolkit:widget";
+          };
+
+          calendar = {
+            enabled = true;
+            dedupe_events = true;
+            # CalDAV against the household Nextcloud. No password here — Noctalia
+            # prompts and stores it in its own secret store; a clan var would have
+            # to be readable by the shell at runtime, which is a worse trade.
+            account.lgo = {
+              name = "lgo";
+              provider = "custom";
+              type = "caldav";
+              server_url = "https://cloud.goclan.org/remote.php/dav";
+              username = "lgo";
+            };
+          };
+
+          control_center = {
+            calendar = {
+              show_events_location = true;
+              show_week_numbers = true;
+            };
+            shortcuts = [
+              {type = "wifi";}
+              {type = "bluetooth";}
+              {type = "notification";}
+              {type = "power_profile";}
+            ];
+          };
+
+          shell = {
+            app_icon_colorize = true;
+            password_style = "random";
+            settings_window_translucent = true;
+            launcher = {
+              compact = true;
+              search_position = "top";
+              show_app_actions = true;
+              providers = {
+                calculator.prefix = "calc";
+                emoji = {
+                  global = true;
+                  prefix = "emo";
+                };
+                panels = {
+                  global = false;
+                  prefix = "pan";
+                };
+                session = {
+                  global = true;
+                  prefix = "session";
+                };
+                windows = {
+                  global = true;
+                  prefix = "win";
+                };
+              };
+            };
+            panel = {
+              clipboard_placement = "attached";
+              launcher_placement = "attached";
+              transparency_mode = "glass";
+            };
+            window_switcher.style = "compact";
+          };
+
+          desktop_widgets.enabled = false;
+          idle.pre_action_fade_seconds = 30;
+          osd.kinds = {
+            caffeine = false;
+            nightlight = false;
+          };
+        }
+      );
   };
 
   stylix.targets.noctalia.enable = true;
@@ -214,6 +352,33 @@ in {
   # `force = true` above: HM relinks on every rebuild, this undoes it once.
   #
   # One file for v5, where v4 had seven.
+
+  # Remove the v4 plugin tree once.
+  #
+  # 25 directories of QML plugins (132 .qml files, zero .luau) are left under
+  # ~/.config/noctalia/plugins/ from before the v5 migration. v5's plugin API
+  # is Luau; it cannot load any of them, and it installs its own plugins from
+  # the catalogue into the same directory — so leaving the old ones there is
+  # both dead weight and a source of confusion about which are live.
+  #
+  # Only the known-v4 names are removed, and only when they still contain
+  # QML. A v5 plugin that happens to share a name is left alone, and so is
+  # anything the catalogue has installed since.
+  home.activation.pruneNoctaliaV4Plugins = lib.hm.dag.entryAfter ["writeBoundary"] ''
+    _plugdir="$HOME/.config/noctalia/plugins"
+    for _p in assistant-panel calibre-provider clipper color-scheme-creator \
+              display-settings giphy-search hassio khal-agenda-widget \
+              mirror-mirror network-manager-vpn niri-auto-tile \
+              nvim-session-provider obs-control polkit-agent screenshot \
+              screen-shot-and-record screen-toolkit shell-profiles todo \
+              usb-drive-manager valent-connect weekly-calendar \
+              file-search keybind-cheatsheet screen-recorder; do
+      if [ -d "$_plugdir/$_p" ] && [ -n "$(find "$_plugdir/$_p" -maxdepth 1 -name '*.qml' -print -quit 2>/dev/null)" ]; then
+        $DRY_RUN_CMD rm -rf "$_plugdir/$_p"
+      fi
+    done
+  '';
+
   home.activation.deSymlinkNoctalia = lib.hm.dag.entryAfter ["linkGeneration"] ''
     _delink() {
       if [ -L "$1" ]; then
@@ -412,9 +577,27 @@ in {
       slurp
       wl-clipboard
       playerctl
-      # Driven by the screen_recorder plugin, which declares no dependency
-      # on it — without this the widget loads and every recording fails.
+      # Plugin runtime dependencies. None of these plugins declares its
+      # binaries, so each absence shows up as a widget that loads and then
+      # fails — which is exactly how they were found on jens.
+      #
+      #   gpu-screen-recorder  noctalia/screen_recorder
+      #   udiskie              aristides/udiskie
+      #   imagemagick          fel/ocr, yocraft/qrcode  (the `magick` binary)
+      #   qrencode             yocraft/qrcode, abuamar142/qr-share
+      #   tesseract            fel/ocr
+      #
+      # grim and slurp are already above — fel/ocr lists them in the same
+      # error, but they were present all along.
       gpu-screen-recorder
+      udiskie
+      imagemagick
+      qrencode
+      tesseract
+      # ayagmar/obs-control drives obs-websocket through a Python helper and
+      # checks for the `websocket-client` module by import, not by binary —
+      # so a bare python3 is not enough.
+      (python3.withPackages (ps: [ps.websocket-client]))
     ]
     ++ lib.optionals isNiri [ghostty]
     ++ lib.optionals isLabwc [wlopm]
