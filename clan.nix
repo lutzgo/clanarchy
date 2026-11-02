@@ -233,7 +233,40 @@
 
       # ── SSH baseline ────────────────────────────────────────────────────────
       sshd = {
-        roles.server.tags.all = {};
+        # MACHINES LISTED EXPLICITLY, NOT `roles.server.tags.all`.
+        #
+        # That tag form is the documented way to assign a role, and it is what
+        # this used until 2026-11-02 — but it makes `clan machines install`
+        # abort before it touches the disk:
+        #
+        #   ValueError: Unwrap attempted at disallowed path:
+        #     instances.sshd.roles.server.tags.all.settings
+        #
+        # clan-cli's inventory store sanitises the MERGED inventory against an
+        # allowlist of paths a deferredModule may be unwrapped at
+        # (clan_lib/persist/inventory_store.py):
+        #
+        #   instances.*.roles.*.settings
+        #   instances.*.roles.*.machines.*.settings
+        #
+        # `instances.*.roles.*.tags.*.settings` is not on it. Assigning
+        # `tags.all = {}` materialises this role's `settings` defaults under
+        # the tag, the sanitiser reaches a path it will not unwrap, and the
+        # command dies. Only sshd is affected: it is the one tag-assigned role
+        # in this inventory that has settings at all (zerotier's `peer` has
+        # none).
+        #
+        # So this is upstream's gap, not a modelling mistake here — tags are a
+        # feature, and a role with settings is ordinary. Restore `tags.all`
+        # once the allowlist covers it; until then a new machine must be added
+        # to this list by hand, which is the real cost.
+        roles.server.machines = {
+          ernst = {};
+          miralda = {};
+          jens = {};
+          biene = {};
+          birte = {};
+        };
         roles.server.settings.authorizedKeys = {
           "admin-machine-1" = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPo4uZn6hVFTnJ0K7eagj1XL0jVn9t6sSU8RAejhWBy+ clanarchy_admin";
           "lgo-yubikey" = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDjwV5tzb5mAhtUqgrfzU1FR35btJrvIjPM+PfxBAz4W openpgp:0x5E293E5A";
