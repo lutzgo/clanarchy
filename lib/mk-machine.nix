@@ -78,6 +78,11 @@
     ++ [
       inputs.stylix.nixosModules.stylix
       ../modules/hardware/display.nix
+      # One-passphrase boot. Declares `clanarchy.singlePasswordBoot` and
+      # guards its body on it, so importing it headful-wide is inert until a
+      # machine opts in — and it ASSERTS on btrfs, so it cannot be turned on
+      # for a ZFS machine the way it was in #372.
+      ../modules/desktop/single-password-boot.nix
       ../modules/networking/skynet-dns-nm.nix
       ../modules/apps
       # M22. The darktable end of the photo pipeline: a watched export folder

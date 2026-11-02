@@ -1,14 +1,36 @@
-{lib, ...}: {
+{
+  config,
+  lib,
+  ...
+}: {
   networking.hostName = "jens";
-  networking.hostId = "f815e992";
+  # No networking.hostId: that is a ZFS requirement (it keys pool ownership
+  # so two hosts cannot import the same pool). btrfs needs none.
 
-  # ZFS root, with the impermanence rollback that goes with it.  Stated rather
-  # than derived: modules/rootfs.nix used to compute this from
-  # `clanarchy.channel`, which meant a machine could not be moved to unstable
-  # without silently changing filesystem.  The kernel problem that justified
-  # the coupling is now solved directly there, by pinning
-  # `zfs.latestCompatibleLinuxPackages`.
-  clanarchy.rootfs = "zfs";
+  # btrfs under LUKS, with the impermanence rollback that goes with it.
+  # See machines/jens/disko.nix for why LUKS rather than ZFS native
+  # encryption — it is what makes one-passphrase boot possible at all.
+  clanarchy.rootfs = "btrfs";
+
+  # Hibernation target. Derived from the disko disk name rather than
+  # hardcoded: birte hung its first boot in an untimeouted start job because
+  # a hardcoded `disk-main-swap` did not exist on a disk named something else.
+  boot.resumeDevice = "/dev/disk/by-partlabel/disk-${
+    builtins.head (builtins.attrNames config.disko.devices.disk)
+  }-swap";
+
+  # One passphrase at boot: the LUKS passphrase systemd-cryptsetup already
+  # cached is reused to unlock gnome-keyring after autologin. Possible here
+  # only because this machine is LUKS — see the module header and
+  # machines/jens/disko.nix.
+  #
+  # Your user password MUST equal the LUKS passphrase. Nothing checks it; a
+  # mismatch means login succeeds and the keyring quietly stays locked.
+  clanarchy.singlePasswordBoot = {
+    enable = true;
+    user = "lgo";
+    session = "niri-uwsm";
+  };
 
   # DNS: no global `networking.search` — see modules/networking/resolved.nix
   # for the rationale.  The skynet.lan search suffix + Technitium routing
@@ -130,7 +152,9 @@
     lib.mkForce "/dev/disk/by-id/nvme-WD_BLACK_SN770M_2TB_252738400046-part1";
 
   # ZFS pool alerts via ntfy.sh — URL prompted at `clan vars generate jens` time.
-  clanarchy.zfs.ntfy.enable = true;
+  # No clanarchy.zfs.ntfy: its zedlet is ZFS-event-specific (ZEVENT_POOL,
+  # ZEVENT_VDEV_PATH). btrfs surfaces device trouble through the kernel log
+  # and SMART instead; there is no equivalent hook to subscribe to here.
 
   # Hand big compiles to ernst — 32 cores and 249 GB, versus this machine's
   # 2P+8E cores.  More lopsided here than on miralda, so more worth having.
