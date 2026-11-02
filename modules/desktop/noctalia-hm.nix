@@ -151,36 +151,72 @@ in {
           # `wallpaper.last`, and the lockscreen widget geometry (pixel
           # positions per output). They describe where things currently are, not
           # what was chosen.
-          # The bar as you arranged it. Widget names ending in a number are
-          # instances declared in `widget.*` below — `widget_4` is the qrcode
-          # plugin, `status_2` is obs-control, and so on.
+          # The bar as you arranged it, recaptured 2026-11-02 after the btrfs
+          # reinstall. Widget names ending in a number are instances declared
+          # in `widget.*` below; `group:<id>` refers to a capsule_group.
+          #
+          # CAPSULE GROUPS are the new shape: rather than listing every widget
+          # inline, related ones are bundled into a bordered capsule and the
+          # bar references the group. Members are widget instance names, so
+          # a group is a layout container, not a widget in its own right.
           bar.default = {
             background_opacity = lib.mkForce 0.49;
             contact_shadow = true;
             font_family = "MonaspiceNe Nerd Font Propo";
             margin_edge = 5;
             margin_ends = 9;
-            start = ["workspaces" "ocr" "widget_4" "widget_5" "status_2" "status" "spacer" "active_window"];
-            center = ["launcher" "date" "keybinds_2" "file-search" "widget"];
-            end = ["tray" "widget_2" "battery" "session"];
+            start = ["workspaces" "group:g2" "spacer" "active_window"];
+            end = ["group:g1" "tray" "battery" "session"];
+
+            # TOML `[[bar.default.capsule_group]]` — an ARRAY of tables, so a
+            # Nix list of attrsets. Order in the list is order on the bar.
+            capsule_group = [
+              {
+                id = "g1";
+                members = ["status_4" "status_3" "widget_2"];
+                enabled = true;
+                accordion = false;
+                accordion_direction = "end";
+                border_width = 1.0;
+                fill = "surface_container";
+                opacity = 1.0;
+                padding = 6.0;
+              }
+              {
+                id = "g2";
+                members = ["widget_4" "widget_5"];
+                enabled = true;
+                accordion = false;
+                accordion_direction = "end";
+                border_width = 1.0;
+                fill = "surface_container";
+                opacity = 1.0;
+                padding = 6.0;
+              }
+            ];
           };
 
           location.auto_locate = true;
+
+          # Lockscreen widgets off. The saved profile also carries the login
+          # box's pixel geometry (cx/cy/box_width/… for eDP-1 at 1536x960)
+          # and its appearance settings, but the widget is DISABLED — that is
+          # leftover placement for something not drawn. Captured as the choice
+          # it is; re-save the profile if you turn them on and want the layout
+          # kept here too.
+          lockscreen_widgets.enabled = false;
 
           plugins.enabled = [
             "noctalia/kaomoji"
             "noctalia/screen_recorder"
             "tadomika_ari/config-swap"
-            "nightwatch75/file-search"
             "h-jangra/keyviz"
             "kenn/keybind-cheatsheet"
             "ayagmar/obs-control"
-            "fel/ocr"
             "yocraft/qrcode"
             "abuamar142/qr-share"
             "alexander/screen-toolkit"
             "aristides/udiskie"
-            "liamwh/emoji-picker"
           ];
 
           # Per-plugin panel placement, as set in the UI.
@@ -188,32 +224,21 @@ in {
             "abuamar142/qr-share".panel_placement = "attached";
             "ayagmar/obs-control".controls_placement = "attached";
             "kenn/keybind-cheatsheet".cheatsheet_placement = "attached";
-            "liamwh/emoji-picker" = {
-              compact_placement = "attached";
-              desktop_placement = "attached";
-              wide_placement = "attached";
-            };
             "tadomika_ari/config-swap".panel_placement = "attached";
             "yocraft/qrcode".panel_placement = "attached";
           };
 
-          # Widget instances. A plugin widget is named by `<plugin-id>:<widget>`,
-          # and the table name is what the bar lists — so `widget_4` in `start`
-          # resolves to the qrcode plugin through this mapping.
+          # Widget instances. A plugin widget is named `<plugin-id>:<widget>`,
+          # and the table name is what the bar or a capsule_group references —
+          # so `widget_4` in group g2 resolves to the qrcode plugin here.
+          #
+          # Only the five the current layout actually uses. The previous
+          # capture also carried date, launcher, file-search, keybinds_2, ocr
+          # and an emoji-picker instance; those widgets are no longer on the
+          # bar, and three of their plugins are no longer enabled.
           widget = {
-            date = {
-              anchor = true;
-              format = "{:%a %d %b - %H:%M}";
-              timezone = "Europe/Berlin";
-              actions.left = "panel-toggle control-center home";
-            };
-            launcher.glyph = "rocket";
-            file-search.type = "nightwatch75/file-search:file-search";
-            keybinds_2.type = "kenn/keybind-cheatsheet:keybinds";
-            ocr.type = "fel/ocr:ocr";
-            status.type = "aristides/udiskie:status";
-            status_2.type = "ayagmar/obs-control:status";
-            widget.type = "liamwh/emoji-picker:widget";
+            status_3.type = "ayagmar/obs-control:status";
+            status_4.type = "aristides/udiskie:status";
             widget_2.type = "tadomika_ari/config-swap:widget";
             widget_4.type = "yocraft/qrcode:widget";
             widget_5.type = "alexander/screen-toolkit:widget";
