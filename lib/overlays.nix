@@ -130,6 +130,29 @@ in {
             (old.disabledTests or [])
             ++ ["test_prepare_tool_result_delivers_into_call_tool_result_models"];
         });
+
+        # mcp 2.3.0 renamed streamablehttp_client -> streamable_http_client,
+        # and open-webui 0.12.3 still imports the old spelling:
+        #
+        #   ImportError: cannot import name 'streamablehttp_client' from
+        #   'mcp.client.streamable_http'
+        #
+        # which takes open-webui.service down outright. Verified on ernst:
+        # the module defines `async def streamable_http_client` and nothing
+        # named streamablehttp_client.
+        #
+        # An alias in the LIBRARY rather than a patch in the consumer, because
+        # open-webui calls this from more than one place and the alias fixes
+        # every call site at once without tracking them. Delete it when
+        # open-webui catches up to the new name.
+        mcp = pyPrev.mcp.overridePythonAttrs (old: {
+          postPatch =
+            (old.postPatch or "")
+            + ''
+              echo 'streamablehttp_client = streamable_http_client' \
+                >> src/mcp/client/streamable_http.py
+            '';
+        });
       })
     ];
 }
