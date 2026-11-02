@@ -29,7 +29,18 @@
   # that; if they diverge, login still succeeds and the keyring quietly
   # stays locked.
   clanarchy.singlePasswordBoot = {
-    enable = true;
+    # DISABLED 2026-11-02: it put jens in emergency mode on first reboot.
+    # The stage-1 unit called `${config.boot.zfs.package}/sbin/zfs`, and
+    # that store path is NOT in `boot.initrd.systemd.storePaths` — so the
+    # unit failed, the zroot key never loaded, and /home and /persist
+    # (both neededForBoot) could not mount. Root is locked on these
+    # machines, so the emergency shell is not even a way in; recovery was
+    # the previous boot generation.
+    #
+    # Re-enable only after the initrd actually contains the binaries the
+    # unit invokes, verified against boot.initrd.systemd.storePaths rather
+    # than assumed.
+    enable = false;
     user = "lgo";
     session = "niri-uwsm";
     zfsDataset = "zroot";
