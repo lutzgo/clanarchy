@@ -15,6 +15,25 @@
   # the coupling is now solved directly there, by pinning
   # `zfs.latestCompatibleLinuxPackages`.
   clanarchy.rootfs = "zfs";
+
+  # One passphrase at boot: the zroot key is cached to the kernel keyring in
+  # stage 1, greetd autologins, and gnome-keyring opens with the same secret.
+  #
+  # This DROPS A FACTOR — see the header of
+  # modules/desktop/single-password-boot.nix. It is on because the two
+  # prompts were asking for the same string anyway, which is security
+  # theatre rather than security; the bargain is explicit rather than
+  # accidental now.
+  #
+  # The user's password MUST equal the zroot passphrase. Nothing checks
+  # that; if they diverge, login still succeeds and the keyring quietly
+  # stays locked.
+  clanarchy.singlePasswordBoot = {
+    enable = true;
+    user = "lgo";
+    session = "niri-uwsm";
+    zfsDataset = "zroot";
+  };
   # DNS: no global `networking.search` — see modules/networking/resolved.nix
   # for the rationale.  The skynet.lan search suffix + Technitium routing
   # attach to the "home" wifi NM profile in modules/networking/skynet-dns-nm.nix.
