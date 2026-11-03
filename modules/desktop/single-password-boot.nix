@@ -43,9 +43,25 @@
 #   3. greetd   autologins via `initial_session`. greetd skips PAM's auth
 #               phase entirely on that path, which is why the key is read back
 #               in the SESSION phase rather than arriving through auth.
-#   4. PAM      pam_systemd_loadkey hands the cached secret to the stack;
-#               pam_gnome_keyring takes it as the auth token and unlocks the
-#               login keyring.
+#   4. PAM      a session-phase step reads the cached passphrase and starts
+#               `gnome-keyring-daemon --daemonize --login` as the user with it
+#               on stdin — exactly what pam_gnome_keyring itself does when it
+#               HAS a password. That unlocks the login keyring, creating it
+#               from the passphrase if it does not exist yet.
+#
+# ── WHY NOT pam_systemd_loadkey + pam_gnome_keyring, AS FEDORA DOES ───────
+#
+# That pairing works only where the display manager runs PAM's AUTH phase on
+# autologin (GDM does). greetd's initial_session calls initiate(…,
+# authenticate = false) and skips pam_authenticate, and both halves need it:
+# pam_systemd_loadkey implements only pam_sm_authenticate/setcred (in a
+# session stack it is skipped — "unable to resolve symbol:
+# pam_sm_open_session"), and pam_gnome_keyring's open_session unlocks only
+# with the password its OWN auth phase stashed (`gkr_system_authtok`), never
+# PAM_AUTHTOK. Read from greetd and gnome-keyring-50.0 source, 2026-11-03.
+# Until then this module put loadkey in the session stack, where it did
+# nothing; miralda's first boot had no login keyring at all, and the first
+# app to want one created an unencrypted "Default keyring".
 {
   config,
   lib,
@@ -53,6 +69,36 @@
   ...
 }: let
   cfg = config.clanarchy.singlePasswordBoot;
+
+  # Runs as root from pam_exec. Never echoes the secret: no `set -x`, and it
+  # travels only through a pipe.
+  unlockScript = pkgs.writeShellScript "clanarchy-keyring-unlock" ''
+    log() { ${pkgs.util-linux}/bin/logger -t clanarchy-keyring-unlock "$*"; }
+    [ "''${PAM_SERVICE:-}" = greetd ] || exit 0
+    [ "''${PAM_TYPE:-}" = open_session ] || exit 0
+    [ "''${PAM_USER:-}" = ${lib.escapeShellArg cfg.user} ] || exit 0
+
+    # systemd-cryptsetup caches into ROOT's user keyring as user:cryptsetup,
+    # a NUL-separated list; the last entry is the passphrase that worked.
+    id=$(${pkgs.keyutils}/bin/keyctl search @u user cryptsetup 2>/dev/null) || {
+      log "no cached LUKS passphrase (expired, or no LUKS prompt this boot)"
+      exit 0
+    }
+    mapfile -d "" -t pws < <(${pkgs.keyutils}/bin/keyctl pipe "$id")
+    [ "''${#pws[@]}" -gt 0 ] || exit 0
+
+    uid=$(${pkgs.coreutils}/bin/id -u "$PAM_USER")
+    printf '%s' "''${pws[-1]}" |
+      ${pkgs.util-linux}/bin/setpriv --reuid="$uid" --regid="$(${pkgs.coreutils}/bin/id -g "$PAM_USER")" --init-groups \
+        ${pkgs.coreutils}/bin/env -i \
+          HOME="$(${pkgs.getent}/bin/getent passwd "$PAM_USER" | ${pkgs.coreutils}/bin/cut -d: -f6)" \
+          USER="$PAM_USER" LOGNAME="$PAM_USER" \
+          XDG_RUNTIME_DIR="/run/user/$uid" \
+          DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
+          ${pkgs.gnome-keyring}/bin/gnome-keyring-daemon --daemonize --login >/dev/null &&
+      log "started gnome-keyring for $PAM_USER with the LUKS passphrase" ||
+      log "gnome-keyring-daemon --login failed for $PAM_USER"
+  '';
 in {
   options.clanarchy.singlePasswordBoot = {
     enable = lib.mkEnableOption ''
@@ -93,6 +139,18 @@ in {
 
   config = lib.mkIf cfg.enable {
     assertions = [
+      (let
+        rules = config.security.pam.services.login.rules.session;
+        ours = rules.clanarchy_keyring_unlock.order;
+      in {
+        assertion = rules.gnome_keyring.enable && rules.systemd.order < ours && ours < rules.gnome_keyring.order;
+        message = ''
+          clanarchy.singlePasswordBoot: the keyring-unlock PAM step must sit
+          between pam_systemd (${toString rules.systemd.order}) and
+          pam_gnome_keyring (${toString rules.gnome_keyring.order}) in the
+          login session stack; it is at ${toString ours}.
+        '';
+      })
       {
         assertion = config.clanarchy.rootfs == "btrfs";
         message = ''
@@ -105,7 +163,7 @@ in {
     ];
 
     # Autologin. greetd skips PAM auth for initial_session, so the key has to
-    # be re-read in the session phase below.
+    # be picked up in the session phase — see the PAM rule below.
     services.greetd.settings.initial_session = {
       command = cfg.command;
       user = cfg.user;
@@ -122,26 +180,23 @@ in {
     # does not exist is worse than not documenting it.
     environment.systemPackages = [pkgs.keyutils];
 
-    # ORDER 10000 — BEFORE `session include login`, which is at 10100.
-    #
-    # This was 11000 and did not work. /etc/pam.d/login's SESSION stack
-    # already contains pam_gnome_keyring.so, and greetd includes that whole
-    # stack at 10100, so a loadkey at 11000 ran AFTER the keyring module it
-    # was supposed to feed. The journal showed it plainly:
-    #
-    #   session opened for user lgo(uid=1001) by (uid=0)
-    #   gkr-pam: couldn't unlock the login keyring.
-    #
-    # loadkey must set PAM_AUTHTOK before anything reads it.
-    #
-    # Note greetd's AUTH stack is empty — that is why this is needed at all.
-    # Normally pam_gnome_keyring's auth half stashes the password; with
-    # initial_session there is no auth phase to stash from, and loadkey
-    # supplies the token from the kernel keyring instead.
-    security.pam.services.greetd.rules.session.systemd_loadkey = {
-      order = 10000;
+    # ORDER: AFTER pam_systemd, BEFORE pam_gnome_keyring — in `login`'s
+    # session stack, because greetd includes that whole stack as one rule and
+    # nothing can be placed inside it from greetd's side.
+    #   after pam_systemd     it creates /run/user/<uid> (the daemon's
+    #                         control socket) and starts the user bus.
+    #   before gnome_keyring  its auto_start then finds our unlocked daemon;
+    #                         after it, a LOCKED daemon would already hold
+    #                         the control socket and ours would not start.
+    # The script returns at once for any PAM service but greetd, so a tty
+    # `login` runs it as a no-op.
+    security.pam.services.login.rules.session.clanarchy_keyring_unlock = let
+      rules = config.security.pam.services.login.rules.session;
+    in {
+      order = rules.gnome_keyring.order - 50;
       control = "optional";
-      modulePath = "${config.systemd.package}/lib/security/pam_systemd_loadkey.so";
+      modulePath = "${pkgs.linux-pam}/lib/security/pam_exec.so";
+      args = ["quiet" "${unlockScript}"];
     };
   };
 }
