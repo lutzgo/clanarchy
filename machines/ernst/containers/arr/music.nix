@@ -392,6 +392,21 @@ in {
     # setup fill up, not for steady state.  The lock file makes an overlong
     # pass safe either way — see below.
     #
+    # ── search_timeout IS 30 s, NOT UPSTREAM'S 5 ─────────────────────────
+    #
+    # slskd sits behind the VPN with no forwarded port, so peers cannot dial
+    # it directly; search results arrive over INDIRECT connections and they
+    # arrive slowly.  MEASURED 2026-11-03 on a quiet, logged-in slskd: one
+    # search for "radiohead ok computer" had 5 responses / 93 files after 40 s
+    # and was still collecting.  At 5 s the same pass returned 0 responses for
+    # every album it tried.  A five-second window is tuned for a client with
+    # an open listen port.
+    #
+    # The cost is wall clock: number_of_albums_to_grab = 10 at ~30 s per
+    # search makes a pass several minutes long, sometimes past the 15-minute
+    # timer.  That is safe — systemd will not start a unit that is still
+    # active, so an overlapping firing is simply skipped.
+    #
     # ── THE CONFIG IS RENDERED AT RUN TIME, NOT INTO THE STORE ───────────
     #
     # config.ini carries TWO API keys: Lidarr's (out of Lidarr's own
@@ -608,7 +623,7 @@ in {
             accepted_formats = CD,Digital Media,Vinyl
 
             [Search Settings]
-            search_timeout = 5000
+            search_timeout = 30000
             maximum_peer_queue = 50
             minimum_peer_upload_speed = 0
             minimum_filename_match_ratio = 0.8
@@ -630,6 +645,55 @@ in {
             format = [%(levelname)s|%(module)s|L%(lineno)d] %(asctime)s: %(message)s
             datefmt = %Y-%m-%dT%H:%M:%S%z
             EOF
+          ''}"
+
+          # Make sure slskd is LOGGED IN to Soulseek before searching, and
+          # reconnect it if not.
+          #
+          # MEASURED ON ernst 2026-11-03.  A second client logged in on
+          # slskd's account and the server kicked slskd ("another client
+          # logged in using the same username").  slskd does not reconnect
+          # after a kick — it treats one as deliberate — and it has no
+          # watchdog enabled here.  Soularr kept firing every 15 minutes, every
+          # search came back `Errored` ("The server connection must be
+          # connected and logged in"), and the pass still EXITED 0, so the
+          # unit stayed green and ContainerSystemdUnitFailed never fired.
+          # slskd's search history shows that state on every day back to its
+          # oldest entry, 2026-10-25.
+          #
+          # The root cause (sldl on the same account) is fixed in the VPN
+          # guest with its own `sldl-credentials` account.  This guards the
+          # failure CLASS, since a kick can also come from someone logging in
+          # elsewhere: `PUT /api/v0/server` is exactly what restored it by
+          # hand.  An ordinary network drop is NOT this case — slskd
+          # reconnects from those on its own (seen 16:47 the same day).
+          #
+          # If the reconnect does not take, FAIL the pass.  A failed unit
+          # pages; a pass that searches a disconnected client does not.
+          "${pkgs.writeShellScript "soularr-ensure-slskd-online" ''
+            set -euo pipefail
+            key=$(${pkgs.coreutils}/bin/cat "$CREDENTIALS_DIRECTORY/slskd-api-key")
+            api=http://${slskdAddr}:${toString slskdPort}/api/v0/server
+
+            logged_in() {
+              ${pkgs.curl}/bin/curl -fsS -m 10 -H "X-API-Key: $key" "$api" \
+                | ${pkgs.gnugrep}/bin/grep -q '"isLoggedIn":true'
+            }
+
+            logged_in && exit 0
+
+            echo "soularr: slskd is not logged in to Soulseek; asking it to reconnect" >&2
+            ${pkgs.curl}/bin/curl -fsS -m 30 -X PUT -H "X-API-Key: $key" "$api" >/dev/null || true
+            for _ in $(${pkgs.coreutils}/bin/seq 12); do
+              ${pkgs.coreutils}/bin/sleep 5
+              if logged_in; then
+                echo "soularr: slskd reconnected" >&2
+                exit 0
+              fi
+            done
+
+            echo "soularr: slskd is still not logged in after a reconnect; skipping this pass (check slskd's log for 'Kicked' or INVALIDPASS)" >&2
+            exit 1
           ''}"
         ];
 

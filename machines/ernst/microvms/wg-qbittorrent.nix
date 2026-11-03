@@ -429,6 +429,13 @@
     then config.clan.core.vars.generators.slskd-credentials
     else {files."slskd.env".path = "/no-such-path";};
 
+  # sldl's OWN Soulseek account — a fourth generator, and wholly generated.
+  # See the generator for why it exists and why nothing about it is prompted.
+  # Referenced directly rather than guarded: it has no prompts, so `clan
+  # machines update` generates it unattended and it can never be missing at
+  # evaluation the way a prompted one can.
+  sldlGen = config.clan.core.vars.generators.sldl-credentials;
+
   # qBittorrent.conf, with the WebUI password hash left as a placeholder that
   # the guest substitutes at start.  The ExecStartPre that renders it carries
   # the reasoning: why the whole file is declarative, and what that costs.
@@ -622,6 +629,20 @@ in {
       # design rather than with this mode.
       ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
         ${slskdGen.files."slskd.env".path}        ${hostSecretsDir}/slskd.env
+
+      # sldl's Soulseek account, read by the `sldl` wrapper when run by hand
+      # as the guest's root.  0400 root:root for the same reason as slskd.env.
+      #
+      # NON-FATAL, unlike every line above.  This unit is requiredBy microvm@,
+      # so a hard failure here would mean no VM — no tunnel, no qBittorrent,
+      # no slskd — over the credentials of a tool nobody may be running.  A
+      # missing file only costs the wrapper, which says so by name.
+      if [ -r ${sldlGen.files."sldl.conf".path} ]; then
+        ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
+          ${sldlGen.files."sldl.conf".path}       ${hostSecretsDir}/sldl.conf
+      else
+        echo "microvm-secrets: no sldl credentials at ${sldlGen.files."sldl.conf".path}; the sldl wrapper will refuse to run until 'clan vars generate ernst' and a redeploy" >&2
+      fi
     '';
   };
 
@@ -1082,6 +1103,67 @@ in {
         printf 'SLSKD_API_KEY=cidr=%s;%s\n' \
           '${arrAddr}/32' "$(cat "$out/api-key")"
       } > "$out/slskd.env"
+    '';
+  };
+
+  ##############################################################################
+  # sldl's own Soulseek account.
+  #
+  # ── WHY: ONE ACCOUNT, TWO CLIENTS, AND THE LOSER STAYS DOWN ───────────────
+  #
+  #   Soulseek allows one session per username.  A second login kicks the
+  #   first, and slskd treats a kick as deliberate: it does NOT reconnect.
+  #   Measured 2026-11-03 — slskd.log:
+  #
+  #     12:17:16 INF Kicked from server.
+  #     12:17:16 ERR Disconnected from the Soulseek server: another client
+  #                  logged in using the same username
+  #
+  #   and nothing after it until a manual `PUT /api/v0/server` at 16:26.
+  #   Soularr kept firing on its timer the whole time, every search answered
+  #   `Errored`, and the pass still exited 0 — so the unit stayed green.
+  #   slskd's search history shows the same state on every day back to the
+  #   oldest entry (2026-10-25): ~880 searches a day, all Errored.
+  #
+  #   Upstream sldl says it in so many words: "If you're running a persistent
+  #   Soulseek client, use [sldl] with a separate Soulseek account".
+  #
+  # ── WHY NOTHING IS PROMPTED ──────────────────────────────────────────────
+  #
+  #   The slskd account is prompted because it is a human's identity on the
+  #   network.  This one is not: it is a throwaway for a batch tool.  Soulseek
+  #   has no registration step — the first successful login CREATES the
+  #   account — so a random name and a random password are a complete account
+  #   the moment sldl first connects.
+  #
+  #   And a prompt would cost real deploys: a prompted generator blocks `clan
+  #   machines update` for EVERY machine until answered, and needs a TTY to
+  #   answer.  With no prompts it is generated unattended.
+  #
+  #   The suffix is random rather than fixed because a taken name answers
+  #   INVALIDPASS forever (see slsk-username above) and there is no way to test
+  #   availability except by logging in.  Six hex digits make a collision with
+  #   an existing account implausible.  Read the values back with
+  #     clan vars get ernst sldl-credentials/sldl.conf
+  #
+  # ── OUTPUT IS A CONFIG FRAGMENT, NOT TWO BARE VALUES ─────────────────────
+  #
+  #   sldl reads exactly one config file (-c).  The wrapper below concatenates
+  #   the store config (path = …) and this fragment into a 0600 temp file at
+  #   run time, so the password never reaches the store or the process table
+  #   (`--pass` on the command line would show in `ps`).
+  ##############################################################################
+  clan.core.vars.generators.sldl-credentials = {
+    files."sldl.conf".secret = true;
+
+    runtimeInputs = [pkgs.coreutils pkgs.openssl];
+
+    script = ''
+      set -euo pipefail
+      {
+        printf 'username = goclan-lgo-sldl-%s\n' "$(openssl rand -hex 3)"
+        printf 'password = %s\n'                 "$(openssl rand -hex 16)"
+      } > "$out/sldl.conf"
     '';
   };
 
@@ -2137,13 +2219,18 @@ in {
       # persistent session on the account in the `slskd-credentials` var; a
       # second login on the same name fights it.
       #
-      # NO CLAN VAR FOR THOSE CREDENTIALS, DELIBERATELY.  A prompted generator
-      # blocks `clan machines update` for EVERY machine until it is answered
-      # and needs a TTY to answer, and the second account does not exist yet —
-      # so adding the prompt now would wedge deploys on a credential nobody can
-      # supply.  sldl takes `--user`/`--pass`, or reads them from a config file
-      # (`-c`).  If the account becomes permanent, a generator beside
-      # `slskd-credentials` is the follow-up, and it is a small one.
+      # This was once left to whoever ran sldl, and someone ran it on slskd's
+      # account: slskd was kicked and stayed offline (2026-11-03, see the
+      # `sldl-credentials` generator).  The account is now the generated
+      # `sldl-credentials` var, and the wrapper supplies it, so a plain `sldl`
+      # can no longer log in as slskd.
+      #
+      # THE CREDENTIALS NEVER REACH THE STORE OR `ps`.  sldl reads one config
+      # file, so the wrapper writes store config + secret fragment into a
+      # mktemp file (0600 whatever the umask) and removes it on exit.  It does
+      # not `exec` for that reason — the trap has to outlive sldl.  `--pass`
+      # on the command line would have been simpler and visible to anything
+      # that can list processes.
       #
       # THE WRAPPER EXISTS FOR THE UMASK, WHICH IS NOT COSMETIC.  The M14
       # section of this header spends a page on it: 2770 setgid dirs fix the
@@ -2164,10 +2251,18 @@ in {
         (writeShellApplication {
           name = "sldl";
           text = ''
-            umask 0002
-            exec ${slsk-batchdl}/bin/sldl -c ${writeText "sldl.conf" ''
+            creds=${guestSecretsDir}/sldl.conf
+            if [ ! -r "$creds" ]; then
+              echo "sldl: no credentials at $creds (run as root; the sldl-credentials var may not be generated or staged yet)" >&2
+              exit 1
+            fi
+            conf=$(mktemp)
+            trap 'rm -f "$conf"' EXIT
+            cat ${writeText "sldl.conf" ''
               path = ${sldlRoot}
-            ''} "$@"
+            ''} "$creds" > "$conf"
+            umask 0002
+            ${slsk-batchdl}/bin/sldl -c "$conf" "$@"
           '';
         })
       ];
