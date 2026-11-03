@@ -759,6 +759,38 @@ in {
       # the script do delete+add, which worked — and left crowdsec-setup
       # permanently failed, because setup then found the row already present.
       # Clearing the row and letting setup own the add is the whole fix.
+
+      # ── THE CREDENTIALS DIRECTORY MUST BE WRITABLE, AND IS NOT ──────────
+      #
+      # Upstream's ReadWritePaths for both units covers only
+      #
+      #   /var/lib/crowdsec/data
+      #   /var/lib/crowdsec/data/hub
+      #
+      # and NOT /var/lib/crowdsec itself — which is where
+      # local_api_credentials.yaml has to be written. Under the units'
+      # ProtectSystem the parent is read-only, so `cscli machines add`
+      # registers the machine and then cannot write the file beside the
+      # database:
+      #
+      #   Machine 'traefik' successfully added to the local API.
+      #   Error: cscli machines add: write api credentials in
+      #     '/var/lib/crowdsec/local_api_credentials.yaml' failed:
+      #     open …: read-only file system
+      #
+      # READ-ONLY FILE SYSTEM, NOT PERMISSION DENIED. Defect (1) in this
+      # header describes the same symptom with a different cause and says the
+      # bind mount's ownership makes it unreachable "as deployed" — that was
+      # true of the permission form and is NOT true of this one. uid, gid and
+      # mode are all correct here (3030:3030, 0750, matching both sides of
+      # the mount); the sandbox is what blocks the write.
+      #
+      # Nothing noticed for months because the credentials file already
+      # existed and no code path rewrote it. It only surfaced when the file
+      # had to be recreated.
+      systemd.services.crowdsec.serviceConfig.ReadWritePaths = [rootDir];
+      systemd.services.crowdsec-setup.serviceConfig.ReadWritePaths = [rootDir];
+
       systemd.services.crowdsec-setup.serviceConfig.ExecStartPre = lib.mkBefore [
         (pkgs.writeShellScript "crowdsec-unstick" ''
           set -eu
