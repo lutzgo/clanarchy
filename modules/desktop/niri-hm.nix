@@ -141,6 +141,27 @@
       # clanarchy.desktop.niri.opacity. The opaqueApps rule is last and matches
       # on is-focused=true, so those apps are opaque while focused and dim and
       # blur like everything else once they are not.
+      layer-rules = let
+        s = osConfig.clanarchy.desktop.niri.shadow;
+        r = osConfig.clanarchy.desktop.niri.cornerRadius;
+      in
+        lib.optional (s.enable && s.bar.enable) {
+          # Noctalia v5 names bar surfaces `noctalia-bar-<bar name>`.
+          matches = [{namespace = "^noctalia-bar-";}];
+          geometry-corner-radius = {
+            top-left = r;
+            top-right = r;
+            bottom-right = r;
+            bottom-left = r;
+          };
+          shadow = {
+            enable = true;
+            inherit (s) softness spread color;
+            offset = {inherit (s.offset) x y;};
+            draw-behind-window = s.drawBehindWindow;
+          };
+        };
+
       window-rules =
         [
           {
@@ -494,13 +515,19 @@
             // notifWidth + shadowPadding*2 by the height of the entire stack,
             // then draw rounded, gapped cards inside it. Blurring that gives a
             // hard-edged square block behind (and below, and between) the cards.
-            // Bar/dock/launcher/OSD wrap their content tightly, so the square
-            // blur region coincides with what they paint and is invisible.
+            // Bar and OSD wrap their content tightly, so the square blur region
+            // coincides with what they paint and is invisible.
+            //
+            // Noctalia v5 namespaces: `noctalia-bar-<bar name>` and
+            // `noctalia-osd` (read out of the 5.4.1 binary). The v4 names this
+            // rule used to match (noctalia-bar-content-*, -dock-*, -launcher-*,
+            // -osd-*) no longer exist, so it matched nothing. v5's launcher and
+            // dock live under `noctalia-panel` / `noctalia-attached-panel`,
+            // whose sizing is unmeasured — left out rather than risk the
+            // square-block failure above.
             layer-rule {
-                match namespace="^noctalia-bar-content-"
-                match namespace="^noctalia-dock-"
-                match namespace="^noctalia-launcher-"
-                match namespace="^noctalia-osd-"
+                match namespace="^noctalia-bar-"
+                match namespace="^noctalia-osd$"
                 background-effect {
                     blur true
                 }
