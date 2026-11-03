@@ -82,7 +82,7 @@ in {
     # the steps.
     services.bazarr = {
       enable = true;
-      listenPort = bazarrPort;
+      settings.general.port = bazarrPort;
       user = "bazarr";
       group = "media"; # PRIMARY group — see the header
       openFirewall = false; # explicit list above

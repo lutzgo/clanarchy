@@ -591,7 +591,7 @@ in {
   # briefly-addressed interface had ernst's mDNS on a foreign segment within
   # seconds.  modules/networking/mdns.nix runs the reflector with no interface
   # pinning, which is what makes this worth stating.
-  services.avahi.denyInterfaces = ["iot0"];
+  services.avahi.settings.server."deny-interfaces" = ["iot0"];
 
   ##############################################################################
   # The container.
@@ -606,7 +606,7 @@ in {
   # absent and fixes up `www`. `stateDirs` creates directories; it does not
   # write files, and teaching it to would be a second mechanism for one caller.
   #
-  # `services.avahi.denyInterfaces` also stays: which interfaces the host's own
+  # `services.avahi.settings.server."deny-interfaces"` also stays: which interfaces the host's own
   # mDNS reflector must not touch is a host fact.
   clanarchy.containers.hass = {
     enable = true;
