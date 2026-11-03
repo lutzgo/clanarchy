@@ -64,6 +64,7 @@
       unfocused = {
         enable = false;
       };
+      bar.enable = true;
     };
     blur = {
       passes = 5;
