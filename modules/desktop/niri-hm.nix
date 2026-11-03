@@ -51,6 +51,18 @@
       # `color` has no value — which fails at eval with "was accessed but has
       # no value defined" rather than falling back to niri's default. Hence
       # optionalAttrs at the parent level.
+      # Unset, the niri module writes an EMPTY `default-column-width`, which
+      # means "the window picks": foot opens at 700 px, so two tiles leave
+      # the screen half empty, and Mod+M on an open-maximized Chromium
+      # toggles back to Chromium's own full width — a visible no-op. The
+      # presets give Mod+R something to cycle through.
+      layout.default-column-width = {proportion = 0.5;};
+      layout.preset-column-widths = [
+        {proportion = 1.0 / 3.0;}
+        {proportion = 0.5;}
+        {proportion = 2.0 / 3.0;}
+      ];
+
       layout.border = let
         b = osConfig.clanarchy.desktop.niri.border;
       in
