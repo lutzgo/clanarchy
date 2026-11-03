@@ -219,14 +219,6 @@
       # unfocused. Anything else — a tighter shadow when a window recedes, no
       # offset, a smaller spread — has to come from a window-rule matching
       # is-focused=false, which is what this block emits.
-      # The Noctalia bar is a layer surface, not a window, so the layout
-      # shadow never reaches it. With this on it gets the same shadow — the
-      # values above, i.e. what an unfocused window shows when `unfocused` is
-      # off — through a niri layer-rule. niri draws a layer shadow around the
-      # whole surface rectangle, so it follows the bar's shape only if
-      # Noctalia sizes the surface to what it paints.
-      bar.enable = lib.mkEnableOption "the same shadow on the Noctalia bar";
-
       unfocused = {
         enable = lib.mkEnableOption "a separately shaped shadow for unfocused windows, emitted as an is-focused=false window-rule";
 
