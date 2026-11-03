@@ -461,6 +461,40 @@
   #   If API-key auth is ever actually wanted, the key has to become a clan var
   #   and be substituted into this template exactly as the password hash is —
   #   anything else is storing a secret in a file this unit overwrites.
+  #
+  # ── THE QUEUE IS ON, AND THE TUNNEL DEPENDS ON IT ──────────────────────────────
+  #
+  #   It was off (`QueueingSystemEnabled=false`, no reason recorded), which
+  #   makes EVERY torrent active at once: each one announces, walks the DHT and
+  #   dials peers.  By 2026-11-03 that was 1,874 torrents — ~480 with no seeder
+  #   at all, ~350 still fetching metadata, ~985 seeding — and ~490 open
+  #   connections, ~300 of them SYN-SENT to peers that never answer.
+  #
+  #   The tunnel could not carry that.  MEASURED inside the guest, the same day:
+  #
+  #     queue off (as was)        55–80 % packet loss to 1.1.1.1, ~3 KB/s HTTP
+  #     all torrents paused       0 % loss, 31 MB/s
+  #     queue on, limits below    0 % loss, 32 MB/s, ~70 connections (3 min in)
+  #
+  #   and the ernst HOST, outside the tunnel, had 0 % loss and 42 MB/s
+  #   throughout — so it was this client, not the line or IVPN's server.  The
+  #   loss hit everything in the guest: slskd's server requests timed out at
+  #   5 s, its searches came back empty, and peer downloads failed.
+  #
+  #   `wg show` stayed perfect the whole time (fresh handshake, traffic
+  #   flowing), so a healthy handshake is NOT evidence the tunnel is usable.
+  #   Measure loss through it: `ping -c 20 1.1.1.1` in the guest.
+  #
+  #   The limits are the trial values that produced the third line above.
+  #   IgnoreSlowTorrentsForQueueing stays false on purpose: with it on, every
+  #   dead torrent counts as "slow", stops occupying a slot, and the next one
+  #   starts — until all of them are active again and the queue does nothing.
+  #
+  #   THE COST: queued torrents start in the order they were added, so with
+  #   dead torrents holding slots, a new grab waits behind them.  Each *arr's
+  #   qBittorrent client has to use "Recent Priority: First", and the dead
+  #   torrents want sweeping (docs/runbooks/bindery-dead-torrent-sweep.md).
+  #   Neither lives in this file — the *arr settings are runtime state.
   qbtConfTemplate = pkgs.writeText "qBittorrent.conf" ''
     [LegalNotice]
     Accepted=true
@@ -472,7 +506,11 @@
     Session\Interface=wg0
     Session\InterfaceName=wg0
     Session\Preallocation=true
-    Session\QueueingSystemEnabled=false
+    Session\QueueingSystemEnabled=true
+    Session\MaxActiveDownloads=8
+    Session\MaxActiveUploads=15
+    Session\MaxActiveTorrents=25
+    Session\IgnoreSlowTorrentsForQueueing=false
 
     [Preferences]
     General\Locale=en

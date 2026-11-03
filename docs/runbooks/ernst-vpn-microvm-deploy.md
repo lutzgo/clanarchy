@@ -511,6 +511,7 @@ write-up is the model: what was measured, not what was expected.
 | Guest boots, tunnel never comes up | `nft list set inet killswitch vpn_endpoint` in the guest. Empty means `vpn-killswitch-endpoint.service` did not run — the handshake is blocked, fail-closed, by design. |
 | Tunnel up, nothing resolves | The DNS server is being routed out `eth0` and dropped. See the AntiTracker note in step 6. |
 | Handshake fine, transfers stall | MTU. IVPN wants 1412; if you left the prompt empty you have 1420. Re-run step 1. |
+| Handshake fine, everything slow, slskd timing out | Measure loss *through* the tunnel: `ping -c 20 1.1.1.1` in the guest, then the same on the host. Loss in the guest only means the guest is overloading the tunnel — on 2026-11-03 it was 55–80 % with qBittorrent's queue off and 0 % with it on. Check `ss -tn \| wc -l` and `Session\QueueingSystemEnabled` (see the queue note in `wg-qbittorrent.nix`). `wg show` looks perfect throughout, so it proves nothing here. |
 | Reachable from ernst, not from miralda | `Auto Allow Return Traffic` on the ZBF rule, and the zone-vs-network source question in step 5. |
 | Everything unreachable, guest healthy at L2 | The rule is missing or points at the wrong address. Re-check the DHCP reservation actually took (step 2). |
 
