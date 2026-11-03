@@ -224,7 +224,10 @@ in {
     clan.core.vars.generators.caldav-app-password = {
       files."password" = {
         secret = true;
-        neededFor = "users";
+        # Read by vdirsyncer, a user service — not needed to create users.
+        # sops-nix refuses a non-root owner on `users`-tier secrets.
+        neededFor = "services";
+        owner = cfg.username;
       };
       prompts."password" = {
         description = "Nextcloud app password for CalDAV (Settings → Security → App passwords)";
@@ -232,18 +235,6 @@ in {
       };
       runtimeInputs = [pkgs.coreutils];
       script = ''${pkgs.coreutils}/bin/cat "$prompts/password" > "$out/password"'';
-    };
-
-    # sops-install-secrets places every clan var as 0400 root:root with no
-    # per-file owner option exposed.  Run a chown after setupSecretsForUsers
-    # so the user service can read the password without sudo.
-    system.activationScripts.caldav-secret-perms = {
-      deps = ["setupSecretsForUsers"];
-      text = ''
-        if [ -f /run/secrets-for-users/vars/caldav-app-password/password ]; then
-          chown ${cfg.username} /run/secrets-for-users/vars/caldav-app-password/password
-        fi
-      '';
     };
 
     # ── Home Manager config for lgo ───────────────────────────────────────
@@ -321,7 +312,17 @@ in {
         Service = {
           Type = "oneshot";
           # Ensure the vdir collection and status dirs exist before syncing.
-          ExecStartPre = "${pkgs.coreutils}/bin/mkdir -p ${orgOutDir} ${statusDir}";
+          # Then discover once: `sync` refuses to run until `discover` has
+          # written <status>/org_push.collections, which a fresh install
+          # (or a reinstall) does not have. stdin is closed so a "create the
+          # collection?" prompt aborts the unit instead of answering itself.
+          ExecStartPre = [
+            "${pkgs.coreutils}/bin/mkdir -p ${orgOutDir} ${statusDir}"
+            "${pkgs.writeShellScript "vdirsyncer-discover-once" ''
+              [ -e ${lib.escapeShellArg "${statusDir}/org_push.collections"} ] && exit 0
+              exec ${pkgs.vdirsyncer}/bin/vdirsyncer discover org_push </dev/null
+            ''}"
+          ];
           ExecStart = "${pkgs.vdirsyncer}/bin/vdirsyncer sync org_push";
         };
       };

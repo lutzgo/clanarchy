@@ -56,6 +56,10 @@
     # Valent — KDE Connect protocol daemon for Noctalia valent-connect plugin.
     # GCR_SSH_AGENT_PIPE="" prevents gcr from importing the TLS key into gpg-agent
     # (which would trigger a blocking pinentry prompt for the headless service).
+    # Hide the package's own autostart entry — see modules/apps/communication.nix.
+    environment.etc."xdg/autostart/ca.andyholmes.Valent-autostart.desktop" = lib.mkIf config.clanarchy.desktop.labwc.valent.enable {
+      source = pkgs.writeText "valent-autostart-hidden.desktop" "[Desktop Entry]\nType=Application\nName=Valent\nHidden=true\n";
+    };
     systemd.user.services.valent = lib.mkIf config.clanarchy.desktop.labwc.valent.enable {
       description = "Valent - KDE Connect protocol";
       wantedBy = ["graphical-session.target"];

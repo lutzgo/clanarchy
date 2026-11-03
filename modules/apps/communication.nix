@@ -32,6 +32,13 @@ in {
       };
     };
 
+    # The valent package also ships an XDG autostart entry, which systemd
+    # turns into a second unit that dies on "Unable to acquire bus name".
+    # Same file name, Hidden=true, in /etc/xdg — first in XDG_CONFIG_DIRS,
+    # ahead of the package's copy under /run/current-system/sw/etc/xdg.
+    environment.etc."xdg/autostart/ca.andyholmes.Valent-autostart.desktop".source =
+      pkgs.writeText "valent-autostart-hidden.desktop" "[Desktop Entry]\nType=Application\nName=Valent\nHidden=true\n";
+
     # Valent / KDE Connect protocol — ports 1714-1764 TCP+UDP
     networking.firewall = {
       allowedTCPPortRanges = [
