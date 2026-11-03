@@ -734,44 +734,38 @@ in {
       # leading "" is what RESETS an additive directive rather than
       # appending to it — the trap this repo has written down before.
       ######################################################################
-      # ── crowdsec-unstick: NOW ALSO REGISTERS, because 26.11 stopped ──────
+      # ── crowdsec-unstick, ON crowdsec-setup WHERE IT BELONGS ─────────────
       #
-      # At 26.05 the nixpkgs module's own ExecStartPre registered the machine
-      # in the LAPI database and wrote the credentials file; defect (1) above
-      # is written against that behaviour. crowdsec 1.8.1 in 26.11 DOES NOT —
-      # the live unit's only ExecStartPre entries are this script and
-      # `crowdsec -t -error`. Nothing creates the credentials.
+      # 26.11 moved registration out of crowdsec.service's ExecStartPre and
+      # into its own oneshot, `crowdsec-setup.service`, which crowdsec.service
+      # now Requires and runs After. The setup unit's guard is unchanged in
+      # spirit — "no credentials file, so add the machine" — and so is its
+      # failure mode:
       #
-      # That took ernst's WAN ingress unprotected on 2026-11-02, and did it
-      # in the quiet way defect (1) warns about: the unit sits `activating`,
-      # not `failed`, so the host's `systemctl --failed` was EMPTY while
-      # CrowdSec had never started. Only the ExposedAndUnprotected alert
-      # caught it. Restart counter was at 127.
+      #   No local API credentials currently created. Generating...
+      #   Error: cscli machines add: unable to create machine:
+      #     user 'traefik': user already exist
       #
-      #   level=fatal msg="loading api client: while reading yaml file:
-      #     open /var/lib/crowdsec/local_api_credentials.yaml"
+      # which is defect (1) exactly: a row left behind by a half-finished
+      # registration makes the add fail forever, and the credentials file it
+      # would have written never appears.
       #
-      # So the script now does BOTH halves, and only when the credentials are
-      # missing — which keeps it idempotent on every normal start:
+      # THE SCRIPT WAS ALREADY RIGHT; IT WAS ATTACHED TO THE WRONG UNIT. On
+      # crowdsec.service it ran AFTER setup had already failed, so it cleared
+      # the row too late to help and the setup unit stayed failed even once
+      # the agent was running. It belongs on the unit that does the add.
       #
-      #   delete  clears a row left behind by a half-finished registration,
-      #           which is what the original script did alone. Without it the
-      #           add fails with "user already exist" and loops forever.
-      #   add     recreates the row AND writes the credentials file.
-      #
-      # It can write because the bind mount gives /var/lib/crowdsec to the
-      # crowdsec user; see defect (1) for why that is load-bearing rather
-      # than incidental.
-      systemd.services.crowdsec.serviceConfig.ExecStartPre = lib.mkBefore [
+      # It does NOT add the machine itself. An earlier attempt at this made
+      # the script do delete+add, which worked — and left crowdsec-setup
+      # permanently failed, because setup then found the row already present.
+      # Clearing the row and letting setup own the add is the whole fix.
+      systemd.services.crowdsec-setup.serviceConfig.ExecStartPre = lib.mkBefore [
         (pkgs.writeShellScript "crowdsec-unstick" ''
           set -eu
           if [ ! -s ${credFile} ]; then
             ${lib.getExe' config.services.crowdsec.package "cscli"} -c ${etcConfig} \
               machines delete ${lib.escapeShellArg config.services.crowdsec.name} \
               >/dev/null 2>&1 || true
-            ${lib.getExe' config.services.crowdsec.package "cscli"} -c ${etcConfig} \
-              machines add ${lib.escapeShellArg config.services.crowdsec.name} \
-              --auto --file ${credFile}
           fi
         '')
       ];
