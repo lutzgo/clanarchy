@@ -28,9 +28,7 @@
 
   config = lib.mkIf config.clanarchy.desktop.labwc.enable {
     # labwc compositor + Wayland utilities
-    environment.systemPackages = with pkgs;
-      [labwc wlopm swappy satty]
-      ++ lib.optionals config.clanarchy.desktop.labwc.valent.enable [valent glib];
+    environment.systemPackages = with pkgs; [labwc wlopm swappy satty];
 
     # UWSM — creates a uwsm-labwc.desktop session file picked up by regreet.
     programs.uwsm.waylandCompositors.labwc = {
@@ -53,38 +51,7 @@
     # Shared HM desktop module for all graphical users
     home-manager.sharedModules = [./labwc-hm.nix];
 
-    # Valent — KDE Connect protocol daemon for Noctalia valent-connect plugin.
-    # GCR_SSH_AGENT_PIPE="" prevents gcr from importing the TLS key into gpg-agent
-    # (which would trigger a blocking pinentry prompt for the headless service).
-    # Hide the package's own autostart entry — see modules/apps/communication.nix.
-    environment.etc."xdg/autostart/ca.andyholmes.Valent-autostart.desktop" = lib.mkIf config.clanarchy.desktop.labwc.valent.enable {
-      source = pkgs.writeText "valent-autostart-hidden.desktop" "[Desktop Entry]\nType=Application\nName=Valent\nHidden=true\n";
-    };
-    systemd.user.services.valent = lib.mkIf config.clanarchy.desktop.labwc.valent.enable {
-      description = "Valent - KDE Connect protocol";
-      wantedBy = ["graphical-session.target"];
-      partOf = ["graphical-session.target"];
-      environment.GCR_SSH_AGENT_PIPE = "";
-      serviceConfig = {
-        ExecStart = "${pkgs.valent}/bin/valent --gapplication-service";
-        Restart = "on-failure";
-        RestartSec = 5;
-      };
-    };
-
-    networking.firewall = lib.mkIf config.clanarchy.desktop.labwc.valent.enable {
-      allowedTCPPortRanges = [
-        {
-          from = 1714;
-          to = 1764;
-        }
-      ];
-      allowedUDPPortRanges = [
-        {
-          from = 1714;
-          to = 1764;
-        }
-      ];
-    };
+    # Valent for Noctalia's valent-connect plugin — see modules/apps/valent.nix.
+    clanarchy.apps.valent.enable = lib.mkIf config.clanarchy.desktop.labwc.valent.enable true;
   };
 }
