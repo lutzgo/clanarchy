@@ -49,8 +49,13 @@
   # option: disko already knows it, and a second source would drift.
   btrfsPartition = config.disko.devices.disk.${diskName}.content.partitions.btrfs.content;
   isLuks = (btrfsPartition.type or "") == "luks";
+  # LVM on LUKS (`swapInLuks` in modules/disko/btrfs.nix): the LUKS mapping
+  # is a physical volume, and the filesystem is its `root` LV.
+  isLvm = isLuks && (btrfsPartition.content.type or "") == "lvm_pv";
   rootPart =
-    if isLuks
+    if isLvm
+    then "/dev/mapper/${btrfsPartition.content.vg}-root"
+    else if isLuks
     then "/dev/mapper/${btrfsPartition.name}"
     else "/dev/disk/by-partlabel/disk-${diskName}-btrfs";
 
@@ -89,7 +94,13 @@ in {
       # rather than `wants` — with no device there is nothing sane to do, and
       # failing here is safe now that the script no longer deletes anything
       # before its replacement exists.
-      after = [rootPartUnit];
+      # AFTER THE RESUME ATTEMPT, or a resume corrupts the filesystem: the
+      # hibernated kernel still has @root and @home mounted, and this script
+      # moves both aside. An unencrypted swap appears seconds before the LUKS
+      # prompt is answered, which hid the missing order; swap inside LUKS
+      # appears at the same moment as the root, and the two would race.
+      # Ordering only — a no-op when the resume unit is not in the transaction.
+      after = [rootPartUnit "systemd-hibernate-resume.service"];
       requires = [rootPartUnit];
       before = ["sysroot.mount"];
       unitConfig.DefaultDependencies = "no";

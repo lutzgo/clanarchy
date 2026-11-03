@@ -6,15 +6,24 @@
   ...
 }: {
   networking.hostName = "miralda";
-  networking.hostId = "ebeed95c";
+  # No networking.hostId: that is a ZFS requirement (it keys pool ownership).
 
-  # ZFS root, with the impermanence rollback that goes with it.  Stated rather
-  # than derived: modules/rootfs.nix used to compute this from
-  # `clanarchy.channel`, which meant a machine could not be moved to unstable
-  # without silently changing filesystem.  The kernel problem that justified
-  # the coupling is now solved directly there, by pinning
-  # `zfs.latestCompatibleLinuxPackages`.
-  clanarchy.rootfs = "zfs";
+  # btrfs on LVM on LUKS, with the impermanence rollback that goes with it.
+  # See machines/miralda/disko.nix. boot.resumeDevice is set by disko, to the
+  # swap LV inside the LUKS container.
+  clanarchy.rootfs = "btrfs";
+
+  # One passphrase at boot: the LUKS passphrase systemd-cryptsetup cached is
+  # reused to unlock gnome-keyring after autologin.
+  #
+  # Your user password MUST equal the LUKS passphrase. Nothing checks it; a
+  # mismatch means login succeeds and the keyring quietly stays locked.
+  clanarchy.singlePasswordBoot = {
+    enable = true;
+    user = "lgo";
+    # The .desktop Exec line, not the session name — see the option docs.
+    command = "uwsm start -F -- /run/current-system/sw/bin/niri-session";
+  };
 
   # DNS: no global `networking.search` — see modules/networking/resolved.nix
   # for the rationale.  The skynet.lan search suffix + Technitium routing
@@ -118,7 +127,7 @@
   clanarchy.immich.upload.enable = true;
 
   # Mount the ESP by DISK-ID — not by the partlabel disko assigns, and not by
-  # PARTUUID.  modules/disko/base.nix owns the partlabel ambiguity
+  # PARTUUID.  modules/disko/btrfs.nix owns the partlabel ambiguity
   # (`disk-main-ESP` on every machine in the fleet and on every installer
   # stick) and what it costs.
   #
@@ -131,14 +140,14 @@
   #
   # The disk-id path has neither problem: it names model+serial, so it can
   # never resolve to a USB stick, and the partition number is fixed by
-  # modules/disko/base.nix (ESP is always partition 1).  Survives reinstalls
+  # modules/disko/btrfs.nix (ESP is always partition 1).  Survives reinstalls
   # untouched.  Same device string as machines/miralda/disko.nix, plus `-part1`
   # — verified to resolve to the same /dev/nvme0n1p1 the PARTUUID did.
   fileSystems."/boot".device =
     lib.mkForce "/dev/disk/by-id/nvme-WD_BLACK_SN850X_1000GB_23141B801914-part1";
 
-  # ZFS pool alerts via ntfy.sh — URL prompted at `clan vars generate miralda` time.
-  clanarchy.zfs.ntfy.enable = true;
+  # No clanarchy.zfs.ntfy: its zedlet reads ZFS-event variables (ZEVENT_*),
+  # and btrfs has no equivalent hook.
 
   # Hand big compiles (birte's Valve kernel above all) to ernst — 32 cores
   # and 249 GB, versus this machine's 16 cores and frequently <8 GB free.

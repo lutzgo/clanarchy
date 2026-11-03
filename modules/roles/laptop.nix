@@ -66,6 +66,7 @@ in {
           clanarchy.roles.laptop.hybridSleep.enable is on but this machine
           declares no swap. Pass `enableSwap = true` (and a `swapSize` of at
           least RAM) to the disko template in the machine's disko.nix, and
+          either `swapInLuks = true` (encrypted, LUKS-keyed) or
           `encryptSwap = false` — a randomly-keyed swap partition loses its
           key across the suspend, which is the one thing hibernation needs it
           to keep.

@@ -42,6 +42,17 @@
 #                     /home/deck/.local/share/Steam.  Whoever sets this is
 #                     responsible for the mountpoint's ownership (a fresh
 #                     subvol is root:root); see machines/birte/deck.nix.
+#   swapInLuks      — put swap INSIDE the LUKS container, as LVM on LUKS:
+#                     one encrypted volume holding a `swap` LV and a `root`
+#                     LV for the btrfs (default false).  This is how a
+#                     machine gets hibernation AND an encrypted swap: the
+#                     image keeps a stable key (the LUKS one), and there is
+#                     still exactly one passphrase prompt.  Needs
+#                     enableEncryption and enableSwap; replaces the swap
+#                     partition, so encryptSwap does not apply.  The volume
+#                     group is named after diskName, so the devices are
+#                     /dev/mapper/<diskName>-swap and -root, and disko sets
+#                     boot.resumeDevice to the swap LV itself.
 #   diskName        — disko's name for this disk, which becomes the GPT
 #                     partition label prefix: `disk-<diskName>-<partition>`.
 #                     MUST be unique per machine, and must never be "main".
@@ -65,7 +76,16 @@
   enableEncryption ? false,
   luksName ? "cryptroot",
   gamesMountpoint ? "/games",
+  swapInLuks ? false,
 }: {lib, ...}:
+assert lib.assertMsg (!swapInLuks || (enableEncryption && enableSwap)) ''
+  modules/disko/btrfs.nix: swapInLuks needs enableEncryption and enableSwap.
+'';
+assert lib.assertMsg (!swapInLuks || builtins.match "[a-z0-9]+" diskName != null) ''
+  modules/disko/btrfs.nix: with swapInLuks, diskName names the LVM volume
+  group and must be lowercase alphanumeric — a hyphen is doubled in the
+  /dev/mapper name, which modules/btrfs-impermanence.nix does not expect.
+'';
 assert lib.assertMsg (diskName != "main") ''
   modules/disko/btrfs.nix: diskName must not be "main" — it collides with the
   Clan installer USB's partition labels during `clan machines install`.
@@ -132,7 +152,7 @@ in {
               };
             };
           }
-          // lib.optionalAttrs enableSwap {
+          // lib.optionalAttrs (enableSwap && !swapInLuks) {
             swap = {
               size = swapSize;
               content =
@@ -152,11 +172,38 @@ in {
                   # flash; it does leak which blocks are in use, which is the
                   # usual and accepted trade.
                   settings.allowDiscards = true;
-                  content = btrfsContent;
+                  content =
+                    if swapInLuks
+                    then {
+                      type = "lvm_pv";
+                      vg = diskName;
+                    }
+                    else btrfsContent;
                 }
                 else btrfsContent;
             };
           };
+      };
+    };
+
+    # LVM on LUKS (swapInLuks). disko creates a 100%FREE volume last, so the
+    # swap LV gets its full size whatever the attribute order.
+    lvm_vg = lib.optionalAttrs swapInLuks {
+      ${diskName} = {
+        type = "lvm_vg";
+        lvs = {
+          swap = {
+            size = swapSize;
+            content = {
+              type = "swap";
+              resumeDevice = true;
+            };
+          };
+          root = {
+            size = "100%FREE";
+            content = btrfsContent;
+          };
+        };
       };
     };
   };
