@@ -13,46 +13,9 @@ in {
     environment.systemPackages = with pkgs; [
       signal-desktop # messaging (unfree)
       anytype # knowledge base / notes (unfree)
-      valent # KDE Connect protocol
-      glib # provides gdbus — needed by Noctalia valent-connect plugin
-      kdePackages.qtwebsockets # required by valent
     ];
 
-    # Valent — GCR_SSH_AGENT_PIPE="" prevents gcr from importing the TLS key into
-    # gpg-agent (which would trigger a blocking pinentry prompt for the headless service).
-    systemd.user.services.valent = {
-      description = "Valent - KDE Connect protocol";
-      wantedBy = ["graphical-session.target"];
-      partOf = ["graphical-session.target"];
-      environment.GCR_SSH_AGENT_PIPE = "";
-      serviceConfig = {
-        ExecStart = "${pkgs.valent}/bin/valent --gapplication-service";
-        Restart = "on-failure";
-        RestartSec = 5;
-      };
-    };
-
-    # The valent package also ships an XDG autostart entry, which systemd
-    # turns into a second unit that dies on "Unable to acquire bus name".
-    # Same file name, Hidden=true, in /etc/xdg — first in XDG_CONFIG_DIRS,
-    # ahead of the package's copy under /run/current-system/sw/etc/xdg.
-    environment.etc."xdg/autostart/ca.andyholmes.Valent-autostart.desktop".source =
-      pkgs.writeText "valent-autostart-hidden.desktop" "[Desktop Entry]\nType=Application\nName=Valent\nHidden=true\n";
-
-    # Valent / KDE Connect protocol — ports 1714-1764 TCP+UDP
-    networking.firewall = {
-      allowedTCPPortRanges = [
-        {
-          from = 1714;
-          to = 1764;
-        }
-      ];
-      allowedUDPPortRanges = [
-        {
-          from = 1714;
-          to = 1764;
-        }
-      ];
-    };
+    # Valent, one systemd-managed instance — see modules/apps/valent.nix.
+    clanarchy.apps.valent.enable = true;
   };
 }

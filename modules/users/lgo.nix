@@ -90,6 +90,9 @@ in {
     # each prompt separately for lutz's password and nothing would keep the
     # answers equal.
     ../mail-accounts.nix
+    # KeePassXC settings + KeeShare signing key (clan var). Inert unless
+    # clanarchy.users.lgo.enable.
+    ./lgo-keepassxc.nix
   ];
 
   options.clanarchy.users.lgo = {
