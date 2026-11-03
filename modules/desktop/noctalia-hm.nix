@@ -177,9 +177,11 @@ in {
             font_family = "MonaspiceNe Nerd Font Propo";
             margin_edge = 5;
             margin_ends = 9;
-            start = ["workspaces" "group:g2" "opencode" "mimir" "spacer" "active_window"];
+            # As arranged on jens, 2026-11-03 15:00, with the session button on
+            # the left only.
+            start = ["session" "workspaces" "group:g2" "spacer" "active_window"];
             center = ["launcher" "clock" "keybinds"];
-            end = ["group:g1" "tray" "battery" "session"];
+            end = ["group:g1" "tray" "battery" "group:g3"];
 
             # TOML `[[bar.default.capsule_group]]` — an ARRAY of tables, so a
             # Nix list of attrsets. Order in the list is order on the bar.
@@ -198,6 +200,20 @@ in {
               {
                 id = "g2";
                 members = ["widget_4" "widget_5"];
+                enabled = true;
+                accordion = false;
+                accordion_direction = "end";
+                border_width = 1.0;
+                fill = "surface_container";
+                opacity = 1.0;
+                padding = 6.0;
+              }
+              # The two AI plugins, OpenCode then Mimir. jens's UI named these
+              # instances `widget` and `status`; they are `opencode` and
+              # `mimir` here (widget.* below) — same widgets, readable names.
+              {
+                id = "g3";
+                members = ["opencode" "mimir"];
                 enabled = true;
                 accordion = false;
                 accordion_direction = "end";
@@ -439,6 +455,35 @@ in {
   # Only the known-v4 names are removed, and only when they still contain
   # QML. A v5 plugin that happens to share a name is left alone, and so is
   # anything the catalogue has installed since.
+  # lgo's bar comes ONLY from the settings above. Noctalia layers its runtime
+  # state file over config.toml, so a bar arranged in the UI would otherwise
+  # keep winning until someone deletes it by hand — which is how jens and
+  # miralda came to show different bars. Every switch drops the `bar` and
+  # `widget` tables from that state file; everything else in it (lockscreen,
+  # plugin state, …) is left alone. Takes effect when Noctalia next starts.
+  home.activation.noctaliaBarFromConfig = lib.mkIf isLgo (lib.hm.dag.entryAfter ["writeBoundary"] (let
+    py = pkgs.python3.withPackages (ps: [ps.tomli-w]);
+    strip = pkgs.writeText "noctalia-strip-bar.py" ''
+      import os, sys, tomllib, tomli_w
+      path = sys.argv[1]
+      with open(path, "rb") as f:
+          state = tomllib.load(f)
+      dropped = [k for k in ("bar", "widget") if state.pop(k, None) is not None]
+      if dropped:
+          tmp = path + ".tmp"
+          with open(tmp, "wb") as f:
+              tomli_w.dump(state, f)
+          os.chmod(tmp, os.stat(path).st_mode)
+          os.replace(tmp, path)
+          print("noctalia: removed UI overrides for " + ", ".join(dropped))
+    '';
+  in ''
+    _state="$HOME/.local/state/noctalia/settings.toml"
+    if [ -f "$_state" ]; then
+      run ${py}/bin/python3 ${strip} "$_state"
+    fi
+  ''));
+
   home.activation.pruneNoctaliaV4Plugins = lib.hm.dag.entryAfter ["writeBoundary"] ''
     _plugdir="$HOME/.config/noctalia/plugins"
     for _p in assistant-panel calibre-provider clipper color-scheme-creator \
