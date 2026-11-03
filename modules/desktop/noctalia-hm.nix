@@ -166,6 +166,7 @@ in {
             margin_edge = 5;
             margin_ends = 9;
             start = ["workspaces" "group:g2" "spacer" "active_window"];
+            center = ["launcher" "spacer" "clock" "spacer" "keybinds"];
             end = ["group:g1" "tray" "battery" "session"];
 
             # TOML `[[bar.default.capsule_group]]` — an ARRAY of tables, so a
@@ -210,7 +211,6 @@ in {
             "noctalia/kaomoji"
             "noctalia/screen_recorder"
             "tadomika_ari/config-swap"
-            "h-jangra/keyviz"
             "kenn/keybind-cheatsheet"
             "ayagmar/obs-control"
             "yocraft/qrcode"
@@ -232,11 +232,17 @@ in {
           # and the table name is what the bar or a capsule_group references —
           # so `widget_4` in group g2 resolves to the qrcode plugin here.
           #
-          # Only the five the current layout actually uses. The previous
+          # Only the ones the current layout actually uses. The previous
           # capture also carried date, launcher, file-search, keybinds_2, ocr
           # and an emoji-picker instance; those widgets are no longer on the
           # bar, and three of their plugins are no longer enabled.
           widget = {
+            clock = {
+              anchor = true;
+              format = "{:%A} {:%Y-%m-%d} {:%H:%M}";
+              actions.left = "panel-toggle control-center home";
+            };
+            keybinds.type = "kenn/keybind-cheatsheet:keybinds";
             status_3.type = "ayagmar/obs-control:status";
             status_4.type = "aristides/udiskie:status";
             widget_2.type = "tadomika_ari/config-swap:widget";
