@@ -402,7 +402,14 @@ in {
         # ZeroTier IPs are included so that `clan machines update` (which
         # connects via ZeroTier) also picks up the override.
         settings = {
-          "miralda.goclan.org fdda:106a:123a:d561:1099:93da:106a:123a" = {
+          # miralda.local AND 10.0.10.171 added 2026-11-03, when jens became
+          # the machine driving deploys: `ssh root@miralda` from jens failed
+          # with "Could not resolve hostname", and `miralda.local` — the name
+          # that actually works for a laptop, over mDNS — was not in this
+          # pattern list, so it would have re-triggered the GnuPG 2.4.x card
+          # failure this block exists to prevent. Every other machine already
+          # lists its .local form; miralda was the one gap.
+          "miralda miralda.local miralda.goclan.org 10.0.10.171 fdda:106a:123a:d561:1099:93da:106a:123a" = {
             HostKeyAlgorithms = "ssh-ed25519";
           };
           "biene.local biene.skynet.lan 10.0.10.105 fdda:106a:123a:d561:1099:93da:ef5d:598c" = {
