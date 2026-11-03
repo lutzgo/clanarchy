@@ -90,6 +90,32 @@ buildKodiAddon rec {
     hash = "sha256-BgfgLpDySP+Os7kf2cxks/+rfdi2djDOEwnltGmKoEY=";
   };
 
+  # ── IMMICH 3 BROKE THE ALBUM LIST, AND THIS IS THE CONTAINMENT CASHED IN ──
+  #
+  #   The header predicted it: "If a future Immich bump breaks it, the failure
+  #   is a photo browser on the TV".  MEASURED 2026-11-03 against ernst's
+  #   Immich 3.3.5: GET /api/albums returns 594 albums and NONE carries
+  #   `ownerId`, `owner` or `assets`.  models.py declares every Album field
+  #   required, so the first album raised
+  #
+  #     TypeError: Album.__init__() missing 3 required positional
+  #                arguments: 'ownerId', 'owner', and 'assets'
+  #
+  #   and Kodi showed an error instead of the album list.  Upstream #38 is the
+  #   same crash from another direction (an empty album has no startDate /
+  #   endDate / lastModifiedAssetTimestamp) and is still open; upstream has
+  #   not moved since this pin.
+  #
+  #   The patch makes every Album field optional except the two the add-on
+  #   reads unconditionally, `albumName` and `id` — album.py touches only
+  #   those plus `startDate` and `albumThumbnailAssetId`, both already behind
+  #   an `if`.  Checked against the live response: unpatched fails on it with
+  #   the error above, patched parses all 594.
+  #
+  #   DROP IT when bumping past a release that fixes upstream #38, after
+  #   checking the new models.py — `patches` failing to apply is the reminder.
+  patches = [./immich-kodi-immich3-album.patch];
+
   meta = {
     homepage = "https://github.com/vladd11/immich-kodi";
     description = "Browse an Immich photo library from Kodi";
