@@ -56,6 +56,7 @@
       # the screen half empty, and Mod+M on an open-maximized Chromium
       # toggles back to Chromium's own full width — a visible no-op. The
       # presets give Mod+R something to cycle through.
+      layout.gaps = osConfig.clanarchy.desktop.niri.gaps;
       layout.default-column-width = {proportion = 0.5;};
       layout.preset-column-widths = [
         {proportion = 1.0 / 3.0;}

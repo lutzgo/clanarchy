@@ -148,6 +148,12 @@
       };
     };
 
+    gaps = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 16;
+      description = "Gap between windows, and between windows and the screen edge, in logical pixels. 16 is niri's own default.";
+    };
+
     cornerRadius = lib.mkOption {
       type = lib.types.float;
       default = 8.0;
