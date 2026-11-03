@@ -80,16 +80,38 @@
   # two Niri workstations declare their palettes the same way.
   clanarchy.theme = "rose-pine";
 
-  # Drop shadows, same values as miralda — see the comment there for why these
-  # differ from niri's stock shadow. Stated per machine rather than defaulted
-  # on, because the option is off fleet-wide and the two Niri workstations
-  # declare their appearance the same way they declare their palettes.
-  clanarchy.desktop.niri.shadow = {
-    enable = true;
-    softness = 20;
-    spread = 2;
-    offset.y = 4;
-    color = "#00000090";
+  # lgo's niri look, the same as miralda's — see the note there; keep the two
+  # in step. Gaps are this machine's own: smaller, for the 12" panel.
+  clanarchy.desktop.niri = {
+    gaps = 10;
+    shadow = {
+      enable = true;
+      softness = 15;
+      spread = 3;
+      offset.y = 0;
+      offset.x = 0;
+      color = "#${config.lib.stylix.colors.base0D}50";
+      unfocused = {
+        enable = false;
+      };
+    };
+    blur = {
+      passes = 5;
+      offset = 6.5;
+      noise = 0.0;
+      saturation = 1.5;
+    };
+    cornerRadius = 10.0;
+    border = {
+      enable = false;
+      width = 0;
+    };
+    opacity = {
+      focused = 0.75;
+      unfocused = 0.65;
+      terminal = 0.75;
+    };
+    focusRing.enable = false;
   };
 
   # 2-in-1: accelerometer + auto-rotation + on-screen keyboard.

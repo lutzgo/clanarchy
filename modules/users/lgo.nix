@@ -180,6 +180,10 @@ in {
         "Projects"
         "Public"
         "citizengo"
+        # Nextcloud sync folder for cloud.goclan.org, next to citizengo's.
+        # Unpersisted it is wiped by the @home rollback on every boot, and the
+        # client then reports "The folder /home/lgo/goclan/ doesn't exist".
+        "goclan"
       ];
       files = [
         ".age/yubikey-identity.txt" # PIV-backed age identity (recipient stored in clan vars)

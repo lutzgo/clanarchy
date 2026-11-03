@@ -18,6 +18,18 @@
   # plugin scoped to a compositor, and conflating them breaks silently the
   # first time lgo runs labwc or a second person runs niri.
   isLgo = config.home.username == "lgo";
+
+  # The local-ai `opencode` role's generated config, when this user has one.
+  # It embeds a store path (the instructions file), so drop the string
+  # context before parsing — only plain values are read from it.
+  opencodeCfg =
+    if config.xdg.configFile ? "opencode/config.json"
+    then builtins.fromJSON (builtins.unsafeDiscardStringContext config.xdg.configFile."opencode/config.json".text)
+    else null;
+  opencodeProvider =
+    if opencodeCfg != null
+    then builtins.head (lib.splitString "/" opencodeCfg.model)
+    else null;
 in {
   imports = [
     inputs.noctalia.homeModules.default # provides programs.noctalia (v5; was programs.noctalia-shell)
@@ -165,8 +177,8 @@ in {
             font_family = "MonaspiceNe Nerd Font Propo";
             margin_edge = 5;
             margin_ends = 9;
-            start = ["workspaces" "group:g2" "spacer" "active_window"];
-            center = ["launcher" "spacer" "clock" "spacer" "keybinds"];
+            start = ["workspaces" "group:g2" "opencode" "mimir" "spacer" "active_window"];
+            center = ["launcher" "clock" "keybinds"];
             end = ["group:g1" "tray" "battery" "session"];
 
             # TOML `[[bar.default.capsule_group]]` — an ARRAY of tables, so a
@@ -217,6 +229,8 @@ in {
             "abuamar142/qr-share"
             "alexander/screen-toolkit"
             "aristides/udiskie"
+            "weinguyen/opencode-companion"
+            "alexander/mimir"
           ];
 
           # Per-plugin panel placement, as set in the UI.
@@ -226,6 +240,33 @@ in {
             "kenn/keybind-cheatsheet".cheatsheet_placement = "attached";
             "tadomika_ari/config-swap".panel_placement = "attached";
             "yocraft/qrcode".panel_placement = "attached";
+
+            # Both AI plugins are pointed at ernst through what the local-ai
+            # `opencode` role generates (clan.nix, roles.opencode.*), read back
+            # from its config.json rather than restated — so the model and the
+            # tunnel endpoint stay chosen in one place. Absent on machines
+            # without that role, where both plugins keep their own defaults.
+            #
+            # opencode-companion, "auto": runs its own `opencode serve` on
+            # loopback, which reads that same config.json.
+            "weinguyen/opencode-companion" =
+              {
+                server_mode = "auto";
+                auto_start = true;
+                default_workspace = "${config.home.homeDirectory}/Projects";
+              }
+              // lib.optionalAttrs (opencodeCfg != null) {
+                default_model = opencodeCfg.model;
+              };
+
+            # mimir: plain OpenAI-compatible chat. Same endpoint as opencode's
+            # provider (the tunnel to ernst's llama.cpp), model id without the
+            # `<provider>/` prefix, and no API key — llama.cpp needs none, and
+            # mimir sends no Authorization header when the key is empty.
+            "alexander/mimir" = lib.optionalAttrs (opencodeCfg != null) {
+              api_endpoint = opencodeCfg.provider.${opencodeProvider}.options.baseURL;
+              default_model = lib.removePrefix "${opencodeProvider}/" opencodeCfg.model;
+            };
           };
 
           # Widget instances. A plugin widget is named `<plugin-id>:<widget>`,
@@ -237,6 +278,9 @@ in {
           # and an emoji-picker instance; those widgets are no longer on the
           # bar, and three of their plugins are no longer enabled.
           widget = {
+            launcher.glyph = "rocket";
+            opencode.type = "weinguyen/opencode-companion:widget";
+            mimir.type = "alexander/mimir:status";
             clock = {
               anchor = true;
               format = "{:%A} {:%Y-%m-%d} {:%H:%M}";
@@ -625,6 +669,21 @@ in {
       imagemagick
       qrencode
       tesseract
+      # alexander/screen-toolkit: `hyprpicker` for the colour picker,
+      # `zbarimg` for the QR reader. Both are looked up only when the feature
+      # starts, so their absence looked like the tool simply not working.
+      hyprpicker
+      zbar
+      # …and for its recordings: `ffmpeg`/`ffprobe` (GIF conversion,
+      # thumbnails) and `pactl` (default audio source). pactl is linked out of
+      # the pulseaudio package ALONE: the whole package would also put
+      # pulseaudio.service/.socket into the user's unit path, and that socket
+      # claims the one pipewire-pulse serves.
+      ffmpeg
+      (pkgs.runCommand "pactl-only" {} ''
+        mkdir -p $out/bin
+        ln -s ${lib.getExe' pkgs.pulseaudio "pactl"} $out/bin/pactl
+      '')
       # ayagmar/obs-control drives obs-websocket through a Python helper and
       # checks for the `websocket-client` module by import, not by binary —
       # so a bare python3 is not enough.

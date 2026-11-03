@@ -49,16 +49,10 @@
   # before, and reverting is this one word.
   clanarchy.theme = "rose-pine";
 
-  # Drop shadows. Off by default fleet-wide (see modules/desktop/niri.nix), on
-  # here and on jens — both run dark palettes where a 1px border alone does not
-  # separate a window from the wallpaper behind it.
-  #
-  # Tighter and darker than niri's stock shadow: softness 20 rather than 30 to
-  # sit with the 8px corners and 1px borders, alpha 90 rather than 70 because
-  # black at 70 barely reads against a dark palette. drawBehindWindow stays
-  # false — windows here are translucent, and a shadow drawn behind one shows
-  # through it. inactiveColor stays null so niri keeps fading the shadow on
-  # unfocused windows by itself, reinforcing clanarchy.desktop.niri.opacity.
+  # lgo's niri look: an accent-coloured glow instead of a drop shadow (the
+  # shadow takes the palette's base0D at alpha 0x50, no offset), no border and
+  # no focus ring, stronger blur, 10px corners. jens carries the same block —
+  # keep the two in step.
   clanarchy.desktop.niri = {
     shadow = {
       enable = true;
