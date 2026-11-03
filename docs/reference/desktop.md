@@ -32,6 +32,7 @@ Desktop environment modules (Niri, GNOME, KDE). Enable exactly the one that appl
 | `clanarchy.desktop.niri.focusRing.inactiveColor` | `null or string` | Focus-ring colour on unfocused windows — visible only on the active window of an unfocused monitor. Null keeps niri's own default. |
 | `clanarchy.desktop.niri.focusRing.width` | `integer between 0 and 32 (both inclusive)` | Focus-ring thickness in logical pixels. |
 | `clanarchy.desktop.niri.fprintd.enable` | `boolean` | Whether to enable fingerprint authentication via fprintd. |
+| `clanarchy.desktop.niri.gaps` | `unsigned integer, meaning >=0` | Gap between windows, and between windows and the screen edge, in logical pixels. 16 is niri's own default. |
 | `clanarchy.desktop.niri.input.pointerSpeed` | `floating point number` | Pointer acceleration speed applied to both touchpad and mouse. Range: -1.0 (slowest) to 1.0 (fastest). 0.0 is libinput's neutral baseline. |
 | `clanarchy.desktop.niri.opacity.extraOpaqueApps` | `list of string` | app-id regexes appended to `opaqueApps`. Use this rather than `opaqueApps` when a machine needs one more entry, so it keeps picking up changes to the shared default. |
 | `clanarchy.desktop.niri.opacity.focused` | `floating point number` | Baseline window opacity for focused windows. |
