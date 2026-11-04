@@ -7,7 +7,14 @@
   lib,
   osConfig,
   ...
-}: {
+}: let
+  conv = osConfig.clanarchy.hardware.convertible;
+  touchGestures = conv.enable && conv.gestures.enable;
+
+  # wvkbd sizes itself by the output's orientation: -L in landscape, -H in
+  # portrait (twice as tall, the keys are narrower).
+  oskToggle = "pkill -x wvkbd-mobintl || uwsm app -- wvkbd-mobintl -L 250 -H 500";
+in {
   imports = [
     inputs.niri-flake.homeModules.config # provides programs.niri.settings
     ./noctalia-hm.nix # shared Noctalia settings, starship, packages
@@ -17,10 +24,14 @@
   # Note: niri-flake's HM module has no `enable` option; defining settings is sufficient.
   # UWSM manages the session lifecycle, so no niri-side systemd integration is needed.
   #
-  # Use pkgs.niri (nixpkgs 25.11) for config.kdl validation instead of niri-flake's
-  # bundled niri-stable (25.08), which fails with EMFILE in the Nix sandbox test suite.
+  # Validate config.kdl with the niri the SYSTEM runs, not niri-flake's
+  # bundled niri-stable (which also fails with EMFILE in the Nix sandbox test
+  # suite).  That is pkgs.niri everywhere except on touch machines, where
+  # modules/hardware/convertible.nix swaps in the niri-tablet build — and stock
+  # niri would reject the `gestures { touchscreen-swipe … }` block injected
+  # below.
   programs.niri = {
-    package = pkgs.niri;
+    package = osConfig.programs.niri.package;
     settings = {
       outputs."eDP-1" = {
         scale = osConfig.clanarchy.desktop.niri.display.scale;
@@ -37,7 +48,12 @@
       # niri 26.04 has no per-corner toggle — `hot-corners { top-left false }`
       # is rejected by `niri validate` — and top-left is the only corner niri
       # binds, so disabling the feature wholesale is exactly equivalent here.
-      gestures.hot-corners.enable = false;
+      #
+      # With touchscreen gestures on, this one line moves into the raw
+      # `gestures { }` block injected below instead: niri allows ONE gestures
+      # node ("duplicate node `gestures`, single node expected"), and
+      # niri-flake would emit its own.
+      gestures.hot-corners.enable = lib.mkIf (!touchGestures) false;
 
       spawn-at-startup = [
         {command = ["uwsm" "app" "--" "noctalia"];}
@@ -387,11 +403,8 @@
         # at a package that isn't installed.
         // lib.optionalAttrs osConfig.clanarchy.hardware.convertible.enable {
           # Toggle: wvkbd has no toggle of its own, so kill it if it's up.
-          "Mod+O".action.spawn = [
-            "sh"
-            "-c"
-            "pkill -x wvkbd-mobintl || uwsm app -- wvkbd-mobintl -L 250"
-          ];
+          # The bottom-edge swipe (touch gestures, below) runs the same line.
+          "Mod+O".action.spawn = ["sh" "-c" oskToggle];
         };
 
       # Lid switch events — only spawn actions are supported.
@@ -422,11 +435,63 @@
     lib.mkIf (
       osConfig.clanarchy.desktop.niri.blur.enable
       || osConfig.clanarchy.desktop.niri.xwayland.enable
+      || touchGestures
     ) (lib.mkForce (
       pkgs.runCommand "config.kdl" {
         passAsFile = ["config"];
         config =
           config.programs.niri.finalConfig
+          + lib.optionalString touchGestures ''
+
+            // ---- injected by modules/desktop/niri-hm.nix (touch gestures) ----
+
+            // niri-tablet's patch series (modules/hardware/convertible.nix).
+            // Stock niri rejects every node below except hot-corners, which is
+            // here only because niri allows one `gestures` node — see
+            // gestures.hot-corners above. The scheme is the project's shipped
+            // config/gestures.kdl minus the demo touch-point dots.
+            //
+            // Ownership: once 3 fingers are down the whole sequence belongs to
+            // niri, so apps never see a 3-finger touch. One- and two-finger
+            // input — taps, scrolling, pinch-zoom — still goes to the app.
+            gestures {
+                hot-corners { off; }
+
+                touchscreen-swipe {
+                    fingers 3
+
+                    // 3-finger horizontal drag resizes the focused column,
+                    // vertical drag scrolls workspaces.
+                    horizontal-swipe "resize-column"
+
+                    tap             { maximize-column; }
+                    // 4 fingers: tap for the overview (the hot corner is off,
+                    // and no key binds it either), flick down to close, up for
+                    // fullscreen.
+                    tap-more        { toggle-overview; }
+                    swipe-more-down { close-window; }
+                    swipe-more-up   { fullscreen-window; }
+
+                    // Rest 3 fingers ~400 ms, then swipe: move the window a
+                    // column sideways or a workspace up/down.
+                    hold {
+                        left { move-column-left; }
+                        right { move-column-right; }
+                        up { move-window-to-workspace-up; }
+                        down { move-window-to-workspace-down; }
+                    }
+                }
+
+                // One finger inward from an edge. Up from the bottom is the
+                // on-screen keyboard, the same toggle as Mod+O.
+                touchscreen-edge-swipe {
+                    bottom { spawn "sh" "-c" "${oskToggle}"; }
+                    top { toggle-overview; }
+                    left { focus-column-left; }
+                    right { focus-column-right; }
+                }
+            }
+          ''
           + lib.optionalString osConfig.clanarchy.desktop.niri.xwayland.enable ''
 
             // ---- injected by modules/desktop/niri-hm.nix (xwayland.enable) ----
@@ -513,7 +578,7 @@
             }
           '';
       } ''
-        ${pkgs.niri}/bin/niri validate -c $configPath
+        ${lib.getExe osConfig.programs.niri.package} validate -c $configPath
         cp $configPath $out
       ''
     ));

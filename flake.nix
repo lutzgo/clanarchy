@@ -67,6 +67,18 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # niri-tablet — touchscreen gestures for niri, as a patch series (pkg/*.patch)
+    # against an upstream niri release.  Not a flake: only the patches and
+    # their docs are used, applied to nixpkgs' own niri by
+    # modules/hardware/convertible.nix.  PINNED TO A RELEASE TAG because each
+    # tag names the niri release it is rebased onto (`_tag` in pkg/PKGBUILD);
+    # v26.04.20 is rebased onto niri v26.04, the version nixpkgs ships.  Move
+    # this tag and nixpkgs' niri together, or the patches stop applying.
+    niri-tablet = {
+      url = "github:GGEZUS/niri-tablet/v26.04.20";
+      flake = false;
+    };
+
     # microvm.nix — the microvm isolation tier (docs/invariants.md, invariant #1).
     #
     # Pre-approved by M3 and scoped to it: the VPN/qBittorrent guest is the one
