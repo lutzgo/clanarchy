@@ -80,43 +80,28 @@ head -c4 /dev/urandom | xxd -p
 
 ## 2. Declare the machine in `flake.nix`
 
-Add a `clan.machines.<name>` block. Copy the biene block and adjust the imports:
+Add a `clan.machines.<name>` block. Copy the biene block and adjust the
+machine's own files:
 
 ```nix
 clan.machines.<name> = {
-  imports = [
-    { _module.args = {
-        pkgs-unstable = import inputs.nixpkgs-unstable {
-          system = "x86_64-linux";
-          config.allowUnfree = true;
-        };
-        inherit inputs;
-      };
-    }
-
-    inputs.impermanence.nixosModules.impermanence
-    inputs.stylix.nixosModules.stylix
-    inputs.home-manager.nixosModules.home-manager
-
-    # Reusable modules — import every module whose option you reference
-    ./modules/desktop/labwc.nix     # or niri.nix / kde.nix
-    ./modules/desktop/niri.nix      # always import so the option exists
-    ./modules/roles/laptop.nix      # or server / vm / rpi
-    ./modules/roles/server.nix
-    ./modules/roles/vm.nix
-    ./modules/roles/rpi.nix
-    ./modules/users/admin.nix
-    ./modules/users/<user>.nix
-    ./modules/wifi.nix
-
-    # Machine-specific
-    ./machines/<name>/configuration.nix
-    ./machines/<name>/disko.nix
-    ./machines/<name>/impermanence.nix
-    ./machines/<name>/stylix.nix
-  ];
+  imports =
+    [(mkModuleArgs {})]     # injects `inputs` as a module arg
+    ++ commonHeadful        # or commonBase for a headless machine
+    ++ [
+      ./modules/wifi.nix
+      ./machines/<name>/configuration.nix   # must set clanarchy.rootfs
+      ./machines/<name>/disko.nix
+      ./machines/<name>/stylix.nix
+    ];
 };
 ```
+
+`commonBase` / `commonHeadful` (`lib/mk-machine.nix`) carry the shared modules
+— impermanence, Home Manager, stylix, `modules/base.nix` with the fleet's
+overlay, both rootfs backends — so a machine block lists only what is its own.
+There is one nixpkgs for every machine; nothing per-machine selects a channel
+or builds a second package set.
 
 There is nothing to add to the devShell. Deployment is `clan machines update
 <name>`, which reads the machine out of the inventory — a per-machine shell

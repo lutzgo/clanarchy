@@ -8,8 +8,8 @@
 # nixos-unstable.  Gaming Mode itself is not Jovian's: nixpkgs 26.05 ships
 # `programs.steam.gamescopeSession`, which registers a gamescope-driven
 # Steam session with the display manager.  A desktop HTPC needs the
-# session, not the Deck hardware — so this role runs entirely on the
-# fleet's stable channel and stays compatible with ZFS.  birte still uses
+# session, not the Deck hardware — so this role runs on stock nixpkgs
+# without Jovian and stays compatible with ZFS.  birte still uses
 # Jovian because birte really is a Deck.
 #
 # ── What Jovian *does* provide that we reimplement ────────────────────────
@@ -33,11 +33,11 @@
 # else).
 #
 # ── The third mode: bigscreen ─────────────────────────────────────────────
-# "bigscreen" is not a display-manager session.  Plasma Bigscreen only exists
-# on nixpkgs-unstable, and its Plasma generation cannot share a system with
-# the 6.6.6 one this machine runs — see modules/desktop/bigscreen.nix for the
-# full reasoning — so it lives in an nspawn container that owns the TV GPU
-# outright.  Selecting it therefore means "stop the display manager, start
+# "bigscreen" is not a display-manager session.  It lives in an nspawn
+# container that owns the TV GPU outright — a design from when Bigscreen
+# needed a newer Plasma than this machine's channel had; that reason is gone
+# (see the SUPERSEDED note in modules/desktop/bigscreen.nix), and the mode is
+# parked.  Selecting it therefore means "stop the display manager, start
 # the container" rather than "exec a different session binary", and the two
 # arms are mutually exclusive because both want KMS on the same card.
 {
@@ -907,14 +907,11 @@ in {
 
     bigscreen = {
       enable = lib.mkEnableOption ''
-        the Plasma Bigscreen mode, run from an nspawn container carrying its
-        own nixpkgs channel.
+        the Plasma Bigscreen mode, run from an nspawn container.
 
-        Off by default because it is a heavier proposition than the other two
-        arms: it builds a second, complete Plasma generation from
-        nixpkgs-unstable (see modules/desktop/bigscreen.nix for why it cannot
-        share the host's), and it takes exclusive KMS ownership of the TV's
-        GPU while active
+        Off by default: it takes exclusive KMS ownership of the TV's GPU
+        while active, and it is parked — it showed a black screen (clan.nix,
+        docs/guides/htpc-bigscreen.md)
       '';
 
       gpu.pciAddress = lib.mkOption {
@@ -946,9 +943,9 @@ in {
         type = lib.types.listOf lib.types.package;
         default = [];
         description = ''
-          Applications to install inside the container. Must come from
-          `pkgs-unstable`, not the host's `pkgs` — see the corresponding
-          option in modules/desktop/bigscreen.nix.
+          Applications to install inside the container, from the host's
+          `pkgs` (one nixpkgs for both) — see the corresponding option in
+          modules/desktop/bigscreen.nix.
         '';
         example = lib.literalExpression "[ pkgs.jellyfin-media-player ]";
       };

@@ -50,14 +50,9 @@ Then just `sonic-tui`. Keys: `?` help · `/` search · `space` play/pause · `hj
 
 `clanarchy.apps.subsonic.enable = true`. Chosen over feishin and aonsoku because it is a native Go/Fyne binary rather than Electron or Tauri, and both consumers are constrained — birte is a battery-powered handheld, biene is a 1366×768 laptop.
 
-**The attribute name differs by channel.** Verified against the real machine pkgs sets:
+**There is one attribute.** `supersonic` carries native Wayland support; `supersonic-wayland` was folded into it and removed from nixpkgs.
 
-| | `supersonic` | `supersonic-wayland` |
-|---|---|---|
-| biene (stable) | 0.21.1 | 0.21.1 |
-| birte (unstable) | 0.22.0 | **removed** — folded into `supersonic` |
-
-birte takes the module default; biene overrides `clanarchy.apps.subsonic.package` to `pkgs.supersonic-wayland`, because plain `supersonic` on stable is the X11 build and would run through XWayland under labwc. Do **not** copy that override to a machine on `clanarchy.channel = "unstable"` — the attribute does not exist there and it fails at eval.
+Every machine takes the module default; setting `supersonic-wayland` fails at eval.
 
 ## Kodi add-on (ernst)
 

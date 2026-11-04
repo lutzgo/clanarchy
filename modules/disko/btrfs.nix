@@ -5,10 +5,10 @@
 # This is the btrfs sibling of modules/disko/base.nix (ZFS).  It exists for
 # machines that must track a fast-moving kernel: btrfs is in-tree, so it
 # never gates the kernel the way out-of-tree OpenZFS does.  birte (Steam
-# Deck, `clanarchy.channel = "unstable"`, Valve kernel) is the motivating
-# case.  The matching impermanence backend activates on its own: modules/
-# rootfs.nix derives `clanarchy.rootfs` from `clanarchy.channel`, so a machine
-# using this template is already on btrfs by construction.
+# Deck, Valve kernel via Jovian) was the motivating case; miralda and jens
+# have since been reinstalled on it too.  A machine using this template must
+# also set `clanarchy.rootfs = "btrfs"` — modules/rootfs.nix asserts that it
+# is stated, and that selects the matching impermanence backend.
 #
 # Encryption is OPT-IN here, which is the opposite of the ZFS template's
 # default, and the asymmetry is deliberate.  ZFS encrypts natively and every

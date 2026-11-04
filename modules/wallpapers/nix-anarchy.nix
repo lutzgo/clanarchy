@@ -142,15 +142,9 @@ in {
   # Install wallpapers into ~/Pictures/Wallpapers/ for both desktop users.
   # Noctalia's picker scans that directory.
   #
-  # PINNING THE SELECTION IS A v5 SETTING NOW, not a cache file.
+  # PINNING THE SELECTION IS A SETTING, not a cache file.
   #
-  # v4 pinned it by writing ~/.cache/noctalia/wallpapers.json with
-  # `{ wallpapers: {eDP-1: ws1.png}, defaultWallpaper: ws1.png }`.  v5 does not
-  # read that file at all, so after the migration the shell fell back to
-  # whatever the Stylix target had written and jens came up showing
-  # stylix.image instead of the tinted Nix-Anarchy logo.
-  #
-  # v5 keeps the selection in config.toml instead — `wallpaper.default`,
+  # Noctalia keeps the selection in config.toml — `wallpaper.default`,
   # `wallpaper.monitors`, `wallpaper.last` and `wallpaper.favorite` are
   # declared in the schema as app-managed state (src/config/schema/
   # config_sections.cpp: "also carries app-managed state … those keys are not

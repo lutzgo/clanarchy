@@ -28,8 +28,7 @@ Where the shared code lives. Adding something new:
 | File | Purpose |
 |------|---------|
 | `base.nix` | Universal defaults: EFI boot, Plymouth, flakes, openssh baseline, zsh |
-| `channel.nix` | `clanarchy.channel` = `stable` \| `unstable`. Unstable swaps `nixpkgs.pkgs`, using `mkOverride 25` to win against clan-core's `mkForce` |
-| `rootfs.nix` | `clanarchy.rootfs` = `zfs` \| `btrfs`, plus the persist paths both backends share. **Derived, not set**: `stable` → `zfs`, `unstable` → `btrfs`, because OpenZFS is out-of-tree and gates the kernel — which is the only reason a machine is on unstable in the first place. The option is `readOnly`, so a machine that tries to set it gets an error rather than an unstable kernel paired with an out-of-tree filesystem |
+| `rootfs.nix` | `clanarchy.rootfs` = `zfs` \| `btrfs`, plus the persist paths both backends share. **Stated per machine, no default** — it describes the disk, so a new machine that forgets fails an assertion instead of inheriting a guess. Changing it is a reinstall. (It was once derived from a `clanarchy.channel` option; that option and the derivation are gone — see the header of `modules/rootfs.nix`.) |
 | `zfs-impermanence.nix` | ZFS backend: root **and** home roll back to `@blank` on boot (stage 1) |
 | `btrfs-impermanence.nix` | btrfs backend: `@root` and `@home` roll back to `@root-blank` / `@home-blank`, seeded on first boot |
 | `disko/base.nix` | Single-disk ZFS helper: 1G ESP + optional swap + `zroot`. Parameters: `device`, `enableSwap`, `swapSize`, `encryptSwap`, `enableEncryption` |
@@ -96,7 +95,7 @@ body on `clanarchy.rootfs`, the same pattern as `channel.nix`.
 |------|---------|
 | `users/admin.nix` | admin user: SSH keys, password, impermanence, HM stub |
 | `users/lgo.nix` | lgo: SSH config, browsers, devtools, Noctalia; `clanarchy.users.lgo.editor` = `govim` \| `helix` |
-| `users/sabine.nix` + `users/sabine-noctalia/` | sabine: impermanence, HM, pinned Noctalia plugin assets |
+| `users/sabine.nix` | sabine: impermanence, HM (her Noctalia bar is in `desktop/noctalia-hm.nix`) |
 | `users/sgo.nix` | sgo alt user (miralda only) |
 | `mail-accounts.nix` | `clanarchy.mail.accounts`: the **shared** mailbox password generator. Not fleet-wide — imported by exactly the three machines that need it, because a clan var reaches only machines whose configuration declares its generator, and two generators would prompt separately for the same password |
 | `apps/default.nix` + `apps/*.nix` | `clanarchy.apps.*` bundles: communication, containers, desktop-tools, emulation, flatpak, gnome-core, graphics, media |

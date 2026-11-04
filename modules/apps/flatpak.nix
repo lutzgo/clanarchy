@@ -15,7 +15,7 @@ in {
     # Flatpak app state (installed apps, runtimes, remotes) must survive ZFS rollback.
     environment.persistence."/persist".directories = ["/var/lib/flatpak"];
 
-    # XDG_DATA_DIRS must include flatpak export paths so launchers (Noctalia/Quickshell)
+    # XDG_DATA_DIRS must include flatpak export paths so launchers (Noctalia)
     # see installed apps' .desktop files. NixOS adds these via /etc/profile.d/flatpak.sh
     # (login-shell only), but UWSM imports env from PAM — sessionVariables writes to
     # /etc/environment via pam_env, which is read by all PAM sessions including greetd.

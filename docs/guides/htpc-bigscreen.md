@@ -12,14 +12,22 @@
     are correct and every escape route reuses most of them. There are three,
     listed under [Routes that would work](#routes-that-would-work).
 
+!!! note "The version reasoning below is history"
+
+    This page was written with ernst on 26.05 (Plasma 6.6.6) and Bigscreen
+    available only from a second channel. Since #368 the host carries Plasma
+    6.8.2 and `kdePackages.plasma-bigscreen` 6.8.2 itself, so the two-generation
+    collision no longer applies. Whether Bigscreen could now run as a plain
+    session, as on birte, has not been tried.
+
 `ernst` carries the `htpc` role, which offers three living-room modes,
 switchable at runtime:
 
 | Mode | What it is | Where it runs |
 |------|------------|---------------|
-| `gamescope` | Steam Big Picture | Host, stock nixpkgs 26.05 — **what ernst runs** |
-| `plasma` | KDE Plasma 6.6.6 desktop | Host, stock nixpkgs 26.05 |
-| `bigscreen` | Plasma Bigscreen 6.7.4 | nspawn container — **does not work, not built** |
+| `gamescope` | Steam Big Picture | Host, stock nixpkgs — **what ernst runs** |
+| `plasma` | KDE Plasma 6 desktop | Host, stock nixpkgs |
+| `bigscreen` | Plasma Bigscreen | nspawn container — **does not work, not built** |
 
 Switch between them from the couch account:
 
@@ -287,8 +295,9 @@ On a machine that also carries the `htpc` role, set it through the role
 instead (`clanarchy.roles.htpc.bigscreen.*`), which wires the couch user
 through and teaches the session switcher about the third mode.
 
-`extraPackages` must be drawn from `pkgs-unstable`, not the host's `pkgs` —
-otherwise a second, conflicting Qt/KDE closure lands in the session.
+`extraPackages` come from the host's `pkgs` — the container and the host share
+one nixpkgs now. (They once had to come from a separate `pkgs-unstable` set,
+which no longer exists.)
 
 ## Home Assistant drives Kodi over its own leg
 

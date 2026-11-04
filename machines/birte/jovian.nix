@@ -30,11 +30,11 @@
       # desktop. Bigscreen is a 10-foot shell built for a controller, which is
       # what a Deck has; the pointer-driven desktop is the wrong shape for it.
       #
-      # birte can run this natively because it tracks nixpkgs-unstable
-      # (clanarchy.channel = "unstable"), where kdePackages.plasma-bigscreen
-      # exists at 6.7.4 — the same Plasma generation as the rest of the
-      # machine. ernst cannot: it is on stable, so modules/desktop/bigscreen.nix
-      # puts Bigscreen in an nspawn container instead. Do not reach for that
+      # birte runs this natively: kdePackages.plasma-bigscreen is in the
+      # fleet's one nixpkgs, the same Plasma generation as the rest of the
+      # machine. ernst's modules/desktop/bigscreen.nix puts Bigscreen in an
+      # nspawn container — a design from when ernst was on a different
+      # channel without it. Do not reach for that
       # module here; the container exists solely to work around the channel.
       #
       # The plain Plasma session stays registered (services.desktopManager

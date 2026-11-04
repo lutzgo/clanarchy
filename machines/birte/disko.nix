@@ -18,8 +18,8 @@ import ../../modules/disko/btrfs.nix {
   diskName = "birte";
 
   # btrfs rather than the fleet's ZFS (modules/disko/base.nix).  OpenZFS is
-  # out-of-tree and gates the kernel; birte tracks nixpkgs-unstable and a
-  # Valve kernel via Jovian, so it can't afford that coupling.  btrfs is
+  # out-of-tree and gates the kernel; birte runs a Valve kernel via Jovian,
+  # so it can't afford that coupling.  btrfs is
   # in-tree and follows whatever kernel Jovian ships.  Must be kept in step
   # with `clanarchy.rootfs = "btrfs"` in configuration.nix.
   #

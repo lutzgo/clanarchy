@@ -32,7 +32,7 @@
     else null;
 in {
   imports = [
-    inputs.noctalia.homeModules.default # provides programs.noctalia (v5; was programs.noctalia-shell)
+    inputs.noctalia.homeModules.default # provides programs.noctalia
     ./foot-hm.nix # shared foot terminal config
   ];
 
@@ -93,19 +93,11 @@ in {
             margin_ends = 4;
             show_on_workspace_switch = true;
 
-            # Widget NAMES, in order.  v4 listed inline objects with their own
-            # settings; v5 takes names here and per-widget options in their own
+            # Widget NAMES, in order; per-widget options live in their own
             # `widget.<name>` tables.
             #
-            # Eleven `plugin:` entries are gone from both layouts — v5 replaced
-            # the QML plugin API with Luau and only screen-recorder has a port.
-            # Two were not really losses: screenshot and clipboard are built in
-            # now (`noctalia msg screenshot-*`, `shell.clipboard_*`).
-            #
-            # Sabine's layout is the shape her "simple_mouse" profile had, kept
-            # by hand because the shell-profiles plugin that used to apply it
-            # does not exist for v5: clock and battery centre, status on the
-            # right, nothing on the left. See docs/guides/noctalia-profiles.md.
+            # Sabine's layout: clock and battery centre, status on the right,
+            # nothing on the left. See docs/guides/noctalia-profiles.md.
             #
             # lgo's three lists are NOT here: his block below sets all three
             # and wins in the recursiveUpdate.  They used to be repeated here
@@ -385,7 +377,6 @@ in {
   # Override Noctalia's accent colours for the active Stylix palette
   # (niri/miralda only).
   #
-  # v5 moved these: there is no `programs.noctalia-shell.colors` any more.
   # Stylix's own target writes `customPalettes.stylix.dark` using exactly
   # these key names and sets `settings.theme.custom_palette = "stylix"`, so
   # the override is now a per-key mkForce on that attrset rather than a
@@ -415,23 +406,15 @@ in {
   # HM put the managed symlink back; deSymlinkNoctalia then converts it to a
   # regular file again so the UI stays writable.
   #
-  # v5 writes ONE file. The v4 set — colors.json, settings.json and a
-  # settings.json per plugin — is gone: colours live in palettes/<name>.json
-  # (written by the stylix target), everything else is config.toml, and the
-  # plugins those entries named do not exist for v5.
+  # One file: colours live in palettes/<name>.json (written by the stylix
+  # target), everything else is config.toml.
   xdg.configFile."noctalia/config.toml".force = true;
 
-  # NO plugin SEEDING any more.
-  #
-  # v4 declared eleven plugins in `noctalia/plugins.json` and seeded that file
-  # with merge semantics so runtime download state survived a rebuild. v5
-  # replaced the QML plugin API with Luau and ships a different catalogue.
-  # Plugins are now just `settings.plugins.enabled` (lgo's eleven, above);
-  # Noctalia fetches them itself into ~/.local/state/noctalia/plugins — see
-  # the `noctalia-plugin-sources` user unit (#408) for the one way that
-  # fetch goes wrong: a login before the network is up.
-  # Screenshot and clipboard stopped being plugins at all — they are built
-  # into v5 (`noctalia msg screenshot-*`, `shell.clipboard_*`).
+  # Plugins are `settings.plugins.enabled` (lgo's eleven, above). Noctalia
+  # fetches them itself into ~/.local/state/noctalia/plugins — see the
+  # `noctalia-plugin-sources` unit below for the one way that goes wrong.
+  # Screenshot and clipboard are built in, not plugins
+  # (`noctalia msg screenshot-*`, `shell.clipboard_*`).
 
   # lgo's bar comes ONLY from the settings above. Noctalia layers its runtime
   # state file over config.toml, so a bar arranged in the UI would otherwise
@@ -461,32 +444,6 @@ in {
       run ${py}/bin/python3 ${strip} "$_state"
     fi
   ''));
-
-  # Remove the v4 plugin tree.
-  #
-  # 25 directories of QML plugins (132 .qml files, zero .luau) were left under
-  # ~/.config/noctalia/plugins/ by the v5 migration. v5 cannot load any of
-  # them and installs its own plugins elsewhere (~/.local/state/noctalia), so
-  # they were only dead weight and confusion about which were live.
-  #
-  # Only the known-v4 names are removed, and only while they still contain
-  # QML. Gone from jens and miralda as of 2026-11-04; kept for biene, which
-  # could not be checked then. Delete this block once biene has been seen
-  # without ~/.config/noctalia/plugins.
-  home.activation.pruneNoctaliaV4Plugins = lib.hm.dag.entryAfter ["writeBoundary"] ''
-    _plugdir="$HOME/.config/noctalia/plugins"
-    for _p in assistant-panel calibre-provider clipper color-scheme-creator \
-              display-settings giphy-search hassio khal-agenda-widget \
-              mirror-mirror network-manager-vpn niri-auto-tile \
-              nvim-session-provider obs-control polkit-agent screenshot \
-              screen-shot-and-record screen-toolkit shell-profiles todo \
-              usb-drive-manager valent-connect weekly-calendar \
-              file-search keybind-cheatsheet screen-recorder; do
-      if [ -d "$_plugdir/$_p" ] && [ -n "$(find "$_plugdir/$_p" -maxdepth 1 -name '*.qml' -print -quit 2>/dev/null)" ]; then
-        $DRY_RUN_CMD rm -rf "$_plugdir/$_p"
-      fi
-    done
-  '';
 
   # Convert HM's managed symlink back into a regular file, so noctalia can
   # write to it when you change something in the settings UI. The pair with

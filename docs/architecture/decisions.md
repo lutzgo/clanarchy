@@ -69,14 +69,18 @@ every rollback. Two reasons they are not mounted straight at
 A `d` tmpfiles rule fixes ownership, since a fresh subvolume or dataset is
 `root:root`.
 
-## `pkgs-unstable` does not follow clan-core's nixpkgs
+## One nixpkgs, and where its overlay and config are applied
 
-That is deliberate — Noctalia and Quickshell need a newer tree. It is injected
-as a module arg via `_module.args` (see `mkModuleArgs`), so a module takes
-`{ pkgs-unstable, … }` in its signature. Note `nixpkgs.config` cannot be layered
-on at the NixOS level for a machine on the unstable channel: anything like
-`permittedInsecurePackages` has to live inside the pkgs instance in
-`lib/mk-machine.nix`.
+There used to be a second instance, `pkgs-unstable`, injected as a module arg
+for packages the stable channel lacked. Since #368 the fleet tracks clan-core
+`main` with nixpkgs-unstable as its only tree, and that argument is gone.
+
+Overlay and `nixpkgs.config` go on **modules**, not only on `pkgsForSystem`:
+with clan-core main, `pkgsForSystem` (clan.nix) reaches only the copies clan
+builds to run vars generators, never the deployed `nixosConfigurations`. The
+overlay is applied in `modules/base.nix`; `allowUnfree` is set per machine.
+Until #406 the overlay was wired only through `pkgsForSystem` and applied to
+no machine at all.
 
 ## The theme registry
 

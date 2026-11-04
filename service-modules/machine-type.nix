@@ -44,7 +44,7 @@
   };
 
   roles.htpc = {
-    description = "Couch machine: Steam Big Picture session + KDE Plasma, switchable at runtime. Stable channel, no Jovian.";
+    description = "Couch machine: Steam Big Picture session + KDE Plasma, switchable at runtime. No Jovian.";
     interface.options = {
       user = lib.mkOption {
         type = lib.types.str;

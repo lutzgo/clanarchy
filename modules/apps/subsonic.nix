@@ -33,11 +33,10 @@ in {
       default = pkgs.supersonic;
       defaultText = lib.literalExpression "pkgs.supersonic";
       description = ''
-        Which Supersonic build to install.  The default is correct on
-        nixpkgs-unstable, where Fyne's native Wayland support was folded into
-        the main package and `supersonic-wayland` was removed outright.  On
-        the stable channel the two are still separate derivations and a
-        Wayland machine wants `pkgs.supersonic-wayland`.
+        Which Supersonic build to install.  The default is the only one:
+        Fyne's native Wayland support was folded into the main package and
+        `supersonic-wayland` was removed from nixpkgs (evaluating it now
+        throws).  The option stays for pinning a different build.
       '';
     };
   };
