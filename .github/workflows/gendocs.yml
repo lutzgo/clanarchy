@@ -12,6 +12,14 @@ on:
 permissions:
   contents: write
 
+# Two merges seconds apart start two runs; whichever pushes second is
+# rejected as non-fast-forward, because main moved under it (hit 2026-11-04,
+# #410 and #411). The newest run regenerates from the newest main, so it is
+# the only one worth finishing: cancel the older one rather than let it race.
+concurrency:
+  group: gendocs-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   gendocs:
     runs-on: ubuntu-latest
