@@ -790,6 +790,23 @@
         "type": "github"
       }
     },
+    "oniri": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792701562,
+        "narHash": "sha256-QpdSa7ae9tzSX5qwcJpZAA7zSmV2upWaon1fYugGZu0=",
+        "owner": "Antiz96",
+        "repo": "oniri",
+        "rev": "86ee9e6fe95545d9d160583688b77650a577c73d",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Antiz96",
+        "ref": "v1.3.9",
+        "repo": "oniri",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "clan-core": "clan-core",
@@ -808,6 +825,7 @@
           "govim",
           "nvf"
         ],
+        "oniri": "oniri",
         "simple-nixos-mailserver": "simple-nixos-mailserver",
         "sonic-tui": "sonic-tui",
         "stylix": "stylix",

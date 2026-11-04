@@ -14,6 +14,13 @@
   # wvkbd sizes itself by the output's orientation: -L in landscape, -H in
   # portrait (twice as tall, the keys are narrower).
   oskToggle = "pkill -x wvkbd-mobintl || uwsm app -- wvkbd-mobintl -L 250 -H 500";
+
+  # Oniri: maximizes a workspace's ONLY window, and un-maximizes nothing —
+  # the first window on a workspace fills it, a second one tiles beside it as
+  # usual. Built from the `oniri` flake input (see flake.nix for the pin);
+  # modules/roles/htpc.nix imports it the same way for the couch user's
+  # restated autostart, which evaluates to the same store path.
+  oniri = import inputs.oniri {inherit pkgs;};
 in {
   imports = [
     inputs.niri-flake.homeModules.config # provides programs.niri.settings
@@ -39,6 +46,10 @@ in {
 
       prefer-no-csd = true;
 
+      # No "Important Hotkeys" popup at every login, on any machine or user.
+      # Mod+Shift+/ still shows it on demand.
+      hotkey-overlay.skip-at-startup = true;
+
       # Top-left hot corner (opens the Overview) off. It sits exactly where a
       # maximized window's close/menu controls are, so it fires constantly by
       # accident. Note this config binds no `toggle-overview` key, so with the
@@ -57,6 +68,7 @@ in {
 
       spawn-at-startup = [
         {command = ["uwsm" "app" "--" "noctalia"];}
+        {command = ["uwsm" "app" "--" "${oniri}/bin/oniri"];}
         {command = ["keepassxc" "--minimized"];}
       ];
 

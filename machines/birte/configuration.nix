@@ -38,13 +38,14 @@
     autoRotate.enable = false;
   };
 
-  # The panel is natively PORTRAIT, 800×1280 (/sys/class/drm/…-eDP-1/modes);
-  # gamescope rotates it for Gaming Mode, and niri has to do the same. 270 is
-  # the wl_output transform the Deck needs (Hyprland's `transform,3`, sway's
-  # `transform 270`). Touch input is remapped along with the output.
-  home-manager.sharedModules = [
-    {programs.niri.settings.outputs."eDP-1".transform.rotation = 270;}
-  ];
+  # NO output transform, although the panel is natively PORTRAIT (800×1280 in
+  # /sys/class/drm/…-eDP-1/modes). The kernel reports the Deck's panel
+  # orientation through the DRM "panel orientation" property — `Right Side
+  # Up` on birte (drm_info) — and niri ADDS that to the configured transform
+  # (niri.rs: `panel_orientation(output) + config transform`), so it corrects
+  # the panel by itself. The `transform 270` other compositors' Deck configs
+  # carry was set here first, and stacked on top of niri's own correction it
+  # left the desktop turned 90° clockwise (seen on birte 2026-11-04).
 
   # Hand big compiles to ernst.  birte is the machine the remote-builder
   # module's own header was written about — its Valve kernel is rebuilt from

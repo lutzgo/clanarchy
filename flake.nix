@@ -79,6 +79,17 @@
       flake = false;
     };
 
+    # Oniri — maximizes the only window on a niri workspace. Not in nixpkgs;
+    # built from the repo's own default.nix (rustPlatform + its Cargo.lock) in
+    # modules/desktop/niri-hm.nix, for every niri user. Not a flake input on
+    # purpose: its flake would bring a nixpkgs of its own. PINNED TO A TAG
+    # because it links niri-ipc at an exact version (=26.4.0 for v1.3.9),
+    # which must match the running niri — move it together with niri.
+    oniri = {
+      url = "github:Antiz96/oniri/v1.3.9";
+      flake = false;
+    };
+
     # microvm.nix — the microvm isolation tier (docs/invariants.md, invariant #1).
     #
     # Pre-approved by M3 and scoped to it: the VPN/qBittorrent guest is the one
