@@ -430,8 +430,8 @@ in {
       services.nextcloud = {
         enable = true;
 
-        # PINNED EXPLICITLY, AND TO THE stateVersion DEFAULT.  nixpkgs carries
-        # 31 through 34 at this pin, and the module derives a default from
+        # PINNED EXPLICITLY.  It started at the stateVersion default: nixpkgs carried
+        # 31 through 34 at the first pin, and the module derives a default from
         # `system.stateVersion` — 33 for 26.05.
         #
         # An earlier draft took 32, on the reasoning that the oldest supported
@@ -445,8 +445,20 @@ in {
         # It is still written out rather than left to the default, because the
         # default moves with `system.stateVersion`, and a Nextcloud major must
         # never move as a side effect of editing an unrelated line.  Bumping it
-        # is an edit here, with a `zfs snapshot zdata/nextcloud` first.
-        package = pkgs.nextcloud33;
+        # is an edit here — and `extraApps` below must name the same major —
+        # with a snapshot of BOTH datasets first, in one command so they match:
+        #
+        #   zfs snapshot zdata/nextcloud@pre-ncNN zdata/state@pre-ncNN
+        #
+        # zdata/state, because the upgrade migrates PostgreSQL and the database
+        # lives under ${stateRoot}, not in zdata/nextcloud.  One major per
+        # deploy: Nextcloud refuses to skip one.
+        #
+        # 33 → 34 on 2026-11-03.  nixpkgs had moved on to 35 and printed the
+        # legacy-install warning on every evaluation, which is exactly the
+        # always-there warning the paragraph above set out to avoid.  34 → 35
+        # is the second step, as its own deploy once this one has settled.
+        package = pkgs.nextcloud34;
 
         inherit hostName;
 
@@ -626,7 +638,7 @@ in {
         # inside the Nextcloud tarball and is enabled by occ below.
         extraApps = {
           inherit
-            (pkgs.nextcloud33Packages.apps)
+            (pkgs.nextcloud34Packages.apps)
             calendar # CalDAV, replacing citizengo.io's
             contacts # CardDAV
             tasks # the VTODO surface modules/caldav-sync.nix pushes to
