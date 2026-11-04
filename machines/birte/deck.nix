@@ -17,7 +17,7 @@
 #      desktop settings, and Steam library entries stick.
 #   4. Attaches a Home Manager config whose only current purpose is to
 #      opt into Stylix's HM auto-enable, so the niri desktop and other
-#      HM-managed apps pick up the base16 palette declared in stylix.nix.
+#      HM-managed apps pick up the base16 palette (rose-pine, modules/themes).
 #
 {
   users.users.deck = {
@@ -183,7 +183,7 @@
   users.groups.roms.members = ["syncthing"];
 
   # Home Manager for `deck`. Stylix's HM auto-enable is the default when the
-  # HM integration imports it (see stylix.nix at the NixOS level); autoEnable
+  # HM integration imports it (modules/themes at the NixOS level); autoEnable
   # covers the GTK, Qt, cursor, font and Noctalia targets based on the
   # active base16 scheme.
   home-manager.users.deck = {
@@ -191,6 +191,11 @@
     lib,
     ...
   }: {
+    # The couch profile shared with ernst's go: visible dock, no KeePassXC or
+    # Nextcloud. lgo's bar and look come via `lgoLayout` in noctalia-hm.nix
+    # and modules/desktop/niri-look.nix.
+    imports = [../../modules/desktop/couch-hm.nix];
+
     home.username = "deck";
     home.homeDirectory = "/home/deck";
     home.stateVersion = "25.11";

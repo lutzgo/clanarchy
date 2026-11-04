@@ -19,6 +19,13 @@
   # first time lgo runs labwc or a second person runs niri.
   isLgo = config.home.username == "lgo";
 
+  # Who gets lgo's desktop — his bar, plugins and launcher setup. lgo, and the
+  # two couch accounts whose screens he set up the same way: deck (birte's
+  # Desktop Mode) and go (ernst's TV desktop). What stays lgo's ALONE is his
+  # (`isLgo`): the CalDAV account, which logs in as him. Couch-only changes
+  # on top of this (dock, autostart) are modules/desktop/couch-hm.nix.
+  lgoLayout = builtins.elem config.home.username ["lgo" "deck" "go"];
+
   # The local-ai `opencode` role's generated config, when this user has one.
   # It embeds a store path (the instructions file), so drop the string
   # context before parsing — only plain values are read from it.
@@ -30,6 +37,38 @@
     if opencodeCfg != null
     then builtins.head (lib.splitString "/" opencodeCfg.model)
     else null;
+
+  # Where Mimir (plain OpenAI-compatible chat) talks to, or null for no Mimir.
+  #   - a user with the `opencode` role (lgo): that role's provider — the SSH
+  #     tunnel to ernst's llama.cpp — and its model, read back from config.json;
+  #   - a user ON the machine running llama-swap (go on ernst): straight to
+  #     llama-swap's loopback port. The model is the fleet's default
+  #     (clan.nix, roles.opencode defaultModel "ernst/qwen3.6-35b-a3b").
+  #   - anyone else (deck on birte): no Mimir. birte could only reach ernst
+  #     through the opencode role's tunnel, which brings its own key — a
+  #     `clan vars generate` — and the OpenCode CLI with it.
+  # OpenCode itself only where its role is: the companion runs `opencode
+  # serve`, which needs the CLI and the role's config.json.
+  #
+  # WHICH widgets exist is decided from the username and the NixOS config,
+  # never from `opencodeCfg`: that reads xdg.configFile's names, and Noctalia's
+  # own config.toml is one of them — so a plugin list that depended on it is
+  # an infinite recursion. The role is on lgo (miralda, jens); only the VALUES
+  # below read its config.json, lazily.
+  hasOpencode = isLgo;
+  hasMimir = isLgo || osConfig.services.llama-swap.enable;
+  mimir =
+    if opencodeCfg != null
+    then {
+      endpoint = opencodeCfg.provider.${opencodeProvider}.options.baseURL;
+      model = lib.removePrefix "${opencodeProvider}/" opencodeCfg.model;
+    }
+    else {
+      endpoint = "http://127.0.0.1:${toString osConfig.services.llama-swap.port}/v1";
+      model = "qwen3.6-35b-a3b";
+    };
+  # Bar instances in the AI capsule (g3), OpenCode then Mimir.
+  aiWidgets = lib.optional hasOpencode "opencode" ++ lib.optional hasMimir "mimir";
 in {
   imports = [
     inputs.noctalia.homeModules.default # provides programs.noctalia
@@ -137,7 +176,7 @@ in {
         location.address = "Duesseldorf";
         weather.enabled = true;
       } (
-        lib.optionalAttrs isLgo {
+        lib.optionalAttrs lgoLayout {
           # ── lgo's layout, captured from the running shell ────────────────────
           #
           # Taken from ~/.local/state/noctalia/settings.toml on jens (saved there
@@ -168,40 +207,43 @@ in {
             # the left only.
             start = ["session" "workspaces" "group:g2" "spacer" "active_window"];
             center = ["launcher" "clock" "keybinds"];
-            end = ["group:g1" "tray" "battery" "group:g3"];
+            end = ["group:g1" "tray" "battery"] ++ lib.optional (aiWidgets != []) "group:g3";
 
             # TOML `[[bar.default.capsule_group]]` — an ARRAY of tables, so a
             # Nix list of attrsets. Order in the list is order on the bar.
-            capsule_group = [
-              {
-                id = "g1";
-                # udiskie, OBS, the Vial keymap, config-swap.
-                members = ["status_4" "status_3" "vial" "widget_2"];
-                enabled = true;
-                accordion = false;
-                accordion_direction = "end";
-                border_width = 1.0;
-                fill = "surface_container";
-                opacity = 1.0;
-                padding = 6.0;
-              }
-              {
-                id = "g2";
-                members = ["widget_4" "widget_5"];
-                enabled = true;
-                accordion = false;
-                accordion_direction = "end";
-                border_width = 1.0;
-                fill = "surface_container";
-                opacity = 1.0;
-                padding = 6.0;
-              }
-              # The two AI plugins, OpenCode then Mimir. jens's UI named these
+            capsule_group =
+              [
+                {
+                  id = "g1";
+                  # udiskie, OBS, the Vial keymap, config-swap.
+                  members = ["status_4" "status_3" "vial" "widget_2"];
+                  enabled = true;
+                  accordion = false;
+                  accordion_direction = "end";
+                  border_width = 1.0;
+                  fill = "surface_container";
+                  opacity = 1.0;
+                  padding = 6.0;
+                }
+                {
+                  id = "g2";
+                  members = ["widget_4" "widget_5"];
+                  enabled = true;
+                  accordion = false;
+                  accordion_direction = "end";
+                  border_width = 1.0;
+                  fill = "surface_container";
+                  opacity = 1.0;
+                  padding = 6.0;
+                }
+              ]
+              # The AI plugins, OpenCode then Mimir — each only where it has
+              # something to talk to (see `mimir` above). jens's UI named these
               # instances `widget` and `status`; they are `opencode` and
               # `mimir` here (widget.* below) — same widgets, readable names.
-              {
+              ++ lib.optional (aiWidgets != []) {
                 id = "g3";
-                members = ["opencode" "mimir"];
+                members = aiWidgets;
                 enabled = true;
                 accordion = false;
                 accordion_direction = "end";
@@ -209,8 +251,7 @@ in {
                 fill = "surface_container";
                 opacity = 1.0;
                 padding = 6.0;
-              }
-            ];
+              };
           };
 
           location.auto_locate = true;
@@ -223,69 +264,70 @@ in {
           # kept here too.
           lockscreen_widgets.enabled = false;
 
-          plugins.enabled = [
-            "noctalia/kaomoji"
-            "noctalia/screen_recorder"
-            "tadomika_ari/config-swap"
-            "kenn/keybind-cheatsheet"
-            "ayagmar/obs-control"
-            "egno/vial_keymap"
-            "yocraft/qrcode"
-            "abuamar142/qr-share"
-            "alexander/screen-toolkit"
-            "aristides/udiskie"
-            "weinguyen/opencode-companion"
-            "alexander/mimir"
-          ];
+          plugins.enabled =
+            [
+              "noctalia/kaomoji"
+              "noctalia/screen_recorder"
+              "tadomika_ari/config-swap"
+              "kenn/keybind-cheatsheet"
+              "ayagmar/obs-control"
+              "egno/vial_keymap"
+              "yocraft/qrcode"
+              "abuamar142/qr-share"
+              "alexander/screen-toolkit"
+              "aristides/udiskie"
+            ]
+            ++ lib.optional hasOpencode "weinguyen/opencode-companion"
+            ++ lib.optional hasMimir "alexander/mimir";
 
           # Per-plugin panel placement, as set in the UI.
-          plugin_settings = {
-            "abuamar142/qr-share".panel_placement = "attached";
-            "ayagmar/obs-control".controls_placement = "attached";
-            "kenn/keybind-cheatsheet".cheatsheet_placement = "attached";
-            "tadomika_ari/config-swap".panel_placement = "attached";
-            "yocraft/qrcode".panel_placement = "attached";
+          plugin_settings =
+            {
+              "abuamar142/qr-share".panel_placement = "attached";
+              "ayagmar/obs-control".controls_placement = "attached";
+              "kenn/keybind-cheatsheet".cheatsheet_placement = "attached";
+              "tadomika_ari/config-swap".panel_placement = "attached";
+              "yocraft/qrcode".panel_placement = "attached";
 
-            # The Voyager's layout, as exported from Vial (File → Save current
-            # layout) to this path. Until that file exists the overlay says
-            # "File not found" with the path — nothing else breaks.
-            #
-            # alt_layout off: it draws a SECOND OS layout's letters on each
-            # cap, found through `hyprctl`, and without Hyprland it falls back
-            # to a built-in Russian table. lgo types one layout (us, Compose
-            # on Right Alt), so there is nothing to draw there.
-            "egno/vial_keymap" = {
-              vil_path = "${config.home.homeDirectory}/Documents/voyager.vil";
-              alt_layout_enabled = false;
-            };
-
-            # Both AI plugins are pointed at ernst through what the local-ai
-            # `opencode` role generates (clan.nix, roles.opencode.*), read back
-            # from its config.json rather than restated — so the model and the
-            # tunnel endpoint stay chosen in one place. Absent on machines
-            # without that role, where both plugins keep their own defaults.
-            #
-            # opencode-companion, "auto": runs its own `opencode serve` on
-            # loopback, which reads that same config.json.
-            "weinguyen/opencode-companion" =
-              {
-                server_mode = "auto";
-                auto_start = true;
-                default_workspace = "${config.home.homeDirectory}/Projects";
-              }
-              // lib.optionalAttrs (opencodeCfg != null) {
-                default_model = opencodeCfg.model;
+              # The Voyager's layout, as exported from Vial (File → Save current
+              # layout) to this path. Until that file exists the overlay says
+              # "File not found" with the path — nothing else breaks.
+              #
+              # alt_layout off: it draws a SECOND OS layout's letters on each
+              # cap, found through `hyprctl`, and without Hyprland it falls back
+              # to a built-in Russian table. lgo types one layout (us, Compose
+              # on Right Alt), so there is nothing to draw there.
+              "egno/vial_keymap" = {
+                vil_path = "${config.home.homeDirectory}/Documents/voyager.vil";
+                alt_layout_enabled = false;
               };
-
-            # mimir: plain OpenAI-compatible chat. Same endpoint as opencode's
-            # provider (the tunnel to ernst's llama.cpp), model id without the
-            # `<provider>/` prefix, and no API key — llama.cpp needs none, and
-            # mimir sends no Authorization header when the key is empty.
-            "alexander/mimir" = lib.optionalAttrs (opencodeCfg != null) {
-              api_endpoint = opencodeCfg.provider.${opencodeProvider}.options.baseURL;
-              default_model = lib.removePrefix "${opencodeProvider}/" opencodeCfg.model;
+            }
+            # The AI plugins, each only where it has something to talk to — see
+            # `mimir`/`hasOpencode` at the top. opencode-companion, "auto": runs
+            # its own `opencode serve` on loopback, which reads the role's
+            # config.json — so the model and the tunnel endpoint stay chosen in
+            # one place (clan.nix, roles.opencode.*).
+            // lib.optionalAttrs hasOpencode {
+              "weinguyen/opencode-companion" =
+                {
+                  server_mode = "auto";
+                  auto_start = true;
+                  default_workspace = "${config.home.homeDirectory}/Projects";
+                }
+                // lib.optionalAttrs (opencodeCfg != null) {
+                  default_model = opencodeCfg.model;
+                };
+            }
+            # mimir: plain OpenAI-compatible chat, at the endpoint chosen in
+            # `mimir` above, model id without any `<provider>/` prefix, and no
+            # API key — llama.cpp needs none, and mimir sends no Authorization
+            # header when the key is empty.
+            // lib.optionalAttrs hasMimir {
+              "alexander/mimir" = {
+                api_endpoint = mimir.endpoint;
+                default_model = mimir.model;
+              };
             };
-          };
 
           # Widget instances. A plugin widget is named `<plugin-id>:<widget>`,
           # and the table name is what the bar or a capsule_group references —
@@ -295,25 +337,26 @@ in {
           # capture also carried date, launcher, file-search, keybinds_2, ocr
           # and an emoji-picker instance; those widgets are no longer on the
           # bar, and three of their plugins are no longer enabled.
-          widget = {
-            launcher.glyph = "rocket";
-            opencode.type = "weinguyen/opencode-companion:widget";
-            mimir.type = "alexander/mimir:status";
-            clock = {
-              anchor = true;
-              format = "{:%A} {:%Y-%m-%d} {:%H:%M}";
-              actions.left = "panel-toggle control-center home";
-            };
-            keybinds.type = "kenn/keybind-cheatsheet:keybinds";
-            status_3.type = "ayagmar/obs-control:status";
-            vial.type = "egno/vial_keymap:icon";
-            status_4.type = "aristides/udiskie:status";
-            widget_2.type = "tadomika_ari/config-swap:widget";
-            widget_4.type = "yocraft/qrcode:widget";
-            widget_5.type = "alexander/screen-toolkit:widget";
-          };
+          widget =
+            {
+              launcher.glyph = "rocket";
+              clock = {
+                anchor = true;
+                format = "{:%A} {:%Y-%m-%d} {:%H:%M}";
+                actions.left = "panel-toggle control-center home";
+              };
+              keybinds.type = "kenn/keybind-cheatsheet:keybinds";
+              status_3.type = "ayagmar/obs-control:status";
+              vial.type = "egno/vial_keymap:icon";
+              status_4.type = "aristides/udiskie:status";
+              widget_2.type = "tadomika_ari/config-swap:widget";
+              widget_4.type = "yocraft/qrcode:widget";
+              widget_5.type = "alexander/screen-toolkit:widget";
+            }
+            // lib.optionalAttrs hasOpencode {opencode.type = "weinguyen/opencode-companion:widget";}
+            // lib.optionalAttrs hasMimir {mimir.type = "alexander/mimir:status";};
 
-          calendar = {
+          calendar = lib.mkIf isLgo {
             enabled = true;
             dedupe_events = true;
             # CalDAV against the household Nextcloud. No password here — Noctalia
@@ -432,13 +475,13 @@ in {
   # Screenshot and clipboard are built in, not plugins
   # (`noctalia msg screenshot-*`, `shell.clipboard_*`).
 
-  # lgo's bar comes ONLY from the settings above. Noctalia layers its runtime
+  # lgo's bar (and deck's and go's) comes ONLY from the settings above. Noctalia layers its runtime
   # state file over config.toml, so a bar arranged in the UI would otherwise
   # keep winning until someone deletes it by hand — which is how jens and
   # miralda came to show different bars. Every switch drops the `bar` and
   # `widget` tables from that state file; everything else in it (lockscreen,
   # plugin state, …) is left alone. Takes effect when Noctalia next starts.
-  home.activation.noctaliaBarFromConfig = lib.mkIf isLgo (lib.hm.dag.entryAfter ["writeBoundary"] (let
+  home.activation.noctaliaBarFromConfig = lib.mkIf lgoLayout (lib.hm.dag.entryAfter ["writeBoundary"] (let
     py = pkgs.python3.withPackages (ps: [ps.tomli-w]);
     strip = pkgs.writeText "noctalia-strip-bar.py" ''
       import os, sys, tomllib, tomli_w
@@ -503,7 +546,7 @@ in {
   #   new names.  `WAYLAND_DISPLAY` is what `noctalia msg` needs to find the
   #   shell; the user manager has it once the niri session is up, which is
   #   why this hangs off graphical-session.target.
-  systemd.user.services.noctalia-plugin-sources = lib.mkIf isLgo {
+  systemd.user.services.noctalia-plugin-sources = lib.mkIf lgoLayout {
     Unit = {
       Description = "Clone Noctalia's plugin sources if the startup clone failed";
       After = ["graphical-session.target"];

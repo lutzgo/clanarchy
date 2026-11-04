@@ -47,9 +47,11 @@ Theme and wallpapers are shared with jens (`modules/themes/`,
 | `wallpapers.nix` | Nix-Anarchy SVG rendered at native 1366×768; seeds `~/Pictures/Wallpapers/` and pins Noctalia's `wallpapers.json` |
 | `facter.json` | nixos-facter hardware fingerprint |
 
-biene and birte keep their own `stylix.nix` because they generate their
-wallpaper at a machine-native resolution (and birte has no regreet target), not
-because of the palette.
+biene keeps its own `stylix.nix` because it generates its wallpaper at a
+machine-native resolution, not because of the palette. birte had one too
+(Catppuccin Mocha) until 2026-11-04; deck's Desktop Mode now shares lgo's
+desktop, so birte takes `modules/themes` (rose-pine) and the nix-anarchy
+wallpapers like jens and miralda.
 
 ## `machines/birte/`
 
@@ -59,7 +61,6 @@ because of the palette.
 | `disko.nix` | `modules/disko/btrfs.nix` — btrfs, unencrypted, 16G plain swap for hybrid-sleep, `@games` subvol at `/games` |
 | `jovian.nix` | Jovian-NixOS wiring: Steam Gaming Mode, gamescope-session, `deck` user |
 | `deck.nix` | Deck user config + HM stylix; persist set (incl. `.var/app` for Flatpak) and the `/games` tmpfiles rules |
-| `stylix.nix` | Catppuccin Mocha, SVG-recoloured wallpaper at 1280×800 |
 | `romm-esde-bridge.nix` | Publishes RomM's ES-DE export into the layout ES-DE actually reads |
 
 ## `machines/ernst/`

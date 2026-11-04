@@ -49,40 +49,9 @@
   # before, and reverting is this one word.
   clanarchy.theme = "rose-pine";
 
-  # lgo's niri look: an accent-coloured glow instead of a drop shadow (the
-  # shadow takes the palette's base0D at alpha 0x50, no offset), no border and
-  # no focus ring, stronger blur, 10px corners. jens carries the same block —
-  # keep the two in step.
-  clanarchy.desktop.niri = {
-    shadow = {
-      enable = true;
-      softness = 15;
-      spread = 3;
-      offset.y = 0;
-      offset.x = 0;
-      color = "#${config.lib.stylix.colors.base0D}50";
-      unfocused = {
-        enable = false;
-      };
-    };
-    blur = {
-      passes = 5;
-      offset = 6.5;
-      noise = 0.0;
-      saturation = 1.5;
-    };
-    cornerRadius = 10.0;
-    border = {
-      enable = false;
-      width = 0;
-    };
-    opacity = {
-      focused = 0.75;
-      unfocused = 0.65;
-      terminal = 0.75;
-    };
-    focusRing.enable = false;
-  };
+  # lgo's niri look — shared with jens, birte and ernst's TV desktop; see
+  # modules/desktop/niri-look.nix.
+  imports = [../../modules/desktop/niri-look.nix];
 
   # ZSA Voyager: udev rules for Oryx / Keymapp, plus Keymapp itself.
   # Oryx's *browser* features (live training, web flashing) need WebHID, which
