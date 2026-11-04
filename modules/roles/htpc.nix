@@ -60,9 +60,13 @@
   config,
   lib,
   pkgs,
+  inputs,
   ...
 }: let
   cfg = config.clanarchy.roles.htpc;
+
+  # See the `oniri` input in flake.nix.
+  oniri = import inputs.oniri {inherit pkgs;};
 
   stateDir = "/var/lib/clanarchy-session";
   stateFile = "${stateDir}/current";
@@ -1798,6 +1802,14 @@ in {
           # The TV. Under Plasma it ran at scale 2 (see mediaClient.scaleFactor);
           # niri's own guess from a 4K TV's reported size is far smaller.
           outputs."HDMI-A-1".scale = 2.0;
+
+          # The couch's own autostart. The shared niri config (niri-hm.nix)
+          # starts Noctalia, Oniri and KeePassXC; a TV has no use for a
+          # password manager, so the list is restated without it.
+          spawn-at-startup = lib.mkForce [
+            {command = ["uwsm" "app" "--" "noctalia"];}
+            {command = ["uwsm" "app" "--" "${oniri}/bin/oniri"];}
+          ];
         }
         // lib.optionalAttrs (cfg.display.gpuPciAddress != null) {
           # Render on the TV's card. The udev rules below deny the couch user
@@ -1806,6 +1818,19 @@ in {
           # on this board and may flip (see waitForDisplay).
           debug.render-drm-device = "/dev/dri/by-path/pci-${cfg.display.gpuPciAddress}-render";
         };
+
+      # The dock, on the TV only: driven with a controller or a remote,
+      # a row of big icons at the bottom edge is easier to reach than the
+      # bar's launcher. Auto-hides as configured upstream; the launcher button
+      # sits at its start.
+      programs.noctalia.settings.dock = {
+        enabled = true;
+        launcher_position = "start";
+      };
+
+      # Nor a Nextcloud sync client (noctalia-hm.nix starts one for every niri
+      # user). The unit stays defined; it is just not pulled in.
+      systemd.user.services.nextcloud-client.Install.WantedBy = lib.mkForce [];
 
       # No lock unless asked for — see screenLocker.enable. Monitors still go
       # dark after 5.5 idle minutes, which a TV wants.
