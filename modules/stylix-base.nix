@@ -51,4 +51,10 @@
     # Boot splash — Stylix generates a spinner theme from the active scheme.
     targets.plymouth.enable = true;
   };
+
+  # Nobody runs rofi (Noctalia's launcher replaced it), but Stylix's rofi
+  # target still defines `programs.rofi.font`, which Home Manager renamed —
+  # one deprecation warning per user on every evaluation.  Off until rofi is
+  # used again.
+  home-manager.sharedModules = [{stylix.targets.rofi.enable = false;}];
 }

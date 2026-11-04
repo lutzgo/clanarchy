@@ -41,7 +41,19 @@
   # Home Manager 26.11 vs Nixpkgs 26.05 — HM is intentionally ahead of the
   # clan-core-pinned nixpkgs.  Silence the per-profile version-mismatch
   # warning for every HM user in the clan; we track HM upstream manually.
-  home-manager.sharedModules = [{home.enableNixpkgsReleaseCheck = false;}];
+  home-manager.sharedModules = [
+    {
+      home.enableNixpkgsReleaseCheck = false;
+
+      # Home Manager changed this default to `true` for stateVersion 26.11
+      # and warns on every evaluation until it is stated.  `false` is the
+      # behaviour every nushell user here already has, and it loses nothing:
+      # checked on jens 2026-11-04, a login nushell already carries every one
+      # of lgo's `home.sessionVariables` (it inherits them from the session),
+      # so `true` would only load the same values a second time.
+      programs.nushell.loadSessionVariables = lib.mkDefault false;
+    }
+  ];
 
   # Make zsh available as a valid login shell (/etc/shells) for use as fallback.
   programs.zsh.enable = true;
