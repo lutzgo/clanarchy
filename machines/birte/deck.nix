@@ -14,11 +14,10 @@
 #   2. Provisions the login password via a clan-vars generator (mirrors
 #      admin / sabine).
 #   3. Persists the paths that must survive ZFS rollback so HM activation,
-#      Plasma settings, and Steam library entries stick.
+#      desktop settings, and Steam library entries stick.
 #   4. Attaches a Home Manager config whose only current purpose is to
-#      opt into Stylix's HM auto-enable, so the Plasma 6 desktop and
-#      other HM-managed apps pick up the base16 palette declared in
-#      stylix.nix.
+#      opt into Stylix's HM auto-enable, so the niri desktop and other
+#      HM-managed apps pick up the base16 palette declared in stylix.nix.
 #
 {
   users.users.deck = {
@@ -26,7 +25,7 @@
     home = "/home/deck";
     shell = pkgs.bashInteractive;
     # `gamemode` for Jovian's gamescope-session; the rest are the usual
-    # desktop groups so KDE / audio / networking work in Desktop Mode.
+    # desktop groups so audio / networking / input work in Desktop Mode.
     # `roms` is the group shared with `syncthing` for the replicated ROM and
     # BIOS trees — see the tmpfiles rules below.
     extraGroups = ["wheel" "networkmanager" "video" "audio" "input" "gamemode" "roms"];
@@ -53,14 +52,14 @@
 
   # deck's home is rolled back to blank on every boot, same as every other
   # machine in the fleet (modules/btrfs-impermanence.nix blanks @root and
-  # @home).  Only what is declared here survives, so HM state, Plasma
+  # @home).  Only what is declared here survives, so HM state, desktop
   # dotfiles and the Steam client's own data must be listed explicitly.
   # `.steam` is contributed separately by modules/gaming-common.nix via
   # clanarchy.gaming.persistenceDirectories.
   environment.persistence."/persist".users.deck = {
     directories = [
-      ".config" # Plasma / KDE config, HM-managed dotfiles
-      ".local/share" # KDE data + Steam client data (library is symlinked out)
+      ".config" # app config, HM-managed dotfiles
+      ".local/share" # app data + Steam client data (library is symlinked out)
       ".local/state" # HM profile symlinks, systemd user state
       ".cache" # shader caches — re-derivable, but recompiling them on
       # every boot is exactly the stutter a Deck must avoid
@@ -185,7 +184,7 @@
 
   # Home Manager for `deck`. Stylix's HM auto-enable is the default when the
   # HM integration imports it (see stylix.nix at the NixOS level); autoEnable
-  # covers the plasma6/kde, GTK, Qt, cursor, and font targets based on the
+  # covers the GTK, Qt, cursor, font and Noctalia targets based on the
   # active base16 scheme.
   home-manager.users.deck = {
     config,
@@ -223,6 +222,10 @@
     # Plasma writes it again at the next session start regardless.  It is the
     # remedy HM's own error message suggests.
     #
+    # Plasma is gone from birte since the move to niri, so nothing rewrites
+    # the file any more. Kept anyway: overwriting a generated file costs
+    # nothing, and the `.bak` trap above takes the whole profile down.
+    #
     # The key is the ABSOLUTE path, not ".gtkrc-2.0" — HM's gtk2 module
     # declares it as `home.file.${cfg2.configLocation}` and configLocation
     # defaults to "${config.home.homeDirectory}/.gtkrc-2.0".  A relative key
@@ -240,12 +243,18 @@
     # the deck password only exists as a sha-512 hash in clan vars — nobody
     # can look it up, so a lock screen here is a lockout, not a security
     # boundary. Gaming Mode is the normal session and never locks anyway.
-    xdg.configFile."kscreenlockerrc".text = ''
-      [Daemon]
-      Autolock=false
-      LockOnResume=false
-    '';
-    # Note: stylix.targets.kde is force-disabled for every HM user on birte
-    # via home-manager.sharedModules in stylix.nix — see the comment there.
+    #
+    # Noctalia's swayidle (modules/desktop/noctalia-hm.nix) locks after five
+    # minutes and on every suspend; for deck only the monitor-off timeout is
+    # kept. (Under Plasma this was `kscreenlockerrc`.)
+    services.swayidle = {
+      events = lib.mkForce {};
+      timeouts = lib.mkForce [
+        {
+          timeout = 330;
+          command = "niri msg action power-off-monitors";
+        }
+      ];
+    };
   };
 }

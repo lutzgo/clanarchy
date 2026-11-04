@@ -44,7 +44,7 @@
   };
 
   roles.htpc = {
-    description = "Couch machine: Steam Big Picture session + KDE Plasma, switchable at runtime. No Jovian.";
+    description = "Couch machine: Steam Big Picture, Kodi and a niri + Noctalia desktop, switchable at runtime. No Jovian.";
     interface.options = {
       user = lib.mkOption {
         type = lib.types.str;
@@ -52,7 +52,7 @@
         example = "htpc";
       };
       defaultSession = lib.mkOption {
-        type = lib.types.enum ["gamescope" "plasma" "kodi" "bigscreen"];
+        type = lib.types.enum ["gamescope" "desktop" "kodi" "bigscreen"];
         default = "gamescope";
         description = "Session to land in before any choice has been made.";
       };
@@ -99,7 +99,7 @@
         fallbackChain = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [];
-          example = ["kodi" "plasma"];
+          example = ["kodi" "desktop"];
           description = "Modes to demote through, cheapest first. Required when crashLoop.enable is set.";
         };
       };

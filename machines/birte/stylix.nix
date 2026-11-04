@@ -8,9 +8,10 @@
 # Scheme: Catppuccin Mocha (dark) — deep blacks look good on the AMOLED panel.
 # Wallpaper: Nix-Anarchy SVG (logo-blue) recolored to the Mocha palette,
 # rendered at native 1280×800.
-# Targets: plymouth only (via stylix-base). SDDM and Plasma 6 aren't NixOS-level
-# stylix targets in the pinned rev — they'd need HM wiring against the `deck`
-# user which Jovian provisions itself, so we leave them at Jovian's defaults.
+# Targets: plymouth at the NixOS level (via stylix-base); the desktop —
+# niri, Noctalia, GTK, Qt — through each user's Home Manager. SDDM is only
+# ever passed through on the way into gamescope, so it stays at Jovian's
+# defaults.
 let
   schemePath = "${pkgs.base16-schemes}/share/themes/catppuccin-mocha.yaml";
 
@@ -93,5 +94,9 @@ in {
   # that actually trips it lets Desktop Mode follow the Stylix palette
   # properly, rather than only picking it up second-hand through the
   # GTK/Qt/cursor targets.
+  #
+  # Desktop Mode is niri now, not Plasma, so for deck the KDE target only
+  # themes KDE apps. The admin line stays for the same SC2209 reason: the
+  # target still builds the script.
   home-manager.users.admin.stylix.targets.kde.enable = false;
 }

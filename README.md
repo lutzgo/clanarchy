@@ -7,7 +7,7 @@ NixOS declarative configuration built on [clan-core](https://git.clan.lol/clan/c
 | `miralda` | Framework 13 AMD | daily-driver laptop (Niri, YubiKey, lgo) |
 | `jens` | Framework 12 Intel, convertible | second laptop, same desktop as miralda |
 | `biene` | Lenovo laptop | Sabine's machine (labwc + Noctalia) |
-| `birte` | Steam Deck OLED (Galileo) | Steam Gaming Mode via Jovian-NixOS; KDE Plasma 6 fallback |
+| `birte` | Steam Deck OLED (Galileo) | Steam Gaming Mode via Jovian-NixOS; Niri + Noctalia as Desktop Mode |
 | `ernst` | AM5/X870E homelab | headless server — NAS, VM host, GPU compute, ~20 containerised services |
 
 **Stack:** ZFS or btrfs + impermanence · Wayland compositors (Niri, labwc, KDE) · Noctalia shell · YubiKey PIV (age) + GnuPG (SSH) · clan vars for secrets.
