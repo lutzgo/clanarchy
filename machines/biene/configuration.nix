@@ -67,7 +67,7 @@
 
   # Lid close → shut down (Sabine's preference), overriding the laptop-role
   # default of suspend on lid close. Hybrid-sleep is already unavailable here —
-  # this machine is on the stable channel and therefore ZFS — so this is a
+  # this machine is ZFS (`clanarchy.rootfs` above) — so this is a
   # preference about suspend, not about hibernation. Docked behaviour
   # (HandleLidSwitchDocked) keeps the systemd default: ignore.
   services.logind.settings.Login.HandleLidSwitch = lib.mkForce "poweroff";
@@ -75,9 +75,9 @@
 
   # Swap partition is retained for memory pressure only. resumeDevice stays
   # set, but it is INERT: hibernation is refused on a ZFS root
-  # (modules/roles/laptop.nix), and this machine is on the stable channel,
-  # which is what makes it ZFS. Re-enabling hibernation here is a channel
-  # change, not a one-line change — which is why that claim is gone.
+  # (modules/roles/laptop.nix), and this machine is ZFS. Re-enabling
+  # hibernation here is a reinstall on btrfs, not a one-line change — which
+  # is why that claim is gone.
   boot.resumeDevice = "/dev/disk/by-partlabel/disk-main-swap";
 
   # Removable-media filesystem compatibility (USB sticks, SD cards, externals

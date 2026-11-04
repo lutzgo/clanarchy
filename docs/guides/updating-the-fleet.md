@@ -83,7 +83,7 @@ Current state of the known couplings, re-measured 2026-11-01:
 
 | Input | Status |
 |---|---|
-| `nixpkgs-unstable` | **Still blocked.** Bumping it fails birte with `attribute 'importService' missing`. birte sets `nixpkgs.pkgs = pkgs-unstable` while the module set stays 26.05; unstable's `lib/services/lib.nix` defaults an argument to `lib.importService`, which 26.05's lib lacks. Needs a shim in `modules/channel.nix`, alongside the `linux-kernel` one already there. |
+| `nixpkgs` | One input for the whole fleet since #368 (the nixpkgs-unstable channel tarball, `flake.nix`). The old `nixpkgs-unstable` input and its `importService` coupling with birte are gone along with the second package set. |
 | `jovian-nixos` | **No longer blocked.** It used to fail with `attribute 'holo-session-selection' missing`; that was Jovian moving its package set into a `makeScope` namespace, fixed in #362 by using `pkgs.jovianPackages.*`. Moved alone successfully on 2026-10-25. |
 | `clan-core` | Carries `nixpkgs` with it. Treat as a nixpkgs bump, never as a small one. |
 

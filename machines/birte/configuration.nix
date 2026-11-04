@@ -68,8 +68,7 @@
 
   # Hybrid-sleep: the swap partition (see disko.nix) is the resume device.
   # `clanarchy.roles.laptop.hybridSleep.enable` defaults on here because this
-  # machine is btrfs, which is itself derived from `clanarchy.channel =
-  # "unstable"` — so no override. It is the only machine in the fleet that
+  # machine is btrfs (`clanarchy.rootfs` above) — so no override. It is the only machine in the fleet that
   # hibernates; see modules/roles/laptop.nix for why ZFS is refused.
   #
   # Derived from the disko disk name rather than written out, because the two
@@ -100,8 +99,7 @@
   clanarchy.apps.desktopTools.enable = true;
 
   # Supersonic, for Navidrome in Desktop Mode. The default package is the
-  # right one here: birte is `clanarchy.channel = "unstable"`, where
-  # `supersonic-wayland` no longer exists.
+  # only one: `supersonic-wayland` no longer exists in nixpkgs.
   clanarchy.apps.subsonic.enable = true;
 
   # Switch emulation. RetroDECK (installed as a Flatpak, see deck.nix for the

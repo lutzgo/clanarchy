@@ -20,9 +20,9 @@ in {
 
         **ONLY AVAILABLE ON btrfs, AND THAT IS THE POINT** — hibernation with
         a ZFS root is widely documented as unsafe (the pool's in-memory state
-        and its on-disk state diverge across the resume), and `clanarchy.rootfs`
-        is derived from `clanarchy.channel`, so in practice this is on for an
-        unstable-channel laptop and refused on a stable one. Enabling it on ZFS
+        and its on-disk state diverge across the resume), so this is on for a
+        btrfs laptop and refused on a ZFS one (`clanarchy.rootfs`, which every
+        machine states). Enabling it on ZFS
         is an assertion failure, not a silent risk. This is reasoned from
         upstream's position, not measured here.
 
@@ -41,10 +41,9 @@ in {
           root is ${config.clanarchy.rootfs}. Hibernation with a ZFS root is
           not supported here — see the option's description.
 
-          `clanarchy.rootfs` is derived from `clanarchy.channel`
-          (modules/rootfs.nix), so the way to make this machine capable of
-          hibernating is to move it to the unstable channel, which also moves
-          it to btrfs. There is no way to enable just one half.
+          `clanarchy.rootfs` describes the disk (modules/rootfs.nix), so the
+          way to make this machine capable of hibernating is to reinstall it
+          on btrfs (modules/disko/btrfs.nix) and set the option to match.
         '';
       }
       {

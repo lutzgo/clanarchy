@@ -4,13 +4,13 @@ Five machines. Each `clan.machines.<name>` block in `flake.nix` reads as a
 per-machine feature list: module args, the shared imports from
 `lib/mk-machine.nix`, then the machine's own files.
 
-| Machine | Hardware | Channel | Root | Desktop | Notes |
-|---|---|---|---|---|---|
-| `miralda` | Framework 13 AMD | stable | ZFS + impermanence, encrypted | Niri + UWSM + regreet | lgo's daily driver. YubiKey PIV for age. Gruvbox Light Hard — the only light palette in the fleet. |
-| `jens` | Framework 12 Intel, convertible | stable | ZFS + impermanence, encrypted | Niri + UWSM + regreet | Deliberately the same machine as miralda from the user's side. Differences are hardware (Intel, 1920×1200, `clanarchy.hardware.convertible.enable`) and the palette (Selenized Black). No local model — Intel iGPU, so ROCm does not apply. |
-| `biene` | Lenovo laptop | stable | ZFS + impermanence, unencrypted | labwc + UWSM + regreet + Noctalia | Sabine's machine. Lid close → power off, by preference. |
-| `birte` | Steam Deck OLED (Galileo) | **unstable** | **btrfs** + impermanence | Jovian Steam Gaming Mode; KDE Plasma 6 via SDDM | Unstable because Jovian only supports it; **btrfs follows from that** — `clanarchy.rootfs` is derived from `clanarchy.channel`, because out-of-tree OpenZFS gates the kernel and birte tracks a Valve kernel. The only machine in the fleet that hibernates, for the same reason. |
-| `ernst` | AM5 / X870E homelab | stable | ZFS + impermanence; mirrored encrypted `zroot` + raidz1 encrypted `zdata` | headless, plus an HTPC session on the TV | NAS + VM host + GPU compute. Two machine-type roles: `server` and `htpc`. ~20 containerised services. |
+| Machine | Hardware | Root | Desktop | Notes |
+|---|---|---|---|---|
+| `miralda` | Framework 13 AMD | btrfs + impermanence, LUKS | Niri + UWSM + regreet | lgo's daily driver. YubiKey PIV for age. Gruvbox Light Hard — the only light palette in the fleet. |
+| `jens` | Framework 12 Intel, convertible | btrfs + impermanence, LUKS | Niri + UWSM + regreet | Deliberately the same machine as miralda from the user's side. Differences are hardware (Intel, 1920×1200, `clanarchy.hardware.convertible.enable`) and the palette (Selenized Black). No local model — Intel iGPU, so ROCm does not apply. |
+| `biene` | Lenovo laptop | ZFS + impermanence, unencrypted | labwc + UWSM + regreet + Noctalia | Sabine's machine. Lid close → power off, by preference. |
+| `birte` | Steam Deck OLED (Galileo) | btrfs + impermanence, unencrypted | Jovian Steam Gaming Mode; KDE Plasma 6 via SDDM | btrfs because Jovian's Valve kernel must not be gated by out-of-tree OpenZFS. The only machine in the fleet that hibernates, for the same reason. |
+| `ernst` | AM5 / X870E homelab | ZFS + impermanence; mirrored encrypted `zroot` + raidz1 encrypted `zdata` | headless, plus an HTPC session on the TV | NAS + VM host + GPU compute. Two machine-type roles: `server` and `htpc`. ~20 containerised services. |
 
 ---
 
@@ -55,7 +55,7 @@ because of the palette.
 
 | File | Purpose |
 |------|---------|
-| `configuration.nix` | Hostname, timezone, btrfs/systemd-boot, SSH daemon, `clanarchy.channel = "unstable"` (which is what makes it btrfs), Steam Deck power/hardware tweaks |
+| `configuration.nix` | Hostname, timezone, btrfs/systemd-boot (`clanarchy.rootfs = "btrfs"`), SSH daemon, Steam Deck power/hardware tweaks |
 | `disko.nix` | `modules/disko/btrfs.nix` — btrfs, unencrypted, 16G plain swap for hybrid-sleep, `@games` subvol at `/games` |
 | `jovian.nix` | Jovian-NixOS wiring: Steam Gaming Mode, gamescope-session, `deck` user |
 | `deck.nix` | Deck user config + HM stylix; persist set (incl. `.var/app` for Flatpak) and the `/games` tmpfiles rules |

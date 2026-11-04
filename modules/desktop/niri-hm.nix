@@ -40,7 +40,7 @@
       gestures.hot-corners.enable = false;
 
       spawn-at-startup = [
-        {command = ["uwsm" "app" "--" "noctalia"];} # v5 binary is `noctalia`; v4 was `noctalia-shell`
+        {command = ["uwsm" "app" "--" "noctalia"];}
         {command = ["keepassxc" "--minimized"];}
       ];
 

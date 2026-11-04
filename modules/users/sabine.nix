@@ -109,23 +109,9 @@ in {
         lutris
       ];
 
-      # NO profile activation any more.
-      #
-      # This used to copy modules/users/sabine-noctalia/simple_mouse/*.json
-      # into ~/.config/noctalia/profiles/ and then over the live config, so
-      # the "simple_mouse" profile was reapplied on every rebuild. Every part
-      # of that is v4: profiles were a feature of the `shell-profiles` plugin,
-      # and the files were settings.json + colors.json + plugins.json. v5 has
-      # no such plugin, reads config.toml, and takes its palette from
-      # palettes/<name>.json, which the stylix target writes.
-      #
-      # Copying those files onto a v5 install would be inert at best. The
-      # layout they encoded is preserved instead as declarative settings in
-      # modules/desktop/noctalia-hm.nix, branched on the username. The JSON is
-      # kept in-tree as the record of what Sabine actually chose, which is
-      # worth more than the dead activation was.
-      #
-      # See docs/guides/noctalia-profiles.md.
+      # Sabine's bar (clock and battery centred, status on the right) is
+      # declarative config in modules/desktop/noctalia-hm.nix, branched on
+      # the username. See docs/guides/noctalia-profiles.md.
     };
   };
 }

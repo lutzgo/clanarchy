@@ -75,10 +75,10 @@ evaluation if a router disagrees with it.
   container — both want KMS on the same card. That is what the flag file and
   `ConditionPathExists` in `modules/roles/htpc.nix` enforce.
 
-**6 — ernst stays on the stable channel.** `clanarchy.channel = "unstable"` is
-birte-only (Jovian). The HTPC gamescope session is stock nixpkgs for exactly this
-reason, and `nixpkgs.config` cannot be set on an unstable machine anyway — the
-two are mutually exclusive by construction.
+**6 — Jovian is birte-only.** The whole fleet runs one nixpkgs (unstable, since
+#368); what stays specific to the Deck is Jovian and its Valve kernel. ernst's
+HTPC gamescope session is stock nixpkgs (`modules/roles/htpc.nix`), so it never
+depends on Jovian and stays compatible with ZFS.
 
 **7 — State lives on `zdata`, under `/srv/state/<service>`.** Not on `zroot`,
 which rolls back. Container media is read-only where the service does not write.

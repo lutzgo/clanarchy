@@ -9,7 +9,7 @@
 | Compositors | Niri (miralda, jens), labwc + Noctalia (biene), KDE Plasma 6 (birte), headless (ernst) |
 | Session manager | UWSM |
 | Greeter | ReGreet (Niri/labwc), SDDM (KDE via Jovian) |
-| Shell | Noctalia / Quickshell |
+| Shell | Noctalia |
 | Secrets | clan vars + sops-nix |
 | Disk layout | ZFS + systemd-boot |
 | Root persistence | Impermanence (ZFS rollback on boot) |

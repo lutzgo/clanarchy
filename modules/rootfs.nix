@@ -9,8 +9,8 @@
 #   clanarchy.rootfs = "btrfs"  -> modules/btrfs-impermanence.nix
 #
 # Both are imported unconditionally by `commonBase` (see lib/mk-machine.nix)
-# and each guards its own body on this option, the same way modules/channel.nix
-# guards the pkgs swap.  This file holds only what they share.
+# and each guards its own body on this option.  This file holds only what
+# they share.
 #
 # ── THE CHOICE IS THE MACHINE'S, AND THE KERNEL PIN IS WHY IT CAN BE ───────
 #

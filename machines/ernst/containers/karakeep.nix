@@ -316,9 +316,8 @@ in {
       # it here also makes the grant as narrow as the mechanism allows: it
       # applies to one container and nothing else on this machine.
       #
-      # lib/mk-machine.nix carries the SAME line for the unstable pkgs
-      # instance, where birte pulls pnpm through Jovian's KDE tooling.  Two
-      # grants, two reasons, neither reachable from the other.
+      # (lib/mk-machine.nix once carried the same grant for a second pkgs
+      # instance; that instance is gone, and so is the line.)
       #
       # THIS IS NOT KARAKEEP CHOOSING A STALE TOOLCHAIN, which is the first
       # thing worth checking before permitting anything: EVERY pnpm variant in

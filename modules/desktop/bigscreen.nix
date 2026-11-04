@@ -55,6 +55,15 @@
 # are correct and because either route above reuses most of this.
 #
 # ── Why a container, and not just a session ───────────────────────────────
+#
+# SUPERSEDED, KEPT AS THE RECORD.  Everything below assumes ernst on 26.05
+# with Plasma 6.6.6 and Bigscreen available only from a second channel.
+# Since the fleet moved to one channel (#368) the host itself carries
+# plasma-workspace 6.8.2 AND kdePackages.plasma-bigscreen 6.8.2 — one
+# generation, so the two collisions described here cannot occur.  Whether a
+# container is still the right shape (or a plain session, as on birte) has
+# not been re-decided; the mode is parked and off (clan.nix) either way.
+#
 # Plasma Bigscreen is not in nixpkgs 26.05 (the top-level attribute is a
 # throwing alias and `kdePackages.plasma-bigscreen` does not exist).  It
 # appears only on nixpkgs-unstable, at 6.7.4.  The fleet's stable machines
@@ -225,12 +234,10 @@ in {
         Extra applications to install *inside* the container — e.g. a
         Jellyfin client for the TV.
 
-        These must be drawn from the same package set the container runs on
-        (nixpkgs-unstable), not from the host's stable `pkgs`. Machine
-        modules receive it as the `pkgs-unstable` module argument, so write
-        `[ pkgs.jellyfin-media-player ]`. Passing a stable package
-        here would drag a second, conflicting Qt/KDE closure into the
-        session.
+        The container and the host share one nixpkgs now, so plain host
+        packages are right: `[ pkgs.jellyfin-media-player ]`. (This once had
+        to come from a separate `pkgs-unstable` set; that argument no longer
+        exists.)
       '';
       example = lib.literalExpression "[ pkgs.jellyfin-media-player ]";
     };
@@ -432,9 +439,6 @@ in {
       }: {
         system.stateVersion = "26.05";
 
-        # The whole point of the container: its own channel, so Plasma
-        # 6.7.4 and its systemd user units are internally consistent and
-        # never meet the host's 6.6.6.
         # The container used to take `nixpkgs.pkgs = pkgs-unstable` so it could
         # run a Plasma generation newer than the host's 26.05.  With the fleet
         # on one channel that is unnecessary: the host's own `pkgs` is the

@@ -89,18 +89,8 @@
 
     noctalia = {
       # v5.4.1 (2026-10-29), tag-pinned so a desktop shell does not move
-      # under three machines on an ordinary `nix flake update`.
-      #
-      # v5 is a different program from the v4 this tracked until 2026-11-01:
-      # a native meson/C++ shell, not a Quickshell QML one. That is why the
-      # migration happened when it did — v4's bundled `noctalia-qs` fork is
-      # from 2026-05-24 and does not compile against Qt 6.12, which blocked
-      # the move to one channel. v5 needs no quickshell at all, so the input
-      # and its three transitive nodes left the lock with it.
-      #
-      # The cost, recorded because it is not recoverable by bumping: v5
-      # replaced the QML plugin API with Luau, and ten of the eleven plugins
-      # this fleet used have no port. See docs/guides/noctalia-profiles.md.
+      # under three machines on an ordinary `nix flake update`. A native
+      # meson/C++ shell with Luau plugins; see docs/guides/noctalia-profiles.md.
       url = "github:noctalia-dev/noctalia-shell/v5.4.1";
       inputs.nixpkgs.follows = "nixpkgs";
     };
