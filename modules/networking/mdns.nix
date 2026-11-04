@@ -9,7 +9,7 @@
     enable = true;
     nssmdns4 = true; # enable NSS module so glibc resolves *.local names
     openFirewall = true; # open UDP 5353 for mDNS multicast
-    reflector = true; # bridge mDNS between interfaces (LAN ↔ ZeroTier)
+    settings.reflector."enable-reflector" = true; # bridge mDNS between interfaces (LAN ↔ ZeroTier)
     # `publish.enable` / `publish.addresses` are obsolete as of this nixpkgs —
     # avahi's own config keys are now passed through `settings` verbatim, and
     # the publishing switch is an inverted "disable" flag.

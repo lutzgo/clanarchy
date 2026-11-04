@@ -299,7 +299,7 @@ in {
   # nothing to bind, but the exclusion is stated rather than left to that
   # accident — during Phase 0, a manually-addressed enp12s0 had avahi
   # broadcasting ernst's mDNS onto the FRITZ segment within seconds.
-  services.avahi.denyInterfaces = ["br-fritz" "enp12s0" "fritz0"];
+  services.avahi.settings.server."deny-interfaces" = ["br-fritz" "enp12s0" "fritz0"];
 
   ##############################################################################
   # Host side 2 — the Services-VLAN veth and the state dir.
