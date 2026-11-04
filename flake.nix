@@ -115,7 +115,13 @@
       # If the bar comes back blank after this, the cause is almost certainly
       # NOT the version: zjstatus needs three permissions including
       # RunCommands, and a layout-only plugin never gets an answerable prompt.
-      url = "github:dj95/zjstatus/v0.25.0";
+      #
+      # Pinned to 98e95c3 rather than the v0.25.0 tag: it is v0.25.0 plus ONE
+      # one-line commit (flake.nix: `stdenv.isDarwin` -> `stdenv.hostPlatform
+      # .isDarwin`), which silences a deprecation warning on every evaluation
+      # of the Niri machines.  Plugin code identical (GitHub compare v0.25.0..
+      # 98e95c3, 2026-11-04).  Back to a tag at the next release.
+      url = "github:dj95/zjstatus/98e95c3a60be04b93d22d61691fdd5ca2ca5c9b5";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
