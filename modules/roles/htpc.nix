@@ -1812,17 +1812,17 @@ in {
           debug.render-drm-device = "/dev/dri/by-path/pci-${cfg.display.gpuPciAddress}-render";
         };
 
-      # No lock unless asked for — see screenLocker.enable. Monitors still go
-      # dark after 5.5 idle minutes, which a TV wants.
-      services.swayidle = lib.mkIf (!cfg.screenLocker.enable) {
-        events = lib.mkForce {};
-        timeouts = lib.mkForce [
-          {
-            timeout = 330;
-            command = "niri msg action power-off-monitors";
-          }
-        ];
-      };
+      # NO IDLE HANDLING AT ALL unless the lock is asked for (screenLocker).
+      #
+      # Not just no lock: no monitor power-off either. The shared desktop
+      # (noctalia-hm.nix) turns the outputs off after 5.5 idle minutes, and on
+      # a TV that is a trap. The output goes dark, the TV sees no signal on its
+      # HDMI input — and picking that input with the TV's remote is not input
+      # to ernst, so nothing ever wakes it. Hit 2026-11-04: "the TV does not
+      # want to switch to HDMI 2" with niri sitting on a powered-off output.
+      # Kodi and Big Picture never blanked the screen either. The TV's own
+      # power saving is what handles a picture nobody is watching.
+      services.swayidle.enable = lib.mkIf (!cfg.screenLocker.enable) (lib.mkForce false);
     };
 
     # Bigscreen mode. The role holds the couch-user identity; the desktop
