@@ -52,7 +52,7 @@
   # Everything Gaming Mode needs to not re-onboard on every reboot:
   environment.persistence."/persist".users.go = {
     directories = [
-      ".config" # Plasma / KDE config, gamescope + Steam client settings
+      ".config" # niri / Noctalia / HM config, gamescope + Steam client settings
       ".local/share" # Steam client data (the library itself is symlinked out, below)
       ".local/state" # systemd user state
       # ".steam" is contributed by modules/gaming-common.nix via
@@ -188,6 +188,11 @@
   #
   # `L+` forces the symlink each boot, so it is re-established after the
   # rollback regardless of what the persisted .local/share contains.
+  # modules/hardware/display.nix is imported for the desktop arm (flake.nix)
+  # and would move this to "auto". ernst's boot console is a server's, and
+  # stays exactly as it was.
+  boot.loader.systemd-boot.consoleMode = "keep";
+
   systemd.tmpfiles.rules = [
     "d /srv/games/go 0700 go users - -"
     "L+ /home/go/.local/share/Steam - - - - /srv/games/go"

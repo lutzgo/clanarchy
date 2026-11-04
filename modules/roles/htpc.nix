@@ -1,6 +1,6 @@
-# HTPC role — couch machine: boots into Steam Big Picture, switches to a
-# KDE Plasma desktop and back.  The Steam Deck experience on ordinary
-# hardware.
+# HTPC role — couch machine: boots into Steam Big Picture or Kodi, switches
+# to a niri + Noctalia desktop and back.  The Steam Deck experience on
+# ordinary hardware.
 #
 # ── Why this is not Jovian ────────────────────────────────────────────────
 # Jovian-NixOS is Steam *Deck hardware* enablement (Deck kernel, OLED
@@ -22,11 +22,27 @@
 # `services.displayManager.defaultSession` is evaluated at build time, so it
 # cannot be flipped at runtime.  Instead the display manager is pointed at a
 # single wrapper session, `clanarchy-htpc`, whose Exec reads a state file and
-# execs either the gamescope Steam session or Plasma.  Switching is then
+# execs the gamescope Steam session, Kodi or the niri desktop.  Switching is then
 # "write the file, restart the display manager" — the same shape as SteamOS.
 #
 #   /var/lib/clanarchy-session/current
-#     "gamescope" | "plasma" | "kodi" | "bigscreen"
+#     "gamescope" | "desktop" | "kodi" | "bigscreen"
+#
+# ("plasma" is still accepted everywhere a mode is read, as an alias of
+# "desktop": it is what Steam passes, and what a state file written before
+# 2026-11-04 holds.)
+#
+# ── Ways to switch, without a terminal ─────────────────────────────────────
+#
+#   from Big Picture   power menu → "Switch to Desktop"     → desktop
+#                      Library → "Media Mode"               → kodi
+#   from Kodi          power menu → Exit                    → Big Picture
+#                      Favourites → "Gaming Mode"           → Big Picture
+#                      Favourites → "Desktop"               → desktop
+#   from the desktop   launcher → "Return to Gaming Mode"   → Big Picture
+#                      launcher → "Return to Media Mode"    → kodi
+#
+# Plus `clanarchy-session-select <mode>` over SSH.
 #
 # The directory is owned by the couch user so the switch needs no root, and a
 # polkit rule lets that user restart display-manager.service (and nothing
@@ -56,7 +72,7 @@
   # It exists so the display manager can be kept from starting *at all* in
   # that mode, via ConditionPathExists below.  The alternative — letting the
   # DM start and having the boot dispatcher stop it again — races with
-  # autologin and shows a Plasma session flashing up on the TV before it is
+  # autologin and shows a desktop session flashing up on the TV before it is
   # torn down.  A condition is evaluated at unit start, so the DM is simply
   # skipped instead.
   flagFile = "${stateDir}/bigscreen-active";
@@ -83,7 +99,7 @@
   #
   #   no match: gamescope --steam
   #   MATCH:    kodi.bin
-  #   no match: startplasma-wayland
+  #   no match: startplasma-wayland   (the desktop arm's compositor then)
   #
   # Note the trap for whoever re-checks this INTERACTIVELY: a pattern typed on
   # a shell's command line matches that shell, so the same test run as a
@@ -91,15 +107,23 @@
   sessionProcessPatterns =
     ["gamescope --steam"]
     ++ lib.optional cfg.mediaClient.enable "kodi.bin"
-    ++ ["startplasma-wayland"];
+    # The desktop arm. niri-session runs `niri --session` under UWSM, as a
+    # systemd USER unit (wayland-wm@niri\x2dsession) — outside the session
+    # scope a display-manager restart tears down, which is exactly the
+    # orphan case above. Killing it by name is what releases the card.
+    ++ ["niri --session"];
 
-  # Drop-box the Bigscreen container writes into to ask for a session change.
+  # Drop-box for "please switch to <mode>", read by a root service on the host.
   #
-  # The container has no route to host systemd, and giving it one (the host
-  # D-Bus socket, or systemctl over the boundary) would hand it far more than
-  # "switch my session".  Instead the only thing that crosses is a short
-  # string in a file on the already-shared state directory; the host reads it,
-  # validates it against the same three names the switcher accepts, and acts.
+  # Two writers. The Bigscreen container: it has no route to host systemd,
+  # and giving it one would hand it far more than "switch my session", so the
+  # only thing that crosses is a short string in a file on the already-shared
+  # state directory. And Steam's "Media Mode" library entry: a program
+  # launched INSIDE gamescope cannot run the switcher itself, because the
+  # switcher's first act is to kill gamescope — and with it Steam and the
+  # entry's own process — before it reaches the display-manager restart.
+  # Writing the word and exiting leaves the switch to something outside the
+  # session. The host validates it against the names the switcher accepts.
   requestFile = "${stateDir}/request";
 
   # The nspawn unit backing the "bigscreen" mode. Named here so the switcher,
@@ -156,7 +180,7 @@
   # form forever after — the couch user never gets Big Picture at all.
   #
   # Waiting holds the VT instead, and Big Picture starts the moment the TV
-  # wakes.  It applies to every arm: Plasma's kwin has no more to do with a
+  # wakes.  It applies to every arm: the desktop's niri has no more to do with a
   # card that has no output than gamescope does.
   #
   # The card is resolved from the PCI address at RUNTIME and never from a cardN
@@ -346,12 +370,12 @@
     ${gpuPreempt}
     case "$mode" in
       ${
-      # "bigscreen" lands on Plasma only while that arm is actually built.
+      # "bigscreen" lands on the desktop only while that arm is actually built.
       # If the display manager is running at all then bigscreen is not the
       # active mode — the boot dispatcher stops the DM before starting the
       # container — so reaching this point with mode=bigscreen means
-      # something got out of step, and Plasma is a usable desktop rather
-      # than a black screen.
+      # something got out of step, and the desktop is usable rather than a
+      # black screen.
       #
       # With the arm not built, a recorded "bigscreen" is stale state from
       # when it was (the value survives in /persist), and honouring it would
@@ -359,9 +383,12 @@
       # configured to boot into Big Picture.  Let it fall through to the
       # default instead.
       if cfg.bigscreen.enable
-      then "plasma|bigscreen)"
-      else "plasma)"
-    } exec ${pkgs.kdePackages.plasma-workspace}/bin/startplasma-wayland ;;
+      then "desktop|plasma|bigscreen)"
+      else "desktop|plasma)"
+    }
+        # niri + Noctalia under UWSM — the exact Exec of niri-uwsm.desktop,
+        # the session jens and miralda log into.
+        exec ${pkgs.uwsm}/bin/uwsm start -F -- /run/current-system/sw/bin/niri-session ;;
       ${lib.optionalString cfg.mediaClient.enable ''
       kodi|media)
         # NOT exec: we need to run something after Kodi exits.
@@ -378,8 +405,16 @@
         # Only rewritten when Kodi exits cleanly. A crash leaves the choice
         # alone, so the relogin brings Kodi back rather than silently
         # demoting the machine out of media mode because of a segfault.
+        #
+        # And only while the state file still says kodi. A SWITCH out of Kodi
+        # (the "Desktop" favourite, `clanarchy-session-select desktop`) writes
+        # the new mode first and then SIGTERMs Kodi, which shuts down cleanly
+        # — so without this check the clean exit overwrote the mode just
+        # chosen, and "go to the desktop" landed in Big Picture.
         if ${cfg.mediaClient.exe} ${cfg.mediaClient.arguments}; then
-          printf 'gamescope\n' > ${stateFile}
+          case "$(cat ${stateFile} 2>/dev/null || true)" in
+            kodi|media|tv|"") printf 'gamescope\n' > ${stateFile} ;;
+          esac
           ${lib.optionalString cfg.crashLoop.enable
         # Clean exit, so the relogin that follows is expected and must
         # not be counted. Only on this branch — the `if` already
@@ -399,7 +434,7 @@
     (pkgs.writeTextDir "share/wayland-sessions/clanarchy-htpc.desktop" ''
       [Desktop Entry]
       Name=Clanarchy HTPC
-      Comment=Steam Big Picture or Plasma, selected at runtime
+      Comment=Steam Big Picture, Kodi or the niri desktop, selected at runtime
       Exec=${sessionRun}
       Type=Application
     '').overrideAttrs
@@ -419,7 +454,7 @@
       mode="''${1:-}"
       case "$mode" in
         gamescope|gamescope-wayland|steamos|gaming) mode=gamescope ;;
-        plasma|plasma-wayland|plasma-x11|desktop)   mode=plasma ;;
+        desktop|niri|plasma|plasma-wayland|plasma-x11) mode=desktop ;;
         ${lib.optionalString cfg.mediaClient.enable ''
         kodi|media|tv)                             mode=kodi ;;
       ''}
@@ -432,7 +467,7 @@
         ''
       }
         *)
-          echo "usage: clanarchy-session-select {gamescope|plasma${
+          echo "usage: clanarchy-session-select {gamescope|desktop${
         lib.optionalString cfg.mediaClient.enable "|kodi"
       }${lib.optionalString cfg.bigscreen.enable "|bigscreen"}}" >&2
           exit 2
@@ -559,6 +594,39 @@
     '';
   };
 
+  # Ask for a switch instead of performing it — see requestFile for why a
+  # program running inside the session it is about to end must not run the
+  # switcher itself. The root listener (clanarchy-session-request.service)
+  # validates the word and does the switch.
+  sessionRequest = pkgs.writeShellApplication {
+    name = "clanarchy-session-request";
+    text = ''
+      if [ $# -ne 1 ]; then
+        echo "usage: clanarchy-session-request <mode>" >&2
+        exit 2
+      fi
+      printf '%s\n' "$1" > ${requestFile}
+    '';
+  };
+
+  # Zero-argument front ends to sessionRequest, for Kodi's favourites. Kodi's
+  # System.Exec builtin takes one string and its argument splitting is
+  # Kodi's business; a program with no arguments sidesteps it entirely.
+  kodiSwitchers = {
+    "Desktop" = {
+      bin = pkgs.writeShellScriptBin "clanarchy-switch-to-desktop" ''
+        exec ${lib.getExe sessionRequest} desktop
+      '';
+      thumb = "${pkgs.nixos-icons}/share/icons/hicolor/256x256/apps/nix-snowflake.png";
+    };
+    "Gaming Mode" = {
+      bin = pkgs.writeShellScriptBin "clanarchy-switch-to-gaming" ''
+        exec ${lib.getExe sessionRequest} gamescope
+      '';
+      thumb = "${pkgs.steam-unwrapped}/share/icons/hicolor/256x256/apps/steam.png";
+    };
+  };
+
   # Steam's Big Picture "Switch to Desktop" button shells out to
   # `steamos-session-select`.  Provide it under that name so the in-UI
   # button works instead of only our own launcher.
@@ -571,11 +639,10 @@
       mode="''${1:-desktop}"
       ${lib.optionalString cfg.bigscreen.enable ''
         # With the Bigscreen arm built, "leave Gaming Mode" should land on the
-        # TV shell rather than a mouse-and-keyboard Plasma desktop — Steam's
-        # own "Switch to Desktop" button is the only in-UI exit from Big
-        # Picture, and on a couch machine the thing you want on the other side
-        # of it is Bigscreen.  Plain Plasma is still reachable deliberately,
-        # via `clanarchy-session-select plasma`.
+        # TV shell rather than a mouse-and-keyboard desktop — on a couch
+        # machine the thing you want on the other side of Steam's "Switch to
+        # Desktop" is Bigscreen.  The niri desktop is still reachable
+        # deliberately, via `clanarchy-session-select desktop`.
         case "$mode" in
           plasma|plasma-wayland|plasma-x11|desktop) mode=bigscreen ;;
         esac
@@ -668,7 +735,7 @@
 
   # The same trip back, for the arm the machine actually boots into.
   #
-  # Plasma had a launcher to reach Steam and none to reach the media client,
+  # The desktop had a launcher to reach Steam and none to reach the media client,
   # which is the default session — so from the desktop the only way back to
   # the thing this machine is mostly for was a terminal. Every arm reachable
   # from every other arm without one is the point of the switcher.
@@ -700,14 +767,19 @@
   # would silently drop the other three.
   effectiveGuiSettings = baselineGuiSettings // cfg.mediaClient.guiSettings;
 in {
+  # The desktop arm is the fleet's niri + Noctalia desktop. NOT through the
+  # inventory `desktop` service: that would make ernst a "niri machine" in
+  # every sense the service implies, and this role only wants the session.
+  # Stylix, which the shared niri/Noctalia Home Manager modules need, is added
+  # in flake.nix (clan.machines.ernst) — `inputs` cannot be used in `imports`.
   imports = [
-    ../desktop/kde.nix
+    ../desktop/niri.nix
     ../desktop/bigscreen.nix
     ../gaming-common.nix
   ];
 
   options.clanarchy.roles.htpc = {
-    enable = lib.mkEnableOption "HTPC role (Steam Big Picture + Plasma with runtime session switching)";
+    enable = lib.mkEnableOption "HTPC role (Steam Big Picture, Kodi and a niri desktop, with runtime session switching)";
 
     user = lib.mkOption {
       type = lib.types.str;
@@ -720,13 +792,14 @@ in {
     };
 
     defaultSession = lib.mkOption {
-      type = lib.types.enum ["gamescope" "plasma" "kodi" "bigscreen"];
+      type = lib.types.enum ["gamescope" "desktop" "kodi" "bigscreen"];
       default = "gamescope";
       description = ''
         Which session to land in when no choice has been made yet — i.e.
         first boot, and after `/persist` is reset. Deck-like behaviour is
         `gamescope`; `kodi` for a machine that is mostly for watching things;
-        `plasma` if it should feel like a desktop that happens to game.
+        `desktop` (niri + Noctalia) if it should feel like a desktop that
+        happens to game.
 
         `kodi` requires `mediaClient.enable`, `bigscreen` requires
         `bigscreen.enable`.
@@ -812,7 +885,7 @@ in {
         Assistant conversation agent, mneme, Open WebUI, and Karakeep's
         auto-tagging — which has no backoff and will retry at roughly 60
         requests a minute (see containers/karakeep.nix).  Switching back to
-        `kodi` or `plasma` restores them.
+        `kodi` or `desktop` restores them.
       '';
     };
 
@@ -887,7 +960,7 @@ in {
       fallbackChain = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [];
-        example = ["kodi" "plasma"];
+        example = ["kodi" "desktop"];
         description = ''
           Modes to demote through, in order, each time the breaker trips.
 
@@ -1538,8 +1611,9 @@ in {
           Electron client someone swaps in.
 
           Needed because the two sessions handle a 4K TV completely
-          differently. Plasma scales the output (ernst's TV output is at
-          scale 2), so the client looks right there with no help. The
+          differently. The desktop scales the output (niri, the TV output at
+          scale 2 — set by this role), so the client looks right there with
+          no help. The
           gamescope session runs raw native resolution — nixpkgs starts it as
           `gamescope --steam -- steam -tenfoot`, with no `-W`/`-H` — and
           Steam's own Deck UI compensates internally. A Qt/QtWebEngine app
@@ -1548,7 +1622,7 @@ in {
 
           So this is deliberately *not* set on the desktop entry, only on the
           Steam shortcut: setting it globally would double-scale the client
-          in Plasma, which already scales it once.
+          on the desktop, which already scales it once.
 
           Set to null to launch the client unwrapped, e.g. on a 1080p TV where
           neither session needs the help.
@@ -1571,7 +1645,7 @@ in {
         like one. Its remote-input feature injects events into a desktop
         session through a compositor or the RemoteDesktop portal, and the
         media client runs on bare KMS with neither. Its media controls speak
-        MPRIS, which Kodi does not expose. It works fine against the plasma
+        MPRIS, which Kodi does not expose. It works fine against the desktop
         arm, which is not where the films are
       '';
 
@@ -1630,10 +1704,11 @@ in {
     '';
 
     screenLocker.enable = lib.mkEnableOption ''
-      Plasma's screen locker in the desktop arm.
+      the screen lock in the desktop arm (Noctalia's, via swayidle).
 
       Off by default, because on a TV it locks you out rather than securing
-      anything. Plasma autolocks after five idle minutes and then demands the
+      anything. The fleet's desktop locks after five idle minutes and on
+      every suspend, and then demands the
       couch user's password — which on this fleet is a clan var nobody has
       memorised, typed on whatever input device happens to be in the room.
       Meanwhile it guards nothing: with `autologin.enable` the machine already
@@ -1666,45 +1741,71 @@ in {
       }
     ];
 
-    # KDE Plasma 6 + SDDM + pipewire + fonts. The role owns the decision;
-    # the desktop module owns the implementation.
-    clanarchy.desktop.kde.enable = true;
+    # ── The desktop arm: niri + Noctalia ──────────────────────────────────
+    #
+    # Plasma until 2026-11-04. The role owns the decision; modules/desktop/
+    # niri.nix owns the compositor, UWSM, portals and the shared Home Manager
+    # config — the same desktop jens and miralda run. (DrKonqi's coredump
+    # fork bomb, which this block used to defuse, left with Plasma.)
+    clanarchy.desktop.niri.enable = true;
 
-    # Sever DrKonqi from systemd-coredump. On this role it is not a crash
-    # reporter, it is a fork bomb.
+    # The display manager stays SDDM, as it was under kde.nix: autologin,
+    # relogin and the wrapper session below are all written against it.
+    services.displayManager.sddm = {
+      enable = true;
+      wayland.enable = true;
+    };
+
+    # niri.nix brings modules/desktop/desktop-common.nix, written for the
+    # laptops. Two of its pieces must not land on a server:
     #
-    # nixpkgs' plasma6 module ends with:
+    #   regreet   a second display manager, fighting SDDM for tty1;
+    #   the `05-networkmanager-owned` networkd rule, which marks EVERY
+    #             physical ethernet/wlan link Unmanaged for systemd-networkd so
+    #             that NetworkManager can have it.  ernst's uplink and bridge
+    #             ports are networkd's (machines/ernst/networking.nix); with
+    #             that rule active the machine drops off the network at boot.
     #
-    #   systemd.packages = [ kdePackages.drkonqi ];
-    #   systemd.services."drkonqi-coredump-processor@".wantedBy =
-    #     [ "systemd-coredump@.service" ];
-    #
-    # so every coredump on the machine starts a processor instance, which
-    # hands the dump to drkonqi-coredump-launcher in the crashing user's
-    # session. In the couch session that launcher cannot start: gamescope
-    # exports DISPLAY for its embedded Xwayland, so Qt picks the `xcb`
-    # platform plugin, which since Qt 6.5 needs libxcb-cursor — absent here.
-    # Qt then calls qFatal(), the launcher takes SIGABRT, and *that* abort is
-    # itself a coredump. Which starts another processor. Which starts another
-    # launcher.
-    #
-    # Observed on ernst 2026-09-04: Kodi crashed at 21:06, and eight minutes
-    # later the loop had written 180,363 launcher coredumps (3 GB in
-    # /var/lib/systemd/coredump, which is on the persist dataset and so
-    # survives rollback). It only stopped when the session went away, leaving
-    # two processor units stuck in `failed` — which is what the
-    # SystemdUnitFailed alert fires on, forever, until reset by hand.
-    #
-    # Excluding drkonqi via environment.plasma6.excludePackages does not fix
-    # this: that option filters systemPackages only, while the two lines above
-    # are unconditional, so the units stay registered and keep triggering.
-    # Dropping the wantedBy is the trigger itself, and nothing else uses it.
-    #
-    # Crashes are not lost — systemd-coredump still records every one, and
-    # `coredumpctl` on the host is how they were being read anyway. What goes
-    # away is the GUI "report this to KDE" dialog, which no one was ever going
-    # to see on a television.
-    systemd.services."drkonqi-coredump-processor@".wantedBy = lib.mkForce [];
+    # NetworkManager itself was already enabled here (kde.nix did the same),
+    # held off ernst's links by networking.networkmanager.unmanaged.
+    services.displayManager.regreet.enable = lib.mkForce false;
+    clanarchy.desktop.networkManagerOwnsLinks = false;
+
+    # The couch user gets a Home Manager config, so the shared niri/Noctalia
+    # modules (home-manager.sharedModules, from niri.nix) have someone to
+    # configure. Home is rolled back on boot; HM re-links it each activation,
+    # and the dot-directories that matter are persisted in machines/ernst/htpc.nix.
+    home-manager.users.${cfg.user} = {lib, ...}: {
+      home.username = cfg.user;
+      home.homeDirectory = config.users.users.${cfg.user}.home;
+      home.stateVersion = "25.11";
+
+      programs.niri.settings =
+        {
+          # The TV. Under Plasma it ran at scale 2 (see mediaClient.scaleFactor);
+          # niri's own guess from a 4K TV's reported size is far smaller.
+          outputs."HDMI-A-1".scale = 2.0;
+        }
+        // lib.optionalAttrs (cfg.display.gpuPciAddress != null) {
+          # Render on the TV's card. The udev rules below deny the couch user
+          # every OTHER card, and niri's default pick is the boot GPU — the
+          # iGPU on ernst. By-path, never renderDN: card numbering is inverted
+          # on this board and may flip (see waitForDisplay).
+          debug.render-drm-device = "/dev/dri/by-path/pci-${cfg.display.gpuPciAddress}-render";
+        };
+
+      # No lock unless asked for — see screenLocker.enable. Monitors still go
+      # dark after 5.5 idle minutes, which a TV wants.
+      services.swayidle = lib.mkIf (!cfg.screenLocker.enable) {
+        events = lib.mkForce {};
+        timeouts = lib.mkForce [
+          {
+            timeout = 330;
+            command = "niri msg action power-off-monitors";
+          }
+        ];
+      };
+    };
 
     # Bigscreen mode. The role holds the couch-user identity; the desktop
     # module owns the container and the GPU plumbing.
@@ -1824,28 +1925,9 @@ in {
       ];
     };
 
-    # Kill Plasma's screen locker on the TV.
-    #
-    # Written to /etc/xdg rather than the couch user's ~/.config for two
-    # reasons: it needs no per-user plumbing (there is no home-manager for the
-    # couch account), and /etc/xdg is on `XDG_CONFIG_DIRS` in the Plasma
-    # session, so KConfig picks it up as a system default. Home is rolled back
-    # on every boot here, which a user-level file would have to survive.
-    #
-    # `[$i]` is KDE's kiosk immutability marker. It does more than set a
-    # default: it makes the group unwritable from user config, so the System
-    # Settings toggle is greyed out instead of silently re-enabling a lockout
-    # that then persists in /persist. LockOnResume matters as much as Autolock
-    # on a TV — the panel dropping DPMS and coming back is a "resume", so
-    # without it the lock returns the first time someone turns the telly off
-    # and on again.
-    environment.etc."xdg/kscreenlockerrc" = lib.mkIf (!cfg.screenLocker.enable) {
-      text = ''
-        [Daemon][$i]
-        Autolock=false
-        LockOnResume=false
-      '';
-    };
+    # The desktop's screen lock is handled in the couch user's Home Manager
+    # config above (screenLocker.enable). It replaced an /etc/xdg/kscreenlockerrc
+    # kiosk lock while the desktop arm was Plasma.
 
     # Wireless controller support.
     #
@@ -1878,19 +1960,39 @@ in {
       # shortcuts in a binary blob under a directory named after the account's
       # steamid — unknowable at build time — so this is a runtime merge rather
       # than a file we can write; modules/gaming-shortcuts.nix has the detail.
-      shortcuts = lib.optional (cfg.mediaClient.enable && cfg.mediaClient.steamShortcut.enable) {
-        inherit (cfg.mediaClient) name arguments;
-        exe = mediaClientShortcutExe;
-        tags = ["Media"];
-        icon =
-          if cfg.mediaClient.artwork == null
-          then null
-          else mediaArtwork.icon;
-        coverArt =
-          if cfg.mediaClient.artwork == null
-          then null
-          else mediaArtwork.cover;
-      };
+      #
+      # And a "Media Mode" entry, which is not the client but the SWITCH to
+      # its session arm: before it, the only way from Big Picture into Kodi
+      # was `clanarchy-session-select kodi` over SSH. It writes a request and
+      # exits; gamescope is torn down from outside (see requestFile).
+      shortcuts =
+        lib.optional cfg.mediaClient.enable {
+          name = "Media Mode";
+          exe = "/run/current-system/sw/bin/clanarchy-session-request";
+          arguments = "kodi";
+          tags = ["Media"];
+          icon =
+            if cfg.mediaClient.artwork == null
+            then null
+            else mediaArtwork.icon;
+          coverArt =
+            if cfg.mediaClient.artwork == null
+            then null
+            else mediaArtwork.cover;
+        }
+        ++ lib.optional (cfg.mediaClient.enable && cfg.mediaClient.steamShortcut.enable) {
+          inherit (cfg.mediaClient) name arguments;
+          exe = mediaClientShortcutExe;
+          tags = ["Media"];
+          icon =
+            if cfg.mediaClient.artwork == null
+            then null
+            else mediaArtwork.icon;
+          coverArt =
+            if cfg.mediaClient.artwork == null
+            then null
+            else mediaArtwork.cover;
+        };
     };
 
     # The stock gamescope Steam session from nixpkgs — no Jovian.
@@ -1929,7 +2031,7 @@ in {
       ];
 
     # Point the display manager at the wrapper session rather than at
-    # "steam" or "plasma" directly; the wrapper decides at launch.
+    # "steam" or "niri" directly; the wrapper decides at launch.
     services.displayManager.sessionPackages = [sessionFile];
     services.displayManager.defaultSession = "clanarchy-htpc";
 
@@ -1982,7 +2084,7 @@ in {
     services.displayManager.sddm.autoLogin.relogin = lib.mkIf cfg.autologin.enable true;
 
     # The media client is installed system-wide (not just into the session)
-    # so it shows up in Plasma's launcher too, and so `mediaClient.exe` can
+    # so it shows up in the desktop's launcher too, and so `mediaClient.exe` can
     # be a stable /run/current-system/sw/bin path rather than a store path
     # that moves on every rebuild.
     #
@@ -1994,10 +2096,12 @@ in {
     environment.systemPackages =
       [
         sessionSelect
+        sessionRequest
         steamosShim
         returnLauncher
       ]
       ++ lib.optional cfg.mediaClient.enable mediaLauncher
+      ++ lib.optionals cfg.mediaClient.enable (map (f: f.bin) (lib.attrValues kodiSwitchers))
       ++ lib.optional cfg.mediaClient.enable cfg.mediaClient.package
       ++ lib.optional (cfg.mediaClient.enable && cfg.mediaClient.scaleFactor != null) mediaClientTvLauncher;
 
@@ -2403,6 +2507,69 @@ in {
       };
     };
 
+    # Kodi favourites that switch session — "Desktop" and "Gaming Mode".
+    #
+    # Kodi's only in-UI way out was its power menu's Exit, which lands in Big
+    # Picture; reaching the desktop took a second hop through Steam's "Switch
+    # to Desktop". These two sit in Kodi's Favourites and go straight there,
+    # through the request file (see requestFile: Kodi is about to be killed,
+    # so it must not run the switcher itself).
+    #
+    # Same timing as the guisettings unit and for the same reason: Kodi reads
+    # favourites.xml at start and rewrites it when favourites are edited, so
+    # it is only touched while the session is down.
+    #
+    # MERGED, NOT OWNED. Entries are keyed by name: these two are added if
+    # missing and corrected if their command drifted; every other favourite
+    # in the file is left alone. Unlike guisettings.xml, creating the file is
+    # fine — Kodi has none until the first favourite exists, and an absent
+    # file is exactly the state this fills.
+    systemd.services.clanarchy-kodi-favourites = lib.mkIf cfg.mediaClient.enable {
+      description = "Add the session-switch favourites to Kodi, before the session starts";
+
+      wantedBy = ["multi-user.target" "display-manager.service"];
+      before = ["display-manager.service"];
+      after = ["local-fs.target" "systemd-tmpfiles-setup.service"];
+
+      serviceConfig = {
+        Type = "oneshot";
+        User = cfg.user;
+        Group = config.users.users.${cfg.user}.group;
+        ExecStart = lib.getExe (pkgs.writeShellApplication {
+          name = "clanarchy-kodi-favourites";
+          runtimeInputs = [pkgs.coreutils pkgs.gnugrep];
+          text = ''
+            fav="$HOME/.kodi/userdata/favourites.xml"
+            mkdir -p "$(dirname "$fav")"
+            [ -s "$fav" ] || printf '<favourites>\n</favourites>\n' > "$fav"
+
+            ensure() {
+              name="$1"; line="$2"
+              # Already exactly right: leave the file (and its mtime) alone.
+              grep -qxF "$line" "$fav" && return 0
+
+              tmp=$(mktemp "$fav.XXXXXX")
+              trap 'rm -f "$tmp"' RETURN
+              # Drop a stale entry of ours (same name, other command), then
+              # add the current one just before the closing tag.
+              grep -vF "<favourite name=\"$name\"" "$fav" \
+                | grep -vxF '</favourites>' > "$tmp" || true
+              printf '%s\n</favourites>\n' "$line" >> "$tmp"
+              grep -qF '<favourites' "$tmp" \
+                || { echo "refusing to install a favourites.xml without its root" >&2; return 1; }
+              chmod --reference="$fav" "$tmp"
+              mv -f "$tmp" "$fav"
+              echo "kodi favourite '$name' set"
+            }
+
+            ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: f: "ensure ${lib.escapeShellArg name} ${lib.escapeShellArg
+              "    <favourite name=\"${name}\" thumb=\"${f.thumb}\">System.Exec(&quot;/run/current-system/sw/bin/${f.bin.name}&quot;)</favourite>"}")
+            kodiSwitchers)}
+          '';
+        });
+      };
+    };
+
     # Boot dispatcher.
     #
     # The other two arms are display-manager sessions, so graphical.target
@@ -2449,13 +2616,14 @@ in {
     systemd.services.display-manager.unitConfig =
       lib.mkIf cfg.bigscreen.enable {ConditionPathExists = "!${flagFile}";};
 
-    # Host-side listener for session-change requests from inside the container.
+    # Host-side listener for session-change requests — from the Bigscreen
+    # container, and from Steam's "Media Mode" entry (see requestFile).
     #
     # A path unit rather than a socket: the payload is one short word, the
-    # writer is an unprivileged desktop launcher with no networking, and a
-    # file on a directory both sides already share needs no new plumbing.
-    systemd.paths.clanarchy-session-request = lib.mkIf cfg.bigscreen.enable {
-      description = "Watch for session-change requests from the Bigscreen container";
+    # writers are unprivileged launchers, and a file in a directory they
+    # already own needs no new plumbing.
+    systemd.paths.clanarchy-session-request = {
+      description = "Watch for session-change requests";
       wantedBy = ["multi-user.target"];
       pathConfig = {
         PathChanged = requestFile;
@@ -2465,8 +2633,8 @@ in {
       };
     };
 
-    systemd.services.clanarchy-session-request = lib.mkIf cfg.bigscreen.enable {
-      description = "Apply a session-change request from the Bigscreen container";
+    systemd.services.clanarchy-session-request = {
+      description = "Apply a session-change request";
       path = [pkgs.coreutils];
       serviceConfig.Type = "oneshot";
       # Runs as root, so no polkit hop — but it only ever passes the request

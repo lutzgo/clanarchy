@@ -6,9 +6,9 @@
 
 | Layer | Technology |
 |-------|------------|
-| Compositors | Niri (miralda, jens), labwc + Noctalia (biene), KDE Plasma 6 (birte), headless (ernst) |
+| Compositors | Niri + Noctalia (miralda, jens, birte's Desktop Mode, ernst's TV desktop), labwc + Noctalia (biene) |
 | Session manager | UWSM |
-| Greeter | ReGreet (Niri/labwc), SDDM (KDE via Jovian) |
+| Greeter | ReGreet (miralda, jens, biene), SDDM (birte via Jovian, ernst's HTPC role) |
 | Shell | Noctalia |
 | Secrets | clan vars + sops-nix |
 | Disk layout | ZFS + systemd-boot |
@@ -22,7 +22,7 @@
 | `miralda` | Framework 13 AMD | Daily driver (lgo) | Niri + Noctalia |
 | `jens` | Framework 12 Intel (convertible) | Portable daily driver (lgo) | Niri + Noctalia |
 | `biene` | Lenovo laptop | Sabine's machine | labwc + Noctalia |
-| `birte` | Steam Deck OLED (Galileo) | Handheld gaming | Steam Gaming Mode (Jovian) / KDE Plasma 6 |
+| `birte` | Steam Deck OLED (Galileo) | Handheld gaming | Steam Gaming Mode (Jovian) / Niri + Noctalia |
 | `ernst` | AM5 / X870E homelab | Headless server (NAS + VM host + GPU compute) | — |
 
 ## Navigation

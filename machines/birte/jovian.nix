@@ -1,4 +1,5 @@
 {
+  config,
   lib,
   pkgs,
   ...
@@ -8,10 +9,11 @@
 #
 # Boot flow:
 #   power on → SDDM auto-logs `deck` → gamescope-session → Steam Big Picture
-#   "Switch to Desktop" → SDDM → Plasma 6 session
+#   "Switch to Desktop" → SDDM → niri (UWSM) + Noctalia
 #
-# The KDE Plasma 6 stack itself (SDDM, plasma6, pipewire, fonts) is provided
-# by modules/desktop/kde.nix via the inventory `desktop` service (kde role).
+# The niri desktop itself (niri, UWSM, Noctalia, pipewire, fonts) is the
+# inventory `desktop` service's niri role, as on jens and miralda. SDDM is
+# Jovian's.
 # `programs.steam` + Proton-GE come from modules/gaming-common.nix.
 #
 {
@@ -26,33 +28,19 @@
       autoStart = true; # boot straight into Gaming Mode
       user = "deck"; # Jovian provisions the `deck` user
 
-      # "Switch to Desktop" lands in Plasma Bigscreen, not the ordinary Plasma
-      # desktop. Bigscreen is a 10-foot shell built for a controller, which is
-      # what a Deck has; the pointer-driven desktop is the wrong shape for it.
+      # "Switch to Desktop" lands in niri, through UWSM — the same session
+      # jens and miralda log into (niri-uwsm.desktop, from
+      # programs.uwsm.waylandCompositors in modules/desktop/niri.nix).
       #
-      # birte runs this natively: kdePackages.plasma-bigscreen is in the
-      # fleet's one nixpkgs, the same Plasma generation as the rest of the
-      # machine. ernst's modules/desktop/bigscreen.nix puts Bigscreen in an
-      # nspawn container — a design from when ernst was on a different
-      # channel without it. Do not reach for that
-      # module here; the container exists solely to work around the channel.
+      # steamos-manager accepts any session FILE it can find under
+      # $XDG_DATA_DIRS/wayland-sessions (session.rs, valid_desktop_sessions;
+      # anything named *gamescope* excluded). The ones registered with the
+      # display manager are not on that path by themselves — see
+      # environment.systemPackages below.
       #
-      # The plain Plasma session stays registered (services.desktopManager
-      # .plasma6 via the `kde` desktop role) so it can still be picked from
-      # SDDM when a real desktop is needed — Bigscreen has no file manager.
-      #
-      # Deliberately "plasma" and not "plasma-bigscreen-wayland", even though
-      # the latter is a registered session and passes Jovian's assertion.
-      # steamos-manager keeps its own fixed allowlist —
-      # `steamosctl get-valid-desktop-sessions` returns exactly plasma.desktop
-      # and plasmax11.desktop — and rejects anything else with
-      #
-      #   Error: Invalid desktop session plasma-bigscreen-wayland.desktop
-      #
-      # which makes jovian-setup-desktop-session.service fail on every boot.
-      # The value here therefore only has to keep that unit happy; the session
-      # actually launched is forced by clanarchy-switch-to-desktop below.
-      desktopSession = "plasma";
+      # This was Plasma, and before that Plasma Bigscreen, whose controller
+      # input died in xdg-desktop-portal 1.22.1 (see docs/history.md).
+      desktopSession = "niri-uwsm";
     };
 
     # Decky Loader — plugin manager for the Steam overlay.
@@ -64,32 +52,11 @@
   # freshly installed with no indication why.
   environment.persistence."/persist".directories = ["/var/lib/decky-loader"];
 
-  # Registers plasma-bigscreen-wayland.desktop with the display manager.
-  # jovian.steam.desktopSession is validated against
-  # services.displayManager.sessionData.sessionNames, so without this the
-  # setting above fails to evaluate rather than silently doing nothing.
-  # Bigscreen is registered and selectable from SDDM, but it is NOT what
-  # "Switch to Desktop" lands in.
-  #
-  # It runs and renders fine here, but its only input bridge is broken:
-  # plasma-bigscreen-inputhandler reads the D-pad and sticks correctly and
-  # maps them to keycodes, then injects them through the XDG RemoteDesktop
-  # portal — which Bigscreen hardcodes via PLASMA_INTEGRATION_USE_PORTAL=1.
-  # xdg-desktop-portal 1.22.1 then drops every event on an internal
-  # assertion:
-  #
-  #   xdg-desktop-portal: g_hash_table_lookup: assertion 'hash_table != NULL'
-  #
-  # firing once per keypress. The result is a shell navigable only by
-  # touchscreen, since touch goes straight to KWin and never enters the
-  # portal. That is upstream, not configuration — see docs/history.md.
-  #
-  # An earlier revision shadowed plasma.desktop with Bigscreen so that
-  # steamos-manager's fixed allowlist would land there. That worked, and is
-  # the technique to restore once the portal is fixed; it is reverted rather
-  # than left in place because a session nobody can navigate is worse than
-  # the plain desktop.
-  services.displayManager.sessionPackages = [pkgs.kdePackages.plasma-bigscreen];
+  # Jovian owns the display manager on this machine: SDDM, auto-logging
+  # `deck` into gamescope and back into whatever "Switch to Desktop" picked.
+  # The niri role's regreet (modules/desktop/desktop-common.nix) would be a
+  # second display manager fighting it for the seat.
+  services.displayManager.regreet.enable = lib.mkForce false;
 
   # Every Jovian package below is reached through `pkgs.jovianPackages.*`, not
   # `pkgs.*`.  Jovian moved its whole package set into a `makeScope` namespace
@@ -137,36 +104,18 @@
 
   # A way back to Gaming Mode that does not require a terminal.
   #
-  # SteamOS ships a "Return to Gaming Mode" desktop shortcut; Jovian does not,
-  # and neither does anything else here — ~deck/Desktop is empty. In Plasma
-  # that is merely annoying, since Konsole can run steamos-session-select.
-  # In Bigscreen it is a trap: there is no terminal and no file manager, so
-  # without this entry the only way out is SSH.
+  # SteamOS ships a "Return to Gaming Mode" desktop shortcut; Jovian does not.
+  # On a Deck with no keyboard attached a terminal is no way out, so this
+  # entry — found by Noctalia's launcher — is the way back to Steam without
+  # SSH.
   environment.systemPackages = [
-    # Not redundant with sessionPackages above: that only registers the
-    # .desktop file, it does not put anything on PATH. plasma-bigscreen-wayland
-    # is a shell script whose first line is
-    #
-    #   . plasma-bigscreen-common-env
-    #
-    # sourced by bare name, and it calls its other helpers the same way. With
-    # the package off PATH that source fails, the script exits immediately,
-    # and SDDM logs a session that starts and closes in the same second with
-    # no error of its own — a black screen with nothing to go on.
-    pkgs.kdePackages.plasma-bigscreen
-
-    # Bigscreen's homescreen applet — its entire main UI — imports the
-    # org.kde.kdeconnect QML module in the header, and one missing module
-    # takes the whole shell down:
-    #
-    #   error when loading applet "org.kde.bigscreen.homescreen"
-    #     HomeHeader.qml: Type Indicators.KdeConnect unavailable
-    #     KdeConnect.qml: module "org.kde.kdeconnect" is not installed
-    #
-    # plasma-bigscreen does not depend on it, so it has to be installed
-    # alongside. This is the QML module, not the phone-pairing feature —
-    # unrelated to clanarchy.apps.communication's Valent on other machines.
-    pkgs.kdePackages.kdeconnect-kde
+    # Every registered session's .desktop file, on $XDG_DATA_DIRS — which is
+    # where steamos-manager looks for valid desktop sessions (see
+    # jovian.steam.desktopSession above). services.displayManager.sessionPackages
+    # (where programs.uwsm registers niri-uwsm.desktop) only reaches SDDM's
+    # own SessionDir, so without this jovian-setup-desktop-session fails with
+    # "Invalid desktop session niri-uwsm.desktop" on every boot.
+    config.services.displayManager.sessionData.desktops
 
     (pkgs.makeDesktopItem {
       name = "return-to-gaming-mode";
@@ -175,10 +124,6 @@
       icon = "steam";
       exec = "steamos-session-select gamescope";
       categories = ["Game"];
-      # Bigscreen's launcher only lists applications that declare themselves
-      # for it; without this the entry is invisible in exactly the session
-      # that most needs it.
-      extraConfig.X-KDE-PluginInfo-Category = "Application";
     })
 
     (pkgs.writeShellScriptBin "steamos-session-select" ''
@@ -193,19 +138,16 @@
       # The desktop arms deliberately do NOT go through holo-session-select.
       # Every one of its plasma cases hardcodes plasma.desktop or
       # plasmax11.desktop, which would silently override
-      # jovian.steam.desktopSession and land in the ordinary Plasma desktop
-      # instead of Bigscreen. Calling switch-to-desktop-mode with no argument
-      # uses the default session, which jovian-setup-desktop-session sets from
-      # that option — so the Nix config stays the single source of truth.
+      # jovian.steam.desktopSession — and no longer exist here. Calling
+      # switch-to-desktop-mode with no argument uses the default session,
+      # which jovian-setup-desktop-session sets from that option — so the Nix
+      # config stays the single source of truth.
       arg="''${1:-gamescope}"
       case "$arg" in
         gamescope|steamos|gaming)
           exec ${pkgs.jovianPackages.holo-session-selection}/bin/holo-session-select gamescope
           ;;
-        desktop|plasma|plasma-wayland|plasma-x11|bigscreen)
-          # plasma.desktop *is* Bigscreen (see sessionPackages above), so the
-          # ordinary switch lands in the right place and needs no special
-          # casing here.
+        desktop|plasma|plasma-wayland|plasma-x11|bigscreen|niri)
           exec ${pkgs.jovianPackages.steamos-manager}/bin/steamosctl switch-to-desktop-mode
           ;;
         *)

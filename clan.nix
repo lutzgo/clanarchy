@@ -64,8 +64,8 @@
         roles.laptop.machines.birte = {}; # Steam Deck OLED — battery-backed handheld
         roles.server.machines.ernst = {};
         # ernst doubles as the living-room machine: boots into Kodi on the TV
-        # and switches to Steam Big Picture or Plasma at runtime.  Stable
-        # channel + ZFS throughout — the gaming arm is the stock nixpkgs
+        # and switches to Steam Big Picture or the niri desktop at runtime.
+        # ZFS throughout — the gaming arm is the stock nixpkgs
         # gamescope session, not Jovian (see modules/roles/htpc.nix for why
         # that distinction holds).
         roles.htpc.machines.ernst.settings = {
@@ -152,10 +152,11 @@
           # preferred: 326 MiB of VRAM against Big Picture's ~1350, so it is
           # the mode most likely to survive whatever just exhausted the card
           # — and it is the one a person on the sofa can drive with a remote.
-          # `plasma` after it, as the last rung that still draws something.
+          # `desktop` (niri) after it, as the last rung that still draws
+          # something.
           crashLoop = {
             enable = true;
-            fallbackChain = ["kodi" "plasma"];
+            fallbackChain = ["kodi" "desktop"];
           };
 
           # The living-room set is an HDR LG, and the couch use case is
@@ -217,11 +218,16 @@
         # 1366x768 panel — native resolution (1.0) avoids 1.25 default that
         # shrinks usable logical space to 1093x614 on this low-res screen.
         roles.labwc.machines.biene.settings.display.scale = 1.0;
-        # birte: KDE Plasma 6 as the "Switch to Desktop" session (SDDM).
-        # Gaming Mode / Steam Big Picture is provided by Jovian (see
-        # machines/birte/jovian.nix); Plasma is only reached when the user
-        # exits gamescope-session.
-        roles.kde.machines.birte = {};
+        # birte: the same niri + Noctalia desktop as jens and miralda, as the
+        # "Switch to Desktop" session. Gaming Mode / Steam Big Picture is
+        # Jovian's (machines/birte/jovian.nix), and so is the display manager:
+        # Jovian runs SDDM, so regreet is off there. 1280×800 is the panel
+        # once rotated — it is a portrait 800×1280 panel; the transform is in
+        # machines/birte/configuration.nix.
+        roles.niri.machines.birte.settings.display = {
+          width = 1280;
+          height = 800;
+        };
       };
 
       # ── Users ───────────────────────────────────────────────────────────────

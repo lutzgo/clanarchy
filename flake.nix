@@ -648,6 +648,20 @@
             ./machines/ernst/hardware-configuration.nix
             ./machines/ernst/networking.nix
             ./machines/ernst/htpc.nix
+            # Stylix and the fleet palette, for the TV's desktop arm: the
+            # htpc role runs the shared niri + Noctalia desktop there, and its
+            # Home Manager modules are written against Stylix.  Here rather
+            # than in modules/roles/htpc.nix because the Stylix module comes
+            # from `inputs`, which cannot be used in `imports`.  ernst is
+            # otherwise headless, so this is NOT commonHeadful — none of the
+            # workstation apps come with it.
+            inputs.stylix.nixosModules.stylix
+            ./modules/themes/default.nix
+            # clanarchy.display, which the shared desktop HM modules read.
+            # At its default scale (1.0) its only effect is
+            # systemd-boot.consoleMode, which ernst pins back to what it was
+            # (machines/ernst/htpc.nix).
+            ./modules/hardware/display.nix
             # The Courses Jellyfin library + `course-import`.  Imported BEFORE
             # jellyfin.nix only for reading order: it owns /srv/media/library/
             # courses, which jellyfin.nix bind-mounts into the container.

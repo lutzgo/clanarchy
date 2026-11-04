@@ -13,7 +13,7 @@
     keyboard.layout = "us";
   };
 
-  # machine-type (laptop, no Framework hw) and desktop (kde) are assigned via
+  # machine-type (laptop, no Framework hw) and desktop (niri) are assigned via
   # inventory.instances in clan.nix. Wifi is provisioned via the clan wifi
   # service (home SSID prompted at `clan vars generate birte` time).
   clanarchy.hardware.cpu = "amd"; # Van Gogh APU (Zen 2 + RDNA 2 iGPU)
@@ -27,6 +27,24 @@
     keymapp.enable = false;
     vial.enable = true;
   };
+
+  # Touch-first: niri-tablet's touchscreen gestures and the on-screen keyboard
+  # (swipe up from the bottom edge), since Desktop Mode has no keyboard and
+  # Steam's controller-as-mouse only runs inside Steam. NO auto-rotation: the
+  # Deck has no accelerometer the kernel exposes — its only IIO devices are
+  # the ltrf216a light sensor — so iio-niri would have nothing to listen to.
+  clanarchy.hardware.convertible = {
+    enable = true;
+    autoRotate.enable = false;
+  };
+
+  # The panel is natively PORTRAIT, 800×1280 (/sys/class/drm/…-eDP-1/modes);
+  # gamescope rotates it for Gaming Mode, and niri has to do the same. 270 is
+  # the wl_output transform the Deck needs (Hyprland's `transform,3`, sway's
+  # `transform 270`). Touch input is remapped along with the output.
+  home-manager.sharedModules = [
+    {programs.niri.settings.outputs."eDP-1".transform.rotation = 270;}
+  ];
 
   # Hand big compiles to ernst.  birte is the machine the remote-builder
   # module's own header was written about — its Valve kernel is rebuilt from

@@ -153,11 +153,13 @@ impermanence rollback. Pair once.
 ## From the couch, without SSH
 
 Steam's own Bluetooth pairing screen is a SteamOS feature and is not in the
-desktop Big Picture build, so pairing is either the SSH route above or Plasma's
-Bluetooth applet:
+desktop Big Picture build, so pairing is either the SSH route above or the
+Bluetooth panel in the desktop arm's Noctalia control centre. Big Picture's
+power menu → **Switch to Desktop** gets there, and the desktop's launcher has
+**Return to Gaming Mode** for the way back. Over SSH it is:
 
 ```bash
-clanarchy-session-select plasma      # pair, then:
+clanarchy-session-select desktop     # pair, then:
 clanarchy-session-select gamescope
 ```
 
