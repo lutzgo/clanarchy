@@ -3,6 +3,32 @@
   # generated facter.json can still override this (mkDefault → lower priority).
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
+  # ── THE FLEET'S OVERLAY, APPLIED WHERE IT ACTUALLY TAKES EFFECT ─────────
+  #
+  #   clan.nix's `pkgsForSystem` builds an instance with lib/overlays.nix and
+  #   much of this repo was written assuming every machine used it ("nixpkgs.
+  #   overlays is ignored once pkgsForSystem supplies pkgs").  With clan-core
+  #   main that is FALSE: pkgsForSystem reaches only `configsPerSystem` (the
+  #   copies vars generators run in, via overridePkgs.nix).  The real
+  #   `nixosConfigurations.<name>` — what `clan machines update` deploys —
+  #   never set `nixpkgs.pkgs` and evaluated plain nixpkgs.
+  #
+  #   So the overlay had silently stopped applying anywhere.  Found 2026-11-04
+  #   from its most visible casualty: ungoogled-chromium without
+  #   `--extension-mime-request-handling=always-prompt-for-install`, which
+  #   ignores External Extensions — not one of lgo's eight extensions
+  #   installed on jens.  The same miss took the Steam-Runtime wrappers
+  #   (chromium, google-chrome, eden on birte), niri's checkPhase skip and the
+  #   posthog test fix with it.  allowUnfree had hit the same wall earlier and
+  #   was patched per machine; the overlay never was.
+  #
+  #   Setting it here as well as in pkgsForSystem is not a duplicate that can
+  #   double-apply: in configsPerSystem `nixpkgs.pkgs` is forced and these
+  #   options are inert; everywhere else these are the only ones in force.
+  #   The posthog handler pairs with the overlay's test fix, as in clan.nix.
+  nixpkgs.overlays = [(import ../lib/overlays.nix)];
+  nixpkgs.config.problems.handlers.posthog.broken = "warn";
+
   nix.settings.experimental-features = ["nix-command" "flakes"];
 
   boot.loader.systemd-boot.enable = true;
