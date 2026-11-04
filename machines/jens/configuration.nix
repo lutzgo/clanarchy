@@ -114,9 +114,10 @@
     focusRing.enable = false;
   };
 
-  # 2-in-1: accelerometer + auto-rotation + on-screen keyboard.
-  # See modules/hardware/convertible.nix; the Niri bind that summons the OSK
-  # (Mod+O) is guarded on this same option in modules/desktop/niri-hm.nix.
+  # 2-in-1: iio-niri auto-rotation, niri-tablet touchscreen gestures (a
+  # patched niri, built from source) and the on-screen keyboard. See
+  # modules/hardware/convertible.nix; the gesture block and the OSK binds
+  # (Mod+O, swipe up from the bottom edge) are in modules/desktop/niri-hm.nix.
   clanarchy.hardware.convertible.enable = true;
 
   # ZSA Voyager: udev rules for Oryx / Keymapp, plus Keymapp itself.

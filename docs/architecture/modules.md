@@ -49,7 +49,7 @@ body on `clanarchy.rootfs`, the same pattern as `channel.nix`.
 | `hardware/printing.nix` | CUPS + hplip + SANE |
 | `hardware/yubikey.nix` | pcscd + GnuPG agent (pinentry-qt wrapper) + polkit rule |
 | `hardware/zsa.nix` | ZSA keyboards (Voyager et al). Inert until enabled |
-| `hardware/convertible.nix` | `clanarchy.hardware.convertible`: iio-sensor-proxy, a `niri msg`-driven auto-rotate service, wvkbd. Fleet-wide but inert on clamshells, because the shared `niri-hm.nix` reads the option |
+| `hardware/convertible.nix` | `clanarchy.hardware.convertible`: touch-first hardware (jens, birte). iio-niri auto-rotation, niri-tablet's touchscreen gestures (a patched `programs.niri.package`), wvkbd. Fleet-wide but inert elsewhere, because the shared `niri-hm.nix` reads the option |
 | `icon-theme.nix` | `clanarchy.iconTheme`: Stylix-recoloured Papirus; source variant follows `stylix.polarity` |
 
 ### Networking
