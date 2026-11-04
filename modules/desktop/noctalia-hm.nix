@@ -106,18 +106,13 @@ in {
             # by hand because the shell-profiles plugin that used to apply it
             # does not exist for v5: clock and battery centre, status on the
             # right, nothing on the left. See docs/guides/noctalia-profiles.md.
-            start =
-              if isLgo
-              then ["workspaces" "active_window" "spacer"]
-              else [];
-            center =
-              if isLgo
-              then ["launcher" "spacer" "clock" "spacer"]
-              else ["clock" "battery"];
-            end =
-              if isLgo
-              then ["tray" "battery" "session"]
-              else ["tray" "notifications" "control-center"];
+            #
+            # lgo's three lists are NOT here: his block below sets all three
+            # and wins in the recursiveUpdate.  They used to be repeated here
+            # behind `isLgo` — an older layout that never reached the output.
+            start = [];
+            center = ["clock" "battery"];
+            end = ["tray" "notifications" "control-center"];
           };
         };
 
@@ -426,35 +421,18 @@ in {
   # plugins those entries named do not exist for v5.
   xdg.configFile."noctalia/config.toml".force = true;
 
-  # NO plugin seeding any more.
+  # NO plugin SEEDING any more.
   #
   # v4 declared eleven plugins in `noctalia/plugins.json` and seeded that file
   # with merge semantics so runtime download state survived a rebuild. v5
-  # replaced the QML plugin API with Luau and ships a different catalogue, so
-  # ten of those eleven have no port and the file they were listed in is not
-  # read. Two of them stopped being plugins at all — screenshot and clipboard
-  # are built into v5 (`noctalia msg screenshot-*`, `shell.clipboard_*`).
-  #
-  # Plugins are now declared in `settings.plugins` (sources + an `enabled`
-  # list) if any are wanted again. See docs/guides/noctalia-profiles.md.
+  # replaced the QML plugin API with Luau and ships a different catalogue.
+  # Plugins are now just `settings.plugins.enabled` (lgo's eleven, above);
+  # Noctalia fetches them itself into ~/.local/state/noctalia/plugins — see
+  # the `noctalia-plugin-sources` user unit (#408) for the one way that
+  # fetch goes wrong: a login before the network is up.
+  # Screenshot and clipboard stopped being plugins at all — they are built
+  # into v5 (`noctalia msg screenshot-*`, `shell.clipboard_*`).
 
-  # Convert HM's managed symlink back into a regular file, so noctalia can
-  # write to it when you change something in the settings UI. The pair with
-  # `force = true` above: HM relinks on every rebuild, this undoes it once.
-  #
-  # One file for v5, where v4 had seven.
-
-  # Remove the v4 plugin tree once.
-  #
-  # 25 directories of QML plugins (132 .qml files, zero .luau) are left under
-  # ~/.config/noctalia/plugins/ from before the v5 migration. v5's plugin API
-  # is Luau; it cannot load any of them, and it installs its own plugins from
-  # the catalogue into the same directory — so leaving the old ones there is
-  # both dead weight and a source of confusion about which are live.
-  #
-  # Only the known-v4 names are removed, and only when they still contain
-  # QML. A v5 plugin that happens to share a name is left alone, and so is
-  # anything the catalogue has installed since.
   # lgo's bar comes ONLY from the settings above. Noctalia layers its runtime
   # state file over config.toml, so a bar arranged in the UI would otherwise
   # keep winning until someone deletes it by hand — which is how jens and
@@ -484,6 +462,17 @@ in {
     fi
   ''));
 
+  # Remove the v4 plugin tree.
+  #
+  # 25 directories of QML plugins (132 .qml files, zero .luau) were left under
+  # ~/.config/noctalia/plugins/ by the v5 migration. v5 cannot load any of
+  # them and installs its own plugins elsewhere (~/.local/state/noctalia), so
+  # they were only dead weight and confusion about which were live.
+  #
+  # Only the known-v4 names are removed, and only while they still contain
+  # QML. Gone from jens and miralda as of 2026-11-04; kept for biene, which
+  # could not be checked then. Delete this block once biene has been seen
+  # without ~/.config/noctalia/plugins.
   home.activation.pruneNoctaliaV4Plugins = lib.hm.dag.entryAfter ["writeBoundary"] ''
     _plugdir="$HOME/.config/noctalia/plugins"
     for _p in assistant-panel calibre-provider clipper color-scheme-creator \
@@ -499,6 +488,9 @@ in {
     done
   '';
 
+  # Convert HM's managed symlink back into a regular file, so noctalia can
+  # write to it when you change something in the settings UI. The pair with
+  # `force = true` above: HM relinks on every rebuild, this undoes it once.
   home.activation.deSymlinkNoctalia = lib.hm.dag.entryAfter ["linkGeneration"] ''
     _delink() {
       if [ -L "$1" ]; then

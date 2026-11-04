@@ -1905,20 +1905,16 @@ in {
     # Steam one. See programs/steam.nix in nixpkgs.
     programs.steam.gamescopeSession.args = lib.mkIf cfg.display.hdr.enable ["--hdr-enabled"];
 
-    # Steam and Proton are unfree.  birte gets this from the pkgs instance
-    # built in lib/mk-machine.nix (`allowUnfree = true` baked in), but HTPC
-    # machines run on the stable channel where nothing sets it.
+    # Steam and Proton are unfree, and on ernst nothing else allows that:
+    # clan.nix's pkgsForSystem sets `allowUnfree` but never reaches a
+    # deployed machine, and the laptops' blanket `allowUnfree` is set per
+    # machine, not here.
     #
     # A predicate rather than a blanket `allowUnfree`: this role is expected
     # to land on otherwise-headless boxes (ernst fronts the NAS array), and
     # "we needed Steam" shouldn't quietly open the whole machine to unfree
     # packages.  Extend the list when a genuinely required package is
     # rejected, rather than widening to allowUnfree.
-    #
-    # NOTE: `nixpkgs.config` cannot be set on machines using
-    # `clanarchy.channel = "unstable"` (an externally-created pkgs instance
-    # trips a NixOS assertion), so this role and that option are mutually
-    # exclusive by construction.
     nixpkgs.config.allowUnfreePredicate = pkg:
       builtins.elem (lib.getName pkg) [
         "steam"

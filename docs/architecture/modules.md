@@ -11,12 +11,14 @@ Where the shared code lives. Adding something new:
   import lists: **`commonBase`** (every machine) and **`commonHeadful`**
   (`commonBase` + stylix + display + NM DNS routing + apps + immich-upload).
   `ernst` takes `commonBase`; the others take `commonHeadful`.
-- `lib/overlays.nix` — the nixpkgs overlays, applied to **both** pkgs instances:
-  the stable one in `clan.nix` and the unstable one in `lib/mk-machine.nix`. A
-  machine on `clanarchy.channel = "unstable"` takes its whole `pkgs` from the
-  latter, so an overlay listed in only one place silently does not apply there.
-- `clan.nix` — clan-core metadata, the stable `pkgsForSystem`, and the
-  `inventory.instances` that assign roles per machine.
+- `lib/overlays.nix` — the nixpkgs overlays, applied in **two** places:
+  `nixpkgs.overlays` in `modules/base.nix` (every deployed machine) and
+  `pkgsForSystem` in `clan.nix` (only the copies clan builds to run vars
+  generators). With clan-core main, `pkgsForSystem` never reaches
+  `nixosConfigurations.<name>`; until #406 the overlay was wired only there
+  and applied to no machine at all.
+- `clan.nix` — clan-core metadata, `pkgsForSystem` (vars generators only, see
+  above), and the `inventory.instances` that assign roles per machine.
 - `vars/` — generated secrets and configs (clan vars).
 
 ## `modules/` — shared NixOS modules

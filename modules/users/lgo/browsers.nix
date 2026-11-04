@@ -91,7 +91,7 @@ in {
     # Replace standard pkgs.chromium (remove it from apps.nix).
     # ungoogled-chromium ships with Google API keys removed and a
     # Chromium-Web-Store patch that restores the extension install UI.
-    # Flags are baked into the binary via the pkgsForSystem overlay in clan.nix.
+    # Flags are baked into the binary by lib/overlays.nix (applied in base.nix).
     package = pkgs.ungoogled-chromium;
 
     # ── Extensions ────────────────────────────────────────────────────
@@ -114,9 +114,13 @@ in {
     # ungoogled-chromium blocks the External Extensions mechanism by default
     # too; `--extension-mime-request-handling=always-prompt-for-install`
     # re-enables it.  That flag is baked into the binary by the overlay in
-    # lib/overlays.nix — NOT by a `commandLineArgs` in this file, which an
-    # earlier version of this comment claimed and which would be ignored,
-    # since clan-core force-sets `nixpkgs.pkgs` before any module runs.
+    # lib/overlays.nix, applied to every machine by modules/base.nix.
+    #
+    # IF EXTENSIONS DO NOT APPEAR: check the flag is really there —
+    # `ps -o args= -C chromium | head -1` must show it.  On 2026-11-04 it
+    # did not, on any machine, because the overlay was only wired through
+    # clan.nix's pkgsForSystem, which deployed machines never use (#406).
+    # The JSON files were all in place; Chromium just never read them.
     #
     # THE SECOND LIST.  modules/users/lgo.nix carries a parallel set of CRX
     # URLs in `chromiumFirstRunTabs`, a belt-and-braces path that prompts on
@@ -417,9 +421,11 @@ in {
       # `inputs.nur` is reached directly rather than through an overlay.  A
       # comment here used to say the overlay was applied "in desktop.nix via
       # home-manager.sharedModules"; no file in this repo applies a NUR overlay
-      # at all, and none can — `home-manager.useGlobalPkgs` makes HM's `pkgs`
-      # the overlay-frozen instance clan-core builds, so `nixpkgs.overlays`
-      # inside an HM module is a no-op.  The flake input is the working route.
+      # at all, and none should — `home-manager.useGlobalPkgs` makes HM's
+      # `pkgs` the system's, so `nixpkgs.overlays` inside an HM module is a
+      # no-op (a NixOS-level overlay would work, but would put NUR into
+      # every machine's pkgs for one consumer).  The flake input is the
+      # working route.
       extensions.packages = let
         nurPkgs = inputs.nur.legacyPackages.${pkgs.stdenv.hostPlatform.system};
       in
