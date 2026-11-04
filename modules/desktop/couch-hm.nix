@@ -57,7 +57,25 @@ in {
     {command = ["uwsm" "app" "--" "${oniri}/bin/oniri"];}
   ];
 
-  # No Nextcloud sync client (noctalia-hm.nix starts one for every niri user).
-  # The unit stays defined; it is just not pulled in.
+  # No Nextcloud sync client. TWO ways it starts, both closed here:
+  #
+  #   - the systemd user unit noctalia-hm.nix gives every niri user — kept
+  #     defined, just not pulled in;
+  #   - the client's OWN autostart entry. On first launch it writes
+  #     ~/.config/autostart/Nextcloud.desktop ("launch on system startup" is
+  #     on by default), UWSM runs XDG autostart entries, and ~/.config is
+  #     persisted — so after one run it kept starting from that file (birte,
+  #     2026-11-04). A managed entry with `Hidden=true` replaces it; per the
+  #     XDG autostart spec a hidden entry is ignored. force = true because
+  #     the file the client wrote is in the way.
   systemd.user.services.nextcloud-client.Install.WantedBy = lib.mkForce [];
+  xdg.configFile."autostart/Nextcloud.desktop" = {
+    force = true;
+    text = ''
+      [Desktop Entry]
+      Type=Application
+      Name=Nextcloud
+      Hidden=true
+    '';
+  };
 }
