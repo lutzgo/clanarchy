@@ -1667,6 +1667,11 @@
         # it is anywhere — DRM and SSO that Chromium refuses.
         roles.chromium.machines.birte.settings.user = "deck";
         roles.chrome.machines.birte.settings.user = "deck";
+        # browsers — go, on ernst's TV desktop: Chromium only, pinned on its
+        # dock like deck's (modules/desktop/couch-hm.nix). Same hardened build
+        # and managed policies; no Chrome — ernst's unfree allowance is a
+        # Steam-only predicate (modules/roles/htpc.nix) and stays that way.
+        roles.chromium.machines.ernst.settings.user = "go";
         # browsers — sabine
         roles.librewolf.machines.biene.settings.user = "sabine";
         roles.edge.machines.biene = {};

@@ -478,9 +478,11 @@ in {
   # lgo's bar (and deck's and go's) comes ONLY from the settings above. Noctalia layers its runtime
   # state file over config.toml, so a bar arranged in the UI would otherwise
   # keep winning until someone deletes it by hand — which is how jens and
-  # miralda came to show different bars. Every switch drops the `bar` and
-  # `widget` tables from that state file; everything else in it (lockscreen,
-  # plugin state, …) is left alone. Takes effect when Noctalia next starts.
+  # miralda came to show different bars. Every switch drops the `bar`,
+  # `widget` and `dock` tables from that state file; everything else in it
+  # (lockscreen, plugin state, …) is left alone. Takes effect when Noctalia
+  # next starts. `dock` since the couch accounts' dock is declared too
+  # (couch-hm.nix) — deck's UI-set opacity would otherwise keep winning.
   home.activation.noctaliaBarFromConfig = lib.mkIf lgoLayout (lib.hm.dag.entryAfter ["writeBoundary"] (let
     py = pkgs.python3.withPackages (ps: [ps.tomli-w]);
     strip = pkgs.writeText "noctalia-strip-bar.py" ''
@@ -488,7 +490,7 @@ in {
       path = sys.argv[1]
       with open(path, "rb") as f:
           state = tomllib.load(f)
-      dropped = [k for k in ("bar", "widget") if state.pop(k, None) is not None]
+      dropped = [k for k in ("bar", "widget", "dock") if state.pop(k, None) is not None]
       if dropped:
           tmp = path + ".tmp"
           with open(tmp, "wb") as f:
