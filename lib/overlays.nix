@@ -1,15 +1,16 @@
 # nixpkgs overlays for this flake's pkgs instance.
 #
-# Applied by `pkgsForSystem` in clan.nix.  This file used to exist because
-# there were TWO instances — a stable one from clan-core's nixpkgs and an
-# unstable one built in lib/mk-machine.nix — and an overlay had to be applied
-# to both or the same package name meant two different things depending on the
-# machine.  That is how birte once ended up with a stock ungoogled-chromium
-# while every other machine got the hardened one.
+# Applied in TWO places, and both are needed:
 #
-# There is one instance now, so that hazard is gone and this is simply where
-# the overlay list lives.  It still cannot move into a NixOS module:
-# `nixpkgs.overlays` is ignored once `pkgsForSystem` supplies `pkgs`.
+#   modules/base.nix   `nixpkgs.overlays` — what every DEPLOYED machine uses
+#   clan.nix           `pkgsForSystem`   — only the vars-generator copies
+#
+# This file once had to cover a stable and an unstable instance; that hazard
+# is gone with the single channel.  The one that replaced it: until #406
+# (2026-11-04) it was applied ONLY through pkgsForSystem, on the belief that
+# `nixpkgs.overlays` is ignored once pkgsForSystem supplies `pkgs`.  With
+# clan-core main pkgsForSystem never reaches nixosConfigurations, so nothing
+# below was in effect on any machine — the chromium flags included.
 _final: prev: let
   # ── steamSafe: strip the Steam Runtime's library paths ──────────────────
   #
@@ -67,10 +68,11 @@ in {
   niri = prev.niri.overrideAttrs (_: {checkPhase = ":";});
 
   # ── ungoogled-chromium ──────────────────────────────────────────────────
-  # Bake the privacy flags into the binary.  This cannot be done from a
-  # NixOS module: `nixpkgs.overlays` is ignored once `nixpkgs.pkgs` is set
-  # to an externally-created instance, which is the case for every machine
-  # in this clan.
+  # Bake the privacy flags into the binary, so every launcher — desktop
+  # file, Steam shortcut, a shell — gets them, not just ones that pass args.
+  # `--extension-mime-request-handling` is the load-bearing one: without it
+  # ungoogled-chromium ignores External Extensions, which is how lgo's
+  # extensions are installed (modules/users/lgo/browsers.nix).
   # Wrapped afterwards so the flags and the Steam-Runtime shim compose:
   # `.override` first (it is a package argument), `steamSafe` second (it wraps
   # the built result).

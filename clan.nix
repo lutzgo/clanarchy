@@ -1,11 +1,14 @@
 {inputs, ...}: {
   clan = {
     # Instantiate pkgs once per system with overlays applied.
-    # nixpkgs.overlays in NixOS modules is ignored when pkgsForSystem is set
-    # (clan-core force-sets nixpkgs.pkgs before NixOS modules run).
-    # The overlay list itself lives in lib/overlays.nix, because
-    # lib/mk-machine.nix has to apply the same one to the unstable pkgs
-    # instance — see the header there.
+    #
+    # With clan-core main this instance reaches ONLY `configsPerSystem` — the
+    # copies vars generators run in (clan-core's overridePkgs.nix).  The
+    # deployed `nixosConfigurations.<name>` never set `nixpkgs.pkgs`, so they
+    # get the overlay and config from `nixpkgs.overlays`/`nixpkgs.config` in
+    # modules/base.nix and per machine (allowUnfree) instead.  Keep the two
+    # in step: whatever this sets, a deployed machine needs from a module.
+    # Found 2026-11-04 (#406), when the overlay turned out to apply nowhere.
     pkgsForSystem = system:
       import inputs.nixpkgs {
         inherit system;

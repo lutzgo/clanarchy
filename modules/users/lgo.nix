@@ -17,7 +17,7 @@
 
   # CRX install via first_run_tabs: patched chromium reads /etc/chromium/initial_preferences;
   # --extension-mime-request-handling=always-prompt-for-install (baked in the
-  # lib/overlays.nix overlay, applied through clan.nix's pkgsForSystem).
+  # lib/overlays.nix overlay, applied to every machine by modules/base.nix).
   #
   # THIS IS THE SECOND OF TWO CHROMIUM MECHANISMS, and the belt-and-braces one.
   # The first is `programs.chromium.extensions` in
@@ -193,9 +193,9 @@ in {
       ];
     };
 
-    # claude-code is unfree; HM evaluates pkgs independently from pkgsForSystem so
-    # unfree packages must live at the NixOS level (environment.systemPackages uses
-    # the pkgsForSystem pkgs which has allowUnfree=true).
+    # claude-code is unfree. Installed at the NixOS level, where the machine's
+    # own `nixpkgs.config.allowUnfree` applies (set per machine — clan.nix's
+    # pkgsForSystem does not reach deployed configurations; see the note there).
     environment.systemPackages = [pkgs.claude-code];
 
     # Chromium initial_preferences: prompt to install lgo's extensions on first run.
