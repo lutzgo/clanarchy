@@ -1064,7 +1064,32 @@ in {
           listenAddress = "[::]";
           port = ports.smartctl;
           openFirewall = false;
+
+          # 0.15.0 collects five SCSI metrics it never declares in Describe()
+          # (scsi_percentage_used_endurance_indicator and the four verify
+          # error counters).  client_golang refuses a page holding a metric
+          # with an unregistered descriptor, so ONE SAS disk turns every
+          # scrape into a 500 — ernst's HBA disks are SAS, and from the
+          # 2026-11-02 deploy on the job read `up == 0` and InstanceDown went
+          # to ntfy as "ernst is not answering scrapes".  The exporter itself
+          # was running and logging normally the whole time.
+          #
+          # Upstream issue #406, fix in PR #397 (open as of 2026-11-04,
+          # main.go hunk only) — applied by the overlay just below.
         };
+
+        # An overlay because the exporter module has no `package` option; its
+        # unit names pkgs.prometheus-smartctl-exporter directly.  Scoped by the
+        # same flag, so only a machine running this exporter gets a patched
+        # build.  Drop it when nixpkgs ships a release containing the fix —
+        # the build fails loudly once the patch no longer applies.
+        nixpkgs.overlays = lib.mkIf settings.exporters.smartctl [
+          (_final: prev: {
+            prometheus-smartctl-exporter = prev.prometheus-smartctl-exporter.overrideAttrs (old: {
+              patches = (old.patches or []) ++ [./patches/smartctl-exporter-scsi-descriptors.patch];
+            });
+          })
+        ];
 
         ####################################################################
         # The scrape ACL.
