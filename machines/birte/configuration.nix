@@ -19,6 +19,15 @@
   clanarchy.hardware.cpu = "amd"; # Van Gogh APU (Zen 2 + RDNA 2 iGPU)
   clanarchy.users.admin.enable = true;
 
+  # The Voyager, when it is plugged into the Deck: Vial and the ZSA udev rules
+  # it needs to reach the keyboard. Keymapp stays on miralda and jens — Vial
+  # is what was asked for here, and flashing happens at a desk.
+  clanarchy.hardware.zsa = {
+    enable = true;
+    keymapp.enable = false;
+    vial.enable = true;
+  };
+
   # Hand big compiles to ernst.  birte is the machine the remote-builder
   # module's own header was written about — its Valve kernel is rebuilt from
   # source on every bump because this clan configures no substituters for it

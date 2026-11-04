@@ -175,7 +175,8 @@ in {
             capsule_group = [
               {
                 id = "g1";
-                members = ["status_4" "status_3" "widget_2"];
+                # udiskie, OBS, the Vial keymap, config-swap.
+                members = ["status_4" "status_3" "vial" "widget_2"];
                 enabled = true;
                 accordion = false;
                 accordion_direction = "end";
@@ -228,6 +229,7 @@ in {
             "tadomika_ari/config-swap"
             "kenn/keybind-cheatsheet"
             "ayagmar/obs-control"
+            "egno/vial_keymap"
             "yocraft/qrcode"
             "abuamar142/qr-share"
             "alexander/screen-toolkit"
@@ -243,6 +245,19 @@ in {
             "kenn/keybind-cheatsheet".cheatsheet_placement = "attached";
             "tadomika_ari/config-swap".panel_placement = "attached";
             "yocraft/qrcode".panel_placement = "attached";
+
+            # The Voyager's layout, as exported from Vial (File → Save current
+            # layout) to this path. Until that file exists the overlay says
+            # "File not found" with the path — nothing else breaks.
+            #
+            # alt_layout off: it draws a SECOND OS layout's letters on each
+            # cap, found through `hyprctl`, and without Hyprland it falls back
+            # to a built-in Russian table. lgo types one layout (us, Compose
+            # on Right Alt), so there is nothing to draw there.
+            "egno/vial_keymap" = {
+              vil_path = "${config.home.homeDirectory}/Documents/voyager.vil";
+              alt_layout_enabled = false;
+            };
 
             # Both AI plugins are pointed at ernst through what the local-ai
             # `opencode` role generates (clan.nix, roles.opencode.*), read back
@@ -291,6 +306,7 @@ in {
             };
             keybinds.type = "kenn/keybind-cheatsheet:keybinds";
             status_3.type = "ayagmar/obs-control:status";
+            vial.type = "egno/vial_keymap:icon";
             status_4.type = "aristides/udiskie:status";
             widget_2.type = "tadomika_ari/config-swap:widget";
             widget_4.type = "yocraft/qrcode:widget";
@@ -410,7 +426,7 @@ in {
   # target), everything else is config.toml.
   xdg.configFile."noctalia/config.toml".force = true;
 
-  # Plugins are `settings.plugins.enabled` (lgo's eleven, above). Noctalia
+  # Plugins are `settings.plugins.enabled` (lgo's twelve, above). Noctalia
   # fetches them itself into ~/.local/state/noctalia/plugins — see the
   # `noctalia-plugin-sources` unit below for the one way that goes wrong.
   # Screenshot and clipboard are built in, not plugins

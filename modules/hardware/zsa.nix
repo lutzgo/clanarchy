@@ -11,9 +11,8 @@
 # Voyager-specific.
 #
 # Imported unconditionally by commonBase (lib/mk-machine.nix) and guarded on
-# `clanarchy.hardware.zsa.enable`, the same shape as modules/channel.nix and
-# modules/rootfs.nix: every machine gets the option, nothing gets the config
-# until a machine asks for it.
+# `clanarchy.hardware.zsa.enable`, the same shape as modules/rootfs.nix: every
+# machine gets the option, nothing gets the config until a machine asks for it.
 #
 # ── WHAT THE ZSA WIKI'S "CREATE A UDEV RULE FILE" STEP MEANS HERE ──────────
 #
@@ -100,6 +99,17 @@
       '';
     };
 
+    vial.enable = lib.mkEnableOption ''
+      Vial, the open-source keymap GUI (nixpkgs `vial`, GPL-2.0+), and its
+      udev rule.
+
+      Vial only talks to a keyboard running VIAL FIRMWARE. A Voyager as it
+      ships from ZSA runs Oryx's QMK build, which Vial does not recognise —
+      the app opens and lists nothing. Flash a Vial build first (with Keymapp
+      or Wally; the ZSA rules above already cover the bootloader). The bar's
+      Vial keymap overlay reads a `.vil` exported from this app
+    '';
+
     wally.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -121,8 +131,15 @@
     # 50-oryx.rules + 50-wally.rules — into services.udev.packages.
     hardware.keyboard.zsa.enable = true;
 
+    # Vial's rule tags hidraw devices whose USB serial carries the Vial magic
+    # (`vial:f64c2b3c`) with `uaccess` — the same seat-based grant as the ZSA
+    # rules, so it needs no group either. The package ships it under
+    # etc/udev/rules.d, which is what services.udev.packages reads.
+    services.udev.packages = lib.optional config.clanarchy.hardware.zsa.vial.enable pkgs.vial;
+
     environment.systemPackages =
       lib.optional config.clanarchy.hardware.zsa.keymapp.enable pkgs.keymapp
-      ++ lib.optional config.clanarchy.hardware.zsa.wally.enable pkgs.wally-cli;
+      ++ lib.optional config.clanarchy.hardware.zsa.wally.enable pkgs.wally-cli
+      ++ lib.optional config.clanarchy.hardware.zsa.vial.enable pkgs.vial;
   };
 }
