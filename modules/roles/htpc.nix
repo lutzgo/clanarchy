@@ -1775,6 +1775,19 @@ in {
     # modules (home-manager.sharedModules, from niri.nix) have someone to
     # configure. Home is rolled back on boot; HM re-links it each activation,
     # and the dot-directories that matter are persisted in machines/ernst/htpc.nix.
+    # Home Manager activates AS the user, and registers the generation (its
+    # GC root and profile link) through nix-daemon. The server role limits
+    # the daemon to @wheel (modules/roles/server.nix), so on ernst
+    # home-manager-go.service died at
+    #   error: cannot open connection to remote store 'daemon':
+    #          Connection reset by peer
+    # and the desktop arm came up without its niri/Noctalia config.
+    #
+    # The couch user ONLY, appended to that list rather than replacing it:
+    # this lets one more account talk to the daemon, and does not undo the
+    # hardening for anyone else. It grants no trusted-user rights.
+    nix.settings.allowed-users = [cfg.user];
+
     home-manager.users.${cfg.user} = {lib, ...}: {
       home.username = cfg.user;
       home.homeDirectory = config.users.users.${cfg.user}.home;
