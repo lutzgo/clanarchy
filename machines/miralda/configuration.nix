@@ -88,7 +88,11 @@
   # Oryx's *browser* features (live training, web flashing) need WebHID, which
   # librewolf and firefox do not implement — use chromium for those, or
   # Keymapp, which needs no browser at all. See modules/hardware/zsa.nix.
-  clanarchy.hardware.zsa.enable = true;
+  clanarchy.hardware.zsa = {
+    enable = true;
+    # Vial too — needs Vial firmware on the Voyager; see the option.
+    vial.enable = true;
+  };
 
   clanarchy.users.lgo.enable = true;
   clanarchy.users.admin.enable = true;
