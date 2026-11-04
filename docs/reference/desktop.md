@@ -13,6 +13,7 @@ Desktop environment modules (Niri, GNOME, KDE). Enable exactly the one that appl
 | `clanarchy.desktop.labwc.keepassxc.enable` | `boolean` | Whether to enable autostart KeePassXC password manager. |
 | `clanarchy.desktop.labwc.nextcloud.enable` | `boolean` | Whether to enable autostart Nextcloud desktop sync client. |
 | `clanarchy.desktop.labwc.valent.enable` | `boolean` | Whether to enable Valent KDE Connect daemon (for Noctalia valent-connect plugin). |
+| `clanarchy.desktop.networkManagerOwnsLinks` | `boolean` | Mark every physical ethernet/wlan link Unmanaged for systemd-networkd, leaving it to NetworkManager (the `05-networkmanager-owned` rule below).  Right for the laptops. Wrong for a machine whose links networkd owns — ernst, which gets this module through the HTPC role's desktop arm and would drop off the network at boot. That role sets it false.  |
 | `clanarchy.desktop.niri.blur.enable` | `boolean` | Whether to enable background blur behind translucent windows and Noctalia layer surfaces. |
 | `clanarchy.desktop.niri.blur.noise` | `floating point number` | Film grain mixed into the blurred backdrop, 0.0 to 1.0. Masks the banding a blurred gradient otherwise shows. |
 | `clanarchy.desktop.niri.blur.offset` | `floating point number` | Sampling offset per pass, in pixels. Widens the blur more cheaply than another pass does, at the cost of banding once it outruns the sample count. |
