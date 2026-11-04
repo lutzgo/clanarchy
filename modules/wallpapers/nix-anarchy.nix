@@ -1,9 +1,9 @@
 # Per-workspace wallpapers: nix-anarchy SVGs recolored to the active Stylix base16 palette.
 #
-# Shared by every machine running lgo's Niri desktop (miralda, jens).  Nothing
-# in here is machine-specific: the colors come from whatever Stylix scheme the
-# importing machine selected, and the only two hard-coded names are the `lgo`
-# user and the `eDP-1` output, both of which hold on any of those laptops.
+# Shared by every machine running lgo's Niri desktop: miralda and jens (lgo),
+# birte (deck) and ernst's TV (go) — users per machine in
+# `clanarchy.wallpapers.nixAnarchy.users`.  The colors come from whatever
+# Stylix scheme the importing machine selected.
 #
 # All 5 SVGs share the same 22-color palette.  This module replaces those colors
 # with Stylix base16 equivalents using sed, renders to PNG via rsvg-convert, then
@@ -138,8 +138,19 @@
     };
   };
 in {
+  options.clanarchy.wallpapers.nixAnarchy.users = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = ["lgo"];
+    description = ''
+      Home Manager users who get the five palette-recoloured nix-anarchy
+      wallpapers in ~/Pictures/Wallpapers, ws1 as Noctalia's default.
+      lgo on miralda and jens; the couch accounts (deck, go) on birte and
+      ernst, which share his look.
+    '';
+  };
+
   # ---------------------------------------------------------------------------
-  # Install wallpapers into ~/Pictures/Wallpapers/ for both desktop users.
+  # Install wallpapers into ~/Pictures/Wallpapers/ for each listed user.
   # Noctalia's picker scans that directory.
   #
   # PINNING THE SELECTION IS A SETTING, not a cache file.
@@ -154,7 +165,11 @@ in {
   # mkForce because the Stylix noctalia target writes the same key
   # (`settings.wallpaper.default.path = image`) and would otherwise win.
   # ---------------------------------------------------------------------------
-  home-manager.users.lgo = {lib, ...}: {
+  config.home-manager.users = lib.genAttrs config.clanarchy.wallpapers.nixAnarchy.users (_: {
+    config,
+    lib,
+    ...
+  }: {
     home.file = {
       "Pictures/Wallpapers/ws1.png".source = wallpapers.ws1;
       "Pictures/Wallpapers/ws2.png".source = wallpapers.ws2;
@@ -164,6 +179,6 @@ in {
     };
 
     programs.noctalia.settings.wallpaper.default.path =
-      lib.mkForce "/home/lgo/Pictures/Wallpapers/ws1.png";
-  };
+      lib.mkForce "${config.home.homeDirectory}/Pictures/Wallpapers/ws1.png";
+  });
 }

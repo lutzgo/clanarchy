@@ -641,7 +641,11 @@
             ./machines/birte/configuration.nix
             ./machines/birte/disko.nix
             ./machines/birte/jovian.nix
-            ./machines/birte/stylix.nix
+            # lgo's palette and wallpapers, like jens and miralda: deck's
+            # Desktop Mode shares his desktop. (Was machines/birte/stylix.nix,
+            # Catppuccin Mocha and one recoloured logo.)
+            ./modules/themes
+            ./modules/wallpapers/nix-anarchy.nix
             ./machines/birte/deck.nix
             ./modules/retrodeck/romm-esde-bridge.nix
           ];
@@ -668,6 +672,7 @@
             # workstation apps come with it.
             inputs.stylix.nixosModules.stylix
             ./modules/themes/default.nix
+            ./modules/wallpapers/nix-anarchy.nix
             # clanarchy.display, which the shared desktop HM modules read.
             # At its default scale (1.0) its only effect is
             # systemd-boot.consoleMode, which ernst pins back to what it was

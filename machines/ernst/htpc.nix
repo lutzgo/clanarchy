@@ -188,6 +188,13 @@
   #
   # `L+` forces the symlink each boot, so it is re-established after the
   # rollback regardless of what the persisted .local/share contains.
+  # The TV's desktop is lgo's desktop: his palette, wallpapers and niri look.
+  # (Bar: the go account, `lgoLayout` in noctalia-hm.nix. Stylix, themes and
+  # the wallpaper module are imported in flake.nix.)
+  imports = [../../modules/desktop/niri-look.nix];
+  clanarchy.theme = "rose-pine";
+  clanarchy.wallpapers.nixAnarchy.users = ["go"];
+
   # modules/hardware/display.nix is imported for the desktop arm (flake.nix)
   # and would move this to "auto". ernst's boot console is a server's, and
   # stays exactly as it was.

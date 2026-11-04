@@ -19,6 +19,21 @@
   clanarchy.hardware.cpu = "amd"; # Van Gogh APU (Zen 2 + RDNA 2 iGPU)
   clanarchy.users.admin.enable = true;
 
+  # deck's Desktop Mode is lgo's desktop: his palette, wallpapers and niri
+  # look (modules/themes, modules/wallpapers/nix-anarchy.nix,
+  # modules/desktop/niri-look.nix); his bar comes with the deck account
+  # (noctalia-hm.nix, `lgoLayout`). birte used to have its own Catppuccin
+  # Mocha theme in machines/birte/stylix.nix.
+  imports = [../../modules/desktop/niri-look.nix];
+  clanarchy.theme = "rose-pine";
+  clanarchy.wallpapers.nixAnarchy.users = ["deck"];
+
+  # Stylix's KDE HM target, off for `admin` only: it builds a
+  # writeShellApplication whose `username=admin` preamble line ShellCheck
+  # rejects as SC2209 (`admin` is a command name it knows; `deck` is not).
+  # Moved here from the retired machines/birte/stylix.nix.
+  home-manager.users.admin.stylix.targets.kde.enable = false;
+
   # The Voyager, when it is plugged into the Deck: Vial and the ZSA udev rules
   # it needs to reach the keyboard. Keymapp stays on miralda and jens — Vial
   # is what was asked for here, and flashing happens at a desk.

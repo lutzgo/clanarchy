@@ -80,39 +80,11 @@
   # two Niri workstations declare their palettes the same way.
   clanarchy.theme = "rose-pine";
 
-  # lgo's niri look, the same as miralda's — see the note there; keep the two
-  # in step. Gaps are this machine's own: smaller, for the 12" panel.
-  clanarchy.desktop.niri = {
-    gaps = 10;
-    shadow = {
-      enable = true;
-      softness = 15;
-      spread = 3;
-      offset.y = 0;
-      offset.x = 0;
-      color = "#${config.lib.stylix.colors.base0D}50";
-      unfocused = {
-        enable = false;
-      };
-    };
-    blur = {
-      passes = 5;
-      offset = 6.5;
-      noise = 0.0;
-      saturation = 1.5;
-    };
-    cornerRadius = 10.0;
-    border = {
-      enable = false;
-      width = 0;
-    };
-    opacity = {
-      focused = 0.75;
-      unfocused = 0.65;
-      terminal = 0.75;
-    };
-    focusRing.enable = false;
-  };
+  # lgo's niri look (modules/desktop/niri-look.nix, shared with miralda,
+  # birte and ernst's TV desktop). Gaps are this machine's own: smaller, for
+  # the 12" panel.
+  imports = [../../modules/desktop/niri-look.nix];
+  clanarchy.desktop.niri.gaps = 10;
 
   # 2-in-1: iio-niri auto-rotation, niri-tablet touchscreen gestures (a
   # patched niri, built from source) and the on-screen keyboard. See
