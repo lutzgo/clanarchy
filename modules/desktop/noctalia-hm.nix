@@ -511,6 +511,77 @@ in {
     _delink "$HOME/.config/noctalia/config.toml"
   '';
 
+  # ── PLUGIN SOURCES: CLONED ONCE THE NETWORK IS UP ─────────────────────────
+  #
+  #   `plugins.enabled` names the plugins; Noctalia fetches them at runtime by
+  #   git-cloning its two default sources into ~/.local/state, and it tries
+  #   that exactly ONCE, at startup.  On miralda (2026-11-03) it started at
+  #   login before Wi-Fi was up:
+  #
+  #     [plugins] plugin source 'official': cannot prepare source cache …
+  #     fatal: unable to access 'https://github.com/…': Could not resolve host
+  #
+  #   and never retried — so the same config.toml drew jens's bar on jens and
+  #   a bar with every plugin widget missing (OBS, OpenCode, Mimir, recorder…)
+  #   on miralda.  Neither `plugins update` (fetches into an EXISTING clone)
+  #   nor `config-reload` re-attempts the clone.
+  #
+  #   What does work, measured on miralda: clone with Noctalia's own command
+  #   (from its log), then `noctalia msg plugins update <source>` — the
+  #   running shell materialises every enabled plugin live, no restart.  This
+  #   unit does that, and only when a clone is missing; on a machine where
+  #   Noctalia managed it itself the unit exits immediately.
+  #
+  #   The two sources are Noctalia's DEFAULTS (`noctalia config export full`,
+  #   [[plugins.source]]), restated because they are not in our config.  If
+  #   upstream renames them, `noctalia msg plugins source list` shows the
+  #   new names.  `WAYLAND_DISPLAY` is what `noctalia msg` needs to find the
+  #   shell; the user manager has it once the niri session is up, which is
+  #   why this hangs off graphical-session.target.
+  systemd.user.services.noctalia-plugin-sources = lib.mkIf isLgo {
+    Unit = {
+      Description = "Clone Noctalia's plugin sources if the startup clone failed";
+      After = ["graphical-session.target"];
+      PartOf = ["graphical-session.target"];
+    };
+    Install.WantedBy = ["graphical-session.target"];
+    Service = {
+      Type = "oneshot";
+      ExecStart = "${pkgs.writeShellScript "noctalia-plugin-sources" ''
+        set -u
+        base="$HOME/.local/state/noctalia/plugins/sources"
+        missing=""
+        for s in official community; do
+          [ -d "$base/$s/repo/.git" ] || missing="$missing $s"
+        done
+        [ -n "$missing" ] || exit 0
+
+        # Up to ten minutes for DNS, polling — a user unit cannot order
+        # itself after the system's network-online.target.
+        for _ in $(${pkgs.coreutils}/bin/seq 120); do
+          ${pkgs.getent}/bin/getent hosts github.com >/dev/null && break
+          ${pkgs.coreutils}/bin/sleep 5
+        done
+
+        for s in $missing; do
+          ${pkgs.coreutils}/bin/rm -rf "$base/$s/repo"
+          ${pkgs.coreutils}/bin/mkdir -p "$base/$s"
+          ${pkgs.git}/bin/git clone -q --origin origin --filter=blob:none --no-checkout \
+            "https://github.com/noctalia-dev/$s-plugins" "$base/$s/repo" \
+            || { echo "noctalia-plugin-sources: clone of $s failed" >&2; exit 1; }
+          echo "noctalia-plugin-sources: cloned $s"
+        done
+
+        # If the shell is not up yet it will find the clones itself when it
+        # starts; if it is, this makes it materialise the plugins now.
+        for s in $missing; do
+          ${lib.getExe config.programs.noctalia.package} msg plugins update "$s" \
+            || echo "noctalia-plugin-sources: shell not reachable; it will load $s on next start" >&2
+        done
+      ''}";
+    };
+  };
+
   gtk.gtk4.theme = lib.mkForce null; # newer stylix sets a non-null theme; mkForce keeps Noctalia's no-GTK4-theme intent
 
   gtk.iconTheme = {
