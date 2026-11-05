@@ -2517,6 +2517,20 @@ in {
                   retentionTime = settings.retentionTime;
                   extraFlags = ["--storage.tsdb.retention.size=${settings.retentionSize}"];
 
+                  # SYNTAX-ONLY, because the default check fails the build.
+                  # `promtool check config` stats every
+                  # `authorization.credentials_file` while it builds, in the
+                  # Nix sandbox.  The Home Assistant token is staged into
+                  # /run/monitoring-secrets at RUNTIME, so the build failed
+                  # with "stat /run/monitoring-secrets/homeassistant-token: no
+                  # such file or directory".  That was the first deploy of the
+                  # homeassistant job, 2026-11-05.  Navidrome's
+                  # `basic_auth.password_file` never tripped it: promtool does
+                  # not check that kind of file.  Syntax-only still parses and
+                  # validates the whole file; it only skips existence checks on
+                  # referenced files, and monitoring-secrets owns those.
+                  checkConfig = "syntax-only";
+
                   globalConfig = {
                     scrape_interval = settings.scrapeInterval;
                     evaluation_interval = settings.scrapeInterval;
