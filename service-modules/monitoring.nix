@@ -1445,6 +1445,40 @@ in {
           '';
         };
 
+        homeAssistantAddress = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          example = "10.0.90.27";
+          description = ''
+            Address of the Home Assistant guest (@clanarchy/haos) on the
+            Services VLAN.  Empty disables the `homeassistant` job.
+
+            AUTHENTICATED, like Navidrome: /api/prometheus wants a bearer
+            token, a long-lived access token created in the HA UI and held by
+            the `haos-<name>-metrics` generator.  The guest side also needs
+            `prometheus:` in its configuration.yaml, and the bridge filter in
+            front of the guest needs this container's address in the NIC's
+            `allowFrom` — three acts, and the job is `up == 0` until all three
+            are done.
+          '';
+        };
+
+        homeAssistantPort = lib.mkOption {
+          type = lib.types.port;
+          default = 8123;
+          description = "Home Assistant's HTTP port; the metrics ride the application port. Always 8123 under HAOS.";
+        };
+
+        homeAssistantTokenGenerator = lib.mkOption {
+          type = lib.types.str;
+          default = "haos-hass-metrics";
+          description = ''
+            Name of the clan vars generator holding the bearer token (file
+            `token`).  @clanarchy/haos declares it as `haos-<name>-metrics`
+            when that instance's `metrics.enable` is set.
+          '';
+        };
+
         qbittorrentAddress = lib.mkOption {
           type = lib.types.str;
           default = "";
@@ -1847,6 +1881,15 @@ in {
         # whole file as the password.
         navidromePwFile = "${secretsDir}/navidrome-metrics-password";
 
+        # Home Assistant's bearer token, same staging and same tolerance.
+        hassTokenFile = "${secretsDir}/homeassistant-token";
+        hassTokenGen = let
+          g = settings.mediaStack.homeAssistantTokenGenerator;
+        in
+          if config.clan.core.vars.generators ? ${g}
+          then config.clan.core.vars.generators.${g}
+          else {files."token".path = "/no-such-path";};
+
         # Guarded the same way grafanaGen and the ntfy generator are: naming
         # a generator that does not exist yet is an EVALUATION error, and an
         # evaluation error names an attribute rather than the command a
@@ -1945,6 +1988,21 @@ in {
                   Point it at the staged bare-value file (see the option's
                   description, and the navidrome-metrics generator in
                   machines/ernst/containers/arr/).
+                '';
+              }
+              {
+                # Same reasoning as Navidrome's: a job with no token is a
+                # permanent 401 that reads as an outage.
+                assertion =
+                  settings.mediaStack.homeAssistantAddress
+                  == ""
+                  || config.clan.core.vars.generators ? ${settings.mediaStack.homeAssistantTokenGenerator};
+                message = ''
+                  @clanarchy/monitoring: mediaStack.homeAssistantAddress is set
+                  but no `${settings.mediaStack.homeAssistantTokenGenerator}`
+                  generator exists on this machine.  Set `metrics.enable` on the
+                  @clanarchy/haos instance (which declares it), or clear the
+                  address.
                 '';
               }
             ];
@@ -2072,6 +2130,19 @@ in {
                   install -m 0400 -o ${toString prometheusUid} -g ${toString prometheusGid} \
                     /dev/null ${navidromePwFile}
                 fi
+
+                # Home Assistant's bearer token — only when the job exists,
+                # so a fleet without HAOS stages nothing and logs nothing.
+                ${lib.optionalString (settings.mediaStack.homeAssistantAddress != "") ''
+                  if [ -r ${hassTokenGen.files."token".path} ]; then
+                    install -m 0400 -o ${toString prometheusUid} -g ${toString prometheusGid} \
+                      ${hassTokenGen.files."token".path} ${hassTokenFile}
+                  else
+                    echo "monitoring-secrets: no Home Assistant token at ${hassTokenGen.files."token".path} — run 'clan vars generate'. Staging an empty file; the homeassistant scrape will 401." >&2
+                    install -m 0400 -o ${toString prometheusUid} -g ${toString prometheusGid} \
+                      /dev/null ${hassTokenFile}
+                  fi
+                ''}
 
                 # ── Grafana secret_key ──────────────────────────────────────
                 #
@@ -2622,6 +2693,17 @@ in {
                         {
                           targets = ["${settings.mediaStack.navidromeAddress}:${toString settings.mediaStack.navidromePort}"];
                           labels.instance = "navidrome";
+                        }
+                      ];
+                    }
+                    ++ lib.optional (settings.mediaStack.homeAssistantAddress != "") {
+                      job_name = "homeassistant";
+                      metrics_path = "/api/prometheus";
+                      authorization.credentials_file = hassTokenFile;
+                      static_configs = [
+                        {
+                          targets = ["${settings.mediaStack.homeAssistantAddress}:${toString settings.mediaStack.homeAssistantPort}"];
+                          labels.instance = "homeassistant";
                         }
                       ];
                     }

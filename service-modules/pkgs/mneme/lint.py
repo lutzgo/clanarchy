@@ -98,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     # Problems are REPORTED, not fatal.  A page without a summary is a thing to
     # fix at leisure; making the unit fail on it would put a permanent red
     # light on the dashboard and train everyone to ignore the alert — which is
-    # exactly the failure M24b's hacs-deps-check note describes.  Only a broken
+    # exactly the failure M24b's (since retired) hacs-deps-check note described.  Only a broken
     # tree (above) exits non-zero.
     return 0
 

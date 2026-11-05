@@ -174,8 +174,8 @@ Two things about it are worth knowing before an incident:
   step in the checklist below a requirement rather than a suggestion.
 - **The compensating control that carries the most weight is HA's own
   `ip_ban_enabled`, and it has the same prerequisite `cloud`'s throttle has.**
-  It keys on the client address, so `http.trusted_proxies` in
-  `containers/home-assistant.nix` must name Traefik. Note the two are keyed
+  It keys on the client address, so `http.trusted_proxies` in the guest's
+  `configuration.yaml` (HAOS, see `service-modules/haos.md`) must name Traefik. Note the two are keyed
   differently and do not describe each other: Nextcloud's throttle is
   **per-account**, so a misconfigured proxy locks out the household; HA's ban is
   **per-source**, so a misconfigured proxy bans the proxy — and takes the whole

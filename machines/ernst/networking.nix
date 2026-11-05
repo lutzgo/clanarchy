@@ -29,7 +29,7 @@
 #    ID  Name              Subnet          On this trunk
 #     1  LAN ("Family")    10.0.10.0/24    tagged
 #     5  DNS-Container     10.0.5.0/24     tagged   (Technitium 10.0.5.3)
-#    20  IoT               10.0.20.0/24    tagged   (M24 hass iot0 — the first
+#    20  IoT               10.0.20.0/24    tagged   (Home Assistant's iot0 — the first
 #                                                    thing to use it)
 #    30  HA                10.0.30.0/24    NOT carried  (see below — M24
 #                                                        deliberately did NOT
@@ -65,13 +65,16 @@
 #   carrying it would cost a port-profile edit on USW Pro 24 PoE port 6.  It
 #   buys nothing — the leg that matters is the one on the segment the DEVICES
 #   are on, and the household's wifi devices are on 20, which is already
-#   tagged.  VLAN 30 retires with the Pi.  See containers/home-assistant.nix.
+#   tagged.  VLAN 30 retires with the Pi.  See service-modules/haos.md.
 #
 #   AND VLAN 20 NOW HAS A PORT ON THIS BRIDGE, which it did not when the notes
-#   below were written.  It is the hass container's `iot0`, and it exists for
+#   below were written.  It is the Home Assistant guest's `iot0` tap
+#   (@clanarchy/haos; the `hass` container's veth before that), and it exists for
 #   DISCOVERY: mDNS and SSDP are link-local, so a hub on VLAN 90 can open a
 #   socket to any IoT device (Internal → Internal: Allow All on the UDM-Pro)
-#   and still never SEE one.  Note 3's warning is untouched by this — the port
+#   and still never SEE one.  Since 2026-11-05 it is also the guest's PRIMARY
+#   leg (its default route, and IPv6 for Matter and Thread border routing).
+#   That is still a port, not a host address.  Note 3's warning is untouched by this — the port
 #   is a member of VLAN 20, br0 itself is not, so the host holds no address
 #   there and Avahi's unpinned reflector stays off that segment.
 #
@@ -225,9 +228,17 @@ in {
     # inside each `<svc>-netns` oneshot, and the microvm's is a QEMU
     # argument. Neither is reachable from `config.containers`. Measured
     # 2026-10-13: 16 containers declare one here, all 16 matching.
+    # HAOS guests (@clanarchy/haos) publish their names into
+    # `clanarchy.haos.instances` — they are not in `config.containers`, and
+    # every check below that read only containers would wave a collision with
+    # a guest's tap straight through.
+    haos = config.clanarchy.haos.instances or {};
+
     declaredMacs =
       lib.mapAttrs (_: c: c.localMacAddress or null)
-      (lib.filterAttrs (_: c: (c.localMacAddress or null) != null) config.containers);
+      (lib.filterAttrs (_: c: (c.localMacAddress or null) != null) config.containers)
+      // lib.mapAttrs (_: i: i.macs."90")
+      (lib.filterAttrs (_: i: i.macs ? "90") haos);
 
     macMismatches = lib.filter (m: m.want != m.got) (lib.mapAttrsToList
       (name: got: {
@@ -240,20 +251,31 @@ in {
       declaredMacs);
 
     # ── The pre-existing veth checks (unchanged) ─────────────────────────
-    claims = lib.concatLists (lib.mapAttrsToList
-      (container: cfg:
-        map (veth: {inherit container veth;})
-        (lib.attrNames (cfg.extraVeths or {})))
-      config.containers);
+    claims =
+      lib.concatLists (lib.mapAttrsToList
+        (container: cfg:
+          map (veth: {inherit container veth;})
+          (lib.attrNames (cfg.extraVeths or {})))
+        config.containers)
+      ++ lib.concatLists (lib.mapAttrsToList
+        (name: i:
+          map (veth: {
+            container = "haos-${name}";
+            inherit veth;
+          })
+          i.taps)
+        haos);
     byName = lib.groupBy (c: c.veth) claims;
     collisions = lib.filterAttrs (_: cs: lib.length cs > 1) byName;
 
     # Every host end a container actually brings up.
-    vethHostAddrs = lib.concatLists (lib.mapAttrsToList
-      (_: cfg:
-        lib.filter (a: a != null)
-        (lib.mapAttrsToList (_: v: v.hostAddress6 or null) (cfg.extraVeths or {})))
-      config.containers);
+    vethHostAddrs =
+      lib.concatLists (lib.mapAttrsToList
+        (_: cfg:
+          lib.filter (a: a != null)
+          (lib.mapAttrsToList (_: v: v.hostAddress6 or null) (cfg.extraVeths or {})))
+        config.containers)
+      ++ lib.concatLists (lib.mapAttrsToList (_: i: i.hostAddresses6) haos);
 
     # Every loopback bridge this host declares, whatever generated it —
     # `llama-bridge-*`, `mneme-bridge-*`, `wyoming-*-bridge-*`.  Matching on
@@ -299,7 +321,7 @@ in {
         fdca:fe93:: -> ai3.  Monitoring's mon0 predates it and keeps its name.
 
         A leg on a VLAN has no ULA to track and is numbered in order instead:
-        iot0 (hass), iot1 (mass).  Two containers on the SAME VLAN still need
+        iot0 (the HAOS guest), iot1 (mass).  Two on the SAME VLAN still need
         different names — the name is an interface, not a description.
       '';
     }

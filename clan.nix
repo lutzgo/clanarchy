@@ -40,6 +40,7 @@
     modules."@clanarchy/monitoring" = import ./service-modules/monitoring.nix;
     modules."@clanarchy/yubikey" = import ./service-modules/yubikey.nix;
     modules."@clanarchy/printing" = import ./service-modules/printing.nix;
+    modules."@clanarchy/haos" = import ./service-modules/haos.nix;
 
     inventory.machines = {
       miralda = {};
@@ -320,6 +321,156 @@
         module.name = "@clanarchy/printing";
         roles.default.machines.miralda = {};
         roles.default.machines.jens = {};
+      };
+
+      # ── Home Assistant OS, in a VM ─────────────────────────────────────────
+      #
+      # Replaces the `hass` nspawn container (M24): HAOS brings the Supervisor
+      # and the add-on store, which Core-on-NixOS cannot.  Everything below is
+      # the VM's SHELL; what runs inside is HAOS's.  See
+      # service-modules/haos.md.
+      haos = {
+        module.input = "self";
+        module.name = "@clanarchy/haos";
+        roles.host.machines.ernst.settings = {
+          # The instance keeps the container's name, so every log line,
+          # dashboard label and runbook that says `hass` still means it.
+          name = "hass";
+
+          # Sized for add-ons, not for Core alone.  Music Assistant stays in
+          # its own container (HA <-> MA is switched inside br0, never leaves
+          # the box); what this headroom is for is the add-ons HAOS was
+          # chosen to run.  4 of the 9950X's 16 cores, 8 GiB in hugepages.
+          vcpus = 4;
+          memoryMiB = 8192;
+          hugepages = true;
+
+          disk = {
+            zvol = "zdata/vm/hass";
+            sizeGiB = 64;
+          };
+          stateDir = "/srv/state/haos-hass";
+
+          # PCI order is interface order inside HAOS — append, never insert.
+          nics = [
+            # VLAN 90, Services.  The container's MAC and 10.0.90.27, so
+            # Traefik, the service index and Music Assistant need no change.
+            # Asserted against machines/ernst/allocations.nix.  Since
+            # 2026-11-05 the guest sets 10.0.90.27 STATICALLY here, with no
+            # gateway: DHCP would bring the reservation's default route, and
+            # the default route decides which leg the Matter and Thread apps
+            # use (see iot0 below).  The UDM-Pro reservation stays, so that
+            # nothing else is ever leased the address.
+            {
+              tap = "hass0";
+              kind = "bridged";
+              vlan = 90;
+              mac = "02:00:00:90:00:13";
+              # 8123.  Under HAOS the Supervisor pins Core to 8123 and ignores
+              # `http.server_port`.  Port 80 is only the FIRST-BOOT onboarding
+              # server (before Core is set up), which redirects 8123 -> 80 and
+              # misled the second deploy of 2026-11-05 into pointing everything
+              # at 80.  Measured after the state migration: 80 refused, 8123
+              # answers 200 with Traefik's headers.
+              allowFrom = [
+                {
+                  peer = "10.0.90.12";
+                  port = 8123;
+                } # Traefik: the web UI and the companion app
+                {
+                  peer = "10.0.90.13";
+                  port = 8123;
+                } # the service index's widget
+              ];
+            }
+            # VLAN 20, IoT — ON the segment it discovers, so mDNS and SSDP
+            # never cross a boundary.  Same MAC as the container's iot0.
+            #
+            # And the guest's PRIMARY leg since 2026-11-05: the default route
+            # and IPv6 are here, not on hass0.  The Matter Server and
+            # OpenThread Border Router apps both take the Supervisor's primary
+            # interface as their own, and Matter is IPv6 on the devices' own
+            # link: Wi-Fi Matter devices are on VLAN 20, and phones join
+            # skynet-iot to pair.  OTBR sends its router advertisements (an
+            # on-link ULA prefix, and the route to the Thread mesh) here, so a
+            # phone on VLAN 20 reaches a Thread device through the guest.  The
+            # guest-side settings are in docs/runbooks/ernst-hass-to-haos.md §3.
+            {
+              tap = "iot0";
+              kind = "bridged";
+              vlan = 20;
+              mac = "02:00:00:20:00:01";
+              allowFrom = [
+                {
+                  proto = "udp";
+                  port = 5353;
+                } # mDNS, both families
+                {
+                  proto = "udp";
+                  port = 1900;
+                } # SSDP
+                {
+                  proto = "icmpv6";
+                  port = null;
+                } # neighbour discovery, router solicitations from phones, MLD
+                {
+                  proto = "udp";
+                  port = 5540;
+                } # Matter: the controller's port, and phone -> Thread device
+                #   through the guest's routing (OTBR's border routing)
+              ];
+            }
+            # ai3: the conversation agent, STT and TTS (local-ai exposeOn).
+            {
+              tap = "ai3";
+              kind = "p2p";
+              mac = "02:00:00:fe:93:02";
+              hostAddress6 = "fdca:fe93::1";
+              guestAddress6 = "fdca:fe93::2";
+            }
+            # kodi0: Kodi on the host, which binds the wildcard.
+            {
+              tap = "kodi0";
+              kind = "p2p";
+              mac = "02:00:00:fe:96:02";
+              hostAddress6 = "fdca:fe96::1";
+              guestAddress6 = "fdca:fe96::2";
+            }
+          ];
+
+          usb = [
+            # Two Nabu Casa ZBT-2s, SAME vendor and product — the serial is
+            # the only thing that tells them apart.
+            {
+              name = "zigbee";
+              vendorId = "303a";
+              productId = "831a";
+              serial = "1CDBD45E613C";
+            }
+            {
+              name = "thread";
+              vendorId = "303a";
+              productId = "831a";
+              serial = "DCB4D90E9BD0";
+            }
+            # The OLDER of the host's two Bluetooth dongles: a CSR8510 A10
+            # (Bluetooth 4.0, full-speed USB).  The host keeps the TP-Link
+            # UB500 (2357:0604, Bluetooth 5).  It reports NO serial, and CSR
+            # clones commonly share 0a12:0001, so it is pinned to its physical
+            # socket instead — measured 2026-11-05 as kernel port 1-4.  Moving
+            # it to another socket is a config change here.
+            {
+              name = "bluetooth";
+              vendorId = "0a12";
+              productId = "0001";
+              port = "1-4";
+            }
+          ];
+
+          # Off until a long-lived token exists: the generator PROMPTS, and a
+          # pending prompt blocks every deploy.  Flip after the cutover.
+          metrics.enable = false;
+        };
       };
 
       # ── Syncthing: TWO SEPARATE CLUSTERS, NOT ONE ──────────────────────────
@@ -1070,10 +1221,12 @@
           # is the only thing that stops a model treating it as free.
           imageGen.enable = true;
           imageGen.url = "http://127.0.0.1:11434/upstream/comfyui";
-          # Home Assistant serves this at /local/mneme — see the `hass-dirs`
-          # note in containers/home-assistant.nix for why the hub and not mneme
-          # is what delivers the picture.
-          imageGen.outputDir = "/srv/state/home-assistant/www/mneme";
+          # Served at ha.goclan.org/local/mneme by the Traefik container, from
+          # a read-only bind of this directory — the URL Home Assistant used
+          # to serve it at, kept so every picture already handed out still
+          # resolves.  The hub's /config/www is inside the HAOS guest now,
+          # where the host cannot write.  See containers/traefik.nix.
+          imageGen.outputDir = "/srv/state/mneme-images";
           imageGen.publicBase = "https://ha.goclan.org/local/mneme";
           # Must name a roles.models entry with subdir = "checkpoints".
           imageGen.checkpoint = "sd_xl_base_1.0.safetensors";

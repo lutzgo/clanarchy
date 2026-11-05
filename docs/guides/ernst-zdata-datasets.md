@@ -412,10 +412,11 @@ the point. Check those directly rather than trusting a clean boot:
 systemctl status audiobooks-tree immich-dirs nextcloud-dirs paperless-dirs
 ```
 
-`hass-dirs` guards `/srv/state` the same way but is not in that list, because
-it has no dataset of its own to check — it verifies that `/srv/state` really is
-`zdata/state` before creating Home Assistant's directory under it, and refuses
-rather than writing the hub's accounts and paired devices onto zroot.
+`haos-hass.service`'s prestart guards `/srv/state` the same way but is not in
+that list: Home Assistant's disk is the zvol `zdata/vm/hass` (raw, 16K
+volblocksize, auto-snapshot on), and the only thing it keeps on `zdata/state`
+is the guest's OVMF variable store in `/srv/state/haos-hass`. It refuses to
+start rather than write that onto zroot. See `service-modules/haos.md`.
 
 Each prints the exact `zfs create` line to run if its dataset is wrong.
 

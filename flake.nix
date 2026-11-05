@@ -750,25 +750,6 @@
             # path takes Authelia's OIDC provider instead, which is CWA's
             # arrangement.  See containers/ingress-policy.nix.
             ./machines/ernst/containers/nextcloud.nix
-            # M24.  Home Assistant — the household's home-automation hub, on the
-            # NSPAWN tier because `services.home-assistant` is a first-class
-            # NixOS module.  Replaces an undeclared instance on a Raspberry Pi.
-            #
-            # THE ONLY CONTAINER ON THIS HOST WITH TWO LEGS ON br0: eth0 on
-            # VLAN 90 for Traefik, and iot0 on VLAN 20 because mDNS and SSDP are
-            # link-local and this repo refuses to relay them across a firewall
-            # boundary.  It is also the first to pass a USB device through —
-            # two Nabu Casa ZBT-2 radios, told apart by serial because they
-            # share a vendor and product ID.  The Thread one is bound and idle
-            # until M25.
-            #
-            # Public on `ha.goclan.org` with NO forward-auth — the companion app
-            # holds a bearer token over a WebSocket and has no browser to render
-            # a portal with.  See containers/ingress-policy.nix.
-            #
-            # The machine is `hass`, not `home-assistant`: nspawn names the host
-            # veth `vb-<container>` and an interface name caps at 15 characters.
-            ./machines/ernst/containers/home-assistant.nix
             # M26.  gethomepage — the fleet's SERVICE INDEX at `home.goclan.org`,
             # and NOT a second Grafana: it answers "what exists, where is it, is
             # it up", with no history, no alerting and nothing stored.
@@ -825,7 +806,7 @@
             # land in ONE database.  It also retires the Linkwarden that browsers.nix
             # has referred to since it was written and that has never existed here.
             #
-            # A SECOND LEG, like home-assistant.nix but not on a VLAN: a
+            # A SECOND LEG, like the HAOS guest's ai3 but not on a VLAN: a
             # point-to-point /128 veth to the host's llama-swap, so auto-tagging
             # runs against the model the coding agent already has resident.  The
             # peer is declared in clan.nix's `@clanarchy/local-ai` instance;
@@ -847,8 +828,8 @@
             # than `filesystem_local`, so it holds no handle on /srv/media and
             # does not put a second index on the same files.
             #
-            # THE SECOND CONTAINER ON THIS HOST WITH TWO LEGS ON br0, and for
-            # home-assistant.nix's reason one VLAN later: the `musiccast` provider
+            # TWO LEGS ON br0, for the reason the Home Assistant guest
+            # (@clanarchy/haos) has its own iot0: the `musiccast` provider
             # is DISCOVERY-ONLY (mDNS, no add-by-address flow) and the household's
             # one speaker is a Yamaha receiver on VLAN 20.  Its leg is `iot1`, not
             # `iot0` — that name is host-global and the hub has it; the assertion

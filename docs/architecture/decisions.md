@@ -110,3 +110,22 @@ Reads the gh token at runtime to construct the HTTPS remote URL, which is what
 makes pushing work on a machine where `~/.config/git` is a read-only
 impermanence bind-mount. Never combine it with `git push -u`: that bakes the
 token into `.git/config`.
+
+## Home Assistant left the nspawn tier
+
+The tier rule says a service with a first-class NixOS module goes in an nspawn
+container, and Home Assistant has one. It moved anyway (2026-11), to a Home
+Assistant OS guest (`@clanarchy/haos`), because the add-ons need the Supervisor
+and nixpkgs' Core build can't have one. Core-on-NixOS also meant `--skip-pip`:
+integrations installed through HACS silently lacked their Python requirements,
+and keeping up with that took a dependency checker, hand-kept `extraPackages`
+and a long list of per-package overrides.
+
+What it costs: the repo no longer describes Home Assistant's own configuration.
+That now lives in the guest's disk, covered by ZFS snapshots of the zvol and
+by HA's own backups. The repo still owns everything around the guest: CPU, RAM,
+disk, NICs, USB passthrough and the bridge filter in front of it.
+
+The precedent is narrow. It doesn't license moving other services into
+appliance VMs. The reason was a capability the module can't provide, not
+convenience.

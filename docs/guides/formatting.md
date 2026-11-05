@@ -31,7 +31,7 @@ fragments inside `''…''`, and three separate times in M2 a change that "could
 not possibly reach the derivation" did exactly that:
 
 - a `#` comment inside a microvm's nftables ruleset,
-- a `#` inside a `script = ''…''` in home-assistant.nix,
+- a `#` inside a `script = ''…''` in the (since retired) home-assistant.nix,
 - a path in a `cat > "$out" <<EOF` heredoc that writes janitorr's YAML.
 
 ## So the repo-wide pass has a gate

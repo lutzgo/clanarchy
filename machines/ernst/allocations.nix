@@ -30,7 +30,7 @@
 #   uids     The 3000 block is ours.  Anything outside it is an upstream static
 #            id and is recorded with `upstream = true` so it cannot be
 #            renumbered into the block by someone tidying up — that mistake is
-#            an eval conflict, which is how M24 met `hass` = 286.
+#            an eval conflict, which is how M24's container met `hass` = 286.
 #   names    An NSPAWN container name must be <= 12 characters: nspawn derives
 #            the host veth as `vb-<name>`, and 15 is IFNAMSIZ.  This passes
 #            eval and fails at container START, which is why it is asserted.
@@ -129,10 +129,13 @@
       ip = "10.0.90.26";
       kind = "nspawn";
     };
+    # Home Assistant OS, a KVM guest since @clanarchy/haos (was the nspawn
+    # container `hass`).  Same seq, so the same MAC and the same reservation.
     hass = {
       seq = 19;
       ip = "10.0.90.27";
-      kind = "nspawn";
+      kind = "vm";
+      iface = "hass0";
     };
     miniflux = {
       seq = 20;
@@ -485,12 +488,8 @@
     };
 
     # Upstream-static, recorded so they are never renumbered into the block.
-    hass = {
-      uid = 286;
-      gid = 286;
-      upstream = true;
-      where = "containers/home-assistant.nix";
-    };
+    # (`hass` = 286 was here until Home Assistant left the nspawn tier; the
+    # HAOS guest's files live in its own disk image and take no host id.)
     paperless = {
       uid = 315;
       upstream = true;

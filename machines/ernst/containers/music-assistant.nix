@@ -68,13 +68,13 @@
 #   `_http._tcp.local.` from the leg itself found both in seconds.
 #
 #   mDNS is link-local by definition, and this repo has twice refused in
-#   writing to relay it across a firewall boundary.  containers/home-assistant.nix
-#   answered that with a second veth onto the segment its devices are on; this
+#   writing to relay it across a firewall boundary.  Home Assistant answered
+#   that with a second leg onto the segment its devices are on; this
 #   file does the same, one VLAN later.  Unicast to VLAN 20 needs no leg — the
 #   UDM-Pro has one `Internal` zone with Allow All.  What is not routable is
 #   the discovery, and that is all this leg is for.
 #
-#   `iot0` is taken by containers/home-assistant.nix, hence `iot1`.  nspawn's
+#   `iot0` is taken by the Home Assistant guest's tap, hence `iot1`.  nspawn's
 #   `--network-veth-extra` names BOTH ends, so the name lands in the host's one
 #   flat interface namespace; the assertion in modules/containers/assertions.nix
 #   is what catches a collision, not this comment.
@@ -106,7 +106,7 @@
 #   entry point, `on_mdns_service_state_change`.  There is no add-by-address
 #   flow to fall back on.  (`check_yamaha_ssdp` runs afterwards and is a
 #   UNICAST HTTP GET of the device description, not multicast — which is why
-#   this file opens 5353/udp and, unlike containers/home-assistant.nix, does
+#   this file opens 5353/udp and, unlike the Home Assistant guest's filter, does
 #   NOT open 1900/udp.)
 #
 # ── THE STREAM SERVER IS A SECOND LISTENER, ON A SECOND PORT ────────────────
@@ -230,13 +230,13 @@
 #
 #   NO SECOND DATASET.  A SQLite database and a tree of small JSON blobs is
 #   `zdata/state`'s write profile exactly (128K recordsize, the default) — the
-#   call home-assistant.nix, miniflux.nix and karakeep.nix all made before
+#   call the hass container, miniflux.nix and karakeep.nix all made before
 #   this one.  docs/guides/ernst-zdata-datasets.md splits by write profile,
 #   not by service.
 #
 # ── THE HOME ASSISTANT INTEGRATION IS ALREADY OFFERABLE ─────────────────────
 #
-#   Nothing is added to containers/home-assistant.nix for this.
+#   Nothing was added to the hub for this.
 #   `music_assistant` is packaged in this channel and that file's
 #   `extraComponents` ends with `++ buildableComponents` since PR #229, so the
 #   hub can already offer it.
@@ -401,7 +401,7 @@
   # The second leg.
   ##############################################################################
 
-  # NOT `iot0` — containers/home-assistant.nix has that, and the name is
+  # NOT `iot0` — the Home Assistant guest's tap has that, and the name is
   # host-global.  See the header, and the assertion in
   # machines/ernst/networking.nix that turns a collision into an eval failure.
   iotVeth = "iot1";
@@ -416,7 +416,7 @@
   # The module's own default, and the value its `extraOptions` and
   # `StateDirectory` both already agree on.  Binding at the default means
   # nothing is overridden and nothing can disagree — the trick
-  # containers/home-assistant.nix uses for /var/lib/hass.
+  # the former hass container used for /var/lib/hass.
   configDir = "/var/lib/music-assistant";
 in {
   # ── The container, declared rather than assembled ─────────────────────────
@@ -456,7 +456,7 @@ in {
     # port on that segment instead.
     #
     # `iot1` and not `iot0`: the name is a HOST-GLOBAL allocation and
-    # containers/home-assistant.nix already holds `iot0`. The assertion in
+    # the Home Assistant guest already holds `iot0`. The assertion in
     # modules/containers/assertions.nix is what checks that, not this comment.
     vlanLegs = [
       {
@@ -516,7 +516,7 @@ in {
       #
       # Music Assistant runs its own python-zeroconf, exactly as Home Assistant
       # does, so this container has the same two-mDNS-sockets hazard
-      # containers/home-assistant.nix measured on its first deploy:
+      # the hass container measured on its first deploy:
       #
       #     ss -lunp | grep 5353
       #       0.0.0.0:5353   <the application>
@@ -712,14 +712,14 @@ in {
           # Assistant.  THIS makes Home Assistant's own media players and
           # entities visible to MA.  Different daemon, different direction,
           # different credential — and this one is a plugin in MA's settings,
-          # not something containers/home-assistant.nix declares.
+          # not something the hub's shell (@clanarchy/haos) declares.
           #
           # It needs no firewall rule: MA dials OUT to the hub on 10.0.90.27,
           # and that container already admits .30 on 8123 for the service index
           # and Traefik… no, it does not — outbound from here is unrestricted
           # and the ACCEPT it needs is on the hub's side, which already carries
           # a rule for Traefik and the dashboard only.  Expect to add `.30` to
-          # containers/home-assistant.nix's 8123 list when this is configured;
+          # the `hass0` NIC's `allowFrom` in clan.nix's `haos` instance when this is configured;
           # it is NOT added here, because an accept for a plugin nobody has
           # enabled yet is a rule with no client.
           "hass"

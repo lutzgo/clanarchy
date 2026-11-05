@@ -86,6 +86,9 @@ Chosen by trust and workload, and a service does not move down a tier for
 convenience:
 
 - **microvm** (own kernel) — internet-facing, killswitch-carrying. One occupant.
+- **appliance VM** (own kernel, not NixOS) — `@clanarchy/haos`: Home Assistant OS,
+  because add-ons need its Supervisor. The repo owns the VM's shell (disk, NICs,
+  USB, bridge filter); the guest owns itself. See `service-modules/haos.md`.
 - **systemd-nspawn** (shared kernel, real NixOS view) — trusted, storage-heavy.
   The default: used wherever a first-class NixOS module exists.
 - **podman** — escape hatch for upstreams that ship only an OCI image.
@@ -107,7 +110,6 @@ what was rejected. One line each here:
 | `tvheadend.nix` | nspawn | SAT>IP client against the FRITZ!Box's DVB-C tuners; publishes M3U + XMLTV |
 | `immich.nix` | nspawn | Photo library. Owns `zdata/photos`; declares `photo-import` |
 | `nextcloud.nix` | nspawn | File sync / CalDAV / CardDAV. Owns `zdata/nextcloud` |
-| `home-assistant.nix` | nspawn | The automation hub. The only container with **two legs on `br0`** (VLAN 90 + VLAN 20, because mDNS and SSDP are link-local) and the first to pass USB devices through |
 | `music-assistant.nix` | nspawn | Player controller over Navidrome's library, via the Subsonic API. Second container with a VLAN 20 leg (`iot1`) — the one speaker is mDNS-discovery-only |
 | `miniflux.nix` | nspawn | Feed reader. Public behind forward-auth **and** OIDC, so no native RSS client can ever reach the name again |
 | `karakeep.nix` | nspawn | Bookmarks, page archives, search; the Floccus backend for both laptops. Auto-tags against the model already resident on ernst |
@@ -122,15 +124,21 @@ Containers are also declared from clan services: `monitoring` (in
 `service-modules/monitoring.nix`), `openwebui` and `searxng` (in
 `service-modules/local-ai.nix`).
 
+Home Assistant is not in this table: it is the HAOS guest `haos-hass`, from the
+`haos` instance in `clan.nix` (`service-modules/haos.nix`). It keeps the old
+container's MACs (VLAN 90 and the VLAN 20 discovery leg), its `ai3`/`kodi0`
+point-to-point legs as taps, and gets both ZBT-2 radios and one Bluetooth dongle
+by USB passthrough.
+
 ### Allocation
 
 New services claim a sequence number, a MAC, an address and possibly a uid from
 the registry in `machines/ernst/allocations.nix`. Three things that bite:
 
 - **Container names cap at 12 characters** — `vb-<name>` hits IFNAMSIZ and fails
-  at container *start*, not at eval. Hence `mail`, `mass`, `hass`.
+  at container *start*, not at eval. Hence `mail`, `mass` (and `hass`, now a VM).
 - **Check nixpkgs' `ids.nix` before taking a number from the 3000 block.**
-  `paperless`=315, `hass`=286, `postgres`=71 are static upstream; pinning a
+  `paperless`=315, `postgres`=71 (and formerly `hass`=286) are static upstream; pinning a
   3000-block number on top is an eval conflict, and NEXT FREE must *not* advance.
 - **A veth name is a host-global allocation.** M19 and M27 both picked `ai0` and
   Open WebUI silently lost its leg for five days. There is now an assertion.

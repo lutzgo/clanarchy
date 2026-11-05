@@ -602,15 +602,15 @@ unmatched input and no accept exists for `fdca:fe94::2`. Widening
 invariant *and* hairpinned every search through the UDM-Pro, since the host's
 route to `10.0.90.24` is `via 10.0.50.1`.
 
-**Home Assistant serves the pictures, not mneme.** mneme listens on a
+**The Traefik container serves the pictures, not mneme.** mneme listens on a
 point-to-point ULA only the hub can reach, so a URL it served itself would be
-unreachable from the browser that has to display it. The hub serves `www/` at
-`/local/`, that directory is on this host, and the hub is already behind Traefik
-with a split-horizon name — so the PNG goes to
-`/srv/state/home-assistant/www/mneme/` and comes back as
-`https://ha.goclan.org/local/mneme/<name>.png`. The cost is one permission
-change on `www` (0700 → 0755, directory only), which lives in
-`containers/home-assistant.nix` because that file owns that tree.
+unreachable from the browser that has to display it. The PNG goes to
+`/srv/state/mneme-images/` and comes back as
+`https://ha.goclan.org/local/mneme/<name>.png`, served by an nginx on the
+Traefik container's loopback from a read-only bind of that directory. Home
+Assistant used to serve it from its own `www/`; since the hub is a HAOS guest
+(`@clanarchy/haos`) the host cannot write there, so the path moved and the URL
+stayed.
 
 **Neither web search nor image generation is offered on the `/v1` surface**, and
 that is not an oversight: this handler is a byte passthrough, so a returned

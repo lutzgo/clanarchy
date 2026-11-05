@@ -81,7 +81,7 @@
 #
 #   `DISABLE_PASSWORD_AUTH` below means Authelia is the only way in, which is
 #   the same call containers/miniflux.nix makes and the opposite of
-#   containers/home-assistant.nix's.  The reason is the one that file gives:
+#   Home Assistant's.  The reason is the one service-modules/haos.md implies:
 #   nothing in the house depends on this service, so "fix Authelia" is an
 #   acceptable recovery path, and it is a much better answer than a second
 #   credential store reachable from the internet.

@@ -11,6 +11,7 @@
 # here omits `entryPoints`.  See ./wan.nix.
 {
   withWan,
+  mnemeImagesPort,
   baseDomain,
   jellyfinAddr,
   arrAddr,
@@ -649,7 +650,7 @@
     # version is community-supplied rather than core, and the local
     # account is the recovery path for a house whose lights are on this
     # server.  What defends it instead is named and configured in
-    # containers/home-assistant.nix: HA's own `ip_ban_enabled`
+    # the guest's own configuration (@clanarchy/haos): HA's `ip_ban_enabled`
     # (per-source, written to ip_bans.yaml) and native TOTP MFA, plus
     # `wan-login-ratelimit` below.  Revisit when core OIDC lands.
     #
@@ -663,6 +664,23 @@
       rule = "Host(`ha.${baseDomain}`)";
       entryPoints = ["websecure"];
       service = "homeassistant";
+    };
+
+    # mneme's generated pictures, at the path the hub itself used to serve
+    # them on.  Since @clanarchy/haos the hub is a HAOS guest whose www/ the
+    # host cannot write, so this container serves the prefix from a
+    # read-only bind (containers/traefik.nix).  Same hostname, same exposure
+    # (it is in `wanExposed` beside `homeassistant`), NO auth — exactly what
+    # Home Assistant's /local/ always was: an unguessable filename is the
+    # only thing between a picture and the internet, and that is unchanged.
+    #
+    # The priority is what makes it win: Traefik ranks by rule LENGTH by
+    # default, which would already favour this one, but a number says so.
+    mneme-images = {
+      rule = "Host(`ha.${baseDomain}`) && PathPrefix(`/local/mneme/`)";
+      entryPoints = ["websecure"];
+      priority = 500;
+      service = "mneme-images";
     };
 
     # ── Miniflux (M27) — the feed reader ──────────────────────────
@@ -985,6 +1003,7 @@
     # WebSocket rides the same backend; Traefik proxies the upgrade with
     # no configuration as long as nothing buffers.
     homeassistant.loadBalancer.servers = [{url = "http://${homeassistantAddr}:${toString homeassistantPort}/";}];
+    mneme-images.loadBalancer.servers = [{url = "http://127.0.0.1:${toString mnemeImagesPort}/";}];
 
     # M27 — two nspawn containers on .28 and .29.  Plain HTTP on both;
     # neither terminates TLS, because the wildcard is terminated once,
