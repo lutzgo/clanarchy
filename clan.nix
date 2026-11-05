@@ -381,6 +381,10 @@
                   peer = "10.0.90.13";
                   port = 8123;
                 } # the service index's widget
+                {
+                  peer = "10.0.90.14";
+                  port = 8123;
+                } # Prometheus: /api/prometheus, with a bearer token
               ];
             }
             # VLAN 20, IoT — ON the segment it discovers, so mDNS and SSDP
@@ -467,9 +471,13 @@
             }
           ];
 
-          # Off until a long-lived token exists: the generator PROMPTS, and a
-          # pending prompt blocks every deploy.  Flip after the cutover.
-          metrics.enable = false;
+          # The `haos-hass-metrics` generator PROMPTS for a long-lived access
+          # token (HA: Profile → Security), and a pending prompt blocks every
+          # deploy.  So the token is created and `clan vars generate ernst` is
+          # run BEFORE this change lands.  Its scrape is the `homeassistant`
+          # job in @clanarchy/monitoring, and it needs `prometheus:` in the
+          # guest's configuration.yaml.
+          metrics.enable = true;
         };
       };
 
@@ -1638,6 +1646,13 @@
             # a 404.  M22's test plan checks for `immich_*` series; if they are
             # not there, this line comes out again and says so.
             immichAddress = "10.0.90.25";
+
+            # Home Assistant, the HAOS guest (@clanarchy/haos), on VLAN 90.
+            # AUTHENTICATED: /api/prometheus wants the bearer token that the
+            # `haos-hass-metrics` generator holds (metrics.enable on the haos
+            # instance).  The guest's hass0 allowFrom admits this container on
+            # 8123.  The guest itself needs `prometheus:` in configuration.yaml.
+            homeAssistantAddress = "10.0.90.27";
 
             # Miniflux, added with M27.  Its own container, its own address,
             # and — like Jellyfin's and Navidrome's, unlike Immich's — metrics
