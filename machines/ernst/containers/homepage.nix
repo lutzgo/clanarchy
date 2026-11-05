@@ -208,6 +208,8 @@
   immichAddr = "10.0.90.25";
   immichPort = 2283;
   hassAddr = "10.0.90.27";
+  # 8123: the Supervisor pins Core there under HAOS (80 is only the
+  # first-boot onboarding server).
   hassPort = 8123;
 
   # M27 added two more, so the count in the comment above is now SIX rather

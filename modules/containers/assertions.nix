@@ -14,21 +14,38 @@
   lib,
   ...
 }: let
+  # HAOS guests (service-modules/haos) are not containers but take names and
+  # host ends from the same namespaces, so they publish both into
+  # `clanarchy.haos.instances` for these checks.  `or {}` because that option
+  # only exists on a machine holding the role.
+  haos = config.clanarchy.haos.instances or {};
+
   # ── veth names are a host-global namespace ────────────────────────────────
-  claims = lib.concatLists (lib.mapAttrsToList
-    (container: cfg:
-      map (veth: {inherit container veth;})
-      (lib.attrNames (cfg.extraVeths or {})))
-    config.containers);
+  claims =
+    lib.concatLists (lib.mapAttrsToList
+      (container: cfg:
+        map (veth: {inherit container veth;})
+        (lib.attrNames (cfg.extraVeths or {})))
+      config.containers)
+    ++ lib.concatLists (lib.mapAttrsToList
+      (name: i:
+        map (veth: {
+          container = "haos-${name}";
+          inherit veth;
+        })
+        i.taps)
+      haos);
   byName = lib.groupBy (c: c.veth) claims;
   collisions = lib.filterAttrs (_: cs: lib.length cs > 1) byName;
 
   # Every host end a container actually brings up.
-  vethHostAddrs = lib.concatLists (lib.mapAttrsToList
-    (_: cfg:
-      lib.filter (a: a != null)
-      (lib.mapAttrsToList (_: v: v.hostAddress6 or null) (cfg.extraVeths or {})))
-    config.containers);
+  vethHostAddrs =
+    lib.concatLists (lib.mapAttrsToList
+      (_: cfg:
+        lib.filter (a: a != null)
+        (lib.mapAttrsToList (_: v: v.hostAddress6 or null) (cfg.extraVeths or {})))
+      config.containers)
+    ++ lib.concatLists (lib.mapAttrsToList (_: i: i.hostAddresses6) haos);
 
   # Every loopback bridge this host declares, whatever generated it. Matching
   # on the naming convention rather than on a list means a generator added
@@ -180,7 +197,7 @@ in {
 
         nspawn derives the host veth as `vb-<name>` and 15 is IFNAMSIZ, so this
         evaluates cleanly and fails at container START. It is why ernst's are
-        `mail`, `mass` and `hass` rather than the obvious spellings.
+        `mail` and `mass` (and, before it became a VM, `hass`) rather than the obvious spellings.
       '';
     }
 

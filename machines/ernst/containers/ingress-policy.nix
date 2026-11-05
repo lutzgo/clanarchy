@@ -238,7 +238,8 @@ in rec {
     # on this server):
     #
     #   * `ip_ban_enabled` + `login_attempts_threshold = 5`, configured in
-    #     containers/home-assistant.nix.  A real per-SOURCE ban, written to
+    #     the guest's configuration.yaml (@clanarchy/haos; carried over from
+    #     the container by backup).  A real per-SOURCE ban, written to
     #     ip_bans.yaml and refused at the application layer until a human
     #     removes the line.  It is the opposite key from Nextcloud's per-ACCOUNT
     #     throttle, so do not read either file as describing the other.

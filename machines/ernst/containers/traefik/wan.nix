@@ -140,6 +140,13 @@
     # record, and the ledger row (L15) in docs/ledger.md.
     "homeassistant"
 
+    # mneme's pictures, on the same hostname and under L15: they were served
+    # by Home Assistant itself at /local/mneme until @clanarchy/haos, and a
+    # picture sent to a phone that is away from the house must still open.
+    # No new name, no new A record, no new ledger row — the same exposure,
+    # served by a different process.
+    "mneme-images"
+
     # The service index (M26).  Off-LAN reach is the modest half of the case
     # and the honest one: an index of the house's services is most useful from
     # a phone that is not in the house, which is where you are when you cannot

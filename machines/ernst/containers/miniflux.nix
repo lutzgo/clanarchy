@@ -71,7 +71,7 @@
 #
 #   `CREATE_ADMIN = 0` plus `DISABLE_LOCAL_AUTH` below means there is no
 #   username/password login here at all — if Authelia is down, Miniflux is
-#   unreachable.  containers/home-assistant.nix deliberately keeps a local
+#   unreachable.  Home Assistant (@clanarchy/haos) deliberately keeps a local
 #   account for the opposite reason, and the difference is not taste:
 #
 #     * Home Assistant runs the lights.  A house whose front door depends on a

@@ -300,23 +300,22 @@
       outputDir = lib.mkOption {
         type = lib.types.str;
         default = "";
-        example = "/srv/state/home-assistant/www/mneme";
+        example = "/srv/state/mneme-images";
         description = ''
-          Where the finished PNG is written.
+          Where the finished PNG is written.  Created by `mneme-dirs`,
+          owned by the agent, mode 0755 so the server that publishes it can
+          read it.
 
-          HOME ASSISTANT SERVES THE PICTURE, NOT mneme, and that is a
-          delivery decision rather than a convenience.  mneme listens on a
-          point-to-point ULA that only the hub can reach, so a URL it served
-          itself would be unreachable from the browser that has to show it.
-          The hub serves its own `www/` at `/local/`, that directory is on
-          this host, and the hub is already behind Traefik with a public
-          name — so this is the only delivery that adds no listener, no route
-          and no hostname.
+          mneme DOES NOT SERVE THE PICTURE.  It listens on a point-to-point
+          ULA that only the hub can reach, so a URL it served itself would be
+          unreachable from the browser that has to show it.  On ernst the
+          Traefik container serves this directory, read-only, under
+          `publicBase` — see machines/ernst/containers/traefik.nix.
 
-          THE COST, stated: the agent writes into the hub's state tree, and
-          `www` has to be traversable by this service.  See the `hass-dirs`
-          unit in machines/ernst/containers/home-assistant.nix, which owns
-          that tree and therefore owns the permission.
+          It used to be the hub's own `www/`, served at `/local/`.  That
+          stopped being possible when Home Assistant moved into a HAOS guest
+          (@clanarchy/haos), whose /config the host cannot write; the URL was
+          kept so links already handed out still resolve.
         '';
       };
       publicBase = lib.mkOption {
@@ -649,37 +648,41 @@
               Type = "oneshot";
               RemainAfterExit = true;
             };
-            script = ''
-              set -euo pipefail
+            script =
+              ''
+                set -euo pipefail
 
-              # findmnt on the PARENT: --target on a leaf that does not exist
-              # yet returns nothing, which would read as "wrong dataset".
-              src=$(findmnt --noheadings --output SOURCE --target /srv/state || true)
-              if [ "$src" != "zdata/state" ]; then
-                echo "mneme-dirs: /srv/state is '$src', expected 'zdata/state'." >&2
-                echo "Refusing to write the memory wiki onto the root pool," >&2
-                echo "where a rollback would silently discard it. Fix with:" >&2
-                echo "  zfs create -o recordsize=128K -o exec=on \\" >&2
-                echo "    -o com.sun:auto-snapshot=true zdata/state" >&2
-                exit 1
-              fi
+                # findmnt on the PARENT: --target on a leaf that does not exist
+                # yet returns nothing, which would read as "wrong dataset".
+                src=$(findmnt --noheadings --output SOURCE --target /srv/state || true)
+                if [ "$src" != "zdata/state" ]; then
+                  echo "mneme-dirs: /srv/state is '$src', expected 'zdata/state'." >&2
+                  echo "Refusing to write the memory wiki onto the root pool," >&2
+                  echo "where a rollback would silently discard it. Fix with:" >&2
+                  echo "  zfs create -o recordsize=128K -o exec=on \\" >&2
+                  echo "    -o com.sun:auto-snapshot=true zdata/state" >&2
+                  exit 1
+                fi
 
-              install -d -o ${toString uid} -g ${toString uid} -m 0750 ${mem.stateDir}
-              install -d -o ${toString uid} -g ${toString uid} -m 0750 ${wikiDir}
+                install -d -o ${toString uid} -g ${toString uid} -m 0750 ${mem.stateDir}
+                install -d -o ${toString uid} -g ${toString uid} -m 0750 ${wikiDir}
 
-              # git init is idempotent and this is the only place it happens,
-              # so a wiki cannot exist without being a repository — which is
-              # the whole audit story.
-              if [ ! -d ${wikiDir}/.git ]; then
-                git -C ${wikiDir} init -q -b main
-                git -C ${wikiDir} config user.name mneme
-                git -C ${wikiDir} config user.email mneme@goclan.org
-              fi
-              for d in ${lib.concatStringsSep " " ["00-core" "01-people" "02-devices" "03-routines" "04-facts"]}; do
-                install -d -o ${toString uid} -g ${toString uid} -m 0750 ${wikiDir}/"$d"
-              done
-              chown -R ${toString uid}:${toString uid} ${wikiDir}
-            '';
+                # git init is idempotent and this is the only place it happens,
+                # so a wiki cannot exist without being a repository — which is
+                # the whole audit story.
+                if [ ! -d ${wikiDir}/.git ]; then
+                  git -C ${wikiDir} init -q -b main
+                  git -C ${wikiDir} config user.name mneme
+                  git -C ${wikiDir} config user.email mneme@goclan.org
+                fi
+                for d in ${lib.concatStringsSep " " ["00-core" "01-people" "02-devices" "03-routines" "04-facts"]}; do
+                  install -d -o ${toString uid} -g ${toString uid} -m 0750 ${wikiDir}/"$d"
+                done
+                chown -R ${toString uid}:${toString uid} ${wikiDir}
+              ''
+              + lib.optionalString settings.imageGen.enable ''
+                install -d -o ${toString uid} -g ${toString uid} -m 0755 ${settings.imageGen.outputDir}
+              '';
           };
 
           # ── The nightly pass ────────────────────────────────────────────

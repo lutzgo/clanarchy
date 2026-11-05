@@ -78,7 +78,6 @@ nav:
     - The document store: guides/document-store.md
     - Video courses in Jellyfin: guides/courses.md
     - The agent's memory: guides/agent-memory.md
-    - HACS dependencies: guides/hacs-dependencies.md
   - Machines:
     - HTPC / Plasma Bigscreen: guides/htpc-bigscreen.md
     - HTPC / game controllers: guides/htpc-controllers.md
@@ -91,6 +90,7 @@ nav:
     - ernst enabling impermanence: runbooks/ernst-enable-impermanence.md
     - ernst VLAN bridge cutover: runbooks/ernst-vlan-bridge-cutover.md
     - ernst VPN microvm deploy: runbooks/ernst-vpn-microvm-deploy.md
+    - ernst Home Assistant to HAOS: runbooks/ernst-hass-to-haos.md
     - Bindery dead-torrent sweep: runbooks/bindery-dead-torrent-sweep.md
   - Incidents:
     - ernst slot-12 drive drop (2026-08-11): incidents/ernst-slot12-drop-2026-08-11.md

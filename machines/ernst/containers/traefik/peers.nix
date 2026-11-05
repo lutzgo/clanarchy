@@ -220,16 +220,17 @@ rec {
   nextcloudAddr = "10.0.90.26";
   nextcloudPort = 80;
 
-  # Home Assistant (M24) — the household's home-automation hub, in an NSPAWN
-  # container on 02:00:00:90:00:13 → 10.0.90.27.  Its container firewall accepts
-  # THIS proxy's address and no other on ${toString homeassistantPort}.
+  # Home Assistant (M24) — the household's home-automation hub, a HAOS guest
+  # (@clanarchy/haos) on 02:00:00:90:00:13 → 10.0.90.27.  The bridge filter in
+  # front of it accepts THIS proxy's address (and the service index's) and no
+  # other on ${toString homeassistantPort}.
   #
   # IT HAS A SECOND LEG THIS PROXY CANNOT SEE AND MUST NOT ROUTE TO.  The
-  # container also holds an address on VLAN 20 (`iot0`), so that mDNS and SSDP
+  # guest also holds an address on VLAN 20 (`iot0`), so that mDNS and SSDP
   # discovery of the household's wifi devices happens on the segment those
   # devices are on rather than across a firewall boundary.  Nothing here routes
   # to it: that leg exists for the hub to talk OUT, and its firewall admits only
-  # multicast discovery in.  See containers/home-assistant.nix.
+  # multicast discovery in.  See service-modules/haos.md.
   #
   # THE BACKEND IS A LONG-LIVED WEBSOCKET, which is the one operational thing to
   # know about this route.  The companion app authenticates once at /auth/token
@@ -240,6 +241,8 @@ rec {
   # it — but lowering either value makes this route flap, and that is worth
   # knowing before someone tunes a timeout for an unrelated backend.
   homeassistantAddr = "10.0.90.27";
+  # 8123: the Supervisor pins Core there under HAOS (80 is only the
+  # first-boot onboarding server).
   homeassistantPort = 8123;
 
   # Miniflux (M27) — the feed reader, in an NSPAWN container on

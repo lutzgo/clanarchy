@@ -362,6 +362,24 @@
   # the static config has to agree with the bind mount, and one binding is
   # cheaper to keep in step than two string literals.
   dataDir = "/var/lib/traefik";
+
+  # ── mneme's pictures, served from HERE (since @clanarchy/haos) ───────────
+  #
+  # The household agent writes generated images to the host directory below
+  # and hands out `https://ha.goclan.org/local/mneme/<file>`.  Home Assistant
+  # used to serve that path from its own www/; it now runs in a HAOS guest
+  # whose /config the host cannot write.  So this container serves the path
+  # itself, from a READ-ONLY bind, through an nginx on its own loopback — the
+  # proxy is already the thing every client reaches, so this adds no listener
+  # anyone else can see, no hostname and no hole in any firewall.
+  #
+  # The URL is unchanged on purpose: every picture already sent to the
+  # household keeps resolving.  The `mneme-images` router claims the path
+  # prefix ahead of the hub's catch-all router.  See ./traefik/dynamic.nix.
+  mnemeImagesHost = "/srv/state/mneme-images";
+  mnemeImagesDir = "/srv/mneme-images";
+  mnemeImagesPort = 8099;
+  mnemeUid = (import ../allocations.nix).ids.mneme.uid;
 in {
   ##############################################################################
   # Host-side wiring.
@@ -541,6 +559,15 @@ in {
         owner = traefikUid;
         group = traefikGid;
       }
+      # Created here as well as by mneme-dirs, with the SAME owner and mode:
+      # a bind source that does not exist fails the container start, and
+      # the ingress must not wait on the agent to be able to boot.
+      {
+        path = mnemeImagesHost;
+        owner = mnemeUid;
+        group = mnemeUid;
+        mode = "0755";
+      }
     ];
 
     bindMounts = {
@@ -553,6 +580,10 @@ in {
       # The staged Cloudflare token, read-only, at the identical path.
       "${secretsDir}" = {
         hostPath = secretsDir;
+        isReadOnly = true;
+      };
+      "${mnemeImagesDir}" = {
+        hostPath = mnemeImagesHost;
         isReadOnly = true;
       };
     };
@@ -743,7 +774,32 @@ in {
         # argument list names the fifty-two it actually reads, so its
         # dependencies are visible without opening it.
         ########################################################################
-        dynamicConfigOptions = import ./traefik/dynamic.nix ({inherit withWan;} // peers);
+        dynamicConfigOptions = import ./traefik/dynamic.nix ({inherit withWan mnemeImagesPort;} // peers);
+      };
+
+      # The static server for mneme's pictures.  Loopback only — the
+      # router is the one way in — and the `/local/mneme/` prefix is kept so
+      # Traefik passes the path through unmodified.
+      services.nginx = {
+        enable = true;
+        recommendedOptimisation = true;
+        virtualHosts."mneme-images" = {
+          listen = [
+            {
+              addr = "127.0.0.1";
+              port = mnemeImagesPort;
+            }
+          ];
+          locations."/local/mneme/" = {
+            alias = "${mnemeImagesDir}/";
+            extraConfig = ''
+              autoindex off;
+              add_header Cache-Control "public, max-age=86400" always;
+              add_header X-Content-Type-Options nosniff always;
+            '';
+          };
+          locations."/".return = "404";
+        };
       };
 
       # Additional hardening on top of the upstream module.
