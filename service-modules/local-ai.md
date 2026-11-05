@@ -498,7 +498,7 @@ continuously.
 ## The conversation agent — `roles.agent` / mneme (M29)
 
 ```
-hass container ──ai3──> [fdca:fe93::1]:11435  mneme ──> 127.0.0.1:11434  llama-swap
+hass (HAOS) ──ai3──>   [fdca:fe93::1]:11435  mneme ──> 127.0.0.1:11434  llama-swap
    `ollama` integration                          │
    Assist tools pass straight through            └──> the constitution, injected
 ```

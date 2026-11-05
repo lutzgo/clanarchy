@@ -16,7 +16,7 @@
   systemd.sockets = lib.listToAttrs (map (b: {
       name = "${unit}-${b.name}";
       value = {
-        description = "${what} listener for the ${b.name} container";
+        description = "${what} listener for ${b.name}";
         wantedBy = ["sockets.target"];
         socketConfig = {
           # A LITERAL ADDRESS, never a wildcard.  This is the whole
@@ -41,7 +41,7 @@
   systemd.services = lib.listToAttrs (map (b: {
       name = "${unit}-${b.name}";
       value = {
-        description = "Proxy ${what} to the ${b.name} container";
+        description = "Proxy ${what} to ${b.name}";
         after = ["${unit}-${b.name}.socket"] ++ extraAfter;
         # SOCKET-ACTIVATED: no `wantedBy`.  With one, systemd starts this
         # directly and systemd-socket-proxyd exits 1 with "Didn't get any
