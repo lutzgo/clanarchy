@@ -58,7 +58,8 @@ zfs create \
 # scripts inside their state dir.
 #
 # This is also where a service lands when it needs NO dataset of its own.
-# M24's Home Assistant (/srv/state/home-assistant) is the worked example and
+# M24's Home Assistant container (/srv/state/home-assistant, retired 2026-11
+# for the HAOS guest on zvol zdata/vm/hass) was the worked example and
 # the reason to state it: its whole state is a .storage tree of small JSON
 # blobs plus the recorder's SQLite database, which is this dataset's write
 # profile exactly. A dedicated dataset would carry identical properties and
