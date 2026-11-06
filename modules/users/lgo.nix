@@ -112,12 +112,12 @@ in {
     # CalDAV sync: push org TODOs/habits to Nextcloud as VTODO entries.
     clanarchy.caldavSync = {
       enable = true;
-      nextcloudHost = "citizengo.io";
+      nextcloudHost = "cloud.goclan.org";
       calendarName = "lgorg2";
       username = "lgo";
-      orgNoteDir = "citizengo/notes";
+      orgNoteDir = "goclan/notes";
       syncFiles = ["todo.org" "habits.org"];
-      journalDir = "citizengo/notes/journal";
+      journalDir = "goclan/notes/journal";
     };
 
     # Declare nvf's vim.* option namespace for all HM users on this machine.
