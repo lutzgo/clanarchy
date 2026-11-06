@@ -147,11 +147,6 @@
       ip = "10.0.90.29";
       kind = "nspawn";
     };
-    mass = {
-      seq = 22;
-      ip = "10.0.90.30";
-      kind = "nspawn";
-    };
     mail = {
       seq = 23;
       ip = "10.0.90.31";
@@ -164,9 +159,9 @@
     };
   };
 
-  # 08 and 09 lapsed and were never reclaimed; 0d was taken back by CWA. There
-  # is no free gap below the high-water mark.
-  vlan90Lapsed = [8 9];
+  # 08 and 09 lapsed and were never reclaimed; 0d was taken back by CWA. 22
+  # lapsed when Music Assistant became an app in the HAOS guest (10.0.90.27).
+  vlan90Lapsed = [8 9 22];
 
   # ── VLAN 20 — IoT, for the two services that need link-local discovery ────
   #
@@ -178,11 +173,6 @@
       seq = 1;
       ip = "10.0.20.27";
       veth = "iot0";
-    };
-    mass = {
-      seq = 2;
-      ip = "10.0.20.30";
-      veth = "iot1";
     };
   };
 
@@ -469,8 +459,8 @@
     music-assistant = {
       uid = 3040;
       gid = 3040;
-      where = "containers/music-assistant.nix";
-      note = "upstream's DynamicUser is forced OFF: StateDirectory + DynamicUser migrates the bind mount";
+      where = "retired: Music Assistant is an app in the HAOS guest";
+      note = "kept reserved: /srv/state/music-assistant on ernst is still owned by it";
     };
     virtualMail = {
       uid = 3041;

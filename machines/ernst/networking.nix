@@ -321,7 +321,7 @@ in {
         fdca:fe93:: -> ai3.  Monitoring's mon0 predates it and keeps its name.
 
         A leg on a VLAN has no ULA to track and is numbered in order instead:
-        iot0 (the HAOS guest), iot1 (mass).  Two on the SAME VLAN still need
+        iot0 (the HAOS guest), then iot1.  Two on the SAME VLAN still need
         different names — the name is an interface, not a description.
       '';
     }
