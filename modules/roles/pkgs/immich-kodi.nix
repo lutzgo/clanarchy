@@ -114,7 +114,27 @@ buildKodiAddon rec {
   #
   #   DROP IT when bumping past a release that fixes upstream #38, after
   #   checking the new models.py — `patches` failing to apply is the reminder.
-  patches = [./immich-kodi-immich3-album.patch];
+  #
+  # ── AND IT BROKE THE PHOTOS THEMSELVES: TIMELINE MONTHS AND ALBUM CONTENTS ─
+  #
+  #   MEASURED 2026-11-06 against Immich 3.3.5, the add-on run outside Kodi
+  #   with stubbed xbmc modules:
+  #
+  #     timeline month   TypeError: ItemAsset.__init__() missing 'deviceAssetId'
+  #                      and 'deviceId' — Immich 3 no longer sends them
+  #     open an album    KeyError: 'assets' — GET /api/albums/{id} no longer
+  #                      carries the album's contents
+  #
+  #   The second patch makes every ItemAsset field optional except `id` (the
+  #   add-on reads id, type, the dates, originalFileName, originalMimeType and
+  #   exifInfo.dateTimeOriginal, and exifInfo now defaults to an empty one), and
+  #   fetches an album's contents from POST /api/search/metadata with
+  #   `albumIds`, paged at 1000.  Patched, the same run listed 2324 of 2324,
+  #   2275 of 2275 and 14 of 14 album assets and every asset of three months.
+  patches = [
+    ./immich-kodi-immich3-album.patch
+    ./immich-kodi-immich3-assets.patch
+  ];
 
   meta = {
     homepage = "https://github.com/vladd11/immich-kodi";

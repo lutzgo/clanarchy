@@ -1,0 +1,85 @@
+--- a/album.py
++++ b/album.py
+@@ -56,9 +56,19 @@
+         "User-agent": xbmc.getUserAgent(),
+         "x-api-key": API_KEY,
+     }
+-    conn.request("GET", f"/api/albums/{id}", "", headers)
+-    res = json.loads(conn.getresponse().read().decode("utf-8"))["assets"]
+-    res = [ItemAsset.from_api_response(i) for i in res]
++    # Immich 3's GET /api/albums/{id} no longer carries `assets`; the
++    # album's contents come from metadata search, paged.
++    headers["Content-Type"] = "application/json"
++    res = []
++    page = 1
++    while page:
++        body = json.dumps(
++            {"albumIds": [id], "withExif": True, "size": 1000, "page": page}
++        )
++        conn.request("POST", "/api/search/metadata", body, headers)
++        found = json.loads(conn.getresponse().read().decode("utf-8"))["assets"]
++        res += [ItemAsset.from_api_response(i) for i in found["items"]]
++        page = int(found["nextPage"]) if found.get("nextPage") else None
+ 
+     for i in res:
+         if not i.exifInfo.dateTimeOriginal:
+--- a/models.py
++++ b/models.py
+@@ -109,26 +109,29 @@
+ 
+ @dataclass
+ class ItemAsset:
++    # Only `id` is required.  Immich 3 no longer sends deviceAssetId or
++    # deviceId, and a required field here is a TypeError that empties the
++    # whole timeline month or album.
+     id: str
+-    deviceAssetId: str
+-    ownerId: str
+-    deviceId: str
+-    type: str
+-    originalPath: str
+-    originalFileName: str
+-    originalMimeType: str
+-    thumbhash: str
+-    fileCreatedAt: str
+-    createdAt: str
+-    fileModifiedAt: str
+-    localDateTime: str
+-    updatedAt: str
+-    isFavorite: bool
+-    isArchived: bool
+-    isTrashed: bool
+-    visibility: str
+-    duration: str
+-    exifInfo: ExifInfo
++    deviceAssetId: Optional[str] = None
++    ownerId: Optional[str] = None
++    deviceId: Optional[str] = None
++    type: Optional[str] = None
++    originalPath: Optional[str] = None
++    originalFileName: Optional[str] = None
++    originalMimeType: Optional[str] = None
++    thumbhash: Optional[str] = None
++    fileCreatedAt: Optional[str] = None
++    createdAt: Optional[str] = None
++    fileModifiedAt: Optional[str] = None
++    localDateTime: Optional[str] = None
++    updatedAt: Optional[str] = None
++    isFavorite: bool = False
++    isArchived: bool = False
++    isTrashed: bool = False
++    visibility: Optional[str] = None
++    duration: Optional[str] = None
++    exifInfo: Optional[ExifInfo] = None
+     libraryId: Optional[str] = None
+     livePhotoVideoId: Optional[str] = None
+     people: Optional[List[str]] = None
+@@ -156,6 +159,8 @@
+     def __post_init__(self):
+         if isinstance(self.exifInfo, dict):
+             self.exifInfo = ExifInfo.from_api_response(self.exifInfo)
++        elif self.exifInfo is None:
++            self.exifInfo = ExifInfo()
+ 
+     @classmethod
+     def from_api_response(cls, data: dict) -> "ItemAsset":
