@@ -18,6 +18,12 @@
 #   was for the photographs, and for the same reason: choosing what comes
 #   across is a triage decision and not a script.
 #
+#   That migration does not copy the old tree as it was.  citizengo.io was
+#   ONE account holding `LGo/`, `SGo/`, `MGo/` and a shared `Go/`; here each
+#   person's tree goes to their own account, `Go` becomes a Team Folder (see
+#   `goFolder` below), archival documents go to paperless and photographs to
+#   Immich.  The per-folder triage is done by hand, on ernst, not in this repo.
+#
 # ── WHY THE nspawn TIER ─────────────────────────────────────────────────────
 #
 #   `services.nextcloud` is a first-class NixOS module.  The podman tier here
@@ -126,6 +132,22 @@
 
   baseDomain = "goclan.org";
   hostName = "cloud.${baseDomain}";
+
+  # THE SHARED FAMILY SPACE.  citizengo.io was one account holding everyone's
+  # files as `LGo/`, `SGo/`, `MGo/` and a shared `Go/`.  Here each person's
+  # tree lives in their OWN account, and only `Go` is shared: a Team Folder
+  # (groupfolders) applicable to a local Nextcloud group of the same name.
+  #
+  # A LOCAL GROUP, NOT OIDC GROUP PROVISIONING.  The Authelia provider below
+  # maps no groups, and turning that on would rewrite every account's groups
+  # on every login — a bigger change than one shared folder warrants.
+  #
+  # The names are the Authelia usernames.  An OIDC account only exists after
+  # its first login, so provisioning SKIPS a member that does not exist yet
+  # and picks it up on the next deploy, instead of failing the unit.
+  goFolder = "Go";
+  goGroup = "go";
+  goMembers = ["lgo" "sgo" "mgo" "go"];
 
   # Authelia's portal, as the OIDC issuer.  Restated rather than shared for the
   # same reason baseDomain is restated in traefik.nix and authelia.nix.
@@ -646,6 +668,7 @@ in {
             user_oidc # the Authelia login button
             mail # webmail against M31's server — see the note below
             integration_paperless # "send to Paperless" in the Files menu (M32)
+            groupfolders # the shared `Go` Team Folder — see nextcloud-provision
             ;
         };
         extraAppsEnable = true;
@@ -752,7 +775,7 @@ in {
       # provider exists after somebody deleted it in the admin UI.
       ##########################################################################
       systemd.services.nextcloud-provision = {
-        description = "Register the Authelia OIDC provider and the external storage mounts";
+        description = "Register the Authelia OIDC provider, the external storage mounts and the Go Team Folder";
         wantedBy = ["multi-user.target"];
         after = ["nextcloud-setup.service" "phpfpm-nextcloud.service" "network-online.target"];
         wants = ["network-online.target"];
@@ -964,6 +987,44 @@ in {
             echo "  -> 'Filesystem check frequency' -> 'Once every direct access'." >&2
             exit 1
           fi
+
+          # ── The shared `Go` Team Folder ──────────────────────────────────
+          #
+          # Group first, because `groupfolders:group` refuses a group that
+          # does not exist.  `group:list --output=json` is an object of
+          # gid -> [members], so both the group and each membership are tested
+          # against it rather than by letting `group:add` fail on a repeat.
+          groups=$(nextcloud-occ group:list --output=json)
+          if ! jq -e --arg g '${goGroup}' 'has($g)' <<<"$groups" >/dev/null; then
+            nextcloud-occ group:add '${goGroup}'
+            groups=$(nextcloud-occ group:list --output=json)
+          fi
+          for u in ${lib.escapeShellArgs goMembers}; do
+            if ! nextcloud-occ user:info "$u" >/dev/null 2>&1; then
+              echo "nextcloud-provision: $u has not logged in yet; not in '${goGroup}' until the next run"
+              continue
+            fi
+            if ! jq -e --arg g '${goGroup}' --arg u "$u" '.[$g] | index($u)' <<<"$groups" >/dev/null; then
+              nextcloud-occ group:adduser '${goGroup}' "$u"
+            fi
+          done
+
+          nextcloud-occ app:enable groupfolders
+
+          # Look the folder up by mount point.  `.[]` and not `.[0]`: the list
+          # is keyed by folder id, so PHP may emit an object rather than an
+          # array, and `.[]` iterates both.  `groupfolders:create` prints the
+          # bare new id, the same shape as files_external:create above.
+          go_id=$(nextcloud-occ groupfolders:list --output=json \
+            | jq -r --arg m '${goFolder}' \
+                'first(.[] | select(.mountPoint == $m) | .id) // empty')
+          if [ -z "$go_id" ]; then
+            go_id=$(nextcloud-occ groupfolders:create '${goFolder}')
+          fi
+
+          # An upsert: it adds the group if absent and (re)sets permissions
+          # either way, so a permission narrowed in the admin UI is put back.
+          nextcloud-occ groupfolders:group "$go_id" '${goGroup}' write share delete
         '';
       };
 
