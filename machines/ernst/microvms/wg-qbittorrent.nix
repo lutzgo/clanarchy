@@ -502,6 +502,24 @@
   #   qBittorrent client has to use "Recent Priority: First", and the dead
   #   torrents want sweeping (docs/runbooks/bindery-dead-torrent-sweep.md).
   #   Neither lives in this file — the *arr settings are runtime state.
+  #
+  # ── uTP ON, AND UPLOAD CAPPED UNDER THE LINE ────────────────────────────────
+  #
+  #   The line is Vodafone cable, 1 Gbit/s down and 50 Mbit/s up.  An
+  #   uncapped or over-capped upload fills the uplink, and then the ACKs that
+  #   drive every download queue behind it: download speed collapses for the
+  #   whole house, not only for this client.  3072 KiB/s is ~25 Mbit/s, half
+  #   the uplink, which leaves room for ACKs (each one WireGuard-wrapped) and
+  #   for everything else.  A WebUI value of 40960 KiB/s, above the line,
+  #   was found live on 2026-11-06.
+  #
+  #   BTProtocol=Both because the client is FIREWALLED (IVPN has no port
+  #   forwarding): it can only dial out, and the only way two firewalled
+  #   peers ever connect is uTP hole punching.  TCP-only, also found live,
+  #   cuts it off from every peer behind NAT.
+  #
+  #   Everything in this template is reinstalled on each start, so a WebUI
+  #   change lasts until the next restart.  To keep a value, put it here.
   qbtConfTemplate = pkgs.writeText "qBittorrent.conf" ''
     [LegalNotice]
     Accepted=true
@@ -518,6 +536,8 @@
     Session\MaxActiveUploads=15
     Session\MaxActiveTorrents=25
     Session\IgnoreSlowTorrentsForQueueing=false
+    Session\BTProtocol=Both
+    Session\GlobalUPSpeedLimit=3072
 
     [Preferences]
     General\Locale=en
