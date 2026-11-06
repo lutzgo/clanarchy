@@ -1127,6 +1127,23 @@ in {
           # appearing, which is well inside "smooth".
           PAPERLESS_CONSUMER_POLLING = 60;
 
+          # ── SUBDIRECTORIES, AND THEIR NAMES AS TAGS ───────────────────────
+          #
+          # For the citizengo.io migration: archival documents arrive as a
+          # copied folder tree (`inbox/citizengo/<Tag>/…`), and the folder a
+          # document was filed in is the only label it carries.  With both of
+          # these set, every path component under the inbox becomes a tag,
+          # created if it does not exist.
+          #
+          # HARMLESS FOR THE EVERYDAY DOORS.  A phone scan lands at the inbox
+          # root and gets no tag from this; a household member who makes a
+          # folder in `Scan Inbox` gets that folder's name as a tag, which is
+          # what they would expect.  Paperless still deletes the file after
+          # consuming it, but not the empty folder, so remove empty import
+          # folders by hand afterwards.
+          PAPERLESS_CONSUMER_RECURSIVE = true;
+          PAPERLESS_CONSUMER_SUBDIRS_AS_TAGS = true;
+
           PAPERLESS_TIME_ZONE = "Europe/Berlin";
 
           # A human-navigable archive tree, which matters here more than it
