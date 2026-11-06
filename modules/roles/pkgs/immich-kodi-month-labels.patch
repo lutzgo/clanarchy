@@ -1,0 +1,27 @@
+--- a/timeline.py
++++ b/timeline.py
+@@ -81,6 +81,10 @@
+     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=False)
+ 
+ 
++def month_label(d):
++    return f"{xbmc.getLocalizedString(20 + d.month)} {d.year}"
++
++
+ def timeline(video):
+     video = "1" if video else ""
+ 
+@@ -98,9 +102,10 @@
+     items = [
+         (
+             get_url(action="time", id=i.timeBucket, video=video),
+-            xbmcgui.ListItem(
+-                strftime_polyfill(datetime.fromisoformat(i.timeBucket), datelong)
+-            ),
++            # A bucket is a MONTH; its timeBucket is the month's first day,
++            # which as a full date reads like a single day.  Kodi strings
++            # #21-#32 are the month names, in the UI's language.
++            xbmcgui.ListItem(month_label(datetime.fromisoformat(i.timeBucket))),
+             True,
+         )
+         for i in res
