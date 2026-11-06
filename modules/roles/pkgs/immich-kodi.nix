@@ -131,9 +131,18 @@ buildKodiAddon rec {
   #   fetches an album's contents from POST /api/search/metadata with
   #   `albumIds`, paged at 1000.  Patched, the same run listed 2324 of 2324,
   #   2275 of 2275 and 14 of 14 album assets and every asset of three months.
+  #
+  # ── TIMELINE ENTRIES ARE MONTHS, AND NOW SAY SO ────────────────────────────
+  #
+  #   Each timeline entry is a MONTH bucket, labelled upstream with the month's
+  #   first day ("01.11.2026"), which reads as "nothing newer than the 1st".
+  #   The third patch labels it "November 2026" from Kodi's own month strings
+  #   (#21-#32, checked in Kodi 21.3's strings.po), so it follows the UI
+  #   language.
   patches = [
     ./immich-kodi-immich3-album.patch
     ./immich-kodi-immich3-assets.patch
+    ./immich-kodi-month-labels.patch
   ];
 
   meta = {
