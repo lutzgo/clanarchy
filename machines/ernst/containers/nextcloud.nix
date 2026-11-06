@@ -145,8 +145,12 @@
   # The names are the Authelia usernames.  An OIDC account only exists after
   # its first login, so provisioning SKIPS a member that does not exist yet
   # and picks it up on the next deploy, instead of failing the unit.
+  #
+  # `Go`, CAPITALISED, because that group already existed — made by hand, with
+  # lgo and sgo in it — when this landed.  Group ids are case-sensitive here, so
+  # `go` would have been a second, parallel group with the folder on it.
   goFolder = "Go";
-  goGroup = "go";
+  goGroup = "Go";
   goMembers = ["lgo" "sgo" "mgo" "go"];
 
   # Authelia's portal, as the OIDC issuer.  Restated rather than shared for the
