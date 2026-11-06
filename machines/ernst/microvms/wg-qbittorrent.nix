@@ -1226,6 +1226,28 @@ in {
   };
 
   ##############################################################################
+  # A spare Soulseek account, for a client outside this guest (a desktop
+  # Nicotine+, say).  Nothing here consumes it — that is the point: logging
+  # in with slskd's or sldl's account kicks that session (see above), so any
+  # other client needs a name of its own.  Same shape as sldl's: no prompt,
+  # created by its first login.  Read it with
+  #   clan vars get ernst soulseek-spare-credentials/username
+  #   clan vars get ernst soulseek-spare-credentials/password
+  ##############################################################################
+  clan.core.vars.generators.soulseek-spare-credentials = {
+    files.username.secret = false;
+    files.password.secret = true;
+
+    runtimeInputs = [pkgs.coreutils pkgs.openssl];
+
+    script = ''
+      set -euo pipefail
+      printf 'goclan-lgo-spare-%s' "$(openssl rand -hex 3)" > "$out/username"
+      printf '%s' "$(openssl rand -hex 16)" > "$out/password"
+    '';
+  };
+
+  ##############################################################################
   # The guest.
   ##############################################################################
   microvm.vms.${vmName} = {
