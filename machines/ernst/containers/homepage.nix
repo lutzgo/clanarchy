@@ -226,8 +226,9 @@
   # and no widget, so there is no credential to hold and no generator prompt.
   # `/` is on Music Assistant's own auth bypass list, so an up/down probe needs
   # nothing — which is the whole reason the accept rule in
-  # containers/music-assistant.nix was worth adding rather than declining.
-  massAddr = "10.0.90.30";
+  # Music Assistant is an app in the HAOS guest; the accept is in clan.nix's
+  # `haos` instance, on hass0.
+  massAddr = "10.0.90.27";
   massPort = 8095;
 
   # NEXTCLOUD HAS NO ENTRY HERE ON PURPOSE.  Its widget is the one that goes
@@ -857,9 +858,9 @@ in {
                 # and reads Navidrome to do it.
                 #
                 # `siteMonitor` is an ADDRESS here, not `local`, because unlike
-                # every other tile in this group Music Assistant is in its own
-                # container rather than this one — so it costs an accept rule
-                # there, as the six before it did.
+                # every other tile in this group Music Assistant is in the HAOS
+                # guest rather than this container — so it costs an accept
+                # rule on the guest's hass0.
                 "Music Assistant" = {
                   icon = "music-assistant.png";
                   href = pub "music";

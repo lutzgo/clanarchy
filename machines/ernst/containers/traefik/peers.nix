@@ -279,8 +279,9 @@ rec {
   karakeepAddr = "10.0.90.29";
   karakeepPort = 3000;
 
-  # Music Assistant (M30) — the player controller over Navidrome's library, in
-  # an NSPAWN container on 02:00:00:90:00:16 → 10.0.90.30.
+  # Music Assistant — the player controller over Navidrome's library, an APP
+  # in the HAOS guest, on its VLAN 90 leg (hass0, 10.0.90.27).  The app runs
+  # with host networking, so 8095 is the guest's own port.
   #
   # 8095 IS THE API AND UI PORT, AND THERE IS A SECOND LISTENER THIS PROXY MUST
   # NOT ROUTE TO.  8097 is Music Assistant's STREAM server, deliberately split
@@ -289,10 +290,9 @@ rec {
   # Yamaha receiver.  It stays on the L2 path, admitted by source address in
   # that container's own firewall.
   #
-  # IT ALSO HAS A SECOND LEG THIS PROXY CANNOT SEE, like Home Assistant's: iot1
-  # on VLAN 20, for mDNS discovery of the one speaker in the house.  Nothing
-  # inbound from this proxy goes anywhere near it.
-  massAddr = "10.0.90.30";
+  # The speakers reach it on the guest's VLAN 20 leg (iot0), which this proxy
+  # cannot see.
+  massAddr = "10.0.90.27";
   massPort = 8095;
 
   # Paperless-ngx — the household document archive (M32).

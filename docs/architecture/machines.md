@@ -110,7 +110,6 @@ what was rejected. One line each here:
 | `tvheadend.nix` | nspawn | SAT>IP client against the FRITZ!Box's DVB-C tuners; publishes M3U + XMLTV |
 | `immich.nix` | nspawn | Photo library. Owns `zdata/photos`; declares `photo-import` |
 | `nextcloud.nix` | nspawn | File sync / CalDAV / CardDAV. Owns `zdata/nextcloud` |
-| `music-assistant.nix` | nspawn | Player controller over Navidrome's library, via the Subsonic API. Second container with a VLAN 20 leg (`iot1`) — the one speaker is mDNS-discovery-only |
 | `miniflux.nix` | nspawn | Feed reader. Public behind forward-auth **and** OIDC, so no native RSS client can ever reach the name again |
 | `karakeep.nix` | nspawn | Bookmarks, page archives, search; the Floccus backend for both laptops. Auto-tags against the model already resident on ernst |
 | `paperless.nix` | nspawn | Household document archive. Owns `zdata/docs`. Two ingest doors (the phone app's API, and a writable Nextcloud folder that *is* the consumption directory) |
@@ -128,7 +127,8 @@ Home Assistant is not in this table: it is the HAOS guest `haos-hass`, from the
 `haos` instance in `clan.nix` (`service-modules/haos.nix`). It keeps the old
 container's MACs (VLAN 90 and the VLAN 20 discovery leg), its `ai3`/`kodi0`
 point-to-point legs as taps, and gets both ZBT-2 radios and one Bluetooth dongle
-by USB passthrough.
+by USB passthrough. Music Assistant runs inside it as an app (it was the `mass`
+nspawn container).
 
 ### Allocation
 

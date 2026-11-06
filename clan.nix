@@ -337,10 +337,9 @@
           # dashboard label and runbook that says `hass` still means it.
           name = "hass";
 
-          # Sized for add-ons, not for Core alone.  Music Assistant stays in
-          # its own container (HA <-> MA is switched inside br0, never leaves
-          # the box); what this headroom is for is the add-ons HAOS was
-          # chosen to run.  4 of the 9950X's 16 cores, 8 GiB in hugepages.
+          # Sized for add-ons, not for Core alone — Music Assistant among
+          # them (measured as a container: ~230 MiB, near-idle CPU).  4 of the
+          # 9950X's 16 cores, 8 GiB in hugepages.
           vcpus = 4;
           memoryMiB = 8192;
           hugepages = true;
@@ -385,6 +384,16 @@
                   peer = "10.0.90.14";
                   port = 8123;
                 } # Prometheus: /api/prometheus, with a bearer token
+                # The Music Assistant app (host networking, so the guest's own
+                # 8095): `music.goclan.org`, and the service index's up/down probe.
+                {
+                  peer = "10.0.90.12";
+                  port = 8095;
+                }
+                {
+                  peer = "10.0.90.13";
+                  port = 8095;
+                }
               ];
             }
             # VLAN 20, IoT — ON the segment it discovers, so mDNS and SSDP
@@ -422,6 +431,31 @@
                   port = 5540;
                 } # Matter: the controller's port, and phone -> Thread device
                 #   through the guest's routing (OTBR's border routing)
+
+                # The Music Assistant app's two MusicCast speakers, by address.
+                # 8097 is MA's stream server, which the SPEAKER fetches.  The UDP
+                # range is aiomusiccast's event socket: an ephemeral port the
+                # receiver pushes status to — without it playback works and the
+                # UI never updates.  32768:60999 is the Linux default
+                # ip_local_port_range; confirm it inside HAOS.
+                {
+                  peer = "10.0.20.31";
+                  port = 8097;
+                } # Küche
+                {
+                  peer = "10.0.20.31";
+                  proto = "udp";
+                  port = "32768:60999";
+                }
+                {
+                  peer = "10.0.20.32";
+                  port = 8097;
+                } # Renate
+                {
+                  peer = "10.0.20.32";
+                  proto = "udp";
+                  port = "32768:60999";
+                }
               ];
             }
             # ai3: the conversation agent, STT and TTS (local-ai exposeOn).

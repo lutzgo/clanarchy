@@ -109,7 +109,8 @@ in rec {
       addr = "10.0.90.11";
       port = 5030;
     };
-    mass = "10.0.90.30";
+    # Music Assistant, an app in the HAOS guest: its VLAN 90 leg (hass0).
+    mass = "10.0.90.27";
   };
 
   # ── Host-side paths ───────────────────────────────────────────────────────
