@@ -317,15 +317,30 @@ in {
         Service = {
           Type = "oneshot";
           # Ensure the vdir collection and status dirs exist before syncing.
-          # Then discover once: `sync` refuses to run until `discover` has
-          # written <status>/org_push.collections, which a fresh install
+          # Then discover when needed: `sync` refuses to run until `discover`
+          # has written <status>/org_push.collections, which a fresh install
           # (or a reinstall) does not have. stdin is closed so a "create the
           # collection?" prompt aborts the unit instead of answering itself.
+          #
+          # "WHEN NEEDED" IS ALSO AFTER ANY CONFIG CHANGE, not just once.
+          # vdirsyncer refuses to sync after its config changes ("Detected
+          # change in config file, please run `vdirsyncer discover`"), and a
+          # discover-once stamp never fires again — so moving nextcloudHost
+          # from citizengo.io to cloud.goclan.org (2026-11-07) left the timer
+          # failing every 15 minutes until someone ran it by hand. The stamp
+          # is now the config's sha256.
           ExecStartPre = [
             "${pkgs.coreutils}/bin/mkdir -p ${orgOutDir} ${statusDir}"
-            "${pkgs.writeShellScript "vdirsyncer-discover-once" ''
-              [ -e ${lib.escapeShellArg "${statusDir}/org_push.collections"} ] && exit 0
-              exec ${pkgs.vdirsyncer}/bin/vdirsyncer discover org_push </dev/null
+            "${pkgs.writeShellScript "vdirsyncer-discover" ''
+              set -eu
+              cfgsum=$(${pkgs.coreutils}/bin/sha256sum "''${XDG_CONFIG_HOME:-$HOME/.config}/vdirsyncer/config" | ${pkgs.coreutils}/bin/cut -d" " -f1)
+              stamp=${lib.escapeShellArg "${statusDir}/discovered-config.sha256"}
+              if [ -e ${lib.escapeShellArg "${statusDir}/org_push.collections"} ] \
+                 && [ "$(${pkgs.coreutils}/bin/cat "$stamp" 2>/dev/null)" = "$cfgsum" ]; then
+                exit 0
+              fi
+              ${pkgs.vdirsyncer}/bin/vdirsyncer discover org_push </dev/null
+              printf '%s\n' "$cfgsum" > "$stamp"
             ''}"
           ];
           ExecStart = "${pkgs.vdirsyncer}/bin/vdirsyncer sync org_push";
