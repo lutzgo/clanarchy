@@ -1983,6 +1983,19 @@ in {
       # its session arm: before it, the only way from Big Picture into Kodi
       # was `clanarchy-session-select kodi` over SSH. It writes a request and
       # exits; gamescope is torn down from outside (see requestFile).
+      # THE OTHER DIRECTION.  With `steamShortcut` off, the media client's
+      # own entry must not be in the library at all — and `shortcuts` never
+      # removes, so an entry left from when it was on stays and keeps
+      # launching the client INSIDE gamescope.  On ernst that was an entry
+      # called "Kodi" running `kodi -fs`: X11 through Xwayland, a 2048x1152
+      # window at a fixed 59.9 Hz upscaled to 4K, no refresh-rate switching
+      # and no VAAPI.  Films stuttered badly enough to be unwatchable
+      # (2026-11-06), while "Media Mode", one tile over, gives the GBM
+      # session with every mode the TV offers.  Same tile art, same tag.
+      removedShortcuts =
+        lib.optional (cfg.mediaClient.enable && !cfg.mediaClient.steamShortcut.enable)
+        cfg.mediaClient.name;
+
       shortcuts =
         lib.optional cfg.mediaClient.enable {
           name = "Media Mode";
