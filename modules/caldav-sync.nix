@@ -169,7 +169,14 @@
   # ── Derived paths ──────────────────────────────────────────────────────
   vdirBase = "/home/${cfg.username}/.local/share/vdirsyncer";
   orgVdir = "${vdirBase}/org";
-  statusDir = "${vdirBase}/status";
+  # PER SERVER.  vdirsyncer's status is a record of what each side held at
+  # the last sync, and it belongs to one server.  Kept in one shared
+  # directory, moving nextcloudHost (citizengo.io -> cloud.goclan.org,
+  # 2026-11-07) made the new, empty calendar look like every item had been
+  # deleted remotely, and vdirsyncer stopped with "caldav_remote/lgorg2 was
+  # completely emptied" — whose suggested --force-delete would have deleted
+  # the local side too.  A new host now simply starts with no status.
+  statusDir = "${vdirBase}/status/${cfg.nextcloudHost}";
   orgOutDir = "${orgVdir}/${cfg.calendarName}";
 
   orgFilePaths = map (f: "/home/${cfg.username}/${cfg.orgNoteDir}/${f}") cfg.syncFiles;
@@ -250,6 +257,11 @@ in {
         [general]
         status_path = "${statusDir}"
 
+        # The calendar must accept VJOURNAL when journalDir is set.  One made
+        # in Nextcloud's Calendar app takes only VEVENT,VTODO, and every
+        # journal entry is then a 403 while the TODOs go through.  There is no
+        # UI for it; on ernst (2026-11-07) it was the `components` column of
+        # oc_calendars set to 'VEVENT,VTODO,VJOURNAL' for lgorg2.
         [pair org_push]
         a = "org_local"
         b = "caldav_remote"
