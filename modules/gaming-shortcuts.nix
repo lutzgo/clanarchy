@@ -25,7 +25,9 @@
 # So the mechanism is parse / merge / write back, run once before the display
 # manager starts, matching declared entries by AppName.  Entries we do not
 # know about are left exactly as they were; declared ones are created if
-# missing and corrected if their target moved.  Running before the display
+# missing and corrected if their target moved.  Entries named in
+# `removedShortcuts` are deleted — the one way an entry this module once
+# declared can leave the library again.  Running before the display
 # manager is what makes the merge safe: Steam reads the file at startup and
 # rewrites it wholesale at exit, so touching it while Steam is live would be
 # a lost update.  The tool refuses to run in that case rather than racing.
@@ -124,19 +126,21 @@
   # artwork is a dependency of the unit and cannot be garbage-collected out
   # from under a shortcut that points at it.
   spec = pkgs.writeText "clanarchy-steam-shortcuts.json" (
-    builtins.toJSON (
-      map (s: {
-        inherit (s) name arguments tags;
-        exe = s.exe;
-        startDir =
-          if s.startDir != null
-          then s.startDir
-          else builtins.dirOf s.exe;
-        icon = s.icon;
-        coverArt = s.coverArt;
-      })
-      cfg.shortcuts
-    )
+    builtins.toJSON {
+      shortcuts =
+        map (s: {
+          inherit (s) name arguments tags;
+          exe = s.exe;
+          startDir =
+            if s.startDir != null
+            then s.startDir
+            else builtins.dirOf s.exe;
+          icon = s.icon;
+          coverArt = s.coverArt;
+        })
+        cfg.shortcuts;
+      remove = cfg.removedShortcuts;
+    }
   );
 
   writer = pkgs.writers.writePython3Bin "clanarchy-steam-shortcuts" {flakeIgnore = ["E501"];} ''
@@ -299,7 +303,7 @@
         return True
 
 
-    def merge(config_dir, wanted):
+    def merge(config_dir, wanted, removed):
         path = os.path.join(config_dir, "shortcuts.vdf")
         doc = {"shortcuts": {}}
         if os.path.exists(path):
@@ -317,6 +321,16 @@
 
         entries = list(doc.get("shortcuts", {}).values())
         changed = False
+
+        # Matched by AppName, like everything else here. Artwork under grid/
+        # is left behind: it is keyed by app id and harmless without an entry.
+        kept = [e for e in entries if e.get("AppName") not in removed]
+        for gone in entries:
+            if gone.get("AppName") in removed:
+                print("removed shortcut %r from %s" % (gone.get("AppName"), config_dir))
+        if len(kept) != len(entries):
+            entries = kept
+            changed = True
 
         for want in wanted:
             # Steam stores both of these quoted, and derives the app id from
@@ -360,8 +374,9 @@
 
     def main():
         with open(SPEC) as handle:
-            wanted = json.load(handle)
-        if not wanted:
+            spec = json.load(handle)
+        wanted, removed = spec["shortcuts"], set(spec["remove"])
+        if not wanted and not removed:
             return 0
 
         # Wait for Steam to finish exiting rather than bailing on sight.
@@ -394,7 +409,7 @@
             return 0
 
         for config_dir in dirs:
-            merge(config_dir, wanted)
+            merge(config_dir, wanted, removed)
         return 0
 
 
@@ -425,7 +440,32 @@ in {
     '';
   };
 
-  config = lib.mkIf (cfg.enable && cfg.shortcuts != []) {
+  options.clanarchy.gaming.removedShortcuts = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [];
+    description = ''
+      Non-Steam shortcuts to delete from Steam's library, by `AppName`.
+
+      `shortcuts` never removes anything, so an entry that was once declared
+      and then dropped stays in Big Picture indefinitely, still launching
+      whatever it launched. This is how such an entry is taken out. A name
+      may not appear here and in `shortcuts` at once.
+
+      Matching is by name only, so this also deletes a hand-added entry of
+      the same name — which is the point when the stale entry predates
+      this option, and the reason to keep the list short.
+    '';
+    example = ["Kodi"];
+  };
+
+  config = lib.mkIf (cfg.enable && (cfg.shortcuts != [] || cfg.removedShortcuts != [])) {
+    assertions = [
+      {
+        assertion = lib.all (n: !(lib.elem n (map (s: s.name) cfg.shortcuts))) cfg.removedShortcuts;
+        message = "clanarchy.gaming: a shortcut name is in both `shortcuts` and `removedShortcuts`.";
+      }
+    ];
+
     # Also on PATH: re-running it by hand after signing into Steam for the
     # first time beats rebooting to get the entries.
     environment.systemPackages = [writer];
