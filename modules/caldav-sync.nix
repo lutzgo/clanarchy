@@ -184,8 +184,8 @@ in {
 
     nextcloudHost = lib.mkOption {
       type = lib.types.str;
-      default = "citizengo.io";
-      description = "Nextcloud hostname (without scheme, e.g. citizengo.io).";
+      default = "cloud.goclan.org";
+      description = "Nextcloud hostname (without scheme, e.g. cloud.goclan.org).";
     };
 
     username = lib.mkOption {
@@ -202,7 +202,7 @@ in {
 
     orgNoteDir = lib.mkOption {
       type = lib.types.str;
-      default = "citizengo/note";
+      default = "goclan/notes";
       description = "Path to the org notes directory, relative to home.";
     };
 
@@ -233,6 +233,11 @@ in {
         description = "Nextcloud app password for CalDAV (Settings → Security → App passwords)";
         type = "hidden";
       };
+      # An app password belongs to ONE server.  Without this, pointing
+      # nextcloudHost somewhere else keeps the old server's password and
+      # vdirsyncer fails with a 401 that looks like a typo.  With it, the
+      # host change makes the var outdated and `clan vars generate` prompts.
+      validation.host = cfg.nextcloudHost;
       runtimeInputs = [pkgs.coreutils];
       script = ''${pkgs.coreutils}/bin/cat "$prompts/password" > "$out/password"'';
     };
