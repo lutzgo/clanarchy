@@ -30,9 +30,13 @@
 #   nothing off this host.
 #
 #   The key is a clan var, so it is in sops and nowhere else.  Mint it
-#   READ-ONLY (asset.read, asset.view, asset.download, album.read,
-#   timeline.read — what the add-on calls): the proxy is a capability for
-#   whoever can reach it, and that is the limit of what it can be used for.
+#   READ-ONLY: user.read, asset.read, asset.view, asset.download,
+#   album.read, timeline.read.  user.read is not optional: the add-on's
+#   first call on every launch is GET /api/users/me, as a connection check,
+#   and without it the add-on shows "connection error" while every other
+#   endpoint works (measured 2026-11-07: 403 "Missing required permission:
+#   user.read").  The proxy is a capability for whoever can reach it, and
+#   these permissions are the limit of what it can be used for.
 #
 # ── WHO CAN REACH IT ────────────────────────────────────────────────────────
 #
@@ -107,7 +111,7 @@ in {
       neededFor = "services";
     };
     prompts."key" = {
-      description = "Immich API key for the TV (read-only: asset.read, asset.view, asset.download, album.read, timeline.read)";
+      description = "Immich API key for the TV (read-only: user.read, asset.read, asset.view, asset.download, album.read, timeline.read)";
       type = "hidden";
     };
     script = ''tr -d '[:space:]' < "$prompts/key" > "$out/key"'';
