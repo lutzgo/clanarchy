@@ -1191,11 +1191,12 @@ in {
             # contained (a break here loses the TV browser and nothing else).
             #
             # NEEDS RUNTIME SETUP AND WILL NOT WORK WITHOUT IT, like `youtube`
-            # and `pvr-hts` above: a server URL and an API key, in the add-on's
-            # own settings. The URL is `https://photos.goclan.org` — THROUGH
-            # TRAEFIK, not the container's VLAN-90 address, which is also why
-            # this needed no UDM-Pro rule where `pvr-hts` needed two firewalls.
-            # See machines/ernst/containers/immich.nix.
+            # and `pvr-hts` above: a server URL in the add-on's own settings,
+            # and on ernst NO API key there. The URL is
+            # `http://127.0.0.1:2283`, a loopback proxy that adds the key and
+            # goes THROUGH TRAEFIK — never the container's VLAN-90 address.
+            # A key in the add-on's settings ends up in kodi.log and the
+            # texture DB; see machines/ernst/immich-kodi-proxy.nix.
             (p.callPackage ./pkgs/immich-kodi.nix {})
 
             # Navidrome — the household music library on the TV, closing the
