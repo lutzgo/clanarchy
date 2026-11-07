@@ -191,7 +191,11 @@
   # The TV's desktop is lgo's desktop: his palette, wallpapers and niri look.
   # (Bar: the go account, `lgoLayout` in noctalia-hm.nix. Stylix, themes and
   # the wallpaper module are imported in flake.nix.)
-  imports = [../../modules/desktop/niri-look.nix];
+  imports = [
+    ../../modules/desktop/niri-look.nix
+    # The Immich add-on's API key, held outside Kodi (it leaked into logs).
+    ./immich-kodi-proxy.nix
+  ];
   clanarchy.theme = "rose-pine";
   clanarchy.wallpapers.nixAnarchy.users = ["go"];
 

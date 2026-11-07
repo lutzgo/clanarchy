@@ -59,10 +59,15 @@
 #
 #   Two settings, both in `resources/settings.xml` and both empty by default:
 #
-#     immich_url   https://photos.goclan.org     (note: THROUGH TRAEFIK — see
-#                  containers/immich.nix's "THE KODI PATH" for why the add-on
-#                  must not be pointed at 10.0.90.25:2283)
-#     api_key      minted in Immich under Account Settings -> API Keys
+#     immich_url   http://127.0.0.1:2283   on ernst — the loopback proxy in
+#                  machines/ernst/immich-kodi-proxy.nix, which forwards to
+#                  https://photos.goclan.org THROUGH TRAEFIK (see
+#                  containers/immich.nix's "THE KODI PATH" for why it must not
+#                  be 10.0.90.25:2283)
+#     api_key      EMPTY.  The proxy adds the real key.  The add-on sends it
+#                  as a `|x-api-key=` URL suffix, which Kodi writes into
+#                  kodi.log and Textures13.db — so a key set here leaks into
+#                  every log and every snapshot.  Measured 2026-11-07.
 #
 #   Kodi keeps add-on settings in ~/.kodi, which this repo does not manage, so
 #   this is the same shape as the `youtube` add-on's API key and `pvr-hts`'s
