@@ -93,6 +93,7 @@ nav:
     - ernst Home Assistant to HAOS: runbooks/ernst-hass-to-haos.md
     - Bindery dead-torrent sweep: runbooks/bindery-dead-torrent-sweep.md
     - Postgres collation refresh: runbooks/postgres-collation-refresh.md
+    - Technitium on the UDM Pro after a UniFi OS update: runbooks/udm-technitium-after-firmware-update.md
   - Incidents:
     - ernst slot-12 drive drop (2026-08-11): incidents/ernst-slot12-drop-2026-08-11.md
     - ernst Jellyfin VAAPI DRM display failure (2026-08-18): incidents/ernst-jellyfin-vaapi-drm-display-failure-2026-08-18.md
