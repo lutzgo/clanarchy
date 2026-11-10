@@ -240,6 +240,22 @@
   mediaGid = 3000;
 
   webuiPort = 8080;
+
+  # ── LISTEN PORTS ARE SECRETS NOW, AND THESE ARE ONLY THE FALLBACKS ─────────
+  #
+  #   With a provider that forwards ports (AirVPN since 2026-11; IVPN never
+  #   did), qBittorrent and slskd have to listen on EXACTLY the port the
+  #   provider forwards: both announce their own listen port — to trackers
+  #   and the DHT, to the Soulseek server — so a remap on the provider side
+  #   would advertise a port nobody can reach.
+  #
+  #   And the real numbers must NOT be in this file, because this repository
+  #   is public.  A swarm sees exit-IP:port; a public repo that names the
+  #   port next to the owner's name turns that into an identity.  So they
+  #   are prompted by the `vpn-forwarded-ports` generator and applied at
+  #   start: qBittorrent's config render, slskd's wrapper, and the
+  #   `fwd_tcp`/`fwd_udp` nftables sets.  Left empty, these defaults apply,
+  #   which is the old firewalled behaviour exactly.
   torrentPort = 6881;
 
   # ── M14: slskd ────────────────────────────────────────────────────────────
@@ -435,6 +451,7 @@
   # machines update` generates it unattended and it can never be missing at
   # evaluation the way a prompted one can.
   sldlGen = config.clan.core.vars.generators.sldl-credentials;
+  portsGen = config.clan.core.vars.generators.vpn-forwarded-ports;
 
   # qBittorrent.conf, with the WebUI password hash left as a placeholder that
   # the guest substitutes at start.  The ExecStartPre that renders it carries
@@ -529,6 +546,7 @@
     Session\TempPath=${downloadRoot}/incomplete
     Session\TempPathEnabled=true
     Session\Interface=wg0
+    Session\Port=@TORRENT_PORT@
     Session\InterfaceName=wg0
     Session\Preallocation=true
     Session\QueueingSystemEnabled=true
@@ -688,6 +706,11 @@ in {
       ${pkgs.coreutils}/bin/install -m 0400 -o root -g root \
         ${slskdGen.files."slskd.env".path}        ${hostSecretsDir}/slskd.env
 
+      # 0440 root:media: read by qBittorrent's config render and slskd's
+      # wrapper, which run as their service users, both in group media.
+      ${pkgs.coreutils}/bin/install -m 0440 -o root -g media \
+        ${portsGen.files."ports.env".path}        ${hostSecretsDir}/ports.env
+
       # sldl's Soulseek account, read by the `sldl` wrapper when run by hand
       # as the guest's root.  0400 root:root for the same reason as slskd.env.
       #
@@ -781,8 +804,16 @@ in {
       type = "line";
     };
     prompts."dns" = {
-      description = "In-tunnel DNS server supplied by the provider (IVPN standard: 172.16.0.1)";
+      description = "In-tunnel DNS server supplied by the provider (AirVPN: 10.128.0.1; IVPN: 172.16.0.1)";
       type = "line";
+    };
+    prompts."preshared-key" = {
+      # Optional.  AirVPN's configs carry a PresharedKey in [Peer]; IVPN's do
+      # not.  Leaving it out where the server expects one fails exactly like
+      # a wrong key — the handshake never completes — so it is a prompt
+      # rather than something to remember.  Empty answer → no line.
+      description = "WireGuard PresharedKey from the provider's config [Peer] section, or EMPTY if there is none (AirVPN: has one; IVPN: none)";
+      type = "hidden";
     };
     prompts."mtu" = {
       # Optional, and the only prompt that accepts an empty answer.
@@ -796,7 +827,7 @@ in {
       #
       # Empty answer → no MTU line at all → wg-quick's derivation, which is the
       # right default for a provider that does not specify one.
-      description = "MTU from the provider's config, or EMPTY for wg-quick's default (IVPN: 1412)";
+      description = "MTU from the provider's config, or EMPTY for wg-quick's default (AirVPN: 1320; IVPN: 1412)";
       type = "line";
     };
     # THE WebUI PASSWORD IS NOT PROMPTED HERE ANY MORE — see the
@@ -814,6 +845,7 @@ in {
       address=$(tr -d '[:space:]' < "$prompts/address")
       dns=$(tr -d '[:space:]' < "$prompts/dns")
       mtu=$(tr -d '[:space:]' < "$prompts/mtu")
+      psk=$(tr -d '[:space:]' < "$prompts/preshared-key")
 
       ##########################################################################
       # Validate EVERYTHING before doing any work, and report every problem in
@@ -885,11 +917,13 @@ in {
 
       # ── the rest ────────────────────────────────────────────────────────────
       valid_ipv4 "$dns" || err \
-        "dns '$dns' is not an IPv4 address. IVPN: 172.16.0.1 plain, or one of the 10.0.254.x AntiTracker resolvers."
+        "dns '$dns' is not an IPv4 address. AirVPN: 10.128.0.1. IVPN: 172.16.0.1 plain, or one of the 10.0.254.x AntiTracker resolvers."
       printf '%s' "$peer" | grep -Eq "$wgkey" || err \
         "peer-public-key is not a 44-character WireGuard key — check for a truncated paste."
       printf '%s' "$priv" | grep -Eq "$wgkey" || err \
         "private-key is not a 44-character WireGuard key — check for a truncated paste."
+      [ -z "$psk" ] || printf '%s' "$psk" | grep -Eq "$wgkey" || err \
+        "preshared-key is not a 44-character WireGuard key (and may be left empty)."
       [ -z "$mtu" ] || printf '%s' "$mtu" | grep -Eq '^[0-9]{3,4}$' || err \
         "mtu '$mtu' is not a number (and may be left empty)."
 
@@ -924,10 +958,66 @@ in {
       PersistentKeepalive = 25
       EOF
 
+      if [ -n "$psk" ]; then
+        printf 'PresharedKey = %s\n' "$psk" >> "$out/wg0.conf"
+      fi
+
       printf '%s' "$ep_ip"   > "$out/endpoint-ip"
       printf '%s' "$ep_port" > "$out/endpoint-port"
 
       ssh-keygen -t ed25519 -N "" -C "root@wg-qbittorrent" -f "$out/ssh-host-key" >/dev/null
+    '';
+  };
+
+  # ── THE PROVIDER'S FORWARDED PORTS (AirVPN, 2026-11) ──────────────────────
+  #
+  #   A generator of its own, not two more prompts on wg-qbittorrent above:
+  #   ports get re-reserved far more often than keys change, and re-running
+  #   that one costs every WireGuard answer plus a new SSH host key.
+  #
+  #   Secret, not because a port is a credential, but because this
+  #   repository is public — see torrentPort in the let block.
+  #
+  #   Both prompts may be left EMPTY, which means "not forwarded" and falls
+  #   back to the fixed defaults: firewalled, exactly the IVPN behaviour.
+  clan.core.vars.generators.vpn-forwarded-ports = {
+    files."ports.env".secret = true;
+
+    prompts."torrent-port" = {
+      description = "Port the VPN provider forwards for qBittorrent (TCP+UDP), or EMPTY if none";
+      type = "line";
+    };
+    prompts."slskd-port" = {
+      description = "Port the VPN provider forwards for slskd / Soulseek (TCP), or EMPTY if none";
+      type = "line";
+    };
+
+    runtimeInputs = [pkgs.coreutils pkgs.gnugrep];
+
+    script = ''
+      set -euo pipefail
+      fail=0
+      err() { echo "  ✗ $*" >&2; fail=1; }
+
+      t=$(tr -d '[:space:]' < "$prompts/torrent-port")
+      s=$(tr -d '[:space:]' < "$prompts/slskd-port")
+
+      for pair in "torrent-port:$t" "slskd-port:$s"; do
+        name=''${pair%%:*}; val=''${pair#*:}
+        [ -z "$val" ] && continue
+        if printf '%s' "$val" | grep -Eq '^[0-9]{4,5}$' && [ "$val" -ge 1024 ] && [ "$val" -le 65535 ]; then :; else
+          err "$name '$val' is not a port between 1024 and 65535."
+        fi
+      done
+      [ -n "$t" ] && [ "$t" = "$s" ] && err "torrent-port and slskd-port are the same; reserve two ports."
+
+      if [ "$fail" -ne 0 ]; then
+        echo "" >&2
+        echo "Nothing was written. Fix the above and re-run: clan vars generate ernst --generator vpn-forwarded-ports" >&2
+        exit 1
+      fi
+
+      printf 'TORRENT_PORT=%s\nSLSKD_PORT=%s\n' "''${t:-${toString torrentPort}}" "''${s:-${toString slskdListenPort}}" > "$out/ports.env"
     '';
   };
 
@@ -1516,6 +1606,17 @@ in {
               type ipv4_addr . inet_service
             }
 
+            # The listen ports the provider forwards, filled at boot by the
+            # same unit and for the same reason as vpn_endpoint: the numbers
+            # are secrets.  Empty means no inbound peers at all, which is
+            # fail-closed and only costs connectability.
+            set fwd_tcp {
+              type inet_service
+            }
+            set fwd_udp {
+              type inet_service
+            }
+
             chain input {
               type filter hook input priority filter; policy drop;
 
@@ -1571,8 +1672,8 @@ in {
 
               # Incoming peer connections, in-tunnel only.  Useful solely if
               # the provider forwards a port; harmless when it does not.
-              iifname "wg0" tcp dport ${toString torrentPort} accept
-              iifname "wg0" udp dport ${toString torrentPort} accept
+              iifname "wg0" tcp dport @fwd_tcp accept
+              iifname "wg0" udp dport @fwd_udp accept
 
               # M14.  slskd's Soulseek listen port, and it is `wg0` ONLY —
               # deliberately, and it is the line that would be easiest to get
@@ -1584,7 +1685,7 @@ in {
               # peer that found the exit, which is the intended shape.
               #
               # TCP only: the Soulseek protocol's peer connections are TCP.
-              iifname "wg0" tcp dport ${toString slskdListenPort} accept
+              # The port itself is in @fwd_tcp, with qBittorrent's.
             }
 
             chain forward {
@@ -1657,6 +1758,13 @@ in {
           port=$(${pkgs.coreutils}/bin/cat ${guestSecretsDir}/endpoint-port)
           ${pkgs.nftables}/bin/nft add element inet killswitch vpn_endpoint \
             "{ $ip . $port }"
+
+          # The forwarded listen ports (vpn-forwarded-ports generator).
+          . ${guestSecretsDir}/ports.env
+          ${pkgs.nftables}/bin/nft add element inet killswitch fwd_tcp \
+            "{ $TORRENT_PORT, $SLSKD_PORT }"
+          ${pkgs.nftables}/bin/nft add element inet killswitch fwd_udp \
+            "{ $TORRENT_PORT }"
         '';
       };
 
@@ -1716,7 +1824,10 @@ in {
         user = "qbittorrent";
         group = "media";
         webuiPort = webuiPort;
-        torrentingPort = torrentPort;
+        # null: no --torrenting-port flag, which would override the config
+        # file.  The port is rendered into Session\Port at start instead,
+        # from the secret ports.env — see torrentPort in the let block.
+        torrentingPort = null;
 
         # Reachability is the firewall's job, above; upstream's openFirewall
         # would also open torrentingPort on the LAN side, which is the one
@@ -2089,6 +2200,9 @@ in {
 
               ${pkgs.coreutils}/bin/install -Dm600 ${qbtConfTemplate} "$conf"
               ${pkgs.gnused}/bin/sed -i "s|@WEBUI_PASSWORD_PBKDF2@|$hash|" "$conf"
+
+              . ${guestSecretsDir}/ports.env
+              ${pkgs.gnused}/bin/sed -i "s|@TORRENT_PORT@|$TORRENT_PORT|" "$conf"
             ''}"
           ];
         };
@@ -2148,12 +2262,32 @@ in {
         # unset for the EnvironmentFile to win.
         environmentFile = "${guestSecretsDir}/slskd.env";
 
+        # The forwarded port is a secret (public repo), so it cannot be a
+        # Nix value; the wrapper reads it at exec time.  The module only
+        # uses the package for ExecStart, so wrapping bin/slskd is enough.
+        package = pkgs.symlinkJoin {
+          name = "slskd-forwarded-port";
+          paths = [pkgs.slskd];
+          nativeBuildInputs = [pkgs.makeWrapper];
+          postBuild = ''
+            rm $out/bin/slskd
+            makeWrapper ${pkgs.slskd}/bin/slskd $out/bin/slskd \
+              --run '. ${guestSecretsDir}/ports.env' \
+              --add-flags '--slsk-listen-port "$SLSKD_PORT"'
+          '';
+        };
+
         settings = {
           directories = {
             downloads = "${soulseekRoot}/complete";
             incomplete = "${soulseekRoot}/incomplete";
           };
 
+          # Still set, because the module requires a value and writes it
+          # into the YAML.  The REAL port comes from the wrapper below as
+          # --slsk-listen-port, which slskd reads after the YAML
+          # (Program.cs AddConfigurationProviders: env, then YAML, then
+          # command line).  An env var would lose to this line.
           soulseek.listen_port = slskdListenPort;
 
           web = {
