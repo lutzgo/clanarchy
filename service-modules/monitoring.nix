@@ -3174,7 +3174,28 @@ in {
                                   description = "{{ $labels.cn }}{{ $labels.sans }} has {{ $value | printf \"%.0f\" }} days left. Renewal has already failed at least twice — check `journalctl -u traefik` in the traefik container.";
                                 };
                               }
-                            ];
+                            ]
+                            ++ lib.optional (settings.mediaStack.minifluxAddress != "") (
+                              # ── a Miniflux feed that stays broken ────────────
+                              #
+                              # miniflux_broken_feeds counts feeds whose last
+                              # fetch failed (with POLLING_PARSING_ERROR_LIMIT = 0,
+                              # see containers/miniflux.nix, any feed with an
+                              # error).  One success resets the count, so a DNS
+                              # wobble clears itself within the hour; 12h is the
+                              # feed that is actually gone (moved, blocked us, died).
+                              # Hacker News sat like that for five weeks unnoticed.
+                              {
+                                alert = "MinifluxFeedBroken";
+                                expr = "max(miniflux_broken_feeds) > 0";
+                                "for" = "12h";
+                                labels.severity = "warning";
+                                annotations = {
+                                  summary = "{{ $value }} Miniflux feed(s) failing for 12h";
+                                  description = "Miniflux has failed to fetch at least one feed on every poll for 12 hours, so nothing from it reaches Karakeep. Miniflux → Feeds shows the error per feed: fix or replace the URL, or remove the subscription.";
+                                };
+                              }
+                            );
                         }
                       ];
                     })
