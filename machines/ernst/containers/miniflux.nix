@@ -404,6 +404,26 @@ in {
         # So this relaxes the guard for the one destination we chose and
         # leaves it in force for the one an outsider influences.
         INTEGRATION_ALLOW_PRIVATE_NETWORKS = 1;
+
+        # ── NEVER STOP POLLING A FEED.  MEASURED 2026-11-10 ───────────────
+        #
+        # The default is 3: after three failed fetches in a row Miniflux
+        # stops scheduling the feed for good, until someone presses Refresh
+        # on it.  Nothing logs it and no unit fails — the hourly scheduler
+        # just reports `rows_count=0`, and Karakeep quietly stops getting
+        # articles.
+        #
+        # That happened to all six feeds at once on 2026-11-08: the UDM's
+        # Technitium was down for a few hours after a UniFi OS update
+        # (docs/runbooks/udm-technitium-after-firmware-update.md), every
+        # fetch was a DNS error, and three hourly polls later every feed had
+        # been shelved.  Hacker News had been shelved the same way since
+        # 2026-10-01, after three HTTP errors in a row.
+        #
+        # 0 = no limit.  A dead feed then costs one request an hour, and the
+        # MinifluxFeedBroken alert in service-modules/monitoring.nix reports
+        # it instead of silence.
+        POLLING_PARSING_ERROR_LIMIT = 0;
       };
     };
 
