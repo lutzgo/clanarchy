@@ -93,6 +93,27 @@
   # it up automatically. zramSwap intentionally left off — 256 GB RAM is plenty.
   zramSwap.enable = false;
 
+  # ── ZFS ARC cap: 160 GiB of the 249 GiB ──────────────────────────────────
+  #
+  # Uncapped, OpenZFS lets the ARC grow to all RAM but 1 GiB (c_max 248 GiB
+  # here), and it gives memory back more slowly than the services ask for it.
+  # On 2026-11-10 the ARC held 168 GiB, the 16 GiB swap was 100% full, and
+  # kodi.bin had 0.5 GiB of itself swapped out — while photo-import and the
+  # citizengo placement kept the pools so busy that I/O pressure sat at ~37%
+  # "full". A swapped-out page in Kodi's audio path then waits behind that
+  # I/O, the buffer runs dry, and the TV gets short sound dropouts in YouTube
+  # and Jellyfin alike (the HDMI sink had counted 689 xruns in three days).
+  #
+  # 160 GiB still leaves the NAS a very large cache and keeps ~90 GiB for the
+  # services, VMs and containers, which were using ~44 GiB at the time.
+  #
+  # The kernel parameter covers every boot; the tmpfiles line applies the same
+  # value on a live switch, since the module is already loaded by then.
+  boot.kernelParams = ["zfs.zfs_arc_max=${toString (160 * 1024 * 1024 * 1024)}"];
+  systemd.tmpfiles.rules = [
+    "w /sys/module/zfs/parameters/zfs_arc_max - - - - ${toString (160 * 1024 * 1024 * 1024)}"
+  ];
+
   # ── mirroredBoots follow-up (currently commented out) ─────────────────────
   # The default bootloader wiring (modules/base.nix: boot.loader.systemd-boot.enable
   # + boot.loader.efi.canTouchEfiVariables) installs to a single ESP mounted at
