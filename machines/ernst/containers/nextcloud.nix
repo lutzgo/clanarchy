@@ -673,6 +673,7 @@ in {
             mail # webmail against M31's server — see the note below
             integration_paperless # "send to Paperless" in the Files menu (M32)
             groupfolders # the shared `Go` Team Folder — see nextcloud-provision
+            deck # kanban boards; citizengo.io had two (imported with `occ deck:import`)
             ;
         };
         extraAppsEnable = true;
