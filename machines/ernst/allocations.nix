@@ -157,6 +157,12 @@
       ip = "10.0.90.32";
       kind = "nspawn";
     };
+    teddycloud = {
+      seq = 25;
+      ip = "10.0.90.33";
+      kind = "podman";
+      iface = "tc0";
+    };
   };
 
   # 08 and 09 lapsed and were never reclaimed; 0d was taken back by CWA. 22
@@ -475,6 +481,11 @@
       uid = 3043;
       where = "containers/mail.nix";
       note = "the Bayes store; 3043 not 3042 because docsin took that";
+    };
+    teddycloud = {
+      uid = 3044;
+      gid = 3044;
+      where = "containers/teddycloud.nix";
     };
 
     # Upstream-static, recorded so they are never renumbered into the block.

@@ -128,6 +128,11 @@ rec {
   tubesyncAddr = "10.0.90.19";
   tubesyncPort = 4848;
 
+  # TeddyCloud's web UI.  The box's own :443 bypasses Traefik; see
+  # containers/teddycloud.nix.
+  teddycloudAddr = "10.0.90.33";
+  teddycloudPort = 80;
+
   # ── M14 ───────────────────────────────────────────────────────────────────
   #
   # FOUR more ports on the arr container's ONE address, and one new address.

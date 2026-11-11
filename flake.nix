@@ -717,6 +717,9 @@
             # rather than allocating a new pair; the DHCP reservation on the
             # UDM-Pro must be RE-POINTED, not added alongside.
             ./machines/ernst/containers/cwa.nix
+            # TeddyCloud — the Toniebox's local server.  Podman tier (image
+            # only); the box reaches it directly on :443, not via Traefik.
+            ./machines/ernst/containers/teddycloud.nix
             # M18.  CrowdSec, INSIDE the traefik container's netns — the only
             # place that sees the pre-DNAT source of a WAN request.  It
             # co-defines containers.traefik; read its header before assuming

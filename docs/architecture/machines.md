@@ -117,6 +117,7 @@ what was rejected. One line each here:
 | `tubesync.nix` | podman | YouTube archiving. The tier's first occupant, so it is where podman itself is enabled |
 | `storyteller.nix` | podman | Ebook/audiobook alignment |
 | `cwa.nix` | podman | Calibre-Web-Automated: OPDS, the Kobo endpoint, KOReader sync. `pkgs.calibre-web` is a *different* codebase without any of those |
+| `teddycloud.nix` | podman | Local server for the CC3200 Toniebox. The box reaches `10.0.90.33:443` directly (mutual TLS, not via Traefik); only the web UI rides Traefik |
 | `romm.nix` | podman | ROM library manager; masters `zdata/roms`, which Syncthing replicates to birte. Two images in one netns, so MariaDB on loopback is structurally unreachable |
 
 Containers are also declared from clan services: `monitoring` (in

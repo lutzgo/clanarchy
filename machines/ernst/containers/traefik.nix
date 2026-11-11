@@ -283,6 +283,8 @@
     tvheadendPort
     tubesyncAddr
     tubesyncPort
+    teddycloudAddr
+    teddycloudPort
     lidarrPort
     kapowarrPort
     questarrPort

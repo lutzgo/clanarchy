@@ -213,7 +213,7 @@
       peer = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
-        description = "Source address. Null omits `-s`, which is what a broadcast/multicast protocol needs.";
+        description = "Source address, pinned to /32 (/128), or a subnet written with its prefix length. Null omits `-s`, which is what a broadcast/multicast protocol needs.";
       };
       port = lib.mkOption {
         type = lib.types.nullOr (lib.types.either lib.types.port lib.types.str);
@@ -279,10 +279,16 @@
   acceptParts = a:
     lib.optional (a.interface != null) "-i ${a.interface}"
     ++ ["-p ${a.proto}"]
-    ++ lib.optional (a.peer != null) "-s ${a.peer}/${
-      if isV6 a
-      then "128"
-      else "32"
+    # A peer that already carries a prefix length is a subnet and is used
+    # as written; a bare address is pinned to one host.
+    ++ lib.optional (a.peer != null) "-s ${
+      if lib.hasInfix "/" a.peer
+      then a.peer
+      else "${a.peer}/${
+        if isV6 a
+        then "128"
+        else "32"
+      }"
     }"
     ++ lib.optional (a.port != null) "--dport ${toString a.port}";
 

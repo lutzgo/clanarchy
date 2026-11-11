@@ -427,6 +427,9 @@ in rec {
     (h "slskd")
     (h "bindery")
     (h "romm")
+    # TeddyCloud's web UI only.  The Toniebox itself never comes through
+    # Traefik — it needs mutual TLS on :443 of the container's own address.
+    (h "teddycloud")
 
     # Open WebUI (M19).  Browser-only by construction — it IS a web chat client
     # — so it passes the test at the top of this file without argument and gets
