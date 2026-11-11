@@ -1011,6 +1011,13 @@ in {
                 };
               }
               {
+                "TeddyCloud" = {
+                  icon = "mdi-teddy-bear";
+                  href = pub "teddycloud";
+                  description = "The Toniebox's local server";
+                };
+              }
+              {
                 "Miniflux" = {
                   icon = "miniflux.png";
                   href = pub "miniflux";

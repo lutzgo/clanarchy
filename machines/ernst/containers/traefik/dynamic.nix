@@ -32,6 +32,8 @@
   tvheadendPort,
   tubesyncAddr,
   tubesyncPort,
+  teddycloudAddr,
+  teddycloudPort,
   lidarrPort,
   kapowarrPort,
   questarrPort,
@@ -358,6 +360,13 @@
       entryPoints = ["websecure"];
       middlewares = ["authelia"];
       service = "tubesync";
+    };
+
+    teddycloud = {
+      rule = "Host(`teddycloud.${baseDomain}`)";
+      entryPoints = ["websecure"];
+      middlewares = ["authelia"];
+      service = "teddycloud";
     };
 
     # ── M14's five, and one of them is NOT like the others ─────────
@@ -988,6 +997,7 @@
 
     # … and one more podman netns of its own, the tier's second.
     storyteller.loadBalancer.servers = [{url = "http://${storytellerAddr}:${toString storytellerPort}/";}];
+    teddycloud.loadBalancer.servers = [{url = "http://${teddycloudAddr}:${toString teddycloudPort}/";}];
     romm.loadBalancer.servers = [{url = "http://${rommAddr}:${toString rommPort}/";}];
     openwebui.loadBalancer.servers = [{url = "http://${openWebuiAddr}:${toString openWebuiPort}/";}];
 
