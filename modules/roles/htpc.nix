@@ -159,6 +159,17 @@
   startLog = "${runDir}/starts";
   breakerNote = "${runDir}/breaker-note";
 
+  # Set by the switcher just before it stops the running session, and read
+  # by the Kodi arm of the session wrapper when Kodi exits cleanly: "this
+  # exit was a switch, not the user leaving Kodi". Without it the two look
+  # identical, because the state file says `kodi` in both cases when the
+  # switch is TO kodi — and the wrapper then demoted the machine to the
+  # gaming session. MEASURED on ernst 2026-11-12: restarting Kodi with
+  # `clanarchy-session-select kodi` landed the TV in Big Picture.
+  # Cleared at the start of every session, so a marker left by a switch that
+  # had no Kodi to stop cannot swallow the user's next real exit.
+  switchMarker = "${runDir}/switching";
+
   # Wait for the TV before handing the card to a compositor.
   #
   # gamescope opens the DRM node of the GPU it selects, and if that card has no
@@ -365,6 +376,7 @@
   sessionRun = pkgs.writeShellScript "clanarchy-session-run" ''
     set -eu
     mode="$(cat ${stateFile} 2>/dev/null || echo ${cfg.defaultSession})"
+    rm -f ${switchMarker}
     ${crashBreaker}
     ${waitForDisplay}
     ${gpuPreempt}
@@ -412,9 +424,13 @@
         # — so without this check the clean exit overwrote the mode just
         # chosen, and "go to the desktop" landed in Big Picture.
         if ${cfg.mediaClient.exe} ${cfg.mediaClient.arguments}; then
-          case "$(cat ${stateFile} 2>/dev/null || true)" in
-            kodi|media|tv|"") printf 'gamescope\n' > ${stateFile} ;;
-          esac
+          # A switch (even one back to kodi) is not the user leaving Kodi —
+          # see switchMarker.
+          if [ ! -e ${switchMarker} ]; then
+            case "$(cat ${stateFile} 2>/dev/null || true)" in
+              kodi|media|tv|"") printf 'gamescope\n' > ${stateFile} ;;
+            esac
+          fi
           ${lib.optionalString cfg.crashLoop.enable
         # Clean exit, so the relogin that follows is expected and must
         # not be counted. Only on this branch — the `if` already
@@ -567,6 +583,9 @@
       # cmdline matches none of these patterns, so it survives to reach the
       # restart below. `loginctl terminate-session` was tried first and does
       # NOT reach an orphan — the scope it would terminate is already gone.
+      # Before the SIGTERM, so a Kodi that exits cleanly finds it — see
+      # switchMarker.
+      touch ${switchMarker} 2>/dev/null || true
       ${lib.concatMapStrings (p: ''
           pkill -TERM -u ${cfg.user} -f ${lib.escapeShellArg p} 2>/dev/null || true
         '')
@@ -2534,6 +2553,52 @@ in {
             ${lib.concatStringsSep "\n" (lib.mapAttrsToList
               (id: value: "apply ${lib.escapeShellArg id} ${lib.escapeShellArg value}")
               effectiveGuiSettings)}
+          '';
+        });
+      };
+    };
+
+    # Kodi's joystick add-on on its udev driver, not the "Linux" (js) one.
+    #
+    # The js driver opens /dev/input/jsN once and never notices the device
+    # going away. A Bluetooth pad that drops and reconnects comes back as a
+    # NEW node, and Kodi keeps reading the dead one — "failed to read
+    # joystick ... (No such device)" every few milliseconds, and no input
+    # until Kodi restarts. MEASURED on ernst 2026-11-12: the pad reconnected
+    # three times in fifteen minutes and Kodi lost it each time. The udev
+    # driver follows hotplug: the same drop was unregistered and the pad
+    # re-registered five seconds later.
+    #
+    # Same timing as the guisettings unit, and the same reason. The file
+    # holds this one setting, so it is written whole instead of patched.
+    systemd.services.clanarchy-kodi-joystick = lib.mkIf (cfg.mediaClient.enable && cfg.controller.enable) {
+      description = "Put Kodi's joystick add-on on the udev driver, before the session starts";
+
+      wantedBy = ["multi-user.target" "display-manager.service"];
+      before = ["display-manager.service"];
+      after = ["local-fs.target" "systemd-tmpfiles-setup.service"];
+
+      serviceConfig = {
+        Type = "oneshot";
+        User = cfg.user;
+        Group = config.users.users.${cfg.user}.group;
+        ExecStart = lib.getExe (pkgs.writeShellApplication {
+          name = "clanarchy-kodi-joystick";
+          runtimeInputs = [pkgs.coreutils pkgs.gnugrep];
+          text = ''
+            # No profile yet: Kodi creates ~/.kodi on first start, and the
+            # unit runs again before the next one.
+            [ -d "$HOME/.kodi/userdata" ] || exit 0
+
+            dir="$HOME/.kodi/userdata/addon_data/peripheral.joystick"
+            file="$dir/settings.xml"
+            # 1 = Udev in the add-on's option list (0 = Linux, 2 = None).
+            grep -qs '<setting id="driver_linux">1</setting>' "$file" && exit 0
+
+            mkdir -p "$dir"
+            printf '<settings version="2">\n    <setting id="driver_linux">1</setting>\n</settings>\n' > "$file.tmp"
+            mv -f "$file.tmp" "$file"
+            echo "kodi peripheral.joystick driver set to udev"
           '';
         });
       };
