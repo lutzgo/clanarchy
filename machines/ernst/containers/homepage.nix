@@ -906,7 +906,16 @@ in {
                     type = "jellyfin";
                     url = "http://${jellyfinAddr}:${toString jellyfinPort}";
                     key = "{{HOMEPAGE_VAR_JELLYFIN_KEY}}";
+                    # version 2: the server dropped the legacy `/emby/...`
+                    # routes (both 404 on 12.x). The default (v1) widget
+                    # calls exactly those, so it showed "API Error" on every
+                    # poll. v2 calls `/Sessions` and `/Items/Counts` with the
+                    # key in a header instead of `?api_key=` in the URL.
+                    version = 2;
                     enableNowPlaying = true;
+                    # The counts row, so this tile matches the others.
+                    enableBlocks = true;
+                    fields = ["movies" "series" "episodes"];
                   };
                 };
               }
