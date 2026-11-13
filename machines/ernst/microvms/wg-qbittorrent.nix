@@ -1360,12 +1360,20 @@ in {
         # Restart=always looping it out of reach — the trap
         # containers/jellyfin.nix caps wait-online to 20 s to avoid.
         hypervisor = "qemu";
-        vcpu = 2;
+        # 4, not 2, and 8192, not 4096: the guest outgrew its first sizing.
+        # It was sized for qBittorrent alone and now also runs slskd, the
+        # hand-run sldl batches and Soularr's target, all .NET or libtorrent.
+        # MEASURED 2026-11-13 during a multi-day sldl batch: qBittorrent 1.9 GB
+        # RSS, slskd 380 MB, sldl 170 MB, 174 MB free with no swap.  Since
+        # boot, /proc/pressure/memory showed ~200 s of "full" stall, and the
+        # guest stopped answering ssh and ping for several minutes while
+        # still at ~70% host CPU.  /proc/pressure/cpu "some" sat at 4–5%.
+        # ernst has 32 threads and ~250 GB, so this costs it nothing.
+        vcpu = 4;
         # NOT 2048.  microvm.nix emits an eval warning for exactly that value:
         # qemu hangs when the guest has precisely 2 GB
-        # (microvm-nix/microvm.nix#171).  4096 also leaves headroom for
-        # libtorrent's piece cache once the session is large; ernst has 256 GB.
-        mem = 4096;
+        # (microvm-nix/microvm.nix#171).
+        mem = 8192;
 
         interfaces = [
           {
