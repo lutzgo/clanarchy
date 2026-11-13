@@ -20,27 +20,15 @@
   # lib/overlays.nix overlay, applied to every machine by modules/base.nix).
   #
   # THIS IS THE SECOND OF TWO CHROMIUM MECHANISMS, and the belt-and-braces one.
-  # The first is `programs.chromium.extensions` in
-  # modules/users/lgo/browsers.nix, which writes External
-  # Extensions JSON and installs silently.  This one opens a tab per CRX on
-  # first run so a human sees and confirms each install.  THE TWO LISTS HAVE
-  # DRIFTED — SideTab Pro is over there and not here — and that drift predates
-  # M27 and is not fixed by it.  New entries go in both.
-  crxUrl = id:
-    "https://clients2.google.com/service/update2/crx"
-    + "?response=redirect&acceptformat=crx2,crx3"
-    + "&prodversion=${pkgs.ungoogled-chromium.version}"
-    + "&x=id%3D${id}%26uc";
-
-  chromiumFirstRunTabs = [
-    "https://github.com/NeverDecaf/chromium-web-store/releases/latest/download/Chromium.Web.Store.crx"
-    (crxUrl "cjpalhdlnbpafiamejdnhcphjbkeiagm") # uBlock Origin
-    (crxUrl "oboonakemofpalcgghocfoadofidjkkk") # KeePassXC-Browser
-    (crxUrl "dbepggeogbaibhgnhhndojpepiihcmeb") # Vimium
-    (crxUrl "efobhjmgoddhfdhaflheioeagkcknoji") # Vertical Tabs (nicedoc.io)
-    (crxUrl "kgcjekpmcjjogibpjebkhaanilehneje") # Karakeep (M27)
-    (crxUrl "fnaicdffflnofjppbagibeoednhnbjhg") # floccus bookmarks sync (M27)
-  ];
+  # The first is the chromium-crx user service in
+  # modules/users/lgo/browsers.nix, which downloads each CRX and installs it
+  # silently.  This one opens a tab per CRX on first run so a human sees and
+  # confirms each install.  Both read modules/users/lgo/chromium-extensions.nix,
+  # so they can no longer drift apart.
+  chromiumExts = import ./lgo/chromium-extensions.nix;
+  chromiumFirstRunTabs =
+    map (e: e.crx or (chromiumExts.webStore pkgs.ungoogled-chromium.version e.id))
+    chromiumExts.list;
 
   # ── google-chrome's extensions, which need a THIRD mechanism (M27) ─────────
   #
