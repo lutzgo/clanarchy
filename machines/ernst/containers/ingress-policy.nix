@@ -320,10 +320,11 @@ in rec {
     #     window: 3-5 failures 30 s, 6-9 60 s, 10-14 120 s, 15+ 300 s.  Nextcloud's
     #     per-ACCOUNT shape, not Home Assistant's per-SOURCE `ip_ban`.
     #
-    # AND IT IS THE ONLY NAME IN THIS LIST THAT IS NOT ON THE INTERNET — no
-    # public A record, no ledger row.  The compensation stack above is therefore
-    # defending the house against the house, a much smaller claim than the one
-    # this file's header is written for.
+    # IT WAS THE ONLY NAME IN THIS LIST NOT ON THE INTERNET, until
+    # 2026-11-16 (ledger L25).  The compensation stack above now defends it
+    # against the internet, not just the house, which is the claim this file's
+    # header is written for.  Why it changed is in ./traefik/wan.nix, at the
+    # `mass` entry.
     #
     # THE DIRECT-HOP FIREWALL RULE FOR THE HUB IS GONE, not left behind: with
     # the hub arriving through Traefik, an accept for .27 on 8095 would be a

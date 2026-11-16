@@ -796,11 +796,10 @@
     # tracks an authenticated user and refuses admin commands to a
     # non-ADMIN role, and an escalating per-username login backoff.
     #
-    # STILL LAN-ONLY, and that is what keeps this proportionate: it is the
-    # ONLY name in `appApiHosts` that is not also in `wanExposed`. No
-    # public record, no ledger row, no `wanLoginPaths` entry — that
-    # mechanism protects a credential path facing the internet, and this
-    # one faces the living room.
+    # ON THE `wan` ENTRYPOINT SINCE 2026-11-16 (ledger L25), through
+    # `wanExposed` in ./wan.nix.  It was the one appApiHosts name kept
+    # LAN-only until a phone on the home wifi could not resolve it; the
+    # argument is there.
     mass = {
       rule = "Host(`music.${baseDomain}`)";
       entryPoints = ["websecure"];
