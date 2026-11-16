@@ -28,8 +28,9 @@
 # That is not untidiness waiting to be unified; each is the only thing that
 # works for its browser, and the reasons are written at each site:
 #
-#   ungoogled-chromium  External Extensions JSON (the forcelist policy is
-#                       ignored by this fork), fetched from the Web Store
+#   ungoogled-chromium  External Extensions JSON pointing at CRX files a user
+#                       service downloads (the forcelist policy and update
+#                       URLs are both ignored by this fork)
 #   Firefox             NUR-packaged .xpi, STORE-PINNED and hash-verified
 #   LibreWolf           an ExtensionSettings policy merged into the wrapper's
 #                       own distribution/policies.json, fetched from AMO
@@ -41,6 +42,7 @@
 # ============================================================
 {
   pkgs,
+  lib,
   inputs,
   ...
 }: let
@@ -94,84 +96,89 @@ in {
     # Flags are baked into the binary by lib/overlays.nix (applied in base.nix).
     package = pkgs.ungoogled-chromium;
 
-    # ── Extensions ────────────────────────────────────────────────────
-    #
-    # THE MECHANISM IS External Extensions, NOT ExtensionInstallForcelist.
-    # This block used to carry two stacked comments that contradicted each
-    # other on exactly that point; the forcelist one was wrong twice over.
-    #
-    #   What HM actually does: `programs.chromium.extensions` writes
-    #   ~/.config/chromium/External Extensions/<id>.json per entry, each
-    #   containing an `external_update_url`.  Chromium reads that directory on
-    #   startup and installs what it finds.
-    #
-    #   Why the forcelist would not work here even if HM emitted one:
-    #   ungoogled-chromium IGNORES ExtensionInstallForcelist entirely
-    #   (ungoogled-software/ungoogled-chromium#2523) — the policy depends on
-    #   Web Store update infrastructure the fork removes, and the symptom is
-    #   nothing at all in chrome://extensions and nothing in the log.
-    #
-    # ungoogled-chromium blocks the External Extensions mechanism by default
-    # too; `--extension-mime-request-handling=always-prompt-for-install`
-    # re-enables it.  That flag is baked into the binary by the overlay in
-    # lib/overlays.nix, applied to every machine by modules/base.nix.
-    #
-    # IF EXTENSIONS DO NOT APPEAR: check the flag is really there —
-    # `ps -o args= -C chromium | head -1` must show it.  On 2026-11-04 it
-    # did not, on any machine, because the overlay was only wired through
-    # clan.nix's pkgsForSystem, which deployed machines never use (#406).
-    # The JSON files were all in place; Chromium just never read them.
-    #
-    # THE SECOND LIST.  modules/users/lgo.nix carries a parallel set of CRX
-    # URLs in `chromiumFirstRunTabs`, a belt-and-braces path that prompts on
-    # first run.  THE TWO HAVE DRIFTED — that list is missing SideTab Pro, and
-    # the drift predates M27 and is not fixed here.  New entries go in both.
-    #
-    # IDs marked ⚠ were spec-provided and could not be confirmed against the
-    # live Web Store — if one fails to install, open chrome://extensions and
-    # verify the correct ID via the Web Store search.
-    extensions = [
-      # chromium-web-store — restores the Web Store UI in ungoogled-chromium
-      {
-        id = "cinhimbnkkaeohfgghhklpknlkffjgod";
-        updateUrl = "https://github.com/NeverDecaf/chromium-web-store/releases/latest/download/update.xml";
-      }
-      # uBlock Origin — verified CWS: cjpalhdlnbpafiamejdnhcphjbkeiagm
-      {id = "cjpalhdlnbpafiamejdnhcphjbkeiagm";}
-      # KeePassXC-Browser — verified CWS: oboonakemofpalcgghocfoadofidjkkk
-      {id = "oboonakemofpalcgghocfoadofidjkkk";}
-      # Vimium — verified CWS: dbepggeogbaibhgnhhndojpepiihcmeb
-      {id = "dbepggeogbaibhgnhhndojpepiihcmeb";}
-      # SideTab Pro (vertical tabs) — ⚠ ID spec-provided, unverified
-      {id = "fehfojhhnbfbclgpffmffigfgngbpnmj";}
-      # Vertical Tabs (nicedoc.io) — FOSS, ~100K users
-      # github.com/samihaddad/vertical-tabs-chrome-extension
-      # Toggle: Alt+V (configurable at chrome://extensions/shortcuts)
-      # NOTE: rendering bug reported in Chrome 145 (issue #117 on GitHub)
-      # — monitor upstream; extension is on Chrome 146 which fixes the
-      # Chrome-side bug. If sidebar stops rendering, check issue tracker.
-      {id = "efobhjmgoddhfdhaflheioeagkcknoji";}
+    # Extensions are NOT set here.  See the chromium-crx service below.
+  };
 
-      # ── M27's reading stack ─────────────────────────────────────────
-      #
-      # THESE TWO REPLACE A LINKWARDEN ENTRY THAT POINTED AT NOTHING.  This
-      # list carried `pnidmkljnhbjfffciajlenmpaoemnjlo`, marked "⚠ ID
-      # spec-provided, unverified", alongside comments elsewhere in this file
-      # that doubted whether the Firefox listing existed and a Vimium
-      # keybinding whose target was the literal string
-      # YOUR_LINKWARDEN_INSTANCE.  There has never been a Linkwarden server
-      # anywhere in this fleet.  All of it is deleted rather than finally
-      # built, because Karakeep takes the role — see
-      # machines/ernst/containers/karakeep.nix.
-      #
-      # Karakeep — verified CWS: kgcjekpmcjjogibpjebkhaanilehneje
-      # Saves the current page to karakeep.goclan.org.
-      {id = "kgcjekpmcjjogibpjebkhaanilehneje";}
-      # floccus bookmarks sync — verified CWS: fnaicdffflnofjppbagibeoednhnbjhg
-      # Syncs THIS browser's own bookmark tree into the same Karakeep, which
-      # is what makes the two halves one stack rather than two tools.
-      {id = "fnaicdffflnofjppbagibeoednhnbjhg";}
-    ];
+  # ── Extensions: downloaded CRX files, not update URLs ─────────────────
+  #
+  # `programs.chromium.extensions` writes External Extensions JSON with an
+  # `external_update_url`.  ungoogled-chromium never acts on that.  MEASURED
+  # 2026-11-13 with ungoogled-chromium 156 on miralda, in a fresh profile:
+  #
+  #   {"external_update_url": ".../update2/crx"}            nothing installed
+  #   {"external_crx": "<file>", "external_version": "<v>"}  installed, enabled
+  #
+  # The live profile matched the first row: eight JSON files in place, the
+  # --extension-mime-request-handling flag on the running process, and no
+  # Default/Extensions directory at all.  The fork has no extension updater
+  # (its FAQ: "no built-in functionality for auto-updates"), so an
+  # update-URL descriptor has nothing to fetch it.
+  #
+  # So a user service fetches each CRX and writes the external_crx form.  Why
+  # a service and not a Nix fetchurl with crxPath: the Web Store URL always
+  # serves the CURRENT version, so a pinned hash breaks on the next upstream
+  # release.  The daily timer is also how updates arrive: Chromium upgrades
+  # an external extension when external_version goes up.
+  #
+  # Downloads go to ~/.local/share/chromium-crx and are kept there: Chromium
+  # re-reads external_crx on every start.
+  systemd.user.services.chromium-crx = {
+    Unit.Description = "Fetch lgo's Chromium extensions as local CRX files";
+    Service = {
+      Type = "oneshot";
+      ExecStart = let
+        exts = import ./chromium-extensions.nix;
+        version = pkgs.ungoogled-chromium.version;
+        lines = map (e: "${e.id} ${e.crx or (exts.webStore version e.id)}") exts.list;
+      in "${pkgs.writeShellApplication {
+        name = "chromium-crx";
+        runtimeInputs = [pkgs.curl pkgs.coreutils pkgs.python3];
+        text = ''
+          crxdir="$HOME/.local/share/chromium-crx"
+          extdir="$HOME/.config/chromium/External Extensions"
+          mkdir -p "$crxdir" "$extdir"
+          failed=0
+          while read -r id url; do
+            tmp="$crxdir/$id.crx.part"
+            if ! curl -fsSL --retry 3 -o "$tmp" "$url" || [ ! -s "$tmp" ]; then
+              # A 204 (delisted, see uBlock Origin in chromium-extensions.nix)
+              # is an empty body, which -f does not catch.
+              echo "chromium-crx: $id: download failed or empty" >&2
+              rm -f "$tmp"; failed=1; continue
+            fi
+            # CRX3: "Cr24", u32 version, u32 header length, header, then a zip.
+            if ! ver=$(python3 -I -c '
+          import io, json, struct, sys, zipfile
+          b = open(sys.argv[1], "rb").read()
+          assert b[:4] == b"Cr24", "not a CRX"
+          n = struct.unpack("<I", b[8:12])[0]
+          print(json.load(zipfile.ZipFile(io.BytesIO(b[12 + n:])).open("manifest.json"))["version"])
+          ' "$tmp"); then
+              echo "chromium-crx: $id: not a readable CRX" >&2
+              rm -f "$tmp"; failed=1; continue
+            fi
+            mv "$tmp" "$crxdir/$id.crx"
+            # rm first: an older generation may have left a store symlink here.
+            rm -f "$extdir/$id.json"
+            printf '{"external_crx":"%s","external_version":"%s"}\n' \
+              "$crxdir/$id.crx" "$ver" > "$extdir/$id.json"
+            echo "chromium-crx: $id $ver"
+          done <<'IDS'
+          ${lib.concatStringsSep "\n" lines}
+          IDS
+          exit "$failed"
+        '';
+      }}/bin/chromium-crx";
+    };
+  };
+  systemd.user.timers.chromium-crx = {
+    Unit.Description = "Refresh lgo's Chromium extension CRX files";
+    Timer = {
+      OnStartupSec = "1min";
+      OnUnitActiveSec = "1d";
+      Persistent = true;
+    };
+    Install.WantedBy = ["timers.target"];
   };
 
   # ── Desktop entries ───────────────────────────────────────────────────
