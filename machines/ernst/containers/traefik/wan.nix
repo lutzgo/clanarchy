@@ -232,6 +232,27 @@
     # response body is four lines naming the MX, which is already a public DNS
     # record.  Ledger row L23.
     "mtasts"
+    # Music Assistant (`music`), and it reverses a stated design choice: it
+    # was the ONE appApiHosts name kept off this list ("this one faces the
+    # living room").  The trigger was a phone app that could not connect
+    # FROM THE LIVING ROOM: Android resolved `music.goclan.org` without
+    # asking Technitium and got "No address associated with hostname", while
+    # `https://10.0.90.12` answered from the same phone, on the same wifi.
+    # Every name the phone could reach has a public record; this one had
+    # none.  A public A record makes the name resolve whatever resolver the
+    # phone uses, and away from the house as well.
+    #
+    # THE BOUNDARY IS MUSIC ASSISTANT'S OWN ACCOUNTS, read rather than
+    # assumed (2.10.12): auth on every route, a per-username escalating
+    # login backoff (3 failures 30 s ... 15+ 300 s), and `/setup` refusing
+    # once a user exists (`has_users` -> 400, checked from outside
+    # 2026-11-16).  "Allow User Self-Registration" covers the Home Assistant
+    # OAuth provider only: an existing HA user gets an MA account.  It is not
+    # an open sign-up form.
+    #
+    # Same three separate acts as every other name here: this entry, a public A
+    # record, and the ledger row (L25) in docs/ledger.md.
+    "mass"
   ];
 
   # ── THE LOGIN PATHS, PER SERVICE, AND WHAT THIS DOES NOT COVER ────────────
@@ -355,6 +376,15 @@
     # as the Komga and Subsonic caveat above; CrowdSec's status-based 401
     # scenario is what actually covers it.
     karakeep = "(PathPrefix(`/api/auth/callback/credentials`) || PathPrefix(`/api/auth/signin`))";
+
+    # Music Assistant's HTTP login and its first-run setup.  NOT `/ws`:
+    # control rides one long-lived websocket, and a reconnect storm after a
+    # network blip must not meet a one-per-ten-seconds limit (Home
+    # Assistant's `/api/websocket` argument).  THE GAP, stated: MA also
+    # accepts `auth/login` as a COMMAND inside `/ws` and over `POST /api`, and
+    # neither is a distinct path.  There, MA's own per-username backoff and
+    # CrowdSec are what limit guessing, not this matcher.
+    mass = "(PathPrefix(`/auth/login`) || PathPrefix(`/setup`))";
 
     # ── MINIFLUX IS STILL ABSENT FROM THIS MAP, FOR A NEW REASON (M27) ─────
     #

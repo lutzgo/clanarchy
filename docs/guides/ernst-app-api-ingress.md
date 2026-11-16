@@ -38,6 +38,7 @@ fails in the app"*, check this first — it is almost always the cause.
 | `cloud` | the Nextcloud desktop sync client on three laptops, DAVx5 on the phones, and **vdirsyncer on a headless user timer** — all app passwords over `/remote.php/dav/**` |
 | `ha` | the Home Assistant companion app — a bearer token over a **long-lived WebSocket**, and a background location reporter with no user present |
 | `karakeep` | the Karakeep browser extension and the **Floccus** bookmark-sync adapter — bearer tokens, no cookie jar, and **this repository installs both** |
+| `music` | Music Assistant's Android apps (Ensemble, MassDroid) and the companion: MA's own login over a **long-lived WebSocket** (`/ws`), plus Sendspin playback over `/sendspin`. Public since 2026-11-16 (ledger L25) |
 
 **`karakeep` is the one row to read twice.** Every other exemption above is
 argued from a client somebody *might* install. This one is argued from clients
@@ -87,7 +88,7 @@ The recent additions to the public set have all been exemptions — `photos`,
 the public path is rate-limit → forward-auth → 2FA before the application sees
 a byte, which is `chat`'s posture.
 
-**The exempt count is nine**, and it has moved in both directions: M27 added
+**The counts on this page are stale**: `storyteller`, `docs` and `mta-sts` were added without updating them, and `music` (L25) is now in the table too. The authoritative list is `appApiHosts` in `machines/ernst/containers/ingress-policy.nix`. The count has also moved in both directions: M27 added
 `karakeep` and then took `miniflux` back out again. `home` is in neither
 direction — it has never been exempt, and moving it there would be a decision
 to stop authenticating the index, not a tidy-up.
