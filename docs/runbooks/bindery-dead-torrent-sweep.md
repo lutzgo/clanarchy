@@ -64,12 +64,11 @@ work are indirect:
    set. See [The reading stack](../guides/reading-stack.md).
 2. **This sweep**, run periodically.
 
-A third factor, worth knowing and not worth chasing: qBittorrent has **no
-inbound port**. IVPN does not forward ports, so `nc -vz <exit-ip> 6881` from
-outside times out. The `wg0` accept rule in
-`machines/ernst/microvms/wg-qbittorrent.nix` is correct — nothing arrives to
-match it. This only costs the thin swarms (the `swarm1_2` column above), so it
-is not the cause of a red queue.
+A third factor, now largely gone: until 2026-11-10 qBittorrent had **no
+inbound port**, because IVPN does not forward ports. Since the switch to AirVPN
+(#447) the port is forwarded and `transfer/info` reports
+`connection_status: connected`, not `firewalled`. The thin swarms (the
+`swarm1_2` column above) are reachable now; a 0-seed release is still dead.
 
 ## The sweep
 
@@ -183,6 +182,41 @@ sqlite3 /srv/state/cleanuparr/cleanuparr.db \
   "select categories from dead_torrent_configs;"      # save this first
 systemctl --machine=arr start cleanuparr
 ```
+
+## The *arr side: dead torrents holding the download slots
+
+qBittorrent downloads 8 at a time and **dead torrents keep their slots**
+(`IgnoreSlowTorrentsForQueueing=false`, deliberately; see the queue block in
+`machines/ernst/microvms/wg-qbittorrent.nix`). So if dead grabs are not
+removed, the queue stops and every new grab waits behind them. On 2026-11-17
+all 8 slots had been held for two days by Lidarr albums with **0** seeds in the
+swarm, with TV and movie grabs from 11–12 days earlier queued behind them.
+
+Removing them is Cleanuparr's job, and it was not doing it. Its settings are
+runtime state in `cleanuparr.db`, not in this repo, and on that day:
+
+| Setting | Found | Needed |
+|---|---|---|
+| \*arr instances | Sonarr, Radarr only (display names swapped) | + **Lidarr** `http://localhost:8686` |
+| Queue Cleaner → stall rules | **none** | one rule for all \*arrs, remove + blocklist |
+| Queue Cleaner → metadata strikes | `0` (off) | ~12 (1 h at the 5-minute cron) |
+| Dead-torrent categories | tv, movies, books, audiobooks… | + **lidarr** |
+
+Check these first whenever "nothing downloads".
+
+For an immediate unblock, or if Cleanuparr is behind, `scripts/arr-sweep-dead.sh`
+removes `stalledDL`/`metaDL` torrents with 0 swarm seeds and over 24 h of
+activity through the \*arr that grabbed them, with blocklisting, so each app
+searches again:
+
+```bash
+ssh root@ernst-zt 'DRY=1 bash -s' < scripts/arr-sweep-dead.sh   # list
+ssh root@ernst-zt 'DRY=0 bash -s' < scripts/arr-sweep-dead.sh   # remove
+```
+
+It covers `lidarr`, `tv` (Sonarr) and `radarr`. It ignores `queuedDL`
+torrents: their swarm counts are stale, so "0 seeds" means nothing there.
+Bindery's `books`/`audiobooks` stay with the sweep above.
 
 ## Related gotchas
 
