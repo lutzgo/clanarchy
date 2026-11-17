@@ -5,8 +5,9 @@
 # *arr searches for another.  See docs/runbooks/bindery-dead-torrent-sweep.md.
 #
 # Run ON THE ERNST HOST (the qBittorrent password and nixos-container are there):
-#   ssh root@ernst-zt 'DRY=1 bash -s' < scripts/arr-sweep-dead.sh   # list only
-#   ssh root@ernst-zt 'DRY=0 bash -s' < scripts/arr-sweep-dead.sh   # remove
+#   scp scripts/arr-sweep-dead.sh root@ernst-zt:/root/
+#   ssh root@ernst-zt DRY=1 bash /root/arr-sweep-dead.sh   # list only
+#   ssh root@ernst-zt DRY=0 bash /root/arr-sweep-dead.sh   # remove
 #
 # "Dead" = all of:
 #   - state stalledDL or metaDL (actively trying, not merely queued: a queuedDL

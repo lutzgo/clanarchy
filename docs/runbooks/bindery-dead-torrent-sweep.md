@@ -17,7 +17,7 @@ which is only how many you are currently connected to and reads `0` on
 perfectly healthy completed torrents.
 
 ```bash
-ssh root@10.0.50.10
+ssh root@ernst-zt
 C=$(mktemp)
 curl -s -c "$C" -d 'username=admin&password=<qbt password>' \
   http://10.0.90.11:8080/api/v2/auth/login >/dev/null
@@ -72,6 +72,30 @@ inbound port**, because IVPN does not forward ports. Since the switch to AirVPN
 
 ## The sweep
 
+**Use `scripts/bindery-sweep-dead.sh`.** It does exactly what the commands below
+describe, and it works on ernst as it is today. The inline version fails on it
+in two ways:
+
+- **qBittorrent 5.x answers a good login with HTTP 204 and an empty body**, not
+  `Ok.`. With the `<qbt password>` placeholder left in, the cookie jar is empty,
+  every query returns `Forbidden`, and `jq` dies with
+  `parse error: Invalid numeric literal`. The script reads the password from
+  `/run/microvm-*-secrets/webui-password` and checks the status code.
+- **The ernst host has no `sqlite3`**; the script uses
+  `nix shell nixpkgs#sqlite`.
+
+```bash
+scp scripts/bindery-sweep-dead.sh root@ernst-zt:/root/
+ssh root@ernst-zt DRY=1 bash /root/bindery-sweep-dead.sh   # counts and a sample
+ssh root@ernst-zt DRY=0 bash /root/bindery-sweep-dead.sh   # delete, in batches of 40
+```
+
+`INCLUDE_QUEUED=0` leaves alone magnets that have never had a download slot.
+Measured 2026-11-17: 60 failed, plus 413 `downloading` rows that were almost
+all such never-started magnets.
+
+The manual steps, for reference:
+
 Removing a queue row through Bindery's API **also removes the torrent from
 qBittorrent**, so this is one call and not two. Bindery auto-blocklists every
 release it fails as stalled, so the same dead torrents are not re-grabbed —
@@ -83,7 +107,7 @@ Bindery searches again for a *different* release. Setting it true would quietly
 abandon them.
 
 ```bash
-ssh root@10.0.50.10
+ssh root@ernst-zt
 API=$(sqlite3 'file:/srv/state/bindery/bindery.db?mode=ro' \
   "select value from settings where key='auth.api_key';")
 
@@ -202,6 +226,15 @@ runtime state in `cleanuparr.db`, not in this repo, and on that day:
 | Queue Cleaner → metadata strikes | `0` (off) | ~12 (1 h at the 5-minute cron) |
 | Dead-torrent categories | tv, movies, books, audiobooks… | + **lidarr** |
 
+Two things the UI does not make obvious, both read out of the 2.10.5 binary:
+
+- **There is no blocklist toggle, and none is needed.** Every removal calls the
+  \*arr's queue DELETE with `blocklist=true&skipRedownload=true` hard-coded.
+- **`skipRedownload=true` means the \*arr does not search again by itself.**
+  Re-searching is Cleanuparr's **Seeker**. It was enabled for Sonarr and Radarr
+  only, so after adding Lidarr, enable Seeker for Lidarr too, or a removed album
+  stays missing.
+
 Check these first whenever "nothing downloads".
 
 For an immediate unblock, or if Cleanuparr is behind, `scripts/arr-sweep-dead.sh`
@@ -210,8 +243,9 @@ activity through the \*arr that grabbed them, with blocklisting, so each app
 searches again:
 
 ```bash
-ssh root@ernst-zt 'DRY=1 bash -s' < scripts/arr-sweep-dead.sh   # list
-ssh root@ernst-zt 'DRY=0 bash -s' < scripts/arr-sweep-dead.sh   # remove
+scp scripts/arr-sweep-dead.sh root@ernst-zt:/root/
+ssh root@ernst-zt DRY=1 bash /root/arr-sweep-dead.sh   # list
+ssh root@ernst-zt DRY=0 bash /root/arr-sweep-dead.sh   # remove
 ```
 
 It covers `lidarr`, `tv` (Sonarr) and `radarr`. It ignores `queuedDL`
