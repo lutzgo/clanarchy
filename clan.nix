@@ -1759,6 +1759,10 @@
           # each container runs its own init.  ernst is the only machine in the
           # fleet with containers at all, so it is the only consumer.
           exporters.containers = true;
+          # The podman tier (CWA, TubeSync, Storyteller, RomM, TeddyCloud),
+          # by container name. See the option for the 2026-11-17 CWA deadlock
+          # that was paged as a 64-hex unit name.
+          exporters.podmanHealth = true;
           # Crash loops.  ernst is where processes crash unattended: the couch
           # session relaunches Kodi on its own, and the containers restart
           # their services, so a process can die repeatedly without any unit
