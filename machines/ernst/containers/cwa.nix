@@ -406,6 +406,44 @@ in {
         "${ingestDir}:/cwa-book-ingest"
       ];
       ports = [];
+
+      # ── THE HEALTHCHECK, OVERRIDDEN: IT DETECTED A DEADLOCK AND DID NOTHING ─
+      #
+      # 2026-11-17: cps.py stopped answering at 00:43:22, the moment the
+      # ingest processor called CWA's DB-refresh endpoint after importing a
+      # book. All 21 threads sat in futex_do_wait at 0% CPU — a deadlock, not
+      # load. The container stayed "Up (unhealthy)" for nine hours with a
+      # failing streak of 971, so OPDS, Kobo and KOReader sync were all dead.
+      # The only signal was SystemdUnitFailed on podman's transient healthcheck
+      # unit, named after the container ID and not after CWA.
+      #
+      # The image's own check makes things worse in two ways:
+      #
+      #   NO `-m` ON ITS curl. Podman's 3 s timeout gives up on the exec
+      #   session but does not kill the process, so every check leaves a curl
+      #   blocked on the dead socket. 131 of them had piled up inside the
+      #   container.
+      #
+      #   NO ACTION ON FAILURE. Podman records the failure and stops there.
+      #
+      # `kill`, NOT `restart`. `restart` restarts the container in place,
+      # behind systemd's back. The image's s6 init then resets the ingest
+      # folder to cwa:cwa 0755, and cwa-ingest-perms (below) never runs again,
+      # because it is wanted by podman-cwa.service and that unit never
+      # restarted. Bindery's pushes would then fail with EPERM, which is the
+      # silent failure that unit exists to prevent. `kill` makes `podman run`
+      # exit 137, systemd's Restart=on-failure starts the unit again, and the
+      # perms unit follows.
+      #
+      # TEN RETRIES AT 30 s = ~5 MIN of a dead web server before the kill, so
+      # a slow request during a big ingest or the KOReader checksum backfill
+      # (which locks metadata.db) does not get the container killed.
+      extraOptions = [
+        "--health-cmd=curl -fsS -m 5 -o /dev/null http://localhost:${toString webPort}/ || exit 1"
+        "--health-timeout=10s"
+        "--health-retries=10"
+        "--health-on-failure=kill"
+      ];
     };
   };
 
