@@ -520,6 +520,22 @@
   #   torrents want sweeping (docs/runbooks/bindery-dead-torrent-sweep.md).
   #   Neither lives in this file — the *arr settings are runtime state.
   #
+  #   THE SWEEPER IS CLEANUPARR, AND ON 2026-11-17 IT WAS NOT SWEEPING.  All
+  #   eight download slots had been held for two days by Lidarr albums with no
+  #   seeders, while TV and Radarr grabs from 11–12 days earlier sat queued
+  #   behind them (Recent Priority had put them near the front; nothing freed
+  #   a slot).  Cleanuparr's runtime config — cleanuparr.db, UI-only, NOT in
+  #   this repo — had no Lidarr instance, an EMPTY stall-rule table, metadata
+  #   strikes at 0 (off), and no `lidarr` in its dead-torrent categories.
+  #   This queue design only works while that config is right, so when
+  #   "nothing downloads", check Cleanuparr before touching the limits here.
+  #
+  #   RE-MEASURED AFTER THE AIRVPN SWITCH (#447), same day: 0 % loss to
+  #   1.1.1.1 through the tunnel, 24 ms, 81 established connections, with
+  #   these limits.  The numbers above are IVPN's; the limits have not been
+  #   re-tuned since, so a raise is a trial-and-measure job like #403's, not
+  #   an edit.
+  #
   # ── uTP ON, AND UPLOAD CAPPED UNDER THE LINE ────────────────────────────────
   #
   #   The line is Vodafone cable, 1 Gbit/s down and 50 Mbit/s up.  An
@@ -530,10 +546,16 @@
   #   for everything else.  A WebUI value of 40960 KiB/s, above the line,
   #   was found live on 2026-11-06.
   #
-  #   BTProtocol=Both because the client is FIREWALLED (IVPN has no port
-  #   forwarding): it can only dial out, and the only way two firewalled
-  #   peers ever connect is uTP hole punching.  TCP-only, also found live,
-  #   cuts it off from every peer behind NAT.
+  #   BTProtocol=Both was chosen when the client was FIREWALLED (IVPN has no
+  #   port forwarding): it could only dial out, and the only way two
+  #   firewalled peers ever connect is uTP hole punching.  TCP-only, also
+  #   found live, cut it off from every peer behind NAT.
+  #
+  #   Since AirVPN (#447) the port is forwarded and qBittorrent reports
+  #   `connection_status: connected`, not `firewalled`, so peers can now dial
+  #   in.  Both stays: uTP still reaches peers that are themselves behind NAT,
+  #   and if the forwarded-ports vars are left empty the client falls back to
+  #   firewalled (see "THE PROVIDER'S FORWARDED PORTS" below).
   #
   #   Everything in this template is reinstalled on each start, so a WebUI
   #   change lasts until the next restart.  To keep a value, put it here.
