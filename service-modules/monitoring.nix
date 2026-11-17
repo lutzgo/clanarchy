@@ -408,6 +408,27 @@ in {
           '';
         };
 
+        podmanHealth = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = ''
+            Export podman containers whose healthcheck reports `unhealthy`,
+            BY CONTAINER NAME, via node_exporter's textfile collector. Backs
+            the `PodmanContainerUnhealthy` alert.
+
+            WHY, measured on ernst 2026-11-17: CWA's web server deadlocked and
+            sat `Up (unhealthy)` for nine hours. The only thing that fired was
+            `SystemdUnitFailed` on podman's TRANSIENT healthcheck unit, which
+            is named after the 64-hex container ID. The page read
+            `d35e68ec…-7746f9d447d63c51.service has failed` and named no
+            service at all. That rule now ignores those units, and this reports
+            the same fact with the container's name.
+
+            Like `containers`, it exports only the bad case: the steady state is
+            an empty file.
+          '';
+        };
+
         mailReputation = lib.mkOption {
           type = lib.types.bool;
           default = false;
@@ -599,6 +620,36 @@ in {
         # such case: writeShellApplication sets -euo pipefail, so any failure
         # fails the UNIT, and a failed host unit already trips
         # SystemdUnitFailed.
+        # Unhealthy podman containers, by name.
+        #
+        # No collector-success metric, the coredump collector's argument:
+        # writeShellApplication sets -euo pipefail, so a podman that cannot
+        # answer fails the UNIT, and a failed host unit trips
+        # SystemdUnitFailed. That unit has a readable name, unlike the
+        # healthcheck units this replaces.
+        podmanHealthCollector = pkgs.writeShellApplication {
+          name = "clanarchy-podman-health-collector";
+          runtimeInputs = [config.virtualisation.podman.package pkgs.coreutils];
+          text = ''
+            out=${textfileDir}/podman-health.prom
+            tmp=$(mktemp "$out.XXXXXX")
+            trap 'rm -f "$tmp"' EXIT
+
+            names=$(podman ps --filter health=unhealthy --format '{{.Names}}')
+            {
+              echo "# HELP clanarchy_podman_container_unhealthy A podman container's healthcheck reports unhealthy."
+              echo "# TYPE clanarchy_podman_container_unhealthy gauge"
+              for n in $names; do
+                echo "clanarchy_podman_container_unhealthy{container=\"$n\"} 1"
+              done
+            } > "$tmp"
+
+            chmod 0644 "$tmp"
+            mv -f "$tmp" "$out"
+            trap - EXIT
+          '';
+        };
+
         coredumpCollector = pkgs.writeShellApplication {
           name = "clanarchy-coredump-collector";
           runtimeInputs = [pkgs.systemd pkgs.jq pkgs.coreutils];
@@ -884,9 +935,19 @@ in {
           # The textfile collector is on by default in node_exporter, but it
           # reads nothing until it is told where to look. One flag serves
           # every feeder, so it is set if any of them is enabled.
+          #
+          # ALL of them. This listed only `containers` and `coredumps`, so
+          # `ipv6Guard` or `mailReputation` enabled on their own would have
+          # written .prom files that nothing read. Their alerts would then sit
+          # silent, never firing, which is the failure both were written to
+          # catch. It worked on ernst only because ernst enables all of them.
           extraFlags =
             lib.optional
-            (settings.exporters.containers || settings.exporters.coredumps)
+            (settings.exporters.containers
+              || settings.exporters.coredumps
+              || settings.exporters.ipv6Guard
+              || settings.exporters.mailReputation
+              || settings.exporters.podmanHealth)
             "--collector.textfile.directory=${textfileDir}";
         };
 
@@ -909,7 +970,8 @@ in {
           (settings.exporters.containers
             || settings.exporters.coredumps
             || settings.exporters.ipv6Guard
-            || settings.exporters.mailReputation)
+            || settings.exporters.mailReputation
+            || settings.exporters.podmanHealth)
           "d ${textfileDir} 0755 root root -";
 
         systemd.services.clanarchy-container-units = lib.mkIf settings.exporters.containers {
@@ -936,6 +998,39 @@ in {
             OnUnitActiveSec = "1m";
             # No Persistent: a missed run is worthless, the next one in
             # sixty seconds supersedes it entirely.
+          };
+        };
+
+        systemd.services.clanarchy-podman-health = lib.mkIf settings.exporters.podmanHealth {
+          description = "Collect unhealthy podman containers for node_exporter";
+          serviceConfig = {
+            Type = "oneshot";
+            ExecStart = lib.getExe podmanHealthCollector;
+            # Even a read-only `podman ps` takes podman's storage and libpod
+            # locks, so those trees have to stay writable under
+            # ProtectSystem=strict. /run/lock too: without it this exited 125
+            # with `open /run/lock/netavark.lock: read-only file system`,
+            # measured on ernst 2026-11-17 under exactly these settings.
+            PrivateNetwork = true;
+            ProtectHome = true;
+            ProtectSystem = "strict";
+            ReadWritePaths = [
+              textfileDir
+              "/var/lib/containers"
+              "/run/containers"
+              "/run/libpod"
+              "/run/lock"
+            ];
+            NoNewPrivileges = true;
+          };
+        };
+
+        systemd.timers.clanarchy-podman-health = lib.mkIf settings.exporters.podmanHealth {
+          description = "Collect unhealthy podman containers every minute";
+          wantedBy = ["timers.target"];
+          timerConfig = {
+            OnBootSec = "2m";
+            OnUnitActiveSec = "1m";
           };
         };
 
@@ -3054,9 +3149,17 @@ in {
                               # container units, the secret-staging oneshots and the
                               # zdata import all fail loudly and then sit there
                               # failed with nobody looking.
+                              #
+                              # PODMAN'S HEALTHCHECK UNITS ARE EXCLUDED. They are
+                              # transient `<64-hex container id>-<hex>.service`
+                              # units, one run per check, and a run "fails"
+                              # whenever the container is unhealthy. As a page
+                              # that names nothing anyone recognises (CWA,
+                              # 2026-11-17). PodmanContainerUnhealthy below
+                              # carries the same fact with the container's name.
                               {
                                 alert = "SystemdUnitFailed";
-                                expr = ''node_systemd_unit_state{state="failed"} == 1'';
+                                expr = ''node_systemd_unit_state{state="failed",name!~"[0-9a-f]{64}-[0-9a-f]+\\.(service|timer)"} == 1'';
                                 "for" = "15m";
                                 labels.severity = "warning";
                                 annotations = {
@@ -3086,6 +3189,25 @@ in {
                                 annotations = {
                                   summary = "{{ $labels.name }} has failed in container {{ $labels.container }} on {{ $labels.instance }}";
                                   description = "systemd unit {{ $labels.name }} inside nspawn container {{ $labels.container }} has been in the failed state for 15 minutes. Inspect with: systemctl -M {{ $labels.container }} status {{ $labels.name }}";
+                                };
+                              }
+
+                              # ── a podman container reports unhealthy ─────────
+                              #
+                              # 10m, not 15m. A container set to
+                              # `--health-on-failure=kill` (CWA) is restarted
+                              # after its own retry budget (~5 min there). That
+                              # restart resets the unhealthy state, so this
+                              # fires only when the restart did not help, or for
+                              # a container with no on-failure action at all.
+                              {
+                                alert = "PodmanContainerUnhealthy";
+                                expr = ''clanarchy_podman_container_unhealthy == 1'';
+                                "for" = "10m";
+                                labels.severity = "warning";
+                                annotations = {
+                                  summary = "Container {{ $labels.container }} is unhealthy on {{ $labels.instance }}";
+                                  description = "podman container {{ $labels.container }} has failed its healthcheck for 10 minutes. Inspect with: podman healthcheck run {{ $labels.container }}; journalctl -u podman-{{ $labels.container }}";
                                 };
                               }
 
