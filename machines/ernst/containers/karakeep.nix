@@ -549,6 +549,42 @@ in {
       systemd.services.karakeep-workers.serviceConfig.StateDirectoryMode = "0700";
       systemd.services.karakeep-web.serviceConfig.StateDirectoryMode = "0700";
 
+      # ── RESTART ON CRASH: the nixpkgs module gives only the browser one ──────
+      #
+      # karakeep-workers and karakeep-web run with Restart=no upstream.
+      # Measured 2026-11-16 22:19:45: a crawl reached a Cloudflare-fronted host,
+      # Node tried its two IPv6 addresses, and both failed with ENETUNREACH,
+      # since ernst is IPv4-only by decision (see `exporters.ipv6Guard`). The
+      # resulting AggregateError was emitted on a TLSSocket that nothing
+      # listened to, so the whole worker process exited 1. It stayed dead.
+      # Every bookmark saved afterwards got no crawl, so no banner image and no
+      # screenshot: "Karakeep is not loading images", 12 hours later.
+      #
+      # The crash is upstream's unhandled error and is not fixed here. What is
+      # fixed is one bad URL taking crawling down until a human notices. The
+      # queue lives in SQLite (queue.db), so jobs survive the restart and are
+      # picked up again.
+      #
+      # A start limit of 5 in 10 min, so a deterministic crash (a poison job at
+      # the head of the queue) ends in `failed` and ContainerSystemdUnitFailed
+      # pages, instead of looping silently forever.
+      systemd.services.karakeep-workers = {
+        startLimitIntervalSec = 600;
+        startLimitBurst = 5;
+        serviceConfig = {
+          Restart = "on-failure";
+          RestartSec = "15s";
+        };
+      };
+      systemd.services.karakeep-web = {
+        startLimitIntervalSec = 600;
+        startLimitBurst = 5;
+        serviceConfig = {
+          Restart = "on-failure";
+          RestartSec = "15s";
+        };
+      };
+
       # ── Pin the ids ───────────────────────────────────────────────────────
       #
       # See the header: unmapped nspawn ids mean a container-chosen number is a
