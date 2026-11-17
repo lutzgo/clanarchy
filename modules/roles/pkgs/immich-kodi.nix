@@ -144,10 +144,26 @@ buildKodiAddon rec {
   #   The third patch labels it "November 2026" from Kodi's own month strings
   #   (#21-#32, checked in Kodi 21.3's strings.po), so it follows the UI
   #   language.
+  #
+  # ── AND THE TIMELINE LEFT OUT EVERYTHING A PARTNER SHARES ──────────────────
+  #
+  #   Upstream asks for /api/timeline/buckets and /bucket with no filters, so
+  #   the TV showed only the key owner's (lgo's) photos, while the web and the
+  #   phone apps also show sgo's, which reach lgo by partner sharing ("show in
+  #   timeline").  Those apps send `withPartners=true`, and Immich 3 refuses
+  #   that ("only supported for non-archived, non-trashed, non-favorited,
+  #   non-locked assets") unless `visibility=timeline` comes with it.  The
+  #   fourth patch sends both.  MEASURED 2026-11-17 through the proxy with the
+  #   TV's existing key: 152 months / 42,833 assets before, 190 / 68,110 after;
+  #   November 2026 went from 195 to 471.  The own-asset count is the same
+  #   with and without `visibility=timeline` (42,833 both), so nothing of
+  #   lgo's drops out.  No new key permission is needed: a partner's asset
+  #   info, thumbnail and preview already answer 200 with asset.read/view.
   patches = [
     ./immich-kodi-immich3-album.patch
     ./immich-kodi-immich3-assets.patch
     ./immich-kodi-month-labels.patch
+    ./immich-kodi-partners.patch
   ];
 
   meta = {

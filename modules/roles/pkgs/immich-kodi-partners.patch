@@ -1,0 +1,32 @@
+--- a/timeline.py
++++ b/timeline.py
+@@ -20,6 +20,11 @@
+ 
+ HANDLE = int(sys.argv[1])
+ 
++# What Immich's own web and mobile timelines ask for.  Without withPartners
++# the TV showed only the key owner's photos, not those a partner shares into
++# the timeline; Immich refuses withPartners unless visibility is "timeline".
++TIMELINE_QUERY = "&visibility=timeline&withPartners=true"
++
+ 
+ def last_day_of_month(any_day):
+     next_month = any_day.replace(day=28) + timedelta(days=4)
+@@ -46,7 +51,7 @@
+     }
+     conn.request(
+         "GET",
+-        "/api/timeline/bucket?size=MONTH&timeBucket=" + id,
++        "/api/timeline/bucket?size=MONTH" + TIMELINE_QUERY + "&timeBucket=" + id,
+         "",
+         headers,
+     )
+@@ -93,7 +98,7 @@
+         "User-agent": xbmc.getUserAgent(),
+         "x-api-key": API_KEY,
+     }
+-    conn.request("GET", "/api/timeline/buckets?size=MONTH", "", headers)
++    conn.request("GET", "/api/timeline/buckets?size=MONTH" + TIMELINE_QUERY, "", headers)
+     res = json.loads(conn.getresponse().read().decode("utf-8"))
+     res = [TimelineBucket.from_api_response(i) for i in res]
+ 
