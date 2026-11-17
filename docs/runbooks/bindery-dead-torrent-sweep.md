@@ -231,9 +231,11 @@ Two things the UI does not make obvious, both read out of the 2.10.5 binary:
 - **There is no blocklist toggle, and none is needed.** Every removal calls the
   \*arr's queue DELETE with `blocklist=true&skipRedownload=true` hard-coded.
 - **`skipRedownload=true` means the \*arr does not search again by itself.**
-  Re-searching is Cleanuparr's **Seeker**. It was enabled for Sonarr and Radarr
-  only, so after adding Lidarr, enable Seeker for Lidarr too, or a removed album
-  stays missing.
+  Re-searching is Cleanuparr's **Seeker**, and Seeker supports **only Sonarr
+  and Radarr**: there is no Lidarr option. For Lidarr the substitute is the
+  `lidarr-research-blocklisted` timer in the `arr` container
+  (`machines/ernst/containers/arr/music.nix`). Every hour it runs `AlbumSearch`
+  for each album blocklisted since its last run.
 
 Check these first whenever "nothing downloads".
 
