@@ -2345,6 +2345,30 @@ in {
           # ever wanted it needs its own directory, its own argument, and a
           # read-only share into this guest — not a line added here.
           shares.directories = [];
+
+          # ── RETENTION: WHY THE WEB UI CRAWLED ──────────────────────────────
+          #
+          #   slskd keeps every search and every transfer forever unless told
+          #   otherwise, and Soularr searches all day (~880 a day, see the
+          #   sldl account note above).  MEASURED 2026-11-17: search.db was
+          #   2.4 GB, transfers.db 40 MB, and the web UI was unusably slow —
+          #   its Searches and Downloads pages list the whole history.
+          #
+          #   Soularr reads a search's results right after it finishes and
+          #   never looks back, so a day is plenty.  Values are minutes.
+          #
+          #   `retention.files` IS DELIBERATELY ABSENT.  It deletes the
+          #   downloaded FILES from complete/ and incomplete/ — music-stage
+          #   and Lidarr's import read from there, on their own schedule.
+          retention = {
+            search = 1440;
+            transfers.download = {
+              succeeded = 10080;
+              errored = 1440;
+              cancelled = 60;
+              failed = 1440;
+            };
+          };
         };
       };
 
