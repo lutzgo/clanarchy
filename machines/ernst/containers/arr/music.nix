@@ -49,6 +49,10 @@
     if config.clan.core.vars.generators ? navidrome-metrics
     then config.clan.core.vars.generators.navidrome-metrics
     else {files."metrics.env".path = "/no-such-path";};
+  navidromeLastfmGen =
+    if config.clan.core.vars.generators ? navidrome-lastfm
+    then config.clan.core.vars.generators.navidrome-lastfm
+    else {files."lastfm.env".path = "/no-such-path";};
 
   # it has already fetched in a per-playlist `_index.csv` INSIDE its own output
   # tree, and the batch re-runs over the same CSVs for weeks.  Moving files out
@@ -146,6 +150,11 @@
       exec beet -c ${beetsConfig} import -q -A -s "''${1:-/srv/media/soulseek/sldl}"
     '';
   };
+
+  # See systemd.services.sldl-playlists below.
+  sldlPlaylists = pkgs.writers.writePython3Bin "sldl-playlists" {
+    flakeIgnore = ["E501"];
+  } (builtins.readFile ../../sldl-playlists.py);
 in {
   # ── 2026-09-08.  The Navidrome metrics password ───────────────────────────
   #
@@ -156,6 +165,46 @@ in {
   # Restarting only one leaves Prometheus scraping with the old password and
   # the `navidrome` job reporting up=0 with a 401 — which looks like Navidrome
   # being down rather than a half-finished rotation.
+  # ── 2026-11-17.  The sldl batch's playlists, in Navidrome ─────────────────
+  #
+  # The batch downloads Spotify playlist exports (CSV: Song, Artist, Album,
+  # ISRC, …) track by track, and music-stage files each track as a single, so
+  # the playlists themselves were lost on the way in.  sldl-playlists.py turns
+  # every CSV back into an .m3u under the library's `_playlists/`, matching
+  # rows against Navidrome's own database (read-only — Navidrome has already
+  # read every tag).  Navidrome's defaults do the rest: AutoImportPlaylists
+  # is on and PlaylistsPath is empty, i.e. every folder.  MEASURED on the
+  # first dry run: 81 playlists, 8,695 of 10,299 rows matched (84%); the
+  # rest are tracks the batch has not fetched or staged yet, and they appear
+  # on a later run.
+  #
+  # On the HOST, not in container@arr: the CSVs live under the soulseek tree
+  # and Navidrome's database under /srv/state, both plain host paths here.
+  # Daily, and runnable by hand as `sldl-playlists` (DRY=1 for a preview)
+  # after a publish.  A file is only rewritten when its content changes, so
+  # Navidrome does not re-import 81 unchanged playlists every morning.
+  systemd.services.sldl-playlists = {
+    description = "Rebuild the sldl batch's playlists as .m3u for Navidrome";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = lib.getExe sldlPlaylists;
+      UMask = "0002";
+      Group = "media";
+      ProtectSystem = "strict";
+      ReadWritePaths = ["/srv/media/library/music"];
+      PrivateTmp = true;
+      NoNewPrivileges = true;
+    };
+  };
+  systemd.timers.sldl-playlists = {
+    wantedBy = ["timers.target"];
+    timerConfig = {
+      OnCalendar = "06:30";
+      Persistent = true;
+    };
+  };
+  environment.systemPackages = [sldlPlaylists];
+
   systemd.services.navidrome-secrets = {
     description = "Stage Navidrome's Prometheus password for container@arr";
     after = ["local-fs.target"];
@@ -180,6 +229,44 @@ in {
         echo "navidrome-secrets: no metrics password at ${navidromeMetricsGen.files."metrics.env".path} — run 'clan vars generate ernst'. Staging an empty file so Navidrome still starts; its /metrics will refuse the scrape." >&2
         ${pkgs.coreutils}/bin/install -m 0400 -o root -g root /dev/null ${navidromeEnvFile}
       fi
+      # Appended, not a second EnvironmentFile: the container sees one staged
+      # file, and an absent var only means no Last.fm, never a failed start.
+      if [ -r ${navidromeLastfmGen.files."lastfm.env".path} ]; then
+        ${pkgs.coreutils}/bin/cat ${navidromeLastfmGen.files."lastfm.env".path} >> ${navidromeEnvFile}
+      fi
+    '';
+  };
+
+  # ── 2026-11-17.  Last.fm, for the album covers nothing else has ─────────
+  #
+  # MEASURED: 1,129 of 6,837 albums had no cover at all — no image file and
+  # nothing embedded.  Most are sldl singles: imported one track at a time,
+  # so no release and no folder art came with them.  Navidrome's default
+  # CoverArtPriority already ends in `external` and its default Agents list
+  # already names lastfm, but the agent only exists with BOTH a key and a
+  # shared secret (adapters/lastfm/agent.go at 0.64.2 returns nil on either
+  # empty).  Only Deezer was active, and it serves artist images, not albums.
+  #
+  # Prompted, because the key belongs to lgo's Last.fm account; read-only API
+  # use, no scrobbling is configured.  ROTATING: `clan vars generate ernst
+  # --regenerate --generator navidrome-lastfm`, deploy, then
+  #     systemctl restart navidrome-secrets container@arr
+  clan.core.vars.generators.navidrome-lastfm = {
+    files."lastfm.env".secret = true;
+    prompts."apikey" = {
+      description = "Last.fm API key (last.fm/api/accounts)";
+      type = "line";
+    };
+    prompts."secret" = {
+      description = "Last.fm shared secret for that API key";
+      type = "hidden";
+    };
+    runtimeInputs = [pkgs.coreutils];
+    script = ''
+      set -euo pipefail
+      key=$(tr -d '[:space:]' < "$prompts/apikey")
+      sec=$(tr -d '[:space:]' < "$prompts/secret")
+      printf 'ND_LASTFM_APIKEY=%s\nND_LASTFM_SECRET=%s\n' "$key" "$sec" > "$out/lastfm.env"
     '';
   };
 
