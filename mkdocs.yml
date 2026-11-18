@@ -60,6 +60,7 @@ nav:
     - Remote unlock: guides/remote-unlock.md
     - Firmware updates: guides/firmware-updates.md
     - YubiKey: guides/yubikey.md
+    - Two YubiKeys: guides/yubikey-two-keys.md
     - Authelia second factors: guides/authelia-2fa.md
   - Build:
     - The jj workflow: guides/jj-workflow.md
