@@ -97,6 +97,10 @@ say "generation: wanted vs running"
 # `want`.  The evaluation's stderr is kept and shown on failure — swallowing
 # it left `want=''` with no reason at all, twice (2026-11-17 and -18).
 repo=$(cd "$(dirname "$0")/.." && pwd)
+# Evaluating a whole machine is ~60 s (measured on the laptop, 2026-11-18)
+# while every other section here takes seconds — without this line the
+# script looks hung.
+echo "   … evaluating ${m} from ${repo} (about a minute)"
 evalerr=$(mktemp)
 trap 'rm -f "$evalerr"' EXIT
 want=$(nix eval --no-update-lock-file --raw \
