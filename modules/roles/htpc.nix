@@ -1924,6 +1924,30 @@ in {
     # Settings is stored in ~/.local/state/wireplumber (persisted for the
     # couch user) and still wins over priority — this only decides what
     # happens when nobody has chosen, which includes every fresh install.
+    #
+    # ── AND HEADROOM, BECAUSE THE BUFFER RAN DRY ──────────────────────────────
+    #
+    # MEASURED on ernst 2026-11-18 during a film (Jellyfin, Kodi), with the
+    # short audio dropouts audible: pw-top showed ERR=502 on this sink, and
+    # the ALSA status of hw:1,3 had `delay: 518` out of a 32768-frame buffer
+    # — about 10 ms of audio queued ahead of the hardware.  The node ran
+    # with `api.alsa.headroom = "0"` at a 512-frame quantum.  PipeWire fills
+    # an HDMI device by timer, not by interrupt, so with no headroom any
+    # wake-up that lands late lets the device play out what is there and
+    # then underrun: an xrun, heard as a short gap.
+    #
+    # NOT CPU starvation, checked at the same time: PipeWire's data-loop
+    # threads were SCHED_RR priority 20 (rtkit is active), and the load
+    # average was 8 on 32 cores — llama-server's 400% was on otherwise idle
+    # cores.  Deprioritising it would have fixed nothing.
+    #
+    # 1024 frames is ~21 ms at 48 kHz: invisible to A/V sync, which Kodi
+    # computes from the latency the sink reports, and enough to ride out a
+    # late wake-up.  Applied when the node is created, so it needs the TV's
+    # sink to reappear (TV off/on) or WirePlumber restarted.
+    #
+    # VERIFY: during a film, `pw-top` ERR on this node stays flat, and
+    # /proc/asound/card1/pcm3p/sub0/status shows `delay` well above 1024.
     services.pipewire.wireplumber.extraConfig."51-htpc-tv-audio" = lib.mkIf (cfg.display.gpuPciAddress != null) {
       "monitor.alsa.rules" = [
         {
@@ -1931,6 +1955,7 @@ in {
           actions.update-props = {
             "priority.session" = 2000;
             "priority.driver" = 2000;
+            "api.alsa.headroom" = 1024;
           };
         }
       ];
