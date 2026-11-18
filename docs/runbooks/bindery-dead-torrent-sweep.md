@@ -226,16 +226,29 @@ runtime state in `cleanuparr.db`, not in this repo, and on that day:
 | Queue Cleaner → metadata strikes | `0` (off) | ~12 (1 h at the 5-minute cron) |
 | Dead-torrent categories | tv, movies, books, audiobooks… | + **lidarr** |
 
-Two things the UI does not make obvious, both read out of the 2.10.5 binary:
+Two things the UI does not make obvious, both read in Cleanuparr's source
+(2.10.5, and unchanged in 2.11.1):
 
 - **There is no blocklist toggle, and none is needed.** Every removal calls the
   \*arr's queue DELETE with `blocklist=true&skipRedownload=true` hard-coded.
 - **`skipRedownload=true` means the \*arr does not search again by itself.**
-  Re-searching is Cleanuparr's **Seeker**, and Seeker supports **only Sonarr
-  and Radarr**: there is no Lidarr option. For Lidarr the substitute is the
-  `lidarr-research-blocklisted` timer in the `arr` container
-  (`machines/ernst/containers/arr/music.nix`). Every hour it runs `AlbumSearch`
-  for each album blocklisted since its last run.
+  Re-searching is Cleanuparr's **Seeker**, which has two halves:
+  - **Replacement search**: after every removal, for **every** \*arr type,
+    Lidarr included. It needs only Seeker's master switch ("search enabled"),
+    not an entry in the Seeker instance list.
+  - **Proactive search** (missing items, quality and custom-format upgrades):
+    the instance list on the Seeker page. Up to 2.10.x that list offered only
+    Sonarr and Radarr; **Lidarr was added in 2.11** (upstream #870). ernst
+    runs 2.10.5, so enable Lidarr there once 2.11 arrives through a regular
+    update (no ad-hoc version bumps).
+
+  An earlier version of this runbook said Seeker had no Lidarr support. That
+  was wrong: it confused the proactive instance list with all of Seeker. The
+  `lidarr-research-blocklisted` timer added on that basis has been removed.
+- **Cleanuparr skips some Lidarr queue items:** its log reads `[Lidarr] skip |
+  item is missing the content id`. Those are downloads Lidarr has not matched
+  to an album, so Cleanuparr cannot act on them. `scripts/arr-sweep-dead.sh`
+  below handles them.
 
 Check these first whenever "nothing downloads".
 

@@ -842,87 +842,16 @@ in {
       };
     };
 
-    ##########################################################################
-    # LIDARR RE-SEARCH AFTER A CLEANUPARR REMOVAL: the Seeker Lidarr lacks.
-    #
-    # Cleanuparr removes a stalled download through the *arr's queue API with
-    # `blocklist=true&skipRedownload=true` HARD-CODED (read out of the 2.10.5
-    # binary). skipRedownload means the *arr does NOT search for another
-    # release. For Sonarr and Radarr, Cleanuparr's own Seeker searches again
-    # instead. Seeker has NO Lidarr support (the UI offers Sonarr and Radarr
-    # only, checked 2026-11-17), so a removed album is left missing.
-    #
-    # Soularr does not close the gap in practice. It walks Lidarr's whole
-    # missing list 10 albums per pass, and that list was 32,360 albums on
-    # 2026-11-17, so it gets back to any one album roughly every 45 days.
-    #
-    # So: every blocklist entry newer than the last one seen gets an
-    # AlbumSearch for exactly its albumIds. Blocklist ids only increase, so
-    # "newer" is one stored integer. Nothing is searched on the first run: it
-    # only records the current high-water mark, so deploying this does not
-    # fire a search for every historical blocklist entry at once.
-    #
-    # Hourly: Cleanuparr's stall rule takes 12 strikes (~1 h) to remove
-    # anything, so a finer timer would only search the same few albums
-    # sooner, at the cost of more indexer hits.
-    ##########################################################################
-    systemd.services.lidarr-research-blocklisted = {
-      description = "Search again for albums whose download was blocklisted";
-      after = ["lidarr.service" "arr-api-keys.service"];
-      wants = ["lidarr.service"];
-      requires = ["arr-api-keys.service"];
-      path = [pkgs.curl pkgs.jq pkgs.coreutils];
-      script = ''
-        set -euo pipefail
-        key=$(cat "$CREDENTIALS_DIRECTORY/lidarr-api-key")
-        api="http://127.0.0.1:${toString lidarrPort}/api/v1"
-        state="$STATE_DIRECTORY/last-blocklist-id"
-
-        page=$(curl -sf -H "X-Api-Key: $key" \
-          "$api/blocklist?page=1&pageSize=200&sortKey=date&sortDirection=descending")
-        max=$(jq '[.records[].id] | max // 0' <<<"$page")
-
-        if [ ! -s "$state" ]; then
-          echo "$max" > "$state"
-          echo "first run: high-water mark set to blocklist id $max, nothing searched"
-          exit 0
-        fi
-        last=$(cat "$state")
-
-        ids=$(jq -c --argjson last "$last" \
-          '[.records[] | select(.id > $last) | .albumIds[]] | unique' <<<"$page")
-        n=$(jq length <<<"$ids")
-        if [ "$n" -gt 0 ]; then
-          curl -sf -H "X-Api-Key: $key" -H 'Content-Type: application/json' \
-            -d "{\"name\":\"AlbumSearch\",\"albumIds\":$ids}" "$api/command" >/dev/null
-          echo "searched $n album(s) blocklisted after id $last: $ids"
-        else
-          echo "no new blocklist entries after id $last"
-        fi
-        # Only after the search was accepted, so a failed call is retried.
-        echo "$max" > "$state"
-      '';
-      serviceConfig = {
-        Type = "oneshot";
-        DynamicUser = true;
-        StateDirectory = "lidarr-research-blocklisted";
-        LoadCredential = ["lidarr-api-key:${arrSecretsDir}/lidarr-api-key"];
-        TimeoutStartSec = 300;
-        LockPersonality = true;
-        SystemCallArchitectures = "native";
-        SystemCallFilter = arrSyscallFilter;
-      };
-    };
-
-    systemd.timers.lidarr-research-blocklisted = {
-      description = "Re-search blocklisted Lidarr albums hourly";
-      wantedBy = ["timers.target"];
-      timerConfig = {
-        OnBootSec = "15m";
-        OnUnitActiveSec = "1h";
-        Persistent = true;
-      };
-    };
+    # NO LIDARR RE-SEARCH TIMER HERE, ON PURPOSE.  #463 added one on the claim
+    # that Cleanuparr's Seeker has no Lidarr support, and that was wrong
+    # (corrected 2026-11-18, read in Cleanuparr's source): Seeker has two
+    # halves.  Its REPLACEMENT search — queued when Cleanuparr removes a
+    # download with skipRedownload — runs for every *arr type, Lidarr
+    # included (QueueItemRemover queues it with no type check).  Only its
+    # PROACTIVE search (missing items, upgrades) was Sonarr/Radarr-only, and
+    # Lidarr gained that in Cleanuparr 2.11 (upstream #870).  Lidarr's own
+    # failed downloads it already re-searches itself.  A timer here only
+    # repeats searches.
 
     systemd.services.komga.serviceConfig = {
       # ── ONE DIRECTIVE, AND IT IS THE ONE THAT MATTERS ──────────────────
