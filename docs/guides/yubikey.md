@@ -333,3 +333,8 @@ Commit the result. Then provision the PIV slot (see Re-provisioning above) and `
 ### sops decrypt fails after ZFS rollback
 
 After a rollback, the age identity file path referenced in `.sops.yaml` might not exist until impermanence re-creates the bind mounts. Ensure `/var/lib/sops-nix` is in the persisted paths (it is, in `modules/zfs-impermanence.nix`).
+
+---
+
+A second key, the USB backup and keeping both in step:
+[yubikey-two-keys.md](yubikey-two-keys.md).

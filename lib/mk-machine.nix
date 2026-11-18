@@ -48,6 +48,9 @@
     # guards its own body on it, so importing it fleet-wide is inert on the
     # machines that never plug one in.
     ../modules/hardware/zsa.nix
+    # pam_u2f (touch a YubiKey instead of the password). Inert until a machine
+    # sets `clanarchy.u2f.enable`.
+    ../modules/hardware/yubikey-u2f.nix
     # Convertible / 2-in-1 hardware (jens). Same pattern as zsa.nix above:
     # declares `clanarchy.hardware.convertible` and guards its body on it, so
     # it is inert on the clamshells. It has to be fleet-wide rather than
