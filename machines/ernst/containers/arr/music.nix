@@ -1009,6 +1009,21 @@ in {
         # See the long note above for why the Opus profile is not here.
         EnableTranscodingConfig = true;
 
+        # ── Imported playlists PUBLIC, or Music Assistant cannot see them ─
+        #
+        # sldl-playlists writes .m3u files that Navidrome imports as lgo's
+        # playlists, and Navidrome makes them PRIVATE by default.  Music
+        # Assistant logs in as its own user (`mass`), and a Navidrome user
+        # sees only its own playlists plus public ones — so on 2026-11-18
+        # Music Assistant / Home Assistant showed 15 of the 81 sldl
+        # playlists (the 15 someone had made public by hand).
+        #
+        # This only decides the flag of a NEWLY imported playlist
+        # (core/playlists/import.go, 0.64.2): an existing one keeps its own
+        # on every re-sync.  The 66 already imported were flipped once in
+        # the database on 2026-11-18.
+        DefaultPlaylistPublicVisibility = true;
+
         # ── Prometheus ────────────────────────────────────────────────────
         #
         # Metrics ride the ordinary port; there is no separate listener to
