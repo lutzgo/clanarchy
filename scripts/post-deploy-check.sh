@@ -25,6 +25,14 @@
 set -uo pipefail
 
 m="${1:?usage: post-deploy-check.sh <machine>}"
+# Refuse a name that is not a machine BEFORE doing anything with it.  An
+# argument copied with a trailing dot ("ernst.") evaluated
+# `nixosConfigurations.ernst..config…` and surfaced only as an empty `want`
+# in the generation check (2026-11-18).
+if [ ! -d "$(dirname "$0")/../machines/$m" ]; then
+  echo "post-deploy-check: '$m' is not a machine; known: $(ls "$(dirname "$0")/../machines" | tr '\n' ' ')" >&2
+  exit 2
+fi
 host="${2:-10.0.50.10}"
 fail=0
 
