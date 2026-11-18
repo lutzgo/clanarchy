@@ -35,6 +35,34 @@
 #        80 MB extraction per restart.  Pointing it at the cache directory
 #        makes it extract once.
 #
+# ── WHEN THIS GOES TO 2.11 OR LATER: a checklist (written 2026-11-18) ─────────
+#
+#   Not bumped ad hoc: versions move here with the regular updates only.
+#   2.11.1 was built and smoke-tested on 2026-11-18 (same zip layout, this
+#   derivation unchanged, /health 200) and then deliberately NOT shipped.
+#
+#   1. Bump `version` and `hash` together.  The asset name and the zip's
+#      top-level directory have kept the `Cleanuparr-<v>-linux-amd64` shape
+#      through 2.11.1; if `installPhase`'s `cp` fails, that changed.
+#   2. Read the release notes from 2.10.5 up to the new version for
+#      "Breaking Changes".  2.11.0's were Seeker-internal (cycle tracking,
+#      episode search mode) and migrate the DB on first start.  ZFS snapshots
+#      of /srv/state cover a rollback; take a manual one if in doubt.
+#   3. After deploy, in the UI → Seeker: ENABLE THE LIDARR INSTANCE.  Lidarr
+#      joined proactive search (missing albums + quality/CF upgrades) in 2.11
+#      (upstream #870).  Replacement searches after a removal already covered
+#      Lidarr before that — see docs/runbooks/bindery-dead-torrent-sweep.md,
+#      and do not re-add the timer #470 removed.
+#   4. Expect Lidarr indexer load to rise: 32k+ missing albums (2026-11-17).
+#      Start with a long search interval and the "exclude recent grabs"
+#      option (2.11.0), and watch Prowlarr's per-indexer limits.
+#   5. 2.11.1 also fixes two security bugs (#896: a temporary login token was
+#      fully authenticated; #897: TLS certificates were not validated on
+#      outbound HTTPS).  Nothing here talks HTTPS to the *arrs (loopback
+#      HTTP), so the urgency is low, but it is a reason not to sit on 2.10.x.
+#   6. Confirm in the log that Lidarr items still say `[Lidarr] skip | item is
+#      missing the content id` only for unmatched downloads.
+#
 # ── Configuration is a DATABASE, not this file ───────────────────────────────
 #
 #   Cleanuparr v2 keeps its configuration in SQLite under its config directory
